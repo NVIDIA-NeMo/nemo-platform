@@ -36,6 +36,7 @@ import {
   RadioGroupRoot,
   SegmentedControl,
   SidePanel,
+  Spinner,
   Stack,
   TabsContent,
   TabsTrigger,
@@ -49,6 +50,7 @@ import { useSampleDatasetFiles } from '@studio/api/datasets/useSampleDatasetFile
 import { FILESET_DETAILS_ENABLED } from '@studio/constants/environment';
 import { SAMPLE_DATASETS, SampleDataset } from '@studio/constants/sampleDatasets';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
+import { DatasetQualityReportView } from '@studio/routes/FilesetNewRoute/components/DatasetQualityReportView';
 import { CreateSecretModal } from '@studio/routes/SecretsListRoute/CreateSecretModal';
 import { SecretSearchableSelect } from '@studio/routes/SecretsListRoute/SecretSearchableSelect';
 import {
@@ -273,6 +275,14 @@ export const FilesetNewRoute: FC = () => {
 
   const url = watch('url');
   const purpose = watch('purpose');
+
+  useEffect(() => {
+    if (purpose !== FilesetPurpose.dataset) {
+      setQualityReports([]);
+      setIsValidating(false);
+    }
+  }, [purpose]);
+
   const selectedSecretName = watch('secretKey');
   const secretKeyLabel = useMemo(() => {
     if (!url?.trim()) return 'Secret Key';
@@ -407,7 +417,8 @@ export const FilesetNewRoute: FC = () => {
     ]
   );
 
-  const hasValidationErrors = qualityReports.some((r) => r.hasErrors);
+  const hasValidationErrors =
+    purpose === FilesetPurpose.dataset && qualityReports.some((r) => r.hasErrors);
 
   const onSubmit = useCallback(
     async (data: DatasetFormFields) => {
@@ -691,14 +702,12 @@ export const FilesetNewRoute: FC = () => {
                               void handleFilesChange(toFileList(list));
                             }}
                           >
-                            Supports JSONL, CSV, and Parquet files up to 50 MB.
+                            Supports JSONL, JSON, CSV, and Parquet files up to 50 MB.
                           </Upload>
                           {purpose === FilesetPurpose.dataset && (
                             <Stack gap="density-sm" ref={qualityReportRef}>
                               {isValidating && (
-                                <Text kind="body/regular/sm" color="secondary">
-                                  Checking file quality…
-                                </Text>
+                                <Spinner size="small" description="Validating dataset…" />
                               )}
                               {qualityReports.map((report) => (
                                 <DatasetQualityReportView key={report.fileName} report={report} />

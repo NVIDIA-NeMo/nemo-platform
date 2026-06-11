@@ -10,7 +10,14 @@ from data_designer.engine.model_provider import ModelProvider as NDDModelProvide
 from data_designer.engine.model_provider import ModelProviderRegistry, resolve_model_provider_registry
 from data_designer_nemo.errors import NDDInternalError, NDDInvalidConfigError
 from data_designer_nemo.sdk_translation import sync_to_async_sdk
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform, NotFoundError, PermissionDeniedError
+from nemo_platform import (
+    APIConnectionError,
+    APITimeoutError,
+    AsyncNeMoPlatform,
+    NeMoPlatform,
+    NotFoundError,
+    PermissionDeniedError,
+)
 from nemo_platform.types.inference import ModelProvider as NMPModelProvider
 
 logger = logging.getLogger(__name__)
@@ -203,6 +210,17 @@ class ModelProviderCollection:
         except (NotFoundError, PermissionDeniedError):
             self.config_errors.append(
                 f"Cannot access provider {user_supplied_provider_name!r}. Check that it exists and you have access to it."
+            )
+            self.inaccessible_providers.add(user_supplied_provider_name)
+        except (APIConnectionError, APITimeoutError) as e:
+            logger.debug(
+                "Error connecting while retrieving model provider",
+                extra={"provider_name": provider_name, "workspace": workspace},
+                exc_info=True,
+            )
+            self.internal_errors.append(
+                "Could not connect to Models or Inference Gateway while resolving "
+                f"provider {user_supplied_provider_name!r}: {e}"
             )
             self.inaccessible_providers.add(user_supplied_provider_name)
         except Exception as e:

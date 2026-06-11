@@ -13,8 +13,10 @@ from fastapi import APIRouter
 from nemo_platform_plugin.cli import NemoCLI
 from nemo_platform_plugin.discovery import (
     _ALL_SURFACE_GROUPS,
+    CUSTOMIZATION_CONTRIBUTORS_GROUP,
     discover,
     discover_cli,
+    discover_customization_contributors,
     discover_entry_points,
     discover_functions,
     discover_jobs,
@@ -40,10 +42,12 @@ def clear_discovery_cache():
     discover_entry_points.cache_clear()
     discover.cache_clear()
     discover_manifests.cache_clear()
+    discover_customization_contributors.cache_clear()
     yield
     discover_entry_points.cache_clear()
     discover.cache_clear()
     discover_manifests.cache_clear()
+    discover_customization_contributors.cache_clear()
 
 
 # ---------------------------------------------------------------------------
@@ -563,3 +567,86 @@ class TestDiscoverManifests:
             result = discover_manifests()
         assert list(result.keys()) == ["example"]
         assert result["example"].version == "1.2.3"
+
+
+class TestDiscoverCustomizationContributors:
+    def test_group_in_all_surface_groups(self) -> None:
+        assert CUSTOMIZATION_CONTRIBUTORS_GROUP in _ALL_SURFACE_GROUPS
+
+    def test_uses_customization_contributors_group(self) -> None:
+        with patch("nemo_platform_plugin.discovery.entry_points", return_value=[]) as mock_eps:
+            discover_customization_contributors()
+        mock_eps.assert_called_once_with(group=CUSTOMIZATION_CONTRIBUTORS_GROUP)
+
+    def test_instantiates_contributor_class(self) -> None:
+        class _Contributor:
+            name = "fake"
+            dependencies = ["jobs"]
+
+            def get_routers(self) -> list[RouterSpec]:
+                return []
+
+            def get_cli(self) -> None:
+                return None
+
+            def get_authz_contribution(self):
+                return None
+
+            def get_sdk_resources(self):
+                return None
+
+        ep = _make_ep("fake", _Contributor)
+        with patch("nemo_platform_plugin.discovery.entry_points", return_value=[ep]):
+            result = discover_customization_contributors()
+        assert isinstance(result["fake"], _Contributor)
+
+    def test_failing_contributor_raises(self) -> None:
+        from nemo_platform_plugin.customization_contributor import CustomizationContributorDiscoveryError
+
+        bad = _make_ep("bad", None)
+        bad.load.side_effect = RuntimeError("broken")
+
+        class _Contributor:
+            name = "good"
+            dependencies = ["jobs"]
+
+            def get_routers(self) -> list[RouterSpec]:
+                return []
+
+            def get_cli(self) -> None:
+                return None
+
+            def get_authz_contribution(self):
+                return None
+
+            def get_sdk_resources(self):
+                return None
+
+        good = _make_ep("good", _Contributor)
+        with patch("nemo_platform_plugin.discovery.entry_points", return_value=[bad, good]):
+            with pytest.raises(CustomizationContributorDiscoveryError, match="Failed to load"):
+                discover_customization_contributors()
+
+    def test_name_mismatch_raises(self) -> None:
+        from nemo_platform_plugin.customization_contributor import CustomizationContributorDiscoveryError
+
+        class _Contributor:
+            name = "wrong"
+            dependencies = ["jobs"]
+
+            def get_routers(self) -> list[RouterSpec]:
+                return []
+
+            def get_cli(self) -> None:
+                return None
+
+            def get_authz_contribution(self):
+                return None
+
+            def get_sdk_resources(self):
+                return None
+
+        ep = _make_ep("expected", _Contributor)
+        with patch("nemo_platform_plugin.discovery.entry_points", return_value=[ep]):
+            with pytest.raises(CustomizationContributorDiscoveryError, match="differs from class name"):
+                discover_customization_contributors()

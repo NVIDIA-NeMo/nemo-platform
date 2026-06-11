@@ -11,23 +11,19 @@ import { JOB_POLLING_INTERVAL_MS } from '@nemo/common/src/constants';
 import { useTableFilters } from '@nemo/common/src/hooks/useTableFilters';
 import { getAriaSort } from '@nemo/common/src/utils/a11y';
 import { tablePaginationSort } from '@nemo/common/src/utils/tablePaginationSort';
-import { useEvaluationListMetricJobs } from '@nemo/sdk/generated/platform/api';
+import { useEvaluatorListEvaluateJobs } from '@nemo/sdk/generated/evaluator/api';
 import { Button, Stack, TableRowDefinition } from '@nvidia/foundations-react-core';
 import { DocumentationButton } from '@studio/components/DocumentationButton';
 import { LINK_DOCS_STUDIO_EVALUATION } from '@studio/constants/links';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
-import {
-  getEvaluationMetricsRunRoute,
-  getEvaluationResultDetailsRoute,
-} from '@studio/routes/utils';
+import { getEvaluationResultDetailsRoute } from '@studio/routes/utils';
 import { keepPreviousData } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import { useMemo, type FC } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 
 export const EvaluationResultsRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
-  const navigate = useNavigate();
 
   const { filterState, handleSort, handlePaginationChange } = useTableFilters({});
 
@@ -36,7 +32,7 @@ export const EvaluationResultsRoute: FC = () => {
     isLoading,
     refetch,
     error,
-  } = useEvaluationListMetricJobs(
+  } = useEvaluatorListEvaluateJobs(
     workspace,
     {
       ...tablePaginationSort(filterState),
@@ -157,12 +153,6 @@ export const EvaluationResultsRoute: FC = () => {
           actions={
             <Stack direction="row" gap="density-md">
               <DocumentationButton href={LINK_DOCS_STUDIO_EVALUATION} />
-              <Button
-                color="brand"
-                onClick={() => navigate(getEvaluationMetricsRunRoute(workspace))}
-              >
-                Evaluate Model
-              </Button>
             </Stack>
           }
         />

@@ -26,6 +26,7 @@ from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate
 from nmp.core.models.controllers.backends.common import (
     LOG_MAX_CHARS,
     LOG_TAIL_LINES,
+    deployment_config_view,
     deployment_elapsed_seconds,
     format_duration,
 )
@@ -570,7 +571,7 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
                 f"Files service model detected for deployment {deployment.workspace}/{deployment.name}, creating NIMCache"
             )
 
-            nim_config = config.nim_deployment
+            nim_config = deployment_config_view(config)
             pvc_size = nim_config.disk_size if nim_config.disk_size else self._backend_config.default_pvc_size
 
             try:
@@ -690,7 +691,7 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
                 f"Files service model detected for deployment update {deployment.workspace}/{deployment.name}, creating/updating NIMCache"
             )
 
-            nim_config = config.nim_deployment
+            nim_config = deployment_config_view(config)
             pvc_size = nim_config.disk_size if nim_config.disk_size else self._backend_config.default_pvc_size
 
             try:

@@ -47,6 +47,19 @@ class BaseStorageConfig(BaseModel):
         """Get the secret references for the storage config."""
         return {}
 
+    @property
+    def owns_storage_data(self) -> bool:
+        """Whether the platform owns the underlying source data for this backend.
+
+        When True, deleting a fileset must also delete the underlying source
+        data (e.g. local files, S3 objects under our prefix). When False, the
+        backend points at source data the platform does not own and must not
+        delete (e.g. read-only external registries like NGC or HuggingFace).
+
+        Defaults to False so external backends are safe by default.
+        """
+        return False
+
     def copy_config(self, path: str) -> Self:
         """
         This method is necessary for when we're using a storage config
@@ -80,6 +93,12 @@ class LocalStorageConfig(BaseStorageConfig):
         paths like ``./files_storage`` (joined against cwd).
         """
         return str(Path.cwd() / Path(v).expanduser())
+
+    @property
+    def owns_storage_data(self) -> bool:
+        # Deleting a local-backed fileset removes the underlying directory
+        # (see LocalStorageImpl.delete_all), so we own that data.
+        return True
 
     def copy_config(self, path: str) -> Self:
         new_subpath = os.path.join(self.path, path)
@@ -210,6 +229,12 @@ class S3StorageConfig(BaseStorageConfig):
         if self.secret_access_key_secret:
             refs["secret_access_key"] = self.secret_access_key_secret
         return refs
+
+    @property
+    def owns_storage_data(self) -> bool:
+        # Deleting an S3-backed fileset removes the objects under our prefix
+        # (see S3StorageImpl.delete_all), so we own that source data.
+        return True
 
     def copy_config(self, path: str) -> Self:
         """Create a copy with an extended prefix for subpath filesets."""

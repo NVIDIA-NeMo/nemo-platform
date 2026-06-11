@@ -447,10 +447,12 @@ def test_chat_completions_ingest_accepts_both_context_shapes_with_experiment_con
 
 
 def _create_experiment(client: TestClient, name: str) -> str:
+    group_id = _ensure_group(client)
     response = client.post(
         "/apis/intake/v2/workspaces/default/experiments",
         json={
             "name": name,
+            "experiment_group_id": group_id,
             "agent_name": "sample-agent",
             "agent_version": "1.0.0",
             "dataset_name": "chat-dataset",
@@ -464,3 +466,14 @@ def _create_experiment(client: TestClient, name: str) -> str:
     existing = client.get(f"/apis/intake/v2/workspaces/default/experiments/{name}")
     assert existing.status_code == 200, existing.text
     return existing.json()["name"]
+
+
+def _ensure_group(client: TestClient, name: str = "chat-completions-test-group") -> str:
+    response = client.post(
+        "/apis/intake/v2/workspaces/default/experiment-groups",
+        json={"name": name},
+    )
+    if response.status_code == 409:
+        response = client.get(f"/apis/intake/v2/workspaces/default/experiment-groups/{name}")
+    response.raise_for_status()
+    return response.json()["id"]

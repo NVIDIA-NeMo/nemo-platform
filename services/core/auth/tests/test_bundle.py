@@ -12,6 +12,35 @@ import pytest
 
 
 @pytest.mark.asyncio
+async def test_authorization_data_merges_plugin_authz_contributions(monkeypatch):
+    """Plugin authz contributions are included before validation and bundle build."""
+    from nmp.core.auth.app.bundle import _build_authorization_data_internal
+
+    plugin_path = "/apis/example-plugin/v2/workspaces/{workspace}/jobs"
+    contribution = {
+        "permissions": {"example-plugin.jobs.read": "Read example plugin jobs"},
+        "endpoints": {
+            plugin_path: {
+                "get": {
+                    "permissions": ["example-plugin.jobs.read"],
+                    "scopes": ["example-plugin:read", "platform:read"],
+                }
+            }
+        },
+    }
+
+    monkeypatch.setattr(
+        "nemo_platform_plugin.authz_discovery.discover_authz_contribution_dicts",
+        lambda: [contribution],
+    )
+
+    data = await _build_authorization_data_internal(entities_client=None)
+
+    assert data["authz"]["endpoints"][plugin_path]["get"]["permissions"] == ["example-plugin.jobs.read"]
+    assert "example-plugin.jobs.read" in data["authz"]["roles"]["Viewer"]["permissions"]
+
+
+@pytest.mark.asyncio
 async def test_bundle_generation():
     """Test that bundle can be generated without a database."""
     from nmp.core.auth.app.bundle import clear_bundle_cache, get_opa_bundle_with_etag

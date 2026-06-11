@@ -36,6 +36,7 @@ Why subclasses of ``str`` rather than a discriminated Pydantic union:
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import Any, ClassVar, Union
 
 from pydantic import GetCoreSchemaHandler
@@ -144,11 +145,49 @@ def classify_output_target(value: str) -> type[StrRef]:
     return FilesetRef
 
 
+@dataclass
+class ParsedEntityRef:
+    """Parsed entity reference with workspace and name."""
+
+    workspace: str
+    name: str
+
+
+def parse_entity_ref(identifier: str, default_workspace: str | None = None) -> ParsedEntityRef:
+    """Parse an entity identifier into workspace and name.
+
+    Accepted formats:
+
+    - ``entity_name``             — uses *default_workspace*
+    - ``workspace/entity_name``   — explicit workspace
+
+    Raises :class:`ValueError` when the identifier has more than one ``/``,
+    any segment is empty, or *default_workspace* is ``None`` for an
+    unqualified name.
+    """
+    parts = identifier.strip().split("/")
+    if len(parts) > 2 or any(p == "" for p in parts):
+        raise ValueError(f"invalid entity reference {identifier!r}; expected 'name' or 'workspace/name'")
+
+    if len(parts) == 2:
+        return ParsedEntityRef(workspace=parts[0], name=parts[1])
+
+    if default_workspace is None:
+        raise ValueError(
+            f"Entity identifier '{identifier}' is not qualified with a workspace and default workspace is not provided. "
+            "Must be in the format $workspace/$entity_name or $entity_name."
+        )
+
+    return ParsedEntityRef(workspace=default_workspace, name=parts[0])
+
+
 __all__ = [
     "EndpointURL",
     "FilesetRef",
     "LocalDir",
     "OutputTarget",
+    "ParsedEntityRef",
     "StrRef",
     "classify_output_target",
+    "parse_entity_ref",
 ]

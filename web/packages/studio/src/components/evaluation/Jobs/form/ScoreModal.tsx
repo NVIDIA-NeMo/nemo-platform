@@ -5,7 +5,6 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { FormModal } from '@nemo/common/src/components/FormModal';
 import { Button, Flex, SegmentedControl, Stack, Text } from '@nvidia/foundations-react-core';
-import type { PanelScoreFormData } from '@studio/hooks/evaluation/useMetricPanelForm';
 import { Trash } from 'lucide-react';
 import { FC, useEffect, useRef } from 'react';
 import { useFieldArray, useForm } from 'react-hook-form';
@@ -54,6 +53,16 @@ const localRubricSchema = z.object({
 const localScoreSchema = z.union([localRangeSchema, localRubricSchema]);
 
 type LocalPanelScoreFormData = z.infer<typeof localScoreSchema>;
+/** Public alias used by ScoreDefinitions and other consumers. */
+export type PanelScoreFormData = LocalPanelScoreFormData;
+/** Minimal form shape for components that host a score list. */
+export interface MetricPanelFormData {
+  body: {
+    scores: PanelScoreFormData[];
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
 type LocalRangeScoreFormData = z.infer<typeof localRangeSchema>;
 type LocalRubricScoreFormData = z.infer<typeof localRubricSchema>;
 type ScoreType = LocalPanelScoreFormData['scoreType'];

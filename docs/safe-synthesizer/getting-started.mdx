@@ -1,0 +1,48 @@
+---
+title: "Getting Started with NeMo Safe Synthesizer"
+description: ""
+---
+<a id="nss-getting-started"></a>
+
+Get started with NeMo Safe Synthesizer for generating private synthetic versions of sensitive tabular datasets on a host GPU.
+
+## Prerequisites
+
+Before using NeMo Safe Synthesizer, complete [Setup](/documentation/get-started) to install the CLI/SDK.
+
+NeMo Safe Synthesizer has the following additional requirements:
+
+- An NVIDIA GPU **on the host machine** with 80GB+ VRAM (check with `nvidia-smi`). This is separate from any GPU inside a NIM container; Safe Synthesizer training runs directly on the host.
+- Sufficient disk space for generated datasets (50GB+ recommended)
+
+For general platform troubleshooting (port conflicts, health checks, and so on), refer to [Setup](/documentation/get-started).
+
+<Markdown src="/snippets/_snippets/nvidia-build-model-provider.mdx" />
+---
+
+## Host-local CLI
+
+For GPU development on your machine, install the Safe Synthesizer plugin from this repository and use `nemo safe-synthesizer run-local` (see [Local and Subprocess Execution](/documentation/synthesize-safe-data/about/local-and-subprocess-execution)):
+
+```shell
+BOOTSTRAP_LOCAL_PLUGIN_DIRS=plugins/nemo-safe-synthesizer make bootstrap-python
+uv run nemo safe-synthesizer runtime setup
+uv run nemo safe-synthesizer run-local \
+  --spec-file ./nss-job.json \
+  --data-source ./input.csv \
+  --output-dir ./nss-output
+```
+
+The `run-local` command launches the Safe Synthesizer task in a separate runtime Python subprocess. The `nemo safe-synthesizer` CLI today exposes **run-local** and **runtime** only; platform job submission uses the Jobs API or SDK.
+
+---
+
+## Next Steps
+
+Create your first synthetic dataset:
+
+- [Safe Synthesizer 101 Tutorial](/documentation/synthesize-safe-data/tutorials/safe-synthesizer-101) - a beginner-friendly introduction
+- [Local and Subprocess Execution](/documentation/synthesize-safe-data/about/local-and-subprocess-execution) - local CLI and runtime task details
+- [SDK Resources](/documentation/synthesize-safe-data/sdk-resources) - Python SDK methods for jobs, builders, logs, and results
+
+---

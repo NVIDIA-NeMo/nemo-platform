@@ -518,6 +518,11 @@ async def test_delete_not_implemented(ngc_config, mock_ngc_client, ngc_secrets):
         await impl.delete("test.txt")
 
 
+def test_ngc_config_does_not_own_storage_data(ngc_config):
+    """NGC is read-only external storage; the platform does not own the source data."""
+    assert ngc_config.owns_storage_data is False
+
+
 # ---- Factory tests ----
 
 

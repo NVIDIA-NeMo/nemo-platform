@@ -12,7 +12,6 @@ import {
   DATA_DESIGNER_ENABLED,
   DATASETS_ENABLED,
   DEPLOYMENTS_ENABLED,
-  EVALUATOR_BENCHMARKS_ENABLED,
   EVALUATOR_ENABLED,
   EXPERIMENT_ENABLED,
   GUARDRAILS_ENABLED,
@@ -30,9 +29,7 @@ import {
   getAgentMonitorRoute,
   getAgentOptimizationsRoute,
   getDataDesignerJobListRoute,
-  getEvaluationBenchmarkListRoute,
   getModelCompareRoute,
-  getEvaluationMetricsRoute,
   getEvaluationResultsRoute,
   getExperimentRoute,
   getGuardrailsRoute,
@@ -61,7 +58,6 @@ import {
   Cog,
   Columns3,
   Rocket,
-  ClipboardList,
   Lightbulb,
   Activity,
   FlaskConical,
@@ -112,22 +108,6 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
             slotLabel: 'Evaluations',
             href: getEvaluationResultsRoute(workspace),
           },
-          {
-            id: 'metrics',
-            slotIcon: <ChartBar className={iconColorClass} />,
-            slotLabel: 'Metrics',
-            href: getEvaluationMetricsRoute(workspace),
-          },
-          ...(EVALUATOR_BENCHMARKS_ENABLED
-            ? [
-                {
-                  id: 'benchmarks',
-                  slotIcon: <ClipboardList className={iconColorClass} />,
-                  slotLabel: 'Benchmarks',
-                  href: getEvaluationBenchmarkListRoute(workspace),
-                },
-              ]
-            : []),
         ]
       : [];
 

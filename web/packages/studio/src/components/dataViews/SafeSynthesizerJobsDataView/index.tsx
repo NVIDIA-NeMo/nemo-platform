@@ -21,12 +21,12 @@ import {
   getSafeSynthesizerDownloadJobResultSummaryQueryOptions as getDownloadJobResultSummaryQueryOptions,
   getSafeSynthesizerListJobsQueryKey,
   useSafeSynthesizerListJobs,
-} from '@nemo/sdk/vendored/safe-synthesizer/api';
+} from '@nemo/sdk/generated/safe-synthesizer/api';
 import {
   SafeSynthesizerJob,
   SafeSynthesizerJobsListFilter,
   SafeSynthesizerJobsSortField,
-} from '@nemo/sdk/vendored/safe-synthesizer/schema';
+} from '@nemo/sdk/generated/safe-synthesizer/schema';
 import { Banner, Button, Stack } from '@nvidia/foundations-react-core';
 import { DeleteJobModal } from '@studio/components/dataViews/SafeSynthesizerJobsDataView/DeleteJobModal';
 import { isCancellableJob } from '@studio/components/dataViews/SafeSynthesizerJobsDataView/utils';

@@ -25,7 +25,7 @@ from nemo_anonymizer_plugin.jobs.run import RunJob
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import LocalJobResults
-from nmp.common.jobs.exceptions import PlatformJobCompilationError
+from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 
 
 def _make_job_context(tmp_path: Path, *, workspace: str = "team-a") -> JobContext:

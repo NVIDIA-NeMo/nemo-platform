@@ -2,7 +2,7 @@
 name = "nmp-studio"
 version = "0.0.1"
 description = "Studio service for serving NeMo Studio UI"
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.11,<3.15"
 
 dependencies = [
   # API server dependencies

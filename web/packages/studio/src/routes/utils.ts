@@ -314,8 +314,23 @@ export const getExperimentRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.experiment, { workspace });
 };
 
-export const getExperimentGroupDetailRoute = (workspace: string, experimentGroupId: string) => {
-  return generatePath(ROUTES.workspace.experimentGroupDetail, { workspace, experimentGroupId });
+export const getExperimentGroupDetailRoute = (workspace: string, experimentGroupName: string) => {
+  return generatePath(ROUTES.workspace.experimentGroupDetail, {
+    workspace,
+    experimentGroupName: encodeURIComponent(experimentGroupName),
+  });
+};
+
+export const getExperimentDetailRoute = (
+  workspace: string,
+  experimentGroupName: string,
+  experimentName: string
+) => {
+  return generatePath(ROUTES.workspace.experimentDetail, {
+    workspace,
+    experimentGroupName: encodeURIComponent(experimentGroupName),
+    experimentName: encodeURIComponent(experimentName),
+  });
 };
 
 export const getPromptTuningFormRoute = (workspace: string, options?: { model?: string }) => {

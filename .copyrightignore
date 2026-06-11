@@ -3,3 +3,6 @@ web/vendor/
 release/
 .agents/skills/
 e2e/
+packages/garak_api/garakapi/_config.py
+packages/garak_api/garakapi/_plugins.py
+packages/garak_api/garakapi/exception.py

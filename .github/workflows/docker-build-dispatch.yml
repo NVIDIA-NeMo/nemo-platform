@@ -1,0 +1,47 @@
+# Sets the docker-build commit status (pending) and triggers the image build for a PR commit.
+name: Docker build dispatch
+
+on:
+  workflow_run:
+    workflows: ["Docker build trigger"]
+    types: [completed]
+
+permissions:
+  contents: read
+  statuses: write
+
+concurrency:
+  group: docker-build-dispatch-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: true
+
+jobs:
+  dispatch:
+    name: Post status + dispatch build
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set docker-build status (pending)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          gh api -X POST "/repos/${REPO}/statuses/${HEAD_SHA}" \
+            -f state='pending' \
+            -f context='docker-build' \
+            -f description='Queued — waiting for build to start.'
+
+      - name: Dispatch build
+        env:
+          GH_TOKEN: ${{ secrets.CI_DISPATCH_TOKEN }}
+          DISPATCH_REPO: ${{ secrets.CI_DISPATCH_REPO }}
+          REF: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg ref "${REF}" \
+            '{event_type: "docker-pr-build", client_payload: {ref: $ref}}' \
+          | gh api -X POST "/repos/${DISPATCH_REPO}/dispatches" --input -

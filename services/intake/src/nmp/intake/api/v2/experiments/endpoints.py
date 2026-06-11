@@ -12,10 +12,13 @@ are fixed. Rollup fields on read models are hydrated from ClickHouse.
 from __future__ import annotations
 
 import logging
+import secrets
+import time
 from typing import Annotated, Literal, TypeVar
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from nmp.common.api.common import Page, PaginationData
+from nmp.common.api.filter import ComparisonOperation, FilterOperator, LogicalOperation
 from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
 from nmp.common.api.utils import generate_openapi_extra_params
 from nmp.common.entities.client import EntityClient, EntityConflictError, EntityNotFoundError
@@ -133,6 +136,7 @@ async def list_experiment_groups(
     sort: SortField = Query(default="-created_at", description="Sort field; prefix with '-' for descending."),
 ) -> Page[ExperimentGroupResponse]:
     validate_list_query_params(request)
+    _apply_is_deleted_filter(parsed)
     result = await entity_client.list(
         ExperimentGroup,
         workspace=workspace,
@@ -167,6 +171,7 @@ async def get_experiment_group(
         name=name,
         label="Experiment group",
     )
+    _reject_if_deleted(entity, workspace=workspace, name=name, label="Experiment group")
     return ExperimentGroupResponse.from_entity(entity)
 
 
@@ -192,6 +197,7 @@ async def update_experiment_group(
         name=name,
         label="Experiment group",
     )
+    _reject_if_deleted(existing, workspace=workspace, name=name, label="Experiment group")
     if body.name != name:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -213,13 +219,54 @@ async def delete_experiment_group(
     name: str,
     entity_client: EntityClientDep,
 ) -> None:
-    await _delete_or_404(
+    # Soft delete: flip ``is_deleted`` and rename the row so the original name is free for reuse.
+    # The unique index on (workspace, entity_type, name) doesn't read into the JSON data column,
+    # so renaming on delete is what lets a new group/experiment claim the same name later.
+    group = await _get_or_404(
         entity_client,
         ExperimentGroup,
         workspace=workspace,
         name=name,
         label="Experiment group",
     )
+    _reject_if_deleted(group, workspace=workspace, name=name, label="Experiment group")
+
+    # Cascade is sequential — one update per child. Linear in group size, fine for now. If
+    # groups routinely hold more than a few hundred experiments, add a bulk update endpoint on
+    # the entity store rather than parallelizing here (gather hides partial-failure state
+    # without removing the per-row API contract).
+    #
+    # Each ``_soft_delete`` renames the row and flips ``is_deleted=True``, which drops it out of
+    # the live filter — so re-fetching page 1 keeps returning the next batch until nothing is
+    # left. No fixed cap on group size.
+    #
+    # ``data.experiment_group_id`` is the entity-store field name; the URL filter dep auto-
+    # prefixes ``data.`` but manually-constructed ComparisonOperations don't get that translation.
+    live_children_filter = LogicalOperation(
+        operator=FilterOperator.AND,
+        operations=[
+            ComparisonOperation(operator=FilterOperator.EQ, field="data.experiment_group_id", value=group.id),
+            LogicalOperation(
+                operator=FilterOperator.NOT,
+                operations=[
+                    ComparisonOperation(operator=FilterOperator.EQ, field="data.is_deleted", value=True),
+                ],
+            ),
+        ],
+    )
+    while True:
+        page = await entity_client.list(
+            Experiment,
+            workspace=workspace,
+            filter_operation=live_children_filter,
+            page=1,
+            page_size=100,
+        )
+        if not page.data:
+            break
+        for child in page.data:
+            await _soft_delete(entity_client, child)
+    await _soft_delete(entity_client, group)
 
 
 @router.post(
@@ -234,6 +281,7 @@ async def create_experiment(
     body: ExperimentRequest,
     entity_client: EntityClientDep,
 ) -> ExperimentResponse:
+    await _validate_group_exists(entity_client, group_id=body.experiment_group_id)
     entity = Experiment(
         workspace=workspace,
         name=body.name,
@@ -280,6 +328,7 @@ async def list_experiments(
     sort: SortField = Query(default="-created_at", description="Sort field; prefix with '-' for descending."),
 ) -> Page[ExperimentResponse]:
     validate_list_query_params(request)
+    _apply_is_deleted_filter(parsed)
     result = await entity_client.list(
         Experiment,
         workspace=workspace,
@@ -317,6 +366,7 @@ async def get_experiment(
         name=name,
         label="Experiment",
     )
+    _reject_if_deleted(entity, workspace=workspace, name=name, label="Experiment")
     response = ExperimentResponse.from_entity(entity)
     await _hydrate_rollups(workspace=workspace, responses=[response], rollup_repository=rollup_repository)
     return response
@@ -351,6 +401,9 @@ async def update_experiment(
         name=name,
         label="Experiment",
     )
+    _reject_if_deleted(existing, workspace=workspace, name=name, label="Experiment")
+    if body.experiment_group_id != existing.experiment_group_id:
+        await _validate_group_exists(entity_client, group_id=body.experiment_group_id)
 
     changed = [f for f in _IMMUTABLE_EXPERIMENT_FIELDS if getattr(body, f) != getattr(existing, f)]
     if changed:
@@ -384,13 +437,15 @@ async def delete_experiment(
     name: str,
     entity_client: EntityClientDep,
 ) -> None:
-    await _delete_or_404(
+    entity = await _get_or_404(
         entity_client,
         Experiment,
         workspace=workspace,
         name=name,
         label="Experiment",
     )
+    _reject_if_deleted(entity, workspace=workspace, name=name, label="Experiment")
+    await _soft_delete(entity_client, entity)
 
 
 @router.get(
@@ -417,13 +472,14 @@ async def list_experiment_sessions(
     page_size: int = Query(default=100, ge=1, le=1000, description="Page size."),
 ) -> Page[ExperimentSessionResponse]:
     validate_list_query_params(request)
-    await _get_or_404(
+    experiment = await _get_or_404(
         entity_client,
         Experiment,
         workspace=workspace,
         name=name,
         label="Experiment",
     )
+    _reject_if_deleted(experiment, workspace=workspace, name=name, label="Experiment")
     if session_repository is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -490,21 +546,106 @@ async def _get_or_404(
         ) from e
 
 
-async def _delete_or_404(
-    entity_client: EntityClient,
-    entity_type: type[EntityT],
+def _reject_if_deleted(
+    entity: Experiment | ExperimentGroup,
     *,
     workspace: str,
     name: str,
     label: str,
 ) -> None:
-    try:
-        await entity_client.delete(entity_type, name=name, workspace=workspace)
-    except EntityNotFoundError as e:
+    """Treat soft-deleted entities as 404 for callers that didn't explicitly opt in."""
+    if entity.is_deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"{label} '{workspace}/{name}' not found.",
+        )
+
+
+_DELETED_MARKER = "-deleted-"
+_DELETED_RAND_BYTES = 3  # 6 lowercase hex chars; combined with millis is enough to avoid collisions.
+_NAME_MAX_LEN = 63  # matches entity-store NAME_PATTERN length cap.
+
+
+def _deleted_name(original: str) -> str:
+    """Mangle a soft-deleted entity's name so the original is free for reuse.
+
+    The DB unique index on (workspace, entity_type, name) doesn't see into the JSON
+    ``data`` column, so the row needs a different ``name`` after soft-delete. The
+    suffix is lowercase-only to satisfy NAME_PATTERN (``[a-z0-9\\-@.+_]``).
+    """
+    # Base36 of unix milliseconds is ~8 chars today and sortable; add 6 hex chars of
+    # randomness so concurrent deletes can't collide within the same millisecond.
+    ts = _to_base36(int(time.time() * 1000))
+    rand = secrets.token_hex(_DELETED_RAND_BYTES)
+    suffix = f"{_DELETED_MARKER}{ts}{rand}"
+    head_budget = _NAME_MAX_LEN - len(suffix)
+    head = original[:head_budget].rstrip("-") if len(original) > head_budget else original
+    return f"{head}{suffix}"
+
+
+def _to_base36(value: int) -> str:
+    if value == 0:
+        return "0"
+    digits = "0123456789abcdefghijklmnopqrstuvwxyz"
+    out = []
+    while value:
+        value, rem = divmod(value, 36)
+        out.append(digits[rem])
+    return "".join(reversed(out))
+
+
+async def _soft_delete(entity_client: EntityClient, entity: Experiment | ExperimentGroup) -> None:
+    """Flip ``is_deleted`` and rename the entity in a single update."""
+    original_name = entity.name
+    entity.is_deleted = True
+    entity.name = _deleted_name(original_name)
+    await entity_client.update(entity, original_name=original_name)
+
+
+async def _validate_group_exists(entity_client: EntityClient, *, group_id: str) -> None:
+    """Reject the request with 400 if the referenced ExperimentGroup doesn't exist or is deleted."""
+    try:
+        group = await entity_client.get_by_id(ExperimentGroup, entity_id=group_id)
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(f"ExperimentGroup '{group_id}' must be created before an Experiment can reference it."),
         ) from e
+    if group.is_deleted:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"ExperimentGroup '{group_id}' has been deleted and can no longer accept new Experiments.",
+        )
+
+
+def _apply_is_deleted_filter(parsed: ParsedFilter) -> None:
+    """Append an ``is_deleted`` clause so list endpoints hide soft-deleted rows by default.
+
+    If the caller passes ``filter[is_deleted]=true``, only soft-deleted rows are returned.
+    Anything else (no filter, or ``filter[is_deleted]=false``) returns only live rows.
+    """
+    # Bracket-style filters arrive as strings (``filter[is_deleted]=true``); JSON-style filters
+    # arrive as booleans. Normalize both before deciding which branch to take.
+    raw_value = parsed.remove("is_deleted")
+    if isinstance(raw_value, bool):
+        want_deleted = raw_value
+    elif isinstance(raw_value, str):
+        want_deleted = raw_value.strip().lower() in ("true", "1", "yes")
+    else:
+        want_deleted = False
+    if want_deleted:
+        parsed.and_with(
+            ComparisonOperation(operator=FilterOperator.EQ, field="data.is_deleted", value=True),
+        )
+        return
+    parsed.and_with(
+        LogicalOperation(
+            operator=FilterOperator.NOT,
+            operations=[
+                ComparisonOperation(operator=FilterOperator.EQ, field="data.is_deleted", value=True),
+            ],
+        ),
+    )
 
 
 async def _hydrate_rollups(

@@ -25,6 +25,13 @@ class ExperimentGroup(EntityBase):
     __entity_type__: ClassVar[str] = "experiment_group"
 
     description: str | None = Field(default=None, description="Human-readable purpose of the group.")
+    is_deleted: bool = Field(
+        default=False,
+        description=(
+            "Soft-delete flag. DELETE flips this to true and cascades to child experiments. "
+            "Deleted groups are hidden from list/get unless `filter[is_deleted]=true` is supplied."
+        ),
+    )
 
 
 class Experiment(EntityBase):
@@ -35,11 +42,10 @@ class Experiment(EntityBase):
 
     __entity_type__: ClassVar[str] = "experiment"
 
-    experiment_group_id: str | None = Field(
-        default=None,
+    experiment_group_id: str = Field(
         description=(
-            "Entity id of the owning ExperimentGroup; null when ungrouped. A soft reference: "
-            "it is not validated on write, and deleting a group does not cascade to its Experiments."
+            "Entity id of the owning ExperimentGroup. Required — every Experiment must belong to a Group. "
+            "Validated at create/update time; deleting a Group cascades to its Experiments."
         ),
     )
 
@@ -57,3 +63,12 @@ class Experiment(EntityBase):
 
     description: str | None = Field(default=None, description="Human-readable description of the experiment.")
     summary: str | None = Field(default=None, description="Human-authored summary of results.")
+
+    is_deleted: bool = Field(
+        default=False,
+        description=(
+            "Soft-delete flag. DELETE flips this to true; on delete the entity is also renamed "
+            "(`<name>-deleted-<utc-iso>`) so the original name is free for reuse. Deleted experiments "
+            "are hidden from list/get and rejected by ATIF ingest unless `filter[is_deleted]=true`."
+        ),
+    )

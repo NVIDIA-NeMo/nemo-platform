@@ -58,6 +58,9 @@ nemo-evaluator-sdk = [
   "openai>=1.61.0",
   "sacrebleu>=2.5.1",
   "rouge_score==0.1.2",
+  "ragas==0.3.5",
+  "langchain-openai>=1.1.14",
+  "langchain-nvidia-ai-endpoints>=1.0.0,<2.0.0",
 ]
 
 [project.entry-points."nemo.skills"]
@@ -104,7 +107,6 @@ packages = ["src/nemo_platform"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "../../../docs" = "nemo_platform/cli/docs"
-"../../../mkdocs.yml" = "nemo_platform/cli/mkdocs.yml"
 [tool.hatch.build.targets.sdist]
 # Basically everything except hidden files/directories (such as .github, .devcontainers, .python-version, etc)
 include = [

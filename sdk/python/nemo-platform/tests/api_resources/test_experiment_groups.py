@@ -224,7 +224,10 @@ class TestExperimentGroups:
     def test_method_list_with_all_params(self, client: NeMoPlatform) -> None:
         experiment_group = client.experiment_groups.list(
             workspace="workspace",
-            filter={"name": "name"},
+            filter={
+                "is_deleted": True,
+                "name": "name",
+            },
             page=1,
             page_size=1,
             sort="-created_at",
@@ -512,7 +515,10 @@ class TestAsyncExperimentGroups:
     async def test_method_list_with_all_params(self, async_client: AsyncNeMoPlatform) -> None:
         experiment_group = await async_client.experiment_groups.list(
             workspace="workspace",
-            filter={"name": "name"},
+            filter={
+                "is_deleted": True,
+                "name": "name",
+            },
             page=1,
             page_size=1,
             sort="-created_at",

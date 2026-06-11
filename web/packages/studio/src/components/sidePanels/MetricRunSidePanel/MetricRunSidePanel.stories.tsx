@@ -2,18 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ToastProvider } from '@nemo/common/src/providers/toast/ToastProvider';
-import type {
-  FilesetOutputsPage,
-  MetricEvaluationJob,
-  MetricsListResponse,
-  ModelEntitysPage,
-} from '@nemo/sdk/generated/platform/schema';
+import type { EvaluateJob } from '@nemo/sdk/generated/evaluator/schema';
+import type { FilesetOutputsPage, ModelEntitysPage } from '@nemo/sdk/generated/platform/schema';
 import type { Meta, StoryObj } from '@storybook/react';
 import type { MetricItemWithId } from '@studio/components/dataViews/EvaluationMetricsDataView/types';
 import { MetricRunSidePanel } from '@studio/components/sidePanels/MetricRunSidePanel';
 import { datasets } from '@studio/mocks/datasets';
 import { mixedModelEntitysPage } from '@studio/mocks/entity-store/models';
-import { metricEvaluationJob1 } from '@studio/mocks/evaluation/v1/evaluations';
 import { http, HttpResponse } from 'msw';
 import { Route, Routes } from 'react-router-dom';
 
@@ -39,15 +34,18 @@ const mockBLEUMetric = {
   updated_at: '2025-01-02T00:00:00Z',
 } as MetricItemWithId;
 
-const mockMetricsListResponse: MetricsListResponse = {
-  data: [mockLlmJudgeMetric, mockBLEUMetric] as MetricsListResponse['data'],
-  pagination: {
-    total_results: 2,
-    total_pages: 1,
-    current_page_size: 2,
-    page: 1,
-    page_size: 50,
+const mockEvaluateJob: EvaluateJob = {
+  id: 'eval-job-1',
+  name: 'eval-job-1',
+  workspace: WORKSPACE,
+  created_at: '2024-01-01T00:00:00Z',
+  updated_at: '2024-01-01T01:00:00Z',
+  status: 'completed',
+  spec: {
+    metrics: [],
+    dataset: 'default/test-dataset',
   },
+  custom_fields: {},
 };
 
 const commonHandlers = [
@@ -59,13 +57,9 @@ const commonHandlers = [
     '/apis/files/v2/workspaces/:workspace/filesets',
     () => HttpResponse.json(datasets as FilesetOutputsPage)
   ),
-  http.post<{ workspace: string }, never, MetricEvaluationJob>(
-    '/apis/evaluation/v2/workspaces/:workspace/metric-jobs',
-    () => HttpResponse.json(metricEvaluationJob1)
-  ),
-  http.get<{ workspace: string }, never, MetricsListResponse>(
-    '/apis/evaluation/v2/workspaces/:workspace/metrics',
-    () => HttpResponse.json(mockMetricsListResponse)
+  http.post<{ workspace: string }, never, EvaluateJob>(
+    '/apis/evaluator/v2/workspaces/:workspace/evaluate/jobs',
+    () => HttpResponse.json(mockEvaluateJob)
   ),
 ];
 

@@ -36,6 +36,9 @@ class ExperimentResponse(BaseModel):
 
     dataset_name: str
 
+    experiment_group_id: str
+    """Entity id of the owning ExperimentGroup. Required for every Experiment."""
+
     name: str
 
     workspace: str
@@ -52,12 +55,6 @@ class ExperimentResponse(BaseModel):
     description: Optional[str] = None
 
     evaluator_names: Optional[List[str]] = None
-
-    experiment_group_id: Optional[str] = None
-    """Entity id of the owning ExperimentGroup; null when ungrouped.
-
-    Soft reference, not validated.
-    """
 
     latency_ms: Optional[EvaluatorAggregate] = None
     """Aggregate statistics over evaluator scores or session-level metric values."""
