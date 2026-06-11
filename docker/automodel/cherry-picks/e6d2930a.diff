@@ -4,7 +4,7 @@ index ffd39951..f24b954a 100644
 +++ b/nemo_automodel/components/checkpoint/checkpointing.py
 @@ -481,8 +481,10 @@ class Checkpointer:
          # We need to set them to False and call initialize_weights to re-initialize the weights.
- 
+
          # Some models cannot call initialize_weights when sharded with DTensors:
 -        # - Gemma3ForConditionalGeneration: requires setting a row to zeros in the embedding matrix,
 -        #   which is not supported for DTensors in the pinned torch version.

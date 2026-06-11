@@ -1,0 +1,54 @@
+#######
+# Intake Build Targets.  Please use `docker buildx bake` to build.  See `README.md`
+#######
+
+ARG TAG=latest
+
+#build-intake:
+    FROM root-python-3-11 AS build
+    COPY --from=root-lib-source-artifacts /artifacts/uv.lock /artifacts/pyproject.toml /app/
+    RUN uv sync --frozen --no-install-project --no-dev --no-install-workspace --no-editable --package=intake
+
+    # Copy Intake files
+    COPY . /app/services/intake
+    # Copy other root-level files we need to build Intake
+    COPY --from=root-lib-source-artifacts /artifacts/packages /app/packages
+    COPY --from=root-lib-source-artifacts /artifacts/sdk /app/sdk
+    COPY --from=root-lib-source-artifacts /artifacts/docs /app/docs
+    COPY --from=root-lib-source-artifacts /artifacts/openapi /app/openapi
+
+    # Don't need the go packages
+    RUN rm -rf /app/packages/go
+
+    ENV PATH="/app/.venv/bin:$PATH"
+
+    RUN uv sync --frozen --no-editable --no-dev --package=intake
+
+#test-intake:
+    FROM build AS test
+
+    # Update PYTHONPATH to ensure imports can be resolved
+    ENV PYTHONPATH=/app:/app/services/intake:/app/packages/nmp_common/src
+    # Disable testcontainers since we're using the postgres-test-fixture.sh script
+    ENV USE_EXTERNAL_POSTGRES=true
+    RUN uv sync --dev --frozen --no-editable --package=intake # get dev deps
+
+    COPY --from=root-script-source-artifacts /artifacts/script/postgres-test-fixture.sh /script/postgres-test-fixture.sh
+    WORKDIR /app/services/intake
+    RUN --network=none bash /script/postgres-test-fixture.sh uv run --no-sync pytest -s
+
+#docker-intake:
+    FROM root-distroless-base-3-11 AS docker
+
+    # Update PYTHONPATH to ensure imports can be resolved
+    ENV PYTHONPATH=/app:/app/services/intake:/app/packages/nmp_common/src
+    ENV PORT=8000
+    ENV HOST=0.0.0.0
+    ENV PATH="/app/.venv/bin:$PATH"
+
+    COPY --from=build /app /app
+
+    WORKDIR /app
+
+    EXPOSE $PORT
+    ENTRYPOINT ["python", "/app/services/intake/src/entrypoint.py"]
