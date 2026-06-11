@@ -7,6 +7,7 @@ import { TagList } from '@studio/routes/FilesetDetailRoute/FilesetMetadataPanel/
 import { getModelSource } from '@studio/routes/FilesetDetailRoute/utils';
 import { getWorkspaceDeploymentsRoute } from '@studio/routes/utils';
 import { formatStorageBackendLabel } from '@studio/util/storageBackend';
+import { getFormattedTrainingType } from '@studio/util/customizations';
 import { type ReactNode } from 'react';
 
 interface MetadataRow {
@@ -22,8 +23,8 @@ interface MetadataSection {
 
 export const getMetadataSections = (
   fileset: FilesetOutput,
-  readmeMetadata: Record<string, unknown> | undefined,
-  modelEntities: ModelEntity[]
+  readmeMetadata?: Record<string, unknown>,
+  modelEntities?: ModelEntity[]
 ): MetadataSection[] => {
   const sections: MetadataSection[] = [
     { value: 'source', title: 'Source', rows: getSourceRows(fileset) },
@@ -34,7 +35,7 @@ export const getMetadataSections = (
     sections.push({ value: 'details', title: 'Details', rows: detailsRows });
   }
 
-  modelEntities.forEach((entity, index) => {
+  (modelEntities ?? []).forEach((entity, index) => {
     sections.push(getModelEntitySection(entity, index));
   });
 
@@ -173,18 +174,6 @@ const isSafeHttpUrl = (value: string): boolean => {
   }
 };
 
-const formatFinetuningType = (type: string): string => {
-  switch (type.toLowerCase()) {
-    case 'lora':
-      return 'LoRA';
-    case 'p_tuning':
-      return 'P-Tuning';
-    case 'sft':
-      return 'SFT';
-    default:
-      return type;
-  }
-};
 
 const getModelEntitySection = (entity: ModelEntity, index: number): MetadataSection => {
   const rows: MetadataRow[] = [];
@@ -198,7 +187,7 @@ const getModelEntitySection = (entity: ModelEntity, index: number): MetadataSect
   }
 
   if (entity.finetuning_type) {
-    rows.push({ label: 'Fine-tuning', value: formatFinetuningType(entity.finetuning_type) });
+    rows.push({ label: 'Fine-tuning', value: getFormattedTrainingType(entity.finetuning_type) });
   }
 
   const isDeployed = (entity.model_providers?.length ?? 0) > 0;

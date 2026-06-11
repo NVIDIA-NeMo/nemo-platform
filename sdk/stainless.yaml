@@ -903,3 +903,6 @@ resources:
           experiment_session_responses_page: ExperimentSessionResponsesPage
         methods:
           list: get /apis/intake/v2/workspaces/{workspace}/experiments/{name}/sessions
+  methods:
+    reviewme_create: post /apis/auth/v2/authz/{entrypoint}
+    post_2f405826-d566-40c6-afb0-e76cf8992fa2: post /apis/auth/v2/authz/{entrypoint}
