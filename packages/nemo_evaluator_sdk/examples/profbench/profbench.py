@@ -8,14 +8,19 @@ from __future__ import annotations
 import json
 import os
 import re
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any, Protocol
 from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen
 
 import nemo_evaluator_sdk.inference as inference
-from nemo_evaluator_sdk.agent_eval import AgentEvalAttempt, AgentEvalTask, AgentOutput
+from nemo_evaluator_sdk.agent_eval import AgentEvalAttempt, AgentEvalRunResult, AgentEvalTask, AgentOutput
+from nemo_evaluator_sdk.agent_eval.benchmarks import (
+    AgentEvalBenchmarkBundle,
+    AgentEvalBenchmarkLoadConfig,
+    AgentEvalBenchmarkReports,
+)
 from nemo_evaluator_sdk.execution.metric_execution import generate_online_sample
 from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 from nemo_evaluator_sdk.values import InferenceParams, Model, RunConfigOnlineModel
@@ -241,6 +246,55 @@ class ProfBenchBenchmark(BaseModel):
     tasks: list[AgentEvalTask]
     attempts: list[AgentEvalAttempt]
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ProfBenchAgentEvalBenchmark:
+    """Adapter that exposes ProfBench through the generic agent-eval benchmark protocol."""
+
+    name = "profbench"
+    default_source = PROFBENCH_DATASET_URL
+
+    def __init__(
+        self,
+        *,
+        judge_factory: Callable[[], ProfBenchJudge] | None = None,
+        include_cached_fulfilments: bool = True,
+        score_source: str | None = None,
+    ) -> None:
+        self._judge_factory = judge_factory
+        self._include_cached_fulfilments = include_cached_fulfilments
+        self._score_source = score_source
+
+    def load(self, config: AgentEvalBenchmarkLoadConfig) -> AgentEvalBenchmarkBundle:
+        source = config.source or self.default_source
+        benchmark = load_profbench(
+            source,
+            limit=config.limit,
+            judge=self._judge(),
+            evidence_dir=config.evidence_dir,
+            include_cached_fulfilments=self._include_cached_fulfilments,
+        )
+        return AgentEvalBenchmarkBundle(
+            tasks=benchmark.tasks,
+            attempts=benchmark.attempts,
+            metadata=self._metadata(benchmark.metadata),
+        )
+
+    def write_reports(self, result: AgentEvalRunResult, output_dir: Path) -> AgentEvalBenchmarkReports:
+        from .dashboard import write_example_dashboards
+
+        return AgentEvalBenchmarkReports(paths=list(write_example_dashboards(result, output_dir)))
+
+    def _judge(self) -> ProfBenchJudge | None:
+        if self._judge_factory is None:
+            return None
+        return self._judge_factory()
+
+    def _metadata(self, metadata: dict[str, Any], *, default_score_source: str | None = None) -> dict[str, Any]:
+        score_source = self._score_source or default_score_source
+        if score_source is None:
+            return metadata
+        return {**metadata, "score_source": score_source}
 
 
 class ProfBenchModelJudge:

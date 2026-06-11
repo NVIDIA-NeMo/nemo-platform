@@ -8,7 +8,8 @@ config:
 sequenceDiagram
     autonumber
     actor User
-    participant Runner as runner.py
+    participant Caller as SDK caller
+    participant Adapter as ProfBenchAgentEvalBenchmark
     participant Loader as load_profbench()
     participant Judge as ProfBenchModelJudge
     participant Evaluator as AgentEvaluator
@@ -19,27 +20,27 @@ sequenceDiagram
     participant Dash as write_example_dashboards()
     participant Output as output-dir/run-id/live-candidate
 
-    User->>Runner: python -m ...runner --run-live-candidate
-    Runner->>Runner: parse args and configure logging
-    Runner->>Runner: run_examples(limit, output_root, run_instance_id)
-    Runner->>Runner: create output-dir/run-id/
+    User->>Caller: build ProfBench adapter and candidate target
+    Caller->>Adapter: load(AgentEvalBenchmarkLoadConfig(LIVE_TARGET))
+    Caller->>Caller: create output-dir/run-id/
 
-    opt baseline path always runs first
-        Runner->>Loader: load_profbench(source, evidence_dir=baseline/evidence)
-        Loader-->>Runner: ProfBenchBenchmark(tasks, recorded attempts, metadata)
-        Runner->>Evaluator: run(tasks, attempts, config run_id=run-id-baseline)
+    opt optional baseline path
+        Caller->>Adapter: load(AgentEvalBenchmarkLoadConfig(STORED_ATTEMPTS))
+        Caller->>Loader: load_profbench(source, evidence_dir=baseline/evidence)
+        Loader-->>Caller: ProfBenchBenchmark(tasks, recorded attempts, metadata)
+        Caller->>Evaluator: run(tasks, attempts, config run_id=run-id-baseline)
         Evaluator->>Metric: compute_scores() with cached dataset fulfilments
         Metric-->>Evaluator: MetricResult(profbench, profbench_details)
         Evaluator->>Persist: persist_run(result, baseline/)
-        Runner->>Dash: write SDK and ProfBench dashboards
+        Caller->>Dash: write SDK and ProfBench dashboards
     end
 
-    Runner->>Runner: _evaluated_model() and _judge_model()
-    Runner->>Loader: load_profbench(source, judge=ProfBenchModelJudge, evidence_dir=live-candidate/evidence, include_cached_fulfilments=False)
+    Caller->>Caller: prepare evaluated target and judge model
+    Adapter->>Loader: load_profbench(source, judge=ProfBenchModelJudge, evidence_dir=live-candidate/evidence, include_cached_fulfilments=False)
     Loader->>Output: write evidence/profbench-dataset.jsonl
-    Loader-->>Runner: ProfBenchBenchmark(tasks with ProfBenchRubricMetric, metadata)
+    Loader-->>Caller: ProfBenchBenchmark(tasks with ProfBenchRubricMetric, metadata)
 
-    Runner->>Evaluator: run(tasks, target=evaluated_model, config run_id=run-id-live-candidate)
+    Caller->>Evaluator: run(tasks, target=evaluated_model, config run_id=run-id-live-candidate)
     Evaluator->>Evaluator: _generate_attempts(tasks, target)
 
     loop each ProfBench task
@@ -73,22 +74,22 @@ sequenceDiagram
     Persist->>Output: write run.json manifest
     Persist-->>Evaluator: result with output_dir
 
-    Evaluator-->>Runner: AgentEvalRunResult
-    Runner->>Dash: write_example_dashboards(result, live-candidate/)
+    Evaluator-->>Caller: AgentEvalRunResult
+    Caller->>Dash: write_example_dashboards(result, live-candidate/)
     Dash->>Output: write sdk-report.html
     Dash->>Output: write report.html
-    Runner-->>User: print task counts, metric scores, dashboard paths
+    Caller-->>User: receive task counts, metric scores, dashboard paths
 ```
 
 ## Details
 
 What happens in the full live-candidate path:
 
-1. `runner.py` parses CLI args, resolves the output root, creates one run id, and creates `<output-dir>/<run-id>/`.
-2. Baseline runs first. It loads ProfBench, scores recorded attempts with dataset labels, persists baseline files, and writes dashboards.
-3. The live-candidate path resolves two models: the evaluated model and the judge model.
-4. `load_profbench()` loads tasks with `include_cached_fulfilments=False`, so cached labels are removed and the metric must call the judge.
-5. `AgentEvaluator.run(tasks=..., target=evaluated_model, ...)` first generates fresh candidate attempts.
+1. The SDK caller prepares an output directory, a candidate target, a judge model, and a `ProfBenchAgentEvalBenchmark`.
+2. An optional baseline run loads ProfBench recorded attempts, scores those attempts with dataset labels, persists baseline files, and writes dashboards.
+3. The live-candidate path uses separate roles for the evaluated target and the judge model.
+4. `ProfBenchAgentEvalBenchmark.load()` calls `load_profbench()` with `include_cached_fulfilments=False`, so cached labels are removed and the metric must call the judge.
+5. `AgentEvaluator.run(..., target=evaluated_model, ...)` first generates fresh candidate attempts.
 6. For each task, the evaluator calls `generate_online_sample()` against the evaluated model and converts the returned sample into an `AgentEvalAttempt`.
 7. The evaluator then scores those generated attempts with `ProfBenchRubricMetric`.
 8. For each rubric criterion, `ProfBenchRubricMetric` calls `ProfBenchModelJudge`.
@@ -111,15 +112,15 @@ config:
   theme: dark
 ---
 flowchart TD
-    Start([CLI starts runner.py])
-    Parse[Parse args and configure logging]
+    Start([SDK caller starts])
+    Parse[Prepare benchmark config]
     ResolveRun[Resolve output root and create run id]
     CreateRunDir[Create output-dir/run-id]
 
     Start --> Parse --> ResolveRun --> CreateRunDir
 
-    subgraph Baseline["Baseline path - always runs"]
-        LoadBaseline[load_profbench with cached fulfilments]
+    subgraph Baseline["Baseline path - optional stored attempts"]
+        LoadBaseline[ProfBench adapter loads cached fulfilments]
         ScoreBaseline[AgentEvaluator.run with recorded attempts]
         DatasetLabels[ProfBenchRubricMetric uses dataset labels]
         PersistBaseline[Persist baseline run bundle]
@@ -130,7 +131,7 @@ flowchart TD
 
     CreateRunDir --> LoadBaseline
 
-    DashBaseline --> RunLiveJudge{run_live_judge?}
+    DashBaseline --> RunLiveJudge{run live judge?}
     RunLiveJudge -- no --> SkipJudge[Skip live-judge directory]
     RunLiveJudge -- yes --> LoadLiveJudge[load_profbench recorded answers without cached fulfilments]
 
@@ -146,7 +147,7 @@ flowchart TD
     DashLiveJudge --> RunLiveCandidate
 
     RunLiveCandidate -- no --> SkipCandidate[Skip live-candidate directory]
-    RunLiveCandidate -- yes --> ResolveModels[Resolve evaluated model and judge model]
+    RunLiveCandidate -- yes --> ResolveModels[Prepare evaluated target and judge model]
 
     subgraph LiveCandidate["Live candidate path - fresh answers, live rubric judge"]
         ResolveModels --> LoadLiveCandidate[load_profbench tasks without cached fulfilments]
@@ -158,7 +159,7 @@ flowchart TD
         PersistLiveCandidate --> DashLiveCandidate[Write live-candidate dashboards]
     end
 
-    SkipCandidate --> Done([Runner prints paths and exits])
+    SkipCandidate --> Done([Caller records paths and exits])
     DashLiveCandidate --> Done
 ```
 
