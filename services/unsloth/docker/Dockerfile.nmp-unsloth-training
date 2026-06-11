@@ -4,8 +4,10 @@
 # model_entity).
 #
 # Install steps:
-#   1. `uv pip install unsloth --torch-backend=auto` plus an explicit
-#      `transformers==4.57.6` pin. Unsloth's resolver still pulls unsloth_zoo
+#   1. `uv pip install unsloth --torch-backend=auto` plus explicit
+#      `transformers==4.57.6` and `huggingface-hub==0.36.2` pins (transformers
+#      4.57.x requires hub <1.0; platform glue would otherwise pull hub 1.x).
+#      Unsloth's resolver still pulls unsloth_zoo
 #      and the rest of the HF stack (trl, peft, accelerate, datasets,
 #      bitsandbytes, xformers, etc.). `--overrides preserve_base_torch.txt`
 #      blocks uv from installing/upgrading torch into the venv so the NGC
@@ -54,6 +56,7 @@ ARG USER_UID=1000
 ARG USER_GID=1000
 ARG UNSLOTH_VERSION=2026.6.1
 ARG TRANSFORMERS_VERSION=4.57.6
+ARG HF_HUB_VERSION=0.36.2
 
 WORKDIR /app
 
@@ -72,14 +75,26 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --torch-backend=auto \
     --overrides /opt/docker/preserve_base_torch.txt \
     unsloth==${UNSLOTH_VERSION} \
-    transformers==${TRANSFORMERS_VERSION}
+    transformers==${TRANSFORMERS_VERSION} \
+    huggingface-hub==${HF_HUB_VERSION}
 
-# Re-pin transformers without touching torch or re-resolving the full HF stack.
+# Re-pin transformers + huggingface-hub without touching torch.
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache \
     --overrides /opt/docker/preserve_base_torch.txt \
     --reinstall-package transformers \
-    transformers==${TRANSFORMERS_VERSION}
+    --reinstall-package huggingface-hub \
+    transformers==${TRANSFORMERS_VERSION} \
+    huggingface-hub==${HF_HUB_VERSION}
+
+# Fail early if HF hub drifted above 1.0 (breaks transformers 4.57.x import).
+RUN ${VIRTUAL_ENV}/bin/python -c "\
+import importlib.metadata as m; \
+hub_ver = m.version('huggingface-hub'); \
+assert m.version('transformers') == '${TRANSFORMERS_VERSION}', m.version('transformers'); \
+major = int(hub_ver.split('.')[0]); \
+assert major < 1, hub_ver; \
+print('transformers', m.version('transformers'), 'huggingface-hub', hub_ver)"
 
 # TODO: Step 1b: Flash Attention 2 — compiled from source against the NGC 26.02 torch.
 # /usr/local/cuda symlinks to an older toolkit; use /usr/local/cuda-13.1 instead.
@@ -113,10 +128,19 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     -e /app/packages/nmp_customization_common \
     -e /app/services/unsloth
 
-# Re-pin hf-transfer (used by HF_HUB_ENABLE_HF_TRANSFER above).
+# hf-transfer can pull huggingface-hub 1.x — install then re-pin hub + transformers.
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache \
+    --overrides /opt/docker/preserve_base_torch.txt \
     "hf-transfer>=0.1.8,<0.2"
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache \
+    --overrides /opt/docker/preserve_base_torch.txt \
+    --reinstall-package huggingface-hub \
+    --reinstall-package transformers \
+    huggingface-hub==${HF_HUB_VERSION} \
+    transformers==${TRANSFORMERS_VERSION}
 
 ENTRYPOINT ["/opt/venv/bin/python"]
 CMD ["-m", "nmp.unsloth.tasks.training", "--help"]
