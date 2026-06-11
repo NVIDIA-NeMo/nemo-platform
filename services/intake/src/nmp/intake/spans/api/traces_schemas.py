@@ -10,7 +10,6 @@ from enum import StrEnum
 from typing import Literal, Self
 
 from nmp.common.entities.values import DatetimeFilter
-from nmp.intake.spans.api.spans_schemas import SpanEvaluationContext
 from nmp.intake.spans.domain import IntakeTrace, SpanStatus
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -26,15 +25,10 @@ TraceMode = Literal["summary", "detailed"]
 class TraceFilter(BaseModel):
     id: str | None = Field(default=None, description="Filter by canonical Intake trace id.")
     session_id: str | None = Field(default=None, description="Filter by session id.")
-    status: SpanStatus | None = Field(default=None, description="Filter by rolled-up trace status.")
+    status: SpanStatus | None = Field(default=None, description="Filter by root span status.")
     started_at: DatetimeFilter | None = Field(default=None, description="Filter by root span start timestamp.")
-    evaluation_id: str | None = Field(default=None, description="Filter by root-span evaluation id.")
-    evaluation_sha: str | None = Field(default=None, description="Filter by root-span evaluation sha.")
-    evaluation_run_id: str | None = Field(default=None, description="Filter by root-span evaluation run id.")
-    dataset_id: str | None = Field(default=None, description="Filter by root-span dataset id.")
-    dataset_name: str | None = Field(default=None, description="Filter by root-span dataset name.")
-    dataset_version: str | None = Field(default=None, description="Filter by root-span dataset version.")
-    test_case_id: str | None = Field(default=None, description="Filter by root-span dataset test case id.")
+    experiment_id: str | None = Field(default=None, description="Filter by root-span experiment id.")
+    test_case_id: str | None = Field(default=None, description="Filter by root-span experiment test case id.")
 
 
 class Trace(BaseModel):
@@ -45,7 +39,8 @@ class Trace(BaseModel):
     session_id: str
     workspace: str
     name: str | None = None
-    evaluation_context: SpanEvaluationContext | None = None
+    experiment_id: str | None = None
+    test_case_id: str | None = None
     started_at: datetime
     ended_at: datetime | None = None
     duration_ms: float | None = None
@@ -68,9 +63,8 @@ class Trace(BaseModel):
             session_id=trace.session_id,
             workspace=trace.workspace,
             name=trace.name,
-            evaluation_context=SpanEvaluationContext.model_validate(trace.evaluation_context.model_dump())
-            if trace.evaluation_context is not None
-            else None,
+            experiment_id=trace.experiment_id,
+            test_case_id=trace.test_case_id,
             started_at=trace.started_at,
             ended_at=trace.ended_at,
             duration_ms=trace.duration_ms,

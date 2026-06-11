@@ -22,6 +22,7 @@ from nmp.intake.spans.domain import (
     SpanStatus,
 )
 from nmp.intake.spans.ingest.atif_domain import (
+    AtifFinalMetrics,
     AtifMetrics,
     AtifObservation,
     AtifObservationResult,
@@ -123,14 +124,22 @@ def _trajectory_to_span(
     # while evaluation_context is queryable metadata on the root span.
     #
     # Token/cost accounting belongs on the spans that incurred the LLM calls
-    # (the agent steps), not duplicated onto the trajectory coordinator span.
-    # The trace-level rollup sums per-step metrics; writing trajectory.final_metrics
-    # here too would double-count any source that emits both (e.g. opencode).
+    # when a source emits per-step metrics. Some ATIF producers only emit
+    # trajectory.final_metrics, so use those on the root span only when step
+    # accounting is absent.
+    final_metrics = _trajectory_final_metrics_for_root(trajectory)
+    input_tokens = final_metrics.total_prompt_tokens if final_metrics is not None else None
+    output_tokens = final_metrics.total_completion_tokens if final_metrics is not None else None
     external_span_id = stable_id(workspace, trajectory.session_id, "trajectory", prefix="span")
     attribute_bags = _span_attributes(
         model=trajectory.agent.model_name,
         agent_name=trajectory.agent.name,
         evaluation_context=trajectory.evaluation_context,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cached_tokens=final_metrics.total_cached_tokens if final_metrics is not None else None,
+        total_tokens=_sum_ints(input_tokens, output_tokens),
+        cost_total_usd=_decimal(final_metrics.total_cost_usd) if final_metrics is not None else None,
         raw_attributes=raw_attributes,
     )
     return IntakeSpan(
@@ -548,6 +557,27 @@ def _step_model_name(step: AtifStep) -> str | None:
 
 def _step_metrics(step: AtifStep) -> AtifMetrics | None:
     return step.metrics if isinstance(step, AtifStepAgent) else None
+
+
+def _trajectory_final_metrics_for_root(trajectory: AtifTrajectory) -> AtifFinalMetrics | None:
+    if trajectory.final_metrics is None:
+        return None
+    if any(_step_has_accounting_metrics(step) for step in trajectory.steps):
+        return None
+    return trajectory.final_metrics
+
+
+def _step_has_accounting_metrics(step: AtifStep) -> bool:
+    metrics = _step_metrics(step)
+    return metrics is not None and any(
+        value is not None
+        for value in (
+            metrics.prompt_tokens,
+            metrics.completion_tokens,
+            metrics.cached_tokens,
+            metrics.cost_usd,
+        )
+    )
 
 
 def _trajectory_input(trajectory: AtifTrajectory) -> str | None:

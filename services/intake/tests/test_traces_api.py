@@ -22,7 +22,7 @@ def test_trace_filter_maps_public_fields_to_repository_filter():
                 "session_id": "session-a",
                 "status": "error",
                 "started_at": {"$gte": started_at.isoformat()},
-                "evaluation_run_id": "run-a",
+                "experiment_id": "experiment-a",
             }
         ),
     )
@@ -32,10 +32,7 @@ def test_trace_filter_maps_public_fields_to_repository_filter():
     assert filters.session_id == "session-a"
     assert filters.status == SpanStatus.ERROR
     assert filters.started_at_gte == started_at
-    assert len(filters.root_attribute_filters) == 1
-    assert filters.root_attribute_filters[0].field == "evaluation_run_id"
-    assert filters.root_attribute_filters[0].value == "run-a"
-    assert not filters.span_attribute_filters
+    assert filters.experiment_id == "experiment-a"
 
 
 def _parsed_filter(value: dict[str, object]) -> ParsedFilter:

@@ -20,7 +20,6 @@ from datetime import datetime
 
 from ..._models import BaseModel
 from .span_status import SpanStatus
-from .span_evaluation_context import SpanEvaluationContext
 
 __all__ = ["Trace"]
 
@@ -50,7 +49,7 @@ class Trace(BaseModel):
 
     error_count: Optional[int] = None
 
-    evaluation_context: Optional[SpanEvaluationContext] = None
+    experiment_id: Optional[str] = None
 
     input_tokens: Optional[int] = None
 
@@ -61,5 +60,7 @@ class Trace(BaseModel):
     root_span_id: Optional[str] = None
 
     span_count: Optional[int] = None
+
+    test_case_id: Optional[str] = None
 
     total_tokens: Optional[int] = None
