@@ -13,13 +13,12 @@ ARG BASE_TAG_CUSTOMIZER_TASKS=local
 ARG FAISS_WHEEL_IMAGE=local
 ARG CAUSAL_CONV1D_WHEEL_IMAGE=local
 ARG MAMBA_SSM_WHEEL_IMAGE=local
-ARG BASE_REGISTRY=gitlab-master.nvidia.com:5005/aire/microservices/nmp
+ARG BASE_REGISTRY=my-registry
 
 # =============================================================================
 # Base Image
 # =============================================================================
-# Pulls a pre-built image from GitLab registry, which is built separately
-# by the nmp-customizer-tasks-base-builder stage.
+# Pulls a pre-built image built by the nmp-customizer-tasks-base-builder stage.
 FROM ${BASE_REGISTRY}/nmp-customizer-tasks-base:$BASE_TAG_CUSTOMIZER_TASKS AS nmp-customizer-tasks-base
 
 # =============================================================================

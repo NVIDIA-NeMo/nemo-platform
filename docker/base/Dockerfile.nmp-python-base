@@ -10,7 +10,7 @@
 
 # Pull stages: consume pre-built images from the registry.
 ARG BASE_TAG_PYTHON=local
-ARG BASE_REGISTRY=gitlab-master.nvidia.com:5005/aire/microservices/nmp
+ARG BASE_REGISTRY=my-registry
 FROM ${BASE_REGISTRY}/nmp-python-base:${BASE_TAG_PYTHON} AS nmp-python-base
 FROM ${BASE_REGISTRY}/nmp-python-dev-base:${BASE_TAG_PYTHON} AS nmp-python-dev-base
 

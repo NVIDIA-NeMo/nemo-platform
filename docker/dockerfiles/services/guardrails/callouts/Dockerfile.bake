@@ -16,10 +16,10 @@ ARG TARGETOS TARGETARCH
 # Build the Go application, creating a statically linked binary.
 # CGO_ENABLED=0 is important for creating a pure Go binary without C dependencies.
 #   This allows it to run in a minimal 'scratch' image.
-# GOOSE=$TARGETOS GOARCH=$TARGETARCH is important for cross platform builds where the build platform might not be the same as the target platform.
+# GOOS=$TARGETOS GOARCH=$TARGETARCH is important for cross platform builds where the build platform might not be the same as the target platform.
 #   In this case, the target platform is the source of truth for building the Go binaries
-RUN CGO_ENABLED=0 GOOSE=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/main ./cmd/server/main.go
-RUN CGO_ENABLED=0 GOOSE=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/mock-server ./cmd/mock-server/main.go
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/main ./cmd/server/main.go
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/mock-server ./cmd/mock-server/main.go
 
 
 #gen-certs: Generate TLS certs. Since these certs are self-signed and internal, clients cannot verify them.

@@ -3,7 +3,7 @@
 #######
 
 variable "CACHE_REGISTRY" {
-  default = "gitlab-master.nvidia.com:5005/aire/microservices/nmp"  # alternatively "harbor.aire.nvidia.com/nmp"
+  default = "my-registry"
 }
 
 variable "CACHE_REGISTRY_BACKUP" {
@@ -21,7 +21,7 @@ variable "IMAGE_REGISTRY" {
 # Registry where pinned base images are published (nmp-python-base, nmp-customizer-tasks-base, etc.)
 # In CI this matches CI_REGISTRY_IMAGE; locally override if needed.
 variable "BASE_REGISTRY" {
-  default = "gitlab-master.nvidia.com:5005/aire/microservices/nmp"
+  default = "my-registry"
 }
 
 variable "DISTROLESS_BASE" {
@@ -33,7 +33,7 @@ variable "DOCKERHUB_MIRROR" {
 }
 
 variable "WHEELS_REGISTRY" {
-  default = "gitlab-master.nvidia.com:5005/aire/microservices/nmp"
+  default = "my-registry"
 }
 
 variable "BAKE_TAG" {
@@ -42,19 +42,16 @@ variable "BAKE_TAG" {
 
 # Pin for nmp-python-base (built by nmp-python-base-builder; run that target to update)
 variable "BASE_TAG_PYTHON" {
-  # From MR: https://gitlab-master.nvidia.com/aire/microservices/nmp/-/merge_requests/7315
   default = "dbdc61fdb117f48bc9569b4274afe836cf0de030"
 }
 
 # Pin for nmp-automodel-base.
 variable "BASE_TAG_AUTOMODEL" {
-  # From MR: https://gitlab-master.nvidia.com/aire/microservices/nmp/-/merge_requests/7315
   default = "dbdc61fdb117f48bc9569b4274afe836cf0de030"
 }
 
 # Pin for nmp-customizer-tasks-base (built by nmp-customizer-tasks-base-builder)
 variable "BASE_TAG_CUSTOMIZER_TASKS" {
-  # From MR: https://gitlab-master.nvidia.com/aire/microservices/nmp/-/merge_requests/7315
   default = "dbdc61fdb117f48bc9569b4274afe836cf0de030"
 }
 
@@ -196,13 +193,6 @@ group "docker-safe-synthesizer" {
 group "docker-auditor" {
   targets = [
     "auditor-tasks-docker",
-  ]
-}
-
-# Data designer API and job image
-group "docker-data" {
-  targets = [
-    "data-designer-docker",
   ]
 }
 
