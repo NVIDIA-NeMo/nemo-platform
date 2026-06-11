@@ -5,7 +5,7 @@ import datetime
 import tempfile
 from pathlib import Path
 from typing import AsyncGenerator
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import pytest_asyncio
@@ -55,7 +55,7 @@ from nmp.core.jobs.entities import (
     PlatformJobAttempt,
     PlatformJobResult,
 )
-from nmp.testing import create_test_client
+from nmp.testing import create_test_client, subprocess_job_executor_patch
 from nmp.testing.blockbuster import blockbuster_fixture
 from pydantic import BaseModel
 from pytest import fixture
@@ -513,12 +513,12 @@ def hello_world_job_config(
 
 @pytest_asyncio.fixture
 async def test_client(mock_dispatcher, mock_store, job_config_with_many_profiles) -> AsyncGenerator[AsyncClient, None]:
-    # Mock the config.executors to have the test execution profiles
+    # Mock the config.executors to have the test execution profiles, including
+    # subprocess/default for cpu/default to subprocess/default translation.
     from nmp.common.auth.middleware import AuthorizationMiddleware
     from nmp.common.service.dependencies import get_sdk_client
-    from nmp.core.jobs.config import config
 
-    with patch.object(config, "executors", job_config_with_many_profiles.executors):
+    with subprocess_job_executor_patch(job_config_with_many_profiles.executors):
         app = FastAPI()
 
         # Add auth middleware with auth disabled - this sets up auth_client_context
