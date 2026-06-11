@@ -3,9 +3,8 @@
 
 """Bootstrap an isolated venv for the upstream AIPerf load generator.
 
-``aiperf`` pins ``aiofiles<24.2`` which conflicts with NMP's evaluator-service
-requirement of ``aiofiles>=25.1``, so we install it into a dedicated venv
-instead of the shared workspace one. The venv is reused across local runs;
+``aiperf`` pins older transitive dependencies, so we install it into a dedicated
+venv instead of the shared workspace one. The venv is reused across local runs;
 CI gets a fresh one each invocation.
 """
 

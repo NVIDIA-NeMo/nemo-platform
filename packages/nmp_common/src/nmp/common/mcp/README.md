@@ -13,7 +13,6 @@ When multiple MCP servers exist across the platform:
 ```
 services/core/mcp/              # Core infrastructure tools
 services/guardrails/mcp/        # Guardrails-specific tools
-services/evaluator/mcp/         # Evaluation-specific tools
 plugins/nemo-customizer/        # Customization plugin (router + contributor discovery)
 ```
 
@@ -157,11 +156,9 @@ When aggregating multiple service MCP servers:
 ```python
 # services/core/mcp/src/nmp/core/mcp/server.py
 from nmp.guardrails.mcp.server import guardrails
-from nmp.evaluator.mcp.server import evaluator
 
 platform = FastMCP("NeMo Platform")
 platform.mount(guardrails)  # All tools use same patterns
-platform.mount(evaluator)   # Consistent for agents
 ```
 
 **Benefits**:

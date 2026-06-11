@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import ClassVar
 
 from fastapi import APIRouter
+from nemo_evaluator.core import say_hello
 from nemo_evaluator.jobs.evaluate import EvaluateJob
 from nemo_evaluator.schema import HelloResponse
 from nemo_platform_plugin.jobs.routes import add_job_routes
@@ -62,22 +63,7 @@ def _build_hello_router() -> APIRouter:
 
     @router.get("/hello/{name}", response_model=HelloResponse)
     async def hello(name: str) -> HelloResponse:
-        """Greet a name.
-
-        The greeting style is controlled by ``EvaluatorConfig.greeting_style``:
-
-        - ``"formal"`` (default) → ``"Hello, {name}!"``
-        - ``"casual"`` → ``"Hey, {name}!"``
-
-        Override at runtime: ``NMP_EVALUATOR_GREETING_STYLE=casual``.
-        """
-        from nemo_evaluator.config import EvaluatorConfig
-
-        config = EvaluatorConfig.get()
-        if config.greeting_style == "casual":
-            message = f"Hey, {name}!"
-        else:
-            message = f"Hello, {name}!"
-        return HelloResponse(message=message)
+        """Greet a name."""
+        return HelloResponse(message=say_hello(name))
 
     return router
