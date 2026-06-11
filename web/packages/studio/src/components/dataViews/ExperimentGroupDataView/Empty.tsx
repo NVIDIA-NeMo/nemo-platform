@@ -31,7 +31,7 @@ export const Empty = ({ experimentGroupName }: EmptyProps) => {
       header="No Experiments"
       emptyMessage="Run an experiment to see results for this group."
       actions={
-        <div className="w-[560px] border border-base rounded-lg overflow-hidden bg-surface-raised">
+        <div className="w-[560px] border border-base rounded-lg overflow-hidden bg-surface-overlay">
           <TabsRoot defaultValue="cli">
             <TabsList className="px-density-md">
               <TabsTrigger value="coding-agent">
