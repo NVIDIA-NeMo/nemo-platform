@@ -11,7 +11,14 @@ from nemo_platform.types.entities import EntitiesPage, Entity
 from nemo_platform.types.shared.pagination_data import PaginationData
 from nemo_platform_plugin.entities import _convert_filter_obj_to_filter_str
 from nmp.common.auth.models import AuthContext
-from nmp.common.entities import ALL_WORKSPACES, DEFAULT_WORKSPACE, DatetimeFilter, EntityBase, EntityClient
+from nmp.common.entities import (
+    ALL_WORKSPACES,
+    DEFAULT_WORKSPACE,
+    DatetimeFilter,
+    EntityBase,
+    EntityClient,
+    StringFilter,
+)
 from nmp.common.entities.client import EntityConflictError
 from pydantic import BaseModel, Discriminator, Field, PrivateAttr, Tag, computed_field
 
@@ -531,6 +538,89 @@ class TestDatetimeFilter:
         result = f.model_dump(exclude_none=True, by_alias=True, mode="json")
         # Pydantic serializes UTC as "Z" suffix instead of "+00:00"
         assert result["$gte"] in (dt.isoformat(), "2025-01-01T00:00:00Z")
+
+
+# ============================================================================
+# StringFilter Tests
+# ============================================================================
+
+
+class TestStringFilter:
+    """Tests for StringFilter with alias support."""
+
+    def test_accepts_eq_without_dollar(self):
+        """Test that StringFilter accepts 'eq' (without $) as input."""
+        f = StringFilter(eq="value")
+        assert f.eq == "value"
+
+    def test_accepts_eq_with_dollar(self):
+        """Test that StringFilter accepts '$eq' (with $) as input."""
+        f = StringFilter(**{"$eq": "value"})
+        assert f.eq == "value"
+
+    def test_accepts_like_without_dollar(self):
+        """Test that StringFilter accepts 'like' (without $) as input."""
+        f = StringFilter(like="%pattern%")
+        assert f.like == "%pattern%"
+
+    def test_accepts_like_with_dollar(self):
+        """Test that StringFilter accepts '$like' (with $) as input."""
+        f = StringFilter(**{"$like": "%pattern%"})
+        assert f.like == "%pattern%"
+
+    def test_accepts_in_without_dollar(self):
+        """Test that StringFilter accepts 'in_' (without $) as input."""
+        f = StringFilter(in_=["a", "b"])
+        assert f.in_ == ["a", "b"]
+
+    def test_accepts_in_with_dollar(self):
+        """Test that StringFilter accepts '$in' (with $) as input."""
+        f = StringFilter(**{"$in": ["a", "b"]})
+        assert f.in_ == ["a", "b"]
+
+    def test_accepts_nin_without_dollar(self):
+        """Test that StringFilter accepts 'nin' (without $) as input."""
+        f = StringFilter(nin=["x", "y"])
+        assert f.nin == ["x", "y"]
+
+    def test_accepts_nin_with_dollar(self):
+        """Test that StringFilter accepts '$nin' (with $) as input."""
+        f = StringFilter(**{"$nin": ["x", "y"]})
+        assert f.nin == ["x", "y"]
+
+    def test_model_dump_outputs_dollar_prefix(self):
+        """Test that model_dump outputs $eq/$like/$in/$nin with by_alias=True."""
+        f = StringFilter(eq="a", like="%b%", in_=["c", "d"], nin=["e"])
+        result = f.model_dump(exclude_none=True, by_alias=True, mode="json")
+
+        assert "$eq" in result
+        assert "$like" in result
+        assert "$in" in result
+        assert "$nin" in result
+        assert "eq" not in result
+        assert "like" not in result
+        assert "in_" not in result
+        assert "nin" not in result
+        assert result["$eq"] == "a"
+        assert result["$like"] == "%b%"
+        assert result["$in"] == ["c", "d"]
+        assert result["$nin"] == ["e"]
+
+    def test_model_dump_json_serializable(self):
+        """Test that model_dump output is JSON-serializable."""
+        f = StringFilter(eq="value", in_=["a", "b"])
+        result = f.model_dump(exclude_none=True, by_alias=True, mode="json")
+
+        json_str = json.dumps(result)
+        parsed = json.loads(json_str)
+        assert parsed["$eq"] == "value"
+        assert parsed["$in"] == ["a", "b"]
+
+    def test_accepts_multiple_operators(self):
+        """Test that StringFilter accepts several operators together."""
+        f = StringFilter(eq="a", like="%b%")
+        assert f.eq == "a"
+        assert f.like == "%b%"
 
 
 class TestConvertFilterToSearch:

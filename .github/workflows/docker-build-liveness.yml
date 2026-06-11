@@ -1,0 +1,52 @@
+# Fails docker-build statuses that never completed.
+name: Docker build liveness
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  statuses: write
+
+jobs:
+  reap:
+    name: Fail stale docker-build statuses
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reap stale statuses
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          TIMEOUT_MIN: ${{ vars.DOCKER_BUILD_TIMEOUT_MIN || '90' }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const timeoutMin = Number(process.env.TIMEOUT_MIN);
+            const now = Date.now();
+            const { owner, repo } = context.repo;
+
+            const prs = await github.paginate(github.rest.pulls.list, {
+              owner, repo, state: 'open', per_page: 100,
+            });
+
+            let failed = 0;
+            for (const pr of prs) {
+              const { data } = await github.rest.repos.getCombinedStatusForRef({
+                owner, repo, ref: pr.head.sha,
+              });
+              const status = data.statuses.find((s) => s.context === 'docker-build');
+              if (!status || status.state !== 'pending') continue;
+
+              const ageMin = (now - new Date(status.created_at).getTime()) / 60000;
+              if (ageMin <= timeoutMin) continue;
+
+              await github.rest.repos.createCommitStatus({
+                owner, repo, sha: pr.head.sha,
+                state: 'failure', context: 'docker-build',
+                description: 'Build timed out — re-run "Docker build trigger" in Actions.',
+              });
+              failed++;
+              core.info(`Failed stale docker-build (pending, ${ageMin.toFixed(1)}m) on PR #${pr.number} @ ${pr.head.sha}`);
+            }
+            core.info(`Reaped ${failed} stale docker-build status(es) across ${prs.length} open PR(s).`);

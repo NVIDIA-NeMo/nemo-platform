@@ -14,7 +14,7 @@ When multiple MCP servers exist across the platform:
 services/core/mcp/              # Core infrastructure tools
 services/guardrails/mcp/        # Guardrails-specific tools
 services/evaluator/mcp/         # Evaluation-specific tools
-services/customizer/mcp/        # Customization-specific tools
+plugins/nemo-customizer/        # Customization plugin (router + contributor discovery)
 ```
 
 These shared utilities ensure:

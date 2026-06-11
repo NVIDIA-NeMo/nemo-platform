@@ -226,6 +226,19 @@ class TestBenchmarksFilterEndpoints:
         assert data["data"][0]["name"] == "benchmark-alpha"
 
     @pytest.mark.asyncio
+    async def test_list_benchmarks_filter_bracket_label_field_no_prefix(
+        self, benchmarks_manager, create_sample_benchmarks
+    ):  # noqa: ARG002
+        """AIRCORE-389: the clean filter[labels.KEY] path returns the same rows as filter[data.labels.KEY]."""
+        client = new_test_client(benchmarks_manager)
+
+        resp = client.get("/apis/evaluation/v2/workspaces/default/benchmarks?filter[labels.label1]=value1")
+        assert resp.status_code == 200, resp.json()
+        data = resp.json()
+        assert len(data["data"]) == 1
+        assert data["data"][0]["name"] == "benchmark-alpha"
+
+    @pytest.mark.asyncio
     async def test_list_benchmarks_filter_json_label_eq(self, benchmarks_manager, create_sample_benchmarks):  # noqa: ARG002
         """Test JSON filter on data.labels with $eq operator."""
         client = new_test_client(benchmarks_manager)

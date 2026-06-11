@@ -27,7 +27,7 @@ def _isolate_nmp_data_dir(monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pyt
     monkeypatch.setenv("NMP_DATA_DIR", str(isolated))
     # Configuration is cached; reset so the override takes effect for tests
     # that read `AgentsConfig.get()`.
-    from nmp.common.config import Configuration
+    from nemo_platform_plugin.config import Configuration
 
     Configuration.clear_cache()
     yield

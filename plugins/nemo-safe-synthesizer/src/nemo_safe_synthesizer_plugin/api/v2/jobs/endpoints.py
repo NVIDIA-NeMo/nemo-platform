@@ -30,6 +30,7 @@ from nemo_platform_plugin.jobs.api_factory import (
     SubprocessExecutionProviderSpec,
     job_route_factory,
 )
+from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nemo_platform_plugin.jobs.image import get_qualified_image
 from nemo_safe_synthesizer.config.external_results import SafeSynthesizerSummary
 from nemo_safe_synthesizer_plugin.config import config
@@ -38,7 +39,6 @@ from nemo_safe_synthesizer_plugin.job_config import (
     parse_pretrained_model_job_ref,
 )
 from nemo_safe_synthesizer_plugin.runtime import runtime_task_command
-from nmp.common.jobs.exceptions import PlatformJobCompilationError
 
 logger = logging.getLogger(__name__)
 

@@ -28,9 +28,9 @@ from nemo_agents_plugin.schema import (
     DeploymentPage,
 )
 from nemo_agents_plugin.utils import inject_default_model, inject_gateway_url, inject_nemo_trace_fields
+from nemo_platform_plugin.api.filters import make_filter_obj_dep
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError, NemoEntityNotFoundError
 from nemo_platform_plugin.schema import PaginationData
-from nmp.common.entities.filters import make_filter_obj_dep
 
 logger = logging.getLogger(__name__)
 

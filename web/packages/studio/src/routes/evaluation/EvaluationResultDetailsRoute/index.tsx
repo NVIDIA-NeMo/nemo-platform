@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { PlatformJobTerminalStatuses } from '@nemo/common/src/constants/query';
-import { useEvaluationGetMetricJob } from '@nemo/sdk/generated/platform/api';
+import { useEvaluatorGetEvaluateJob } from '@nemo/sdk/generated/evaluator/api';
 import { Flex, PageHeader, Stack } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { DetailsPanel } from '@studio/components/evaluation/Jobs/DetailsPanel';
@@ -21,7 +21,7 @@ export const EvaluationResultDetailsRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
   const { id } = useRequiredPathParams([ROUTE_PARAMS.evaluationJobId]);
 
-  const { data: job, error } = useEvaluationGetMetricJob(workspace, id, {
+  const { data: job, error } = useEvaluatorGetEvaluateJob(workspace, id, {
     query: {
       refetchOnMount: 'always',
       refetchInterval: (query) => {

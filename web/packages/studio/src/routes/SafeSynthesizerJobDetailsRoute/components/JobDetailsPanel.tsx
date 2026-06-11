@@ -12,7 +12,7 @@ import {
   utcToLocalDate,
 } from '@nemo/common/src/utils/date';
 import type { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
-import type { SafeSynthesizerJob } from '@nemo/sdk/vendored/safe-synthesizer/schema';
+import type { SafeSynthesizerJob } from '@nemo/sdk/generated/safe-synthesizer/schema';
 import { Banner, Button, Divider, Flex, Panel, Stack, Text } from '@nvidia/foundations-react-core';
 import { SafeSynthesizerFilesetPreview } from '@studio/components/SafeSynthesizerFilesetPreview';
 import { EMPTY_FIELD_VALUE } from '@studio/constants/constants';

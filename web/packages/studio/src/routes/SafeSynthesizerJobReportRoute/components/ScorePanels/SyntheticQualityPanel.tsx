@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { SafeSynthesizerSummary } from '@nemo/sdk/vendored/safe-synthesizer/schema';
+import { SafeSynthesizerSummary } from '@nemo/sdk/generated/safe-synthesizer/schema';
 import { Grid, Panel, Stack, Text } from '@nvidia/foundations-react-core';
 import { ScoreItem } from '@studio/routes/SafeSynthesizerJobReportRoute/components/ScorePanels/ScoreItem';
 import { ScoreTable } from '@studio/routes/SafeSynthesizerJobReportRoute/components/ScorePanels/ScoreTable';

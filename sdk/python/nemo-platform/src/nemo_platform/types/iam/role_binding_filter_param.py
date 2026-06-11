@@ -17,11 +17,19 @@
 
 from __future__ import annotations
 
-from typing_extensions import TypedDict
+from typing import Union
+from typing_extensions import TypeAlias, TypedDict
 
 from .date_range_filter_param import DateRangeFilterParam
+from ..shared_params.string_filter import StringFilter
 
-__all__ = ["RoleBindingFilterParam"]
+__all__ = ["RoleBindingFilterParam", "GrantedBy", "Principal", "Role"]
+
+GrantedBy: TypeAlias = Union[StringFilter, str]
+
+Principal: TypeAlias = Union[StringFilter, str]
+
+Role: TypeAlias = Union[StringFilter, str]
 
 
 class RoleBindingFilterParam(TypedDict, total=False):
@@ -30,19 +38,19 @@ class RoleBindingFilterParam(TypedDict, total=False):
     granted_at: DateRangeFilterParam
     """Filter for date ranges."""
 
-    granted_by: str
+    granted_by: GrantedBy
     """Filter by who granted the role"""
 
     is_active: bool
     """Filter for active (True) or revoked (False) bindings"""
 
-    principal: str
+    principal: Principal
     """Filter by principal ID"""
 
     revoked_at: DateRangeFilterParam
     """Filter for date ranges."""
 
-    role: str
+    role: Role
     """Filter by role"""
 
     workspace: str

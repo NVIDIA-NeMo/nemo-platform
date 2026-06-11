@@ -1,32 +1,26 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useEvaluationGetMetricJobsResults } from '@nemo/sdk/generated/platform/api';
+import { useEvaluatorListEvaluateJobResults } from '@nemo/sdk/generated/evaluator/api';
 import { useQuery } from '@tanstack/react-query';
 
-/**
- * Structure of V2 aggregate scores result
- */
 export interface AggregateScores {
   scores: Record<string, Record<string, number>>;
 }
 
-/**
- * Hook to fetch and parse V2 evaluation job aggregate scores
- */
 export const useEvaluationJobResultV2 = (workspace: string, jobName: string) => {
-  // Fetch aggregate scores result metadata
   const {
-    data: aggregateScoresResult,
+    data: resultsPage,
     isLoading: isLoadingMetadata,
     error: metadataError,
-  } = useEvaluationGetMetricJobsResults(workspace, jobName, 'aggregate-scores', {
+  } = useEvaluatorListEvaluateJobResults(workspace, jobName, {
     query: {
       enabled: !!workspace && !!jobName,
     },
   });
 
-  // Fetch and parse the actual scores from the download URL
+  const aggregateScoresResult = resultsPage?.data.find((r) => r.name === 'aggregate-scores');
+
   const {
     data: scores,
     isLoading: isLoadingScores,

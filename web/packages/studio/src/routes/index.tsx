@@ -120,16 +120,6 @@ const DeploymentsListRoute =
       default: module.DeploymentsListRoute,
     }))
   );
-const EvaluationMetricsRoute = lazy(() =>
-  import('@studio/routes/evaluation/EvaluationMetricsRoute').then((module) => ({
-    default: module.EvaluationMetricsRoute,
-  }))
-);
-const EvaluationBenchmarksRoute = lazy(() =>
-  import('@studio/routes/evaluation/EvaluationBenchmarksRoute').then((module) => ({
-    default: module.EvaluationBenchmarksRoute,
-  }))
-);
 const EvaluationLayout = lazy(() =>
   import('@studio/routes/evaluation/EvaluationLayout').then((module) => ({
     default: module.EvaluationLayout,
@@ -148,11 +138,6 @@ const EvaluationResultsRoute = lazy(() =>
 const NewCustomizationRoute = lazy(() =>
   import('@studio/routes/NewCustomizationRoute').then((module) => ({
     default: module.NewCustomizationRoute,
-  }))
-);
-const NewEvaluationMetricRoute = lazy(() =>
-  import('@studio/routes/evaluation/EvaluationMetricCreateRoute').then((module) => ({
-    default: module.EvaluationMetricCreateRoute,
   }))
 );
 const EvaluationResultDetailsRoute = lazy(() =>
@@ -543,48 +528,10 @@ export const routes: RouteObject[] = [
                   children: [
                     {
                       index: true,
-                      element: <Navigate to="metrics" replace />,
+                      element: <Navigate to="results" replace />,
                     },
-                    {
-                      path: ROUTES.workspace.evaluationMetrics,
-                      element: <EvaluationMetricsRoute />,
-                    },
-                    {
-                      // Static "run" segment must appear before the dynamic :id route
-                      path: ROUTES.workspace.evaluationMetricsRun,
-                      element: <EvaluationMetricsRoute />,
-                    },
-                    {
-                      path: ROUTES.workspace.evaluationMetricDetails,
-                      element: <EvaluationMetricsRoute />,
-                      children: [
-                        {
-                          // Nesting run under the details route keeps the same
-                          // EvaluationMetricsRoute instance mounted when toggling
-                          // between metrics/:id and metrics/:id/run, preventing
-                          // the remount that caused panel transition errors.
-                          path: 'run',
-                          element: null,
-                        },
-                      ],
-                    },
-                    ...gateEvaluationBenchmarksRoutes([
-                      {
-                        path: ROUTES.workspace.evaluationBenchmarks,
-                        element: <EvaluationBenchmarksRoute />,
-                      },
-                      {
-                        path: ROUTES.workspace.evaluationBenchmarkDetails,
-                        element: <EvaluationBenchmarksRoute />,
-                        errorElement: <ErrorPanel title="Evaluator" />,
-                      },
-                    ]),
+                    ...gateEvaluationBenchmarksRoutes([]),
                   ],
-                },
-                {
-                  path: ROUTES.workspace.evaluationMetricNew,
-                  element: <NewEvaluationMetricRoute />,
-                  errorElement: <ErrorPanel title="Evaluator" />,
                 },
                 {
                   path: ROUTES.workspace.evaluationResultDetails,

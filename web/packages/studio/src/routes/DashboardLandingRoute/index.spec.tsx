@@ -66,19 +66,19 @@ describe('DashboardLandingRoute', () => {
       '[&&]:focus-visible:ring-0'
     );
     expect(composer).not.toHaveClass('[&&]:focus-visible:outline-accent');
-    expect(screen.getByRole('button', { name: /Explore repo/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Draft a change/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Review recent work/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Create an agent/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Start an evaluation/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Set up a secret/ })).toBeInTheDocument();
   });
 
   it('lets prompt suggestions populate the landing composer', async () => {
     const user = userEvent.setup();
     renderRoute();
 
-    await user.click(await screen.findByRole('button', { name: /Explore repo/ }));
+    await user.click(await screen.findByRole('button', { name: /Create an agent/ }));
 
     expect(screen.getByRole('textbox', { name: 'Message Claude' })).toHaveValue(
-      'Give me a concise map of this repo and the main places I should know about.'
+      'Create a new agent in this workspace and deploy it once it is ready.'
     );
   });
 

@@ -48,7 +48,7 @@ Homepage = "https://docs.nvidia.com/nemo/microservices/latest/about/index.html"
 
 [project.optional-dependencies]
 aiohttp = ["aiohttp", "httpx_aiohttp>=0.1.9"]
-evaluator = [
+nemo-evaluator-sdk = [
   "pydantic>=2.10.6",
   "jinja2>=3.1.6",
   "jsonschema>=4.23.0",
@@ -104,7 +104,6 @@ packages = ["src/nemo_platform"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "../../../docs" = "nemo_platform/cli/docs"
-"../../../mkdocs.yml" = "nemo_platform/cli/mkdocs.yml"
 [tool.hatch.build.targets.sdist]
 # Basically everything except hidden files/directories (such as .github, .devcontainers, .python-version, etc)
 include = [

@@ -17,16 +17,15 @@
 
 from __future__ import annotations
 
+from .engine import Engine as Engine
 from .model_type import ModelType as ModelType
 from .virtual_model import VirtualModel as VirtualModel
 from .model_provider import ModelProvider as ModelProvider
-from .nim_deployment import NIMDeployment as NIMDeployment
 from .middleware_call import MiddlewareCall as MiddlewareCall
 from .model_deployment import ModelDeployment as ModelDeployment
 from .model_provider_sort import ModelProviderSort as ModelProviderSort
 from .virtual_models_page import VirtualModelsPage as VirtualModelsPage
 from .model_providers_page import ModelProvidersPage as ModelProvidersPage
-from .nim_deployment_param import NIMDeploymentParam as NIMDeploymentParam
 from .provider_list_params import ProviderListParams as ProviderListParams
 from .served_model_mapping import ServedModelMapping as ServedModelMapping
 from .middleware_call_param import MiddlewareCallParam as MiddlewareCallParam
@@ -40,6 +39,7 @@ from .model_deployment_config import ModelDeploymentConfig as ModelDeploymentCon
 from .model_deployment_status import ModelDeploymentStatus as ModelDeploymentStatus
 from .deployment_create_params import DeploymentCreateParams as DeploymentCreateParams
 from .deployment_update_params import DeploymentUpdateParams as DeploymentUpdateParams
+from .container_executor_config import ContainerExecutorConfig as ContainerExecutorConfig
 from .virtual_model_list_params import VirtualModelListParams as VirtualModelListParams
 from .served_model_mapping_param import ServedModelMappingParam as ServedModelMappingParam
 from .virtual_model_patch_params import VirtualModelPatchParams as VirtualModelPatchParams
@@ -51,10 +51,15 @@ from .model_deployment_configs_page import ModelDeploymentConfigsPage as ModelDe
 from .model_deployment_filter_param import ModelDeploymentFilterParam as ModelDeploymentFilterParam
 from .provider_update_status_params import ProviderUpdateStatusParams as ProviderUpdateStatusParams
 from .virtual_model_inference_config import VirtualModelInferenceConfig as VirtualModelInferenceConfig
+from .container_executor_config_param import ContainerExecutorConfigParam as ContainerExecutorConfigParam
 from .deployment_config_create_params import DeploymentConfigCreateParams as DeploymentConfigCreateParams
 from .deployment_config_update_params import DeploymentConfigUpdateParams as DeploymentConfigUpdateParams
 from .deployment_list_models_response import DeploymentListModelsResponse as DeploymentListModelsResponse
 from .deployment_update_status_params import DeploymentUpdateStatusParams as DeploymentUpdateStatusParams
+from .model_deployment_config_model_spec import ModelDeploymentConfigModelSpec as ModelDeploymentConfigModelSpec
 from .model_deployment_config_filter_param import ModelDeploymentConfigFilterParam as ModelDeploymentConfigFilterParam
 from .model_deployment_status_history_item import ModelDeploymentStatusHistoryItem as ModelDeploymentStatusHistoryItem
 from .virtual_model_inference_config_param import VirtualModelInferenceConfigParam as VirtualModelInferenceConfigParam
+from .model_deployment_config_model_spec_param import (
+    ModelDeploymentConfigModelSpecParam as ModelDeploymentConfigModelSpecParam,
+)

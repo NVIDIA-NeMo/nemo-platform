@@ -69,7 +69,7 @@ def test_optimize_skills_config_validation() -> None:
 @pytest.mark.asyncio
 async def test_evaluate_suite_compile_produces_single_subprocess_step() -> None:
     from nemo_agents_plugin.jobs.evaluate_suite import EvaluateSuiteConfig, EvaluateSuiteJob
-    from nmp.common.jobs.constants import (
+    from nemo_platform_plugin.jobs.constants import (
         DEFAULT_JOB_STORAGE_PATH,
         PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
     )
@@ -181,7 +181,7 @@ async def test_evaluate_suite_compile_injects_anthropic_secret_when_set() -> Non
 @pytest.mark.asyncio
 async def test_optimize_skills_compile_produces_single_subprocess_step() -> None:
     from nemo_agents_plugin.jobs.optimize_skills import OptimizeSkillsConfig, OptimizeSkillsJob
-    from nmp.common.jobs.constants import (
+    from nemo_platform_plugin.jobs.constants import (
         DEFAULT_JOB_STORAGE_PATH,
         PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
     )

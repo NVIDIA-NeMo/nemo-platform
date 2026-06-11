@@ -1,0 +1,184 @@
+---
+title: "NeMo Auditor NeMo Platform SDK Resources"
+description: ""
+---
+<a id="auditor-nmp-sdk-resources"></a>
+
+
+The NeMo Auditor plugin mounts a Python SDK surface on the `nemo_platform` client at `client.auditor`.
+This page documents that surface: how to manage audit configurations and targets in the entity store, and how to run an audit in-process using the local execution path.
+
+The CRUD methods exposed on `client.auditor.configs` and `client.auditor.targets` are 1:1 mirrors of the [audit configuration](/documentation/vulnerability-scanning/configurations) and [audit target](/documentation/vulnerability-scanning/targets) lifecycle and use the same `AuditConfig` and `AuditTarget` pydantic schemas the entity store persists.
+
+
+## AuditorPluginResource
+
+The `AuditorPluginResource` is the sync SDK object for working with the NeMo Auditor plugin.
+It is accessed directly from a `NeMoPlatform` instance:
+
+```python
+import os
+from nemo_platform import NeMoPlatform
+
+
+client = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace="default",
+)
+auditor = client.auditor  # AuditorPluginResource
+```
+
+| Method or property | Description | Returns |
+|--------------------|-------------|---------|
+| `plugin_status()` | Returns auditor plugin health information from the service. | `dict[str, object]` |
+| `configs` | Sub-resource for `AuditConfig` CRUD operations. | `_ConfigResource` |
+| `targets` | Sub-resource for `AuditTarget` CRUD operations. | `_TargetResource` |
+| `run()` | Runs one audit locally, in-process, against a configured target. | `dict` |
+
+### `configs` sub-resource
+
+Five CRUD methods for `AuditConfig` entities. The full field reference is in [Configuration Schema](/documentation/vulnerability-scanning/configurations/schema).
+
+| Method | Description | Returns |
+|--------|-------------|---------|
+| `create(*, workspace, name, description=None, system=None, run=None, plugins=None, reporting=None)` | Persists a new `AuditConfig`. Sub-blocks default to their `AuditSystemData` / `AuditRunData` / `AuditPluginsData` / `AuditReportData` defaults when omitted. | `AuditConfig` |
+| `list(*, workspace, page=1, page_size=20, sort="-created_at")` | Lists audit configurations in `workspace`. | `dict` with `data`, `pagination`, `sort` keys |
+| `get(*, workspace, name)` | Retrieves a single audit configuration. | `AuditConfig` |
+| `update(*, workspace, name, description=None, system=None, run=None, plugins=None, reporting=None)` | Replaces a configuration's fields. The PUT semantics replace every sub-block; omitted sub-blocks reset to their defaults. | `AuditConfig` |
+| `delete(*, workspace, name)` | Deletes a configuration. | `None` |
+
+### `targets` sub-resource
+
+Five CRUD methods for `AuditTarget` entities. The full field reference is in [Target Schema](/documentation/vulnerability-scanning/targets/schema).
+
+| Method | Description | Returns |
+|--------|-------------|---------|
+| `create(*, workspace, name, type, model, options=None, description=None)` | Persists a new `AuditTarget`. `type` is a garak generator class (for example `nim.NVOpenAIChat`), `model` is the provider's model identifier, `options` is the generator-specific options dict. | `AuditTarget` |
+| `list(*, workspace, page=1, page_size=20, sort="-created_at")` | Lists audit targets in `workspace`. | `dict` with `data`, `pagination`, `sort` keys |
+| `get(*, workspace, name)` | Retrieves a single audit target. | `AuditTarget` |
+| `update(*, workspace, name, type, model, options=None, description=None)` | Replaces a target's fields. | `AuditTarget` |
+| `delete(*, workspace, name)` | Deletes a target. | `None` |
+
+### `run()` arguments
+
+`run()` invokes [garak](https://github.com/NVIDIA/garak) locally, in-process, against a configured target.
+The work happens entirely on the host running the SDK call — there is no remote job submission.
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `config` | `AuditConfig \\| str` | Yes | An inline `AuditConfig` instance or a name string referencing one in the entity store. A bare name such as `"quick-scan"` resolves against the `workspace` argument; a qualified name such as `"prod/quick-scan"` always uses the workspace prefix. |
+| `target` | `AuditTarget \\| str` | Yes | An inline `AuditTarget` instance or a name string, with the same resolution rules as `config`. |
+| `workspace` | `str \\| None` | No | Workspace used both as the entity-lookup fallback and as the scope for the local `JobContext`. Defaults to `"default"`. |
+
+### `run()` return value
+
+`run()` returns a dict with the following keys:
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `status` | `str` | `"completed"` when garak exits with `0`, otherwise `"failed"`. |
+| `returncode` | `int` | The garak subprocess exit code. |
+| `stdout_tail` | `str` | Last ~4 KB of garak's stdout, useful for diagnostics. |
+| `stderr_tail` | `str` | Last ~4 KB of garak's stderr. |
+| `results` | `dict[str, dict]` | One entry per produced report artifact. Each value is a `ResultRef` (`{"name": str, "artifact_url": str}`). For local runs, `artifact_url` is a `file://` URL under the scheduler's temporary results directory. |
+
+The `results` dict can contain up to three keys, each present only if the corresponding file was produced:
+
+- `report-jsonl` — line-delimited JSON probe-by-probe report.
+- `report-html` — rendered HTML summary.
+- `report-hitlog-jsonl` — line-delimited JSON of every detected hit (failure).
+
+### Run an audit locally
+
+```python
+from nemo_auditor.entities import (
+    AuditSystemData,
+    AuditRunData,
+    AuditPluginsData,
+    AuditReportData,
+)
+
+
+# Persist a configuration.
+config = auditor.configs.create(
+    workspace="default",
+    name="quick-scan",
+    description="Lite garak scan, 3 generations per probe.",
+    system=AuditSystemData(lite=True, parallel_attempts=4),
+    run=AuditRunData(generations=3),
+    plugins=AuditPluginsData(probe_spec="latentinjection", detector_spec="auto"),
+    reporting=AuditReportData(report_prefix="quick-scan"),
+)
+
+# Persist a target.
+target = auditor.targets.create(
+    workspace="default",
+    name="llama-31-8b",
+    type="nim.NVOpenAIChat",
+    model="meta/llama-3.1-8b-instruct",
+    options={
+        "nim": {
+            "nmp_uri_spec": {
+                "inference_gateway": {"workspace": "default", "provider": "build"},
+            },
+        },
+    },
+)
+
+# Run locally — name strings resolve via the entity store.
+result = auditor.run(config="quick-scan", target="llama-31-8b", workspace="default")
+
+print(result["status"], result["returncode"])
+for name, ref in result["results"].items():
+    print(f"  {name}: {ref['artifact_url']}")
+```
+
+Alternatively, pass inline `AuditConfig` and `AuditTarget` instances directly — useful for ad-hoc runs that should not be persisted:
+
+```python
+result = auditor.run(config=config, target=target, workspace="default")
+```
+
+
+## AsyncAuditorPluginResource
+
+The `AsyncAuditorPluginResource` provides the same surface for `AsyncNeMoPlatform`.
+Async methods must be awaited.
+
+```python
+import os
+from nemo_platform import AsyncNeMoPlatform
+
+
+client = AsyncNeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace="default",
+)
+auditor = client.auditor  # AsyncAuditorPluginResource
+```
+
+| Method or property | Description | Returns |
+|--------------------|-------------|---------|
+| `plugin_status()` | Returns auditor plugin health information from the service. | `dict[str, object]` |
+| `configs` | Sub-resource for `AuditConfig` CRUD operations. | `_AsyncConfigResource` |
+| `targets` | Sub-resource for `AuditTarget` CRUD operations. | `_AsyncTargetResource` |
+| `run()` | Runs one audit locally, in-process, against a configured target. | `dict` |
+
+`AsyncAuditorPluginResource.run()` and the async `configs` / `targets` sub-resource methods accept the same arguments as their sync counterparts [above](#run-arguments). Because the local execution path is synchronous (garak runs in a subprocess), the async `run()` dispatches the scheduler call through `asyncio.to_thread` so the caller's event loop is not blocked.
+
+```python
+import asyncio
+
+
+async def main() -> None:
+    result = await auditor.run(
+        config="quick-scan",
+        target="llama-31-8b",
+        workspace="default",
+    )
+    for name, ref in result["results"].items():
+        print(f"  {name}: {ref['artifact_url']}")
+
+
+asyncio.run(main())
+```

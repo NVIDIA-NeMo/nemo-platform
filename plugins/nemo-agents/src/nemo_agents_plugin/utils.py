@@ -163,7 +163,7 @@ def rebase_optimize_outputs(config: dict[str, Any], output_base: Path) -> dict[s
 
 def get_base_url() -> str:
     """Return the base URL for the platform from the environment."""
-    from nmp.common.config import get_platform_config
+    from nemo_platform_plugin.config import get_platform_config
 
     # `or` chain so get_platform_config() stays lazy.
     return (os.environ.get("NEMO_BASE_URL") or os.environ.get("NMP_BASE_URL") or get_platform_config().base_url).rstrip(

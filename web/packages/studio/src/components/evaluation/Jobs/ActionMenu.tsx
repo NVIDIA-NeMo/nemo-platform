@@ -2,14 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import {
-  useEvaluationDeleteBenchmarkJob,
-  useEvaluationDeleteMetricJob,
-} from '@nemo/sdk/generated/platform/api';
-import type {
-  BenchmarkEvaluationJob,
-  MetricEvaluationJob,
-} from '@nemo/sdk/generated/platform/schema';
+import { useEvaluatorDeleteEvaluateJob } from '@nemo/sdk/generated/evaluator/api';
+import type { EvaluateJob } from '@nemo/sdk/generated/evaluator/schema';
 import {
   Button,
   DropdownContent,
@@ -26,24 +20,17 @@ import { getEvaluationJobName } from '@studio/selectors/evaluationJob';
 import { ArrowRight, EllipsisVertical, Trash } from 'lucide-react';
 import { FC, useState } from 'react';
 
-const isBenchmarkJob = (
-  job: MetricEvaluationJob | BenchmarkEvaluationJob
-): job is BenchmarkEvaluationJob => {
-  return 'benchmark' in job.spec;
-};
-
 interface ActionMenuProps {
-  job: MetricEvaluationJob | BenchmarkEvaluationJob;
-  onNavigateToDetails: (job: MetricEvaluationJob | BenchmarkEvaluationJob) => void;
-  onJobDeleted?: (job: MetricEvaluationJob | BenchmarkEvaluationJob) => void;
+  job: EvaluateJob;
+  onNavigateToDetails: (job: EvaluateJob) => void;
+  onJobDeleted?: (job: EvaluateJob) => void;
 }
 
 export const ActionMenu: FC<ActionMenuProps> = ({ job, onNavigateToDetails, onJobDeleted }) => {
   const [modalOpen, setModalOpen] = useState<'edit' | 'delete' | undefined>(undefined);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
   const workspace = useWorkspaceFromPath();
-  const { mutateAsync: deleteMetricJob } = useEvaluationDeleteMetricJob();
-  const { mutateAsync: deleteBenchmarkJob } = useEvaluationDeleteBenchmarkJob();
+  const { mutateAsync: deleteEvaluateJob } = useEvaluatorDeleteEvaluateJob();
   const toast = useToast();
   const jobName = getEvaluationJobName(job);
 
@@ -53,11 +40,7 @@ export const ActionMenu: FC<ActionMenuProps> = ({ job, onNavigateToDetails, onJo
       if (!jobName) {
         throw new Error('Evaluation job name is undefined');
       }
-      if (isBenchmarkJob(job)) {
-        await deleteBenchmarkJob({ workspace, name: jobName });
-      } else {
-        await deleteMetricJob({ workspace, name: jobName });
-      }
+      await deleteEvaluateJob({ workspace, name: jobName });
       toast.success('Evaluation job deleted successfully');
       onJobDeleted?.(job);
       handleModalClose();

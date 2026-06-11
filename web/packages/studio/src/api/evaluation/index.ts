@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
-import { evaluationListMetricJobs } from '@nemo/sdk/generated/platform/api';
-import { EvaluationListMetricJobsParams } from '@nemo/sdk/generated/platform/schema';
-import { EvaluationJobWithTaskMetrics } from '@studio/api/evaluation/useEvaluationsWithMetrics';
+import { evaluatorListEvaluateJobs } from '@nemo/sdk/generated/evaluator/api';
+import type { EvaluatorListEvaluateJobsParams } from '@nemo/sdk/generated/evaluator/schema';
+import type { EvaluationJobWithTaskMetrics } from '@studio/api/evaluation/useEvaluationsWithMetrics';
 
 export interface FetchEvaluationsWithMetricsOptions {
   workspace: string;
-  query?: EvaluationListMetricJobsParams;
+  query?: EvaluatorListEvaluateJobsParams;
   signal?: AbortSignal;
 }
 
@@ -15,7 +15,7 @@ export const fetchEvaluationsWithMetrics = async ({
   query,
   signal,
 }: FetchEvaluationsWithMetricsOptions) => {
-  const evaluations = await evaluationListMetricJobs(workspace, query, signal);
+  const evaluations = await evaluatorListEvaluateJobs(workspace, query, signal);
   if (evaluations.data?.length > 0) {
     const evaluationsWithMetrics = await Promise.all(
       evaluations.data.map(async (evaluation) => {
@@ -28,19 +28,8 @@ export const fetchEvaluationsWithMetrics = async ({
           }
 
           const evaluationWithMetrics: EvaluationJobWithTaskMetrics = { ...evaluation, tasks: {} };
-          // TODO: Download results
-          // const evaluationResult = await getEvaluationResult(
-          //   evaluation.workspace,
-          //   evaluation.id!,
-          //   evaluation.name,
-          //   signal
-          // );
-          // if (evaluationResult.download_url) {
-          // }
           return evaluationWithMetrics;
         } catch {
-          // if an eval job failed, there will be a 404 returned by fetchEvaluationResults
-          // return the original evaluation if there's an error
           return evaluation;
         }
       })

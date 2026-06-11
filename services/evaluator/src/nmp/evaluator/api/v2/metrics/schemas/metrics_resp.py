@@ -13,7 +13,7 @@ import nmp.evaluator.app.values as app
 import nmp.evaluator.entities as entities
 from nemo_evaluator_sdk.enums import MetricType
 from nmp.common.api.common import Page
-from nmp.common.entities.values import DatetimeFilter, Filter
+from nmp.common.entities.values import DatetimeFilter, Filter, StringFilter, map_entity_field
 from nmp.evaluator.api.v2.metrics.schemas import metrics as schema_metrics
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
@@ -229,14 +229,18 @@ MetricResponseAdapter = TypeAdapter(MetricResponse)
 class MetricsListFilter(Filter):
     """Filter for list metrics query."""
 
-    name: str | None = Field(default=None, description="Filter metrics by name.")
-    description: str | None = Field(default=None, description="Filter metrics by description.")
+    name: StringFilter | str | None = Field(default=None, description="Filter metrics by name.")
+    description: StringFilter | str | None = Field(default=None, description="Filter metrics by description.")
     type: MetricType | None = Field(
         default=None, description="Filter metrics by metric type (e.g. llm-judge, exact-match, route, system)"
     )
     project: str | None = Field(default=None, description="Filter metrics by project name.")
     created_at: DatetimeFilter | None = Field(default=None, description="Filter metrics by creation date range.")
     updated_at: DatetimeFilter | None = Field(default=None, description="Filter metrics by last update date range.")
+    labels: Annotated[dict[str, str] | None, map_entity_field("data.labels", namespace=True)] = Field(
+        default=None,
+        description="Filter by labels. Address an individual label as a sub-path, e.g. filter[labels.team]=eval.",
+    )
 
 
 # This is needed to ensure the generated OAS has a better name than UnionsPage.
@@ -251,7 +255,7 @@ class MetricsListResponse(Page[MetricResponse]): ...
 class MetricJobResultsListFilter(Filter):
     """Filter for list metric job results."""
 
-    name: str | None = Field(default=None, description="Filter job results by name.")
+    name: StringFilter | str | None = Field(default=None, description="Filter job results by name.")
     metric: app.MetricRef | None = Field(
         default=None,
         description="Filter results by metric reference. Jobs with inline metric configuration will not be included when filtering by metric.",

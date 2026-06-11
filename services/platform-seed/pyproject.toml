@@ -9,7 +9,6 @@ dependencies = [
   "nmp-common",
   "nmp-auth",
   "nmp-guardrails",
-  "nmp-evaluator",
 ]
 
 [project.scripts]
@@ -19,7 +18,6 @@ platform-seed = "nmp.platform_seed.__main__:main"
 nmp-common = { workspace = true }
 nmp-auth = { workspace = true }
 nmp-guardrails = { workspace = true }
-nmp-evaluator = { workspace = true }
 
 [dependency-groups]
 dev = [

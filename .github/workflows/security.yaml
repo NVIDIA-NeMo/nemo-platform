@@ -38,6 +38,7 @@ jobs:
         with:
           path: ./
           version: 3.95.3
+          extra_args: --exclude-paths=.github/trufflehog-exclude.txt
 
       - name: Scan Results Status
         if: ${{ github.event_name != 'merge_group' && steps.trufflehog.outcome == 'failure' }}
