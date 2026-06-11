@@ -5,6 +5,7 @@ description = "NeMo Deployments Plugin — substrate-agnostic deployment lifecyc
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 dependencies = [
+    "fastapi>=0.115",
     "nemo-platform",
     "nemo-platform-plugin",
     "pydantic>=2.10.6",

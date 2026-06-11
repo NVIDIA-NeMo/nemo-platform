@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from helpers import list_response, make_deployment, make_deployment_config
 from nemo_deployments_plugin.api.v1 import deployments as deployments_module
 from nemo_deployments_plugin.api.v1.dependencies import get_entity_client
-from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
+from nemo_platform_plugin.entity_client import NemoEntityConflictError, NemoEntityNotFoundError
 
 
 @pytest.fixture
@@ -79,3 +79,10 @@ def test_delete_deployment_marks_deleting(client: TestClient, mock_entity_client
     mock_entity_client.update.assert_awaited_once()
     updated = mock_entity_client.update.await_args.args[0]
     assert updated.status == "DELETING"
+
+
+def test_delete_deployment_conflict_409(client: TestClient, mock_entity_client: AsyncMock) -> None:
+    mock_entity_client.get.return_value = make_deployment()
+    mock_entity_client.update.side_effect = NemoEntityConflictError("conflict")
+    resp = client.delete("/apis/deployments/v1/workspaces/default/deployments/dep1")
+    assert resp.status_code == 409

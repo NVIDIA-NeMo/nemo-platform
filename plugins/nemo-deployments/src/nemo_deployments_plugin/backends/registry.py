@@ -9,7 +9,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Self
 
-from nemo_deployments_plugin.backends.abc import DeploymentBackend
+from nemo_deployments_plugin.backends.base import DeploymentBackend
 from nemo_platform import AsyncNeMoPlatform
 
 logger = logging.getLogger(__name__)
@@ -53,12 +53,17 @@ class ExecutorRegistry:
         if len({spec.name for spec in specs}) != len(specs):
             raise ValueError("Duplicate executor names are not allowed.")
         executors: dict[str, DeploymentBackend] = {}
-        for spec in specs:
-            if spec.backend not in classes:
-                raise UnknownBackendTypeError(f"Unknown backend type '{spec.backend}' for executor '{spec.name}'.")
-            executors[spec.name] = classes[spec.backend](sdk, spec.config)
-        if default_executor and default_executor not in executors:
-            raise ExecutorNotFoundError(f"default_executor '{default_executor}' is not registered.")
+        try:
+            for spec in specs:
+                if spec.backend not in classes:
+                    raise UnknownBackendTypeError(f"Unknown backend type '{spec.backend}' for executor '{spec.name}'.")
+                executors[spec.name] = classes[spec.backend](sdk, spec.config)
+            if default_executor and default_executor not in executors:
+                raise ExecutorNotFoundError(f"default_executor '{default_executor}' is not registered.")
+        except Exception:
+            for backend in executors.values():
+                backend.shutdown()
+            raise
         return cls(executors, default_executor=default_executor)
 
     @classmethod

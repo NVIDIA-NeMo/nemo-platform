@@ -37,6 +37,10 @@ def test_create_volume_201(client: TestClient, mock_entity_client: AsyncMock) ->
     )
     assert resp.status_code == 201
     assert resp.json()["status"] == "PENDING"
+    created = mock_entity_client.create.await_args.args[0]
+    assert created.name == "vol1"
+    assert created.size == "5Gi"
+    assert created.workspace == "default"
 
 
 def test_list_volumes_200(client: TestClient, mock_entity_client: AsyncMock) -> None:

@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
 
-from nemo_deployments_plugin.entities import DeploymentStatus, Endpoint, VolumeStatus
+from nemo_deployments_plugin.types import DeploymentStatus, Endpoint, VolumeStatus
 from nemo_platform import AsyncNeMoPlatform
 from pydantic import BaseModel, Field
 
@@ -50,6 +50,7 @@ class DeploymentBackend(ABC):
     @abstractmethod
     def shutdown(self) -> None:
         """Release backend resources."""
+        raise NotImplementedError
 
     @abstractmethod
     async def create_deployment(
@@ -60,16 +61,20 @@ class DeploymentBackend(ABC):
         config_name: str,
         labels: dict[str, str],
         backend_config: dict[str, Any],
-    ) -> BackendStatusUpdate: ...
+    ) -> BackendStatusUpdate:
+        raise NotImplementedError
 
     @abstractmethod
-    async def read_status(self, *, workspace: str, name: str) -> BackendStatusUpdate: ...
+    async def read_status(self, *, workspace: str, name: str) -> BackendStatusUpdate:
+        raise NotImplementedError
 
     @abstractmethod
-    async def delete_deployment(self, workspace: str, name: str) -> BackendStatusUpdate: ...
+    async def delete_deployment(self, workspace: str, name: str) -> BackendStatusUpdate:
+        raise NotImplementedError
 
     @abstractmethod
-    async def list_managed_deployment_names(self) -> list[str]: ...
+    async def list_managed_deployment_names(self) -> list[str]:
+        raise NotImplementedError
 
     @abstractmethod
     async def get_logs(
@@ -78,7 +83,8 @@ class DeploymentBackend(ABC):
         workspace: str,
         name: str,
         tail: int = 100,
-    ) -> LogResult: ...
+    ) -> LogResult:
+        raise NotImplementedError
 
     @abstractmethod
     async def create_volume(
@@ -89,10 +95,13 @@ class DeploymentBackend(ABC):
         size: str,
         access_modes: list[str],
         backend_config: dict[str, Any],
-    ) -> VolumeStatusUpdate: ...
+    ) -> VolumeStatusUpdate:
+        raise NotImplementedError
 
     @abstractmethod
-    async def read_volume_status(self, *, workspace: str, name: str) -> VolumeStatusUpdate: ...
+    async def read_volume_status(self, *, workspace: str, name: str) -> VolumeStatusUpdate:
+        raise NotImplementedError
 
     @abstractmethod
-    async def delete_volume(self, workspace: str, name: str) -> VolumeStatusUpdate: ...
+    async def delete_volume(self, workspace: str, name: str) -> VolumeStatusUpdate:
+        raise NotImplementedError

@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Any, ClassVar
 
 from nemo_platform_plugin.config import NemoConfig
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ExecutorConfigEntry(BaseModel):
@@ -31,3 +31,11 @@ class DeploymentsConfig(NemoConfig):
     )
     port_range_start: int = Field(default=9000, description="Default Docker port range start.")
     port_range_end: int = Field(default=9100, description="Default Docker port range end.")
+
+    @model_validator(mode="after")
+    def _validate_port_range(self) -> DeploymentsConfig:
+        if self.port_range_end < self.port_range_start:
+            raise ValueError(
+                f"port_range_end ({self.port_range_end}) must be >= port_range_start ({self.port_range_start})"
+            )
+        return self

@@ -140,4 +140,9 @@ async def delete_deployment(
     try:
         await entity_client.update(deployment)
     except NemoEntityNotFoundError:
-        logger.info("Deployment '%s' already deleted before status update", name)
+        logger.info("Deployment already deleted before status update")
+    except NemoEntityConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Deployment '{name}' is being modified concurrently.",
+        ) from exc

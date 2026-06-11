@@ -12,23 +12,17 @@ from nemo_deployments_plugin.constants import (
     ENTITY_TYPE_DEPLOYMENT_CONFIG,
     ENTITY_TYPE_VOLUME,
 )
+from nemo_deployments_plugin.types import (
+    AccessMode,
+    DeploymentStatus,
+    DesiredState,
+    DriftRecoveryAction,
+    Endpoint,
+    RestartPolicy,
+    VolumeStatus,
+)
 from nemo_platform_plugin.entity import NemoEntity
-from pydantic import BaseModel, Field, model_validator
-
-DeploymentStatus = Literal[
-    "PENDING",
-    "STARTING",
-    "READY",
-    "SUCCEEDED",
-    "FAILED",
-    "LOST",
-    "DELETING",
-]
-VolumeStatus = Literal["PENDING", "BOUND", "RELEASED", "FAILED"]
-DesiredState = Literal["READY", "STOPPED"]
-RestartPolicy = Literal["Always", "OnFailure", "Never"]
-AccessMode = Literal["ReadWriteOnce", "ReadOnlyMany", "ReadWriteMany"]
-DriftRecoveryAction = Literal["recreate", "ignore"]
+from pydantic import BaseModel, Field
 
 
 class EnvVar(BaseModel):
@@ -195,12 +189,6 @@ class Prerequisite(BaseModel):
     )
 
 
-class Endpoint(BaseModel):
-    name: str
-    url: str
-    protocol: Literal["http", "https", "grpc", "tcp"] = "http"
-
-
 class StatusEvent(BaseModel):
     status: DeploymentStatus
     message: str = ""
@@ -240,11 +228,8 @@ class Deployment(NemoEntity, entity_type=ENTITY_TYPE_DEPLOYMENT):
     error_details: dict[str, Any] | None = None
     status_history: list[StatusEvent] = Field(default_factory=list)
 
-    @model_validator(mode="after")
-    def _document_status_restart_policy_consistency(self) -> Deployment:
-        """Document restart_policy vs terminal status expectations for the reconciler."""
-        # Reconciler enforces: Never → SUCCEEDED terminal; Always/OnFailure → READY while running.
-        return self
+    # Reconciler (758) enforces restart_policy vs terminal status on DeploymentConfig:
+    # Never → SUCCEEDED terminal; Always/OnFailure → READY while running.
 
 
 class Volume(NemoEntity, entity_type=ENTITY_TYPE_VOLUME):

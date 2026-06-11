@@ -74,7 +74,7 @@ class UpdateVolumeStatusRequest(BaseModel):
 
 
 class DeploymentConfigFilter(NemoFilter):
-    restart_policy: str | None = None
+    restart_policy: RestartPolicy | None = None
 
 
 class DeploymentFilter(NemoFilter):

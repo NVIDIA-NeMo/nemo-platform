@@ -42,6 +42,18 @@ def test_status_put_rejects_user(client: TestClient) -> None:
     assert resp.status_code == 403
 
 
+def test_status_put_ignores_on_behalf_of_for_auth(client: TestClient) -> None:
+    resp = client.put(
+        "/apis/deployments/v1/workspaces/default/deployments/dep1/status",
+        json={"status": "READY"},
+        headers={
+            "X-NMP-Principal-Id": "user@example.com",
+            "X-NMP-Principal-On-Behalf-Of": "service:deployments",
+        },
+    )
+    assert resp.status_code == 403
+
+
 def test_status_put_accepts_service_principal(client: TestClient, mock_entity_client: AsyncMock) -> None:
     mock_entity_client.get.return_value = make_deployment()
     mock_entity_client.update.return_value = make_deployment()
