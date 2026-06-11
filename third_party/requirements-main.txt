@@ -56,12 +56,7 @@
     #   nmp-platform-runner
 -e ./packages/nmp_common ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
     # via
-    #   nemo-agents-plugin
-    #   nemo-anonymizer-plugin
-    #   nemo-data-designer-plugin
-    #   nemo-evaluator-plugin
     #   nemo-platform
-    #   nemo-safe-synthesizer-plugin
     #   nemoplatform
     #   nmp-auth
     #   nmp-automodel
@@ -1738,8 +1733,8 @@ mypy-extensions==1.0.0 ; (platform_machine == 'arm64' and sys_platform == 'darwi
 nemo-anonymizer==0.2.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:369ee9f717e3c346328bcef9767da3b596d5b927b5f9cc162ece95766b1d8aad
     # via nemo-anonymizer-plugin
-nemo-safe-synthesizer==0.1.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:e92564b8522ffc2360fb6daaca36e88a722206e165a4fe157e7ccf65b1cac260
+nemo-safe-synthesizer==0.1.2 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:fbf6f9179052d0ac27ad4493238009a5e1c7ae7775354f062d5e90725890b0ce
     # via nemo-safe-synthesizer-plugin
 nemoguardrails==0.21.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:b338453b371751f5b09637415702e2ee25f0885317b691cbb0d2f2f164eeea5d

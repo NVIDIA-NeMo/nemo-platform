@@ -1746,7 +1746,7 @@
         {
           "package": {
             "name": "nemo-safe-synthesizer",
-            "version": "0.1.1",
+            "version": "0.1.2",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2421,7 +2421,7 @@
           },
           "vulnerabilities": [
             {
-              "modified": "2026-06-05T21:56:07Z",
+              "modified": "2026-06-10T17:01:40Z",
               "published": "2026-02-17T14:16:01Z",
               "schema_version": "1.7.5",
               "id": "PYSEC-2026-113",
@@ -2429,7 +2429,7 @@
                 "CVE-2026-25087",
                 "GHSA-rgxp-2hwp-jwgg"
               ],
-              "details": "Use After Free vulnerability in Apache Arrow C++.\n\nThis issue affects Apache Arrow C++ from 15.0.0 through 23.0.0. It can be triggered when reading an Arrow IPC file (but not an IPC stream) with pre-buffering enabled, if the IPC file contains data with variadic buffers (such as Binary View and String View data). Depending on the number of variadic buffers in a record batch column and on the temporal sequence of multi-threaded IO, a write to a dangling pointer could occur. The value (a `std::shared_ptr<Buffer>` object)\u00a0that is written to the dangling pointer is not under direct control of the attacker.\n\nPre-buffering is disabled by default but can be enabled using a specific C++ API call (`RecordBatchFileReader::PreBufferMetadata`). The functionality is not exposed in language bindings (Python, Ruby, C GLib), so these bindings are not vulnerable.\n\nThe most likely consequence of this issue would be random crashes or memory corruption when reading specific kinds of IPC files. If the application allows ingesting IPC files from untrusted sources, this could plausibly be exploited for denial of service. Inducing more targeted kinds of misbehavior (such as confidential data extraction from the running process) depends on memory allocation and multi-threaded IO temporal patterns that are unlikely to be easily controlled by an attacker.\n\nAdvice for users of Arrow C++:\n\n1. check whether you enable pre-buffering on the IPC file reader (using\u00a0`RecordBatchFileReader::PreBufferMetadata`)\n\n2. if so, either disable pre-buffering (which may have adverse performance consequences), or switch to Arrow 23.0.1 which is not vulnerable",
+              "details": "Use After Free vulnerability in Apache Arrow C++.\n\nThis issue affects Apache Arrow C++ from 15.0.0 through 23.0.0. It can be triggered when reading an Arrow IPC file (but not an IPC stream) with pre-buffering enabled, if the IPC file contains data with variadic buffers (such as Binary View and String View data). Depending on the number of variadic buffers in a record batch column and on the temporal sequence of multi-threaded IO, a write to a dangling pointer could occur. The value (a `std::shared_ptr<Buffer>` object)\u00a0that is written to the dangling pointer is not under direct control of the attacker.\n\nPre-buffering is disabled by default but can be enabled using a specific C++ API call (`RecordBatchFileReader::PreBufferMetadata`). The functionality is not exposed in language bindings (Python, Ruby, C GLib), so these bindings are not vulnerable.\n\nThe most likely consequence of this issue would be random crashes or memory corruption when reading specific kinds of IPC files. If the application allows ingesting IPC files from untrusted sources, this could plausibly be exploited for denial of service. Inducing more targeted kinds of misbehavior (such as confidential data extraction from the running process) depends on memory allocation and multi-threaded IO temporal patterns that are unlikely to be easily controlled by an attacker.\n\nAdvice for users of Arrow C++:\n\n1. check whether you enable pre-buffering on the IPC file reader (using\u00a0`RecordBatchFileReader::PreBufferMetadata`)\n \n2. if so, either disable pre-buffering (which may have adverse performance consequences), or switch to Arrow 23.0.1 which is not vulnerable",
               "severity": [
                 {
                   "type": "CVSS_V3",
@@ -2489,6 +2489,10 @@
                 {
                   "type": "FIX",
                   "url": "https://github.com/apache/arrow/pull/48925"
+                },
+                {
+                  "type": "ADVISORY",
+                  "url": "https://github.com/advisories/GHSA-rgxp-2hwp-jwgg"
                 }
               ]
             },
@@ -3244,7 +3248,7 @@
           },
           "vulnerabilities": [
             {
-              "modified": "2026-05-19T20:15:17Z",
+              "modified": "2026-06-10T13:45:15Z",
               "published": "2026-05-19T20:10:53Z",
               "schema_version": "1.7.5",
               "id": "GHSA-73jc-5mrq-prw7",
@@ -3445,6 +3449,10 @@
                   "url": "https://github.com/sqlfluff/sqlfluff/security/advisories/GHSA-73jc-5mrq-prw7"
                 },
                 {
+                  "type": "ADVISORY",
+                  "url": "https://nvd.nist.gov/vuln/detail/CVE-2026-46374"
+                },
+                {
                   "type": "PACKAGE",
                   "url": "https://github.com/sqlfluff/sqlfluff"
                 }
@@ -3455,7 +3463,7 @@
                 ],
                 "github_reviewed": true,
                 "github_reviewed_at": "2026-05-19T20:10:53Z",
-                "nvd_published_at": null,
+                "nvd_published_at": "2026-06-09T23:16:59Z",
                 "severity": "HIGH"
               }
             }
