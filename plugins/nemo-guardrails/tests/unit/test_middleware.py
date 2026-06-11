@@ -289,7 +289,9 @@ async def middleware() -> AsyncIterator[GuardrailsMiddleware]:
     """
     instance = GuardrailsMiddleware()
     instance._inject_cache(MagicMock())
-    with patch("nemo_guardrails_plugin.middleware.get_async_platform_sdk", return_value=AsyncMock()):
+    mock_sdk = AsyncMock()
+    mock_sdk._custom_headers = {}
+    with patch("nemo_guardrails_plugin.middleware.get_async_platform_sdk", return_value=mock_sdk):
         await instance.on_startup()
     try:
         yield instance
@@ -679,7 +681,7 @@ class TestProcessRequest:
         assert isinstance(result, ImmediateResponse)
         assert not isinstance(result.data, AsyncIterator)
 
-        data: dict[str, Any] = result.data
+        data: dict[str, Any] = result.data  # type: ignore[assignment]
         assert data["id"].startswith("chatcmpl-")
         assert data["model"] == "ws/llama"
         assert data["choices"] == [
@@ -712,7 +714,7 @@ class TestProcessRequest:
             )
 
         assert isinstance(result, ImmediateResponse)
-        data: dict[str, Any] = result.data  # type: ignore[assignment]
+        data: dict[str, Any] = result.data
         assert "guardrails_data" not in data
         assert result.response_body_annotations["guardrails_data"]["config_ids"] == ["<inline:my-test>"]
 
@@ -1560,7 +1562,7 @@ class TestStreamingLeaseLifecycle:
         observed_active: list[bool] = []
 
         @contextmanager
-        def _platform_context():
+        def _platform_context(_sdk: Any):
             nonlocal active
             active = True
             try:
@@ -1840,9 +1842,11 @@ class TestLifecycle:
         original_level = library_logger.level
         instance = GuardrailsMiddleware()
 
+        mock_sdk = AsyncMock()
+        mock_sdk._custom_headers = {}
         try:
             with (
-                patch("nemo_guardrails_plugin.middleware.get_async_platform_sdk", return_value=AsyncMock()),
+                patch("nemo_guardrails_plugin.middleware.get_async_platform_sdk", return_value=mock_sdk),
                 patch(
                     "nemo_guardrails_plugin.middleware.get_common_service_config",
                     return_value=SimpleNamespace(log_level=log_level),
@@ -2277,7 +2281,7 @@ class TestProcessRequestErrorSurfacing:
         observed_active: list[bool] = []
 
         @contextmanager
-        def _platform_context():
+        def _platform_context(_sdk: Any):
             nonlocal active
             active = True
             try:

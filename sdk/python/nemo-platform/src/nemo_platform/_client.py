@@ -63,7 +63,6 @@ if TYPE_CHECKING:
         projects,
         guardrail,
         inference,
-        evaluation,
         workspaces,
         experiments,
         experiment_groups,
@@ -79,7 +78,6 @@ if TYPE_CHECKING:
     from .resources.projects.projects import ProjectsResource, AsyncProjectsResource
     from .resources.guardrail.guardrail import GuardrailResource, AsyncGuardrailResource
     from .resources.inference.inference import InferenceResource, AsyncInferenceResource
-    from .resources.evaluation.evaluation import EvaluationResource, AsyncEvaluationResource
     from .resources.workspaces.workspaces import WorkspacesResource, AsyncWorkspacesResource
     from .resources.experiments.experiments import ExperimentsResource, AsyncExperimentsResource
     from .resources.experiment_groups.experiment_groups import ExperimentGroupsResource, AsyncExperimentGroupsResource
@@ -227,12 +225,6 @@ class NeMoPlatform(SyncAPIClient):
         from .resources.entities import EntitiesResource
 
         return EntitiesResource(self)
-
-    @cached_property
-    def evaluation(self) -> EvaluationResource:
-        from .resources.evaluation import EvaluationResource
-
-        return EvaluationResource(self)
 
     @cached_property
     def files(self) -> FilesResource:
@@ -593,12 +585,6 @@ class AsyncNeMoPlatform(AsyncAPIClient):
         return AsyncEntitiesResource(self)
 
     @cached_property
-    def evaluation(self) -> AsyncEvaluationResource:
-        from .resources.evaluation import AsyncEvaluationResource
-
-        return AsyncEvaluationResource(self)
-
-    @cached_property
     def files(self) -> AsyncFilesResource:
         from .filesets.resources import AsyncFilesResource
 
@@ -820,12 +806,6 @@ class NeMoPlatformWithRawResponse:
         return EntitiesResourceWithRawResponse(self._client.entities)
 
     @cached_property
-    def evaluation(self) -> evaluation.EvaluationResourceWithRawResponse:
-        from .resources.evaluation import EvaluationResourceWithRawResponse
-
-        return EvaluationResourceWithRawResponse(self._client.evaluation)
-
-    @cached_property
     def files(self) -> files.FilesResourceWithRawResponse:
         from .resources.files import FilesResourceWithRawResponse
 
@@ -915,12 +895,6 @@ class AsyncNeMoPlatformWithRawResponse:
         from .resources.entities import AsyncEntitiesResourceWithRawResponse
 
         return AsyncEntitiesResourceWithRawResponse(self._client.entities)
-
-    @cached_property
-    def evaluation(self) -> evaluation.AsyncEvaluationResourceWithRawResponse:
-        from .resources.evaluation import AsyncEvaluationResourceWithRawResponse
-
-        return AsyncEvaluationResourceWithRawResponse(self._client.evaluation)
 
     @cached_property
     def files(self) -> files.AsyncFilesResourceWithRawResponse:
@@ -1014,12 +988,6 @@ class NeMoPlatformWithStreamedResponse:
         return EntitiesResourceWithStreamingResponse(self._client.entities)
 
     @cached_property
-    def evaluation(self) -> evaluation.EvaluationResourceWithStreamingResponse:
-        from .resources.evaluation import EvaluationResourceWithStreamingResponse
-
-        return EvaluationResourceWithStreamingResponse(self._client.evaluation)
-
-    @cached_property
     def files(self) -> files.FilesResourceWithStreamingResponse:
         from .resources.files import FilesResourceWithStreamingResponse
 
@@ -1109,12 +1077,6 @@ class AsyncNeMoPlatformWithStreamedResponse:
         from .resources.entities import AsyncEntitiesResourceWithStreamingResponse
 
         return AsyncEntitiesResourceWithStreamingResponse(self._client.entities)
-
-    @cached_property
-    def evaluation(self) -> evaluation.AsyncEvaluationResourceWithStreamingResponse:
-        from .resources.evaluation import AsyncEvaluationResourceWithStreamingResponse
-
-        return AsyncEvaluationResourceWithStreamingResponse(self._client.evaluation)
 
     @cached_property
     def files(self) -> files.AsyncFilesResourceWithStreamingResponse:

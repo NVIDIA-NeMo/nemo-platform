@@ -17,11 +17,17 @@
 
 from __future__ import annotations
 
-from typing_extensions import TypedDict
+from typing import Union
+from typing_extensions import TypeAlias, TypedDict
 
+from ..shared_params.string_filter import StringFilter
 from ..shared_params.datetime_filter import DatetimeFilter
 
-__all__ = ["ModelDeploymentConfigFilterParam"]
+__all__ = ["ModelDeploymentConfigFilterParam", "Description", "Name"]
+
+Description: TypeAlias = Union[StringFilter, str]
+
+Name: TypeAlias = Union[StringFilter, str]
 
 
 class ModelDeploymentConfigFilterParam(TypedDict, total=False):
@@ -30,13 +36,13 @@ class ModelDeploymentConfigFilterParam(TypedDict, total=False):
     created_at: DatetimeFilter
     """Filter by creation date."""
 
-    description: str
+    description: Description
     """Filter by description."""
 
     model_entity_id: str
     """Filter by associated model entity ID."""
 
-    name: str
+    name: Name
     """Filter by config name."""
 
     project: str

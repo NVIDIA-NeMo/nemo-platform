@@ -5,7 +5,7 @@
 
 from typing import Self
 
-from nmp.common.config import create_service_config_class, get_platform_config, get_service_config
+from nmp.common.config import Runtime, create_service_config_class, get_platform_config, get_service_config
 from nmp.core.jobs.app.profiles import ExecutionProfileT
 from nmp.core.jobs.controllers.backends.config import (
     DefaultExecutionProfileConfig,
@@ -30,6 +30,19 @@ class JobsServiceConfig(create_service_config_class("jobs")):  # type: ignore
     )
     reconcile_interval_seconds: int = Field(default=2, description="Interval in seconds for the job reconciler to run")
     schedule_interval_seconds: int = Field(default=5, description="Interval in seconds for the job scheduler to run")
+    enable_subprocess_executor: bool | None = Field(
+        default=None,
+        description=(
+            "Register the subprocess/default execution profile. When unset, defaults to true for "
+            "docker/none runtimes and false for kubernetes."
+        ),
+    )
+
+    def resolved_enable_subprocess_executor(self) -> bool:
+        """Whether host subprocess execution is registered for default profiles."""
+        if self.enable_subprocess_executor is not None:
+            return self.enable_subprocess_executor
+        return get_platform_config().runtime != Runtime.KUBERNETES
 
     @model_validator(mode="after")
     def validate_executors(self) -> Self:
@@ -55,5 +68,6 @@ profiles = merge_executor_profiles(
     get_default_executor_profiles_for_runtime(
         runtime=get_platform_config().runtime,
         defaults=config.executor_defaults,
+        enable_subprocess_executor=config.resolved_enable_subprocess_executor(),
     ),
 )

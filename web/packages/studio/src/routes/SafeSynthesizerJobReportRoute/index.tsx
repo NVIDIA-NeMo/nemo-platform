@@ -4,7 +4,7 @@
 import {
   useSafeSynthesizerDownloadJobResultSummary as useDownloadJobResultSummaryV1beta1SafeSynthesizerJobsJobIdResultsSummaryDownloadGet,
   useSafeSynthesizerGetJobSuspense as useGetJobV1beta1SafeSynthesizerJobsJobIdGetSuspense,
-} from '@nemo/sdk/vendored/safe-synthesizer/api';
+} from '@nemo/sdk/generated/safe-synthesizer/api';
 import { Stack } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { SafeSynthesizerNavigation } from '@studio/components/SafeSynthesizerNavigation';

@@ -312,10 +312,10 @@ def generate_command_docs(
     else:
         full_name = command_name
 
-    # Header - use "Full CLI Reference" for root, plain name for others
+    # Header - use Fern MDX frontmatter for root, plain name for others
     # Markdown only supports up to 6 levels of headers, use bold for deeper nesting
     if is_root:
-        docs += "# Full CLI Reference\n\n"
+        docs += '---\ntitle: "Full CLI Reference"\ndescription: ""\n---\n'
     elif indent <= 6:
         docs += "#" * indent + f" {full_name}\n\n"
     else:
@@ -545,6 +545,12 @@ def generate_index_snippet(app: typer.Typer, name: str = "nemo") -> str:
 
     lines: list[str] = []
 
+    # Fern MDX frontmatter (snippet is included into other pages).
+    lines.append("---")
+    lines.append('title: ""')
+    lines.append('description: ""')
+    lines.append("---")
+
     # --- Global options table ---
     lines.append("**Global options** apply to all commands:")
     lines.append("")
@@ -638,7 +644,52 @@ def generate_docs(app: typer.Typer, name: str = "nemo") -> str:
         "{ref}`Entity references <entity-references>`",
     )
 
+    docs = _escape_mdx(docs)
+
     return docs.strip() + "\n"
+
+
+def _escape_mdx(text: str) -> str:
+    """Escape `{` and `<` outside fenced code blocks so MDX does not parse them as JSX."""
+    lines = text.split("\n")
+    in_code_fence = False
+    escaped: list[str] = []
+    for line in lines:
+        stripped = line.lstrip()
+        if stripped.startswith("```"):
+            in_code_fence = not in_code_fence
+            escaped.append(line)
+            continue
+        if in_code_fence:
+            escaped.append(line)
+            continue
+        escaped.append(_escape_mdx_line(line))
+    return "\n".join(escaped)
+
+
+def _escape_mdx_line(line: str) -> str:
+    """Escape `{` and `<` in `line`, preserving inline backtick spans."""
+    out: list[str] = []
+    i = 0
+    n = len(line)
+    while i < n:
+        ch = line[i]
+        if ch == "`":
+            end = line.find("`", i + 1)
+            if end == -1:
+                out.append(line[i:])
+                break
+            out.append(line[i : end + 1])
+            i = end + 1
+            continue
+        if ch == "{":
+            out.append("\\{")
+        elif ch == "<":
+            out.append("\\<")
+        else:
+            out.append(ch)
+        i += 1
+    return "".join(out)
 
 
 def main() -> None:

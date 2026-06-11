@@ -5,7 +5,7 @@
 
 from typing import Any, Dict, Optional
 
-from nmp.common.entities.values import DatetimeFilter, Filter
+from nmp.common.entities.values import DatetimeFilter, Filter, StringFilter
 from pydantic import BaseModel, Field
 
 
@@ -36,8 +36,8 @@ class GuardrailConfigUpdate(BaseModel):
 class GuardrailConfigFilter(Filter):
     """Filter schema for listing guardrail configs."""
 
-    name: Optional[str] = Field(default=None, description="Filter by config name.")
-    description: Optional[str] = Field(default=None, description="Filter by config description.")
+    name: StringFilter | str | None = Field(default=None, description="Filter by config name.")
+    description: StringFilter | str | None = Field(default=None, description="Filter by config description.")
     project: Optional[str] = Field(default=None, description="Filter by project name.")
     created_at: Optional[DatetimeFilter] = Field(
         default=None,

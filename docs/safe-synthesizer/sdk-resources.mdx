@@ -1,0 +1,100 @@
+---
+title: "Safe Synthesizer NeMo Platform SDK Resources"
+description: ""
+---
+<a id="safe-synthesizer-nmp-sdk-resources"></a>
+
+The `nemo_safe_synthesizer_plugin.sdk` module provides NeMo Platform-specific helpers for creating and monitoring NeMo Safe Synthesizer jobs. Use these objects when you want to submit jobs through the platform Jobs service and retrieve platform-managed results.
+
+## SafeSynthesizerResource
+
+`SafeSynthesizerResource` is the entry point mounted on a `NeMoPlatform` client:
+
+```python
+import os
+
+from nemo_platform import NeMoPlatform
+
+client = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace="default",
+)
+safe_synthesizer = client.safe_synthesizer
+```
+
+An async variant with the same namespace is available as `AsyncNeMoPlatform.safe_synthesizer`.
+
+## SafeSynthesizerJobsResource
+
+`client.safe_synthesizer.jobs` calls the plugin API for NeMo Safe Synthesizer jobs.
+
+| Method | Description |
+|--------|-------------|
+| `create(*, spec, name=None, workspace=None, project=None, timeout=None, **params)` | Creates a NeMo Safe Synthesizer platform job from a job spec. |
+| `list(*, workspace=None, **params)` | Lists NeMo Safe Synthesizer jobs in a workspace. |
+| `retrieve(name, *, workspace=None)` | Retrieves one NeMo Safe Synthesizer job by name. |
+| `get_status(name, *, workspace=None)` | Returns the job status from the platform Jobs service. |
+| `get_logs(name, *, workspace=None, **kwargs)` | Returns paginated job logs from the platform Jobs service. |
+
+The async resource exposes the same methods as `async def` methods.
+
+## SafeSynthesizerJobBuilder
+
+`SafeSynthesizerJobBuilder` assembles a job spec, uploads local datasets to Files, submits the job, and returns a `SafeSynthesizerJob` wrapper.
+
+```python
+import pandas as pd
+
+from nemo_safe_synthesizer_plugin.sdk.job_builder import SafeSynthesizerJobBuilder
+
+df = pd.DataFrame({"text": ["sample record"]})
+
+job = (
+    SafeSynthesizerJobBuilder(client, workspace="default")
+    .with_data_source(df)
+    .with_classify_model_provider("default/nvidia-build")
+    .with_replace_pii()
+    .synthesize()
+    .create_job(name="safe-synth-job", project="default-project")
+)
+```
+
+| Method | Description |
+|--------|-------------|
+| `with_data_source(data_source)` | Sets a pandas DataFrame or local `.csv`, `.parquet`, `.json`, or `.jsonl` file as input. Local data is uploaded to Files before submission. |
+| `with_data(config=None, **kwargs)` | Sets data preparation parameters. |
+| `with_train(config=None, **kwargs)` | Sets fine-tuning parameters. |
+| `with_generate(config=None, **kwargs)` | Sets generation parameters and enables synthesis. |
+| `synthesize()` | Enables synthesis. |
+| `with_evaluate(config=None, **kwargs)` | Sets evaluation parameters. |
+| `with_differential_privacy(config=None, **kwargs)` | Sets DP-SGD parameters. |
+| `with_time_series(config=None, **kwargs)` | Sets time-series parameters. |
+| `with_replace_pii(config=None, **kwargs)` | Enables PII replacement. |
+| `with_classify_model_provider(provider_name)` | Sets the Inference Gateway provider used for PII column classification. Pair with `with_replace_pii()`. |
+| `with_hf_token_secret(secret_name)` | Passes a platform secret name as `HF_TOKEN` to the runtime job. |
+| `with_pretrained_model_job(job_name)` | Reuses a prior job's `adapter` result for generation-only synthesis. |
+| `resolve_job_config()` | Uploads data and validates the generated job spec without submitting. |
+| `create_job(**kwargs)` | Submits the job and returns `SafeSynthesizerJob`. |
+
+## SafeSynthesizerJob
+
+`SafeSynthesizerJob` is a convenience wrapper returned by the builder.
+
+| Method | Description |
+|--------|-------------|
+| `fetch_status()` | Returns the current platform job status string. |
+| `fetch_status_info()` | Returns the full platform job status response. |
+| `wait_for_completion(poll_interval=10, verbose=True, log_timeout=None)` | Polls status and logs until the job reaches a terminal state. Raises `RuntimeError` for `error` or `cancelled`. |
+| `fetch_logs(timeout=None)` | Iterates over platform job log entries. |
+| `print_logs(timeout=None)` | Prints platform job logs to stdout. |
+| `fetch_data()` | Downloads the `synthetic-data` result and returns it as a pandas DataFrame. |
+| `fetch_summary()` | Downloads the `summary` result as a `SafeSynthesizerSummary`. |
+| `fetch_report()` | Downloads the `evaluation-report` result as HTML. |
+| `save_report(path)` | Saves the HTML evaluation report to a local file. |
+| `display_report_in_notebook(width="100%", height=1000)` | Displays the evaluation report in a notebook. |
+
+## Related Topics
+
+- [Safe Synthesizer 101](/documentation/synthesize-safe-data/tutorials/safe-synthesizer-101) - submit and monitor a first job
+- [Safe Synthesizer Jobs](/documentation/synthesize-safe-data/about/jobs) - understand job lifecycle and troubleshooting
+- [Parameters Reference](/documentation/synthesize-safe-data/about/parameters-reference) - review job spec and configuration fields

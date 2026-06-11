@@ -1,3 +1,5 @@
+# Bundled fallback when NMP_CONFIG_FILE_PATH is unset. For local dev, prefer:
+#   source packages/nmp_platform/config/local.env  (SQLite + paths)
 platform:
   runtime: "docker"
   base_url: "http://0.0.0.0:8080"
@@ -5,11 +7,12 @@ platform:
 service: {}
 
 auth:
-  enabled: false
+  enabled: true
+  allow_unsigned_jwt: true
   policy_decision_point_provider: embedded
-  policy_decision_point_base_url: "http://localhost:8080"
+  policy_decision_point_base_url: "http://127.0.0.1:8080"
   policy_data_refresh_interval: 2
-  bundle_cache_seconds: 0
+  bundle_cache_seconds: 15
   admin_email: "admin@example.com"
 
 entities: {}
@@ -25,6 +28,18 @@ jobs:
         ttl_seconds_before_active: 60
         ttl_seconds_active: 3600
         ttl_seconds_after_finished: 300
+    # Uncomment for using customizer
+    # - provider: cpu
+    #   profile: gpu
+    #   backend: docker
+    #   config:
+    #     launcher_tool_path: ./services/core/jobs/jobs-launcher/jobs-launcher
+    # - provider: gpu
+    #   profile: gpu
+    #   backend: docker
+    #   config:
+    #     launcher_tool_path: ./services/core/jobs/jobs-launcher/jobs-launcher
+
   executor_defaults:
     docker:
       cleanup_completed_jobs_immediately: false

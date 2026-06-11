@@ -12,8 +12,8 @@ from enum import IntEnum
 from types import FrameType
 
 from nemo_evaluator.jobs.evaluate import EvaluateJob
+from nemo_platform_plugin.sdk_provider import get_task_sdk
 from nemo_platform_plugin.tasks.dispatcher import run_task
-from nmp.common.sdk_factory import get_task_sdk
 
 logger = logging.getLogger(__name__)
 

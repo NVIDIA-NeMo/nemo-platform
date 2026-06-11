@@ -1,0 +1,136 @@
+---
+title: "Permissions Reference"
+description: ""
+---
+(permissions-reference)=
+
+
+Complete reference of all permissions across the NeMo Platform APIs. Each permission controls access to a specific operation within an individual API. Permissions are assigned to users through [roles](roles-and-permissions.md).
+
+For token-level access restrictions, see [API Scopes](api-scopes.md). For the RBAC model, see [Authorization Concepts](../concepts.md).
+
+<Note>
+
+PlatformAdmin is omitted — it bypasses permission checks entirely at the policy level.
+
+</Note>
+## Entities API
+
+| Permission | Description | Viewer | Editor | Admin |
+|------------|-------------|:------:|:------:|:-----:|
+| `entities.(read \\| create \\| update \\| delete)` | Read, create, update, delete entities |  |  |  |
+
+## Files API
+
+| Permission | Description | Viewer | Editor | Admin |
+|------------|-------------|:------:|:------:|:-----:|
+| `filesets.(read \\| list)` | Read, list files | ✓ | ✓ | ✓ |
+| `filesets.(create \\| update \\| delete)` | Create, update, delete files |  | ✓ | ✓ |
+
+## Guardrails API
+
+| Permission | Description | Viewer | Editor | Admin |
+|------------|-------------|:------:|:------:|:-----:|
+| `guardrails.checks.exec` | Execute guardrail checks |  | ✓ | ✓ |
+| `guardrails.configs.(read \\| list)` | Read, list guardrails configs | ✓ | ✓ | ✓ |
+| `guardrails.configs.(create \\| update \\| delete)` | Create, update, delete guardrails configs |  | ✓ | ✓ |
+
+## IAM API
+
+| Permission | Description | Viewer | Editor | Admin |
+|------------|-------------|:------:|:------:|:-----:|
+| `iam.(read \\| list \\| create \\| delete)` | Read, list, create, delete iam |  |  | ✓ |
+| `iam.bundle.read` | Download OPA authorization bundle (external OPA / advanced ops) |  |  |  |
+
+## Inference API
+
+| Permission | Description | Viewer | Editor | Admin |
+|------------|-------------|:------:|:------:|:-----:|
+| `inference.deployment-configs.(read \\| list)` | Read, list inference deployment-configs | ✓ | ✓ | ✓ |
+| `inference.deployment-configs.(create \\| delete)` | Create, delete inference deployment-configs |  | ✓ | ✓ |
+| `inference.deployments.(read \\| list)` | Read, list inference deployments | ✓ | ✓ | ✓ |
+| `inference.deployments.(create \\| update \\| delete)` | Create, update, delete inference deployments |  | ✓ | ✓ |
+| `inference.gateway.model.exec` | Execute model gateway inference | ✓ | ✓ | ✓ |
+| `inference.gateway.openai.exec` | Execute OpenAI-compatible gateway inference | ✓ | ✓ | ✓ |
+| `inference.gateway.provider.exec` | Execute provider gateway inference | ✓ | ✓ | ✓ |
+| `inference.providers.(read \\| list)` | Read, list inference providers | ✓ | ✓ | ✓ |
+| `inference.providers.(create \\| update \\| delete)` | Create, update, delete inference providers |  | ✓ | ✓ |
+| `inference.virtual-models.(read \\| list)` | Read, list inference virtual-models | ✓ | ✓ | ✓ |
+| `inference.virtual-models.(create \\| update \\| delete)` | Create, update, delete inference virtual-models |  | ✓ | ✓ |
+
+## Intake API
+
+| Permission | Description | Viewer | Editor | Admin |
+|------------|-------------|:------:|:------:|:-----:|
+| `intake.annotations.(read \\| list)` | Read, list intake annotations | ✓ | ✓ | ✓ |
+| `intake.annotations.(create \\| delete)` | Create, delete intake annotations |  | ✓ | ✓ |
+| `intake.evaluator-results.(read \\| list)` | Read, list intake evaluator-results | ✓ | ✓ | ✓ |
+| `intake.evaluator-results.create` | Create intake evaluator results |  | ✓ | ✓ |
+| `intake.experiment-groups.read` | Read intake experiment groups | ✓ | ✓ | ✓ |
+| `intake.experiment-groups.(create \\| update \\| delete)` | Create, update, delete intake experiment-groups |  | ✓ | ✓ |
+| `intake.experiments.read` | Read intake experiments | ✓ | ✓ | ✓ |
+| `intake.experiments.(create \\| update \\| delete)` | Create, update, delete intake experiments |  | ✓ | ✓ |
+| `intake.ingest.create` | Ingest traces into intake |  | ✓ | ✓ |
+| `intake.spans.(read \\| list)` | Read, list intake spans | ✓ | ✓ | ✓ |
+| `intake.traces.read` | Read intake traces | ✓ | ✓ | ✓ |
+
+## Jobs API
+
+| Permission | Description | Viewer | Editor | Admin |
+|------------|-------------|:------:|:------:|:-----:|
+| `jobs.(read \\| list)` | Read, list jobs | ✓ | ✓ | ✓ |
+| `jobs.(create \\| update \\| delete \\| cancel)` | Create, update, delete, cancel jobs |  | ✓ | ✓ |
+
+## Models API
+
+| Permission | Description | Viewer | Editor | Admin |
+|------------|-------------|:------:|:------:|:-----:|
+| `models.(read \\| list)` | Read, list models | ✓ | ✓ | ✓ |
+| `models.(create \\| update \\| delete)` | Create, update, delete models |  | ✓ | ✓ |
+| `models.adapters.(read \\| list)` | Read, list models adapters | ✓ | ✓ | ✓ |
+| `models.adapters.(create \\| update \\| delete)` | Create, update, delete models adapters |  | ✓ | ✓ |
+| `models.tool-call-plugin.set` | Whether this user can set tool_call_plugin on Models or Deployment Configs *(policy-enforced)* |  |  | ✓ |
+| `models.trust-remote-code.set` | Whether this user can set trust_remote_code on Models *(policy-enforced)* |  |  | ✓ |
+
+## Platform
+
+| Permission | Description | Viewer | Editor | Admin |
+|------------|-------------|:------:|:------:|:-----:|
+| `platform.admin` | Platform-wide administrative bypass *(policy-enforced)* |  |  |  |
+
+## Projects API
+
+| Permission | Description | Viewer | Editor | Admin |
+|------------|-------------|:------:|:------:|:-----:|
+| `projects.(read \\| list)` | Read, list projects | ✓ | ✓ | ✓ |
+| `projects.(create \\| update \\| delete)` | Create, update, delete projects |  | ✓ | ✓ |
+
+## Safe Synthesizer API
+
+| Permission | Description | Viewer | Editor | Admin |
+|------------|-------------|:------:|:------:|:-----:|
+| `safe-synthesizer.jobs.(read \\| list \\| create \\| delete \\| cancel)` | Read, list, create, delete, cancel safe synthesizer jobs |  |  |  |
+
+## Secrets API
+
+| Permission | Description | Viewer | Editor | Admin |
+|------------|-------------|:------:|:------:|:-----:|
+| `secrets.(read \\| list)` | Read, list secrets | ✓ | ✓ | ✓ |
+| `secrets.(create \\| update \\| delete)` | Create, update, delete secrets |  | ✓ | ✓ |
+| `secrets.(access \\| rotate)` | Access, rotate secrets |  |  |  |
+
+## Workspaces API
+
+| Permission | Description | Viewer | Editor | Admin |
+|------------|-------------|:------:|:------:|:-----:|
+| `workspaces.(read \\| list)` | Read, list workspaces | ✓ | ✓ | ✓ |
+| `workspaces.(update \\| delete)` | Update, delete workspaces |  | ✓ | ✓ |
+| `workspaces.members.(list \\| create \\| update \\| delete)` | List, create, update, delete workspaces members |  |  | ✓ |
+| `workspaces.members.read` | Read workspace member details |  |  |  |
+
+## Related
+
+- [Roles & Permissions](roles-and-permissions.md) — Role descriptions and hierarchy.
+- [API Scopes](api-scopes.md) — Token-level scope restrictions.
+- [Authorization Concepts](../concepts.md) — Workspaces, roles, bindings, and the RBAC model.
+- [Security Model](../security-model.md) — Trust boundaries and authorization layers.

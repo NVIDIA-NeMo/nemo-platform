@@ -44,15 +44,15 @@ export const ExperimentGroupCard: FC<ExperimentGroupCardProps> = ({ group, works
     <Card
       interactive
       attributes={{ CardContent: { className: 'flex flex-row items-center gap-6 p-6' } }}
-      onClick={() => navigate(getExperimentGroupDetailRoute(workspace, group.id))}
+      onClick={() => navigate(getExperimentGroupDetailRoute(workspace, group.name))}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => {
         if (e.key === 'Enter') {
-          navigate(getExperimentGroupDetailRoute(workspace, group.id));
+          navigate(getExperimentGroupDetailRoute(workspace, group.name));
         } else if (e.key === ' ') {
           e.preventDefault();
-          navigate(getExperimentGroupDetailRoute(workspace, group.id));
+          navigate(getExperimentGroupDetailRoute(workspace, group.name));
         }
       }}
     >

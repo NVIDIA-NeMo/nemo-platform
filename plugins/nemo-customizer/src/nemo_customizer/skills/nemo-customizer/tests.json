@@ -1,0 +1,85 @@
+{
+  "skill": "nemo-customizer",
+  "tests": [
+    {
+      "type": "explicit",
+      "prompt": "Use the nemo-customizer skill to fine-tune Qwen with automodel.",
+      "expected_skill": "nemo-customizer"
+    },
+    {
+      "type": "explicit",
+      "prompt": "Run nemo-customizer. I need to submit an automodel SFT LoRA job on NeMo Platform.",
+      "expected_skill": "nemo-customizer"
+    },
+    {
+      "type": "explicit",
+      "prompt": "Invoke nemo customization via the customizer skill and walk me through filesets and model entity setup.",
+      "expected_skill": "nemo-customizer"
+    },
+    {
+      "type": "implicit",
+      "prompt": "Fine-tune a model with LoRA SFT via nemo customization and a qwen3 Hugging Face weights fileset.",
+      "expected_skill": "nemo-customizer"
+    },
+    {
+      "type": "implicit",
+      "prompt": "Help me run SFT LoRA training with nemo customization automodel.",
+      "expected_skill": "nemo-customizer"
+    },
+    {
+      "type": "implicit",
+      "prompt": "Train a small chat model on a dataset I have locally and register the output on the platform.",
+      "expected_skill": "nemo-customizer"
+    },
+    {
+      "type": "explicit",
+      "prompt": "Use nemo customization unsloth submit to do a LoRA SFT as a Docker GPU job on the platform.",
+      "expected_skill": "nemo-customizer"
+    },
+    {
+      "type": "explicit",
+      "prompt": "Help me submit an unsloth fine-tune job via nemo customization with 4-bit LoRA.",
+      "expected_skill": "nemo-customizer"
+    },
+    {
+      "type": "implicit",
+      "prompt": "Fine-tune Qwen3-1.7B with Unsloth on NeMo Platform — I want the Unsloth training driver and bitsandbytes 4-bit loading.",
+      "expected_skill": "nemo-customizer"
+    },
+    {
+      "type": "implicit",
+      "prompt": "I want a quick LoRA adapter on Qwen with Unsloth's optimizer defaults, single GPU container job.",
+      "expected_skill": "nemo-customizer"
+    },
+    {
+      "type": "contextual",
+      "prompt": "NeMo Platform is running. Before any customization training, help me explore what my support agent should do.",
+      "expected_skill_not": "nemo-customizer"
+    },
+    {
+      "type": "contextual",
+      "prompt": "I uploaded train.jsonl for fun. Mostly I want nemo-build-agent to deploy my LangGraph NAT workflow from the spec.",
+      "expected_skill_not": "nemo-customizer"
+    },
+    {
+      "type": "contextual",
+      "prompt": "Jobs controller is up. Next I need nemo-status and evaluator benchmarks, not model weight training.",
+      "expected_skill_not": "nemo-customizer"
+    },
+    {
+      "type": "negative-control",
+      "prompt": "Use nemo-build-agent to scaffold and deploy my agent from agents/calculator.spec.md.",
+      "expected_skill_not": "nemo-customizer"
+    },
+    {
+      "type": "negative-control",
+      "prompt": "Run safe-synthesizer on my CSV for tabular synthetic data generation.",
+      "expected_skill_not": "nemo-customizer"
+    },
+    {
+      "type": "negative-control",
+      "prompt": "Attach guardrails middleware to my virtual model in the inference gateway.",
+      "expected_skill_not": "nemo-customizer"
+    }
+  ]
+}

@@ -91,7 +91,9 @@ def _create_deployment_with_config(
     config = sdk.inference.deployment_configs.create(
         workspace=DEFAULT_WORKSPACE,
         name=config_name,
-        nim_deployment={
+        engine="nim",
+        model_spec={},
+        executor_config={
             "gpu": 0,
             "image_name": image_name,
             "image_tag": image_tag,

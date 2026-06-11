@@ -7,7 +7,7 @@ import nmp.evaluator.app.values as app
 import nmp.evaluator.entities as entities
 from nemo_evaluator_sdk.values import DatasetRows
 from nmp.common.api.common import Page
-from nmp.common.entities.values import DatetimeFilter, Filter, map_entity_field
+from nmp.common.entities.values import DatetimeFilter, Filter, StringFilter, map_entity_field
 from nmp.evaluator.app.values import Fileset, FilesetRef, MetricRef
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from typing_extensions import Self
@@ -20,8 +20,8 @@ from typing_extensions import Self
 class BenchmarksListFilter(Filter):
     """Filter for list benchmarks query."""
 
-    name: str | None = Field(default=None, description="Filter benchmarks by name.")
-    description: str | None = Field(default=None, description="Filter benchmarks by description.")
+    name: StringFilter | str | None = Field(default=None, description="Filter benchmarks by name.")
+    description: StringFilter | str | None = Field(default=None, description="Filter benchmarks by description.")
     dataset: FilesetRef | None = Field(
         default=None,
         description="Filter custom benchmarks by dataset used for evaluation (format workspace/fileset-name).",
@@ -116,7 +116,7 @@ class BenchmarksListResponse(Page[Benchmark | ExtendedBenchmark | SystemBenchmar
 class BenchmarkJobResultsListFilter(Filter):
     """Filter for list benchmark job results."""
 
-    name: str | None = Field(default=None, description="Filter job results by name.")
+    name: StringFilter | str | None = Field(default=None, description="Filter job results by name.")
     benchmark: app.BenchmarkRef | None = Field(default=None, description="Filter results by benchmark reference.")
     metrics: str | None = Field(default=None, description="Filter results by metric reference.")
     dataset: app.FilesetRef | None = Field(

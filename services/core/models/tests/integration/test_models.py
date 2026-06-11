@@ -719,10 +719,12 @@ def test_deployment_config_crud_lifecycle(test_clients: ClientContext):
     config_data = {
         "name": test_name,
         "description": "A deployment configuration for LLM inference",
-        "nim_deployment": {
+        "engine": "nim",
+        "model_spec": {"lora_enabled": True},
+        "executor_config": {
             "gpu": 2,
-            "image": "nvcr.io/nvidia/nim:latest",
-            "lora_enabled": True,
+            "image_name": "nvcr.io/nvidia/nim",
+            "image_tag": "latest",
         },
     }
     response = test_clients.test_client.post(
@@ -732,8 +734,8 @@ def test_deployment_config_crud_lifecycle(test_clients: ClientContext):
     created = response.json()
     assert created["name"] == test_name
     assert created["description"] == "A deployment configuration for LLM inference"
-    assert created["nim_deployment"]["gpu"] == 2
-    assert created["nim_deployment"]["lora_enabled"] is True
+    assert created["executor_config"]["gpu"] == 2
+    assert created["model_spec"]["lora_enabled"] is True
     assert created["entity_version"] == 1
 
     # READ (returns latest version)
@@ -754,10 +756,12 @@ def test_deployment_config_crud_lifecycle(test_clients: ClientContext):
     # UPDATE (creates new version via POST to /{name})
     update_data = {
         "description": "Updated deployment configuration",
-        "nim_deployment": {
+        "engine": "nim",
+        "model_spec": {"lora_enabled": True},
+        "executor_config": {
             "gpu": 4,
-            "image": "nvcr.io/nvidia/nim:v2",
-            "lora_enabled": True,
+            "image_name": "nvcr.io/nvidia/nim",
+            "image_tag": "v2",
         },
     }
     response = test_clients.test_client.post(
@@ -767,7 +771,7 @@ def test_deployment_config_crud_lifecycle(test_clients: ClientContext):
     assert response.status_code == 201, f"Update failed: {response.text}"
     updated = response.json()
     assert updated["description"] == "Updated deployment configuration"
-    assert updated["nim_deployment"]["gpu"] == 4
+    assert updated["executor_config"]["gpu"] == 4
     assert updated["entity_version"] == 2
 
     # READ should now return version 2
@@ -799,7 +803,9 @@ def test_deployment_config_duplicate_returns_409(test_clients: ClientContext):
     config_data = {
         "name": test_name,
         "description": "First config instance",
-        "nim_deployment": {"gpu": 1},
+        "engine": "nim",
+        "model_spec": {},
+        "executor_config": {"gpu": 1},
     }
     response = test_clients.test_client.post(
         f"/apis/models/v2/workspaces/{DEFAULT_WORKSPACE}/deployment-configs", json=config_data
@@ -839,22 +845,26 @@ def test_deployment_config_invalid_input_returns_422(test_clients: ClientContext
     # Missing required 'name' field
     config_data = {
         "description": "Config without a name",
-        "nim_deployment": {"gpu": 1},
+        "engine": "nim",
+        "model_spec": {},
+        "executor_config": {"gpu": 1},
     }
     response = test_clients.test_client.post(
         f"/apis/models/v2/workspaces/{DEFAULT_WORKSPACE}/deployment-configs", json=config_data
     )
     assert response.status_code == 422, f"Expected 422 for missing required field, got {response.status_code}"
 
-    # Invalid nim_deployment type (string instead of object)
+    # Invalid executor_config type (string instead of object)
     config_data = {
         "name": f"invalid-config-{uuid.uuid4().hex[:8]}",
-        "nim_deployment": "should-be-an-object",
+        "engine": "nim",
+        "model_spec": {},
+        "executor_config": "should-be-an-object",
     }
     response = test_clients.test_client.post(
         f"/apis/models/v2/workspaces/{DEFAULT_WORKSPACE}/deployment-configs", json=config_data
     )
-    assert response.status_code == 422, f"Expected 422 for invalid nim_deployment type, got {response.status_code}"
+    assert response.status_code == 422, f"Expected 422 for invalid executor_config type, got {response.status_code}"
 
 
 def test_deployment_config_versioning(test_clients: ClientContext):
@@ -865,7 +875,9 @@ def test_deployment_config_versioning(test_clients: ClientContext):
     config_data = {
         "name": test_name,
         "description": "Version 1",
-        "nim_deployment": {"gpu": 1},
+        "engine": "nim",
+        "model_spec": {},
+        "executor_config": {"gpu": 1},
     }
     response = test_clients.test_client.post(
         f"/apis/models/v2/workspaces/{DEFAULT_WORKSPACE}/deployment-configs", json=config_data
@@ -878,7 +890,9 @@ def test_deployment_config_versioning(test_clients: ClientContext):
         # Create version 2
         update_data = {
             "description": "Version 2",
-            "nim_deployment": {"gpu": 2},
+            "engine": "nim",
+            "model_spec": {},
+            "executor_config": {"gpu": 2},
         }
         response = test_clients.test_client.post(
             f"/apis/models/v2/workspaces/{DEFAULT_WORKSPACE}/deployment-configs/{test_name}",
@@ -891,7 +905,9 @@ def test_deployment_config_versioning(test_clients: ClientContext):
         # Create version 3
         update_data = {
             "description": "Version 3",
-            "nim_deployment": {"gpu": 4},
+            "engine": "nim",
+            "model_spec": {},
+            "executor_config": {"gpu": 4},
         }
         response = test_clients.test_client.post(
             f"/apis/models/v2/workspaces/{DEFAULT_WORKSPACE}/deployment-configs/{test_name}",
@@ -919,7 +935,7 @@ def test_deployment_config_versioning(test_clients: ClientContext):
         fetched_v1 = response.json()
         assert fetched_v1["entity_version"] == 1
         assert fetched_v1["description"] == "Version 1"
-        assert fetched_v1["nim_deployment"]["gpu"] == 1
+        assert fetched_v1["executor_config"]["gpu"] == 1
 
         # Get specific version (version 2)
         response = test_clients.test_client.get(
@@ -956,7 +972,9 @@ def test_deployment_config_list_pagination(test_clients: ClientContext):
             config_data = {
                 "name": f"pagination-config-{test_uuid}-{i:02d}",
                 "description": f"Pagination test config {i}",
-                "nim_deployment": {"gpu": i + 1},
+                "engine": "nim",
+                "model_spec": {},
+                "executor_config": {"gpu": i + 1},
             }
             response = test_clients.test_client.post(
                 f"/apis/models/v2/workspaces/{DEFAULT_WORKSPACE}/deployment-configs",
@@ -1019,7 +1037,9 @@ def test_deployment_config_workspace_isolation(test_clients: ClientContext):
         default_config_data = {
             "name": config_in_default,
             "description": "Config in default workspace",
-            "nim_deployment": {"gpu": 1},
+            "engine": "nim",
+            "model_spec": {},
+            "executor_config": {"gpu": 1},
         }
         response = test_clients.test_client.post(
             f"/apis/models/v2/workspaces/{DEFAULT_WORKSPACE}/deployment-configs",
@@ -1032,7 +1052,9 @@ def test_deployment_config_workspace_isolation(test_clients: ClientContext):
         alt_config_data = {
             "name": config_in_alt,
             "description": "Config in alternate workspace",
-            "nim_deployment": {"gpu": 2},
+            "engine": "nim",
+            "model_spec": {},
+            "executor_config": {"gpu": 2},
         }
         response = test_clients.test_client.post(
             f"/apis/models/v2/workspaces/{alt_workspace}/deployment-configs",
@@ -1077,7 +1099,9 @@ def test_deployment_config_workspace_isolation(test_clients: ClientContext):
         # UPDATE in alternate workspace (creates new version)
         update_data = {
             "description": "Updated config in alternate workspace",
-            "nim_deployment": {"gpu": 4},
+            "engine": "nim",
+            "model_spec": {},
+            "executor_config": {"gpu": 4},
         }
         response = test_clients.test_client.post(
             f"/apis/models/v2/workspaces/{alt_workspace}/deployment-configs/{config_in_alt}",
@@ -1125,7 +1149,9 @@ def test_deployment_crud_lifecycle(test_clients: ClientContext):
     config_data = {
         "name": config_name,
         "workspace": DEFAULT_WORKSPACE,
-        "nim_deployment": {"gpu": 1},
+        "engine": "nim",
+        "model_spec": {},
+        "executor_config": {"gpu": 1},
     }
     response = test_clients.test_client.post(
         f"/apis/models/v2/workspaces/{DEFAULT_WORKSPACE}/deployment-configs", json=config_data
@@ -1196,7 +1222,9 @@ def test_deployment_duplicate_returns_409(test_clients: ClientContext):
     config_data = {
         "name": config_name,
         "workspace": DEFAULT_WORKSPACE,
-        "nim_deployment": {"gpu": 1},
+        "engine": "nim",
+        "model_spec": {},
+        "executor_config": {"gpu": 1},
     }
     response = test_clients.test_client.post(
         f"/apis/models/v2/workspaces/{DEFAULT_WORKSPACE}/deployment-configs", json=config_data
@@ -1272,7 +1300,9 @@ def test_deployment_status_lifecycle(test_clients: ClientContext):
     config_data = {
         "name": config_name,
         "workspace": DEFAULT_WORKSPACE,
-        "nim_deployment": {"gpu": 1},
+        "engine": "nim",
+        "model_spec": {},
+        "executor_config": {"gpu": 1},
     }
     response = test_clients.test_client.post(
         f"/apis/models/v2/workspaces/{DEFAULT_WORKSPACE}/deployment-configs", json=config_data
@@ -1352,7 +1382,9 @@ def test_deployment_list_pagination(test_clients: ClientContext):
     config_data = {
         "name": config_name,
         "workspace": DEFAULT_WORKSPACE,
-        "nim_deployment": {"gpu": 1},
+        "engine": "nim",
+        "model_spec": {},
+        "executor_config": {"gpu": 1},
     }
     response = test_clients.test_client.post(
         f"/apis/models/v2/workspaces/{DEFAULT_WORKSPACE}/deployment-configs", json=config_data
@@ -1422,7 +1454,9 @@ def test_deployment_workspace_isolation(test_clients: ClientContext):
     config_data = {
         "name": config_name,
         "workspace": workspace1,
-        "nim_deployment": {"gpu": 1},
+        "engine": "nim",
+        "model_spec": {},
+        "executor_config": {"gpu": 1},
     }
     response = test_clients.test_client.post(
         f"/apis/models/v2/workspaces/{workspace1}/deployment-configs", json=config_data

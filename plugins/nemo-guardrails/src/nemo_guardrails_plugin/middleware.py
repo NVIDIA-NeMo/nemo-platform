@@ -63,6 +63,7 @@ from nemo_guardrails_plugin.streaming import (
 from nemo_guardrails_plugin.transforms import GenerationResponseMapper
 from nemo_platform.types.guardrail import GenerationLogOptionsParam
 from nemo_platform.types.guardrail import RailsConfig as PlatformRailsConfig
+from nemo_platform_plugin.config import get_common_service_config
 from nemo_platform_plugin.inference_middleware import (
     ImmediateResponse,
     InferenceMiddlewareContext,
@@ -75,11 +76,10 @@ from nemo_platform_plugin.inference_middleware import (
     NemoInferenceMiddleware,
     VirtualModel,
 )
+from nemo_platform_plugin.refs import parse_entity_ref
+from nemo_platform_plugin.sdk_provider import get_async_platform_sdk
 from nemoguardrails.rails.llm.llmrails import LLMRails
 from nemoguardrails.rails.llm.options import GenerationResponse
-from nmp.common.config import get_common_service_config
-from nmp.common.entities.utils import parse_entity_ref
-from nmp.common.sdk_factory import get_async_platform_sdk
 
 logger = logging.getLogger(__name__)
 
@@ -490,7 +490,13 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
 
             async def _streaming_with_lease() -> AsyncIterator[dict[str, Any]]:
                 try:
-                    with platform_headers_context():
+                    # TODO: self._sdk carries static startup headers (service principal
+                    # + internal marker). For full per-request auth propagation, IGW
+                    # should pass a request-scoped SDK on InferenceMiddlewareContext
+                    # (built via sdk.with_options(set_default_headers=...)) so the
+                    # forwarded headers include the current user's on-behalf-of
+                    # identity and OTEL trace context.
+                    with platform_headers_context(self._sdk):
                         async with cache.lease(stable, main_llm=main_llm, provenance=lease_provenance) as llm_rails:
                             inner = handle_streaming_output_check(
                                 llm_rails,
@@ -650,7 +656,9 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
             source, request_body, request_headers, error_msg
         )
         try:
-            with platform_headers_context():
+            # TODO: same as streaming path — use a request-scoped SDK from ctx
+            # once IGW threads one through InferenceMiddlewareContext.
+            with platform_headers_context(self._sdk):
                 async with cache.lease(stable, main_llm=main_llm, provenance=provenance) as llm_rails:
                     raw_generation_response = await asyncio.to_thread(
                         run_generate_in_new_loop,

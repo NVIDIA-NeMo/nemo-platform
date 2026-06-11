@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { PLATFORM_BASE_URL } from '@studio/constants/environment';
+import { BASE_URL, PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { parseJsonObject, parseSseChunk } from '@studio/routes/agents/ClaudeCodeChatRoute/stream';
 import type {
   ClaudeCodeAssistantHistoryPart,
@@ -10,6 +10,7 @@ import type {
   ClaudeCodePermissionRequest,
   ClaudeCodeSessionHistory,
   ClaudeCodeSessionHistoryItem,
+  ClaudeCodeSkill,
   ClaudeCodeStreamHandlers,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
 
@@ -21,11 +22,26 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const claudeCodeApiUrl = (path: string): string =>
   `${PLATFORM_BASE_URL}${CLAUDE_CODE_API_BASE_PATH}${path}`;
 
+const getStudioBaseUrl = (): string | undefined => {
+  if (typeof window === 'undefined') return undefined;
+
+  const normalizedBaseUrl = BASE_URL.replace(/\/+$/, '');
+  const basePath = normalizedBaseUrl && normalizedBaseUrl !== '/' ? normalizedBaseUrl : '';
+  return `${window.location.origin}${basePath}`;
+};
+
+const getStudioPathname = (): string | undefined => {
+  if (typeof window === 'undefined') return undefined;
+  return window.location.pathname;
+};
+
 export const CLAUDE_CODE_HISTORY_SESSIONS_QUERY_KEY = [
   'claude-code',
   'history',
   'sessions',
 ] as const;
+
+export const CLAUDE_CODE_SKILLS_QUERY_KEY = ['claude-code', 'skills'] as const;
 
 export const getClaudeCodeSessionHistoryQueryKey = (sessionId: string) =>
   ['claude-code', 'history', 'session', sessionId] as const;
@@ -87,6 +103,24 @@ const parseHistorySession = (value: unknown): ClaudeCodeHistorySession | undefin
   };
 };
 
+const parseClaudeCodeSkill = (value: unknown): ClaudeCodeSkill | undefined => {
+  if (!isRecord(value)) return undefined;
+  const name = getString(value.name);
+  const claudeName = getString(value.claude_name);
+  const installPath = getString(value.install_path);
+  if (!name || !claudeName || !installPath) return undefined;
+
+  return {
+    name,
+    claude_name: claudeName,
+    description: getString(value.description),
+    source: getString(value.source) || '-',
+    source_path: getString(value.source_path) || undefined,
+    install_path: installPath,
+    installed: value.installed === true,
+  };
+};
+
 const parseAssistantPart = (value: unknown): ClaudeCodeAssistantHistoryPart | undefined => {
   if (!isRecord(value)) return undefined;
 
@@ -137,6 +171,21 @@ export const listClaudeCodeHistorySessions = async (): Promise<ClaudeCodeHistory
   return body
     .map(parseHistorySession)
     .filter((session): session is ClaudeCodeHistorySession => session !== undefined);
+};
+
+export const listClaudeCodeSkills = async (): Promise<ClaudeCodeSkill[]> => {
+  const response = await fetch(claudeCodeApiUrl('/skills'));
+
+  if (!response.ok) {
+    throw new Error(await getResponseErrorMessage(response, 'Failed to load Claude Code skills'));
+  }
+
+  const body = (await response.json()) as unknown;
+  if (!Array.isArray(body)) return [];
+
+  return body
+    .map(parseClaudeCodeSkill)
+    .filter((skill): skill is ClaudeCodeSkill => skill !== undefined);
 };
 
 export const getClaudeCodeSessionHistory = async (
@@ -248,11 +297,17 @@ export const resolveClaudeCodePermission = async ({
 export const streamClaudeCodeMessage = async ({
   sessionId,
   message,
+  studioBaseUrl,
+  studioPathname,
+  workspace,
   signal,
   handlers,
 }: {
   sessionId: string;
   message: string;
+  studioBaseUrl?: string;
+  studioPathname?: string;
+  workspace?: string;
   signal: AbortSignal;
   handlers: ClaudeCodeStreamHandlers;
 }): Promise<void> => {
@@ -261,7 +316,12 @@ export const streamClaudeCodeMessage = async ({
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({
+      message,
+      studio_base_url: studioBaseUrl ?? getStudioBaseUrl(),
+      studio_pathname: studioPathname ?? getStudioPathname(),
+      workspace,
+    }),
     signal,
   });
 

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
+import { PlatformJobStatus } from '@nemo/sdk/generated/evaluator/schema';
 import { ComparisonPanel } from '@studio/components/evaluation/Jobs/ComparisonPanel';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { workspace1 } from '@studio/mocks/entity-store/projects';
@@ -22,14 +22,11 @@ describe('ComparisonPanel', () => {
       id: metricEvaluationJob1.id,
     });
 
-    // Mock the aggregate-scores endpoint used by useEvaluationJobResultV2
+    // Mock the results list endpoint used by useEvaluatorListEvaluateJobResults
     server.use(
-      http.get(
-        '*/apis/evaluation/v2/workspaces/:workspace/metric-jobs/:jobName/results/aggregate-scores',
-        () => {
-          return HttpResponse.json({});
-        }
-      )
+      http.get('*/apis/evaluator/v2/workspaces/:workspace/evaluate/jobs/:jobName/results', () => {
+        return HttpResponse.json({ data: [], pagination: {} });
+      })
     );
   });
 
@@ -80,14 +77,11 @@ describe('ComparisonPanel', () => {
   describe('Completed Status', () => {
     beforeEach(() => {
       server.use(
-        http.get(
-          '*/apis/evaluator/v2/workspaces/:workspace/metric-jobs/:jobName/results/:resultName',
-          () => {
-            return HttpResponse.json({
-              download_url: 'http://localhost/mock-scores.json',
-            });
-          }
-        )
+        http.get('*/apis/evaluator/v2/workspaces/:workspace/evaluate/jobs/:jobName/results', () => {
+          return HttpResponse.json({
+            download_url: 'http://localhost/mock-scores.json',
+          });
+        })
       );
     });
 

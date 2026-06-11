@@ -719,8 +719,8 @@ def test_provider_route_smart_default_models(
     provider_in_cache: tuple[str, str, str],
     endpoint: str,
 ):
-    """Test provider route returns the configured served model IDs for the models endpoint."""
-    provider_name, _, served_model_name = provider_in_cache
+    """Test provider route returns configured model entity IDs for the models endpoint."""
+    provider_name, model_entity_name, _ = provider_in_cache
     client = mock_provider_test_clients.test_client
 
     response = client.get(_provider_route(DEFAULT_WORKSPACE, provider_name, endpoint))
@@ -729,7 +729,7 @@ def test_provider_route_smart_default_models(
     data = response.json()
     assert data["object"] == "list"
     assert len(data["data"]) > 0
-    assert data["data"][0]["id"] == served_model_name
+    assert data["data"][0]["id"] == model_entity_name
 
 
 # =============================================================================
@@ -877,8 +877,8 @@ def test_model_route_smart_default_models(
     provider_in_cache: tuple[str, str, str],
     endpoint: str,
 ):
-    """Test model entity route returns the configured served model IDs for the models endpoint."""
-    _, model_entity_name, served_model_name = provider_in_cache
+    """Test model entity route returns configured model entity IDs for the models endpoint."""
+    _, model_entity_name, _ = provider_in_cache
     client = mock_provider_test_clients.test_client
 
     response = client.get(_model_route(DEFAULT_WORKSPACE, model_entity_name, endpoint))
@@ -886,7 +886,7 @@ def test_model_route_smart_default_models(
     assert response.status_code == 200
     data = response.json()
     assert data["object"] == "list"
-    assert data["data"][0]["id"] == served_model_name
+    assert data["data"][0]["id"] == model_entity_name
 
 
 # =============================================================================

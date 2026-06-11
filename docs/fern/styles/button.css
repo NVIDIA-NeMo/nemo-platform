@@ -1,0 +1,44 @@
+/* SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. */
+/* SPDX-License-Identifier: Apache-2.0 */
+
+/* CTA button — replaces MkDocs Material `.md-button`. */
+
+.docs-cta-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0.55em 1.1em;
+  margin: 0.25em 0.4em 0.25em 0;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.95em;
+  line-height: 1.2;
+  text-decoration: none !important;
+  border: 1px solid var(--accent-primary, #76b900);
+  color: var(--accent-primary, #76b900);
+  background: transparent;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.docs-cta-button:hover,
+.docs-cta-button:focus-visible {
+  background: var(--accent-primary, #76b900);
+  color: var(--background, #fff);
+  text-decoration: none !important;
+}
+
+.docs-cta-button--primary {
+  background: var(--accent-primary, #76b900);
+  color: var(--background, #fff);
+}
+
+.docs-cta-button--primary:hover,
+.docs-cta-button--primary:focus-visible {
+  background: transparent;
+  color: var(--accent-primary, #76b900);
+}
+
+/* Strip Fern's default external-link icon stacked under our pill buttons. */
+.docs-cta-button > svg[class*="external"] {
+  display: none;
+}

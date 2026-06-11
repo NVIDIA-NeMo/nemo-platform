@@ -39,7 +39,7 @@ import { BaseModelSearchFilterField } from '@studio/components/FilterFields';
 import type { ModelPanelTab } from '@studio/components/sidePanels/ModelPanels/ModelPanel';
 import { INTAKE_ENABLED } from '@studio/constants/environment';
 import { LINK_DOCS_STUDIO_CUSTOMIZATION } from '@studio/constants/links';
-import { getEvaluationMetricsRunRoute, getIntakeTracesRoute } from '@studio/routes/utils';
+import { getIntakeTracesRoute } from '@studio/routes/utils';
 import { keepPreviousData } from '@tanstack/react-query';
 import { BrainCircuit, X, Trash } from 'lucide-react';
 import { ComponentProps, FC, useCallback, useMemo, useState } from 'react';
@@ -364,13 +364,6 @@ export const CustomModelsDataView: FC<CustomModelsDataViewProps> = ({
           {
             children: 'Chat Playground',
             onSelect: () => onRowClick?.(row, 'chat-playground'),
-          },
-          { kind: 'divider' as const },
-          {
-            children: 'Evaluate Model',
-            onSelect: () => {
-              navigate(getEvaluationMetricsRunRoute(workspace, { model: row.name }));
-            },
           },
           ...(INTAKE_ENABLED
             ? [

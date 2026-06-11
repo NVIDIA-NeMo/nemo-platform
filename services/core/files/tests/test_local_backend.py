@@ -243,6 +243,12 @@ async def test_validate_storage_creates_directory_if_missing(tmp_path: Path):
     assert new_storage_path.is_dir()
 
 
+def test_local_config_owns_storage_data(storage_path: Path):
+    """Local is platform-owned source storage."""
+    config = LocalStorageConfig(path=str(storage_path))
+    assert config.owns_storage_data is True
+
+
 async def test_delete_all_removes_directory_and_contents(storage_impl: LocalStorageImpl, storage_path: Path):
     """Test delete_all removes the entire storage directory and all contents."""
     # Create some files and nested directories

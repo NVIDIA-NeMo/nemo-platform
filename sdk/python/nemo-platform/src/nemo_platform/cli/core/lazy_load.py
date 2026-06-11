@@ -91,9 +91,13 @@ def lazy_plugin_loader(plugin_name: str, import_path: str) -> Callable[[], click
         )
 
         try:
+            from nemo_platform_plugin.customization_contributor import CustomizationContributorDiscoveryError
+
             cli_cls = resolve_name(import_path)
             cli_obj = cli_cls()
             plugin_app = cli_obj.get_cli()
+        except CustomizationContributorDiscoveryError as exc:
+            raise click.ClickException(str(exc)) from exc
         except Exception:
             return _plugin_placeholder_command(f"Plugin commands for {plugin_name} are unavailable.")
 
