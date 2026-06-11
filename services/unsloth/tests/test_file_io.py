@@ -275,7 +275,7 @@ class TestBuildOutputMetadata:
                 load_in_8bit=False,
             ),
             dataset=DatasetSpec(path="/data/sample.jsonl"),
-            training=TrainingSpec(finetuning_type="full", lora=None),
+            training=TrainingSpec(finetuning_type="all_weights", lora=None),
             output=OutputResponse(
                 name="qwen-out",
                 type="model",
@@ -287,7 +287,7 @@ class TestBuildOutputMetadata:
         meta = build_output_metadata(spec)
         assert meta == {
             "model": "Qwen/Qwen3-0.6B",
-            "finetuning_type": "full",
+            "finetuning_type": "all_weights",
             "save_method": "lora",
             "output_type": "model",
         }

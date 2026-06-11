@@ -31,6 +31,8 @@ from __future__ import annotations
 
 from typing import Literal
 
+# IntegrationsSpec is used below; WandbIntegration is re-exported for callers (plugin schema).
+from nmp.customization_common.schemas.integrations import IntegrationsSpec, WandbIntegration  # noqa: F401
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -93,7 +95,7 @@ class TrainingSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     training_type: Literal["sft"] = "sft"
-    finetuning_type: Literal["lora", "full"] = "lora"
+    finetuning_type: Literal["lora", "all_weights"] = "lora"
     lora: LoRAParams | None = Field(
         default=None,
         description="Required when finetuning_type='lora'. Auto-filled with defaults if omitted.",
@@ -139,7 +141,9 @@ class ScheduleSpec(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    epochs: int | None = Field(default=None, gt=0)
+    # Consistent with Automodel: train for ``epochs`` (default 1) unless ``max_steps``
+    # is set, in which case the trainer caps training at that many steps.
+    epochs: int = Field(default=1, gt=0)
     max_steps: int | None = Field(default=None, gt=0)
     warmup_steps: int = Field(default=0, ge=0)
     warmup_ratio: float | None = Field(default=None, ge=0.0, le=1.0)
@@ -192,25 +196,6 @@ class HardwareSpec(BaseModel):
     precision: Literal["bf16", "fp16"] = Field(
         default="bf16",
         description="Mixed-precision dtype for training. bf16 recommended for Ampere+.",
-    )
-
-
-class WandbIntegration(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    enabled: bool = False
-    project: str | None = None
-    run_name: str | None = None
-    # No api_key_secret for now — users export WANDB_API_KEY in the
-    # training container environment themselves.
-
-
-class IntegrationsSpec(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    wandb: WandbIntegration | None = None
-    report_to: list[Literal["wandb", "tensorboard", "mlflow", "none"]] = Field(
-        default_factory=lambda: ["none"],
     )
 
 

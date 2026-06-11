@@ -171,9 +171,9 @@ def train_sft(
             use_gradient_checkpointing=gc_value,
             max_seq_length=spec.model.max_seq_length,
         )
-    # Full FT: leave `model` as-is. `from_pretrained` already returned the
+    # All-weights FT: leave `model` as-is. `from_pretrained` already returned the
     # un-wrapped HF model since `load_in_4bit`/`load_in_8bit` were both
-    # rejected by the spec validator for `finetuning_type='full'`.
+    # rejected by the spec validator for `finetuning_type='all_weights'`.
 
     # ── Dataset ────────────────────────────────────────────────────────
     resolved_train_path = dataset_path or spec.dataset.path
@@ -217,7 +217,9 @@ def train_sft(
         "bf16": bf16,
         "fp16": fp16,
         "report_to": list(
-            spec.integrations.report_to if spec.integrations is not None else ["none"],
+            spec.integrations.report_to
+            if spec.integrations is not None and spec.integrations.report_to
+            else ["none"],
         ),
         # SFT-specific — belong on SFTConfig in trl>=0.13, not on SFTTrainer.
         "dataset_text_field": spec.dataset.text_field,
@@ -226,8 +228,8 @@ def train_sft(
     }
     if spec.schedule.warmup_ratio is not None:
         args_kwargs["warmup_ratio"] = spec.schedule.warmup_ratio
-    if spec.schedule.epochs is not None:
-        args_kwargs["num_train_epochs"] = spec.schedule.epochs
+    # epochs always set (defaults to 1); max_steps, when present, caps/overrides it (trl semantics).
+    args_kwargs["num_train_epochs"] = spec.schedule.epochs
     if spec.schedule.max_steps is not None:
         args_kwargs["max_steps"] = spec.schedule.max_steps
     if spec.schedule.save_steps is not None:

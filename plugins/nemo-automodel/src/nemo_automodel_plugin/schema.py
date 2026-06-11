@@ -5,9 +5,27 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, Self
+from typing import Literal, Self
 
+from nmp.customization_common.schemas.integrations import IntegrationsSpec, WandbIntegration
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+__all__ = [
+    "AutomodelJobInput",
+    "AutomodelJobOutput",
+    "BatchSpec",
+    "DatasetSpec",
+    "IntegrationsSpec",
+    "LoRAParams",
+    "OptimizerSpec",
+    "OutputRequest",
+    "OutputResponse",
+    "ParallelismSpec",
+    "ScheduleSpec",
+    "TrainingSpec",
+    "ValidationError",
+    "WandbIntegration",
+]
 
 
 class ValidationError(ValueError):
@@ -104,21 +122,6 @@ class OutputResponse(BaseModel):
     type: Literal["model", "adapter"]
     fileset: str
     description: str | None = None
-
-
-class WandbIntegration(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    enabled: bool = True
-    project: str | None = None
-    api_key_secret: str | None = None
-
-
-class IntegrationsSpec(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    wandb: WandbIntegration | None = None
-    mlflow: dict[str, Any] | None = None
 
 
 class AutomodelJobInput(BaseModel):
