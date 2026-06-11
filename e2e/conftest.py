@@ -195,8 +195,16 @@ def _services(services_log_path: Path) -> Iterator[str]:
 
 @pytest.fixture(scope="session")
 def sdk(_services: str) -> NeMoPlatform:
-    """Provide an SDK client connected to the running platform."""
-    return NeMoPlatform(base_url=_services, max_retries=2)
+    """Provide an SDK client connected to the running platform.
+
+    When connecting to an external cluster (via ``NMP_BASE_URL``), authentication
+    can be provided through:
+    - ``NMP_ACCESS_TOKEN`` env var (e.g. from ``nemo auth token``)
+    - ``NMP_CONTEXT_NAME`` env var (e.g. ``tot``) to read credentials from CLI config
+    """
+    access_token = os.environ.get("NMP_ACCESS_TOKEN")
+    context_name = os.environ.get("NMP_CONTEXT_NAME")
+    return NeMoPlatform(base_url=_services, access_token=access_token, context_name=context_name, max_retries=2)
 
 
 @pytest.fixture(scope="function")
