@@ -7,11 +7,11 @@ from typing import Annotated, Any, Dict, Literal, Optional, Self, Union
 
 from nmp.automodel.entities.validators import validate_fileset_uri
 from nmp.automodel.entities.values import FinetuningType, OutputNameType, Precision
-from nmp.common.integrations import IntegrationsSpec
 from nmp.common.entities.constants import (
     MAX_LENGTH_255,
     REGEX_WORD_CHARACTER_DOT_DASH,
 )
+from nmp.common.integrations import IntegrationsSpec
 from pydantic import AfterValidator, BaseModel, ConfigDict, Discriminator, Field, model_validator
 
 # Important!!! Do not import Pydantic models from this file into tasks.

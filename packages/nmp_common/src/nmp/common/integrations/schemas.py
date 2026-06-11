@@ -139,8 +139,7 @@ class IntegrationsSpec(BaseModel):
         """Reject empty objects that look like accidental toggles."""
         if self.wandb is not None and not self.wandb.model_dump(exclude_none=True):
             raise ValueError(
-                "integrations.wandb must include at least one configuration field "
-                "or be omitted/null to disable W&B."
+                "integrations.wandb must include at least one configuration field or be omitted/null to disable W&B."
             )
         if self.mlflow is not None and not self.mlflow.model_dump(exclude_none=True):
             raise ValueError(

@@ -21,10 +21,6 @@ from nmp.automodel.api.v2.jobs.schemas import (
     DistillationTraining,
     LoRAParams,
 )
-from nmp.customization_common.integrations import (
-    collect_integration_secret_envs,
-    warn_incomplete_integrations,
-)
 from nmp.automodel.app.constants import (
     DEFAULT_DATASET_PATH,
     DEFAULT_MODEL_PATH,
@@ -41,6 +37,10 @@ from nmp.automodel.config import config
 from nmp.automodel.entities.values import Precision, TrainingType
 from nmp.automodel.images import AUTOMODEL_PYTHON_ENTRYPOINT, get_training_image
 from nmp.common.model_utils import is_embedding_model
+from nmp.customization_common.integrations import (
+    collect_integration_secret_envs,
+    warn_incomplete_integrations,
+)
 
 logger = logging.getLogger(__name__)
 

@@ -9,7 +9,11 @@ from nmp.automodel.app.jobs.context import NMPJobContext
 from nmp.automodel.app.jobs.training.schemas import TrainingStepConfig
 from nmp.customization_common.integrations import (
     IntegrationRuntimeContext,
+)
+from nmp.customization_common.integrations import (
     build_mlflow_config as _build_mlflow_config,
+)
+from nmp.customization_common.integrations import (
     build_wandb_config as _build_wandb_config,
 )
 

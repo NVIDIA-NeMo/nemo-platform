@@ -32,6 +32,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     -e /app/sdk/python/nemo-platform \
     -e /app/packages/nemo_platform_plugin \
     -e /app/packages/nmp_common \
+    -e /app/packages/nmp_customization_common \
     -e /app/services/automodel
 
 # Re-pin nemo_automodel from the base clone without re-resolving transformers (already in base venv).

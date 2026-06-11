@@ -95,4 +95,3 @@ class TestIntegrationsSpec:
     def test_rejects_enabled_on_input(self) -> None:
         with pytest.raises(ValidationError, match="enabled"):
             IntegrationsSpec.model_validate({"wandb": {"enabled": False}})
-

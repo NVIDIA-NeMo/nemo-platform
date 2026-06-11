@@ -19,14 +19,14 @@ from nemo_platform_plugin.jobs.api_factory import (
     PlatformJobStep,
     ResourcesSpec,
 )
+from nmp.customization_common.integrations import (
+    collect_integration_secret_envs,
+    warn_incomplete_integrations,
+)
 from nmp.unsloth.app.constants import (
     DEFAULT_DATASET_PATH,
     DEFAULT_MODEL_PATH,
     DEFAULT_OUTPUT_MODEL_PATH,
-)
-from nmp.customization_common.integrations import (
-    collect_integration_secret_envs,
-    warn_incomplete_integrations,
 )
 from nmp.unsloth.app.jobs.training.schemas import TrainingStepConfig
 from nmp.unsloth.images import UNSLOTH_PYTHON_ENTRYPOINT, get_training_image
