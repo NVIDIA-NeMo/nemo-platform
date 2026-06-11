@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { SafeSynthesizerJob } from '@nemo/sdk/vendored/safe-synthesizer/schema';
+import type { SafeSynthesizerJob } from '@nemo/sdk/generated/safe-synthesizer/schema';
 import { isCancellableJob } from '@studio/components/dataViews/SafeSynthesizerJobsDataView/utils';
 
 describe('SafeSynthesizerJobsDataView utils', () => {

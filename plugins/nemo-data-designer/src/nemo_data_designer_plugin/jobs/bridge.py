@@ -17,7 +17,7 @@ from nemo_platform_plugin.jobs.constants import (
     NEMO_JOB_WORKSPACE_ENVVAR,
     PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
 )
-from nmp.common.sdk_factory import get_platform_sdk
+from nemo_platform_plugin.sdk_provider import get_platform_sdk
 
 
 def run() -> int:

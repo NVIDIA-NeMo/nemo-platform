@@ -1,70 +1,45 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type {
-  MetricEvaluationJob,
-  BenchmarkEvaluationJob,
-  PlatformJobStatus,
-} from '@nemo/sdk/generated/platform/schema';
+import type { EvaluateJob, PlatformJobStatus } from '@nemo/sdk/generated/evaluator/schema';
 
-// Union type for V2 evaluation jobs
-export type EvaluationJobV2 = MetricEvaluationJob | BenchmarkEvaluationJob;
+/** Alias used by hooks that work with the v2 evaluator API. */
+export type EvaluationJobV2 = EvaluateJob;
 
-export const getEvaluationJobId = (job: EvaluationJobV2) => {
+export const getEvaluationJobId = (job: EvaluateJob) => {
   return job.id;
 };
 
-export const getEvaluationJobName = (job: EvaluationJobV2) => {
+export const getEvaluationJobName = (job: EvaluateJob) => {
   return job.name;
 };
 
-// Extract model from job spec
-export const getEvaluationJobModel = (job: EvaluationJobV2): string | undefined => {
+export const getEvaluationJobModel = (job: EvaluateJob): string | undefined => {
+  const target = job.spec?.target;
+  if (!target) return undefined;
+  if ('name' in target && typeof target.name === 'string') return target.name;
+  return undefined;
+};
+
+export const getEvaluationJobConfigRef = (job: EvaluateJob): string | undefined => {
   const spec = job.spec;
   if (!spec) return undefined;
 
-  // Check different spec types for model field
-  if ('model' in spec) {
-    // Model can be EvaluatorModel (object) or ModelRef (string)
-    const model = spec.model;
-    if (typeof model === 'string') return model;
-    return model?.name;
+  const metrics = spec.metrics;
+  if (Array.isArray(metrics) && metrics.length > 0) {
+    const first = metrics[0];
+    if (typeof first === 'string') return first;
+    if (first && typeof first === 'object' && 'name' in first)
+      return (first as { name: string }).name;
   }
 
   return undefined;
 };
 
-// Extract config/metric/benchmark reference from job spec
-// For MetricEvaluationJob, returns the metric reference
-// For BenchmarkEvaluationJob, returns the benchmark reference
-export const getEvaluationJobConfigRef = (job: EvaluationJobV2): string | undefined => {
-  const spec = job.spec;
-  if (!spec) return undefined;
-
-  // Metric jobs have metric field
-  if ('metric' in spec) {
-    const metric = spec.metric;
-    // If metric is a string (MetricRef), return it
-    if (typeof metric === 'string') {
-      return metric;
-    }
-    // Inline metrics don't have a reference
-    return undefined;
-  }
-
-  // Benchmark jobs have benchmark field
-  if ('benchmark' in spec) {
-    return spec.benchmark as string;
-  }
-
-  return undefined;
-};
-
-export const getEvaluationJobCustomFields = (job: EvaluationJobV2) => {
+export const getEvaluationJobCustomFields = (job: EvaluateJob) => {
   return Object.keys(job?.custom_fields || {}) || [];
 };
 
-// Status checks
 export const isEvaluationJobCreated = (status: PlatformJobStatus | undefined) => {
   return status === 'created';
 };
@@ -77,16 +52,6 @@ export const isEvaluationJobInProgress = (status: PlatformJobStatus | undefined)
   return status === 'active';
 };
 
-// Extract model/target from job spec
-// This replaces the old getEvaluationJobTarget which was for V1 jobs
-export const getEvaluationJobTarget = (job: EvaluationJobV2) => {
-  const spec = job.spec;
-  if (!spec) return undefined;
-
-  // Check different spec types for model field
-  if ('model' in spec) {
-    return spec.model;
-  }
-
-  return undefined;
+export const getEvaluationJobTarget = (job: EvaluateJob) => {
+  return job.spec?.target;
 };

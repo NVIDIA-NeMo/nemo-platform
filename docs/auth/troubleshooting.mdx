@@ -1,0 +1,168 @@
+---
+title: "Troubleshooting"
+description: ""
+---
+When something goes wrong with authentication or authorization, start here. Problems are organized by symptom.
+
+## "I Get 401 Unauthorized on Every Request"
+
+**Cause**: Auth is enabled but no valid credentials are being sent.
+
+**Diagnosis**:
+
+1. Check if auth is enabled:
+
+ ```bash
+ curl ${BASE_URL}/apis/auth/discovery
+ ```
+
+ If `auth_enabled` is `true`, all requests must include credentials.
+
+2. Check your token status:
+
+ ```bash
+ nemo auth status
+ ```
+
+ The CLI and SDK automatically refresh expired tokens. If automatic refresh fails (e.g., the refresh token itself has expired), re-login:
+
+ ```bash
+ nemo auth login
+ ```
+
+3. Verify the token is being sent. For SDK/curl, ensure the `Authorization: Bearer <token>` header is present.
+
+**Common causes**:
+
+- Refresh token has expired — re-login with `nemo auth login`
+- OIDC issuer mismatch — the token's `iss` claim doesn't match `auth.oidc.issuer` in the config
+- Audience mismatch — the token's `aud` claim doesn't match `auth.oidc.audience` (or `client_id`)
+- Using email-as-API-key (`X-NMP-Principal-Id`) when OIDC is enabled and native validation rejects it
+
+## "I Get 403 Forbidden but I Should Have Access"
+
+**Cause**: Authentication succeeded, but authorization failed — the user lacks the required role or the token lacks the required scope.
+
+**Diagnosis**:
+
+1. Check your role binding in the workspace:
+
+ ```bash
+ nemo workspaces members list --workspace <workspace-name>
+ ```
+
+ Verify your email appears and has the expected role (Viewer, Editor, or Admin).
+
+2. Check your token scopes. Decode the JWT and verify the required scopes are present:
+
+ ```bash
+ nemo auth token | cut -d. -f2 | base64 -d 2>/dev/null | python -m json.tool
+ ```
+
+ Look for `scp` or `scope` — ensure `platform:write` is present for write operations.
+
+3. Account for role propagation delay. After adding a member, wait up to 30 seconds (or up to `policy_data_refresh_interval`) for the change to take effect.
+
+**Common causes**:
+
+- Missing role binding — you're not a member of the workspace
+- Insufficient role — you have Viewer but need Editor for create/update/delete
+- Token scope too narrow — logged in with `--scope "platform:read"` but trying to write
+- Role not yet propagated — just added as a member; wait and retry
+
+## "`nemo auth login` Fails with an IdP Error"
+
+### AADSTS70011 (Azure AD — Invalid Scope)
+
+The requested scope is not configured or admin consent has not been granted.
+
+**Fix**: In Azure Portal → App Registration → API Permissions, ensure:
+
+- Custom scopes (`platform:read`, `platform:write`) are defined under "Expose an API"
+- Admin consent is granted for the scopes
+
+### "Device flow not enabled" or "Public client flows not allowed"
+
+Your IdP doesn't have device flow enabled for the NeMo Platform application.
+
+**Fix**:
+
+- **Azure AD**: App Registration → Authentication → "Allow public client flows" → Yes
+- **Okta**: Application → General → "Device Authorization" grant type must be enabled
+- **Keycloak**: Client → Settings → "OAuth 2.0 Device Authorization Grant" → On
+
+### Client ID Mismatch
+
+The `client_id` in NeMo Platform config doesn't match the application in your IdP.
+
+**Fix**: Verify `auth.oidc.client_id` matches the client ID in your IdP exactly.
+
+## "I Can't Delete a Workspace"
+
+**Cause**: The workspace contains resources, or you don't have the Admin role.
+
+**Diagnosis**:
+
+1. Check the error message — it lists which entity types exist:
+
+ ```json
+ {
+   "detail": "Cannot delete workspace 'ml-team': workspace contains entities that must be deleted first: project (3), dataset (5)"
+ }
+ ```
+
+2. Delete all resources in the workspace first, then retry.
+
+3. Verify you have the Admin role:
+
+ ```bash
+ nemo workspaces members list --workspace <workspace-name>
+ ```
+
+## "Gateway-Level Auth Isn't Working"
+
+**Cause**: Headers are not being set or stripped correctly by the gateway.
+
+**Diagnosis**:
+
+1. Check that `X-NMP-Authorized: true` is being set by the gateway on allowed requests. If services don't see this header, they fall through to their own PDP call.
+
+2. Check that auth headers are stripped from external requests. Try sending a request with `X-NMP-Authorized: true` from outside the cluster — it should be stripped by the gateway.
+
+3. Verify the PDP is reachable from the gateway. If using external OPA, check that the OPA sidecar/service is running and the bundle endpoint is accessible.
+
+## "Role Change Doesn't Take Effect"
+
+**Cause**: Policy data propagation delay.
+
+The PDP caches role binding data. After adding or removing a member:
+
+- **Embedded PDP**: Wait up to `policy_data_refresh_interval` seconds (default: 30).
+- **External OPA**: Wait up to `2 × bundle_cache_seconds` (default: ~10 seconds).
+
+The CLI and SDK `members` commands wait for propagation by default. If you're using the API directly with `wait_role_propagation=false`, account for the delay.
+
+## "PlatformAdmin Can't Access a Workspace"
+
+**Cause**: The principal identity doesn't match `admin_email` exactly.
+
+**Diagnosis**:
+
+1. Check the `admin_email` in your config — it's case-sensitive.
+2. Verify the email in your token matches. Decode the JWT and check the email/upn claim.
+3. If using Azure AD with `email_claim: "upn"`, ensure the UPN matches `admin_email` exactly.
+
+## Getting Help
+
+If these steps don't resolve the issue:
+
+1. Check service logs for authorization error details
+2. Check the PDP health — if using embedded PDP, verify the auth service is running; if using external OPA, verify OPA is running and fetching bundles
+3. Decode your JWT token and verify claims match the platform configuration (issuer, audience, email claim)
+
+## Related
+
+- [Auth Configuration](/documentation/access-control/deployment/configuration) — Configuration reference.
+- [Security Model](/documentation/access-control/security-model) — Architecture and trust boundaries.
+- [OIDC Setup](/documentation/access-control/authentication/oidc-setup) — IdP configuration.
+- [Gateway Integration](/documentation/access-control/deployment/gateway-integration) — Gateway auth and headers.

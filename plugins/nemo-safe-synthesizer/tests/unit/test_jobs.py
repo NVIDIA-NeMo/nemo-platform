@@ -5,13 +5,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from nemo_platform import NotFoundError, PermissionDeniedError
+from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nemo_safe_synthesizer.config.replace_pii import ClassifyConfig, Globals, PiiReplacerConfig, StepDefinition
 from nemo_safe_synthesizer_plugin.api.v2.jobs import endpoints
 from nemo_safe_synthesizer_plugin.api.v2.jobs.endpoints import job_config_compiler
 from nemo_safe_synthesizer_plugin.job_config import SafeSynthesizerJobConfig as PluginJobConfig
 from nemo_safe_synthesizer_plugin.job_config import SafeSynthesizerParameters
 from nemo_safe_synthesizer_plugin.runtime import TASK_MODULE
-from nmp.common.jobs.exceptions import PlatformJobCompilationError
 
 DEFAULT_WORKSPACE = "default"
 DEFAULT_DATA_SOURCE = "default/test-data#file.csv"

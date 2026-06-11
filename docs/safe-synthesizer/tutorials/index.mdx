@@ -1,0 +1,79 @@
+---
+title: "Tutorials"
+description: ""
+---
+<a id="safe-synthesizer-tutorials"></a>
+
+Learn how to run NeMo Safe Synthesizer jobs through hands-on tutorials to generate private synthetic versions of sensitive tabular datasets. Each tutorial provides step-by-step guidance with executable code examples.
+
+## Prerequisites
+
+Before starting any tutorial, ensure you have:
+
+- [NeMo Safe Synthesizer deployed](/documentation/synthesize-safe-data) using Docker Compose or Helm
+- Python environment with `nemo-platform` SDK installed:
+ ```bash
+ pip install nemo-platform[all]
+ ```
+- Jupyter environment for running tutorial notebooks
+
+---
+
+## Getting Started
+
+<Cards>
+
+<Card title="Safe Synthesizer 101" href="/documentation/synthesize-safe-data/tutorials/safe-synthesizer-101">
+
+Learn the basics with your first Safe Synthesizer job, leveraging smart defaults. This tutorial covers uploading data, running a synthesis job with PII replacement, and reviewing evaluation reports.
+
+**Topics covered:**
+- Installing the SDK
+- Connecting to Safe Synthesizer
+- Using `SafeSynthesizerJobBuilder`
+- Monitoring job progress
+- Retrieving synthetic data and evaluation reports
+
+<small><span class="md-tag">beginner</span> <span class="md-tag">20 minutes</span></small>
+
+</Card>
+
+</Cards>
+
+---
+
+## Advanced Topics
+
+<Cards>
+
+<Card title="Differential Privacy Tutorial" href="/documentation/synthesize-safe-data/tutorials/differential-privacy">
+
+Apply differential privacy to achieve the maximum level of privacy with mathematical guarantees. This tutorial explores the privacy-utility tradeoff and how to configure differential privacy parameters.
+
+**Topics covered:**
+- Understanding differential privacy concepts (epsilon, delta)
+- Configuring privacy hyperparameters
+- Privacy budget analysis
+- Evaluating privacy-utility tradeoffs
+- Interpreting privacy metrics
+
+<small><span class="md-tag">intermediate</span> <span class="md-tag">1.5 hours</span></small>
+
+</Card>
+
+</Cards>
+
+---
+
+## Additional Resources
+
+After completing these tutorials, explore:
+
+-   **[index](/documentation/synthesize-safe-data/about)**: Understand core concepts and components
+
+---
+
+## Need Help?
+
+- Check the [GitHub Issues](https://github.com/NVIDIA/GenerativeAIExamples/issues) for known issues
+- Review the [jobs](/documentation/synthesize-safe-data/about/jobs) guide for job management

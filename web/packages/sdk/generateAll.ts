@@ -76,9 +76,12 @@ const computeInputHash = (): string => {
   hash.update(`orval:${readOrvalVersion()}\n`);
 
   const generatorSources = [
+    path.join(__dirname, 'orval.config.ts'),
     path.join(ORVAL_DIR, 'generate.ts'),
     path.join(ORVAL_DIR, 'constants.ts'),
+    path.join(ORVAL_DIR, 'format-generated.ts'),
     path.join(ORVAL_DIR, 'generateCustomFetcher.ts'),
+    path.join(ORVAL_DIR, 'operationNameOverride.ts'),
     path.join(__dirname, 'generateAll.ts'),
   ];
   for (const file of generatorSources) {

@@ -56,7 +56,7 @@ Surface, in this order, with counts:
 - **Deployed agents** — names + statuses. These stop with the platform regardless of option.
 - **Filesets** — eval datasets, eval results (look for names ending `-eval`, `-eval-out-*`, `-kb`, `-artifacts`), uploaded data. **These live in the data directory and are destroyed by options 2 and 3.**
 - **Jobs** — completed or in-flight eval jobs, optimizer runs. Run history also lives in the data directory.
-- **Local files** — list `agents/*.spec.md`, `agents/*.yml`, `agents/*.dd.py`, `agents/*.json`. These are in the working folder and survive options 1 and 2; option 3 deletes them.
+- **Local files** — list `agents/*-spec/AGENT-SPEC.md`, `agents/*.yml`, `agents/*.dd.py`, `agents/*.json`. These are in the working folder and survive options 1 and 2; option 3 deletes them.
 - **Data directory location.** If `$NMP_DATA_DIR` is set, use that. Otherwise default to `~/.local/share/nemo`. Echo the path explicitly so the user can confirm before any wipe.
 - **CLI config (separate file).** `~/.config/nmp/config.yaml` holds the CLI's locally-cached admin email, default model, and `local_services.data_dir`. It is NOT inside the data directory. **None of the three options touches it by default** — a follow-up `nemo setup` reuses the existing config. If the user wants a full clean slate (e.g. switching admin email or data-dir path), surface this file as a fourth optional wipe target during Step 3.
 

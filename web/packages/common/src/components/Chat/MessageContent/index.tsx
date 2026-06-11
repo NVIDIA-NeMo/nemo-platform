@@ -30,6 +30,7 @@ export interface MarkdownTableOptions {
 
 export interface MessageContentProps {
   content?: string | null;
+  markdownLinkComponent?: Components['a'];
   markdownTableOptions?: MarkdownTableOptions;
   renderAsMarkdown?: boolean;
 }
@@ -475,8 +476,9 @@ const messageMarkdownComponents: Components = {
     </blockquote>
   ),
   img: ({ src, alt }) => <img src={src} alt={alt ?? ''} className="max-w-full" />,
-  // We don't want links embedded in markdown responses to be clickable.
-  a: ({ ...props }) => <span>{props.children}</span>,
+  // Most chat surfaces keep model-supplied links inert. Consumers that know how
+  // to handle links can provide their own renderer.
+  a: ({ children }) => <span>{children}</span>,
   code: ({ children }) => <code className={INLINE_CODE_CLASS}>{children}</code>,
   table: ({ children }) => <MarkdownDataViewTable>{children}</MarkdownDataViewTable>,
 };
@@ -487,6 +489,7 @@ const messageMarkdownComponents: Components = {
  */
 export const MessageContent: FC<PropsWithChildren<MessageContentProps>> = ({
   content,
+  markdownLinkComponent,
   markdownTableOptions,
   renderAsMarkdown = true,
 }) => {
@@ -494,11 +497,12 @@ export const MessageContent: FC<PropsWithChildren<MessageContentProps>> = ({
   const markdownComponents = useMemo<Components>(
     () => ({
       ...messageMarkdownComponents,
+      a: markdownLinkComponent ?? messageMarkdownComponents.a,
       table: ({ children }) => (
         <MarkdownDataViewTable options={markdownTableOptions}>{children}</MarkdownDataViewTable>
       ),
     }),
-    [markdownTableOptions]
+    [markdownLinkComponent, markdownTableOptions]
   );
 
   return snippets.map((descriptor) => {

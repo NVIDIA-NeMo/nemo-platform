@@ -4,6 +4,7 @@
 import { useListExperimentGroups } from '@nemo/sdk/generated/platform/api';
 import type { ExperimentGroupResponse } from '@nemo/sdk/generated/platform/schema';
 import {
+  Button,
   PageHeader,
   PaginationArrowButton,
   PaginationControlsGroup,
@@ -18,6 +19,7 @@ import {
   Text,
 } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
+import { ExperimentGroupCreateModal } from '@studio/components/ExperimentGroupCreateModal';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
@@ -34,6 +36,7 @@ export const ExperimentRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   const { data, isLoading, error } = useListExperimentGroups(
     workspace,
@@ -67,6 +70,16 @@ export const ExperimentRoute: FC = () => {
           className="p-0"
           slotHeading="Experiment groups"
           slotDescription="Manage groups for online optimization. Review reports down to the frame level."
+          slotActions={
+            <Button color="brand" onClick={() => setIsCreateModalOpen(true)}>
+              New experiment group
+            </Button>
+          }
+        />
+        <ExperimentGroupCreateModal
+          open={isCreateModalOpen}
+          onClose={() => setIsCreateModalOpen(false)}
+          workspace={workspace}
         />
         {groups.length === 0 ? (
           <Text kind="body/regular/md" className="text-secondary">

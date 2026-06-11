@@ -9,8 +9,10 @@ else
     echo 'WARNING: Docker socket not found - job execution will not work'
 fi
 
-# Point the customizer at our training image (gpu-finetune-test has torch + nmp training module)
-export NMP_CUSTOMIZER_TRAINING_AUTOMODEL_IMAGE=gpu-finetune-test:latest
+# Image registry/tag for platform CPU tasks and nmp-automodel GPU job steps.
+# Must be set before `nemo services run` so job compilation resolves the right images.
+source /app/image-env.sh
+echo "Using NMP_IMAGE_REGISTRY=${NMP_IMAGE_REGISTRY} NMP_IMAGE_TAG=${NMP_IMAGE_TAG}"
 
 cd /app && /app/.venv/bin/nemo services run > /tmp/nmp-api.log 2>&1 &
 API_PID=$!
@@ -39,7 +41,7 @@ if [ "$CONSECUTIVE_SUCCESS" -lt 3 ]; then
 fi
 
 echo '=== Pre-configuring CLI auth ==='
-/app/.venv/bin/nmp auth login --base-url http://localhost:8080 --unsigned-token --email agent@harbor.local --no-exp
+/app/.venv/bin/nemo auth login --base-url http://localhost:8080 --unsigned-token --email agent@harbor.local --no-exp
 
 bash /app/setup-env.sh
 
