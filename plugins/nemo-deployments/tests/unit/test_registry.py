@@ -94,7 +94,7 @@ def test_unknown_backend_type_raises() -> None:
 
 
 class _FailingBackend(_StubBackend):
-    def __init__(self, sdk: AsyncNeMoPlatform, config: dict[str, Any]) -> None:
+    def init(self) -> None:
         raise RuntimeError("init failed")
 
 

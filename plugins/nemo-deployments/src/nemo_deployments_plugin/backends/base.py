@@ -5,7 +5,8 @@
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
+import abc
+from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Any
 
@@ -36,7 +37,7 @@ class LogResult:
     truncated: bool = False
 
 
-class DeploymentBackend(ABC):
+class DeploymentBackend(abc.ABC):
     """Abstract substrate backend for deployment and volume lifecycle."""
 
     def __init__(self, sdk: AsyncNeMoPlatform, config: dict[str, Any]) -> None:
