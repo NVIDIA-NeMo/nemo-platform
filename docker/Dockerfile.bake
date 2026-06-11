@@ -56,11 +56,19 @@ ARG DISTROLESS_BASE=nvcr.io/nvidia/distroless/python:3.11-v4.0.3
 
 #root-golang-base:
     FROM golang:1.23 AS root-golang-base
-    RUN curl -sSfL https://github.com/golangci/golangci-lint/releases/download/v1.61.0/golangci-lint-1.61.0-linux-amd64.tar.gz | tar -xzv && mv golangci-lint-1.61.0-linux-amd64/golangci-lint /usr/local/bin/
+    RUN curl -sSfL https://github.com/golangci/golangci-lint/releases/download/v1.61.0/golangci-lint-1.61.0-linux-amd64.tar.gz -o golangci-lint.tar.gz \
+        && echo "77cb0af99379d9a21d5dc8c38364d060e864a01bd2f3e30b5e8cc550c3a54111  golangci-lint.tar.gz" | sha256sum -c - \
+        && tar -xzf golangci-lint.tar.gz \
+        && mv golangci-lint-1.61.0-linux-amd64/golangci-lint /usr/local/bin/ \
+        && rm -rf golangci-lint.tar.gz golangci-lint-1.61.0-linux-amd64
 
 #root-golang-base-1-24:
     FROM golang:1.24 AS root-golang-base-1-24
-    RUN curl -sSfL https://github.com/golangci/golangci-lint/releases/download/v1.61.0/golangci-lint-1.61.0-linux-amd64.tar.gz | tar -xzv && mv golangci-lint-1.61.0-linux-amd64/golangci-lint /usr/local/bin/
+    RUN curl -sSfL https://github.com/golangci/golangci-lint/releases/download/v1.61.0/golangci-lint-1.61.0-linux-amd64.tar.gz -o golangci-lint.tar.gz \
+        && echo "77cb0af99379d9a21d5dc8c38364d060e864a01bd2f3e30b5e8cc550c3a54111  golangci-lint.tar.gz" | sha256sum -c - \
+        && tar -xzf golangci-lint.tar.gz \
+        && mv golangci-lint-1.61.0-linux-amd64/golangci-lint /usr/local/bin/ \
+        && rm -rf golangci-lint.tar.gz golangci-lint-1.61.0-linux-amd64
 
 #root-golang-base-1-25:
     FROM golang:1.25 AS root-golang-base-1-25
