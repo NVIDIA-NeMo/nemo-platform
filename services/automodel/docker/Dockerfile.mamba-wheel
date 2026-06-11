@@ -1,0 +1,245 @@
+# syntax=docker/dockerfile:1
+#######
+# Mamba Wheel Builder
+#
+# Builds Python wheels for:
+#   - causal-conv1d (CUDA extension required by mamba-ssm)
+#   - mamba-ssm     (selective state space model)
+#
+# Both only ship source distributions on PyPI and require nvcc to compile.
+# The two builds are independent stages so BuildKit runs them in parallel.
+# Each image stores its wheel at /wheels/*.whl.
+# Build via Platform bake group: docker buildx bake -f docker-bake.hcl nmp-automodel-gpu-wheels
+#
+# Build args:
+#   CAUSAL_CONV1D_VERSION  - git tag to build              (default: v1.5.3)
+#   MAMBA_22_COMMIT           - git SHA or tag to build
+#   CUDA_VERSION           - CUDA devel image version      (default: 12.8.1)
+#   TORCH_CUDA_ARCH_LIST   - semicolon-separated SM targets (default: "8.0;8.6;9.0")
+#######
+
+ARG CUDA_VERSION=12.8.1
+
+# =============================================================================
+# Shared base: CUDA + Python 3.11 + torch (required by extension builds)
+# =============================================================================
+FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04 AS mamba-wheel-base
+
+ARG TORCH_CUDA_ARCH_LIST="7.5;8.0;8.6;9.0"
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH_LIST}
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    ca-certificates \
+    git \
+    python3.11 \
+    python3.11-dev \
+    python3.11-venv \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=ghcr.io/astral-sh/uv:0.9.14 /uv /usr/local/bin/uv
+COPY services/automodel/docker/locks/mamba-wheel-build-py311 /opt/mamba-wheel-build-py311
+
+# Create the Python 3.11 build venv from a committed lockfile.
+RUN uv venv --python 3.11 /opt/venv && \
+    UV_PROJECT_ENVIRONMENT=/opt/venv uv sync \
+    --project /opt/mamba-wheel-build-py311 \
+    --locked \
+    --no-install-project && \
+    echo "=== torch version (py311 wheel build) ===" && \
+    /opt/venv/bin/python -c "import torch; print(f'torch={torch.__version__}, CUDA={torch.version.cuda}')"
+
+ENV VIRTUAL_ENV=/opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# =============================================================================
+# Python 3.12 base: extends mamba-wheel-base with Python 3.12 for cp312 wheels
+# =============================================================================
+FROM mamba-wheel-base AS mamba-wheel-base-py312
+
+# Install Python 3.12 via deadsnakes PPA (Ubuntu 22.04 ships 3.10 by default)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    software-properties-common \
+    && add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get update && apt-get install -y --no-install-recommends \
+    python3.12 \
+    python3.12-dev \
+    python3.12-venv \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY services/automodel/docker/locks/mamba-wheel-build-py312 /opt/mamba-wheel-build-py312
+
+# Create the Python 3.12 build venv from a committed lockfile.
+RUN uv venv --python 3.12 /opt/venv312 && \
+    UV_PROJECT_ENVIRONMENT=/opt/venv312 uv sync \
+    --project /opt/mamba-wheel-build-py312 \
+    --locked \
+    --no-install-project && \
+    echo "=== torch version (py312 wheel build) ===" && \
+    /opt/venv312/bin/python -c "import torch; print(f'torch={torch.__version__}, CUDA={torch.version.cuda}')"
+
+ENV VIRTUAL_ENV=/opt/venv312
+ENV PATH="/opt/venv312/bin:$PATH"
+
+# special builder for 13.1.1 cuda
+FROM nvcr.io/nvidia/pytorch:26.02-py3 AS mamba-wheel-base-py312-cu13.1.1
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends software-properties-common \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=ghcr.io/astral-sh/uv:0.9.14 /uv /usr/local/bin/uv
+
+
+# =============================================================================
+# causal-conv1d wheel — Python 3.11 (for nmp-gpu-tasks and nmp-automodel-tasks)
+# =============================================================================
+FROM mamba-wheel-base AS causal-conv1d-wheel-builder
+
+ARG CAUSAL_CONV1D_VERSION=v1.5.3
+
+RUN mkdir -p /wheels && \
+    git clone --depth 1 --branch ${CAUSAL_CONV1D_VERSION} \
+    https://github.com/Dao-AILab/causal-conv1d.git /src/causal-conv1d && \
+    cd /src/causal-conv1d && \
+    CAUSAL_CONV1D_FORCE_BUILD=TRUE uv build --wheel --no-build-isolation --out-dir=/wheels . && \
+    rm -rf /src/causal-conv1d
+
+# =============================================================================
+# causal-conv1d wheel — Python 3.12 (for Python 3.12 consumers)
+# =============================================================================
+FROM mamba-wheel-base-py312 AS causal-conv1d-wheel-builder-py312
+
+ARG CAUSAL_CONV1D_VERSION=v1.5.3
+
+RUN mkdir -p /wheels && \
+    git clone --depth 1 --branch ${CAUSAL_CONV1D_VERSION} \
+    https://github.com/Dao-AILab/causal-conv1d.git /src/causal-conv1d && \
+    cd /src/causal-conv1d && \
+    CAUSAL_CONV1D_FORCE_BUILD=TRUE uv build --wheel --no-build-isolation --out-dir=/wheels . && \
+    rm -rf /src/causal-conv1d
+
+# =============================================================================
+# causal-conv1d wheel — Python 3.12 (for Python 3.12 consumers) - Using CUDA 13.1.1
+# =============================================================================
+FROM  mamba-wheel-base-py312-cu13.1.1 AS causal-conv1d-wheel-builder-py312-cu13.1.1
+
+ARG CAUSAL_CONV1D_VERSION=v1.5.3
+
+RUN mkdir -p /wheels && \
+    git clone --depth 1 --branch ${CAUSAL_CONV1D_VERSION} \
+    https://github.com/Dao-AILab/causal-conv1d.git /src/causal-conv1d && \
+    cd /src/causal-conv1d && \
+    CAUSAL_CONV1D_FORCE_BUILD=TRUE uv build --wheel --no-build-isolation --out-dir=/wheels . && \
+    rm -rf /src/causal-conv1d
+
+# The final causal-conv1d-wheel image contains:
+#   - causal_conv1d-*-cp311-*.whl  (for Python 3.11 consumers: nmp-gpu-tasks, nmp-automodel-tasks)
+#   - causal_conv1d-*-cp312-*.whl  (for Python 3.12 consumers)
+# Consumers must pin the Python tag glob (e.g. causal_conv1d-*cp311*.whl) to select the right one.
+FROM scratch AS causal-conv1d-wheel
+COPY --from=causal-conv1d-wheel-builder /wheels /wheels
+COPY --from=causal-conv1d-wheel-builder-py312 /wheels /wheels
+COPY --from=causal-conv1d-wheel-builder-py312-cu13.1.1 /wheels /wheels/cu13.1.1
+
+# =============================================================================
+# mamba-ssm 2.2.5 wheel — Python 3.11 (for nmp-gpu-tasks)
+# =============================================================================
+FROM mamba-wheel-base AS mamba-ssm-wheel-builder
+
+# post commit after 2.2.5
+ARG MAMBA_22_COMMIT=6b32be06d026e170b3fdaf3ae6282c5a6ff57b06
+
+RUN mkdir -p /wheels && \
+    git clone https://github.com/state-spaces/mamba.git /src/mamba && \
+    cd /src/mamba && \
+    git checkout ${MAMBA_22_COMMIT} && \
+    sed -i "/triton/d" setup.py && \
+    sed -i "/triton/d" pyproject.toml && \
+    uv build --wheel --no-build-isolation --out-dir=/wheels . && \
+    rm -rf /src/mamba
+
+# =============================================================================
+# mamba-ssm 2.2.5 wheel — Python 3.12 (for Python 3.12 consumers, e.g. automodel)
+# =============================================================================
+FROM mamba-wheel-base-py312 AS mamba-ssm-25-wheel-builder-py312
+
+# post commit after 2.2.5
+ARG MAMBA_22_COMMIT=6b32be06d026e170b3fdaf3ae6282c5a6ff57b06
+
+RUN mkdir -p /wheels && \
+    git clone https://github.com/state-spaces/mamba.git /src/mamba && \
+    cd /src/mamba && \
+    git checkout ${MAMBA_22_COMMIT} && \
+    sed -i "/triton/d" setup.py && \
+    sed -i "/triton/d" pyproject.toml && \
+    uv build --wheel --no-build-isolation --out-dir=/wheels . && \
+    rm -rf /src/mamba
+
+# =============================================================================
+# mamba-ssm 2.3.0 wheel — Python 3.11 (for nmp-automodel-tasks)
+# =============================================================================
+FROM mamba-wheel-base AS mamba-ssm-23-wheel-builder
+
+ARG MAMBA_23_COMMIT=v2.3.0
+
+RUN mkdir -p /wheels && \
+    git clone https://github.com/state-spaces/mamba.git /src/mamba && \
+    cd /src/mamba && \
+    git checkout ${MAMBA_23_COMMIT} && \
+    sed -i "/triton/d" setup.py && \
+    sed -i "/triton/d" pyproject.toml && \
+    uv build --wheel --no-build-isolation --out-dir=/wheels . && \
+    rm -rf /src/mamba
+
+# =============================================================================
+# mamba-ssm 2.3.0 wheel — Python 3.12 (for Python 3.12 consumers)
+# =============================================================================
+FROM mamba-wheel-base-py312 AS mamba-ssm-23-wheel-builder-py312
+
+ARG MAMBA_23_COMMIT=v2.3.0
+
+RUN mkdir -p /wheels && \
+    git clone https://github.com/state-spaces/mamba.git /src/mamba && \
+    cd /src/mamba && \
+    git checkout ${MAMBA_23_COMMIT} && \
+    sed -i "/triton/d" setup.py && \
+    sed -i "/triton/d" pyproject.toml && \
+    uv build --wheel --no-build-isolation --out-dir=/wheels . && \
+    rm -rf /src/mamba
+
+
+# =============================================================================
+# mamba-ssm 2.3.0 wheel — Python 3.12 (for Python 3.12 consumers) - Using CUDA 13.1.1
+# =============================================================================
+FROM mamba-wheel-base-py312-cu13.1.1 AS mamba-ssm-23-wheel-builder-py312-cu13.1.1
+
+ARG MAMBA_23_COMMIT=v2.3.0
+
+RUN mkdir -p /wheels && \
+    git clone https://github.com/state-spaces/mamba.git /src/mamba && \
+    cd /src/mamba && \
+    git checkout ${MAMBA_23_COMMIT} && \
+    sed -i "/triton/d" setup.py && \
+    sed -i "/triton/d" pyproject.toml && \
+    uv build --wheel --no-build-isolation --out-dir=/wheels . && \
+    rm -rf /src/mamba
+
+
+# The final mamba-ssm-wheel image contains four versions:
+#   - mamba_ssm-2.2.5-cp311-*.whl  (from MAMBA_22_COMMIT=6b32be06, for nmp-gpu-tasks / Python 3.11)
+#   - mamba_ssm-2.2.5-cp312-*.whl  (from MAMBA_22_COMMIT=6b32be06, for Python 3.12 consumers, e.g. automodel)
+#   - mamba_ssm-2.3.0-cp311-*.whl  (from v2.3.0, for nmp-automodel-tasks / Python 3.11)
+#   - mamba_ssm-2.3.0-cp312-*.whl  (from v2.3.0, for Python 3.12 consumers)
+# Consumers must pin both version AND Python tag glob to select the correct wheel.
+FROM scratch AS mamba-ssm-wheel
+COPY --from=mamba-ssm-wheel-builder /wheels /wheels
+COPY --from=mamba-ssm-25-wheel-builder-py312 /wheels /wheels
+COPY --from=mamba-ssm-23-wheel-builder /wheels /wheels
+COPY --from=mamba-ssm-23-wheel-builder-py312 /wheels /wheels
+COPY --from=mamba-ssm-23-wheel-builder-py312-cu13.1.1 /wheels /wheels/cu13.1.1

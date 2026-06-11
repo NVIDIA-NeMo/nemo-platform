@@ -64,7 +64,7 @@ from nemo_platform_plugin.jobs.schemas import (
     PlatformJobStatus,
     PlatformJobStatusResponse,
 )
-from nemo_platform_plugin.schema import DatetimeFilter, Filter, Page, PaginationData
+from nemo_platform_plugin.schema import DatetimeFilter, Filter, Page, PaginationData, StringFilter
 from pydantic import BaseModel, Field, TypeAdapter
 
 logger = logging.getLogger(__name__)
@@ -124,7 +124,7 @@ class BaseJobsListFilter(Filter):
     created_at: DatetimeFilter | None = Field(
         default=None, description="Jobs created at 'gte' datetime or 'lte' datetime."
     )
-    name: str | None = Field(default=None, description="Name of the job.")
+    name: StringFilter | str | None = Field(default=None, description="Name of the job.")
     workspace: str | None = Field(default=None, description="Workspace of the job.")
     project: str | None = Field(default=None, description="Project containing the job.")
     status: PlatformJobStatus | None = Field(default=None, description="The current status.")

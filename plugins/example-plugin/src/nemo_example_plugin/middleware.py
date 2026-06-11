@@ -147,7 +147,7 @@ class ExampleInferenceMiddleware(NemoInferenceMiddleware):
         Logs a warning if no model entities are visible — this does not
         prevent the plugin from loading.
         """
-        from nmp.common.sdk_factory import get_async_platform_sdk
+        from nemo_platform_plugin.sdk_provider import get_async_platform_sdk
 
         sdk = get_async_platform_sdk(as_service="nemo-example-middleware", internal=True)
         self._entity_client = NemoEntitiesClient(sdk.entities)

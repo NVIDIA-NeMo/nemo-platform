@@ -2,11 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
-import { useEvaluationDownloadMetricJobResultAggregateScores } from '@nemo/sdk/generated/platform/api';
+import { useEvaluatorGetEvaluateJobResult } from '@nemo/sdk/generated/evaluator/api';
 import { Panel, Spinner, Stack, Text, StatusMessage } from '@nvidia/foundations-react-core';
 import { prettifyName } from '@studio/util/evaluations';
+import { useQuery } from '@tanstack/react-query';
 import { ChartBar, TriangleAlert } from 'lucide-react';
 import { type FC } from 'react';
+
+interface AggregateScores {
+  scores: Record<string, Record<string, number>>;
+}
 
 interface ResultsPanelProps {
   workspace: string;
@@ -20,16 +25,42 @@ export const ResultsPanel: FC<ResultsPanelProps> = ({ workspace, jobName, status
   const isPendingStatus = status === 'pending' || status === 'active';
   const failedStatus = status === 'error' || status === 'cancelled';
 
+  const enabled = !!workspace && !!jobName && !isPendingStatus && !failedStatus;
+
   const {
-    data: scores,
-    isLoading,
-    error,
-  } = useEvaluationDownloadMetricJobResultAggregateScores(workspace, jobName, {
+    data: resultMetadata,
+    isLoading: isLoadingMetadata,
+    error: metadataError,
+  } = useEvaluatorGetEvaluateJobResult(workspace, jobName, 'aggregate-scores', {
     query: {
-      enabled: !!workspace && !!jobName && !isPendingStatus && !failedStatus,
+      enabled,
       retry: 3,
     },
   });
+
+  const {
+    data: scores,
+    isLoading: isLoadingScores,
+    error: scoresError,
+  } = useQuery({
+    queryKey: ['results-panel-aggregate-scores', workspace, jobName, resultMetadata?.download_url],
+    queryFn: async () => {
+      if (!resultMetadata?.download_url) {
+        throw new Error('No download URL available');
+      }
+      const response = await fetch(resultMetadata.download_url);
+      if (!response.ok) {
+        throw new Error(`Failed to download results: ${response.statusText}`);
+      }
+      const data: AggregateScores = await response.json();
+      return data;
+    },
+    enabled: !!resultMetadata?.download_url,
+    retry: 3,
+  });
+
+  const isLoading = isLoadingMetadata || isLoadingScores;
+  const error = metadataError || scoresError;
 
   if (isPendingStatus) {
     return (
@@ -77,7 +108,9 @@ export const ResultsPanel: FC<ResultsPanelProps> = ({ workspace, jobName, status
     );
   }
 
-  if (!scores?.scores?.length) {
+  const scoreEntries = scores?.scores ? Object.entries(scores.scores) : [];
+
+  if (!scoreEntries.length) {
     return (
       <Panel elevation="high" slotIcon={<ChartBar />} slotHeading={EVALUATIONS_PANEL_HEADING}>
         <StatusMessage
@@ -96,29 +129,22 @@ export const ResultsPanel: FC<ResultsPanelProps> = ({ workspace, jobName, status
       <Stack gap="4">
         <Text kind="title/sm">Aggregate Scores</Text>
         <Stack gap="2">
-          {scores.scores.map((score) => (
-            <div key={score.name}>
-              <Text kind="label/semibold/md">{score.name}</Text>
+          {scoreEntries.map(([scoreName, scoreValues]) => (
+            <div key={scoreName}>
+              <Text kind="label/semibold/md">{scoreName}</Text>
               <Stack gap="1" className="ml-4">
-                {Object.entries(score)
-                  .filter(
-                    ([key, value]) =>
-                      key !== 'name' &&
-                      key !== 'score_type' &&
-                      (typeof value === 'number' || typeof value === 'string')
-                  )
-                  .map(([key, value]) => (
-                    <div key={key} className="flex justify-between">
-                      <Text kind="body/regular/sm">{prettifyName(key)}:</Text>
-                      <Text kind="body/semibold/sm">
-                        {typeof value === 'number'
-                          ? Number.isInteger(value)
-                            ? value
-                            : value.toFixed(4)
-                          : value}
-                      </Text>
-                    </div>
-                  ))}
+                {Object.entries(scoreValues).map(([key, value]) => (
+                  <div key={key} className="flex justify-between">
+                    <Text kind="body/regular/sm">{prettifyName(key)}:</Text>
+                    <Text kind="body/semibold/sm">
+                      {typeof value === 'number'
+                        ? Number.isInteger(value)
+                          ? value
+                          : value.toFixed(4)
+                        : value}
+                    </Text>
+                  </div>
+                ))}
               </Stack>
             </div>
           ))}

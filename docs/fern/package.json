@@ -1,0 +1,17 @@
+{
+  "private": true,
+  "scripts": {
+    "check": "npx -y fern-api@latest check && npm run validate-mdx && npm run check:gated-links",
+    "check:fern": "npx -y fern-api@latest check",
+    "validate-mdx": "node scripts/validate-mdx.mjs",
+    "check:gated-links": "node scripts/delink-gated.mjs",
+    "fix:gated-links": "node scripts/delink-gated.mjs --fix",
+    "broken-links": "npx -y fern-api@latest docs broken-links",
+    "dev": "npx -y fern-api@latest docs dev",
+    "generate": "npx -y fern-api@latest generate --docs",
+    "preview": "npx -y fern-api@latest generate --docs --preview"
+  },
+  "devDependencies": {
+    "@mdx-js/mdx": "^3.1.0"
+  }
+}

@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, call
 
 import pandas as pd
 import pytest
-from nmp.common.jobs.constants import NEMO_JOB_ID_ENVVAR, NEMO_JOB_WORKSPACE_ENVVAR
+from nemo_platform_plugin.jobs.constants import NEMO_JOB_ID_ENVVAR, NEMO_JOB_WORKSPACE_ENVVAR
 
 
 def import_task_main_without_heavy_runtime(monkeypatch):

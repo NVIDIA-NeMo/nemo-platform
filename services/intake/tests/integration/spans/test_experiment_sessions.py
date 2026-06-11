@@ -13,14 +13,26 @@ from fastapi.testclient import TestClient
 
 ATIF_INGEST = "/apis/intake/v2/workspaces/default/ingest/atif"
 EXPERIMENTS = "/apis/intake/v2/workspaces/default/experiments"
+GROUPS = "/apis/intake/v2/workspaces/default/experiment-groups"
+
+
+def _ensure_group(client: TestClient, name: str = "sessions-test-group") -> str:
+    """Create or fetch an ExperimentGroup; returns its id."""
+    response = client.post(GROUPS, json={"name": name})
+    if response.status_code == 409:
+        response = client.get(f"{GROUPS}/{name}")
+    response.raise_for_status()
+    return response.json()["id"]
 
 
 def test_list_experiment_sessions_returns_joined_session_rows(client: TestClient) -> None:
     experiment_name = "sessions-exp"
+    group_id = _ensure_group(client)
     created = client.post(
         EXPERIMENTS,
         json={
             "name": experiment_name,
+            "experiment_group_id": group_id,
             "agent_name": "sample-agent",
             "agent_version": "1.0.0",
             "dataset_name": "sessions-dataset",
@@ -93,10 +105,12 @@ def test_list_experiment_sessions_returns_joined_session_rows(client: TestClient
 
 def test_list_experiment_sessions_filter_by_test_case(client: TestClient) -> None:
     experiment_name = "sessions-filter-exp"
+    group_id = _ensure_group(client)
     created = client.post(
         EXPERIMENTS,
         json={
             "name": experiment_name,
+            "experiment_group_id": group_id,
             "agent_name": "sample-agent",
             "agent_version": "1.0.0",
             "dataset_name": "sessions-dataset",
@@ -140,10 +154,12 @@ def test_list_experiment_sessions_filter_by_status(client: TestClient) -> None:
     # default root-span status. This test verifies the filter is wired through (no SQL break and
     # mismatched filters return zero) rather than per-status seeding.
     experiment_name = "sessions-status-exp"
+    group_id = _ensure_group(client)
     created = client.post(
         EXPERIMENTS,
         json={
             "name": experiment_name,
+            "experiment_group_id": group_id,
             "agent_name": "sample-agent",
             "agent_version": "1.0.0",
             "dataset_name": "sessions-dataset",

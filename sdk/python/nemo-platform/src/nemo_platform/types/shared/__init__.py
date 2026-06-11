@@ -16,18 +16,18 @@
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
 from .model_spec import ModelSpec as ModelSpec
-from .field_error import FieldError as FieldError
 from .mo_e_config import MoEConfig as MoEConfig
 from .prompt_data import PromptData as PromptData
 from .auth_context import AuthContext as AuthContext
 from .mamba_config import MambaConfig as MambaConfig
+from .string_filter import StringFilter as StringFilter
 from .backend_format import BackendFormat as BackendFormat
-from .error_response import ErrorResponse as ErrorResponse
 from .datetime_filter import DatetimeFilter as DatetimeFilter
 from .delete_response import DeleteResponse as DeleteResponse
 from .finetuning_type import FinetuningType as FinetuningType
 from .pagination_data import PaginationData as PaginationData
 from .fileset_metadata import FilesetMetadata as FilesetMetadata
+from .inference_params import InferenceParams as InferenceParams
 from .platform_job_log import PlatformJobLog as PlatformJobLog
 from .tool_call_config import ToolCallConfig as ToolCallConfig
 from .validation_error import ValidationError as ValidationError
@@ -42,6 +42,7 @@ from .sliding_window_config import SlidingWindowConfig as SlidingWindowConfig
 from .model_metadata_content import ModelMetadataContent as ModelMetadataContent
 from .auth_discovery_response import AuthDiscoveryResponse as AuthDiscoveryResponse
 from .oidc_discovery_response import OidcDiscoveryResponse as OidcDiscoveryResponse
+from .dataset_metadata_content import DatasetMetadataContent as DatasetMetadataContent
 from .platform_job_result_response import PlatformJobResultResponse as PlatformJobResultResponse
 from .platform_job_status_response import PlatformJobStatusResponse as PlatformJobStatusResponse
 from .tool_calling_metadata_content import ToolCallingMetadataContent as ToolCallingMetadataContent

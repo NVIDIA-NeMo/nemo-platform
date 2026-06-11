@@ -18,7 +18,7 @@ from typing import Generator
 
 import pytest
 from nemo_platform import NeMoPlatform
-from nmp.core.models.schemas import ModelType, NIMDeployment
+from nmp.core.models.schemas import ContainerExecutorConfig, ModelDeploymentConfigModelSpec, ModelType
 from nmp.core.models.service import ModelsService
 from nmp.testing import as_user, create_test_client, short_unique_name, unique_email
 
@@ -49,12 +49,15 @@ def _create_deployment(
     user_sdk.inference.deployment_configs.create(
         workspace=workspace,
         name=config_name,
-        nim_deployment=NIMDeployment(
+        engine="nim",
+        model_spec=ModelDeploymentConfigModelSpec(
             model_type=ModelType.LLM,
-            image_name="nvcr.io/nvidia/nim/llm",
-            image_tag="latest",
             model_namespace="nvidia",
             model_name="test-model",
+        ),
+        executor_config=ContainerExecutorConfig(
+            image_name="nvcr.io/nvidia/nim/llm",
+            image_tag="latest",
             gpu=0,
         ),
     )

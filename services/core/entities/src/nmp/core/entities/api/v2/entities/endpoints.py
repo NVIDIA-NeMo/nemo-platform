@@ -236,6 +236,10 @@ async def create_entity(
             project=entity.project,
             created_by=auth_client.principal.effective_id,
         )
+        if entity_type == ROLE_BINDING_ENTITY_TYPE:
+            principal = entity.data.get("principal")
+            if principal is not None:
+                await bindings_cache_delete(str(principal))
         return new_entity
     except IntegrityError as e:
         error_msg = str(e.orig) if hasattr(e, "orig") else str(e)

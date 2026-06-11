@@ -8,8 +8,8 @@ import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import {
   useSafeSynthesizerDownloadJobResultSyntheticData as useDownloadJobResultSyntheticDataV1beta1SafeSynthesizerJobsJobIdResultsSyntheticDataDownloadGet,
   useSafeSynthesizerListJobResults as useListJobResultsV1beta1SafeSynthesizerJobsJobIdResultsGet,
-} from '@nemo/sdk/vendored/safe-synthesizer/api';
-import type { SafeSynthesizerJob } from '@nemo/sdk/vendored/safe-synthesizer/schema';
+} from '@nemo/sdk/generated/safe-synthesizer/api';
+import type { SafeSynthesizerJob } from '@nemo/sdk/generated/safe-synthesizer/schema';
 import {
   Anchor,
   CodeSnippet,

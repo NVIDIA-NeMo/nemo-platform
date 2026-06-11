@@ -1,8 +1,0 @@
-# Packages to preserve from base image - use impossible marker to block installation
-# The marker 'sys_platform == never' ensures these packages are never installed/upgraded,
-# preserving whatever version exists in the base image.
-prometheus-client; sys_platform == 'never'
-starlette; sys_platform == 'never'
-cryptography; sys_platform == 'never'
-mlflow; sys_platform == 'never'
-ray; sys_platform == 'never'

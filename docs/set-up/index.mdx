@@ -1,0 +1,62 @@
+---
+title: "About Platform Setup"
+description: ""
+---
+<a id="nemo-ms-admin-setup-overview"></a>
+
+This section describes how to set up the NeMo Platform on your Kubernetes cluster using the NeMo Platform Helm Chart.
+With this chart, you can deploy the NeMo Platform as a full deployment or a subset of the APIs as you need.
+
+This Platform Setup chapter is for the following personas.
+
+-   **Cloud administrators**: Manage Kubernetes clusters and compute/storage resources. Deploy NeMo Platform to the Kubernetes clusters on premises or cloud.
+
+---
+
+<a id="nemo-ms-about-parent-helm-chart"></a>
+## NeMo Platform Helm Chart
+
+The [NeMo Platform Helm Chart](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/nemo-microservices/helm-charts/nemo-platform) is an all-in-one Helm chart that bundles the complete NeMo Platform ecosystem and all required dependencies for full platform deployment.
+
+You can also customize the configuration of your installation by updating the `values.yaml` file. You can also use the pre-configured tags to install only specific microservices that you need.
+
+For the chart assets and additional details, refer to the [NeMo Platform Collection](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/nemo-microservices/collections/nemo-microservices) page in the NVIDIA NGC Catalog.
+
+---
+
+## Deploy the NeMo Platform with Helm
+
+The following sections provide detailed instructions on how to deploy the NeMo Platform using the NeMo Platform Helm Chart.
+
+<Cards>
+
+<Card title="Install }" href="/documentation/self-managed-deployment/setup/helm/overview">
+
+Install the NeMo Platform using the chart on your Kubernetes cluster.
+
+<small><span class="md-tag">cluster-admin</span></small>
+
+</Card>
+
+</Cards>
+
+---
+
+## Other Configurations
+
+Review and manage other cluster settings.
+
+<Cards>
+
+<Card title="OpenTelemetry" href="/documentation/self-managed-deployment/setup/observability">
+
+Review and configure how NeMo Platform use Open Telemetry for observability.
+
+</Card>
+<Card title="Milvus" href="/documentation/self-managed-deployment/setup/milvus">
+
+Review and configure how NeMo Platform uses Milvus for vector database storage.
+
+</Card>
+
+</Cards>

@@ -1,0 +1,161 @@
+---
+title: "Tutorials"
+description: ""
+---
+<a id="anonymizer-tutorials"></a>
+
+These tutorials cover the two user-facing surfaces of the Anonymizer plugin: the streaming `preview` workflow for iteration, and the `run` job for full datasets.
+
+## Library vs. Service
+
+Anonymizer separates **configuration** (what to detect and how to replace it) from **execution** (where the work runs and how models are reached).
+
+**Part 1: Build the config (library)**
+
+Use [`anonymizer.config`](https://github.com/NVIDIA-NeMo/Anonymizer/tree/main/docs) to define the rewrite or replacement strategy and detection options. This code is identical whether you run Anonymizer standalone or through the NeMo Platform service.
+
+```python
+from anonymizer.config.anonymizer_config import AnonymizerConfig
+from anonymizer.config.replace_strategies import Redact
+
+config = AnonymizerConfig(
+    replace=Redact(format_template="[REDACTED_{label}]"),
+)
+```
+
+**Part 2: Execute (platform)**
+
+Submit the config to the Anonymizer service. The plugin owns the request shape (`PreviewRequest`, `AnonymizerRequest`) so it can also describe the input source and model routing:
+
+```python
+import os
+from anonymizer.config.anonymizer_config import AnonymizerConfig
+from anonymizer.config.replace_strategies import Redact
+from data_designer.config import ModelConfig
+from nemo_anonymizer_plugin.app.input import AnonymizerInputSpec
+from nemo_anonymizer_plugin.app.task_config import PreviewRequest
+from nemo_platform import NeMoPlatform
+
+WORKSPACE = os.environ.get("NMP_WORKSPACE", "default")
+MODEL_PROVIDER = os.environ.get("NMP_ANON_PROVIDER", "nvidia-build")
+
+config = AnonymizerConfig(
+    replace=Redact(format_template="[REDACTED_{label}]"),
+)
+
+model_configs = [
+    ModelConfig(alias="gliner-pii-detector", provider=MODEL_PROVIDER, model="nvidia/gliner-pii"),
+    ModelConfig(alias="gpt-oss-120b", provider=MODEL_PROVIDER, model="openai/gpt-oss-120b"),
+    ModelConfig(alias="nemotron-30b-thinking", provider=MODEL_PROVIDER, model="nvidia/nemotron-3-nano-30b-a3b"),
+]
+
+sdk = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace=WORKSPACE,
+)
+anonymizer = sdk.anonymizer
+
+preview = anonymizer.preview(PreviewRequest(
+    config=config,
+    data=AnonymizerInputSpec(
+        source=f"fileset://{WORKSPACE}/anonymizer-inputs#anonymizer-input.csv",
+        text_column="biography",
+        id_column="id",
+    ),
+    model_configs=model_configs,
+    num_records=10,
+))
+```
+
+## Service-Specific Considerations
+
+When using Anonymizer as a NeMo Platform service:
+
+| Feature        | Difference                                              | Details                                                                                |
+|----------------|---------------------------------------------------------|----------------------------------------------------------------------------------------|
+| **Inference**  | Routes through the Inference Gateway                    | Configure providers once and reference them by name from `model_configs`.              |
+| **Input data** | Filesets and HTTP(S) URLs (local paths only in local CLI execution) | Use `sdk.files.filesets.create` / `sdk.files.upload`, then reference with `#<path>`. |
+| **Artifacts**  | Local or platform-managed                               | `run run` writes to `persistent/results/artifacts` locally; `run submit` stores artifacts in NeMo Platform job storage. |
+
+## Prerequisites
+
+Complete [Setup](/documentation/get-started) to install NeMo Platform, run `nemo services run`, and configure an inference provider. The root workspace includes the Anonymizer plugin, so `nemo services run` discovers it automatically and mounts `/apis/anonymizer/...` on the gateway — no separate plugin install step is needed. Verify the CLI is registered:
+
+```bash
+nemo anonymizer --help
+```
+
+You should see `validate`, `preview`, and `run` command groups.
+
+These tutorials route inference through an [Inference Gateway](/documentation/models-and-inference) provider, so a NeMo Platform cluster must be running before you preview or run a job. The examples reference the default NVIDIA Build provider created during setup.
+
+<Markdown src="/snippets/_snippets/nvidia-build-model-provider.mdx" />
+
+### Upload an Input Fileset
+
+`sdk.anonymizer.preview`, `preview submit`, and `run submit` reject local file paths, so the tutorials read from a fileset. Create a small CSV containing PII and upload it to a fileset named `anonymizer-inputs`:
+
+```python
+import os
+import tempfile
+from pathlib import Path
+
+from nemo_platform import NeMoPlatform
+from nemo_platform._exceptions import ConflictError
+
+WORKSPACE = os.environ.get("NMP_WORKSPACE", "default")
+FILESET = "anonymizer-inputs"
+INPUT_FILENAME = "anonymizer-input.csv"
+
+sdk = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace=WORKSPACE,
+)
+
+with tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False) as f:
+    f.write(
+        "id,biography\n"
+        "1,Alice Johnson lives in Seattle and works at NVIDIA.\n"
+        "2,Bob Smith can be reached at bob.smith@example.com.\n"
+    )
+    input_path = Path(f.name)
+
+try:
+    sdk.files.filesets.create(
+        name=FILESET,
+        workspace=WORKSPACE,
+        description="Anonymizer input files",
+    )
+except ConflictError:
+    pass  # already exists
+
+sdk.files.upload(
+    local_path=str(input_path),
+    fileset=FILESET,
+    workspace=WORKSPACE,
+    remote_path=INPUT_FILENAME,
+)
+```
+
+The tutorials reference this file with `fileset://{WORKSPACE}/anonymizer-inputs#anonymizer-input.csv`.
+
+## Tutorials
+
+<Cards>
+
+<Card title="Preview a Config" href="/documentation/anonymize-data/tutorials/preview-a-config">
+
+Stream a small anonymized sample to iterate on `AnonymizerConfig` and `model_configs`. Covers `sdk.anonymizer.preview`, `nemo anonymizer preview run` / `preview submit`, and the NDJSON frame stream.
+
+<small><span class="md-tag">beginner</span> <span class="md-tag">anonymizer</span></small>
+
+</Card>
+<Card title="Run an Anonymizer Job" href="/documentation/anonymize-data/tutorials/run-an-anonymizer-job">
+
+Run the full pipeline locally with `nemo anonymizer run run` or submit it to the Jobs worker with `nemo anonymizer run submit`. Load `dataset.parquet`, `trace.parquet`, and `failed_records.json` artifacts.
+
+<small><span class="md-tag">intermediate</span> <span class="md-tag">anonymizer</span></small>
+
+</Card>
+
+</Cards>

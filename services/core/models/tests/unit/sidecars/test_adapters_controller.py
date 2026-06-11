@@ -44,6 +44,8 @@ def controller(tmp_path):
         ctrl._sdk = MagicMock()
         ctrl.workspace = "default"
         ctrl.model_name = "base-model"
+        # Default to NIM behavior (no rewrite); vLLM tests override this.
+        ctrl.base_model_name_override = ""
         return ctrl
 
 
@@ -285,6 +287,93 @@ class TestDownloadAdapter:
 
         assert len(captured_paths) == 1
         assert os.path.basename(captured_paths[0]) == f".{dir_name}.tmp"
+
+
+class TestRewriteAdapterBaseModel:
+    """Tests for the vLLM base_model_name_or_path rewrite on downloaded adapters."""
+
+    def test_rewrite_replaces_base_model_name(self, controller, tmp_path):
+        controller.base_model_name_override = "/model-store"
+        adapter_dir = tmp_path / "adapter"
+        adapter_dir.mkdir()
+        (adapter_dir / "adapter_config.json").write_text(
+            json.dumps({"peft_type": "LORA", "base_model_name_or_path": "Qwen/Qwen2.5-1.5B-Instruct", "r": 8})
+        )
+
+        assert controller._rewrite_adapter_base_model(str(adapter_dir)) is True
+
+        cfg = json.loads((adapter_dir / "adapter_config.json").read_text())
+        assert cfg["base_model_name_or_path"] == "/model-store"
+        # Other fields are preserved.
+        assert cfg["peft_type"] == "LORA"
+        assert cfg["r"] == 8
+
+    def test_rewrite_missing_config_returns_false(self, controller, tmp_path):
+        controller.base_model_name_override = "/model-store"
+        adapter_dir = tmp_path / "adapter"
+        adapter_dir.mkdir()
+        # No adapter_config.json present -> returns False (not publishable), no raise.
+        assert controller._rewrite_adapter_base_model(str(adapter_dir)) is False
+        assert not (adapter_dir / "adapter_config.json").exists()
+
+    def test_download_rewrites_when_override_set(self, controller, tmp_path):
+        """_download_adapter rewrites the base model name when the override is set."""
+        controller.base_model_name_override = "/model-store"
+        adapter = _make_adapter("my-adapter", "ws/fileset-v1", updated_at=None, workspace="ws")
+        adapter_dir = str(tmp_path / "ws--my-adapter")
+
+        def fake_download(dest_dir, workspace, name):
+            with open(os.path.join(dest_dir, "adapter_config.json"), "w") as f:
+                json.dump({"peft_type": "LORA", "base_model_name_or_path": "Qwen/Qwen2.5-1.5B-Instruct"}, f)
+            return True
+
+        with patch.object(controller, "download_fileset", side_effect=fake_download):
+            controller._download_adapter(adapter_dir, adapter, "ws")
+
+        with open(os.path.join(adapter_dir, "adapter_config.json")) as f:
+            cfg = json.load(f)
+        assert cfg["base_model_name_or_path"] == "/model-store"
+
+    def test_download_does_not_rewrite_when_override_empty(self, controller, tmp_path):
+        """When the override is empty (NIM), the adapter config is left untouched."""
+        controller.base_model_name_override = ""
+        adapter = _make_adapter("my-adapter", "ws/fileset-v1", updated_at=None, workspace="ws")
+        adapter_dir = str(tmp_path / "ws--my-adapter")
+
+        def fake_download(dest_dir, workspace, name):
+            with open(os.path.join(dest_dir, "adapter_config.json"), "w") as f:
+                json.dump({"peft_type": "LORA", "base_model_name_or_path": "Qwen/Qwen2.5-1.5B-Instruct"}, f)
+            return True
+
+        with patch.object(controller, "download_fileset", side_effect=fake_download):
+            controller._download_adapter(adapter_dir, adapter, "ws")
+
+        with open(os.path.join(adapter_dir, "adapter_config.json")) as f:
+            cfg = json.load(f)
+        assert cfg["base_model_name_or_path"] == "Qwen/Qwen2.5-1.5B-Instruct"
+
+    def test_download_does_not_publish_when_rewrite_fails(self, controller, tmp_path):
+        """When the override is set but the rewrite fails (e.g. missing adapter_config.json),
+        the adapter must NOT be published: it would never auto-resolve in vLLM. The temp dir
+        is cleaned up and the adapter dir is not created, so it retries next cycle."""
+        controller.base_model_name_override = "/model-store"
+        adapter = _make_adapter("my-adapter", "ws/fileset-v1", updated_at=None, workspace="ws")
+        adapter_dir = str(tmp_path / "ws--my-adapter")
+
+        # Download succeeds but produces no adapter_config.json -> rewrite returns False.
+        def fake_download(dest_dir, workspace, name):
+            with open(os.path.join(dest_dir, "weights.bin"), "w") as f:
+                f.write("weights")
+            return True
+
+        with patch.object(controller, "download_fileset", side_effect=fake_download):
+            with pytest.raises(RuntimeError, match="refusing to publish"):
+                controller._download_adapter(adapter_dir, adapter, "ws")
+
+        # Adapter dir not published; no orphaned temp dirs left behind.
+        assert not os.path.exists(adapter_dir)
+        temp_dirs = [e for e in os.listdir(tmp_path) if e.startswith(".")]
+        assert temp_dirs == []
 
 
 class TestUpdateLoraAdaptersRedownload:
