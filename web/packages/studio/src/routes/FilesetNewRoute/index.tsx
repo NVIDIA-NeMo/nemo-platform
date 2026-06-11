@@ -65,7 +65,7 @@ import {
   storageConfigFromUrl,
 } from '@studio/util/storageConfigFromUrl';
 import { QueryObserverResult, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, FileCheck, XCircle, CheckCircle2 } from 'lucide-react';
+import { FileCheck } from 'lucide-react';
 import { FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
