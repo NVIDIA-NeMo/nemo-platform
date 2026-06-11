@@ -8,11 +8,11 @@ import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
-import { getSortParam } from '@nemo/common/src/utils/query';
+import { getSortParamWithWhitelist } from '@nemo/common/src/utils/query';
 import { useEvaluatorListEvaluateJobs } from '@nemo/sdk/generated/evaluator/api';
-import type {
-  EvaluateJob,
-  EvaluateJobsListFilter,
+import {
+  type EvaluateJob,
+  type EvaluateJobsListFilter,
   EvaluateJobsSortField,
 } from '@nemo/sdk/generated/evaluator/schema';
 import { Button, Flex, StatusMessage } from '@nvidia/foundations-react-core';
@@ -28,11 +28,14 @@ import { useNavigate } from 'react-router-dom';
 
 const STATUS_OPTIONS_WITH_ALL = [{ value: '', label: 'All' }, ...STATUS_FILTER_OPTIONS];
 
+const SORTABLE_FIELDS = Object.values(EvaluateJobsSortField).filter((v) => !v.startsWith('-'));
+const DEFAULT_SORT = EvaluateJobsSortField['-created_at'];
+
 export const EvaluationResultsDataView = () => {
   const workspace = useWorkspaceFromPath();
   const navigate = useNavigate();
 
-  const dataViewState = useStudioDataViewState({
+  const dataViewState = useStudioDataViewState<EvaluateJobsListFilter>({
     defaultSort: { id: 'created_at', desc: true },
   });
 
@@ -45,9 +48,13 @@ export const EvaluationResultsDataView = () => {
     {
       page: dataViewState.pagination.state.pageIndex + 1,
       page_size: dataViewState.pagination.state.pageSize,
-      sort: getSortParam(dataViewState.sorting.state) as EvaluateJobsSortField,
+      sort: getSortParamWithWhitelist(
+        dataViewState.sorting.state,
+        SORTABLE_FIELDS,
+        DEFAULT_SORT
+      ) as EvaluateJobsSortField,
       filter: {
-        ...(dataViewState.apiFilter.filter as EvaluateJobsListFilter | undefined),
+        ...dataViewState.apiFilter.filter,
         ...(dataViewState.apiFilter.searchText
           ? withOperators<EvaluateJobsListFilter>({
               name: { $like: dataViewState.apiFilter.searchText },
@@ -116,7 +123,10 @@ export const EvaluationResultsDataView = () => {
       dataViewState={dataViewState}
       searchField="name"
       makeColumns={makeColumns}
-      onRowClick={(row) => navigate(getEvaluationResultDetailsRoute(workspace, row.name))}
+      onRowClick={(row) => {
+        if (!row.name) return;
+        navigate(getEvaluationResultDetailsRoute(workspace, row.name));
+      }}
       attributes={{
         DataViewSearchBar: {
           placeholder: 'Search by name',
