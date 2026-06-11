@@ -26,6 +26,7 @@ from nmp.platform_runner.schemas import (
 )
 from nmp.platform_runner.version import get_platform_version, get_revision
 from opentelemetry.semconv.attributes import service_attributes
+from starlette.routing import Route
 
 logger = logging.getLogger(__name__)
 
@@ -136,3 +137,13 @@ def create_platform_health_router(services: list[Service]) -> APIRouter:
         return HealthReadyResponse()
 
     return router
+
+
+def get_platform_health_endpoint_paths(services: list[Service] | None = None) -> tuple[str, ...]:
+    """Return OpenAPI path strings registered on the platform health router."""
+    router = create_platform_health_router(services or [])
+    paths: set[str] = set()
+    for route in router.routes:
+        if isinstance(route, Route):
+            paths.add(route.path)
+    return tuple(sorted(paths))

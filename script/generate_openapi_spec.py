@@ -18,6 +18,7 @@ from typing import Dict, List, Optional
 import yaml
 from nmp.common.api.utils import clear_query_param_schemas, register_query_param_schemas
 from nmp.common.version import platform_api_version
+from nmp.platform_runner.health import get_platform_health_endpoint_paths
 from uvicorn.importer import import_from_string
 
 from .openapi_helper.openapi_tools import (
@@ -425,14 +426,8 @@ def apply_schema_fixes(spec_files: List[str], apply_reorder: bool = True) -> Non
     """Apply schema fixes to a list of OpenAPI spec files."""
     print_green("=== Applying fixes to OpenAPI schemas ===")
     # Endpoints stripped from the public OpenAPI spec (not exposed in SDK).
-    # Includes health/status and internal endpoints.
-    health_endpoints = [
-        "/status",
-        "/metrics",
-        "/cluster-info",
-        "/health/live",
-        "/health/ready",
-    ]
+    # Platform health routes come from health.py; /metrics is from observability tooling.
+    health_endpoints = list(get_platform_health_endpoint_paths()) + ["/metrics"]
 
     for spec_file in spec_files:
         if os.path.exists(spec_file):
