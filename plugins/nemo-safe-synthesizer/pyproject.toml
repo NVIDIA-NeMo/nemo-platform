@@ -3,7 +3,7 @@ name = "nemo-safe-synthesizer-plugin"
 version = "0.1.0"
 description = "NeMo Safe Synthesizer plugin."
 readme = "README.md"
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.11,<3.15"
 authors = [{ name = "NVIDIA", email = "nemo@nvidia.com" }]
 dependencies = [
     "datasets>=3.3.1,<=4.3.0",

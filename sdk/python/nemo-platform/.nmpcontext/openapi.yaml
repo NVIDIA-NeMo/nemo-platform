@@ -4089,6 +4089,88 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/spans/groups:
+    get:
+      tags:
+      - Spans
+      summary: List Span Groups
+      operationId: list_span_groups_apis_intake_v2_workspaces__workspace__spans_groups_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: by
+        in: query
+        required: true
+        schema:
+          type: string
+          description: Comma-separated span fields to group by, e.g. trace_id or session_id,trace_id.
+          title: By
+        description: Comma-separated span fields to group by, e.g. trace_id or session_id,trace_id.
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          description: Page size.
+          default: 10
+          title: Page Size
+        description: Page size.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/SpanGroupSortField'
+          default: -span_count
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/SpanFilter'
+        description: Filter spans by the same fields as the span list endpoint, then
+          group matching spans by the comma-separated fields in the by query parameter.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpanGroupsPage'
+        '400':
+          description: Invalid group-by parameter
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+                required:
+                - detail
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /apis/intake/v2/workspaces/{workspace}/spans/{span_id}:
     get:
       tags:
@@ -16248,6 +16330,67 @@ components:
           description: Filter by span start timestamp.
       title: SpanFilter
       type: object
+    SpanGroup:
+      properties:
+        group:
+          additionalProperties:
+            type: string
+          type: object
+          title: Group
+          description: Group key values, keyed by the requested group-by fields.
+        span_count:
+          type: integer
+          minimum: 0.0
+          title: Span Count
+          description: Number of matching spans in this group.
+      type: object
+      required:
+      - group
+      - span_count
+      title: SpanGroup
+    SpanGroupBy:
+      type: string
+      enum:
+      - trace_id
+      - session_id
+      title: SpanGroupBy
+    SpanGroupSortField:
+      type: string
+      enum:
+      - span_count
+      - -span_count
+      title: SpanGroupSortField
+    SpanGroupsPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/SpanGroup'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+        grouped_by:
+          items:
+            $ref: '#/components/schemas/SpanGroupBy'
+          type: array
+          title: Grouped By
+          description: Span fields used to group the matching spans.
+      type: object
+      required:
+      - data
+      - grouped_by
+      title: SpanGroupsPage
     SpanKind:
       type: string
       enum:

@@ -82,6 +82,11 @@ class SpanListFilter(BaseModel):
     attribute_filters: list[SpanAttributeFilter] = Field(default_factory=list)
 
 
+class SpanGroup(BaseModel):
+    group: dict[str, str]
+    span_count: int = Field(ge=0)
+
+
 class TraceListFilter(BaseModel):
     workspace: str
     trace_id: str | None = None

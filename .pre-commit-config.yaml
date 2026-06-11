@@ -128,6 +128,10 @@ repos:
     hooks:
       - id: no-nmp-common-in-plugins
         name: Plugins must not import from nmp-common
+        # If this fails: check whether the function/class you need already exists in
+        # nemo_platform_plugin (packages/nemo_platform_plugin). If it does, import
+        # from there instead. If it doesn't, move the code from nmp_common into
+        # nemo_platform_plugin so plugins can access it without depending on nmp_common.
         entry: 'from nmp\.common|from nmp_common|import nmp\.common|import nmp_common'
         language: pygrep
         files: ^plugins/.*\.py$

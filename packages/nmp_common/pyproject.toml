@@ -4,7 +4,7 @@ version = "0.0.0"
 description = "Add your description here"
 readme = "README.md"
 authors = [{ name = "Ryan Leary", email = "rleary@nvidia.com" }]
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.11,<3.15"
 
 classifiers = [
   "Development Status :: 4 - Beta",
@@ -20,6 +20,7 @@ classifiers = [
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
 ]
 
 dependencies = [

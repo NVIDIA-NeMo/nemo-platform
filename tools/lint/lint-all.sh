@@ -18,12 +18,13 @@ declare -a scripts=(
   "lint-auth-config:tools/lint/lint-auth-config.sh"
   "lint-merge-conflict:tools/lint/lint-merge-conflict.sh"
   "lint-copyright-headers:tools/lint/lint-copyright-headers.sh"
+  "lint-no-nmp-common-in-plugins:tools/lint/lint-no-nmp-common-in-plugins.sh"
 )
 
 is_no_fix_lint() {
   local lint_name="$1"
   case "${lint_name}" in
-    lint-python-types|lint-merge-conflict)
+    lint-python-types|lint-merge-conflict|lint-no-nmp-common-in-plugins)
       return 0
       ;;
     *)
