@@ -5,23 +5,36 @@
 
 import logging
 from collections.abc import Iterable
+from dataclasses import dataclass
 from importlib.metadata import entry_points
 from pathlib import Path
 from typing import Any
 
 import yaml
-from nemo_platform_ext.cli.commands.skills.base import Scope, Skill
-from nemo_platform_ext.cli.commands.skills.registry import (
-    DuplicateSkillError,
-    get_installer,
-    load_skills,
-)
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
 _PLATFORM_SKILL_SOURCE_DISTS = frozenset({"nemo-platform-ext", "nemo-platform-sdk"})
 _AGGREGATE_SKILL_SOURCE_DIST = "nemo-platform"
+
+
+@dataclass
+class Skill:
+    """Minimal skill metadata Studio needs from a ``nemo.skills`` provider."""
+
+    name: str
+    description: str
+    version: str
+    content: str
+    raw: str
+    source_dir: Path | None = None
+    source_plugin: str | None = None
+    source_dist: str | None = None
+
+
+class DuplicateSkillError(ValueError):
+    """Raised when multiple skill providers declare the same skill name."""
 
 
 class ClaudeSkillResponse(BaseModel):
@@ -150,6 +163,32 @@ def load_skills_from_root(
     return skills
 
 
+def load_skills() -> dict[str, Skill]:
+    """Load skills from installed ``nemo.skills`` entry points."""
+    allowed_names = _allowed_skill_provider_names()
+    all_skills: dict[str, Skill] = {}
+    for entry_point in _raw_skill_entry_points():
+        if allowed_names is not None and entry_point.name not in allowed_names:
+            continue
+        skills_root = _resolve_skills_entry_point_root(entry_point)
+        if skills_root is None:
+            continue
+        source_dist = _skill_entry_point_dist_name(entry_point)
+        for skill in load_skills_from_root(
+            skills_root,
+            source_plugin=entry_point.name,
+            source_dist=source_dist,
+        ).values():
+            existing = all_skills.get(skill.name)
+            if existing is not None:
+                raise DuplicateSkillError(
+                    f"Duplicate skill '{skill.name}' found in provider {entry_point.name}: "
+                    f"{skill.source_dir}. Already defined in {existing.source_dir}."
+                )
+            all_skills[skill.name] = skill
+    return dict(sorted(all_skills.items()))
+
+
 def _load_skills_from_preferred_entry_points() -> dict[str, Skill]:
     """Load skills for Studio while preferring editable source providers over vendored mirrors."""
     allowed_names = _allowed_skill_provider_names()
@@ -211,9 +250,12 @@ def _skill_source_label(skill: Skill) -> str:
     return "-"
 
 
+def _claude_install_path(project_root: Path, skill_name: str) -> Path:
+    return project_root / ".claude" / "skills" / f"nemo-{skill_name}" / "SKILL.md"
+
+
 def _claude_skill_response(name: str, skill: Skill, server_cwd: Path) -> ClaudeSkillResponse:
-    installer = get_installer("claude")
-    install_path = installer.get_install_path(Scope.PROJECT, server_cwd, name)
+    install_path = _claude_install_path(server_cwd, name)
     source_path = _path_for_response(skill.source_dir, server_cwd) if skill.source_dir is not None else None
     return ClaudeSkillResponse(
         name=name,
