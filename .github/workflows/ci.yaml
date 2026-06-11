@@ -57,7 +57,7 @@ jobs:
         run: |
           "${RUNNER_TEMP}/actionlint/actionlint"
 
-  docker-canary:
+  docker-bake-graph:
     name: Docker bake graph
     needs: [changes]
     if: >
