@@ -1,0 +1,14 @@
+{
+    "upload": [
+        {
+            "src": "files_to_upload",
+            "dest": "default/test-fileset"
+        }
+    ],
+    "download": [
+        {
+            "src": "default/test-fileset",
+            "dest": "temp/downloaded_files"
+        }
+    ]
+}

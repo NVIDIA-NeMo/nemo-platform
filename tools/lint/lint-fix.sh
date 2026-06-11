@@ -7,9 +7,12 @@ set -euo pipefail
 #   4. Python style (ruff; run before vendoring so generated files aren't re-linted)
 #   5. CLI command generation (the vendoring and docs are handled by the next step)
 #   6. Vendor all packages (covers nemo_platform_ext too) + CLI reference docs
-#   7. License update (may change after vendoring)
-#   8. Config reference docs (independent, but run after structural changes)
-#   9. Auth docs (regenerate permissions reference from static-authz.yaml)
+#   7. Copyright headers (after generated files are in place)
+#   8. License update (may change after vendoring)
+#   9. Config reference docs (independent, but run after structural changes)
+#  10. Auth docs (regenerate permissions reference from static-authz.yaml)
+#  11. Verification (optional) — run the same checks as CI (tools/lint/lint-all.sh)
+#      Enable with LINT_FIX_VERIFY=1.
 #
 # Note: update-sdk = build-policy + refresh-openapi + stainless + update-cli, so we use
 # stainless directly here to avoid re-running refresh-openapi and update-cli redundantly.
@@ -20,6 +23,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${CI_PROJECT_DIR:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 cd "${PROJECT_ROOT}" || exit 1
 
+verify=false
+if [[ "${LINT_FIX_VERIFY:-}" == "1" ]]; then
+  verify=true
+fi
+
 declare -a steps=(
   "refresh-openapi:make refresh-openapi"
   "web-sdk:bash tools/lint/lint-fix-web-sdk.sh"
@@ -27,6 +35,7 @@ declare -a steps=(
   "python-style:uv run ruff format && uv run ruff check --fix"
   "generate-cli-commands:make generate-cli-commands"
   "vendor+cli-reference-docs:make vendor && make generate-cli-reference-docs"
+  "copyright-headers:make update-copyright-headers"
   "update-licenses:bash tools/lint/lint-fix-licenses.sh"
   "auth-config:uv run python services/core/auth/scripts/auth-tools.py update"
   "generate-config-docs:uv run generate-config-docs"
@@ -63,7 +72,42 @@ for row in "${timing_rows[@]}"; do
 done
 if [[ ${#failed[@]} -gt 0 ]]; then
   echo ""
-  echo "Failed steps: ${failed[*]}"
+  echo "Failed fix steps: ${failed[*]}"
+fi
+
+if [[ "${verify}" == "true" ]]; then
+  echo ""
+  echo ">>> verification: bash tools/lint/lint-all.sh"
+  verify_start=$(date +%s)
+  if LINT_AFTER_FIX=1 bash tools/lint/lint-all.sh; then
+    verify_result="PASS"
+  else
+    verify_result="FAIL"
+    failed+=("verification")
+  fi
+  verify_elapsed=$(( $(date +%s) - verify_start ))
+  printf '  %-40s %s\n' "verification (lint-all)" "${verify_result} ${verify_elapsed}s"
+fi
+
+echo ""
+if [[ "${verify}" == "true" ]]; then
+  echo "--- Overall summary ---"
+  if [[ ${#failed[@]} -eq 0 ]]; then
+    echo "All fix steps and CI lint checks passed."
+    exit 0
+  fi
+  if [[ ${#failed[@]} -eq 1 && " ${failed[*]} " == *" verification "* ]]; then
+    echo "Auto-fix completed; remaining lint issues require manual fixes (see output above)."
+  else
+    echo "Some fix steps and/or lint checks failed: ${failed[*]}"
+  fi
   exit 1
 fi
-exit 0
+
+if [[ ${#failed[@]} -eq 0 ]]; then
+  echo "All fix steps completed."
+  exit 0
+fi
+echo "Some fix steps failed: ${failed[*]}"
+echo "Run with LINT_FIX_VERIFY=1 to check CI lint after fixing."
+exit 1

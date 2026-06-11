@@ -321,3 +321,39 @@ def get_entity_parts(name: str, default_workspace: str | None = None) -> tuple[s
             f"Entity reference '{name}' is not qualified with a workspace, and no workspace to default to was provided. Must be in the format $workspace/$entity_name or a default workspace must be provided to fall back to."
         )
     return default_workspace, name
+
+
+# ---------------------------------------------------------------------------
+# Entry-point provider for nemo_platform_plugin.sdk_provider
+# ---------------------------------------------------------------------------
+
+
+class PlatformSDKProvider:
+    """Rich :class:`~nemo_platform_plugin.sdk_provider.SDKProvider` that uses
+    platform internals (shared HTTP clients, URL routing, OTEL headers, auth
+    context vars).
+
+    Registered as a ``nemo.sdk_provider`` entry-point so it is
+    discovered automatically when ``nmp-common`` is installed.
+    """
+
+    def get_task_sdk(self, service_name: str) -> NeMoPlatform:
+        return get_task_sdk(service_name)
+
+    def get_platform_sdk(
+        self,
+        *,
+        as_service: str | None = None,
+        internal: bool = False,
+        on_behalf_of: str | Principal | None = None,
+    ) -> NeMoPlatform:
+        return get_platform_sdk(as_service=as_service, internal=internal, on_behalf_of=on_behalf_of)
+
+    def get_async_platform_sdk(
+        self,
+        *,
+        as_service: str | None = None,
+        internal: bool = False,
+        on_behalf_of: str | Principal | None = None,
+    ) -> AsyncNeMoPlatform:
+        return get_async_platform_sdk(as_service=as_service, internal=internal, on_behalf_of=on_behalf_of)

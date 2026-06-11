@@ -6,7 +6,6 @@ Types:
 from nemo_platform.types.files import (
     CacheStatus,
     CreateFilesetRequest,
-    DatasetMetadataContent,
     Fileset,
     FilesetFile,
     FilesetOutputsPage,
@@ -34,7 +33,7 @@ Methods:
 Types:
 
 ```python
-from nemo_platform.types.files import FilesetFilter, FilesetMetadataParam
+from nemo_platform.types.files import FilesetFilter
 ```
 
 Methods:

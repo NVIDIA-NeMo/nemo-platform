@@ -22,6 +22,7 @@ Entry-point groups and their wrappers
 ``nemo.docs``                  → :func:`discover_docs`                  — ``() -> Path | dict`` callable
 ``nemo.executors``             → :func:`discover_executors`             — ``Executor`` class
 ``nemo.inference_middleware``  → :func:`discover_inference_middleware`  — :class:`~nemo_platform_plugin.inference_middleware.NemoInferenceMiddleware` subclass  (typed, IGW instantiates)
+``nemo.customization.contributors`` → :func:`discover_customization_contributors` — :class:`~nemo_platform_plugin.customization_contributor.CustomizationContributor` instance  (typed, customization router instantiates)
 ``nemo.seed``                  → :func:`discover_seed_jobs`             — :class:`~nemo_platform_plugin.seed.NemoSeedJob` subclass  (typed, platform instantiates)
 ``nemo.authz``                 → :func:`~nemo_platform_plugin.authz_discovery.discover_authz_contributions` — policy endpoints/permissions (merged at runtime and via ``auth-tools sync-plugins``)
 
@@ -44,18 +45,20 @@ import logging
 import os
 from functools import cache
 from importlib.metadata import EntryPoint, entry_points
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
+from nemo_platform_plugin.cli import NemoCLI
+from nemo_platform_plugin.controller import NemoController
+from nemo_platform_plugin.customization_contributor import (
+    CustomizationContributor,
+    CustomizationContributorDiscoveryError,
+)
+from nemo_platform_plugin.function import NemoFunction
+from nemo_platform_plugin.inference_middleware import NemoInferenceMiddleware
 from nemo_platform_plugin.interface import PluginManifest
-
-if TYPE_CHECKING:
-    from nemo_platform_plugin.cli import NemoCLI
-    from nemo_platform_plugin.controller import NemoController
-    from nemo_platform_plugin.function import NemoFunction
-    from nemo_platform_plugin.inference_middleware import NemoInferenceMiddleware
-    from nemo_platform_plugin.job import NemoJob
-    from nemo_platform_plugin.seed import NemoSeedJob
-    from nemo_platform_plugin.service import NemoService
+from nemo_platform_plugin.job import NemoJob
+from nemo_platform_plugin.seed import NemoSeedJob
+from nemo_platform_plugin.service import NemoService
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +77,7 @@ _ALL_SURFACE_GROUPS = (
     "nemo.docs",
     "nemo.executors",
     "nemo.inference_middleware",
+    "nemo.customization.contributors",
     "nemo.seed",
     "nemo.authz",
 )
@@ -97,9 +101,12 @@ _SURFACE_ALLOWLIST_ENV_VARS: dict[str, str] = {
     "nemo.docs": "NEMO_PLUGIN_DOCS_ALLOWLIST",
     "nemo.executors": "NEMO_PLUGIN_EXECUTORS_ALLOWLIST",
     "nemo.inference_middleware": "NEMO_PLUGIN_INFERENCE_MIDDLEWARE_ALLOWLIST",
+    "nemo.customization.contributors": "NEMO_PLUGIN_CUSTOMIZATION_CONTRIBUTORS_ALLOWLIST",
     "nemo.seed": "NEMO_PLUGIN_SEED_ALLOWLIST",
     "nemo.authz": "NEMO_PLUGIN_AUTHZ_ALLOWLIST",
 }
+
+CUSTOMIZATION_CONTRIBUTORS_GROUP = "nemo.customization.contributors"
 
 
 def _manifest_plugin_name(group: str, entry_point_name: str) -> str:
@@ -469,6 +476,68 @@ def discover_executors() -> dict[str, Any]:
     ``"k8s"``), used by the platform's job scheduler to resolve the right backend.
     """
     return discover("nemo.executors")
+
+
+def _instantiate_customization_contributor(loaded: object) -> CustomizationContributor:
+    from nemo_platform_plugin.customization_contributor import CustomizationContributor
+
+    if isinstance(loaded, type):
+        instance = loaded()
+    else:
+        instance = loaded
+    if not isinstance(instance, CustomizationContributor):
+        raise TypeError(
+            f"Expected CustomizationContributor instance, got {type(instance)!r}",
+        )
+    return instance
+
+
+@cache
+def discover_customization_contributors() -> dict[str, CustomizationContributor]:
+    """Typed wrapper: discover ``nemo.customization.contributors`` entry-points.
+
+    Returns a dict keyed by entry-point key (e.g. ``"automodel"``) mapping to a
+    :class:`~nemo_platform_plugin.customization_contributor.CustomizationContributor`
+    instance. Entry points may register a class (instantiated here) or a pre-built
+    instance. Broken or misconfigured contributors raise
+    :class:`~nemo_platform_plugin.customization_contributor.CustomizationContributorDiscoveryError`.
+    """
+
+    result: dict[str, CustomizationContributor] = {}
+
+    for ep in discover_entry_points(CUSTOMIZATION_CONTRIBUTORS_GROUP).values():
+        try:
+            loaded = ep.load()
+            contributor = _instantiate_customization_contributor(loaded)
+            key = getattr(type(contributor), "name", None) or ep.name
+            if key != ep.name:
+                raise CustomizationContributorDiscoveryError(
+                    f"Contributor entry-point key {ep.name!r} differs from class name {key!r}; "
+                    "entry-point key and contributor class `name` must match.",
+                )
+            result[ep.name] = contributor
+            logger.debug(
+                "Loaded customization contributor %r from %s",
+                ep.name,
+                ep.value,
+            )
+        except CustomizationContributorDiscoveryError:
+            raise
+        except Exception as exc:
+            raise CustomizationContributorDiscoveryError(
+                f"Failed to load customization contributor {ep.name!r} ({ep.value})",
+            ) from exc
+
+    return result
+
+
+def discover_customization_contributor_classes() -> dict[str, type]:
+    """Return contributor entry-point name → loaded class (for tests)."""
+    result: dict[str, type] = {}
+    for key, loaded in discover(CUSTOMIZATION_CONTRIBUTORS_GROUP).items():
+        if isinstance(loaded, type):
+            result[key] = loaded
+    return result
 
 
 def discover_inference_middleware() -> dict[str, type[NemoInferenceMiddleware]]:

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { withOperators } from '@nemo/common/src/api/filterOperators';
 import { BASIC_ALL_MODELS_DROPDOWN_FILTER } from '@nemo/common/src/api/models/useModels';
 import { useModelsFromWorkspace } from '@nemo/common/src/api/models/useModelsFromWorkspace';
 import { VariableButton } from '@nemo/common/src/components/buttons/VariableButton';
@@ -10,19 +9,15 @@ import {
   defaultChatCompletionMessageRow,
 } from '@nemo/common/src/components/ChatCompletionInput';
 import { ControlledDatasetFileSelect } from '@nemo/common/src/components/DatasetFileSelect/ControlledDatasetFileSelect';
-import { ControlledSearchableSelect } from '@nemo/common/src/components/form/ControlledSearchableSelect';
 import type { VariableDef } from '@nemo/common/src/components/form/VariableTextArea';
 import { ModelSelectV2 } from '@nemo/common/src/components/ModelSelectV2';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import {
-  useEvaluationCreateMetricJob,
-  useEvaluationListMetrics,
-} from '@nemo/sdk/generated/platform/api';
+import { useEvaluatorCreateEvaluateJob } from '@nemo/sdk/generated/evaluator/api';
 import type {
-  EvaluationListMetricsParams,
-  EvaluatorModel,
-} from '@nemo/sdk/generated/platform/schema';
-import type { MetricEvaluationJobRequest } from '@nemo/sdk/generated/platform/schema/MetricEvaluationJobRequest';
+  EvaluateJobRequest,
+  MetricBundleInput,
+  Model,
+} from '@nemo/sdk/generated/evaluator/schema';
 import {
   Button,
   Flex,
@@ -75,18 +70,15 @@ const getPromptTemplateFromMetric = (metric: MetricItemWithId | null): unknown =
 
 const getMetricRunFileValidationState = (
   form: UseFormReturn<MetricRunSidePanelFormData>,
-  selectedMetric: MetricItemWithId | null,
-  metricsByName: Map<string, MetricItemWithId>
+  selectedMetric: MetricItemWithId | null
 ): MetricRunFileValidationState => {
-  const { dataset, jobType, metricName, promptMessages } = form.getValues();
-  const metricForValidation =
-    selectedMetric ?? (metricName ? (metricsByName.get(metricName) ?? null) : null);
+  const { dataset, jobType, promptMessages } = form.getValues();
 
   return {
     dataset,
     jobType,
     promptTemplate: getMetricRunValidationPromptTemplate({
-      metricPromptTemplate: getPromptTemplateFromMetric(metricForValidation),
+      metricPromptTemplate: getPromptTemplateFromMetric(selectedMetric),
       promptMessages: promptMessages ?? [],
     }),
   };
@@ -104,7 +96,6 @@ const getNextMetricRunFileValidationState = (
 
 interface MetricRunFileValidationPanelProps {
   form: UseFormReturn<MetricRunSidePanelFormData>;
-  metricsByName: Map<string, MetricItemWithId>;
   selectedMetric: MetricItemWithId | null;
   workspace: string;
   onVariablesChange: (variables: VariableDef[]) => void;
@@ -112,20 +103,19 @@ interface MetricRunFileValidationPanelProps {
 
 const MetricRunFileValidationPanel: FC<MetricRunFileValidationPanelProps> = ({
   form,
-  metricsByName,
   selectedMetric,
   workspace,
   onVariablesChange,
 }) => {
   const [validationState, setValidationState] = useState(() =>
-    getMetricRunFileValidationState(form, selectedMetric, metricsByName)
+    getMetricRunFileValidationState(form, selectedMetric)
   );
 
   useEffect(() => {
     setValidationState((previousState) =>
       getNextMetricRunFileValidationState(
         previousState,
-        getMetricRunFileValidationState(form, selectedMetric, metricsByName)
+        getMetricRunFileValidationState(form, selectedMetric)
       )
     );
 
@@ -134,13 +124,12 @@ const MetricRunFileValidationPanel: FC<MetricRunFileValidationPanelProps> = ({
         name === undefined ||
         name === 'dataset' ||
         name === 'jobType' ||
-        name === 'metricName' ||
         name.startsWith('promptMessages')
       ) {
         setValidationState((previousState) =>
           getNextMetricRunFileValidationState(
             previousState,
-            getMetricRunFileValidationState(form, selectedMetric, metricsByName)
+            getMetricRunFileValidationState(form, selectedMetric)
           )
         );
       }
@@ -149,7 +138,7 @@ const MetricRunFileValidationPanel: FC<MetricRunFileValidationPanelProps> = ({
     return () => {
       subscription.unsubscribe();
     };
-  }, [form, metricsByName, selectedMetric]);
+  }, [form, selectedMetric]);
 
   return (
     <FileValidationPanel
@@ -181,38 +170,7 @@ export const MetricRunSidePanel: FC<MetricRunSidePanelProps> = ({
     queryOptions: { enabled: open },
   });
   const evaluationModels = useMemo(() => modelGroups.flatMap((g) => g.models), [modelGroups]);
-  const { mutateAsync: createMetricJob, isPending } = useEvaluationCreateMetricJob();
-  const [metricSearch, setMetricSearch] = useState('');
-
-  const { data: metricsData, isLoading: isLoadingMetrics } = useEvaluationListMetrics(
-    workspace,
-    {
-      page: 1,
-      page_size: 50,
-      filter: metricSearch
-        ? withOperators<NonNullable<EvaluationListMetricsParams['filter']>>({
-            name: { $like: metricSearch },
-          })
-        : undefined,
-    },
-    { query: { enabled: !metric && open } }
-  );
-
-  const metricOptions = useMemo(
-    () =>
-      (metricsData?.data ?? []).map((m) => ({
-        value: m.name ?? '',
-        label: m.name ?? '',
-      })),
-    [metricsData?.data]
-  );
-  const metricsByName = useMemo(() => {
-    const nextMetricsByName = new Map<string, MetricItemWithId>();
-    for (const metricItem of metricsData?.data ?? []) {
-      if (metricItem.name) nextMetricsByName.set(metricItem.name, metricItem as MetricItemWithId);
-    }
-    return nextMetricsByName;
-  }, [metricsData?.data]);
+  const { mutateAsync: createEvaluateJob, isPending } = useEvaluatorCreateEvaluateJob();
 
   const modelSearchParam = searchParams.get(QUERY_PARAMETERS.model);
   const modelSelectionFromSearchParam = useMemo(
@@ -281,9 +239,7 @@ export const MetricRunSidePanel: FC<MetricRunSidePanelProps> = ({
   }, [form]);
 
   const handleSubmit = async (formData: MetricRunSidePanelFormData) => {
-    const resolvedMetricName = metric?.name ?? formData.metricName;
-    if (!resolvedMetricName) {
-      form.setError('metricName', { message: 'Please select a metric' });
+    if (!metric) {
       return;
     }
 
@@ -303,9 +259,7 @@ export const MetricRunSidePanel: FC<MetricRunSidePanelProps> = ({
     }
 
     try {
-      const metricRef = `${workspace}/${resolvedMetricName}`;
-
-      let modelPayload: EvaluatorModel | string | undefined;
+      let target: Model | undefined;
       if (formData.jobType === 'online') {
         const { model, adapter } = formData.model!;
         const modelValue = adapter ? `${model}::${adapter}` : model;
@@ -314,31 +268,35 @@ export const MetricRunSidePanel: FC<MetricRunSidePanelProps> = ({
           toast.error(result.error);
           return;
         }
-        modelPayload = result.payload;
+        const payload = result.payload;
+        target =
+          typeof payload === 'string'
+            ? { url: payload, name: payload }
+            : (payload as unknown as Model);
       }
 
       const onlineJobParams = buildMetricRunOnlineJobParams(formData);
       const promptTemplatePayload = buildMetricRunChatPromptTemplate(formData.promptMessages);
 
-      const request: MetricEvaluationJobRequest =
+      const request: EvaluateJobRequest =
         formData.jobType === 'online'
           ? {
               spec: {
-                metric: metricRef,
+                metrics: [metric as unknown as MetricBundleInput],
                 dataset: formData.dataset,
-                model: modelPayload!,
-                prompt_template: promptTemplatePayload!,
+                target,
+                prompt_template: promptTemplatePayload ?? undefined,
                 ...(onlineJobParams && { params: onlineJobParams }),
               },
             }
           : {
               spec: {
-                metric: metricRef,
+                metrics: [metric as unknown as MetricBundleInput],
                 dataset: formData.dataset,
               },
             };
 
-      const job = await createMetricJob({ workspace, data: request });
+      const job = await createEvaluateJob({ workspace, data: request });
       toast.success('Metric evaluation job created');
       onOpenChange(false);
       navigate(getEvaluationResultDetailsRoute(workspace, job.name));
@@ -389,19 +347,8 @@ export const MetricRunSidePanel: FC<MetricRunSidePanelProps> = ({
             Create a Metric evaluation job to run this metric against your ground truth data.
           </Text>
 
-          {metric ? (
+          {metric && (
             <EvalCard name={metric.name ?? ''} description={metricDescription} type={metricType} />
-          ) : (
-            <ControlledSearchableSelect
-              formFieldProps={{ slotLabel: 'Metric', required: true }}
-              useControllerProps={{ name: 'metricName', control: form.control }}
-              options={metricOptions}
-              isLoading={isLoadingMetrics}
-              onSearchChange={setMetricSearch}
-              triggerPlaceholder="Select a metric..."
-              searchPlaceholder="Search metrics..."
-              emptyMessage="No metrics found"
-            />
           )}
 
           <Controller
@@ -522,7 +469,6 @@ export const MetricRunSidePanel: FC<MetricRunSidePanelProps> = ({
           />
           <MetricRunFileValidationPanel
             form={form}
-            metricsByName={metricsByName}
             selectedMetric={metric}
             workspace={workspace}
             onVariablesChange={handleDatasetVariablesChange}

@@ -17,11 +17,17 @@
 
 from __future__ import annotations
 
-from typing_extensions import TypedDict
+from typing import Union
+from typing_extensions import TypeAlias, TypedDict
 
+from ..shared_params.string_filter import StringFilter
 from ..shared_params.datetime_filter import DatetimeFilter
 
-__all__ = ["GuardrailConfigFilterParam"]
+__all__ = ["GuardrailConfigFilterParam", "Description", "Name"]
+
+Description: TypeAlias = Union[StringFilter, str]
+
+Name: TypeAlias = Union[StringFilter, str]
 
 
 class GuardrailConfigFilterParam(TypedDict, total=False):
@@ -33,10 +39,10 @@ class GuardrailConfigFilterParam(TypedDict, total=False):
     Supports '$gte' (on or after) and '$lte' (on or before) datetime filters.
     """
 
-    description: str
+    description: Description
     """Filter by config description."""
 
-    name: str
+    name: Name
     """Filter by config name."""
 
     project: str

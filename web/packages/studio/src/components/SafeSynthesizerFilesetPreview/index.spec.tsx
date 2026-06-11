@@ -7,8 +7,8 @@ import { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
 import {
   useSafeSynthesizerDownloadJobResultSyntheticData,
   useSafeSynthesizerListJobResults,
-} from '@nemo/sdk/vendored/safe-synthesizer/api';
-import { type SafeSynthesizerJob } from '@nemo/sdk/vendored/safe-synthesizer/schema';
+} from '@nemo/sdk/generated/safe-synthesizer/api';
+import { type SafeSynthesizerJob } from '@nemo/sdk/generated/safe-synthesizer/schema';
 import { ThemeProvider } from '@nvidia/foundations-react-core';
 import { SafeSynthesizerFilesetPreview } from '@studio/components/SafeSynthesizerFilesetPreview';
 import { mockUseParams } from '@studio/tests/util/mockUseParams';
@@ -25,8 +25,8 @@ vi.mock('papaparse', () => ({
   },
 }));
 
-// Mock API hooks — SafeSynthesizer hooks are in the vendored module
-vi.mock('@nemo/sdk/vendored/safe-synthesizer/api', () => ({
+// Mock generated SafeSynthesizer API hooks
+vi.mock('@nemo/sdk/generated/safe-synthesizer/api', () => ({
   useSafeSynthesizerListJobResults: vi.fn(),
   useSafeSynthesizerDownloadJobResultSyntheticData: vi.fn(),
 }));

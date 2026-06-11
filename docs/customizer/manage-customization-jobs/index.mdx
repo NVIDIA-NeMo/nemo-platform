@@ -1,0 +1,74 @@
+---
+title: "Manage Customization Jobs"
+description: ""
+---
+<a id="ft-manage-customization-jobs"></a>
+Use customization jobs to fine-tune a [model](/documentation/customizer-reference/models/model-catalog) using a [dataset](/documentation/get-started/core-concepts/manage-files) and [hyperparameters](/documentation/customizer-reference/manage-jobs/training-configuration).
+
+## How It Works
+
+Customization jobs reference a **Model Entity** that contains the base model checkpoint. When training completes:
+
+-   **LoRA jobs**: Create an **Adapter** attached to the original Model Entity. Adapters can be auto-deployed to NIMs.
+-   **Full fine-tuning jobs**: Create a **new Model Entity** with the customized weights, linked to the base model.
+
+This design keeps adapters organized with their parent models and simplifies deployment workflows.
+
+## Prerequisites
+
+Before you can customize a model using a customization job, make sure that you have [prepared and uploaded a dataset](/documentation/fine-tune-models/tutorials/format-training-dataset) to the dataset repository.
+
+---
+
+## Task Guides
+
+Perform common customization job tasks.
+
+<Tip>
+
+The value for `NMP_BASE_URL` will depend on your deployment. After the standard [Setup](/documentation/get-started) flow, the default local URL is `http://localhost:8080`. Otherwise, consult with your cluster administrator.
+
+</Tip>
+<Cards>
+
+<Card title="Create a Customization Job" href="/documentation/fine-tune-models/manage-customization-jobs/create-a-customization-job">
+
+Create a customization job using SFT, DPO, or Knowledge Distillation.
+
+</Card>
+<Card title="Get Job Status" href="/documentation/customizer-reference/manage-jobs/get-job-status">
+
+Check the status of a customization job.
+
+</Card>
+<Card title="List Active Jobs" href="/documentation/customizer-reference/manage-jobs/list-active-jobs">
+
+List all active customization jobs to find a job name for use with Get Status or Cancel.
+
+</Card>
+<Card title="Cancel a Job" href="/documentation/customizer-reference/manage-jobs/cancel-job">
+
+Cancel a customization job using its name and workspace.
+
+</Card>
+
+</Cards>
+
+## References
+
+Refer to the following pages for more information on customization jobs.
+
+<Cards>
+
+<Card title="Hyperparameters" href="/documentation/customizer-reference/manage-jobs/training-configuration">
+
+Review the hyperparameters that you can use to customize a model.
+
+</Card>
+<Card title="Troubleshoot Failed Jobs" href="/documentation/reference/troubleshooting/customizer">
+
+View troubleshooting tips for failed jobs.
+
+</Card>
+
+</Cards>

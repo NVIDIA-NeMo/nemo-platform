@@ -2,18 +2,33 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import type { MetricEvaluationResponse } from '@nemo/sdk/generated/platform/schema';
 import { Badge, CodeSnippet, Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import type { FC } from 'react';
+
+interface AggregateScore {
+  name: string;
+  count: number;
+  mean?: number | null;
+  min?: number | null;
+  max?: number | null;
+}
+
+interface RowScore {
+  index: number;
+  scores?: Record<string, number>;
+  error?: string | null;
+}
+
+interface EvaluateJobResults {
+  aggregate_scores: AggregateScore[];
+  row_scores: RowScore[];
+}
 
 function formatScoreValue(value: number): string {
   return String(value);
 }
 
-function buildRowResultLines(
-  rowScores: MetricEvaluationResponse['row_scores'],
-  scoreOrder: string[]
-): string[] {
+function buildRowResultLines(rowScores: RowScore[], scoreOrder: string[]): string[] {
   const lines: string[] = [];
   const sorted = [...rowScores].sort((a, b) => a.index - b.index);
 
@@ -38,7 +53,7 @@ function buildRowResultLines(
   return lines;
 }
 
-export const ResultsLog: FC<{ results: MetricEvaluationResponse }> = ({ results }) => {
+export const ResultsLog: FC<{ results: EvaluateJobResults }> = ({ results }) => {
   const toast = useToast();
   const { aggregate_scores, row_scores } = results;
   const scoreNames = aggregate_scores.map((s) => s.name);
@@ -52,9 +67,9 @@ export const ResultsLog: FC<{ results: MetricEvaluationResponse }> = ({ results 
         <Flex gap="density-sm" wrap="wrap">
           {aggregate_scores.map((agg) => (
             <Badge key={agg.name} kind="solid" color="green">
-              {agg.name}: mean={'mean' in agg && agg.mean != null ? agg.mean.toFixed(2) : 'N/A'}{' '}
-              min={'min' in agg && agg.min != null ? agg.min : 'N/A'} max=
-              {'max' in agg && agg.max != null ? agg.max : 'N/A'} (n={agg.count})
+              {agg.name}: mean={agg.mean != null ? agg.mean.toFixed(2) : 'N/A'} min=
+              {agg.min != null ? agg.min : 'N/A'} max=
+              {agg.max != null ? agg.max : 'N/A'} (n={agg.count})
             </Badge>
           ))}
         </Flex>

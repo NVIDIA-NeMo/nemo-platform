@@ -319,6 +319,35 @@ class TestSubmitVerb:
         assert "--profile" in output
         assert "--cluster" in output
 
+    def test_submit_passes_cli_auth_headers(self, monkeypatch) -> None:
+        captured: dict[str, object] = {}
+
+        def _capture(_self, _job_cls, _spec, headers=None, **_kwargs) -> dict:
+            captured["headers"] = headers
+            return {"id": "job-123"}
+
+        class _State:
+            def get_sdk_context(self) -> SimpleNamespace:
+                return SimpleNamespace(
+                    user=SimpleNamespace(
+                        get_client_config=lambda: {
+                            "default_headers": {"Authorization": "Bearer test-token"},
+                        }
+                    )
+                )
+
+        monkeypatch.setattr("nemo_platform_plugin.scheduler.NemoJobScheduler.submit_remote", _capture)
+
+        app = _app_with_jobs(_GreetJob)
+        result = runner.invoke(
+            app,
+            ["greet", "submit", "--base-url", "http://127.0.0.1:8080"],
+            obj=_State(),
+        )
+
+        assert result.exit_code == 0, result.output
+        assert captured["headers"] == {"Authorization": "Bearer test-token"}
+
 
 # ---------------------------------------------------------------------------
 # explain verb — phase 1 MR 1.2c stubs

@@ -8,8 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import ClassVar
 
-from nemo_platform_plugin.config import NemoConfig
-from nmp.common.config import nmp_user_data_dir
+from nemo_platform_plugin.config import NemoConfig, nmp_user_data_dir
 from pydantic import BaseModel, Field, model_validator
 
 

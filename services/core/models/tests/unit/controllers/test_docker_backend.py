@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from docker.errors import ImageNotFound, NotFound
-from nemo_platform.types.inference.model_deployment_config import NIMDeployment
 from nmp.common.config import PlatformConfig
 from nmp.core.models.app import ModelWeightsType
 from nmp.core.models.app.constants import MODEL_MANAGED_BY_LABEL, MODEL_MANAGED_BY_MODELS_CONTROLLER
@@ -19,6 +18,49 @@ from nmp.core.models.controllers.backends.docker.creation_reconciler import (
     CreationStage,
     _compute_multi_gpu_shm_size,
 )
+from nmp.core.models.schemas import (
+    ContainerExecutorConfig,
+    Engine,
+    ModelDeploymentConfigModelSpec,
+)
+
+_MODEL_SPEC_FIELDS = {
+    "model_type",
+    "model_namespace",
+    "model_name",
+    "model_revision",
+    "model_provider",
+    "chat_template",
+    "tool_call_config",
+    "lora_enabled",
+}
+_EXECUTOR_FIELDS = {
+    "gpu",
+    "disk_size",
+    "image_name",
+    "image_tag",
+    "additional_envs",
+    "additional_args",
+    "k8s_nim_operator_config",
+    "override_config",
+}
+
+
+def set_deployment_config(config, engine: str = "nim", **kwargs) -> None:
+    """Populate a config mock with the engine-split deployment shape.
+
+    Splits flat NIMDeployment-style kwargs into a real ``ModelDeploymentConfigModelSpec``
+    and ``ContainerExecutorConfig`` so the flattened ``deployment_config_view`` (which uses
+    ``getattr``) reads real attributes rather than MagicMock children.
+    """
+    model_spec_kwargs = {k: v for k, v in kwargs.items() if k in _MODEL_SPEC_FIELDS}
+    executor_kwargs = {k: v for k, v in kwargs.items() if k in _EXECUTOR_FIELDS}
+    unknown = set(kwargs) - _MODEL_SPEC_FIELDS - _EXECUTOR_FIELDS
+    if unknown:
+        raise ValueError(f"Unknown deployment config fields: {unknown}")
+    config.engine = Engine(engine)
+    config.model_spec = ModelDeploymentConfigModelSpec(**model_spec_kwargs)
+    config.executor_config = ContainerExecutorConfig(**executor_kwargs)
 
 
 async def drive_creation_to_completion(backend: DockerServiceBackend, deployment) -> DeploymentStatusUpdate:
@@ -271,7 +313,8 @@ def sample_deployment():
 def sample_config():
     """Create a sample ModelDeploymentConfig for testing."""
     config = MagicMock()
-    config.nim_deployment = NIMDeployment(
+    set_deployment_config(
+        config,
         gpu=1,
         disk_size="50Gi",
         image_name="nvcr.io/nim/meta/llama-3.2-1b-instruct",
@@ -297,7 +340,7 @@ async def test_docker_backend_create_model_deployment(
     mock_docker_client.containers.create.return_value = mock_container
 
     # Enable lora to trigger sidecar creation (2 containers)
-    sample_config.nim_deployment.lora_enabled = True
+    sample_config.model_spec.lora_enabled = True
 
     # Mock image not found locally (will trigger pull)
     from docker.errors import ImageNotFound as DockerImageNotFound
@@ -336,6 +379,175 @@ async def test_docker_backend_create_model_deployment(
     assert mock_container.start.call_count == 2
 
 
+def _make_vllm_config(*, lora_enabled: bool = False, image_name=None, image_tag=None):
+    config = MagicMock()
+    kwargs = dict(
+        engine="vllm",
+        model_namespace="default",
+        model_name="qwen-2-5-1-5b",
+        gpu=1,
+        lora_enabled=lora_enabled,
+    )
+    if image_name is not None:
+        kwargs["image_name"] = image_name
+    if image_tag is not None:
+        kwargs["image_tag"] = image_tag
+    set_deployment_config(config, **kwargs)
+    return config
+
+
+def _vllm_model_entity():
+    """A Files-service-backed model entity (drives the puller path)."""
+    model_entity = MagicMock()
+    model_entity.workspace = "default"
+    model_entity.name = "qwen-2-5-1-5b"
+    model_entity.spec = None
+    model_entity.trust_remote_code = False
+    model_entity.fileset = "hf://default/qwen-2-5-1-5b"
+    return model_entity
+
+
+async def _drive_vllm_with_puller(docker_backend, sample_deployment, mock_docker_client, config):
+    """Run the vLLM create pipeline through the puller stage and return container create args."""
+    docker_backend._backend_config.models_docker_networking_mode = "dond"
+
+    mock_puller_container = MagicMock()
+    mock_puller_container.id = "puller123456789"
+    mock_puller_container.wait.return_value = {"StatusCode": 0}
+    mock_puller_container.status = "exited"
+    mock_puller_container.attrs = {"State": {"ExitCode": 0}}
+    mock_puller_container.name = docker_backend._reconciler.get_puller_container_name(
+        sample_deployment.workspace, sample_deployment.name
+    )
+
+    mock_vllm_container = MagicMock()
+    mock_vllm_container.id = "vllm1234567890a"
+    mock_vllm_container.start = MagicMock()
+
+    mock_docker_client.images.get.return_value = MagicMock()
+    mock_docker_client.containers.run.return_value = mock_puller_container
+    mock_docker_client.containers.create.return_value = mock_vllm_container
+    mock_docker_client.containers.list.return_value = []
+
+    await docker_backend.create_model_deployment(sample_deployment, config, _vllm_model_entity())
+
+    def get_container_side_effect(name):
+        if "puller" in name:
+            return mock_puller_container
+        raise NotFound("Container not found")
+
+    mock_docker_client.containers.get.side_effect = get_container_side_effect
+
+    return await drive_creation_to_completion(docker_backend, sample_deployment)
+
+
+@pytest.mark.asyncio
+async def test_docker_backend_create_vllm_deployment(docker_backend, sample_deployment, mock_docker_client):
+    """Engine=vllm produces a vLLM container with serve args, engine label, and default image."""
+    config = _make_vllm_config()
+    status_update = await _drive_vllm_with_puller(docker_backend, sample_deployment, mock_docker_client, config)
+
+    assert status_update.status == "PENDING"
+    assert status_update.host_url == "http://md-default-test-deployment:8000"
+
+    create_args = mock_docker_client.containers.create.call_args_list[0][1]
+    # Default vLLM image is used when none specified (exact version is config-driven).
+    cfg = docker_backend._backend_config
+    assert create_args["image"] == f"{cfg.default_vllm_image}:{cfg.default_vllm_image_tag}"
+    # vLLM serve args are passed as the container command.
+    command = create_args["command"]
+    assert command[0] == "/model-store"
+    assert command[command.index("--served-model-name") + 1] == "default/qwen-2-5-1-5b"
+    # Engine label recorded for the health-probe selection.
+    assert create_args["labels"]["nmp.nvidia.com/engine"] == "vllm"
+    # No LoRA env when lora is disabled.
+    assert "VLLM_PLUGINS" not in create_args["environment"]
+
+
+@pytest.mark.asyncio
+async def test_docker_backend_create_vllm_lora_sidecar(docker_backend, sample_deployment, mock_docker_client):
+    """Engine=vllm with lora_enabled wires the adapter sidecar and vLLM LoRA env/args."""
+    config = _make_vllm_config(lora_enabled=True)
+    await _drive_vllm_with_puller(docker_backend, sample_deployment, mock_docker_client, config)
+
+    # Two containers: vLLM server + adapter sidecar.
+    assert mock_docker_client.containers.create.call_count == 2
+    vllm_args = mock_docker_client.containers.create.call_args_list[0][1]
+    sidecar_args = mock_docker_client.containers.create.call_args_list[1][1]
+    assert vllm_args["name"] == "md-default-test-deployment"
+    assert sidecar_args["name"] == "md-default-test-deployment-sidecar"
+    # vLLM LoRA hot-reload env + serve flag.
+    env = vllm_args["environment"]
+    assert env["VLLM_PLUGINS"] == "lora_filesystem_resolver"
+    assert env["VLLM_LORA_RESOLVER_CACHE_DIR"] == "/scratch/loras"
+    assert env["VLLM_ALLOW_RUNTIME_LORA_UPDATING"] == "True"
+    assert "--enable-lora" in vllm_args["command"]
+    # The adapters sidecar is engine-agnostic and reads NIM_PEFT_SOURCE +
+    # the model-entity identity. For vLLM these must point at the same
+    # directory vLLM's filesystem resolver watches, or the sidecar crashes
+    # on startup and never delivers adapters.
+    sidecar_env = sidecar_args["environment"]
+    assert sidecar_env["NIM_PEFT_SOURCE"] == "/scratch/loras"
+    assert sidecar_env["NMP_MODEL_ENTITY_WORKSPACE"] == "default"
+    assert sidecar_env["NMP_MODEL_ENTITY_NAME"] == "qwen-2-5-1-5b"
+    # vLLM's filesystem resolver requires the adapter's base_model_name_or_path to
+    # equal vLLM's --model value, so the sidecar is told to rewrite it to /model-store.
+    assert sidecar_env["VLLM_LORA_BASE_MODEL_OVERRIDE"] == "/model-store"
+    # vLLM's filesystem resolver validates VLLM_LORA_RESOLVER_CACHE_DIR exists at
+    # startup, so the controller pre-creates it in the scratch volume via a busybox
+    # run before launching the vLLM container (otherwise vLLM crash-loops).
+    run_commands = [
+        c.kwargs.get("command") for c in mock_docker_client.containers.run.call_args_list if c.kwargs.get("command")
+    ]
+    assert any(isinstance(cmd, list) and "mkdir -p /scratch/loras" in " ".join(cmd) for cmd in run_commands), (
+        f"expected a busybox mkdir for the LoRA cache dir, got run commands: {run_commands}"
+    )
+
+
+def test_get_health_path_from_container_vllm(docker_backend):
+    """vLLM containers probe /health."""
+    container = MagicMock()
+    container.labels = {"nmp.nvidia.com/engine": "vllm"}
+    assert docker_backend._reconciler.get_health_path_from_container(container) == "/health"
+
+
+def test_get_health_path_from_container_nim(docker_backend):
+    """NIM containers probe /v1/health/ready."""
+    container = MagicMock()
+    container.labels = {"nmp.nvidia.com/engine": "nim"}
+    assert docker_backend._reconciler.get_health_path_from_container(container) == "/v1/health/ready"
+
+
+def test_get_health_path_from_container_defaults_to_nim(docker_backend):
+    """Containers without an engine label default to the NIM probe path."""
+    container = MagicMock()
+    container.labels = {}
+    assert docker_backend._reconciler.get_health_path_from_container(container) == "/v1/health/ready"
+
+
+def test_get_health_path_from_container_explicit_override(docker_backend):
+    """An explicit health-path label (from executor_config.health_check_path) wins over the engine default."""
+    container = MagicMock()
+    container.labels = {"nmp.nvidia.com/engine": "generic", "nmp.nvidia.com/health-path": "/custom/ready"}
+    assert docker_backend._reconciler.get_health_path_from_container(container) == "/custom/ready"
+
+
+def test_resolve_health_path_prefers_explicit():
+    """_resolve_health_path uses executor_config.health_check_path when set, else the engine default."""
+    from nmp.core.models.controllers.backends.common import DeploymentConfigView
+    from nmp.core.models.controllers.backends.docker.creation_reconciler import (
+        ENGINE_NIM,
+        ENGINE_VLLM,
+        _resolve_health_path,
+    )
+
+    assert _resolve_health_path(ENGINE_VLLM, DeploymentConfigView()) == "/health"
+    assert _resolve_health_path(ENGINE_NIM, DeploymentConfigView()) == "/v1/health/ready"
+    assert _resolve_health_path("generic", DeploymentConfigView(health_check_path="/ping")) == "/ping"
+    # generic with no explicit path falls back to the NIM path.
+    assert _resolve_health_path("generic", DeploymentConfigView()) == "/v1/health/ready"
+
+
 @pytest.mark.asyncio
 async def test_docker_backend_create_sft_model_success(
     docker_backend, sample_deployment, sample_config, mock_docker_client
@@ -355,7 +567,7 @@ async def test_docker_backend_create_sft_model_success(
     model_entity.fileset = "hf://test/sft-model-weights"
 
     # Enable lora to trigger sidecar creation (2 containers)
-    sample_config.nim_deployment.lora_enabled = True
+    sample_config.model_spec.lora_enabled = True
 
     # Setup mock puller container
     mock_puller_container = MagicMock()
@@ -950,7 +1162,8 @@ async def test_docker_backend_multiple_deployments_unique_ports(
 def multi_llm_config():
     """Create a config using the default multi-LLM image (no image_name specified)."""
     config = MagicMock()
-    config.nim_deployment = NIMDeployment(
+    set_deployment_config(
+        config,
         gpu=1,
         disk_size="50Gi",
         image_name=None,  # Will use default multi-LLM image
@@ -967,7 +1180,8 @@ def multi_llm_config():
 def explicit_multi_llm_config():
     """Create a config explicitly using the multi-LLM image."""
     config = MagicMock()
-    config.nim_deployment = NIMDeployment(
+    set_deployment_config(
+        config,
         gpu=1,
         disk_size="50Gi",
         image_name="nvcr.io/nim/nvidia/llm-nim",  # Explicit multi-LLM image
@@ -984,7 +1198,8 @@ def explicit_multi_llm_config():
 def model_specific_nim_config():
     """Create a config using a model-specific NIM image (not multi-LLM)."""
     config = MagicMock()
-    config.nim_deployment = NIMDeployment(
+    set_deployment_config(
+        config,
         gpu=1,
         disk_size="50Gi",
         image_name="nvcr.io/nim/meta/llama-3.2-1b-instruct",  # Model-specific NIM
@@ -1043,7 +1258,7 @@ async def test_multi_llm_sft_model_now_runs_puller_old_test_updated(
     docker_backend, sample_deployment, multi_llm_config, sft_model_entity, mock_docker_client
 ):
     """Test that multi-LLM image with SFT model NOW runs the model puller (updated behavior)."""
-    multi_llm_config.nim_deployment.lora_enabled = True
+    multi_llm_config.model_spec.lora_enabled = True
 
     mock_container = MagicMock()
     mock_container.id = "1234567890abcdef"
@@ -1086,7 +1301,7 @@ async def test_model_specific_nim_sft_model_runs_puller(
     docker_backend, sample_deployment, model_specific_nim_config, sft_model_entity, mock_docker_client
 ):
     """Test that model-specific NIM with SFT model DOES run the model puller."""
-    model_specific_nim_config.nim_deployment.lora_enabled = True
+    model_specific_nim_config.model_spec.lora_enabled = True
 
     mock_nim_container = MagicMock()
     mock_nim_container.id = "nim1234567890ab"
@@ -1181,6 +1396,16 @@ def test_default_multi_llm_image_config():
     )
 
 
+def test_default_vllm_image_config():
+    """Test that a default vLLM image and tag are configured."""
+    from nmp.core.models.controllers.backends.docker.config import DockerBackendConfig
+
+    config = DockerBackendConfig()
+    assert config.default_vllm_image == "vllm/vllm-openai", "Default vLLM image should be the vllm-openai image"
+    # The exact tag is config-driven and bumped over time; just assert one is set.
+    assert config.default_vllm_image_tag, "A default vLLM image tag should be configured"
+
+
 # =============================================================================
 # Tests for model puller with different model weights types
 # =============================================================================
@@ -1207,7 +1432,8 @@ def sft_model_entity_with_artifact():
 def huggingface_model_config():
     """Create a config for HuggingFace model deployment."""
     config = MagicMock()
-    config.nim_deployment = NIMDeployment(
+    set_deployment_config(
+        config,
         gpu=1,
         disk_size="50Gi",
         image_name="nvcr.io/nim/meta/llama-3.2-1b-instruct",
@@ -1226,7 +1452,7 @@ async def test_multi_llm_now_runs_puller(
     docker_backend, sample_deployment, multi_llm_config, sft_model_entity_with_artifact, mock_docker_client
 ):
     """Test that multi-LLM deployments now run the model puller (updated behavior)."""
-    multi_llm_config.nim_deployment.lora_enabled = True
+    multi_llm_config.model_spec.lora_enabled = True
 
     mock_nim_container = MagicMock()
     mock_nim_container.id = "nim1234567890ab"
@@ -1289,7 +1515,8 @@ def nim_only_config():
             --nim-deployment '{"gpu": 1, "image_name": "nvcr.io/nim/nvidia/nemoguard-jailbreak-detect", "image_tag": "1.10.1"}'
     """
     config = MagicMock()
-    config.nim_deployment = NIMDeployment(
+    set_deployment_config(
+        config,
         gpu=1,
         disk_size="50Gi",
         image_name="nvcr.io/nim/nvidia/nemoguard-jailbreak-detect",
@@ -1745,7 +1972,7 @@ async def test_docker_backend_dond_mode_container_joins_network(
 ):
     """Test that NIM container is created with the network attached in DonD mode."""
     # Enable lora to trigger sidecar creation (2 containers)
-    sample_config.nim_deployment.lora_enabled = True
+    sample_config.model_spec.lora_enabled = True
 
     # Setup mock container
     mock_container = MagicMock()
@@ -2038,7 +2265,8 @@ async def test_docker_backend_multi_gpu_allocation(mock_nmp_sdk, mock_docker_cli
 
     # Create deployment config requesting 2 GPUs
     multi_gpu_config = MagicMock()
-    multi_gpu_config.nim_deployment = NIMDeployment(
+    set_deployment_config(
+        multi_gpu_config,
         gpu=2,  # Request 2 GPUs
         disk_size="50Gi",
         image_name="nvcr.io/nim/meta/llama-3.2-1b-instruct",
@@ -2227,7 +2455,8 @@ def multi_llm_config_with_model_name():
             }'
     """
     config = MagicMock()
-    config.nim_deployment = NIMDeployment(
+    set_deployment_config(
+        config,
         gpu=1,
         disk_size="50Gi",
         image_name="nvcr.io/nim/nvidia/llm-nim",  # Multi-LLM image
@@ -2326,7 +2555,7 @@ async def test_get_model_repo_from_entity_with_files_service(docker_backend, mul
     model_repo = docker_backend._reconciler._get_model_repo_from_entity(
         model_entity=model_entity,
         model_weights_type=ModelWeightsType.FILES_SERVICE,
-        nim_config=multi_llm_config_with_model_name.nim_deployment,
+        nim_config=multi_llm_config_with_model_name.model_spec,
     )
 
     # Should extract from fileset when available
@@ -2355,7 +2584,7 @@ async def test_get_model_repo_from_entity_files_service_uses_nim_config_when_no_
     model_repo = docker_backend._reconciler._get_model_repo_from_entity(
         model_entity=model_entity,
         model_weights_type=ModelWeightsType.FILES_SERVICE,
-        nim_config=multi_llm_config_with_model_name.nim_deployment,
+        nim_config=multi_llm_config_with_model_name.model_spec,
     )
 
     assert model_repo == "nvidia/NVIDIA-Nemotron-Nano-9B-v2"
@@ -2372,7 +2601,7 @@ async def test_get_model_repo_from_entity_files_service_no_entity_uses_nim_confi
     model_repo = docker_backend._reconciler._get_model_repo_from_entity(
         model_entity=None,
         model_weights_type=ModelWeightsType.FILES_SERVICE,
-        nim_config=multi_llm_config_with_model_name.nim_deployment,
+        nim_config=multi_llm_config_with_model_name.model_spec,
     )
 
     assert model_repo == "nvidia/NVIDIA-Nemotron-Nano-9B-v2"
@@ -2402,7 +2631,8 @@ async def test_multi_llm_huggingface_deployment_succeeds_with_hf_token(
 
     # Config without image_name (multi-LLM) but with model_name (matches docs)
     config = MagicMock()
-    config.nim_deployment = NIMDeployment(
+    set_deployment_config(
+        config,
         gpu=1,
         disk_size="50Gi",
         image_name=None,  # KEY: Omitted to use multi-LLM
@@ -2509,7 +2739,8 @@ async def test_create_releases_stale_gpu_allocation_multi(docker_backend, sample
     assert gpu_pool.get_available_count() == 2
 
     config = MagicMock()
-    config.nim_deployment = NIMDeployment(
+    set_deployment_config(
+        config,
         gpu=2,
         disk_size="50Gi",
         image_name="nvcr.io/nim/meta/llama-3.2-1b-instruct",
@@ -2703,7 +2934,8 @@ async def test_compile_env_vars_no_spec_no_tool_vars(docker_backend, sample_depl
 async def test_compile_env_vars_deployment_overrides_model_entity(docker_backend, sample_deployment):
     """Deployment-level chat_template/tool_call_config override model entity spec."""
     config = MagicMock()
-    config.nim_deployment = NIMDeployment(
+    set_deployment_config(
+        config,
         gpu=1,
         disk_size="50Gi",
         image_name="nvcr.io/nim/meta/llama-3.2-1b-instruct",
@@ -2747,7 +2979,8 @@ async def test_compile_env_vars_deployment_overrides_model_entity(docker_backend
 async def test_compile_env_vars_deployment_auto_tool_choice_false_overrides(docker_backend, sample_deployment):
     """Deployment auto_tool_choice=False overrides entity's True."""
     config = MagicMock()
-    config.nim_deployment = NIMDeployment(
+    set_deployment_config(
+        config,
         gpu=1,
         disk_size="50Gi",
         image_name="nvcr.io/nim/meta/llama-3.2-1b-instruct",
@@ -2784,7 +3017,8 @@ async def test_compile_env_vars_deployment_auto_tool_choice_false_overrides(dock
 async def test_compile_env_vars_deployment_only_no_entity(docker_backend, sample_deployment):
     """Deployment-level config sets env vars even without a model entity."""
     config = MagicMock()
-    config.nim_deployment = NIMDeployment(
+    set_deployment_config(
+        config,
         gpu=1,
         disk_size="50Gi",
         image_name="nvcr.io/nim/meta/llama-3.2-1b-instruct",
@@ -2865,7 +3099,8 @@ async def test_scenario2_deployment_config_only(docker_backend, sample_deploymen
     Both values come entirely from the deployment config.
     """
     config = MagicMock()
-    config.nim_deployment = NIMDeployment(
+    set_deployment_config(
+        config,
         gpu=1,
         disk_size="50Gi",
         image_name="nvcr.io/nim/meta/llama-3.2-1b-instruct",
@@ -2908,7 +3143,8 @@ async def test_scenario3_both_deployment_wins(docker_backend, sample_deployment)
     Deployment-level overrides should take precedence over model entity spec.
     """
     config = MagicMock()
-    config.nim_deployment = NIMDeployment(
+    set_deployment_config(
+        config,
         gpu=1,
         disk_size="50Gi",
         image_name="nvcr.io/nim/meta/llama-3.2-1b-instruct",
@@ -2949,7 +3185,7 @@ async def test_scenario3_both_deployment_wins(docker_backend, sample_deployment)
     )
 
     # Deployment-level values should win
-    assert env_vars["NIM_CHAT_TEMPLATE"] == config.nim_deployment.chat_template
+    assert env_vars["NIM_CHAT_TEMPLATE"] == config.model_spec.chat_template
     assert env_vars["NIM_TOOL_CALL_PARSER"] == "openai"
     assert env_vars["NIM_ENABLE_AUTO_TOOL_CHOICE"] == "1"
     assert "NIM_TOOL_PARSER_PLUGIN" not in env_vars
@@ -2990,7 +3226,8 @@ async def test_scenario5_mixed_fileset_chat_template_deploy_tool_config(docker_b
     Tests that individual fields can come from different layers.
     """
     config = MagicMock()
-    config.nim_deployment = NIMDeployment(
+    set_deployment_config(
+        config,
         gpu=1,
         disk_size="50Gi",
         image_name="nvcr.io/nim/meta/llama-3.2-1b-instruct",
@@ -3069,7 +3306,8 @@ async def test_scenario7_plugin_from_deployment_config(docker_backend, sample_de
     The plugin puller has already discovered the .py file path.
     """
     config = MagicMock()
-    config.nim_deployment = NIMDeployment(
+    set_deployment_config(
+        config,
         gpu=1,
         disk_size="50Gi",
         image_name="nvcr.io/nim/meta/llama-3.2-1b-instruct",
@@ -3238,7 +3476,8 @@ async def test_create_deployment_with_tool_call_plugin_from_entity(
 ):
     """Test that create_model_deployment pulls tool_call_plugin fileset from model entity spec."""
     config = MagicMock()
-    config.nim_deployment = NIMDeployment(
+    set_deployment_config(
+        config,
         gpu=1,
         disk_size="50Gi",
         image_name="nvcr.io/nim/meta/llama-3.2-1b-instruct",
@@ -4022,7 +4261,7 @@ class TestAsyncioToThreadOffloading:
         self, docker_backend, sample_deployment, sample_config, mock_docker_client
     ):
         """Sidecar container creation is offloaded to asyncio.to_thread."""
-        sample_config.nim_deployment.lora_enabled = True
+        sample_config.model_spec.lora_enabled = True
 
         mock_container = MagicMock()
         mock_container.id = "1234567890abcdef"

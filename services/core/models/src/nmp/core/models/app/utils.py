@@ -162,15 +162,19 @@ def get_model_weights_type(
     if model_entity and model_entity.fileset:
         return ModelWeightsType.FILES_SERVICE
 
+    # Guard the nested groups: a partial/legacy config may omit executor_config or
+    # model_spec, and we must not raise AttributeError while resolving weights.
+    executor_cfg = getattr(model_deployment_config, "executor_config", None)
+    model_spec_cfg = getattr(model_deployment_config, "model_spec", None)
+    image_name = getattr(executor_cfg, "image_name", None)
+    model_name = getattr(model_spec_cfg, "model_name", None)
+
     # If the model is a multi-LLM, we have already ruled out HF weights, so we download from Files service
-    if (
-        is_multi_llm_image(model_deployment_config.nim_deployment.image_name)
-        and model_deployment_config.nim_deployment.model_name
-    ):
+    if is_multi_llm_image(image_name) and model_name:
         logger.debug("Detected Files service weights via multi-LLM: downloading from NeMo Platform Files service")
         return ModelWeightsType.FILES_SERVICE
     # Baked container weights are the default assumed case for model-specific NIM images
-    if not is_multi_llm_image(model_deployment_config.nim_deployment.image_name):
+    if not is_multi_llm_image(image_name):
         logger.debug("Detected baked container weights: model-specific NIM image with model_name")
         return ModelWeightsType.BAKED_CONTAINER
 

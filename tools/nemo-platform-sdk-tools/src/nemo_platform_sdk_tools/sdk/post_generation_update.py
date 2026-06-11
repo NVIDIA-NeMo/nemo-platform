@@ -229,7 +229,6 @@ def update_pyproject_toml(sdk_info: SdkInfo) -> bool:
     wheel_target["packages"] = ["src/nemo_platform"]
     wheel_target["force-include"] = {
         "../../../docs": "nemo_platform/cli/docs",
-        "../../../mkdocs.yml": "nemo_platform/cli/mkdocs.yml",
     }
 
     # Remove legacy build hook config if present

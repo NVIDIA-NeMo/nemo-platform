@@ -22,7 +22,7 @@ Unlike the unit tests in test_docker_backend.py (which use MagicMock),
 these tests use:
 - Real Pydantic ModelSpec / ToolCallConfig objects for the merge step
 - The actual Models API (via in-memory test client) for the CRUD step
-- Real NIMDeployment schema for the env-vars step
+- Real ModelDeploymentConfigModelSpec / ContainerExecutorConfig schema for the env-vars step
 """
 
 import sys
@@ -41,7 +41,12 @@ from nmp.core.models.controllers.backends.k8s_nim_operator.nimservice_compiler i
     TOOL_CALL_PLUGIN_PATH,
     compile_nimservice,
 )
-from nmp.core.models.schemas import ModelSpec, NIMDeployment, ToolCallConfig
+from nmp.core.models.schemas import (
+    ContainerExecutorConfig,
+    ModelDeploymentConfigModelSpec,
+    ModelSpec,
+    ToolCallConfig,
+)
 from nmp.core.models.tasks.model_spec.run import ModelSpecRunner
 from nmp.core.models.tasks.model_spec.schemas import ModelSpecTaskConfig, NMPJobContext
 from nmp.testing import ClientContext
@@ -79,6 +84,29 @@ SAMPLE_CHAT_TEMPLATE = (
     "{{ content }}{%- endfor %}"
     "{%- if add_generation_prompt %}{{ '<|start_header_id|>assistant<|end_header_id|>\\n\\n' }}{%- endif %}"
 )
+
+
+def _set_llama_config(config, *, chat_template=None, tool_call_config=None) -> None:
+    """Populate a config mock with the engine-split deployment shape for the standard llama model.
+
+    Splits the model-side and executor-side fields into real schema objects so the
+    backend's ``deployment_config_view`` reads resolve correctly.
+    """
+    config.engine = "nim"
+    config.model_spec = ModelDeploymentConfigModelSpec(
+        model_name="llama-3.2-1b-instruct",
+        model_namespace="meta",
+        lora_enabled=False,
+        chat_template=chat_template,
+        tool_call_config=tool_call_config,
+    )
+    config.executor_config = ContainerExecutorConfig(
+        gpu=1,
+        disk_size="50Gi",
+        image_name="nvcr.io/nim/meta/llama-3.2-1b-instruct",
+        image_tag="1.8.6",
+        additional_envs=None,
+    )
 
 
 # ============================================================================
@@ -573,16 +601,7 @@ async def test_pipeline_fileset_metadata_to_env_vars(docker_backend, sample_depl
 
     # Step 4: Compile env vars with a deployment config that has no overrides
     config = MagicMock()
-    config.nim_deployment = NIMDeployment(
-        gpu=1,
-        disk_size="50Gi",
-        image_name="nvcr.io/nim/meta/llama-3.2-1b-instruct",
-        image_tag="1.8.6",
-        model_name="llama-3.2-1b-instruct",
-        model_namespace="meta",
-        lora_enabled=False,
-        additional_envs=None,
-    )
+    _set_llama_config(config)
 
     env_vars = await docker_backend._reconciler._compile_env_vars(
         sample_deployment,
@@ -622,15 +641,8 @@ async def test_pipeline_deployment_overrides_fileset_values(docker_backend, samp
 
     # Deployment config provides its own overrides
     config = MagicMock()
-    config.nim_deployment = NIMDeployment(
-        gpu=1,
-        disk_size="50Gi",
-        image_name="nvcr.io/nim/meta/llama-3.2-1b-instruct",
-        image_tag="1.8.6",
-        model_name="llama-3.2-1b-instruct",
-        model_namespace="meta",
-        lora_enabled=False,
-        additional_envs=None,
+    _set_llama_config(
+        config,
         chat_template="deployment-override-template",
         tool_call_config={
             "tool_call_parser": "openai",
@@ -674,15 +686,8 @@ async def test_pipeline_mixed_sources(docker_backend, sample_deployment):
 
     # Deployment provides only tool_call_config (no chat_template)
     config = MagicMock()
-    config.nim_deployment = NIMDeployment(
-        gpu=1,
-        disk_size="50Gi",
-        image_name="nvcr.io/nim/meta/llama-3.2-1b-instruct",
-        image_tag="1.8.6",
-        model_name="llama-3.2-1b-instruct",
-        model_namespace="meta",
-        lora_enabled=False,
-        additional_envs=None,
+    _set_llama_config(
+        config,
         tool_call_config={"tool_call_parser": "hermes", "auto_tool_choice": True},
     )
 
@@ -726,16 +731,7 @@ async def test_pipeline_plugin_path_flows_through(docker_backend, sample_deploym
     model_entity.spec = model_spec
 
     config = MagicMock()
-    config.nim_deployment = NIMDeployment(
-        gpu=1,
-        disk_size="50Gi",
-        image_name="nvcr.io/nim/meta/llama-3.2-1b-instruct",
-        image_tag="1.8.6",
-        model_name="llama-3.2-1b-instruct",
-        model_namespace="meta",
-        lora_enabled=False,
-        additional_envs=None,
-    )
+    _set_llama_config(config)
 
     env_vars = await docker_backend._reconciler._compile_env_vars(
         sample_deployment,
@@ -768,16 +764,7 @@ async def test_pipeline_no_fileset_metadata_no_deployment_overrides(docker_backe
     model_entity.spec = model_spec
 
     config = MagicMock()
-    config.nim_deployment = NIMDeployment(
-        gpu=1,
-        disk_size="50Gi",
-        image_name="nvcr.io/nim/meta/llama-3.2-1b-instruct",
-        image_tag="1.8.6",
-        model_name="llama-3.2-1b-instruct",
-        model_namespace="meta",
-        lora_enabled=False,
-        additional_envs=None,
-    )
+    _set_llama_config(config)
 
     env_vars = await docker_backend._reconciler._compile_env_vars(
         sample_deployment,
@@ -811,16 +798,7 @@ def test_k8s_nimservice_adds_plugin_init_containers_from_model_entity(sample_dep
     config.workspace = DEFAULT_WORKSPACE
     config.name = "integ-k8s-config"
     config.entity_version = "v1"
-    config.nim_deployment = NIMDeployment(
-        gpu=1,
-        disk_size="50Gi",
-        image_name="nvcr.io/nim/meta/llama-3.2-1b-instruct",
-        image_tag="1.8.6",
-        model_name="llama-3.2-1b-instruct",
-        model_namespace="meta",
-        lora_enabled=False,
-        additional_envs=None,
-    )
+    _set_llama_config(config)
 
     platform_config = SimpleNamespace(
         image_pull_secrets=[],
@@ -878,15 +856,8 @@ def test_k8s_nimservice_deployment_tool_config_takes_priority(sample_deployment)
     config.workspace = DEFAULT_WORKSPACE
     config.name = "integ-k8s-priority-config"
     config.entity_version = "v1"
-    config.nim_deployment = NIMDeployment(
-        gpu=1,
-        disk_size="50Gi",
-        image_name="nvcr.io/nim/meta/llama-3.2-1b-instruct",
-        image_tag="1.8.6",
-        model_name="llama-3.2-1b-instruct",
-        model_namespace="meta",
-        lora_enabled=False,
-        additional_envs=None,
+    _set_llama_config(
+        config,
         tool_call_config={
             "tool_call_parser": "deployment-parser",
             "tool_call_plugin": "default/deployment-plugin-fileset",

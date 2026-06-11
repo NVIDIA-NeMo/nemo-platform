@@ -15,7 +15,12 @@ from nmp.common.entities.client import EntityValidationError
 from nmp.core.models.api.service.model_deployment_config_service import ModelDeploymentConfigService
 from nmp.core.models.api.v2.deployment_configs import router
 from nmp.core.models.api.v2.utils import ERR_DEPLOYMENTS_NOT_ENABLED as _DEPLOYMENTS_NOT_ENABLED
-from nmp.core.models.schemas import ModelDeploymentConfig, ModelType, NIMDeployment
+from nmp.core.models.schemas import (
+    ContainerExecutorConfig,
+    ModelDeploymentConfig,
+    ModelDeploymentConfigModelSpec,
+    ModelType,
+)
 
 
 @pytest.fixture
@@ -64,28 +69,37 @@ def client(test_app):
 
 
 @pytest.fixture
-def sample_nim_deployment():
-    """Create a sample NIM deployment."""
-    return NIMDeployment(
+def sample_model_spec():
+    """Create a sample model spec."""
+    return ModelDeploymentConfigModelSpec(
         model_type=ModelType.LLM,
         lora_enabled=False,
-        gpu=1,
-        disk_size="50Gi",
-        image_name="nvcr.io/nvidia/nim/llm",
-        image_tag="latest",
         model_namespace="nvidia",
         model_name="llama-3-8b-instruct",
     )
 
 
 @pytest.fixture
-def sample_deployment_config(sample_nim_deployment):
+def sample_executor_config():
+    """Create a sample executor config."""
+    return ContainerExecutorConfig(
+        gpu=1,
+        disk_size="50Gi",
+        image_name="nvcr.io/nvidia/nim/llm",
+        image_tag="latest",
+    )
+
+
+@pytest.fixture
+def sample_deployment_config(sample_model_spec, sample_executor_config):
     """Create a sample deployment config for testing."""
     return ModelDeploymentConfig(
         id="config-1",
         name="test-config",
         workspace="default",
-        nim_deployment=sample_nim_deployment,
+        engine="nim",
+        model_spec=sample_model_spec,
+        executor_config=sample_executor_config,
         entity_version=1,
         created_at=datetime.now(),
         updated_at=datetime.now(),
@@ -257,9 +271,7 @@ def test_page_size_parameter_validation(client, mock_deployment_config_service, 
     assert response.status_code == 200
 
 
-def test_create_deployment_config_entity_validation_error_returns_422(
-    client, mock_deployment_config_service, sample_nim_deployment
-):
+def test_create_deployment_config_entity_validation_error_returns_422(client, mock_deployment_config_service):
     """Test that entity store validation errors during deployment config creation return 422."""
     mock_deployment_config_service.create_deployment_config.side_effect = EntityValidationError(
         "name must match pattern"
@@ -269,15 +281,18 @@ def test_create_deployment_config_entity_validation_error_returns_422(
         "/v2/workspaces/default/deployment-configs",
         json={
             "name": "my-config",
-            "nim_deployment": {
+            "engine": "nim",
+            "model_spec": {
                 "model_type": "llm",
                 "lora_enabled": False,
+                "model_namespace": "nvidia",
+                "model_name": "llama-3-8b-instruct",
+            },
+            "executor_config": {
                 "gpu": 1,
                 "disk_size": "50Gi",
                 "image_name": "nvcr.io/nvidia/nim/llm",
                 "image_tag": "latest",
-                "model_namespace": "nvidia",
-                "model_name": "llama-3-8b-instruct",
             },
         },
     )
@@ -298,15 +313,18 @@ def test_update_deployment_config_entity_validation_error_returns_422(
     response = client.post(
         "/v2/workspaces/default/deployment-configs/my-config",
         json={
-            "nim_deployment": {
+            "engine": "nim",
+            "model_spec": {
                 "model_type": "llm",
                 "lora_enabled": False,
+                "model_namespace": "nvidia",
+                "model_name": "llama-3-8b-instruct",
+            },
+            "executor_config": {
                 "gpu": 1,
                 "disk_size": "50Gi",
                 "image_name": "nvcr.io/nvidia/nim/llm",
                 "image_tag": "latest",
-                "model_namespace": "nvidia",
-                "model_name": "llama-3-8b-instruct",
             },
         },
     )
@@ -315,15 +333,18 @@ def test_update_deployment_config_entity_validation_error_returns_422(
     assert "name must match pattern" in response.json()["detail"]
 
 
-_MINIMAL_NIM_DEPLOYMENT = {
+_MINIMAL_MODEL_SPEC = {
     "model_type": "llm",
     "lora_enabled": False,
+    "model_namespace": "nvidia",
+    "model_name": "llama-3-8b-instruct",
+}
+
+_MINIMAL_EXECUTOR_CONFIG = {
     "gpu": 1,
     "disk_size": "50Gi",
     "image_name": "nvcr.io/nvidia/nim/llm",
     "image_tag": "latest",
-    "model_namespace": "nvidia",
-    "model_name": "llama-3-8b-instruct",
 }
 
 
@@ -334,7 +355,11 @@ def test_update_deployment_config_when_deployments_disabled_returns_422(
     """Updating a deployment config must return 422 when deployments are not enabled."""
     response = client.post(
         "/v2/workspaces/default/deployment-configs/cfg",
-        json={"nim_deployment": _MINIMAL_NIM_DEPLOYMENT},
+        json={
+            "engine": "nim",
+            "model_spec": _MINIMAL_MODEL_SPEC,
+            "executor_config": _MINIMAL_EXECUTOR_CONFIG,
+        },
     )
     assert response.status_code == 422
     assert response.json()["detail"] == _DEPLOYMENTS_NOT_ENABLED
