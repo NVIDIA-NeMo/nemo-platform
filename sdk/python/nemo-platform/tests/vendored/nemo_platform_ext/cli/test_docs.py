@@ -41,7 +41,7 @@ class TestDocsCommand:
     def test_docs_list_independent_of_cwd(self, tmp_path: Path, monkeypatch):
         unrelated_docs = tmp_path / "docs"
         unrelated_docs.mkdir()
-        (unrelated_docs / "jenkins-pipeline-guide.md").write_text("# Wrong docs root\n")
+        (unrelated_docs / "jenkins-pipeline-guide.mdx").write_text("# Wrong docs root\n")
 
         monkeypatch.delenv("NMP_DOCS_ROOT", raising=False)
         monkeypatch.chdir(tmp_path)
@@ -52,19 +52,15 @@ class TestDocsCommand:
         assert "get-started/setup" in result.stdout
         assert "jenkins-pipeline-guide" not in result.stdout
 
-    def test_docs_root_prefers_repo_docs_over_package_snapshot(self, tmp_path: Path, monkeypatch):
+    def test_docs_root_prefers_repo_docs_with_mdx(self, tmp_path: Path, monkeypatch):
         from nemo_platform.cli.commands import docs
 
         monkeypatch.delenv("NMP_DOCS_ROOT", raising=False)
         repo_docs = tmp_path / "docs"
-        package_docs = tmp_path / "src" / "nemo_platform_ext" / "cli" / "docs"
         commands_dir = tmp_path / "src" / "nemo_platform_ext" / "cli" / "commands"
         repo_docs.mkdir(parents=True)
-        package_docs.mkdir(parents=True)
         commands_dir.mkdir(parents=True)
-        (tmp_path / "mkdocs.yml").write_text("site_name: Test\n")
-        (repo_docs / "index.md").write_text("# Repo docs\n")
-        (package_docs / "index.md").write_text("# Package snapshot\n")
+        (repo_docs / "index.mdx").write_text("# Repo docs\n")
 
         result = docs._find_docs_root(commands_dir / "docs.py")
 
@@ -78,77 +74,24 @@ class TestDocsCommand:
         commands_dir = tmp_path / "site-packages" / "nemo_platform" / "cli" / "commands"
         package_docs.mkdir(parents=True)
         commands_dir.mkdir(parents=True)
-        (package_docs / "index.md").write_text("# Packaged docs\n")
+        (package_docs / "index.mdx").write_text("# Packaged docs\n")
 
         result = docs._find_docs_root(commands_dir / "docs.py")
 
         assert result == package_docs.resolve()
 
-    def test_packaged_docs_are_filtered_by_packaged_mkdocs_config(self, tmp_path: Path):
+    def test_list_docs_skips_underscore_and_hidden_paths(self, tmp_path: Path):
         from nemo_platform.cli.commands import docs
 
-        package_root = tmp_path / "site-packages" / "nemo_platform" / "cli"
-        package_docs = package_root / "docs"
-        package_docs.mkdir(parents=True)
-        (package_docs / "index.md").write_text("# Home\n")
-        (package_docs / "customizer").mkdir()
-        (package_docs / "customizer" / "about.md").write_text("# Hidden\n")
-        (package_docs / "template").mkdir()
-        (package_docs / "template" / "EULA.md").write_text("# Excluded\n")
-        (package_root / "mkdocs.yml").write_text(
-            """
-exclude_docs: |
-  template/
+        (tmp_path / "index.mdx").write_text("# Home\n")
+        (tmp_path / "guide").mkdir()
+        (tmp_path / "guide" / "topic.mdx").write_text("# Topic\n")
+        (tmp_path / "_snippets").mkdir()
+        (tmp_path / "_snippets" / "fragment.mdx").write_text("snippet")
+        (tmp_path / ".hidden").mkdir()
+        (tmp_path / ".hidden" / "secret.mdx").write_text("secret")
 
-extra:
-  hidden_docs:
-    enabled: true
-    paths:
-      - customizer/**
-""".lstrip()
-        )
-
-        assert docs._list_docs(package_docs) == ["index"]
-
-    def test_single_item_env_sequence_is_not_treated_as_default(self, tmp_path: Path, monkeypatch):
-        from nemo_platform.cli.commands import docs
-
-        monkeypatch.delenv("NMP_HIDE_TEST_DOCS", raising=False)
-        package_root = tmp_path / "site-packages" / "nemo_platform" / "cli"
-        package_docs = package_root / "docs"
-        package_docs.mkdir(parents=True)
-        (package_docs / "index.md").write_text("# Home\n")
-        (package_docs / "hidden").mkdir()
-        (package_docs / "hidden" / "topic.md").write_text("# Hidden\n")
-        (package_root / "mkdocs.yml").write_text(
-            """
-extra:
-  hidden_docs:
-    enabled: !ENV [NMP_HIDE_TEST_DOCS]
-    paths:
-      - hidden/**
-""".lstrip()
-        )
-
-        assert docs._list_docs(package_docs) == ["hidden/topic", "index"]
-
-    def test_docs_list_filters_unrendered_topics(self):
-        result = _invoke("docs", "--list")
-
-        assert result.exit_code == 0
-        topics = _listed_topics(result.stdout)
-        assert "get-started/setup" in topics
-        assert "cli/configuration" in topics
-        assert "pysdk/client/index" in topics
-        assert "audit/index" not in topics
-        assert "auth/concepts" not in topics
-        assert "customizer/about" not in topics
-        assert "evaluator/metrics/job-management" not in topics
-        assert "helm/index" not in topics
-        assert "CONTRIBUTING" not in topics
-        assert "README" not in topics
-        assert "template/EULA" not in topics
-        assert "work/guardrails/README" not in topics
+        assert docs._list_docs(tmp_path) == ["guide/topic", "index"]
 
     def test_docs_no_args_shows_list(self):
         result = _invoke("docs")
@@ -158,22 +101,17 @@ extra:
     def test_docs_read_setup(self):
         result = _invoke("docs", "get-started/setup")
         assert result.exit_code == 0
-        assert "# Setup" in result.stdout
+        assert "Setup" in result.stdout
         assert "nemo-setup" in result.stdout
 
-    def test_docs_read_with_md_extension(self):
-        result = _invoke("docs", "get-started/setup.md")
+    def test_docs_read_with_mdx_extension(self):
+        result = _invoke("docs", "get-started/setup.mdx")
         assert result.exit_code == 0
-        assert "# Setup" in result.stdout
+        assert "Setup" in result.stdout
         assert "nemo-setup" in result.stdout
 
     def test_docs_nonexistent(self):
         result = _invoke("docs", "nonexistent/path")
-        assert result.exit_code == 1
-        assert "not found" in result.output.lower()
-
-    def test_docs_hidden_topic_not_readable(self):
-        result = _invoke("docs", "customizer/about")
         assert result.exit_code == 1
         assert "not found" in result.output.lower()
 
@@ -183,7 +121,7 @@ extra:
         assert "invalid path" in result.output.lower()
 
     def test_docs_env_override(self, tmp_path: Path):
-        doc_file = tmp_path / "test-topic.md"
+        doc_file = tmp_path / "test-topic.mdx"
         doc_file.write_text("# Test Topic\nHello from test.")
 
         result = _invoke("docs", "test-topic", env={"NMP_DOCS_ROOT": str(tmp_path)})

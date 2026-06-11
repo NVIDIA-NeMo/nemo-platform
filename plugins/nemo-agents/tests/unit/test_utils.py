@@ -599,7 +599,7 @@ class TestResolveOutput:
         with job._resolve_output(
             FilesetRef("prod/eval-results"),
             workspace="default",
-            sdk=object(),  # type: ignore[arg-type]
+            sdk=object(),  # type: ignore[arg-type]  # type: ignore[arg-type]
             ctx=ctx,
         ) as _:
             pass
@@ -658,7 +658,7 @@ class TestResolveOutput:
         with job._resolve_output(
             FilesetRef("eval-results"),
             workspace="default",
-            sdk=object(),  # type: ignore[arg-type]
+            sdk=object(),
             ctx=ctx,
         ) as base:
             captured_path = base
@@ -698,7 +698,7 @@ class TestResolveOutput:
             Path("/tmp/eval-out"),
             fileset="eval-results",
             workspace="prod",
-            sdk=sdk,  # type: ignore[arg-type]
+            sdk=sdk,  # type: ignore[arg-type]  # type: ignore[arg-type]
         )
 
         assert sdk.files.calls == [
@@ -1400,7 +1400,7 @@ class TestValidateLLMModels:
         vms = _RecordingVirtualModels()
         sdk = _StubSDKWithVirtualModels(vms)
 
-        validate_llm_models(config, workspace="ws", sdk=sdk)  # type: ignore[arg-type]
+        validate_llm_models(config, workspace="ws", sdk=sdk)  # type: ignore[arg-type]  # type: ignore[arg-type]  # type: ignore[arg-type]  # type: ignore[arg-type]  # type: ignore[arg-type]  # type: ignore[arg-type]  # type: ignore[arg-type]  # type: ignore[arg-type]
 
         names = sorted(call["name"] for call in vms.calls)
         assert names == ["model-a", "model-b"]
@@ -1416,7 +1416,7 @@ class TestValidateLLMModels:
         sdk = _StubSDKWithVirtualModels(vms)
 
         with pytest.raises(ValueError) as exc_info:
-            validate_llm_models(config, workspace="default", sdk=sdk)  # type: ignore[arg-type]
+            validate_llm_models(config, workspace="default", sdk=sdk)  # type: ignore[arg-type]  # type: ignore[arg-type]
 
         message = str(exc_info.value)
         # Names the missing model + the YAML key + the workspace, and points
@@ -1438,7 +1438,7 @@ class TestValidateLLMModels:
         sdk = _StubSDKWithVirtualModels(vms)
 
         with pytest.raises(ValueError) as exc_info:
-            validate_llm_models(config, workspace="default", sdk=sdk)  # type: ignore[arg-type]
+            validate_llm_models(config, workspace="default", sdk=sdk)
 
         message = str(exc_info.value)
         assert "'missing-1'" in message
@@ -1458,7 +1458,7 @@ class TestValidateLLMModels:
         vms = _RecordingVirtualModels()
         sdk = _StubSDKWithVirtualModels(vms)
 
-        validate_llm_models(config, workspace="ws", sdk=sdk)  # type: ignore[arg-type]
+        validate_llm_models(config, workspace="ws", sdk=sdk)
 
         assert [call["name"] for call in vms.calls] == ["real-model"]
 
@@ -1477,7 +1477,7 @@ class TestValidateLLMModels:
         vms = _RecordingVirtualModels()
         sdk = _StubSDKWithVirtualModels(vms)
 
-        validate_llm_models(config, workspace="ws", sdk=sdk)  # type: ignore[arg-type]
+        validate_llm_models(config, workspace="ws", sdk=sdk)
 
         assert [call["name"] for call in vms.calls] == ["real-model"]
 
@@ -1491,7 +1491,7 @@ class TestValidateLLMModels:
         vms = _RecordingVirtualModels()
         sdk = _StubSDKWithVirtualModels(vms)
 
-        validate_llm_models(config, workspace="ws", sdk=sdk)  # type: ignore[arg-type]
+        validate_llm_models(config, workspace="ws", sdk=sdk)
 
         assert vms.calls == []
 
@@ -1506,7 +1506,7 @@ class TestValidateLLMModels:
         vms = _RecordingVirtualModels()
         sdk = _StubSDKWithVirtualModels(vms)
 
-        validate_llm_models(config, workspace="ws", sdk=sdk)  # type: ignore[arg-type]
+        validate_llm_models(config, workspace="ws", sdk=sdk)
 
         assert [call["name"] for call in vms.calls] == ["real-model"]
 
@@ -1515,7 +1515,7 @@ class TestValidateLLMModels:
         vms = _RecordingVirtualModels()
         sdk = _StubSDKWithVirtualModels(vms)
 
-        validate_llm_models(config, workspace="ws", sdk=sdk)  # type: ignore[arg-type]
+        validate_llm_models(config, workspace="ws", sdk=sdk)
 
         assert vms.calls == []
 
@@ -1525,7 +1525,7 @@ class TestValidateLLMModels:
         vms = _RecordingVirtualModels()
         sdk = _StubSDKWithVirtualModels(vms)
 
-        validate_llm_models(config, workspace="ws", sdk=sdk)  # type: ignore[arg-type]
+        validate_llm_models(config, workspace="ws", sdk=sdk)
 
         assert vms.calls == []
 
@@ -1557,7 +1557,7 @@ class TestValidateLLMModels:
         vms = _RecordingVirtualModels()
         sdk = _StubSDKWithVirtualModels(vms)
 
-        validate_llm_models(config, workspace="ws", sdk=sdk)  # type: ignore[arg-type]
+        validate_llm_models(config, workspace="ws", sdk=sdk)
 
         assert [call["name"] for call in vms.calls] == ["real-model"]
 
@@ -1584,7 +1584,7 @@ class TestPreflightValidateLLMModels:
         vms = _RecordingVirtualModels()
         sdk = _StubSDKWithVirtualModels(vms)
 
-        preflight_validate_llm_models(config_path, workspace="ws", sdk=sdk)  # type: ignore[arg-type]
+        preflight_validate_llm_models(config_path, workspace="ws", sdk=sdk)  # type: ignore[arg-type]  # type: ignore[arg-type]
 
         assert vms.calls == [{"name": "real-model", "workspace": "ws"}]
 
@@ -1605,7 +1605,7 @@ class TestPreflightValidateLLMModels:
         vms = _RecordingVirtualModels()
         sdk = _StubSDKWithVirtualModels(vms)
 
-        preflight_validate_llm_models(config_path, workspace="ws", sdk=sdk)  # type: ignore[arg-type]
+        preflight_validate_llm_models(config_path, workspace="ws", sdk=sdk)
 
         # The expanded name reached the SDK; the literal placeholder did not.
         assert vms.calls == [{"name": "expanded-model", "workspace": "ws"}]
@@ -1634,7 +1634,7 @@ class TestPreflightValidateLLMModels:
         preflight_validate_llm_models(
             config_path,
             workspace="ws",
-            sdk=sdk,  # type: ignore[arg-type]
+            sdk=sdk,
             agent_config=agent_config,
         )
 

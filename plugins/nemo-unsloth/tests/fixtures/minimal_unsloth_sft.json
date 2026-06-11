@@ -1,0 +1,15 @@
+{
+  "name": "qwen-tutorial-smoke",
+  "model": {
+    "name": "unsloth/Qwen2.5-0.5B-Instruct",
+    "max_seq_length": 2048
+  },
+  "dataset": {
+    "path": "/data/sample.jsonl",
+    "text_field": "text"
+  },
+  "schedule": {
+    "max_steps": 60,
+    "warmup_ratio": 0.1
+  }
+}

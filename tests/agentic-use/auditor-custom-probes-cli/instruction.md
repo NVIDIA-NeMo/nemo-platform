@@ -10,24 +10,38 @@ An inference provider named `nvidia-inference` has been pre-configured in this e
 
 ## Task
 
-Using the `nmp` CLI, create a custom audit configuration with specific selected probes, create an audit target, run an audit job with that custom config, and check the results:
+Using the `nmp` CLI, create a custom audit configuration with specific selected probes, create an audit target, and run an audit with that custom config:
 
 1. **Explore available global audit configs** to understand the config structure and available options
 2. **Create an audit target** named `custom-audit-target` that references model `aws/anthropic/bedrock-claude-sonnet-4-5-v1` through the `nvidia-inference` provider
 3. **Create a custom audit config** named `custom-probes-config` with description `Custom config with selected probes` that uses exactly these three probes: `dan.DanInTheWild`, `dan.AutoDANCached`, and `dan.Ablation_Dan_11_0`
 4. **Verify the config** by retrieving it and confirming the probe selection
-5. **Create an audit job** named `custom-probes-job` using the `custom-probes-config` config and the `custom-audit-target` target
-6. **Check the job status** to see its current state
-7. **Attempt to retrieve the job results** to see detailed findings
-8. **Attempt to retrieve hit logs** from the audit job to review any specific vulnerabilities found
+5. **Run an audit** using the `custom-probes-config` config and the `custom-audit-target` target
+6. **Review the CLI output** for result artifact paths or errors
 
-Note: The audit job may take a long time to complete or may remain in a pending/created state in this environment. That is expected. Results and hit logs may not be available if the job hasn't completed. The important thing is that the job is created correctly with the custom config, and that you attempt to retrieve results and logs.
+Note: The audit may take a long time to complete in this environment. If the local Garak runtime is unavailable, capture the CLI error after invoking the audit command. The important thing is that the target and custom config are created correctly and that the audit command is invoked with both of them.
+
+## Available CLI Commands
+
+```bash
+# Create an audit target
+nmp auditor targets create <name> -d '{"model": "<model-name>", "type": "<type>", "options": {"provider": "<provider-name>"}}'
+
+# Create an audit config
+nmp auditor configs create <name> -d '{"description": "<description>", "system": {"lite": true}, "run": {"generations": 5}, "plugins": {"probe_spec": "dan.DanInTheWild,dan.AutoDANCached,dan.Ablation_Dan_11_0"}, "reporting": {}}'
+
+# Verify configs and targets
+nmp auditor configs get <name>
+nmp auditor targets get <name>
+
+# Run an audit locally
+nmp auditor audit run --spec '{"config": "default/<config-name>", "target": "default/<target-name>"}'
+```
 
 ## Success Criteria
 
 The task is complete when:
 - An audit target named `custom-audit-target` exists referencing the model through the provider
 - An audit config named `custom-probes-config` exists with the three specified probes
-- An audit job named `custom-probes-job` has been created using the custom config and target
-- The job status has been checked at least once
-- Results and hit logs retrieval has been attempted
+- The audit run command has been invoked with the custom config and target
+- The CLI output has been reviewed for result artifact paths or errors

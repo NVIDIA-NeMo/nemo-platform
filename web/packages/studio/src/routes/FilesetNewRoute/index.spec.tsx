@@ -146,4 +146,37 @@ describe('FilesetNewRoute', () => {
 
     expect(screen.getAllByText(/HuggingFace token \(optional\)/i).length).toBeGreaterThan(0);
   });
+
+  it('shows inline validation error for uppercase letters in fileset name', async () => {
+    const user = userEvent.setup();
+    renderRoute();
+
+    const nameInput = await screen.findByRole('textbox', { name: 'Fileset Name' });
+    await user.type(nameInput, 'tiny-gpt2-A');
+    await user.tab();
+
+    expect(await screen.findByText(/must start with a lowercase letter/i)).toBeInTheDocument();
+  });
+
+  it('shows inline validation error when fileset name starts with a digit', async () => {
+    const user = userEvent.setup();
+    renderRoute();
+
+    const nameInput = await screen.findByRole('textbox', { name: 'Fileset Name' });
+    await user.type(nameInput, '1invalid');
+    await user.tab();
+
+    expect(await screen.findByText(/must start with a lowercase letter/i)).toBeInTheDocument();
+  });
+
+  it('accepts a valid fileset name without showing an error', async () => {
+    const user = userEvent.setup();
+    renderRoute();
+
+    const nameInput = await screen.findByRole('textbox', { name: 'Fileset Name' });
+    await user.type(nameInput, 'tiny-gpt2-a');
+    await user.tab();
+
+    expect(screen.queryByText(/must start with a lowercase letter/i)).not.toBeInTheDocument();
+  });
 });

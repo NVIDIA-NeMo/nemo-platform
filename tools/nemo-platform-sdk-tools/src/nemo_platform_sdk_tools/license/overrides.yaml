@@ -30,7 +30,7 @@ overrides:
   flashinfer-jit-cache: Apache-2.0 # https://github.com/flashinfer-ai/flashinfer/tree/main/flashinfer-jit-cache
   huggingface-hub: Apache-2.0 # https://github.com/huggingface/huggingface_hub
   peft: Apache-2.0 # HuggingFace Parameter-Efficient Fine-Tuning
-  safetensors: Apache-2.0 # HuggingFace safe tensor storage
+  safetensors: Apache-2.0 # HuggingFace safe tensor storage - https://github.com/safetensors/safetensors/blob/main/LICENSE — osv-scanner reports non-standard for 0.8.0rc1
   tiktoken: MIT # OpenAI tokenizer
   tokenizers: Apache-2.0 # HuggingFace tokenizers
   trl: Apache-2.0
@@ -265,3 +265,5 @@ overrides:
   uncalled-for: MIT # https://pypi.org/project/uncalled-for/
   torch-c-dlpack-ext: Apache-2.0
   quack-kernels: Apache-2.0 # https://github.com/Dao-AILab/quack/blob/main/LICENSE
+  crc32c: LGPL-2.1-or-later # https://pypi.org/project/crc32c/
+  detect-installer: 0BSD # https://pypi.org/project/detect-installer/

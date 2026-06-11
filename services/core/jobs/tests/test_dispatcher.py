@@ -1003,18 +1003,24 @@ async def test_list_jobs_filter_status_list_is_or(
 
 
 @pytest.mark.asyncio
-async def test_list_jobs_filter_status_not_eq_rejected(
+async def test_list_jobs_filter_status_not_eq_returns_complement(
     mock_dispatcher: JobDispatcher,
+    mock_store: EntityClient,
 ):
-    """$not on status is not supported — only positive assertions are allowed."""
+    """$not/$eq on status (AIRCORE-324) returns jobs whose status is NOT the value."""
+    await _make_job(mock_dispatcher, mock_store, "job-active", PlatformJobStatus.ACTIVE)
+    completed = await _make_job(mock_dispatcher, mock_store, "job-completed", PlatformJobStatus.COMPLETED)
+    error = await _make_job(mock_dispatcher, mock_store, "job-error", PlatformJobStatus.ERROR)
 
-    with pytest.raises(ValueError, match="Complex status filter expressions are not supported"):
-        await mock_dispatcher.list_jobs(
-            parsed=ParsedFilter(
-                operation=parse_json_filter('{"data.status": {"$not": {"$eq": "active"}}}'),
-            ),
-            workspace=DEFAULT_WORKSPACE,
-        )
+    jobs, _ = await mock_dispatcher.list_jobs(
+        parsed=ParsedFilter(
+            operation=parse_json_filter('{"data.status": {"$not": {"$eq": "active"}}}'),
+        ),
+        workspace=DEFAULT_WORKSPACE,
+    )
+
+    returned_ids = {j.id for j in jobs}
+    assert returned_ids == {completed.id, error.id}
 
 
 @pytest.mark.asyncio
@@ -1040,72 +1046,110 @@ async def test_list_jobs_filter_status_in(
 
 
 @pytest.mark.asyncio
-async def test_list_jobs_filter_status_nin_rejected(
+async def test_list_jobs_filter_status_nin_returns_complement(
     mock_dispatcher: JobDispatcher,
+    mock_store: EntityClient,
 ):
-    """$nin on status is not supported — only positive assertions are allowed."""
+    """$nin on status (AIRCORE-324) returns jobs whose status is none of the values."""
+    await _make_job(mock_dispatcher, mock_store, "job-active", PlatformJobStatus.ACTIVE)
+    completed = await _make_job(mock_dispatcher, mock_store, "job-completed", PlatformJobStatus.COMPLETED)
+    error = await _make_job(mock_dispatcher, mock_store, "job-error", PlatformJobStatus.ERROR)
 
-    with pytest.raises(ValueError, match="Complex status filter expressions are not supported"):
-        await mock_dispatcher.list_jobs(
-            parsed=ParsedFilter(
-                operation=parse_json_filter('{"data.status": {"$nin": ["active"]}}'),
-            ),
-            workspace=DEFAULT_WORKSPACE,
-        )
+    jobs, _ = await mock_dispatcher.list_jobs(
+        parsed=ParsedFilter(
+            operation=parse_json_filter('{"data.status": {"$nin": ["active"]}}'),
+        ),
+        workspace=DEFAULT_WORKSPACE,
+    )
+
+    returned_ids = {j.id for j in jobs}
+    assert returned_ids == {completed.id, error.id}
 
 
 @pytest.mark.asyncio
-async def test_list_jobs_filter_status_or_with_non_status_rejected(
+async def test_list_jobs_filter_or_status_with_non_status(
     mock_dispatcher: JobDispatcher,
+    mock_store: EntityClient,
 ):
-    """$or mixing status with non-status fields is not supported."""
+    """$or mixing status with a non-status field (AIRCORE-324) returns the union.
 
-    with pytest.raises(ValueError, match="Complex status filter expressions are not supported"):
-        await mock_dispatcher.list_jobs(
-            parsed=ParsedFilter(
-                operation=parse_json_filter(
-                    '{"$or": [{"data.status": {"$eq": "active"}}, {"name": {"$like": "special"}}]}'
-                ),
+    Matches jobs that are ACTIVE *or* whose name contains "special", regardless
+    of the other condition.
+    """
+    active = await _make_job(mock_dispatcher, mock_store, "ordinary-active", PlatformJobStatus.ACTIVE)
+    special_completed = await _make_job(mock_dispatcher, mock_store, "special-completed", PlatformJobStatus.COMPLETED)
+    await _make_job(mock_dispatcher, mock_store, "ordinary-completed", PlatformJobStatus.COMPLETED)
+
+    jobs, _ = await mock_dispatcher.list_jobs(
+        parsed=ParsedFilter(
+            operation=parse_json_filter(
+                '{"$or": [{"data.status": {"$eq": "active"}}, {"name": {"$like": "special"}}]}'
             ),
-            workspace=DEFAULT_WORKSPACE,
-        )
+        ),
+        workspace=DEFAULT_WORKSPACE,
+    )
+
+    returned_ids = {j.id for j in jobs}
+    assert returned_ids == {active.id, special_completed.id}
 
 
 @pytest.mark.asyncio
-async def test_list_jobs_filter_not_and_status_with_non_status_rejected(
+async def test_list_jobs_filter_not_and_status_with_non_status(
     mock_dispatcher: JobDispatcher,
+    mock_store: EntityClient,
 ):
-    """$not wrapping a subtree that includes status is not supported."""
+    """$not wrapping a status+name subtree (AIRCORE-324) returns the negation.
 
-    with pytest.raises(ValueError, match="Complex status filter expressions are not supported"):
-        await mock_dispatcher.list_jobs(
-            parsed=ParsedFilter(
-                operation=parse_json_filter(
-                    '{"$not": {"$and": [{"data.status": {"$eq": "active"}}, {"name": {"$like": "eval"}}]}}'
-                ),
+    NOT (status == active AND name ~ "eval") keeps every job except the one that
+    is both ACTIVE and name-matches "eval".
+    """
+    await _make_job(mock_dispatcher, mock_store, "eval-active", PlatformJobStatus.ACTIVE)
+    eval_completed = await _make_job(mock_dispatcher, mock_store, "eval-completed", PlatformJobStatus.COMPLETED)
+    other_active = await _make_job(mock_dispatcher, mock_store, "train-active", PlatformJobStatus.ACTIVE)
+
+    jobs, _ = await mock_dispatcher.list_jobs(
+        parsed=ParsedFilter(
+            operation=parse_json_filter(
+                '{"$not": {"$and": [{"data.status": {"$eq": "active"}}, {"name": {"$like": "eval"}}]}}'
             ),
-            workspace=DEFAULT_WORKSPACE,
-        )
+        ),
+        workspace=DEFAULT_WORKSPACE,
+    )
+
+    returned_ids = {j.id for j in jobs}
+    assert returned_ids == {eval_completed.id, other_active.id}
 
 
 @pytest.mark.asyncio
-async def test_list_jobs_filter_or_with_status_in_each_branch_rejected(
+async def test_list_jobs_filter_or_with_status_in_each_branch(
     mock_dispatcher: JobDispatcher,
+    mock_store: EntityClient,
 ):
-    """$or where each branch mixes status with other fields is not supported."""
+    """$or where each branch mixes status with a name term (AIRCORE-324).
 
-    with pytest.raises(ValueError, match="Complex status filter expressions are not supported"):
-        await mock_dispatcher.list_jobs(
-            parsed=ParsedFilter(
-                operation=parse_json_filter(
-                    '{"$or": ['
-                    '  {"$and": [{"data.status": {"$eq": "active"}}, {"name": {"$like": "foo"}}]},'
-                    '  {"$and": [{"data.status": {"$eq": "completed"}}, {"name": {"$like": "bar"}}]}'
-                    "]}"
-                ),
+    (active AND name~foo) OR (completed AND name~bar) returns exactly the jobs
+    matching either full branch.
+    """
+    foo_active = await _make_job(mock_dispatcher, mock_store, "foo-job", PlatformJobStatus.ACTIVE)
+    bar_completed = await _make_job(mock_dispatcher, mock_store, "bar-job", PlatformJobStatus.COMPLETED)
+    # foo but wrong status; bar but wrong status — both excluded.
+    await _make_job(mock_dispatcher, mock_store, "foo-completed", PlatformJobStatus.COMPLETED)
+    await _make_job(mock_dispatcher, mock_store, "bar-active", PlatformJobStatus.ACTIVE)
+
+    jobs, _ = await mock_dispatcher.list_jobs(
+        parsed=ParsedFilter(
+            operation=parse_json_filter(
+                '{"$or": ['
+                '  {"$and": [{"data.status": {"$eq": "active"}}, {"name": {"$like": "foo"}}]},'
+                '  {"$and": [{"data.status": {"$eq": "completed"}}, {"name": {"$like": "bar"}}]}'
+                "]}"
             ),
-            workspace=DEFAULT_WORKSPACE,
-        )
+        ),
+        workspace=DEFAULT_WORKSPACE,
+    )
+
+    returned_ids = {j.id for j in jobs}
+    assert returned_ids == {foo_active.id, bar_completed.id}
 
 
 @pytest.mark.asyncio

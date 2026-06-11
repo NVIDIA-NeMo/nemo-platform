@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import { useEvaluationDeleteMetricJob } from '@nemo/sdk/generated/platform/api';
+import { useEvaluatorDeleteEvaluateJob } from '@nemo/sdk/generated/evaluator/api';
 import { Button, Flex, Modal } from '@nvidia/foundations-react-core';
 import { useMutateMany } from '@studio/api/common/useMutateMany';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
@@ -21,7 +21,7 @@ export const EvaluationJobBulkDeleteModal: FC<EvaluationJobBulkDeleteModalProps>
   const [open, setOpen] = useState<boolean>(false);
   const workspace = useWorkspaceFromPath();
 
-  const { mutateAsync: deleteJob } = useEvaluationDeleteMetricJob();
+  const { mutateAsync: deleteJob } = useEvaluatorDeleteEvaluateJob();
   const { mutateAsync: deleteJobs, isPending } = useMutateMany(deleteJob);
   const toast = useToast();
 

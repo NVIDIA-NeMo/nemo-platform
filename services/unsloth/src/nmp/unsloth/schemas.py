@@ -1,0 +1,326 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+"""Canonical Unsloth schemas — consumed by ``train_sft`` (and ``compile`` later).
+
+Why these live in the service, not the plugin:
+
+- Both compile-time (``compile.platform_job_config_compiler``, when wired
+  later) and runtime (``train_sft``) consume the canonical shape. The
+  container entrypoint reads it from the platform Jobs envelope.
+- The plugin's ``transform.py`` produces ``UnslothJobOutput`` from
+  ``UnslothJobInput`` (which lives in the plugin) — but the *output*
+  type is what flows downstream, so it belongs with the downstream
+  consumers.
+
+Each field maps onto a real argument of one of three call-sites the
+training driver hits:
+
+- ``unsloth.FastLanguageModel.from_pretrained(...)``  → :class:`ModelLoadSpec`
+- ``unsloth.FastLanguageModel.get_peft_model(...)``   → :class:`LoRAParams`
+- ``trl.SFTConfig`` + ``trl.SFTTrainer(...)`` →
+  :class:`ScheduleSpec`, :class:`BatchSpec`, :class:`OptimizerSpec`,
+  :class:`HardwareSpec`, :class:`IntegrationsSpec`
+- Output saving (``model.save_pretrained{,_merged}``) → :class:`OutputResponse`
+
+``extra="forbid"`` everywhere — typos in the JSON shape become
+validation errors, not silently-ignored fields.
+"""
+
+from __future__ import annotations
+
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class ModelLoadSpec(BaseModel):
+    """Args to ``FastLanguageModel.from_pretrained``.
+
+    ``name`` is a NeMo Platform model entity reference (``"name"`` or
+    ``"workspace/name"``). The plugin's run orchestration resolves the
+    entity, downloads its fileset to a local path, and hands that path
+    to :func:`train_sft`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(
+        description=(
+            "Model entity reference. Accepts 'name' (uses the job's workspace) "
+            "or 'workspace/name'. The plugin's run resolves this to a local "
+            "path before training."
+        ),
+    )
+    max_seq_length: int = Field(default=2048, gt=0)
+    load_in_4bit: bool = Field(
+        default=True,
+        description="bitsandbytes 4-bit. Mutex with load_in_8bit. Default for Unsloth's headline path.",
+    )
+    load_in_8bit: bool = False
+    dtype: Literal["auto", "bfloat16", "float16", "float32"] = "auto"
+    trust_remote_code: bool = False
+
+
+class LoRAParams(BaseModel):
+    """Args to ``FastLanguageModel.get_peft_model``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    rank: int = Field(default=16, gt=0, description="LoRA rank.")
+    alpha: int = Field(default=16, gt=0, description="LoRA scaling factor (alpha).")
+    dropout: float = Field(default=0.0, ge=0.0, lt=1.0)
+    target_modules: list[str] = Field(
+        # Unsloth's recommended 7-module set: full attention + MLP.
+        default_factory=lambda: [
+            "q_proj",
+            "k_proj",
+            "v_proj",
+            "o_proj",
+            "gate_proj",
+            "up_proj",
+            "down_proj",
+        ],
+    )
+    bias: Literal["none", "all", "lora_only"] = "none"
+    use_rslora: bool = False
+    random_state: int = 3407
+
+
+class TrainingSpec(BaseModel):
+    """Algorithm + adapter shape selectors."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    training_type: Literal["sft"] = "sft"
+    finetuning_type: Literal["lora", "full"] = "lora"
+    lora: LoRAParams | None = Field(
+        default=None,
+        description="Required when finetuning_type='lora'. Auto-filled with defaults if omitted.",
+    )
+    use_gradient_checkpointing: Literal["unsloth", "true", "false"] = "unsloth"
+
+
+class DatasetSpec(BaseModel):
+    """Training data location + shape.
+
+    ``path`` and ``validation_path`` are platform fileset references
+    (``"name"`` or ``"workspace/name"``). The plugin's run downloads
+    each fileset before training; ``train_sft`` only ever sees a local
+    filesystem path.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(
+        description=(
+            "Training fileset reference: 'name' (uses the job's workspace) "
+            "or 'workspace/name'. Resolved to a local path by the plugin run."
+        ),
+    )
+    text_field: str = Field(default="text", description="Row field consumed by SFTTrainer.")
+    apply_chat_template: bool = Field(
+        default=False,
+        description=(
+            "If True, expects rows with a 'messages' field and applies tokenizer.apply_chat_template at training time."
+        ),
+    )
+    validation_path: str | None = Field(
+        default=None,
+        description=(
+            "Optional validation fileset reference (same format as 'path'). Downloaded under the same scheme."
+        ),
+    )
+    packing: bool = Field(default=False, description="trl.SFTTrainer packing flag.")
+
+
+class ScheduleSpec(BaseModel):
+    """Training schedule, scheduler, logging cadence."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    epochs: int | None = Field(default=None, gt=0)
+    max_steps: int | None = Field(default=None, gt=0)
+    warmup_steps: int = Field(default=0, ge=0)
+    warmup_ratio: float | None = Field(default=None, ge=0.0, le=1.0)
+    lr_scheduler_type: Literal[
+        "linear",
+        "cosine",
+        "constant",
+        "constant_with_warmup",
+        "cosine_with_restarts",
+    ] = "linear"
+    logging_steps: int = Field(default=1, gt=0)
+    save_steps: int | None = Field(default=None, gt=0)
+    eval_steps: int | None = Field(default=None, gt=0)
+    seed: int = 3407
+
+
+class BatchSpec(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    per_device_train_batch_size: int = Field(default=1, gt=0)
+    gradient_accumulation_steps: int = Field(default=1, gt=0)
+
+
+class OptimizerSpec(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    learning_rate: float = Field(default=2e-4, gt=0.0)
+    weight_decay: float = Field(default=0.0, ge=0.0)
+    # Unsloth's notebooks default to adamw_8bit (bitsandbytes-backed) — much
+    # smaller optimizer state than adamw_torch, which lets users fit larger
+    # adapters on the same GPU. Users on Hopper+ may prefer adamw_torch_fused.
+    optim: Literal[
+        "adamw_torch",
+        "adamw_torch_fused",
+        "adamw_8bit",
+        "paged_adamw_8bit",
+        "sgd",
+    ] = "adamw_8bit"
+
+
+class HardwareSpec(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    gpus: str | None = Field(
+        default=None,
+        description=(
+            "Comma-separated GPU indices ('0' or '0,1') for CUDA_VISIBLE_DEVICES. Selection, not reservation."
+        ),
+    )
+    precision: Literal["bf16", "fp16"] = Field(
+        default="bf16",
+        description="Mixed-precision dtype for training. bf16 recommended for Ampere+.",
+    )
+
+
+class WandbIntegration(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    project: str | None = None
+    run_name: str | None = None
+    # No api_key_secret for now — users export WANDB_API_KEY in the
+    # training container environment themselves.
+
+
+class IntegrationsSpec(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    wandb: WandbIntegration | None = None
+    report_to: list[Literal["wandb", "tensorboard", "mlflow", "none"]] = Field(
+        default_factory=lambda: ["none"],
+    )
+
+
+class OutputResponse(BaseModel):
+    """Stored on the canonical UnslothJobOutput. Output naming is resolved during ``to_spec``.
+
+    ``type`` is the high-level shape (``adapter`` for a saved LoRA, ``model``
+    for a merged checkpoint). ``save_method`` keeps the original Unsloth
+    save verb so the training driver can dispatch correctly without
+    re-deriving it. ``fileset`` is the platform fileset name the trained
+    artefacts will be uploaded to (the plugin's ``transform`` defaults
+    this to ``name``).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    type: Literal["adapter", "model"]
+    save_method: Literal["lora", "merged_16bit", "merged_4bit"]
+    fileset: str = Field(
+        description=("Platform fileset name the trained checkpoint will be uploaded to. Defaults to the entity name."),
+    )
+    description: str | None = None
+
+
+class ToolCallParams(BaseModel):
+    """Tool calling configuration for NIM deployments."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tool_call_parser: str | None = Field(
+        default=None,
+        description=(
+            "Name of the tool call parser to use (e.g., 'openai', 'hermes', 'pythonic', 'llama3_json', 'mistral')."
+        ),
+    )
+    tool_call_plugin: str | None = Field(
+        default=None,
+        pattern=r"^[\w\-.]+/[\w\-.]+$",
+        description=(
+            "Reference to a fileset containing the custom tool call plugin Python file. "
+            "Expected format: '{workspace}/{fileset_name}'."
+        ),
+    )
+    auto_tool_choice: bool | None = Field(
+        default=None,
+        description="Whether to enable automatic tool choice.",
+    )
+
+
+class DeploymentParams(BaseModel):
+    """Inline deployment parameters for auto-deploying a trained model.
+
+    Used in :class:`UnslothJobInput.deployment_config` and passed through to
+    the model_entity task at compile time. When unset, no deployment is launched.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    gpu: int = Field(default=1, description="Number of GPUs required for the deployment.")
+    additional_envs: dict[str, str] | None = Field(
+        default=None,
+        description="Additional environment variables for the deployment.",
+    )
+    disk_size: str | None = Field(default=None, description="Disk size for the deployment.")
+    image_name: str | None = Field(
+        default=None,
+        description="Container image name from NGC. If not specified, defaults to multi-llm.",
+    )
+    image_tag: str | None = Field(default=None, description="Container image tag from NGC.")
+    lora_enabled: bool = Field(
+        default=True,
+        description=(
+            "When auto-deploying a full SFT training, setting this true allows subsequent "
+            "LoRA adapters to be deployed against it."
+        ),
+    )
+    tool_call_config: ToolCallParams | None = Field(
+        default=None,
+        description="Tool calling configuration override for the NIM deployment.",
+    )
+
+
+class UnslothJobOutput(BaseModel):
+    """Canonical spec stored after the plugin's ``to_spec()`` resolves output naming.
+
+    Defaults match :class:`~nemo_unsloth_plugin.schema.UnslothJobInput` so SDK
+    callers and tests can construct :class:`UnslothJobOutput` directly without
+    restating every sub-section. The plugin's ``to_spec`` always passes the
+    resolved input values through, so these defaults never override real input.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = None
+    model: ModelLoadSpec
+    dataset: DatasetSpec
+    training: TrainingSpec = Field(default_factory=TrainingSpec)
+    schedule: ScheduleSpec = Field(default_factory=ScheduleSpec)
+    batch: BatchSpec = Field(default_factory=BatchSpec)
+    optimizer: OptimizerSpec = Field(default_factory=OptimizerSpec)
+    hardware: HardwareSpec = Field(default_factory=HardwareSpec)
+    integrations: IntegrationsSpec | None = None
+    output: OutputResponse
+    deployment_config: str | DeploymentParams | None = Field(
+        default=None,
+        description=(
+            "Deployment configuration for auto-deploying the model after training. "
+            "Pass a string to reference an existing ModelDeploymentConfig by name "
+            "('my-config' or 'workspace/my-config'). An object provides inline NIM "
+            "deployment parameters. Omit to skip deployment."
+        ),
+    )

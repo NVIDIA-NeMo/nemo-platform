@@ -369,7 +369,8 @@ const buildNewModelSuggestion = (modelName: string): OptimizationSuggestion => (
   detail: `Model "${modelName}" appeared since the last optimizer run. Consider running Auditor and Evaluator against it.`,
   model: modelName,
   suggested_actions: [
-    `nemo audit jobs create --model ${modelName}`,
+    `nemo auditor targets create <target> -d '{"model": "${modelName}", "type": "<type>"}'`,
+    `nemo auditor audit run --spec '{"config": "default/<config>", "target": "default/<target>"}'`,
     `nemo evaluation jobs create --model ${modelName}`,
   ],
 });

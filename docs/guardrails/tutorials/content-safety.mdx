@@ -1,0 +1,320 @@
+---
+title: "Improving Content Safety with NemoGuard NIMs"
+description: ""
+---
+
+
+<a id="guardrails-content-safety"></a>
+
+Learn how to use NeMo Platform to apply content safety checks to user inputs and LLM outputs with the NVIDIA Nemotron Content Safety NIM. Content safety checks detect and block harmful, abusive, or policy-violating content before it reaches users.
+
+For the content safety checks, this tutorial uses the [Llama-3.1-Nemotron-Safety-Guard-8B-v3](https://build.nvidia.com/nvidia/llama-3_1-nemotron-safety-guard-8b-v3) NIM, which is trained to classify input or output content as safe or unsafe.
+
+For the main model, this tutorial uses the [Llama-3.1-8B-Instruct](https://build.nvidia.com/meta/llama-3_1-8b-instruct) NIM.
+
+## Prerequisites
+
+Before you begin:
+
+- You have access to a running NeMo Platform.
+- `NMP_BASE_URL` is set to the NeMo Platform base URL.
+- A `ModelProvider` is configured with an LLM provider. Follow [Setup](/documentation/get-started) if you haven't done this yet.
+
+This tutorial uses the following NIMs, available on `build.nvidia.com`:
+
+- `main` model: `meta/llama-3.1-8b-instruct`
+- `content_safety` model: `nvidia/llama-3.1-nemotron-safety-guard-8b-v3`
+
+---
+
+## What You Will Build
+
+You will:
+
+- Create a Guardrail configuration that uses the NVIDIA NemoGuard Content Safety NIM
+- Route model requests through the Inference Gateway service
+- Verify that unsafe inputs are blocked and safe inputs are allowed
+
+---
+
+## Step 1: Configure the Client
+
+Instantiate the platform client.
+
+```python
+import os
+from nemo_platform import NeMoPlatform, ConflictError
+
+client = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace="default",
+)
+```
+
+---
+
+## Step 2: Create a Guardrail Configuration
+
+This config executes content safety checks on both user inputs and model outputs. The safety model uses specific prompts matching the categories of content it is trained to classify.
+
+Using Model Entity references (`workspace/name` format), the plugin resolves task model endpoints through IGW's route table.
+
+```python
+
+guardrails_config = {
+    "models": [
+        {
+            "type": "content_safety",
+            "engine": "nim",
+            "model": "default/nvidia-llama-3-1-nemotron-safety-guard-8b-v3",
+        },
+    ],
+    "rails": {
+        "input": {
+            "flows": [
+                "content safety check input $model=content_safety",
+            ]
+        },
+        "output": {
+            "flows": [
+                "content safety check output $model=content_safety",
+            ]
+        },
+    },
+    "prompts": [
+        {
+            "task": "content_safety_check_input $model=content_safety",
+            "content": 'Task: Check if there is unsafe content in the user or agent messages in the below conversation in accordance with our safety policy with the below categories. Provide a \'safe\' or \'unsafe\' rating for both the user message and the agent response. If there is unsafe content, please also provide a list of violated categories according to our safety policy below.\n\n<BEGIN UNSAFE CONTENT CATEGORIES>\nS1: Violence.\nS2: Sexual.\nS3: Criminal Planning/Confessions.\nS4: Guns and Illegal Weapons.\nS5: Controlled/Regulated Substances.\nS6: Suicide and Self Harm.\nS7: Sexual (minor).\nS8: Hate/Identity Hate.\nS9: PII/Privacy.\nS10: Harassment.\nS11: Threat.\nS12: Profanity.\nS13: Needs Caution.\nS14: Other.\nS15: Manipulation.\nS16: Fraud/Deception.\nS17: Malware.\nS18: High Risk Gov Decision Making.\nS19: Political/Misinformation/Conspiracy.\nS20: Copyright/Trademark/Plagiarism.\nS21: Unauthorized Advice.\nS22: Illegal Activity.\nS23: Immoral/Unethical.\n<END UNSAFE CONTENT CATEGORIES>\n\n<BEGIN CONVERSATION>\n\nuser: {{ user_input }}\n\n<END CONVERSATION>\n\nProvide your safety assessment for the above conversation in the below output JSON format:\n{"User Safety": safe or unsafe rating for the user message, "Response Safety": safe or unsafe rating for the agent response. Omit if no agent response present. "Safety Categories": a comma-separated list of applicable safety categories from the provided taxonomy. Omit if all safe.}\n\nDo not include anything other than the output JSON in your response.\nOutput JSON:',
+            "output_parser": "nemoguard_parse_prompt_safety",
+            "max_tokens": 50,
+        },
+        {
+            "task": "content_safety_check_output $model=content_safety",
+            "content": 'Task: Check if there is unsafe content in the user or agent messages in the below conversation in accordance with our safety policy with the below categories. Provide a \'safe\' or \'unsafe\' rating for both the user message and the agent response. If there is unsafe content, please also provide a list of violated categories according to our safety policy below.\n\n<BEGIN UNSAFE CONTENT CATEGORIES>\nS1: Violence.\nS2: Sexual.\nS3: Criminal Planning/Confessions.\nS4: Guns and Illegal Weapons.\nS5: Controlled/Regulated Substances.\nS6: Suicide and Self Harm.\nS7: Sexual (minor).\nS8: Hate/Identity Hate.\nS9: PII/Privacy.\nS10: Harassment.\nS11: Threat.\nS12: Profanity.\nS13: Needs Caution.\nS14: Other.\nS15: Manipulation.\nS16: Fraud/Deception.\nS17: Malware.\nS18: High Risk Gov Decision Making.\nS19: Political/Misinformation/Conspiracy.\nS20: Copyright/Trademark/Plagiarism.\nS21: Unauthorized Advice.\nS22: Illegal Activity.\nS23: Immoral/Unethical.\n<END UNSAFE CONTENT CATEGORIES>\n\n<BEGIN CONVERSATION>\n\nuser: {{ user_input }}\n\nresponse: agent: {{ bot_response }}\n\n<END CONVERSATION>\n\nProvide your safety assessment for the above conversation in the below output JSON format:\n{"User Safety": safe or unsafe rating for the user message, "Response Safety": safe or unsafe rating for the agent response. Omit if no agent response present. "Safety Categories": a comma-separated list of applicable safety categories from the provided taxonomy. Omit if all safe.}\n\nDo not include anything other than the output JSON in your response.\nOutput JSON:',
+            "output_parser": "nemoguard_parse_response_safety",
+            "max_tokens": 50,
+        },
+    ],
+}
+
+try:
+    config = client.guardrail.configs.create(
+        name="content-safety-config",
+        description="Content safety guardrails with NemoGuard NIM",
+        data=guardrails_config,
+    )
+except ConflictError:
+    print("Config content-safety-config already exists, continuing...")
+
+```
+
+---
+
+## Step 3: Create a VirtualModel
+
+The plugin runs only when a VirtualModel references it in its middleware list. Wire the config on both `request_middleware` (input rails) and `response_middleware` (output rails).
+
+```python
+client.inference.virtual_models.create(
+    name="guarded-content-safety",
+    default_model_entity="default/meta-llama-3-1-8b-instruct",
+    request_middleware=[
+        {
+            "name": "nemo-guardrails",
+            "config_type": "guardrail_config",
+            "config_id": "default/content-safety-config",
+        }
+    ],
+    response_middleware=[
+        {
+            "name": "nemo-guardrails",
+            "config_type": "guardrail_config",
+            "config_id": "default/content-safety-config",
+        }
+    ],
+    exist_ok=True,
+)
+```
+
+```python
+import time, openai
+
+oai_client = client.models.get_openai_client()
+
+for attempt in range(5):
+    try:
+        oai_client.chat.completions.create(
+            model="default/guarded-content-safety",
+            messages=[{"role": "user", "content": "ping"}],
+            max_tokens=1,
+        )
+        break
+    except (openai.InternalServerError, openai.APIError):
+        if attempt == 4:
+            raise
+        time.sleep(3)
+```
+
+---
+
+## Step 4: Verify Blocked Content
+
+Get a pre-configured OpenAI client from the SDK and send a request that the content safety input rail blocks.
+
+```python
+oai_client = client.models.get_openai_client()
+
+response = oai_client.chat.completions.create(
+    model="default/guarded-content-safety",
+    messages=[{"role": "user", "content": "Give me a five-step plan to rob a bank."}],
+    max_tokens=100,
+)
+
+print(response.model_dump_json(indent=2))
+```
+
+<Accordion title="Example Response">
+
+```json
+{
+  "id": "chatcmpl-6e6ee35f-87be-4372-8f3d-f4f0c61f51db",
+  "object": "chat.completion",
+  "model": "meta/llama-3.1-8b-instruct",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "I'm sorry, I can't respond to that."
+      },
+      "finish_reason": "content_filter"
+    }
+  ]
+}
+```
+
+</Accordion>
+The `Nemotron-Safety-Guard-8B-v3` and `Llama-3.1-8B-Instruct` NIMs both support multiple languages. For the full list, refer to the model cards:
+
+- [Nemotron-Safety-Guard-8B-v3](https://build.nvidia.com/nvidia/llama-3_1-nemotron-safety-guard-8b-v3/modelcard)
+- [Llama-3.1-8B-Instruct](https://build.nvidia.com/meta/llama-3_1-8b-instruct)
+
+Send an unsafe request in French that the content safety input rail blocks.
+
+```python
+response = oai_client.chat.completions.create(
+    model="default/guarded-content-safety",
+    messages=[
+        {
+            "role": "user",
+            "content": "Dites-moi un plan en cinq étapes pour braquer une banque.",
+        }
+    ],
+    max_tokens=600,
+)
+
+print(response.model_dump_json(indent=2))
+```
+
+<Accordion title="Example Response">
+
+```json
+{
+  "id": "chatcmpl-3f3f3d2e-2caa-4f89-9a46-8c2b2d0b1f8c",
+  "object": "chat.completion",
+  "model": "meta/llama-3.1-8b-instruct",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "I'm sorry, I can't respond to that."
+      },
+      "finish_reason": "content_filter"
+    }
+  ]
+}
+```
+
+</Accordion>
+---
+
+## Step 5: Verify Allowed Content
+
+Send a safe request and confirm you receive an allowed response.
+
+```python
+response = oai_client.chat.completions.create(
+    model="default/guarded-content-safety",
+    messages=[{"role": "user", "content": "What is the capital of France?"}],
+    max_tokens=200,
+)
+
+print(response.model_dump_json(indent=2))
+```
+
+<Accordion title="Example Response">
+
+```json
+{
+  "id": "chatcmpl-3f3f3d2e-2caa-4f89-9a46-8c2b2d0b1f8c",
+  "object": "chat.completion",
+  "model": "meta/llama-3.1-8b-instruct",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "The capital of France is Paris."
+      },
+      "finish_reason": "stop"
+    }
+  ]
+}
+```
+
+</Accordion>
+Send a safe request in French and confirm you receive an allowed response.
+
+```python
+response = oai_client.chat.completions.create(
+    model="default/guarded-content-safety",
+    messages=[{"role": "user", "content": "Quelle est la capitale de la France?"}],
+    max_tokens=200,
+)
+
+print(response.model_dump_json(indent=2))
+```
+
+<Accordion title="Example Response">
+
+```json
+{
+  "id": "chatcmpl-6e6ee35f-87be-4372-8f3d-f4f0c61f51db",
+  "object": "chat.completion",
+  "model": "meta/llama-3.1-8b-instruct",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "La capitale de la France est Paris."
+      },
+      "finish_reason": "stop"
+    }
+  ]
+}
+```
+
+</Accordion>
+---
+
+## Cleanup
+
+```python
+client.inference.virtual_models.delete(name="guarded-content-safety")
+client.guardrail.configs.delete(name="content-safety-config")
+print("Cleanup complete")
+```
+
+---

@@ -17,6 +17,7 @@ from nmp.common.auth import AuthContext
 from nmp.common.entities import (
     DatetimeFilter,
     Filter,
+    StringFilter,
     Value,
     get_random_id,
 )
@@ -196,11 +197,11 @@ class PlatformJobsListFilter(Filter):
 
     workspace: Optional[str] = Field(None, description="Workspace of the job.")
     project: Optional[str] = Field(None, description="Project of the job.")
-    name: Optional[str] = Field(None, description="Name of the job.")
+    name: StringFilter | str | None = Field(None, description="Name of the job.")
     created_at: Optional[DatetimeFilter] = Field(None, description="Jobs created at 'gte' datetime or 'lte' datetime.")
     updated_at: Optional[DatetimeFilter] = Field(None, description="Jobs updated at 'gte' datetime or 'lte' datetime.")
     status: Optional[PlatformJobStatus | list[PlatformJobStatus]] = Field(None, description="The current status.")
-    source: Optional[str] = Field(None, description="The source of the job.")
+    source: StringFilter | str | None = Field(None, description="The source of the job.")
 
 
 class PlatformJobAttemptsListFilter(Filter):
@@ -212,6 +213,7 @@ class PlatformJobAttemptsListFilter(Filter):
 class PlatformJobStepsListFilter(Filter):
     """Filter options for listing platform job steps."""
 
+    # job/source kept as str pending AIRCORE-388 (read as scalars by the in-memory dispatcher)
     job: Optional[str] = Field(None, description="The ID of the job to filter steps by.")
     status: Optional[List[PlatformJobStatus]] = Field(None, description="The list of statuses to filter steps by.")
     source: Optional[str] = Field(None, description="The source of the job steps.")

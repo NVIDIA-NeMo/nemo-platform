@@ -41,8 +41,14 @@ class DefaultExecutionProfileConfig(BaseModel):
     )
 
 
-def get_default_executor_profiles_for_runtime(runtime: Runtime, defaults: DefaultExecutionProfileConfig) -> list:
+def get_default_executor_profiles_for_runtime(
+    runtime: Runtime,
+    defaults: DefaultExecutionProfileConfig,
+    enable_subprocess_executor: bool | None = None,
+) -> list:
     """Returns a list of default executor profiles based on the deployment runtime."""
+    if enable_subprocess_executor is None:
+        enable_subprocess_executor = runtime != Runtime.KUBERNETES
 
     logger.debug("Getting default executors for runtime: %s", runtime)
     executors = []
@@ -87,9 +93,7 @@ def get_default_executor_profiles_for_runtime(runtime: Runtime, defaults: Defaul
             ]
         )
 
-    # Subprocess execution is available for single-host runtimes only. Kubernetes deployments must opt in
-    # explicitly so subprocess profiles do not appear on distributed service pods by default.
-    if runtime != Runtime.KUBERNETES:
+    if enable_subprocess_executor:
         executors.append(
             SubprocessJobExecutionProfile(
                 provider="subprocess",

@@ -5,10 +5,10 @@
 
 from typing import Any
 
+from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nemo_safe_synthesizer.config.job import SafeSynthesizerJobConfig as SafeSynthesizerJobConfigInternal
 from nemo_safe_synthesizer.config.job import SafeSynthesizerParameters as SafeSynthesizerParametersInternal
 from nemo_safe_synthesizer.config.replace_pii import PiiReplacerConfig
-from nmp.common.jobs.exceptions import PlatformJobCompilationError
 from pydantic import Field, model_validator
 from pydantic.json_schema import SkipJsonSchema
 

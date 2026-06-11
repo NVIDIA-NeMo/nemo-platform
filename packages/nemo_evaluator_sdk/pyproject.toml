@@ -52,5 +52,5 @@ package = "nemo_evaluator_sdk"
 package_root = "packages/nemo_evaluator_sdk"
 source_module = "nemo_evaluator_sdk"
 target_sdk_module = "beta.evaluator"
-sdk_optional_dependencies_name = "evaluator"
+sdk_optional_dependencies_name = "nemo-evaluator-sdk"
 included_paths = ["**/*.py"]

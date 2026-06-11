@@ -87,6 +87,16 @@ def create_test_job(sdk, workspace: str, job_id: str):
     )
 
 
+def download_json_result(sdk, name: str) -> dict:
+    response = sdk.jobs.results.download(name=name, job=TEST_JOB_ID, workspace=TEST_WORKSPACE)
+    return json.loads(response.read().decode())
+
+
+def download_jsonl_result(sdk, name: str) -> list[dict]:
+    response = sdk.jobs.results.download(name=name, job=TEST_JOB_ID, workspace=TEST_WORKSPACE)
+    return [json.loads(line) for line in response.read().decode().splitlines() if line.strip()]
+
+
 @pytest.fixture
 def metric_job_spec() -> dict:
     return {"metric": {"type": "bleu", "references": []}, "dataset": {"rows": [{"data": "value"}]}}
@@ -158,34 +168,22 @@ class TestMetricResultsTask:
             assert result.exit_code == 0, f"Task failed: {result.stderr}, exception={result.exception}"
 
             # Verify results were uploaded to Jobs API
-            job_results = ctx.sdk.evaluation.metric_jobs.results.list(TEST_JOB_ID, workspace=TEST_WORKSPACE)
+            job_results = ctx.sdk.jobs.results.list(TEST_JOB_ID, workspace=TEST_WORKSPACE)
             result_names = [r.name for r in job_results.data]
 
             assert JOB_RESULTS_AGGREGATE_SCORES in result_names
             assert JOB_RESULTS_ROW_SCORES in result_names
 
             # Verify result download serializes
-            agg_scores_resp = ctx.sdk.evaluation.metric_jobs.results.aggregate_scores.download(
-                TEST_JOB_ID, workspace=TEST_WORKSPACE
-            )
-            assert len(agg_scores_resp.scores) == 1
-            assert agg_scores_resp.scores[0].name == "accuracy"
+            agg_scores_resp = download_json_result(ctx.sdk, JOB_RESULTS_AGGREGATE_SCORES)
+            assert len(agg_scores_resp["scores"]) == 1
+            assert agg_scores_resp["scores"][0]["name"] == "accuracy"
 
-            row_scores_resp = ctx.sdk.evaluation.metric_jobs.results.row_scores.download(
-                TEST_JOB_ID, workspace=TEST_WORKSPACE
-            )
-            row_scores = list(row_scores_resp)  # iter to list
+            row_scores = download_jsonl_result(ctx.sdk, JOB_RESULTS_ROW_SCORES)
             assert len(row_scores) == 2, "unexpected number of row scores"
             for row in row_scores:
-                assert len(row.metrics) == 1
-                assert metric_ref in row.metrics
-
-            # Verify result entity is registered and contains entity private attrs
-            metric_job_result = ctx.sdk.evaluation.metric_job_results.retrieve(TEST_JOB_ID, workspace=TEST_WORKSPACE)
-            assert metric_job_result.name == TEST_JOB_ID
-            assert metric_job_result.created_at is not None
-            assert len(metric_job_result.scores) == 1
-            assert metric_job_result.scores[0].name == "accuracy"
+                assert len(row["metrics"]) == 1
+                assert metric_ref in row["metrics"]
 
     @pytest.mark.asyncio
     @pytest.mark.skip(
@@ -277,22 +275,13 @@ class TestMetricResultsTask:
             assert agg_result is not None
 
             # Verify result download serializes
-            agg_scores_resp = ctx.sdk.evaluation.metric_jobs.results.aggregate_scores.download(
-                TEST_JOB_ID, workspace=TEST_WORKSPACE
-            )
-            assert len(agg_scores_resp.scores) == 1
-            assert agg_scores_resp.scores[0].name == "accuracy"
-
-            # Verify result entity
-            metric_job_result = ctx.sdk.evaluation.metric_job_results.retrieve(TEST_JOB_ID, workspace=TEST_WORKSPACE)
-            assert len(metric_job_result.scores) == 1
-            assert metric_job_result.scores[0].name == "accuracy"
+            agg_scores_resp = download_json_result(ctx.sdk, JOB_RESULTS_AGGREGATE_SCORES)
+            assert len(agg_scores_resp["scores"]) == 1
+            assert agg_scores_resp["scores"][0]["name"] == "accuracy"
 
             # No row results uploaded
-            row_scores_resp = ctx.sdk.evaluation.metric_jobs.results.row_scores.download(
-                TEST_JOB_ID, workspace=TEST_WORKSPACE
-            )
-            assert len(list(row_scores_resp)) == 0
+            row_scores_resp = download_jsonl_result(ctx.sdk, JOB_RESULTS_ROW_SCORES)
+            assert len(row_scores_resp) == 0
 
     @pytest.mark.asyncio
     async def test_unknown_eval_harness_fails_fast(self, tmp_path: Path, metric_job_spec):
@@ -345,26 +334,16 @@ class TestMetricResultsTask:
 
             assert result.exit_code == 0, f"Task failed: {result.stderr}, exception={result.exception}"
 
-            agg_scores_resp = ctx.sdk.evaluation.metric_jobs.results.aggregate_scores.download(
-                TEST_JOB_ID, workspace=TEST_WORKSPACE
-            )
-            assert len(agg_scores_resp.scores) == 1
-            score = agg_scores_resp.scores[0]
-            assert score.name == "f1_score"
-            assert score.mean == 0.78
-            assert score.count == 50
-            assert score.min == 0.2
-            assert score.max == 1.0
-            assert score.sum == 39.0
-            assert score.std_dev is None
-
-            # Verify result entity is registered and contains entity private attrs
-            metric_job_result = ctx.sdk.evaluation.metric_job_results.retrieve(TEST_JOB_ID, workspace=TEST_WORKSPACE)
-            assert metric_job_result.name == TEST_JOB_ID
-            assert metric_job_result.created_at is not None
-            assert len(metric_job_result.scores) == 1
-            result_score = metric_job_result.scores[0]
-            assert result_score == score
+            agg_scores_resp = download_json_result(ctx.sdk, JOB_RESULTS_AGGREGATE_SCORES)
+            assert len(agg_scores_resp["scores"]) == 1
+            score = agg_scores_resp["scores"][0]
+            assert score["name"] == "f1_score"
+            assert score["mean"] == 0.78
+            assert score["count"] == 50
+            assert score["min"] == 0.2
+            assert score["max"] == 1.0
+            assert score["sum"] == 39.0
+            assert score.get("std_dev") is None
 
     @pytest.mark.asyncio
     async def test_special_characters_in_score_names(self, tmp_path: Path, metric_job_spec):
@@ -399,15 +378,9 @@ class TestMetricResultsTask:
 
             assert result.exit_code == 0, f"Task failed: {result.stderr}, exception={result.exception}"
 
-            agg_scores_resp = ctx.sdk.evaluation.metric_jobs.results.aggregate_scores.download(
-                TEST_JOB_ID, workspace=TEST_WORKSPACE
-            )
-            assert len(agg_scores_resp.scores) == 3
-            assert [score.name for score in agg_scores_resp.scores] == expected_score_names
-
-            metric_job_result = ctx.sdk.evaluation.metric_job_results.retrieve(TEST_JOB_ID, workspace=TEST_WORKSPACE)
-            assert len(metric_job_result.scores) == 3
-            assert [score.name for score in metric_job_result.scores] == expected_score_names
+            agg_scores_resp = download_json_result(ctx.sdk, JOB_RESULTS_AGGREGATE_SCORES)
+            assert len(agg_scores_resp["scores"]) == 3
+            assert [score["name"] for score in agg_scores_resp["scores"]] == expected_score_names
 
     @pytest.mark.asyncio
     async def test_multiple_scores_uploaded(self, tmp_path: Path, metric_job_spec):
@@ -443,15 +416,9 @@ class TestMetricResultsTask:
             job_results = ctx.sdk.jobs.results.list(TEST_JOB_ID, workspace=TEST_WORKSPACE)
             assert len(job_results.data) > 0
 
-            agg_scores_resp = ctx.sdk.evaluation.metric_jobs.results.aggregate_scores.download(
-                TEST_JOB_ID, workspace=TEST_WORKSPACE
-            )
-            assert len(agg_scores_resp.scores) == 4
-            assert [score.name for score in agg_scores_resp.scores] == expected_score_names
-
-            metric_job_result = ctx.sdk.evaluation.metric_job_results.retrieve(TEST_JOB_ID, workspace=TEST_WORKSPACE)
-            assert len(metric_job_result.scores) == 4
-            assert [score.name for score in metric_job_result.scores] == expected_score_names
+            agg_scores_resp = download_json_result(ctx.sdk, JOB_RESULTS_AGGREGATE_SCORES)
+            assert len(agg_scores_resp["scores"]) == 4
+            assert [score["name"] for score in agg_scores_resp["scores"]] == expected_score_names
 
     @pytest.mark.asyncio
     async def test_evalfactory_parser_creates_empty_row_scores(self, tmp_path: Path, benchmark_job_spec):
@@ -481,21 +448,12 @@ class TestMetricResultsTask:
                 assert JOB_RESULTS_AGGREGATE_SCORES in result_names
                 assert JOB_RESULTS_ROW_SCORES in result_names
 
-                agg_scores_resp = ctx.sdk.evaluation.benchmark_jobs.results.aggregate_scores.download(
-                    TEST_JOB_ID, workspace=TEST_WORKSPACE
-                )
-                assert len(agg_scores_resp.results) == 1
-                assert len(agg_scores_resp.results[0].scores) == 1
-                benchmark_job_result = ctx.sdk.evaluation.benchmark_job_results.retrieve(
-                    TEST_JOB_ID, workspace=TEST_WORKSPACE
-                )
-                assert len(benchmark_job_result.results) == 1
-                assert len(benchmark_job_result.results[0].scores) == 1
+                agg_scores_resp = download_json_result(ctx.sdk, JOB_RESULTS_AGGREGATE_SCORES)
+                assert len(agg_scores_resp["results"]) == 1
+                assert len(agg_scores_resp["results"][0]["scores"]) == 1
 
-                row_scores_resp = ctx.sdk.evaluation.metric_jobs.results.row_scores.download(
-                    TEST_JOB_ID, workspace=TEST_WORKSPACE
-                )
-                assert len(list(row_scores_resp)) == 0
+                row_scores_resp = download_jsonl_result(ctx.sdk, JOB_RESULTS_ROW_SCORES)
+                assert len(row_scores_resp) == 0
 
     @pytest.mark.asyncio
     async def test_evalfactory_parser_parses_retriever_rows(self, tmp_path: Path, retriever_metric_job_spec):
@@ -530,39 +488,19 @@ class TestMetricResultsTask:
                 result = ctx.run_task(args=[])
                 assert result.exit_code == 0, f"Task failed: {result.stderr}, exception={result.exception}"
 
-                metric_job_result = ctx.sdk.evaluation.metric_job_results.retrieve(
-                    TEST_JOB_ID, workspace=TEST_WORKSPACE
-                )
-                assert len(metric_job_result.scores) == 1
-
                 # Expected RowScores
                 # RowScore(item={'query_id': 'q1'}, metrics={}, requests=[], sample={}, retriever={'retrieved_docs': [{'doc_id': 'd1', 'score': 0.11}]})
                 # RowScore(item={'query_id': 'q2'}, metrics={}, requests=[], sample={}, retriever={'retrieved_docs': [{'doc_id': 'd2', 'score': 0.22}]})
 
-                row_response = ctx.sdk.jobs.results.download(
-                    name=JOB_RESULTS_ROW_SCORES,
-                    job=TEST_JOB_ID,
-                    workspace=TEST_WORKSPACE,
-                )
-                row_lines = [line for line in row_response.read().decode().splitlines() if line.strip()]
-                assert len(row_lines) == 2
-                parsed = [json.loads(line) for line in row_lines]
+                parsed = download_jsonl_result(ctx.sdk, JOB_RESULTS_ROW_SCORES)
+                assert len(parsed) == 2
                 assert {row["item"]["query_id"] for row in parsed} == {"q1", "q2"}
                 assert all(row["row_index"] is None for row in parsed)
                 assert all(row["metric_errors"] is None for row in parsed)
                 assert all("error" not in row for row in parsed)
-
-                row_scores_resp = ctx.sdk.evaluation.metric_jobs.results.row_scores.download(
-                    TEST_JOB_ID, workspace=TEST_WORKSPACE
-                )
-                row_scores = list(row_scores_resp)  # iter to list
-                assert len(row_scores) == 2, "unexpected number of row scores"
-                assert [row.row_index for row in row_scores] == [None, None]
-                assert [row.metric_errors for row in row_scores] == [None, None]
-                row_extras = [row.__pydantic_extra__ for row in row_scores]
-                assert row_extras == [
-                    {"retriever": {"retrieved_docs": [{"doc_id": "d1", "score": 0.11}]}},
-                    {"retriever": {"retrieved_docs": [{"doc_id": "d2", "score": 0.22}]}},
+                assert [row["retriever"] for row in parsed] == [
+                    {"retrieved_docs": [{"doc_id": "d1", "score": 0.11}]},
+                    {"retrieved_docs": [{"doc_id": "d2", "score": 0.22}]},
                 ]
 
     @pytest.mark.asyncio
@@ -617,33 +555,17 @@ class TestMetricResultsTask:
                 result = ctx.run_task(args=[])
                 assert result.exit_code == 0, f"Task failed: {result.stderr}, exception={result.exception}"
 
-                benchmark_job_result = ctx.sdk.evaluation.benchmark_job_results.retrieve(
-                    TEST_JOB_ID, workspace=TEST_WORKSPACE
-                )
-                assert len(benchmark_job_result.results) == 1
-                assert len(benchmark_job_result.results[0].scores) == 1
+                agg_scores_resp = download_json_result(ctx.sdk, JOB_RESULTS_AGGREGATE_SCORES)
+                assert len(agg_scores_resp["results"]) == 1
+                assert len(agg_scores_resp["results"][0]["scores"]) == 1
 
-                row_response = ctx.sdk.jobs.results.download(
-                    name=JOB_RESULTS_ROW_SCORES,
-                    job=TEST_JOB_ID,
-                    workspace=TEST_WORKSPACE,
-                )
-                row_lines = [line for line in row_response.read().decode().splitlines() if line.strip()]
-                assert len(row_lines) == 2
-                parsed = [json.loads(line) for line in row_lines]
+                parsed = download_jsonl_result(ctx.sdk, JOB_RESULTS_ROW_SCORES)
+                assert len(parsed) == 2
                 assert parsed[0]["item"]["question"] == "q1"
                 assert parsed[1]["item"]["question"] == "q2"
                 assert all(row["row_index"] is None for row in parsed)
                 assert all(row["metric_errors"] is None for row in parsed)
                 assert all("error" not in row for row in parsed)
-
-                row_scores_resp = ctx.sdk.evaluation.metric_jobs.results.row_scores.download(
-                    TEST_JOB_ID, workspace=TEST_WORKSPACE
-                )
-                row_scores = list(row_scores_resp)
-                assert len(row_scores) == 2
-                assert all(row.row_index is None for row in row_scores)
-                assert all(row.metric_errors is None for row in row_scores)
 
     @pytest.mark.asyncio
     async def test_evalfactory_agentic_uses_harness_cached_output_detection(self, tmp_path: Path):
@@ -676,19 +598,9 @@ class TestMetricResultsTask:
                 result = ctx.run_task(args=[])
                 assert result.exit_code == 0, f"Task failed: {result.stderr}, exception={result.exception}"
 
-                metric_job_result = ctx.sdk.evaluation.metric_job_results.retrieve(
-                    TEST_JOB_ID, workspace=TEST_WORKSPACE
-                )
-                assert len(metric_job_result.scores) == 1
-
-                row_response = ctx.sdk.jobs.results.download(
-                    name=JOB_RESULTS_ROW_SCORES,
-                    job=TEST_JOB_ID,
-                    workspace=TEST_WORKSPACE,
-                )
-                row_lines = [line for line in row_response.read().decode().splitlines() if line.strip()]
-                assert len(row_lines) == 1
-                parsed = json.loads(row_lines[0])
+                parsed = download_jsonl_result(ctx.sdk, JOB_RESULTS_ROW_SCORES)
+                assert len(parsed) == 1
+                parsed = parsed[0]
                 assert parsed["item"]["question"] == "from-config"
 
     @pytest.mark.asyncio
@@ -751,14 +663,9 @@ class TestMetricResultsTask:
 
             assert result.exit_code == 0, f"Task failed: {result.stderr}, exception={result.exception}"
 
-            agg_scores_resp = ctx.sdk.evaluation.metric_jobs.results.aggregate_scores.download(
-                TEST_JOB_ID, workspace=TEST_WORKSPACE
-            )
-            assert len(agg_scores_resp.scores) == 1
-            assert agg_scores_resp.scores[0].count == 1000
+            agg_scores_resp = download_json_result(ctx.sdk, JOB_RESULTS_AGGREGATE_SCORES)
+            assert len(agg_scores_resp["scores"]) == 1
+            assert agg_scores_resp["scores"][0]["count"] == 1000
 
-            row_scores_resp = ctx.sdk.evaluation.metric_jobs.results.row_scores.download(
-                TEST_JOB_ID, workspace=TEST_WORKSPACE
-            )
-            row_scores = list(row_scores_resp)  # iter to list
+            row_scores = download_jsonl_result(ctx.sdk, JOB_RESULTS_ROW_SCORES)
             assert len(row_scores) == 1000, "unexpected number of row scores"

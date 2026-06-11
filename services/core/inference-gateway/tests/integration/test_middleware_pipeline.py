@@ -403,7 +403,9 @@ def test_middleware_request_and_response_mutation_through_backend(
     sdk.inference.deployment_configs.create(
         workspace=DEFAULT_WORKSPACE,
         name=config_name,
-        nim_deployment={"gpu": 0, "image_name": image_name, "image_tag": image_tag},
+        engine="nim",
+        model_spec={},
+        executor_config={"gpu": 0, "image_name": image_name, "image_tag": image_tag},
     )
     sdk.inference.deployments.create(
         workspace=DEFAULT_WORKSPACE,
@@ -523,7 +525,9 @@ def test_model_endpoint_request_and_response_mutation_through_backend(
     sdk.inference.deployment_configs.create(
         workspace=DEFAULT_WORKSPACE,
         name=config_name,
-        nim_deployment={"gpu": 0, "image_name": image_name, "image_tag": image_tag},
+        engine="nim",
+        model_spec={},
+        executor_config={"gpu": 0, "image_name": image_name, "image_tag": image_tag},
     )
     sdk.inference.deployments.create(workspace=DEFAULT_WORKSPACE, name=deployment_name, config=config_name)
 
@@ -640,7 +644,9 @@ def test_model_endpoint_non_model_body_mutation_regression(
     sdk.inference.deployment_configs.create(
         workspace=DEFAULT_WORKSPACE,
         name=config_name,
-        nim_deployment={"gpu": 0, "image_name": image_name, "image_tag": image_tag},
+        engine="nim",
+        model_spec={},
+        executor_config={"gpu": 0, "image_name": image_name, "image_tag": image_tag},
     )
     sdk.inference.deployments.create(workspace=DEFAULT_WORKSPACE, name=deployment_name, config=config_name)
 

@@ -3,8 +3,8 @@
 
 import { formatTimeInSeconds, getDifferenceInMilliseconds } from '@nemo/common/src/utils/date';
 import type { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
-import * as safeSynthesizerApi from '@nemo/sdk/vendored/safe-synthesizer/api';
-import type { SafeSynthesizerJob } from '@nemo/sdk/vendored/safe-synthesizer/schema';
+import * as safeSynthesizerApi from '@nemo/sdk/generated/safe-synthesizer/api';
+import type { SafeSynthesizerJob } from '@nemo/sdk/generated/safe-synthesizer/schema';
 import { ThemeProvider } from '@nvidia/foundations-react-core';
 import * as useDatastoreFileContentModule from '@studio/api/datasets/useDatastoreFileContent';
 import { JobDetailsPanel } from '@studio/routes/SafeSynthesizerJobDetailsRoute/components/JobDetailsPanel';

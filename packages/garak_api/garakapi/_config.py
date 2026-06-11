@@ -1,7 +1,7 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
-
 """garak global config"""
+
+# SPDX-FileCopyrightText: Portions Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 
 # plugin code < base config < site config < run config < cli params
 
@@ -40,17 +40,21 @@ plugins_params = "target_type target_name extended_detectors".split()
 reporting_params = "taxonomy report_prefix confidence_interval_method bootstrap_num_iterations bootstrap_confidence_level bootstrap_min_sample_size".split()
 project_dir_name = "garak"
 
+
 loaded = False
+
 
 @dataclass
 class GarakSubConfig:
     pass
+
 
 @dataclass
 class BuffManager:
     """class to store instantiated buffs"""
 
     buffs = []
+
 
 @dataclass
 class TransientConfig(GarakSubConfig):
@@ -74,6 +78,7 @@ class TransientConfig(GarakSubConfig):
     data_dir.mkdir(mode=0o740, parents=True, exist_ok=True)
     cache_dir.mkdir(mode=0o740, parents=True, exist_ok=True)
 
+
 transient = TransientConfig()
 
 system = GarakSubConfig()
@@ -81,10 +86,12 @@ run = GarakSubConfig()
 plugins = GarakSubConfig()
 reporting = GarakSubConfig()
 
+
 def _lock_config_as_dict():
     global plugins
     for plugin_type in ("probes", "generators", "buffs", "detectors", "harnesses"):
         setattr(plugins, plugin_type, _crystallise(getattr(plugins, plugin_type)))
+
 
 def _crystallise(d):
     for k in d.keys():
@@ -92,8 +99,10 @@ def _crystallise(d):
             d[k] = _crystallise(d[k])
     return dict(d)
 
+
 def _nested_dict():
     return defaultdict(nested_dict)
+
 
 nested_dict = _nested_dict
 
@@ -117,6 +126,7 @@ run.langproviders = []
 # placeholder
 # generator, probe, detector, buff = {}, {}, {}, {}
 
+
 def _key_exists(d: dict, key: str) -> bool:
     # Check for the presence of a key in a nested dict.
     if not isinstance(d, dict) and not isinstance(d, list):
@@ -128,10 +138,12 @@ def _key_exists(d: dict, key: str) -> bool:
     else:
         return any([_key_exists(val, key) for val in d.values()])
 
+
 def _set_settings(config_obj, settings_obj: dict):
     for k, v in settings_obj.items():
         setattr(config_obj, k, v)
     return config_obj
+
 
 def _combine_into(d: dict, combined: dict) -> dict:
     if d is None:
@@ -142,6 +154,7 @@ def _combine_into(d: dict, combined: dict) -> dict:
         else:
             combined[k] = v
     return combined
+
 
 def _load_config_files(settings_filenames) -> dict:
     global config_files
@@ -213,6 +226,7 @@ def _load_config_files(settings_filenames) -> dict:
 
     return config
 
+
 def _store_config(settings_files) -> None:
     global system, run, plugins, reporting, version
     settings = _load_config_files(settings_files)
@@ -222,6 +236,7 @@ def _store_config(settings_files) -> None:
     plugins = _set_settings(plugins, settings["plugins"])
     reporting = _set_settings(reporting, settings["reporting"])
 
+
 # not my favourite solution in this module, but if
 # _config.set_http_lib_agents() to be predicated on a param instead of
 # a _config.run value (i.e. user_agent) - which it needs to be if it can be
@@ -230,13 +245,16 @@ def _store_config(settings_files) -> None:
 # _config.run.user_agent
 REQUESTS_AGENT = ""
 
+
 def _garak_user_agent(dummy=None):
     return str(REQUESTS_AGENT)
+
 
 def set_all_http_lib_agents(agent_string):
     set_http_lib_agents(
         {"requests": agent_string, "httpx": agent_string, "aiohttp": agent_string}
     )
+
 
 def set_http_lib_agents(agent_strings: dict):
 
@@ -256,6 +274,7 @@ def set_http_lib_agents(agent_strings: dict):
 
         aiohttp.client_reqrep.SERVER_SOFTWARE = agent_strings["aiohttp"]
 
+
 def get_http_lib_agents():
     from requests import utils
     import httpx
@@ -268,12 +287,14 @@ def get_http_lib_agents():
 
     return agent_strings
 
+
 def load_base_config() -> None:
     global loaded
     settings_files = [str(transient.package_dir / "resources" / "garak.core.yaml")]
     logging.debug("Loading configs from: %s", ",".join(settings_files))
     _store_config(settings_files=settings_files)
     loaded = True
+
 
 def load_config(
     site_config_filename="garak.site.yaml", run_config_filename=None
@@ -384,6 +405,7 @@ def load_config(
     if DICT_CONFIG_AFTER_LOAD:
         _lock_config_as_dict()
     loaded = True
+
 
 def parse_plugin_spec(
     spec: str, category: str, probe_tag_filter: str = ""
