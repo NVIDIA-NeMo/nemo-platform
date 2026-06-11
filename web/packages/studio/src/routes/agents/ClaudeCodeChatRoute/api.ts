@@ -129,7 +129,11 @@ const parseLinkArtifact = (value: unknown): ClaudeCodeChatLinkArtifact | undefin
   if (!isRecord(value)) return undefined;
   const label = getOptionalString(value.label);
   if (!label) return undefined;
-  return { label, destination: getOptionalString(value.destination) };
+  return {
+    label,
+    destination: getOptionalString(value.destination),
+    href: getOptionalString(value.href),
+  };
 };
 
 const parseArray = <T>(value: unknown, parseItem: (item: unknown) => T | undefined): T[] =>

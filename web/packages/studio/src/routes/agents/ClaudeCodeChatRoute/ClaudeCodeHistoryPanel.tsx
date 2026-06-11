@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
+  Anchor,
   Banner,
   Button,
   Flex,
@@ -11,11 +12,14 @@ import {
   Tooltip,
 } from '@nvidia/foundations-react-core';
 import { Empty } from '@studio/components/Empty';
+import { useWorkspaceFromPathIfExists } from '@studio/hooks/useWorkspaceFromPath';
 import {
   CLAUDE_CODE_HISTORY_SESSIONS_QUERY_KEY,
   listClaudeCodeHistorySessions,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/api';
 import { cleanClaudeCodeArtifactText } from '@studio/routes/agents/ClaudeCodeChatRoute/artifacts';
+import { CLAUDE_CODE_STUDIO_LINK_CLASS } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeStudioLink';
+import { getStudioInternalLinkTarget } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeStudioLinkTarget';
 import type {
   ClaudeCodeChatArtifacts,
   ClaudeCodeChatFileArtifact,
@@ -28,6 +32,7 @@ import { CLAUDE_CODE_HISTORY_OPEN_KEY } from '@studio/util/localStorage';
 import { useQuery } from '@tanstack/react-query';
 import cn from 'classnames';
 import {
+  ArrowRight,
   Bot,
   Boxes,
   Cpu,
@@ -43,6 +48,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import { type FC, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 
 interface ClaudeCodeHistoryPanelProps {
   activeSessionId?: string;
@@ -190,16 +196,33 @@ const FileArtifacts = ({ files }: { files: ClaudeCodeChatFileArtifact[] }) => {
 };
 
 const LinkArtifacts = ({ links }: { links: ClaudeCodeChatLinkArtifact[] }) => {
+  const workspace = useWorkspaceFromPathIfExists();
+
   if (!links.length) return null;
 
   return (
     <ArtifactSection icon={<Link2 size={14} />} title="Studio links">
       <Flex gap="density-xs" className="min-w-0 flex-wrap">
-        {links.slice(0, 6).map((link) => (
-          <ArtifactChip key={`${link.label}-${link.destination ?? 'link'}`}>
-            {link.label}
-          </ArtifactChip>
-        ))}
+        {links.slice(0, 6).map((link) => {
+          const target = getStudioInternalLinkTarget(
+            link.href ?? link.destination,
+            window.location.origin,
+            workspace
+          );
+          const label = cleanClaudeCodeArtifactText(link.label);
+          const key = `${link.label}-${link.destination ?? link.href ?? 'link'}`;
+
+          return target ? (
+            <Anchor asChild key={key}>
+              <Link className={CLAUDE_CODE_STUDIO_LINK_CLASS} to={target}>
+                <span className="truncate">{label}</span>
+                <ArrowRight aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+              </Link>
+            </Anchor>
+          ) : (
+            <ArtifactChip key={key}>{label}</ArtifactChip>
+          );
+        })}
       </Flex>
     </ArtifactSection>
   );
@@ -373,6 +396,7 @@ const HistoryPanelContents = ({
   } = useQuery({
     queryKey: CLAUDE_CODE_HISTORY_SESSIONS_QUERY_KEY,
     queryFn: listClaudeCodeHistorySessions,
+    refetchOnMount: 'always',
   });
 
   return (

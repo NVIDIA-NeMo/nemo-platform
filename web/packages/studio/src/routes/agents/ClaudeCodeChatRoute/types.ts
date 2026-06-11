@@ -38,6 +38,7 @@ export interface ClaudeCodeChatFileArtifact {
 export interface ClaudeCodeChatLinkArtifact {
   label: string;
   destination?: string;
+  href?: string;
 }
 
 export type ClaudeCodeChatModelSource = 'coding_agent' | 'selection' | 'spec';

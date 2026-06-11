@@ -203,6 +203,7 @@ export const ClaudeCodeChatRoute: FC = () => {
     queryKey: getClaudeCodeSessionHistoryQueryKey(selectedSessionId ?? ''),
     queryFn: () => getClaudeCodeSessionHistory(selectedSessionId ?? ''),
     enabled: !!selectedSessionId,
+    refetchOnMount: 'always',
   });
   const initialMessages = useMemo(
     () => getClaudeCodeHistoryMessages(sessionHistoryQuery.data),

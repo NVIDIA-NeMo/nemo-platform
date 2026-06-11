@@ -37,6 +37,92 @@ const SPEC_HEADINGS = new Set([
   'success criteria',
   'tools',
 ]);
+const STUDIO_LINK_PATH_TEMPLATES: Record<string, string> = {
+  workspace: '/workspaces/{workspace}',
+  dashboard: '/workspaces/{workspace}/dashboard',
+  code_agent: '/workspaces/{workspace}/dashboard/code-agent',
+  agents: '/workspaces/{workspace}/agents',
+  agent: '/workspaces/{workspace}/agents/{name}',
+  agent_chat: '/workspaces/{workspace}/agents/{name}?tab=chat-playground',
+  agent_deployments: '/workspaces/{workspace}/agents',
+  agent_deployment: '/workspaces/{workspace}/agents/{name}',
+  agent_evaluations: '/workspaces/{workspace}/agents/evaluations',
+  agent_evaluation: '/workspaces/{workspace}/agents/evaluations/{name}',
+  agent_monitor: '/workspaces/{workspace}/agents/monitor',
+  agent_optimizations: '/workspaces/{workspace}/agents/suggestions',
+  base_models: '/workspaces/{workspace}/base-models',
+  base_model: '/workspaces/{workspace}/base-models/{name}',
+  base_model_chat: '/workspaces/{workspace}/base-models/{name}?tab=chat-playground',
+  evaluation: '/workspaces/{workspace}/evaluation',
+  evaluation_metrics: '/workspaces/{workspace}/evaluation/metrics',
+  evaluation_metric_new: '/workspaces/{workspace}/evaluation/metrics/new',
+  evaluation_run: '/workspaces/{workspace}/evaluation/metrics/run',
+  evaluation_metric: '/workspaces/{workspace}/evaluation/metrics/{name}',
+  evaluation_metric_run: '/workspaces/{workspace}/evaluation/metrics/{name}/run',
+  evaluation_benchmarks: '/workspaces/{workspace}/evaluation/benchmarks',
+  evaluation_benchmark: '/workspaces/{workspace}/evaluation/benchmarks/{name}',
+  evaluation_results: '/workspaces/{workspace}/evaluation/results',
+  evaluation_result: '/workspaces/{workspace}/evaluation/results/{name}',
+  customizations: '/workspaces/{workspace}/customizations',
+  customization_new: '/workspaces/{workspace}/customizations/fine-tuned/new',
+  customization: '/workspaces/{workspace}/customizations/{name}',
+  prompt_tuning: '/workspaces/{workspace}/customizations/prompt-tuned/new',
+  model_chat: '/workspaces/{workspace}/model-compare',
+  jobs: '/workspaces/{workspace}/jobs',
+  job: '/workspaces/{workspace}/jobs/{name}',
+  filesets: '/workspaces/{workspace}/filesets',
+  fileset_new: '/workspaces/{workspace}/filesets/new',
+  fileset_panel: '/workspaces/{workspace}/filesets/{name}',
+  fileset: '/workspaces/{workspace}/filesets/{name}/detail',
+  fileset_file: '/workspaces/{workspace}/filesets/{name}/file/{file_path}',
+  deployments: '/workspaces/{workspace}/deployments',
+  deployment: '/workspaces/{workspace}/deployments/{name}/details',
+  inference_providers: '/workspaces/{workspace}/inference-providers',
+  guardrails: '/workspaces/{workspace}/guardrails',
+  secrets: '/workspaces/{workspace}/secrets',
+  intake: '/workspaces/{workspace}/intake',
+  intake_traces: '/workspaces/{workspace}/intake/traces',
+  intake_spans: '/workspaces/{workspace}/intake/spans',
+  intake_trace: '/workspaces/{workspace}/intake/traces/{name}',
+  intake_span: '/workspaces/{workspace}/intake/spans/{name}',
+  data_designer: '/workspaces/{workspace}/data-designer',
+  data_designer_new: '/workspaces/{workspace}/data-designer/new',
+  data_designer_job: '/workspaces/{workspace}/data-designer/{name}',
+  safe_synthesizer: '/workspaces/{workspace}/safe-synthesizer',
+  safe_synthesizer_new: '/workspaces/{workspace}/safe-synthesizer/new',
+  safe_synthesizer_job: '/workspaces/{workspace}/safe-synthesizer/job/{name}',
+  safe_synthesizer_report: '/workspaces/{workspace}/safe-synthesizer/job/{name}/report',
+  settings: '/workspaces/{workspace}/settings',
+  members: '/workspaces/{workspace}/members',
+  experiment: '/workspaces/{workspace}/experiment',
+  experiment_group: '/workspaces/{workspace}/experiment/{name}',
+};
+const STUDIO_LINK_ARGUMENT_ALIASES = {
+  name: [
+    'resource_name',
+    'resourceName',
+    'id',
+    'job_name',
+    'jobName',
+    'agent_name',
+    'agentName',
+    'model_name',
+    'modelName',
+    'fileset_id',
+    'filesetId',
+    'fileset_name',
+    'filesetName',
+    'deployment_name',
+    'deploymentName',
+    'trace_id',
+    'traceId',
+    'span_id',
+    'spanId',
+    'experiment_group_id',
+    'experimentGroupId',
+  ],
+  file_path: ['file', 'filePath', 'file_path_encoded', 'filePathEncoded', 'path'],
+} satisfies Record<'name' | 'file_path', readonly string[]>;
 
 export const createEmptyClaudeCodeChatArtifacts = (): ClaudeCodeChatArtifacts => ({
   selections: [],
@@ -61,6 +147,56 @@ const getString = (value: unknown): string | undefined => {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
   return trimmed || undefined;
+};
+
+const normalizeStudioLinkDestination = (value: string | undefined): string | undefined => {
+  const normalized = value?.trim().toLowerCase().replace(/[-\s]+/g, '_');
+  return normalized && STUDIO_LINK_PATH_TEMPLATES[normalized] ? normalized : undefined;
+};
+
+const getStudioLinkArgument = (
+  input: Record<string, unknown>,
+  argumentName: keyof typeof STUDIO_LINK_ARGUMENT_ALIASES
+): string | undefined => {
+  for (const key of [argumentName, ...STUDIO_LINK_ARGUMENT_ALIASES[argumentName]]) {
+    const value = getString(input[key]);
+    if (value) return value;
+  }
+
+  return undefined;
+};
+
+const buildStudioLinkHrefFromInput = (
+  input: Record<string, unknown>,
+  workspace: string | undefined
+): string | undefined => {
+  const explicitHref = getString(input.href) ?? getString(input.url);
+  if (explicitHref) return explicitHref;
+
+  const destination = normalizeStudioLinkDestination(
+    getString(input.destination) ?? getString(input.page) ?? getString(input.resource_type)
+  );
+  const template = destination ? STUDIO_LINK_PATH_TEMPLATES[destination] : undefined;
+  const workspaceValue = getString(input.workspace) ?? workspace;
+  if (!template || !workspaceValue) return undefined;
+
+  const values: Record<string, string> = {
+    workspace: encodeURIComponent(workspaceValue),
+  };
+
+  for (const argumentName of ['name', 'file_path'] as const) {
+    if (!template.includes(`{${argumentName}}`)) continue;
+
+    const value = getStudioLinkArgument(input, argumentName);
+    if (!value) return undefined;
+
+    values[argumentName] = encodeURIComponent(value);
+  }
+
+  return template.replace(
+    /\{(workspace|name|file_path)\}/g,
+    (_match, key: string) => values[key] ?? ''
+  );
 };
 
 const cloneArtifacts = (artifacts: ClaudeCodeChatArtifacts): ClaudeCodeChatArtifacts => ({
@@ -112,12 +248,9 @@ const setSelection = (
 
   if (cleanedSelection.label === 'Agent') {
     artifacts.agent = cleanedSelection.value;
-    return;
-  }
-  if (cleanedSelection.label === 'Model') {
+  } else if (cleanedSelection.label === 'Model') {
     artifacts.model = cleanedSelection.value;
     artifacts.model_source = 'selection';
-    return;
   }
 
   const existingIndex = artifacts.selections.findIndex(
@@ -140,11 +273,14 @@ const upsertFile = (artifacts: ClaudeCodeChatArtifacts, file: ClaudeCodeChatFile
 };
 
 const appendLink = (artifacts: ClaudeCodeChatArtifacts, link: ClaudeCodeChatLinkArtifact) => {
-  if (
-    artifacts.links.some(
-      (item) => item.label === link.label && item.destination === link.destination
-    )
-  ) {
+  const existingIndex = artifacts.links.findIndex(
+    (item) => item.label === link.label && item.destination === link.destination
+  );
+  if (existingIndex >= 0) {
+    artifacts.links[existingIndex] = {
+      ...artifacts.links[existingIndex],
+      href: link.href ?? artifacts.links[existingIndex]?.href,
+    };
     return;
   }
   artifacts.links.push(link);
@@ -222,7 +358,8 @@ const recordToolArtifacts = (
   if ((toolName === 'studio_link' || toolName.endsWith('__studio_link')) && isRecord(input)) {
     const destination = getString(input.destination);
     const label = getString(input.label) ?? destination;
-    if (label) appendLink(artifacts, { label, destination });
+    const href = buildStudioLinkHrefFromInput(input, artifacts.workspace);
+    if (label) appendLink(artifacts, { label, destination, href });
   }
 };
 

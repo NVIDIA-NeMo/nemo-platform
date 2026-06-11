@@ -53,30 +53,39 @@ describe('Claude Code chat artifacts', () => {
     expect(withSelections.model).toBe('nvidia-build - meta/llama-3.3-70b-instruct');
     expect(withSelections.model_source).toBe('selection');
     expect(withSelections.coding_agent_model).toBe('claude-sonnet-4-6');
-    expect(withSelections.selections).toEqual([{ label: 'Dataset', value: 'Text classification' }]);
+    expect(withSelections.selections).toEqual([
+      { label: 'Agent', value: 'beach-finder' },
+      { label: 'Model', value: 'nvidia-build - meta/llama-3.3-70b-instruct' },
+      { label: 'Dataset', value: 'Text classification' },
+    ]);
   });
 
   it('collects relevant tool artifacts from streamed events', () => {
-    const artifacts = updateClaudeCodeChatArtifactsFromEvent(createEmptyClaudeCodeChatArtifacts(), {
-      type: 'assistant',
-      message: {
-        content: [
-          {
-            type: 'tool_use',
-            name: 'Write',
-            input: { file_path: 'agents/beach-finder.yml' },
-          },
-          {
-            type: 'tool_use',
-            name: 'mcp__nemo_studio__studio_link',
-            input: { destination: 'agents', label: 'Agents' },
-          },
-        ],
+    const artifacts = updateClaudeCodeChatArtifactsFromEvent(
+      { ...createEmptyClaudeCodeChatArtifacts(), workspace: 'default' },
+      {
+        type: 'assistant',
+        message: {
+          content: [
+            {
+              type: 'tool_use',
+              name: 'Write',
+              input: { file_path: 'agents/beach-finder.yml' },
+            },
+            {
+              type: 'tool_use',
+              name: 'mcp__nemo_studio__studio_link',
+              input: { destination: 'agents', label: 'Agents' },
+            },
+          ],
+        },
       },
-    });
+    );
 
     expect(artifacts.files).toEqual([{ action: 'Wrote', path: 'agents/beach-finder.yml' }]);
-    expect(artifacts.links).toEqual([{ label: 'Agents', destination: 'agents' }]);
+    expect(artifacts.links).toEqual([
+      { label: 'Agents', destination: 'agents', href: '/workspaces/default/agents' },
+    ]);
     expect(artifacts.tools).toEqual(['Write', 'mcp__nemo_studio__studio_link']);
   });
 

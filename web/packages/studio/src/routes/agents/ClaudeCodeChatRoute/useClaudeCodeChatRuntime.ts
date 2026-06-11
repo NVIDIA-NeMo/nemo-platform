@@ -193,6 +193,19 @@ const formatAskUserQuestionDisplayText = (
 const getArtifactsSignature = (artifacts: ClaudeCodeChatArtifacts | undefined): string =>
   artifacts ? JSON.stringify(artifacts) : '';
 
+const createWorkspaceArtifacts = (
+  artifacts: ClaudeCodeChatArtifacts | undefined,
+  workspace: string | undefined
+): ClaudeCodeChatArtifacts => {
+  const nextArtifacts = artifacts ?? createEmptyClaudeCodeChatArtifacts();
+  return nextArtifacts.workspace || !workspace
+    ? nextArtifacts
+    : {
+        ...nextArtifacts,
+        workspace,
+      };
+};
+
 interface UseClaudeCodeChatRuntimeOptions {
   initialArtifacts?: ClaudeCodeChatArtifacts;
   initialMessages?: readonly ThreadMessageLike[];
@@ -203,9 +216,10 @@ interface UseClaudeCodeChatRuntimeOptions {
 
 export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptions) => {
   const queryClient = useQueryClient();
+  const workspace = options?.workspace;
   const [sessionId, setSessionId] = useState<string | null>(options?.initialSessionId ?? null);
   const [artifacts, setArtifacts] = useState<ClaudeCodeChatArtifacts>(
-    options?.initialArtifacts ?? createEmptyClaudeCodeChatArtifacts()
+    createWorkspaceArtifacts(options?.initialArtifacts, workspace)
   );
   const [decisionRequest, setDecisionRequest] = useState<AgentDecisionRequest | null>(null);
   const [decisionChoices, setDecisionChoices] = useState<readonly AgentDecisionChoice[]>([]);
@@ -224,8 +238,8 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
   useEffect(() => {
     const nextArtifacts = initialArtifactsRef.current;
     if (!nextArtifacts) return;
-    setArtifacts(nextArtifacts);
-  }, [initialArtifactsSignature]);
+    setArtifacts(createWorkspaceArtifacts(nextArtifacts, workspace));
+  }, [initialArtifactsSignature, workspace]);
 
   const ensureSessionId = useCallback(async (): Promise<string> => {
     if (sessionIdRef.current) return sessionIdRef.current;
@@ -450,10 +464,10 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
   const handleReset = useCallback(() => {
     sessionIdRef.current = null;
     setSessionId(null);
-    setArtifacts(createEmptyClaudeCodeChatArtifacts());
+    setArtifacts(createWorkspaceArtifacts(undefined, workspace));
     clearApprovalRequest();
     resetThread();
-  }, [clearApprovalRequest, resetThread]);
+  }, [clearApprovalRequest, resetThread, workspace]);
 
   return {
     artifacts,

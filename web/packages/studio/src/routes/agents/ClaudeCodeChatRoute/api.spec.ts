@@ -3,6 +3,7 @@
 
 import { BASE_URL } from '@studio/constants/environment';
 import {
+  getClaudeCodeSessionHistory,
   resolveClaudeCodePermission,
   streamClaudeCodeMessage,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/api';
@@ -49,6 +50,38 @@ describe('Claude Code API helpers', () => {
         method: 'POST',
       })
     );
+  });
+
+  it('keeps historical chat artifact selections when loading a session', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          session_id: 'session-1',
+          items: [],
+          chat_artifacts: {
+            selections: [
+              { label: 'Agent', value: 'cat-identifier' },
+              { label: 'Model', value: '`cloud, nvidia/example` - good for this agent' },
+            ],
+            files: [],
+            links: [{ label: 'Agents', destination: 'agents', href: '/workspaces/default/agents' }],
+            tools: [],
+          },
+        }),
+        { status: 200 }
+      )
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const history = await getClaudeCodeSessionHistory('session-1');
+
+    expect(history.chat_artifacts.selections).toEqual([
+      { label: 'Agent', value: 'cat-identifier' },
+      { label: 'Model', value: 'cloud, nvidia/example' },
+    ]);
+    expect(history.chat_artifacts.links).toEqual([
+      { label: 'Agents', destination: 'agents', href: '/workspaces/default/agents' },
+    ]);
   });
 
   it('emits structured permission requests from SSE events', async () => {

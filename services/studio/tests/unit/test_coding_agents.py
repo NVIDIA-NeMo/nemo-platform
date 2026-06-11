@@ -249,10 +249,12 @@ def test_list_and_get_history_sessions(
                 "model": "cloud, nvidia/llama-3.3-nemotron-super-49b-v1",
                 "model_source": "spec",
                 "coding_agent_model": "claude-sonnet-4-6",
-                "workspace": None,
-                "selections": [],
+                "workspace": "default",
+                "selections": [{"label": "Agent", "value": "beach-finder"}],
                 "files": [{"action": "Wrote", "path": "agents/beach-finder.yml"}],
-                "links": [{"label": "Agents", "destination": "agents"}],
+                "links": [
+                    {"label": "Agents", "destination": "agents", "href": "/workspaces/default/agents"}
+                ],
                 "tools": ["Bash", "Write", "mcp__nemo_studio__studio_link", "AskUserQuestion"],
             },
         }
@@ -327,10 +329,12 @@ def test_list_and_get_history_sessions(
             "model": "cloud, nvidia/llama-3.3-nemotron-super-49b-v1",
             "model_source": "spec",
             "coding_agent_model": "claude-sonnet-4-6",
-            "workspace": None,
-            "selections": [],
+            "workspace": "default",
+            "selections": [{"label": "Agent", "value": "beach-finder"}],
             "files": [{"action": "Wrote", "path": "agents/beach-finder.yml"}],
-            "links": [{"label": "Agents", "destination": "agents"}],
+            "links": [
+                {"label": "Agents", "destination": "agents", "href": "/workspaces/default/agents"}
+            ],
             "tools": ["Bash", "Write", "mcp__nemo_studio__studio_link", "AskUserQuestion"],
         },
     }

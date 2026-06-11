@@ -81,6 +81,7 @@ class ChatLinkArtifactResponse(BaseModel):
 
     label: str
     destination: str | None = None
+    href: str | None = None
 
 
 class ChatArtifactsResponse(BaseModel):
@@ -367,6 +368,7 @@ _TOKEN_USAGE_FIELDS = (
 
 _ANSWER_PAIR_RE = re.compile(r'"((?:\\.|[^"\\])*)"\s*=\s*"((?:\\.|[^"\\])*)"')
 _INLINE_CODE_VALUE_RE = re.compile(r"(`+)(?P<value>.*?)\1", re.DOTALL)
+_MARKDOWN_LINK_RE = re.compile(r"\[(?P<label>[^\]]+)\]\((?P<href>[^)]+)\)")
 _FILE_CHANGE_TOOL_ACTIONS = {
     "Edit": "Edited",
     "MultiEdit": "Edited",
@@ -460,11 +462,9 @@ def _set_selection_artifact(artifacts: ChatArtifactsResponse, label: str, value:
     cleaned_value = _clean_artifact_value(value)
     if label == "Agent":
         artifacts.agent = cleaned_value
-        return
-    if label == "Model":
+    elif label == "Model":
         artifacts.model = cleaned_value
         artifacts.model_source = "selection"
-        return
 
     for index, selection in enumerate(artifacts.selections):
         if selection.label == label:
@@ -547,18 +547,57 @@ def _upsert_file_artifact(artifacts: ChatArtifactsResponse, action: str, path: s
     artifacts.files.append(ChatFileArtifactResponse(action=action, path=path))
 
 
+def _markdown_link_parts(value: str) -> tuple[str | None, str | None]:
+    match = _MARKDOWN_LINK_RE.search(value)
+    if not match:
+        return None, None
+    return match.group("label").strip() or None, match.group("href").strip() or None
+
+
+def _studio_link_artifact_from_input(
+    input_value: dict[str, Any],
+    workspace: str | None,
+) -> ChatLinkArtifactResponse | None:
+    destination = (
+        _string_value(input_value.get("destination"))
+        or _string_value(input_value.get("page"))
+        or _string_value(input_value.get("resource_type"))
+    )
+    label = _string_value(input_value.get("label")) or destination
+    href = _string_value(input_value.get("href")) or _string_value(input_value.get("url"))
+
+    if workspace:
+        result = studio_links.build_studio_link_result(workspace, None, input_value)
+        if "markdown" in result:
+            markdown_label, markdown_href = _markdown_link_parts(str(result["markdown"]))
+            label = _string_value(input_value.get("label")) or markdown_label or label
+            href = (
+                _string_value(result.get("url"))
+                or _string_value(result.get("path"))
+                or markdown_href
+                or href
+            )
+            destination = _string_value(result.get("destination")) or destination
+
+    if not label:
+        return None
+
+    return ChatLinkArtifactResponse(label=label, destination=destination, href=href)
+
+
 def _append_link_artifact(artifacts: ChatArtifactsResponse, input_value: Any) -> None:
     if not isinstance(input_value, dict):
         return
-    destination = _string_value(input_value.get("destination"))
-    label = _string_value(input_value.get("label")) or destination
-    if not label:
+    artifact = _studio_link_artifact_from_input(input_value, artifacts.workspace)
+    if artifact is None:
         return
 
     for link in artifacts.links:
-        if link.label == label and link.destination == destination:
+        if link.label == artifact.label and link.destination == artifact.destination:
+            if artifact.href and not link.href:
+                link.href = artifact.href
             return
-    artifacts.links.append(ChatLinkArtifactResponse(label=label, destination=destination))
+    artifacts.links.append(artifact)
 
 
 def _normalize_spec_line(line: str) -> str:

@@ -18,7 +18,10 @@ import {
   createTextMessage,
   getMessageText,
 } from '@nemo/common/src/components/AssistantChat/messageUtils';
-import { groupConsecutiveClaudeCodeSubtleToolCalls } from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
+import {
+  getClaudeCodeCompletedMessageParts,
+  groupConsecutiveClaudeCodeSubtleToolCalls,
+} from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
 import { useCallback, useRef, useState } from 'react';
 
 export interface CustomAssistantRunContext {
@@ -41,6 +44,10 @@ interface UseCustomAssistantChatRuntimeOptions {
   initialMessages?: readonly ThreadMessageLike[];
   onRun: (context: CustomAssistantRunContext) => Promise<CustomAssistantRunResult | void>;
   onError?: (error: Error) => void;
+}
+
+interface CompleteAssistantMessageOptions {
+  readonly collapseClaudeCodeContent?: boolean;
 }
 
 const isAbortError = (error: unknown): boolean =>
@@ -88,6 +95,14 @@ const hasVisibleAssistantContent = (content: ThreadMessageLike['content']): bool
     if (part.type === 'text') return part.text.trim().length > 0;
     return true;
   });
+};
+
+const completeClaudeCodeAssistantContent = (
+  content: ThreadMessageLike['content'],
+  status: MessageStatus
+): ThreadMessageLike['content'] => {
+  if (status.type !== 'complete' || !Array.isArray(content)) return content;
+  return getClaudeCodeCompletedMessageParts(content);
 };
 
 export const useCustomAssistantChatRuntime = ({
@@ -176,7 +191,8 @@ export const useCustomAssistantChatRuntime = ({
 
       const completeActiveAssistantMessage = (
         status: MessageStatus,
-        content: ThreadMessageLike['content'] = getCurrentResponseContent()
+        content: ThreadMessageLike['content'] = getCurrentResponseContent(),
+        options: CompleteAssistantMessageOptions = {}
       ) => {
         if (!assistantMessageId) return;
 
@@ -184,7 +200,13 @@ export const useCustomAssistantChatRuntime = ({
         assistantMessageId = null;
         responseText = '';
         responseContent = undefined;
-        completeAssistantMessageContent(currentAssistantMessageId, content, status);
+        completeAssistantMessageContent(
+          currentAssistantMessageId,
+          options.collapseClaudeCodeContent === false
+            ? content
+            : completeClaudeCodeAssistantContent(content, status),
+          status
+        );
       };
 
       createAssistantMessage();
@@ -214,7 +236,9 @@ export const useCustomAssistantChatRuntime = ({
       };
 
       const prepareForUserInput = () => {
-        completeActiveAssistantMessage(COMPLETE_STATUS);
+        completeActiveAssistantMessage(COMPLETE_STATUS, getCurrentResponseContent(), {
+          collapseClaudeCodeContent: false,
+        });
       };
 
       try {
