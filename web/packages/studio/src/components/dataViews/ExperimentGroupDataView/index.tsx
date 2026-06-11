@@ -7,7 +7,6 @@ import {
   EditColumnsMenu,
 } from '@nemo/common/src/components/DataView/internal';
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
-import { useRowClick } from '@nemo/common/src/components/DataView/useRowClick';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
@@ -222,14 +221,6 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
     []
   );
 
-  const {
-    wrapColumns,
-    onClick: rowClickHandler,
-    className: rowClickClassName,
-  } = useRowClick((row: ExperimentRow) => {
-    navigate(getExperimentDetailRoute(workspace, experimentGroupName, row.name));
-  }, tableData);
-
   if (groupError) {
     return <ErrorMessage message="Failed to load experiment group." />;
   }
@@ -241,8 +232,11 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
   return (
     <StudioDataView
       dataViewState={dataViewState}
-      makeColumns={wrapColumns(makeColumns)}
+      makeColumns={makeColumns}
       searchField="name"
+      onRowClick={(row) =>
+        navigate(getExperimentDetailRoute(workspace, experimentGroupName, row.name))
+      }
       toolbarSlotEnd={
         <EditColumnsMenu
           kind="secondary"
@@ -262,8 +256,6 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
           data: tableData,
           totalCount,
           requestStatus: isGroupLoading || (isLoading && !experimentsData) ? 'loading' : undefined,
-          onClick: rowClickHandler,
-          className: rowClickClassName,
         },
         DataViewTableContent: {
           renderEmptyState: () => (
