@@ -9,6 +9,7 @@ post-hoc annotations and evaluator result lookup.
 Active v2 workspace endpoints:
 
 - `GET /apis/intake/v2/workspaces/{workspace}/spans`
+- `GET /apis/intake/v2/workspaces/{workspace}/spans/groups`
 - `GET /apis/intake/v2/workspaces/{workspace}/spans/{span_id}`
 - `GET /apis/intake/v2/workspaces/{workspace}/traces`
 - `GET /apis/intake/v2/workspaces/{workspace}/traces/{id}`

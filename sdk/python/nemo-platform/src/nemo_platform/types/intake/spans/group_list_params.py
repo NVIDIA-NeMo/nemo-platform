@@ -17,9 +17,30 @@
 
 from __future__ import annotations
 
-from .span_group import SpanGroup as SpanGroup
-from .span_group_by import SpanGroupBy as SpanGroupBy
-from .span_groups_page import SpanGroupsPage as SpanGroupsPage
-from .group_list_params import GroupListParams as GroupListParams
-from .span_group_sort_field import SpanGroupSortField as SpanGroupSortField
-from .evaluator_result_list_response import EvaluatorResultListResponse as EvaluatorResultListResponse
+from typing_extensions import Required, TypedDict
+
+from ..span_filter_param import SpanFilterParam
+from .span_group_sort_field import SpanGroupSortField
+
+__all__ = ["GroupListParams"]
+
+
+class GroupListParams(TypedDict, total=False):
+    workspace: str
+
+    by: Required[str]
+    """Comma-separated span fields to group by, e.g. trace_id or session_id,trace_id."""
+
+    filter: SpanFilterParam
+    """
+    Filter spans by the same fields as the span list endpoint, then group matching
+    spans by the comma-separated fields in the by query parameter.
+    """
+
+    page: int
+    """Page number."""
+
+    page_size: int
+    """Page size."""
+
+    sort: SpanGroupSortField
