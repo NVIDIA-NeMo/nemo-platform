@@ -4,21 +4,12 @@
 import { Banner, Button, Card, Flex, Skeleton, Stack, Text } from '@nvidia/foundations-react-core';
 import { Empty } from '@studio/components/Empty';
 import type { SkillActionSuggestion } from '@studio/routes/DashboardLandingRoute/skillActionSuggestions';
-import { type FC, type WheelEvent } from 'react';
+import { type FC, type WheelEvent, useCallback, useEffect, useRef } from 'react';
 
 const SKILL_ACTION_CARD_CLASS = 'h-40 w-72 flex-none cursor-pointer shadow-none!';
 
-const HORIZONTAL_SCROLLBAR_CLASS = [
-  '[scrollbar-width:thin]',
-  '[scrollbar-color:var(--border-color-interaction-base)_transparent]',
-  '[&::-webkit-scrollbar]:h-2',
-  '[&::-webkit-scrollbar]:w-2',
-  '[&::-webkit-scrollbar-corner]:bg-transparent',
-  '[&::-webkit-scrollbar-track]:bg-transparent',
-  '[&::-webkit-scrollbar-thumb]:rounded-full',
-  '[&::-webkit-scrollbar-thumb]:bg-[var(--border-color-interaction-base)]',
-  '[&::-webkit-scrollbar-thumb:hover]:bg-[var(--border-color-interaction-strong)]',
-].join(' ');
+const HIDDEN_NATIVE_SCROLLBAR_CLASS = '[scrollbar-width:none] [&::-webkit-scrollbar]:hidden';
+const MIN_SCROLLBAR_THUMB_PERCENT = 12;
 
 interface SkillActionListProps {
   actions: SkillActionSuggestion[];
@@ -26,6 +17,34 @@ interface SkillActionListProps {
 }
 
 const SkillActionList: FC<SkillActionListProps> = ({ actions, onSelect }) => {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const scrollbarThumbRef = useRef<HTMLDivElement>(null);
+
+  const updateScrollbar = useCallback(() => {
+    const scrollContainer = scrollContainerRef.current;
+    const scrollbarThumb = scrollbarThumbRef.current;
+    if (!scrollContainer) return;
+
+    const { clientWidth, scrollLeft, scrollWidth } = scrollContainer;
+    const maxScrollLeft = scrollWidth - clientWidth;
+    if (maxScrollLeft <= 0 || scrollWidth <= 0) {
+      if (scrollbarThumb) {
+        scrollbarThumb.style.marginLeft = '0%';
+        scrollbarThumb.style.width = '100%';
+      }
+      return;
+    }
+
+    const thumbWidthPercent = Math.max(
+      MIN_SCROLLBAR_THUMB_PERCENT,
+      (clientWidth / scrollWidth) * 100
+    );
+    if (scrollbarThumb) {
+      scrollbarThumb.style.marginLeft = `${(scrollLeft / maxScrollLeft) * (100 - thumbWidthPercent)}%`;
+      scrollbarThumb.style.width = `${thumbWidthPercent}%`;
+    }
+  }, []);
+
   const handleWheel = (event: WheelEvent<HTMLDivElement>) => {
     if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
 
@@ -41,49 +60,91 @@ const SkillActionList: FC<SkillActionListProps> = ({ actions, onSelect }) => {
 
     event.preventDefault();
     scrollContainer.scrollLeft = nextScrollLeft;
+    updateScrollbar();
   };
 
+  const handleScroll = () => {
+    updateScrollbar();
+  };
+
+  useEffect(() => {
+    updateScrollbar();
+
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer) return;
+
+    const resizeObserver =
+      typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(updateScrollbar);
+    resizeObserver?.observe(scrollContainer);
+    window.addEventListener('resize', updateScrollbar);
+
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', updateScrollbar);
+    };
+  }, [actions.length, updateScrollbar]);
+
   return (
-    <div
-      aria-label="Skill action suggestions"
-      className={`flex w-full items-stretch gap-density-md overflow-x-auto pb-density-sm ${HORIZONTAL_SCROLLBAR_CLASS}`}
-      onWheel={handleWheel}
-    >
-      {actions.map((action) => (
+    <div className="w-full">
+      <div
+        ref={scrollContainerRef}
+        aria-label="Skill action suggestions"
+        className={`w-full overflow-x-auto ${HIDDEN_NATIVE_SCROLLBAR_CLASS}`}
+        onScroll={handleScroll}
+        onWheel={handleWheel}
+      >
         <div
-          key={`${action.skillName}:${action.claudeName}`}
-          className="w-72 flex-none"
-          data-testid={`skill-action-card-${action.skillName}`}
+          className="flex w-max min-w-full items-stretch gap-density-md pb-density-lg"
+          data-testid="skill-action-row"
         >
-          <Card asChild interactive className="h-40 w-full cursor-pointer shadow-none!">
-            <button
-              type="button"
-              className="flex h-full w-full flex-col gap-density-md text-left"
-              onClick={() => onSelect(action.prompt)}
+          {actions.map((action) => (
+            <div
+              key={`${action.skillName}:${action.claudeName}`}
+              className="w-72 flex-none"
+              data-testid={`skill-action-card-${action.skillName}`}
             >
-              <span className="flex size-8 shrink-0 items-center justify-center rounded bg-surface-raised text-accent">
-                {action.icon}
-              </span>
-              <span className="flex min-h-0 flex-1 flex-col gap-density-xxs">
-                <Text kind="label/bold/sm" className="line-clamp-1 block">
-                  {action.title}
-                </Text>
-                <Text
-                  kind="body/regular/xs"
-                  color="secondary"
-                  className="block truncate"
-                  data-testid="skill-action-skill-name"
+              <Card asChild interactive className="h-40 w-full cursor-pointer shadow-none!">
+                <button
+                  type="button"
+                  className="flex h-full w-full flex-col gap-density-md text-left"
+                  onClick={() => onSelect(action.prompt)}
                 >
-                  {action.skillName}
-                </Text>
-                <Text kind="body/regular/sm" color="secondary" className="line-clamp-2 block">
-                  {action.description}
-                </Text>
-              </span>
-            </button>
-          </Card>
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded bg-surface-raised text-accent">
+                    {action.icon}
+                  </span>
+                  <span className="flex min-h-0 flex-1 flex-col gap-density-xxs">
+                    <Text kind="label/bold/sm" className="line-clamp-1 block">
+                      {action.title}
+                    </Text>
+                    <Text
+                      kind="body/regular/xs"
+                      color="secondary"
+                      className="block truncate"
+                      data-testid="skill-action-skill-name"
+                    >
+                      {action.skillName}
+                    </Text>
+                    <Text kind="body/regular/sm" color="secondary" className="line-clamp-2 block">
+                      {action.description}
+                    </Text>
+                  </span>
+                </button>
+              </Card>
+            </div>
+          ))}
         </div>
-      ))}
+      </div>
+      <div
+        aria-hidden="true"
+        className="h-2 w-full rounded-full bg-[var(--background-color-interaction-hover)]"
+        data-testid="skill-action-scrollbar"
+      >
+        <div
+          ref={scrollbarThumbRef}
+          className="h-full rounded-full bg-[var(--border-color-interaction-base)]"
+          data-testid="skill-action-scrollbar-thumb"
+        />
+      </div>
     </div>
   );
 };

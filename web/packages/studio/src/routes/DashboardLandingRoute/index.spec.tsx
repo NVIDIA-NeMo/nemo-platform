@@ -156,18 +156,24 @@ describe('DashboardLandingRoute', () => {
     ).toEqual(expect.arrayContaining(['nemo-guardrails', 'guardrails-plugin']));
   });
 
-  it('uses the Studio thin horizontal scrollbar styling for skill actions', async () => {
+  it('uses an always-visible custom horizontal scrollbar for skill actions', async () => {
     renderRoute();
 
     await screen.findByRole('button', { name: /Add guardrails to an agent/ });
 
     const skillActions = screen.getByLabelText('Skill action suggestions');
+    Object.defineProperty(skillActions, 'clientWidth', { configurable: true, value: 320 });
+    Object.defineProperty(skillActions, 'scrollWidth', { configurable: true, value: 1200 });
+    fireEvent.scroll(skillActions);
+
     expect(skillActions).toHaveClass(
-      '[scrollbar-width:thin]',
-      '[scrollbar-color:var(--border-color-interaction-base)_transparent]',
-      '[&::-webkit-scrollbar-thumb]:rounded-full',
-      'pb-density-sm'
+      'overflow-x-auto',
+      '[scrollbar-width:none]',
+      '[&::-webkit-scrollbar]:hidden'
     );
+    expect(screen.getByTestId('skill-action-row')).toHaveClass('pb-density-lg');
+    expect(screen.getByTestId('skill-action-scrollbar')).not.toHaveClass('hidden');
+    expect(screen.getByTestId('skill-action-scrollbar-thumb')).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Previous skill actions' })
     ).not.toBeInTheDocument();

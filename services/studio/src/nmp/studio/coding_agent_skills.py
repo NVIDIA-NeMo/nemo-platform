@@ -9,10 +9,10 @@ from importlib.metadata import entry_points
 from pathlib import Path
 from typing import Any
 
+import yaml
 from nemo_platform_ext.cli.commands.skills.base import Scope, Skill
 from nemo_platform_ext.cli.commands.skills.registry import (
     DuplicateSkillError,
-    _load_skills_from_root,
     get_installer,
     load_skills,
 )
@@ -101,6 +101,55 @@ def _resolve_skills_entry_point_root(entry_point: Any) -> Path | None:
     return skills_root
 
 
+def _parse_skill_frontmatter(text: str) -> tuple[dict[str, Any], str]:
+    if not text.startswith("---\n"):
+        return {}, text
+    end = text.find("\n---\n", 4)
+    if end == -1:
+        return {}, text
+    metadata = yaml.safe_load(text[4:end]) or {}
+    body = text[end + 5 :]
+    if not isinstance(metadata, dict):
+        raise ValueError(f"Invalid frontmatter: expected a mapping, got {type(metadata).__name__}")
+    return metadata, body
+
+
+def _load_skill_from_dir(entry: Path, source_plugin: str | None = None, source_dist: str | None = None) -> Skill:
+    skill_file = entry / "SKILL.md"
+    raw = skill_file.read_text(encoding="utf-8")
+    try:
+        metadata, body = _parse_skill_frontmatter(raw)
+    except yaml.YAMLError as exc:
+        raise ValueError(f"Invalid frontmatter in {skill_file}: {exc}") from exc
+    return Skill(
+        name=metadata.get("name", entry.name),
+        description=metadata.get("description", ""),
+        version=str(metadata.get("version", "0.1")),
+        content=body,
+        raw=raw,
+        source_dir=entry,
+        source_plugin=source_plugin,
+        source_dist=source_dist,
+    )
+
+
+def load_skills_from_root(
+    root: Path,
+    source_plugin: str | None = None,
+    source_dist: str | None = None,
+) -> dict[str, Skill]:
+    """Load skills from one selected root without depending on registry internals."""
+    skills: dict[str, Skill] = {}
+    for entry in sorted(root.iterdir()):
+        if not entry.is_dir():
+            continue
+        if not (entry / "SKILL.md").exists():
+            continue
+        skill = _load_skill_from_dir(entry, source_plugin=source_plugin, source_dist=source_dist)
+        skills[skill.name] = skill
+    return skills
+
+
 def _load_skills_from_preferred_entry_points() -> dict[str, Skill]:
     """Load skills for Studio while preferring editable source providers over vendored mirrors."""
     allowed_names = _allowed_skill_provider_names()
@@ -120,7 +169,9 @@ def _load_skills_from_preferred_entry_points() -> dict[str, Skill]:
             key=lambda candidate: _skill_entry_point_preference(candidate[0]),
         )
         source_dist = _skill_entry_point_dist_name(entry_point)
-        for skill in _load_skills_from_root(skills_root, source_plugin=provider_name, source_dist=source_dist).values():
+        # Vendored root loading keeps this duplicate-provider fallback independent
+        # from private helpers in the CLI skill registry.
+        for skill in load_skills_from_root(skills_root, source_plugin=provider_name, source_dist=source_dist).values():
             existing = all_skills.get(skill.name)
             if existing is not None:
                 raise DuplicateSkillError(

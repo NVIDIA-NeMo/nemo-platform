@@ -83,6 +83,26 @@ def _expected_inference_skill_response(*, installed: bool) -> dict[str, Any]:
     }
 
 
+def test_vendored_load_skills_from_root_loads_selected_root_without_registry_private_helper(tmp_path: Path):
+    source_dir = _inference_source_dir(tmp_path)
+    (source_dir / "SKILL.md").write_text(
+        "---\nname: inference\ndescription: Use NeMo Platform inference.\nversion: 2\n---\n# Inference\n",
+        encoding="utf-8",
+    )
+
+    loaded = coding_agent_skills.load_skills_from_root(
+        tmp_path / "packages" / "nemo_platform_ext" / "skills",
+        source_plugin="platform",
+        source_dist="nemo-platform-ext",
+    )
+
+    assert list(loaded) == ["inference"]
+    assert loaded["inference"].description == "Use NeMo Platform inference."
+    assert loaded["inference"].version == "2"
+    assert loaded["inference"].source_plugin == "platform"
+    assert loaded["inference"].source_dist == "nemo-platform-ext"
+
+
 def test_create_session_returns_uuid(service_client: TestClient):
     response = service_client.post("/v2/coding-agents/sessions")
 
