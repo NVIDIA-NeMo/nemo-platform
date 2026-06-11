@@ -10,16 +10,12 @@ authz:
     entities:
       create:
         description: "Create entities"
-        has_role: false
       delete:
         description: "Delete entities"
-        has_role: false
       read:
         description: "Read entities"
-        has_role: false
       update:
         description: "Update entities"
-        has_role: false
     filesets:
       create:
         description: "Create filesets"
@@ -269,6 +265,7 @@ authz:
     Viewer:
       description: "Read-only access to workspace resources"
       permissions:
+      - entities.read
       - filesets.list
       - filesets.read
       - guardrails.configs.list
@@ -309,6 +306,9 @@ authz:
       description: "Read and write access to workspace resources"
       includes: ["Viewer"]
       permissions:
+      - entities.create
+      - entities.delete
+      - entities.update
       - filesets.create
       - filesets.delete
       - filesets.update
