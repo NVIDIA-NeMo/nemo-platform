@@ -15,9 +15,10 @@ GROUPS = "/apis/intake/v2/workspaces/default/experiment-groups"
 EXPERIMENTS = "/apis/intake/v2/workspaces/default/experiments"
 
 
-def _experiment_body(**overrides: Any) -> dict:
+def _experiment_body(*, experiment_group_id: str, **overrides: Any) -> dict:
     body = {
         "name": "terminal-bench-2_claude-code_opus_baseline",
+        "experiment_group_id": experiment_group_id,
         "agent_name": "claude-code",
         "agent_version": "0.125.0",
         "dataset_name": "terminal-bench-2",
@@ -27,6 +28,15 @@ def _experiment_body(**overrides: Any) -> dict:
     }
     body.update(overrides)
     return body
+
+
+def _create_group(client: TestClient, name: str = "default-test-group") -> dict:
+    """Create or fetch an experiment group; returns the JSON body."""
+    response = client.post(GROUPS, json={"name": name})
+    if response.status_code == 409:
+        response = client.get(f"{GROUPS}/{name}")
+    response.raise_for_status()
+    return response.json()
 
 
 def test_experiment_group_crud(client: TestClient) -> None:
@@ -67,25 +77,33 @@ def test_experiment_group_update_description(client: TestClient) -> None:
     assert missing.status_code == 404
 
 
-def test_experiment_update_adds_to_group_and_edits(client: TestClient) -> None:
-    group = client.post(GROUPS, json={"name": "grp"}).json()
-    client.post(EXPERIMENTS, json=_experiment_body(name="exp-a"))
+def test_experiment_update_moves_between_groups_and_edits(client: TestClient) -> None:
+    group_a = client.post(GROUPS, json={"name": "grp-a"}).json()
+    group_b = client.post(GROUPS, json={"name": "grp-b"}).json()
+    client.post(EXPERIMENTS, json=_experiment_body(name="exp-a", experiment_group_id=group_a["id"]))
 
-    # Add the existing (ungrouped) experiment to the group and edit its summary.
-    body = _experiment_body(name="exp-a", experiment_group_id=group["id"], summary="looks good")
+    # Move the experiment from group_a to group_b and edit its summary.
+    body = _experiment_body(name="exp-a", experiment_group_id=group_b["id"], summary="looks good")
     updated = client.put(f"{EXPERIMENTS}/exp-a", json=body)
     assert updated.status_code == 200, updated.text
-    assert updated.json()["experiment_group_id"] == group["id"]
+    assert updated.json()["experiment_group_id"] == group_b["id"]
     assert updated.json()["summary"] == "looks good"
 
 
 def test_experiment_update_rejects_immutable_change(client: TestClient) -> None:
-    client.post(EXPERIMENTS, json=_experiment_body(name="exp-a", agent_name="claude-code"))
-    changed = _experiment_body(name="exp-a", agent_name="cursor")
+    group = _create_group(client)
+    client.post(
+        EXPERIMENTS,
+        json=_experiment_body(name="exp-a", agent_name="claude-code", experiment_group_id=group["id"]),
+    )
+    changed = _experiment_body(name="exp-a", agent_name="cursor", experiment_group_id=group["id"])
     resp = client.put(f"{EXPERIMENTS}/exp-a", json=changed)
     assert resp.status_code == 409, resp.text
     assert "agent_name" in resp.json()["detail"]
-    missing = client.put(f"{EXPERIMENTS}/missing", json=_experiment_body(name="missing"))
+    missing = client.put(
+        f"{EXPERIMENTS}/missing",
+        json=_experiment_body(name="missing", experiment_group_id=group["id"]),
+    )
     assert missing.status_code == 404
 
 
@@ -114,10 +132,14 @@ def test_experiment_read_degrades_when_rollup_hydration_fails(client: TestClient
         async def get_rollups(self, *, workspace: str, experiment_ids: list[str]) -> dict:
             raise RuntimeError("clickhouse unavailable")
 
+    group = _create_group(client)
     app = cast(FastAPI, client.app)
     app.dependency_overrides[get_experiment_rollup_repository] = lambda: FailingRollupRepository()
     try:
-        created = client.post(EXPERIMENTS, json=_experiment_body(name="exp-rollup-fails"))
+        created = client.post(
+            EXPERIMENTS,
+            json=_experiment_body(name="exp-rollup-fails", experiment_group_id=group["id"]),
+        )
         assert created.status_code == 201, created.text
 
         fetched = client.get(f"{EXPERIMENTS}/exp-rollup-fails")
@@ -129,17 +151,41 @@ def test_experiment_read_degrades_when_rollup_hydration_fails(client: TestClient
         app.dependency_overrides.pop(get_experiment_rollup_repository, None)
 
 
-def test_experiment_group_ref_is_soft(client: TestClient) -> None:
-    # experiment_group_id is a soft reference: a non-existent group id is accepted.
-    created = client.post(EXPERIMENTS, json=_experiment_body(experiment_group_id="grp-does-not-exist"))
-    assert created.status_code == 201, created.text
-    assert created.json()["experiment_group_id"] == "grp-does-not-exist"
+def test_experiment_create_rejects_missing_group_id(client: TestClient) -> None:
+    body = _experiment_body(name="exp-no-group", experiment_group_id="placeholder")
+    body.pop("experiment_group_id")
+    response = client.post(EXPERIMENTS, json=body)
+    assert response.status_code == 422, response.text
+
+
+def test_experiment_create_rejects_unknown_group_id(client: TestClient) -> None:
+    response = client.post(
+        EXPERIMENTS,
+        json=_experiment_body(name="exp-bad-group", experiment_group_id="experiment_group-does-not-exist"),
+    )
+    assert response.status_code == 400, response.text
+    assert "must be created before" in response.json()["detail"]
+
+
+def test_delete_group_cascades_to_experiments(client: TestClient) -> None:
+    group = client.post(GROUPS, json={"name": "doomed-group"}).json()
+    client.post(EXPERIMENTS, json=_experiment_body(name="exp-doomed-1", experiment_group_id=group["id"]))
+    client.post(EXPERIMENTS, json=_experiment_body(name="exp-doomed-2", experiment_group_id=group["id"]))
+
+    deleted = client.delete(f"{GROUPS}/doomed-group")
+    assert deleted.status_code == 204, deleted.text
+
+    # Both child experiments are gone with the group.
+    for child_name in ("exp-doomed-1", "exp-doomed-2"):
+        missing = client.get(f"{EXPERIMENTS}/{child_name}")
+        assert missing.status_code == 404
 
 
 def test_experiment_conflict_and_not_found(client: TestClient) -> None:
-    created = client.post(EXPERIMENTS, json=_experiment_body())
+    group = _create_group(client)
+    created = client.post(EXPERIMENTS, json=_experiment_body(experiment_group_id=group["id"]))
     assert created.status_code == 201
-    duplicate = client.post(EXPERIMENTS, json=_experiment_body())
+    duplicate = client.post(EXPERIMENTS, json=_experiment_body(experiment_group_id=group["id"]))
     assert duplicate.status_code == 409
     missing = client.get(f"{EXPERIMENTS}/does-not-exist")
     assert missing.status_code == 404
@@ -148,18 +194,19 @@ def test_experiment_conflict_and_not_found(client: TestClient) -> None:
 
 
 def test_experiment_list_and_scope_to_group(client: TestClient) -> None:
-    group = client.post(GROUPS, json={"name": "grp"}).json()
-    client.post(EXPERIMENTS, json=_experiment_body(name="exp-a", experiment_group_id=group["id"]))
-    client.post(EXPERIMENTS, json=_experiment_body(name="exp-b"))
+    group_a = client.post(GROUPS, json={"name": "grp-a"}).json()
+    group_b = client.post(GROUPS, json={"name": "grp-b"}).json()
+    client.post(EXPERIMENTS, json=_experiment_body(name="exp-a", experiment_group_id=group_a["id"]))
+    client.post(EXPERIMENTS, json=_experiment_body(name="exp-b", experiment_group_id=group_b["id"]))
 
     all_resp = client.get(EXPERIMENTS)
     assert all_resp.status_code == 200
     names = {e["name"] for e in all_resp.json()["data"]}
     assert {"exp-a", "exp-b"} <= names
 
-    in_group = client.get(EXPERIMENTS, params={"filter[experiment_group_id]": group["id"]})
-    assert in_group.status_code == 200
-    assert {e["name"] for e in in_group.json()["data"]} == {"exp-a"}
+    in_group_a = client.get(EXPERIMENTS, params={"filter[experiment_group_id]": group_a["id"]})
+    assert in_group_a.status_code == 200
+    assert {e["name"] for e in in_group_a.json()["data"]} == {"exp-a"}
 
     deleted = client.delete(f"{EXPERIMENTS}/exp-a")
     assert deleted.status_code == 204
@@ -168,17 +215,24 @@ def test_experiment_list_and_scope_to_group(client: TestClient) -> None:
 
 
 def test_experiment_filter_by_agent_and_dataset_version(client: TestClient) -> None:
+    group = _create_group(client)
     client.post(
         EXPERIMENTS,
-        json=_experiment_body(name="exp-v1", agent_version="1.0.0", dataset_version="v1"),
+        json=_experiment_body(
+            name="exp-v1", agent_version="1.0.0", dataset_version="v1", experiment_group_id=group["id"]
+        ),
     )
     client.post(
         EXPERIMENTS,
-        json=_experiment_body(name="exp-v2", agent_version="2.0.0", dataset_version="v1"),
+        json=_experiment_body(
+            name="exp-v2", agent_version="2.0.0", dataset_version="v1", experiment_group_id=group["id"]
+        ),
     )
     client.post(
         EXPERIMENTS,
-        json=_experiment_body(name="exp-v3", agent_version="2.0.0", dataset_version="v2"),
+        json=_experiment_body(
+            name="exp-v3", agent_version="2.0.0", dataset_version="v2", experiment_group_id=group["id"]
+        ),
     )
 
     by_agent_version = client.get(EXPERIMENTS, params={"filter[agent_version]": "2.0.0"})
@@ -200,8 +254,9 @@ def test_experiment_filter_by_agent_and_dataset_version(client: TestClient) -> N
 def test_experiment_filter_by_created_at_range(client: TestClient) -> None:
     from datetime import datetime, timedelta, timezone
 
+    group = _create_group(client)
     before_create = datetime.now(timezone.utc) - timedelta(seconds=2)
-    client.post(EXPERIMENTS, json=_experiment_body(name="exp-recent"))
+    client.post(EXPERIMENTS, json=_experiment_body(name="exp-recent", experiment_group_id=group["id"]))
     after_create = datetime.now(timezone.utc) + timedelta(seconds=2)
 
     # Range that brackets the create timestamp -> the experiment is included.
@@ -231,6 +286,111 @@ def test_experiment_filter_by_created_at_range(client: TestClient) -> None:
 def test_experiment_filter_by_created_by(client: TestClient) -> None:
     # The test harness doesn't set an authenticated principal, so we only verify the filter
     # parameter is accepted and routed through the entity store without erroring.
-    client.post(EXPERIMENTS, json=_experiment_body(name="exp-cb"))
+    group = _create_group(client)
+    client.post(EXPERIMENTS, json=_experiment_body(name="exp-cb", experiment_group_id=group["id"]))
     response = client.get(EXPERIMENTS, params={"filter[created_by]": "someone@example.com"})
     assert response.status_code == 200, response.text
+
+
+def test_soft_delete_frees_name_for_reuse(client: TestClient) -> None:
+    group = _create_group(client)
+    first = client.post(EXPERIMENTS, json=_experiment_body(name="reusable", experiment_group_id=group["id"]))
+    assert first.status_code == 201, first.text
+
+    deleted = client.delete(f"{EXPERIMENTS}/reusable")
+    assert deleted.status_code == 204, deleted.text
+
+    # The original name is now free; a new experiment can claim it.
+    second = client.post(EXPERIMENTS, json=_experiment_body(name="reusable", experiment_group_id=group["id"]))
+    assert second.status_code == 201, second.text
+    assert second.json()["id"] != first.json()["id"]
+
+
+def test_list_hides_soft_deleted_by_default(client: TestClient) -> None:
+    group = _create_group(client)
+    client.post(EXPERIMENTS, json=_experiment_body(name="exp-live", experiment_group_id=group["id"]))
+    client.post(EXPERIMENTS, json=_experiment_body(name="exp-gone", experiment_group_id=group["id"]))
+    client.delete(f"{EXPERIMENTS}/exp-gone")
+
+    listed = client.get(EXPERIMENTS)
+    assert listed.status_code == 200
+    names = {e["name"] for e in listed.json()["data"]}
+    assert "exp-live" in names
+    assert "exp-gone" not in names
+    assert not any(name.startswith("exp-gone-deleted-") for name in names)
+
+
+def test_filter_is_deleted_true_returns_only_deleted(client: TestClient) -> None:
+    group = _create_group(client)
+    client.post(EXPERIMENTS, json=_experiment_body(name="exp-still-here", experiment_group_id=group["id"]))
+    client.post(EXPERIMENTS, json=_experiment_body(name="exp-trash", experiment_group_id=group["id"]))
+    client.delete(f"{EXPERIMENTS}/exp-trash")
+
+    response = client.get(EXPERIMENTS, params={"filter[is_deleted]": "true"})
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    # Live experiments are excluded; only deleted rows (with mangled names) appear. The
+    # response body intentionally omits ``is_deleted``; the filter context and mangled name
+    # are the signal that these are trash-bin rows.
+    assert any(e["name"].startswith("exp-trash-deleted-") for e in data)
+    assert not any(e["name"] == "exp-still-here" for e in data)
+
+
+def test_group_soft_delete_cascades_and_frees_names(client: TestClient) -> None:
+    group = client.post(GROUPS, json={"name": "doomed-group-v2"}).json()
+    client.post(EXPERIMENTS, json=_experiment_body(name="child-1", experiment_group_id=group["id"]))
+    client.post(EXPERIMENTS, json=_experiment_body(name="child-2", experiment_group_id=group["id"]))
+
+    deleted = client.delete(f"{GROUPS}/doomed-group-v2")
+    assert deleted.status_code == 204, deleted.text
+
+    # Group and children all read as 404 (live view).
+    assert client.get(f"{GROUPS}/doomed-group-v2").status_code == 404
+    for child_name in ("child-1", "child-2"):
+        assert client.get(f"{EXPERIMENTS}/{child_name}").status_code == 404
+
+    # Names are reusable in a fresh group.
+    fresh_group = client.post(GROUPS, json={"name": "doomed-group-v2"})
+    assert fresh_group.status_code == 201, fresh_group.text
+    revived = client.post(
+        EXPERIMENTS, json=_experiment_body(name="child-1", experiment_group_id=fresh_group.json()["id"])
+    )
+    assert revived.status_code == 201, revived.text
+
+    # Trash view still surfaces the cascaded rows.
+    deleted_groups = client.get(GROUPS, params={"filter[is_deleted]": "true"})
+    assert any(g["name"].startswith("doomed-group-v2-deleted-") for g in deleted_groups.json()["data"])
+    deleted_exps = client.get(EXPERIMENTS, params={"filter[is_deleted]": "true"})
+    deleted_names = {e["name"] for e in deleted_exps.json()["data"]}
+    assert any(n.startswith("child-1-deleted-") for n in deleted_names)
+    assert any(n.startswith("child-2-deleted-") for n in deleted_names)
+
+
+def test_create_experiment_in_deleted_group_rejected(client: TestClient) -> None:
+    group = client.post(GROUPS, json={"name": "ephemeral-group"}).json()
+    client.delete(f"{GROUPS}/ephemeral-group")
+
+    response = client.post(
+        EXPERIMENTS,
+        json=_experiment_body(name="orphan", experiment_group_id=group["id"]),
+    )
+    assert response.status_code == 400, response.text
+    assert "deleted" in response.json()["detail"].lower()
+
+
+def test_update_or_delete_deleted_experiment_returns_404(client: TestClient) -> None:
+    group = _create_group(client)
+    client.post(EXPERIMENTS, json=_experiment_body(name="exp-once", experiment_group_id=group["id"]))
+    client.delete(f"{EXPERIMENTS}/exp-once")
+
+    # GET, PUT, and a second DELETE all 404 on the (now-renamed) deleted row.
+    assert client.get(f"{EXPERIMENTS}/exp-once").status_code == 404
+    assert (
+        client.put(
+            f"{EXPERIMENTS}/exp-once",
+            json=_experiment_body(name="exp-once", experiment_group_id=group["id"]),
+        ).status_code
+        == 404
+    )
+    delete_response = client.delete(f"{EXPERIMENTS}/exp-once")
+    assert delete_response.status_code == 404

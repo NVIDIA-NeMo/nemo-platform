@@ -236,7 +236,6 @@ def test_model_list_via_openai_route(sdk: NeMoPlatform, workspace: str):
         workspace=workspace,
         name=entity_name,
         mock_response_body={"id": "chatcmpl-test", "choices": []},
-        served_models={entity_name: f"served-{entity_name}"},
     )
 
     models = sdk.inference.gateway.openai.v1.models.list(workspace=workspace)

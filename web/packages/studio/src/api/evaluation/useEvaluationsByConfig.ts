@@ -1,9 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { NamedEntity } from '@nemo/common/src/namedEntity';
-import { useEvaluationListMetricJobs } from '@nemo/sdk/generated/platform/api';
-import { EvaluationListMetricJobsParams } from '@nemo/sdk/generated/platform/schema';
+import { useEvaluatorListEvaluateJobs } from '@nemo/sdk/generated/evaluator/api';
+import type { EvaluatorListEvaluateJobsParams } from '@nemo/sdk/generated/evaluator/schema';
 
 /**
  * Custom hook to fetch evaluation jobs filtered by configuration.
@@ -19,15 +18,13 @@ import { EvaluationListMetricJobsParams } from '@nemo/sdk/generated/platform/sch
  */
 export const useEvaluationsByConfig = (
   workspace: string,
-  config: NamedEntity & Partial<EvaluationListMetricJobsParams>
+  config: Partial<EvaluatorListEvaluateJobsParams>
 ) => {
-  const params: EvaluationListMetricJobsParams = {
+  const params: EvaluatorListEvaluateJobsParams = {
     page: config.page,
     page_size: config.page_size,
     sort: 'created_at',
-    // TODO: Support filtering by config namespace and name
-    // config: config.namespace && config.name ? `${config.namespace}/${config.name}` : undefined,
   };
 
-  return useEvaluationListMetricJobs(workspace, params);
+  return useEvaluatorListEvaluateJobs(workspace, params);
 };

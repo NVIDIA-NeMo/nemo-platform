@@ -5,10 +5,11 @@
 
 import types
 import uuid
-from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Type, Union, get_args, get_origin
 
 import base58
+from nemo_platform_plugin.refs import ParsedEntityRef as ParsedEntityRef
+from nemo_platform_plugin.refs import parse_entity_ref as parse_entity_ref
 from nmp.common.entities.values import DatetimeFilter
 from pydantic import BaseModel, ConfigDict, create_model
 
@@ -211,47 +212,6 @@ def make_filter_class(
 
 # Backward-compat alias
 make_search_class = make_filter_class
-
-
-@dataclass
-class ParsedEntityRef:
-    "Parsed entity reference with workspace and name"
-
-    workspace: str
-    name: str
-
-
-def parse_entity_ref(identifier: str, default_workspace: str | None = None) -> ParsedEntityRef:
-    """Parse an entity identifier into a workspace and name.
-
-    Accepted formats:
-    - ``$entity_name``            uses passed *default_workspace* as workspace if not provided in the identifier
-    - ``$workspace/$entity_name`` explicit workspace
-
-    Args:
-        identifier: The entity identifier to parse (e.g. "my-entity" or "prod/my-entity")
-        default_workspace: The workspace to use if not provided in the identifier
-
-    Returns:
-        A ParsedEntityRef object with the workspace and name
-
-    Raises:
-        ValueError: If the identifier has more than one ``/``, any segment is empty,
-            or no ``/`` is present and *default_workspace* is ``None``.
-    """
-    parts = identifier.strip().split("/")
-    if len(parts) > 2 or any(p == "" for p in parts):
-        raise ValueError(f"invalid entity reference {identifier!r}; expected 'name' or 'workspace/name'")
-
-    if len(parts) == 2:
-        return ParsedEntityRef(workspace=parts[0], name=parts[1])
-
-    if default_workspace is None:
-        raise ValueError(
-            f"Entity identifier '{identifier}' is not qualified with a workspace and default workspace is not provided. Must be in the format $workspace/$entity_name or $entity_name."
-        )
-
-    return ParsedEntityRef(workspace=default_workspace, name=parts[0])
 
 
 def parse_model_entity_ref(identifier: str, default_workspace: str | None = None) -> ParsedEntityRef:

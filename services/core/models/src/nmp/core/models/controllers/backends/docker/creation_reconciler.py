@@ -37,6 +37,8 @@ from nmp.core.models.app import ModelWeightsType, get_model_weights_type, is_mul
 from nmp.core.models.app.constants import MODEL_MANAGED_BY_LABEL, MODEL_MANAGED_BY_MODELS_CONTROLLER
 from nmp.core.models.app.utils import _get_k8s_safe_name
 from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate
+from nmp.core.models.controllers.backends.common import DeploymentConfigView, deployment_config_view
+from nmp.core.models.controllers.backends.docker import vllm_compiler
 from nmp.core.models.controllers.backends.docker.config import (
     MODELS_DOCKER_NIM_MULTI_GPU_SHM_SIZE,
     MODELS_DOCKER_NIM_MULTI_GPU_SHM_SIZE_PER_GPU,
@@ -61,6 +63,44 @@ HUGGINGFACE_HUB_URL = "https://huggingface.co"
 
 NGC_IMAGE_REGISTRY = os.getenv("NGC_IMAGE_REGISTRY", "nvcr.io")
 NGC_IMAGE_REGISTRY_USER_NAME = os.getenv("NGC_IMAGE_REGISTRY_USER_NAME", "$oauthtoken")
+
+ENGINE_NIM = "nim"
+ENGINE_VLLM = "vllm"
+ENGINE_GENERIC = "generic"
+
+# Docker label recording the engine, read back at status time to pick the health probe.
+ENGINE_LABEL = "nmp.nvidia.com/engine"
+
+# Docker label recording the resolved readiness-probe path, read back at status
+# time. Stamped at create so status polling doesn't need the deployment config.
+HEALTH_PATH_LABEL = "nmp.nvidia.com/health-path"
+
+# Per-engine readiness probe paths (relative to the container host URL).
+ENGINE_HEALTH_PATHS: dict[str, str] = {
+    ENGINE_NIM: "/v1/health/ready",
+    ENGINE_VLLM: "/health",
+}
+
+
+def _config_engine(config: Any) -> str:
+    """Return the engine discriminant as a lowercase string (defaults to nim)."""
+    engine = getattr(config, "engine", None)
+    if engine is None:
+        return ENGINE_NIM
+    # engine may be an enum or a plain string depending on the SDK model.
+    return str(getattr(engine, "value", engine)).lower()
+
+
+def _resolve_health_path(engine: str, view: DeploymentConfigView) -> str:
+    """Resolve the readiness-probe path for a deployment.
+
+    Precedence: an explicit ``executor_config.health_check_path`` wins; otherwise
+    fall back to the engine's standard endpoint. ``generic`` containers have no
+    engine default, so they fall back to the NIM path unless they set their own.
+    """
+    if getattr(view, "health_check_path", None):
+        return view.health_check_path
+    return ENGINE_HEALTH_PATHS.get(engine, ENGINE_HEALTH_PATHS[ENGINE_NIM])
 
 
 def _should_retry_docker_error(exception: BaseException) -> bool:
@@ -237,6 +277,24 @@ class DockerDeploymentCreationReconciler:
 
     def get_deployment_key(self, workspace: str, name: str) -> str:
         return f"{workspace}/{name}"
+
+    def get_health_path_from_container(self, container: Container) -> str:
+        """Resolve the readiness probe path from the container's labels.
+
+        Prefers the explicit health-path label (which already accounts for a
+        user-supplied ``executor_config.health_check_path`` resolved at create
+        time). Falls back to the engine label's standard endpoint, then the NIM
+        path for older containers that predate these labels.
+        """
+        try:
+            labels = container.labels or {}
+        except Exception:
+            labels = {}
+        explicit_path = labels.get(HEALTH_PATH_LABEL)
+        if explicit_path:
+            return explicit_path
+        engine = str(labels.get(ENGINE_LABEL, ENGINE_NIM)).lower()
+        return ENGINE_HEALTH_PATHS.get(engine, ENGINE_HEALTH_PATHS[ENGINE_NIM])
 
     # ======================================================================
     # Network / URL helpers
@@ -450,11 +508,19 @@ class DockerDeploymentCreationReconciler:
                 host_url=None,
             )
 
-        nim_config = config.nim_deployment
-        image_name = nim_config.image_name or self._backend_config.default_nimservice_image
-        image_tag = nim_config.image_tag or self._backend_config.default_nimservice_image_tag
+        engine = _config_engine(config)
+        view = deployment_config_view(config)
+        if engine == ENGINE_VLLM:
+            image_name, image_tag = vllm_compiler.resolve_vllm_image(
+                view,
+                self._backend_config.default_vllm_image,
+                self._backend_config.default_vllm_image_tag,
+            )
+        else:
+            image_name = view.image_name or self._backend_config.default_nimservice_image
+            image_tag = view.image_tag or self._backend_config.default_nimservice_image_tag
         full_image = f"{image_name}:{image_tag}"
-        logger.info(f"Using image: {full_image}")
+        logger.info(f"Using image: {full_image} (engine={engine})")
 
         # Create volumes for model cache
         volume_name = self.get_volume_name(deployment.workspace, deployment.name)
@@ -471,13 +537,16 @@ class DockerDeploymentCreationReconciler:
         except Exception as e:
             logger.warning(f"Failed to create volume {scratch_volume_name} (may already exist): {e}")
 
-        effective_image = nim_config.image_name or self._backend_config.default_nimservice_image
-        is_multi_llm = is_multi_llm_image(effective_image)
-        logger.debug(f"Detected multi-LLM image: {is_multi_llm} (effective_image={effective_image})")
+        # Multi-LLM detection only applies to NIM images; vLLM/generic are never multi-LLM.
+        is_multi_llm = False
+        if engine == ENGINE_NIM:
+            effective_image = view.image_name or self._backend_config.default_nimservice_image
+            is_multi_llm = is_multi_llm_image(effective_image)
+            logger.debug(f"Detected multi-LLM image: {is_multi_llm} (effective_image={effective_image})")
 
         plugin_fileset: str | None = None
-        if nim_config.tool_call_config and nim_config.tool_call_config.tool_call_plugin:
-            plugin_fileset = nim_config.tool_call_config.tool_call_plugin
+        if view.tool_call_config and view.tool_call_config.tool_call_plugin:
+            plugin_fileset = view.tool_call_config.tool_call_plugin
         elif (
             model_entity
             and model_entity.spec
@@ -824,7 +893,9 @@ class DockerDeploymentCreationReconciler:
     ) -> tuple[DeploymentStatusUpdate, bool]:
         deployment = state.deployment
         config = state.config
-        nim_config = config.nim_deployment
+        engine = _config_engine(config)
+        view = deployment_config_view(config)
+        nim_config = view
         container_name = self.get_container_name(deployment.workspace, deployment.name)
         full_image = state.nim_image
 
@@ -846,16 +917,39 @@ class DockerDeploymentCreationReconciler:
                 ), True
             state.tool_call_plugin_path = plugin_path
 
-        # Compile environment variables
-        env_vars = await self._compile_env_vars(
-            deployment,
-            config,
-            state.model_entity,
-            model_weights_type=state.model_weights_type,
-            is_multi_llm=state.is_multi_llm,
-            ngc_api_key=state.ngc_api_key,
-            tool_call_plugin_path=state.tool_call_plugin_path,
-        )
+        # Compile engine-specific environment variables (and serve args for vLLM).
+        vllm_serve_args: list[str] | None = None
+        if engine == ENGINE_VLLM:
+            env_vars = vllm_compiler.compile_vllm_env_vars(view)
+            vllm_serve_args = vllm_compiler.compile_vllm_args(view, state.model_entity)
+            if view.lora_enabled:
+                # vLLM's lora_filesystem_resolver validates that
+                # VLLM_LORA_RESOLVER_CACHE_DIR exists at startup, before the adapter
+                # sidecar has a chance to create it. Pre-create the directory in the
+                # shared scratch volume so the vLLM container doesn't crash-loop while
+                # waiting for the first adapter to land.
+                lora_subdir = vllm_compiler.VLLM_LORA_CACHE_DIR.removeprefix("/scratch/")
+                try:
+                    await asyncio.to_thread(
+                        self._client.containers.run,
+                        image=self._get_busybox_image(),
+                        command=["sh", "-c", f"mkdir -p /scratch/{lora_subdir} && chmod -R 777 /scratch/{lora_subdir}"],
+                        volumes={state.scratch_volume_name: {"bind": "/scratch", "mode": "rw"}},
+                        remove=True,
+                    )
+                    logger.info("Pre-created LoRA cache dir %s in scratch volume", vllm_compiler.VLLM_LORA_CACHE_DIR)
+                except Exception as e:
+                    logger.warning("Failed to pre-create LoRA cache dir (continuing anyway): %s", e)
+        else:
+            env_vars = await self._compile_env_vars(
+                deployment,
+                config,
+                state.model_entity,
+                model_weights_type=state.model_weights_type,
+                is_multi_llm=state.is_multi_llm,
+                ngc_api_key=state.ngc_api_key,
+                tool_call_plugin_path=state.tool_call_plugin_path,
+            )
 
         # GPU allocation
         device_requests: list = []
@@ -944,10 +1038,17 @@ class DockerDeploymentCreationReconciler:
                 "labels": {
                     "nmp.nvidia.com/deployment-workspace": deployment.workspace,
                     "nmp.nvidia.com/deployment-name": deployment.name,
+                    ENGINE_LABEL: engine,
+                    HEALTH_PATH_LABEL: _resolve_health_path(engine, view),
                     MODEL_MANAGED_BY_LABEL: MODEL_MANAGED_BY_MODELS_CONTROLLER,
                 },
                 "restart_policy": {"Name": "unless-stopped"},
             }
+
+            # vLLM serve args are passed as the container command (appended to the
+            # image's `vllm serve` entrypoint). NIM is configured purely via env.
+            if vllm_serve_args is not None:
+                create_args["command"] = vllm_serve_args
 
             if nim_config.gpu > 1:
                 fixed = MODELS_DOCKER_NIM_MULTI_GPU_SHM_SIZE or self._backend_config.nim_multi_gpu_shm_size
@@ -978,11 +1079,27 @@ class DockerDeploymentCreationReconciler:
             container_id = container.id[:12]
             logger.info("Container %s started successfully (ID: %s)", container_name, container_id)
 
-            if config.nim_deployment.lora_enabled:
+            if view.lora_enabled:
                 cfg = get_platform_config()
                 image = get_qualified_image("nmp-api")
                 sidecar_envs = cfg.to_shared_envvars()
                 sidecar_envs.update(env_vars)
+                # The adapters sidecar is engine-agnostic: it downloads enabled LoRA
+                # adapter filesets for the base model entity into NIM_PEFT_SOURCE. NIM
+                # already sets NIM_PEFT_SOURCE + the model-entity env in its env_vars;
+                # vLLM watches VLLM_LORA_RESOLVER_CACHE_DIR instead, so point the
+                # sidecar's NIM_PEFT_SOURCE at that same directory and supply the
+                # model-entity identity the sidecar needs to resolve adapters.
+                if engine == ENGINE_VLLM:
+                    sidecar_envs["NIM_PEFT_SOURCE"] = vllm_compiler.VLLM_LORA_CACHE_DIR
+                    sidecar_envs["NIM_PEFT_REFRESH_INTERVAL"] = str(self._backend_config.peft_refresh_interval)
+                    # vLLM's filesystem resolver only loads an adapter whose
+                    # base_model_name_or_path equals vLLM's --model value (the local
+                    # model path). Tell the sidecar to rewrite each adapter to match.
+                    sidecar_envs["VLLM_LORA_BASE_MODEL_OVERRIDE"] = vllm_compiler.MODEL_STORE_PATH
+                    if state.model_entity is not None:
+                        sidecar_envs["NMP_MODEL_ENTITY_WORKSPACE"] = state.model_entity.workspace
+                        sidecar_envs["NMP_MODEL_ENTITY_NAME"] = state.model_entity.name
                 sidecar_args: dict[str, Any] = {
                     "image": image,
                     "name": f"{container_name}-sidecar",
@@ -1024,7 +1141,7 @@ class DockerDeploymentCreationReconciler:
                 status="PENDING",
                 status_message=(
                     f"Container created and starting with image {full_image} (ID: {container_id}). "
-                    "NIM is downloading models and initializing, this may take several minutes."
+                    "The inference engine is initializing, this may take several minutes."
                 ),
                 host_url=host_url,
             ), True  # pipeline complete
@@ -1050,7 +1167,7 @@ class DockerDeploymentCreationReconciler:
 
         puller_container_name = self.get_puller_container_name(deployment.workspace, deployment.name)
         puller_image = self._backend_config.huggingface_model_puller
-        nim_config = config.nim_deployment
+        nim_config = deployment_config_view(config)
 
         model_repo = self._get_model_repo_from_entity(model_entity, model_weights_type, nim_config)
 
@@ -1334,7 +1451,7 @@ class DockerDeploymentCreationReconciler:
         tool_call_plugin_path: str | None = None,
     ) -> Dict[str, str]:
         """Compile environment variables for the NIM container."""
-        nim_config = config.nim_deployment
+        nim_config = deployment_config_view(config)
         env_vars: Dict[str, str] = {
             "NIM_GUIDED_DECODING_BACKEND": self._backend_config.nim_guided_decoding_backend,
         }

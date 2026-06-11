@@ -1,0 +1,28 @@
+name: Dispatch
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  notify-ci-consumer:
+    name: Notify CI consumer
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send completion event
+        env:
+          GH_TOKEN: ${{ secrets.CI_DISPATCH_TOKEN }}
+          DISPATCH_REPO: ${{ secrets.CI_DISPATCH_REPO }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -n --arg ref "${GITHUB_SHA}" \
+            '{event_type: "ci-passed", client_payload: {ref: $ref}}' \
+          | gh api -X POST "/repos/${DISPATCH_REPO}/dispatches" --input -

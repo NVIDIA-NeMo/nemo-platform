@@ -17,13 +17,18 @@
 
 from __future__ import annotations
 
-from typing_extensions import TypedDict
+from typing import Union
+from typing_extensions import TypeAlias, TypedDict
 
-__all__ = ["BaseModelFilterParam"]
+from ..shared_params.string_filter import StringFilter
+
+__all__ = ["BaseModelFilterParam", "Name"]
+
+Name: TypeAlias = Union[StringFilter, str]
 
 
 class BaseModelFilterParam(TypedDict, total=False):
     """Filter for base model properties."""
 
-    name: str
+    name: Name
     """Filter by name of the base model."""

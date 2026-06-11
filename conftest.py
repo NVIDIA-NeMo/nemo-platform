@@ -212,9 +212,8 @@ def pytest_collection_modifyitems(config, items):
         "unit",
         "e2e",
         "smoke_gpu_tasks",
-        "smoke_customizer_tasks",
-        "smoke_customizer_automodel",
-        "smoke_customizer_rl",
+        "smoke_nmp_automodel_tasks",
+        "smoke_nmp_automodel_training",
         "integration",
         "regression",
         "canary",
@@ -233,7 +232,7 @@ def pytest_collection_modifyitems(config, items):
                 item.add_marker(pytest.mark.e2e)
                 marker_names.add("e2e")
 
-        # Auto-mark integration tests (e.g., /services/evaluator/tests/integration/)
+        # Auto-mark integration tests (e.g., /services/core/jobs/tests/integration/)
         elif "/integration/" in fspath_str:
             if "integration" not in marker_names:
                 item.add_marker(pytest.mark.integration)

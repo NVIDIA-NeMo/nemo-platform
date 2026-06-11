@@ -59,10 +59,12 @@ jobs:
       release_tag: ${{ inputs.cadence == 'nightly' && steps.resolve-nightly-source.outputs.release_tag || steps.resolve-release-metadata.outputs.release_tag }}
       release_date_json: ${{ inputs.cadence == 'nightly' && steps.resolve-nightly-source.outputs.release_date_json || steps.resolve-release-metadata.outputs.release_date_json }}
       source_sha: ${{ inputs.cadence == 'nightly' && steps.resolve-nightly-source.outputs.source_sha || inputs.source_sha }}
+      # Previous stable tag that bounds the generated release notes range (RC/stable only; empty for nightly).
+      notes_start_tag: ${{ steps.resolve-release-metadata.outputs.notes_start_tag }}
     steps:
       # Fetch tags so RC auto-increment can use plain local Git.
       - name: Checkout workflow code
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -200,15 +202,30 @@ jobs:
             release_date_json="\"${RELEASE_DATE}\""
           fi
 
+          # Generated release notes span from the previous stable release so RC and stable both
+          # show the full delta since the last stable. Empty when no prior stable tag exists.
+          # Hardened for `set -euo pipefail`: `|| true` covers the no-stable-tags case, and awk
+          # reads to EOF (no early `exit`/`head`) so `sort` is never killed by SIGPIPE.
+          notes_start_tag=""
+          prev_stable="$(
+            { git tag -l | grep -E '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' || true; printf '%s\n' "${VERSION}"; } \
+              | sort -V -u \
+              | awk -v v="${VERSION}" '$0==v{print prev} {prev=$0}'
+          )"
+          if [[ -n "${prev_stable}" && "${prev_stable}" != "${VERSION}" ]]; then
+            notes_start_tag="${prev_stable}"
+          fi
+
           {
             printf 'source_ref=%s\n' "${GITHUB_REF}"
             printf 'release_label=%s\n' "${release_label}"
             printf 'release_tag=%s\n' "${release_label}"
             printf 'release_date_json=%s\n' "${release_date_json}"
+            printf 'notes_start_tag=%s\n' "${notes_start_tag}"
           } >>"${GITHUB_OUTPUT}"
 
       - name: Checkout selected source
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           repository: ${{ github.repository }}
           ref: ${{ inputs.cadence == 'nightly' && steps.resolve-nightly-source.outputs.source_sha || inputs.source_sha }}
@@ -306,7 +323,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout source at release SHA
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           ref: ${{ needs.plan-release.outputs.source_sha }}
           fetch-tags: true
@@ -355,12 +372,12 @@ jobs:
       matrix: ${{ fromJson(needs.plan-release.outputs.sdk_matrix) }}
     steps:
       - name: Checkout workflow code
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           path: workflow
 
       - name: Checkout source
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           repository: ${{ needs.plan-release.outputs.source_repo }}
           ref: ${{ needs.plan-release.outputs.source_sha }}
@@ -383,7 +400,7 @@ jobs:
           nightly-timestamp: ${{ needs.plan-release.outputs.nightly_timestamp }}
 
       - name: Upload SDK wheel
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-sdk-${{ matrix.id }}
           path: ${{ steps.build-sdk-wheel.outputs.wheel-path }}
@@ -395,23 +412,29 @@ jobs:
     name: Assemble release bundle
     needs: [plan-release, build-sdks]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     outputs:
+      # Selects the consumer's fetch path: nightly = Actions artifact, rc/stable = GitHub Release asset.
+      source: ${{ inputs.cadence == 'nightly' && 'artifact' || 'release' }}
       bundle_artifact_id: ${{ steps.upload-release-bundle.outputs.artifact-id }}
       bundle_artifact_name: release-bundle-${{ needs.plan-release.outputs.release_label }}
       bundle_artifact_digest: ${{ steps.upload-release-bundle.outputs.artifact-digest }}
+      release_tag: ${{ steps.upload-release.outputs.release_tag }}
+      release_checksums_digest: ${{ steps.upload-release.outputs.checksums_digest }}
     steps:
       - name: Checkout workflow code
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
       - name: Download SDK wheels
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: release-sdk-*
           path: downloaded-sdk-artifacts
           merge-multiple: false
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           python-version: "3.11"
 
@@ -443,14 +466,70 @@ jobs:
           cd release-bundle
           sha256sum -c checksums.txt
 
-      - name: Upload release bundle
+      # Nightly: hand off via an Actions artifact (tagless, disposable), unchanged.
+      - name: Upload release bundle artifact
         id: upload-release-bundle
-        uses: actions/upload-artifact@v6
+        if: inputs.cadence == 'nightly'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-bundle-${{ needs.plan-release.outputs.release_label }}
           path: release-bundle/
           if-no-files-found: error
           overwrite: true
+
+      # RC/stable: attach each artifact as its own asset on the tag reserve-release-tag pushed, so
+      # users can grab a single file (and, later, just the Helm chart) instead of one opaque blob.
+      - name: Upload release bundle to release
+        id: upload-release
+        if: inputs.cadence != 'nightly'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.plan-release.outputs.release_tag }}
+          CADENCE: ${{ inputs.cadence }}
+          NOTES_START_TAG: ${{ needs.plan-release.outputs.notes_start_tag }}
+        run: |
+          set -euo pipefail
+
+          [[ -n "${RELEASE_TAG}" ]] || { echo "::error::release_tag is required for ${CADENCE} releases"; exit 1; }
+
+          # checksums.txt covers release-manifest.json + every wheel, so its digest anchors the
+          # whole release. The dispatch carries it; the consumer re-verifies with sha256sum -c.
+          checksums_digest="$(sha256sum release-bundle/checksums.txt | cut -d' ' -f1)"
+
+          prerelease=()
+          if [[ "${CADENCE}" == "rc" ]]; then
+            prerelease=(--prerelease)
+          fi
+
+          # Categorized notes are generated by GitHub from .github/release.yml (merged PRs grouped
+          # by their conventional-commit label). NOTES_START_TAG pins the range to the previous
+          # stable tag so RC and stable both span from the last stable; when empty (no prior
+          # stable) GitHub falls back to its default previous-tag detection.
+          notes_range=()
+          if [[ -n "${NOTES_START_TAG:-}" ]]; then
+            notes_range=(--notes-start-tag "${NOTES_START_TAG}")
+          fi
+
+          # Upload each artifact as its own asset. GitHub flattens asset names to basenames; the
+          # consumer restores wheels/ from the manifest paths. Re-run model: if a release already
+          # exists for this tag the command fails ("a release with the same tag name already
+          # exists"); delete it (gh release delete "${RELEASE_TAG}") to redo.
+          # Body is GitHub's generated, categorized notes (.github/release.yml); --title keeps the
+          # tag as the release name so no auto-title is generated.
+          gh release create "${RELEASE_TAG}" \
+            release-bundle/release-manifest.json \
+            release-bundle/checksums.txt \
+            release-bundle/wheels/*.whl \
+            --title "${RELEASE_TAG}" \
+            --generate-notes \
+            "${notes_range[@]}" \
+            "${prerelease[@]}"
+
+          {
+            printf 'release_tag=%s\n' "${RELEASE_TAG}"
+            printf 'checksums_digest=%s\n' "${checksums_digest}"
+          } >>"${GITHUB_OUTPUT}"
 
   dispatch-release-bundle:
     name: Dispatch release bundle
@@ -463,41 +542,68 @@ jobs:
           GH_TOKEN: ${{ secrets.CI_DISPATCH_TOKEN }}
           DISPATCH_REPO: ${{ secrets.CI_DISPATCH_REPO }}
           BUNDLE_REPO: ${{ github.repository }}
+          SOURCE: ${{ needs.assemble-release-bundle.outputs.source }}
           BUNDLE_WORKFLOW_RUN_ID: ${{ github.run_id }}
           BUNDLE_WORKFLOW_RUN_ATTEMPT: ${{ github.run_attempt }}
           BUNDLE_ARTIFACT_ID: ${{ needs.assemble-release-bundle.outputs.bundle_artifact_id }}
           BUNDLE_ARTIFACT_NAME: ${{ needs.assemble-release-bundle.outputs.bundle_artifact_name }}
           BUNDLE_ARTIFACT_DIGEST: ${{ needs.assemble-release-bundle.outputs.bundle_artifact_digest }}
+          RELEASE_TAG: ${{ needs.assemble-release-bundle.outputs.release_tag }}
+          RELEASE_CHECKSUMS_DIGEST: ${{ needs.assemble-release-bundle.outputs.release_checksums_digest }}
         run: |
           set -euo pipefail
 
           [[ -n "${GH_TOKEN:-}" ]] || { echo "::error::CI_DISPATCH_TOKEN must be set"; exit 1; }
           [[ -n "${DISPATCH_REPO:-}" ]] || { echo "::error::CI_DISPATCH_REPO must be set"; exit 1; }
           [[ -n "${BUNDLE_REPO:-}" ]] || { echo "::error::bundle repo is required"; exit 1; }
-          [[ -n "${BUNDLE_WORKFLOW_RUN_ID:-}" ]] || { echo "::error::bundle workflow run id is required"; exit 1; }
-          [[ -n "${BUNDLE_WORKFLOW_RUN_ATTEMPT:-}" ]] || { echo "::error::bundle workflow run attempt is required"; exit 1; }
-          [[ -n "${BUNDLE_ARTIFACT_ID:-}" ]] || { echo "::error::bundle artifact id is required"; exit 1; }
-          [[ -n "${BUNDLE_ARTIFACT_NAME:-}" ]] || { echo "::error::bundle artifact name is required"; exit 1; }
-          [[ -n "${BUNDLE_ARTIFACT_DIGEST:-}" ]] || { echo "::error::bundle artifact digest is required"; exit 1; }
 
-          jq -n \
-            --arg bundle_repo "${BUNDLE_REPO}" \
-            --arg bundle_workflow_run_id "${BUNDLE_WORKFLOW_RUN_ID}" \
-            --arg bundle_workflow_run_attempt "${BUNDLE_WORKFLOW_RUN_ATTEMPT}" \
-            --arg bundle_artifact_id "${BUNDLE_ARTIFACT_ID}" \
-            --arg bundle_artifact_name "${BUNDLE_ARTIFACT_NAME}" \
-            --arg bundle_artifact_digest "${BUNDLE_ARTIFACT_DIGEST}" \
-            '{
-              event_type: "release-bundle-produced",
-              client_payload: {
-                bundle: {
-                  repo: $bundle_repo,
-                  workflow_run_id: $bundle_workflow_run_id,
-                  workflow_run_attempt: $bundle_workflow_run_attempt,
-                  artifact_id: $bundle_artifact_id,
-                  artifact_name: $bundle_artifact_name,
-                  artifact_digest: $bundle_artifact_digest
-                }
-              }
-            }' \
+          # assemble-release-bundle picks the storage backend by cadence (nightly -> Actions
+          # artifact, rc/stable -> GitHub Release asset) and reports it as `source`. The consumer
+          # uses this same field to fail-closed select its fetch path.
+          case "${SOURCE}" in
+            artifact)
+              [[ -n "${BUNDLE_ARTIFACT_ID:-}" ]] || { echo "::error::bundle artifact id is required"; exit 1; }
+              [[ -n "${BUNDLE_ARTIFACT_NAME:-}" ]] || { echo "::error::bundle artifact name is required"; exit 1; }
+              [[ -n "${BUNDLE_ARTIFACT_DIGEST:-}" ]] || { echo "::error::bundle artifact digest is required"; exit 1; }
+              bundle="$(jq -n \
+                --arg repo "${BUNDLE_REPO}" \
+                --arg workflow_run_id "${BUNDLE_WORKFLOW_RUN_ID}" \
+                --arg workflow_run_attempt "${BUNDLE_WORKFLOW_RUN_ATTEMPT}" \
+                --arg artifact_id "${BUNDLE_ARTIFACT_ID}" \
+                --arg artifact_name "${BUNDLE_ARTIFACT_NAME}" \
+                --arg artifact_digest "${BUNDLE_ARTIFACT_DIGEST}" \
+                '{
+                  source: "artifact",
+                  repo: $repo,
+                  workflow_run_id: $workflow_run_id,
+                  workflow_run_attempt: $workflow_run_attempt,
+                  artifact_id: $artifact_id,
+                  artifact_name: $artifact_name,
+                  artifact_digest: $artifact_digest
+                }')"
+              ;;
+            release)
+              [[ -n "${RELEASE_TAG:-}" ]] || { echo "::error::release tag is required"; exit 1; }
+              [[ -n "${RELEASE_CHECKSUMS_DIGEST:-}" ]] || { echo "::error::release checksums digest is required"; exit 1; }
+              bundle="$(jq -n \
+                --arg repo "${BUNDLE_REPO}" \
+                --arg workflow_run_id "${BUNDLE_WORKFLOW_RUN_ID}" \
+                --arg tag "${RELEASE_TAG}" \
+                --arg checksums_digest "${RELEASE_CHECKSUMS_DIGEST}" \
+                '{
+                  source: "release",
+                  repo: $repo,
+                  workflow_run_id: $workflow_run_id,
+                  tag: $tag,
+                  checksums_digest: $checksums_digest
+                }')"
+              ;;
+            *)
+              echo "::error::unknown bundle source: '${SOURCE}'"
+              exit 1
+              ;;
+          esac
+
+          jq -n --argjson bundle "${bundle}" \
+            '{event_type: "release-bundle-produced", client_payload: {bundle: $bundle}}' \
           | gh api -X POST "/repos/${DISPATCH_REPO}/dispatches" --input -

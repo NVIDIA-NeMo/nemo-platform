@@ -51,7 +51,8 @@ def test_help_includes_getting_started():
     assert "Getting started:" in result.stdout
     assert "nemo docs --list" in result.stdout
     assert "nemo services run --help" in result.stdout
-    assert "Set up NeMo Platform: start services, configure a provider, install skills." in result.stdout
+    # Help panel truncates long command descriptions; match the visible prefix.
+    assert "Set up NeMo Platform: start services" in result.stdout
     assert "--help, -h" in result.stdout
     assert "nemo auth login --base-url" not in result.stdout
     assert "nemo quickstart configure" not in result.stdout
@@ -504,6 +505,23 @@ def test_plugin_loader_returns_placeholder_help_for_broken_cli():
 
     assert isinstance(loaded, click.Command)
     assert loaded.help == "Plugin commands for example are unavailable."
+
+
+def test_plugin_loader_surfaces_customization_contributor_discovery_error():
+    from nemo_platform_plugin.customization_contributor import CustomizationContributorDiscoveryError
+
+    class _BrokenCustomizationCLI(NemoCLI):
+        name = "customization"
+
+        def __init__(self) -> None:
+            raise CustomizationContributorDiscoveryError("no contributors were discovered")
+
+        def get_cli(self) -> typer.Typer:
+            return typer.Typer()
+
+    with patch("nemo_platform.cli.core.lazy_load.resolve_name", return_value=_BrokenCustomizationCLI):
+        with pytest.raises(click.ClickException, match="no contributors were discovered"):
+            lazy_plugin_loader("customization", "fake.module:BrokenCustomizationCLI")()
 
 
 def test_token_refresh_skipped_when_quickstart_auth_disabled():

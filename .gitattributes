@@ -36,50 +36,6 @@ third_party/requirements*.txt linguist-generated
 docker/locks/**/uv.lock linguist-generated
 documentation/docs/audit/_snippets/output/*.jsonl filter=lfs diff=lfs merge=lfs -text
 documentation/docs/generate-synthetic-data/images/* filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/grpo/workbench/training.jsonl filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/grpo/comp_coding/training.jsonl filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/grpo/instruction_following/training.jsonl filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/grpo/multineedle/validation.jsonl filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/grpo/python_math_exec/training.jsonl filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/grpo/mcqa/training.jsonl filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/grpo/comp_coding/validation.jsonl filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/grpo/google_search/training.jsonl filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/grpo/google_search/validation.jsonl filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/grpo/instruction_following/validation.jsonl filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/grpo/library_judge_math/training.jsonl filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/grpo/library_judge_math/validation.jsonl filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/grpo/multiverse_math_hard/training.jsonl filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/grpo/workbench/validation.jsonl filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/grpo/mcqa/validation.jsonl filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/grpo/multineedle/training.jsonl filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/grpo/multiverse_math_hard/validation.jsonl filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/grpo/python_math_exec/validation.jsonl filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/tasks/file_io/data/files_to_upload/nested_2/__0_0.distcp filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/python/training/nemo/data/mp_rank_00_customization.nemo filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/python/training/nemo/data/customization.nemo filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/python/training/nemo/data/gpt2b_tp1_lora.nemo filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/python/training/nemo/data/gpt8b_tp4_lora.nemo filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/python/training/nemo/data/expected_llmservice_peft_lora/model_weights.ckpt filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/python/training/nemo/data/expected_llmservice_peft_lora_tp4/model_weights.ckpt filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/python/data/gpt_126m.nemo filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/e2e-eval/email-composition-train/training/training_file.jsonl filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/e2e-eval/email-composition-train/validation/validation_file.jsonl filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/e2e-eval/email-composition-eval/email_eval_ms_test.json filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/e2e-eval/email-composition-eval/email_eval_ms_test_sft.json filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/gpt-sft-chat-dataset/e21a501b3cc14174835d787ced1583e2_tokenizer.model filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/gpt-sft-chat-dataset/llama2_tokenizer.model filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/gpt-sft-chat-dataset/merges.txt filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/gpt-sft-chat-dataset/tokenizer.model filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/gpt-sft-chat-dataset/vocab.json filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/e2e-eval/email-composition-convo/training/training_file.jsonl filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/e2e-eval/email-composition-convo/validation/validation_file.jsonl filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/tool-calling/xlam_openai_format.jsonl filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/tool-calling/training.jsonl filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/tool-calling/validation.jsonl filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/tool-calling/testing.jsonl filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/embedding/training/training.jsonl filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/embedding/testing.jsonl filter=lfs diff=lfs merge=lfs -text
-services/customizer/tests/testdata/embedding/validation/validation.jsonl filter=lfs diff=lfs merge=lfs -text
 # Files maintained by external garak project
 packages/garak_api/garakapi/_config.py linguist-generated
 packages/garak_api/garakapi/_plugins.py linguist-generated

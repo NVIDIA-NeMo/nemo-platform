@@ -10,6 +10,7 @@
  * its affiliates is strictly prohibited.
  */
 
+import { getPartsFromReference } from '@nemo/common/src/namedEntity';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import {
   filesDeleteFileset,
@@ -21,11 +22,21 @@ import {
   modelsDeleteAllDeploymentConfigVersions,
   modelsDeleteAllDeploymentVersions,
   modelsDeleteModel,
+  modelsGetModel,
   modelsGetLatestDeployment,
   modelsGetLatestDeploymentConfig,
 } from '@nemo/sdk/generated/platform/api';
-import { ModelDeployment, ModelDeploymentStatus } from '@nemo/sdk/generated/platform/schema';
-import { huggingFaceSourceFilesetName } from '@studio/routes/DeploymentsListRoute/huggingFaceDeploymentArtifacts';
+import {
+  type ModelDeployment,
+  type ModelDeploymentConfig,
+  ModelDeploymentStatus,
+  type ModelEntity,
+} from '@nemo/sdk/generated/platform/schema';
+import {
+  HUGGING_FACE_DEPLOYMENT_SOURCE_FIELD,
+  HUGGING_FACE_DEPLOYMENT_SOURCE_VALUE,
+  huggingFaceSourceFilesetName,
+} from '@studio/routes/DeploymentsListRoute/huggingFaceDeploymentArtifacts';
 import { type QueryClient, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 
@@ -90,6 +101,33 @@ async function waitForDeploymentReleasedFromConfig(
 }
 
 type HuggingFaceCleanup = { modelName: string; filesetName: string };
+type ModelRef = { workspace: string; name: string };
+
+function getDeploymentConfigModelRef(config: ModelDeploymentConfig): ModelRef | null {
+  const modelEntityId = config.model_entity_id?.trim();
+  if (modelEntityId) {
+    const parsed = getPartsFromReference(modelEntityId);
+    if (parsed.workspace && parsed.name) {
+      return { workspace: parsed.workspace, name: parsed.name };
+    }
+  }
+
+  const modelName = config.model_spec?.model_name?.trim();
+  const modelNamespace = config.model_spec?.model_namespace?.trim();
+  if (!modelNamespace || !modelName) return null;
+
+  return {
+    workspace: modelNamespace,
+    name: modelName,
+  };
+}
+
+function isStudioHuggingFaceSourceModel(model: ModelEntity): boolean {
+  return (
+    model.custom_fields?.[HUGGING_FACE_DEPLOYMENT_SOURCE_FIELD] ===
+    HUGGING_FACE_DEPLOYMENT_SOURCE_VALUE
+  );
+}
 
 async function readHuggingFaceCleanupPlan(
   workspace: string,
@@ -98,15 +136,14 @@ async function readHuggingFaceCleanupPlan(
 ): Promise<HuggingFaceCleanup | null> {
   try {
     const cfg = await modelsGetLatestDeploymentConfig(workspace, configName);
-    const nim = cfg.nim_deployment;
-    const provider = nim?.model_provider?.toLowerCase();
-    if (provider !== 'hf') return null;
-    const modelName = nim?.model_name?.trim();
-    if (!modelName) return null;
-    const ns = nim.model_namespace?.trim() || workspace;
-    if (ns !== workspace) return null;
+    const modelRef = getDeploymentConfigModelRef(cfg);
+    if (!modelRef || modelRef.workspace !== workspace) return null;
+
+    const model = await modelsGetModel(modelRef.workspace, modelRef.name);
+    if (!isStudioHuggingFaceSourceModel(model)) return null;
+
     return {
-      modelName,
+      modelName: modelRef.name,
       filesetName: huggingFaceSourceFilesetName(deploymentName),
     };
   } catch {

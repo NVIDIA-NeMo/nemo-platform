@@ -1,0 +1,64 @@
+---
+title: "NeMo Guardrails Terminology"
+description: ""
+---
+The following terms identify the key concepts related to managing LLM safety by using the NeMo Guardrails middleware plugin.
+
+## Models
+
+There are two groups of models you can define in a guardrail configuration.
+
+Main model
+: The primary LLM that generates a response to a user prompt. Under the IGW plugin architecture, the main model is owned by IGW and specified through the VirtualModel's `default_model_entity`. Guardrail configurations typically omit the `type: "main"` model entry — the plugin injects the per-request main model at runtime. Include a `type: "main"` entry only to pin engine or parameters (`base_url`, `default_headers`); the model name itself always comes from the inference request body.
+: When using `self-check` rails in your guardrail configuration, the per-request main model performs the check.
+
+Task model
+: The LLM used for a specific guardrail task on the user input and LLM output (for example, content safety or topic control checks). A guardrail configuration can use multiple task models. Task models are declared in the configuration and resolved through IGW's model routing.
+
+LLM provider
+: The hosted or managed service for using an LLM. In most cases, this is likely a locally-hosted NIM or the NVIDIA API Catalog managed service, but NeMo Guardrails also supports external endpoints such as the OpenAI API.
+
+LLM engine
+: The underlying runtime that controls how NeMo Guardrails communicates with an LLM. If self-hosting a NIM, or using the NVIDIA API Catalog managed service, use `nim`. If using the OpenAI API, use `openai`.
+
+## Guardrail Configurations
+
+Guardrail configuration
+: A configuration object that defines how to perform guardrail checks. The configuration specifies the task model(s) to use and the rails to apply to user input and LLM output. A configuration can be stored as an entity and referenced by a VirtualModel via `config_id`, or supplied inline on a VirtualModel's middleware entry via `config`.
+
+Rail (or guardrail)
+: The configuration that controls the interaction with an LLM, potentially modifying or blocking content at a specific point during request processing. Rails are triggered at different points during the handling of a request:
+
+ | Rail Type | Schema key | When Applied |
+ |-----------|------------|--------------|
+ | Input     | `input` | Before user input reaches the main model |
+ | Output    | `output` | After the LLM generates output, before returning to the user |
+
+Input rail
+: A rail applied to user input before it reaches the main model. An input rail can reject the input, stopping any additional processing, or alter the input (for example, masking potentially sensitive data). A guardrail configuration can contain multiple input rails.
+
+Output rail
+: A rail applied to the LLM output before returning it to the user. An output rail can reject the output, ensuring the LLM output is not returned to the user, or alter the output (for example, masking potentially sensitive data). A guardrail configuration can contain multiple output rails.
+
+Flow
+: A named action in an input or output rail that defines the guardrail action to perform (for example, `self check input`).
+
+Task prompt
+: A prompt template associated with a specific flow that defines the instructions to give the model that performs the action.
+
+Prompt template variable
+: A templated variable that requires a dynamic value, populated with actual content at runtime, for example, `{{ user_input }}`.
+
+Refusal text
+: The predefined message returned if NeMo Guardrails blocks a request. By default, this value is `"I'm sorry, I can't respond to that."`.
+
+## Infrastructure
+
+VirtualModel
+: A logical inference route managed by IGW. A VirtualModel maps a user-facing model name to a backend model entity and defines ordered middleware pipelines. Guardrails are activated by adding `nemo-guardrails` middleware entries to a VirtualModel's `request_middleware` and/or `response_middleware`.
+
+MiddlewareCall
+: An entry in a VirtualModel's middleware pipeline that specifies which plugin to invoke and how to resolve its configuration. For guardrails, the `name` is `"nemo-guardrails"`, the `config_type` is `"guardrail_config"`, and the configuration is specified via `config_id` (entity reference) or `config` (inline payload).
+
+Inference Gateway (IGW)
+: The NeMo Platform service that routes inference requests. NeMo Guardrails runs as an in-process middleware plugin on IGW, intercepting requests and responses in the VirtualModel pipeline.

@@ -29,7 +29,12 @@ from nmp.common.api.filter import ComparisonOperation, FilterOperator, LogicalOp
 from nmp.common.auth.models import Principal
 from nmp.core.entities.api.dependencies import AuthClientDep, EntityRepository, WorkspaceRepository
 from nmp.core.entities.api.v2.schemas import DeleteResponse, GenericSortField
-from nmp.core.entities.api.v2.utils import ROLE_BINDING_ENTITY_TYPE, add_workspace_filtering, get_accessible_workspaces
+from nmp.core.entities.api.v2.utils import (
+    ROLE_BINDING_ENTITY_TYPE,
+    add_workspace_filtering,
+    bindings_cache_delete,
+    get_accessible_workspaces,
+)
 from nmp.core.entities.api.v2.workspaces.schemas import (
     WorkspaceInput,
     WorkspaceMember,
@@ -244,6 +249,7 @@ async def create_workspace(
                 "revoked_at": None,
             },
         )
+        await bindings_cache_delete(binding_principal)
 
         # Wait for Admin role to propagate if requested
         if wait_role_propagation:
@@ -450,6 +456,10 @@ async def delete_workspace(
 
     # Delete all role bindings immediately (revoke access)
     deleted_bindings = await _delete_all_role_bindings(entity_repository, name)
+    for binding in deleted_bindings:
+        principal = binding.data.get("principal")
+        if principal is not None:
+            await bindings_cache_delete(str(principal))
     logger.info(
         "Deleted role bindings for workspace deletion",
         extra={"workspace": name, "deleted_count": len(deleted_bindings)},
@@ -628,6 +638,8 @@ async def add_workspace_member(
                 },
             )
 
+    await bindings_cache_delete(member.principal)
+
     # Wait for roles to propagate if requested
     if wait_role_propagation and member.roles:
         for role in member.roles:
@@ -790,6 +802,8 @@ async def update_workspace_member(
                 },
             )
 
+    await bindings_cache_delete(principal_id)
+
     # Wait for roles to propagate if requested
     if wait_role_propagation:
         # Wait for all added roles to be granted
@@ -921,6 +935,8 @@ async def remove_workspace_member(
                 "revoked_at": now.isoformat(),
             },
         )
+
+    await bindings_cache_delete(principal_id)
 
     # Wait for roles to be revoked if requested
     if wait_role_propagation and revoked_roles:

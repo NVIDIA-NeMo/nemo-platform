@@ -151,7 +151,7 @@ class EvaluateSuiteJob(NemoJob):
             PlatformJobStep,
             SubprocessExecutionProviderSpec,
         )
-        from nmp.common.jobs.constants import (
+        from nemo_platform_plugin.jobs.constants import (
             DEFAULT_JOB_STORAGE_PATH,
             PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
         )

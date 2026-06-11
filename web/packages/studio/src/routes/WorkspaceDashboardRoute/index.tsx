@@ -22,7 +22,7 @@ import {
 import { ROUTES } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
-import { getEvaluationMetricsRunRoute, getModelCompareRoute } from '@studio/routes/utils';
+import { getEvaluationResultsRoute, getModelCompareRoute } from '@studio/routes/utils';
 import { DashboardCard } from '@studio/routes/WorkspaceDashboardRoute/DashboardCard';
 import { ResourcesSection } from '@studio/routes/WorkspaceDashboardRoute/ResourcesSection';
 import { Sliders, Boxes } from 'lucide-react';
@@ -98,7 +98,7 @@ export const WorkspaceDashboardRoute: FC = () => {
                   description="Assess models or datasets with automated metrics and workflows."
                   docsUrl={LINK_DOCS_STUDIO_EVALUATION}
                   actionLabel="Evaluate"
-                  actionHref={getEvaluationMetricsRunRoute(workspace)}
+                  actionHref={getEvaluationResultsRoute(workspace)}
                 />
               )}
 

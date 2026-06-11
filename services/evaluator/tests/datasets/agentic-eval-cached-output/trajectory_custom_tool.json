@@ -1,5 +1,0 @@
-{
-    "dummy_custom_tool": "Do nothing. This tool is for test only",
-    "code_generation": "Useful to generate Python code. For any questions about code generation, you must only use this tool!",
-    "wikipedia_search": "Tool that retrieves relevant contexts from wikipedia search for the given question.\n\n  Args:\n    _type (str): The type of the object.\n    max_results (int): Description unavailable. Defaults to 2."
-}
