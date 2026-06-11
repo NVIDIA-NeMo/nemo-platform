@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { RailsConfig } from '@nemo/sdk/generated/platform/schema';
+import type { RailsConfigOutput } from '@nemo/sdk/generated/platform/schema';
 
 /**
  * Count the total number of configured rail flows across input, output, and
@@ -10,7 +10,7 @@ import type { RailsConfig } from '@nemo/sdk/generated/platform/schema';
  * Note: DialogRails does not expose a `flows` field in the SDK schema, so
  * dialog rails are not counted here.
  */
-export function countRails(data: RailsConfig | undefined): number {
+export function countRails(data?: RailsConfigOutput): number {
   const rails = data?.rails;
   if (!rails) return 0;
   return (

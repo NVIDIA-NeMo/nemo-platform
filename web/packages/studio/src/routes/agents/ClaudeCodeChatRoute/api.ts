@@ -10,6 +10,7 @@ import type {
   ClaudeCodePermissionRequest,
   ClaudeCodeSessionHistory,
   ClaudeCodeSessionHistoryItem,
+  ClaudeCodeSkill,
   ClaudeCodeStreamHandlers,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
 
@@ -39,6 +40,8 @@ export const CLAUDE_CODE_HISTORY_SESSIONS_QUERY_KEY = [
   'history',
   'sessions',
 ] as const;
+
+export const CLAUDE_CODE_SKILLS_QUERY_KEY = ['claude-code', 'skills'] as const;
 
 export const getClaudeCodeSessionHistoryQueryKey = (sessionId: string) =>
   ['claude-code', 'history', 'session', sessionId] as const;
@@ -100,6 +103,24 @@ const parseHistorySession = (value: unknown): ClaudeCodeHistorySession | undefin
   };
 };
 
+const parseClaudeCodeSkill = (value: unknown): ClaudeCodeSkill | undefined => {
+  if (!isRecord(value)) return undefined;
+  const name = getString(value.name);
+  const claudeName = getString(value.claude_name);
+  const installPath = getString(value.install_path);
+  if (!name || !claudeName || !installPath) return undefined;
+
+  return {
+    name,
+    claude_name: claudeName,
+    description: getString(value.description),
+    source: getString(value.source) || '-',
+    source_path: getString(value.source_path) || undefined,
+    install_path: installPath,
+    installed: value.installed === true,
+  };
+};
+
 const parseAssistantPart = (value: unknown): ClaudeCodeAssistantHistoryPart | undefined => {
   if (!isRecord(value)) return undefined;
 
@@ -150,6 +171,21 @@ export const listClaudeCodeHistorySessions = async (): Promise<ClaudeCodeHistory
   return body
     .map(parseHistorySession)
     .filter((session): session is ClaudeCodeHistorySession => session !== undefined);
+};
+
+export const listClaudeCodeSkills = async (): Promise<ClaudeCodeSkill[]> => {
+  const response = await fetch(claudeCodeApiUrl('/skills'));
+
+  if (!response.ok) {
+    throw new Error(await getResponseErrorMessage(response, 'Failed to load Claude Code skills'));
+  }
+
+  const body = (await response.json()) as unknown;
+  if (!Array.isArray(body)) return [];
+
+  return body
+    .map(parseClaudeCodeSkill)
+    .filter((skill): skill is ClaudeCodeSkill => skill !== undefined);
 };
 
 export const getClaudeCodeSessionHistory = async (

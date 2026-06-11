@@ -3,8 +3,8 @@
 
 from __future__ import annotations
 
-from nmp.common.auth.authz_format import validate_static_authz_data
-from nmp.common.auth.authz_merge import merge_authz_contributions
+from nemo_platform_plugin.authz_format import validate_static_authz_data
+from nemo_platform_plugin.authz_merge import merge_authz_contributions
 
 
 def test_merge_adds_endpoints_and_role_permissions() -> None:
