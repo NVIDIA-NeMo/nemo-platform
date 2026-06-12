@@ -7,9 +7,10 @@ import json
 from datetime import datetime, timezone
 
 import pytest
-from nmp.intake.spans.api.spans_schemas import Span
+from nmp.intake.spans.api.spans_schemas import Span, SpanGroup
 from nmp.intake.spans.api.traces_schemas import Trace
-from nmp.intake.spans.domain import IntakeSpan, IntakeTrace, SpanKind, SpanStatus, TraceEvaluationContext
+from nmp.intake.spans.domain import IntakeSpan, IntakeTrace, SpanKind, SpanStatus
+from nmp.intake.spans.domain import SpanGroup as IntakeSpanGroup
 from nmp.intake.spans.storage import json_dumps_preserve
 from pydantic import ValidationError
 
@@ -41,10 +42,10 @@ def test_span_response_raw_attributes_merges_atif_raw_with_unknown_attributes():
         event_ts=now,
         attributes_string={
             "atif.raw": json_dumps_preserve(
-                {"source_session_id": "session-a", "experiment.metadata": {"source": "atif.raw"}}
+                {"source_session_id": "session-a", "nemo.experiment.metadata": {"source": "atif.raw"}}
             ),
             "custom.string": "value-a",
-            "experiment.metadata": json.dumps({"source": "attribute.bag"}),
+            "nemo.experiment.metadata": json.dumps({"source": "attribute.bag"}),
             "gen_ai.request.model": "model-a",
         },
         attributes_number={"custom.number": 1.25, "llm.token_count.prompt": 42},
@@ -62,6 +63,15 @@ def test_span_response_raw_attributes_merges_atif_raw_with_unknown_attributes():
     }
 
 
+def test_span_group_response_maps_group_values():
+    response = SpanGroup.from_domain(
+        IntakeSpanGroup(group={"session_id": "session-a", "trace_id": "trace-a"}, span_count=3)
+    )
+
+    assert response.group == {"session_id": "session-a", "trace_id": "trace-a"}
+    assert response.span_count == 3
+
+
 def test_trace_response_maps_core_trace_fields():
     started_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
     ended_at = datetime(2026, 1, 1, 0, 0, 2, 500000, tzinfo=timezone.utc)
@@ -75,12 +85,8 @@ def test_trace_response_maps_core_trace_fields():
         input="root input",
         output="root output",
         project="project-a",
-        evaluation_context=TraceEvaluationContext(
-            evaluation_id="eval-a",
-            evaluation_run_id="run-a",
-            dataset_name="dataset-a",
-            metadata={"split": "dev"},
-        ),
+        experiment_id="experiment-a",
+        test_case_id="case-a",
         started_at=started_at,
         ended_at=ended_at,
         duration_ms=2500,
@@ -119,8 +125,6 @@ def test_trace_response_maps_core_trace_fields():
     assert response.cost_output_usd == 0.0037
     assert response.span_count == 2
     assert response.error_count == 1
-    assert response.evaluation_context is not None
-    assert response.evaluation_context.evaluation_id == "eval-a"
-    assert response.evaluation_context.evaluation_run_id == "run-a"
-    assert response.evaluation_context.dataset_name == "dataset-a"
-    assert response.evaluation_context.metadata == {"split": "dev"}
+    assert response.experiment_context is not None
+    assert response.experiment_context.experiment_id == "experiment-a"
+    assert response.experiment_context.test_case_id == "case-a"

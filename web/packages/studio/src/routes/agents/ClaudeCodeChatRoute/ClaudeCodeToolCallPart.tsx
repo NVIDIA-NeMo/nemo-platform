@@ -3,9 +3,11 @@
 
 import type { ToolCallMessagePartComponent } from '@assistant-ui/react';
 import { Text } from '@nvidia/foundations-react-core';
+import { JobProgressToolCall } from '@studio/routes/agents/ClaudeCodeChatRoute/JobProgressToolCall';
 import {
   CLAUDE_CODE_COLLAPSED_THINKING_TOOL_NAME,
   CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME,
+  isClaudeCodeJobProgressToolName,
   isClaudeCodeSubtleToolCallName,
   toClaudeCodeToolArgs,
   type ClaudeCodeToolArgs,
@@ -672,6 +674,10 @@ const ClaudeCodeToolCallPartContent = ({
   if (toolName === CLAUDE_CODE_COLLAPSED_THINKING_TOOL_NAME) {
     const text = getStringArg(args, ['text']);
     return text ? <CollapsedThinkingToolCall text={text} /> : null;
+  }
+
+  if (isClaudeCodeJobProgressToolName(toolName)) {
+    return <JobProgressToolCall args={args} />;
   }
 
   if (toolName === CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME) {

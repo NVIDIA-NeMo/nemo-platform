@@ -21,6 +21,14 @@ from typing_extensions import Literal
 
 import httpx
 
+from .groups import (
+    GroupsResource,
+    AsyncGroupsResource,
+    GroupsResourceWithRawResponse,
+    AsyncGroupsResourceWithRawResponse,
+    GroupsResourceWithStreamingResponse,
+    AsyncGroupsResourceWithStreamingResponse,
+)
 from ...._types import Body, Omit, Query, Headers, NotGiven, omit, not_given
 from ...._utils import path_template, maybe_transform
 from ...._compat import cached_property
@@ -50,6 +58,10 @@ __all__ = ["SpansResource", "AsyncSpansResource"]
 
 
 class SpansResource(SyncAPIResource):
+    @cached_property
+    def groups(self) -> GroupsResource:
+        return GroupsResource(self._client)
+
     @cached_property
     def evaluator_results(self) -> EvaluatorResultsResource:
         return EvaluatorResultsResource(self._client)
@@ -177,6 +189,10 @@ class SpansResource(SyncAPIResource):
 
 
 class AsyncSpansResource(AsyncAPIResource):
+    @cached_property
+    def groups(self) -> AsyncGroupsResource:
+        return AsyncGroupsResource(self._client)
+
     @cached_property
     def evaluator_results(self) -> AsyncEvaluatorResultsResource:
         return AsyncEvaluatorResultsResource(self._client)
@@ -315,6 +331,10 @@ class SpansResourceWithRawResponse:
         )
 
     @cached_property
+    def groups(self) -> GroupsResourceWithRawResponse:
+        return GroupsResourceWithRawResponse(self._spans.groups)
+
+    @cached_property
     def evaluator_results(self) -> EvaluatorResultsResourceWithRawResponse:
         return EvaluatorResultsResourceWithRawResponse(self._spans.evaluator_results)
 
@@ -329,6 +349,10 @@ class AsyncSpansResourceWithRawResponse:
         self.list = async_to_raw_response_wrapper(
             spans.list,
         )
+
+    @cached_property
+    def groups(self) -> AsyncGroupsResourceWithRawResponse:
+        return AsyncGroupsResourceWithRawResponse(self._spans.groups)
 
     @cached_property
     def evaluator_results(self) -> AsyncEvaluatorResultsResourceWithRawResponse:
@@ -347,6 +371,10 @@ class SpansResourceWithStreamingResponse:
         )
 
     @cached_property
+    def groups(self) -> GroupsResourceWithStreamingResponse:
+        return GroupsResourceWithStreamingResponse(self._spans.groups)
+
+    @cached_property
     def evaluator_results(self) -> EvaluatorResultsResourceWithStreamingResponse:
         return EvaluatorResultsResourceWithStreamingResponse(self._spans.evaluator_results)
 
@@ -361,6 +389,10 @@ class AsyncSpansResourceWithStreamingResponse:
         self.list = async_to_streamed_response_wrapper(
             spans.list,
         )
+
+    @cached_property
+    def groups(self) -> AsyncGroupsResourceWithStreamingResponse:
+        return AsyncGroupsResourceWithStreamingResponse(self._spans.groups)
 
     @cached_property
     def evaluator_results(self) -> AsyncEvaluatorResultsResourceWithStreamingResponse:

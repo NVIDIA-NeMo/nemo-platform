@@ -15,6 +15,7 @@ import type {
 import {
   CLAUDE_CODE_HISTORY_SESSIONS_QUERY_KEY,
   createClaudeCodeSession,
+  resolveClaudeCodeInput,
   resolveClaudeCodePermission,
   streamClaudeCodeMessage,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/api';
@@ -26,6 +27,8 @@ import {
 import { getAssistantPartsFromClaudeEvent } from '@studio/routes/agents/ClaudeCodeChatRoute/stream';
 import type {
   ClaudeCodeChatArtifacts,
+  ClaudeCodeInputDecision,
+  ClaudeCodeInputRequest,
   ClaudeCodePermissionRequest,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
 import { useCustomAssistantChatRuntime } from '@studio/routes/agents/ClaudeCodeChatRoute/useCustomAssistantChatRuntime';
@@ -224,8 +227,11 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
   const [decisionRequest, setDecisionRequest] = useState<AgentDecisionRequest | null>(null);
   const [decisionChoices, setDecisionChoices] = useState<readonly AgentDecisionChoice[]>([]);
   const [decisionStatus, setDecisionStatus] = useState<AgentDecisionInputStatus>('pending');
+  const [inputRequest, setInputRequest] = useState<ClaudeCodeInputRequest | null>(null);
+  const [inputStatus, setInputStatus] = useState<AgentDecisionInputStatus>('pending');
   const sessionIdRef = useRef<string | null>(options?.initialSessionId ?? null);
   const permissionRequestRef = useRef<ClaudeCodePermissionRequest | null>(null);
+  const inputRequestRef = useRef<ClaudeCodeInputRequest | null>(null);
   const activeDecisionRef = useRef<ActiveDecisionState | null>(null);
   const initialArtifactsRef = useRef<ClaudeCodeChatArtifacts | undefined>(
     options?.initialArtifacts
@@ -250,12 +256,22 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
     return nextSessionId;
   }, []);
 
-  const clearApprovalRequest = useCallback(() => {
+  const clearPermissionRequest = useCallback((requestId?: string) => {
+    if (requestId && permissionRequestRef.current?.requestId !== requestId) return;
+
     permissionRequestRef.current = null;
     activeDecisionRef.current = null;
     setDecisionRequest(null);
     setDecisionChoices([]);
     setDecisionStatus('pending');
+  }, []);
+
+  const clearInputRequest = useCallback((requestId?: string) => {
+    if (requestId && inputRequestRef.current?.requestId !== requestId) return;
+
+    inputRequestRef.current = null;
+    setInputRequest(null);
+    setInputStatus('pending');
   }, []);
 
   const setAskUserQuestionDecision = useCallback(
@@ -276,6 +292,7 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
       const actionDescription =
         typeof request.input.description === 'string' ? request.input.description : undefined;
 
+      clearInputRequest();
       permissionRequestRef.current = request;
       activeDecisionRef.current = { kind: 'permission' };
       setDecisionStatus('pending');
@@ -304,7 +321,18 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
       });
       setDecisionChoices(PERMISSION_CHOICES);
     },
-    [setAskUserQuestionDecision]
+    [clearInputRequest, setAskUserQuestionDecision]
+  );
+
+  const handleInputRequest = useCallback(
+    (request: ClaudeCodeInputRequest) => {
+      clearPermissionRequest();
+
+      inputRequestRef.current = request;
+      setInputStatus('pending');
+      setInputRequest(request);
+    },
+    [clearPermissionRequest]
   );
 
   const {
@@ -317,7 +345,8 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
     initialMessages: options?.initialMessages,
     onError,
     onRun: async ({ prompt, signal, appendAssistantParts, prepareForUserInput, isCurrentRun }) => {
-      clearApprovalRequest();
+      clearPermissionRequest();
+      clearInputRequest();
       const activeSessionId = await ensureSessionId();
       let doneReceived = false;
 
@@ -339,6 +368,11 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
               prepareForUserInput();
               handlePermissionRequest(request);
             },
+            onInputRequest: (request) => {
+              if (signal.aborted || !isCurrentRun()) return;
+              prepareForUserInput();
+              handleInputRequest(request);
+            },
             onDone: () => {
               doneReceived = true;
             },
@@ -349,12 +383,52 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
         });
         void queryClient.invalidateQueries({ queryKey: CLAUDE_CODE_HISTORY_SESSIONS_QUERY_KEY });
       } finally {
-        if (isCurrentRun()) clearApprovalRequest();
+        if (isCurrentRun()) {
+          clearPermissionRequest();
+          clearInputRequest();
+        }
       }
 
       return { status: doneReceived ? COMPLETE_STATUS : CANCELLED_STATUS };
     },
   });
+
+  const resolveInputRequest = useCallback(
+    async ({
+      decision,
+      displayText,
+    }: {
+      decision: ClaudeCodeInputDecision;
+      displayText?: string;
+    }) => {
+      const activeSessionId = sessionIdRef.current;
+      const activeRequest = inputRequestRef.current;
+      if (!activeSessionId || !activeRequest) return;
+
+      const trimmedDisplayText = displayText?.trim();
+      setInputStatus('submitting');
+
+      try {
+        await resolveClaudeCodeInput({
+          sessionId: activeSessionId,
+          requestId: activeRequest.requestId,
+          decision,
+        });
+        if (!decision.skipped && trimmedDisplayText) {
+          appendUserMessage(trimmedDisplayText);
+        }
+        clearInputRequest(activeRequest.requestId);
+      } catch (error: unknown) {
+        if (inputRequestRef.current?.requestId === activeRequest.requestId) {
+          setInputStatus('pending');
+        }
+        const errorMessage =
+          error instanceof Error ? error.message : 'Failed to resolve Claude Code input';
+        onError?.(new Error(errorMessage));
+      }
+    },
+    [appendUserMessage, clearInputRequest, onError]
+  );
 
   const submitActiveDecision = useCallback(
     async ({
@@ -386,17 +460,19 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
         if (!approved && trimmedDisplayText) {
           appendUserMessage(trimmedDisplayText);
         }
-        clearApprovalRequest();
+        clearPermissionRequest(activeRequest.requestId);
         return true;
       } catch (error: unknown) {
-        setDecisionStatus('pending');
+        if (permissionRequestRef.current?.requestId === activeRequest.requestId) {
+          setDecisionStatus('pending');
+        }
         const errorMessage =
           error instanceof Error ? error.message : 'Failed to resolve Claude Code permission';
         onError?.(new Error(errorMessage));
         return false;
       }
     },
-    [appendUserMessage, clearApprovalRequest, onError]
+    [appendUserMessage, clearPermissionRequest, onError]
   );
 
   const resolveAskUserQuestionDecision = useCallback(
@@ -461,13 +537,18 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
     await submitActiveDecision({ approved: false, reason: 'Skipped by user' });
   }, [submitActiveDecision]);
 
+  const skipInputRequest = useCallback(async () => {
+    await resolveInputRequest({ decision: { skipped: true } });
+  }, [resolveInputRequest]);
+
   const handleReset = useCallback(() => {
     sessionIdRef.current = null;
     setSessionId(null);
     setArtifacts(createWorkspaceArtifacts(undefined, workspace));
-    clearApprovalRequest();
+    clearPermissionRequest();
+    clearInputRequest();
     resetThread();
-  }, [clearApprovalRequest, resetThread, workspace]);
+  }, [clearInputRequest, clearPermissionRequest, resetThread, workspace]);
 
   return {
     artifacts,
@@ -475,10 +556,14 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
     decisionRequest,
     decisionStatus,
     handleReset,
+    inputRequest,
+    inputStatus,
     isRunning,
+    resolveInputRequest,
     resolveDecisionRequest,
     runtime,
     sessionId,
+    skipInputRequest,
     skipDecisionRequest,
     submitPrompt,
   };

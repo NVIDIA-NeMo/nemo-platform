@@ -28,6 +28,7 @@
     "openai": "catalog:",
     "openapi-fetch": "^0.13.3",
     "p-limit": "catalog:",
+    "hyparquet": "catalog:",
     "papaparse": "^5.5.3",
     "react": "catalog:",
     "react-dom": "catalog:",

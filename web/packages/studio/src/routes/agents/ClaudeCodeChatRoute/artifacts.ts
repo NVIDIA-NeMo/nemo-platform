@@ -96,6 +96,7 @@ const STUDIO_LINK_PATH_TEMPLATES: Record<string, string> = {
   members: '/workspaces/{workspace}/members',
   experiment: '/workspaces/{workspace}/experiment',
   experiment_group: '/workspaces/{workspace}/experiment/{name}',
+  experiment_detail: '/workspaces/{workspace}/experiment/{name}/{experiment_name}',
 };
 const STUDIO_LINK_ARGUMENT_ALIASES = {
   name: [
@@ -121,8 +122,9 @@ const STUDIO_LINK_ARGUMENT_ALIASES = {
     'experiment_group_id',
     'experimentGroupId',
   ],
+  experiment_name: ['experimentName', 'experiment_id', 'experimentId'],
   file_path: ['file', 'filePath', 'file_path_encoded', 'filePathEncoded', 'path'],
-} satisfies Record<'name' | 'file_path', readonly string[]>;
+} satisfies Record<'name' | 'experiment_name' | 'file_path', readonly string[]>;
 
 export const createEmptyClaudeCodeChatArtifacts = (): ClaudeCodeChatArtifacts => ({
   selections: [],
@@ -184,7 +186,7 @@ const buildStudioLinkHrefFromInput = (
     workspace: encodeURIComponent(workspaceValue),
   };
 
-  for (const argumentName of ['name', 'file_path'] as const) {
+  for (const argumentName of ['name', 'experiment_name', 'file_path'] as const) {
     if (!template.includes(`{${argumentName}}`)) continue;
 
     const value = getStudioLinkArgument(input, argumentName);
@@ -194,7 +196,7 @@ const buildStudioLinkHrefFromInput = (
   }
 
   return template.replace(
-    /\{(workspace|name|file_path)\}/g,
+    /\{(workspace|name|experiment_name|file_path)\}/g,
     (_match, key: string) => values[key] ?? ''
   );
 };

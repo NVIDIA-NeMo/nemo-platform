@@ -158,5 +158,22 @@ def test_spans_read_filters(client: TestClient, make_otlp_request):
     assert parent_response.json()["pagination"]["total_results"] == 1
     assert parent_response.json()["data"][0]["name"] == "span-6"
 
+    group_response = client.get(
+        "/apis/intake/v2/workspaces/default/spans/groups",
+        params={
+            "by": "session_id,trace_id",
+            "filter[kind]": "LLM",
+            "page_size": 20,
+        },
+    )
+    assert group_response.status_code == 200, group_response.text
+    group_payload = group_response.json()
+    assert group_payload["grouped_by"] == ["session_id", "trace_id"]
+    assert group_payload["pagination"]["total_results"] == 2
+    assert group_payload["data"] == [
+        {"group": {"session_id": "conv-a", "trace_id": "0" * 31 + "1"}, "span_count": 2},
+        {"group": {"session_id": "conv-b", "trace_id": "0" * 31 + "1"}, "span_count": 2},
+    ]
+
     unsupported_response = client.get("/apis/intake/v2/workspaces/default/spans", params={"session_id": "conv-a"})
     assert unsupported_response.status_code == 400

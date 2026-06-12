@@ -7,9 +7,10 @@ from datetime import datetime, timezone
 from typing import cast
 
 import pytest
+from nmp.intake.spans.api.spans_schemas import SpanGroupBy
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 from nmp.intake.spans.domain import SpanListFilter
-from nmp.intake.spans.span_repository import SPAN_COLUMNS, SpanRepository, _order_by
+from nmp.intake.spans.span_repository import SPAN_COLUMNS, SPAN_GROUP_COLUMN_FIELDS, SpanRepository, _order_by
 from nmp.intake.spans.storage import make_pagination
 
 
@@ -31,10 +32,10 @@ class _Client:
     async def query(self, query: str, *, parameters: dict[str, object]) -> _QueryResult:
         self.queries.append(query)
         self.parameters.append(parameters)
-        if query.lstrip().startswith("SELECT count()"):
-            return _QueryResult([(0,)])
         if self.query_results:
             return self.query_results.pop(0)
+        if query.lstrip().startswith("SELECT count()"):
+            return _QueryResult([(0,)])
         return _QueryResult([])
 
 
@@ -110,6 +111,75 @@ async def test_list_spans_reads_final_rows():
     )
 
     assert "FROM spans FINAL" in client.queries[1]
+
+
+def test_span_group_by_enum_matches_repository_columns():
+    assert {field.value for field in SpanGroupBy} == set(SPAN_GROUP_COLUMN_FIELDS)
+
+
+@pytest.mark.asyncio
+async def test_list_span_groups_groups_by_columns():
+    client = _Client(
+        query_results=[
+            _QueryResult([(2,)]),
+            _QueryResult(
+                [
+                    ("session-a", "trace-a", 3),
+                    ("session-b", "trace-b", 1),
+                ],
+                ["session_id", "trace_id", "span_count"],
+            ),
+        ]
+    )
+    repository = _repository(client)
+
+    result = await repository.list_span_groups(
+        filters=SpanListFilter(workspace="workspace-a"),
+        group_by=["session_id", "trace_id"],
+        page=1,
+        page_size=10,
+        sort="-span_count",
+    )
+
+    assert result.pagination.total_results == 2
+    assert result.data[0].group == {"session_id": "session-a", "trace_id": "trace-a"}
+    assert result.data[0].span_count == 3
+    assert "FROM spans FINAL" in client.queries[0]
+    assert "GROUP BY session_id, trace_id" in client.queries[0]
+    assert "ORDER BY span_count DESC, session_id ASC, trace_id ASC" in client.queries[1]
+
+
+@pytest.mark.asyncio
+async def test_list_span_groups_reuses_span_filters():
+    client = _Client()
+    repository = _repository(client)
+
+    await repository.list_span_groups(
+        filters=SpanListFilter(workspace="workspace-a", status="error"),
+        group_by=["trace_id"],
+        page=1,
+        page_size=10,
+        sort="-span_count",
+    )
+
+    assert "status = %(status)s" in client.queries[0]
+    assert "GROUP BY trace_id" in client.queries[0]
+    assert client.parameters[0]["status"] == "error"
+
+
+@pytest.mark.asyncio
+async def test_list_span_groups_rejects_unsupported_group_field():
+    client = _Client()
+    repository = _repository(client)
+
+    with pytest.raises(ValueError, match="Unsupported span group-by field"):
+        await repository.list_span_groups(
+            filters=SpanListFilter(workspace="workspace-a"),
+            group_by=["trace_id; DROP TABLE spans"],
+            page=1,
+            page_size=10,
+            sort="-span_count",
+        )
 
 
 @pytest.mark.asyncio

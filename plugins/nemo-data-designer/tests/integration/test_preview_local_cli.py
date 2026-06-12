@@ -157,6 +157,31 @@ def load_config_builder() -> dd.DataDesignerConfigBuilder:
     assert "Field required" not in result.output
 
 
+def test_bad_config_source_shows_clear_error_and_no_traceback(tmp_path: Path) -> None:
+    config_path = u.write_config_file(
+        tmp_path,
+        """
+import data_designer.config as dd
+import pandas as pd
+
+
+def wrong_function_name() -> dd.DataDesignerConfigBuilder:
+    return dd.DataDesignerConfigBuilder()
+""",
+        name="dataframe_seed_create_config.py",
+    )
+
+    with u.make_mock_client_context(workspace="default") as client_context:
+        result = u.invoke_cli(
+            ["create", "run", str(config_path), "--num-records", "3"],
+            client_context,
+        )
+
+    assert result.exit_code != 0
+    assert "load_config_builder()" in result.output
+    assert "traceback" not in result.output.lower()
+
+
 def test_create_run_reports_artifacts_and_dataset_path(tmp_path: Path) -> None:
     config_path = _write_sampler_config(tmp_path)
 

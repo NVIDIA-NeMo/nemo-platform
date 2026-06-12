@@ -414,10 +414,32 @@ async def delete_fileset(
     logger.info(f"DELETE /filesets/{name} - workspace={workspace}")
     fileset = await get_fileset(workspace, name, entity_store)
 
-    # Delete underlying storage data (no-op for external backends like NGC, HuggingFace)
-    secrets = await resolve_storage_secrets_for_user(fileset.storage, workspace, sdk, auth_client)
-    storage = storage_impl_factory(fileset.storage, secrets)
-    await storage.delete_all()
+    # Delete underlying source storage data. This is a no-op for external backends
+    # like NGC/HuggingFace, and removes files for backends we own (local/S3).
+    try:
+        secrets = await resolve_storage_secrets_for_user(fileset.storage, workspace, sdk, auth_client)
+        storage = storage_impl_factory(fileset.storage, secrets)
+        await storage.delete_all()
+    except (SecretNotFoundError, SecretAccessDeniedError) as exc:
+        # For backends we own (local, S3), the secret is required to delete the source
+        # data; silently skipping that would orphan data we're responsible for. Surface
+        # it. For external backends (NGC, HuggingFace) the source isn't ours to delete,
+        # so a missing secret must not block removing the fileset - proceed.
+        if fileset.storage.owns_storage_data:
+            logger.error(
+                f"Cannot delete owned source data for fileset '{workspace}/{name}' "
+                f"because its storage secret is unavailable: {exc}"
+            )
+            raise HTTPException(
+                HTTP_400_BAD_REQUEST,
+                f"Cannot delete fileset '{workspace}/{name}': its storage secret is "
+                f"unavailable, so the underlying data cannot be removed. Restore the "
+                f"secret and retry. ({exc})",
+            ) from exc
+        logger.warning(
+            f"Storage secret unavailable while deleting external fileset '{workspace}/{name}'; "
+            f"nothing to delete on the source, proceeding with entity deletion: {exc}"
+        )
 
     await entity_store.delete(Fileset, fileset.name, workspace=workspace)
 

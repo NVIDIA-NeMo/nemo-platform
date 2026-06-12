@@ -83,10 +83,6 @@ class Span(BaseModel):
 
     prompt_id: Optional[str] = None
 
-    prompt_name: Optional[str] = None
-
-    prompt_version: Optional[str] = None
-
     provider: Optional[str] = None
 
     raw_attributes: Optional[str] = None

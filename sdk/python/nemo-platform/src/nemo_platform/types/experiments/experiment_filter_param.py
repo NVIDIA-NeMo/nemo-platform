@@ -27,12 +27,6 @@ __all__ = ["ExperimentFilterParam"]
 class ExperimentFilterParam(TypedDict, total=False):
     """Filter for listing Experiments."""
 
-    agent_name: str
-    """Filter experiments by agent name."""
-
-    agent_version: str
-    """Filter experiments by agent version."""
-
     created_at: DatetimeFilter
     """
     Filter experiments by creation timestamp; supports `$gte` and `$lte` for ranges.
@@ -49,6 +43,12 @@ class ExperimentFilterParam(TypedDict, total=False):
 
     experiment_group_id: str
     """Filter experiments by owning group id."""
+
+    is_deleted: bool
+    """When true, returns only soft-deleted experiments.
+
+    Omit (or false) to see only live experiments.
+    """
 
     name: str
     """Filter experiments by name."""

@@ -10,7 +10,7 @@ Unsloth is **submit-only**: training executes remotely on the platform's GPU clu
 
 The plugin is part of `enabled-plugins` once `uv sync` runs. No GPU / ML deps are installed locally; only the container image needs them.
 
-Container image build / push instructions live in [`services/unsloth/docker/README.md`](../../services/unsloth/docker/README.md).
+Container image build / push instructions live in [`docker/unsloth/README.md`](../../docker/unsloth/README.md).
 
 ## Submit a training job
 
@@ -86,5 +86,5 @@ The plugin imports two things from the service:
 
 - `plugins/nemo-customizer/` — the customization router hub. Owns `/apis/customization`, `nemo customization`, `client.customization`.
 - `services/unsloth/` — the heavy code this plugin delegates to.
-- `services/unsloth/docker/` — Dockerfile + build instructions for the `nmp-unsloth-training` image.
+- `docker/unsloth/` — Dockerfile + build instructions for the `nmp-unsloth-training` image.
 - `plugins/nemo-automodel/` — sibling plugin with the same submit shape.

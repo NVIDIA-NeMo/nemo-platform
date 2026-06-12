@@ -235,9 +235,6 @@ def _build_attribute_bags(
         evaluation_id=evaluation_context.evaluation_id if evaluation_context is not None else None,
         evaluation_sha=evaluation_context.evaluation_sha if evaluation_context is not None else None,
         evaluation_run_id=evaluation_context.evaluation_run_id if evaluation_context is not None else None,
-        dataset_id=evaluation_context.dataset_id if evaluation_context is not None else None,
-        dataset_name=evaluation_context.dataset_name if evaluation_context is not None else None,
-        dataset_version=evaluation_context.dataset_version if evaluation_context is not None else None,
         test_case_id=evaluation_context.test_case_id if evaluation_context is not None else None,
         error_type=error_type,
         error_message=error_message,
@@ -254,7 +251,7 @@ def _build_attribute_bags(
     )
     attribute_bags = semantic.to_bags()
     if evaluation_context is not None and evaluation_context.metadata:
-        attribute_bags.put_json("experiment.metadata", evaluation_context.metadata)
+        attribute_bags.put_json("nemo.experiment.metadata", evaluation_context.metadata)
     for key, value in body.cost_details.items():
         bag_key = f"cost.{key}"
         if bag_key in attribute_bags.number:

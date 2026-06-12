@@ -38,10 +38,11 @@ import os
 import tarfile
 from dataclasses import dataclass, field
 
-import docker
 import pytest
 from docker.errors import APIError, BuildError, DockerException, ImageNotFound, NotFound
 from tenacity import retry, stop_after_attempt, wait_fixed
+
+import docker
 
 # =============================================================================
 # Retry Configuration

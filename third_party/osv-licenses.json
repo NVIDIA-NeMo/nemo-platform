@@ -38,7 +38,7 @@
         {
           "package": {
             "name": "aiofile",
-            "version": "3.11.1",
+            "version": "3.9.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -58,7 +58,7 @@
         {
           "package": {
             "name": "aiohappyeyeballs",
-            "version": "2.6.2",
+            "version": "2.6.1",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -68,9 +68,793 @@
         {
           "package": {
             "name": "aiohttp",
-            "version": "3.14.1",
+            "version": "3.13.5",
             "ecosystem": "PyPI"
           },
+          "vulnerabilities": [
+            {
+              "modified": "2026-06-04T15:29:16Z",
+              "published": "2026-06-03T21:34:38Z",
+              "schema_version": "1.7.5",
+              "id": "GHSA-hg6j-4rv6-33pg",
+              "aliases": [
+                "CVE-2026-47265"
+              ],
+              "related": [
+                "CGA-5f7q-7pmq-hq3r"
+              ],
+              "summary": "AIOHTTP is vulnerable to cross-origin redirect with per-request cookies",
+              "details": "### Summary\n\nCookies set with the `cookies` parameter on requests are sent after following a cross-origin redirect.\n\n### Impact\n\nIf a developer uses the `cookies` parameter on a per-request basis then sensitive data might be leaked to an attacker if they manage to control a redirect.\n\n### Workaround\n\nIf unable to upgrade, using a `Cookie` header in the `headers` parameter is not vulnerable.\n\n-----\n\nPatch: https://github.com/aio-libs/aiohttp/commit/f54c40851b0d6c4bbdab97ba518a223adda32478",
+              "severity": [
+                {
+                  "type": "CVSS_V4",
+                  "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N/E:U"
+                }
+              ],
+              "affected": [
+                {
+                  "package": {
+                    "ecosystem": "PyPI",
+                    "name": "aiohttp",
+                    "purl": "pkg:pypi/aiohttp"
+                  },
+                  "ranges": [
+                    {
+                      "type": "ECOSYSTEM",
+                      "events": [
+                        {
+                          "introduced": "0"
+                        },
+                        {
+                          "fixed": "3.14.0"
+                        }
+                      ]
+                    }
+                  ],
+                  "versions": [
+                    "0.1",
+                    "0.10.0",
+                    "0.10.1",
+                    "0.10.2",
+                    "0.11.0",
+                    "0.12.0",
+                    "0.13.0",
+                    "0.13.1",
+                    "0.14.0",
+                    "0.14.1",
+                    "0.14.2",
+                    "0.14.3",
+                    "0.14.4",
+                    "0.15.0",
+                    "0.15.1",
+                    "0.15.2",
+                    "0.15.3",
+                    "0.16.0",
+                    "0.16.1",
+                    "0.16.2",
+                    "0.16.3",
+                    "0.16.4",
+                    "0.16.5",
+                    "0.16.6",
+                    "0.17.0",
+                    "0.17.1",
+                    "0.17.2",
+                    "0.17.3",
+                    "0.17.4",
+                    "0.18.0",
+                    "0.18.1",
+                    "0.18.2",
+                    "0.18.3",
+                    "0.18.4",
+                    "0.19.0",
+                    "0.2",
+                    "0.20.0",
+                    "0.20.1",
+                    "0.20.2",
+                    "0.21.0",
+                    "0.21.1",
+                    "0.21.2",
+                    "0.21.4",
+                    "0.21.5",
+                    "0.21.6",
+                    "0.22.0",
+                    "0.22.0a0",
+                    "0.22.0b0",
+                    "0.22.0b1",
+                    "0.22.0b2",
+                    "0.22.0b3",
+                    "0.22.0b4",
+                    "0.22.0b5",
+                    "0.22.0b6",
+                    "0.22.1",
+                    "0.22.2",
+                    "0.22.3",
+                    "0.22.4",
+                    "0.22.5",
+                    "0.3",
+                    "0.4",
+                    "0.4.1",
+                    "0.4.2",
+                    "0.4.3",
+                    "0.4.4",
+                    "0.5.0",
+                    "0.6.0",
+                    "0.6.1",
+                    "0.6.2",
+                    "0.6.3",
+                    "0.6.4",
+                    "0.6.5",
+                    "0.7.0",
+                    "0.7.1",
+                    "0.7.2",
+                    "0.7.3",
+                    "0.8.0",
+                    "0.8.1",
+                    "0.8.2",
+                    "0.8.3",
+                    "0.8.4",
+                    "0.9.0",
+                    "0.9.1",
+                    "0.9.2",
+                    "0.9.3",
+                    "1.0.0",
+                    "1.0.1",
+                    "1.0.2",
+                    "1.0.3",
+                    "1.0.5",
+                    "1.1.0",
+                    "1.1.1",
+                    "1.1.2",
+                    "1.1.3",
+                    "1.1.4",
+                    "1.1.5",
+                    "1.1.6",
+                    "1.2.0",
+                    "1.3.0",
+                    "1.3.1",
+                    "1.3.2",
+                    "1.3.3",
+                    "1.3.4",
+                    "1.3.5",
+                    "2.0.0",
+                    "2.0.0rc1",
+                    "2.0.1",
+                    "2.0.2",
+                    "2.0.3",
+                    "2.0.4",
+                    "2.0.5",
+                    "2.0.6",
+                    "2.0.7",
+                    "2.1.0",
+                    "2.2.0",
+                    "2.2.1",
+                    "2.2.2",
+                    "2.2.3",
+                    "2.2.4",
+                    "2.2.5",
+                    "2.3.0",
+                    "2.3.0a1",
+                    "2.3.0a2",
+                    "2.3.0a3",
+                    "2.3.0a4",
+                    "2.3.1",
+                    "2.3.10",
+                    "2.3.1a1",
+                    "2.3.2",
+                    "2.3.2b2",
+                    "2.3.2b3",
+                    "2.3.3",
+                    "2.3.4",
+                    "2.3.5",
+                    "2.3.6",
+                    "2.3.7",
+                    "2.3.8",
+                    "2.3.9",
+                    "3.0.0",
+                    "3.0.0b0",
+                    "3.0.0b1",
+                    "3.0.0b2",
+                    "3.0.0b3",
+                    "3.0.0b4",
+                    "3.0.1",
+                    "3.0.2",
+                    "3.0.3",
+                    "3.0.4",
+                    "3.0.5",
+                    "3.0.6",
+                    "3.0.7",
+                    "3.0.8",
+                    "3.0.9",
+                    "3.1.0",
+                    "3.1.1",
+                    "3.1.2",
+                    "3.1.3",
+                    "3.10.0",
+                    "3.10.0b1",
+                    "3.10.0rc0",
+                    "3.10.1",
+                    "3.10.10",
+                    "3.10.11",
+                    "3.10.11rc0",
+                    "3.10.2",
+                    "3.10.3",
+                    "3.10.4",
+                    "3.10.5",
+                    "3.10.6",
+                    "3.10.6rc0",
+                    "3.10.6rc1",
+                    "3.10.6rc2",
+                    "3.10.7",
+                    "3.10.8",
+                    "3.10.9",
+                    "3.11.0",
+                    "3.11.0b0",
+                    "3.11.0b1",
+                    "3.11.0b2",
+                    "3.11.0b3",
+                    "3.11.0b4",
+                    "3.11.0b5",
+                    "3.11.0rc0",
+                    "3.11.0rc1",
+                    "3.11.0rc2",
+                    "3.11.1",
+                    "3.11.10",
+                    "3.11.11",
+                    "3.11.12",
+                    "3.11.13",
+                    "3.11.14",
+                    "3.11.15",
+                    "3.11.16",
+                    "3.11.17",
+                    "3.11.18",
+                    "3.11.2",
+                    "3.11.3",
+                    "3.11.4",
+                    "3.11.5",
+                    "3.11.6",
+                    "3.11.7",
+                    "3.11.8",
+                    "3.11.9",
+                    "3.12.0",
+                    "3.12.0b0",
+                    "3.12.0b1",
+                    "3.12.0b2",
+                    "3.12.0b3",
+                    "3.12.0rc0",
+                    "3.12.0rc1",
+                    "3.12.1",
+                    "3.12.10",
+                    "3.12.11",
+                    "3.12.12",
+                    "3.12.13",
+                    "3.12.14",
+                    "3.12.15",
+                    "3.12.1rc0",
+                    "3.12.2",
+                    "3.12.3",
+                    "3.12.4",
+                    "3.12.6",
+                    "3.12.7",
+                    "3.12.7rc0",
+                    "3.12.8",
+                    "3.12.9",
+                    "3.13.0",
+                    "3.13.1",
+                    "3.13.2",
+                    "3.13.3",
+                    "3.13.4",
+                    "3.13.5",
+                    "3.2.0",
+                    "3.2.1",
+                    "3.3.0",
+                    "3.3.0a0",
+                    "3.3.1",
+                    "3.3.2",
+                    "3.3.2a0",
+                    "3.4.0",
+                    "3.4.0a0",
+                    "3.4.0a3",
+                    "3.4.0b1",
+                    "3.4.0b2",
+                    "3.4.1",
+                    "3.4.2",
+                    "3.4.3",
+                    "3.4.4",
+                    "3.5.0",
+                    "3.5.0a1",
+                    "3.5.0b1",
+                    "3.5.0b2",
+                    "3.5.0b3",
+                    "3.5.1",
+                    "3.5.2",
+                    "3.5.3",
+                    "3.5.4",
+                    "3.6.0",
+                    "3.6.0a0",
+                    "3.6.0a1",
+                    "3.6.0a11",
+                    "3.6.0a12",
+                    "3.6.0a2",
+                    "3.6.0a3",
+                    "3.6.0a4",
+                    "3.6.0a5",
+                    "3.6.0a6",
+                    "3.6.0a7",
+                    "3.6.0a8",
+                    "3.6.0a9",
+                    "3.6.0b0",
+                    "3.6.1",
+                    "3.6.1b3",
+                    "3.6.1b4",
+                    "3.6.2",
+                    "3.6.2a0",
+                    "3.6.2a1",
+                    "3.6.2a2",
+                    "3.6.3",
+                    "3.7.0",
+                    "3.7.0b0",
+                    "3.7.0b1",
+                    "3.7.1",
+                    "3.7.2",
+                    "3.7.3",
+                    "3.7.4",
+                    "3.7.4.post0",
+                    "3.8.0",
+                    "3.8.0a7",
+                    "3.8.0b0",
+                    "3.8.1",
+                    "3.8.2",
+                    "3.8.3",
+                    "3.8.4",
+                    "3.8.5",
+                    "3.8.6",
+                    "3.9.0",
+                    "3.9.0b0",
+                    "3.9.0b1",
+                    "3.9.0rc0",
+                    "3.9.1",
+                    "3.9.2",
+                    "3.9.3",
+                    "3.9.4",
+                    "3.9.4rc0",
+                    "3.9.5"
+                  ],
+                  "database_specific": {
+                    "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/06/GHSA-hg6j-4rv6-33pg/GHSA-hg6j-4rv6-33pg.json"
+                  }
+                }
+              ],
+              "references": [
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/aio-libs/aiohttp/security/advisories/GHSA-hg6j-4rv6-33pg"
+                },
+                {
+                  "type": "ADVISORY",
+                  "url": "https://nvd.nist.gov/vuln/detail/CVE-2026-47265"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/aio-libs/aiohttp/commit/f54c40851b0d6c4bbdab97ba518a223adda32478"
+                },
+                {
+                  "type": "PACKAGE",
+                  "url": "https://github.com/aio-libs/aiohttp"
+                }
+              ],
+              "database_specific": {
+                "cwe_ids": [
+                  "CWE-346"
+                ],
+                "github_reviewed": true,
+                "github_reviewed_at": "2026-06-03T21:34:38Z",
+                "nvd_published_at": "2026-06-02T20:16:37Z",
+                "severity": "MODERATE"
+              }
+            },
+            {
+              "modified": "2026-06-04T15:29:17Z",
+              "published": "2026-06-03T20:56:54Z",
+              "schema_version": "1.7.5",
+              "id": "GHSA-jg22-mg44-37j8",
+              "aliases": [
+                "CVE-2026-34993"
+              ],
+              "related": [
+                "CGA-2r69-w36g-jxvr"
+              ],
+              "summary": "AIOHTTP is Vulnerable to Deserialization of Untrusted Data",
+              "details": "### Summary\n\nUsing ``CookieJar.load()`` with untrusted input may allow arbitrary code execution.\n\n### Impact\n\nMost applications using this function will be doing so with the user's own data, so this is unlikely to affect many applications.\n\n### Workaround\n\nIf an application does allow attacker controlled files to be loaded, a workaround on older releases would be to sanitise the files before loading.\n\n-----\n\nPatch: https://github.com/aio-libs/aiohttp/commit/dcf40f30637e8752c76781cf6703b5a236749a00",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:L/AC:H/PR:H/UI:R/S:C/C:L/I:H/A:L"
+                }
+              ],
+              "affected": [
+                {
+                  "package": {
+                    "ecosystem": "PyPI",
+                    "name": "aiohttp",
+                    "purl": "pkg:pypi/aiohttp"
+                  },
+                  "ranges": [
+                    {
+                      "type": "ECOSYSTEM",
+                      "events": [
+                        {
+                          "introduced": "0"
+                        },
+                        {
+                          "fixed": "3.14.0"
+                        }
+                      ]
+                    }
+                  ],
+                  "versions": [
+                    "0.1",
+                    "0.10.0",
+                    "0.10.1",
+                    "0.10.2",
+                    "0.11.0",
+                    "0.12.0",
+                    "0.13.0",
+                    "0.13.1",
+                    "0.14.0",
+                    "0.14.1",
+                    "0.14.2",
+                    "0.14.3",
+                    "0.14.4",
+                    "0.15.0",
+                    "0.15.1",
+                    "0.15.2",
+                    "0.15.3",
+                    "0.16.0",
+                    "0.16.1",
+                    "0.16.2",
+                    "0.16.3",
+                    "0.16.4",
+                    "0.16.5",
+                    "0.16.6",
+                    "0.17.0",
+                    "0.17.1",
+                    "0.17.2",
+                    "0.17.3",
+                    "0.17.4",
+                    "0.18.0",
+                    "0.18.1",
+                    "0.18.2",
+                    "0.18.3",
+                    "0.18.4",
+                    "0.19.0",
+                    "0.2",
+                    "0.20.0",
+                    "0.20.1",
+                    "0.20.2",
+                    "0.21.0",
+                    "0.21.1",
+                    "0.21.2",
+                    "0.21.4",
+                    "0.21.5",
+                    "0.21.6",
+                    "0.22.0",
+                    "0.22.0a0",
+                    "0.22.0b0",
+                    "0.22.0b1",
+                    "0.22.0b2",
+                    "0.22.0b3",
+                    "0.22.0b4",
+                    "0.22.0b5",
+                    "0.22.0b6",
+                    "0.22.1",
+                    "0.22.2",
+                    "0.22.3",
+                    "0.22.4",
+                    "0.22.5",
+                    "0.3",
+                    "0.4",
+                    "0.4.1",
+                    "0.4.2",
+                    "0.4.3",
+                    "0.4.4",
+                    "0.5.0",
+                    "0.6.0",
+                    "0.6.1",
+                    "0.6.2",
+                    "0.6.3",
+                    "0.6.4",
+                    "0.6.5",
+                    "0.7.0",
+                    "0.7.1",
+                    "0.7.2",
+                    "0.7.3",
+                    "0.8.0",
+                    "0.8.1",
+                    "0.8.2",
+                    "0.8.3",
+                    "0.8.4",
+                    "0.9.0",
+                    "0.9.1",
+                    "0.9.2",
+                    "0.9.3",
+                    "1.0.0",
+                    "1.0.1",
+                    "1.0.2",
+                    "1.0.3",
+                    "1.0.5",
+                    "1.1.0",
+                    "1.1.1",
+                    "1.1.2",
+                    "1.1.3",
+                    "1.1.4",
+                    "1.1.5",
+                    "1.1.6",
+                    "1.2.0",
+                    "1.3.0",
+                    "1.3.1",
+                    "1.3.2",
+                    "1.3.3",
+                    "1.3.4",
+                    "1.3.5",
+                    "2.0.0",
+                    "2.0.0rc1",
+                    "2.0.1",
+                    "2.0.2",
+                    "2.0.3",
+                    "2.0.4",
+                    "2.0.5",
+                    "2.0.6",
+                    "2.0.7",
+                    "2.1.0",
+                    "2.2.0",
+                    "2.2.1",
+                    "2.2.2",
+                    "2.2.3",
+                    "2.2.4",
+                    "2.2.5",
+                    "2.3.0",
+                    "2.3.0a1",
+                    "2.3.0a2",
+                    "2.3.0a3",
+                    "2.3.0a4",
+                    "2.3.1",
+                    "2.3.10",
+                    "2.3.1a1",
+                    "2.3.2",
+                    "2.3.2b2",
+                    "2.3.2b3",
+                    "2.3.3",
+                    "2.3.4",
+                    "2.3.5",
+                    "2.3.6",
+                    "2.3.7",
+                    "2.3.8",
+                    "2.3.9",
+                    "3.0.0",
+                    "3.0.0b0",
+                    "3.0.0b1",
+                    "3.0.0b2",
+                    "3.0.0b3",
+                    "3.0.0b4",
+                    "3.0.1",
+                    "3.0.2",
+                    "3.0.3",
+                    "3.0.4",
+                    "3.0.5",
+                    "3.0.6",
+                    "3.0.7",
+                    "3.0.8",
+                    "3.0.9",
+                    "3.1.0",
+                    "3.1.1",
+                    "3.1.2",
+                    "3.1.3",
+                    "3.10.0",
+                    "3.10.0b1",
+                    "3.10.0rc0",
+                    "3.10.1",
+                    "3.10.10",
+                    "3.10.11",
+                    "3.10.11rc0",
+                    "3.10.2",
+                    "3.10.3",
+                    "3.10.4",
+                    "3.10.5",
+                    "3.10.6",
+                    "3.10.6rc0",
+                    "3.10.6rc1",
+                    "3.10.6rc2",
+                    "3.10.7",
+                    "3.10.8",
+                    "3.10.9",
+                    "3.11.0",
+                    "3.11.0b0",
+                    "3.11.0b1",
+                    "3.11.0b2",
+                    "3.11.0b3",
+                    "3.11.0b4",
+                    "3.11.0b5",
+                    "3.11.0rc0",
+                    "3.11.0rc1",
+                    "3.11.0rc2",
+                    "3.11.1",
+                    "3.11.10",
+                    "3.11.11",
+                    "3.11.12",
+                    "3.11.13",
+                    "3.11.14",
+                    "3.11.15",
+                    "3.11.16",
+                    "3.11.17",
+                    "3.11.18",
+                    "3.11.2",
+                    "3.11.3",
+                    "3.11.4",
+                    "3.11.5",
+                    "3.11.6",
+                    "3.11.7",
+                    "3.11.8",
+                    "3.11.9",
+                    "3.12.0",
+                    "3.12.0b0",
+                    "3.12.0b1",
+                    "3.12.0b2",
+                    "3.12.0b3",
+                    "3.12.0rc0",
+                    "3.12.0rc1",
+                    "3.12.1",
+                    "3.12.10",
+                    "3.12.11",
+                    "3.12.12",
+                    "3.12.13",
+                    "3.12.14",
+                    "3.12.15",
+                    "3.12.1rc0",
+                    "3.12.2",
+                    "3.12.3",
+                    "3.12.4",
+                    "3.12.6",
+                    "3.12.7",
+                    "3.12.7rc0",
+                    "3.12.8",
+                    "3.12.9",
+                    "3.13.0",
+                    "3.13.1",
+                    "3.13.2",
+                    "3.13.3",
+                    "3.13.4",
+                    "3.13.5",
+                    "3.2.0",
+                    "3.2.1",
+                    "3.3.0",
+                    "3.3.0a0",
+                    "3.3.1",
+                    "3.3.2",
+                    "3.3.2a0",
+                    "3.4.0",
+                    "3.4.0a0",
+                    "3.4.0a3",
+                    "3.4.0b1",
+                    "3.4.0b2",
+                    "3.4.1",
+                    "3.4.2",
+                    "3.4.3",
+                    "3.4.4",
+                    "3.5.0",
+                    "3.5.0a1",
+                    "3.5.0b1",
+                    "3.5.0b2",
+                    "3.5.0b3",
+                    "3.5.1",
+                    "3.5.2",
+                    "3.5.3",
+                    "3.5.4",
+                    "3.6.0",
+                    "3.6.0a0",
+                    "3.6.0a1",
+                    "3.6.0a11",
+                    "3.6.0a12",
+                    "3.6.0a2",
+                    "3.6.0a3",
+                    "3.6.0a4",
+                    "3.6.0a5",
+                    "3.6.0a6",
+                    "3.6.0a7",
+                    "3.6.0a8",
+                    "3.6.0a9",
+                    "3.6.0b0",
+                    "3.6.1",
+                    "3.6.1b3",
+                    "3.6.1b4",
+                    "3.6.2",
+                    "3.6.2a0",
+                    "3.6.2a1",
+                    "3.6.2a2",
+                    "3.6.3",
+                    "3.7.0",
+                    "3.7.0b0",
+                    "3.7.0b1",
+                    "3.7.1",
+                    "3.7.2",
+                    "3.7.3",
+                    "3.7.4",
+                    "3.7.4.post0",
+                    "3.8.0",
+                    "3.8.0a7",
+                    "3.8.0b0",
+                    "3.8.1",
+                    "3.8.2",
+                    "3.8.3",
+                    "3.8.4",
+                    "3.8.5",
+                    "3.8.6",
+                    "3.9.0",
+                    "3.9.0b0",
+                    "3.9.0b1",
+                    "3.9.0rc0",
+                    "3.9.1",
+                    "3.9.2",
+                    "3.9.3",
+                    "3.9.4",
+                    "3.9.4rc0",
+                    "3.9.5"
+                  ],
+                  "database_specific": {
+                    "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/06/GHSA-jg22-mg44-37j8/GHSA-jg22-mg44-37j8.json"
+                  }
+                }
+              ],
+              "references": [
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/aio-libs/aiohttp/security/advisories/GHSA-jg22-mg44-37j8"
+                },
+                {
+                  "type": "ADVISORY",
+                  "url": "https://nvd.nist.gov/vuln/detail/CVE-2026-34993"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/aio-libs/aiohttp/commit/dcf40f30637e8752c76781cf6703b5a236749a00"
+                },
+                {
+                  "type": "PACKAGE",
+                  "url": "https://github.com/aio-libs/aiohttp"
+                }
+              ],
+              "database_specific": {
+                "cwe_ids": [
+                  "CWE-502"
+                ],
+                "github_reviewed": true,
+                "github_reviewed_at": "2026-06-03T20:56:54Z",
+                "nvd_published_at": "2026-06-02T20:16:34Z",
+                "severity": "MODERATE"
+              }
+            }
+          ],
+          "groups": [
+            {
+              "ids": [
+                "GHSA-hg6j-4rv6-33pg"
+              ],
+              "aliases": [
+                "CVE-2026-47265",
+                "GHSA-hg6j-4rv6-33pg"
+              ],
+              "max_severity": "6.6"
+            },
+            {
+              "ids": [
+                "GHSA-jg22-mg44-37j8"
+              ],
+              "aliases": [
+                "CVE-2026-34993",
+                "GHSA-jg22-mg44-37j8"
+              ],
+              "max_severity": "6.4"
+            }
+          ],
           "licenses": [
             "Apache-2.0 AND MIT"
           ]
@@ -158,7 +942,7 @@
         {
           "package": {
             "name": "anthropic",
-            "version": "0.107.1",
+            "version": "0.101.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -268,7 +1052,7 @@
         {
           "package": {
             "name": "beautifulsoup4",
-            "version": "4.15.0",
+            "version": "4.14.3",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -298,7 +1082,7 @@
         {
           "package": {
             "name": "botocore-stubs",
-            "version": "1.43.14",
+            "version": "1.42.41",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -308,7 +1092,7 @@
         {
           "package": {
             "name": "cachetools",
-            "version": "7.1.4",
+            "version": "7.0.5",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -328,7 +1112,7 @@
         {
           "package": {
             "name": "certifi",
-            "version": "2026.5.20",
+            "version": "2026.2.25",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -358,7 +1142,7 @@
         {
           "package": {
             "name": "charset-normalizer",
-            "version": "3.4.7",
+            "version": "3.4.6",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -378,7 +1162,7 @@
         {
           "package": {
             "name": "click",
-            "version": "8.4.1",
+            "version": "8.3.1",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -427,16 +1211,6 @@
         },
         {
           "package": {
-            "name": "crc32c",
-            "version": "2.7.1",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "LGPL-2.1-or-later"
-          ]
-        },
-        {
-          "package": {
             "name": "cryptography",
             "version": "46.0.7",
             "ecosystem": "PyPI"
@@ -448,7 +1222,7 @@
         {
           "package": {
             "name": "cyclopts",
-            "version": "4.17.0",
+            "version": "4.10.1",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -507,18 +1281,8 @@
         },
         {
           "package": {
-            "name": "detect-installer",
-            "version": "0.1.0",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "0BSD"
-          ]
-        },
-        {
-          "package": {
             "name": "diff-cover",
-            "version": "10.3.0",
+            "version": "10.2.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -528,7 +1292,7 @@
         {
           "package": {
             "name": "dill",
-            "version": "0.4.0",
+            "version": "0.3.8",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -746,7 +1510,7 @@
         {
           "package": {
             "name": "docstring-parser",
-            "version": "0.18.0",
+            "version": "0.17.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -755,8 +1519,18 @@
         },
         {
           "package": {
+            "name": "docutils",
+            "version": "0.22.4",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "non-standard"
+          ]
+        },
+        {
+          "package": {
             "name": "duckdb",
-            "version": "1.5.3",
+            "version": "1.5.1",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -846,7 +1620,7 @@
         {
           "package": {
             "name": "fastapi-cloud-cli",
-            "version": "0.19.0",
+            "version": "0.15.1",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -856,7 +1630,7 @@
         {
           "package": {
             "name": "fastar",
-            "version": "0.11.0",
+            "version": "0.9.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -876,17 +1650,7 @@
         {
           "package": {
             "name": "fastmcp",
-            "version": "3.4.0",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "Apache-2.0"
-          ]
-        },
-        {
-          "package": {
-            "name": "fastmcp-slim",
-            "version": "3.4.0",
+            "version": "3.2.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -906,7 +1670,7 @@
         {
           "package": {
             "name": "filelock",
-            "version": "3.29.1",
+            "version": "3.25.2",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -946,11 +1710,11 @@
         {
           "package": {
             "name": "fsspec",
-            "version": "2025.9.0",
+            "version": "2025.3.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
-            "BSD-3-Clause"
+            "non-standard"
           ]
         },
         {
@@ -976,7 +1740,7 @@
         {
           "package": {
             "name": "googleapis-common-protos",
-            "version": "1.75.0",
+            "version": "1.73.1",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -986,7 +1750,7 @@
         {
           "package": {
             "name": "greenlet",
-            "version": "3.5.1",
+            "version": "3.3.2",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -995,18 +1759,8 @@
         },
         {
           "package": {
-            "name": "griffelib",
-            "version": "2.0.2",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "ISC"
-          ]
-        },
-        {
-          "package": {
             "name": "grpcio",
-            "version": "1.81.0",
+            "version": "1.80.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1016,7 +1770,7 @@
         {
           "package": {
             "name": "gunicorn",
-            "version": "26.0.0",
+            "version": "25.3.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1036,7 +1790,7 @@
         {
           "package": {
             "name": "hf-xet",
-            "version": "1.5.1",
+            "version": "1.4.3",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1056,7 +1810,7 @@
         {
           "package": {
             "name": "httptools",
-            "version": "0.8.0",
+            "version": "0.7.1",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1076,7 +1830,7 @@
         {
           "package": {
             "name": "httpx-retries",
-            "version": "0.5.0",
+            "version": "0.4.6",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1096,7 +1850,7 @@
         {
           "package": {
             "name": "huggingface-hub",
-            "version": "1.18.0",
+            "version": "1.15.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1116,7 +1870,7 @@
         {
           "package": {
             "name": "idna",
-            "version": "3.18",
+            "version": "3.15",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1126,7 +1880,7 @@
         {
           "package": {
             "name": "importlib-metadata",
-            "version": "8.9.0",
+            "version": "8.5.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1186,7 +1940,7 @@
         {
           "package": {
             "name": "jaraco-functools",
-            "version": "4.5.0",
+            "version": "4.4.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1216,7 +1970,7 @@
         {
           "package": {
             "name": "jiter",
-            "version": "0.13.0",
+            "version": "0.10.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1246,7 +2000,7 @@
         {
           "package": {
             "name": "joserfc",
-            "version": "1.7.1",
+            "version": "1.6.5",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1316,7 +2070,7 @@
         {
           "package": {
             "name": "jsonschema",
-            "version": "4.26.0",
+            "version": "4.23.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1326,7 +2080,7 @@
         {
           "package": {
             "name": "jsonschema-path",
-            "version": "0.5.0",
+            "version": "0.3.4",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1356,7 +2110,7 @@
         {
           "package": {
             "name": "kubernetes",
-            "version": "36.0.2",
+            "version": "35.0.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1366,7 +2120,7 @@
         {
           "package": {
             "name": "langchain",
-            "version": "1.3.4",
+            "version": "1.2.14",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1396,7 +2150,7 @@
         {
           "package": {
             "name": "langchain-community",
-            "version": "0.3.31",
+            "version": "0.3.27",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1406,7 +2160,7 @@
         {
           "package": {
             "name": "langchain-core",
-            "version": "1.4.2",
+            "version": "1.3.3",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1436,7 +2190,7 @@
         {
           "package": {
             "name": "langchain-litellm",
-            "version": "0.6.6",
+            "version": "0.6.5",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1456,7 +2210,7 @@
         {
           "package": {
             "name": "langchain-nvidia-ai-endpoints",
-            "version": "1.4.1",
+            "version": "1.3.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1466,7 +2220,7 @@
         {
           "package": {
             "name": "langchain-oci",
-            "version": "0.2.7",
+            "version": "0.2.6",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1476,7 +2230,7 @@
         {
           "package": {
             "name": "langchain-openai",
-            "version": "1.2.2",
+            "version": "1.2.1",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1486,7 +2240,7 @@
         {
           "package": {
             "name": "langchain-protocol",
-            "version": "0.0.16",
+            "version": "0.0.15",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1516,7 +2270,7 @@
         {
           "package": {
             "name": "langgraph",
-            "version": "1.2.4",
+            "version": "1.1.4",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1526,7 +2280,7 @@
         {
           "package": {
             "name": "langgraph-checkpoint",
-            "version": "4.1.1",
+            "version": "4.0.1",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1536,7 +2290,7 @@
         {
           "package": {
             "name": "langgraph-prebuilt",
-            "version": "1.1.0",
+            "version": "1.0.8",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1546,7 +2300,7 @@
         {
           "package": {
             "name": "langgraph-sdk",
-            "version": "0.4.2",
+            "version": "0.3.12",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1576,7 +2330,7 @@
         {
           "package": {
             "name": "litellm",
-            "version": "1.88.1",
+            "version": "1.83.14",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1596,7 +2350,7 @@
         {
           "package": {
             "name": "lxml",
-            "version": "6.1.1",
+            "version": "6.1.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1626,7 +2380,7 @@
         {
           "package": {
             "name": "markdown-it-py",
-            "version": "4.2.0",
+            "version": "4.0.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1636,7 +2390,7 @@
         {
           "package": {
             "name": "marko",
-            "version": "2.2.3",
+            "version": "2.2.2",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1666,7 +2420,7 @@
         {
           "package": {
             "name": "mcp",
-            "version": "1.27.2",
+            "version": "1.26.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1696,11 +2450,21 @@
         {
           "package": {
             "name": "more-itertools",
-            "version": "11.1.0",
+            "version": "10.8.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
             "MIT"
+          ]
+        },
+        {
+          "package": {
+            "name": "mpmath",
+            "version": "1.3.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "non-standard"
           ]
         },
         {
@@ -1746,7 +2510,7 @@
         {
           "package": {
             "name": "nemo-safe-synthesizer",
-            "version": "0.1.1",
+            "version": "0.1.2",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1796,7 +2560,7 @@
         {
           "package": {
             "name": "ngcsdk",
-            "version": "4.19.1",
+            "version": "4.16.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1816,7 +2580,7 @@
         {
           "package": {
             "name": "numpy",
-            "version": "2.4.6",
+            "version": "2.4.4",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1826,7 +2590,7 @@
         {
           "package": {
             "name": "nvidia-ml-py",
-            "version": "13.610.43",
+            "version": "13.595.45",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1906,7 +2670,7 @@
         {
           "package": {
             "name": "oci",
-            "version": "2.178.0",
+            "version": "2.174.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1926,7 +2690,7 @@
         {
           "package": {
             "name": "onnxruntime",
-            "version": "1.26.0",
+            "version": "1.24.4",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1936,7 +2700,7 @@
         {
           "package": {
             "name": "openai",
-            "version": "2.41.0",
+            "version": "2.35.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1966,7 +2730,7 @@
         {
           "package": {
             "name": "openinference-semantic-conventions",
-            "version": "0.1.30",
+            "version": "0.1.29",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1976,7 +2740,7 @@
         {
           "package": {
             "name": "opentelemetry-api",
-            "version": "1.42.1",
+            "version": "1.40.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1986,7 +2750,7 @@
         {
           "package": {
             "name": "opentelemetry-distro",
-            "version": "0.63b1",
+            "version": "0.61b0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1996,7 +2760,7 @@
         {
           "package": {
             "name": "opentelemetry-exporter-otlp",
-            "version": "1.42.1",
+            "version": "1.40.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2006,7 +2770,7 @@
         {
           "package": {
             "name": "opentelemetry-exporter-otlp-proto-common",
-            "version": "1.42.1",
+            "version": "1.40.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2016,7 +2780,7 @@
         {
           "package": {
             "name": "opentelemetry-exporter-otlp-proto-grpc",
-            "version": "1.42.1",
+            "version": "1.40.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2026,7 +2790,7 @@
         {
           "package": {
             "name": "opentelemetry-exporter-otlp-proto-http",
-            "version": "1.42.1",
+            "version": "1.40.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2036,7 +2800,7 @@
         {
           "package": {
             "name": "opentelemetry-exporter-prometheus",
-            "version": "0.63b1",
+            "version": "0.61b0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2046,7 +2810,7 @@
         {
           "package": {
             "name": "opentelemetry-instrumentation",
-            "version": "0.63b1",
+            "version": "0.61b0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2056,7 +2820,7 @@
         {
           "package": {
             "name": "opentelemetry-instrumentation-asgi",
-            "version": "0.63b1",
+            "version": "0.61b0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2066,7 +2830,7 @@
         {
           "package": {
             "name": "opentelemetry-instrumentation-fastapi",
-            "version": "0.63b1",
+            "version": "0.61b0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2076,7 +2840,7 @@
         {
           "package": {
             "name": "opentelemetry-instrumentation-httpx",
-            "version": "0.63b1",
+            "version": "0.61b0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2086,7 +2850,7 @@
         {
           "package": {
             "name": "opentelemetry-instrumentation-requests",
-            "version": "0.63b1",
+            "version": "0.61b0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2096,7 +2860,7 @@
         {
           "package": {
             "name": "opentelemetry-instrumentation-sqlalchemy",
-            "version": "0.63b1",
+            "version": "0.61b0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2106,7 +2870,7 @@
         {
           "package": {
             "name": "opentelemetry-instrumentation-system-metrics",
-            "version": "0.63b1",
+            "version": "0.61b0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2116,7 +2880,7 @@
         {
           "package": {
             "name": "opentelemetry-processor-baggage",
-            "version": "0.63b1",
+            "version": "0.61b0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2126,7 +2890,7 @@
         {
           "package": {
             "name": "opentelemetry-proto",
-            "version": "1.42.1",
+            "version": "1.40.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2136,7 +2900,7 @@
         {
           "package": {
             "name": "opentelemetry-sdk",
-            "version": "1.42.1",
+            "version": "1.40.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2146,7 +2910,7 @@
         {
           "package": {
             "name": "opentelemetry-semantic-conventions",
-            "version": "0.63b1",
+            "version": "0.61b0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2156,7 +2920,7 @@
         {
           "package": {
             "name": "opentelemetry-util-http",
-            "version": "0.63b1",
+            "version": "0.61b0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2176,7 +2940,7 @@
         {
           "package": {
             "name": "orjson",
-            "version": "3.11.9",
+            "version": "3.11.8",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2196,7 +2960,7 @@
         {
           "package": {
             "name": "packaging",
-            "version": "26.2",
+            "version": "26.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2216,7 +2980,7 @@
         {
           "package": {
             "name": "pathable",
-            "version": "0.6.0",
+            "version": "0.4.4",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2226,7 +2990,7 @@
         {
           "package": {
             "name": "pathspec",
-            "version": "1.1.1",
+            "version": "1.0.4",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2246,9 +3010,236 @@
         {
           "package": {
             "name": "pip",
-            "version": "26.1.2",
+            "version": "26.1.1",
             "ecosystem": "PyPI"
           },
+          "vulnerabilities": [
+            {
+              "modified": "2026-06-05T12:45:14Z",
+              "published": "2026-06-01T17:17:35Z",
+              "schema_version": "1.7.5",
+              "id": "PYSEC-2026-196",
+              "aliases": [
+                "CVE-2026-8643"
+              ],
+              "details": "pip would treat console_scripts and gui_scripts as paths instead of file names without sanitizing the resolved absolute path to the installation directory, leading to entry points being installed outside the installation directory.",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:N/I:H/A:N"
+                }
+              ],
+              "affected": [
+                {
+                  "package": {
+                    "ecosystem": "PyPI",
+                    "name": "pip",
+                    "purl": "pkg:pypi/pip"
+                  },
+                  "ranges": [
+                    {
+                      "type": "ECOSYSTEM",
+                      "events": [
+                        {
+                          "introduced": "0"
+                        },
+                        {
+                          "fixed": "26.1.2"
+                        }
+                      ]
+                    }
+                  ],
+                  "versions": [
+                    "0.2",
+                    "0.2.1",
+                    "0.3",
+                    "0.3.1",
+                    "0.4",
+                    "0.5",
+                    "0.5.1",
+                    "0.6",
+                    "0.6.1",
+                    "0.6.2",
+                    "0.6.3",
+                    "0.7",
+                    "0.7.1",
+                    "0.7.2",
+                    "0.8",
+                    "0.8.1",
+                    "0.8.2",
+                    "0.8.3",
+                    "1.0",
+                    "1.0.1",
+                    "1.0.2",
+                    "1.1",
+                    "1.2",
+                    "1.2.1",
+                    "1.3",
+                    "1.3.1",
+                    "1.4",
+                    "1.4.1",
+                    "1.5",
+                    "1.5.1",
+                    "1.5.2",
+                    "1.5.3",
+                    "1.5.4",
+                    "1.5.5",
+                    "1.5.6",
+                    "10.0.0",
+                    "10.0.0b1",
+                    "10.0.0b2",
+                    "10.0.1",
+                    "18.0",
+                    "18.1",
+                    "19.0",
+                    "19.0.1",
+                    "19.0.2",
+                    "19.0.3",
+                    "19.1",
+                    "19.1.1",
+                    "19.2",
+                    "19.2.1",
+                    "19.2.2",
+                    "19.2.3",
+                    "19.3",
+                    "19.3.1",
+                    "20.0",
+                    "20.0.1",
+                    "20.0.2",
+                    "20.1",
+                    "20.1.1",
+                    "20.1b1",
+                    "20.2",
+                    "20.2.1",
+                    "20.2.2",
+                    "20.2.3",
+                    "20.2.4",
+                    "20.2b1",
+                    "20.3",
+                    "20.3.1",
+                    "20.3.2",
+                    "20.3.3",
+                    "20.3.4",
+                    "20.3b1",
+                    "21.0",
+                    "21.0.1",
+                    "21.1",
+                    "21.1.1",
+                    "21.1.2",
+                    "21.1.3",
+                    "21.2",
+                    "21.2.1",
+                    "21.2.2",
+                    "21.2.3",
+                    "21.2.4",
+                    "21.3",
+                    "21.3.1",
+                    "22.0",
+                    "22.0.1",
+                    "22.0.2",
+                    "22.0.3",
+                    "22.0.4",
+                    "22.1",
+                    "22.1.1",
+                    "22.1.2",
+                    "22.1b1",
+                    "22.2",
+                    "22.2.1",
+                    "22.2.2",
+                    "22.3",
+                    "22.3.1",
+                    "23.0",
+                    "23.0.1",
+                    "23.1",
+                    "23.1.1",
+                    "23.1.2",
+                    "23.2",
+                    "23.2.1",
+                    "23.3",
+                    "23.3.1",
+                    "23.3.2",
+                    "24.0",
+                    "24.1",
+                    "24.1.1",
+                    "24.1.2",
+                    "24.1b1",
+                    "24.1b2",
+                    "24.2",
+                    "24.3",
+                    "24.3.1",
+                    "25.0",
+                    "25.0.1",
+                    "25.1",
+                    "25.1.1",
+                    "25.2",
+                    "25.3",
+                    "26.0",
+                    "26.0.1",
+                    "26.1",
+                    "26.1.1",
+                    "6.0",
+                    "6.0.1",
+                    "6.0.2",
+                    "6.0.3",
+                    "6.0.4",
+                    "6.0.5",
+                    "6.0.6",
+                    "6.0.7",
+                    "6.0.8",
+                    "6.1.0",
+                    "6.1.1",
+                    "7.0.0",
+                    "7.0.1",
+                    "7.0.2",
+                    "7.0.3",
+                    "7.1.0",
+                    "7.1.1",
+                    "7.1.2",
+                    "8.0.0",
+                    "8.0.1",
+                    "8.0.2",
+                    "8.0.3",
+                    "8.1.0",
+                    "8.1.1",
+                    "8.1.2",
+                    "9.0.0",
+                    "9.0.1",
+                    "9.0.2",
+                    "9.0.3"
+                  ],
+                  "database_specific": {
+                    "source": "https://github.com/pypa/advisory-database/blob/main/vulns/pip/PYSEC-2026-196.yaml"
+                  }
+                }
+              ],
+              "references": [
+                {
+                  "type": "ADVISORY",
+                  "url": "http://www.openwall.com/lists/oss-security/2026/06/01/5"
+                },
+                {
+                  "type": "ADVISORY",
+                  "url": "https://mail.python.org/archives/list/security-announce@python.org/thread/YV63UET5D3OOJY7O4M5XCVYO2YM4NBYJ/"
+                },
+                {
+                  "type": "FIX",
+                  "url": "https://github.com/pypa/pip/pull/14000"
+                }
+              ]
+            }
+          ],
+          "groups": [
+            {
+              "ids": [
+                "PYSEC-2026-196"
+              ],
+              "aliases": [
+                "CVE-2026-8643",
+                "PYSEC-2026-196"
+              ],
+              "max_severity": "5.5"
+            }
+          ],
           "licenses": [
             "MIT"
           ]
@@ -2276,7 +3267,7 @@
         {
           "package": {
             "name": "platformdirs",
-            "version": "4.10.0",
+            "version": "4.9.4",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2326,7 +3317,7 @@
         {
           "package": {
             "name": "prometheus-client",
-            "version": "0.25.0",
+            "version": "0.24.1",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2356,7 +3347,7 @@
         {
           "package": {
             "name": "propcache",
-            "version": "0.5.2",
+            "version": "0.4.1",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2386,7 +3377,7 @@
         {
           "package": {
             "name": "psycopg2-binary",
-            "version": "2.9.12",
+            "version": "2.9.11",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2396,7 +3387,7 @@
         {
           "package": {
             "name": "py-key-value-aio",
-            "version": "0.4.5",
+            "version": "0.4.4",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2406,7 +3397,7 @@
         {
           "package": {
             "name": "py-rust-stemmers",
-            "version": "0.1.8",
+            "version": "0.1.5",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2421,7 +3412,7 @@
           },
           "vulnerabilities": [
             {
-              "modified": "2026-06-05T21:56:07Z",
+              "modified": "2026-06-10T17:01:40Z",
               "published": "2026-02-17T14:16:01Z",
               "schema_version": "1.7.5",
               "id": "PYSEC-2026-113",
@@ -2429,7 +3420,7 @@
                 "CVE-2026-25087",
                 "GHSA-rgxp-2hwp-jwgg"
               ],
-              "details": "Use After Free vulnerability in Apache Arrow C++.\n\nThis issue affects Apache Arrow C++ from 15.0.0 through 23.0.0. It can be triggered when reading an Arrow IPC file (but not an IPC stream) with pre-buffering enabled, if the IPC file contains data with variadic buffers (such as Binary View and String View data). Depending on the number of variadic buffers in a record batch column and on the temporal sequence of multi-threaded IO, a write to a dangling pointer could occur. The value (a `std::shared_ptr<Buffer>` object)\u00a0that is written to the dangling pointer is not under direct control of the attacker.\n\nPre-buffering is disabled by default but can be enabled using a specific C++ API call (`RecordBatchFileReader::PreBufferMetadata`). The functionality is not exposed in language bindings (Python, Ruby, C GLib), so these bindings are not vulnerable.\n\nThe most likely consequence of this issue would be random crashes or memory corruption when reading specific kinds of IPC files. If the application allows ingesting IPC files from untrusted sources, this could plausibly be exploited for denial of service. Inducing more targeted kinds of misbehavior (such as confidential data extraction from the running process) depends on memory allocation and multi-threaded IO temporal patterns that are unlikely to be easily controlled by an attacker.\n\nAdvice for users of Arrow C++:\n\n1. check whether you enable pre-buffering on the IPC file reader (using\u00a0`RecordBatchFileReader::PreBufferMetadata`)\n\n2. if so, either disable pre-buffering (which may have adverse performance consequences), or switch to Arrow 23.0.1 which is not vulnerable",
+              "details": "Use After Free vulnerability in Apache Arrow C++.\n\nThis issue affects Apache Arrow C++ from 15.0.0 through 23.0.0. It can be triggered when reading an Arrow IPC file (but not an IPC stream) with pre-buffering enabled, if the IPC file contains data with variadic buffers (such as Binary View and String View data). Depending on the number of variadic buffers in a record batch column and on the temporal sequence of multi-threaded IO, a write to a dangling pointer could occur. The value (a `std::shared_ptr<Buffer>` object)\u00a0that is written to the dangling pointer is not under direct control of the attacker.\n\nPre-buffering is disabled by default but can be enabled using a specific C++ API call (`RecordBatchFileReader::PreBufferMetadata`). The functionality is not exposed in language bindings (Python, Ruby, C GLib), so these bindings are not vulnerable.\n\nThe most likely consequence of this issue would be random crashes or memory corruption when reading specific kinds of IPC files. If the application allows ingesting IPC files from untrusted sources, this could plausibly be exploited for denial of service. Inducing more targeted kinds of misbehavior (such as confidential data extraction from the running process) depends on memory allocation and multi-threaded IO temporal patterns that are unlikely to be easily controlled by an attacker.\n\nAdvice for users of Arrow C++:\n\n1. check whether you enable pre-buffering on the IPC file reader (using\u00a0`RecordBatchFileReader::PreBufferMetadata`)\n \n2. if so, either disable pre-buffering (which may have adverse performance consequences), or switch to Arrow 23.0.1 which is not vulnerable",
               "severity": [
                 {
                   "type": "CVSS_V3",
@@ -2489,6 +3480,10 @@
                 {
                   "type": "FIX",
                   "url": "https://github.com/apache/arrow/pull/48925"
+                },
+                {
+                  "type": "ADVISORY",
+                  "url": "https://github.com/advisories/GHSA-rgxp-2hwp-jwgg"
                 }
               ]
             },
@@ -2618,7 +3613,7 @@
         {
           "package": {
             "name": "pydantic",
-            "version": "2.13.4",
+            "version": "2.12.5",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2628,7 +3623,7 @@
         {
           "package": {
             "name": "pydantic-core",
-            "version": "2.46.4",
+            "version": "2.41.5",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2648,7 +3643,7 @@
         {
           "package": {
             "name": "pydantic-settings",
-            "version": "2.14.1",
+            "version": "2.8.1",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2668,9 +3663,426 @@
         {
           "package": {
             "name": "pyjwt",
-            "version": "2.13.0",
+            "version": "2.12.1",
             "ecosystem": "PyPI"
           },
+          "vulnerabilities": [
+            {
+              "modified": "2026-06-02T12:15:09Z",
+              "published": "2026-05-28T16:16:29Z",
+              "schema_version": "1.7.5",
+              "id": "PYSEC-2026-175",
+              "aliases": [
+                "CVE-2026-48522",
+                "GHSA-993g-76c3-p5m4"
+              ],
+              "details": "PyJWT is a JSON Web Token implementation in Python. Prior to 2.13.0, PyJWKClient passes its uri argument directly to urllib.request.urlopen() which uses Python stdlib's default OpenerDirector registering HTTPHandler, HTTPSHandler, FTPHandler, FileHandler, and DataHandler. There is currently no documented option to restrict which schemes PyJWKClient will fetch. If an application's jku URL ingestion path accepts attacker-influenced URLs (e.g., from JWT header, configuration file, OAuth flow parameter), the attacker can cause PyJWKClient to read arbitrary local files via file:// (SSRF on local filesystem), cause PyJWKClient to attempt FTP / data-URI fetches (broader SSRF surface), or forge tokens that PyJWT verifies as valid. The library does not directly return non-HTTP(S) URI contents to the attacker; the chained \"plant a JWKS to forge tokens\" scenario described in the original report requires additional application-layer flaws (attacker write access to a filesystem path, untrusted jku derivation) that this fix does not address. This vulnerability is fixed in 2.13.0.",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:L/A:N"
+                }
+              ],
+              "affected": [
+                {
+                  "package": {
+                    "ecosystem": "PyPI",
+                    "name": "pyjwt",
+                    "purl": "pkg:pypi/pyjwt"
+                  },
+                  "ranges": [
+                    {
+                      "type": "ECOSYSTEM",
+                      "events": [
+                        {
+                          "introduced": "0"
+                        },
+                        {
+                          "fixed": "2.13.0"
+                        }
+                      ]
+                    }
+                  ],
+                  "versions": [
+                    "0.1.1",
+                    "0.1.2",
+                    "0.1.3",
+                    "0.1.4",
+                    "0.1.5",
+                    "0.1.6",
+                    "0.1.7",
+                    "0.1.8",
+                    "0.1.9",
+                    "0.2.0",
+                    "0.2.1",
+                    "0.2.3",
+                    "0.3.0",
+                    "0.3.1",
+                    "0.3.2",
+                    "0.4.0",
+                    "0.4.1",
+                    "0.4.2",
+                    "0.4.3",
+                    "1.0.0",
+                    "1.0.1",
+                    "1.1.0",
+                    "1.3.0",
+                    "1.4.0",
+                    "1.4.1",
+                    "1.4.2",
+                    "1.5.0",
+                    "1.5.1",
+                    "1.5.2",
+                    "1.5.3",
+                    "1.6.0",
+                    "1.6.1",
+                    "1.6.3",
+                    "1.6.4",
+                    "1.7.0",
+                    "1.7.1",
+                    "2.0.0",
+                    "2.0.0a1",
+                    "2.0.0a2",
+                    "2.0.1",
+                    "2.1.0",
+                    "2.10.0",
+                    "2.10.1",
+                    "2.11.0",
+                    "2.12.0",
+                    "2.12.1",
+                    "2.2.0",
+                    "2.3.0",
+                    "2.4.0",
+                    "2.5.0",
+                    "2.6.0",
+                    "2.7.0",
+                    "2.8.0",
+                    "2.9.0"
+                  ],
+                  "database_specific": {
+                    "source": "https://github.com/pypa/advisory-database/blob/main/vulns/pyjwt/PYSEC-2026-175.yaml"
+                  }
+                }
+              ],
+              "references": [
+                {
+                  "type": "EVIDENCE",
+                  "url": "https://github.com/jpadilla/pyjwt/security/advisories/GHSA-993g-76c3-p5m4"
+                }
+              ]
+            },
+            {
+              "modified": "2026-06-02T12:15:10Z",
+              "published": "2026-05-28T16:16:29Z",
+              "schema_version": "1.7.5",
+              "id": "PYSEC-2026-177",
+              "aliases": [
+                "CVE-2026-48524",
+                "GHSA-fhv5-28vv-h8m8"
+              ],
+              "details": "PyJWT is a JSON Web Token implementation in Python. Prior to 2.13.0, PyJWKClient.get_signing_key() forces a fresh HTTP request to the JWKS endpoint for every JWT with an unknown kid value, with no rate limiting. Since kid comes from the unverified token header, an attacker can trigger unlimited outbound requests. The vulnerability surfaces only when a JWKS fetch fails; an attacker can attempt to provoke that with sustained unknown-kid traffic, but the outcome depends on upstream JWKS-endpoint behavior (rate limiting, transient errors) which is beyond the attacker's control. This vulnerability is fixed in 2.13.0.",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:N/A:L"
+                }
+              ],
+              "affected": [
+                {
+                  "package": {
+                    "ecosystem": "PyPI",
+                    "name": "pyjwt",
+                    "purl": "pkg:pypi/pyjwt"
+                  },
+                  "ranges": [
+                    {
+                      "type": "ECOSYSTEM",
+                      "events": [
+                        {
+                          "introduced": "0"
+                        },
+                        {
+                          "fixed": "2.13.0"
+                        }
+                      ]
+                    }
+                  ],
+                  "versions": [
+                    "0.1.1",
+                    "0.1.2",
+                    "0.1.3",
+                    "0.1.4",
+                    "0.1.5",
+                    "0.1.6",
+                    "0.1.7",
+                    "0.1.8",
+                    "0.1.9",
+                    "0.2.0",
+                    "0.2.1",
+                    "0.2.3",
+                    "0.3.0",
+                    "0.3.1",
+                    "0.3.2",
+                    "0.4.0",
+                    "0.4.1",
+                    "0.4.2",
+                    "0.4.3",
+                    "1.0.0",
+                    "1.0.1",
+                    "1.1.0",
+                    "1.3.0",
+                    "1.4.0",
+                    "1.4.1",
+                    "1.4.2",
+                    "1.5.0",
+                    "1.5.1",
+                    "1.5.2",
+                    "1.5.3",
+                    "1.6.0",
+                    "1.6.1",
+                    "1.6.3",
+                    "1.6.4",
+                    "1.7.0",
+                    "1.7.1",
+                    "2.0.0",
+                    "2.0.0a1",
+                    "2.0.0a2",
+                    "2.0.1",
+                    "2.1.0",
+                    "2.10.0",
+                    "2.10.1",
+                    "2.11.0",
+                    "2.12.0",
+                    "2.12.1",
+                    "2.2.0",
+                    "2.3.0",
+                    "2.4.0",
+                    "2.5.0",
+                    "2.6.0",
+                    "2.7.0",
+                    "2.8.0",
+                    "2.9.0"
+                  ],
+                  "database_specific": {
+                    "source": "https://github.com/pypa/advisory-database/blob/main/vulns/pyjwt/PYSEC-2026-177.yaml"
+                  }
+                }
+              ],
+              "references": [
+                {
+                  "type": "ADVISORY",
+                  "url": "https://github.com/jpadilla/pyjwt/security/advisories/GHSA-fhv5-28vv-h8m8"
+                }
+              ]
+            },
+            {
+              "modified": "2026-06-02T12:15:10Z",
+              "published": "2026-05-28T16:16:29Z",
+              "schema_version": "1.7.5",
+              "id": "PYSEC-2026-178",
+              "aliases": [
+                "CVE-2026-48525",
+                "GHSA-w7vc-732c-9m39"
+              ],
+              "details": "PyJWT is a JSON Web Token implementation in Python. From 2.8.0 to 2.12.1, when verifying detached JWS tokens using the unencoded-payload option (\"b64\": false, RFC 7797), PyJWT performs Base64URL decoding of the compact-serialization payload segment before enforcing the detached-payload rules. For b64=false, PyJWT later discards that decoded payload and replaces it with the caller-provided detached_payload. In practice, this turns the middle segment into an attacker-controlled \u201cwork amplifier\u201d: a remote client can supply an arbitrarily large Base64URL payload segment that forces CPU work + memory allocations even if the signature is invalid. This creates an unauthenticated DoS vector against any endpoint that verifies detached JWS using PyJWT. This vulnerability is fixed in 2.13.0.",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L"
+                }
+              ],
+              "affected": [
+                {
+                  "package": {
+                    "ecosystem": "PyPI",
+                    "name": "pyjwt",
+                    "purl": "pkg:pypi/pyjwt"
+                  },
+                  "ranges": [
+                    {
+                      "type": "ECOSYSTEM",
+                      "events": [
+                        {
+                          "introduced": "2.8.0"
+                        },
+                        {
+                          "fixed": "2.13.0"
+                        }
+                      ]
+                    }
+                  ],
+                  "versions": [
+                    "2.10.0",
+                    "2.10.1",
+                    "2.11.0",
+                    "2.12.0",
+                    "2.12.1",
+                    "2.8.0",
+                    "2.9.0"
+                  ],
+                  "database_specific": {
+                    "source": "https://github.com/pypa/advisory-database/blob/main/vulns/pyjwt/PYSEC-2026-178.yaml"
+                  }
+                }
+              ],
+              "references": [
+                {
+                  "type": "EVIDENCE",
+                  "url": "https://github.com/jpadilla/pyjwt/security/advisories/GHSA-w7vc-732c-9m39"
+                }
+              ]
+            },
+            {
+              "modified": "2026-06-02T12:15:10Z",
+              "published": "2026-05-28T16:16:29Z",
+              "schema_version": "1.7.5",
+              "id": "PYSEC-2026-179",
+              "aliases": [
+                "CVE-2026-48526",
+                "GHSA-xgmm-8j9v-c9wx"
+              ],
+              "details": "PyJWT is a JSON Web Token implementation in Python. Prior to 2.13.0, when the verifier is decoding JSON Web Tokens, while supporting both asymmetric and HMAC algorithms, the library does not validate use of JSON Web Keys in HMAC algorithm, allowing attacker to use the issuer public key as the secret key for HMAC algorithm. This vulnerability is fixed in 2.13.0.",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N"
+                }
+              ],
+              "affected": [
+                {
+                  "package": {
+                    "ecosystem": "PyPI",
+                    "name": "pyjwt",
+                    "purl": "pkg:pypi/pyjwt"
+                  },
+                  "ranges": [
+                    {
+                      "type": "ECOSYSTEM",
+                      "events": [
+                        {
+                          "introduced": "0"
+                        },
+                        {
+                          "fixed": "2.13.0"
+                        }
+                      ]
+                    }
+                  ],
+                  "versions": [
+                    "0.1.1",
+                    "0.1.2",
+                    "0.1.3",
+                    "0.1.4",
+                    "0.1.5",
+                    "0.1.6",
+                    "0.1.7",
+                    "0.1.8",
+                    "0.1.9",
+                    "0.2.0",
+                    "0.2.1",
+                    "0.2.3",
+                    "0.3.0",
+                    "0.3.1",
+                    "0.3.2",
+                    "0.4.0",
+                    "0.4.1",
+                    "0.4.2",
+                    "0.4.3",
+                    "1.0.0",
+                    "1.0.1",
+                    "1.1.0",
+                    "1.3.0",
+                    "1.4.0",
+                    "1.4.1",
+                    "1.4.2",
+                    "1.5.0",
+                    "1.5.1",
+                    "1.5.2",
+                    "1.5.3",
+                    "1.6.0",
+                    "1.6.1",
+                    "1.6.3",
+                    "1.6.4",
+                    "1.7.0",
+                    "1.7.1",
+                    "2.0.0",
+                    "2.0.0a1",
+                    "2.0.0a2",
+                    "2.0.1",
+                    "2.1.0",
+                    "2.10.0",
+                    "2.10.1",
+                    "2.11.0",
+                    "2.12.0",
+                    "2.12.1",
+                    "2.2.0",
+                    "2.3.0",
+                    "2.4.0",
+                    "2.5.0",
+                    "2.6.0",
+                    "2.7.0",
+                    "2.8.0",
+                    "2.9.0"
+                  ],
+                  "database_specific": {
+                    "source": "https://github.com/pypa/advisory-database/blob/main/vulns/pyjwt/PYSEC-2026-179.yaml"
+                  }
+                }
+              ],
+              "references": [
+                {
+                  "type": "EVIDENCE",
+                  "url": "https://github.com/jpadilla/pyjwt/security/advisories/GHSA-xgmm-8j9v-c9wx"
+                }
+              ]
+            }
+          ],
+          "groups": [
+            {
+              "ids": [
+                "PYSEC-2026-175"
+              ],
+              "aliases": [
+                "CVE-2026-48522",
+                "GHSA-993g-76c3-p5m4",
+                "PYSEC-2026-175"
+              ],
+              "max_severity": "4.2"
+            },
+            {
+              "ids": [
+                "PYSEC-2026-177"
+              ],
+              "aliases": [
+                "CVE-2026-48524",
+                "GHSA-fhv5-28vv-h8m8",
+                "PYSEC-2026-177"
+              ],
+              "max_severity": "3.7"
+            },
+            {
+              "ids": [
+                "PYSEC-2026-178"
+              ],
+              "aliases": [
+                "CVE-2026-48525",
+                "GHSA-w7vc-732c-9m39",
+                "PYSEC-2026-178"
+              ],
+              "max_severity": "5.3"
+            },
+            {
+              "ids": [
+                "PYSEC-2026-179"
+              ],
+              "aliases": [
+                "CVE-2026-48526",
+                "GHSA-xgmm-8j9v-c9wx",
+                "PYSEC-2026-179"
+              ],
+              "max_severity": "7.4"
+            }
+          ],
           "licenses": [
             "MIT"
           ]
@@ -2727,16 +4139,6 @@
         },
         {
           "package": {
-            "name": "python-box",
-            "version": "7.4.1",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "MIT"
-          ]
-        },
-        {
-          "package": {
             "name": "python-dateutil",
             "version": "2.9.0.post0",
             "ecosystem": "PyPI"
@@ -2778,7 +4180,7 @@
         {
           "package": {
             "name": "pytz",
-            "version": "2026.2",
+            "version": "2026.1.post1",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2939,7 +4341,7 @@
         {
           "package": {
             "name": "referencing",
-            "version": "0.37.0",
+            "version": "0.36.2",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2959,7 +4361,7 @@
         {
           "package": {
             "name": "requests",
-            "version": "2.34.2",
+            "version": "2.33.1",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2989,7 +4391,7 @@
         {
           "package": {
             "name": "rich",
-            "version": "14.3.4",
+            "version": "14.3.3",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2999,7 +4401,7 @@
         {
           "package": {
             "name": "rich-argparse",
-            "version": "1.8.0",
+            "version": "1.7.2",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -3009,7 +4411,7 @@
         {
           "package": {
             "name": "rich-rst",
-            "version": "2.0.1",
+            "version": "1.3.2",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -3019,7 +4421,7 @@
         {
           "package": {
             "name": "rich-toolkit",
-            "version": "0.20.1",
+            "version": "0.19.7",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -3049,7 +4451,7 @@
         {
           "package": {
             "name": "rpds-py",
-            "version": "2026.5.1",
+            "version": "0.30.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -3129,7 +4531,7 @@
         {
           "package": {
             "name": "sentry-sdk",
-            "version": "2.62.0",
+            "version": "2.57.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -3189,7 +4591,7 @@
         {
           "package": {
             "name": "smart-open",
-            "version": "7.6.1",
+            "version": "7.0.5",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -3219,7 +4621,7 @@
         {
           "package": {
             "name": "soupsieve",
-            "version": "2.8.4",
+            "version": "2.8.3",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -3229,7 +4631,7 @@
         {
           "package": {
             "name": "sqlalchemy",
-            "version": "2.0.50",
+            "version": "2.0.48",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -3244,7 +4646,7 @@
           },
           "vulnerabilities": [
             {
-              "modified": "2026-05-19T20:15:17Z",
+              "modified": "2026-06-10T13:45:15Z",
               "published": "2026-05-19T20:10:53Z",
               "schema_version": "1.7.5",
               "id": "GHSA-73jc-5mrq-prw7",
@@ -3445,6 +4847,10 @@
                   "url": "https://github.com/sqlfluff/sqlfluff/security/advisories/GHSA-73jc-5mrq-prw7"
                 },
                 {
+                  "type": "ADVISORY",
+                  "url": "https://nvd.nist.gov/vuln/detail/CVE-2026-46374"
+                },
+                {
                   "type": "PACKAGE",
                   "url": "https://github.com/sqlfluff/sqlfluff"
                 }
@@ -3455,7 +4861,7 @@
                 ],
                 "github_reviewed": true,
                 "github_reviewed_at": "2026-05-19T20:10:53Z",
-                "nvd_published_at": null,
+                "nvd_published_at": "2026-06-09T23:16:59Z",
                 "severity": "HIGH"
               }
             }
@@ -3479,7 +4885,7 @@
         {
           "package": {
             "name": "sqlmodel",
-            "version": "0.0.38",
+            "version": "0.0.37",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -3489,7 +4895,7 @@
         {
           "package": {
             "name": "sse-starlette",
-            "version": "3.4.4",
+            "version": "3.3.4",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -4086,11 +5492,21 @@
         {
           "package": {
             "name": "structlog",
-            "version": "26.1.0",
+            "version": "25.5.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
             "Apache-2.0 OR MIT"
+          ]
+        },
+        {
+          "package": {
+            "name": "sympy",
+            "version": "1.14.0",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "non-standard"
           ]
         },
         {
@@ -4126,7 +5542,7 @@
         {
           "package": {
             "name": "tiktoken",
-            "version": "0.13.0",
+            "version": "0.12.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -4146,7 +5562,7 @@
         {
           "package": {
             "name": "tomlkit",
-            "version": "0.15.0",
+            "version": "0.14.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -4156,7 +5572,7 @@
         {
           "package": {
             "name": "tornado",
-            "version": "6.5.7",
+            "version": "6.5.5",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -4166,7 +5582,7 @@
         {
           "package": {
             "name": "tqdm",
-            "version": "4.68.2",
+            "version": "4.67.3",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -4176,7 +5592,7 @@
         {
           "package": {
             "name": "transformers",
-            "version": "5.10.2",
+            "version": "5.5.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -4186,7 +5602,7 @@
         {
           "package": {
             "name": "typer",
-            "version": "0.25.1",
+            "version": "0.24.1",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -4206,7 +5622,7 @@
         {
           "package": {
             "name": "types-aiobotocore",
-            "version": "3.7.0",
+            "version": "3.3.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -4226,7 +5642,7 @@
         {
           "package": {
             "name": "types-awscrt",
-            "version": "0.34.1",
+            "version": "0.31.3",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -4276,7 +5692,7 @@
         {
           "package": {
             "name": "tzdata",
-            "version": "2026.2",
+            "version": "2025.3",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -4296,7 +5712,7 @@
         {
           "package": {
             "name": "uncalled-for",
-            "version": "0.3.2",
+            "version": "0.2.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -4316,7 +5732,7 @@
         {
           "package": {
             "name": "uuid-utils",
-            "version": "0.16.0",
+            "version": "0.14.1",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -4326,7 +5742,7 @@
         {
           "package": {
             "name": "uvicorn",
-            "version": "0.49.0",
+            "version": "0.42.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -4356,9 +5772,163 @@
         {
           "package": {
             "name": "wasmtime",
-            "version": "45.0.0",
+            "version": "43.0.0",
             "ecosystem": "PyPI"
           },
+          "vulnerabilities": [
+            {
+              "modified": "2026-05-21T15:00:24Z",
+              "published": "2026-04-09T19:16:24Z",
+              "schema_version": "1.7.5",
+              "id": "PYSEC-2026-151",
+              "aliases": [
+                "CVE-2026-34983",
+                "GHSA-hfr4-7c6c-48w2",
+                "RUSTSEC-2026-0090"
+              ],
+              "details": "Wasmtime is a runtime for WebAssembly. In 43.0.0, cloning a wasmtime::Linker is unsound and can result in use-after-free bugs. This bug is not controllable by guest Wasm programs. It can only be triggered by a specific sequence of embedder API calls made by the host. Specifically, the following steps must occur to trigger the bug clone a wasmtime::Linker, drop the original linker instance, use the new, cloned linker instance, resulting in a use-after-free. This vulnerability is fixed in 43.0.1.",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:L/AC:L/PR:L/UI:R/S:U/C:N/I:N/A:H"
+                }
+              ],
+              "affected": [
+                {
+                  "package": {
+                    "ecosystem": "PyPI",
+                    "name": "wasmtime",
+                    "purl": "pkg:pypi/wasmtime"
+                  },
+                  "ranges": [
+                    {
+                      "type": "ECOSYSTEM",
+                      "events": [
+                        {
+                          "introduced": "0"
+                        },
+                        {
+                          "last_affected": "43.0.0"
+                        }
+                      ]
+                    }
+                  ],
+                  "versions": [
+                    "0.0.1",
+                    "0.0.2",
+                    "0.11.0",
+                    "0.12.0",
+                    "0.15.0",
+                    "0.15.1",
+                    "0.16.0",
+                    "0.16.1",
+                    "0.17.0",
+                    "0.18.0",
+                    "0.18.1",
+                    "0.18.2",
+                    "0.19.0",
+                    "0.20.0",
+                    "0.21.0",
+                    "0.22.0",
+                    "0.23.0",
+                    "0.24.0",
+                    "0.25.0",
+                    "0.26.0",
+                    "0.27.0",
+                    "0.28.0",
+                    "0.28.1",
+                    "0.29.0",
+                    "0.30.0",
+                    "0.31.0",
+                    "0.32.0",
+                    "0.33.0",
+                    "0.34.0",
+                    "0.35.0",
+                    "0.36.0",
+                    "0.37.0",
+                    "0.38.0",
+                    "0.39.1",
+                    "0.40.0",
+                    "0.9.0",
+                    "1.0.0",
+                    "1.0.1",
+                    "10.0.0",
+                    "10.0.1",
+                    "11.0.0",
+                    "12.0.0",
+                    "13.0.0",
+                    "13.0.1",
+                    "13.0.2",
+                    "14.0.0",
+                    "15.0.0",
+                    "16.0.0",
+                    "17.0.0",
+                    "17.0.1",
+                    "18.0.0",
+                    "18.0.2",
+                    "19.0.0",
+                    "2.0.0",
+                    "20.0.0",
+                    "21.0.0",
+                    "22.0.0",
+                    "23.0.0",
+                    "24.0.0",
+                    "25.0.0",
+                    "27.0.0",
+                    "27.0.1",
+                    "27.0.2",
+                    "28.0.0",
+                    "29.0.0",
+                    "3.0.0",
+                    "30.0.0",
+                    "31.0.0",
+                    "32.0.0",
+                    "33.0.0",
+                    "34.0.0",
+                    "35.0.0",
+                    "36.0.0",
+                    "37.0.0",
+                    "38.0.0",
+                    "39.0.0",
+                    "4.0.0",
+                    "40.0.0",
+                    "41.0.0",
+                    "42.0.0",
+                    "43.0.0",
+                    "5.0.0",
+                    "6.0.0",
+                    "7.0.0",
+                    "8.0.0",
+                    "8.0.1",
+                    "9.0.0"
+                  ],
+                  "database_specific": {
+                    "source": "https://github.com/pypa/advisory-database/blob/main/vulns/wasmtime/PYSEC-2026-151.yaml"
+                  }
+                }
+              ],
+              "references": [
+                {
+                  "type": "ADVISORY",
+                  "url": "https://github.com/bytecodealliance/wasmtime/security/advisories/GHSA-hfr4-7c6c-48w2"
+                }
+              ]
+            }
+          ],
+          "groups": [
+            {
+              "ids": [
+                "PYSEC-2026-151"
+              ],
+              "aliases": [
+                "CVE-2026-34983",
+                "GHSA-hfr4-7c6c-48w2",
+                "PYSEC-2026-151",
+                "RUSTSEC-2026-0090"
+              ],
+              "max_severity": "5.0"
+            }
+          ],
           "licenses": [
             "Apache-2.0 WITH LLVM-exception"
           ]
@@ -4376,7 +5946,7 @@
         {
           "package": {
             "name": "watchfiles",
-            "version": "1.2.0",
+            "version": "1.1.1",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -4386,7 +5956,7 @@
         {
           "package": {
             "name": "wcwidth",
-            "version": "0.8.1",
+            "version": "0.6.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -4406,7 +5976,7 @@
         {
           "package": {
             "name": "websockets",
-            "version": "15.0.1",
+            "version": "16.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -4446,7 +6016,7 @@
         {
           "package": {
             "name": "xxhash",
-            "version": "3.7.0",
+            "version": "3.6.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -4466,7 +6036,7 @@
         {
           "package": {
             "name": "yarl",
-            "version": "1.24.2",
+            "version": "1.23.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -4476,7 +6046,7 @@
         {
           "package": {
             "name": "zipp",
-            "version": "4.1.0",
+            "version": "3.23.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -4505,23 +6075,23 @@
   "license_summary": [
     {
       "name": "MIT",
-      "count": 131
+      "count": 130
     },
     {
       "name": "Apache-2.0",
-      "count": 82
+      "count": 81
     },
     {
       "name": "non-standard",
-      "count": 39
+      "count": 43
     },
     {
       "name": "BSD-3-Clause",
-      "count": 33
+      "count": 32
     },
     {
       "name": "ISC",
-      "count": 6
+      "count": 5
     },
     {
       "name": "Apache-2.0 OR MIT",
@@ -4542,10 +6112,6 @@
     {
       "name": "UPL-1.0",
       "count": 2
-    },
-    {
-      "name": "0BSD",
-      "count": 1
     },
     {
       "name": "0BSD AND BSD-3-Clause AND CC0-1.0 AND MIT AND Zlib",
@@ -4573,10 +6139,6 @@
     },
     {
       "name": "Apache-2.0 WITH LLVM-exception",
-      "count": 1
-    },
-    {
-      "name": "LGPL-2.1-or-later",
       "count": 1
     },
     {

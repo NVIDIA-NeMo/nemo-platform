@@ -2,7 +2,7 @@
 name = "nmp-hello-world"
 version = "0.0.1"
 description = "Hello World service for NeMo Platform"
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.11,<3.15"
 
 dependencies = [
   # API server dependencies (lightweight - for nmp-api/nmp-core containers)

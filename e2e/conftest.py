@@ -33,6 +33,7 @@ from typing import IO, Any
 import httpx
 import pytest
 from nemo_platform import NeMoPlatform
+from nmp.testing import NemoRun, get_repo_root
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -62,6 +63,28 @@ _SERVICES_LOG = Path(os.environ.get("E2E_SERVICES_LOG", os.path.join(tempfile.ge
 _TAIL_LINES_ON_FAILURE = 100
 
 _services_log_key = pytest.StashKey[Path]()
+
+NGC_API_KEY_ENV = "NGC_API_KEY"
+
+
+@pytest.fixture
+def ngc_api_key() -> str:
+    """Return the NGC API key from the environment."""
+    key = os.environ.get(NGC_API_KEY_ENV)
+    assert key, f"{NGC_API_KEY_ENV} must be set"
+    return key
+
+
+@pytest.fixture
+def ngc_secret(sdk: NeMoPlatform, workspace: str, ngc_api_key: str) -> Iterator[str]:
+    """Create a secret containing the NGC API key, cleaned up after test."""
+    secret_name = f"e2e-ngc-key-{uuid.uuid4().hex[:8]}"
+    sdk.secrets.create(workspace=workspace, name=secret_name, value=ngc_api_key)
+    yield secret_name
+    try:
+        sdk.secrets.delete(workspace=workspace, name=secret_name)
+    except Exception:
+        pass  # Best-effort cleanup; the workspace is deleted anyway
 
 
 @pytest.fixture(scope="session")
@@ -350,3 +373,37 @@ def workspace(sdk: NeMoPlatform) -> Iterator[str]:
     sdk.workspaces.create(name=name)
     yield name
     sdk.workspaces.delete(name)
+
+
+@pytest.fixture(scope="session")
+def nemo_run(_services: str) -> NemoRun:
+    """Run the NeMo CLI from the repo root with the E2E base URL and workspace env when set."""
+    base_url = _services.rstrip("/")
+    repo_root = get_repo_root()
+
+    def run(
+        *args: str,
+        workspace: str | None = None,
+        env_extra: dict[str, str] | None = None,
+        timeout: int | None = 60,
+        capture_output: bool = True,
+        stdin: int | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        env = os.environ.copy()
+        env["NMP_BASE_URL"] = base_url
+        if workspace is not None:
+            env["NMP_WORKSPACE"] = workspace
+        if env_extra:
+            env.update(env_extra)
+        cmd = ["uv", "run", "--project", str(repo_root), "--frozen", "nemo", "-f", "json", *args]
+        return subprocess.run(
+            cmd,
+            cwd=repo_root,
+            env=env,
+            timeout=timeout,
+            capture_output=capture_output,
+            stdin=stdin,
+            text=True,
+        )
+
+    return run

@@ -44,9 +44,8 @@ the `bench` extra on `nemo-guardrails-plugin`. The `make benchmark-guardrails`
 target installs them automatically via `uv run --extra bench`; they are not
 part of the plugin's runtime install.
 
-The upstream `aiperf` CLI itself pins `aiofiles<24.2`, which conflicts with
-NMP's evaluator-service. To avoid downgrading the shared workspace venv, the
-harness creates an isolated venv at
+The upstream `aiperf` CLI itself pins older transitive dependencies. To avoid
+downgrading the shared workspace venv, the harness creates an isolated venv at
 `plugins/nemo-guardrails/benchmarks/artifacts/venvs/aiperf/` on first run and
 reuses it on subsequent runs. CI gets a fresh one each invocation; locally
 this caches across runs for fast iteration.

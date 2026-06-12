@@ -2,7 +2,7 @@
 name = "nemo-example-plugin"
 version = "0.1.0"
 description = "Example reference plugin that validates the NeMo Platform plugin system end-to-end."
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.11,<3.15"
 dependencies = ["nemo-platform-plugin", "nemo-platform", "pydantic>=2.0.0"]
 
 [tool.uv.sources]
