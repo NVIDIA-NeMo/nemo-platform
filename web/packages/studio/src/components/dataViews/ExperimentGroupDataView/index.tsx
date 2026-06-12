@@ -177,7 +177,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
       ...evaluatorNames.map((name, index) =>
         accessor((original) => original.aggregate_scores?.[name]?.mean, {
           id: `score-${index}`,
-          header: snakeCaseToTitleCase(name),
+          header: `Avg ${snakeCaseToTitleCase(name)}`,
           enableSorting: false,
           size: 140,
           cell: ({ getValue }) => (
