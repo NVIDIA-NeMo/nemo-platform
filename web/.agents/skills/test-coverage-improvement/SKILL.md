@@ -46,7 +46,7 @@ Combine **`coverage-final.json`** with judgment—**do not** use only the bottom
 - Sort by low **`lines.pct`** / **`statements.pct`** among included source files.
 - **Prefer:** logic-heavy modules, hooks, API glue, non-trivial components, error paths.
 - **Skip or defer:** thin re-exports, empty barrels, generated-only files, trivial constants (unless user asked otherwise).
-- **Exclude:** `*.spec.*`, `*.test.*`, `e2e-tests/**`, `node_modules/**`, outside **`coverage.include`**.
+- **Exclude:** `*.spec.*`, `e2e-tests/**`, `node_modules/**`, outside **`coverage.include`**.
 
 Output a **numbered list** (path, %, one-line rationale). **Do not wait for approval** unless the user explicitly asked to confirm the list; proceed to the loop.
 
