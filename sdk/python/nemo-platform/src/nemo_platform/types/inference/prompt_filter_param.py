@@ -17,33 +17,30 @@
 
 from __future__ import annotations
 
-from typing import Dict
 from typing_extensions import TypedDict
 
-from .fileset_purpose import FilesetPurpose
-from .fileset_metadata_param import FilesetMetadataParam
+from ..shared_params.datetime_filter import DatetimeFilter
 
-__all__ = ["FilesetUpdateParams"]
+__all__ = ["PromptFilterParam"]
 
 
-class FilesetUpdateParams(TypedDict, total=False):
-    workspace: str
+class PromptFilterParam(TypedDict, total=False):
+    """Filter for Prompt queries."""
 
-    custom_fields: Dict[str, object]
-    """Custom fields for the fileset."""
+    created_at: DatetimeFilter
+    """Filter by creation date."""
 
     description: str
-    """The description of the fileset."""
+    """Filter by description."""
 
-    metadata: FilesetMetadataParam
-    """Tagged metadata container - the key indicates the type.
-
-    Example: metadata = FilesetMetadata( dataset=DatasetMetadataContent(
-    schema={"columns": ["id", "name"]}, ) )
-    """
+    name: str
+    """Filter by name."""
 
     project: str
-    """The name of the project associated with this fileset."""
+    """Filter by project URN."""
 
-    purpose: FilesetPurpose
-    """The purpose of the fileset."""
+    updated_at: DatetimeFilter
+    """Filter by update date."""
+
+    workspace: str
+    """Filter by workspace."""

@@ -18,32 +18,29 @@
 from __future__ import annotations
 
 from typing import Dict
-from typing_extensions import TypedDict
+from typing_extensions import Required, TypedDict
 
-from .fileset_purpose import FilesetPurpose
-from .fileset_metadata_param import FilesetMetadataParam
-
-__all__ = ["FilesetUpdateParams"]
+__all__ = ["FunctionDefinitionParam"]
 
 
-class FilesetUpdateParams(TypedDict, total=False):
-    workspace: str
+class FunctionDefinitionParam(TypedDict, total=False):
+    """An OpenAI-compatible function definition for tool calling.
 
-    custom_fields: Dict[str, object]
-    """Custom fields for the fileset."""
-
-    description: str
-    """The description of the fileset."""
-
-    metadata: FilesetMetadataParam
-    """Tagged metadata container - the key indicates the type.
-
-    Example: metadata = FilesetMetadata( dataset=DatasetMetadataContent(
-    schema={"columns": ["id", "name"]}, ) )
+    Mirrors the ``function`` object the Inference Gateway forwards to
+    OpenAI-compatible backends.
     """
 
-    project: str
-    """The name of the project associated with this fileset."""
+    name: Required[str]
+    """The name of the function to be called."""
 
-    purpose: FilesetPurpose
-    """The purpose of the fileset."""
+    description: str
+    """
+    A description of what the function does, used by the model to decide when and
+    how to call it.
+    """
+
+    parameters: Dict[str, object]
+    """The parameters the function accepts, described as a JSON Schema object."""
+
+    strict: bool
+    """Whether to enforce strict schema adherence when generating the function call."""

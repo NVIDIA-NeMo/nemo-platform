@@ -15,32 +15,31 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from typing import Optional
+from typing import Dict, Optional
 
 from ..._models import BaseModel
-from .model_metadata_content import ModelMetadataContent
-from .dataset_metadata_content import DatasetMetadataContent
 
-__all__ = ["FilesetMetadata"]
+__all__ = ["FunctionDefinition"]
 
 
-class FilesetMetadata(BaseModel):
-    """Tagged metadata container - the key indicates the type.
+class FunctionDefinition(BaseModel):
+    """An OpenAI-compatible function definition for tool calling.
 
-    Example:
-        metadata = FilesetMetadata(
-            dataset=DatasetMetadataContent(
-                schema={"columns": ["id", "name"]},
-            )
-        )
+    Mirrors the ``function`` object the Inference Gateway forwards to
+    OpenAI-compatible backends.
     """
 
-    dataset: Optional[DatasetMetadataContent] = None
-    """Content for dataset-type filesets."""
+    name: str
+    """The name of the function to be called."""
 
-    model: Optional[ModelMetadataContent] = None
-    """Content for model-type filesets.
-
-    Contains tool calling configuration that is merged into the ModelSpec during
-    checkpoint analysis.
+    description: Optional[str] = None
     """
+    A description of what the function does, used by the model to decide when and
+    how to call it.
+    """
+
+    parameters: Optional[Dict[str, object]] = None
+    """The parameters the function accepts, described as a JSON Schema object."""
+
+    strict: Optional[bool] = None
+    """Whether to enforce strict schema adherence when generating the function call."""

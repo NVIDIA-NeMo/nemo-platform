@@ -17,33 +17,41 @@
 
 from __future__ import annotations
 
-from typing import Dict
+from typing import Dict, Union, Iterable
 from typing_extensions import TypedDict
 
-from .fileset_purpose import FilesetPurpose
-from .fileset_metadata_param import FilesetMetadataParam
+from ..._types import SequenceNotStr
+from .prompt_message_param import PromptMessageParam
+from .chat_completion_tool_param import ChatCompletionToolParam
+from ..shared_params.inference_params import InferenceParams
 
-__all__ = ["FilesetUpdateParams"]
+__all__ = ["PromptUpdateParams"]
 
 
-class FilesetUpdateParams(TypedDict, total=False):
+class PromptUpdateParams(TypedDict, total=False):
     workspace: str
 
-    custom_fields: Dict[str, object]
-    """Custom fields for the fileset."""
-
     description: str
-    """The description of the fileset."""
 
-    metadata: FilesetMetadataParam
-    """Tagged metadata container - the key indicates the type.
+    inference_params: InferenceParams
+    """Parameters for model inference.
 
-    Example: metadata = FilesetMetadata( dataset=DatasetMetadataContent(
-    schema={"columns": ["id", "name"]}, ) )
+    Extra fields can be supplied for additional options applied to the inference
+    request directly. Fields not supported by the model may cause inference errors
+    during evaluation.
     """
 
-    project: str
-    """The name of the project associated with this fileset."""
+    input_variables: SequenceNotStr[str]
 
-    purpose: FilesetPurpose
-    """The purpose of the fileset."""
+    messages: Iterable[PromptMessageParam]
+
+    project: str
+    """The URN of the project associated with this prompt."""
+
+    response_format: Dict[str, object]
+
+    tags: SequenceNotStr[str]
+
+    tool_choice: Union[str, Dict[str, object]]
+
+    tools: Iterable[ChatCompletionToolParam]

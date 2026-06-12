@@ -17,33 +17,22 @@
 
 from __future__ import annotations
 
-from typing import Dict
-from typing_extensions import TypedDict
+from typing_extensions import Literal, Required, TypedDict
 
-from .fileset_purpose import FilesetPurpose
-from .fileset_metadata_param import FilesetMetadataParam
+from .function_definition_param import FunctionDefinitionParam
 
-__all__ = ["FilesetUpdateParams"]
+__all__ = ["ChatCompletionToolParam"]
 
 
-class FilesetUpdateParams(TypedDict, total=False):
-    workspace: str
+class ChatCompletionToolParam(TypedDict, total=False):
+    """An OpenAI-compatible tool definition (currently always a function tool)."""
 
-    custom_fields: Dict[str, object]
-    """Custom fields for the fileset."""
+    function: Required[FunctionDefinitionParam]
+    """An OpenAI-compatible function definition for tool calling.
 
-    description: str
-    """The description of the fileset."""
-
-    metadata: FilesetMetadataParam
-    """Tagged metadata container - the key indicates the type.
-
-    Example: metadata = FilesetMetadata( dataset=DatasetMetadataContent(
-    schema={"columns": ["id", "name"]}, ) )
+    Mirrors the `function` object the Inference Gateway forwards to
+    OpenAI-compatible backends.
     """
 
-    project: str
-    """The name of the project associated with this fileset."""
-
-    purpose: FilesetPurpose
-    """The purpose of the fileset."""
+    type: Required[Literal["function"]]
+    """The type of the tool. Currently only 'function' is supported."""

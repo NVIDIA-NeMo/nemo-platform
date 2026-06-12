@@ -58,6 +58,7 @@ from ..._response import (
 from ...pagination import SyncLogsPagination, AsyncLogsPagination, SyncDefaultPagination, AsyncDefaultPagination
 from ...types.jobs import (
     PlatformJobSortField,
+    PlatformJobSpecParam,
     job_list_params,
     job_create_params,
     job_get_logs_params,

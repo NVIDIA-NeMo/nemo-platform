@@ -17,33 +17,31 @@
 
 from __future__ import annotations
 
-from typing import Dict
 from typing_extensions import TypedDict
 
-from .fileset_purpose import FilesetPurpose
-from .fileset_metadata_param import FilesetMetadataParam
+from .prompt_sort import PromptSort
+from .prompt_filter_param import PromptFilterParam
 
-__all__ = ["FilesetUpdateParams"]
+__all__ = ["PromptListParams"]
 
 
-class FilesetUpdateParams(TypedDict, total=False):
+class PromptListParams(TypedDict, total=False):
     workspace: str
 
-    custom_fields: Dict[str, object]
-    """Custom fields for the fileset."""
-
-    description: str
-    """The description of the fileset."""
-
-    metadata: FilesetMetadataParam
-    """Tagged metadata container - the key indicates the type.
-
-    Example: metadata = FilesetMetadata( dataset=DatasetMetadataContent(
-    schema={"columns": ["id", "name"]}, ) )
+    filter: PromptFilterParam
+    """
+    Filter prompts by workspace, project, name, description, created_at, and
+    updated_at.
     """
 
-    project: str
-    """The name of the project associated with this fileset."""
+    page: int
+    """Page number."""
 
-    purpose: FilesetPurpose
-    """The purpose of the fileset."""
+    page_size: int
+    """Page size."""
+
+    sort: PromptSort
+    """The field to sort by.
+
+    To sort in decreasing order, use `-` in front of the field name.
+    """
