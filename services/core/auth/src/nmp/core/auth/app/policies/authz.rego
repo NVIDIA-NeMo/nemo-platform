@@ -215,8 +215,14 @@ deny_request if {
 # fall through the service: no-match bypass. Undefined config key ⇒ no prefixes ⇒ inert.
 deny_request if {
 	some prefix in object.get(data.authz.config, "denied_plugin_prefixes", [])
-	startswith(split(extract_path, "?")[0], sprintf("%s/", [prefix]))
+	path_under_denied_prefix(split(extract_path, "?")[0], prefix)
 }
+
+# A path is fenced if it sits under the prefix (/apis/<plugin>/...) OR equals it exactly
+# (the bare /apis/<plugin> route). The trailing-slash form alone misses the bare prefix.
+path_under_denied_prefix(path, prefix) if path == prefix
+
+path_under_denied_prefix(path, prefix) if startswith(path, sprintf("%s/", [prefix]))
 
 # Deny direct secret value access for non-service principals (including PlatformAdmin).
 # Secret values must only be accessed through the service delegation pattern, where a

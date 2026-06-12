@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from functools import cache
 from typing import Any
 
 from fastapi import APIRouter
@@ -189,6 +188,26 @@ def _derive_service_contribution(service: NemoService) -> tuple[AuthzContributio
     bindings: dict[str, dict[str, AuthzEndpointMethod | None]] = {}
     for route in composed.routes:
         if not isinstance(route, APIRoute):
+            # Mount / plain Starlette Route / WebSocket route — not an HTTP API route the PDP
+            # binds by (path, method). Never silently skip it (that lets it fall through the
+            # service: no-match bypass).
+            other_path = getattr(route, "path", None) or repr(route)
+            other_methods = sorted(getattr(route, "methods", None) or set())
+            if other_methods:
+                # Has HTTP methods (Mount / plain Route): the PDP could enforce it but we can't
+                # derive a rule, so deny those methods (fail-closed) and flag it as an error.
+                errors.append(f"{other_path} is a {type(route).__name__}, not an APIRoute — denied (fail-closed)")
+                for http_method in other_methods:
+                    bindings.setdefault(other_path, {})[http_method.lower()] = None
+            else:
+                # Method-less (WebSocket / ASGI): AuthorizationMiddleware is BaseHTTPMiddleware,
+                # which only sees the http scope, so a WS handshake never reaches the PDP — a
+                # derived deny would be inert. Surface it as a (non-deny) warning; actually
+                # closing the WS gap needs pure-ASGI middleware, tracked as a separate follow-up.
+                warnings.append(
+                    f"{other_path} is a {type(route).__name__}, not an APIRoute — HTTP authz cannot "
+                    f"cover it (WebSocket/ASGI routes bypass the BaseHTTPMiddleware PDP)"
+                )
             continue
         methods = sorted(route.methods or set())
         rules = get_path_rules(route.endpoint)
@@ -267,7 +286,9 @@ def _derive_service_contribution(service: NemoService) -> tuple[AuthzContributio
     return AuthzContribution(permissions=permissions, endpoints=endpoints), errors, warnings
 
 
-@cache
+_plugin_authz_cache: list[PluginAuthzResult] | None = None
+
+
 def discover_plugin_authz() -> list[PluginAuthzResult]:
     """Derive per-plugin authz results from every installed ``nemo.services`` entry point.
 
@@ -283,9 +304,16 @@ def discover_plugin_authz() -> list[PluginAuthzResult]:
     ``discover()`` swallows load failures and excludes the plugin entirely — exactly the
     silent drop this fail-closed path must avoid.
 
-    Cached for the process lifetime — call ``discover_plugin_authz.cache_clear()`` (and
-    ``discover_entry_points.cache_clear()``) in tests after changing the installed plugin set.
+    Only an **all-clean** derivation is cached. A degraded result (e.g. a transient first-build
+    import error) is never pinned for the process lifetime — that would 403 the plugin's
+    namespace until restart — so the next call re-derives until the failure clears. Call
+    ``clear_plugin_authz_cache()`` (and ``discover_entry_points.cache_clear()``) in tests after
+    changing the installed plugin set.
     """
+    global _plugin_authz_cache
+    if _plugin_authz_cache is not None:
+        return _plugin_authz_cache
+
     from nemo_platform_plugin.discovery import discover_entry_points
 
     results: list[PluginAuthzResult] = []
@@ -326,7 +354,20 @@ def discover_plugin_authz() -> list[PluginAuthzResult]:
                 key=ep_name, contribution=contribution, problems=errors, warnings=warnings, mount_name=mount_name
             )
         )
+
+    if all(not result.problems for result in results):
+        _plugin_authz_cache = results
     return results
+
+
+def clear_plugin_authz_cache() -> None:
+    """Reset the cached all-clean plugin-authz derivation.
+
+    Call in tests after changing the installed plugin set (alongside
+    ``discover_entry_points.cache_clear()``).
+    """
+    global _plugin_authz_cache
+    _plugin_authz_cache = None
 
 
 def discover_authz_contributions() -> list[AuthzContribution]:

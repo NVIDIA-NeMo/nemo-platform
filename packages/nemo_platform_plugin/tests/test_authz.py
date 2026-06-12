@@ -12,8 +12,8 @@ from nemo_platform_plugin.authz import (
 )
 from nemo_platform_plugin.authz_discovery import (
     _derive_service_contribution,
+    clear_plugin_authz_cache,
     discover_authz_contributions,
-    discover_plugin_authz,
 )
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.scheduler import NemoJobScheduler
@@ -70,11 +70,11 @@ def test_derive_contribution_composes_mounted_path(monkeypatch) -> None:
         "nemo_platform_plugin.discovery.discover_entry_points",
         lambda group: {"example": _FakeEntryPoint("example", lambda: _Svc)},
     )
-    discover_plugin_authz.cache_clear()
+    clear_plugin_authz_cache()
     try:
         contribs = discover_authz_contributions()
     finally:
-        discover_plugin_authz.cache_clear()
+        clear_plugin_authz_cache()
 
     assert len(contribs) == 1
     contrib = contribs[0]

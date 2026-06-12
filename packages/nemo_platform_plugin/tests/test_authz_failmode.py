@@ -25,6 +25,7 @@ from nemo_platform_plugin.authz import (
 from nemo_platform_plugin.authz_discovery import (
     _derive_service_contribution,
     _method_from_dict,
+    clear_plugin_authz_cache,
     discover_plugin_authz,
 )
 from nemo_platform_plugin.service import NemoService, RouterSpec
@@ -136,6 +137,33 @@ def test_duplicate_path_method_binding_fails_closed() -> None:
     assert any("duplicate route binding" in e for e in errors)
 
 
+def test_websocket_route_is_warned_not_denied() -> None:
+    """A WebSocket/ASGI route never reaches the BaseHTTPMiddleware PDP, so a derived deny would
+    be inert: it surfaces as a (non-deny) warning rather than an error, and the plugin's HTTP
+    routes are unaffected. (The runtime enforcement gap is a separate pure-ASGI follow-up.)"""
+    from fastapi import WebSocket
+
+    router = APIRouter()
+
+    @router.get("/v2/x")
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[Permission("svc.read", "Read")])
+    async def x() -> None: ...
+
+    @router.websocket("/v2/stream")
+    async def stream(ws: WebSocket) -> None: ...
+
+    class _Svc(NemoService):
+        name = "svc"
+
+        def get_routers(self) -> list[RouterSpec]:
+            return [RouterSpec(router)]
+
+    contrib, errors, warnings = _derive_service_contribution(_Svc())
+    assert errors == []
+    assert any("not an APIRoute" in w for w in warnings)
+    assert contrib.endpoints["/apis/svc/v2/x"]["get"].deny is False
+
+
 def test_missing_permission_description_is_warning_not_deny() -> None:
     router = APIRouter()
 
@@ -242,11 +270,11 @@ def test_discover_plugin_authz_reports_unruled_route(monkeypatch: pytest.MonkeyP
             return [RouterSpec(router)]
 
     _patch_services(monkeypatch, {"svc": _FakeEntryPoint("svc", lambda: _Svc)})
-    discover_plugin_authz.cache_clear()
+    clear_plugin_authz_cache()
     try:
         results = discover_plugin_authz()
     finally:
-        discover_plugin_authz.cache_clear()
+        clear_plugin_authz_cache()
 
     assert len(results) == 1
     assert results[0].key == "svc"
@@ -262,11 +290,11 @@ def test_discover_plugin_authz_records_import_load_failure_as_degraded(monkeypat
         raise ImportError("module not found")
 
     _patch_services(monkeypatch, {"broken": _FakeEntryPoint("broken", _boom)})
-    discover_plugin_authz.cache_clear()
+    clear_plugin_authz_cache()
     try:
         results = discover_plugin_authz()
     finally:
-        discover_plugin_authz.cache_clear()
+        clear_plugin_authz_cache()
 
     assert len(results) == 1
     assert results[0].key == "broken"
@@ -286,17 +314,57 @@ def test_discover_plugin_authz_records_derivation_failure_as_degraded(monkeypatc
             raise RuntimeError("boom")
 
     _patch_services(monkeypatch, {"bad": _FakeEntryPoint("bad", lambda: _BadSvc)})
-    discover_plugin_authz.cache_clear()
+    clear_plugin_authz_cache()
     try:
         results = discover_plugin_authz()
     finally:
-        discover_plugin_authz.cache_clear()
+        clear_plugin_authz_cache()
 
     assert len(results) == 1
     assert results[0].key == "bad"
     assert any("failed to derive" in p for p in results[0].problems)
     assert results[0].contribution.endpoints == {}
     assert results[0].mount_name == "bad"
+
+
+def test_degraded_result_is_not_cached_but_clean_is(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A degraded derivation is never pinned for the process lifetime (that would 403 the
+    namespace until restart): the next call re-derives. An all-clean derivation is cached."""
+    calls = {"n": 0}
+
+    class _FlakySvc(NemoService):
+        name = "flaky"
+        fail = True
+
+        def get_routers(self) -> list[RouterSpec]:
+            calls["n"] += 1
+            if type(self).fail:
+                raise RuntimeError("transient boom")
+            router = APIRouter()
+
+            @router.get("/v2/x")
+            @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[Permission("flaky.read", "Read")])
+            async def x() -> None: ...
+
+            return [RouterSpec(router)]
+
+    _patch_services(monkeypatch, {"flaky": _FakeEntryPoint("flaky", lambda: _FlakySvc)})
+    clear_plugin_authz_cache()
+    try:
+        first = discover_plugin_authz()
+        second = discover_plugin_authz()
+        # Degraded: both calls re-derive (the failure is not cached).
+        assert first[0].problems and second[0].problems
+        assert calls["n"] == 2
+
+        # Failure clears; the next derivation is clean and gets cached.
+        _FlakySvc.fail = False
+        third = discover_plugin_authz()
+        fourth = discover_plugin_authz()
+        assert third[0].problems == [] and fourth[0].problems == []
+        assert calls["n"] == 3  # third derived; fourth served from cache
+    finally:
+        clear_plugin_authz_cache()
 
 
 def test_clean_plugin_has_no_problems(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -313,11 +381,11 @@ def test_clean_plugin_has_no_problems(monkeypatch: pytest.MonkeyPatch) -> None:
             return [RouterSpec(router)]
 
     _patch_services(monkeypatch, {"svc": _FakeEntryPoint("svc", lambda: _Svc)})
-    discover_plugin_authz.cache_clear()
+    clear_plugin_authz_cache()
     try:
         results = discover_plugin_authz()
     finally:
-        discover_plugin_authz.cache_clear()
+        clear_plugin_authz_cache()
 
     assert results[0].problems == []
     assert results[0].warnings == []

@@ -105,7 +105,7 @@ def _quarantine_contribution(contribution_dict: dict) -> dict:
     }
 
 
-def _merge_plugin_authz_contributions(static_data: dict) -> dict:
+def merge_plugin_authz_contributions(static_data: dict) -> dict:
     """Overlay authorization rules from installed NeMo Platform plugins.
 
     Applies the configured fail-mode (``authz.on_invalid_plugin``) to any plugin with
@@ -152,19 +152,22 @@ def _merge_plugin_authz_contributions(static_data: dict) -> dict:
                     f"Plugin {result.key!r} contributed invalid authz and "
                     f"authz.on_invalid_plugin=hard_fail: {'; '.join(result.problems)}"
                 )
-            if not contribution_dict.get("endpoints"):
-                # Could not enumerate any route (load/derivation failure) — yet the runner may
-                # still mount this plugin's routes via a separate instantiation. Fence the whole
-                # /apis/<name> namespace so those routes cannot fall through the service:
-                # no-match bypass. (deny_route and quarantine both apply this; hard_fail raised.)
-                # The runner mounts at /apis/<service.name>; the name==key invariant is only
-                # warned, not enforced, so fence both the entry-point key and the declared mount
-                # name to also cover a misconfigured (name != key) degraded plugin.
+            # Fence the plugin's whole /apis/<name> namespace (deny-all) whenever per-route
+            # coverage can't be trusted:
+            #   * no route enumerated at all (load/derivation failure) — the runner may still
+            #     mount this plugin via a separate instantiation; OR
+            #   * quarantine — _quarantine_contribution only rewrites the routes derivation SAW,
+            #     so any runner-mounted-but-unseen route would otherwise stay open.
+            # deny_route keeps just the per-route denies already in the contribution. The
+            # runner mounts at /apis/<service.name>; the name==key invariant is only warned, not
+            # enforced, so fence both the entry-point key and the declared mount name.
+            no_endpoints = not contribution_dict.get("endpoints")
+            if on_invalid == "quarantine":
+                contribution_dict = _quarantine_contribution(contribution_dict)
+            if no_endpoints or on_invalid == "quarantine":
                 denied_prefixes.append(f"/apis/{result.key}")
                 if result.mount_name and result.mount_name != result.key:
                     denied_prefixes.append(f"/apis/{result.mount_name}")
-            elif on_invalid == "quarantine":
-                contribution_dict = _quarantine_contribution(contribution_dict)
         if result.warnings:
             logger.warning(
                 "Plugin %r has %d authz warning(s) (non-deny — e.g. missing or conflicting "
@@ -208,7 +211,7 @@ async def _build_authorization_data_internal(entities_client: Optional[EntityCli
     with open(static_data_path, "r") as f:
         static_data = yaml.safe_load(f)
 
-    static_data = _merge_plugin_authz_contributions(static_data)
+    static_data = merge_plugin_authz_contributions(static_data)
     validate_static_authz_data(static_data)
 
     # Initialize workspaces and principals if not present

@@ -170,7 +170,7 @@ def _patch_failmode(monkeypatch, results, on_invalid):
 
 def test_on_invalid_plugin_deny_route_keeps_valid_routes(monkeypatch):
     bundle = _patch_failmode(monkeypatch, [_problem_result()], "deny_route")
-    merged = bundle._merge_plugin_authz_contributions({"authz": {}})
+    merged = bundle.merge_plugin_authz_contributions({"authz": {}})
     endpoints = merged["authz"]["endpoints"]
     assert "deny" not in endpoints["/apis/p/v2/ok"]["get"]  # valid route preserved
     assert endpoints["/apis/p/v2/bad"]["get"]["deny"] is True  # only the bad route denied
@@ -179,17 +179,20 @@ def test_on_invalid_plugin_deny_route_keeps_valid_routes(monkeypatch):
 
 def test_on_invalid_plugin_quarantine_denies_whole_plugin(monkeypatch):
     bundle = _patch_failmode(monkeypatch, [_problem_result()], "quarantine")
-    merged = bundle._merge_plugin_authz_contributions({"authz": {}})
+    merged = bundle.merge_plugin_authz_contributions({"authz": {}})
     endpoints = merged["authz"]["endpoints"]
     # The previously-valid route is now denied too — the whole plugin is quarantined.
     assert endpoints["/apis/p/v2/ok"]["get"]["deny"] is True
     assert endpoints["/apis/p/v2/bad"]["get"]["deny"] is True
+    # F1-12: quarantine also fences the whole namespace, so a route the runner mounts that
+    # derivation never saw (quarantine only rewrites the routes it did see) can't fall through.
+    assert merged["authz"]["config"]["denied_plugin_prefixes"] == ["/apis/p"]
 
 
 def test_on_invalid_plugin_hard_fail_raises(monkeypatch):
     bundle = _patch_failmode(monkeypatch, [_problem_result()], "hard_fail")
     with pytest.raises(RuntimeError, match="hard_fail"):
-        bundle._merge_plugin_authz_contributions({"authz": {}})
+        bundle.merge_plugin_authz_contributions({"authz": {}})
 
 
 def test_clean_plugin_merges_without_degraded(monkeypatch):
@@ -205,7 +208,7 @@ def test_clean_plugin_merges_without_degraded(monkeypatch):
         problems=[],
     )
     bundle = _patch_failmode(monkeypatch, [clean], "deny_route")
-    merged = bundle._merge_plugin_authz_contributions({"authz": {}})
+    merged = bundle.merge_plugin_authz_contributions({"authz": {}})
     assert "/apis/c/v2/x" in merged["authz"]["endpoints"]
     assert bundle.get_degraded_plugins() == {}
 
@@ -222,7 +225,7 @@ def test_degraded_plugin_with_no_routes_is_namespace_fenced(monkeypatch):
         problems=["failed to load plugin: RuntimeError('boom')"],
     )
     bundle = _patch_failmode(monkeypatch, [degraded], "deny_route")
-    merged = bundle._merge_plugin_authz_contributions({"authz": {}})
+    merged = bundle.merge_plugin_authz_contributions({"authz": {}})
     assert merged["authz"]["config"]["denied_plugin_prefixes"] == ["/apis/bad"]
     assert "bad" in bundle.get_degraded_plugins()
 
@@ -241,5 +244,5 @@ def test_degraded_plugin_fences_both_key_and_mount_name(monkeypatch):
         mount_name="bad-actual",
     )
     bundle = _patch_failmode(monkeypatch, [degraded], "deny_route")
-    merged = bundle._merge_plugin_authz_contributions({"authz": {}})
+    merged = bundle.merge_plugin_authz_contributions({"authz": {}})
     assert merged["authz"]["config"]["denied_plugin_prefixes"] == ["/apis/bad", "/apis/bad-actual"]

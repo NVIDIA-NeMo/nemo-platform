@@ -120,3 +120,18 @@ test_sibling_prefix_not_collaterally_fenced if {
 
 	result.allowed == true
 }
+
+# F2-4: the bare /apis/<plugin> route (the prefix with no trailing segment) must be fenced too.
+# The old trailing-slash-only rule (startswith(path, "<prefix>/")) missed this exact-match case,
+# leaving a degraded plugin's root path open.
+test_bare_prefix_path_is_fenced if {
+	result := authz.allow
+		with input as {"principal_id": "service:x", "method": "GET", "path": "/apis/badplugin"}
+		with data.authz.roles as deny_test_data.roles
+		with data.authz.endpoints as deny_test_data.endpoints
+		with data.authz.workspaces as deny_test_data.workspaces
+		with data.authz.principals as deny_test_data.principals
+		with data.authz.config as {"denied_plugin_prefixes": ["/apis/badplugin"]}
+
+	result.allowed == false
+}
