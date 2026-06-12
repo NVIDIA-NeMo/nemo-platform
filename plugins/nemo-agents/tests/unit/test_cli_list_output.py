@@ -90,7 +90,8 @@ class TestDeploymentsListOutput:
         assert "nemo-agent-deployment" in result.output
         assert "nemo-agent" in result.output
         assert "running" in result.output
-        assert "http://localhost:8001" in result.output
+        assert "endpoint" in result.output
+        assert "http://loc" in result.output
         assert '"data"' not in result.output
         assert "react_agent" not in result.output
         assert "12345" not in result.output
