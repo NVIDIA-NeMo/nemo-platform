@@ -50,7 +50,11 @@ const SkillActionList: FC<SkillActionListProps> = ({ actions, onSelect }) => {
             className={`${SKILL_ACTION_CARD_HEIGHT_CLASS} ${SKILL_ACTION_CARD_WIDTH_CLASS} flex-none`}
             data-testid={action.skillName ? `skill-action-card-${action.skillName}` : undefined}
           >
-            <Card asChild interactive className="h-full w-full overflow-hidden cursor-pointer shadow-none!">
+            <Card
+              asChild
+              interactive
+              className="h-full w-full overflow-hidden cursor-pointer shadow-none!"
+            >
               <button
                 type="button"
                 className="flex h-full w-full flex-col gap-density-sm overflow-hidden p-density-md text-left"
