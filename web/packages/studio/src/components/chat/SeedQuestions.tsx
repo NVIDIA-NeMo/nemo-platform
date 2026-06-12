@@ -23,18 +23,20 @@ export const SeedQuestions: FC<SeedQuestionsProps> = ({
   slotEnd,
 }) => {
   return (
-    <div className="flex flex-wrap items-start gap-2">
-      {questions.map((q) => (
-        <button
-          key={q}
-          type="button"
-          onClick={() => onSelect(q)}
-          className="cursor-pointer rounded-md border border-base bg-surface-base px-3 py-1.5 text-xs text-fg-base transition-colors hover:border-emphasis hover:bg-surface-sunken"
-        >
-          {q}
-        </button>
-      ))}
-      {slotEnd && <div className="ml-auto shrink-0">{slotEnd}</div>}
+    <div className="flex items-start gap-2">
+      <div className="flex min-w-0 flex-1 flex-wrap items-start gap-2">
+        {questions.map((q) => (
+          <button
+            key={q}
+            type="button"
+            onClick={() => onSelect(q)}
+            className="cursor-pointer rounded-full border border-base bg-surface-base px-3 py-1.5 text-xs text-fg-base transition-colors hover:border-emphasis hover:bg-surface-sunken"
+          >
+            {q}
+          </button>
+        ))}
+      </div>
+      {slotEnd && <div className="shrink-0 self-end">{slotEnd}</div>}
     </div>
   );
 };

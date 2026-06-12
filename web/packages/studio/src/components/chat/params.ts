@@ -15,6 +15,7 @@ export interface InferenceParams {
   top_p: number;
   top_k: number;
   max_tokens: number;
+  [key: string]: unknown;
 }
 
 export const DEFAULT_INFERENCE_PARAMS: InferenceParams = {

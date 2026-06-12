@@ -62,10 +62,10 @@ export interface AssistantChatProps {
    */
   onRunningChange?: (isRunning: boolean) => void;
   /**
-   * When true, suppresses the internal composer at the bottom of the thread.
-   * The message thread still renders, including the empty state. Used by the
-   * Chat route's Compare mode where a single page-level composer drives every
-   * AssistantChat in parallel.
+   * Controls whether the internal composer is shown and how input is driven.
+   * In `broadcast-all` mode the composer is suppressed; a page-level composer
+   * drives every AssistantChat in parallel.
+   * @default ComposerMode.PER_PANEL
    */
   composerMode?: ComposerMode;
   /**

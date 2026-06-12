@@ -141,15 +141,19 @@ export const useAssistantChatRuntime = ({
           );
           if (!runController.signal.aborted && onMessageComplete) {
             const totalMs = Math.round(performance.now() - startMs);
-            const streamMs = Math.max(1, totalMs - ttftMs);
             const completionTokens = Math.max(chunkCount, Math.round(responseText.length / 4));
+            // Throughput over total wall-clock. Using the post-first-token
+            // window instead collapses to a near-zero interval when tokens
+            // arrive in a single chunk or an end-of-stream burst, inflating the
+            // rate by orders of magnitude. Total time is stable and matches the
+            // duration shown alongside it.
             onMessageComplete({
               assistantMessageId: assistantMessage.id!,
               text: responseText,
               ttftMs,
               totalMs,
               chunkCount,
-              tokensPerSec: (completionTokens * 1000) / streamMs,
+              tokensPerSec: (completionTokens * 1000) / Math.max(1, totalMs),
               completionTokens,
             });
           }

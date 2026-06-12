@@ -13,7 +13,8 @@ import { useEffect } from 'react';
 import { DEFAULT_LARGE_PAGE_SIZE, QUERY_PREFIX_PLATFORM } from '../../constants/api';
 
 /**
- * A basic filter for a models dropdown that fetches 1000 models sorted alphabetically.
+ * A basic filter for a models dropdown that fetches models sorted alphabetically.
+ * page_size is set high so most deployments are covered in a single page.
  */
 export const BASIC_ALL_MODELS_DROPDOWN_FILTER: ModelsListModelsParams = {
   page_size: DEFAULT_LARGE_PAGE_SIZE,
@@ -103,5 +104,5 @@ export const buildWorkspaceGroup = (
   models: ModelEntity[]
 ): ModelWorkspaceGroup => ({
   workspace: workspaceName,
-  models,
+  models: [...models].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '')),
 });

@@ -110,7 +110,6 @@ export const ModelChat: FC<ModelChatProps> = ({
 
   const handleMessageComplete = (info: AssistantMessageCompletion) => {
     setLatestMetrics({
-      ttftMs: info.ttftMs,
       totalMs: info.totalMs,
       completionTokens: info.completionTokens,
       tokensPerSec: info.tokensPerSec,

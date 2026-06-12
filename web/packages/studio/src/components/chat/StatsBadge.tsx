@@ -5,7 +5,6 @@ import { Gauge, Hash, Timer } from 'lucide-react';
 import type { FC } from 'react';
 
 export interface ChatMetrics {
-  ttftMs: number;
   totalMs: number;
   completionTokens: number;
   tokensPerSec: number;
@@ -13,25 +12,38 @@ export interface ChatMetrics {
 
 interface StatsBadgeProps {
   metrics: ChatMetrics;
+  emphasis?: boolean;
+  /** Colour of the metrics. Defaults to subdued grey; 'brand' renders NVIDIA green. */
+  tone?: 'subdued' | 'brand';
+  className?: string;
 }
 
-export const StatsBadge: FC<StatsBadgeProps> = ({ metrics }) => {
-  // NVIDIA brand green via the Kaizen `--color-brand` token — these metrics
-  // are a positive signal (faster, more tokens) so they should pop. No border,
-  // no background — reads as inline text below the assistant message.
+export const StatsBadge: FC<StatsBadgeProps> = ({
+  metrics,
+  emphasis,
+  tone = 'subdued',
+  className,
+}) => {
+  const seconds = (metrics.totalMs / 1000).toFixed(1);
+  const tokensPerSec = Math.max(0, Math.round(metrics.tokensPerSec));
+  const iconSize = emphasis ? 14 : 12;
+  const toneClass =
+    tone === 'brand' ? 'text-[var(--color-brand,#76b900)]' : 'text-fg-subdued opacity-60';
   return (
-    <div className="inline-flex items-center gap-4 text-xs font-mono text-[var(--color-brand,#76b900)]">
-      <span className="inline-flex items-center gap-1" title="Time to first token">
-        <Timer size={12} />
-        {metrics.ttftMs}ms
+    <div
+      className={`inline-flex items-center gap-3 font-mono ${toneClass} ${emphasis ? 'text-sm font-bold' : 'text-xs'} ${className ?? ''}`}
+    >
+      <span className="inline-flex items-center gap-1" title="Total time">
+        <Timer size={iconSize} />
+        {seconds}s
       </span>
       <span className="inline-flex items-center gap-1" title="Tokens per second">
-        <Gauge size={12} />
-        {metrics.tokensPerSec.toFixed(1)} t/s
+        <Gauge size={iconSize} />
+        {tokensPerSec} t/s
       </span>
       <span className="inline-flex items-center gap-1" title="Completion tokens">
-        <Hash size={12} />
-        {metrics.completionTokens} tokens
+        <Hash size={iconSize} />
+        {Math.round(metrics.completionTokens)} tok
       </span>
     </div>
   );

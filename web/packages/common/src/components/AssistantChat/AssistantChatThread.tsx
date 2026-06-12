@@ -312,7 +312,7 @@ export const AssistantChatThread = ({
   onReset,
   showRunningIndicator = true,
   attributes,
-  composerMode,
+  composerMode = ComposerMode.PER_PANEL,
   slotComposerStart,
   emptyState,
   contentClassName,

@@ -1,17 +1,15 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useModelsFromDefaultAndWorkspace } from '@nemo/common/src/api/models/useModelsFromDefaultAndWorkspace';
+import {
+  BASIC_ALL_MODELS_DROPDOWN_FILTER,
+  buildWorkspaceGroup,
+  type ModelWorkspaceGroup,
+  useAllModels,
+} from '@nemo/common/src/api/models/useModels';
 import { ComposerMode } from '@nemo/common/src/components/AssistantChat';
 import type { BroadcastSignal } from '@nemo/common/src/components/AssistantChat/types';
-import {
-  Button,
-  Flex,
-  TabsList,
-  TabsRoot,
-  TabsTrigger,
-  Tooltip,
-} from '@nvidia/foundations-react-core';
+import { PageHeader, Tabs, Tooltip } from '@nvidia/foundations-react-core';
 import { ChatEmptyState } from '@studio/components/chat/ChatEmptyState';
 import { CompareComposer } from '@studio/components/chat/CompareComposer';
 import { DEFAULT_SEED_QUESTIONS } from '@studio/components/chat/defaultSeedQuestions';
@@ -19,7 +17,7 @@ import { ModelCompareChat } from '@studio/components/ModelCompareChat';
 import { ModelComparePrompts } from '@studio/components/ModelComparePrompts';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import type { ComposerSeed, SharedModelEntry } from '@studio/routes/ModelCompareRoute/types';
-import { MoveDown, MoveUp, Plus, RotateCcw } from 'lucide-react';
+import { MessageSquareShare, MessagesSquare } from 'lucide-react';
 import { type FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
@@ -39,14 +37,21 @@ const makeDefaultEntry = (
 
 export const ModelCompareRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
-  const { groups: modelGroups, isFetching: isLoadingModels } = useModelsFromDefaultAndWorkspace({
-    workspace,
+  const { data, isFetching: isLoadingModels } = useAllModels({
+    workspace: workspace ?? undefined,
+    query: BASIC_ALL_MODELS_DROPDOWN_FILTER,
   });
+  const modelGroups = useMemo((): ModelWorkspaceGroup[] => {
+    if (!workspace) return [];
+    const allModels = data?.pages.flatMap((p) => (Array.isArray(p.data) ? p.data : [])) ?? [];
+    const available = allModels.filter(
+      (m) => Array.isArray(m.model_providers) && m.model_providers.length > 0
+    );
+    return available.length > 0 ? [buildWorkspaceGroup(workspace, available)] : [];
+  }, [data, workspace]);
   const [searchParams] = useSearchParams();
   const [activeView, setActiveView] = useState<CompareView>('compare');
   const [perPanelInput, setPerPanelInput] = useState(false);
-  const [promptsReady, setPromptsReady] = useState(false);
-
   const [models, setModels] = useState<SharedModelEntry[]>(() => [
     makeDefaultEntry(0),
     makeDefaultEntry(1),
@@ -135,7 +140,6 @@ export const ModelCompareRoute: FC = () => {
   }, []);
 
   const atMaxModels = models.length >= MAX_MODELS;
-  const addModelDisabled = atMaxModels || (activeView === 'prompts' && !promptsReady);
   const readyPanelCount = models.filter((m) => !!m.modelURN).length;
 
   // Empty state when the workspace has zero models and we're not still loading.
@@ -147,85 +151,73 @@ export const ModelCompareRoute: FC = () => {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Row 1 — page title */}
-      <div className="shrink-0 px-6 pt-4 pb-2">
-        <h1 className="text-2xl font-semibold">Chat</h1>
-      </div>
-      {/* Row 2 — sub-nav tabs (left) + page actions (right). No row-level
-       *  underline: each tab carries its own indicator only when active, so
-       *  the header stays quiet until the user selects a tab. */}
-      <div className="flex shrink-0 items-center justify-between overflow-hidden px-6 pb-2">
-        <TabsRoot value={activeView} onValueChange={(value) => setActiveView(value as CompareView)}>
-          {/* -ml-3 cancels the first TabsTrigger's internal 12px left padding
-           *  so its label aligns precisely with the page title above. */}
-          <TabsList className="-ml-3 !shadow-none [&_[data-state=active]]:border-b-[var(--color-brand)]">
-            <TabsTrigger value="compare">Compare</TabsTrigger>
-            <TabsTrigger value="prompts">Run Prompts</TabsTrigger>
-          </TabsList>
-        </TabsRoot>
-        <Flex align="center" gap="density-md" className="shrink-0">
-          <Button kind="secondary" size="small" onClick={addModel} disabled={addModelDisabled}>
-            <Plus size={14} />
-            Add Model
-          </Button>
-          <Button kind="tertiary" size="small" onClick={resetAll}>
-            <RotateCcw size={14} />
-            Reset
-          </Button>
-        </Flex>
-      </div>
-      <div className={`min-h-0 flex-1 overflow-hidden ${showChatPanels ? '' : 'hidden'}`}>
-        <ModelCompareChat
-          workspace={workspace}
-          modelGroups={modelGroups}
-          isLoadingModels={isLoadingModels}
-          models={models}
-          onRemoveModel={removeModel}
-          onSetModel={setModelRef}
-          chatResetCount={chatResetCount}
-          composerMode={perPanelInput ? ComposerMode.PER_PANEL : ComposerMode.BROADCAST_ALL}
-          slotComposerEnd={
-            perPanelInput ? (
-              <Tooltip slotContent="Shared input">
-                <button
-                  onClick={(e) => {
-                    const panel = (e.currentTarget as HTMLElement).closest('[data-model-panel]');
-                    const textarea = panel?.querySelector<HTMLTextAreaElement>(
-                      'textarea[aria-label="Task prompt"]'
-                    );
-                    const draft = textarea?.value ?? '';
-                    if (draft) {
-                      setComposerSeed((prev) => ({
-                        triggerCount: (prev?.triggerCount ?? 0) + 1,
-                        text: draft,
-                      }));
-                    }
-                    setPerPanelInput(false);
-                  }}
-                  className="flex cursor-pointer items-center justify-center rounded p-1.5 text-fg-subdued transition-colors hover:bg-surface-sunken hover:text-fg-base"
-                  aria-label="Shared input"
-                >
-                  <MoveDown size={15} />
-                </button>
-              </Tooltip>
-            ) : undefined
-          }
-          composerSeed={panelSeed ?? undefined}
-          broadcast={!perPanelInput ? (broadcast ?? undefined) : undefined}
-          stopCount={stopCount}
-          onRunningChange={handleRunningChange}
+      <div className="shrink-0 px-6 pt-6 pb-4">
+        <PageHeader className="p-0 pb-4" slotHeading="Playground" />
+        <Tabs
+          className="min-w-0 overflow-visible"
+          value={activeView}
+          onValueChange={(value) => setActiveView(value as CompareView)}
+          items={[
+            { value: 'compare', children: 'Compare' },
+            { value: 'prompts', children: 'Run Prompts' },
+          ]}
         />
       </div>
-      <div className={`min-h-0 flex-1 overflow-hidden ${activeView !== 'prompts' ? 'hidden' : ''}`}>
-        <ModelComparePrompts
-          workspace={workspace}
-          modelGroups={modelGroups}
-          isLoadingModels={isLoadingModels}
-          models={models}
-          onRemoveModel={removeModel}
-          onSetModel={setModelRef}
-          onReadyChange={setPromptsReady}
-        />
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <div className={`h-full ${showChatPanels ? '' : 'hidden'}`}>
+          <ModelCompareChat
+            workspace={workspace}
+            modelGroups={modelGroups}
+            isLoadingModels={isLoadingModels}
+            models={models}
+            onRemoveModel={removeModel}
+            onSetModel={setModelRef}
+            chatResetCount={chatResetCount}
+            composerMode={perPanelInput ? ComposerMode.PER_PANEL : ComposerMode.BROADCAST_ALL}
+            slotComposerEnd={
+              perPanelInput ? (
+                <Tooltip slotContent="Shared input">
+                  <button
+                    onClick={(e) => {
+                      const panel = (e.currentTarget as HTMLElement).closest('[data-model-panel]');
+                      const textarea = panel?.querySelector<HTMLTextAreaElement>(
+                        'textarea[aria-label="Task prompt"]'
+                      );
+                      const draft = textarea?.value ?? '';
+                      if (draft) {
+                        setComposerSeed((prev) => ({
+                          triggerCount: (prev?.triggerCount ?? 0) + 1,
+                          text: draft,
+                        }));
+                      }
+                      setPerPanelInput(false);
+                    }}
+                    className="flex cursor-pointer items-center justify-center rounded p-1.5 text-fg-subdued transition-colors hover:bg-surface-sunken hover:text-fg-base"
+                    aria-label="Shared input"
+                  >
+                    <MessageSquareShare size={15} />
+                  </button>
+                </Tooltip>
+              ) : undefined
+            }
+            composerSeed={panelSeed ?? undefined}
+            broadcast={!perPanelInput ? (broadcast ?? undefined) : undefined}
+            stopCount={stopCount}
+            onRunningChange={handleRunningChange}
+            onAddModel={!atMaxModels ? addModel : undefined}
+          />
+        </div>
+        <div className={`h-full overflow-hidden ${activeView !== 'prompts' ? 'hidden' : ''}`}>
+          <ModelComparePrompts
+            workspace={workspace}
+            modelGroups={modelGroups}
+            isLoadingModels={isLoadingModels}
+            models={models}
+            onRemoveModel={removeModel}
+            onSetModel={setModelRef}
+            onAddModel={!atMaxModels ? addModel : undefined}
+          />
+        </div>
       </div>
 
       {activeView === 'compare' && !perPanelInput && (
@@ -254,10 +246,10 @@ export const ModelCompareRoute: FC = () => {
                     setComposerSeed(null);
                     setPerPanelInput(true);
                   }}
-                  className="flex cursor-pointer items-center justify-center rounded p-1.5 text-fg-subdued transition-colors hover:bg-surface-sunken hover:text-fg-base"
+                  className="flex cursor-pointer items-center justify-center rounded border border-base bg-surface-raised p-1.5 text-fg-subdued transition-colors hover:bg-surface-sunken hover:text-fg-base"
                   aria-label="Per-panel input"
                 >
-                  <MoveUp size={15} />
+                  <MessagesSquare size={15} />
                 </button>
               </Tooltip>
             }

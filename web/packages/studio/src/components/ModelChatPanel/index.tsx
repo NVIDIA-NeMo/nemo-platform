@@ -4,6 +4,9 @@
 import type { ModelWorkspaceGroup } from '@nemo/common/src/api/models/useModels';
 import { ModelSelectV2, type ModelSelection } from '@nemo/common/src/components/ModelSelectV2';
 import { getPartsFromReference } from '@nemo/common/src/namedEntity';
+import { Text } from '@nvidia/foundations-react-core';
+import { DEFAULT_INFERENCE_PARAMS, type InferenceParams } from '@studio/components/chat/params';
+import { ParamsPopover } from '@studio/components/chat/ParamsPopover';
 import { ModelChat } from '@studio/components/ModelChat';
 import {
   PANEL_ROLE_DOT_CLASS,
@@ -44,6 +47,7 @@ export const ModelChatPanel: FC<ModelChatPanelProps> = ({
   composerSeed,
 }) => {
   const selectedModel: ModelSelection | null = panel.modelURN ? { model: panel.modelURN } : null;
+  const [inferenceParams, setInferenceParams] = useState<InferenceParams>(DEFAULT_INFERENCE_PARAMS);
 
   // Remount ModelChat (clears messages + metrics) when the selected model changes.
   const prevModelURNRef = useRef(panel.modelURN);
@@ -99,12 +103,13 @@ export const ModelChatPanel: FC<ModelChatPanelProps> = ({
               disabled={panel.locked}
             />
           </div>
+          <ParamsPopover value={inferenceParams} onChange={setInferenceParams} />
         </div>
       ) : (
         <>
           <div className="flex shrink-0 items-center gap-2 border-b border-base px-3 py-2">
             <span className={`h-2 w-2 rounded-full ${PANEL_ROLE_DOT_CLASS[panel.roleColor]}`} />
-            <span className="text-sm font-semibold">{panel.roleLabel}</span>
+            <Text kind="label/bold/md">{panel.roleLabel}</Text>
             <div className="ml-auto flex items-center gap-1">
               <button
                 onClick={() => onToggle(panel.id)}
@@ -137,31 +142,29 @@ export const ModelChatPanel: FC<ModelChatPanelProps> = ({
                 disabled={panel.locked}
               />
             </div>
+            <ParamsPopover value={inferenceParams} onChange={setInferenceParams} />
           </div>
         </>
       )}
 
       {/* Chat surface */}
       <div className="flex min-h-0 flex-1 flex-col px-3 pb-1">
-        {modelName ? (
-          <ModelChat
-            key={modelChatResetCount}
-            model={modelName}
-            workspace={modelWorkspace}
-            composerMode={composerMode}
-            slotComposerEnd={slotComposerEnd}
-            composerSeed={composerSeed}
-            broadcast={broadcast}
-            stopCount={stopCount}
-            onRunningChange={
-              onRunningChange ? (running) => onRunningChange(panel.id, running) : undefined
-            }
-          />
-        ) : (
-          <div className="flex flex-1 items-center justify-center text-fg-subdued">
-            Select a model to start chatting
-          </div>
-        )}
+        <ModelChat
+          key={modelChatResetCount}
+          model={modelName ?? ''}
+          workspace={modelWorkspace}
+          disabled={!modelName}
+          emptyState={!modelName ? { slotHeading: 'Select a model to start chatting' } : undefined}
+          promptData={{ inference_params: inferenceParams }}
+          composerMode={composerMode}
+          slotComposerEnd={slotComposerEnd}
+          composerSeed={composerSeed}
+          broadcast={broadcast}
+          stopCount={stopCount}
+          onRunningChange={
+            onRunningChange ? (running) => onRunningChange(panel.id, running) : undefined
+          }
+        />
       </div>
     </div>
   );

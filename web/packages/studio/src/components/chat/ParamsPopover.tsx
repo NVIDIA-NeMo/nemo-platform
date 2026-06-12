@@ -1,9 +1,18 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Button, Popover, Slider, Stack, Text } from '@nvidia/foundations-react-core';
+import {
+  Button,
+  Flex,
+  Popover,
+  Slider,
+  Stack,
+  Text,
+  TextInput,
+  Tooltip,
+} from '@nvidia/foundations-react-core';
 import { DEFAULT_INFERENCE_PARAMS, type InferenceParams } from '@studio/components/chat/params';
-import { Sliders } from 'lucide-react';
+import { Info, RotateCcw, Sliders } from 'lucide-react';
 import { useState, type FC } from 'react';
 
 interface ParamsPopoverProps {
@@ -26,7 +35,7 @@ const SLIDERS: Array<{
     min: 0,
     max: 2,
     step: 0.05,
-    hint: 'Randomness — higher = more creative.',
+    hint: 'Controls output randomness. Higher values produce more creative, varied responses; lower values are more deterministic.',
     default: DEFAULT_INFERENCE_PARAMS.temperature,
   },
   {
@@ -35,7 +44,7 @@ const SLIDERS: Array<{
     min: 0,
     max: 1,
     step: 0.01,
-    hint: 'Nucleus sampling cutoff.',
+    hint: 'Nucleus sampling threshold. Only tokens whose cumulative probability exceeds this value are considered.',
     default: DEFAULT_INFERENCE_PARAMS.top_p,
   },
   {
@@ -44,7 +53,7 @@ const SLIDERS: Array<{
     min: 1,
     max: 100,
     step: 1,
-    hint: 'Sample from top-K tokens. Provider-dependent.',
+    hint: 'Limits sampling to the top K most likely tokens at each step. Support is provider-dependent.',
     default: DEFAULT_INFERENCE_PARAMS.top_k,
   },
   {
@@ -53,7 +62,7 @@ const SLIDERS: Array<{
     min: 32,
     max: 4096,
     step: 32,
-    hint: 'Hard cap on response length.',
+    hint: 'Maximum number of tokens the model will generate in a single response.',
     default: DEFAULT_INFERENCE_PARAMS.max_tokens,
   },
 ];
@@ -65,51 +74,75 @@ export const ParamsPopover: FC<ParamsPopoverProps> = ({ value, onChange }) => {
     onChange({ ...value, [key]: v });
   };
 
+  const clamp = (s: (typeof SLIDERS)[number], v: number) => Math.min(Math.max(v, s.min), s.max);
+
   return (
     <Popover
       open={open}
       onOpenChange={setOpen}
       slotContent={
-        <Stack gap="density-lg" className="w-80 p-4">
+        <Stack gap="density-lg" className="w-[380px] p-4">
           <div className="flex items-center justify-between">
             <Text kind="label/bold/sm">Inference parameters</Text>
             <Button kind="tertiary" size="small" onClick={() => onChange(DEFAULT_INFERENCE_PARAMS)}>
-              Reset
+              Reset all
             </Button>
           </div>
           {SLIDERS.map((s) => {
-            const current = value[s.key];
+            const current = value[s.key] as number;
             return (
-              <Stack gap="density-xs" key={s.key}>
-                <div className="flex items-baseline justify-between">
-                  <Text kind="label/regular/sm">{s.label}</Text>
-                  <Text kind="mono/sm" color="secondary">
-                    {Number.isInteger(s.step) ? current : current.toFixed(2)}
+              <Flex key={s.key} align="center" gap="density-md">
+                <Flex align="center" gap="density-xs" className="w-[120px] shrink-0">
+                  <Text kind="label/regular/md" className="truncate">
+                    {s.label}
                   </Text>
+                  <Tooltip slotContent={s.hint} side="top">
+                    <Info size={12} className="shrink-0 text-fg-subdued" />
+                  </Tooltip>
+                </Flex>
+                <div className="min-w-0 flex-1">
+                  <Slider
+                    value={current}
+                    onValueChange={(v) => update(s.key, clamp(s, v))}
+                    min={s.min}
+                    max={s.max}
+                    step={s.step}
+                    aria-label={s.label}
+                  />
                 </div>
-                <Slider
-                  value={current}
-                  onValueChange={(v) => update(s.key, v)}
-                  min={s.min}
-                  max={s.max}
-                  step={s.step}
-                  aria-label={s.label}
+                <TextInput
+                  type="number"
+                  value={String(current)}
+                  min={String(s.min)}
+                  max={String(s.max)}
+                  step={String(s.step)}
+                  aria-label={`${s.label} value`}
+                  className="w-[80px] shrink-0"
+                  attributes={{ Input: { className: 'text-center' } }}
+                  onValueChange={(v) => {
+                    if (v === '') return;
+                    const n = parseFloat(v);
+                    if (!Number.isNaN(n)) update(s.key, clamp(s, n));
+                  }}
                 />
-                <Text kind="label/regular/sm" color="secondary">
-                  {s.hint}
-                </Text>
-              </Stack>
+                <Button
+                  kind="tertiary"
+                  size="small"
+                  aria-label={`Reset ${s.label}`}
+                  title={`Reset to ${s.default}`}
+                  onClick={() => update(s.key, s.default)}
+                  className="shrink-0"
+                  type="button"
+                >
+                  <RotateCcw size={14} />
+                </Button>
+              </Flex>
             );
           })}
         </Stack>
       }
     >
-      <Button
-        kind="secondary"
-        size="small"
-        aria-label="Inference parameters"
-        title="Inference parameters"
-      >
+      <Button kind="secondary" aria-label="Inference parameters" title="Inference parameters">
         <Sliders size={14} />
       </Button>
     </Popover>

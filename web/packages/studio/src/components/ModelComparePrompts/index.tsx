@@ -11,12 +11,19 @@ import { FileFormat, InputFileSchemaType } from '@nemo/common/src/types';
 import { extractUserFriendlyKeysFromRow, resolveKeyPath } from '@nemo/common/src/utils/file';
 import { detectFileStructure, validateFileFormat } from '@nemo/common/src/utils/fileValidation';
 import { type FileSampleMethod, sampleIndices } from '@nemo/common/src/utils/sampleTextLines';
-import { Button, Flex, Modal, Select, Stack, Text } from '@nvidia/foundations-react-core';
+import { filesDownloadFile } from '@nemo/sdk/generated/platform/api';
+import { Button, Flex, Modal, Select, Text, Tooltip } from '@nvidia/foundations-react-core';
 import { SAMPLE_DATASETS } from '@studio/components/chat/sampleDatasets';
+import { StatsBadge } from '@studio/components/chat/StatsBadge';
 import type { DatasetInputFileResult } from '@studio/components/DatasetInputFile';
 import { FileSamplingMethodSelect } from '@studio/components/FileSamplingSnippet/FileSamplingMethodSelect';
-import type { SharedModelEntry } from '@studio/routes/ModelCompareRoute/types';
-import { Loader2, Maximize2, Play, Trash2 } from 'lucide-react';
+import {
+  PANEL_ROLE_COLORS,
+  PANEL_ROLE_DOT_CLASS,
+  PANEL_ROLE_LABELS,
+  type SharedModelEntry,
+} from '@studio/routes/ModelCompareRoute/types';
+import { Maximize2, Plus, Trash2 } from 'lucide-react';
 import { type FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const DEFAULT_SAMPLE_SIZE = 5;
@@ -132,11 +139,8 @@ async function parseUploadedFile(file: File): Promise<DatasetInputFileResult | {
     const candidates = ['prompt', 'question', 'input', 'text'];
     promptKey = candidates.find((k) => typeof firstRow[k] === 'string') ?? null;
   }
-  if (!promptKey) {
-    return {
-      error: 'Could not detect a prompt column. Expected one of: prompt, question, input, text.',
-    };
-  }
+  // If detection couldn't find a prompt column we still return the parsed file
+  // (with `promptKey: null`) so the inline column picker can let the user choose.
   return {
     fileUrl: `upload://${file.name}`,
     format: validation.format,
@@ -159,6 +163,8 @@ interface ModelComparePromptsProps {
   onSetModel: (id: number, modelURN: string | null) => void;
   /** Called when the view's readiness to add models changes (i.e. file is loaded with a valid prompt key) */
   onReadyChange?: (ready: boolean) => void;
+  /** Called when the user clicks the Add Model button. Omit to hide the button. */
+  onAddModel?: () => void;
   /**
    * When set, default-select the matching `SAMPLE_DATASETS` entry on mount so
    * the user lands on the agent's golden-prompts dataset without a click.
@@ -177,6 +183,7 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
   onSetModel,
   onReadyChange,
   agentName,
+  onAddModel,
 }) => {
   const [fileResult, setFileResult] = useState<DatasetInputFileResult | null>(null);
   const [promptRows, setPromptRows] = useState<PromptRow[]>([]);
@@ -188,6 +195,9 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [isFilesetPickerOpen, setIsFilesetPickerOpen] = useState(false);
+  // True when the loaded file's prompt column was auto-detected. In that case
+  // we hide the manual column picker; we only surface it when detection failed.
+  const [promptKeyAutoDetected, setPromptKeyAutoDetected] = useState(false);
   const { mutateAsync: createCompletion } = useChatCompletion();
 
   // Monotonic run id. Incremented on invalidation; guards stale writeCell calls.
@@ -203,9 +213,18 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
     runAbortRef.current?.abort();
     setFileResult(result);
     setPromptRows([]);
+    setPromptKeyAutoDetected(result?.keyMapping.promptKey != null);
     if (result) {
       setSampleSize(Math.min(DEFAULT_SAMPLE_SIZE, result.rowCount || DEFAULT_SAMPLE_SIZE));
     }
+  }, []);
+
+  // Override the auto-detected prompt column. Updating `keyMapping.promptKey`
+  // triggers the row-rebuild effect below; fresh rows clear stale responses.
+  const handlePromptKeyChange = useCallback((key: string) => {
+    setFileResult((prev) =>
+      prev ? { ...prev, keyMapping: { ...prev.keyMapping, promptKey: key } } : prev
+    );
   }, []);
 
   /**
@@ -320,6 +339,16 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
       }
     }
   }, [models, promptRows, workspace, createCompletion, clearResponses]);
+
+  // Cancel an in-flight run without clearing results. Bumping the run id makes
+  // any writes from aborted (rejected) requests no-op, so completed cells keep
+  // their results and still-pending cells stay blank. A later Run clears all.
+  const cancelRun = useCallback(() => {
+    runIdRef.current += 1;
+    runAbortRef.current?.abort();
+    runAbortRef.current = null;
+    setIsRunning(false);
+  }, []);
 
   const hasPromptKey = fileResult?.keyMapping.promptKey != null;
   const hasAssignedModel = models.some((m) => m.modelURN !== null);
@@ -437,18 +466,32 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
       if (data.type !== 'dataset') return;
       setIsFilesetPickerOpen(false);
       setParseError(null);
-      const response = await fetch(data.url);
-      const blob = await response.blob();
-      const filename = data.path.split('/').pop() ?? 'dataset.json';
-      const file = new File([blob], filename, { type: blob.type });
-      const result = await parseUploadedFile(file);
-      if ('error' in result) {
-        setParseError(result.error);
-        return;
+      try {
+        // `data.url` is a `fileset://` URI, not an HTTP URL — download via the
+        // SDK using the dataset's workspace/name and the file path.
+        const response = await filesDownloadFile(
+          data.dataset.workspace,
+          data.dataset.name,
+          data.path
+        );
+        if (!response) {
+          setParseError('Failed to download file');
+          return;
+        }
+        const text = await response.text();
+        const filename = data.path.split('/').pop() ?? 'dataset.json';
+        const file = new File([text], filename);
+        const result = await parseUploadedFile(file);
+        if ('error' in result) {
+          setParseError(result.error);
+          return;
+        }
+        setUploadedFileName(`${data.dataset.name}/${data.path}`);
+        setPickerValue(UPLOADED_FILE_VALUE);
+        handleFileChange(result);
+      } catch (err) {
+        setParseError(err instanceof Error ? err.message : 'Failed to load file');
       }
-      setUploadedFileName(data.path);
-      setPickerValue(UPLOADED_FILE_VALUE);
-      handleFileChange(result);
     },
     [handleFileChange]
   );
@@ -459,190 +502,258 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
       children: s.label,
     }));
     if (uploadedFileName) {
-      items.push({ value: UPLOADED_FILE_VALUE, children: `Uploaded: ${uploadedFileName}` });
+      items.push({ value: UPLOADED_FILE_VALUE, children: uploadedFileName });
     }
-    items.push({ value: FILESET_PICKER_VALUE, children: 'Pick from platform…' });
+    items.push({ value: FILESET_PICKER_VALUE, children: 'Select File' });
     return items;
   }, [uploadedFileName]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden px-6 py-4">
-      <div className="flex shrink-0 flex-wrap items-end gap-2">
-        <Stack gap="density-xs" className="min-w-[220px] max-w-sm flex-1">
-          <Text kind="label/bold/sm">Dataset</Text>
-          <Select
-            items={datasetItems}
-            value={pickerValue}
-            onValueChange={handleDatasetSelect}
-            placeholder="Pick a sample…"
-            disabled={isRunning}
-            className="w-full"
-          />
-          {parseError && (
-            <Text kind="label/regular/sm" className="text-fg-error">
-              {parseError}
-            </Text>
-          )}
-        </Stack>
-
-        {fileResult && hasPromptKey && (
-          <div className="ml-6 shrink-0">
-            <FileSamplingMethodSelect
-              value={sampleMethod}
-              onValueChange={setSampleMethod}
-              rowCountGroup={{
-                value: sampleSize,
-                onValueChange: setSampleSize,
-                maxRows: Math.max(1, rowCount),
-                disabled: isRunning,
-              }}
-              attributes={{ select: { disabled: isRunning } }}
-            />
-          </div>
-        )}
-      </div>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden px-6 py-2">
       {/* Results table fills remaining height; this is the main vertical scroll region. */}
-      <div className="min-h-0 flex-1 overflow-auto">
-        <table className="min-w-full table-fixed border-separate border-spacing-0">
-          <colgroup>
-            <col className="w-[320px] min-w-[280px]" />
-            {models.map((m) => (
-              <col key={m.id} className="w-[320px] min-w-[280px]" />
-            ))}
-          </colgroup>
-          <thead className="sticky top-0 z-10 bg-surface-raised">
-            <tr>
-              <th className="border border-base px-3 py-2 text-left font-medium align-middle">
-                <Flex align="center" justify="between" gap="density-md">
-                  <span className="font-bold">Prompts</span>
-                  {fileResult && hasPromptKey && (
-                    <Button
-                      kind="primary"
-                      color="brand"
-                      size="small"
-                      onClick={runInference}
-                      disabled={isRunning || !hasPrompts || !hasAssignedModel}
-                    >
-                      {isRunning ? (
-                        <Loader2 size={14} className="animate-spin" />
-                      ) : (
-                        <Play size={14} />
-                      )}
-                      {isRunning ? 'Running...' : 'Run'}
-                    </Button>
-                  )}
-                </Flex>
-              </th>
+      <div className="flex min-h-0 flex-1">
+        <div className="max-h-full flex-1 self-start overflow-auto rounded-lg border border-base bg-surface-raised">
+          <table className="min-w-full table-fixed border-separate border-spacing-0">
+            <colgroup>
+              <col className="w-[320px] min-w-[280px]" />
               {models.map((m) => (
-                <th key={m.id} className="border-t border-b border-r border-base px-2 py-1">
-                  <Flex gap="density-xs" align="center">
-                    <div className="flex-1 min-w-0">
-                      <ModelColumnSelect
-                        modelGroups={modelGroups}
-                        isLoadingModels={isLoadingModels}
-                        value={m.modelURN}
-                        disabled={isRunning}
-                        onChange={(ref) => {
-                          onSetModel(m.id, ref || null);
-                          clearResponses(m.id);
-                        }}
-                      />
-                    </div>
-                    <button
-                      onClick={() => onRemoveModel(m.id)}
-                      disabled={isRunning}
-                      className="cursor-pointer rounded p-1"
-                      aria-label="Remove model column"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                <col key={m.id} className="w-[320px] min-w-[280px]" />
+              ))}
+            </colgroup>
+            <thead className="sticky top-0 z-10 bg-surface-raised">
+              {/* Row 1: sampling controls + role labels */}
+              <tr>
+                <th className="border-b border-r border-base px-3 py-2 text-left align-middle">
+                  <Flex align="center" justify="between" gap="density-sm">
+                    <Text kind="label/bold/md" className="shrink-0">
+                      Prompts
+                    </Text>
+                    <FileSamplingMethodSelect
+                      value={sampleMethod}
+                      onValueChange={setSampleMethod}
+                      size="medium"
+                      rowCountGroup={{
+                        value: sampleSize,
+                        onValueChange: setSampleSize,
+                        maxRows: Math.max(1, rowCount),
+                        disabled: isRunning || rowCount === 0,
+                      }}
+                      attributes={{ select: { disabled: isRunning || rowCount === 0 } }}
+                    />
+                    {isRunning ? (
+                      <Button kind="primary" color="danger" onClick={cancelRun}>
+                        Stop
+                      </Button>
+                    ) : (
+                      <Button
+                        kind="primary"
+                        color="brand"
+                        onClick={runInference}
+                        disabled={!hasPrompts || !hasAssignedModel}
+                      >
+                        Run
+                      </Button>
+                    )}
                   </Flex>
                 </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {promptRows.map((row) => (
-              <tr key={row.sourceIndex} className="bg-surface-raised">
-                <td className="border-l border-b border-r border-base p-0 align-top">
-                  <ExpandableCell
-                    content={row.prompt}
-                    title={`Prompt (dataset row ${row.sourceIndex})`}
-                    onExpand={setExpandedCell}
-                    boldContent
-                  />
-                </td>
-                {models.map((m) => {
-                  const response = row.responses[m.id];
-                  const modelName = m.modelURN ? getPartsFromReference(m.modelURN).name : 'Model';
-                  if (response === undefined) {
-                    return (
-                      <td key={m.id} className="border-b border-r border-base px-3 py-2 align-top">
-                        <Text kind="body/regular/md" className="text-fg-subdued">
-                          -
-                        </Text>
-                      </td>
-                    );
-                  }
-                  if (response === null) {
-                    return (
-                      <td key={m.id} className="border-b border-r border-base px-3 py-2 align-top">
-                        <Text kind="body/regular/md" className="text-fg-error">
-                          Error
-                        </Text>
-                      </td>
-                    );
-                  }
+                {models.map((m, idx) => {
+                  const roleColor = PANEL_ROLE_COLORS[Math.min(idx, PANEL_ROLE_COLORS.length - 1)];
+                  const colBorder = idx < models.length - 1 ? 'border-r ' : '';
                   return (
-                    <td key={m.id} className="border-b border-r border-base p-0 align-top">
+                    <th
+                      key={m.id}
+                      className={`border-b ${colBorder}border-base px-3 py-2 align-middle`}
+                    >
+                      <Flex align="center" justify="between">
+                        <Flex align="center" gap="density-xs">
+                          <span
+                            className={`h-2 w-2 shrink-0 rounded-full ${PANEL_ROLE_DOT_CLASS[roleColor]}`}
+                          />
+                          <Text kind="label/bold/md">{PANEL_ROLE_LABELS[roleColor]}</Text>
+                        </Flex>
+                        <button
+                          onClick={() => onRemoveModel(m.id)}
+                          disabled={isRunning}
+                          className="cursor-pointer rounded p-1 text-fg-subdued hover:bg-surface-sunken hover:text-fg-base"
+                          aria-label="Remove model column"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </Flex>
+                    </th>
+                  );
+                })}
+              </tr>
+              {/* Row 2: dataset picker + model selects */}
+              <tr>
+                <th
+                  className={`${hasPrompts ? 'border-b ' : ''}border-r border-base px-3 py-2 align-top`}
+                >
+                  <Select
+                    items={datasetItems}
+                    value={pickerValue}
+                    onValueChange={handleDatasetSelect}
+                    placeholder="Select File"
+                    disabled={isRunning}
+                    className="w-full"
+                  />
+                  {parseError && (
+                    <Text kind="label/regular/sm" className="mt-1 text-fg-error">
+                      {parseError}
+                    </Text>
+                  )}
+                  {fileResult && !promptKeyAutoDetected && fileResult.availableKeys.length > 0 && (
+                    <Flex align="center" gap="density-sm" className="mt-2">
+                      <Text kind="label/regular/sm" className="shrink-0 text-fg-subdued">
+                        Prompt column
+                      </Text>
+                      <Select
+                        items={fileResult.availableKeys.map((k) => ({
+                          value: k.value,
+                          children: k.label,
+                        }))}
+                        value={fileResult.keyMapping.promptKey ?? undefined}
+                        onValueChange={handlePromptKeyChange}
+                        placeholder="Select column"
+                        disabled={isRunning}
+                        size="small"
+                        className="w-full"
+                      />
+                    </Flex>
+                  )}
+                </th>
+                {models.map((m, idx) => (
+                  <th
+                    key={m.id}
+                    className={`${hasPrompts ? 'border-b ' : ''}${idx < models.length - 1 ? 'border-r ' : ''}border-base px-2 py-2 align-top`}
+                  >
+                    <ModelColumnSelect
+                      modelGroups={modelGroups}
+                      isLoadingModels={isLoadingModels}
+                      value={m.modelURN}
+                      disabled={isRunning}
+                      onChange={(ref) => {
+                        onSetModel(m.id, ref || null);
+                        clearResponses(m.id);
+                      }}
+                    />
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {promptRows.map((row, rowIdx) => {
+                const rowBottom = rowIdx < promptRows.length - 1 || anyAverages ? 'border-b ' : '';
+                return (
+                  <tr key={row.sourceIndex} className="bg-surface-raised">
+                    <td className={`${rowBottom}border-r border-base p-0 align-top`}>
                       <ExpandableCell
-                        content={response.text}
-                        title={`${modelName} response (dataset row ${row.sourceIndex})`}
-                        onExpand={(state) => setExpandedCell({ ...state, stats: response.stats })}
-                        footer={<CellStats stats={response.stats} className="px-3 pb-2" />}
+                        content={row.prompt}
+                        title={`Prompt (dataset row ${row.sourceIndex})`}
+                        onExpand={setExpandedCell}
+                        boldContent
                       />
                     </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-          {hasPrompts && anyAverages && (
-            <tfoot className="sticky bottom-0 z-10 bg-surface-raised">
-              <tr>
-                <td className="border-l border-t-2 border-b border-r border-base px-3 py-2 align-middle font-bold">
-                  Average
-                </td>
-                {models.map((m) => {
-                  const avg = averagesByModelId[m.id];
-                  return (
-                    <td
-                      key={m.id}
-                      className="border-t-2 border-b border-r border-base px-3 py-2 align-middle"
-                    >
-                      {avg ? (
-                        <CellStats stats={avg} emphasis />
-                      ) : (
-                        <Text kind="body/regular/md" className="text-fg-subdued">
-                          —
-                        </Text>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            </tfoot>
-          )}
-        </table>
+                    {models.map((m, idx) => {
+                      const response = row.responses[m.id];
+                      const modelName = m.modelURN
+                        ? getPartsFromReference(m.modelURN).name
+                        : 'Model';
+                      const colBorder = idx < models.length - 1 ? 'border-r ' : '';
+                      if (response === undefined) {
+                        return (
+                          <td
+                            key={m.id}
+                            className={`${rowBottom}${colBorder}border-base px-3 py-2 align-top`}
+                          >
+                            <Text kind="body/regular/md" className="text-fg-subdued">
+                              -
+                            </Text>
+                          </td>
+                        );
+                      }
+                      if (response === null) {
+                        return (
+                          <td
+                            key={m.id}
+                            className={`${rowBottom}${colBorder}border-base px-3 py-2 align-top`}
+                          >
+                            <Text kind="body/regular/md" className="text-fg-error">
+                              Error
+                            </Text>
+                          </td>
+                        );
+                      }
+                      return (
+                        <td
+                          key={m.id}
+                          className={`${rowBottom}${colBorder}border-base p-0 align-top`}
+                        >
+                          <ExpandableCell
+                            content={response.text}
+                            title={`${modelName} response (dataset row ${row.sourceIndex})`}
+                            onExpand={(state) =>
+                              setExpandedCell({ ...state, stats: response.stats })
+                            }
+                            footer={<StatsBadge metrics={response.stats} className="px-3 pb-2" />}
+                          />
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+            {hasPrompts && anyAverages && (
+              <tfoot className="sticky bottom-0 z-10 bg-surface-raised">
+                <tr>
+                  <td className="border-t-2 border-r border-base px-3 py-2 align-middle font-bold">
+                    Average
+                  </td>
+                  {models.map((m, idx) => {
+                    const avg = averagesByModelId[m.id];
+                    return (
+                      <td
+                        key={m.id}
+                        className={`border-t-2 ${idx < models.length - 1 ? 'border-r ' : ''}border-base px-3 py-2 align-middle`}
+                      >
+                        {avg ? (
+                          <StatsBadge metrics={avg} emphasis tone="brand" />
+                        ) : (
+                          <Text kind="body/regular/md" className="text-fg-subdued">
+                            —
+                          </Text>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+        {onAddModel && (
+          <div className="flex shrink-0 self-start pl-1">
+            <Tooltip slotContent="Add model">
+              <button
+                onClick={onAddModel}
+                className="flex cursor-pointer items-center justify-center rounded border border-base bg-surface-raised p-1.5 text-fg-subdued transition-colors hover:bg-surface-sunken hover:text-fg-base"
+                aria-label="Add model"
+              >
+                <Plus size={16} />
+              </button>
+            </Tooltip>
+          </div>
+        )}
       </div>
 
       <UploadModal
         workspace={workspace}
         open={isFilesetPickerOpen}
         includeDataset
-        allowNewDataset={false}
-        title="Pick dataset file"
-        submitButtonText="Use file"
+        allowNewDataset
+        title="Select File"
+        submitButtonText="Select File"
         onClose={() => setIsFilesetPickerOpen(false)}
         onSubmit={handleFilesetPickerSubmit}
       />
@@ -656,7 +767,7 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
         className="w-[90vw] max-w-[1000px]"
         slotFooter={
           <Flex justify="between" align="center" className="w-full">
-            {expandedCell?.stats ? <CellStats stats={expandedCell.stats} emphasis /> : <span />}
+            {expandedCell?.stats ? <StatsBadge metrics={expandedCell.stats} emphasis /> : <span />}
             <Button kind="tertiary" onClick={() => setExpandedCell(null)}>
               Close
             </Button>
@@ -673,28 +784,6 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
   );
 };
 
-/**
- * Compact stats line — brand green, same look as the Chat tab's StatsBadge.
- * No padding by default; parents wrap with the padding that fits their slot
- * (response cells add their own horizontal padding; the footer row's td
- * already pads). Pass `className` to override.
- */
-const CellStats: FC<{ stats: ResponseStats; className?: string; emphasis?: boolean }> = ({
-  stats,
-  className,
-  emphasis,
-}) => {
-  const seconds = (stats.totalMs / 1000).toFixed(1);
-  const tokensPerSec = Math.max(0, Math.round(stats.tokensPerSec));
-  return (
-    <div
-      className={`font-mono text-[var(--color-brand)] ${emphasis ? 'text-sm font-bold' : 'text-xs'} ${className ?? ''}`}
-    >
-      {seconds}s · {stats.completionTokens} tok · {tokensPerSec} t/s
-    </div>
-  );
-};
-
 /** Table cell with vertical scroll and an expand-to-modal button */
 const ExpandableCell: FC<{
   content: string;
@@ -704,7 +793,7 @@ const ExpandableCell: FC<{
   boldContent?: boolean;
 }> = ({ content, title, onExpand, footer, boldContent }) => {
   return (
-    <div className="group relative">
+    <div className="group relative flex h-full flex-col">
       <button
         onClick={() => onExpand({ title, content })}
         className="absolute right-1 top-1 z-10 cursor-pointer rounded bg-surface-base/80 p-1 opacity-0 hover:bg-surface-sunken group-hover:opacity-100"
@@ -720,7 +809,7 @@ const ExpandableCell: FC<{
           {content}
         </Text>
       </div>
-      {footer}
+      {footer && <div className="mt-auto">{footer}</div>}
     </div>
   );
 };

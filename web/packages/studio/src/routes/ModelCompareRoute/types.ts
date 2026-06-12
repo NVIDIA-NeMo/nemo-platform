@@ -24,12 +24,17 @@ export const PANEL_ROLE_LABELS: Record<PanelRoleColor, string> = {
   amber: 'Comparison 3',
 };
 
-/** Tailwind class for the small colored status dot beside the panel label. */
+/**
+ * Tailwind class for the small colored status dot beside the panel label.
+ * Fixed palette by position (baseline first): gray → blue → yellow → green.
+ * Uses the feedback/accent *foreground* tokens (the saturated colors) as the
+ * dot fill; `bg-feedback-*` would resolve to the pale background tokens.
+ */
 export const PANEL_ROLE_DOT_CLASS: Record<PanelRoleColor, string> = {
-  baseline: 'bg-fg-subdued',
-  cyan: 'bg-accent-blue',
-  magenta: 'bg-accent-purple',
-  amber: 'bg-accent-orange',
+  baseline: 'bg-[var(--text-color-accent-gray)]',
+  cyan: 'bg-[var(--text-color-feedback-info)]',
+  magenta: 'bg-[var(--text-color-feedback-warning)]',
+  amber: 'bg-[var(--text-color-feedback-success)]',
 };
 
 /** Seed payload used to pre-fill a panel's composer textarea from outside. */
