@@ -4,7 +4,7 @@ Read this file when submit fails, jobs fail on images, the platform is unreachab
 
 ## Platform unreachable (connection error)
 
-Any `nemo …` call may fail with `Connection error`, timeout, or connection refused — typically on the first `nemo jobs list-execution-profiles` after auth.
+Any `nemo …` call may fail with `Connection error`, timeout, or connection refused — typically on the first `nemo jobs list-execution-profiles`. Auth is not required when the cluster has authentication disabled (`nemo auth status`); on 401/403 see **Authentication** in `SKILL.md`.
 
 **Did the user override the base URL?**
 
@@ -37,7 +37,7 @@ If the user already has a listener on `:8080` but health fails, see **nemo-statu
 
 **Do not** run `docker info` on the agent machine. The platform often runs elsewhere (`NEMO_BASE_URL`). Ask the **connected platform** what executors it exposes.
 
-After `nemo auth login`, list profiles:
+List profiles (login first only if auth is enabled — see **Authentication** in `SKILL.md`):
 
 ```bash
 uv run nemo jobs list-execution-profiles -f json
