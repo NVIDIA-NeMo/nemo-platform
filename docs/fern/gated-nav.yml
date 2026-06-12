@@ -207,10 +207,6 @@
     path: ../../example-applications/about.mdx
   - page: Tool Calling
     path: ../../example-applications/tool-calling.mdx
-- section: run-inference
-  contents:
-  - page: Deploy Models
-    path: ../../run-inference/tutorials/deploy-models.mdx
 - section: troubleshooting
   contents:
   - page: Cluster Setup

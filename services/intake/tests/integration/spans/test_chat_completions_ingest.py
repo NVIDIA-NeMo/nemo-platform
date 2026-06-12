@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import time
 from decimal import Decimal
 from typing import Any
 
@@ -18,9 +19,6 @@ EVALUATION_CONTEXT: dict[str, Any] = {
     "evaluation_id": "chat-eval",
     "evaluation_sha": "chat-eval-sha",
     "evaluation_run_id": "evalrun-chat-001",
-    "dataset_id": "chat-dataset",
-    "dataset_name": "Chat Dataset",
-    "dataset_version": "v1",
     "test_case_id": "chat-case-001",
     "metadata": {"source": "chat-completions-test"},
 }
@@ -53,7 +51,9 @@ def _openai_response(**overrides: Any) -> dict[str, Any]:
     response = {
         "id": "chatcmpl-test-abc123",
         "object": "chat.completion",
-        "created": 1778698885,
+        # Now-based: span started_at derives from `created`, and the spans/traces
+        # list endpoints default to a 30-day lookback — a fixed date ages out.
+        "created": int(time.time()),
         "model": "gpt-4o-mini-2024-08-06",
         "choices": [
             {
@@ -261,9 +261,6 @@ def test_chat_completions_ingest_accepts_deprecated_evaluation_context(client: T
         "evaluation_id": EVALUATION_CONTEXT["evaluation_id"],
         "evaluation_sha": EVALUATION_CONTEXT["evaluation_sha"],
         "evaluation_run_id": EVALUATION_CONTEXT["evaluation_run_id"],
-        "dataset_id": EVALUATION_CONTEXT["dataset_id"],
-        "dataset_name": EVALUATION_CONTEXT["dataset_name"],
-        "dataset_version": EVALUATION_CONTEXT["dataset_version"],
         "test_case_id": EVALUATION_CONTEXT["test_case_id"],
         "metadata": EVALUATION_CONTEXT["metadata"],
     }
@@ -453,8 +450,6 @@ def _create_experiment(client: TestClient, name: str) -> str:
         json={
             "name": name,
             "experiment_group_id": group_id,
-            "agent_name": "sample-agent",
-            "agent_version": "1.0.0",
             "dataset_name": "chat-dataset",
             "dataset_version": "v1",
         },

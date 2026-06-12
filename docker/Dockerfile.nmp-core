@@ -1,0 +1,36 @@
+# syntax=docker/dockerfile:1
+# NMP Core - Minimal core infrastructure APIs
+
+ARG NMP_PYTHON_BASE=nmp-python-base
+
+FROM ${NMP_PYTHON_BASE} AS builder
+COPY --from=nmp-workspace . .
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --only-group core-services --no-editable
+# Pre-install DuckDB aws + httpfs so OTLP log ingestion works without outbound network.
+# Download the extension artifacts directly over HTTPS and install from local files
+# because DuckDB's default remote INSTALL path can be blocked or flaky in some build environments.
+RUN sh /app/script/install_duckdb_extensions.sh
+
+FROM ${NMP_PYTHON_BASE} AS runtime
+ARG USERNAME=nvs
+ARG USER_UID=1000
+ARG USER_GID=1000
+WORKDIR /app
+RUN groupadd --gid ${USER_GID} ${USERNAME} && \
+    useradd --uid ${USER_UID} --gid ${USER_GID} --create-home --shell /bin/bash ${USERNAME}
+ENV USERNAME=nvs \
+    HOME=/home/nvs
+# DuckDB extension cache (aws, httpfs) for S3 log storage
+COPY --chown=nvs:nvs --from=builder /root/.duckdb /root/.duckdb
+COPY --chown=nvs:nvs --from=builder /root/.duckdb /home/nvs/.duckdb
+COPY --chown=nvs:nvs --from=builder /app/.venv /app/.venv
+# Authz evaluates the packaged policy WASM from nmp.core.auth.assets at runtime.
+COPY --chown=nvs:nvs --from=policy-wasm-artifacts /artifacts/policy.wasm /app/.venv/lib/python3.11/site-packages/nmp/core/auth/assets/policy.wasm
+ENV PATH="/app/.venv/bin:$PATH"
+COPY --chown=nvs:nvs --from=nmp-jobs-launcher /artifacts/jobs-launcher /tools/jobs-launcher
+ENTRYPOINT ["nemo", "services", "run"]
+EXPOSE 8080
+USER 0
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health/ready')"]

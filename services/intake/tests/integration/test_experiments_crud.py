@@ -19,8 +19,6 @@ def _experiment_body(*, experiment_group_id: str, **overrides: Any) -> dict:
     body = {
         "name": "terminal-bench-2_claude-code_opus_baseline",
         "experiment_group_id": experiment_group_id,
-        "agent_name": "claude-code",
-        "agent_version": "0.125.0",
         "dataset_name": "terminal-bench-2",
         "dataset_version": "v1",
         "source_link": "https://example.com/experiments/tb2-baseline",
@@ -94,12 +92,12 @@ def test_experiment_update_rejects_immutable_change(client: TestClient) -> None:
     group = _create_group(client)
     client.post(
         EXPERIMENTS,
-        json=_experiment_body(name="exp-a", agent_name="claude-code", experiment_group_id=group["id"]),
+        json=_experiment_body(name="exp-a", dataset_name="tb2", experiment_group_id=group["id"]),
     )
-    changed = _experiment_body(name="exp-a", agent_name="cursor", experiment_group_id=group["id"])
+    changed = _experiment_body(name="exp-a", dataset_name="tb3", experiment_group_id=group["id"])
     resp = client.put(f"{EXPERIMENTS}/exp-a", json=changed)
     assert resp.status_code == 409, resp.text
-    assert "agent_name" in resp.json()["detail"]
+    assert "dataset_name" in resp.json()["detail"]
     missing = client.put(
         f"{EXPERIMENTS}/missing",
         json=_experiment_body(name="missing", experiment_group_id=group["id"]),
@@ -115,7 +113,6 @@ def test_experiment_crud_and_empty_rollups(client: TestClient) -> None:
     exp = created.json()
     assert exp["name"] == "terminal-bench-2_claude-code_opus_baseline"
     assert exp["experiment_group_id"] == group["id"]
-    assert exp["agent_name"] == "claude-code"
     assert exp["dataset_name"] == "terminal-bench-2"
     assert exp["source_link"] == "https://example.com/experiments/tb2-baseline"
     assert exp["metadata"] == {"job_name": "tb2-baseline"}
@@ -123,6 +120,8 @@ def test_experiment_crud_and_empty_rollups(client: TestClient) -> None:
     # Rollups exist on the read model but are empty until ClickHouse hydration lands.
     assert exp["evaluator_names"] == []
     assert exp["model_names"] == []
+    assert exp["agent_names"] == []
+    assert exp["agent_versions"] == []
     assert exp["aggregate_scores"] is None
     assert exp["run_count"] == 0
 
@@ -214,41 +213,24 @@ def test_experiment_list_and_scope_to_group(client: TestClient) -> None:
     assert missing.status_code == 404
 
 
-def test_experiment_filter_by_agent_and_dataset_version(client: TestClient) -> None:
+def test_experiment_filter_by_dataset_version(client: TestClient) -> None:
     group = _create_group(client)
     client.post(
         EXPERIMENTS,
-        json=_experiment_body(
-            name="exp-v1", agent_version="1.0.0", dataset_version="v1", experiment_group_id=group["id"]
-        ),
+        json=_experiment_body(name="exp-v1", dataset_version="v1", experiment_group_id=group["id"]),
     )
     client.post(
         EXPERIMENTS,
-        json=_experiment_body(
-            name="exp-v2", agent_version="2.0.0", dataset_version="v1", experiment_group_id=group["id"]
-        ),
+        json=_experiment_body(name="exp-v2", dataset_version="v1", experiment_group_id=group["id"]),
     )
     client.post(
         EXPERIMENTS,
-        json=_experiment_body(
-            name="exp-v3", agent_version="2.0.0", dataset_version="v2", experiment_group_id=group["id"]
-        ),
+        json=_experiment_body(name="exp-v3", dataset_version="v2", experiment_group_id=group["id"]),
     )
-
-    by_agent_version = client.get(EXPERIMENTS, params={"filter[agent_version]": "2.0.0"})
-    assert by_agent_version.status_code == 200
-    assert {e["name"] for e in by_agent_version.json()["data"]} == {"exp-v2", "exp-v3"}
 
     by_dataset_version = client.get(EXPERIMENTS, params={"filter[dataset_version]": "v1"})
     assert by_dataset_version.status_code == 200
     assert {e["name"] for e in by_dataset_version.json()["data"]} == {"exp-v1", "exp-v2"}
-
-    combined = client.get(
-        EXPERIMENTS,
-        params={"filter[agent_version]": "2.0.0", "filter[dataset_version]": "v2"},
-    )
-    assert combined.status_code == 200
-    assert {e["name"] for e in combined.json()["data"]} == {"exp-v3"}
 
 
 def test_experiment_filter_by_created_at_range(client: TestClient) -> None:

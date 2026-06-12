@@ -6,7 +6,9 @@ import { Empty } from '@studio/components/Empty';
 import type { SkillActionTemplate } from '@studio/routes/DashboardLandingRoute/skillActionSuggestions';
 import type { FC } from 'react';
 
-const SKILL_ACTION_CARD_CLASS = 'h-40 w-72 flex-none cursor-pointer shadow-none!';
+const SKILL_ACTION_CARD_WIDTH_CLASS = 'w-72';
+const SKILL_ACTION_CARD_HEIGHT_CLASS = 'h-44';
+const SKILL_ACTION_CARD_CLASS = `${SKILL_ACTION_CARD_HEIGHT_CLASS} ${SKILL_ACTION_CARD_WIDTH_CLASS} flex-none cursor-pointer shadow-none!`;
 
 const HORIZONTAL_SCROLLBAR_CLASS = [
   '[scrollbar-width:thin]',
@@ -34,24 +36,28 @@ const SkillActionList: FC<SkillActionListProps> = ({ actions, onSelect }) => {
   return (
     <div
       aria-label="Skill action suggestions"
-      className={`w-full overflow-x-auto ${HORIZONTAL_SCROLLBAR_CLASS}`}
+      className={`min-w-0 w-full overflow-x-auto ${HORIZONTAL_SCROLLBAR_CLASS}`}
     >
       <Flex
         align="stretch"
         gap="density-md"
-        className="w-max min-w-full pb-density-lg"
+        className="w-max min-w-full pb-6"
         data-testid="skill-action-row"
       >
         {actions.map((action) => (
           <div
             key={`${action.skillName ?? action.title}:${action.claudeName ?? action.prompt}`}
-            className="w-72 flex-none"
+            className={`${SKILL_ACTION_CARD_HEIGHT_CLASS} ${SKILL_ACTION_CARD_WIDTH_CLASS} flex-none`}
             data-testid={action.skillName ? `skill-action-card-${action.skillName}` : undefined}
           >
-            <Card asChild interactive className="h-40 w-full cursor-pointer shadow-none!">
+            <Card
+              asChild
+              interactive
+              className="h-full w-full overflow-hidden cursor-pointer shadow-none!"
+            >
               <button
                 type="button"
-                className="flex h-full w-full flex-col gap-density-md text-left"
+                className="flex h-full w-full flex-col gap-density-sm overflow-hidden p-density-md text-left"
                 onClick={() => onSelect(action.prompt)}
               >
                 <span className="flex size-8 shrink-0 items-center justify-center rounded bg-surface-raised text-accent">
@@ -130,5 +136,9 @@ export const SkillActionSection: FC<SkillActionSectionProps> = ({
     );
   }
 
-  return <SkillActionList actions={actions} onSelect={onSelect} />;
+  return (
+    <div className="min-w-0 w-full self-stretch">
+      <SkillActionList actions={actions} onSelect={onSelect} />
+    </div>
+  );
 };

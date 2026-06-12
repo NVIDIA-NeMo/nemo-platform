@@ -8,7 +8,6 @@ from __future__ import annotations
 from typing import Any, Generator
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import docker
 import pytest
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nmp.core.inference_gateway.api.dependencies import global_model_cache
@@ -31,6 +30,8 @@ from nmp.testing.docker import (
     ensure_mock_sidecar_image,
     get_worker_port_range,
 )
+
+import docker
 
 # =============================================================================
 # Constants

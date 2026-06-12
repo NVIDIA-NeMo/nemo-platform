@@ -21,7 +21,7 @@ from typing import Dict
 from typing_extensions import TypedDict
 
 from .fileset_purpose import FilesetPurpose
-from .fileset_metadata_param import FilesetMetadataParam
+from ..shared_params.fileset_metadata_param import FilesetMetadataParam
 
 __all__ = ["FilesetUpdateParams"]
 

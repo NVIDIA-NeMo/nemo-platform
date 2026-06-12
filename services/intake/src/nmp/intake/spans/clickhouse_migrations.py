@@ -342,6 +342,12 @@ _MIGRATIONS: list[tuple[str, Callable[..., None]]] = [
     ("ch_annotations_0001", _create_annotations_schema),
     ("ch_evaluator_results_0002", _add_evaluator_results_skip_indexes),
     ("ch_trace_index_0003", _create_trace_index_schema),
+    # NeMo-owned span attribute keys moved under the ``nemo.*`` namespace
+    # (e.g., ``experiment.id`` → ``nemo.experiment.id``). The trace_index MV's SELECT clause
+    # resolves bag keys from the catalog at creation time, so any environment that already
+    # applied 0003 has the old keys baked in. Re-running the schema function drops and
+    # recreates the MV with the current catalog keys.
+    ("ch_trace_index_0004_nemo_keys", _create_trace_index_schema),
 ]
 CURRENT_SCHEMA_VERSION = _MIGRATIONS[-1][0]
 

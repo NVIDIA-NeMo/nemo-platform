@@ -50,13 +50,7 @@ export const getSpanDisplayName = (span: Span): string => {
 
 export const getSpanSubject = (span: Span): string => {
   return (
-    span.tool_name ||
-    span.model ||
-    span.agent_name ||
-    span.provider ||
-    span.prompt_name ||
-    span.project ||
-    span.kind
+    span.tool_name || span.model || span.agent_name || span.provider || span.project || span.kind
   );
 };
 
@@ -71,13 +65,7 @@ export const getEvaluationContextSummary = (
   context: SpanEvaluationContext | null | undefined
 ): string => {
   if (!context) return EMPTY_VALUE;
-  return (
-    context.evaluation_run_id ||
-    context.evaluation_id ||
-    context.dataset_name ||
-    context.test_case_id ||
-    EMPTY_VALUE
-  );
+  return context.evaluation_run_id || context.evaluation_id || context.test_case_id || EMPTY_VALUE;
 };
 
 export const hasEvaluationContext = (context: SpanEvaluationContext | null | undefined): boolean =>
@@ -86,9 +74,6 @@ export const hasEvaluationContext = (context: SpanEvaluationContext | null | und
     (context.evaluation_id ||
       context.evaluation_sha ||
       context.evaluation_run_id ||
-      context.dataset_id ||
-      context.dataset_name ||
-      context.dataset_version ||
       context.test_case_id ||
       (context.metadata && Object.keys(context.metadata).length > 0))
   );

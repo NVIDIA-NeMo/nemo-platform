@@ -1,0 +1,19 @@
+# Maps the conventional-commit type in the PR title to a same-named label;
+# .github/release.yml groups release notes by these labels. Bare prefix match
+# is safe: titles are validated by semantic-pull-requests.yaml and no type is
+# a prefix of another. The breaking rule instead matches the `!` marker
+# (feat!:, fix(api)!:) and applies alongside the type label.
+autolabeler:
+  - { label: feat,     title: ['/^feat/'] }
+  - { label: fix,      title: ['/^fix/'] }
+  - { label: docs,     title: ['/^docs/'] }
+  - { label: style,    title: ['/^style/'] }
+  - { label: refactor, title: ['/^refactor/'] }
+  - { label: perf,     title: ['/^perf/'] }
+  - { label: test,     title: ['/^test/'] }
+  - { label: build,    title: ['/^build/'] }
+  - { label: ci,       title: ['/^ci/'] }
+  - { label: chore,    title: ['/^chore/'] }
+  - { label: revert,   title: ['/^revert/'] }
+  - { label: cp,       title: ['/^cp/'] }
+  - { label: breaking, title: ['/!: /'] }

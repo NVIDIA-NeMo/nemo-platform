@@ -9,7 +9,6 @@ from collections.abc import Callable
 from typing import Any, Generator, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import docker
 import pytest
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform.types.inference.model_deployment import ModelDeployment
@@ -34,6 +33,8 @@ from nmp.testing.docker import (
     ensure_mock_sidecar_image,
     get_worker_port_range,
 )
+
+import docker
 
 blockbuster = blockbuster_fixture(autouse=True)
 

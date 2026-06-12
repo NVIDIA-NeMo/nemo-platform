@@ -52,6 +52,8 @@ async def test_experiment_rollups_anchor_on_root_session_membership():
                     (
                         "exp-a",
                         ["model-b", "model-a"],
+                        ["agent-a"],
+                        ["1.0.0", "1.0.1"],
                         0.65,
                         0.1625,
                         0.2,
@@ -71,6 +73,8 @@ async def test_experiment_rollups_anchor_on_root_session_membership():
                 [
                     "experiment_id",
                     "model_names",
+                    "agent_names",
+                    "agent_versions",
                     "cost_sum",
                     "cost_mean",
                     "cost_median",
@@ -97,6 +101,8 @@ async def test_experiment_rollups_anchor_on_root_session_membership():
     assert rollup.run_count == 3
     assert rollup.evaluator_names == ["harbor.verifier"]
     assert rollup.model_names == ["model-a", "model-b"]
+    assert rollup.agent_names == ["agent-a"]
+    assert rollup.agent_versions == ["1.0.0", "1.0.1"]
     assert rollup.evaluator_scores["harbor.verifier"].sum == 3.0
     assert rollup.evaluator_scores["harbor.verifier"].mean == 0.75
     assert rollup.evaluator_scores["harbor.verifier"].median == 0.8

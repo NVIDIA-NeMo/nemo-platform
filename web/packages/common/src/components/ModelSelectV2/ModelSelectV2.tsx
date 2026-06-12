@@ -19,6 +19,7 @@ export const ModelSelectV2: FC<ModelSelectV2Props> = ({
   showParams = false,
   hideAdapters = false,
   fullWidth = false,
+  dropdownSide,
   inferenceParams,
   onInferenceParamsChange,
   onOpenChange,
@@ -50,6 +51,7 @@ export const ModelSelectV2: FC<ModelSelectV2Props> = ({
       defaultModelType={defaultModelType}
       hideAdapters={hideAdapters}
       fullWidth={fullWidth}
+      dropdownSide={dropdownSide}
       open={modelOpen}
       onOpenChange={handleModelOpenChange}
     />

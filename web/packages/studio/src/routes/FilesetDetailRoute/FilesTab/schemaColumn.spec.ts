@@ -14,7 +14,7 @@ describe('getSchemaCellLabel', () => {
     };
     expect(getSchemaCellLabel('README.md', meta)).toBe(null);
     expect(getSchemaCellLabel('assets/logo.png', meta)).toBe(null);
-    expect(getSchemaCellLabel('data/train.parquet', meta)).toBe(null);
+    expect(getSchemaCellLabel('data/model.safetensors', meta)).toBe(null);
   });
 
   it('returns the schema key when schemas_by_path maps the file to a string ref', () => {

@@ -6,6 +6,7 @@ import { AssistantChatThread } from '@nemo/common/src/components/AssistantChat/A
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { Banner, Stack, Text } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
+import { type AgentBlockingInputSubmission } from '@studio/components/agents/AgentBlockingInput';
 import { AgentDecisionInput } from '@studio/components/agents/AgentDecisionInput';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
@@ -13,6 +14,7 @@ import {
   getClaudeCodeSessionHistory,
   getClaudeCodeSessionHistoryQueryKey,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/api';
+import { BlockingInputComposer } from '@studio/routes/agents/ClaudeCodeChatRoute/BlockingInputComposer';
 import { ClaudeCodeLayout } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeLayout';
 import { ClaudeCodeStudioLink } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeStudioLink';
 import { ClaudeCodeToolCallPart } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeToolCallPart';
@@ -94,9 +96,13 @@ const ClaudeCodeChatSurface: FC<ClaudeCodeChatSurfaceProps> = ({
     decisionRequest,
     decisionStatus,
     handleReset,
+    inputRequest,
+    inputStatus,
+    resolveInputRequest,
     resolveDecisionRequest,
     runtime,
     sessionId,
+    skipInputRequest,
     skipDecisionRequest,
     submitPrompt,
   } = useClaudeCodeChatRuntime({
@@ -114,6 +120,16 @@ const ClaudeCodeChatSurface: FC<ClaudeCodeChatSurfaceProps> = ({
     }
   }, [handleReset, initialSessionId, navigate, workspace]);
 
+  const handleInputSubmit = useCallback(
+    async (submission: AgentBlockingInputSubmission) => {
+      await resolveInputRequest({
+        decision: { value: submission.value },
+        displayText: submission.displayText,
+      });
+    },
+    [resolveInputRequest]
+  );
+
   useBreadcrumbs({
     items: [
       { slotLabel: 'Dashboard', href: getWorkspaceDashboardRoute(workspace) },
@@ -130,7 +146,7 @@ const ClaudeCodeChatSurface: FC<ClaudeCodeChatSurfaceProps> = ({
   }, [initialPrompt, location.pathname, location.search, navigate, submitPrompt]);
 
   useLayoutEffect(() => {
-    if (!decisionRequest) return undefined;
+    if (!decisionRequest && !inputRequest) return undefined;
 
     const viewport = chatViewportRef.current;
     if (!viewport) return undefined;
@@ -140,7 +156,7 @@ const ClaudeCodeChatSurface: FC<ClaudeCodeChatSurfaceProps> = ({
     });
 
     return () => window.cancelAnimationFrame(frame);
-  }, [decisionRequest]);
+  }, [decisionRequest, inputRequest]);
 
   return (
     <ClaudeCodeLayout activeSessionId={activeSessionId}>
@@ -161,7 +177,7 @@ const ClaudeCodeChatSurface: FC<ClaudeCodeChatSurfaceProps> = ({
                 }}
                 placeholder="Ask Claude Code to work in this workspace"
                 onReset={handleChatReset}
-                showRunningIndicator={!decisionRequest}
+                showRunningIndicator={!decisionRequest && !inputRequest}
                 messageContentProps={{ markdownLinkComponent: ClaudeCodeStudioLink }}
                 emptyState={{
                   slotHeading: 'Start a Claude Code session',
@@ -176,6 +192,14 @@ const ClaudeCodeChatSurface: FC<ClaudeCodeChatSurfaceProps> = ({
                       status={decisionStatus}
                       onSubmit={resolveDecisionRequest}
                       onSkip={skipDecisionRequest}
+                    />
+                  ) : inputRequest ? (
+                    <BlockingInputComposer
+                      inputRequest={inputRequest}
+                      inputStatus={inputStatus}
+                      workspace={workspace}
+                      onSubmit={handleInputSubmit}
+                      onSkip={skipInputRequest}
                     />
                   ) : undefined
                 }

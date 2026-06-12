@@ -59,9 +59,6 @@ class TestAtif:
             schema_version="ATIF-v1.0",
             continued_trajectory_ref="continued_trajectory_ref",
             evaluation_context={
-                "dataset_id": "dataset_id",
-                "dataset_name": "dataset_name",
-                "dataset_version": "dataset_version",
                 "evaluation_id": "evaluation_id",
                 "evaluation_run_id": "evaluation_run_id",
                 "evaluation_sha": "evaluation_sha",
@@ -180,9 +177,6 @@ class TestAsyncAtif:
             schema_version="ATIF-v1.0",
             continued_trajectory_ref="continued_trajectory_ref",
             evaluation_context={
-                "dataset_id": "dataset_id",
-                "dataset_name": "dataset_name",
-                "dataset_version": "dataset_version",
                 "evaluation_id": "evaluation_id",
                 "evaluation_run_id": "evaluation_run_id",
                 "evaluation_sha": "evaluation_sha",

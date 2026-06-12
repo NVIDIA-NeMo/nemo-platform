@@ -3,7 +3,7 @@
 
 import { CodeEditor } from '@nemo/common/src/components/CodeEditor';
 import { ContentType } from '@nemo/common/src/components/CodeEditor/constants';
-import { FileFormat, type FileFormatType } from '@nemo/common/src/types';
+import { FileFormat, SUPPORTED_FILE_FORMATS, type FileFormatType } from '@nemo/common/src/types';
 import { getFirstRow } from '@nemo/common/src/utils/file';
 import {
   buildDatasetMetadata,
@@ -48,6 +48,8 @@ const INFER_FROM_EXISTING_MAX_FILES = 10;
 const FORMAT_BY_EXTENSION: Record<string, FileFormatType> = {
   json: FileFormat.JSON,
   jsonl: FileFormat.JSONL,
+  csv: FileFormat.CSV,
+  parquet: FileFormat.PARQUET,
 };
 
 function detectFormatFromPath(path: string): FileFormatType | null {
@@ -318,7 +320,12 @@ export const DatasetSchemaEditor: FC<DatasetSchemaEditorProps> = ({
       for (const file of supportedExistingFiles.slice(0, INFER_FROM_EXISTING_MAX_FILES)) {
         const format = detectFormatFromPath(file.path);
         if (!format) continue;
-        const buffer = await downloadFileHead({ workspace, datasetName, path: file.path });
+        const buffer = await downloadFileHead({
+          workspace,
+          datasetName,
+          path: file.path,
+          bytes: file.size,
+        });
         if (!buffer) continue;
         const textContent = decoder.decode(buffer);
         const blob = new File([textContent], file.path);
@@ -532,7 +539,8 @@ export const DatasetSchemaEditor: FC<DatasetSchemaEditorProps> = ({
         </Button>
         {supportedExistingFiles.length === 0 && (
           <Text kind="body/regular/sm">
-            Upload a .json or .jsonl file to enable auto-inference.
+            Upload a supported file ({SUPPORTED_FILE_FORMATS.map((f) => `.${f}`).join(', ')}) to
+            enable auto-inference.
           </Text>
         )}
         {inferError && (
