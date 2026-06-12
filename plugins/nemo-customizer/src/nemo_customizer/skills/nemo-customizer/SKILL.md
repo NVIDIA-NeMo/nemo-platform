@@ -27,6 +27,7 @@ triggers:
 not-for:
   - nemo-build-agent (agent scaffold/deploy, not weight training)
   - nemo-explore (agent design only)
+  - nemo-setup (platform install; route here when CLI resolution fails)
   - safe-synthesizer (tabular synthetic data training)
 compatibility: >-
   Requires nemo-customizer-plugin and a customization contributor (`nemo.customization.contributors`).
@@ -50,9 +51,45 @@ End-to-end **SFT + LoRA** on NeMo Platform. Two backend plugins ship in this rep
 
 Decision rule below in **Plugin pick**. Batch shell work; reuse resources with `--exist-ok`; skip CLI `--help` unless a command fails.
 
+## Pre-flight — CLI resolution
+
+Run from the **nemo-platform** git root (top-level `pyproject.toml`), not a plugin subfolder. Example commands below use `nemo …` — resolve the invocation **once** before any other step:
+
+```bash
+cd /path/to/nemo-platform
+if command -v nemo >/dev/null 2>&1; then
+  echo "nemo"
+elif command -v uv >/dev/null 2>&1 && uv run nemo --help >/dev/null 2>&1; then
+  echo "uv run nemo"
+else
+  echo "CLI_NOT_FOUND"
+fi
+```
+
+| Result | Action |
+|--------|--------|
+| `nemo` | Use `nemo …` for all commands in this workflow |
+| `uv run nemo` | Prefix every command with `uv run` (repo dev checkout without `nemo` on `PATH`) |
+| `CLI_NOT_FOUND` | Stop. Route to **nemo-setup** (`make bootstrap` then `nemo setup` from the nemo-platform repo root). Do not continue. |
+
+## Authentication (optional)
+
+Platform auth is **not required** to run customization when the cluster has authentication disabled. Check with `nemo auth status` — if it reports authentication is disabled, skip login and proceed.
+
+When auth **is** enabled on the connected platform, API calls need credentials:
+
+| Situation | Action |
+|-----------|--------|
+| Auth disabled | Skip login |
+| Auth enabled, unsigned JWT allowed (typical local dev: `auth.allow_unsigned_jwt: true`) | `nemo auth login --unsigned-token --email <user email or admin@example.com>` |
+| Auth enabled, OIDC configured | `nemo auth login` (or `--username` / `--password` for non-interactive) |
+| 401/403 on any platform call | Run the matching login above, then retry |
+
+Use `admin@example.com` unless the user specifies another email. Run `nemo auth status` after login to confirm.
+
 ## Plugin pick
 
-1. After `nemo auth login`, run `uv run nemo jobs list-execution-profiles -f json` (see `references/troubleshooting.md` for parsing).
+1. Run `nemo jobs list-execution-profiles -f json` (login first only if auth is enabled — see **Authentication**; see `references/troubleshooting.md` for parsing).
 2. If the user explicitly asked for Unsloth → **`unsloth`**.
 3. Else if the user explicitly asked for Automodel → **`automodel`**.
 4. Else if any profile has `provider: gpu` or `gpu_distributed` → **`automodel`** (default).
@@ -62,14 +99,14 @@ Training never runs inside the `nemo` CLI process. After `submit`, the platform'
 
 ## Gotchas
 
-- Run all `uv run` commands from the **nemo-platform** git root (top-level `pyproject.toml`), not a plugin subfolder.
+- Resolve the CLI per **Pre-flight — CLI resolution** before any `nemo …` command; run from the **nemo-platform** git root, not a plugin subfolder.
 - Set `NEMO_BASE_URL` (or `NMP_BASE_URL`) only when the user gives a platform URL; default `http://127.0.0.1:8080` (same as `http://localhost:8080`). Track whether the user **overrode** the base URL — see **Platform unreachable** below.
 - **Platform unreachable** — if any platform API call fails with a connection error (`Connection error`, timeout, refused):
   - **User gave a custom URL** (e.g. `10.0.0.51:8080`) or you exported a non-default `NEMO_BASE_URL` / `NMP_BASE_URL`: stop and tell the user the platform is not reachable at that address. Do **not** offer to start local services.
   - **Default URL only** (no user override): **ask** whether to start the platform locally. If they agree, from the **nemo-platform** git root run in the **background**:
 
     ```bash
-    uv run nemo services run \
+    nemo services run \
       --host 0.0.0.0 \
       --port 8080 \
       --controllers jobs,entities,models \
@@ -88,7 +125,7 @@ Training never runs inside the `nemo` CLI process. After `submit`, the platform'
 - Skill **defaults** (`micro_batch_size` 1, `global_batch_size` 4) are safe on unknown VRAM. When the user has **≥48 GB** on one GPU, use **Batch sizing** instead of defaults. Unsloth's analogues are `batch.per_device_train_batch_size` and `batch.gradient_accumulation_steps` (effective batch = product).
 - **Unsloth training is single-GPU per job** (inside the container). `hardware.gpus` sets `CUDA_VISIBLE_DEVICES` before `import torch` — **selection, not reservation**. No `parallelism`/TP/PP block in job JSON. Multi-GPU sharding → use automodel. Pass `--profile <name>` on `unsloth submit` when the default `gpu` profile is wrong (automodel sets `training.execution_profile` in JSON instead).
 - **Unsloth validation defaults** — when `dataset.validation_path` is set and `schedule.eval_steps` is omitted, the trainer runs validation once per effective epoch automatically. Report final `metrics.val_loss` from job status (see **Report to user**). Set `eval_steps` explicitly to override cadence.
-- **Do not use local `docker info`** to pick automodel vs unsloth. After auth, run `uv run nemo jobs list-execution-profiles -f json` against the user's platform (see `references/troubleshooting.md`). Default output is a table — **`-f json` is required** for scripting; parse **stdout only** (do not pipe `2>&1` into `json.load`).
+- **Do not use local `docker info`** to pick automodel vs unsloth. Run `nemo jobs list-execution-profiles -f json` against the user's platform (login first only if auth is enabled — see **Authentication**; see `references/troubleshooting.md`). Default output is a table — **`-f json` is required** for scripting; parse **stdout only** (do not pipe `2>&1` into `json.load`).
 - **Do not merge stderr into stdout when parsing JSON** — `submit`, `explain`, and `-f json` commands write **JSON on stdout**; harmless warnings like `Configuration file not found, using defaults` go to **stderr**. Piping with **`2>&1`** before `json.load` raises `JSONDecodeError` even when submit **succeeded** — a common cause of **duplicate jobs** when the agent re-submits after a parse error. Parse stdout only; redirect stderr if needed (`2>/dev/null`). See `references/troubleshooting.md` § **Parsing CLI JSON**.
 - For submit/image/plugin errors (both backends), read `references/troubleshooting.md`. Unsloth needs the `nmp-unsloth-training` container image on the **platform host's** Docker daemon (see `docker/unsloth/README.md`).
 - **Missing training image on a remote platform** — if the user gave a non-localhost `NEMO_BASE_URL` / `NMP_BASE_URL` (e.g. `10.0.0.51:8080`) and the job errors with `Failed to pull image`, `manifest unknown`, or missing `nmp-unsloth-training` / automodel training image: **do not** run `docker build`, `docker pull`, or `docker buildx bake` on the agent machine. Report with **Report to user** (use **Output adapter fileset (planned):** on error), then append on-target build steps from `references/troubleshooting.md` § **Missing training images**.
@@ -98,9 +135,10 @@ Training never runs inside the `nemo` CLI process. After `submit`, the platform'
 Common steps then **branch by plugin pick**:
 
 ```text
+- [ ] Resolve CLI (Pre-flight — CLI resolution); cd nemo-platform
 - [ ] export NEMO_BASE_URL (if user provided endpoint); note whether base URL is user-overridden
-- [ ] cd nemo-platform && uv run nemo auth login --unsigned-token --email <user email or admin@example.com>
-- [ ] uv run nemo jobs list-execution-profiles -f json — apply Plugin pick rules above
+- [ ] nemo auth status — skip login if auth disabled; if auth enabled and unsigned JWT allowed, `nemo auth login --unsigned-token --email <…>`; if OIDC, `nemo auth login`
+- [ ] nemo jobs list-execution-profiles -f json — apply Plugin pick rules above (retry login on 401/403)
 - [ ] On connection error: default URL → ask to start platform (see Platform unreachable); custom URL → report unreachable and stop
 - [ ] Convert HF dataset → /tmp/train-data/*.jsonl (see references/hf-conversion.md)
 - [ ] Create dataset fileset (--exist-ok), upload train.jsonl (+ validation.jsonl), nemo files list to verify
@@ -108,13 +146,13 @@ Common steps then **branch by plugin pick**:
 
 # automodel branch (submit → Docker GPU job)
 - [ ] Write /tmp/job.json (batch sizing for ≥48 GB GPU; else Defaults table)
-- [ ] uv run nemo customization automodel submit /tmp/job.json --workspace default
+- [ ] nemo customization automodel submit /tmp/job.json --workspace default
 - [ ] Poll until top-level terminal (`poll_customization_job.sh`; default 15s interval, or 30–60s manual polls)
 - [ ] Report using output template below
 
 # unsloth branch (submit → Docker GPU job)
 - [ ] Write /tmp/job.json using the UnslothJobInput shape (see Fast path — unsloth)
-- [ ] uv run nemo customization unsloth submit /tmp/job.json --workspace default [--profile <gpu-profile>]
+- [ ] nemo customization unsloth submit /tmp/job.json --workspace default [--profile <gpu-profile>]
 - [ ] Poll until top-level terminal (`poll_customization_job.sh unsloth-<job-id>`; default 15s interval)
 - [ ] Report using output template below
 ```
@@ -128,18 +166,18 @@ Substitute `<hf-repo>`, `<hf-dataset>`, `<model-entity>`, `<weights-fileset>`, `
 ```bash
 export NEMO_BASE_URL=http://127.0.0.1:8080   # user override only
 cd /path/to/nemo-platform
-uv run nemo auth login --unsigned-token --email admin@example.com
-uv run nemo jobs list-execution-profiles -f json   # platform GPU profiles → automodel; set training.execution_profile if needed
+nemo auth status   # skip login if auth disabled; if enabled + unsigned JWT allowed → login --unsigned-token --email admin@example.com
+nemo jobs list-execution-profiles -f json   # platform GPU profiles → automodel; set training.execution_profile if needed
 ```
 
 **1. Dataset** — convert per `references/hf-conversion.md`, then:
 
 ```bash
 DATASET=<dataset-fileset>   # e.g. commonsense_qa
-uv run nemo files filesets create "$DATASET" --workspace default --purpose dataset --exist-ok
-uv run nemo files upload /tmp/train-data/train.jsonl "$DATASET" --workspace default --remote-path train.jsonl
+nemo files filesets create "$DATASET" --workspace default --purpose dataset --exist-ok
+nemo files upload /tmp/train-data/train.jsonl "$DATASET" --workspace default --remote-path train.jsonl
 # validation.jsonl if present
-uv run nemo files list "$DATASET" --workspace default
+nemo files list "$DATASET" --workspace default
 ```
 
 **2. Model** — skip if entity exists (`nemo models list --workspace default`).
@@ -149,10 +187,10 @@ WEIGHTS=<weights-fileset>   # e.g. qwen3-1.7b
 MODEL_ENTITY=<model-entity>   # Models API entity (not dataset fileset, not HF id)
 HF_REPO=<hf-repo>           # e.g. Qwen/Qwen3-1.7B
 
-uv run nemo files filesets create "$WEIGHTS" --workspace default --purpose model --exist-ok \
+nemo files filesets create "$WEIGHTS" --workspace default --purpose model --exist-ok \
   --storage '{"type":"huggingface","repo_id":"'"$HF_REPO"'","repo_type":"model","revision":"main"}'
 
-uv run nemo models create "$MODEL_ENTITY" --workspace default --exist-ok \
+nemo models create "$MODEL_ENTITY" --workspace default --exist-ok \
   --input-data '{"name":"'"$MODEL_ENTITY"'","fileset":"default/'"$WEIGHTS"'","custom_fields":{"hf_model_id":"'"$HF_REPO"'"}}'
 ```
 
@@ -182,11 +220,11 @@ uv run nemo models create "$MODEL_ENTITY" --workspace default --exist-ok \
 **4. Submit and poll**
 
 ```bash
-uv run nemo customization automodel submit /tmp/job.json --workspace default
+nemo customization automodel submit /tmp/job.json --workspace default
 bash plugins/nemo-customizer/src/nemo_customizer/skills/nemo-customizer/scripts/poll_customization_job.sh automodel-<job-id>
 ```
 
-Read `<job-id>` from the `"name"` field in submit stdout (JSON). **Do not use `2>&1`** before `json.load` — warnings on stderr break parsing; see Gotchas. Optional interval override: append seconds (e.g. `… 30`). Or poll manually: `uv run nemo jobs get-status automodel-<job-id>` every 30–60s.
+Read `<job-id>` from the `"name"` field in submit stdout (JSON). **Do not use `2>&1`** before `json.load` — warnings on stderr break parsing; see Gotchas. Optional interval override: append seconds (e.g. `… 30`). Or poll manually: `nemo jobs get-status automodel-<job-id>` every 30–60s.
 
 ## Fast path — unsloth
 
@@ -230,11 +268,11 @@ If the model uses `messages` chat format (preferred when the tokenizer has a cha
 **4. Submit and poll**
 
 ```bash
-uv run nemo customization unsloth submit /tmp/job.json --workspace default
+nemo customization unsloth submit /tmp/job.json --workspace default
 bash plugins/nemo-customizer/src/nemo_customizer/skills/nemo-customizer/scripts/poll_customization_job.sh unsloth-<job-id>
 ```
 
-Read `<job-id>` from the `"name"` field in submit stdout (JSON). **Do not use `2>&1`** before `json.load` — warnings on stderr break parsing; see Gotchas. Optional interval override: append seconds (e.g. `… 30`). Or poll manually: `uv run nemo jobs get-status unsloth-<job-id>` every 30–60s. If submit fails on an unknown profile, re-list execution profiles and pass `--profile <name>` on submit (default is `gpu`).
+Read `<job-id>` from the `"name"` field in submit stdout (JSON). **Do not use `2>&1`** before `json.load` — warnings on stderr break parsing; see Gotchas. Optional interval override: append seconds (e.g. `… 30`). Or poll manually: `nemo jobs get-status unsloth-<job-id>` every 30–60s. If submit fails on an unknown profile, re-list execution profiles and pass `--profile <name>` on submit (default is `gpu`).
 
 If you try `nemo customization unsloth run …`, the CLI hard-fails with a pointer to `submit`.
 
@@ -248,7 +286,7 @@ Shared:
 | Plugin | `automodel` (override per **Plugin pick**) |
 | Training | SFT + LoRA, `max_seq_length` 2048 |
 | Schedule | `epochs` ≥ 1; omit `max_steps` |
-| Auth email | `admin@example.com` unless user specifies |
+| Auth email (when login required) | `admin@example.com` unless user specifies |
 
 Automodel-specific:
 
@@ -333,7 +371,7 @@ Pick the path by whether the **base model fits in ~48 GB on one GPU** (LoRA or f
 "batch": { "global_batch_size": 8, "micro_batch_size": 1 }
 ```
 
-`execution_profile` is usually still **`"gpu"`** — confirm with `uv run nemo jobs list-execution-profiles -f json`.
+`execution_profile` is usually still **`"gpu"`** — confirm with `nemo jobs list-execution-profiles -f json`.
 
 **Example — Qwen3-8B LoRA, 2× 48 GB (fits one GPU):** single-GPU **micro 16 / GBS 64** → 2-GPU data parallel **micro 16 / GBS 128**, `learning_rate` `8e-5`.
 
@@ -454,7 +492,7 @@ After polling reaches a **terminal** status (`completed`, `error`, or `cancelled
 | **Final validation loss** | Last entry in `status_details.metrics.val_loss`. If the list is empty, report `n/a (no validation run)` and note whether validation data was configured. Automodel validates once per epoch by default. Unsloth validates once per epoch when `dataset.validation_path` is set and `schedule.eval_steps` is omitted (platform default: `max(1, effective_steps - 1)`). |
 | **Notes** | See **Notes by status** below |
 
-**Metrics extraction** — after polling, always run `uv run nemo jobs get-status <job-id>` and read `status_details.metrics` (both backends accumulate `train_loss` and `val_loss` time series there). Include both final losses in the report even when status is `error` if training completed before the failure (e.g. entity registration failed after upload).
+**Metrics extraction** — after polling, always run `nemo jobs get-status <job-id>` and read `status_details.metrics` (both backends accumulate `train_loss` and `val_loss` time series there). Include both final losses in the report even when status is `error` if training completed before the failure (e.g. entity registration failed after upload).
 
 **Notes by status**
 
@@ -527,7 +565,7 @@ After polling reaches a **terminal** status (`completed`, `error`, or `cancelled
 | Output save method | lora |
 ```
 
-**Using the adapter (`completed` only)** — after **Training configuration**, run `uv run nemo models get <model-entity> --workspace default` (parse stdout only) to confirm the adapter is listed under `adapters`. Append this section:
+**Using the adapter (`completed` only)** — after **Training configuration**, run `nemo models get <model-entity> --workspace default` (parse stdout only) to confirm the adapter is listed under `adapters`. Append this section:
 
 ```markdown
 ### Using the adapter
@@ -537,7 +575,7 @@ The adapter `<output.name>` is attached to `default/<model-entity>`. List adapte
 \`\`\`bash
 export NEMO_BASE_URL=<platform-url>   # omit line when using default localhost
 cd /path/to/nemo-platform
-uv run nemo models get <model-entity> --workspace default
+nemo models get <model-entity> --workspace default
 \`\`\`
 ```
 
@@ -563,7 +601,7 @@ For other terminal errors, keep the same header template; put remediation detail
 | Batch sizing (≥48 GB), OOM / throughput | **Batch sizing — automodel** / **Batch sizing — unsloth** above |
 | Multi-GPU same node | **Multi-GPU (same node)** under automodel batch sizing (unsloth is single-GPU) |
 | Backend choice, execution profiles, submit failure, container images, missing image on remote platform, CLI, connection errors | `references/troubleshooting.md` (§ **Parsing CLI JSON** for `2>&1` / `json.load`) |
-| Live JSON schema | `uv run nemo customization automodel explain` / `uv run nemo customization unsloth explain` |
+| Live JSON schema | `nemo customization automodel explain` / `nemo customization unsloth explain` |
 | Job JSON fixture (automodel) | `plugins/nemo-automodel/tests/fixtures/qwen3_0.6b_sft_lora.json` (ignore `max_steps` for real runs) |
 | Job JSON fixture (unsloth) | `plugins/nemo-unsloth/tests/fixtures/minimal_unsloth_sft.json` (ignore `max_steps` for real runs) |
 

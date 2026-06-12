@@ -40,6 +40,8 @@ navigation:
       contents:
       - page: Run Inference
         path: ../../run-inference/tutorials/run-inference.mdx
+      - page: Deploy Models
+        path: ../../run-inference/tutorials/deploy-models.mdx
   - section: Agents
     path: ../../agents/index.mdx
     contents:

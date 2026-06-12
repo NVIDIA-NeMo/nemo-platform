@@ -6,6 +6,7 @@ import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataV
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
+import { snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
 import { useGetExperiment, useListExperimentSessions } from '@nemo/sdk/generated/platform/api';
 import type { ExperimentSessionResponse } from '@nemo/sdk/generated/platform/schema';
 import { Text, Tooltip } from '@nvidia/foundations-react-core';
@@ -25,12 +26,7 @@ interface ExperimentSessionsDataViewProps {
 const mapStatusForBadge = (status: ExperimentSessionResponse['status']) =>
   status === 'success' ? 'completed' : status;
 
-const formatEvaluatorScores = (scores: ExperimentSessionResponse['evaluator_scores']): string => {
-  if (!scores || Object.keys(scores).length === 0) return '-';
-  return Object.entries(scores)
-    .map(([name, value]) => `${name}: ${(value * 100).toFixed(1)}%`)
-    .join(', ');
-};
+const formatScore = (value: number): string => `${(value * 100).toFixed(1)}%`;
 
 export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = ({
   experimentName,
@@ -61,6 +57,20 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
       })),
     [sessionsData]
   );
+
+  // One column per evaluator. The experiment's `evaluator_names` is the
+  // authoritative, stable set across all sessions; we union in any score keys
+  // present in the current page's data so a column never goes missing while the
+  // experiment is still loading. Sorted for deterministic column ordering.
+  const evaluatorNames = useMemo<string[]>(() => {
+    const names = new Set<string>(experiment?.evaluator_names ?? []);
+    for (const session of sessionsData ?? []) {
+      for (const name of Object.keys(session.evaluator_scores ?? {})) {
+        names.add(name);
+      }
+    }
+    return Array.from(names).sort();
+  }, [experiment?.evaluator_names, sessionsData]);
 
   const makeColumns: ComponentProps<typeof DataViewRoot<SessionRow>>['makeColumns'] = ({
     accessor,
@@ -146,20 +156,18 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
         return <Text>{cost != null ? `$${cost.toFixed(3)}` : '-'}</Text>;
       },
     }),
-    accessor((original) => formatEvaluatorScores(original.evaluator_scores), {
-      id: 'evaluator_scores',
-      header: 'Evaluator scores',
-      enableSorting: false,
-      cell: ({ row }) => {
-        const formatted = formatEvaluatorScores(row.original.evaluator_scores);
-        if (formatted === '-') return <Text>-</Text>;
-        return (
-          <Tooltip slotContent={formatted} className={tooltipClassName} side="bottom">
-            <Text className="cursor-default truncate max-w-[200px] block">{formatted}</Text>
-          </Tooltip>
-        );
-      },
-    }),
+    ...evaluatorNames.map((name, index) =>
+      accessor((original) => original.evaluator_scores?.[name], {
+        id: `score-${index}`,
+        header: snakeCaseToTitleCase(name),
+        enableSorting: false,
+        size: 130,
+        cell: ({ row }) => {
+          const value = row.original.evaluator_scores?.[name];
+          return <Text>{value != null ? formatScore(value) : '-'}</Text>;
+        },
+      })
+    ),
   ];
 
   return (
