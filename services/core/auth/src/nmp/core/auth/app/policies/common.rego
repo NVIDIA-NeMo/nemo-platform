@@ -53,6 +53,24 @@ get_required_permissions(path, method) := perms if {
 	perms := data.authz.endpoints[endpoint][method_lower].permissions
 }
 
+# Get the allowed caller kinds for an endpoint/method combination.
+# Uses the same most-specific endpoint match as get_required_permissions.
+# Returns undefined (not []) when the matched endpoint has no `callers` key, so
+# callers can treat absence as the default (PRINCIPAL) semantics — no new restriction.
+endpoint_callers(path, method) := callers if {
+	endpoint := normalize_endpoint(path)
+	method_lower := lower(method)
+	callers := data.authz.endpoints[endpoint][method_lower].callers
+}
+
+# True when the matched endpoint carries an explicit `deny: true` marker — the fail-closed
+# signal emitted for unruled or invalid plugin routes. Undefined (not false) otherwise so it
+# only fires where the marker is present.
+endpoint_denied(path, method) if {
+	endpoint := normalize_endpoint(path)
+	data.authz.endpoints[endpoint][lower(method)].deny == true
+}
+
 # Check specific permission (for middleware to check special permissions)
 # Supports workspace-scoped permissions (format: "workspace/permission")
 # For permissions with format "workspace/permission":

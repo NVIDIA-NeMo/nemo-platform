@@ -33,8 +33,10 @@ from urllib.parse import urljoin, urlparse, urlunparse
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
+from nemo_agents_plugin.api.v2._perms import GatewayPerms
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
 from nemo_agents_plugin.entities import Agent, AgentDeployment
+from nemo_platform_plugin.authz import CallerKind, path_rule, scopes_for
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
 
 logger = logging.getLogger(__name__)
@@ -67,6 +69,11 @@ _HOP_BY_HOP = {
     tags=["Agent Gateway"],
     include_in_schema=False,
 )
+@path_rule(
+    callers=[CallerKind.PRINCIPAL],
+    permissions=[GatewayPerms.INVOKE],
+    scopes=scopes_for("agents", write=True),
+)
 async def proxy_by_agent_name(
     workspace: str,
     name: str,
@@ -89,6 +96,11 @@ async def proxy_by_agent_name(
     methods=_PROXY_METHODS,
     tags=["Agent Gateway"],
     include_in_schema=False,
+)
+@path_rule(
+    callers=[CallerKind.PRINCIPAL],
+    permissions=[GatewayPerms.INVOKE],
+    scopes=scopes_for("agents", write=True),
 )
 async def proxy_by_deployment_name(
     workspace: str,

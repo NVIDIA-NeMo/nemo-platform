@@ -7,9 +7,9 @@ Registered under ``nemo.customization.contributors`` (key ``unsloth``).
 The customization router hub (``nemo-customizer-plugin``) discovers this
 class at startup and:
 
-- merges :meth:`get_routers` into ``/apis/customization/...``
+- merges :meth:`get_routers` into ``/apis/customization/...`` (HTTP authz is
+  derived from the ``@path_rule``-decorated routes those routers carry)
 - adds :meth:`get_cli` under ``nemo customization unsloth``
-- merges :meth:`get_authz_contribution` into the platform authz policy
 - composes :meth:`get_sdk_resources` under ``client.customization.unsloth``
 """
 
@@ -19,7 +19,7 @@ from typing import ClassVar
 
 import typer
 from fastapi import APIRouter
-from nemo_platform_plugin.authz import AuthzContribution, authz_for_workspace_job_collection
+from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.customization_contributor import CustomizationContributorSDKResources
 from nemo_platform_plugin.jobs.api_factory import JobRouteOption
 from nemo_platform_plugin.jobs.routes import add_job_routes
@@ -49,6 +49,7 @@ class UnslothContributor:
         router = APIRouter()
 
         @router.get("/healthz")
+        @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[])
         async def healthz() -> dict[str, str]:
             return {"backend": self.name, "status": "ok"}
 
@@ -58,6 +59,8 @@ class UnslothContributor:
             generate_job_name=generate_unsloth_id,
             route_options=[JobRouteOption.CORE],
             default_profile=config.default_training_execution_profile,
+            permission_namespace="customization.unsloth.jobs",
+            api_area="customization",
         )
 
         return [
@@ -102,16 +105,6 @@ class UnslothContributor:
         _add_explain_command(app, UnslothJob, scheduler)
         apply_unsloth_job_cli_overrides(app)
         return app
-
-    def get_authz_contribution(self) -> AuthzContribution:
-        """Register Unsloth job routes with the platform authorization policy."""
-        return authz_for_workspace_job_collection(
-            api_area="customization",
-            collection_suffix="/unsloth/jobs",
-            permission_prefix="customization.unsloth.jobs",
-            include_healthz=True,
-            healthz_suffix="/unsloth/healthz",
-        )
 
     def get_sdk_resources(self) -> CustomizationContributorSDKResources:
         from nemo_unsloth_plugin.sdk.resources import AsyncUnslothCustomization, UnslothCustomization

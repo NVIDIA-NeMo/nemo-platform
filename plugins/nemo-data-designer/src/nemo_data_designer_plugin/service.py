@@ -31,13 +31,18 @@ class DataDesignerService(NemoService):
 
         return [
             RouterSpec(
-                add_function_routes(PreviewFunction),
+                add_function_routes(
+                    PreviewFunction,
+                    permission_namespace="data-designer",
+                    api_area="data-designer",
+                    permission_description="Preview a Data Designer config",
+                ),
                 prefix="/v2/workspaces/{workspace}",
                 tag="Data Designer",
                 description="Streaming preview of a Data Designer config.",
             ),
             RouterSpec(
-                add_job_routes(CreateJob),
+                add_job_routes(CreateJob, permission_namespace="data-designer", api_area="data-designer"),
                 prefix="/v2/workspaces/{workspace}",
                 tag="Data Designer",
                 description="Job endpoints",

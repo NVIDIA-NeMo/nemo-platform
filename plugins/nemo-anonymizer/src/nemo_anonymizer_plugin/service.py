@@ -38,13 +38,18 @@ class AnonymizerService(NemoService):
 
         return [
             RouterSpec(
-                add_function_routes(PreviewFunction),
+                add_function_routes(
+                    PreviewFunction,
+                    permission_namespace="anonymizer",
+                    api_area="anonymizer",
+                    permission_description="Preview an Anonymizer config",
+                ),
                 prefix="/v2/workspaces/{workspace}",
                 tag="Anonymizer",
                 description="Streaming preview of an Anonymizer config.",
             ),
             RouterSpec(
-                add_job_routes(RunJob),
+                add_job_routes(RunJob, permission_namespace="anonymizer", api_area="anonymizer"),
                 prefix="/v2/workspaces/{workspace}",
                 tag="Anonymizer",
                 description="Job endpoints",

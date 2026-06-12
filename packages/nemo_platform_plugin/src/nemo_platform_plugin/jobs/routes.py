@@ -74,6 +74,8 @@ def add_job_routes(
     job_result_routes: list[PlatformJobResultRoute] | None = None,
     generate_job_name: "Callable[..., str] | None" = None,
     default_profile: str = "default",
+    permission_namespace: str | None = None,
+    api_area: str | None = None,
 ) -> APIRouter:
     """Mount submit/list/get/delete routes for *job_cls* on a fresh router.
 
@@ -139,6 +141,8 @@ def add_job_routes(
         route_options=route_options,
         job_result_routes=job_result_routes,
         generate_job_name=generate_job_name,
+        permission_namespace=permission_namespace,
+        api_area=api_area,
     )
     return _rebase_job_collection_routes(router, job_collection_path_for(job_cls))
 

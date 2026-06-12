@@ -1319,7 +1319,7 @@ def sync_plugins(
     ),
     dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show what would change without writing"),
 ):
-    """Merge plugin ``nemo.authz`` / ``get_authz_contribution`` data into static-authz.yaml.
+    """Merge derived plugin authz (``@path_rule``-decorated routes) into static-authz.yaml.
 
     Run from the repo root with workspace plugins installed (``uv sync``). This
     materializes runtime plugin policy into the committed bundle for CI and

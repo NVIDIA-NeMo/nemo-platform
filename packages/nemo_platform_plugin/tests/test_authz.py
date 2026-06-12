@@ -3,35 +3,21 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
 import httpx
-import pytest
+from fastapi import APIRouter
 from nemo_platform_plugin.authz import (
-    AuthzContribution,
-    AuthzEndpointMethod,
-    authz_for_workspace_job_collection,
-    combine_authz_contributions,
+    CallerKind,
+    Permission,
+    path_rule,
 )
 from nemo_platform_plugin.authz_discovery import (
-    AUTHZ_GROUP,
-    _collect_from_plugin_surface,
+    _derive_service_contribution,
     discover_authz_contributions,
+    discover_plugin_authz,
 )
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.scheduler import NemoJobScheduler
-from nemo_platform_plugin.service import NemoService
-
-
-def _example_automodel_authz() -> AuthzContribution:
-    """Example policy for a customization job collection (see authz module docstring)."""
-    return authz_for_workspace_job_collection(
-        api_area="customization",
-        collection_suffix="/automodel/jobs",
-        permission_prefix="customization.automodel.jobs",
-        include_healthz=True,
-        healthz_suffix="/automodel/healthz",
-    )
+from nemo_platform_plugin.service import NemoService, RouterSpec
 
 
 class _ExampleSubmitJob(NemoJob):
@@ -45,142 +31,135 @@ class _ExampleSubmitJob(NemoJob):
 _ExampleSubmitJob.__module__ = "example_plugin.jobs.example_submit"
 
 
-def test_authz_for_workspace_job_collection_paths() -> None:
-    contrib = _example_automodel_authz()
-    assert "/apis/customization/v2/workspaces/{workspace}/automodel/jobs" in contrib.endpoints
-    post = contrib.endpoints["/apis/customization/v2/workspaces/{workspace}/automodel/jobs"]["post"]
-    assert post.permissions == ["customization.automodel.jobs.create"]
-    assert "customization:write" in (post.scopes or [])
-    assert "customization.automodel.jobs.create" in contrib.permissions
+def test_derive_contribution_composes_mounted_path(monkeypatch) -> None:
+    """A service's @path_rule routes derive to the final /apis/<name>/<prefix> paths.
 
+    The permission catalog (id -> description) is derived from the Permission objects on the
+    routes — there is no separate declaration.
+    """
+    router = APIRouter()
 
-def test_service_class_get_authz_contribution_without_instance() -> None:
-    """discover_services yields classes; get_authz_contribution must be a classmethod."""
+    @router.get("/v2/workspaces/{workspace}/items/{name}")
+    @path_rule(
+        callers=[CallerKind.PRINCIPAL],
+        permissions=[Permission("example.items.read", "Read example items")],
+        scopes=["example:read"],
+    )
+    async def get_item(workspace: str, name: str) -> dict[str, str]:
+        return {"name": name}
 
     class _Svc(NemoService):
-        name = "example-svc"
-        dependencies = []
+        name = "example"
 
-        @classmethod
-        def get_authz_contribution(cls) -> AuthzContribution:
-            return authz_for_workspace_job_collection(
-                api_area="example-svc",
-                collection_suffix="/jobs",
-                permission_prefix="example-svc.jobs",
-            )
+        def get_routers(self) -> list[RouterSpec]:
+            return [RouterSpec(router)]
 
-        def get_routers(self):
-            return []
+    monkeypatch.setattr("nemo_platform_plugin.discovery.discover_services", lambda: {"example": _Svc})
+    discover_plugin_authz.cache_clear()
+    try:
+        contribs = discover_authz_contributions()
+    finally:
+        discover_plugin_authz.cache_clear()
 
-    contribs = _collect_from_plugin_surface({"example-svc": _Svc}, surface="nemo.services")
     assert len(contribs) == 1
-    assert "/apis/example-svc/v2/workspaces/{workspace}/jobs" in contribs[0].endpoints
+    contrib = contribs[0]
+    assert contrib.permissions == {"example.items.read": "Read example items"}
+
+    path = "/apis/example/v2/workspaces/{workspace}/items/{name}"
+    assert set(contrib.endpoints[path]) == {"get"}
+    binding = contrib.endpoints[path]["get"]
+    assert binding.permissions == ["example.items.read"]
+    assert binding.scopes == ["example:read"]
+    assert binding.callers == ["principal"]
 
 
-def test_combine_authz_contributions_merges_endpoints_and_permissions() -> None:
-    a = authz_for_workspace_job_collection(
-        api_area="customization",
-        collection_suffix="/automodel/jobs",
-        permission_prefix="customization.automodel.jobs",
-    )
-    b = authz_for_workspace_job_collection(
-        api_area="customization",
-        collection_suffix="/unsloth/jobs",
-        permission_prefix="customization.unsloth.jobs",
-    )
-    merged = combine_authz_contributions(a, b)
-    assert "customization.automodel.jobs.create" in merged.permissions
-    assert "customization.unsloth.jobs.create" in merged.permissions
-    assert "/apis/customization/v2/workspaces/{workspace}/automodel/jobs" in merged.endpoints
-    assert "/apis/customization/v2/workspaces/{workspace}/unsloth/jobs" in merged.endpoints
+def test_derive_service_only_route_emits_service_principal_callers() -> None:
+    router = APIRouter()
+
+    @router.post("/v2/internal/sync")
+    @path_rule(callers=[CallerKind.SERVICE_PRINCIPAL])
+    async def sync() -> None: ...
+
+    class _Svc(NemoService):
+        name = "svc"
+
+        def get_routers(self) -> list[RouterSpec]:
+            return [RouterSpec(router)]
+
+    contrib, problems = _derive_service_contribution(_Svc())
+    assert problems == []
+    binding = contrib.endpoints["/apis/svc/v2/internal/sync"]["post"]
+    assert binding.callers == ["service_principal"]
+    assert binding.permissions == []
 
 
-def test_customization_router_authz_discovered_via_nemo_services(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Customization hub aggregates backend authz through nemo.services discovery."""
+def test_derive_unions_callers_across_rules_with_shared_permissions() -> None:
+    router = APIRouter()
+    y_read = Permission("y.read", "Read y")
 
-    class _FakeContributor:
-        def get_authz_contribution(self) -> AuthzContribution:
-            return _example_automodel_authz()
+    @router.get("/v2/y")
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[y_read])
+    @path_rule(callers=[CallerKind.SERVICE_PRINCIPAL], permissions=[y_read])
+    async def y() -> None: ...
 
-    class _CustomizationHub(NemoService):
-        name = "customization"
-        dependencies = []
+    class _Svc(NemoService):
+        name = "svc"
 
-        @classmethod
-        def get_authz_contribution(cls) -> AuthzContribution:
-            from nemo_platform_plugin.discovery import discover_customization_contributors
+        def get_routers(self) -> list[RouterSpec]:
+            return [RouterSpec(router)]
 
-            hub = AuthzContribution(
-                endpoints={
-                    "/apis/customization/healthz": {
-                        "get": AuthzEndpointMethod(permissions=[], scopes=[]),
-                    },
-                },
-            )
-            backend_parts = [
-                contributor.get_authz_contribution() for contributor in discover_customization_contributors().values()
-            ]
-            return combine_authz_contributions(hub, *backend_parts)
-
-        def get_routers(self):
-            return []
-
-    monkeypatch.setattr(
-        "nemo_platform_plugin.discovery.discover_entry_points",
-        lambda group: {},
-    )
-    monkeypatch.setattr(
-        "nemo_platform_plugin.discovery.discover_services",
-        lambda: {"customization": _CustomizationHub},
-    )
-    monkeypatch.setattr(
-        "nemo_platform_plugin.discovery.discover_customization_contributors",
-        lambda: {"automodel": _FakeContributor()},
-    )
-    discover_authz_contributions.cache_clear()
-    try:
-        contributions = discover_authz_contributions()
-    finally:
-        discover_authz_contributions.cache_clear()
-
-    assert len(contributions) == 1
-    paths = set(contributions[0].endpoints.keys())
-    assert "/apis/customization/healthz" in paths
-    assert "/apis/customization/v2/workspaces/{workspace}/automodel/jobs" in paths
-    assert "/apis/customization/v2/workspaces/{workspace}/automodel/healthz" in paths
+    contrib, problems = _derive_service_contribution(_Svc())
+    assert problems == []
+    binding = contrib.endpoints["/apis/svc/v2/y"]["get"]
+    assert binding.callers == ["principal", "service_principal"]
+    assert binding.permissions == ["y.read"]
 
 
-def test_nemo_authz_entry_point_discovered(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Plugins can register authz via a nemo.authz entry point callable."""
-    ep = MagicMock()
-    ep.load.return_value = _example_automodel_authz
+def test_derive_denies_route_with_or_of_distinct_permission_sets() -> None:
+    """v1 cannot represent (principal & permA) OR (service & permB): the route is denied
+    (fail-closed) with a recorded problem, without crashing the rest of the plugin."""
+    router = APIRouter()
 
-    monkeypatch.setattr(
-        "nemo_platform_plugin.discovery.discover_entry_points",
-        lambda group: {"automodel": ep} if group == AUTHZ_GROUP else {},
-    )
-    monkeypatch.setattr(
-        "nemo_platform_plugin.discovery.discover_services",
-        lambda: {},
-    )
-    discover_authz_contributions.cache_clear()
-    try:
-        contributions = discover_authz_contributions()
-    finally:
-        discover_authz_contributions.cache_clear()
+    @router.get("/v2/z")
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[Permission("z.read", "Read z")])
+    @path_rule(callers=[CallerKind.SERVICE_PRINCIPAL], permissions=[Permission("z.internal", "Internal z")])
+    async def z() -> None: ...
 
-    assert len(contributions) == 1
-    paths = set(contributions[0].endpoints.keys())
-    assert "/apis/customization/v2/workspaces/{workspace}/automodel/jobs" in paths
-    assert "/apis/customization/v2/workspaces/{workspace}/automodel/healthz" in paths
+    class _Svc(NemoService):
+        name = "svc"
+
+        def get_routers(self) -> list[RouterSpec]:
+            return [RouterSpec(router)]
+
+    contrib, problems = _derive_service_contribution(_Svc())
+    assert contrib.endpoints["/apis/svc/v2/z"]["get"].deny is True
+    assert any("distinct permission sets" in p for p in problems)
+
+
+def test_derive_emits_deny_for_unruled_route() -> None:
+    router = APIRouter()
+
+    @router.get("/v2/unruled")
+    async def unruled() -> None: ...
+
+    class _Svc(NemoService):
+        name = "svc"
+
+        def get_routers(self) -> list[RouterSpec]:
+            return [RouterSpec(router)]
+
+    contrib, problems = _derive_service_contribution(_Svc())
+    # Unruled routes are explicit-deny (fail-closed), never omitted.
+    assert contrib.endpoints["/apis/svc/v2/unruled"]["get"].deny is True
+    assert any("no @path_rule" in p for p in problems)
 
 
 def test_submit_remote_forwards_authorization_header() -> None:
     """Authenticated CLI submit passes Authorization to the protected job route."""
-    capture: dict[str, object] = {}
+    captured: dict[str, str] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
-        capture["headers"] = dict(request.headers)
+        captured.update(request.headers)
         return httpx.Response(200, json={"id": "job-123", "status": "queued"})
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
@@ -196,6 +175,4 @@ def test_submit_remote_forwards_authorization_header() -> None:
     )
 
     assert result == {"id": "job-123", "status": "queued"}
-    headers = capture["headers"]
-    assert isinstance(headers, dict)
-    assert headers.get("authorization") == "Bearer test-token"
+    assert captured.get("authorization") == "Bearer test-token"

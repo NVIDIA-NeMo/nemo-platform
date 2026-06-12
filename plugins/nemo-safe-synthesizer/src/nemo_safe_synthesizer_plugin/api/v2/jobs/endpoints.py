@@ -190,6 +190,8 @@ router = job_route_factory(
     job_type="SafeSynthesizer",
     job_input=SafeSynthesizerJobConfig,
     platform_job_config_compiler=job_config_compiler,
+    permission_namespace="safe-synthesizer",
+    api_area="safe-synthesizer",
     job_result_routes=[
         PlatformJobResultRoute(
             name="summary",

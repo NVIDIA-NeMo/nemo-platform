@@ -9,6 +9,8 @@ import data.authz.extract_path
 import data.authz.extract_scopes
 import data.authz.extract_workspace_from_path
 import data.authz.scope_check_passed
+import data.common.endpoint_callers
+import data.common.endpoint_denied
 import data.common.get_applicable_principals
 import data.common.get_required_permissions
 import data.common.has_permissions
@@ -199,6 +201,23 @@ allow_request if {
 # Default allow (deny_request overrides allow_request when true)
 default deny_request := false
 
+# Explicit deny marker (data.authz.endpoints[...].deny == true) — the fail-closed signal for
+# unruled or invalid plugin routes. As a deny_request it overrides every allow rule, including
+# the ServiceSystem "*" wildcard and the PlatformAdmin bypass, so an un-annotated plugin route
+# can never fall through to the service: no-match bypass and become accessible.
+deny_request if {
+	endpoint_denied(extract_path, extract_method)
+}
+
+# Fence a degraded plugin's entire namespace. The bundle records /apis/<plugin> prefixes for
+# plugins whose authz could not be derived at all (load / enumeration failure) — their routes
+# may still be mounted by the runner, so deny every path under the prefix rather than let it
+# fall through the service: no-match bypass. Undefined config key ⇒ no prefixes ⇒ inert.
+deny_request if {
+	some prefix in object.get(data.authz.config, "denied_plugin_prefixes", [])
+	startswith(split(extract_path, "?")[0], sprintf("%s/", [prefix]))
+}
+
 # Deny direct secret value access for non-service principals (including PlatformAdmin).
 # Secret values must only be accessed through the service delegation pattern, where a
 # service principal reads the value on behalf of a user with secrets.access permission.
@@ -251,6 +270,47 @@ deny_request if {
 	principal_id := extract_principal_id
 	not startswith(principal_id, "service:")
 	not platform_admin_in_system
+}
+
+# Caller-kind enforcement for service-only routes.
+#
+# A route declares allowed caller kinds via the optional `callers` list on its
+# endpoint config (see endpoint_callers). A route is "service-only" iff it allows
+# service principals but NOT principals:
+#   callers: ["service_principal"]
+# When `callers` is absent, endpoint_callers is undefined and service_only_route is
+# false — the route keeps today's PRINCIPAL-default semantics (no new restriction).
+# Routes that list "principal" (alone or with "service_principal") are NOT service-only,
+# so human callers remain allowed there.
+default service_only_route := false
+
+service_only_route if {
+	callers := endpoint_callers(extract_path, extract_method)
+	"service_principal" in callers
+	not "principal" in callers
+}
+
+# Deny a human (non-service) caller on a service-only route. This is a deny_request so
+# it overrides the allow rules — including the ServiceSystem "*" wildcard and the
+# PlatformAdmin allow-bypass — otherwise humans would leak onto service-only routes.
+# Service principals (id starts with "service:") are unaffected and stay allowed.
+# A human PlatformAdmin is denied by default, unless explicitly exempted via the
+# platform_admin_exempt_from_service_only config knob.
+deny_request if {
+	service_only_route
+	principal_id := extract_principal_id
+	not startswith(principal_id, "service:")
+	not platform_admin_exempt
+}
+
+# True only when a PlatformAdmin caller is present AND the config knob exempts platform
+# admins from service-only enforcement. Read defensively: an absent config key is treated
+# as false (default deny for human platform admins on service-only routes).
+default platform_admin_exempt := false
+
+platform_admin_exempt if {
+	platform_admin_in_system
+	data.authz.config.platform_admin_exempt_from_service_only == true
 }
 
 # True when any applicable principal has PlatformAdmin in the system workspace (see allow_request).

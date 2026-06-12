@@ -103,6 +103,10 @@ def add_function_routes(
     function_cls: type[NemoFunction],
     *,
     heartbeat_interval_seconds: float = HEARTBEAT_INTERVAL_SECONDS,
+    permission_namespace: str | None = None,
+    api_area: str | None = None,
+    permission_id: str | None = None,
+    permission_description: str | None = None,
 ) -> APIRouter:
     """Mount a single ``POST`` route for *function_cls* on a fresh router.
 
@@ -133,6 +137,12 @@ def add_function_routes(
             f"subclass on the NemoFunction class."
         )
 
+    if (permission_namespace is None) != (api_area is None):
+        raise ValueError(
+            "permission_namespace and api_area must be set together (or both omitted): "
+            f"got permission_namespace={permission_namespace!r}, api_area={api_area!r}."
+        )
+
     router = APIRouter()
     instance = function_cls()
     run_params = function_cls.run_signature().parameters
@@ -160,6 +170,21 @@ def add_function_routes(
     )
     handler.__name__ = f"{function_cls.__name__}__route"
     handler.__doc__ = function_cls.description or f"Invoke the {function_cls.name} function."
+
+    if permission_namespace is not None and api_area is not None:
+        # Invoking a function is a write action; default the permission to <ns>.<function>.
+        from nemo_platform_plugin.authz import CallerKind, Permission, path_rule, scopes_for
+
+        resolved_permission_id = permission_id or f"{permission_namespace}.{function_cls.name}"
+        permission = Permission(
+            resolved_permission_id,
+            permission_description or function_cls.description or f"Invoke the {function_cls.name} function",
+        )
+        path_rule(
+            callers=[CallerKind.PRINCIPAL],
+            permissions=[permission],
+            scopes=scopes_for(api_area, write=True),
+        )(handler)
 
     router.post(
         path,

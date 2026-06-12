@@ -37,9 +37,11 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
+from nemo_agents_plugin.api.v2._perms import DeploymentPerms
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
 from nemo_agents_plugin.entities import AgentDeployment
 from nemo_agents_plugin.runner.registry import get_runner_backend
+from nemo_platform_plugin.authz import CallerKind, path_rule, scopes_for
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
 from pydantic import BaseModel, Field
 
@@ -148,6 +150,11 @@ _TAIL_LINE_CAP = 10_000
     response_model=DeploymentLogsResponse,
     tags=["Agent Deployments"],
 )
+@path_rule(
+    callers=[CallerKind.PRINCIPAL],
+    permissions=[DeploymentPerms.READ],
+    scopes=scopes_for("agents", write=False),
+)
 async def get_deployment_logs(
     workspace: str,
     name: str,
@@ -241,6 +248,11 @@ async def _stream_log_lines(
 
 
 @router.get("/deployments/{name}/logs/stream", tags=["Agent Deployments"])
+@path_rule(
+    callers=[CallerKind.PRINCIPAL],
+    permissions=[DeploymentPerms.READ],
+    scopes=scopes_for("agents", write=False),
+)
 async def stream_deployment_logs(
     workspace: str,
     name: str,

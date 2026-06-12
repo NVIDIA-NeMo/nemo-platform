@@ -11,8 +11,20 @@ from fastapi import APIRouter
 from nemo_evaluator.core import say_hello
 from nemo_evaluator.jobs.evaluate import EvaluateJob
 from nemo_evaluator.schema import HelloResponse
+from nemo_platform_plugin.authz import CallerKind, PermissionSet, path_rule, perm, scopes_for
 from nemo_platform_plugin.jobs.routes import add_job_routes
 from nemo_platform_plugin.service import NemoService, RouterSpec
+
+
+class EvaluatorPerms(PermissionSet, namespace="evaluator"):
+    """Permissions owned by the evaluator plugin's hand-written routes.
+
+    The ``EvaluateJob`` collection's permissions (``evaluator.create`` etc.) are stamped
+    onto the factory routes and derived from there; only the bespoke ``hello`` route's
+    permission is declared here.
+    """
+
+    HELLO_READ = perm("Read the evaluator hello greeting", suffix="hello.read")
 
 
 class EvaluatorPluginService(NemoService):
@@ -23,9 +35,10 @@ class EvaluatorPluginService(NemoService):
 
     def get_routers(self) -> list[RouterSpec]:
         router = APIRouter()
-        jobs_router = add_job_routes(EvaluateJob)
+        jobs_router = add_job_routes(EvaluateJob, permission_namespace="evaluator", api_area="evaluator")
 
         @router.get("/healthz")
+        @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[], scopes=[])
         async def healthz() -> dict[str, object]:
             return {
                 "plugin": self.name,
@@ -62,6 +75,11 @@ def _build_hello_router() -> APIRouter:
     router = APIRouter()
 
     @router.get("/hello/{name}", response_model=HelloResponse)
+    @path_rule(
+        callers=[CallerKind.PRINCIPAL],
+        permissions=[EvaluatorPerms.HELLO_READ],
+        scopes=scopes_for("evaluator", write=False),
+    )
     async def hello(name: str) -> HelloResponse:
         """Greet a name."""
         return HelloResponse(message=say_hello(name))

@@ -51,6 +51,7 @@ from nemo_platform.types.jobs import (
 from nemo_platform.types.jobs.platform_job_step_spec_param import Executor
 from nemo_platform_plugin.api.filter import ComparisonOperation, FilterOperation, FilterOperator, LogicalOperation
 from nemo_platform_plugin.api.parsed_filter import ParsedFilter, make_filter_dep
+from nemo_platform_plugin.authz import CallerKind, Permission, path_rule, scopes_for
 from nemo_platform_plugin.dependencies import get_entity_client, get_sdk_client
 from nemo_platform_plugin.entities import EntityClient
 from nemo_platform_plugin.jobs.docker import validate_gpu_available_for_docker
@@ -85,6 +86,19 @@ ResourcesRequestsSpec = ComputeResourceSpecParam
 ContainerSpec = ContainerSpecParam
 EnvironmentVariable = PlatformJobEnvironmentVariableParam
 EnvironmentVariableFromSecret = PlatformJobSecretEnvironmentVariableRefParam
+
+# Descriptions stamped onto the standard job permissions, keyed by verb. The catalog is
+# derived from the routes, so these descriptions are the source of truth for the generated
+# permission registry (no separate declaration to keep in sync).
+_JOB_PERMISSION_DESCRIPTIONS: dict[str, str] = {
+    "create": "Create {ns} jobs",
+    "list": "List {ns} jobs",
+    "read": "Read {ns} jobs, including status, logs, and results",
+    "delete": "Delete {ns} jobs",
+    "cancel": "Cancel {ns} jobs",
+    "pause": "Pause {ns} jobs",
+    "resume": "Resume {ns} jobs",
+}
 
 JobConfigT = TypeVar("JobConfigT", bound=BaseModel)
 JobInputT = TypeVar("JobInputT", bound=BaseModel)
@@ -676,6 +690,8 @@ def job_route_factory(
     job_output: JobSchemaLike | None = None,
     input_to_output: InputToOutputTransformer | InputToOutputTransformerAsync | None = None,
     generate_job_name: JobNameGenerator | None = None,
+    permission_namespace: str | None = None,
+    api_area: str | None = None,
 ) -> APIRouter:
     """Create a job router with standard CRUD operations.
 
@@ -738,6 +754,12 @@ def job_route_factory(
     """
     _validate_basemodel_or_union(job_input, "job_input")
 
+    if (permission_namespace is None) != (api_area is None):
+        raise ValueError(
+            "permission_namespace and api_area must be set together (or both omitted): "
+            f"got permission_namespace={permission_namespace!r}, api_area={api_area!r}."
+        )
+
     # Handle job_output defaulting and validation
     job_output, input_to_output = _validate_and_resolve_job_output(job_output, job_input, input_to_output)
 
@@ -746,6 +768,25 @@ def job_route_factory(
 
     router = APIRouter()
     service_name = service_name.lower()
+
+    def _stamp(endpoint: Callable[..., Any], *, perm: str, write: bool) -> Callable[..., Any]:
+        """Attach a PRINCIPAL ``@path_rule`` to a generated job route.
+
+        Inert unless the caller passed ``permission_namespace`` and ``api_area`` — so
+        unmigrated callers keep emitting unauthz'd routes (handled by the bundle
+        fail-mode). Returns *endpoint* so it can wrap download closures inline.
+        """
+        if permission_namespace is not None and api_area is not None:
+            permission = Permission(
+                f"{permission_namespace}.{perm}",
+                _JOB_PERMISSION_DESCRIPTIONS[perm].format(ns=permission_namespace),
+            )
+            path_rule(
+                callers=[CallerKind.PRINCIPAL],
+                permissions=[permission],
+                scopes=scopes_for(api_area, write=write),
+            )(endpoint)
+        return endpoint
 
     # These lines dynamically create new classes, named for the client microservice
     # using the job route factory, for use as input and output types in the FastAPI routes.
@@ -1022,6 +1063,18 @@ def job_route_factory(
             result_dict["download_url"] = f"{request.url}/download"
             return PlatformJobResultResponse(**result_dict)
 
+        # Stamp authorization rules on the generated routes (PRINCIPAL caller). Reads use
+        # one shared <ns>.read permission; mutating routes get their own permission.
+        _stamp(create_job, perm="create", write=True)
+        _stamp(list_jobs, perm="list", write=False)
+        _stamp(get_job, perm="read", write=False)
+        _stamp(get_job_status, perm="read", write=False)
+        _stamp(delete_job, perm="delete", write=True)
+        _stamp(cancel_job, perm="cancel", write=True)
+        _stamp(get_job_logs, perm="read", write=False)
+        _stamp(list_job_results, perm="read", write=False)
+        _stamp(get_job_result, perm="read", write=False)
+
         # Result downloads:
         # Services that use the api factory can utilize `job_result_routes` to map specific
         # `result_names`s to differently shaped objects. This can make the generated SDK smarter
@@ -1132,7 +1185,7 @@ def job_route_factory(
             router.add_api_route(
                 name=f"download_job_result_{job_result_route.name}",
                 path=f"/jobs/{{job}}/results/{job_result_route.name}/download",
-                endpoint=_make_explicit_download_endpoint(job_result_route),
+                endpoint=_stamp(_make_explicit_download_endpoint(job_result_route), perm="read", write=False),
                 **job_result_route.serializer.route_kwargs(),
             )
 
@@ -1142,7 +1195,7 @@ def job_route_factory(
         router.add_api_route(
             name="download_job_result",
             path="/jobs/{job}/results/{name}/download",
-            endpoint=_make_generic_download_endpoint(file_result_serializer),
+            endpoint=_stamp(_make_generic_download_endpoint(file_result_serializer), perm="read", write=False),
             **file_result_serializer.route_kwargs(),
         )
 
@@ -1174,5 +1227,8 @@ def job_route_factory(
 
             job_resp = await sdk.jobs.resume(name=name, workspace=workspace)
             return from_response(job_resp)
+
+        _stamp(pause_job, perm="pause", write=True)
+        _stamp(resume_job, perm="resume", write=True)
 
     return router

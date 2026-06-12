@@ -13,8 +13,10 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from nemo_auditor.api.v2._filters import make_filter_dep
+from nemo_auditor.api.v2._perms import AuditConfigPerms
 from nemo_auditor.api.v2.schemas import ConfigFilter, CreateAuditConfigRequest, UpdateAuditConfigRequest
 from nemo_auditor.entities import AuditConfig
+from nemo_platform_plugin.authz import CallerKind, path_rule, scopes_for
 from nemo_platform_plugin.entity_client import (
     NemoEntitiesClient,
     NemoEntityConflictError,
@@ -31,6 +33,11 @@ _config_filter_dep = make_filter_dep(ConfigFilter)
 
 
 @router.post("/configs", response_model=AuditConfig, status_code=201, tags=["Auditor Configs"])
+@path_rule(
+    callers=[CallerKind.PRINCIPAL],
+    permissions=[AuditConfigPerms.CREATE],
+    scopes=scopes_for("auditor", write=True),
+)
 async def create_config(
     workspace: str,
     body: CreateAuditConfigRequest,
@@ -63,6 +70,11 @@ async def create_config(
     tags=["Auditor Configs"],
     openapi_extra=generate_openapi_extra_params(filter_schema=ConfigFilter),
 )
+@path_rule(
+    callers=[CallerKind.PRINCIPAL],
+    permissions=[AuditConfigPerms.LIST],
+    scopes=scopes_for("auditor", write=False),
+)
 async def list_configs(
     workspace: str,
     page: int = Query(default=1, ge=1),
@@ -94,6 +106,11 @@ async def list_configs(
 
 
 @router.get("/configs/{name}", response_model=AuditConfig, tags=["Auditor Configs"])
+@path_rule(
+    callers=[CallerKind.PRINCIPAL],
+    permissions=[AuditConfigPerms.READ],
+    scopes=scopes_for("auditor", write=False),
+)
 async def get_config(
     workspace: str,
     name: str,
@@ -113,6 +130,11 @@ async def get_config(
 
 
 @router.put("/configs/{name}", response_model=AuditConfig, tags=["Auditor Configs"])
+@path_rule(
+    callers=[CallerKind.PRINCIPAL],
+    permissions=[AuditConfigPerms.UPDATE],
+    scopes=scopes_for("auditor", write=True),
+)
 async def update_config(
     workspace: str,
     name: str,
@@ -149,6 +171,11 @@ async def update_config(
 
 
 @router.delete("/configs/{name}", status_code=204, tags=["Auditor Configs"])
+@path_rule(
+    callers=[CallerKind.PRINCIPAL],
+    permissions=[AuditConfigPerms.DELETE],
+    scopes=scopes_for("auditor", write=True),
+)
 async def delete_config(
     workspace: str,
     name: str,

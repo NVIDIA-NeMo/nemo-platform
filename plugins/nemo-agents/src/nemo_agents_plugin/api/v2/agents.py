@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from nemo_agents_plugin.api.v2._perms import AgentPerms
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
 from nemo_agents_plugin.entities import Agent, AgentDeployment
 from nemo_agents_plugin.schema import (
@@ -21,6 +22,7 @@ from nemo_agents_plugin.schema import (
     CreateAgentRequest,
 )
 from nemo_platform_plugin.api.filters import make_filter_obj_dep
+from nemo_platform_plugin.authz import CallerKind, path_rule, scopes_for
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError, NemoEntityNotFoundError
 from nemo_platform_plugin.schema import PaginationData
 
@@ -37,6 +39,11 @@ _agent_filter_dep = make_filter_obj_dep(AgentFilter)
 
 
 @router.post("/agents", response_model=Agent, status_code=201, tags=["Agents"])
+@path_rule(
+    callers=[CallerKind.PRINCIPAL],
+    permissions=[AgentPerms.CREATE],
+    scopes=scopes_for("agents", write=True),
+)
 async def create_agent(
     workspace: str,
     body: CreateAgentRequest,
@@ -64,6 +71,11 @@ async def create_agent(
 
 
 @router.get("/agents", response_model=AgentPage, tags=["Agents"])
+@path_rule(
+    callers=[CallerKind.PRINCIPAL],
+    permissions=[AgentPerms.LIST],
+    scopes=scopes_for("agents", write=False),
+)
 async def list_agents(
     workspace: str,
     page: int = Query(default=1, ge=1),
@@ -97,6 +109,11 @@ async def list_agents(
 
 
 @router.get("/agents/{name}", response_model=Agent, tags=["Agents"])
+@path_rule(
+    callers=[CallerKind.PRINCIPAL],
+    permissions=[AgentPerms.READ],
+    scopes=scopes_for("agents", write=False),
+)
 async def get_agent(
     workspace: str,
     name: str,
@@ -117,6 +134,11 @@ async def get_agent(
 
 
 @router.delete("/agents/{name}", status_code=204, tags=["Agents"])
+@path_rule(
+    callers=[CallerKind.PRINCIPAL],
+    permissions=[AgentPerms.DELETE],
+    scopes=scopes_for("agents", write=True),
+)
 async def delete_agent(
     workspace: str,
     name: str,
