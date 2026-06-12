@@ -8597,8 +8597,9 @@ components:
     ContainerSpec:
       properties:
         image:
-          type: string
           title: Image
+          type: string
+          minLength: 1
         entrypoint:
           items:
             type: string
@@ -8610,8 +8611,6 @@ components:
           type: array
           title: Command
       type: object
-      required:
-      - image
       title: ContainerSpec
       description: 'Specification for a container configuration.
 
@@ -9355,6 +9354,13 @@ components:
           title: Launcher Tool Path
           description: Path to the jobs launcher tool
           default: /tools/jobs-launcher
+        default_task_image:
+          title: Default Task Image
+          description: Default container image for job task pods. Used when a job
+            step omits container.image. When unset, falls back to the platform CPU
+            tasks image (platform.image_registry/nmp-cpu-tasks:platform.image_tag).
+          type: string
+          minLength: 1
         env:
           additionalProperties:
             type: string
@@ -11771,6 +11777,13 @@ components:
           title: Launcher Tool Path
           description: Path to the jobs launcher tool
           default: /tools/jobs-launcher
+        default_task_image:
+          title: Default Task Image
+          description: Default container image for job task pods. Used when a job
+            step omits container.image. When unset, falls back to the platform CPU
+            tasks image (platform.image_registry/nmp-cpu-tasks:platform.image_tag).
+          type: string
+          minLength: 1
         env:
           additionalProperties:
             type: string
@@ -11888,6 +11901,13 @@ components:
           title: Launcher Tool Path
           description: Path to the jobs launcher tool
           default: /tools/jobs-launcher
+        default_task_image:
+          title: Default Task Image
+          description: Default container image for job task pods. Used when a job
+            step omits container.image. When unset, falls back to the platform CPU
+            tasks image (platform.image_registry/nmp-cpu-tasks:platform.image_tag).
+          type: string
+          minLength: 1
         env:
           additionalProperties:
             type: string
@@ -16537,6 +16557,13 @@ components:
           title: Launcher Tool Path
           description: Path to the jobs launcher tool
           default: /tools/jobs-launcher
+        default_task_image:
+          title: Default Task Image
+          description: Default container image for job task pods. Used when a job
+            step omits container.image. When unset, falls back to the platform CPU
+            tasks image (platform.image_registry/nmp-cpu-tasks:platform.image_tag).
+          type: string
+          minLength: 1
         env:
           additionalProperties:
             type: string
@@ -17553,6 +17580,13 @@ components:
           title: Launcher Tool Path
           description: Path to the jobs launcher tool
           default: /tools/jobs-launcher
+        default_task_image:
+          title: Default Task Image
+          description: Default container image for job task pods. Used when a job
+            step omits container.image. When unset, falls back to the platform CPU
+            tasks image (platform.image_registry/nmp-cpu-tasks:platform.image_tag).
+          type: string
+          minLength: 1
         env:
           additionalProperties:
             type: string

@@ -224,6 +224,8 @@ jobs:
       cleanup_completed_jobs_immediately: true
       # Path to the jobs launcher tool | default: '/tools/jobs-launcher'
       launcher_tool_path: /tools/jobs-launcher
+      # Default container image for job task pods. Used when a job step omits container.image. When unset, falls back to the platform CPU tasks image (platform.image_registry/nmp-cpu-tasks:platform.image_tag).
+      default_task_image:
       # Optional env vars applied to all jobs (e.g. HOME=/tmp). Keys must not conflict with platform-reserved names. Job steps may override these variables.
       env: {}
       # Docker storage configuration
@@ -250,6 +252,8 @@ jobs:
       cleanup_completed_jobs_immediately: true
       # Path to the jobs launcher tool | default: '/tools/jobs-launcher'
       launcher_tool_path: /tools/jobs-launcher
+      # Default container image for job task pods. Used when a job step omits container.image. When unset, falls back to the platform CPU tasks image (platform.image_registry/nmp-cpu-tasks:platform.image_tag).
+      default_task_image:
       # Optional env vars applied to all jobs (e.g. HOME=/tmp). Keys must not conflict with platform-reserved names. Job steps may override these variables.
       env: {}
       # Kubernetes namespace to submit the job to. If not set, it will be determined from the environment.
@@ -322,6 +326,8 @@ jobs:
       cleanup_completed_jobs_immediately: true
       # Path to the jobs launcher tool | default: '/tools/jobs-launcher'
       launcher_tool_path: /tools/jobs-launcher
+      # Default container image for job task pods. Used when a job step omits container.image. When unset, falls back to the platform CPU tasks image (platform.image_registry/nmp-cpu-tasks:platform.image_tag).
+      default_task_image:
       # Optional env vars applied to all jobs (e.g. HOME=/tmp). Keys must not conflict with platform-reserved names. Job steps may override these variables.
       env: {}
       # Kubernetes namespace to submit the job to. If not set, it will be determined from the environment.
@@ -402,6 +408,8 @@ jobs:
       cleanup_completed_jobs_immediately: false
       # Path to the jobs launcher tool | default: '/tools/jobs-launcher'
       launcher_tool_path: /tools/jobs-launcher
+      # Default container image for job task pods. Used when a job step omits container.image. When unset, falls back to the platform CPU tasks image (platform.image_registry/nmp-cpu-tasks:platform.image_tag).
+      default_task_image:
       # Optional env vars applied to all jobs (e.g. HOME=/tmp). Keys must not conflict with platform-reserved names. Job steps may override these variables.
       env: {}
       # Root directory for subprocess job state, config, storage, and logs. | default: '/tmp/nmp-subprocess-jobs'

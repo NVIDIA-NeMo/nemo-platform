@@ -3,6 +3,7 @@
 
 import { getAgentsListAgentsQueryKey } from '@nemo/sdk/generated/agents/api';
 import { getModelsListModelsQueryKey } from '@nemo/sdk/generated/platform/api';
+import { markExampleAgentIntroShown } from '@studio/components/sidePanels/AgentPanels/AgentPanel/walkthroughStorage';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { workspace1 } from '@studio/mocks/entity-store/projects';
@@ -53,6 +54,9 @@ const clickCreateOnceReady = async (user: ReturnType<typeof userEvent.setup>) =>
 };
 
 describe('AgentsListRoute', () => {
+  // Opening the sidepanel + intro tour is gated on a per-session flag; isolate it.
+  beforeEach(() => sessionStorage.clear());
+
   it('renders the page shell', async () => {
     renderList();
     expect(await screen.findByText('Agents')).toBeInTheDocument();
@@ -98,6 +102,71 @@ describe('AgentsListRoute', () => {
     expect(config.functions.current_datetime._type).toBe('current_datetime');
     // A concrete workspace model is chosen (service does not resolve ${NEMO_DEFAULT_MODEL}).
     expect(config.llms.llm.model_name).toBe('nvidia-nemotron-nano-9b-v2');
+  });
+
+  it('does not reopen the sidepanel/intro for a later example agent in the same session', async () => {
+    const user = userEvent.setup();
+    mockModels(['nvidia-nemotron-nano-9b-v2']);
+    // An example agent intro was already shown earlier this session.
+    markExampleAgentIntroShown();
+
+    let created = false;
+    server.use(
+      http.post(CREATE_AGENT_URL, async ({ request, params }) => {
+        created = true;
+        const body = (await request.json()) as { name?: string };
+        return HttpResponse.json({ ...body, workspace: params['workspace'] });
+      })
+    );
+
+    renderList();
+    await clickCreateOnceReady(user);
+
+    // Creation still happens, but we stay on the list — no navigation to the detail panel.
+    await waitFor(() => expect(created).toBe(true));
+    expect(screen.queryByText('Agent detail page')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create Example Agent' })).toBeInTheDocument();
+  });
+
+  it('skips onboarding when an example agent already exists in the workspace', async () => {
+    const user = userEvent.setup();
+    mockModels(['nvidia-nemotron-nano-9b-v2']);
+    // Fresh session, but a calculator-demo agent already exists — a returning user.
+    server.use(
+      http.get(CREATE_AGENT_URL, () =>
+        HttpResponse.json({
+          data: [{ name: 'calculator-demo-agent-abc123', workspace }],
+          pagination: {
+            page: 1,
+            page_size: 50,
+            current_page_size: 1,
+            total_pages: 1,
+            total_results: 1,
+          },
+          sort: '-created_at',
+          filter: null,
+        })
+      )
+    );
+
+    let created = false;
+    server.use(
+      http.post(CREATE_AGENT_URL, async ({ request, params }) => {
+        created = true;
+        const body = (await request.json()) as { name?: string };
+        return HttpResponse.json({ ...body, workspace: params['workspace'] });
+      })
+    );
+
+    renderList();
+    // Wait until the existing example agent is visible so the agents query has settled.
+    await screen.findByText('calculator-demo-agent-abc123');
+    await clickCreateOnceReady(user);
+
+    // No onboarding: stays on the list despite the fresh session.
+    await waitFor(() => expect(created).toBe(true));
+    expect(screen.queryByText('Agent detail page')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create Example Agent' })).toBeInTheDocument();
   });
 
   it('prefers a suggested Nemotron model over a non-suggested one', async () => {
