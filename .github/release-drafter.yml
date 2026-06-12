@@ -1,0 +1,17 @@
+# Labels each PR with its conventional-commit type, matched from the title
+# prefix. Title format is enforced by semantic-pull-requests.yaml, and no type
+# is a prefix of another, so a leading-word match is unambiguous.
+# .github/release.yml groups generated release notes by these labels.
+autolabeler:
+  - { label: feat,     title: ['/^feat/'] }
+  - { label: fix,      title: ['/^fix/'] }
+  - { label: docs,     title: ['/^docs/'] }
+  - { label: style,    title: ['/^style/'] }
+  - { label: refactor, title: ['/^refactor/'] }
+  - { label: perf,     title: ['/^perf/'] }
+  - { label: test,     title: ['/^test/'] }
+  - { label: build,    title: ['/^build/'] }
+  - { label: ci,       title: ['/^ci/'] }
+  - { label: chore,    title: ['/^chore/'] }
+  - { label: revert,   title: ['/^revert/'] }
+  - { label: cp,       title: ['/^cp/'] }
