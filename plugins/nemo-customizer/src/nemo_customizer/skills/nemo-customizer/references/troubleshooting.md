@@ -2,9 +2,11 @@
 
 Read this file when submit fails, jobs fail on images, the platform is unreachable, or the user asks for Unsloth.
 
+Resolve the CLI first per **Pre-flight — CLI resolution** in `SKILL.md` (`nemo` on `PATH`, else `uv run nemo`, else route to **nemo-setup**). Example commands below use `nemo …`.
+
 ## Platform unreachable (connection error)
 
-Any `nemo …` call may fail with `Connection error`, timeout, or connection refused — typically on the first `nemo jobs list-execution-profiles` after auth.
+Any `nemo …` call may fail with `Connection error`, timeout, or connection refused — typically on the first `nemo jobs list-execution-profiles`. Auth is not required when the cluster has authentication disabled (`nemo auth status`); on 401/403 see **Authentication** in `SKILL.md`.
 
 **Did the user override the base URL?**
 
@@ -14,7 +16,7 @@ Any `nemo …` call may fail with `Connection error`, timeout, or connection ref
 | Default URL only — no user override | **Ask** whether to start the platform locally. If they agree, from the **nemo-platform** git root run in the **background**, then poll until healthy and retry the failed command: |
 
 ```bash
-uv run nemo services run \
+nemo services run \
   --host 0.0.0.0 \
   --port 8080 \
   --controllers jobs,entities,models \
@@ -26,7 +28,7 @@ Health check (repeat until success or ~2 min):
 ```bash
 curl -sf http://127.0.0.1:8080/health/ready
 # or
-uv run nemo jobs list-execution-profiles -f json
+nemo jobs list-execution-profiles -f json
 ```
 
 Do **not** auto-start services without asking. Customization needs **jobs**, **entities** (filesets), and **models** controllers — the command above is the minimal local set for this skill.
@@ -37,10 +39,10 @@ If the user already has a listener on `:8080` but health fails, see **nemo-statu
 
 **Do not** run `docker info` on the agent machine. The platform often runs elsewhere (`NEMO_BASE_URL`). Ask the **connected platform** what executors it exposes.
 
-After `nemo auth login`, list profiles:
+List profiles (login first only if auth is enabled — see **Authentication** in `SKILL.md`):
 
 ```bash
-uv run nemo jobs list-execution-profiles -f json
+nemo jobs list-execution-profiles -f json
 ```
 
 REST equivalent (same payload): `GET /apis/jobs/v2/execution-profiles` on the platform base URL with the saved auth token.
@@ -65,7 +67,7 @@ Both backends are **`submit`-only**. After submit, the platform's **Docker execu
 Quick filter (stdout only — do not use `2>&1` or `json.load` breaks on stderr warnings):
 
 ```bash
-uv run nemo jobs list-execution-profiles -f json 2>/dev/null | python3 -c "
+nemo jobs list-execution-profiles -f json 2>/dev/null | python3 -c "
 import sys, json
 for p in json.load(sys.stdin):
     if p.get('provider') in ('gpu', 'gpu_distributed'):
@@ -150,7 +152,7 @@ When submit or poll returns a missing-image error and the base URL is **user-ove
 ```bash
 export NEMO_BASE_URL=<user's platform URL>
 cd /path/to/nemo-platform
-uv run nemo customization <plugin> submit /tmp/job.json --workspace default [--profile <gpu-profile>]
+nemo customization <plugin> submit /tmp/job.json --workspace default [--profile <gpu-profile>]
 ```
 
 Then poll until terminal status. Offer to re-submit once the user confirms the image is on the target — do not attempt a local Docker build from the agent for a remote platform.

@@ -4,8 +4,8 @@ Two backend job schemas live in this skill. Pick by plugin:
 
 | Plugin | Schema class | Schema dump | Section below |
 |--------|--------------|-------------|---------------|
-| `automodel` | `AutomodelJobInput` (`plugins/nemo-automodel/src/nemo_automodel_plugin/schema.py`) | `uv run nemo customization automodel explain` | **Automodel job JSON** (below) |
-| `unsloth` | `UnslothJobInput` (`plugins/nemo-unsloth/src/nemo_unsloth_plugin/schema.py`) | `uv run nemo customization unsloth explain` | **Unsloth job JSON** (further down) |
+| `automodel` | `AutomodelJobInput` (`plugins/nemo-automodel/src/nemo_automodel_plugin/schema.py`) | `nemo customization automodel explain` | **Automodel job JSON** (below) |
+| `unsloth` | `UnslothJobInput` (`plugins/nemo-unsloth/src/nemo_unsloth_plugin/schema.py`) | `nemo customization unsloth explain` | **Unsloth job JSON** (further down) |
 
 Both schemas use `extra="forbid"` — unknown keys raise validation errors. Field names are **not** interchangeable across backends (e.g. automodel uses `micro_batch_size` / `global_batch_size` / `parallelism`; unsloth uses `per_device_train_batch_size` / `gradient_accumulation_steps` / `hardware`). Use the right schema for the chosen plugin.
 
@@ -20,7 +20,7 @@ Job JSON for `nemo customization automodel submit` uses **`AutomodelJobInput`** 
 **Schema dump:**
 
 ```bash
-uv run nemo customization automodel explain
+nemo customization automodel explain
 ```
 
 **Contract examples:** `services/automodel/tests/contract/input_configs/` (legacy shape; map `batch_size` → `global_batch_size` in submit JSON).
@@ -265,10 +265,10 @@ TEACHER_WEIGHTS=llama-3.2-3b-instruct   # fileset name
 TEACHER_ENTITY=llama-3.2-3b-instruct    # entity name
 TEACHER_HF=meta-llama/Llama-3.2-3B-Instruct
 
-uv run nemo files filesets create "$TEACHER_WEIGHTS" --workspace default --purpose model --exist-ok \
+nemo files filesets create "$TEACHER_WEIGHTS" --workspace default --purpose model --exist-ok \
   --storage '{"type":"huggingface","repo_id":"'"$TEACHER_HF"'","repo_type":"model","revision":"main"}'
 
-uv run nemo models create "$TEACHER_ENTITY" --workspace default --exist-ok \
+nemo models create "$TEACHER_ENTITY" --workspace default --exist-ok \
   --input-data '{"name":"'"$TEACHER_ENTITY"'","fileset":"default/'"$TEACHER_WEIGHTS"'","custom_fields":{"hf_model_id":"'"$TEACHER_HF"'"}}'
 ```
 
@@ -319,7 +319,7 @@ Job JSON for `nemo customization unsloth submit` uses **`UnslothJobInput`** (`pl
 **Schema dump:**
 
 ```bash
-uv run nemo customization unsloth explain
+nemo customization unsloth explain
 ```
 
 Unsloth is **submit-only, single-GPU inside the training container**. There is no `parallelism` block and no `training.execution_profile` in job JSON — pass `--profile` on `nemo customization unsloth submit` instead (default `gpu`). `hardware.gpus` sets `CUDA_VISIBLE_DEVICES` in the container before `import torch`. Multi-GPU sharding → use automodel.

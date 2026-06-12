@@ -11,6 +11,7 @@ import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
+import { snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
 import { getSortParamWithWhitelist } from '@nemo/common/src/utils/query';
 import { useGetExperimentGroup, useListExperiments } from '@nemo/sdk/generated/platform/api';
 import type {
@@ -36,14 +37,14 @@ interface ExperimentGroupDataViewProps {
   experimentGroupName: string;
 }
 
-/** Formats an experiment's aggregate scores into a single average-percent string. */
-const formatScores = (aggregateScores: ExperimentResponse['aggregate_scores']): string => {
-  const means = Object.values(aggregateScores ?? {})
-    .map((score) => score?.mean)
-    .filter((mean): mean is number => mean !== undefined && mean !== null);
-  if (means.length === 0) return '-';
-  const avg = means.reduce((a, b) => a + b, 0) / means.length;
-  return `${(avg * 100).toFixed(1)}%`;
+/**
+ * Formats an evaluator's mean score for display. Scores in the normalized 0–1 range read
+ * best as percentages; values outside that range are on a different scale (e.g. a 1–5 or
+ * 1–10 rubric), so they're shown as a raw number rather than a misleading percentage.
+ */
+const formatEvaluatorScore = (mean: number | null | undefined): string => {
+  if (mean == null || !Number.isFinite(mean)) return '-';
+  return mean >= 0 && mean <= 1 ? `${(mean * 100).toFixed(1)}%` : mean.toFixed(3);
 };
 
 /** Lists the experiments that belong to a single experiment group. */
@@ -105,6 +106,13 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
     [experimentsData]
   );
 
+  // One score column per evaluator: the union of evaluator names across the loaded rows,
+  // sorted for a deterministic column order across renders and page changes.
+  const evaluatorNames = useMemo(
+    () => [...new Set(tableData.flatMap((e) => Object.keys(e.aggregate_scores ?? {})))].sort(),
+    [tableData]
+  );
+
   const makeColumns = useCallback<
     ComponentProps<typeof DataViewRoot<ExperimentRow>>['makeColumns']
   >(
@@ -162,11 +170,17 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
         enableSorting: false,
         cell: ({ getValue }) => <Text>{getValue<string>() || '-'}</Text>,
       }),
-      accessor((original) => formatScores(original.aggregate_scores), {
-        id: 'aggregate_scores',
-        header: 'Aggregate Scores',
-        enableSorting: false,
-      }),
+      ...evaluatorNames.map((name, index) =>
+        accessor((original) => original.aggregate_scores?.[name]?.mean, {
+          id: `score-${index}`,
+          header: `Avg ${snakeCaseToTitleCase(name)}`,
+          enableSorting: false,
+          size: 140,
+          cell: ({ getValue }) => (
+            <Text>{formatEvaluatorScore(getValue<number | undefined>())}</Text>
+          ),
+        })
+      ),
       accessor((original) => original.cost_usd?.mean, {
         id: 'cost_usd',
         header: 'Avg Cost',
@@ -214,7 +228,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
         },
       }),
     ],
-    []
+    [evaluatorNames]
   );
 
   if (groupError) {
