@@ -309,6 +309,30 @@ deny_request if {
 	not platform_admin_exempt
 }
 
+# Caller-kind enforcement for principal-only routes — the symmetric counterpart of the
+# service-only deny above. A route is "principal-only" iff it allows principals but NOT service
+# principals:
+#   callers: ["principal"]
+# When `callers` is absent, endpoint_callers is undefined and this is false: a route with no
+# `callers` keeps the PRINCIPAL-default semantics and imposes no new restriction on service
+# principals. Routes listing "service_principal" (alone or with "principal") are NOT principal-only.
+default principal_only_route := false
+
+principal_only_route if {
+	callers := endpoint_callers(extract_path, extract_method)
+	"principal" in callers
+	not "service_principal" in callers
+}
+
+# Deny a service principal on a principal-only route. Without this, callers=["principal"] was
+# one-directional — it kept humans in but never kept service principals out (they passed via the
+# ServiceSystem "*" wildcard), so `callers` could not actually scope a route to human users.
+deny_request if {
+	principal_only_route
+	principal_id := extract_principal_id
+	startswith(principal_id, "service:")
+}
+
 # True only when a PlatformAdmin caller is present AND the config knob exempts platform
 # admins from service-only enforcement. Read defensively: an absent config key is treated
 # as false (default deny for human platform admins on service-only routes).

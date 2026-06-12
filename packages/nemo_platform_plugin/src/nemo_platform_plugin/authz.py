@@ -40,7 +40,6 @@ Example::
 
 from __future__ import annotations
 
-import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -85,24 +84,6 @@ class Permission:
 
     def __str__(self) -> str:
         return self.id
-
-
-# Permission ids are two or more dot-separated lowercase segments (digits and internal
-# hyphens allowed), e.g. ``models.create`` / ``auditor.configs.read``. This mirrors the
-# platform wire contract (``nmp.common.auth.authz_format.PERMISSION_ID_PATTERN``); it is
-# duplicated here, not imported, so the plugin SDK carries no nmp_common dependency and
-# stays usable out of this repo.
-_PERMISSION_ID_SEGMENT = r"[a-z0-9]+(?:-[a-z0-9]+)*"
-_PERMISSION_ID_PATTERN = re.compile(rf"^{_PERMISSION_ID_SEGMENT}(?:\.{_PERMISSION_ID_SEGMENT})+$")
-
-
-def is_valid_permission_id(permission_id: str) -> bool:
-    """Return True if *permission_id* matches the platform permission-id format.
-
-    A valid id is two or more dot-separated lowercase segments (digits and internal
-    hyphens allowed), e.g. ``models.create`` or ``auditor.configs.read``.
-    """
-    return bool(permission_id) and _PERMISSION_ID_PATTERN.fullmatch(permission_id) is not None
 
 
 @dataclass(frozen=True)

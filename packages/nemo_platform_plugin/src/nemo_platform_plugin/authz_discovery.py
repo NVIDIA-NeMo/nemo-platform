@@ -38,8 +38,8 @@ from nemo_platform_plugin.authz import (
     PathRule,
     Permission,
     get_path_rules,
-    is_valid_permission_id,
 )
+from nemo_platform_plugin.authz_format import is_valid_permission_id
 from nemo_platform_plugin.service import NemoService
 
 logger = logging.getLogger(__name__)

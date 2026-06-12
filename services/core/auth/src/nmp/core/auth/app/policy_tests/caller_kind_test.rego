@@ -43,6 +43,10 @@ caller_kind_test_data := {
 		"/apis/models/v2/workspaces/{workspace}/models": {
 			"get": {"permissions": ["models.list"]},
 		},
+		# Principal-only route: only human principals are allowed (callers: ["principal"]).
+		"/apis/models/v2/workspaces/{workspace}/human-only/{name}": {
+			"get": {"permissions": ["models.read"], "callers": ["principal"]},
+		},
 	},
 	"workspaces": {
 		"system": {},
@@ -175,6 +179,63 @@ test_mixed_route_allows_service_principal if {
 		with data.authz.principals as caller_kind_test_data.principals
 
 	result.allowed == true
+}
+
+# --- Principal-only route (callers: ["principal"]) ---
+
+# A human principal with the required permission is ALLOWED on a principal-only route.
+test_principal_only_route_allows_human_principal if {
+	result := authz.allow
+		with input as {
+			"principal_id": "user@example.com",
+			"method": "GET",
+			"path": "/apis/models/v2/workspaces/ws1/human-only/m-1",
+		}
+		with data.authz.roles as caller_kind_test_data.roles
+		with data.authz.endpoints as caller_kind_test_data.endpoints
+		with data.authz.workspaces as caller_kind_test_data.workspaces
+		with data.authz.principals as caller_kind_test_data.principals
+
+	result.allowed == true
+}
+
+# A service principal is DENIED on the same principal-only route — even though ServiceSystem
+# grants "*" — closing the previously one-directional caller enforcement.
+test_principal_only_route_denies_service_principal if {
+	result := authz.allow
+		with input as {
+			"principal_id": "service:customizer",
+			"method": "GET",
+			"path": "/apis/models/v2/workspaces/ws1/human-only/m-1",
+		}
+		with data.authz.roles as caller_kind_test_data.roles
+		with data.authz.endpoints as caller_kind_test_data.endpoints
+		with data.authz.workspaces as caller_kind_test_data.workspaces
+		with data.authz.principals as caller_kind_test_data.principals
+
+	result.allowed == false
+}
+
+# principal_only_route is TRUE for a route that lists only "principal".
+test_principal_only_route_helper_true_for_principal_only if {
+	authz.principal_only_route
+		with input as {
+			"principal_id": "service:customizer",
+			"method": "GET",
+			"path": "/apis/models/v2/workspaces/ws1/human-only/m-1",
+		}
+		with data.authz.endpoints as caller_kind_test_data.endpoints
+}
+
+# principal_only_route is FALSE for a mixed route (which also lists "service_principal").
+test_principal_only_route_helper_false_for_mixed if {
+	not authz.principal_only_route
+		with input as {
+			"principal_id": "service:customizer",
+			"method": "GET",
+			"path": "/apis/models/v2/workspaces/ws1/models/m-1",
+		}
+		with data.authz.endpoints as caller_kind_test_data.endpoints
 }
 
 # --- No `callers` key (legacy default) ---

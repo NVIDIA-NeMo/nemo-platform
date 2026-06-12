@@ -76,9 +76,7 @@ def test_gateway_proxy_binding() -> None:
         assert binding.callers == ["principal"], method
         assert not binding.deny, method
         expected_scopes = (
-            ["agents:write", "platform:write"]
-            if method in _PROXY_WRITE_METHODS
-            else ["agents:read", "platform:read"]
+            ["agents:write", "platform:write"] if method in _PROXY_WRITE_METHODS else ["agents:read", "platform:read"]
         )
         assert binding.scopes == expected_scopes, method
     # The deployment-name proxy route is split identically.

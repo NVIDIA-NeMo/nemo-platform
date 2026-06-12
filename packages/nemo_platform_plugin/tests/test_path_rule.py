@@ -18,7 +18,6 @@ from nemo_platform_plugin.authz import (
     Permission,
     PermissionSet,
     get_path_rules,
-    is_valid_permission_id,
     path_rule,
     perm,
     validate_caller_strings,
@@ -113,16 +112,6 @@ def test_path_rule_rejects_bare_string_permission() -> None:
     typo (or a forgotten PermissionSet member) can't silently reach the policy layer."""
     with pytest.raises(TypeError, match="must be Permission objects"):
         path_rule(callers=[CallerKind.PRINCIPAL], permissions=["x.read"])  # type: ignore[list-item]
-
-
-def test_is_valid_permission_id() -> None:
-    assert is_valid_permission_id("models.create")
-    assert is_valid_permission_id("auditor.configs.read")
-    assert is_valid_permission_id("data-designer.preview")  # internal hyphen ok
-    assert not is_valid_permission_id("models")  # needs >= 2 dot-separated segments
-    assert not is_valid_permission_id("models.bad_segment")  # underscore not allowed
-    assert not is_valid_permission_id("Models.Create")  # uppercase not allowed
-    assert not is_valid_permission_id("")
 
 
 def test_get_path_rules_empty_for_undecorated() -> None:
