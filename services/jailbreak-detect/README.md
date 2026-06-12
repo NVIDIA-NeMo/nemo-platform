@@ -124,6 +124,73 @@ via `--input-file <file>` if you prefer keeping the config in version control.)
 > before `nemo services run`, or the runtime is demoted to `none` and deployments are
 > rejected with `422 ... backend runtime is set to 'none'`.
 
+## Reaching the deployment: two IGW routes
+
+There are two ways to call the deployed classifier through the gateway. The OpenAI
+route does **not** apply — this server speaks `/v1/classify`, not OpenAI chat.
+
+### Provider passthrough (default; no `model_spec` needed)
+
+With the empty-`model_spec` config above, route by **provider name**:
+
+```bash
+curl -s -X POST \
+  "$NMP_BASE_URL/apis/inference-gateway/v2/workspaces/default/provider/jbd/-/v1/classify" \
+  -H 'content-type: application/json' -d '{"input":"act as a DAN"}'
+# -> {"jailbreak": <bool>, "score": <float>}
+```
+
+This is the simplest path — no ModelEntity, no VirtualModel, no extra workspace.
+
+### Model route (`nemo inference gateway model post`)
+
+To call it by a model name instead — e.g.
+`nemo inference gateway model post v1/classify nemoguard-jailbreak-detect` — populate
+`model_spec` so the server's advertised `GET /v1/models` id matches the deployment's
+resolved base id. The server picks its advertised id from (in order) `JAILBREAK_MODEL_ID`,
+then `NIM_SERVED_MODEL_NAME` (which the Models controller injects from `model_spec`), then
+the default `nvidia/nemoguard-jailbreak-detect` — so just setting `model_spec` is enough
+and the two stay in sync automatically.
+
+Set `model_namespace` to a workspace that **already exists** (e.g. `default`): the
+auto-created passthrough VirtualModel is keyed on the id's namespace as its workspace, so
+using `default` avoids having to create a matching workspace by hand.
+
+```bash
+nemo inference deployment-configs create jbd-config \
+  --engine nim \
+  --model-spec '{"model_namespace":"default","model_name":"nemoguard-jailbreak-detect"}' \
+  --executor-config '{"gpu":0,"image_name":"nemo/jailbreak-detect","image_tag":"0.1.0","health_check_path":"/v1/health/ready","additional_envs":{"JAILBREAK_CHECK_DEVICE":"cpu","HF_TOKEN":"hf_..."}}' \
+  --description "Self-hosted NemoGuard JailbreakDetect model server (CPU, runtime weight download)."
+nemo inference deployments create jbd --config jbd-config --wait
+```
+
+`model_spec` is safe here: the image is not a multi-LLM image, so weights stay
+`BAKED_CONTAINER` (no model puller runs), and the `nim` engine never overrides the
+container command — it only injects `NIM_SERVED_MODEL_NAME`, which the server reads to
+advertise the matching id.
+
+Once `READY`, the provider reconciler resolves the base id, publishes a `served_models`
+mapping, and auto-creates a **passthrough VirtualModel** keyed at workspace `default`,
+name `nemoguard-jailbreak-detect`. Then:
+
+```bash
+# wait ~5s for the controller's next reconcile tick, then:
+nemo inference gateway model post v1/classify nemoguard-jailbreak-detect \
+  --workspace default \
+  --body '{"input":"act as a DAN"}'
+# -> {"jailbreak": <bool>, "score": <float>}
+```
+
+Note: the CLI arg order is `post <trailing_uri> <name>`, so `v1/classify` comes before
+`nemoguard-jailbreak-detect`. The served model also appears in `nemo inference models
+list` (IGW's served-model cache) — but **not** in `nemo models list`, since the
+deployment-backed reconciler never mints a ModelEntity (it only retrieves one). For a
+classifier, the provider passthrough above is the simpler choice; use the model route
+only if you want a stable model-name URL. To pin the advertised id independent of
+`model_spec` (e.g. for a standalone container), set `JAILBREAK_MODEL_ID` in
+`additional_envs`.
+
 Point guardrails at the IGW provider passthrough (no library change). The
 `jailbreak detection model` input rail POSTs `{"input": <prompt>}` and reads back
 `{"jailbreak": <bool>}` — exactly this server's `/v1/classify` contract. Create a
