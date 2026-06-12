@@ -89,6 +89,21 @@ Also check:
 
 ---
 
+## Container image eligibility
+
+The `container:` list in `release/assets.yaml` declares which container
+images are eligible for release publishing. Platform-Deploy's
+`Release Deploy Artifacts` (staging) and `Release Promote Public` (public
+NGC) workflows read this list from this repository at the release ref, so
+eligibility is version-pinned: re-staging an old tag publishes the container
+set that was declared at that commit. Adding an image here also requires a
+catalog metadata entry (overview, labels) in Platform-Deploy
+`release/nemo-assets-config.yaml`, and the image must be pushed to the dev
+registry tagged with this repository's commit SHA (the Automodel images are
+built by Platform-Deploy's `docker-automodel.yaml`).
+
+---
+
 ## Nightly builds
 
 Nightly builds run automatically at 20:00 PT and publish to `pypi.nvidia.com`. They use the HEAD of `main` and version strings like `0.1.3.dev20260101120000`. No action required from the team.
