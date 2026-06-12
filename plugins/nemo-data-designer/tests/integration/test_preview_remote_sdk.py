@@ -9,6 +9,8 @@ import data_designer.config as dd
 import nemo_data_designer_plugin.testing.utils as u
 import pandas as pd
 import pytest
+from data_designer.errors import DataDesignerError
+from data_designer.interface.data_designer import DataDesigner
 from data_designer_nemo.fileset_file_seed_source import FilesetFileSeedSource
 from nemo_data_designer_plugin.config import get_config
 from nemo_data_designer_plugin.sdk.errors import DataDesignerConfigValidationError, DataDesignerPreviewError
@@ -181,7 +183,7 @@ def test_preview_surfaces_worker_error_through_sdk(monkeypatch: pytest.MonkeyPat
     def boom(*args: object, **kwargs: object) -> None:
         raise RuntimeError("forced worker failure")
 
-    monkeypatch.setattr(preview_module, "make_preview_dataset", boom)
+    monkeypatch.setattr(preview_module, "_make_preview_dataset", boom)
 
     builder = dd.DataDesignerConfigBuilder(model_configs=[u.make_model_config()])
     builder.add_column(
@@ -196,6 +198,35 @@ def test_preview_surfaces_worker_error_through_sdk(monkeypatch: pytest.MonkeyPat
         dd_client = u.make_dd_client(client_context)
         with pytest.raises(DataDesignerPreviewError, match="forced worker failure"):
             dd_client.preview(builder, num_records=3)
+
+
+def test_preview_model_health_check_failure_returns_validation_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    # It would be preferable to set up a mock provider configured to return a 5xx response,
+    # which is supported in the shared test helper, but doesn't work here because the call
+    # to the provider comes from the Data Designer library's own client, which does not carry
+    # the ASGI transport configured in the tests. So instead, we patch `check_models` to raise.
+    error_message = "forced model health check failure"
+
+    def fail_model_health_check(*args, **kwargs) -> None:
+        raise DataDesignerError(error_message)
+
+    monkeypatch.setattr(DataDesigner, "check_models", fail_model_health_check)
+
+    builder = dd.DataDesignerConfigBuilder(model_configs=[u.make_model_config()])
+    builder.add_column(
+        column_config=dd.SamplerColumnConfig(
+            name="foo",
+            sampler_type=dd.SamplerType.CATEGORY,
+            params=dd.CategorySamplerParams(values=["a"]),
+        )
+    )
+
+    with u.make_mock_client_context() as client_context:
+        dd_client = u.make_dd_client(client_context)
+        with pytest.raises(DataDesignerConfigValidationError, match=error_message) as exc_info:
+            dd_client.preview(builder, num_records=3)
+
+    assert exc_info.value.status_code == 422
 
 
 def assert_message_with(messages: list[str], exact: str | None = None, fuzzy: str | None = None) -> None:
