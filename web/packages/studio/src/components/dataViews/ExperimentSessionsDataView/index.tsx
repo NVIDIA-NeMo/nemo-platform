@@ -8,6 +8,7 @@ import {
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
+import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
 import { useGetExperiment, useListExperimentSessions } from '@nemo/sdk/generated/platform/api';
@@ -232,13 +233,37 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
           totalCount,
           requestStatus: isLoading && !sessionsData ? 'loading' : undefined,
         },
+        DataViewSearchBar: { placeholder: 'Search case...' },
         DataViewTableContent: {
-          renderEmptyState: () => (
-            <Empty
-              experimentGroupName={experimentGroupName}
-              datasetName={experiment?.dataset_name ?? '<dataset>'}
-            />
-          ),
+          renderEmptyState: () => {
+            const hasActiveFilters =
+              !!dataViewState.searchBar.state || dataViewState.columnFiltering.state.length > 0;
+            if (hasActiveFilters) {
+              return (
+                <TableEmptyState
+                  header="No matching test cases"
+                  emptyMessage={
+                    <>
+                      Change your filters and try again, or{' '}
+                      <button
+                        className="text-content-link hover:underline"
+                        onClick={dataViewState.resetFilters}
+                      >
+                        clear filters
+                      </button>
+                      .
+                    </>
+                  }
+                />
+              );
+            }
+            return (
+              <Empty
+                experimentGroupName={experimentGroupName}
+                datasetName={experiment?.dataset_name ?? '<dataset>'}
+              />
+            );
+          },
         },
       }}
     />
