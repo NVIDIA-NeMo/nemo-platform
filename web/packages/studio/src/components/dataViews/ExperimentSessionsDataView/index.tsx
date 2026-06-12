@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Root as DataViewRoot } from '@nemo/common/src/components/DataView/internal';
+import {
+  Root as DataViewRoot,
+  EditColumnsMenu,
+} from '@nemo/common/src/components/DataView/internal';
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
@@ -14,6 +17,7 @@ import { Empty } from '@studio/components/dataViews/ExperimentSessionsDataView/E
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { tooltipClassName } from '@studio/styles/common';
 import { keepPreviousData } from '@tanstack/react-query';
+import { Columns3 } from 'lucide-react';
 import { type ComponentProps, type FC, useMemo } from 'react';
 
 type SessionRow = ExperimentSessionResponse & { _rowId: string };
@@ -33,7 +37,7 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
   experimentGroupName,
 }) => {
   const workspace = useWorkspaceFromPath();
-  const dataViewState = useStudioDataViewState({});
+  const dataViewState = useStudioDataViewState({ columnVisibility: {} });
   const { data: experiment } = useGetExperiment(workspace, experimentName);
 
   const page = dataViewState.pagination.state.pageIndex + 1;
@@ -174,6 +178,18 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
     <StudioDataView
       dataViewState={dataViewState}
       makeColumns={makeColumns}
+      toolbarSlotEnd={
+        <EditColumnsMenu
+          kind="secondary"
+          showChevron={false}
+          slotContent={<div aria-hidden className="h-0 w-[230px]" />}
+        >
+          <>
+            <Columns3 />
+            <span className="hide-mobile">Columns</span>
+          </>
+        </EditColumnsMenu>
+      }
       attributes={{
         DataViewRoot: {
           data: tableData,
