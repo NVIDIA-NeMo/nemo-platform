@@ -135,9 +135,12 @@ allow_request if {
 	has_permissions(principal, "system", required_permissions)
 }
 
-# Allow cross-workspace LIST operations (GET/HEAD without workspace in path)
-# for authenticated users.
-# If the user has no accessible workspaces, they will get empty list.
+# Allow cross-workspace LIST operations (GET/HEAD without workspace in path) for authenticated
+# users — the workspace-filtered list case (results scoped to the caller's accessible
+# workspaces; an empty list when they have none).
+# Only applies when the endpoint declares NO required permissions. A permission-stamped
+# no-workspace GET must instead satisfy its permission (rule below); otherwise the stamped
+# permission is decorative, which is how the bundle-download endpoint had to be special-cased.
 allow_request if {
 	applicable_principals := get_applicable_principals
 	count(applicable_principals) > 0
@@ -155,6 +158,39 @@ allow_request if {
 
 	# Match if no workspace can be extracted from path (undefined = no workspace placeholder)
 	not extract_workspace_from_path(path)
+
+	# Permissionless only: an endpoint with no `permissions` (empty or absent) keeps the
+	# "any authenticated user" behavior; a permissioned one falls through to the rule below.
+	not endpoint_requires_permissions(path, method)
+}
+
+# A permission-stamped no-workspace GET/HEAD must satisfy its declared permission in the system
+# workspace (the home for non-workspace-scoped resources, matching the IAM rule above), so the
+# permission is enforced rather than decorative.
+allow_request if {
+	applicable_principals := get_applicable_principals
+	count(applicable_principals) > 0
+
+	scope_check_passed
+
+	method := extract_method
+	method in ["GET", "HEAD"]
+	path := extract_path
+	normalize_endpoint(path)
+	not extract_workspace_from_path(path)
+
+	required_permissions := get_required_permissions(path, method)
+	count(required_permissions) > 0
+
+	some principal in applicable_principals
+	has_permissions(principal, "system", required_permissions)
+}
+
+# True when the matched endpoint declares one or more required permissions for this method.
+# Undefined required-permissions (an endpoint with no `permissions` key) makes count() undefined,
+# so this is false there — absent/empty permissions are treated alike (no permission required).
+endpoint_requires_permissions(path, method) if {
+	count(get_required_permissions(path, method)) > 0
 }
 
 # Allow cross-workspace LIST operations with "-" wildcard workspace
