@@ -122,14 +122,9 @@ def resolve_task_image(container_image: str | None, default_task_image: str | No
     2. default_task_image from the execution profile config
     3. Platform CPU tasks image derived from platform.image_registry / image_tag
     """
-    if container_image:
-        return container_image
-    if default_task_image:
-        return default_task_image
-
     from nemo_platform_plugin.jobs.image import get_qualified_image
 
-    return get_qualified_image(_DEFAULT_TASK_IMAGE_NAME)
+    return container_image or default_task_image or get_qualified_image(_DEFAULT_TASK_IMAGE_NAME)
 
 
 def resolve_gpu_job_shm_size(
