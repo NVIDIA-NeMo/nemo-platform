@@ -111,7 +111,7 @@ class JobExecutionProfileConfig(BaseModel):
         return self
 
 
-_PLATFORM_API_IMAGE_NAME = "nmp-api"
+_DEFAULT_TASK_IMAGE_NAME = "nmp-cpu-tasks"
 
 
 def resolve_task_image(container_image: str | None, default_task_image: str | None) -> str:
@@ -120,7 +120,7 @@ def resolve_task_image(container_image: str | None, default_task_image: str | No
     Priority:
     1. Explicit container.image from the job step
     2. default_task_image from the execution profile config
-    3. Platform API image derived from platform.image_registry / image_tag
+    3. Platform CPU tasks image derived from platform.image_registry / image_tag
     """
     if container_image:
         return container_image
@@ -129,7 +129,7 @@ def resolve_task_image(container_image: str | None, default_task_image: str | No
 
     from nemo_platform_plugin.jobs.image import get_qualified_image
 
-    return get_qualified_image(_PLATFORM_API_IMAGE_NAME)
+    return get_qualified_image(_DEFAULT_TASK_IMAGE_NAME)
 
 
 def resolve_gpu_job_shm_size(

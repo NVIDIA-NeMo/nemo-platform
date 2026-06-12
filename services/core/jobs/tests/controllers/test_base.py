@@ -330,7 +330,7 @@ class TestResolveTaskImage:
     def test_explicit_image_without_default(self):
         assert resolve_task_image("my-image:v1", None) == "my-image:v1"
 
-    def test_falls_back_to_platform_image_when_both_none(self):
+    def test_falls_back_to_platform_cpu_tasks_image_when_both_none(self):
         with patch("nemo_platform_plugin.jobs.image.get_platform_config") as mock_config:
             mock_config.return_value = MagicMock(image_registry="my-registry", image_tag="v1.0")
-            assert resolve_task_image(None, None) == "my-registry/nmp-api:v1.0"
+            assert resolve_task_image(None, None) == "my-registry/nmp-cpu-tasks:v1.0"
