@@ -20,7 +20,7 @@ from datetime import datetime
 
 from ..._models import BaseModel
 from .span_status import SpanStatus
-from .span_evaluation_context import SpanEvaluationContext
+from .experiment_context import ExperimentContext
 
 __all__ = ["Trace"]
 
@@ -50,7 +50,8 @@ class Trace(BaseModel):
 
     error_count: Optional[int] = None
 
-    evaluation_context: Optional[SpanEvaluationContext] = None
+    experiment_context: Optional[ExperimentContext] = None
+    """Experiment context accepted by ingest endpoints."""
 
     input_tokens: Optional[int] = None
 

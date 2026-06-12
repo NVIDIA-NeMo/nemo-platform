@@ -393,7 +393,7 @@ export const InputFile: FC<InputFileProps> = ({
           setValue('configData.inputFileCurrentRowIndex', 0);
 
           // Store file metadata for later pagination
-          setValue('configData.inputFileFormat', validationResult.format);
+          setValue('configData.inputFileFormat', validationResult.format as 'json' | 'jsonl');
           setValue('configData.inputFileDatasetNamespace', file.dataset.workspace!);
           setValue('configData.inputFileDatasetName', file.dataset.name!);
           setValue('configData.inputFilePath', file.path);

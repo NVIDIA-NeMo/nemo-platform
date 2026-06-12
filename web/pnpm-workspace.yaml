@@ -33,9 +33,10 @@ catalog:
   classnames: ^2.5.1
   concurrently: ^9.2.1
   date-fns: ^4.1.0
-  handlebars: ^4.7.9
   jsdom: ^29.0.2
+  handlebars: ^4.7.9
   happy-dom: ^20.8.9
+  hyparquet: ^1.8.1
   p-limit: ^6.2.0
   msw: ^2.13.2
   postcss: ^8.5.10

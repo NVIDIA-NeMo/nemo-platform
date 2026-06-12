@@ -30,10 +30,6 @@ class ExperimentResponse(BaseModel):
 
     id: str
 
-    agent_name: str
-
-    agent_version: str
-
     dataset_name: str
 
     experiment_group_id: str
@@ -42,6 +38,12 @@ class ExperimentResponse(BaseModel):
     name: str
 
     workspace: str
+
+    agent_names: Optional[List[str]] = None
+    """Distinct agent names observed across ingested sessions for this experiment."""
+
+    agent_versions: Optional[List[str]] = None
+    """Distinct agent versions observed across ingested sessions for this experiment."""
 
     aggregate_scores: Optional[Dict[str, EvaluatorAggregate]] = None
 

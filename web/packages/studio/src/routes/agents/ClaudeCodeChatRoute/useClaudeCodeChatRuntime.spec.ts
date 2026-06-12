@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   appendUserMessage: vi.fn(),
   createClaudeCodeSession: vi.fn(),
   invalidateQueries: vi.fn(),
+  resolveClaudeCodeInput: vi.fn(),
   resolveClaudeCodePermission: vi.fn(),
   streamClaudeCodeMessage: vi.fn(),
   submitPrompt: vi.fn(),
@@ -16,6 +17,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@studio/routes/agents/ClaudeCodeChatRoute/api', () => ({
   CLAUDE_CODE_HISTORY_SESSIONS_QUERY_KEY: ['claude-code', 'history', 'sessions'],
   createClaudeCodeSession: mocks.createClaudeCodeSession,
+  resolveClaudeCodeInput: mocks.resolveClaudeCodeInput,
   resolveClaudeCodePermission: mocks.resolveClaudeCodePermission,
   streamClaudeCodeMessage: mocks.streamClaudeCodeMessage,
 }));
@@ -52,6 +54,14 @@ vi.mock('@tanstack/react-query', () => ({
 
 const renderUseClaudeCodeChatRuntime = (options?: Parameters<typeof useClaudeCodeChatRuntime>[0]) =>
   renderHook(() => useClaudeCodeChatRuntime(options));
+
+interface PermissionRequestTestHandlers {
+  onPermissionRequest: (request: unknown) => void;
+}
+
+interface InputRequestTestHandlers {
+  onInputRequest: (request: unknown) => void;
+}
 
 describe('useClaudeCodeChatRuntime', () => {
   beforeEach(() => {
@@ -146,6 +156,194 @@ describe('useClaudeCodeChatRuntime', () => {
 
     expect(mocks.appendUserMessage).toHaveBeenCalledWith('Use rg instead');
     expect(result.current.decisionRequest).toBeNull();
+
+    await act(async () => {
+      finishStream();
+      await submitPromise;
+    });
+  });
+
+  it('does not clear a newer permission request when an older permission resolution completes', async () => {
+    let finishStream!: () => void;
+    let permissionHandlers!: PermissionRequestTestHandlers;
+    let resolvePermission!: () => void;
+    let resolvePromise!: Promise<void>;
+    let submitPromise!: Promise<void>;
+    mocks.createClaudeCodeSession.mockResolvedValue('session-1');
+    mocks.streamClaudeCodeMessage.mockImplementation(
+      async ({ handlers }: { handlers: PermissionRequestTestHandlers }) => {
+        permissionHandlers = handlers;
+        handlers.onPermissionRequest({
+          requestId: 'request-1',
+          toolName: 'Bash',
+          input: { command: 'ls' },
+        });
+        await new Promise<void>((resolve) => {
+          finishStream = resolve;
+        });
+      }
+    );
+    mocks.resolveClaudeCodePermission.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolvePermission = resolve;
+        })
+    );
+
+    const { result } = renderUseClaudeCodeChatRuntime();
+
+    act(() => {
+      submitPromise = result.current.submitPrompt('List files');
+    });
+    await waitFor(() =>
+      expect(result.current.decisionRequest).toEqual(expect.objectContaining({ id: 'request-1' }))
+    );
+
+    act(() => {
+      resolvePromise = result.current.resolveDecisionRequest(result.current.decisionChoices[0]);
+    });
+    await waitFor(() => expect(result.current.decisionStatus).toBe('submitting'));
+
+    act(() => {
+      permissionHandlers.onPermissionRequest({
+        requestId: 'request-2',
+        toolName: 'Bash',
+        input: { command: 'pwd' },
+      });
+    });
+    expect(result.current.decisionRequest).toEqual(expect.objectContaining({ id: 'request-2' }));
+
+    await act(async () => {
+      resolvePermission();
+      await resolvePromise;
+    });
+
+    expect(result.current.decisionRequest).toEqual(expect.objectContaining({ id: 'request-2' }));
+
+    await act(async () => {
+      finishStream();
+      await submitPromise;
+    });
+  });
+
+  it('resolves blocking input requests and appends the selected value after success', async () => {
+    let finishStream!: () => void;
+    let submitPromise!: Promise<void>;
+    mocks.createClaudeCodeSession.mockResolvedValue('session-1');
+    mocks.streamClaudeCodeMessage.mockImplementation(
+      async ({ handlers }: { handlers: { onInputRequest: (request: unknown) => void } }) => {
+        handlers.onInputRequest({
+          requestId: 'request-1',
+          kind: 'agent',
+          input: { title: 'Select an agent' },
+        });
+        await new Promise<void>((resolve) => {
+          finishStream = resolve;
+        });
+      }
+    );
+    mocks.resolveClaudeCodeInput.mockResolvedValue(undefined);
+
+    const { result } = renderUseClaudeCodeChatRuntime();
+
+    act(() => {
+      submitPromise = result.current.submitPrompt('Evaluate an agent');
+    });
+    await waitFor(() =>
+      expect(result.current.inputRequest).toEqual(
+        expect.objectContaining({
+          requestId: 'request-1',
+          kind: 'agent',
+        })
+      )
+    );
+
+    await act(async () => {
+      await result.current.resolveInputRequest({
+        decision: { value: { agent: 'react-agent' } },
+        displayText: 'Selected agent: react-agent',
+      });
+    });
+
+    expect(mocks.resolveClaudeCodeInput).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      requestId: 'request-1',
+      decision: { value: { agent: 'react-agent' } },
+    });
+    expect(mocks.appendUserMessage).toHaveBeenCalledWith('Selected agent: react-agent');
+    expect(result.current.inputRequest).toBeNull();
+
+    await act(async () => {
+      finishStream();
+      await submitPromise;
+    });
+  });
+
+  it('does not clear a newer input request when an older input resolution completes', async () => {
+    let finishStream!: () => void;
+    let inputHandlers!: InputRequestTestHandlers;
+    let resolveInput!: () => void;
+    let resolvePromise!: Promise<void>;
+    let submitPromise!: Promise<void>;
+    mocks.createClaudeCodeSession.mockResolvedValue('session-1');
+    mocks.streamClaudeCodeMessage.mockImplementation(
+      async ({ handlers }: { handlers: InputRequestTestHandlers }) => {
+        inputHandlers = handlers;
+        handlers.onInputRequest({
+          requestId: 'request-1',
+          kind: 'agent',
+          input: { title: 'Select an agent' },
+        });
+        await new Promise<void>((resolve) => {
+          finishStream = resolve;
+        });
+      }
+    );
+    mocks.resolveClaudeCodeInput.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveInput = resolve;
+        })
+    );
+
+    const { result } = renderUseClaudeCodeChatRuntime();
+
+    act(() => {
+      submitPromise = result.current.submitPrompt('Evaluate an agent');
+    });
+    await waitFor(() =>
+      expect(result.current.inputRequest).toEqual(
+        expect.objectContaining({ requestId: 'request-1' })
+      )
+    );
+
+    act(() => {
+      resolvePromise = result.current.resolveInputRequest({
+        decision: { value: { agent: 'react-agent' } },
+        displayText: 'Selected agent: react-agent',
+      });
+    });
+    await waitFor(() => expect(result.current.inputStatus).toBe('submitting'));
+
+    act(() => {
+      inputHandlers.onInputRequest({
+        requestId: 'request-2',
+        kind: 'dataset_file',
+        input: { title: 'Select a dataset' },
+      });
+    });
+    expect(result.current.inputRequest).toEqual(
+      expect.objectContaining({ requestId: 'request-2' })
+    );
+
+    await act(async () => {
+      resolveInput();
+      await resolvePromise;
+    });
+
+    expect(result.current.inputRequest).toEqual(
+      expect.objectContaining({ requestId: 'request-2' })
+    );
 
     await act(async () => {
       finishStream();

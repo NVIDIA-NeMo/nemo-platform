@@ -33,7 +33,7 @@ import { LINK_DOCS_STUDIO } from '@studio/constants/links';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { keepPreviousData, useQueryClient } from '@tanstack/react-query';
 import { HatGlasses } from 'lucide-react';
-import { ComponentProps, FC, useMemo, useState } from 'react';
+import { ComponentProps, FC, useEffect, useMemo, useState } from 'react';
 
 export type { Agent, AgentDeployment };
 
@@ -84,11 +84,13 @@ type DeleteState = { kind: 'agent'; item: AgentTableRow } | null;
 export interface CombinedAgentsTableProps {
   onAgentRowClick?: (agent: AgentTableRow) => void;
   onCreateDeployment?: (agentName: string) => void;
+  onAgentsLoaded?: (agents: Agent[]) => void;
 }
 
 export const AgentsTable: FC<CombinedAgentsTableProps> = ({
   onAgentRowClick,
   onCreateDeployment,
+  onAgentsLoaded,
 }) => {
   const workspace = useWorkspaceFromPath();
   const queryClient = useQueryClient();
@@ -130,6 +132,11 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
   });
 
   const agentsData = agentsResponse?.data;
+
+  useEffect(() => {
+    if (agentsData) onAgentsLoaded?.(agentsData);
+  }, [agentsData, onAgentsLoaded]);
+
   const totalCount = agentsResponse?.pagination?.total_results ?? agentsData?.length ?? 0;
   const deploymentsData = deploymentsResponse?.data;
 

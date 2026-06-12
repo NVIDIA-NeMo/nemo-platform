@@ -9,7 +9,7 @@ from nmp.common.config import AuthConfig as SharedAuthConfig
 from pydantic import Field
 
 
-class AuthServiceConfig(SharedAuthConfig):  # type: ignore
+class AuthServiceConfig(SharedAuthConfig):
     """
     Configuration for the Auth Service.
 
@@ -49,9 +49,9 @@ class AuthServiceConfig(SharedAuthConfig):  # type: ignore
 
     # Embedded PDP resource limits
     embedded_pdp_cpu_limit: int = Field(
-        default=100,
+        default=200,
         description="CPU budget for embedded PDP policy evaluation, in millions of WASM fuel units. "
-        "Typical evaluations use 20-25; default of 100 provides ~4x headroom.",
+        "Default of 200 provides headroom for full plugin-merged authorization data.",
     )
     embedded_pdp_memory_limit_mb: int = Field(
         default=32,

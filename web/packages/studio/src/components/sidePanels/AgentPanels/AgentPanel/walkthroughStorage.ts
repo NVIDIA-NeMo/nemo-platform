@@ -30,3 +30,25 @@ export const clearAgentWalkthroughPending = (agentName: string): void => {
     // ignore
   }
 };
+
+// Session-global flag: has the example-agent intro (open sidepanel + deploy→chat
+// walkthrough) already been shown this session? Only the first example agent created
+// per session gets the guided intro; later creations land quietly on the list. Being
+// session-scoped, the first creation also covers the first-ever case.
+const EXAMPLE_AGENT_INTRO_KEY = 'nemo:example-agent-intro-shown';
+
+export const hasShownExampleAgentIntro = (): boolean => {
+  try {
+    return sessionStorage.getItem(EXAMPLE_AGENT_INTRO_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+
+export const markExampleAgentIntroShown = (): void => {
+  try {
+    sessionStorage.setItem(EXAMPLE_AGENT_INTRO_KEY, '1');
+  } catch {
+    // sessionStorage unavailable (private mode / SSR) — intro just won't be suppressed.
+  }
+};

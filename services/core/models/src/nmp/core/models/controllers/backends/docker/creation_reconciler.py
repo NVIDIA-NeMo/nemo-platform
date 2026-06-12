@@ -21,7 +21,6 @@ from logging import getLogger
 from typing import Any, Dict, Optional
 from urllib.parse import urljoin
 
-import docker
 from docker.errors import APIError, ImageNotFound, NotFound
 from docker.models.containers import Container
 from docker.models.volumes import Volume
@@ -48,6 +47,8 @@ from requests.exceptions import ConnectionError as RequestsConnectionError
 from requests.exceptions import ReadTimeout
 from tenacity import before_sleep_log, retry, stop_after_attempt, wait_exponential
 from urllib3.exceptions import ReadTimeoutError as Urllib3ReadTimeoutError
+
+import docker
 
 logger = getLogger(__name__)
 

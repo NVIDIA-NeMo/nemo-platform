@@ -40,13 +40,14 @@ import re
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, ClassVar, Optional, cast
+from typing import Any, ClassVar, Literal, Optional, cast
 
 import httpx
 import typer
 import yaml
 from nemo_agents_plugin.leaderboard.cli import register_leaderboard_commands
 from nemo_agents_plugin.usage.cli import register_usage_commands
+from nemo_platform.cli.core.formatters import Column, format_output
 from nemo_platform_plugin.cli import NemoCLI
 from nemo_platform_plugin.cli_errors import print_http_request_error, print_http_status_error
 from nemo_platform_plugin.cli_progress import request_progress
@@ -55,6 +56,22 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_BASE_URL = "http://localhost:8080"
 _DEFAULT_WORKSPACE = "default"
+_LIST_OUTPUT_FORMAT = Literal["table", "json", "yaml", "csv", "markdown", "raw"]
+_AGENT_LIST_COLUMNS = [
+    Column("name"),
+    Column("workspace"),
+    Column("description"),
+    Column("config_format"),
+    Column("created_at"),
+]
+_DEPLOYMENT_LIST_COLUMNS = [
+    Column("name"),
+    Column("agent"),
+    Column("workspace"),
+    Column("status"),
+    Column("endpoint"),
+    Column("created_at"),
+]
 
 
 class AgentsCLI(NemoCLI):
@@ -634,12 +651,34 @@ def _register_platform_commands(app: typer.Typer) -> None:
 
     @app.command(name="list", rich_help_panel="Agent Resources (requires running cluster)")
     def list_agents(
+        ctx: typer.Context,
         workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
         base_url: str = typer.Option(_DEFAULT_BASE_URL, "--base-url", envvar="NEMO_BASE_URL"),
+        output_format: Optional[_LIST_OUTPUT_FORMAT] = typer.Option(
+            None,
+            "--format",
+            "--output-format",
+            "-o",
+            "-f",
+            help="Output format for the list of agents.",
+            rich_help_panel="Output Options",
+        ),
+        no_truncate: Optional[bool] = typer.Option(
+            None,
+            "--no-truncate",
+            help="Don't truncate long values in table/markdown/csv output.",
+            rich_help_panel="Output Options",
+        ),
     ) -> None:
         """List agents on the platform."""
         resp = _api_request("GET", base_url, f"/apis/agents/v2/workspaces/{workspace}/agents")
-        typer.echo(json.dumps(resp, indent=2))
+        _print_list_response(
+            ctx,
+            resp,
+            default_columns=_AGENT_LIST_COLUMNS,
+            output_format=output_format,
+            no_truncate=no_truncate,
+        )
 
     @app.command(rich_help_panel="Agent Resources (requires running cluster)")
     def get(
@@ -847,12 +886,34 @@ def _register_platform_commands(app: typer.Typer) -> None:
 
     @deps_app.command(name="list")
     def deployments_list(
+        ctx: typer.Context,
         workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
         base_url: str = typer.Option(_DEFAULT_BASE_URL, "--base-url", envvar="NEMO_BASE_URL"),
+        output_format: Optional[_LIST_OUTPUT_FORMAT] = typer.Option(
+            None,
+            "--format",
+            "--output-format",
+            "-o",
+            "-f",
+            help="Output format for the list of deployments.",
+            rich_help_panel="Output Options",
+        ),
+        no_truncate: Optional[bool] = typer.Option(
+            None,
+            "--no-truncate",
+            help="Don't truncate long values in table/markdown/csv output.",
+            rich_help_panel="Output Options",
+        ),
     ) -> None:
         """List deployments."""
         resp = _api_request("GET", base_url, f"/apis/agents/v2/workspaces/{workspace}/deployments")
-        typer.echo(json.dumps(resp, indent=2))
+        _print_list_response(
+            ctx,
+            resp,
+            default_columns=_DEPLOYMENT_LIST_COLUMNS,
+            output_format=output_format,
+            no_truncate=no_truncate,
+        )
 
     @deps_app.command(name="get")
     def deployments_get(
@@ -1173,6 +1234,64 @@ def _unwrap_list(resp: Any) -> list[dict[str, Any]]:
     """Extract the item list from a paginated or raw API response."""
     items = resp.get("data", resp) if isinstance(resp, dict) else resp
     return [d for d in items if isinstance(d, dict)]
+
+
+def _print_list_response(
+    ctx: typer.Context,
+    response: Any,
+    *,
+    default_columns: list[Column],
+    output_format: _LIST_OUTPUT_FORMAT | None,
+    no_truncate: bool | None,
+) -> None:
+    """Print a list response with table output by default and JSON opt-in."""
+    format_output(
+        response,
+        is_list=True,
+        output_format=_resolve_list_output_format(ctx, output_format),
+        output_columns=default_columns,
+        no_truncate=_resolve_no_truncate(ctx, no_truncate),
+        timestamp_format=_resolve_timestamp_format(ctx),
+    )
+
+
+def _resolve_list_output_format(ctx: typer.Context, output_format: _LIST_OUTPUT_FORMAT | None) -> str:
+    """Resolve command-level format, then global CLI preference, then table."""
+    if output_format is not None:
+        return output_format
+
+    state = ctx.obj
+    if state is not None and hasattr(state, "get_output_format"):
+        try:
+            return state.get_output_format(apply_non_tty_default=False)
+        except Exception:
+            logger.debug("Failed to resolve global output format for agents list", exc_info=True)
+    return "table"
+
+
+def _resolve_no_truncate(ctx: typer.Context, no_truncate: bool | None) -> bool | None:
+    """Resolve command-level truncation, falling back to the global CLI preference."""
+    if no_truncate is not None:
+        return no_truncate
+
+    state = ctx.obj
+    if state is not None and hasattr(state, "get_no_truncate"):
+        try:
+            return state.get_no_truncate()
+        except Exception:
+            logger.debug("Failed to resolve global truncation preference for agents list", exc_info=True)
+    return None
+
+
+def _resolve_timestamp_format(ctx: typer.Context) -> str | None:
+    """Resolve the global timestamp preference when the plugin is mounted under ``nemo``."""
+    state = ctx.obj
+    if state is not None and hasattr(state, "get_timestamp_format"):
+        try:
+            return state.get_timestamp_format()
+        except Exception:
+            logger.debug("Failed to resolve global timestamp format for agents list", exc_info=True)
+    return None
 
 
 def _api_request(method: str, base_url: str, path: str, *, json_body: dict[str, Any] | None = None) -> Any:

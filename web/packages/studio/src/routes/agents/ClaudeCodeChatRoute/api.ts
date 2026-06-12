@@ -6,6 +6,8 @@ import { parseJsonObject, parseSseChunk } from '@studio/routes/agents/ClaudeCode
 import type {
   ClaudeCodeAssistantHistoryPart,
   ClaudeCodeHistorySession,
+  ClaudeCodeInputDecision,
+  ClaudeCodeInputRequest,
   ClaudeCodePermissionDecision,
   ClaudeCodePermissionRequest,
   ClaudeCodeSessionHistory,
@@ -132,6 +134,7 @@ const parseAssistantPart = (value: unknown): ClaudeCodeAssistantHistoryPart | un
   if (value.type === 'tool_use') {
     return {
       type: 'tool_use',
+      id: getString(value.id) || undefined,
       name: getString(value.name) || 'tool',
       input: isRecord(value.input) ? value.input : {},
     };
@@ -235,6 +238,25 @@ const parsePermissionRequest = (payload: unknown): ClaudeCodePermissionRequest |
   };
 };
 
+const parseInputRequest = (payload: unknown): ClaudeCodeInputRequest | undefined => {
+  if (!isRecord(payload) || typeof payload.request_id !== 'string') return undefined;
+  if (
+    payload.kind !== 'agent' &&
+    payload.kind !== 'eval_config' &&
+    payload.kind !== 'dataset_file' &&
+    payload.kind !== 'model'
+  ) {
+    return undefined;
+  }
+  if (!isRecord(payload.input) || Array.isArray(payload.input)) return undefined;
+
+  return {
+    requestId: payload.request_id,
+    kind: payload.kind,
+    input: payload.input,
+  };
+};
+
 const handleSseEvent = (
   event: { event?: string; data: string },
   handlers: ClaudeCodeStreamHandlers
@@ -256,6 +278,16 @@ const handleSseEvent = (
       return false;
     }
     handlers.onPermissionRequest(request);
+    return true;
+  }
+
+  if (event.event === 'input_request') {
+    const request = parseInputRequest(parseJsonObject(event.data));
+    if (!request) {
+      handlers.onError(new Error('Claude Code input request was malformed'));
+      return false;
+    }
+    handlers.onInputRequest(request);
     return true;
   }
 
@@ -291,6 +323,31 @@ export const resolveClaudeCodePermission = async ({
     throw new Error(
       await getResponseErrorMessage(response, 'Failed to resolve Claude Code permission')
     );
+  }
+};
+
+export const resolveClaudeCodeInput = async ({
+  decision,
+  requestId,
+  sessionId,
+}: {
+  decision: ClaudeCodeInputDecision;
+  requestId: string;
+  sessionId: string;
+}): Promise<void> => {
+  const response = await fetch(claudeCodeApiUrl(`/sessions/${sessionId}/inputs/${requestId}`), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      skipped: decision.skipped,
+      value: decision.value,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await getResponseErrorMessage(response, 'Failed to resolve Claude Code input'));
   }
 };
 

@@ -91,6 +91,12 @@ class JobExecutionProfileConfig(BaseModel):
     ttl_seconds_after_finished: int = 60 * 60  # 1 hour
     cleanup_completed_jobs_immediately: bool = True
     launcher_tool_path: str = Field(default="/tools/jobs-launcher", description="Path to the jobs launcher tool")
+    default_task_image: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Default container image for job task pods. Used when a job step omits container.image. "
+        "When unset, falls back to the platform CPU tasks image (platform.image_registry/nmp-cpu-tasks:platform.image_tag).",
+    )
     env: dict[str, str] = Field(
         default_factory=dict,
         description="Optional env vars applied to all jobs (e.g. HOME=/tmp). Keys must not conflict with platform-reserved names. Job steps may override these variables.",
@@ -104,6 +110,22 @@ class JobExecutionProfileConfig(BaseModel):
                 f"Profile environment keys must not conflict with platform-reserved names: {sorted(conflicting)}"
             )
         return self
+
+
+_DEFAULT_TASK_IMAGE_NAME = "nmp-cpu-tasks"
+
+
+def resolve_task_image(container_image: str | None, default_task_image: str | None) -> str:
+    """Resolve the container image for a job task.
+
+    Priority:
+    1. Explicit container.image from the job step
+    2. default_task_image from the execution profile config
+    3. Platform CPU tasks image derived from platform.image_registry / image_tag
+    """
+    from nemo_platform_plugin.jobs.image import get_qualified_image
+
+    return container_image or default_task_image or get_qualified_image(_DEFAULT_TASK_IMAGE_NAME)
 
 
 def resolve_gpu_job_shm_size(

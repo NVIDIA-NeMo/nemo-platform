@@ -24,12 +24,6 @@ __all__ = ["EvaluationContextParam"]
 
 
 class EvaluationContextParam(TypedDict, total=False):
-    dataset_id: str
-
-    dataset_name: str
-
-    dataset_version: str
-
     evaluation_id: str
 
     evaluation_run_id: str

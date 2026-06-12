@@ -62,7 +62,7 @@
     "axios": "catalog:",
     "classnames": "catalog:",
     "handlebars": "catalog:",
-    "hyparquet": "^1.8.1",
+    "hyparquet": "catalog:",
     "lucide-react": "catalog:",
     "modern-tour": "^0.1.1",
     "oidc-client-ts": "catalog:",
