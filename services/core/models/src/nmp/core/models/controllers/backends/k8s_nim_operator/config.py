@@ -62,7 +62,13 @@ class K8sNimOperatorConfig(BaseModel):
         ),
     )
 
-    # Security context
+    # Security context for the NIM (operator) path: applied to the NIMService /
+    # NIMCache CRs. NOTE: securityContext uid/gid is engine-specific -- NIM images
+    # expect different values (operator default 1000/2000) than the vLLM image
+    # (2000/0, see default_vllm_*). When NIM is migrated onto the raw-object
+    # compilers (vllm_k8s_compiler), keep passing THESE fields for the NIM path --
+    # do not reuse default_vllm_user_id/_group_id. See the FUTURE note in
+    # vllm_k8s_compiler.py.
     default_user_id: Optional[int] = Field(
         default=None,
         description="Default user ID for NIM containers (security context)",

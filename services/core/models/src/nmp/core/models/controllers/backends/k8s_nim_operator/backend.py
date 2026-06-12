@@ -813,6 +813,9 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
                 namespace=self._k8s_namespace,
                 service_account_name=self._backend_config.service_account_name,
                 image_pull_secret=self._backend_config.huggingface_model_puller_image_pull_secret,
+                # Engine-specific uid/gid: vLLM uses 2000/0 (its image's user). A
+                # future NIM raw-object path must pass NIM's own uid/gid here, not
+                # these -- see the FUTURE note in vllm_k8s_compiler.py.
                 user_id=self._backend_config.default_vllm_user_id,
                 group_id=self._backend_config.default_vllm_group_id,
                 model_source=source_tag,

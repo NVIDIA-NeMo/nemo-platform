@@ -20,6 +20,22 @@ values through the same builders. Keep this module free of engine-specific logic
 
 These functions are pure (no Kubernetes I/O); the backend applies the returned
 objects via the typed Kubernetes API clients.
+
+FUTURE / NIM migration (dropping k8s-nim-operator -- see the Deployments Plugin
+RFC):
+    When NIM is cut over to emit these raw objects instead of NIMService/NIMCache
+    CRs, route the NIM path through these same builders -- but DO NOT reuse vLLM's
+    values. The footgun is the securityContext ``user_id`` / ``group_id`` params:
+    they are engine-specific on purpose. The vLLM path passes
+    ``default_vllm_user_id`` / ``default_vllm_group_id`` (2000/0) because that is
+    the user the ``vllm/vllm-openai`` image ships with an ``/etc/passwd`` entry
+    (an arbitrary uid like 1000 crashes torch/inductor's ``getpass.getuser()``).
+    NIM images expect the operator's historical 1000/2000. So the NIM path must
+    pass its own uid/gid (e.g. the existing ``default_user_id`` /
+    ``default_group_id`` config, defaulting to the NIM-appropriate values) -- NOT
+    the ``default_vllm_*`` fields. Same reasoning applies to image, args/command
+    (NIM is env-configured; vLLM is arg-configured), and env. Pick per engine at
+    the call site; never hardcode either engine's value in this module.
 """
 
 from logging import getLogger
