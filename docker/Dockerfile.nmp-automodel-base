@@ -4,12 +4,10 @@
 # PyTorch NGC base + Automodel + CUDA extension wheels for nmp-automodel images.
 # Publish target: nmp-automodel-base (slim image; builder is build-only).
 
-ARG CAUSAL_CONV1D_WHEEL_IMAGE=local
-ARG MAMBA_SSM_WHEEL_IMAGE=local
 ARG AUTOMODEL_COMMIT=0e9909f56ba48ef9761fc6f49323ba9d0a0835b2
 
-FROM ${CAUSAL_CONV1D_WHEEL_IMAGE} AS causal-conv1d-wheel-src
-FROM ${MAMBA_SSM_WHEEL_IMAGE} AS mamba-ssm-wheel-src
+FROM causal-conv1d-wheel-image AS causal-conv1d-wheel-src
+FROM mamba-ssm-wheel-image AS mamba-ssm-wheel-src
 
 FROM alpine/git AS automodel-clone
 ARG AUTOMODEL_COMMIT
@@ -33,7 +31,7 @@ ENV PATH="/opt/venv/bin:/root/.local/bin:$PATH"
 RUN uv venv ${UV_PROJECT_ENVIRONMENT} --system-site-packages
 
 COPY --from=automodel-clone /opt/Automodel /opt/Automodel
-COPY services/automodel/docker/cherry-picks /opt/cherry-picks
+COPY docker/automodel/cherry-picks /opt/cherry-picks
 RUN cd /opt/Automodel && patch -p1 < /opt/cherry-picks/e6d2930a.diff
 
 RUN cd /opt/Automodel && \

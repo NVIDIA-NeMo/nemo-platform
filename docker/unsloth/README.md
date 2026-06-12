@@ -141,7 +141,7 @@ docker buildx bake \
 export IMAGE_REGISTRY="my-registry/nemo-platform-dev"
 export BAKE_TAG="$(git rev-parse --short HEAD)"
 docker buildx build \
-  -f services/unsloth/docker/Dockerfile.nmp-unsloth-training \
+  -f docker/Dockerfile.nmp-unsloth-training \
   --output type=docker,dest=/tmp/nmp-unsloth-training.tar \
   --target runtime \
   -t "${IMAGE_REGISTRY}/nmp-unsloth-training:${BAKE_TAG}" \
@@ -292,7 +292,7 @@ nemo files filesets delete qwen-unsloth-smoke-out -w default
 
 ## Architecture notes
 
-- **Step layout** mirrors `services/automodel/docker/`. The compiler in
+- **Step layout** mirrors `docker/automodel/`. The compiler in
   `nmp.unsloth.app.jobs.compiler` emits the same 4-step
   `PlatformJobSpec` shape automodel emits; the only difference is the
   image and the training entrypoint module.

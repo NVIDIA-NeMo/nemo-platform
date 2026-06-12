@@ -2,15 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { customFetch } from '@nemo/sdk/generated/fetchers/platform';
-import {
-  filesDownloadFile,
-  filesHeadFile,
-  getFilesDownloadFileQueryKey,
-} from '@nemo/sdk/generated/platform/api';
+import { filesDownloadFile, getFilesDownloadFileQueryKey } from '@nemo/sdk/generated/platform/api';
 import type { EntityIdentifier } from '@studio/api/common/types';
 import { getDatasetFileContentQueryKey } from '@studio/api/datasets/invalidateDatasetCaches';
+import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { isBinaryExtension } from '@studio/util/binaryFile';
 import { queryOptions, useQuery, UseQueryOptions, useSuspenseQuery } from '@tanstack/react-query';
+import axios from 'axios';
 import { parquetRead } from 'hyparquet';
 
 /** Parquet INT64 (and similar) columns decode as BigInt; JSON.stringify rejects those by default. */
@@ -50,9 +48,21 @@ export const datasetFileContentQueryOptions = ({
         throw new Error('Text preview not available for binary files.');
       }
 
-      // Check if file exists
+      const [fileUrl] = getFilesDownloadFileQueryKey(
+        encodeURIComponent(workspace!),
+        encodeURIComponent(name),
+        encodeURIComponent(path)
+      );
+
+      // HEAD the file to confirm it exists and read Content-Length for conditional ranging.
+      // Prepend PLATFORM_BASE_URL so axios resolves the correct host (the relative
+      // path alone resolves against window.location, which differs in tests and
+      // may differ in deployed environments with a custom base path).
+      let fileSize: number | null = null;
       try {
-        await filesHeadFile(workspace!, name, path);
+        const headResponse = await axios.head(`${PLATFORM_BASE_URL}${fileUrl}`);
+        const contentLength = headResponse.headers['content-length'];
+        fileSize = contentLength ? parseInt(String(contentLength), 10) : null;
       } catch {
         throw new Error('Unable to find base file.');
       }
@@ -83,16 +93,13 @@ export const datasetFileContentQueryOptions = ({
       } else {
         const start = range ? range[0] : 0;
         const end = range ? range[1] : FILE_PREVIEW_MAX_BYTES - 1;
-        const [fileUrl] = getFilesDownloadFileQueryKey(
-          encodeURIComponent(workspace!),
-          encodeURIComponent(name),
-          encodeURIComponent(path)
-        );
+        const needsRange =
+          range !== undefined || (fileSize !== null && fileSize > FILE_PREVIEW_MAX_BYTES);
         const blob = await customFetch<Blob>({
           url: fileUrl,
           method: 'GET',
           responseType: 'blob',
-          headers: { Range: `bytes=${start}-${end}` },
+          ...(needsRange ? { headers: { Range: `bytes=${start}-${end}` } } : {}),
         });
         return blob.text();
       }

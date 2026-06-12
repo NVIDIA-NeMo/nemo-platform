@@ -2,13 +2,13 @@
 # nmp-automodel training - GPU finetune step (nemo_automodel recipes + nmp-automodel package).
 # Same platform glue as tasks; separate image tag for the compiler training step.
 
-ARG BASE_TAG_AUTOMODEL=local
-ARG BASE_REGISTRY=my-registry/nemo-platform-dev
 ARG SMOKE_MARKER=smoke_nmp_automodel_training
 
-FROM ${BASE_REGISTRY}/nmp-automodel-base:${BASE_TAG_AUTOMODEL} AS nmp-automodel-base
+# Supplied by bake. Local builds use the base builder target; CI can override
+# the context to a pinned docker-image:// reference.
+FROM nmp-automodel-base AS automodel-base
 
-FROM nmp-automodel-base AS runtime
+FROM automodel-base AS runtime
 
 COPY --from=ghcr.io/astral-sh/uv:0.9.14 /uv /bin/uv
 ENV PATH="/bin:${PATH}"
@@ -28,7 +28,7 @@ RUN mkdir -p /home/${USERNAME}/.cache && \
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache \
-    --overrides /app/services/automodel/docker/no_override_requirements.txt \
+    --overrides /app/docker/automodel/no_override_requirements.txt \
     -e /app/sdk/python/nemo-platform \
     -e /app/packages/nemo_platform_plugin \
     -e /app/packages/nmp_common \

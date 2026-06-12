@@ -17,4 +17,9 @@
 
 from __future__ import annotations
 
+from .span_group import SpanGroup as SpanGroup
+from .span_group_by import SpanGroupBy as SpanGroupBy
+from .span_groups_page import SpanGroupsPage as SpanGroupsPage
+from .group_list_params import GroupListParams as GroupListParams
+from .span_group_sort_field import SpanGroupSortField as SpanGroupSortField
 from .evaluator_result_list_response import EvaluatorResultListResponse as EvaluatorResultListResponse

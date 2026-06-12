@@ -1,6 +1,5 @@
 # Minimal uv workspace for nmp-automodel container image builds only.
-# Replaces the repo-root pyproject.toml in Dockerfile.platform-workspace so
-# partial COPY trees are not validated against the full monorepo workspace.
+# Keeps uv validation scoped to the partial source tree copied into the image.
 
 [project]
 name = "nemo-platform-automodel-image"

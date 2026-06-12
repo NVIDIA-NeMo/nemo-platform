@@ -8,7 +8,7 @@ from typing import cast
 
 import pytest
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
-from nmp.intake.spans.domain import SpanAttributeFilter, TraceListFilter
+from nmp.intake.spans.domain import TraceListFilter
 from nmp.intake.spans.trace_repository import TRACE_COLUMNS, TraceRepository, _order_by
 
 
@@ -65,16 +65,13 @@ async def test_summary_mode_reads_root_spans_without_metric_aggregates():
     )
 
     assert client.queries[0].lstrip().startswith("SELECT count()")
-    assert "FINAL" not in client.queries[0]
-    assert (
-        "argMax(span_versions.status, (span_versions.event_ts, span_versions.is_deleted)) AS status"
-        in client.queries[0]
-    )
-    assert "AS root_spans" in client.queries[0]
-    assert "root_spans.external_parent_span_id = ''" in client.queries[0]
-    assert "LIMIT 1 BY root_spans.workspace, root_spans.source_format, root_spans.trace_id" in client.queries[0]
-    assert "sumIf" not in client.queries[0]
-    assert "groupUniqArrayIf" not in client.queries[0]
+    assert "FROM (SELECT * FROM trace_index FINAL) AS trace_roots" in client.queries[0]
+    assert "trace_roots.root_status AS status" in client.queries[0]
+    assert "LIMIT 1 BY trace_roots.workspace, trace_roots.source_format, trace_roots.trace_id" in client.queries[0]
+    assert "span_versions" not in client.queries[0]
+    assert "sumIf" not in client.queries[1]
+    assert "groupUniqArrayIf" not in client.queries[1]
+    assert "span_versions" not in client.queries[1]
 
 
 @pytest.mark.asyncio
@@ -90,12 +87,15 @@ async def test_detailed_mode_adds_trace_aggregate_block():
         mode="detailed",
     )
 
-    assert "FINAL" not in client.queries[0]
-    assert "AS root_spans" in client.queries[0]
-    assert "AS trace_spans" in client.queries[0]
-    assert "sumIf" in client.queries[0]
-    assert "groupUniqArrayIf" in client.queries[0]
-    assert "count() AS span_count" in client.queries[0]
+    assert "FROM (SELECT * FROM trace_index FINAL) AS trace_roots" in client.queries[0]
+    assert "span_versions" not in client.queries[0]
+    assert "page_traces AS" in client.queries[1]
+    assert "AS trace_spans" in client.queries[1]
+    assert "(span_versions.workspace, span_versions.source_format, span_versions.trace_id) IN" in client.queries[1]
+    assert "SELECT workspace, source_format, id FROM page_traces" in client.queries[1]
+    assert "sumIf" in client.queries[1]
+    assert "groupUniqArrayIf" in client.queries[1]
+    assert "count() AS span_count" in client.queries[1]
 
 
 @pytest.mark.asyncio
@@ -124,8 +124,8 @@ async def test_list_traces_maps_detailed_row():
     assert trace.output == "root output"
     assert trace.duration_ms == 2500
     assert trace.project == "project-a"
-    assert trace.evaluation_context is not None
-    assert trace.evaluation_context.evaluation_run_id == "run-a"
+    assert trace.experiment_id == "experiment-a"
+    assert trace.test_case_id == "case-a"
     assert trace.input_tokens == 420
     assert trace.output_tokens == 310
     assert trace.cached_tokens == 128
@@ -166,7 +166,7 @@ async def test_summary_mode_maps_no_aggregate_fields():
 
 
 @pytest.mark.asyncio
-async def test_trace_started_at_filter_is_applied_to_root_spans():
+async def test_trace_started_at_filter_is_applied_to_trace_index():
     started_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
     client = _Client()
     repository = _repository(client)
@@ -179,24 +179,19 @@ async def test_trace_started_at_filter_is_applied_to_root_spans():
         mode="summary",
     )
 
-    assert "root_spans.start_time >= %(started_at_gte)s" in client.queries[0]
+    assert "trace_roots.root_started_at >= %(started_at_gte)s" in client.queries[0]
     assert client.parameters[0]["started_at_gte"] == started_at
 
 
 @pytest.mark.asyncio
-async def test_root_and_any_span_filters_select_candidate_trace_ids():
+async def test_root_filters_use_trace_index_columns():
     client = _Client()
     repository = _repository(client)
 
     await repository.list_traces(
         filters=TraceListFilter(
             workspace="workspace-a",
-            root_attribute_filters=[
-                SpanAttributeFilter(field="evaluation_run_id", operator="$eq", value="run-a"),
-            ],
-            span_attribute_filters=[
-                SpanAttributeFilter(field="model", operator="$eq", value="model-a"),
-            ],
+            experiment_id="experiment-a",
         ),
         page=1,
         page_size=10,
@@ -204,14 +199,9 @@ async def test_root_and_any_span_filters_select_candidate_trace_ids():
         mode="detailed",
     )
 
-    assert "(root_spans.workspace, root_spans.source_format, root_spans.trace_id) IN" in client.queries[0]
-    assert "(trace_spans.workspace, trace_spans.source_format, trace_spans.trace_id) IN" in client.queries[0]
-    assert "FINAL" not in client.queries[0]
-    assert "external_parent_span_id = ''" in client.queries[0]
-    assert client.parameters[0]["root_candidate_0_key"] == "experiment.run_id"
-    assert client.parameters[0]["root_candidate_0_value"] == "run-a"
-    assert client.parameters[0]["span_candidate_0_key"] == "gen_ai.request.model"
-    assert client.parameters[0]["span_candidate_0_value"] == "model-a"
+    assert "trace_roots.experiment_id = %(filter_experiment_id)s" in client.queries[0]
+    assert "candidate_spans" not in client.queries[0]
+    assert client.parameters[0]["filter_experiment_id"] == "experiment-a"
 
 
 def _trace_row(
@@ -230,6 +220,9 @@ def _trace_row(
         "name": "root",
         "input": "root input",
         "output": "root output",
+        "project": "project-a",
+        "experiment_id": "experiment-a",
+        "test_case_id": "case-a",
         "started_at": started_at,
         "ended_at": ended_at,
         "status": "error",
@@ -244,10 +237,6 @@ def _trace_row(
         "providers": ["openai"] if detailed else None,
         "span_count": 3 if detailed else None,
         "error_count": 1 if detailed else None,
-        "root_attributes_string": {
-            "project.name": "project-a",
-            "experiment.run_id": "run-a",
-        },
         "ingested_at": ingested_at,
     }
     return tuple(values[column] for column in TRACE_COLUMNS)
