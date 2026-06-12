@@ -256,9 +256,17 @@ deny_request if {
 
 # A path is fenced if it sits under the prefix (/apis/<plugin>/...) OR equals it exactly
 # (the bare /apis/<plugin> route). The trailing-slash form alone misses the bare prefix.
+#
+# WASM constraint: only natively-compiled builtins may be used here. The embedded PDP
+# stubs SDK-provided builtins (env::opa_builtin*) to return 0, so a deny arm written with
+# e.g. sprintf silently never fires in production while `opa test` (full Go evaluator)
+# still passes. Boundary check via startswith + substring/count, all wasm-native.
 path_under_denied_prefix(path, prefix) if path == prefix
 
-path_under_denied_prefix(path, prefix) if startswith(path, sprintf("%s/", [prefix]))
+path_under_denied_prefix(path, prefix) if {
+	startswith(path, prefix)
+	substring(path, count(prefix), 1) == "/"
+}
 
 # Deny direct secret value access for non-service principals (including PlatformAdmin).
 # Secret values must only be accessed through the service delegation pattern, where a
