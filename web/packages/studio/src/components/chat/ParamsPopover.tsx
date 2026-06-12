@@ -39,15 +39,6 @@ const SLIDERS: Array<{
     default: DEFAULT_INFERENCE_PARAMS.temperature,
   },
   {
-    key: 'top_p',
-    label: 'Top P',
-    min: 0,
-    max: 1,
-    step: 0.01,
-    hint: 'Nucleus sampling threshold. Only tokens whose cumulative probability exceeds this value are considered.',
-    default: DEFAULT_INFERENCE_PARAMS.top_p,
-  },
-  {
     key: 'max_tokens',
     label: 'Max tokens',
     min: 32,

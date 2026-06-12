@@ -14,7 +14,7 @@ import {
   type PanelState,
 } from '@studio/routes/ModelCompareRoute/types';
 import { Minimize2, Trash2 } from 'lucide-react';
-import { useCallback, useRef, useState, type FC } from 'react';
+import { useCallback, useState, type FC } from 'react';
 
 interface ModelChatPanelProps extends PanelChatControls {
   panel: PanelState;
@@ -48,14 +48,6 @@ export const ModelChatPanel: FC<ModelChatPanelProps> = ({
 }) => {
   const selectedModel: ModelSelection | null = panel.modelURN ? { model: panel.modelURN } : null;
   const [inferenceParams, setInferenceParams] = useState<InferenceParams>(DEFAULT_INFERENCE_PARAMS);
-
-  // Remount ModelChat (clears messages + metrics) when the selected model changes.
-  const prevModelURNRef = useRef(panel.modelURN);
-  const [modelChatResetCount, setModelChatResetCount] = useState(0);
-  if (panel.modelURN !== prevModelURNRef.current) {
-    prevModelURNRef.current = panel.modelURN;
-    setModelChatResetCount((n) => n + 1);
-  }
 
   const handleModelChange = useCallback(
     (selection: ModelSelection) => {
@@ -150,7 +142,8 @@ export const ModelChatPanel: FC<ModelChatPanelProps> = ({
       {/* Chat surface */}
       <div className="flex min-h-0 flex-1 flex-col px-3 pb-1">
         <ModelChat
-          key={modelChatResetCount}
+          // Remount (clears messages + metrics) when the selected model changes.
+          key={panel.modelURN ?? 'none'}
           model={modelName ?? ''}
           workspace={modelWorkspace}
           disabled={!modelName}
