@@ -182,6 +182,17 @@ authz:
           description: "Update model adapters"
         delete:
           description: "Delete model adapters"
+      prompts:
+        read:
+          description: "Read model prompts"
+        list:
+          description: "List model prompts"
+        create:
+          description: "Create model prompts"
+        update:
+          description: "Update model prompts"
+        delete:
+          description: "Delete model prompts"
       create:
         description: "Create models"
       delete:
