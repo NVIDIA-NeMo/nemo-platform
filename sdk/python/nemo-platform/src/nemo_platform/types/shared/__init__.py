@@ -26,6 +26,7 @@ from .datetime_filter import DatetimeFilter as DatetimeFilter
 from .delete_response import DeleteResponse as DeleteResponse
 from .finetuning_type import FinetuningType as FinetuningType
 from .pagination_data import PaginationData as PaginationData
+from .fileset_metadata import FilesetMetadata as FilesetMetadata
 from .inference_params import InferenceParams as InferenceParams
 from .platform_job_log import PlatformJobLog as PlatformJobLog
 from .tool_call_config import ToolCallConfig as ToolCallConfig
@@ -38,6 +39,7 @@ from .platform_job_status import PlatformJobStatus as PlatformJobStatus
 from .http_validation_error import HTTPValidationError as HTTPValidationError
 from .platform_job_log_page import PlatformJobLogPage as PlatformJobLogPage
 from .sliding_window_config import SlidingWindowConfig as SlidingWindowConfig
+from .fileset_metadata_param import FilesetMetadataParam as FilesetMetadataParam
 from .model_metadata_content import ModelMetadataContent as ModelMetadataContent
 from .auth_discovery_response import AuthDiscoveryResponse as AuthDiscoveryResponse
 from .oidc_discovery_response import OidcDiscoveryResponse as OidcDiscoveryResponse

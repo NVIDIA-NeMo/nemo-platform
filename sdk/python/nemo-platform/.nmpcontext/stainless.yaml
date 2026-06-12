@@ -254,8 +254,6 @@ resources:
       filesets:
         models:
           fileset_filter: FilesetFilter
-          fileset_metadata: FilesetMetadataOutput
-          fileset_metadata_param: FilesetMetadataInput
         methods:
           create: post /apis/files/v2/workspaces/{workspace}/filesets
           list: get /apis/files/v2/workspaces/{workspace}/filesets
@@ -711,9 +709,11 @@ resources:
       tool_call_config: ToolCallConfig
       model_metadata_content: ModelMetadataContent
       # FilesetMetadata is referenced by multiple resources (files, models) at the source
-      # level. Pin it in $shared so sync-models does not re-home it under `files`, which
-      # would break `from nemo_platform.types.shared import FilesetMetadata` imports
-      # downstream (models service tests).
+      # level. Pin both Output and Input variants in $shared so sync-models does not re-home
+      # them under `files`, which would break ``from nemo_platform.types.shared import
+      # FilesetMetadata`` imports downstream (models service tests).
+      fileset_metadata: FilesetMetadataOutput
+      fileset_metadata_param: FilesetMetadataInput
       dataset_metadata_content: DatasetMetadataContent
       tool_calling_metadata_content: ToolCallingMetadataContent
       backend_format: BackendFormat

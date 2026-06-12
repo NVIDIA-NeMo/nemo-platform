@@ -34,7 +34,6 @@ from ..._response import (
 from ...pagination import SyncDefaultPagination, AsyncDefaultPagination
 from ...types.files import (
     FilesetPurpose,
-    FilesetMetadataParam,
     fileset_list_params,
     fileset_create_params,
     fileset_update_params,
@@ -44,7 +43,7 @@ from ...types.files.fileset import Fileset
 from ...types.files.fileset_purpose import FilesetPurpose
 from ...types.shared.generic_sort_field import GenericSortField
 from ...types.files.fileset_filter_param import FilesetFilterParam
-from ...types.files.fileset_metadata_param import FilesetMetadataParam
+from ...types.shared_params.fileset_metadata_param import FilesetMetadataParam
 from ..._exceptions import ConflictError
 
 __all__ = ["FilesetsResource", "AsyncFilesetsResource"]

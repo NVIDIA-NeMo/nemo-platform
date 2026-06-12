@@ -21,11 +21,11 @@ from typing import Dict, Union
 from typing_extensions import Required, TypeAlias, TypedDict
 
 from .fileset_purpose import FilesetPurpose
-from .fileset_metadata_param import FilesetMetadataParam
 from .s3_storage_config_param import S3StorageConfigParam
 from .ngc_storage_config_param import NGCStorageConfigParam
 from .local_storage_config_param import LocalStorageConfigParam
 from .huggingface_storage_config_param import HuggingfaceStorageConfigParam
+from ..shared_params.fileset_metadata_param import FilesetMetadataParam
 
 __all__ = ["FilesetCreateParams", "Storage"]
 

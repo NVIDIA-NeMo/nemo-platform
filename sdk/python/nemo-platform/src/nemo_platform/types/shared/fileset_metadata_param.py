@@ -18,13 +18,13 @@
 from typing import Optional
 
 from ..._models import BaseModel
-from ..shared.model_metadata_content import ModelMetadataContent
-from ..shared.dataset_metadata_content import DatasetMetadataContent
+from .model_metadata_content import ModelMetadataContent
+from .dataset_metadata_content import DatasetMetadataContent
 
-__all__ = ["FilesetMetadata"]
+__all__ = ["FilesetMetadataParam"]
 
 
-class FilesetMetadata(BaseModel):
+class FilesetMetadataParam(BaseModel):
     """Tagged metadata container - the key indicates the type.
 
     Example:
