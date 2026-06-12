@@ -232,7 +232,7 @@ def pytest_collection_modifyitems(config, items):
                 item.add_marker(pytest.mark.e2e)
                 marker_names.add("e2e")
 
-        # Auto-mark integration tests (e.g., /services/evaluator/tests/integration/)
+        # Auto-mark integration tests (e.g., /services/core/jobs/tests/integration/)
         elif "/integration/" in fspath_str:
             if "integration" not in marker_names:
                 item.add_marker(pytest.mark.integration)

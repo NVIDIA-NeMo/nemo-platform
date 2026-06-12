@@ -4,6 +4,7 @@
 import { LoadingButton } from '@nemo/common/src/components/LoadingButton';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { useAgentsCreateAgent } from '@nemo/sdk/generated/agents/api';
+import type { Agent } from '@nemo/sdk/generated/agents/schema/Agent';
 import { useModelsListModels } from '@nemo/sdk/generated/platform/api';
 import { PageHeader, Stack } from '@nvidia/foundations-react-core';
 import { getErrorMessage } from '@studio/api/common/utils';
@@ -13,7 +14,11 @@ import {
   AgentPanel,
   type AgentPanelTab,
 } from '@studio/components/sidePanels/AgentPanels/AgentPanel';
-import { markAgentWalkthroughPending } from '@studio/components/sidePanels/AgentPanels/AgentPanel/walkthroughStorage';
+import {
+  hasShownExampleAgentIntro,
+  markAgentWalkthroughPending,
+  markExampleAgentIntroShown,
+} from '@studio/components/sidePanels/AgentPanels/AgentPanel/walkthroughStorage';
 import { DEFAULT_LARGE_PAGE_SIZE } from '@studio/constants/constants';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
@@ -28,8 +33,12 @@ const TAB_SEARCH_PARAM = 'tab';
 
 const EXAMPLE_AGENT_DESCRIPTION = 'A ReAct agent with a calculator and datetime tool.';
 
+const EXAMPLE_AGENT_NAME_PREFIX = 'calculator-demo-agent';
+
 const buildExampleAgentName = (): string =>
-  `calculator-demo-agent-${Math.random().toString(36).slice(2, 8)}`;
+  `${EXAMPLE_AGENT_NAME_PREFIX}-${Math.random().toString(36).slice(2, 8)}`;
+
+const isExampleAgentName = (name: string): boolean => name.startsWith(EXAMPLE_AGENT_NAME_PREFIX);
 
 // model_name is concrete: the service doesn't resolve ${NEMO_DEFAULT_MODEL} (only the CLI does).
 const buildExampleAgentConfig = (modelName: string): Record<string, unknown> => ({
@@ -84,12 +93,18 @@ export const AgentsListRoute: FC = () => {
     { query: { enabled: !!workspace } }
   );
 
+  const [loadedAgents, setLoadedAgents] = useState<Agent[]>([]);
+
   const { mutateAsync: createAgent, isPending } = useAgentsCreateAgent({
     mutation: {
       onSuccess: (agent) => {
         toast.success(`Agent "${agent.name}" created`);
-        if (agent.name) {
-          // Queue the deploy→chat walkthrough for this agent; the panel starts it.
+        const priorExampleAgentExists = loadedAgents.some(
+          (existing) =>
+            !!existing.name && existing.name !== agent.name && isExampleAgentName(existing.name)
+        );
+        if (agent.name && !hasShownExampleAgentIntro() && !priorExampleAgentExists) {
+          markExampleAgentIntroShown();
           markAgentWalkthroughPending(agent.name);
           navigate(getAgentDetailRoute(workspace, agent.name));
         } else {
@@ -165,6 +180,7 @@ export const AgentsListRoute: FC = () => {
         <AgentsTable
           onAgentRowClick={handleOpenPanel}
           onCreateDeployment={(agentName) => setCreateDeploymentAgent(agentName)}
+          onAgentsLoaded={setLoadedAgents}
         />
       </Stack>
       <CreateDeploymentModal

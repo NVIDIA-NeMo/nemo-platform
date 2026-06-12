@@ -5,6 +5,7 @@
 
 import asyncio
 import json
+import logging
 import re
 import uuid
 from pathlib import Path
@@ -13,7 +14,7 @@ from typing import Any
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
-from nmp.studio import coding_agents, studio_links
+from nmp.studio import coding_agent_skills, coding_agents, studio_links
 from nmp.studio.config import StudioConfig
 from nmp.studio.service import StudioService
 
@@ -24,10 +25,12 @@ def reset_coding_agent_state():
     coding_agents._initialized_sessions.clear()
     coding_agents._session_streams.clear()
     coding_agents._pending_permissions.clear()
+    coding_agents._pending_agent_inputs.clear()
     yield
     coding_agents._initialized_sessions.clear()
     coding_agents._session_streams.clear()
     coding_agents._pending_permissions.clear()
+    coding_agents._pending_agent_inputs.clear()
 
 
 @pytest.fixture
@@ -51,6 +54,57 @@ def supported_destinations_from_description(description: str) -> set[str]:
     return set(values.removesuffix(".").split(", "))
 
 
+def _inference_source_dir(root: Path) -> Path:
+    source_dir = root / "packages" / "nemo_platform_ext" / "skills" / "inference"
+    source_dir.mkdir(parents=True)
+    return source_dir
+
+
+def _inference_skill(source_dir: Path) -> coding_agent_skills.Skill:
+    return coding_agent_skills.Skill(
+        name="inference",
+        description="Use NeMo Platform inference.",
+        version="0.1",
+        content="# Inference",
+        raw="# Inference",
+        source_dir=source_dir,
+        source_plugin="platform",
+        source_dist="nemo-platform-ext",
+    )
+
+
+def _expected_inference_skill_response(*, installed: bool) -> dict[str, Any]:
+    return {
+        "name": "inference",
+        "claude_name": "nemo-inference",
+        "description": "Use NeMo Platform inference.",
+        "source": "nemo-platform",
+        "source_path": "packages/nemo_platform_ext/skills/inference",
+        "install_path": ".claude/skills/nemo-inference/SKILL.md",
+        "installed": installed,
+    }
+
+
+def test_vendored_load_skills_from_root_loads_selected_root_without_registry_private_helper(tmp_path: Path):
+    source_dir = _inference_source_dir(tmp_path)
+    (source_dir / "SKILL.md").write_text(
+        "---\nname: inference\ndescription: Use NeMo Platform inference.\nversion: 2\n---\n# Inference\n",
+        encoding="utf-8",
+    )
+
+    loaded = coding_agent_skills.load_skills_from_root(
+        tmp_path / "packages" / "nemo_platform_ext" / "skills",
+        source_plugin="platform",
+        source_dist="nemo-platform-ext",
+    )
+
+    assert list(loaded) == ["inference"]
+    assert loaded["inference"].description == "Use NeMo Platform inference."
+    assert loaded["inference"].version == "2"
+    assert loaded["inference"].source_plugin == "platform"
+    assert loaded["inference"].source_dist == "nemo-platform-ext"
+
+
 def test_create_session_returns_uuid(service_client: TestClient):
     response = service_client.post("/v2/coding-agents/sessions")
 
@@ -65,6 +119,16 @@ def test_build_claude_argv_uses_new_session_then_resume_flag():
     assert argv[:3] == ["claude", "-p", "hello"]
     assert "--output-format" in argv
     assert "stream-json" in argv
+    assert "--allowedTools" in argv
+    allowed_tools = argv[argv.index("--allowedTools") + 1].split(",")
+    assert f"mcp__{coding_agents.CLAUDE_MCP_SERVER_NAME}__select_agent" in allowed_tools
+    assert f"mcp__{coding_agents.CLAUDE_MCP_SERVER_NAME}__select_eval_config" in allowed_tools
+    assert f"mcp__{coding_agents.CLAUDE_MCP_SERVER_NAME}__select_dataset_file" in allowed_tools
+    assert f"mcp__{coding_agents.CLAUDE_MCP_SERVER_NAME}__select_model" in allowed_tools
+    assert f"mcp__{coding_agents.CLAUDE_MCP_SERVER_NAME}__job_progress" in allowed_tools
+    assert f"mcp__{coding_agents.CLAUDE_MCP_SERVER_NAME}__studio_link" in allowed_tools
+    assert "--append-system-prompt" in argv
+    assert argv[argv.index("--append-system-prompt") + 1] == coding_agents.STUDIO_CODING_AGENT_CONTEXT
     assert "--permission-prompt-tool" in argv
     assert f"mcp__{coding_agents.CLAUDE_MCP_SERVER_NAME}__approval_prompt" in argv
     assert "--append-system-prompt" in argv
@@ -176,12 +240,81 @@ def test_list_and_get_history_sessions(
                 "parts": [
                     {"type": "thinking", "thinking": "checking"},
                     {"type": "text", "text": "done"},
-                    {"type": "tool_use", "name": "Bash", "input": {"command": "pwd"}},
+                    {"type": "tool_use", "id": "toolu_1", "name": "Bash", "input": {"command": "pwd"}},
                 ],
             },
         ],
     }
     assert session_id in coding_agents._initialized_sessions
+
+
+def test_list_claude_skills_returns_claude_install_metadata(
+    service_client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    source_dir = _inference_source_dir(tmp_path)
+    installed_skill = tmp_path / ".claude" / "skills" / "nemo-inference" / "SKILL.md"
+    installed_skill.parent.mkdir(parents=True)
+    installed_skill.write_text("# Installed")
+    skill = _inference_skill(source_dir)
+
+    monkeypatch.setattr(coding_agents, "SERVER_CWD", tmp_path)
+    monkeypatch.setattr(coding_agent_skills, "load_skills", lambda: {"inference": skill})
+
+    response = service_client.get("/v2/coding-agents/skills")
+
+    assert response.status_code == 200
+    assert response.json() == [_expected_inference_skill_response(installed=True)]
+
+
+def test_load_claude_skills_falls_back_on_duplicate_skill_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+):
+    skill = _inference_skill(_inference_source_dir(tmp_path))
+    fallback_called = False
+
+    def fallback() -> dict[str, coding_agent_skills.Skill]:
+        nonlocal fallback_called
+        fallback_called = True
+        return {"inference": skill}
+
+    monkeypatch.setattr(
+        coding_agent_skills,
+        "load_skills",
+        lambda: (_ for _ in ()).throw(coding_agent_skills.DuplicateSkillError("vendored drift")),
+    )
+    monkeypatch.setattr(coding_agent_skills, "_load_skills_from_preferred_entry_points", fallback)
+
+    with caplog.at_level(logging.WARNING):
+        loaded = coding_agent_skills._load_claude_skills()
+
+    assert loaded == {"inference": skill}
+    assert fallback_called
+    assert "vendored drift" in caplog.text
+
+
+def test_list_claude_skills_returns_500_when_fallback_also_fails(
+    service_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(
+        coding_agent_skills,
+        "load_skills",
+        lambda: (_ for _ in ()).throw(coding_agent_skills.DuplicateSkillError("registry drift")),
+    )
+    monkeypatch.setattr(
+        coding_agent_skills,
+        "_load_skills_from_preferred_entry_points",
+        lambda: (_ for _ in ()).throw(coding_agent_skills.DuplicateSkillError("fallback drift")),
+    )
+
+    response = service_client.get("/v2/coding-agents/skills")
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "fallback drift"
 
 
 def test_invalid_session_id_returns_400(service_client: TestClient):
@@ -227,12 +360,18 @@ def test_mcp_initialize_and_tools_list(service_client: TestClient):
     assert initialize_response.status_code == 200
     assert initialize_response.json()["result"]["serverInfo"]["name"] == "nemo-studio-permissions"
     assert tools_response.status_code == 200
-    assert tools_response.json()["result"]["tools"][0]["name"] == "approval_prompt"
-    assert {tool["name"] for tool in tools_response.json()["result"]["tools"]} == {
+    tools = tools_response.json()["result"]["tools"]
+    assert tools[0]["name"] == "approval_prompt"
+    assert {tool["name"] for tool in tools} == {
         "approval_prompt",
+        "select_agent",
+        "select_eval_config",
+        "select_dataset_file",
+        "select_model",
+        "job_progress",
         "studio_link",
     }
-    studio_link_tool = next(tool for tool in tools_response.json()["result"]["tools"] if tool["name"] == "studio_link")
+    studio_link_tool = next(tool for tool in tools if tool["name"] == "studio_link")
     assert "Default to using this for Studio-related responses" in studio_link_tool["description"]
     assert "After creating an agent, use destination='agent_chat'" in studio_link_tool["description"]
     assert "chat with or try a model" not in studio_link_tool["description"]
@@ -736,6 +875,101 @@ def test_mcp_tools_call_denies_without_active_stream(service_client: TestClient)
     }
 
 
+def test_mcp_tools_call_job_progress_returns_rendered(service_client: TestClient):
+    session_id = str(uuid.uuid4())
+
+    response = service_client.post(
+        f"/v2/coding-agents/mcp/{session_id}",
+        json={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "job_progress",
+                "arguments": {
+                    "job_name": "eval-job-1",
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    result_text = response.json()["result"]["content"][0]["text"]
+    assert json.loads(result_text) == {"status": "rendered"}
+
+
+def test_mcp_tools_call_select_agent_denies_without_active_stream(service_client: TestClient):
+    session_id = str(uuid.uuid4())
+
+    response = service_client.post(
+        f"/v2/coding-agents/mcp/{session_id}",
+        json={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "select_agent",
+                "arguments": {"title": "Select an agent"},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    result_text = response.json()["result"]["content"][0]["text"]
+    assert json.loads(result_text) == {
+        "status": "error",
+        "message": "no active Studio coding-agent session",
+    }
+
+
+def test_mcp_tools_call_select_dataset_file_denies_without_active_stream(service_client: TestClient):
+    session_id = str(uuid.uuid4())
+
+    response = service_client.post(
+        f"/v2/coding-agents/mcp/{session_id}",
+        json={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "select_dataset_file",
+                "arguments": {"title": "Select a dataset"},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    result_text = response.json()["result"]["content"][0]["text"]
+    assert json.loads(result_text) == {
+        "status": "error",
+        "message": "no active Studio coding-agent session",
+    }
+
+
+def test_mcp_tools_call_select_model_denies_without_active_stream(service_client: TestClient):
+    session_id = str(uuid.uuid4())
+
+    response = service_client.post(
+        f"/v2/coding-agents/mcp/{session_id}",
+        json={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "select_model",
+                "arguments": {"title": "Select a model"},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    result_text = response.json()["result"]["content"][0]["text"]
+    assert json.loads(result_text) == {
+        "status": "error",
+        "message": "no active Studio coding-agent session",
+    }
+
+
 async def test_resolve_permission_rejects_cross_session_request():
     owner_session_id = str(uuid.uuid4())
     other_session_id = str(uuid.uuid4())
@@ -768,6 +1002,42 @@ async def test_resolve_permission_sets_result_for_owning_session():
 
     assert response == {"ok": True}
     assert future.result() == {"approved": True, "reason": None, "updated_input": None}
+
+
+async def test_resolve_agent_input_sets_result_for_owning_session():
+    session_id = str(uuid.uuid4())
+    request_id = str(uuid.uuid4())
+    future = asyncio.get_running_loop().create_future()
+    coding_agents._pending_agent_inputs[request_id] = (session_id, future)
+
+    response = await coding_agents.resolve_agent_input(
+        session_id,
+        request_id,
+        coding_agents.AgentInputDecision(value={"agent": "react-agent"}),
+    )
+
+    assert response == {"ok": True}
+    assert future.result() == {"skipped": False, "value": {"agent": "react-agent"}}
+
+
+async def test_request_agent_input_rejects_reserved_response_keys():
+    session_id = str(uuid.uuid4())
+    coding_agents._session_streams[session_id] = asyncio.Queue()
+
+    request_task = asyncio.create_task(coding_agents._request_agent_input(session_id, "agent", {}))
+    _, payload = await coding_agents._session_streams[session_id].get()
+    request_id = json.loads(payload)["request_id"]
+
+    await coding_agents.resolve_agent_input(
+        session_id,
+        request_id,
+        coding_agents.AgentInputDecision(value={"agent": "react-agent", "status": "submitted"}),
+    )
+
+    assert await request_task == {
+        "status": "error",
+        "message": "input value included reserved keys: status",
+    }
 
 
 def test_platform_route_stream_uses_public_mcp_callback(monkeypatch: pytest.MonkeyPatch):
@@ -906,7 +1176,15 @@ def test_public_mcp_route_is_mounted_before_static_fallback():
     )
 
     assert response.status_code == 200
-    assert response.json()["result"]["tools"][0]["name"] == "approval_prompt"
+    assert [tool["name"] for tool in response.json()["result"]["tools"]] == [
+        "approval_prompt",
+        "select_agent",
+        "select_eval_config",
+        "select_dataset_file",
+        "select_model",
+        "job_progress",
+        "studio_link",
+    ]
 
 
 def test_coding_agent_routes_are_available_by_default():

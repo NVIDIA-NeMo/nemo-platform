@@ -6,10 +6,13 @@ import { parseJsonObject, parseSseChunk } from '@studio/routes/agents/ClaudeCode
 import type {
   ClaudeCodeAssistantHistoryPart,
   ClaudeCodeHistorySession,
+  ClaudeCodeInputDecision,
+  ClaudeCodeInputRequest,
   ClaudeCodePermissionDecision,
   ClaudeCodePermissionRequest,
   ClaudeCodeSessionHistory,
   ClaudeCodeSessionHistoryItem,
+  ClaudeCodeSkill,
   ClaudeCodeStreamHandlers,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
 
@@ -39,6 +42,8 @@ export const CLAUDE_CODE_HISTORY_SESSIONS_QUERY_KEY = [
   'history',
   'sessions',
 ] as const;
+
+export const CLAUDE_CODE_SKILLS_QUERY_KEY = ['claude-code', 'skills'] as const;
 
 export const getClaudeCodeSessionHistoryQueryKey = (sessionId: string) =>
   ['claude-code', 'history', 'session', sessionId] as const;
@@ -100,6 +105,24 @@ const parseHistorySession = (value: unknown): ClaudeCodeHistorySession | undefin
   };
 };
 
+const parseClaudeCodeSkill = (value: unknown): ClaudeCodeSkill | undefined => {
+  if (!isRecord(value)) return undefined;
+  const name = getString(value.name);
+  const claudeName = getString(value.claude_name);
+  const installPath = getString(value.install_path);
+  if (!name || !claudeName || !installPath) return undefined;
+
+  return {
+    name,
+    claude_name: claudeName,
+    description: getString(value.description),
+    source: getString(value.source) || '-',
+    source_path: getString(value.source_path) || undefined,
+    install_path: installPath,
+    installed: value.installed === true,
+  };
+};
+
 const parseAssistantPart = (value: unknown): ClaudeCodeAssistantHistoryPart | undefined => {
   if (!isRecord(value)) return undefined;
 
@@ -111,6 +134,7 @@ const parseAssistantPart = (value: unknown): ClaudeCodeAssistantHistoryPart | un
   if (value.type === 'tool_use') {
     return {
       type: 'tool_use',
+      id: getString(value.id) || undefined,
       name: getString(value.name) || 'tool',
       input: isRecord(value.input) ? value.input : {},
     };
@@ -150,6 +174,21 @@ export const listClaudeCodeHistorySessions = async (): Promise<ClaudeCodeHistory
   return body
     .map(parseHistorySession)
     .filter((session): session is ClaudeCodeHistorySession => session !== undefined);
+};
+
+export const listClaudeCodeSkills = async (): Promise<ClaudeCodeSkill[]> => {
+  const response = await fetch(claudeCodeApiUrl('/skills'));
+
+  if (!response.ok) {
+    throw new Error(await getResponseErrorMessage(response, 'Failed to load Claude Code skills'));
+  }
+
+  const body = (await response.json()) as unknown;
+  if (!Array.isArray(body)) return [];
+
+  return body
+    .map(parseClaudeCodeSkill)
+    .filter((skill): skill is ClaudeCodeSkill => skill !== undefined);
 };
 
 export const getClaudeCodeSessionHistory = async (
@@ -199,6 +238,25 @@ const parsePermissionRequest = (payload: unknown): ClaudeCodePermissionRequest |
   };
 };
 
+const parseInputRequest = (payload: unknown): ClaudeCodeInputRequest | undefined => {
+  if (!isRecord(payload) || typeof payload.request_id !== 'string') return undefined;
+  if (
+    payload.kind !== 'agent' &&
+    payload.kind !== 'eval_config' &&
+    payload.kind !== 'dataset_file' &&
+    payload.kind !== 'model'
+  ) {
+    return undefined;
+  }
+  if (!isRecord(payload.input) || Array.isArray(payload.input)) return undefined;
+
+  return {
+    requestId: payload.request_id,
+    kind: payload.kind,
+    input: payload.input,
+  };
+};
+
 const handleSseEvent = (
   event: { event?: string; data: string },
   handlers: ClaudeCodeStreamHandlers
@@ -220,6 +278,16 @@ const handleSseEvent = (
       return false;
     }
     handlers.onPermissionRequest(request);
+    return true;
+  }
+
+  if (event.event === 'input_request') {
+    const request = parseInputRequest(parseJsonObject(event.data));
+    if (!request) {
+      handlers.onError(new Error('Claude Code input request was malformed'));
+      return false;
+    }
+    handlers.onInputRequest(request);
     return true;
   }
 
@@ -255,6 +323,31 @@ export const resolveClaudeCodePermission = async ({
     throw new Error(
       await getResponseErrorMessage(response, 'Failed to resolve Claude Code permission')
     );
+  }
+};
+
+export const resolveClaudeCodeInput = async ({
+  decision,
+  requestId,
+  sessionId,
+}: {
+  decision: ClaudeCodeInputDecision;
+  requestId: string;
+  sessionId: string;
+}): Promise<void> => {
+  const response = await fetch(claudeCodeApiUrl(`/sessions/${sessionId}/inputs/${requestId}`), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      skipped: decision.skipped,
+      value: decision.value,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await getResponseErrorMessage(response, 'Failed to resolve Claude Code input'));
   }
 };
 

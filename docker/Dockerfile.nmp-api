@@ -1,0 +1,65 @@
+# syntax=docker/dockerfile:1
+# NMP API - All Python services (core + application)
+
+ARG NMP_PYTHON_BASE=nmp-python-base
+
+FROM ${NMP_PYTHON_BASE} AS builder
+COPY --from=nmp-workspace . .
+
+# Prevents annoy (a dependency of the nemoguardrails library) from generating CPU-specific instructions
+# that cause Guardrails to crash at inference-time with SIGILL on AVX2-only CPUs (e.g. AMD EPYC Zen 2).
+# When ANNOY_COMPILER_ARGS is set, annoy uses these arguments as-is, replacing its defaults.
+ENV ANNOY_COMPILER_ARGS="-D_CRT_SECURE_NO_WARNINGS,-DANNOYLIB_MULTITHREADED_BUILD"
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --only-group functional-services --no-editable
+
+# annoy must be reinstalled from the committed lockfile without wheel cache reuse: uv's wheel cache
+# key does not include env vars, so the first sync can reuse a stale native-compiled wheel that
+# ignores ANNOY_COMPILER_ARGS.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    VIRTUAL_ENV=/app/.venv \
+    uv sync --frozen --active --only-group functional-services --no-editable \
+    --reinstall-package annoy --refresh-package annoy --no-binary-package annoy --no-cache
+
+# Pre-install DuckDB aws + httpfs so OTLP log ingestion works without outbound network.
+# Download the extension artifacts directly over HTTPS and install from local files
+# because DuckDB's default remote INSTALL path can be blocked or flaky in some build environments.
+RUN sh /app/script/install_duckdb_extensions.sh
+
+# Download embedding model used by `nemoguardrails` library.
+# Uses snapshot_download directly to avoid importing onnxruntime, which crashes under QEMU (ARM64 cross-compilation).
+# Stored in /tmp/fastembed_cache (fastembed's default cache location) and copied to the runtime image below.
+RUN uv run --no-sync python -c 'import os, tempfile; from huggingface_hub import snapshot_download; snapshot_download(repo_id="qdrant/all-MiniLM-L6-v2-onnx", cache_dir=os.path.join(tempfile.gettempdir(), "fastembed_cache"))'
+
+FROM ${NMP_PYTHON_BASE} AS runtime
+ARG USERNAME=nvs
+ARG USER_UID=1000
+ARG USER_GID=1000
+WORKDIR /app
+RUN groupadd --gid ${USER_GID} ${USERNAME} && \
+    useradd --uid ${USER_UID} --gid ${USER_GID} --create-home --shell /bin/bash ${USERNAME}
+ENV USERNAME=nvs \
+    HOME=/home/nvs
+# DuckDB extension cache (aws, httpfs) for S3 log storage
+COPY --chown=nvs:nvs --from=builder /root/.duckdb /root/.duckdb
+COPY --chown=nvs:nvs --from=builder /root/.duckdb /home/nvs/.duckdb
+COPY --chown=nvs:nvs --from=builder /app/.venv /app/.venv
+# Authz evaluates the packaged policy WASM from nmp.core.auth.assets at runtime.
+COPY --chown=nvs:nvs --from=policy-wasm-artifacts /artifacts/policy.wasm /app/.venv/lib/python3.11/site-packages/nmp/core/auth/assets/policy.wasm
+ENV PATH="/app/.venv/bin:$PATH"
+COPY --chown=nvs:nvs --from=nmp-jobs-launcher /artifacts/jobs-launcher /tools/jobs-launcher
+COPY --chown=nvs:nvs --from=nmp-studio-ui /artifacts /static/studio
+COPY --chown=nvs:nvs --from=builder /app/plugins/nemo-data-designer/tiktoken-cache /app/tiktoken-cache
+ENV TIKTOKEN_CACHE_DIR=/app/tiktoken-cache
+COPY --chown=nvs:nvs --from=builder /tmp/fastembed_cache /tmp/fastembed_cache
+ARG NMP_PLATFORM_VERSION=dev
+ARG NMP_CODE_REVISION=
+ENV NMP_PLATFORM_VERSION=${NMP_PLATFORM_VERSION}
+ENV NMP_CODE_REVISION=${NMP_CODE_REVISION}
+EXPOSE 8080
+USER 0
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health/ready')"]
+ENTRYPOINT ["nemo", "services", "run"]
+CMD ["--host", "0.0.0.0"]

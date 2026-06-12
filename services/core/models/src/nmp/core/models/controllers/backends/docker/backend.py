@@ -14,7 +14,6 @@ import os
 from logging import getLogger
 from typing import Any, Optional
 
-import docker
 import httpx
 from docker.errors import APIError, NotFound
 from nemo_platform import NotFoundError
@@ -41,6 +40,8 @@ from nmp.core.models.controllers.backends.docker.creation_reconciler import (
 from requests.exceptions import ConnectionError as RequestsConnectionError
 from requests.exceptions import ReadTimeout
 from urllib3.exceptions import ReadTimeoutError as Urllib3ReadTimeoutError
+
+import docker
 
 logger = getLogger(__name__)
 

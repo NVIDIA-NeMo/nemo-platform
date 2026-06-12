@@ -10,7 +10,7 @@ import type { RailsConfigOutput } from '@nemo/sdk/generated/platform/schema';
  * Note: DialogRails does not expose a `flows` field in the SDK schema, so
  * dialog rails are not counted here.
  */
-export function countRails(data: RailsConfigOutput | undefined): number {
+export function countRails(data?: RailsConfigOutput): number {
   const rails = data?.rails;
   if (!rails) return 0;
   return (

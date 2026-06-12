@@ -35,6 +35,7 @@ from .span_list_params import SpanListParams as SpanListParams
 from .trace_sort_field import TraceSortField as TraceSortField
 from .span_filter_param import SpanFilterParam as SpanFilterParam
 from .trace_list_params import TraceListParams as TraceListParams
+from .experiment_context import ExperimentContext as ExperimentContext
 from .float_filter_param import FloatFilterParam as FloatFilterParam
 from .trace_filter_param import TraceFilterParam as TraceFilterParam
 from .feedback_annotation import FeedbackAnnotation as FeedbackAnnotation

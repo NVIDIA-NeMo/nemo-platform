@@ -19,7 +19,18 @@ from nmp.intake.spans.api.query_filters import (
     require_enum_value,
     require_string_value,
 )
-from nmp.intake.spans.api.spans_schemas import Span, SpanFilter, SpanKind, SpanMode, SpanSortField, SpanStatus
+from nmp.intake.spans.api.spans_schemas import (
+    Span,
+    SpanFilter,
+    SpanGroup,
+    SpanGroupBy,
+    SpanGroupSortField,
+    SpanGroupsPage,
+    SpanKind,
+    SpanMode,
+    SpanSortField,
+    SpanStatus,
+)
 from nmp.intake.spans.domain import SpanAttributeFilter, SpanListFilter
 from nmp.intake.spans.service import SpanNotFoundError
 from nmp.intake.spans.storage import utc_now
@@ -91,6 +102,64 @@ async def list_spans(
 
 
 @router.get(
+    "/v2/workspaces/{workspace}/spans/groups",
+    response_model=SpanGroupsPage,
+    response_model_exclude_none=True,
+    tags=[API_TAG],
+    responses={
+        400: {
+            "description": "Invalid group-by parameter",
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "type": "object",
+                        "properties": {"detail": {"type": "string"}},
+                        "required": ["detail"],
+                    }
+                }
+            },
+        }
+    },
+    openapi_extra=generate_openapi_extra_params(
+        filter_schema=SpanFilter,
+        filter_description=(
+            "Filter spans by the same fields as the span list endpoint, then group matching spans by the "
+            "comma-separated fields in the by query parameter."
+        ),
+    ),
+)
+async def list_span_groups(
+    workspace: str,
+    request: Request,
+    service: SpansServiceDep,
+    by: str = Query(description="Comma-separated span fields to group by, e.g. trace_id or session_id,trace_id."),
+    page: int = Query(default=1, ge=1, description="Page number."),
+    page_size: int = Query(default=10, ge=1, le=1000, description="Page size."),
+    sort: SpanGroupSortField = Query(default=SpanGroupSortField.SPAN_COUNT_DESC),
+    parsed: ParsedFilter = Depends(make_filter_dep(SpanFilter)),
+) -> SpanGroupsPage:
+    validate_list_query_params(request, additional_params={"by"})
+    grouped_by = _parse_group_by(by)
+    filters = _span_filter(workspace, parsed)
+    _apply_default_time_bound(filters)
+    result = await service.list_span_groups(
+        filters=filters,
+        group_by=[field.value for field in grouped_by],
+        page=page,
+        page_size=page_size,
+        sort=sort.value,
+    )
+    groups = [SpanGroup.from_domain(group) for group in result.data]
+    return SpanGroupsPage(
+        grouped_by=grouped_by,
+        data=groups,
+        pagination=result.pagination,
+        sort=sort,
+        filter=parsed.to_response(),
+    )
+
+
+@router.get(
     "/v2/workspaces/{workspace}/spans/{span_id}",
     response_model=Span,
     response_model_exclude_none=True,
@@ -106,6 +175,32 @@ async def get_span(
     except SpanNotFoundError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Span {workspace}/{span_id} not found")
     return Span.from_domain(span)
+
+
+def _parse_group_by(value: str) -> list[SpanGroupBy]:
+    raw_fields = [field.strip() for field in value.split(",") if field.strip()]
+    if not raw_fields:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one group-by field is required.")
+
+    grouped_by: list[SpanGroupBy] = []
+    seen: set[SpanGroupBy] = set()
+    for raw_field in raw_fields:
+        try:
+            field = SpanGroupBy(raw_field)
+        except ValueError:
+            allowed = ", ".join(item.value for item in SpanGroupBy)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unsupported span group-by field: {raw_field}. Allowed fields: {allowed}",
+            ) from None
+        if field in seen:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Duplicate span group-by field: {field.value}",
+            )
+        grouped_by.append(field)
+        seen.add(field)
+    return grouped_by
 
 
 def _span_filter(workspace: str, parsed: ParsedFilter) -> SpanListFilter:

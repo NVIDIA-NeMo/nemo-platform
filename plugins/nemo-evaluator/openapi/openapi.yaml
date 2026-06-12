@@ -23,9 +23,7 @@ paths:
       tags:
       - Evaluator Plugin Hello Routes
       summary: Hello
-      description: "Greet a name.\n\nThe greeting style is controlled by ``EvaluatorConfig.greeting_style``:\n\
-        \n- ``\"formal\"`` (default) \u2192 ``\"Hello, {name}!\"``\n- ``\"casual\"\
-        `` \u2192 ``\"Hey, {name}!\"``\n\nOverride at runtime: ``NMP_EVALUATOR_GREETING_STYLE=casual``."
+      description: Greet a name.
       operationId: hello_apis_evaluator_v1_hello__name__get
       parameters:
       - name: name
@@ -1419,10 +1417,6 @@ components:
       description: 'Reference to a platform secret or local environment variable.
         Format: ''secret_name'' (uses request workspace) or ''workspace/secret_name''
         (explicit workspace).'
-      examples:
-      - my-secret
-      - my-workspace/my-secret
-      - NVIDIA_API_KEY
     StringFilter:
       additionalProperties: false
       properties:

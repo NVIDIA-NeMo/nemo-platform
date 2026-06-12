@@ -42,6 +42,7 @@ interface ModelDropdownProps {
   defaultModelType?: ModelType;
   hideAdapters?: boolean;
   fullWidth?: boolean;
+  dropdownSide?: 'top' | 'bottom';
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -57,6 +58,7 @@ export const ModelDropdown: FC<ModelDropdownProps> = ({
   defaultModelType = 'custom',
   hideAdapters = false,
   fullWidth = false,
+  dropdownSide = 'bottom',
   open,
   onOpenChange,
 }) => {
@@ -143,7 +145,7 @@ export const ModelDropdown: FC<ModelDropdownProps> = ({
       </DropdownTrigger>
       <DropdownContent
         align="start"
-        side="bottom"
+        side={dropdownSide}
         data-testid="model-select-v2-content"
         className="min-w-[360px]"
         style={{ width: 360 }} // eslint-disable-line no-restricted-syntax -- KUI DropdownContent needs explicit width

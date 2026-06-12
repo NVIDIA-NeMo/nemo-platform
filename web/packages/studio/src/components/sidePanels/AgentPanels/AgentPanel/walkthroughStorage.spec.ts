@@ -3,8 +3,10 @@
 
 import {
   clearAgentWalkthroughPending,
+  hasShownExampleAgentIntro,
   isAgentWalkthroughPending,
   markAgentWalkthroughPending,
+  markExampleAgentIntroShown,
 } from '@studio/components/sidePanels/AgentPanels/AgentPanel/walkthroughStorage';
 
 describe('agent walkthrough storage', () => {
@@ -24,5 +26,15 @@ describe('agent walkthrough storage', () => {
     markAgentWalkthroughPending('calc');
     clearAgentWalkthroughPending('calc');
     expect(isAgentWalkthroughPending('calc')).toBe(false);
+  });
+});
+
+describe('example agent intro flag', () => {
+  beforeEach(() => sessionStorage.clear());
+
+  it('reports not shown until marked', () => {
+    expect(hasShownExampleAgentIntro()).toBe(false);
+    markExampleAgentIntroShown();
+    expect(hasShownExampleAgentIntro()).toBe(true);
   });
 });

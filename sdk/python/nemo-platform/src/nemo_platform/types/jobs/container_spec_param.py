@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing_extensions import Required, TypedDict
+from typing_extensions import TypedDict
 
 from ..._types import SequenceNotStr
 
@@ -30,8 +30,8 @@ class ContainerSpecParam(TypedDict, total=False):
     Defines the container image and related configuration for job execution.
     """
 
-    image: Required[str]
-
     command: SequenceNotStr[str]
 
     entrypoint: SequenceNotStr[str]
+
+    image: str

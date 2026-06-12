@@ -1,0 +1,16 @@
+# syntax=docker/dockerfile:1
+# Workspace file bundle - used as a named context source for uv sync stages
+
+FROM scratch AS nmp-workspace
+COPY pyproject.toml uv.lock README.md ./
+COPY docs/ docs/
+COPY openapi/ openapi/
+COPY skills/ skills/
+COPY packages/ packages/
+COPY plugins/ plugins/
+COPY services/ services/
+COPY packages/nmp_platform/ entrypoint/
+COPY sdk/ sdk/
+COPY script/ script/
+COPY tools/ tools/
+COPY release/ release/

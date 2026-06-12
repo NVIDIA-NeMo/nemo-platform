@@ -2,7 +2,7 @@
 name = "nmp-build-tools"
 version = "0.0.0"
 description = "Build-time helpers for NeMo Platform workspace packages"
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.11,<3.15"
 dependencies = [
     "packaging",
 ]

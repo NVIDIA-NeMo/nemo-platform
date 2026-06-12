@@ -40,7 +40,6 @@
 {"name": "cloudpickle", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "colorama", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "colorlog", "license": "MIT", "compatible": true}
-{"name": "crc32c", "license": "LGPL-2.1-OR-LATER", "compatible": true}
 {"name": "cryptography", "license": "APACHE-2.0", "compatible": true}
 {"name": "cyclopts", "license": "APACHE-2.0", "compatible": true}
 {"name": "data-designer", "license": "APACHE-2.0", "compatible": true}
@@ -48,7 +47,6 @@
 {"name": "data-designer-engine", "license": "APACHE-2.0", "compatible": true}
 {"name": "dataclasses-json", "license": "MIT", "compatible": true}
 {"name": "datasets", "license": "APACHE-2.0", "compatible": true}
-{"name": "detect-installer", "license": "0BSD", "compatible": true}
 {"name": "diff-cover", "license": "APACHE-2.0", "compatible": true}
 {"name": "dill", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "diskcache", "license": "APACHE-2.0", "compatible": true}
@@ -56,6 +54,7 @@
 {"name": "dnspython", "license": "ISC", "compatible": true}
 {"name": "docker", "license": "APACHE-2.0", "compatible": true}
 {"name": "docstring-parser", "license": "MIT", "compatible": true}
+{"name": "docutils", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "duckdb", "license": "MIT", "compatible": true}
 {"name": "durationpy", "license": "MIT", "compatible": true}
 {"name": "email-validator", "license": "UNLICENSE", "compatible": true}
@@ -69,7 +68,6 @@
 {"name": "fastar", "license": "MIT", "compatible": true}
 {"name": "fastembed", "license": "APACHE-2.0", "compatible": true}
 {"name": "fastmcp", "license": "APACHE-2.0", "compatible": true}
-{"name": "fastmcp-slim", "license": "APACHE-2.0", "compatible": true}
 {"name": "fastuuid", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "filelock", "license": "UNLICENSE", "compatible": true}
 {"name": "filetype", "license": "MIT", "compatible": true}
@@ -80,7 +78,6 @@
 {"name": "gitpython", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "googleapis-common-protos", "license": "APACHE-2.0", "compatible": true}
 {"name": "greenlet", "license": "MIT", "compatible": true}
-{"name": "griffelib", "license": "ISC", "compatible": true}
 {"name": "grpcio", "license": "APACHE-2.0", "compatible": true}
 {"name": "gunicorn", "license": "MIT", "compatible": true}
 {"name": "h11", "license": "MIT", "compatible": true}
@@ -151,6 +148,7 @@
 {"name": "mdurl", "license": "MIT", "compatible": true}
 {"name": "mmh3", "license": "MIT", "compatible": true}
 {"name": "more-itertools", "license": "MIT", "compatible": true}
+{"name": "mpmath", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "multidict", "license": "APACHE-2.0", "compatible": true}
 {"name": "multiprocess", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "mypy-extensions", "license": "MIT", "compatible": true}
@@ -235,7 +233,6 @@
 {"name": "pyopenssl", "license": "APACHE-2.0", "compatible": true}
 {"name": "pyperclip", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "pytest", "license": "MIT", "compatible": true}
-{"name": "python-box", "license": "MIT", "compatible": true}
 {"name": "python-dateutil", "license": "APACHE-2.0", "compatible": true}
 {"name": "python-dotenv", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "python-json-logger", "license": "BSD-3-CLAUSE", "compatible": true}
@@ -279,6 +276,7 @@
 {"name": "starlette", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "streaming-form-data", "license": "MIT", "compatible": true}
 {"name": "structlog", "license": "APACHE-2.0", "compatible": true}
+{"name": "sympy", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "tabulate", "license": "MIT", "compatible": true}
 {"name": "tblib", "license": "BSD-2-CLAUSE", "compatible": true}
 {"name": "tenacity", "license": "APACHE-2.0", "compatible": true}
