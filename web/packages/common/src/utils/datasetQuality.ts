@@ -160,7 +160,7 @@ export async function checkDatasetQuality(file: File): Promise<DatasetQualityRep
       issues.push({
         severity: 'warning',
         code: 'NULL_OR_EMPTY_FIELDS',
-        message: `${getTextWithCount('row', nullFieldLines.length)} contain null or empty field values.`,
+        message: `${getTextWithCount('row', nullFieldLines.length)} contains null or empty field values.`,
         affectedLines: nullFieldLines.slice(0, MAX_AFFECTED_LINE_COUNT),
         count: nullFieldLines.length,
       });
