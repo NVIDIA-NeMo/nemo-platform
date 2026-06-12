@@ -92,15 +92,22 @@ Also check:
 ## Container image eligibility
 
 The `container:` list in `release/assets.yaml` declares which container
-images are eligible for release publishing. Platform-Deploy's
-`Release Deploy Artifacts` (staging) and `Release Promote Public` (public
-NGC) workflows read this list from this repository at the release ref, so
-eligibility is version-pinned: re-staging an old tag publishes the container
-set that was declared at that commit. Adding an image here also requires a
-catalog metadata entry (overview, labels) in Platform-Deploy
-`release/nemo-assets-config.yaml`, and the image must be pushed to the dev
-registry tagged with this repository's commit SHA (the Automodel images are
-built by Platform-Deploy's `docker-automodel.yaml`).
+images are eligible for release publishing. Containers ride along on every
+release regardless of `release_scope` (scope governs SDK selection only):
+the bundle workflow records them as `container`-typed entries in
+`release-manifest.json`, and Platform-Deploy's `Release Deploy Artifacts`
+workflow stages the images automatically after the SDK publish, reading
+this list from this repository at the release ref. Eligibility is therefore
+version-pinned: re-staging an old tag publishes the container set that was
+declared at that commit. `Release Promote Public` (public NGC) reads the
+same list at the release tag and stays a manual step.
+
+Adding an image here also requires a catalog metadata entry (overview,
+labels) in Platform-Deploy `release/nemo-assets-config.yaml`. Images are
+built into the dev registry tagged with this repository's commit SHA on
+every merge to main (Platform-Deploy's `docker-automodel.yaml` via the
+ci-passed dispatch); release SHAs that predate that trigger need a manual
+`docker-automodel.yaml` dispatch first.
 
 ---
 

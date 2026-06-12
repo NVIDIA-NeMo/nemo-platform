@@ -302,8 +302,24 @@ jobs:
             exit 1
           fi
 
+          # Containers ride along on every release regardless of release_scope
+          # (scope governs SDK selection only): the container catalog is the
+          # eligibility list, and image bits are not built here. Entries are
+          # recorded in the manifest as typed artifacts; Platform-Deploy stages
+          # the images from its dev registry by this release's source SHA.
+          container_catalog="$(yq -o=json '.container // []' "${catalog}" | jq -c 'map(.id)')"
+          if ! jq -e 'type == "array" and all(.[]; type == "string" and length > 0)' <<<"${container_catalog}" >/dev/null; then
+            echo "::error::release/assets.yaml container must contain non-empty string id values"
+            exit 1
+          fi
+          if ! jq -e 'length == (unique | length)' <<<"${container_catalog}" >/dev/null; then
+            echo "::error::release/assets.yaml container contains duplicate ids"
+            exit 1
+          fi
+
           sdk_artifacts_json="$(jq -nc --argjson ids "${selected_sdk_ids}" '$ids | map({type: "sdk", id: .})')"
-          selected_artifacts_json="${sdk_artifacts_json}"
+          container_artifacts_json="$(jq -nc --argjson ids "${container_catalog}" '$ids | map({type: "container", id: .})')"
+          selected_artifacts_json="$(jq -nc --argjson sdks "${sdk_artifacts_json}" --argjson containers "${container_artifacts_json}" '$sdks + $containers')"
           sdk_matrix="$(jq -nc --argjson artifacts "${sdk_artifacts_json}" '{include: $artifacts}')"
           sdk_count="$(jq -r 'length' <<<"${selected_sdk_ids}")"
 
@@ -314,6 +330,7 @@ jobs:
           } >>"${GITHUB_OUTPUT}"
 
           echo "Planned SDK release artifacts: $(jq -r 'join(", ")' <<<"${selected_sdk_ids}")"
+          echo "Planned container release artifacts: $(jq -r 'join(", ")' <<<"${container_catalog}")"
 
   reserve-release-tag:
     name: Reserve release tag
