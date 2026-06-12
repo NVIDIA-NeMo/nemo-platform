@@ -204,7 +204,7 @@ Pre-commit hooks run automatically before commits and pushes to ensure code qual
 - **Type checking (ty)** - Runs type checks on Python code (may need manual fixes)
 - **uv lock** - Automatically updates `uv.lock` when `pyproject.toml` changes
 - **uv lock check** - Verifies `uv.lock` is in sync with `pyproject.toml`
-- **Helm Docs Container** - Runs `helm-docs` container to regenerate Helm documentation in `deploy/helm/platform/README.md`
+- **Helm Docs Container** - Runs `helm-docs` container to regenerate Helm documentation in `k8s/helm/README.md`
 - **Check merge conflicts** - Detects merge conflict markers
 - **OpenAPI generator** (manual stage) - Regenerates OpenAPI spec when API files change
 - **Check policy WASM** (pre-push only) - Verifies OPA policy WASM is up-to-date
