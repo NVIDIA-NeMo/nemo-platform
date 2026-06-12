@@ -837,12 +837,14 @@ describe('SafeSynthesizerNewRoute', () => {
   describe('Form reset behavior', () => {
     beforeEach(() => {
       // Suppress expected console.error from error handling and validation code paths
-      suppressConsoleError('Form validation errors:', 'Failed to create job:');
+      suppressConsoleError('Form validation errors:', 'Failed to create job');
     });
 
     it('should clear error message when form is resubmitted', async () => {
       vi.doMock('@studio/constants/environment', () => ({
         SAFE_SYNTHESIZER_ENABLED: true,
+        OTEL_SERVICE_NAME: 'test-service',
+        VERSION_SHA: 'test-sha',
       }));
 
       let onErrorCallback: ((error: AxiosError) => void) | undefined;
