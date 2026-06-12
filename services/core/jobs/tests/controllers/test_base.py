@@ -11,7 +11,7 @@ from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.core.jobs.api.v2.jobs.schemas import PlatformJobStepWithContext
 from nmp.core.jobs.app.providers import ContainerSpec, CPUExecutionProvider
 from nmp.core.jobs.app.schemas import PlatformJobStepSpec, StepLifecycle
-from nmp.core.jobs.controllers.backends.base import get_logs_endpoint_from_fileset
+from nmp.core.jobs.controllers.backends.base import get_logs_endpoint_from_fileset, resolve_task_image
 from nmp.core.jobs.controllers.backends.test import MockKubernetesCPUJobBackend
 
 
@@ -316,3 +316,21 @@ class TestCheckTaskStaleness:
         )
 
         assert backend.check_step_is_stale(step) is False
+
+
+class TestResolveTaskImage:
+    """Tests for resolve_task_image."""
+
+    def test_explicit_image_takes_precedence(self):
+        assert resolve_task_image("my-image:v1", "default-image:latest") == "my-image:v1"
+
+    def test_falls_back_to_default_task_image(self):
+        assert resolve_task_image(None, "default-image:latest") == "default-image:latest"
+
+    def test_explicit_image_without_default(self):
+        assert resolve_task_image("my-image:v1", None) == "my-image:v1"
+
+    def test_falls_back_to_platform_cpu_tasks_image_when_both_none(self):
+        with patch("nemo_platform_plugin.jobs.image.get_platform_config") as mock_config:
+            mock_config.return_value = MagicMock(image_registry="my-registry", image_tag="v1.0")
+            assert resolve_task_image(None, None) == "my-registry/nmp-cpu-tasks:v1.0"

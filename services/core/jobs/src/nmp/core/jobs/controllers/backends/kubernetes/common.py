@@ -56,6 +56,7 @@ from nmp.core.jobs.controllers.backends.base import (
     JobExecutionProfileConfig,
     get_logs_endpoint_from_fileset,
     resolve_gpu_job_shm_size,
+    resolve_task_image,
 )
 from nmp.core.jobs.controllers.backends.exceptions import FailedToScheduleError, JobStorageError
 from pydantic import BaseModel, Field, model_validator
@@ -1102,10 +1103,14 @@ def create_pod_template_spec(
     for cmd in container.entrypoint or []:
         command.append(cmd)
 
+    # Resolve the task image: explicit container.image takes precedence,
+    # then the profile's default_task_image, then platform CPU tasks image fallback.
+    task_image = resolve_task_image(container.image, config.default_task_image)
+
     # Main job container
     job_container = client.V1Container(
         name=NEMO_JOB_TASK_CONTAINER_NAME,
-        image=container.image,
+        image=task_image,
         command=command,
         args=container.command,
         env=env,
