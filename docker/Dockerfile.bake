@@ -131,7 +131,7 @@ ARG DISTROLESS_BASE=nvcr.io/nvidia/distroless/python:3.11-v4.0.3
     RUN uv run --no-sync pytest tests/integration
 
 #buildkit-test:
-    FROM alpine:latest AS buildkit-test
+    FROM alpine:3.24.0 AS buildkit-test
     RUN ps exua -T
     RUN netstat -tnlp
     RUN df -h

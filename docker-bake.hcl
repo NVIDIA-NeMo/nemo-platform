@@ -252,14 +252,6 @@ function "get_platforms" {
 
 # Semantic groups for parallel CI builds
 
-# Safe synthesizer job and api service
-group "docker-safe-synthesizer" {
-  targets = [
-    "safe-synthesizer-docker",
-    "safe-synthesizer-api-docker",
-  ]
-}
-
 # Auditor images
 group "docker-auditor" {
   targets = [
