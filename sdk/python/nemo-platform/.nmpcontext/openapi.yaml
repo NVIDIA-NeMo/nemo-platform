@@ -3731,9 +3731,9 @@ paths:
         explode: true
         schema:
           $ref: '#/components/schemas/ExperimentFilter'
-        description: Filter experiments by name, experiment_group_id, agent_name,
-          agent_version, dataset_name, dataset_version, created_by, created_at, or
-          updated_at.
+        description: Filter experiments by name, experiment_group_id, dataset_name,
+          dataset_version, created_by, created_at, or updated_at. Pass is_deleted=true
+          to return only soft-deleted experiments; omit to see only live ones.
       responses:
         '200':
           description: Successful Response
@@ -9653,15 +9653,6 @@ components:
         evaluation_run_id:
           title: Evaluation Run Id
           type: string
-        dataset_id:
-          title: Dataset Id
-          type: string
-        dataset_name:
-          title: Dataset Name
-          type: string
-        dataset_version:
-          title: Dataset Version
-          type: string
         test_case_id:
           title: Test Case Id
           type: string
@@ -9934,14 +9925,6 @@ components:
           description: Filter experiments by owning group id.
           title: Experiment Group Id
           type: string
-        agent_name:
-          description: Filter experiments by agent name.
-          title: Agent Name
-          type: string
-        agent_version:
-          description: Filter experiments by agent version.
-          title: Agent Version
-          type: string
         dataset_name:
           description: Filter experiments by dataset name.
           title: Dataset Name
@@ -10066,14 +10049,6 @@ components:
           title: Experiment Group Id
           description: "Entity id of the owning ExperimentGroup. Required \u2014 the\
             \ group must already exist."
-        agent_name:
-          type: string
-          title: Agent Name
-          description: Name of the agent under test.
-        agent_version:
-          type: string
-          title: Agent Version
-          description: Version of the agent under test.
         dataset_name:
           type: string
           title: Dataset Name
@@ -10106,8 +10081,6 @@ components:
       required:
       - name
       - experiment_group_id
-      - agent_name
-      - agent_version
       - dataset_name
       title: ExperimentRequest
       description: Request body for creating an Experiment.
@@ -10127,12 +10100,6 @@ components:
           title: Experiment Group Id
           description: Entity id of the owning ExperimentGroup. Required for every
             Experiment.
-        agent_name:
-          type: string
-          title: Agent Name
-        agent_version:
-          type: string
-          title: Agent Version
         dataset_name:
           type: string
           title: Dataset Name
@@ -10175,6 +10142,22 @@ components:
           title: Model Names
           description: Distinct model names observed across ingested sessions for
             this experiment.
+        agent_names:
+          items:
+            type: string
+          type: array
+          uniqueItems: true
+          title: Agent Names
+          description: Distinct agent names observed across ingested sessions for
+            this experiment.
+        agent_versions:
+          items:
+            type: string
+          type: array
+          uniqueItems: true
+          title: Agent Versions
+          description: Distinct agent versions observed across ingested sessions for
+            this experiment.
         aggregate_scores:
           title: Aggregate Scores
           additionalProperties:
@@ -10196,8 +10179,6 @@ components:
       - name
       - workspace
       - experiment_group_id
-      - agent_name
-      - agent_version
       - dataset_name
       title: ExperimentResponse
       description: Experiment as served by the API, including ClickHouse-hydrated
@@ -16131,12 +16112,6 @@ components:
         prompt_id:
           title: Prompt Id
           type: string
-        prompt_name:
-          title: Prompt Name
-          type: string
-        prompt_version:
-          title: Prompt Version
-          type: string
         agent_id:
           title: Agent Id
           type: string
@@ -16215,15 +16190,6 @@ components:
           type: string
         evaluation_run_id:
           title: Evaluation Run Id
-          type: string
-        dataset_id:
-          title: Dataset Id
-          type: string
-        dataset_name:
-          title: Dataset Name
-          type: string
-        dataset_version:
-          title: Dataset Version
           type: string
         test_case_id:
           title: Test Case Id

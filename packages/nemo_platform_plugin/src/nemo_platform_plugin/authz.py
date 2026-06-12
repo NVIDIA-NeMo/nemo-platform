@@ -80,6 +80,7 @@ def _scopes_for(api_area: str, write: bool) -> list[str]:
 
 def _job_collection_permissions(permission_prefix: str) -> dict[str, str]:
     return {
+        f"{permission_prefix}.cancel": f"Cancel {permission_prefix} jobs",
         f"{permission_prefix}.create": f"Create {permission_prefix} jobs",
         f"{permission_prefix}.list": f"List {permission_prefix} jobs",
         f"{permission_prefix}.read": f"Read {permission_prefix} jobs",
@@ -129,6 +130,42 @@ def authz_for_workspace_job_collection(
                 scopes=_scopes_for(api_area, write=True),
             ),
         },
+        f"{base}/{{name}}/cancel": {
+            "post": AuthzEndpointMethod(
+                permissions=[f"{prefix}.cancel"],
+                scopes=_scopes_for(api_area, write=True),
+            ),
+        },
+        f"{base}/{{name}}/logs": {
+            "get": AuthzEndpointMethod(
+                permissions=[f"{prefix}.read"],
+                scopes=_scopes_for(api_area, write=False),
+            ),
+        },
+        f"{base}/{{name}}/results": {
+            "get": AuthzEndpointMethod(
+                permissions=[f"{prefix}.read"],
+                scopes=_scopes_for(api_area, write=False),
+            ),
+        },
+        f"{base}/{{name}}/status": {
+            "get": AuthzEndpointMethod(
+                permissions=[f"{prefix}.read"],
+                scopes=_scopes_for(api_area, write=False),
+            ),
+        },
+        f"{base}/{{job}}/results/{{name}}": {
+            "get": AuthzEndpointMethod(
+                permissions=[f"{prefix}.read"],
+                scopes=_scopes_for(api_area, write=False),
+            ),
+        },
+        f"{base}/{{job}}/results/{{name}}/download": {
+            "get": AuthzEndpointMethod(
+                permissions=[f"{prefix}.read"],
+                scopes=_scopes_for(api_area, write=False),
+            ),
+        },
     }
     if include_healthz:
         if healthz_suffix is None:
@@ -142,6 +179,30 @@ def authz_for_workspace_job_collection(
         }
 
     return AuthzContribution(permissions=perms, endpoints=endpoints)
+
+
+def authz_for_workspace_function(
+    api_area: str,
+    function_suffix: str,
+    permission_prefix: str,
+    *,
+    read_only: bool = False,
+) -> AuthzContribution:
+    """Build authz for one standard function route under ``/apis/<area>/v2/workspaces/{workspace}``."""
+    if not function_suffix.startswith("/"):
+        raise ValueError("function_suffix must start with '/'")
+    permission = f"{permission_prefix}.exec"
+    return AuthzContribution(
+        permissions={permission: f"Execute {permission_prefix} function"},
+        endpoints={
+            f"/apis/{api_area}/v2/workspaces/{{workspace}}{function_suffix}": {
+                "post": AuthzEndpointMethod(
+                    permissions=[permission],
+                    scopes=_scopes_for(api_area, write=not read_only),
+                ),
+            }
+        },
+    )
 
 
 def combine_authz_contributions(*contribs: AuthzContribution) -> AuthzContribution:

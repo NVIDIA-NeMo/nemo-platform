@@ -27,6 +27,10 @@ def _write_method(permission: str) -> AuthzEndpointMethod:
     return AuthzEndpointMethod(permissions=[permission], scopes=list(_WRITE_SCOPES))
 
 
+def _read_methods(permission: str) -> dict[str, AuthzEndpointMethod]:
+    return {method: _read_method(permission) for method in ("get", "head")}
+
+
 def _gateway_methods(permission: str) -> dict[str, AuthzEndpointMethod]:
     read_methods = {"get", "head", "options"}
     return {
@@ -73,29 +77,25 @@ class AgentsService(NemoService):
 
         endpoints: dict[str, dict[str, AuthzEndpointMethod]] = {
             f"{base}/agents": {
-                "get": _read_method(agent_list),
+                **_read_methods(agent_list),
                 "post": _write_method(agent_create),
             },
             f"{base}/agents/{{name}}": {
                 "delete": _write_method(agent_delete),
-                "get": _read_method(agent_read),
+                **_read_methods(agent_read),
             },
             f"{base}/agents/{{name}}/-/{{trailing_uri}}": _gateway_methods(gateway_exec),
             f"{base}/deployments": {
-                "get": _read_method(deployment_list),
+                **_read_methods(deployment_list),
                 "post": _write_method(deployment_create),
             },
             f"{base}/deployments/{{name}}": {
                 "delete": _write_method(deployment_delete),
-                "get": _read_method(deployment_read),
+                **_read_methods(deployment_read),
             },
             f"{base}/deployments/{{name}}/-/{{trailing_uri}}": _gateway_methods(gateway_exec),
-            f"{base}/deployments/{{name}}/logs": {
-                "get": _read_method(deployment_read),
-            },
-            f"{base}/deployments/{{name}}/logs/stream": {
-                "get": _read_method(deployment_read),
-            },
+            f"{base}/deployments/{{name}}/logs": _read_methods(deployment_read),
+            f"{base}/deployments/{{name}}/logs/stream": _read_methods(deployment_read),
         }
 
         for job_name in ("evaluate", "evaluate-suite", "optimize-skills", "analyze", "optimize"):
@@ -103,31 +103,21 @@ class AgentsService(NemoService):
             endpoints.update(
                 {
                     jobs_base: {
-                        "get": _read_method(job_list),
+                        **_read_methods(job_list),
                         "post": _write_method(job_create),
                     },
                     f"{jobs_base}/{{name}}": {
                         "delete": _write_method(job_delete),
-                        "get": _read_method(job_read),
+                        **_read_methods(job_read),
                     },
                     f"{jobs_base}/{{name}}/cancel": {
                         "post": _write_method(job_cancel),
                     },
-                    f"{jobs_base}/{{name}}/logs": {
-                        "get": _read_method(job_read),
-                    },
-                    f"{jobs_base}/{{name}}/results": {
-                        "get": _read_method(job_read),
-                    },
-                    f"{jobs_base}/{{name}}/status": {
-                        "get": _read_method(job_read),
-                    },
-                    f"{jobs_base}/{{job}}/results/{{name}}": {
-                        "get": _read_method(job_read),
-                    },
-                    f"{jobs_base}/{{job}}/results/{{name}}/download": {
-                        "get": _read_method(job_read),
-                    },
+                    f"{jobs_base}/{{name}}/logs": _read_methods(job_read),
+                    f"{jobs_base}/{{name}}/results": _read_methods(job_read),
+                    f"{jobs_base}/{{name}}/status": _read_methods(job_read),
+                    f"{jobs_base}/{{job}}/results/{{name}}": _read_methods(job_read),
+                    f"{jobs_base}/{{job}}/results/{{name}}/download": _read_methods(job_read),
                 }
             )
 

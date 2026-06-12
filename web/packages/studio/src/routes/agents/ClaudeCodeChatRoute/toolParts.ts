@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { ThreadAssistantMessagePart, ThreadMessageLike } from '@assistant-ui/react';
+import {
+  CLAUDE_CODE_JOB_PROGRESS_MCP_TOOL_NAME,
+  CLAUDE_CODE_JOB_PROGRESS_TOOL_NAME,
+} from '@studio/routes/agents/ClaudeCodeChatRoute/jobProgressConsts';
 
 type ClaudeCodeToolCallPart = Extract<ThreadAssistantMessagePart, { type: 'tool-call' }>;
 export type ClaudeCodeToolArgs = ClaudeCodeToolCallPart['args'];
@@ -11,8 +15,14 @@ export const CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME = 'ClaudeCodeSubtleToolGroup';
 
 const FILE_CHANGE_TOOL_CALL_NAMES = new Set(['Edit', 'MultiEdit', 'Write']);
 
+export const isClaudeCodeJobProgressToolName = (toolName: string): boolean =>
+  toolName === CLAUDE_CODE_JOB_PROGRESS_TOOL_NAME ||
+  toolName === CLAUDE_CODE_JOB_PROGRESS_MCP_TOOL_NAME;
+
 export const isClaudeCodeSubtleToolCallName = (toolName: string): boolean =>
-  toolName !== CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME && !FILE_CHANGE_TOOL_CALL_NAMES.has(toolName);
+  toolName !== CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME &&
+  !FILE_CHANGE_TOOL_CALL_NAMES.has(toolName) &&
+  !isClaudeCodeJobProgressToolName(toolName);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);

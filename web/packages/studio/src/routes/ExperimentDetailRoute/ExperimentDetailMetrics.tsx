@@ -27,8 +27,8 @@ export const ExperimentDetailMetrics: FC<ExperimentDetailMetricsProps> = ({ expe
   return (
     <div className="flex gap-8">
       <KVPair
-        label="Agent Name"
-        value={experiment?.agent_name || undefined}
+        label="Agent Names"
+        value={experiment?.agent_names?.join(', ') || undefined}
         loading={isLoading}
         orientation="vertical"
       />
