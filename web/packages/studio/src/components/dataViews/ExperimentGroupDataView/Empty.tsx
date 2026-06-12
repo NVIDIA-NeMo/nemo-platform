@@ -16,21 +16,21 @@ import { Bot, ChevronRight, File, FlaskConical, Terminal } from 'lucide-react';
 
 interface EmptyProps {
   experimentGroupName: string;
-  datasetName: string;
 }
 
-export const Empty = ({ experimentGroupName, datasetName }: EmptyProps) => {
+export const Empty = ({ experimentGroupName }: EmptyProps) => {
+  const escapedGroupName = experimentGroupName.replace(/'/g, "'\\''");
   const cliCommand =
     `nemo exp run \\\n` +
-    `  --group "${experimentGroupName}" \\\n` +
-    `  --dataset "${datasetName}" \\\n` +
+    `  --group '${escapedGroupName}' \\\n` +
+    `  --dataset "<dataset-name>" \\\n` +
     `  --evaluators correctness,helpfulness,groundedness,tool-error`;
 
   return (
     <TableEmptyState
       icon={<FlaskConical className="size-12" />}
-      header="No test cases"
-      emptyMessage="Run an experiment to see test case results."
+      header="No Experiments"
+      emptyMessage="Run an experiment to see results for this group."
       actions={
         <div className="w-[560px] border border-base rounded-lg overflow-hidden bg-surface-overlay">
           <TabsRoot defaultValue="cli">

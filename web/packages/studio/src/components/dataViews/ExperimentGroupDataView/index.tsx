@@ -9,7 +9,6 @@ import {
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
-import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
 import { getSortParamWithWhitelist } from '@nemo/common/src/utils/query';
@@ -20,6 +19,7 @@ import type {
   ListExperimentsSort,
 } from '@nemo/sdk/generated/platform/schema';
 import { Text, Tooltip } from '@nvidia/foundations-react-core';
+import { Empty } from '@studio/components/dataViews/ExperimentGroupDataView/Empty';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getExperimentDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
@@ -268,12 +268,10 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
           requestStatus: isGroupLoading || (isLoading && !experimentsData) ? 'loading' : undefined,
         },
         DataViewTableContent: {
-          renderEmptyState: () => (
-            <TableEmptyState
-              header="No Experiments"
-              emptyMessage="This group has no experiments yet."
-            />
-          ),
+          renderEmptyState: ({ hasFiltersApplied, hasSearchApplied }) =>
+            hasFiltersApplied || hasSearchApplied ? null : (
+              <Empty experimentGroupName={experimentGroupName} />
+            ),
         },
       }}
     />

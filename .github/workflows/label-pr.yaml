@@ -14,7 +14,8 @@ jobs:
     name: Apply conventional-commit label
     runs-on: ubuntu-latest
     steps:
-      - uses: ytanikin/pr-conventional-commits@b628c5a234cc32513014b7bfdd1e47b532124d98 # 1.3.0
-        with:
-          task_types: '["feat","fix","docs","style","refactor","perf","test","build","ci","chore","revert","cp"]'
-          add_label: 'true'
+      # Labeling rules live in .github/release-drafter.yml, read from the base
+      # branch via the GitHub API (no checkout needed). Pinned by commit SHA:
+      # the org Actions allowlist matches the literal `uses:` string, so tag
+      # refs like @v7.3.1 are blocked.
+      - uses: release-drafter/release-drafter/autolabeler@693d20e7c1ce1a81d3a41962f85914253b518449 # v7.3.1
