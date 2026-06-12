@@ -48,15 +48,6 @@ const SLIDERS: Array<{
     default: DEFAULT_INFERENCE_PARAMS.top_p,
   },
   {
-    key: 'top_k',
-    label: 'Top K',
-    min: 1,
-    max: 100,
-    step: 1,
-    hint: 'Limits sampling to the top K most likely tokens at each step. Support is provider-dependent.',
-    default: DEFAULT_INFERENCE_PARAMS.top_k,
-  },
-  {
     key: 'max_tokens',
     label: 'Max tokens',
     min: 32,
@@ -83,8 +74,8 @@ export const ParamsPopover: FC<ParamsPopoverProps> = ({ value, onChange }) => {
       slotContent={
         <Stack gap="density-lg" className="w-[380px] p-4">
           <div className="flex items-center justify-between">
-            <Text kind="label/bold/sm">Inference parameters</Text>
-            <Button kind="tertiary" size="small" onClick={() => onChange(DEFAULT_INFERENCE_PARAMS)}>
+            <Text kind="label/bold/lg">Inference parameters</Text>
+            <Button kind="tertiary" onClick={() => onChange(DEFAULT_INFERENCE_PARAMS)}>
               Reset all
             </Button>
           </div>

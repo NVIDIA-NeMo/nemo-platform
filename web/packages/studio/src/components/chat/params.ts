@@ -13,7 +13,6 @@
 export interface InferenceParams {
   temperature: number;
   top_p: number;
-  top_k: number;
   max_tokens: number;
   [key: string]: unknown;
 }
@@ -21,6 +20,5 @@ export interface InferenceParams {
 export const DEFAULT_INFERENCE_PARAMS: InferenceParams = {
   temperature: 0.7,
   top_p: 0.95,
-  top_k: 40,
   max_tokens: 512,
 };

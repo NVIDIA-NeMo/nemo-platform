@@ -97,7 +97,7 @@ export const CompareComposer: FC<CompareComposerProps> = ({
           totalPanelCount === 1 ? '' : 's'
         }…`;
 
-  const showSeeds = !!seedQuestions && seedQuestions.length > 0 && !isAnyRunning;
+  const showSeeds = !!seedQuestions && seedQuestions.length > 0;
 
   return (
     <div className="flex flex-col gap-2">
