@@ -11,7 +11,10 @@ import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
 import { useGetExperiment, useListExperimentSessions } from '@nemo/sdk/generated/platform/api';
-import type { ExperimentSessionResponse } from '@nemo/sdk/generated/platform/schema';
+import type {
+  ExperimentSessionFilter,
+  ExperimentSessionResponse,
+} from '@nemo/sdk/generated/platform/schema';
 import { Text, Tooltip } from '@nvidia/foundations-react-core';
 import { Empty } from '@studio/components/dataViews/ExperimentSessionsDataView/Empty';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
@@ -37,7 +40,7 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
   experimentGroupName,
 }) => {
   const workspace = useWorkspaceFromPath();
-  const dataViewState = useStudioDataViewState({ columnVisibility: {} });
+  const dataViewState = useStudioDataViewState<ExperimentSessionFilter>({ columnVisibility: {} });
   const { data: experiment } = useGetExperiment(workspace, experimentName);
 
   const page = dataViewState.pagination.state.pageIndex + 1;
@@ -46,7 +49,16 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
   const { data: sessionsResponse, isLoading } = useListExperimentSessions(
     workspace,
     experimentName,
-    { page, page_size: pageSize },
+    {
+      page,
+      page_size: pageSize,
+      filter: {
+        ...dataViewState.apiFilter.filter,
+        ...(dataViewState.debouncedSearchBar && {
+          test_case_id: dataViewState.debouncedSearchBar,
+        }),
+      },
+    },
     { query: { placeholderData: keepPreviousData } }
   );
 
@@ -134,6 +146,9 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
     accessor('status', {
       header: 'Status',
       enableSorting: false,
+      meta: {
+        filter: { type: 'text', label: 'Status', placeholder: 'Filter by status' },
+      },
       cell: ({ row }) => <StatusBadge status={mapStatusForBadge(row.original.status)} />,
     }),
     accessor(
@@ -178,6 +193,7 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
     <StudioDataView
       dataViewState={dataViewState}
       makeColumns={makeColumns}
+      searchField="test_case_id"
       toolbarSlotEnd={
         <EditColumnsMenu
           kind="secondary"
