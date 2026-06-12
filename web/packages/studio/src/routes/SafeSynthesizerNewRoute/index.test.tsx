@@ -793,6 +793,9 @@ describe('SafeSynthesizerNewRoute', () => {
 
   describe('Form validation errors', () => {
     it('should have form validation error handling configured', async () => {
+      // Remove any lingering vi.doMock for the logger (left by Feature flag tests) so
+      // the component gets the real logger and we can assert via console.error.
+      vi.doUnmock('@studio/util/logger');
       vi.doMock('@studio/constants/environment', () => ({
         SAFE_SYNTHESIZER_ENABLED: true,
         OTEL_SERVICE_NAME: 'test-service',
