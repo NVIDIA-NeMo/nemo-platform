@@ -3,7 +3,7 @@
 
 import { LoadingButton } from '@nemo/common/src/components/LoadingButton';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import { useAgentsCreateAgent } from '@nemo/sdk/generated/agents/api';
+import { getAgentsListAgentsQueryKey, useAgentsCreateAgent } from '@nemo/sdk/generated/agents/api';
 import type { Agent } from '@nemo/sdk/generated/agents/schema/Agent';
 import { useModelsListModels } from '@nemo/sdk/generated/platform/api';
 import { PageHeader, Stack } from '@nvidia/foundations-react-core';
@@ -26,6 +26,7 @@ import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { CreateDeploymentModal } from '@studio/routes/agents/AgentDeploymentsListRoute/CreateDeploymentModal';
 import { getAgentDetailRoute, getAgentsListRoute } from '@studio/routes/utils';
 import { pickDefaultModelName } from '@studio/util/buildSuggestedModelOptions';
+import { useQueryClient } from '@tanstack/react-query';
 import { type FC, useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
@@ -77,6 +78,7 @@ export const AgentsListRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
   const navigate = useNavigate();
   const toast = useToast();
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [createDeploymentAgent, setCreateDeploymentAgent] = useState<string | null>(null);
   const { [ROUTE_PARAMS.agentName]: agentNameParam } = useParams<{ agentName?: string }>();
@@ -99,6 +101,8 @@ export const AgentsListRoute: FC = () => {
     mutation: {
       onSuccess: (agent) => {
         toast.success(`Agent "${agent.name}" created`);
+        // Refresh the table immediately instead of waiting for its poll interval.
+        void queryClient.invalidateQueries({ queryKey: getAgentsListAgentsQueryKey(workspace) });
         const priorExampleAgentExists = loadedAgents.some(
           (existing) =>
             !!existing.name && existing.name !== agent.name && isExampleAgentName(existing.name)

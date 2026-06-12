@@ -104,6 +104,45 @@ describe('AgentsListRoute', () => {
     expect(config.llms.llm.model_name).toBe('nvidia-nemotron-nano-9b-v2');
   });
 
+  it('refetches the agents list after creating so the new agent appears immediately', async () => {
+    const user = userEvent.setup();
+    mockModels(['nvidia-nemotron-nano-9b-v2']);
+    // Returning user → stays on the list, so the table query is still mounted.
+    markExampleAgentIntroShown();
+
+    let agentListFetches = 0;
+    server.use(
+      http.get(CREATE_AGENT_URL, () => {
+        agentListFetches += 1;
+        return HttpResponse.json({
+          data: [],
+          pagination: {
+            page: 1,
+            page_size: 50,
+            current_page_size: 0,
+            total_pages: 1,
+            total_results: 0,
+          },
+          sort: '-created_at',
+          filter: null,
+        });
+      }),
+      http.post(CREATE_AGENT_URL, async ({ request, params }) => {
+        const body = (await request.json()) as { name?: string };
+        return HttpResponse.json({ ...body, workspace: params['workspace'] });
+      })
+    );
+
+    renderList();
+    await waitFor(() => expect(agentListFetches).toBeGreaterThan(0));
+    const before = agentListFetches;
+
+    await clickCreateOnceReady(user);
+
+    // Create invalidates the list, triggering an immediate refetch (not the 15s poll).
+    await waitFor(() => expect(agentListFetches).toBeGreaterThan(before));
+  });
+
   it('does not reopen the sidepanel/intro for a later example agent in the same session', async () => {
     const user = userEvent.setup();
     mockModels(['nvidia-nemotron-nano-9b-v2']);
