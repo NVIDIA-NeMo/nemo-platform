@@ -76,7 +76,7 @@ class TestJobs:
                             "container": {
                                 "command": ["string"],
                                 "entrypoint": ["string"],
-                                "image": "image",
+                                "image": "x",
                             },
                             "profile": "profile",
                             "provider": "cpu",
@@ -770,7 +770,7 @@ class TestAsyncJobs:
                             "container": {
                                 "command": ["string"],
                                 "entrypoint": ["string"],
-                                "image": "image",
+                                "image": "x",
                             },
                             "profile": "profile",
                             "provider": "cpu",
