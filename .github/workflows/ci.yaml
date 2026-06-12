@@ -78,7 +78,7 @@ jobs:
           make docker-print TARGET=docker-gpu
           make docker-print TARGET=docker-auditor
           make docker-print TARGET=docker-python-base
-          make docker-print TARGET=gpu-wheels
+          make docker-print TARGET=nmp-automodel-gpu-wheels
           make docker-print TARGET=nmp-automodel
           make docker-print TARGET=nmp-unsloth
 

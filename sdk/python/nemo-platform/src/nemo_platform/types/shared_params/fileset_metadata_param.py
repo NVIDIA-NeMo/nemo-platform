@@ -17,33 +17,31 @@
 
 from __future__ import annotations
 
-from typing import Dict
 from typing_extensions import TypedDict
 
-from .fileset_purpose import FilesetPurpose
-from ..shared_params.fileset_metadata_param import FilesetMetadataParam
+from .model_metadata_content import ModelMetadataContent
+from .dataset_metadata_content import DatasetMetadataContent
 
-__all__ = ["FilesetUpdateParams"]
+__all__ = ["FilesetMetadataParam"]
 
 
-class FilesetUpdateParams(TypedDict, total=False):
-    workspace: str
-
-    custom_fields: Dict[str, object]
-    """Custom fields for the fileset."""
-
-    description: str
-    """The description of the fileset."""
-
-    metadata: FilesetMetadataParam
+class FilesetMetadataParam(TypedDict, total=False):
     """Tagged metadata container - the key indicates the type.
 
-    Example: metadata = FilesetMetadata( dataset=DatasetMetadataContent(
-    schema={"columns": ["id", "name"]}, ) )
+    Example:
+        metadata = FilesetMetadata(
+            dataset=DatasetMetadataContent(
+                schema={"columns": ["id", "name"]},
+            )
+        )
     """
 
-    project: str
-    """The name of the project associated with this fileset."""
+    dataset: DatasetMetadataContent
+    """Content for dataset-type filesets."""
 
-    purpose: FilesetPurpose
-    """The purpose of the fileset."""
+    model: ModelMetadataContent
+    """Content for model-type filesets.
+
+    Contains tool calling configuration that is merged into the ModelSpec during
+    checkpoint analysis.
+    """

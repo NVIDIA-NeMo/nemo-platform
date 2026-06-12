@@ -2,7 +2,6 @@
 #######
 # NMP GPU Base Image (Python 3.12)
 # Base for GPU task containers that require Python 3.12
-# (e.g. nmp-customizer-tasks)
 #######
 
 ARG CUDA_VERSION=12.8.1

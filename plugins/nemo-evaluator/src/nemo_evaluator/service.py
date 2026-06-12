@@ -11,6 +11,12 @@ from fastapi import APIRouter
 from nemo_evaluator.core import say_hello
 from nemo_evaluator.jobs.evaluate import EvaluateJob
 from nemo_evaluator.schema import HelloResponse
+from nemo_platform_plugin.authz import (
+    AuthzContribution,
+    AuthzEndpointMethod,
+    authz_for_workspace_job_collection,
+    combine_authz_contributions,
+)
 from nemo_platform_plugin.jobs.routes import add_job_routes
 from nemo_platform_plugin.service import NemoService, RouterSpec
 
@@ -20,6 +26,26 @@ class EvaluatorPluginService(NemoService):
 
     name: ClassVar[str] = "evaluator"
     dependencies: ClassVar[list[str]] = ["nemo-evaluator-sdk"]
+
+    @classmethod
+    def get_authz_contribution(cls) -> AuthzContribution:
+        return combine_authz_contributions(
+            AuthzContribution(
+                endpoints={
+                    f"/apis/{cls.name}/v1/healthz": {
+                        "get": AuthzEndpointMethod(permissions=[], scopes=[]),
+                    },
+                    f"/apis/{cls.name}/v1/hello/{{name}}": {
+                        "get": AuthzEndpointMethod(permissions=[], scopes=[]),
+                    },
+                },
+            ),
+            authz_for_workspace_job_collection(
+                api_area=cls.name,
+                collection_suffix="/evaluate/jobs",
+                permission_prefix=f"{cls.name}.jobs",
+            ),
+        )
 
     def get_routers(self) -> list[RouterSpec]:
         router = APIRouter()

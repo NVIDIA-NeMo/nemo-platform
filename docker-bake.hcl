@@ -18,7 +18,7 @@ variable "IMAGE_REGISTRY" {
   default = "my-registry"
 }
 
-# Registry where pinned base images are published (nmp-python-base, nmp-customizer-tasks-base, etc.)
+# Registry where pinned base images are published.
 # In CI this matches CI_REGISTRY_IMAGE; locally override if needed.
 variable "BASE_REGISTRY" {
   default = "my-registry"
@@ -36,19 +36,11 @@ variable "PYTHON_DEV_BASE_TARGET" {
   default = ""
 }
 
-variable "CUSTOMIZER_TASKS_BASE_CONTEXT" {
-  default = ""
-}
-
 variable "AUTOMODEL_BASE_CONTEXT" {
   default = ""
 }
 
 variable "USE_LOCAL_WHEELS" {
-  default = ""
-}
-
-variable "FAISS_WHEEL_CONTEXT" {
   default = ""
 }
 
@@ -86,11 +78,6 @@ variable "BASE_TAG_AUTOMODEL" {
   default = "dbdc61fdb117f48bc9569b4274afe836cf0de030"
 }
 
-# Pin for nmp-customizer-tasks-base (built by nmp-customizer-tasks-base-builder)
-variable "BASE_TAG_CUSTOMIZER_TASKS" {
-  default = "dbdc61fdb117f48bc9569b4274afe836cf0de030"
-}
-
 # The tag for base images if needed
 variable "WHEELS_TAG" {
   default = "3fd6986ff173b598446ffac06d9be3f84b482495"
@@ -124,14 +111,6 @@ variable "SAFE_SYNTHESIZER_CONTAINER_VARIANT" {
   default = "cu129"
 }
 
-variable "FAISS_VERSION" {
-  default = "v1.9.0"
-}
-
-variable "FAISS_CUDA_ARCHS" {
-  default = "75;80;86;90"
-}
-
 # Versions for the mamba wheel builder.
 variable "MAMBA_22_COMMIT" {
   default = "6b32be06d026e170b3fdaf3ae6282c5a6ff57b06"
@@ -143,11 +122,6 @@ variable "MAMBA_23_COMMIT" {
 
 variable "CAUSAL_CONV1D_VERSION" {
   default = "v1.5.3"
-}
-
-function "get_faiss_wheel_image" {
-  params = []
-  result = "${WHEELS_REGISTRY}/faiss-gpu-wheel:${WHEELS_TAG}"
 }
 
 function "get_causal_conv1d_wheel_image" {
@@ -182,19 +156,9 @@ function "python_dev_base_target" {
   result = notequal(PYTHON_DEV_BASE_TARGET, "") ? PYTHON_DEV_BASE_TARGET : notequal(USE_PREBUILT_BASES, "") ? "nmp-python-dev-base" : "nmp-python-dev-base-builder"
 }
 
-function "customizer_tasks_base_context" {
-  params = []
-  result = notequal(CUSTOMIZER_TASKS_BASE_CONTEXT, "") ? CUSTOMIZER_TASKS_BASE_CONTEXT : notequal(USE_PREBUILT_BASES, "") ? "docker-image://${BASE_REGISTRY}/nmp-customizer-tasks-base:${BASE_TAG_CUSTOMIZER_TASKS}" : "target:nmp-customizer-tasks-base-builder"
-}
-
 function "automodel_base_context" {
   params = []
   result = notequal(AUTOMODEL_BASE_CONTEXT, "") ? AUTOMODEL_BASE_CONTEXT : notequal(USE_PREBUILT_BASES, "") ? "docker-image://${BASE_REGISTRY}/nmp-automodel-base:${BASE_TAG_AUTOMODEL}" : "target:nmp-automodel-base-builder"
-}
-
-function "faiss_wheel_context" {
-  params = []
-  result = notequal(FAISS_WHEEL_CONTEXT, "") ? FAISS_WHEEL_CONTEXT : notequal(USE_LOCAL_WHEELS, "") ? "target:faiss-gpu-wheel" : "docker-image://${get_faiss_wheel_image()}"
 }
 
 function "causal_conv1d_wheel_context" {
@@ -259,15 +223,6 @@ group "docker-auditor" {
   ]
 }
 
-# Legacy groups for backward compatibility
-group "docker-amd64-only" {
-  targets = [
-    "customizer-rl-docker",
-    "customizer-tasks-docker",
-    "docker-gpu"
-  ]
-}
-
 group "all-multi-platform" {
   targets = [
     "docker-multi-platform",
@@ -277,7 +232,6 @@ group "all-multi-platform" {
 group "docker-multi-platform" {
   targets = [
     "docker-cpu",
-    "customizer-megatron-docker",
     "auditor-tasks-docker",
   ]
 }
@@ -298,7 +252,7 @@ group "all-arm64" {
 group "all-amd64" {
   targets = [
     "docker-multi-platform",
-    "docker-amd64-only",
+    "docker-gpu",
   ]
 }
 
@@ -306,7 +260,6 @@ group "docker" {
   targets = [
     "docker-cpu",
     "docker-gpu",
-    "docker-customizer",
     "docker-auditor",
   ]
 }
@@ -332,14 +285,6 @@ group "docker-gpu" {
   ]
 }
 
-group "gpu-wheels" {
-  targets = [
-    "faiss-gpu-wheel",
-    "causal-conv1d-wheel",
-    "mamba-ssm-wheel",
-  ]
-}
-
 group "nmp-automodel-gpu-wheels" {
   targets = [
     "causal-conv1d-wheel",
@@ -360,17 +305,6 @@ group "nmp-automodel" {
 group "nmp-unsloth" {
   targets = [
     "nmp-unsloth-training",
-  ]
-}
-
-# Final Customizer Training Images - WARNING: No not build base CUDA images using shared buildkit
-# Only build the final image.  All base image builds should happen using arch specific runners.
-group "docker-customizer" {
-  targets = [
-    "customizer-rl-docker",
-    "customizer-rl-smoke-test",
-    "customizer-tasks-docker",
-    "customizer-tasks-smoke-test",
   ]
 }
 
@@ -561,63 +495,6 @@ target "nmp-cpu-tasks-docker" {
   platforms  = get_platforms()
 }
 
-# Safe Synthesizer Tasks - GPU-intensive Safe Synthesizer task execution
-
-# NMP Customizer Tasks - GPU Tasks for Customizer (transformers>=5.0.0, mamba-ssm 2.3.0)
-
-# Builder for the Customizer Tasks base image
-target "nmp-customizer-tasks-base-builder" {
-  target     = "nmp-customizer-tasks-base-builder"
-  context    = "."
-  dockerfile = "docker/Dockerfile.nmp-customizer-tasks"
-  cache-to   = maybe_registry_cache_to("nmp-customizer-tasks-base")
-  cache-from = maybe_registry_cache_from("nmp-customizer-tasks-base")
-  tags       = base_tags("nmp-customizer-tasks-base")
-  output     = image_output()
-  contexts = {
-    causal-conv1d-wheel-image = causal_conv1d_wheel_context()
-    faiss-wheel-image         = faiss_wheel_context()
-    mamba-ssm-wheel-image     = mamba_ssm_wheel_context()
-    nmp-gpu-base              = "target:nmp-gpu-base"
-    nmp-workspace             = "target:nmp-workspace"
-  }
-  platforms  = ["linux/amd64"]
-}
-
-# The base image for Customizer Tasks
-target "nmp-customizer-tasks-base" {
-  target     = "nmp-customizer-tasks-base-builder"
-  context    = "."
-  contexts = {
-    causal-conv1d-wheel-image = causal_conv1d_wheel_context()
-    faiss-wheel-image         = faiss_wheel_context()
-    mamba-ssm-wheel-image     = mamba_ssm_wheel_context()
-    nmp-gpu-base              = "target:nmp-gpu-base"
-    nmp-workspace             = "target:nmp-workspace"
-  }
-  dockerfile = "docker/Dockerfile.nmp-customizer-tasks"
-  platforms  = get_platforms()
-}
-
-
-# FAISS GPU Wheel Builder
-# Clones FAISS from GitHub and produces a Python wheel with CUDA support.
-# The wheel lives at /faiss/wheels/*.whl inside the image.
-target "faiss-gpu-wheel" {
-  target     = "faiss-gpu-wheel"
-  context    = "."
-  dockerfile = "docker/base/Dockerfile.faiss-gpu-wheel"
-  cache-to   = maybe_registry_cache_to("faiss-gpu-wheel")
-  cache-from = maybe_registry_cache_from("faiss-gpu-wheel")
-  tags       = wheel_tags("faiss-gpu-wheel")
-  output     = image_output()
-  args = {
-    FAISS_VERSION = FAISS_VERSION
-    CUDA_ARCHS    = FAISS_CUDA_ARCHS
-  }
-  platforms = get_platforms()
-}
-
 # Mamba Wheel Builders
 # Builds Python wheels for mamba-ssm and causal-conv1d in parallel.
 # Both only ship source distributions on PyPI; this pre-builds them for
@@ -803,133 +680,6 @@ target "buildkit-test" {
   no-cache-filter = ["buildkit-test"]
   platforms       = get_platforms()
 }
-
-# Customizer
-
-# Customizer base targets (used as context injection)
-target "customizer-megatron-base" {
-  target     = "customizer-megatron-base"
-  context    = "."
-  dockerfile = "docker/Dockerfile.nmp-customizer"
-  platforms  = get_platforms()
-}
-
-target "customizer-rl-shared-base" {
-  target     = "customizer-rl-shared-base"
-  context    = "."
-  dockerfile = "docker/Dockerfile.nmp-customizer"
-  # nemo-rl only for amd64 at the moment
-  platforms  = ["linux/amd64"]
-}
-
-target "customizer-combined-base" {
-  target     = "customizer-combined-base"
-  context    = "."
-  dockerfile = "docker/Dockerfile.nmp-customizer"
-  platforms  = ["linux/amd64"]
-}
-
-# Customizer Base Build Targets
-
-# Customizer Final Images - base injected via contexts
-target "customizer-combined-docker" {
-  target     = "customizer-runtime"
-  context    = "."
-  dockerfile = "docker/Dockerfile.nmp-customizer"
-  contexts = {
-    nmp-workspace   = "target:nmp-workspace"
-    customizer-base = "target:customizer-combined-base"
-  }
-  cache-to   = maybe_registry_cache_to("customizer-combined")
-  cache-from = maybe_registry_cache_from("customizer-combined")
-  tags       = sha_and_maybe_latest_tags("customizer-combined")
-  output     = image_output()
-  platforms  = ["linux/amd64"]
-}
-
-target "customizer-megatron-docker" {
-  target     = "customizer-runtime"
-  context    = "."
-  dockerfile = "docker/Dockerfile.nmp-customizer"
-  contexts = {
-    nmp-workspace   = "target:nmp-workspace"
-    customizer-base = "target:customizer-megatron-base"
-  }
-  cache-to   = maybe_registry_cache_to("customizer-megatron")
-  cache-from = maybe_registry_cache_from("customizer-megatron")
-  tags       = sha_and_maybe_latest_tags("customizer-megatron")
-  output     = image_output()
-  platforms  = get_platforms()
-}
-
-target "customizer-tasks-smoke-test" {
-  target     = "smoke-test"
-  context    = "."
-  dockerfile = "docker/Dockerfile.nmp-customizer-tasks"
-  contexts = {
-    nmp-customizer-tasks-base = customizer_tasks_base_context()
-    causal-conv1d-wheel-image = causal_conv1d_wheel_context()
-    faiss-wheel-image         = faiss_wheel_context()
-    mamba-ssm-wheel-image     = mamba_ssm_wheel_context()
-    nmp-gpu-base              = "target:nmp-gpu-base"
-    nmp-workspace             = "target:nmp-workspace"
-  }
-  cache-from = maybe_registry_cache_from("customizer-tasks")
-  output     = ["type=cacheonly"]
-  platforms  = ["linux/amd64"]
-}
-
-target "customizer-tasks-docker" {
-  target     = "runtime"
-  context    = "."
-  dockerfile = "docker/Dockerfile.nmp-customizer-tasks"
-  contexts = {
-    nmp-customizer-tasks-base = customizer_tasks_base_context()
-    causal-conv1d-wheel-image = causal_conv1d_wheel_context()
-    faiss-wheel-image         = faiss_wheel_context()
-    mamba-ssm-wheel-image     = mamba_ssm_wheel_context()
-    nmp-gpu-base              = "target:nmp-gpu-base"
-    nmp-workspace             = "target:nmp-workspace"
-  }
-  cache-to   = maybe_registry_cache_to("customizer-tasks")
-  cache-from = maybe_registry_cache_from("customizer-tasks")
-  tags       = sha_and_maybe_latest_tags("customizer-tasks")
-  output     = image_output()
-  platforms  = ["linux/amd64"]
-}
-
-target "customizer-rl-docker" {
-  target     = "customizer-runtime"
-  context    = "."
-  dockerfile = "docker/Dockerfile.nmp-customizer"
-  contexts = {
-    nmp-workspace   = "target:nmp-workspace"
-    customizer-base = "target:customizer-rl-shared-base"
-  }
-  cache-to   = maybe_registry_cache_to("customizer-rl")
-  cache-from = maybe_registry_cache_from("customizer-rl")
-  tags       = sha_and_maybe_latest_tags("customizer-rl")
-  output     = image_output()
-  # only amd64 for now, until the next release of nemo-rl
-  platforms  = ["linux/amd64"]
-}
-
-target "customizer-rl-smoke-test" {
-  target     = "smoke-test"
-  context    = "."
-  dockerfile = "docker/Dockerfile.nmp-customizer"
-  contexts = {
-    nmp-workspace   = "target:nmp-workspace"
-    customizer-base = "target:customizer-rl-shared-base"
-  }
-  args = {
-    SMOKE_MARKER = "smoke_customizer_rl"
-  }
-  cache-from = maybe_registry_cache_from("customizer-rl")
-  output     = ["type=cacheonly"]
-  platforms  = ["linux/amd64"]
-}
-
 
 # Automodel and Unsloth
 

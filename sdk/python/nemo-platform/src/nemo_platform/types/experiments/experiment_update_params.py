@@ -28,12 +28,6 @@ __all__ = ["ExperimentUpdateParams"]
 class ExperimentUpdateParams(TypedDict, total=False):
     workspace: str
 
-    agent_name: Required[str]
-    """Name of the agent under test."""
-
-    agent_version: Required[str]
-    """Version of the agent under test."""
-
     dataset_name: Required[str]
     """Producer-supplied dataset name."""
 

@@ -8,5 +8,5 @@ Examples:
 ```bash
 docker buildx bake --print docker-cpu
 docker buildx bake --print nmp-automodel
-docker buildx bake --print docker-customizer
+docker buildx bake --print nmp-unsloth
 ```

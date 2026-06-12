@@ -27,12 +27,6 @@ __all__ = ["ExperimentFilterParam"]
 class ExperimentFilterParam(TypedDict, total=False):
     """Filter for listing Experiments."""
 
-    agent_name: str
-    """Filter experiments by agent name."""
-
-    agent_version: str
-    """Filter experiments by agent version."""
-
     created_at: DatetimeFilter
     """
     Filter experiments by creation timestamp; supports `$gte` and `$lte` for ranges.

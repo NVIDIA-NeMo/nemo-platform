@@ -35,6 +35,8 @@ ARG USERNAME=nemo
 ARG USER_UID=1000
 ARG USER_GID=1000
 
+ENV UV_HTTP_TIMEOUT=120
+
 COPY --from=uv /uv /uvx /usr/local/bin/
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
