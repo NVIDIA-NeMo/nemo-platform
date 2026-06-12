@@ -21,7 +21,7 @@ export const ExperimentDetailRoute: FC = () => {
 
   useBreadcrumbs({
     items: [
-      { href: getExperimentRoute(workspace), slotLabel: 'Experiments' },
+      { href: getExperimentRoute(workspace), slotLabel: 'Experiment Groups' },
       {
         href: getExperimentGroupDetailRoute(workspace, experimentGroupName),
         slotLabel: experimentGroupName,

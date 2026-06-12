@@ -130,7 +130,7 @@ export const ExperimentGroupCreateModal: FC<ExperimentGroupCreateModalProps> = (
     >
       <TabsRoot defaultValue="create" className="w-full min-w-0">
         <TabsList>
-          <TabsTrigger value="create">Create experiment</TabsTrigger>
+          <TabsTrigger value="create">Create group</TabsTrigger>
           <TabsTrigger value="coding-agent">Coding agent</TabsTrigger>
           <TabsTrigger value="cli">CLI command</TabsTrigger>
         </TabsList>
