@@ -32,7 +32,6 @@ from .shared import (
     PlatformJobLog as PlatformJobLog,
     ToolCallConfig as ToolCallConfig,
     APIEndpointData as APIEndpointData,
-    FilesetMetadata as FilesetMetadata,
     FileStorageType as FileStorageType,
     InferenceParams as InferenceParams,
     LinearLayerSpec as LinearLayerSpec,

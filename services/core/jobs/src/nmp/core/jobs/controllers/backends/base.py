@@ -94,7 +94,7 @@ class JobExecutionProfileConfig(BaseModel):
     default_task_image: str | None = Field(
         default=None,
         description="Default container image for job task pods. Used when a job step omits container.image. "
-        "On Kubernetes this is typically the platform API image. When unset, container.image is required.",
+        "When unset, falls back to the platform CPU tasks image (platform.image_registry/nmp-cpu-tasks:platform.image_tag).",
     )
     env: dict[str, str] = Field(
         default_factory=dict,
