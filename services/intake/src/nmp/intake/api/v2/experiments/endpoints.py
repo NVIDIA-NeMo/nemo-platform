@@ -286,8 +286,6 @@ async def create_experiment(
         workspace=workspace,
         name=body.name,
         experiment_group_id=body.experiment_group_id,
-        agent_name=body.agent_name,
-        agent_version=body.agent_version,
         dataset_name=body.dataset_name,
         dataset_version=body.dataset_version,
         source_link=body.source_link,
@@ -312,8 +310,9 @@ async def create_experiment(
     openapi_extra=generate_openapi_extra_params(
         filter_schema=ExperimentFilter,
         filter_description=(
-            "Filter experiments by name, experiment_group_id, agent_name, agent_version, "
-            "dataset_name, dataset_version, created_by, created_at, or updated_at."
+            "Filter experiments by name, experiment_group_id, "
+            "dataset_name, dataset_version, created_by, created_at, or updated_at. "
+            "Pass is_deleted=true to return only soft-deleted experiments; omit to see only live ones."
         ),
     ),
 )
@@ -372,10 +371,10 @@ async def get_experiment(
     return response
 
 
-# Identity and the dataset/agent it was run against are fixed for the life of an
+# Identity and the dataset it was run against are fixed for the life of an
 # Experiment (see the ingest invariants); changing them means it's a different
 # Experiment. PUT may only edit group membership, source link, summary, description, metadata.
-_IMMUTABLE_EXPERIMENT_FIELDS = ("name", "agent_name", "agent_version", "dataset_name", "dataset_version")
+_IMMUTABLE_EXPERIMENT_FIELDS = ("name", "dataset_name", "dataset_version")
 
 
 @router.put(
@@ -672,6 +671,8 @@ async def _hydrate_rollups(
 def _apply_rollup(response: ExperimentResponse, rollup: ExperimentRollup) -> None:
     response.evaluator_names = rollup.evaluator_names
     response.model_names = rollup.model_names
+    response.agent_names = rollup.agent_names
+    response.agent_versions = rollup.agent_versions
     response.aggregate_scores = {name: _aggregate(score) for name, score in rollup.evaluator_scores.items()} or None
     response.run_count = rollup.run_count
     response.cost_usd = _aggregate(rollup.cost_usd) if rollup.cost_usd is not None else None

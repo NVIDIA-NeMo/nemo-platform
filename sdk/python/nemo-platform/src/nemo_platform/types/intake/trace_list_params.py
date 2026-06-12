@@ -30,8 +30,8 @@ class TraceListParams(TypedDict, total=False):
 
     filter: TraceFilterParam
     """
-    Filter root-span-backed traces by id, session_id, rolled-up status, root span
-    started_at, and root-span evaluation context fields.
+    Filter root-span-backed traces by id, session_id, root status, root span
+    started_at, experiment_id, and test_case_id.
     """
 
     mode: Literal["summary", "detailed"]

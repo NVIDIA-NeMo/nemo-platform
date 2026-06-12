@@ -3731,9 +3731,9 @@ paths:
         explode: true
         schema:
           $ref: '#/components/schemas/ExperimentFilter'
-        description: Filter experiments by name, experiment_group_id, agent_name,
-          agent_version, dataset_name, dataset_version, created_by, created_at, or
-          updated_at.
+        description: Filter experiments by name, experiment_group_id, dataset_name,
+          dataset_version, created_by, created_at, or updated_at. Pass is_deleted=true
+          to return only soft-deleted experiments; omit to see only live ones.
       responses:
         '200':
           description: Successful Response
@@ -4301,8 +4301,8 @@ paths:
         explode: true
         schema:
           $ref: '#/components/schemas/TraceFilter'
-        description: Filter root-span-backed traces by id, session_id, rolled-up status,
-          root span started_at, and root-span evaluation context fields.
+        description: Filter root-span-backed traces by id, session_id, root status,
+          root span started_at, experiment_id, and test_case_id.
       responses:
         '200':
           description: Successful Response
@@ -8597,8 +8597,9 @@ components:
     ContainerSpec:
       properties:
         image:
-          type: string
           title: Image
+          type: string
+          minLength: 1
         entrypoint:
           items:
             type: string
@@ -8610,8 +8611,6 @@ components:
           type: array
           title: Command
       type: object
-      required:
-      - image
       title: ContainerSpec
       description: 'Specification for a container configuration.
 
@@ -9355,6 +9354,13 @@ components:
           title: Launcher Tool Path
           description: Path to the jobs launcher tool
           default: /tools/jobs-launcher
+        default_task_image:
+          title: Default Task Image
+          description: Default container image for job task pods. Used when a job
+            step omits container.image. When unset, falls back to the platform CPU
+            tasks image (platform.image_registry/nmp-cpu-tasks:platform.image_tag).
+          type: string
+          minLength: 1
         env:
           additionalProperties:
             type: string
@@ -9653,15 +9659,6 @@ components:
         evaluation_run_id:
           title: Evaluation Run Id
           type: string
-        dataset_id:
-          title: Dataset Id
-          type: string
-        dataset_name:
-          title: Dataset Name
-          type: string
-        dataset_version:
-          title: Dataset Version
-          type: string
         test_case_id:
           title: Test Case Id
           type: string
@@ -9934,14 +9931,6 @@ components:
           description: Filter experiments by owning group id.
           title: Experiment Group Id
           type: string
-        agent_name:
-          description: Filter experiments by agent name.
-          title: Agent Name
-          type: string
-        agent_version:
-          description: Filter experiments by agent version.
-          title: Agent Version
-          type: string
         dataset_name:
           description: Filter experiments by dataset name.
           title: Dataset Name
@@ -10066,14 +10055,6 @@ components:
           title: Experiment Group Id
           description: "Entity id of the owning ExperimentGroup. Required \u2014 the\
             \ group must already exist."
-        agent_name:
-          type: string
-          title: Agent Name
-          description: Name of the agent under test.
-        agent_version:
-          type: string
-          title: Agent Version
-          description: Version of the agent under test.
         dataset_name:
           type: string
           title: Dataset Name
@@ -10106,8 +10087,6 @@ components:
       required:
       - name
       - experiment_group_id
-      - agent_name
-      - agent_version
       - dataset_name
       title: ExperimentRequest
       description: Request body for creating an Experiment.
@@ -10127,12 +10106,6 @@ components:
           title: Experiment Group Id
           description: Entity id of the owning ExperimentGroup. Required for every
             Experiment.
-        agent_name:
-          type: string
-          title: Agent Name
-        agent_version:
-          type: string
-          title: Agent Version
         dataset_name:
           type: string
           title: Dataset Name
@@ -10175,6 +10148,22 @@ components:
           title: Model Names
           description: Distinct model names observed across ingested sessions for
             this experiment.
+        agent_names:
+          items:
+            type: string
+          type: array
+          uniqueItems: true
+          title: Agent Names
+          description: Distinct agent names observed across ingested sessions for
+            this experiment.
+        agent_versions:
+          items:
+            type: string
+          type: array
+          uniqueItems: true
+          title: Agent Versions
+          description: Distinct agent versions observed across ingested sessions for
+            this experiment.
         aggregate_scores:
           title: Aggregate Scores
           additionalProperties:
@@ -10196,8 +10185,6 @@ components:
       - name
       - workspace
       - experiment_group_id
-      - agent_name
-      - agent_version
       - dataset_name
       title: ExperimentResponse
       description: Experiment as served by the API, including ClickHouse-hydrated
@@ -10315,9 +10302,9 @@ components:
       - status
       title: ExperimentSessionResponse
       description: "One ingested session of an Experiment \u2014 a single test case\
-        \ execution.\n\nHydrated from ClickHouse at read time by joining ``experiment_sessions``\
-        \ with\nthe session's root span (for status, input, tokens, cost) and\n``evaluator_results``\
-        \ (for per-evaluator session-mean scores)."
+        \ execution.\n\nHydrated from ClickHouse at read time by reading root/session\
+        \ membership from\n``trace_index`` and joining page-bounded span/evaluator\
+        \ rollups."
     ExperimentSessionResponsesPage:
       properties:
         data:
@@ -11790,6 +11777,13 @@ components:
           title: Launcher Tool Path
           description: Path to the jobs launcher tool
           default: /tools/jobs-launcher
+        default_task_image:
+          title: Default Task Image
+          description: Default container image for job task pods. Used when a job
+            step omits container.image. When unset, falls back to the platform CPU
+            tasks image (platform.image_registry/nmp-cpu-tasks:platform.image_tag).
+          type: string
+          minLength: 1
         env:
           additionalProperties:
             type: string
@@ -11907,6 +11901,13 @@ components:
           title: Launcher Tool Path
           description: Path to the jobs launcher tool
           default: /tools/jobs-launcher
+        default_task_image:
+          title: Default Task Image
+          description: Default container image for job task pods. Used when a job
+            step omits container.image. When unset, falls back to the platform CPU
+            tasks image (platform.image_registry/nmp-cpu-tasks:platform.image_tag).
+          type: string
+          minLength: 1
         env:
           additionalProperties:
             type: string
@@ -16131,12 +16132,6 @@ components:
         prompt_id:
           title: Prompt Id
           type: string
-        prompt_name:
-          title: Prompt Name
-          type: string
-        prompt_version:
-          title: Prompt Version
-          type: string
         agent_id:
           title: Agent Id
           type: string
@@ -16215,15 +16210,6 @@ components:
           type: string
         evaluation_run_id:
           title: Evaluation Run Id
-          type: string
-        dataset_id:
-          title: Dataset Id
-          type: string
-        dataset_name:
-          title: Dataset Name
-          type: string
-        dataset_version:
-          title: Dataset Version
           type: string
         test_case_id:
           title: Test Case Id
@@ -16571,6 +16557,13 @@ components:
           title: Launcher Tool Path
           description: Path to the jobs launcher tool
           default: /tools/jobs-launcher
+        default_task_image:
+          title: Default Task Image
+          description: Default container image for job task pods. Used when a job
+            step omits container.image. When unset, falls back to the platform CPU
+            tasks image (platform.image_registry/nmp-cpu-tasks:platform.image_tag).
+          type: string
+          minLength: 1
         env:
           additionalProperties:
             type: string
@@ -16763,8 +16756,8 @@ components:
         name:
           title: Name
           type: string
-        evaluation_context:
-          $ref: '#/components/schemas/SpanEvaluationContext'
+        experiment_context:
+          $ref: '#/components/schemas/ExperimentContext'
         started_at:
           type: string
           format: date-time
@@ -16832,37 +16825,17 @@ components:
         status:
           allOf:
           - $ref: '#/components/schemas/SpanStatus'
-          description: Filter by rolled-up trace status.
+          description: Filter by root span status.
         started_at:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
           description: Filter by root span start timestamp.
-        evaluation_id:
-          description: Filter by root-span evaluation id.
-          title: Evaluation Id
-          type: string
-        evaluation_sha:
-          description: Filter by root-span evaluation sha.
-          title: Evaluation Sha
-          type: string
-        evaluation_run_id:
-          description: Filter by root-span evaluation run id.
-          title: Evaluation Run Id
-          type: string
-        dataset_id:
-          description: Filter by root-span dataset id.
-          title: Dataset Id
-          type: string
-        dataset_name:
-          description: Filter by root-span dataset name.
-          title: Dataset Name
-          type: string
-        dataset_version:
-          description: Filter by root-span dataset version.
-          title: Dataset Version
+        experiment_id:
+          description: Filter by root-span experiment id.
+          title: Experiment Id
           type: string
         test_case_id:
-          description: Filter by root-span dataset test case id.
+          description: Filter by root-span experiment test case id.
           title: Test Case Id
           type: string
       title: TraceFilter
@@ -17607,6 +17580,13 @@ components:
           title: Launcher Tool Path
           description: Path to the jobs launcher tool
           default: /tools/jobs-launcher
+        default_task_image:
+          title: Default Task Image
+          description: Default container image for job task pods. Used when a job
+            step omits container.image. When unset, falls back to the platform CPU
+            tasks image (platform.image_registry/nmp-cpu-tasks:platform.image_tag).
+          type: string
+          minLength: 1
         env:
           additionalProperties:
             type: string

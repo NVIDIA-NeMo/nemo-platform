@@ -26,12 +26,6 @@ __all__ = ["ExperimentCreateParams"]
 class ExperimentCreateParams(TypedDict, total=False):
     workspace: str
 
-    agent_name: Required[str]
-    """Name of the agent under test."""
-
-    agent_version: Required[str]
-    """Version of the agent under test."""
-
     dataset_name: Required[str]
     """Producer-supplied dataset name."""
 

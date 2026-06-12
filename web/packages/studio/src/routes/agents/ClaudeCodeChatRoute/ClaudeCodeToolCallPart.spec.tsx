@@ -2,9 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ClaudeCodeToolCallPart } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeToolCallPart';
+import {
+  CLAUDE_CODE_JOB_PROGRESS_MCP_TOOL_NAME,
+  CLAUDE_CODE_JOB_PROGRESS_TOOL_NAME,
+} from '@studio/routes/agents/ClaudeCodeChatRoute/jobProgressConsts';
 import { CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME } from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+
+vi.mock('@studio/routes/agents/ClaudeCodeChatRoute/JobProgressToolCall', () => ({
+  JobProgressToolCall: ({ args }: { args: Record<string, unknown> }) => (
+    <div data-testid="mock-job-progress">{String(args.job_name)}</div>
+  ),
+}));
 
 interface SubtleToolCase {
   readonly args: Record<string, string>;
@@ -399,4 +409,25 @@ describe('ClaudeCodeToolCallPart', () => {
     expectSubtleToolBlock(subtleBlock);
     expect(screen.queryByTestId('claude-code-tool-call')).not.toBeInTheDocument();
   });
+
+  it.each([CLAUDE_CODE_JOB_PROGRESS_TOOL_NAME, CLAUDE_CODE_JOB_PROGRESS_MCP_TOOL_NAME])(
+    'renders %s as a rich job progress tool call',
+    (toolName) => {
+      render(
+        <ClaudeCodeToolCallPart
+          addResult={vi.fn()}
+          args={{ job_name: 'studio-job-1' }}
+          argsText='{"job_name":"studio-job-1"}'
+          resume={vi.fn()}
+          status={{ type: 'complete' }}
+          toolCallId="toolu_job"
+          toolName={toolName}
+          type="tool-call"
+        />
+      );
+
+      expect(screen.getByTestId('mock-job-progress')).toHaveTextContent('studio-job-1');
+      expect(screen.queryByTestId('claude-code-tool-call-subtle')).not.toBeInTheDocument();
+    }
+  );
 });

@@ -254,8 +254,6 @@ resources:
       filesets:
         models:
           fileset_filter: FilesetFilter
-          fileset_metadata: FilesetMetadataOutput
-          fileset_metadata_param: FilesetMetadataInput
         methods:
           create: post /apis/files/v2/workspaces/{workspace}/filesets
           list: get /apis/files/v2/workspaces/{workspace}/filesets
@@ -710,12 +708,12 @@ resources:
       auth_context: AuthContext
       tool_call_config: ToolCallConfig
       model_metadata_content: ModelMetadataContent
-      # DatasetMetadataContent is referenced by the shared FilesetMetadata schema.
-      # Keep it in $shared so the generated import is intra-package
-      # (shared/fileset_metadata -> shared/dataset_metadata_content) and avoids the
-      # circular import that occurs when it lives under the `files` resource:
-      #   shared/fileset_metadata -> files/dataset_metadata_content -> files/__init__
-      #     -> files/fileset -> shared/fileset_metadata
+      # FilesetMetadata is referenced by multiple resources (files, models) at the source
+      # level. Pin both Output and Input variants in $shared so sync-models does not re-home
+      # them under `files`, which would break ``from nemo_platform.types.shared import
+      # FilesetMetadata`` imports downstream (models service tests).
+      fileset_metadata: FilesetMetadataOutput
+      fileset_metadata_param: FilesetMetadataInput
       dataset_metadata_content: DatasetMetadataContent
       tool_calling_metadata_content: ToolCallingMetadataContent
       backend_format: BackendFormat

@@ -82,8 +82,6 @@ class ExperimentsResource(SyncAPIResource):
         self,
         *,
         workspace: str | None = None,
-        agent_name: str,
-        agent_version: str,
         dataset_name: str,
         experiment_group_id: str,
         name: str,
@@ -104,10 +102,6 @@ class ExperimentsResource(SyncAPIResource):
         Create Experiment
 
         Args:
-          agent_name: Name of the agent under test.
-
-          agent_version: Version of the agent under test.
-
           dataset_name: Producer-supplied dataset name.
 
           experiment_group_id: Entity id of the owning ExperimentGroup. Required — the group must already
@@ -146,8 +140,6 @@ class ExperimentsResource(SyncAPIResource):
                 path_template("/apis/intake/v2/workspaces/{workspace}/experiments", workspace=workspace),
                 body=maybe_transform(
                     {
-                        "agent_name": agent_name,
-                        "agent_version": agent_version,
                         "dataset_name": dataset_name,
                         "experiment_group_id": experiment_group_id,
                         "name": name,
@@ -212,8 +204,6 @@ class ExperimentsResource(SyncAPIResource):
         path_name: str,
         *,
         workspace: str | None = None,
-        agent_name: str,
-        agent_version: str,
         dataset_name: str,
         experiment_group_id: str,
         body_name: str,
@@ -233,10 +223,6 @@ class ExperimentsResource(SyncAPIResource):
         Update Experiment
 
         Args:
-          agent_name: Name of the agent under test.
-
-          agent_version: Version of the agent under test.
-
           dataset_name: Producer-supplied dataset name.
 
           experiment_group_id: Entity id of the owning ExperimentGroup. Required — the group must already
@@ -276,8 +262,6 @@ class ExperimentsResource(SyncAPIResource):
             ),
             body=maybe_transform(
                 {
-                    "agent_name": agent_name,
-                    "agent_version": agent_version,
                     "dataset_name": dataset_name,
                     "experiment_group_id": experiment_group_id,
                     "body_name": body_name,
@@ -314,8 +298,9 @@ class ExperimentsResource(SyncAPIResource):
         List Experiments
 
         Args:
-          filter: Filter experiments by name, experiment_group_id, agent_name, agent_version,
-              dataset_name, dataset_version, created_by, created_at, or updated_at.
+          filter: Filter experiments by name, experiment_group_id, dataset_name, dataset_version,
+              created_by, created_at, or updated_at. Pass is_deleted=true to return only
+              soft-deleted experiments; omit to see only live ones.
 
           page: Page number.
 
@@ -424,8 +409,6 @@ class AsyncExperimentsResource(AsyncAPIResource):
         self,
         *,
         workspace: str | None = None,
-        agent_name: str,
-        agent_version: str,
         dataset_name: str,
         experiment_group_id: str,
         name: str,
@@ -446,10 +429,6 @@ class AsyncExperimentsResource(AsyncAPIResource):
         Create Experiment
 
         Args:
-          agent_name: Name of the agent under test.
-
-          agent_version: Version of the agent under test.
-
           dataset_name: Producer-supplied dataset name.
 
           experiment_group_id: Entity id of the owning ExperimentGroup. Required — the group must already
@@ -488,8 +467,6 @@ class AsyncExperimentsResource(AsyncAPIResource):
                 path_template("/apis/intake/v2/workspaces/{workspace}/experiments", workspace=workspace),
                 body=await async_maybe_transform(
                     {
-                        "agent_name": agent_name,
-                        "agent_version": agent_version,
                         "dataset_name": dataset_name,
                         "experiment_group_id": experiment_group_id,
                         "name": name,
@@ -554,8 +531,6 @@ class AsyncExperimentsResource(AsyncAPIResource):
         path_name: str,
         *,
         workspace: str | None = None,
-        agent_name: str,
-        agent_version: str,
         dataset_name: str,
         experiment_group_id: str,
         body_name: str,
@@ -575,10 +550,6 @@ class AsyncExperimentsResource(AsyncAPIResource):
         Update Experiment
 
         Args:
-          agent_name: Name of the agent under test.
-
-          agent_version: Version of the agent under test.
-
           dataset_name: Producer-supplied dataset name.
 
           experiment_group_id: Entity id of the owning ExperimentGroup. Required — the group must already
@@ -618,8 +589,6 @@ class AsyncExperimentsResource(AsyncAPIResource):
             ),
             body=await async_maybe_transform(
                 {
-                    "agent_name": agent_name,
-                    "agent_version": agent_version,
                     "dataset_name": dataset_name,
                     "experiment_group_id": experiment_group_id,
                     "body_name": body_name,
@@ -656,8 +625,9 @@ class AsyncExperimentsResource(AsyncAPIResource):
         List Experiments
 
         Args:
-          filter: Filter experiments by name, experiment_group_id, agent_name, agent_version,
-              dataset_name, dataset_version, created_by, created_at, or updated_at.
+          filter: Filter experiments by name, experiment_group_id, dataset_name, dataset_version,
+              created_by, created_at, or updated_at. Pass is_deleted=true to return only
+              soft-deleted experiments; omit to see only live ones.
 
           page: Page number.
 

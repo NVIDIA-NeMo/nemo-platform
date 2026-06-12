@@ -82,9 +82,6 @@ class SpanEvaluationContext(BaseModel):
     evaluation_id: str | None = None
     evaluation_sha: str | None = None
     evaluation_run_id: str | None = None
-    dataset_id: str | None = None
-    dataset_name: str | None = None
-    dataset_version: str | None = None
     test_case_id: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -99,9 +96,6 @@ class SpanEvaluationContext(BaseModel):
             evaluation_id=attributes.evaluation_id,
             evaluation_sha=attributes.evaluation_sha,
             evaluation_run_id=attributes.evaluation_run_id,
-            dataset_id=attributes.dataset_id,
-            dataset_name=attributes.dataset_name,
-            dataset_version=attributes.dataset_version,
             test_case_id=attributes.test_case_id,
             metadata=metadata or {},
         )
@@ -116,9 +110,6 @@ class SpanEvaluationContext(BaseModel):
                 self.evaluation_id,
                 self.evaluation_sha,
                 self.evaluation_run_id,
-                self.dataset_id,
-                self.dataset_name,
-                self.dataset_version,
                 self.test_case_id,
             )
         )
@@ -143,8 +134,6 @@ class Span(BaseModel):
     provider: str | None = None
     model: str | None = None
     prompt_id: str | None = None
-    prompt_name: str | None = None
-    prompt_version: str | None = None
     agent_id: str | None = None
     agent_name: str | None = None
     tool_name: str | None = None
@@ -191,8 +180,6 @@ class Span(BaseModel):
             provider=semantic_attributes.provider,
             model=semantic_attributes.model,
             prompt_id=semantic_attributes.prompt_id,
-            prompt_name=semantic_attributes.prompt_name,
-            prompt_version=semantic_attributes.prompt_version,
             agent_id=semantic_attributes.agent_id,
             agent_name=semantic_attributes.agent_name,
             tool_name=semantic_attributes.tool_name,

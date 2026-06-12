@@ -28,8 +28,8 @@ class ContainerSpec(BaseModel):
     Defines the container image and related configuration for job execution.
     """
 
-    image: str
-
     command: Optional[List[str]] = None
 
     entrypoint: Optional[List[str]] = None
+
+    image: Optional[str] = None

@@ -1,0 +1,158 @@
+# hadolint global ignore=DL3059
+# distroless images don't have a real shell - & and | are not enabled
+
+ARG NMP_PYTHON_BASE=nmp-python-base
+
+ARG CACHE_HOME=/tmp/.cache
+
+FROM nmp-python-dev-base AS py-builder
+
+ARG TARGETARCH
+
+ARG CACHE_HOME
+RUN mkdir -p ${CACHE_HOME} && chmod 777 ${CACHE_HOME}
+
+# Create the directory structure to match the relative paths in pyproject.toml
+# Copy dependencies that auditor references
+# Copy the workspace lock file and pyproject.toml for workspace dependency resolution
+COPY --from=root-lib-source-artifacts /artifacts/packages /app/packages
+COPY --from=root-lib-source-artifacts /artifacts/sdk /app/sdk
+COPY --from=root-lib-source-artifacts /artifacts/skills /app/skills
+COPY --from=root-lib-source-artifacts /artifacts/docs /app/docs
+COPY --from=root-lib-source-artifacts /artifacts/openapi /app/openapi
+COPY --from=root-lib-source-artifacts /artifacts/uv.lock /artifacts/pyproject.toml /app/
+
+# Install Python dependencies using uv with workspace lock file
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-install-project --no-dev --no-install-workspace --no-editable --package=nemo-auditor-plugin
+
+# Copy auditor service source code
+# We need much more because the wheel installation depends on these files
+# being present
+COPY plugins/ ./plugins/
+COPY skills/ ./skills/
+COPY services/ ./services/
+
+# Install the auditor package
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-editable --no-dev --package=nemo-auditor-plugin
+
+# Set environment variables
+ENV PYTHONPATH=/app/plugins/nemo-auditor/src:/app/packages/nmp_common/src:/app/sdk/python/nemo-platform/src
+ENV PATH="/app/.venv/bin:$PATH"
+
+RUN uv venv --no-project /app/.garak_venv
+# CVE remediation for garak venv (transitive deps pinned by garak that are below safe versions)
+# litellm: CVE-2026-35029 (affects <1.83.0)
+# langchain-core: CVE-2025-68664 (affects <1.2.5) + GHSA-qh6h-p6c9-ff54 (affects <1.2.22)
+RUN --mount=type=cache,target=/root/.cache/uv \
+    VIRTUAL_ENV=/app/.garak_venv \
+    uv sync --frozen --active --project /app/plugins/nemo-auditor/third-party --no-dev --no-editable && \
+    uv pip install --python /app/.garak_venv/bin/python "setuptools>=78.1.1" && \
+    uv pip install --no-deps --python /app/.garak_venv/bin/python \
+    "litellm>=1.83.0" \
+    "urllib3>=2.6.3" \
+    "aiohttp>=3.13.3" \
+    "pyasn1>=0.6.3" \
+    "protobuf>=6.33.5,<7.0.0" \
+    "langchain-core>=1.2.22" \
+    "orjson>=3.11.6" \
+    "nltk>=3.9.3"
+
+# CVE Remediation
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --no-deps \
+    "urllib3>=2.6.3" \
+    "protobuf>=5.29.6,<6.0.0" \
+    "aiohttp>=3.13.3" \
+    "pyasn1>=0.6.3" \
+    "wheel>=0.46.2" \
+    "orjson>=3.11.6" \
+    "nltk>=3.9.3"
+
+FROM ${NMP_PYTHON_BASE} AS base
+ARG USERNAME=nvs
+ARG USER_UID=1000
+ARG USER_GID=1000
+WORKDIR /app
+RUN groupadd --gid ${USER_GID} ${USERNAME} && \
+    useradd --uid ${USER_UID} --gid ${USER_GID} --create-home --shell /bin/bash ${USERNAME}
+
+FROM base AS core-final
+
+# Copying handful commands into the destination image
+COPY --from=root-busybox /bin/chmod /bin/chmod
+COPY --from=root-busybox /bin/sh /bin/sh
+COPY --from=root-busybox /bin/ls /bin/ls
+
+# Commands needed by auditor service
+COPY --from=root-busybox /bin/mkdir /bin/mkdir
+COPY --from=root-busybox /bin/ln /bin/ln
+COPY --from=root-busybox /bin/rm /bin/rm
+COPY --from=root-busybox /bin/cp /bin/cp
+COPY --from=root-busybox /bin/wget /bin/wget
+COPY --from=root-busybox /bin/tar /bin/tar
+COPY --from=root-busybox /bin/mv /bin/mv
+COPY --from=root-busybox /bin/cat /bin/cat
+COPY --from=root-busybox /bin/head /bin/head
+COPY --from=root-busybox /bin/tail /bin/tail
+COPY --from=root-busybox /bin/grep /bin/grep
+
+# Debugging utilities
+COPY --from=root-busybox /bin/ps /bin/ps
+COPY --from=root-busybox /bin/which /bin/which
+COPY --from=root-busybox /bin/find /bin/find
+COPY --from=root-busybox /bin/more /bin/more
+COPY --from=root-busybox /bin/less /bin/less
+COPY --from=root-busybox /bin/ip /bin/ip
+COPY --from=root-busybox /bin/top /bin/top
+COPY --from=root-busybox /bin/kill /bin/kill
+COPY --from=root-busybox /bin/netstat /bin/netstat
+COPY --from=root-busybox /bin/wc /bin/wc
+
+WORKDIR /app/plugins/nemo-auditor
+
+# note: PY_VERSION is set within the container
+ENV PYTHONPATH=/app/plugins/nemo-auditor/src:/app/packages/nmp_common/src:/app/sdk/python/nemo-platform/src
+ENV PATH="/app/.venv/bin:$PATH"
+
+# Copy installed packages and application
+COPY --chown=nvs:nvs --from=py-builder /app /app
+ARG CACHE_HOME
+COPY --chown=nvs:nvs --from=py-builder ${CACHE_HOME} ${CACHE_HOME}
+
+ENV USERNAME=nvs \
+    HOME=/home/nvs
+USER nvs
+
+FROM core-final AS dev
+
+USER nvs
+
+WORKDIR /app/plugins/nemo-auditor
+
+# Set environment variables for auditor service
+ARG CACHE_HOME
+ENV AUDITOR_HOST="0.0.0.0" \
+    AUDITOR_PORT="5000" \
+    CACHE_HOME=${CACHE_HOME}
+
+# Start the application
+EXPOSE 5000
+
+CMD ["sh", "-c", "python -m uvicorn src.auditor.server:app --host $AUDITOR_HOST --port $AUDITOR_PORT"]
+
+FROM core-final AS release
+
+WORKDIR /app/plugins/nemo-auditor
+
+# Set environment variables for auditor service
+ARG CACHE_HOME
+ENV AUDITOR_HOST="0.0.0.0" \
+    AUDITOR_PORT="5000" \
+    CACHE_HOME=${CACHE_HOME}
+
+# Start the application
+EXPOSE 5000
+
+CMD ["sh", "-c", "python -m uvicorn src.auditor.server:app --host $AUDITOR_HOST --port $AUDITOR_PORT"]
