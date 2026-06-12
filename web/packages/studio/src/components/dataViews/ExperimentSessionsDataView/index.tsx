@@ -74,6 +74,17 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
     [sessionsData]
   );
 
+  // Client-side status filter for instant feedback while the debounced API request catches up.
+  const immediateStatusFilter = dataViewState.columnFiltering.state.find((f) => f.id === 'status')
+    ?.value as string | undefined;
+  const visibleTableData = useMemo(
+    () =>
+      immediateStatusFilter
+        ? tableData.filter((row) => row.status === immediateStatusFilter)
+        : tableData,
+    [tableData, immediateStatusFilter]
+  );
+
   // One column per evaluator. The experiment's `evaluator_names` is the
   // authoritative, stable set across all sessions; we union in any score keys
   // present in the current page's data so a column never goes missing while the
@@ -147,7 +158,16 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
       header: 'Status',
       enableSorting: false,
       meta: {
-        filter: { type: 'text', label: 'Status', placeholder: 'Filter by status' },
+        filter: {
+          type: 'single-select',
+          label: 'Status',
+          options: [
+            { value: 'success', label: 'Completed' },
+            { value: 'error', label: 'Error' },
+            { value: 'cancelled', label: 'Cancelled' },
+            { value: 'unknown', label: 'Unknown' },
+          ],
+        },
       },
       cell: ({ row }) => <StatusBadge status={mapStatusForBadge(row.original.status)} />,
     }),
@@ -208,7 +228,7 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
       }
       attributes={{
         DataViewRoot: {
-          data: tableData,
+          data: visibleTableData,
           totalCount,
           requestStatus: isLoading && !sessionsData ? 'loading' : undefined,
         },
