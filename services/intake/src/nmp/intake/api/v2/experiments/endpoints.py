@@ -147,6 +147,9 @@ async def list_experiment_groups(
         page_size=page_size,
     )
     responses = [ExperimentGroupResponse.from_entity(e) for e in result.data]
+    # One count query per group, fanned out in parallel. Linear in the page size (up to 1000)
+    # but parallelized, so wall-clock stays low. If group counts become a hot path, replace
+    # with a bulk aggregate on the entity store rather than scaling this gather wider.
     counts = await asyncio.gather(
         *[_count_live_experiments_in_group(entity_client, workspace=workspace, group_id=g.id) for g in result.data]
     )
@@ -216,7 +219,11 @@ async def update_experiment_group(
         )
     existing.description = body.description
     updated = await entity_client.update(existing)
-    return ExperimentGroupResponse.from_entity(updated)
+    response = ExperimentGroupResponse.from_entity(updated)
+    response.experiment_count = await _count_live_experiments_in_group(
+        entity_client, workspace=workspace, group_id=updated.id
+    )
+    return response
 
 
 @router.delete(
