@@ -813,8 +813,8 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
                 namespace=self._k8s_namespace,
                 service_account_name=self._backend_config.service_account_name,
                 image_pull_secret=self._backend_config.huggingface_model_puller_image_pull_secret,
-                user_id=self._backend_config.default_user_id,
-                group_id=self._backend_config.default_group_id,
+                user_id=self._backend_config.default_vllm_user_id,
+                group_id=self._backend_config.default_vllm_group_id,
                 model_source=source_tag,
             )
 
@@ -986,8 +986,8 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
             gpu=view.gpu,
             namespace=self._k8s_namespace,
             service_account_name=self._backend_config.service_account_name,
-            user_id=self._backend_config.default_user_id,
-            group_id=self._backend_config.default_group_id,
+            user_id=self._backend_config.default_vllm_user_id,
+            group_id=self._backend_config.default_vllm_group_id,
             shared_memory_size_limit=self._backend_config.default_shared_memory_size_limit,
             startup_grace_seconds=startup_grace,
             init_containers=init_containers,

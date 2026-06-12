@@ -639,3 +639,16 @@ def test_default_shared_memory_size_limit_override():
     """default_shared_memory_size_limit can be set for vLLM tensor-parallel NCCL."""
     backend_config = K8sNimOperatorConfig(default_shared_memory_size_limit="8Gi")
     assert backend_config.default_shared_memory_size_limit == "8Gi"
+
+
+def test_default_vllm_uid_gid_match_image_user():
+    """vLLM uid/gid default to the upstream image's 'vllm' user (2000) / root group (0)."""
+    backend_config = K8sNimOperatorConfig()
+    assert backend_config.default_vllm_user_id == 2000
+    assert backend_config.default_vllm_group_id == 0
+
+
+def test_default_vllm_uid_gid_override():
+    backend_config = K8sNimOperatorConfig(default_vllm_user_id=1234, default_vllm_group_id=5678)
+    assert backend_config.default_vllm_user_id == 1234
+    assert backend_config.default_vllm_group_id == 5678

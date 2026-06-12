@@ -233,6 +233,39 @@ def test_compile_deployment_shared_memory_size_limit():
     assert vols["dshm"].empty_dir.size_limit == "8Gi"
 
 
+def test_compile_deployment_security_context_set_when_uid_gid_given():
+    """When uid/gid are provided, the server pod gets that securityContext."""
+    dep = c.compile_deployment(
+        resource_name="r",
+        workspace="w",
+        name="n",
+        engine="vllm",
+        image="img",
+        args=[],
+        health_path="/health",
+        user_id=2000,
+        group_id=0,
+    )
+    sc = dep.spec.template.spec.security_context
+    assert sc.run_as_user == 2000
+    assert sc.run_as_group == 0
+    assert sc.fs_group == 0
+
+
+def test_compile_deployment_no_security_context_when_uid_gid_unset():
+    """No uid/gid -> no forced securityContext (runs as the image's default user)."""
+    dep = c.compile_deployment(
+        resource_name="r",
+        workspace="w",
+        name="n",
+        engine="vllm",
+        image="img",
+        args=[],
+        health_path="/health",
+    )
+    assert dep.spec.template.spec.security_context is None
+
+
 def test_compile_deployment_sidecars_and_init_containers():
     from kubernetes import client as k8s_client
 

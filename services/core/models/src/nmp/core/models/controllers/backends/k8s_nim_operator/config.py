@@ -72,6 +72,26 @@ class K8sNimOperatorConfig(BaseModel):
         description="Default group ID for NIM containers (security context)",
     )
 
+    # Security context for the directly-emitted vLLM path (puller Job + server
+    # Deployment). Defaults match the user the upstream vllm/vllm-openai image
+    # ships ("vllm", uid 2000, gid 0): a non-root uid that HAS an /etc/passwd
+    # entry, so torch/inductor's getpass.getuser() (pwd.getpwuid) does not crash.
+    # gid 0 (root group) is the image's group and is the standard
+    # arbitrary-uid-friendly group. The puller writes weights under this uid/gid
+    # so the server can read them.
+    default_vllm_user_id: Optional[int] = Field(
+        default=2000,
+        description="Default user ID for vLLM puller + server pods (security context). "
+        "Defaults to 2000 to match the upstream vLLM image's 'vllm' user, which has an "
+        "/etc/passwd entry (avoids torch getpwuid crashes from an unknown uid).",
+    )
+    default_vllm_group_id: Optional[int] = Field(
+        default=0,
+        description="Default group ID / fsGroup for vLLM puller + server pods. Defaults to 0 "
+        "(root group) to match the upstream vLLM image and keep weights readable across the "
+        "puller and server pods.",
+    )
+
     # Files service configuration
     files_auth_secret: str = Field(
         default="nemo-models-files-token",
