@@ -42,13 +42,15 @@ Types:
 
 ```python
 from nemo_platform.types.inference import (
+    ContainerExecutorConfig,
     CreateModelDeploymentConfigRequest,
+    Engine,
     K8sNIMOperatorConfig,
     ModelDeploymentConfig,
     ModelDeploymentConfigFilter,
+    ModelDeploymentConfigModelSpec,
     ModelDeploymentConfigsPage,
     ModelType,
-    NIMDeployment,
     UpdateModelDeploymentConfigRequest,
 )
 ```

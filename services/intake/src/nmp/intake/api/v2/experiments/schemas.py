@@ -34,9 +34,8 @@ class ExperimentRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(description="Producer-supplied, workspace-unique experiment id.")
-    experiment_group_id: str | None = Field(
-        default=None,
-        description="Entity id of the owning ExperimentGroup; optional. Soft reference, not validated.",
+    experiment_group_id: str = Field(
+        description="Entity id of the owning ExperimentGroup. Required — the group must already exist.",
     )
     agent_name: str = Field(description="Name of the agent under test.")
     agent_version: str = Field(description="Version of the agent under test.")
@@ -88,9 +87,8 @@ class ExperimentResponse(BaseModel):
     id: str
     name: str
     workspace: str
-    experiment_group_id: str | None = Field(
-        default=None,
-        description="Entity id of the owning ExperimentGroup; null when ungrouped. Soft reference, not validated.",
+    experiment_group_id: str = Field(
+        description="Entity id of the owning ExperimentGroup. Required for every Experiment.",
     )
     agent_name: str
     agent_version: str
@@ -141,6 +139,10 @@ class ExperimentGroupFilter(Filter):
     """Filter for listing ExperimentGroups."""
 
     name: str | None = Field(default=None, description="Filter groups by name.")
+    is_deleted: bool | None = Field(
+        default=None,
+        description="When true, returns only soft-deleted groups. Omit (or false) to see only live groups.",
+    )
 
 
 class ExperimentFilter(Filter):
@@ -161,6 +163,10 @@ class ExperimentFilter(Filter):
         default=None,
         description="Filter experiments by last-updated timestamp; supports `$gte` and `$lte` for ranges.",
     )
+    is_deleted: bool | None = Field(
+        default=None,
+        description=("When true, returns only soft-deleted experiments. Omit (or false) to see only live experiments."),
+    )
 
 
 class ExperimentSessionFilter(Filter):
@@ -175,9 +181,8 @@ class ExperimentSessionFilter(Filter):
 class ExperimentSessionResponse(BaseModel):
     """One ingested session of an Experiment — a single test case execution.
 
-    Hydrated from ClickHouse at read time by joining ``experiment_sessions`` with
-    the session's root span (for status, input, tokens, cost) and
-    ``evaluator_results`` (for per-evaluator session-mean scores).
+    Hydrated from ClickHouse at read time by reading root/session membership from
+    ``trace_index`` and joining page-bounded span/evaluator rollups.
     """
 
     workspace: str

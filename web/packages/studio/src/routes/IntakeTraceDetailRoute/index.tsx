@@ -27,9 +27,7 @@ import {
   formatDurationMs,
   formatInteger,
   formatMaybe,
-  getEvaluationContextSummary,
   getTraceDisplayName,
-  hasEvaluationContext,
 } from '@studio/util/intakeTelemetry';
 import { Activity, CircleAlert, Hash } from 'lucide-react';
 import { type FC, useEffect } from 'react';
@@ -112,7 +110,9 @@ const IntakeTraceDetailContent: FC<IntakeTraceDetailContentProps> = ({ traceId }
   }
 
   const title = getTraceDisplayName(trace);
-  const showEvaluationContext = hasEvaluationContext(trace.evaluation_context);
+  const showExperimentContext = Boolean(
+    trace.experiment_context?.experiment_id || trace.experiment_context?.test_case_id
+  );
   const showSpanLimitMessage =
     trace.span_count !== undefined && trace.span_count > TRACE_SPANS_PAGE_SIZE;
   const wrappingValueAttributes = {
@@ -233,41 +233,32 @@ const IntakeTraceDetailContent: FC<IntakeTraceDetailContentProps> = ({ traceId }
                 </Grid>
               </Stack>
             </Panel>
-            {showEvaluationContext && (
+            {showExperimentContext && (
               <Panel
                 elevation="high"
                 slotIcon={<Hash />}
-                slotHeading="Evaluation Context"
+                slotHeading="Experiment Context"
                 className="min-w-0 overflow-hidden"
               >
                 <Stack gap="density-lg" className="min-w-0">
                   <KVPair
                     label="Summary"
-                    value={getEvaluationContextSummary(trace.evaluation_context)}
+                    value={formatMaybe(
+                      trace.experiment_context?.experiment_id ||
+                        trace.experiment_context?.test_case_id
+                    )}
                     orientation="vertical"
                     attributes={wrappingValueAttributes}
                   />
                   <KVPair
-                    label="Evaluation ID"
-                    value={formatMaybe(trace.evaluation_context?.evaluation_id)}
+                    label="Experiment ID"
+                    value={formatMaybe(trace.experiment_context?.experiment_id)}
                     orientation="vertical"
                     attributes={wrappingValueAttributes}
                   />
                   <KVPair
-                    label="Run ID"
-                    value={formatMaybe(trace.evaluation_context?.evaluation_run_id)}
-                    orientation="vertical"
-                    attributes={wrappingValueAttributes}
-                  />
-                  <KVPair
-                    label="Dataset"
-                    value={formatMaybe(trace.evaluation_context?.dataset_name)}
-                    orientation="vertical"
-                    attributes={wrappingValueAttributes}
-                  />
-                  <KVPair
-                    label="Test Case"
-                    value={formatMaybe(trace.evaluation_context?.test_case_id)}
+                    label="Test Case ID"
+                    value={formatMaybe(trace.experiment_context?.test_case_id)}
                     orientation="vertical"
                     attributes={wrappingValueAttributes}
                   />

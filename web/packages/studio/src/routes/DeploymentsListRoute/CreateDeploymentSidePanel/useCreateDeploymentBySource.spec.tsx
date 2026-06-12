@@ -83,11 +83,15 @@ describe('useCreateDeploymentBySource — workspace source', () => {
 
     expect(mockModelsCreateDeploymentConfig).toHaveBeenCalledWith(workspace, {
       name: 'my-deploy-config',
-      nim_deployment: {
-        gpu: 2,
+      engine: 'nim',
+      model_spec: {
         model_namespace: 'other-ws',
         model_name: 'existing-model',
       },
+      executor_config: {
+        gpu: 2,
+      },
+      model_entity_id: 'other-ws/existing-model',
     });
 
     expect(mockModelsCreateDeployment).toHaveBeenCalledWith(workspace, {
@@ -121,11 +125,15 @@ describe('useCreateDeploymentBySource — workspace source', () => {
 
     expect(mockModelsCreateDeploymentConfig).toHaveBeenCalledWith(workspace, {
       name: 'my-deploy-config',
-      nim_deployment: {
-        gpu: 2,
+      engine: 'nim',
+      model_spec: {
         model_namespace: workspace,
         model_name: 'my-deploy',
       },
+      executor_config: {
+        gpu: 2,
+      },
+      model_entity_id: 'ws/my-deploy',
     });
 
     expect(mockModelsCreateDeployment).toHaveBeenCalledWith(workspace, {

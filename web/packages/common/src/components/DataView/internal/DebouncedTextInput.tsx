@@ -1,20 +1,21 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { DEFAULT_DEBOUNCE_MS } from '@nemo/common/src/constants';
 import { TextInput, type TextInputProps } from '@nvidia/foundations-react-core';
 import { useEffect, useRef, useState, type ChangeEvent, type JSX } from 'react';
 
 export interface DebouncedTextInputProps extends TextInputProps {
   /**
    * The number of milliseconds to debounce the onValueChange handler.
-   * @defaultValue 500
+   * @defaultValue DEFAULT_DEBOUNCE_MS
    */
-  debounce?: number;
+  debounce?: typeof DEFAULT_DEBOUNCE_MS | number;
 }
 
 /** A TextInput component with a debounced onValueChange handler. */
 export function DebouncedTextInput({
-  debounce = 500,
+  debounce = DEFAULT_DEBOUNCE_MS,
   onValueChange,
   value: initialValue = '',
   ...props

@@ -2,7 +2,7 @@
 name = "nmp-platform"
 version = "0.0.1"
 description = "Nemo Platform - entry point for all domain services"
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.11,<3.15"
 
 # Service dependencies are NOT listed here - they're defined in the root
 # pyproject.toml dependency-groups for container builds. This allows each

@@ -52,6 +52,16 @@ class DockerBackendConfig(BaseModel):
         description="Default NIM image tag when none is specified",
     )
 
+    default_vllm_image: str = Field(
+        default="vllm/vllm-openai",
+        description="Default vLLM image when none is specified for engine='vllm'",
+    )
+
+    default_vllm_image_tag: str = Field(
+        default="v0.22.1",
+        description="Default vLLM image tag when none is specified for engine='vllm'",
+    )
+
     nim_guided_decoding_backend: str = Field(
         default="outlines",
         description="NIM guided decoding backend",

@@ -16,11 +16,12 @@ from nmp.core.models.api.service.model_deployment_config_service import (
 from nmp.core.models.entities import ModelDeployment as ModelDeploymentEntity
 from nmp.core.models.entities import ModelDeploymentConfig as ModelDeploymentConfigEntity
 from nmp.core.models.schemas import (
+    ContainerExecutorConfig,
     CreateModelDeploymentConfigRequest,
     ModelDeploymentConfig,
+    ModelDeploymentConfigModelSpec,
     ModelDeploymentStatus,
     ModelType,
-    NIMDeployment,
     UpdateModelDeploymentConfigRequest,
 )
 
@@ -67,34 +68,43 @@ def deployment_config_service(mock_entity_client):
 
 
 @pytest.fixture
-def sample_nim_deployment():
-    """Create a sample NIMDeployment for testing."""
-    return NIMDeployment(
+def sample_model_spec():
+    """Create a sample model spec for testing."""
+    return ModelDeploymentConfigModelSpec(
         model_type=ModelType.LLM,
         lora_enabled=False,
-        gpu=1,
-        disk_size="50Gi",
-        image_name="nvcr.io/nvidia/nim/llm",
-        image_tag="latest",
         model_namespace="nvidia",
         model_name="llama-3-8b",
     )
 
 
 @pytest.fixture
-def sample_create_request(sample_nim_deployment):
+def sample_executor_config():
+    """Create a sample executor config for testing."""
+    return ContainerExecutorConfig(
+        gpu=1,
+        disk_size="50Gi",
+        image_name="nvcr.io/nvidia/nim/llm",
+        image_tag="latest",
+    )
+
+
+@pytest.fixture
+def sample_create_request(sample_model_spec, sample_executor_config):
     """Create a sample CreateModelDeploymentConfigRequest for testing."""
     return CreateModelDeploymentConfigRequest(
         name="test-config",
         project="test-project",
         description="A test deployment configuration",
-        nim_deployment=sample_nim_deployment,
+        engine="nim",
+        model_spec=sample_model_spec,
+        executor_config=sample_executor_config,
         model_entity_id="model-entity-123",
     )
 
 
 @pytest.fixture
-def sample_config_entity(sample_nim_deployment):
+def sample_config_entity(sample_model_spec, sample_executor_config):
     """Create a sample ModelDeploymentConfig entity for testing."""
     return create_config_entity(
         name="test-config-v1",
@@ -103,7 +113,9 @@ def sample_config_entity(sample_nim_deployment):
         entity_version=1,
         project="test-project",
         description="A test deployment configuration",
-        nim_deployment=sample_nim_deployment,
+        engine="nim",
+        model_spec=sample_model_spec,
+        executor_config=sample_executor_config,
         model_entity_id="model-entity-123",
     )
 
@@ -230,7 +242,9 @@ async def test_list_deployment_configs_with_data(deployment_config_service, mock
         entity_version=2,
         project="test-project",
         description="Updated description",
-        nim_deployment=sample_config_entity.nim_deployment,
+        engine="nim",
+        model_spec=sample_config_entity.model_spec,
+        executor_config=sample_config_entity.executor_config,
         model_entity_id="model-entity-123",
     )
     mock_result = MagicMock()
@@ -277,7 +291,9 @@ async def test_list_deployment_config_versions(deployment_config_service, mock_e
         entity_version=2,
         project="test-project",
         description="Updated description",
-        nim_deployment=sample_config_entity.nim_deployment,
+        engine="nim",
+        model_spec=sample_config_entity.model_spec,
+        executor_config=sample_config_entity.executor_config,
         model_entity_id="model-entity-123",
     )
     mock_result = MagicMock()
@@ -295,7 +311,7 @@ async def test_list_deployment_config_versions(deployment_config_service, mock_e
 
 @pytest.mark.asyncio
 async def test_update_deployment_config_success(
-    deployment_config_service, mock_entity_client, sample_config_entity, sample_nim_deployment
+    deployment_config_service, mock_entity_client, sample_config_entity, sample_model_spec, sample_executor_config
 ):
     """Test successful deployment config update (creates new version)."""
     # Arrange - get_latest_version returns 1
@@ -312,14 +328,18 @@ async def test_update_deployment_config_success(
         entity_version=2,
         project="test-project",
         description="Updated description",
-        nim_deployment=sample_nim_deployment,
+        engine="nim",
+        model_spec=sample_model_spec,
+        executor_config=sample_executor_config,
         model_entity_id="model-entity-456",
     )
     mock_entity_client.create.return_value = version2
 
     update_request = UpdateModelDeploymentConfigRequest(
         description="Updated description",
-        nim_deployment=sample_nim_deployment,
+        engine="nim",
+        model_spec=sample_model_spec,
+        executor_config=sample_executor_config,
         model_entity_id="model-entity-456",
     )
 
@@ -337,7 +357,9 @@ async def test_update_deployment_config_success(
 
 
 @pytest.mark.asyncio
-async def test_update_deployment_config_not_found(deployment_config_service, mock_entity_client, sample_nim_deployment):
+async def test_update_deployment_config_not_found(
+    deployment_config_service, mock_entity_client, sample_model_spec, sample_executor_config
+):
     """Test updating a non-existent deployment config raises error."""
     # Arrange
     mock_list_result = MagicMock()
@@ -346,7 +368,9 @@ async def test_update_deployment_config_not_found(deployment_config_service, moc
 
     update_request = UpdateModelDeploymentConfigRequest(
         description="Updated description",
-        nim_deployment=sample_nim_deployment,
+        engine="nim",
+        model_spec=sample_model_spec,
+        executor_config=sample_executor_config,
         model_entity_id="model-entity-456",
     )
 
@@ -551,20 +575,24 @@ async def test_delete_deployment_config_with_deleted_dependent_deployments(
 async def test_nim_deployment_configuration_preserved(deployment_config_service, mock_entity_client):
     """Test that complex NIM deployment configuration is properly preserved."""
     # Arrange
-    complex_nim_deployment = NIMDeployment(
+    complex_model_spec = ModelDeploymentConfigModelSpec(
         model_type=ModelType.LLM,
         lora_enabled=True,
+        model_namespace="custom-org",
+        model_name="custom-model-70b",
+    )
+    complex_executor_config = ContainerExecutorConfig(
         gpu=4,
         disk_size="100Gi",
         image_name="nvcr.io/nvidia/nim/custom-llm",
         image_tag="v1.2.3",
-        model_namespace="custom-org",
-        model_name="custom-model-70b",
     )
 
     create_request = CreateModelDeploymentConfigRequest(
         name="complex-config",
-        nim_deployment=complex_nim_deployment,
+        engine="nim",
+        model_spec=complex_model_spec,
+        executor_config=complex_executor_config,
     )
 
     created_entity = create_config_entity(
@@ -573,7 +601,9 @@ async def test_nim_deployment_configuration_preserved(deployment_config_service,
         workspace="production",
         base_name="complex-config",
         entity_version=1,
-        nim_deployment=complex_nim_deployment,
+        engine="nim",
+        model_spec=complex_model_spec,
+        executor_config=complex_executor_config,
     )
 
     mock_list_result = MagicMock()
@@ -586,9 +616,9 @@ async def test_nim_deployment_configuration_preserved(deployment_config_service,
 
     # Assert
     assert result is not None
-    assert result.nim_deployment.model_type == ModelType.LLM
-    assert result.nim_deployment.lora_enabled is True
-    assert result.nim_deployment.gpu == 4
-    assert result.nim_deployment.disk_size == "100Gi"
-    assert result.nim_deployment.image_name == "nvcr.io/nvidia/nim/custom-llm"
-    assert result.nim_deployment.image_tag == "v1.2.3"
+    assert result.model_spec.model_type == ModelType.LLM
+    assert result.model_spec.lora_enabled is True
+    assert result.executor_config.gpu == 4
+    assert result.executor_config.disk_size == "100Gi"
+    assert result.executor_config.image_name == "nvcr.io/nvidia/nim/custom-llm"
+    assert result.executor_config.image_tag == "v1.2.3"

@@ -87,10 +87,10 @@ def clickhouse_client(clickhouse_settings: ClickHouseSettings):
 
 @pytest.fixture(autouse=True)
 def clean_clickhouse(clickhouse_client: ClickHouseSpanClient):
-    for table in ("spans", "evaluator_results", "experiment_sessions"):
+    for table in ("spans", "evaluator_results", "trace_index"):
         _run(clickhouse_client.command(f"TRUNCATE TABLE {clickhouse_client.table(table)}"))
     yield
-    for table in ("spans", "evaluator_results", "experiment_sessions"):
+    for table in ("spans", "evaluator_results", "trace_index"):
         _run(clickhouse_client.command(f"TRUNCATE TABLE {clickhouse_client.table(table)}"))
 
 

@@ -162,7 +162,10 @@ def apply_run_environment(
     effective_port = env.setdefault("NMP_SERVICE_PORT", str(config.port))
     normalized = effective_host.strip("[]")
     url_host = f"[{normalized}]" if ":" in normalized else normalized
-    env.setdefault("NMP_BASE_URL", f"http://{url_host}:{effective_port}")
+    base_url = env.setdefault("NMP_BASE_URL", f"http://{url_host}:{effective_port}")
+    # Embedded PDP is served from the same platform process; keep the auth client
+    # origin aligned with NMP_BASE_URL when services run on a non-default port.
+    env.setdefault("NMP_AUTH_POLICY_DECISION_POINT_BASE_URL", base_url)
     _set_or_clear_env(env, NMP_SERVICES_ENV_VAR, config.services)
     _set_or_clear_env(env, NMP_CONTROLLERS_ENV_VAR, config.controllers)
     _set_or_clear_env(env, NMP_SIDECARS_ENV_VAR, config.sidecars)

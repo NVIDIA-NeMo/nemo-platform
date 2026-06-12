@@ -1,0 +1,143 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+"""Customization router service — merges contributor HTTP routes."""
+
+from __future__ import annotations
+
+from typing import ClassVar
+
+from fastapi import APIRouter
+from nemo_platform_plugin.authz import AuthzContribution, AuthzEndpointMethod, combine_authz_contributions
+from nemo_platform_plugin.customization_contributor import CustomizationContributorDiscoveryError
+from nemo_platform_plugin.discovery import (
+    CUSTOMIZATION_CONTRIBUTORS_GROUP,
+    discover_customization_contributors,
+)
+from nemo_platform_plugin.service import NemoService, RouterSpec
+
+
+class CustomizationRouterError(CustomizationContributorDiscoveryError):
+    """Raised when the customization router cannot start."""
+
+
+_ROUTER_BASE_DEPENDENCIES = ("entities", "auth", "jobs", "secrets", "files", "models")
+
+
+def merge_router_dependencies(contributors: dict[str, object]) -> list[str]:
+    """Union platform router deps with each contributor's ``dependencies``."""
+    deps = set(_ROUTER_BASE_DEPENDENCIES)
+    for contributor in contributors.values():
+        contrib_deps = getattr(type(contributor), "dependencies", None) or []
+        deps.update(contrib_deps)
+    return sorted(deps)
+
+
+def _assert_no_route_collisions(contributors: dict[str, object]) -> None:
+    """Catch contributors that would handle the same ``(METHOD, PATH)`` pair.
+
+    Contributors are free to share a parent mount prefix — e.g. every backend's
+    jobs router is mounted under ``/v2/workspaces/{workspace}`` and adds its
+    own ``/{backend}/jobs/...`` paths via ``job_collection_path_for``. We only
+    error when two contributors would respond to the same HTTP method on the
+    same fully-qualified path.
+    """
+    # Map (method, full_path) -> contributor key
+    seen: dict[tuple[str, str], str] = {}
+    for key, contributor in contributors.items():
+        for spec in contributor.get_routers():
+            prefix = spec.prefix.rstrip("/")
+            for route in spec.router.routes:
+                methods = getattr(route, "methods", None) or {"*"}
+                path = getattr(route, "path", "")
+                full_path = f"{prefix}{path}"
+                for method in methods:
+                    op = (method, full_path)
+                    if op in seen:
+                        raise CustomizationRouterError(
+                            f"Route collision: contributors {seen[op]!r} and {key!r} both handle {method} {full_path}",
+                        )
+                    seen[op] = key
+
+
+def _hub_authz_contribution() -> AuthzContribution:
+    """Authz for the customization router hub (authenticated health check only)."""
+    return AuthzContribution(
+        endpoints={
+            "/apis/customization/healthz": {
+                "get": AuthzEndpointMethod(permissions=[], scopes=[]),
+            },
+        },
+    )
+
+
+def _authz_from_contributors(contributors: dict[str, object]) -> AuthzContribution | None:
+    """Collect and merge authz from installed customization backends."""
+    backend_parts: list[AuthzContribution] = []
+    for contributor in contributors.values():
+        getter = getattr(contributor, "get_authz_contribution", None)
+        if not callable(getter):
+            continue
+        contrib = getter()
+        if contrib is not None:
+            backend_parts.append(contrib)
+    if not backend_parts:
+        return None
+    return combine_authz_contributions(_hub_authz_contribution(), *backend_parts)
+
+
+class CustomizationRouterService(NemoService):
+    """Sole ``nemo.services`` owner for ``/apis/customization``."""
+
+    name: ClassVar[str] = "customization"
+    dependencies: ClassVar[list[str]] = list(_ROUTER_BASE_DEPENDENCIES)
+
+    def __init__(self) -> None:
+        self._contributors = discover_customization_contributors()
+        if not self._contributors:
+            raise CustomizationRouterError(
+                "Customization router is enabled but no contributors were discovered. "
+                "Install a backend plugin (e.g. nemo-automodel) and ensure "
+                f"'{CUSTOMIZATION_CONTRIBUTORS_GROUP}' entry points are registered.",
+            )
+        _assert_no_route_collisions(self._contributors)
+        type(self).dependencies = merge_router_dependencies(self._contributors)
+
+    @classmethod
+    def get_authz_contribution(cls) -> AuthzContribution | None:
+        """Merge backend contributor authz (automodel, unsloth, …) for policy discovery."""
+        return _authz_from_contributors(discover_customization_contributors())
+
+    def get_routers(self) -> list[RouterSpec]:
+        router = APIRouter()
+
+        @router.get("/healthz")
+        async def healthz() -> dict[str, object]:
+            return {
+                "plugin": self.name,
+                "status": "ok",
+                "contributors": sorted(self._contributors.keys()),
+            }
+
+        specs: list[RouterSpec] = [
+            RouterSpec(
+                router=router,
+                tag="Customization",
+                description="Customization router health.",
+                prefix="",
+            ),
+        ]
+
+        for key in sorted(self._contributors.keys()):
+            contributor = self._contributors[key]
+            contributor_specs = contributor.get_routers()
+            for spec in contributor_specs:
+                specs.append(
+                    RouterSpec(
+                        router=spec.router,
+                        tag=spec.tag or f"Customization {key}",
+                        description=spec.description,
+                        prefix=spec.prefix,
+                    ),
+                )
+        return specs

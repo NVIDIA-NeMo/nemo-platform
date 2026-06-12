@@ -48,6 +48,7 @@ from nmp.common.entities.values import (
     ENTITY_BASE_FIELDS,
     DatetimeFilter,
     Filter,
+    StringFilter,
     Value,
     map_entity_field,
 )
@@ -76,6 +77,7 @@ __all__ = [
     "SYSTEM_WORKSPACE",
     "DatetimeFilter",
     "Filter",
+    "StringFilter",
     "Value",
     "get_random_bytes",
     "get_random_id",

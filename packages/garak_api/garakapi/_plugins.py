@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Portions Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 """Functions for working with garak plugins (enumeration, loading, etc)"""
@@ -21,6 +21,7 @@ PLUGIN_TYPES = ("probes", "detectors", "generators", "harnesses", "buffs")
 PLUGIN_CLASSES = ("Probe", "Detector", "Generator", "Harness", "Buff")
 TIME_FORMAT = "%Y-%m-%d %H:%M:%S %z"
 
+
 class PluginEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, set):
@@ -33,6 +34,7 @@ class PluginEncoder(json.JSONEncoder):
         except TypeError as e:
             logging.debug("Attempt to serialize JSON skipped: %s", e)
             return None  # skip items that cannot be serialized at this time
+
 
 class PluginCache:
     _plugin_cache_filename = (
@@ -329,6 +331,7 @@ class PluginCache:
 
         return plugin_metadata
 
+
 class PluginProvider:
     """Central registry of plugin instances
 
@@ -352,8 +355,10 @@ class PluginProvider:
             PluginProvider._instance_cache[plugin.__class__] = klass_instances
         klass_instances[str(config_root)] = plugin
 
+
 def plugin_info(plugin: Union[Callable, str]) -> dict:
     return PluginCache.plugin_info(plugin)
+
 
 def enumerate_plugins(
     category: str = "probes", skip_base_classes=True
@@ -386,6 +391,7 @@ def enumerate_plugins(
         plugin_class_names.add(enum_entry)
 
     return sorted(plugin_class_names)
+
 
 def load_plugin(path, break_on_fail=True, config_root=_config) -> object:
     """load_plugin takes a path to a plugin class, and attempts to load that class.

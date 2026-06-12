@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for NIMDeployment override_config field validation.
+"""Unit tests for ContainerExecutorConfig override_config field validation.
 
 Tests ensure that the override_config field properly validates against NIMService Spec schema
 and can be serialized/deserialized correctly for Kubernetes resource application.
@@ -12,42 +12,45 @@ from datetime import datetime
 
 import pytest
 from nmp.core.models.controllers.backends.k8s_nim_operator.types.nimservice import Spec
-from nmp.core.models.schemas import CreateModelDeploymentConfigRequest, ModelDeploymentConfig, ModelType, NIMDeployment
+from nmp.core.models.schemas import (
+    ContainerExecutorConfig,
+    CreateModelDeploymentConfigRequest,
+    Engine,
+    ModelDeploymentConfig,
+    ModelDeploymentConfigModelSpec,
+)
 from pydantic import ValidationError
 
 # ============================================================================
-# Basic NIMDeployment override_config Tests
+# Basic ContainerExecutorConfig override_config Tests
 # ============================================================================
 
 
 def test_nim_deployment_without_override_config():
-    """Test that NIMDeployment works without override_config (backwards compatibility)."""
-    nim_deployment = NIMDeployment(
-        model_type=ModelType.LLM,
+    """Test that ContainerExecutorConfig works without override_config (backwards compatibility)."""
+    executor_config = ContainerExecutorConfig(
         gpu=1,
         image_name="nvcr.io/nvidia/nim/llm",
         image_tag="latest",
-        model_namespace="nvidia",
-        model_name="llama-3-8b",
     )
 
-    assert nim_deployment.gpu == 1
-    assert nim_deployment.override_config is None
+    assert executor_config.gpu == 1
+    assert executor_config.override_config is None
 
 
 def test_nim_deployment_with_empty_override_config():
-    """Test that NIMDeployment accepts an empty dict for override_config."""
-    nim_deployment = NIMDeployment(
+    """Test that ContainerExecutorConfig accepts an empty dict for override_config."""
+    executor_config = ContainerExecutorConfig(
         gpu=1,
         override_config={},
     )
 
-    assert nim_deployment.gpu == 1
-    assert nim_deployment.override_config == {}
+    assert executor_config.gpu == 1
+    assert executor_config.override_config == {}
 
 
 def test_nim_deployment_with_valid_override_config_basic():
-    """Test NIMDeployment with basic valid override_config matching Spec structure."""
+    """Test ContainerExecutorConfig with basic valid override_config matching Spec structure."""
     # Create a basic override config with only required Spec fields
     override_config = {
         "authSecret": "my-ngc-secret",
@@ -57,18 +60,18 @@ def test_nim_deployment_with_valid_override_config_basic():
         },
     }
 
-    nim_deployment = NIMDeployment(
+    executor_config = ContainerExecutorConfig(
         gpu=1,
         override_config=override_config,
     )
 
-    assert nim_deployment.override_config is not None
-    assert nim_deployment.override_config["authSecret"] == "my-ngc-secret"
-    assert nim_deployment.override_config["image"]["repository"] == "nvcr.io/nvidia/nim/custom-llm"
+    assert executor_config.override_config is not None
+    assert executor_config.override_config["authSecret"] == "my-ngc-secret"
+    assert executor_config.override_config["image"]["repository"] == "nvcr.io/nvidia/nim/custom-llm"
 
 
 def test_nim_deployment_with_valid_override_config_complex():
-    """Test NIMDeployment with complex valid override_config including many Spec fields."""
+    """Test ContainerExecutorConfig with complex valid override_config including many Spec fields."""
     override_config = {
         "authSecret": "my-ngc-secret",
         "image": {
@@ -99,16 +102,16 @@ def test_nim_deployment_with_valid_override_config_complex():
         "labels": {"app": "nim-service", "environment": "production"},
     }
 
-    nim_deployment = NIMDeployment(
+    executor_config = ContainerExecutorConfig(
         gpu=2,
         override_config=override_config,
     )
 
-    assert nim_deployment.override_config is not None
-    assert nim_deployment.override_config["replicas"] == 3
-    assert nim_deployment.override_config["authSecret"] == "my-ngc-secret"
-    assert len(nim_deployment.override_config["env"]) == 2
-    assert nim_deployment.override_config["nodeSelector"]["gpu-type"] == "a100"
+    assert executor_config.override_config is not None
+    assert executor_config.override_config["replicas"] == 3
+    assert executor_config.override_config["authSecret"] == "my-ngc-secret"
+    assert len(executor_config.override_config["env"]) == 2
+    assert executor_config.override_config["nodeSelector"]["gpu-type"] == "a100"
 
 
 def test_nim_deployment_override_config_with_storage():
@@ -127,13 +130,13 @@ def test_nim_deployment_override_config_with_storage():
         },
     }
 
-    nim_deployment = NIMDeployment(
+    executor_config = ContainerExecutorConfig(
         gpu=1,
         override_config=override_config,
     )
 
-    assert nim_deployment.override_config["storage"]["pvc"]["size"] == "100Gi"
-    assert nim_deployment.override_config["storage"]["pvc"]["storageClass"] == "fast-ssd"
+    assert executor_config.override_config["storage"]["pvc"]["size"] == "100Gi"
+    assert executor_config.override_config["storage"]["pvc"]["storageClass"] == "fast-ssd"
 
 
 def test_nim_deployment_override_config_with_nimcache():
@@ -149,13 +152,13 @@ def test_nim_deployment_override_config_with_nimcache():
         },
     }
 
-    nim_deployment = NIMDeployment(
+    executor_config = ContainerExecutorConfig(
         gpu=2,
         override_config=override_config,
     )
 
-    assert nim_deployment.override_config["storage"]["nimCache"]["name"] == "llama-3-8b-cache"
-    assert nim_deployment.override_config["storage"]["nimCache"]["profile"] == "tp2-gpu-a100"
+    assert executor_config.override_config["storage"]["nimCache"]["name"] == "llama-3-8b-cache"
+    assert executor_config.override_config["storage"]["nimCache"]["profile"] == "tp2-gpu-a100"
 
 
 def test_nim_deployment_override_config_with_probes():
@@ -181,13 +184,13 @@ def test_nim_deployment_override_config_with_probes():
         },
     }
 
-    nim_deployment = NIMDeployment(
+    executor_config = ContainerExecutorConfig(
         gpu=1,
         override_config=override_config,
     )
 
-    assert nim_deployment.override_config["livenessProbe"]["enabled"] is True
-    assert nim_deployment.override_config["readinessProbe"]["probe"]["httpGet"]["path"] == "/ready"
+    assert executor_config.override_config["livenessProbe"]["enabled"] is True
+    assert executor_config.override_config["readinessProbe"]["probe"]["httpGet"]["path"] == "/ready"
 
 
 def test_nim_deployment_override_config_with_autoscaling():
@@ -213,13 +216,13 @@ def test_nim_deployment_override_config_with_autoscaling():
         },
     }
 
-    nim_deployment = NIMDeployment(
+    executor_config = ContainerExecutorConfig(
         gpu=1,
         override_config=override_config,
     )
 
-    assert nim_deployment.override_config["scale"]["enabled"] is True
-    assert nim_deployment.override_config["scale"]["hpa"]["maxReplicas"] == 10
+    assert executor_config.override_config["scale"]["enabled"] is True
+    assert executor_config.override_config["scale"]["hpa"]["maxReplicas"] == 10
 
 
 def test_nim_deployment_override_config_with_service_exposure():
@@ -261,13 +264,13 @@ def test_nim_deployment_override_config_with_service_exposure():
         },
     }
 
-    nim_deployment = NIMDeployment(
+    executor_config = ContainerExecutorConfig(
         gpu=1,
         override_config=override_config,
     )
 
-    assert nim_deployment.override_config["expose"]["service"]["type"] == "ClusterIP"
-    assert nim_deployment.override_config["expose"]["ingress"]["enabled"] is True
+    assert executor_config.override_config["expose"]["service"]["type"] == "ClusterIP"
+    assert executor_config.override_config["expose"]["ingress"]["enabled"] is True
 
 
 def test_nim_deployment_override_config_serialization():
@@ -278,13 +281,13 @@ def test_nim_deployment_override_config_serialization():
         "replicas": 2,
     }
 
-    nim_deployment = NIMDeployment(
+    executor_config = ContainerExecutorConfig(
         gpu=1,
         override_config=override_config,
     )
 
     # Serialize to dict
-    serialized = nim_deployment.model_dump()
+    serialized = executor_config.model_dump()
     assert "override_config" in serialized
     assert serialized["override_config"]["authSecret"] == "my-secret"
     assert serialized["override_config"]["replicas"] == 2
@@ -298,20 +301,20 @@ def test_nim_deployment_override_config_json_serialization():
         "env": [{"name": "TEST", "value": "value"}],
     }
 
-    nim_deployment = NIMDeployment(
+    executor_config = ContainerExecutorConfig(
         gpu=1,
         override_config=override_config,
     )
 
     # Serialize to JSON
-    json_str = nim_deployment.model_dump_json()
+    json_str = executor_config.model_dump_json()
     assert "override_config" in json_str
     assert "authSecret" in json_str
 
     # Deserialize from JSON
-    nim_deployment_from_json = NIMDeployment.model_validate_json(json_str)
-    assert nim_deployment_from_json.override_config["authSecret"] == "my-secret"
-    assert nim_deployment_from_json.override_config["env"][0]["name"] == "TEST"
+    executor_config_from_json = ContainerExecutorConfig.model_validate_json(json_str)
+    assert executor_config_from_json.override_config["authSecret"] == "my-secret"
+    assert executor_config_from_json.override_config["env"][0]["name"] == "TEST"
 
 
 def test_create_deployment_config_request_with_override_config():
@@ -323,16 +326,17 @@ def test_create_deployment_config_request_with_override_config():
 
     request = CreateModelDeploymentConfigRequest(
         name="test-config",
-        workspace="default",
-        nim_deployment=NIMDeployment(gpu=1, override_config=override_config),
+        engine=Engine.NIM,
+        model_spec=ModelDeploymentConfigModelSpec(),
+        executor_config=ContainerExecutorConfig(gpu=1, override_config=override_config),
     )
 
-    assert request.nim_deployment.override_config is not None
-    assert request.nim_deployment.override_config["authSecret"] == "my-secret"
+    assert request.executor_config.override_config is not None
+    assert request.executor_config.override_config["authSecret"] == "my-secret"
 
 
 def test_model_deployment_config_with_override_config():
-    """Test ModelDeploymentConfig with override_config in nim_deployment."""
+    """Test ModelDeploymentConfig with override_config in executor_config."""
     override_config = {
         "authSecret": "my-secret",
         "image": {"repository": "nvcr.io/test", "tag": "latest"},
@@ -344,41 +348,39 @@ def test_model_deployment_config_with_override_config():
         name="test-config",
         workspace="default",
         entity_version=1,
-        nim_deployment=NIMDeployment(gpu=1, override_config=override_config),
+        engine=Engine.NIM,
+        model_spec=ModelDeploymentConfigModelSpec(),
+        executor_config=ContainerExecutorConfig(gpu=1, override_config=override_config),
         created_at=datetime.now(),
         updated_at=datetime.now(),
     )
 
-    assert config.nim_deployment.override_config is not None
-    assert config.nim_deployment.override_config["replicas"] == 3
+    assert config.executor_config.override_config is not None
+    assert config.executor_config.override_config["replicas"] == 3
 
 
 def test_override_config_does_not_override_existing_fields():
-    """Test that override_config is stored separately and doesn't affect other NIMDeployment fields."""
+    """Test that override_config is stored separately and doesn't affect other ContainerExecutorConfig fields."""
     override_config = {
         "authSecret": "override-secret",
         "image": {"repository": "nvcr.io/override", "tag": "override-tag"},
     }
 
-    nim_deployment = NIMDeployment(
-        model_type=ModelType.LLM,
+    executor_config = ContainerExecutorConfig(
         gpu=2,
         image_name="nvcr.io/nvidia/nim/llm",
         image_tag="latest",
-        model_namespace="nvidia",
-        model_name="llama-3-8b",
         override_config=override_config,
     )
 
     # Verify that original fields are preserved
-    assert nim_deployment.gpu == 2
-    assert nim_deployment.image_name == "nvcr.io/nvidia/nim/llm"
-    assert nim_deployment.image_tag == "latest"
-    assert nim_deployment.model_name == "llama-3-8b"
+    assert executor_config.gpu == 2
+    assert executor_config.image_name == "nvcr.io/nvidia/nim/llm"
+    assert executor_config.image_tag == "latest"
 
     # Verify override_config is stored separately
-    assert nim_deployment.override_config["authSecret"] == "override-secret"
-    assert nim_deployment.override_config["image"]["repository"] == "nvcr.io/override"
+    assert executor_config.override_config["authSecret"] == "override-secret"
+    assert executor_config.override_config["image"]["repository"] == "nvcr.io/override"
 
 
 # ============================================================================
@@ -399,15 +401,15 @@ def test_override_config_validates_as_partial_spec():
     }
 
     # This should work - Dict[str, Any] accepts any structure
-    nim_deployment = NIMDeployment(gpu=1, override_config=spec_dict)
-    assert nim_deployment.override_config is not None
+    executor_config = ContainerExecutorConfig(gpu=1, override_config=spec_dict)
+    assert executor_config.override_config is not None
 
     # Verify that the dict structure matches what Spec expects (manual validation)
     # Note: We're NOT validating as Spec here, just ensuring the structure is compatible
-    assert "authSecret" in nim_deployment.override_config
-    assert "image" in nim_deployment.override_config
-    assert "repository" in nim_deployment.override_config["image"]
-    assert "tag" in nim_deployment.override_config["image"]
+    assert "authSecret" in executor_config.override_config
+    assert "image" in executor_config.override_config
+    assert "repository" in executor_config.override_config["image"]
+    assert "tag" in executor_config.override_config["image"]
 
 
 def test_validate_override_config_against_spec_manually():
@@ -431,12 +433,12 @@ def test_validate_override_config_against_spec_manually():
         "nodeSelector": {"gpu-type": "a100"},
     }
 
-    nim_deployment = NIMDeployment(gpu=1, override_config=override_config)
+    executor_config = ContainerExecutorConfig(gpu=1, override_config=override_config)
 
     # Manual validation: try to construct a Spec object from override_config
     # This would be done by the NIMService compiler before k8s application
     try:
-        spec = Spec(**nim_deployment.override_config)
+        spec = Spec(**executor_config.override_config)
         assert spec.authSecret == "my-ngc-secret"
         assert spec.replicas == 2
         assert spec.image.repository == "nvcr.io/nvidia/nim/llm"
@@ -460,8 +462,8 @@ def test_invalid_spec_structure_accepted_by_dict():
     }
 
     # This should NOT raise an error - Dict[str, Any] accepts anything
-    nim_deployment = NIMDeployment(gpu=1, override_config=invalid_override_config)
-    assert nim_deployment.override_config is not None
+    executor_config = ContainerExecutorConfig(gpu=1, override_config=invalid_override_config)
+    assert executor_config.override_config is not None
 
     # But when we try to validate as Spec, it should fail
     with pytest.raises(ValidationError):
@@ -504,10 +506,10 @@ def test_spec_validation_with_all_optional_fields():
         ],
     }
 
-    nim_deployment = NIMDeployment(gpu=2, override_config=override_config)
+    executor_config = ContainerExecutorConfig(gpu=2, override_config=override_config)
 
     # Validate as Spec
-    spec = Spec(**nim_deployment.override_config)
+    spec = Spec(**executor_config.override_config)
     assert spec.authSecret == "my-secret"
     assert spec.replicas == 3
     assert len(spec.env) == 2
@@ -524,8 +526,8 @@ def test_spec_validation_with_all_optional_fields():
 
 def test_override_config_with_none_value():
     """Test that override_config can be explicitly set to None."""
-    nim_deployment = NIMDeployment(gpu=1, override_config=None)
-    assert nim_deployment.override_config is None
+    executor_config = ContainerExecutorConfig(gpu=1, override_config=None)
+    assert executor_config.override_config is None
 
 
 def test_override_config_with_nested_none_values():
@@ -537,8 +539,8 @@ def test_override_config_with_nested_none_values():
         "annotations": None,
     }
 
-    nim_deployment = NIMDeployment(gpu=1, override_config=override_config)
-    assert nim_deployment.override_config["description"] is None
+    executor_config = ContainerExecutorConfig(gpu=1, override_config=override_config)
+    assert executor_config.override_config["description"] is None
 
 
 def test_override_config_deeply_nested_structure():
@@ -573,8 +575,8 @@ def test_override_config_deeply_nested_structure():
         },
     }
 
-    nim_deployment = NIMDeployment(gpu=1, override_config=override_config)
-    assert nim_deployment.override_config["expose"]["ingress"]["spec"]["rules"][0]["host"] == "test.com"
+    executor_config = ContainerExecutorConfig(gpu=1, override_config=override_config)
+    assert executor_config.override_config["expose"]["ingress"]["spec"]["rules"][0]["host"] == "test.com"
 
 
 def test_override_config_with_numeric_string_values():
@@ -590,9 +592,9 @@ def test_override_config_with_numeric_string_values():
         },
     }
 
-    nim_deployment = NIMDeployment(gpu=1, override_config=override_config)
-    assert isinstance(nim_deployment.override_config["resources"]["limits"]["nvidia.com/gpu"], str)
-    assert nim_deployment.override_config["resources"]["limits"]["nvidia.com/gpu"] == "2"
+    executor_config = ContainerExecutorConfig(gpu=1, override_config=override_config)
+    assert isinstance(executor_config.override_config["resources"]["limits"]["nvidia.com/gpu"], str)
+    assert executor_config.override_config["resources"]["limits"]["nvidia.com/gpu"] == "2"
 
 
 def test_override_config_serialization_preserves_types():
@@ -610,11 +612,11 @@ def test_override_config_serialization_preserves_types():
         "env": [{"name": "VAR", "value": "val"}],  # list of dicts
     }
 
-    nim_deployment = NIMDeployment(gpu=1, override_config=override_config)
+    executor_config = ContainerExecutorConfig(gpu=1, override_config=override_config)
 
     # Serialize and deserialize
-    json_str = nim_deployment.model_dump_json()
-    restored = NIMDeployment.model_validate_json(json_str)
+    json_str = executor_config.model_dump_json()
+    restored = ContainerExecutorConfig.model_validate_json(json_str)
 
     # Verify types are preserved
     assert isinstance(restored.override_config["replicas"], int)
@@ -656,11 +658,11 @@ def test_override_config_roundtrip_serialization_with_spec_validation():
         "nodeSelector": {"gpu-type": "a100"},
     }
 
-    # Step 1: Create NIMDeployment with override_config
-    nim_deployment = NIMDeployment(gpu=1, override_config=original_config)
+    # Step 1: Create ContainerExecutorConfig with override_config
+    executor_config = ContainerExecutorConfig(gpu=1, override_config=original_config)
 
     # Step 2: Validate as Spec (this is what NIMService compiler would do)
-    spec = Spec(**nim_deployment.override_config)
+    spec = Spec(**executor_config.override_config)
 
     # Step 3: Serialize back to dict (for K8s application)
     serialized_spec = spec.model_dump(exclude_none=True)
@@ -772,7 +774,7 @@ def test_override_config_json_roundtrip_through_spec():
 
 
 def test_nim_deployment_to_nimservice_flow():
-    """Test the complete flow: NIMDeployment -> override_config -> Spec -> K8s dict.
+    """Test the complete flow: ContainerExecutorConfig -> override_config -> Spec -> K8s dict.
 
     This simulates what the NIMService compiler will do.
     """
@@ -803,13 +805,15 @@ def test_nim_deployment_to_nimservice_flow():
         name="llama-deployment",
         workspace="production",
         entity_version=1,
-        nim_deployment=NIMDeployment(gpu=1, override_config=override_config),
+        engine=Engine.NIM,
+        model_spec=ModelDeploymentConfigModelSpec(),
+        executor_config=ContainerExecutorConfig(gpu=1, override_config=override_config),
         created_at=datetime.now(),
         updated_at=datetime.now(),
     )
 
     # Step 2: NIMService compiler extracts override_config and validates as Spec
-    spec = Spec(**config.nim_deployment.override_config)
+    spec = Spec(**config.executor_config.override_config)
 
     # Step 3: Serialize to dict for K8s application
     k8s_spec = spec.model_dump(exclude_none=True)
@@ -842,12 +846,10 @@ def test_create_request_to_config_with_override_config():
     # Create request
     create_request = CreateModelDeploymentConfigRequest(
         name="test-config",
-        workspace="default",
-        nim_deployment=NIMDeployment(
-            model_type=ModelType.LLM,
+        engine=Engine.NIM,
+        model_spec=ModelDeploymentConfigModelSpec(),
+        executor_config=ContainerExecutorConfig(
             gpu=1,
-            model_namespace="nvidia",
-            model_name="llama-3-8b",
             override_config=override_config,
         ),
     )
@@ -858,15 +860,17 @@ def test_create_request_to_config_with_override_config():
         name=create_request.name,
         workspace="default",
         entity_version=1,
-        nim_deployment=create_request.nim_deployment,
+        engine=create_request.engine,
+        model_spec=create_request.model_spec,
+        executor_config=create_request.executor_config,
         created_at=datetime.now(),
         updated_at=datetime.now(),
     )
 
     # Verify override_config is preserved
-    assert config.nim_deployment.override_config is not None
-    assert config.nim_deployment.override_config["replicas"] == 2
-    assert config.nim_deployment.override_config["authSecret"] == "my-secret"
+    assert config.executor_config.override_config is not None
+    assert config.executor_config.override_config["replicas"] == 2
+    assert config.executor_config.override_config["authSecret"] == "my-secret"
 
 
 def test_config_serialization_roundtrip_with_override_config():
@@ -883,7 +887,9 @@ def test_config_serialization_roundtrip_with_override_config():
         name="test-config",
         workspace="default",
         entity_version=1,
-        nim_deployment=NIMDeployment(gpu=1, override_config=override_config),
+        engine=Engine.NIM,
+        model_spec=ModelDeploymentConfigModelSpec(),
+        executor_config=ContainerExecutorConfig(gpu=1, override_config=override_config),
         created_at=datetime.now(),
         updated_at=datetime.now(),
     )
@@ -895,7 +901,7 @@ def test_config_serialization_roundtrip_with_override_config():
     restored_config = ModelDeploymentConfig.model_validate_json(json_str)
 
     # Verify override_config is intact
-    assert restored_config.nim_deployment.override_config is not None
-    assert restored_config.nim_deployment.override_config["authSecret"] == "my-secret"
-    assert len(restored_config.nim_deployment.override_config["env"]) == 1
-    assert restored_config.nim_deployment.override_config["env"][0]["name"] == "TEST"
+    assert restored_config.executor_config.override_config is not None
+    assert restored_config.executor_config.override_config["authSecret"] == "my-secret"
+    assert len(restored_config.executor_config.override_config["env"]) == 1
+    assert restored_config.executor_config.override_config["env"][0]["name"] == "TEST"

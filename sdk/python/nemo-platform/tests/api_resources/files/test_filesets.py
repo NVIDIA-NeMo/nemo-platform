@@ -267,8 +267,18 @@ class TestFilesets:
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
                     "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
                 },
-                "description": "description",
-                "name": "name",
+                "description": {
+                    "eq": "$eq",
+                    "in_": ["string"],
+                    "like": "$like",
+                    "nin": ["string"],
+                },
+                "name": {
+                    "eq": "$eq",
+                    "in_": ["string"],
+                    "like": "$like",
+                    "nin": ["string"],
+                },
                 "purpose": "dataset",
                 "storage_type": "local",
                 "updated_at": {
@@ -605,8 +615,18 @@ class TestAsyncFilesets:
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
                     "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
                 },
-                "description": "description",
-                "name": "name",
+                "description": {
+                    "eq": "$eq",
+                    "in_": ["string"],
+                    "like": "$like",
+                    "nin": ["string"],
+                },
+                "name": {
+                    "eq": "$eq",
+                    "in_": ["string"],
+                    "like": "$like",
+                    "nin": ["string"],
+                },
                 "purpose": "dataset",
                 "storage_type": "local",
                 "updated_at": {

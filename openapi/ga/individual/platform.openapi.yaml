@@ -4089,6 +4089,88 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/spans/groups:
+    get:
+      tags:
+      - Spans
+      summary: List Span Groups
+      operationId: list_span_groups_apis_intake_v2_workspaces__workspace__spans_groups_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: by
+        in: query
+        required: true
+        schema:
+          type: string
+          description: Comma-separated span fields to group by, e.g. trace_id or session_id,trace_id.
+          title: By
+        description: Comma-separated span fields to group by, e.g. trace_id or session_id,trace_id.
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          description: Page size.
+          default: 10
+          title: Page Size
+        description: Page size.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/SpanGroupSortField'
+          default: -span_count
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/SpanFilter'
+        description: Filter spans by the same fields as the span list endpoint, then
+          group matching spans by the comma-separated fields in the by query parameter.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpanGroupsPage'
+        '400':
+          description: Invalid group-by parameter
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+                required:
+                - detail
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /apis/intake/v2/workspaces/{workspace}/spans/{span_id}:
     get:
       tags:
@@ -4219,8 +4301,8 @@ paths:
         explode: true
         schema:
           $ref: '#/components/schemas/TraceFilter'
-        description: Filter root-span-backed traces by id, session_id, rolled-up status,
-          root span started_at, and root-span evaluation context fields.
+        description: Filter root-span-backed traces by id, session_id, root status,
+          root span started_at, experiment_id, and test_case_id.
       responses:
         '200':
           description: Successful Response
@@ -7243,18 +7325,24 @@ components:
       description: Filter for Adapter list queries.
       properties:
         name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by adapter name.
           title: Name
-          type: string
         model:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by parent (base) model entity reference in the form
             {workspace}/{model_name}.
           title: Model
-          type: string
         description:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by description.
           title: Description
-          type: string
         fileset:
           description: Filter by fileset reference in the form {workspace}/{fileset_name}.
           title: Fileset
@@ -7933,9 +8021,11 @@ components:
       description: Filter for base model properties.
       properties:
         name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by name of the base model.
           title: Name
-          type: string
       title: BaseModelFilter
       type: object
     CPUExecutionProviderInput:
@@ -8433,6 +8523,77 @@ components:
       type: object
       title: ComputeResources
       description: Resource requirements matching k8s ResourceRequirements format.
+    ContainerExecutorConfig:
+      properties:
+        gpu:
+          type: integer
+          minimum: 0.0
+          title: Gpu
+          description: Number of GPUs required for the deployment. 0 = CPU-only.
+        disk_size:
+          type: string
+          title: Disk Size
+          description: Disk size for the deployment
+          default: 50Gi
+        image_name:
+          title: Image Name
+          description: Container image name. If not specified, defaults to the engine's
+            configured image (e.g. default_vllm_image / default_nimservice_image).
+            Required for engine='generic'.
+          type: string
+          maxLength: 255
+        image_tag:
+          title: Image Tag
+          description: Container image tag. If not specified, defaults to the engine's
+            configured image tag.
+          type: string
+          maxLength: 255
+        health_check_path:
+          title: Health Check Path
+          description: HTTP path used for the container readiness probe. If not specified,
+            defaults to the engine's standard health endpoint (e.g. '/v1/health/ready'
+            for NIM, '/health' for vLLM). Set this for engine='generic' containers
+            that expose a non-standard health endpoint.
+          type: string
+          maxLength: 255
+        additional_envs:
+          title: Additional Envs
+          description: Additional environment variables for the deployment
+          additionalProperties:
+            type: string
+          type: object
+        additional_args:
+          items:
+            type: string
+          type: array
+          title: Additional Args
+          description: Raw container/`serve` args appended verbatim to the container's
+            arg vector.
+        k8s_nim_operator_config:
+          allOf:
+          - $ref: '#/components/schemas/K8sNIMOperatorConfig'
+          description: Typed Kubernetes configuration for common NIMService Spec fields
+            (NIM engine on k8s). Applied after defaults but before override_config.
+            Ignored by non-NIM engines.
+        override_config:
+          title: Override Config
+          description: Raw NIMService spec configuration that takes precedence over
+            generated config (NIM engine on k8s). Allows advanced configuration options
+            directly. Ignored by non-NIM engines.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - gpu
+      title: ContainerExecutorConfig
+      description: 'Compute + container settings shared by the docker and k8s executors.
+
+
+        Both the docker and k8s executors run containers and share this shape.
+
+        A future non-container executor (e.g. subprocess) would warrant turning
+
+        ``executor_config`` into a discriminated union.'
     ContainerSpec:
       properties:
         image:
@@ -8641,10 +8802,20 @@ components:
           description: Optional description of the deployment configuration
           type: string
           maxLength: 1000
-        nim_deployment:
+        engine:
           allOf:
-          - $ref: '#/components/schemas/NIMDeployment'
-          description: Configuration for NIM-based deployment
+          - $ref: '#/components/schemas/Engine'
+          description: Inference engine selecting the compiler path (nim/vllm/generic)
+        model_spec:
+          allOf:
+          - $ref: '#/components/schemas/ModelDeploymentConfigModelSpec'
+          description: What model to serve and how -- independent of the executor
+            it runs on
+        executor_config:
+          allOf:
+          - $ref: '#/components/schemas/ContainerExecutorConfig'
+          description: Compute + container settings for the executor the deployment
+            runs on
         model_entity_id:
           title: Model Entity Id
           description: Optional reference to the base model entity ID for this deployment
@@ -8653,7 +8824,9 @@ components:
       type: object
       required:
       - name
-      - nim_deployment
+      - engine
+      - model_spec
+      - executor_config
       title: CreateModelDeploymentConfigRequest
       description: Request model for creating a ModelDeploymentConfig.
     CreateModelDeploymentRequest:
@@ -9296,6 +9469,21 @@ components:
         This backend auto-completes jobs without actually running containers,
 
         making tests fast and deterministic.'
+    Engine:
+      type: string
+      enum:
+      - nim
+      - vllm
+      - generic
+      title: Engine
+      description: 'Inference engine selecting the compiler path for a deployment.
+
+
+        The engine determines what command, image, and env a deployment compiles to.
+
+        The fields a compiler consumes are not engine-specific; engines take the same
+
+        inputs (model_spec + executor_config) and differ in what they do with them.'
     EntitiesPage:
       properties:
         data:
@@ -9776,6 +9964,11 @@ components:
           - $ref: '#/components/schemas/DatetimeFilter'
           description: Filter experiments by last-updated timestamp; supports `$gte`
             and `$lte` for ranges.
+        is_deleted:
+          description: When true, returns only soft-deleted experiments. Omit (or
+            false) to see only live experiments.
+          title: Is Deleted
+          type: boolean
       title: ExperimentFilter
       type: object
     ExperimentGroupFilter:
@@ -9786,6 +9979,11 @@ components:
           description: Filter groups by name.
           title: Name
           type: string
+        is_deleted:
+          description: When true, returns only soft-deleted groups. Omit (or false)
+            to see only live groups.
+          title: Is Deleted
+          type: boolean
       title: ExperimentGroupFilter
       type: object
     ExperimentGroupRequest:
@@ -9864,10 +10062,10 @@ components:
           title: Name
           description: Producer-supplied, workspace-unique experiment id.
         experiment_group_id:
-          title: Experiment Group Id
-          description: Entity id of the owning ExperimentGroup; optional. Soft reference,
-            not validated.
           type: string
+          title: Experiment Group Id
+          description: "Entity id of the owning ExperimentGroup. Required \u2014 the\
+            \ group must already exist."
         agent_name:
           type: string
           title: Agent Name
@@ -9907,6 +10105,7 @@ components:
       type: object
       required:
       - name
+      - experiment_group_id
       - agent_name
       - agent_version
       - dataset_name
@@ -9924,10 +10123,10 @@ components:
           type: string
           title: Workspace
         experiment_group_id:
-          title: Experiment Group Id
-          description: Entity id of the owning ExperimentGroup; null when ungrouped.
-            Soft reference, not validated.
           type: string
+          title: Experiment Group Id
+          description: Entity id of the owning ExperimentGroup. Required for every
+            Experiment.
         agent_name:
           type: string
           title: Agent Name
@@ -9996,6 +10195,7 @@ components:
       - id
       - name
       - workspace
+      - experiment_group_id
       - agent_name
       - agent_version
       - dataset_name
@@ -10115,9 +10315,9 @@ components:
       - status
       title: ExperimentSessionResponse
       description: "One ingested session of an Experiment \u2014 a single test case\
-        \ execution.\n\nHydrated from ClickHouse at read time by joining ``experiment_sessions``\
-        \ with\nthe session's root span (for status, input, tokens, cost) and\n``evaluator_results``\
-        \ (for per-evaluator session-mean scores)."
+        \ execution.\n\nHydrated from ClickHouse at read time by reading root/session\
+        \ membership from\n``trace_index`` and joining page-bounded span/evaluator\
+        \ rollups."
     ExperimentSessionResponsesPage:
       properties:
         data:
@@ -10290,13 +10490,17 @@ components:
       description: Filter schema for listing filesets.
       properties:
         name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by fileset name.
           title: Name
-          type: string
         description:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by fileset description.
           title: Description
-          type: string
         purpose:
           allOf:
           - $ref: '#/components/schemas/FilesetPurpose'
@@ -11101,13 +11305,17 @@ components:
       description: Filter schema for listing guardrail configs.
       properties:
         name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by config name.
           title: Name
-          type: string
         description:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by config description.
           title: Description
-          type: string
         project:
           description: Filter by project name.
           title: Project
@@ -12567,10 +12775,20 @@ components:
           description: Optional description of the deployment configuration
           type: string
           maxLength: 1000
-        nim_deployment:
+        engine:
           allOf:
-          - $ref: '#/components/schemas/NIMDeployment'
-          description: Configuration for NIM-based deployment
+          - $ref: '#/components/schemas/Engine'
+          description: Inference engine selecting the compiler path (nim/vllm/generic)
+        model_spec:
+          allOf:
+          - $ref: '#/components/schemas/ModelDeploymentConfigModelSpec'
+          description: What model to serve and how -- independent of the executor
+            it runs on
+        executor_config:
+          allOf:
+          - $ref: '#/components/schemas/ContainerExecutorConfig'
+          description: Compute + container settings for the executor the deployment
+            runs on
         model_entity_id:
           title: Model Entity Id
           description: Optional reference to the base model entity ID for this deployment
@@ -12583,7 +12801,9 @@ components:
       - created_at
       - updated_at
       - entity_version
-      - nim_deployment
+      - engine
+      - model_spec
+      - executor_config
       title: ModelDeploymentConfig
       description: 'ModelDeploymentConfig stores the configuration details for deploying
         a model.
@@ -12609,13 +12829,17 @@ components:
           title: Model Entity Id
           type: string
         name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by config name.
           title: Name
-          type: string
         description:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by description.
           title: Description
-          type: string
         created_at:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
@@ -12626,6 +12850,55 @@ components:
           description: Filter by update date.
       title: ModelDeploymentConfigFilter
       type: object
+    ModelDeploymentConfigModelSpec:
+      properties:
+        model_type:
+          allOf:
+          - $ref: '#/components/schemas/ModelType'
+          description: Type of model being deployed
+        model_namespace:
+          title: Model Namespace
+          description: Model repository namespace - organization/user namespace as
+            it exists in repo_id.
+          type: string
+          maxLength: 255
+        model_name:
+          title: Model Name
+          description: Model name - model repository name for model weights.
+          type: string
+          maxLength: 255
+        model_revision:
+          title: Model Revision
+          description: Model revision (branch, tag, or commit). If not specified,
+            parsed from model_name @revision suffix or defaults to 'main'
+          type: string
+          maxLength: 255
+        chat_template:
+          title: Chat Template
+          description: Jinja2 chat template string for the model. Overrides the chat_template
+            from ModelEntity.spec if both are set. Used by the engine to format chat
+            completions.
+          type: string
+        tool_call_config:
+          allOf:
+          - $ref: '#/components/schemas/ToolCallConfig'
+          description: Tool calling configuration for the deployment. Overrides tool_call_config
+            from ModelEntity.spec if both are set. Controls how the model handles
+            function/tool calling.
+        lora_enabled:
+          type: boolean
+          title: Lora Enabled
+          description: Whether to enable LoRA support
+          default: false
+      type: object
+      title: ModelDeploymentConfigModelSpec
+      description: 'What model to serve and how -- independent of the executor it
+        runs on.
+
+
+        Executor-invariant facts about the model. The compiler resolves the weight
+
+        source per engine; serving fields override the model entity spec when set.'
     ModelDeploymentConfigsPage:
       properties:
         data:
@@ -12667,21 +12940,27 @@ components:
           - $ref: '#/components/schemas/ModelDeploymentStatus'
           description: Filter by status.
         config:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by config name.
           title: Config
-          type: string
         model_provider_id:
           description: Filter by model provider ID.
           title: Model Provider Id
           type: string
         name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by deployment name.
           title: Name
-          type: string
         status_message:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by status message.
           title: Status Message
-          type: string
         created_at:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
@@ -12873,9 +13152,11 @@ components:
       description: Filter for Model Entity queries.
       properties:
         name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by name.
           title: Name
-          type: string
         project:
           description: Filter by project name.
           title: Project
@@ -12913,9 +13194,11 @@ components:
           title: Lora Enabled
           type: boolean
         description:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by description.
           title: Description
-          type: string
         created_at:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
@@ -13162,17 +13445,23 @@ components:
           title: Model Deployment Id
           type: string
         name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by name.
           title: Name
-          type: string
         description:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by description.
           title: Description
-          type: string
         host_url:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by host URL.
           title: Host Url
-          type: string
         created_at:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
@@ -13445,94 +13734,6 @@ components:
       - target
       - api_key_secret
       title: NGCStorageConfig
-    NIMDeployment:
-      properties:
-        model_type:
-          allOf:
-          - $ref: '#/components/schemas/ModelType'
-          description: Type of model being deployed
-        lora_enabled:
-          type: boolean
-          title: Lora Enabled
-          description: Whether to enable LoRA support
-          default: false
-        gpu:
-          type: integer
-          minimum: 0.0
-          title: Gpu
-          description: Number of GPUs required for the deployment
-        disk_size:
-          type: string
-          title: Disk Size
-          description: Disk size for the deployment
-          default: 50Gi
-        image_name:
-          title: Image Name
-          description: Container image name from NGC. If not specified, defaults to
-            multi-llm
-          type: string
-          maxLength: 255
-        image_tag:
-          title: Image Tag
-          description: Container image tag from NGC
-          type: string
-          maxLength: 255
-        model_namespace:
-          title: Model Namespace
-          description: Model repository namespace - organization/user namespace as
-            it exists in repo_id.
-          type: string
-          maxLength: 255
-        model_name:
-          title: Model Name
-          description: Model name - model repository name for model weights.
-          type: string
-          maxLength: 255
-        model_revision:
-          title: Model Revision
-          description: Model revision (branch, tag, or commit). If not specified,
-            parsed from model_name @revision suffix or defaults to 'main'
-          type: string
-          maxLength: 255
-        model_provider:
-          title: Model Provider
-          description: 'Model provider: ''hf'' for HuggingFace or ''nmp'' for NeMo
-            Platform'
-          type: string
-          maxLength: 255
-        chat_template:
-          title: Chat Template
-          description: Jinja2 chat template string for the model. Overrides the chat_template
-            from ModelEntity.spec if both are set. Used by NIM to format chat completions.
-          type: string
-        tool_call_config:
-          allOf:
-          - $ref: '#/components/schemas/ToolCallConfig'
-          description: Tool calling configuration for NIM deployments. Overrides tool_call_config
-            from ModelEntity.spec if both are set. Controls how the model handles
-            function/tool calling.
-        additional_envs:
-          title: Additional Envs
-          description: Additional environment variables for the deployment
-          additionalProperties: true
-          type: object
-        k8s_nim_operator_config:
-          allOf:
-          - $ref: '#/components/schemas/K8sNIMOperatorConfig'
-          description: Typed Kubernetes configuration for common NIMService Spec fields.
-            Applied after defaults but before override_config.
-        override_config:
-          title: Override Config
-          description: Raw NIMService spec configuration that takes precedence over
-            generated config. Allows end users to provide advanced configuration options
-            directly.
-          additionalProperties: true
-          type: object
-      type: object
-      required:
-      - gpu
-      title: NIMDeployment
-      description: Configuration for NIM-based model deployment.
     NoteAnnotation:
       properties:
         annotation_id:
@@ -14776,9 +14977,11 @@ components:
           title: Project
           type: string
         name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Name of the job.
           title: Name
-          type: string
         created_at:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
@@ -14796,9 +14999,11 @@ components:
           description: The current status.
           title: Status
         source:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: The source of the job.
           title: Source
-          type: string
       title: PlatformJobsListFilter
       type: object
     PlatformSecretAccessResponse:
@@ -15628,21 +15833,27 @@ components:
       description: Filter for role bindings.
       properties:
         principal:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by principal ID
           title: Principal
-          type: string
         workspace:
           description: Filter by workspace
           title: Workspace
           type: string
         role:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by role
           title: Role
-          type: string
         granted_by:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by who granted the role
           title: Granted By
-          type: string
         is_active:
           description: Filter for active (True) or revoked (False) bindings
           title: Is Active
@@ -16119,6 +16330,67 @@ components:
           description: Filter by span start timestamp.
       title: SpanFilter
       type: object
+    SpanGroup:
+      properties:
+        group:
+          additionalProperties:
+            type: string
+          type: object
+          title: Group
+          description: Group key values, keyed by the requested group-by fields.
+        span_count:
+          type: integer
+          minimum: 0.0
+          title: Span Count
+          description: Number of matching spans in this group.
+      type: object
+      required:
+      - group
+      - span_count
+      title: SpanGroup
+    SpanGroupBy:
+      type: string
+      enum:
+      - trace_id
+      - session_id
+      title: SpanGroupBy
+    SpanGroupSortField:
+      type: string
+      enum:
+      - span_count
+      - -span_count
+      title: SpanGroupSortField
+    SpanGroupsPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/SpanGroup'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+        grouped_by:
+          items:
+            $ref: '#/components/schemas/SpanGroupBy'
+          type: array
+          title: Grouped By
+          description: Span fields used to group the matching spans.
+      type: object
+      required:
+      - data
+      - grouped_by
+      title: SpanGroupsPage
     SpanKind:
       type: string
       enum:
@@ -16204,6 +16476,31 @@ components:
       - s3
       title: StorageConfigType
       type: string
+    StringFilter:
+      additionalProperties: false
+      properties:
+        $eq:
+          description: Filter for results equal to this value.
+          title: $Eq
+          type: string
+        $like:
+          description: Filter for results matching this pattern.
+          title: $Like
+          type: string
+        $in:
+          description: Filter for results in this list of values.
+          title: $In
+          items:
+            type: string
+          type: array
+        $nin:
+          description: Filter for results not in this list of values.
+          title: $Nin
+          items:
+            type: string
+          type: array
+      title: StringFilter
+      type: object
     SubprocessExecutionProvider:
       properties:
         provider:
@@ -16466,8 +16763,8 @@ components:
         name:
           title: Name
           type: string
-        evaluation_context:
-          $ref: '#/components/schemas/SpanEvaluationContext'
+        experiment_context:
+          $ref: '#/components/schemas/ExperimentContext'
         started_at:
           type: string
           format: date-time
@@ -16535,37 +16832,17 @@ components:
         status:
           allOf:
           - $ref: '#/components/schemas/SpanStatus'
-          description: Filter by rolled-up trace status.
+          description: Filter by root span status.
         started_at:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
           description: Filter by root span start timestamp.
-        evaluation_id:
-          description: Filter by root-span evaluation id.
-          title: Evaluation Id
-          type: string
-        evaluation_sha:
-          description: Filter by root-span evaluation sha.
-          title: Evaluation Sha
-          type: string
-        evaluation_run_id:
-          description: Filter by root-span evaluation run id.
-          title: Evaluation Run Id
-          type: string
-        dataset_id:
-          description: Filter by root-span dataset id.
-          title: Dataset Id
-          type: string
-        dataset_name:
-          description: Filter by root-span dataset name.
-          title: Dataset Name
-          type: string
-        dataset_version:
-          description: Filter by root-span dataset version.
-          title: Dataset Version
+        experiment_id:
+          description: Filter by root-span experiment id.
+          title: Experiment Id
           type: string
         test_case_id:
-          description: Filter by root-span dataset test case id.
+          description: Filter by root-span experiment test case id.
           title: Test Case Id
           type: string
       title: TraceFilter
@@ -16714,10 +16991,20 @@ components:
           description: Optional description of the deployment configuration
           type: string
           maxLength: 1000
-        nim_deployment:
+        engine:
           allOf:
-          - $ref: '#/components/schemas/NIMDeployment'
-          description: Configuration for NIM-based deployment
+          - $ref: '#/components/schemas/Engine'
+          description: Inference engine selecting the compiler path (nim/vllm/generic)
+        model_spec:
+          allOf:
+          - $ref: '#/components/schemas/ModelDeploymentConfigModelSpec'
+          description: What model to serve and how -- independent of the executor
+            it runs on
+        executor_config:
+          allOf:
+          - $ref: '#/components/schemas/ContainerExecutorConfig'
+          description: Compute + container settings for the executor the deployment
+            runs on
         model_entity_id:
           title: Model Entity Id
           description: Optional reference to the base model entity ID for this deployment
@@ -16725,7 +17012,9 @@ components:
           maxLength: 255
       type: object
       required:
-      - nim_deployment
+      - engine
+      - model_spec
+      - executor_config
       title: UpdateModelDeploymentConfigRequest
       description: Request model for updating a ModelDeploymentConfig (creates new
         version).

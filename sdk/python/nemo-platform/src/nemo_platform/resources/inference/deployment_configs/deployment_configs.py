@@ -40,13 +40,16 @@ from ...._response import (
 from ....pagination import SyncDefaultPagination, AsyncDefaultPagination
 from ...._base_client import AsyncPaginator, make_request_options
 from ....types.inference import (
+    Engine,
     deployment_config_list_params,
     deployment_config_create_params,
     deployment_config_update_params,
 )
-from ....types.inference.nim_deployment_param import NIMDeploymentParam
+from ....types.inference.engine import Engine
 from ....types.inference.model_deployment_config import ModelDeploymentConfig
+from ....types.inference.container_executor_config_param import ContainerExecutorConfigParam
 from ....types.inference.model_deployment_config_filter_param import ModelDeploymentConfigFilterParam
+from ....types.inference.model_deployment_config_model_spec_param import ModelDeploymentConfigModelSpecParam
 from ...._exceptions import ConflictError
 
 __all__ = ["DeploymentConfigsResource", "AsyncDeploymentConfigsResource"]
@@ -80,8 +83,10 @@ class DeploymentConfigsResource(SyncAPIResource):
         self,
         *,
         workspace: str | None = None,
+        engine: Engine,
+        executor_config: ContainerExecutorConfigParam,
+        model_spec: ModelDeploymentConfigModelSpecParam,
         name: str,
-        nim_deployment: NIMDeploymentParam,
         description: str | Omit = omit,
         model_entity_id: str | Omit = omit,
         project: str | Omit = omit,
@@ -97,10 +102,25 @@ class DeploymentConfigsResource(SyncAPIResource):
         Create a new ModelDeploymentConfig (version 1).
 
         Args:
+          engine: Inference engine selecting the compiler path for a deployment.
+
+              The engine determines what command, image, and env a deployment compiles to. The
+              fields a compiler consumes are not engine-specific; engines take the same inputs
+              (model_spec + executor_config) and differ in what they do with them.
+
+          executor_config: Compute + container settings shared by the docker and k8s executors.
+
+              Both the docker and k8s executors run containers and share this shape. A future
+              non-container executor (e.g. subprocess) would warrant turning `executor_config`
+              into a discriminated union.
+
+          model_spec: What model to serve and how -- independent of the executor it runs on.
+
+              Executor-invariant facts about the model. The compiler resolves the weight
+              source per engine; serving fields override the model entity spec when set.
+
           name: Name of the deployment configuration. Allowed characters: letters (a-z, A-Z),
               digits (0-9), underscores, hyphens, and dots.
-
-          nim_deployment: Configuration for NIM-based model deployment.
 
           description: Optional description of the deployment configuration
 
@@ -129,8 +149,10 @@ class DeploymentConfigsResource(SyncAPIResource):
                 path_template("/apis/models/v2/workspaces/{workspace}/deployment-configs", workspace=workspace),
                 body=maybe_transform(
                     {
+                        "engine": engine,
+                        "executor_config": executor_config,
+                        "model_spec": model_spec,
                         "name": name,
-                        "nim_deployment": nim_deployment,
                         "description": description,
                         "model_entity_id": model_entity_id,
                         "project": project,
@@ -192,7 +214,9 @@ class DeploymentConfigsResource(SyncAPIResource):
         name: str,
         *,
         workspace: str | None = None,
-        nim_deployment: NIMDeploymentParam,
+        engine: Engine,
+        executor_config: ContainerExecutorConfigParam,
+        model_spec: ModelDeploymentConfigModelSpecParam,
         description: str | Omit = omit,
         model_entity_id: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
@@ -206,7 +230,22 @@ class DeploymentConfigsResource(SyncAPIResource):
         Update a ModelDeploymentConfig (creates a new immutable version).
 
         Args:
-          nim_deployment: Configuration for NIM-based model deployment.
+          engine: Inference engine selecting the compiler path for a deployment.
+
+              The engine determines what command, image, and env a deployment compiles to. The
+              fields a compiler consumes are not engine-specific; engines take the same inputs
+              (model_spec + executor_config) and differ in what they do with them.
+
+          executor_config: Compute + container settings shared by the docker and k8s executors.
+
+              Both the docker and k8s executors run containers and share this shape. A future
+              non-container executor (e.g. subprocess) would warrant turning `executor_config`
+              into a discriminated union.
+
+          model_spec: What model to serve and how -- independent of the executor it runs on.
+
+              Executor-invariant facts about the model. The compiler resolves the weight
+              source per engine; serving fields override the model entity spec when set.
 
           description: Optional description of the deployment configuration
 
@@ -232,7 +271,9 @@ class DeploymentConfigsResource(SyncAPIResource):
             ),
             body=maybe_transform(
                 {
-                    "nim_deployment": nim_deployment,
+                    "engine": engine,
+                    "executor_config": executor_config,
+                    "model_spec": model_spec,
                     "description": description,
                     "model_entity_id": model_entity_id,
                 },
@@ -382,8 +423,10 @@ class AsyncDeploymentConfigsResource(AsyncAPIResource):
         self,
         *,
         workspace: str | None = None,
+        engine: Engine,
+        executor_config: ContainerExecutorConfigParam,
+        model_spec: ModelDeploymentConfigModelSpecParam,
         name: str,
-        nim_deployment: NIMDeploymentParam,
         description: str | Omit = omit,
         model_entity_id: str | Omit = omit,
         project: str | Omit = omit,
@@ -399,10 +442,25 @@ class AsyncDeploymentConfigsResource(AsyncAPIResource):
         Create a new ModelDeploymentConfig (version 1).
 
         Args:
+          engine: Inference engine selecting the compiler path for a deployment.
+
+              The engine determines what command, image, and env a deployment compiles to. The
+              fields a compiler consumes are not engine-specific; engines take the same inputs
+              (model_spec + executor_config) and differ in what they do with them.
+
+          executor_config: Compute + container settings shared by the docker and k8s executors.
+
+              Both the docker and k8s executors run containers and share this shape. A future
+              non-container executor (e.g. subprocess) would warrant turning `executor_config`
+              into a discriminated union.
+
+          model_spec: What model to serve and how -- independent of the executor it runs on.
+
+              Executor-invariant facts about the model. The compiler resolves the weight
+              source per engine; serving fields override the model entity spec when set.
+
           name: Name of the deployment configuration. Allowed characters: letters (a-z, A-Z),
               digits (0-9), underscores, hyphens, and dots.
-
-          nim_deployment: Configuration for NIM-based model deployment.
 
           description: Optional description of the deployment configuration
 
@@ -431,8 +489,10 @@ class AsyncDeploymentConfigsResource(AsyncAPIResource):
                 path_template("/apis/models/v2/workspaces/{workspace}/deployment-configs", workspace=workspace),
                 body=await async_maybe_transform(
                     {
+                        "engine": engine,
+                        "executor_config": executor_config,
+                        "model_spec": model_spec,
                         "name": name,
-                        "nim_deployment": nim_deployment,
                         "description": description,
                         "model_entity_id": model_entity_id,
                         "project": project,
@@ -494,7 +554,9 @@ class AsyncDeploymentConfigsResource(AsyncAPIResource):
         name: str,
         *,
         workspace: str | None = None,
-        nim_deployment: NIMDeploymentParam,
+        engine: Engine,
+        executor_config: ContainerExecutorConfigParam,
+        model_spec: ModelDeploymentConfigModelSpecParam,
         description: str | Omit = omit,
         model_entity_id: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
@@ -508,7 +570,22 @@ class AsyncDeploymentConfigsResource(AsyncAPIResource):
         Update a ModelDeploymentConfig (creates a new immutable version).
 
         Args:
-          nim_deployment: Configuration for NIM-based model deployment.
+          engine: Inference engine selecting the compiler path for a deployment.
+
+              The engine determines what command, image, and env a deployment compiles to. The
+              fields a compiler consumes are not engine-specific; engines take the same inputs
+              (model_spec + executor_config) and differ in what they do with them.
+
+          executor_config: Compute + container settings shared by the docker and k8s executors.
+
+              Both the docker and k8s executors run containers and share this shape. A future
+              non-container executor (e.g. subprocess) would warrant turning `executor_config`
+              into a discriminated union.
+
+          model_spec: What model to serve and how -- independent of the executor it runs on.
+
+              Executor-invariant facts about the model. The compiler resolves the weight
+              source per engine; serving fields override the model entity spec when set.
 
           description: Optional description of the deployment configuration
 
@@ -534,7 +611,9 @@ class AsyncDeploymentConfigsResource(AsyncAPIResource):
             ),
             body=await async_maybe_transform(
                 {
-                    "nim_deployment": nim_deployment,
+                    "engine": engine,
+                    "executor_config": executor_config,
+                    "model_spec": model_spec,
                     "description": description,
                     "model_entity_id": model_entity_id,
                 },

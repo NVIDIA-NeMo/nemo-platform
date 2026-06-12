@@ -433,15 +433,29 @@ class Runtime(str, Enum):
         return cls.NONE
 
 
-class NemoPlatformConfig(create_service_config_class("platform")):
-    """
-    Platform-wide configuration settings. It inherits from ServiceConfig and provides Platform-centric settings, which may
+class NemoPlatformConfig(ServiceConfig):
+    """Platform-wide configuration settings. It inherits from ServiceConfig and provides Platform-centric settings, which may
     be used by other microservices to interact with other Platform services.
 
     Environment variables NMP_<SERVICE>_URL (e.g. NMP_FILES_URL) are read and merged into
     service_discovery with the service name lowercased; NMP_BASE_URL sets base_url and is not added to
     service_discovery.
     """
+
+    model_config = SettingsConfigDict(
+        env_prefix=get_service_config_prefix("platform"),
+        env_nested_delimiter="_",
+        extra="allow",
+        populate_by_name=True,
+    )
+
+    @staticmethod
+    def global_settings_key() -> str:
+        return "platform"
+
+    @classmethod
+    def get(cls) -> NemoPlatformConfig:
+        return Configuration.get_service_config(cls)
 
     services: str = internal_field(
         default="",

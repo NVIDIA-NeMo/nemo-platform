@@ -13,14 +13,26 @@ from fastapi.testclient import TestClient
 
 ATIF_INGEST = "/apis/intake/v2/workspaces/default/ingest/atif"
 EXPERIMENTS = "/apis/intake/v2/workspaces/default/experiments"
+GROUPS = "/apis/intake/v2/workspaces/default/experiment-groups"
+
+
+def _ensure_group(client: TestClient, name: str = "rollup-test-group") -> str:
+    """Create or fetch an ExperimentGroup; returns its id."""
+    response = client.post(GROUPS, json={"name": name})
+    if response.status_code == 409:
+        response = client.get(f"{GROUPS}/{name}")
+    response.raise_for_status()
+    return response.json()["id"]
 
 
 def test_experiment_response_hydrates_clickhouse_rollups(client: TestClient) -> None:
     experiment_id = "rollup-exp"
+    group_id = _ensure_group(client)
     created = client.post(
         EXPERIMENTS,
         json={
             "name": experiment_id,
+            "experiment_group_id": group_id,
             "agent_name": "sample-agent",
             "agent_version": "1.0.0",
             "dataset_name": "rollup-dataset",
@@ -93,6 +105,41 @@ def test_experiment_response_hydrates_clickhouse_rollups(client: TestClient) -> 
     assert listed_experiment["aggregate_scores"]["harbor.verifier"]["mean"] == pytest.approx(0.75)
 
 
+def test_atif_ingest_rejects_deleted_experiment(client: TestClient) -> None:
+    experiment_id = "soft-deleted-exp"
+    group_id = _ensure_group(client)
+    created = client.post(
+        EXPERIMENTS,
+        json={
+            "name": experiment_id,
+            "experiment_group_id": group_id,
+            "agent_name": "sample-agent",
+            "agent_version": "1.0.0",
+            "dataset_name": "rollup-dataset",
+            "dataset_version": "v1",
+        },
+    )
+    assert created.status_code == 201, created.text
+    deleted = client.delete(f"{EXPERIMENTS}/{experiment_id}")
+    assert deleted.status_code == 204, deleted.text
+
+    response = client.post(
+        ATIF_INGEST,
+        json=_atif_body(
+            started_at=datetime.now(timezone.utc).replace(microsecond=0),
+            experiment_id=experiment_id,
+            run_id="run-1",
+            test_case_id="case-1",
+            score=1.0,
+            cost_usd=0.01,
+            latency_ms=100,
+            offset_seconds=0,
+        ),
+    )
+    assert response.status_code == 400, response.text
+    assert "deleted" in response.json()["detail"].lower()
+
+
 def test_atif_ingest_rejects_unknown_experiment_context(client: TestClient) -> None:
     response = client.post(
         ATIF_INGEST,
@@ -114,10 +161,12 @@ def test_atif_ingest_rejects_unknown_experiment_context(client: TestClient) -> N
 
 def test_deprecated_evaluation_context_hydrates_experiment_rollups(client: TestClient) -> None:
     experiment_id = "legacy-eval-context-exp"
+    group_id = _ensure_group(client)
     created = client.post(
         EXPERIMENTS,
         json={
             "name": experiment_id,
+            "experiment_group_id": group_id,
             "agent_name": "sample-agent",
             "agent_version": "1.0.0",
             "dataset_name": "rollup-dataset",

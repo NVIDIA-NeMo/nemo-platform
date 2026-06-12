@@ -158,8 +158,8 @@ _NON_SPDX_PATTERNS = (
 def _matches_path_filter(relpath: str, patterns: list[str]) -> bool:
     """Return True if *relpath* matches any of the given path patterns.
 
-    Patterns are matched as prefixes first (e.g. ``services/evaluator``
-    matches ``services/evaluator/src/foo.py``).  If a pattern contains
+    Patterns are matched as prefixes first (e.g. ``services/guardrails``
+    matches ``services/guardrails/src/foo.py``).  If a pattern contains
     glob characters it falls back to fnmatch on the full relative path.
     """
     for pat in patterns:
@@ -524,7 +524,7 @@ def update_license_headers(
     don't end up with a monster commit::
 
         # Only process two directories
-        ./script/copyright_fixer.py . --include services/evaluator --include packages/models
+        ./script/copyright_fixer.py . --include services/guardrails --include packages/models
 
         # Process everything except generated SDK code
         ./script/copyright_fixer.py . --exclude packages/nemo_platform
