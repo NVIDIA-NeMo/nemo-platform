@@ -132,13 +132,15 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
           );
         },
       }),
-      accessor('agent_name', {
-        header: 'Agent Name',
+      accessor((original) => original.agent_names?.join(', '), {
+        id: 'agent_names',
+        header: 'Agent Names',
         enableSorting: false,
         cell: ({ getValue }) => <Text>{getValue<string>() || '-'}</Text>,
       }),
-      accessor('agent_version', {
-        header: 'Agent Version',
+      accessor((original) => original.agent_versions?.join(', '), {
+        id: 'agent_versions',
+        header: 'Agent Versions',
         enableSorting: false,
         cell: ({ getValue }) => <Text>{getValue<string>() || '-'}</Text>,
       }),
