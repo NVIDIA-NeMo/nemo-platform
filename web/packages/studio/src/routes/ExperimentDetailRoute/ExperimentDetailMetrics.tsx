@@ -74,12 +74,7 @@ export const ExperimentDetailMetrics: FC<ExperimentDetailMetricsProps> = ({ expe
         />
       </div>
       <div className="flex items-stretch gap-8">
-        <KVPair
-          label="Models"
-          value={modelNamesValue}
-          loading={isLoading}
-          orientation="vertical"
-        />
+        <KVPair label="Models" value={modelNamesValue} loading={isLoading} orientation="vertical" />
         <Divider orientation="vertical" className="grow-0 self-stretch" />
         <KVPair label="Avg Cost" value={avgCost} loading={isLoading} orientation="vertical" />
         <Divider orientation="vertical" className="grow-0 self-stretch" />

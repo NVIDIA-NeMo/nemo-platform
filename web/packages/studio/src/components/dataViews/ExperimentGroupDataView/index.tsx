@@ -277,7 +277,8 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
           DataViewRoot: {
             data: tableData,
             totalCount,
-            requestStatus: isGroupLoading || (isLoading && !experimentsData) ? 'loading' : undefined,
+            requestStatus:
+              isGroupLoading || (isLoading && !experimentsData) ? 'loading' : undefined,
           },
           DataViewTableContent: {
             renderEmptyState: () => (
