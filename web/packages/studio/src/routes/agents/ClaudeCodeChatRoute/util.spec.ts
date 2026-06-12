@@ -211,7 +211,7 @@ describe('Claude Code utilities', () => {
             { type: 'tool_use', name: 'Bash', input: { command: 'pwd' } },
             {
               type: 'tool_use',
-              id: 'toolu_job',
+              id: ' toolu_job ',
               name: CLAUDE_CODE_JOB_PROGRESS_MCP_TOOL_NAME,
               input: { job_name: 'studio-job-1' },
             },

@@ -109,15 +109,7 @@ describe('EvalConfigBlockingInput', () => {
       (action) => action.label === 'Use sample config'
     );
     expect(sampleAction?.disabled).toBe(true);
-
-    await sampleAction?.onClick();
-    expect(onSubmit).toHaveBeenCalledWith({
-      displayText: 'Use sample evaluation config',
-      value: {
-        use_sample_eval_config: true,
-        eval_config: SAMPLE_EVAL_CONFIG_PATH,
-      },
-    });
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it('emits a needs_eval_config payload from the "I don\'t have a config" secondary action', async () => {

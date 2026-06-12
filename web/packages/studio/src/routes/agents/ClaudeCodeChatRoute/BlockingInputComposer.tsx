@@ -31,6 +31,7 @@ export const BlockingInputComposer: FC<BlockingInputComposerProps> = ({
   onSkip,
 }) => {
   const request = getBlockingInputRequest(inputRequest);
+  const requestKey = request.id;
   const sharedProps = {
     input: inputRequest.input,
     request,
@@ -41,12 +42,13 @@ export const BlockingInputComposer: FC<BlockingInputComposerProps> = ({
 
   switch (inputRequest.kind) {
     case 'agent':
-      return <AgentSelectBlockingInput {...sharedProps} workspace={workspace} />;
+      return <AgentSelectBlockingInput key={requestKey} {...sharedProps} workspace={workspace} />;
     case 'eval_config':
-      return <EvalConfigBlockingInput {...sharedProps} workspace={workspace} />;
+      return <EvalConfigBlockingInput key={requestKey} {...sharedProps} workspace={workspace} />;
     case 'dataset_file':
       return (
         <FilesetFileBlockingInput
+          key={requestKey}
           {...sharedProps}
           defaultAcceptedFileTypes={[...DEFAULT_DATASET_FILE_TYPES]}
           missingSelectionMessage="Pick a dataset file inside an existing fileset"
@@ -60,7 +62,7 @@ export const BlockingInputComposer: FC<BlockingInputComposerProps> = ({
         />
       );
     case 'model':
-      return <ModelSelectBlockingInput {...sharedProps} />;
+      return <ModelSelectBlockingInput key={requestKey} {...sharedProps} />;
     default: {
       const exhaustiveCheck: never = inputRequest.kind;
       return exhaustiveCheck;

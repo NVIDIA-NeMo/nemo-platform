@@ -1020,6 +1020,26 @@ async def test_resolve_agent_input_sets_result_for_owning_session():
     assert future.result() == {"skipped": False, "value": {"agent": "react-agent"}}
 
 
+async def test_request_agent_input_rejects_reserved_response_keys():
+    session_id = str(uuid.uuid4())
+    coding_agents._session_streams[session_id] = asyncio.Queue()
+
+    request_task = asyncio.create_task(coding_agents._request_agent_input(session_id, "agent", {}))
+    _, payload = await coding_agents._session_streams[session_id].get()
+    request_id = json.loads(payload)["request_id"]
+
+    await coding_agents.resolve_agent_input(
+        session_id,
+        request_id,
+        coding_agents.AgentInputDecision(value={"agent": "react-agent", "status": "submitted"}),
+    )
+
+    assert await request_task == {
+        "status": "error",
+        "message": "input value included reserved keys: status",
+    }
+
+
 def test_platform_route_stream_uses_public_mcp_callback(monkeypatch: pytest.MonkeyPatch):
     service = StudioService()
     app = FastAPI()

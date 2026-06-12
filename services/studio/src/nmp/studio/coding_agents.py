@@ -105,6 +105,7 @@ _initialized_sessions: set[str] = set()
 _session_streams: dict[str, asyncio.Queue[tuple[str, Any]]] = {}
 _pending_permissions: dict[str, tuple[str, asyncio.Future[dict[str, Any]]]] = {}
 _pending_agent_inputs: dict[str, tuple[str, asyncio.Future[dict[str, Any]]]] = {}
+_AGENT_INPUT_RESPONSE_RESERVED_KEYS = frozenset({"message", "status"})
 
 
 @dataclass
@@ -691,6 +692,12 @@ async def _request_agent_input(session_id: str, kind: str, args: dict[str, Any])
 
     value = decision.get("value")
     if isinstance(value, dict):
+        reserved_keys = sorted(_AGENT_INPUT_RESPONSE_RESERVED_KEYS.intersection(value))
+        if reserved_keys:
+            return {
+                "status": "error",
+                "message": f"input value included reserved keys: {', '.join(reserved_keys)}",
+            }
         return {"status": "submitted", **value}
 
     return {"status": "error", "message": "input request resolved without a value"}

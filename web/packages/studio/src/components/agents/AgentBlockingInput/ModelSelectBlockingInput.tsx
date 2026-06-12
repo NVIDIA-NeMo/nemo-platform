@@ -10,7 +10,7 @@ import type {
 } from '@studio/components/agents/AgentBlockingInput/types';
 import { getOutputKey, getStringValue } from '@studio/components/agents/AgentBlockingInput/utils';
 import { JudgeModelSelect } from '@studio/components/evaluation/JudgeModelSelect';
-import { type FC, useMemo } from 'react';
+import { type FC, useEffect, useMemo } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
 import { z } from 'zod';
 
@@ -52,9 +52,14 @@ export const ModelSelectBlockingInput: FC<ModelSelectBlockingInputProps> = ({
     disabled: isSubmitting,
   });
   const selectedModel = form.watch('model');
+  const { reset } = form;
+
+  useEffect(() => {
+    reset({ model: defaultModel });
+  }, [defaultModel, request.id, reset]);
 
   const submit = form.handleSubmit((data) => {
-    void onSubmit({
+    return onSubmit({
       displayText: `${displayLabel}: ${data.model}`,
       value: { [outputKey]: data.model },
     });
