@@ -5,6 +5,7 @@ import { BadgeStatus, badgeStatus } from '@nemo/common/src/components/StatusBadg
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge/index';
 import * as customQueries from '@nemo/common/src/tests/customQueries';
 import { queries, render, screen, within } from '@testing-library/react';
+import { CircleCheck } from 'lucide-react';
 
 const allQueries = {
   ...queries,
@@ -147,7 +148,7 @@ describe('StatusBadge component', () => {
 
   describe('statusConfig prop (config-driven path)', () => {
     const STATUS_CONFIG = {
-      success: { label: 'Success', color: 'green' as const, icon: undefined },
+      success: { label: 'Success', color: 'green' as const, icon: CircleCheck },
       error: { label: 'Error', color: 'red' as const },
     };
 
@@ -157,9 +158,13 @@ describe('StatusBadge component', () => {
     });
 
     it('renders icon when config entry has one', () => {
+      render(<StatusBadge status="success" statusConfig={STATUS_CONFIG} />);
+      expect(screen.getByRole('img')).toBeInTheDocument();
+    });
+
+    it('renders no icon when config entry omits one', () => {
       render(<StatusBadge status="error" statusConfig={STATUS_CONFIG} />);
-      // error entry has no icon — verify no img rendered
-      // re-render with an icon-bearing config
+      expect(screen.queryByRole('img')).not.toBeInTheDocument();
     });
 
     it('falls back to provided fallback for unknown status', () => {
