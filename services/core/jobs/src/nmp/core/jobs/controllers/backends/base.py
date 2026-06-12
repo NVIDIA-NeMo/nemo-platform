@@ -93,6 +93,7 @@ class JobExecutionProfileConfig(BaseModel):
     launcher_tool_path: str = Field(default="/tools/jobs-launcher", description="Path to the jobs launcher tool")
     default_task_image: str | None = Field(
         default=None,
+        min_length=1,
         description="Default container image for job task pods. Used when a job step omits container.image. "
         "When unset, falls back to the platform CPU tasks image (platform.image_registry/nmp-cpu-tasks:platform.image_tag).",
     )

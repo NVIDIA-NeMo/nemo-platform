@@ -18,7 +18,7 @@ class ContainerSpec(BaseModel):
     Defines the container image and related configuration for job execution.
     """
 
-    image: str | None = None
+    image: str | None = Field(default=None, min_length=1)
     """The container image to use for execution. When omitted, resolved from the execution profile's default_task_image or the platform CPU tasks image."""
 
     entrypoint: list[str] = Field(default_factory=list)

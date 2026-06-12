@@ -1104,7 +1104,7 @@ def create_pod_template_spec(
         command.append(cmd)
 
     # Resolve the task image: explicit container.image takes precedence,
-    # then the profile's default_task_image, then error.
+    # then the profile's default_task_image, then platform CPU tasks image fallback.
     task_image = resolve_task_image(container.image, config.default_task_image)
 
     # Main job container
