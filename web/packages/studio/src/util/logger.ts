@@ -24,10 +24,11 @@ const otelLogger: Logger = logs.getLogger(OTEL_SERVICE_NAME);
  */
 class WebsiteLogger {
   private log(level: SeverityNumber, message: string, cause?: unknown) {
-    if (level === SeverityNumber.ERROR) console.error(message, cause);
-    else if (level === SeverityNumber.WARN) console.warn(message, cause);
-    else if (level === SeverityNumber.INFO) console.info(message, cause);
-    else if (level === SeverityNumber.DEBUG) console.debug(message, cause);
+    const logArgs: [string, ...unknown[]] = cause !== undefined ? [message, cause] : [message];
+    if (level === SeverityNumber.ERROR) console.error(...logArgs);
+    else if (level === SeverityNumber.WARN) console.warn(...logArgs);
+    else if (level === SeverityNumber.INFO) console.info(...logArgs);
+    else if (level === SeverityNumber.DEBUG) console.debug(...logArgs);
 
     const attributes: Record<string, string> = {};
     if (cause instanceof Error) {

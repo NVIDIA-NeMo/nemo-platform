@@ -204,7 +204,8 @@ describe('Claude Code stream utilities', () => {
 
     expect(parseJsonObject('{')).toBeUndefined();
     expect(loggerSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Failed to parse Claude Code stream JSON')
+      expect.stringContaining('Failed to parse Claude Code stream JSON'),
+      expect.any(Error)
     );
 
     loggerSpy.mockRestore();

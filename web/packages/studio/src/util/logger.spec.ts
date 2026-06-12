@@ -90,11 +90,11 @@ describe('handleGenericError', () => {
     mockEmit.mockClear();
   });
 
-  it('should stringify Error objects before logging', () => {
+  it('should log error message with original error as cause', () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const error = new Error('test error');
     handleGenericError(error);
-    expect(spy).toHaveBeenCalledWith(JSON.stringify(error));
+    expect(spy).toHaveBeenCalledWith('test error', error);
     spy.mockRestore();
   });
 

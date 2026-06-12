@@ -265,7 +265,7 @@ describe('DatasetBulkDeleteModal', () => {
       // Wait for error handling
       await waitFor(() => {
         expect(consoleErrorSpy).toHaveBeenCalledWith(
-          'Failed to delete datasets:',
+          'Failed to delete datasets',
           expect.any(Error)
         );
       });
