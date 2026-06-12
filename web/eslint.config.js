@@ -157,6 +157,7 @@ export default [
       ...hooksPlugin.configs.recommended.rules,
       ...baseRules,
       'import/no-default-export': 'error',
+      'no-console': 'error',
       'no-restricted-imports': [
         'warn',
         {
