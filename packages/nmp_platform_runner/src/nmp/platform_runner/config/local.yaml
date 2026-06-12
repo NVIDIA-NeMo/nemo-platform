@@ -7,7 +7,7 @@ platform:
 service: {}
 
 auth:
-  enabled: true
+  enabled: false
   allow_unsigned_jwt: true
   policy_decision_point_provider: embedded
   policy_decision_point_base_url: "http://127.0.0.1:8080"

@@ -2,13 +2,13 @@
 # nmp-automodel tasks - file_io, model_entity, and other platform task steps.
 # Built on nmp-automodel-base (GPU-capable; runs on CPU or GPU nodes).
 
-ARG BASE_TAG_AUTOMODEL=local
-ARG BASE_REGISTRY=my-registry/nemo-platform-dev
 ARG SMOKE_MARKER=smoke_nmp_automodel_tasks
 
-FROM ${BASE_REGISTRY}/nmp-automodel-base:${BASE_TAG_AUTOMODEL} AS nmp-automodel-base
+# Supplied by bake. Local builds use the base builder target; CI can override
+# the context to a pinned docker-image:// reference.
+FROM nmp-automodel-base AS automodel-base
 
-FROM nmp-automodel-base AS runtime
+FROM automodel-base AS runtime
 
 # Pin uv for platform workspace installs (base may lack /bin/uv or PATH may prefer 0.10.x).
 COPY --from=ghcr.io/astral-sh/uv:0.9.14 /uv /bin/uv

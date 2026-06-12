@@ -26,7 +26,16 @@ export interface UseControllerComponentProps {
 export enum FileFormat {
   JSON = 'json',
   JSONL = 'jsonl',
+  CSV = 'csv',
+  PARQUET = 'parquet',
 }
+
+export const SUPPORTED_FILE_FORMATS: FileFormat[] = [
+  FileFormat.JSON,
+  FileFormat.JSONL,
+  FileFormat.CSV,
+  FileFormat.PARQUET,
+];
 
 /**
  * Enum for supported input file schema types

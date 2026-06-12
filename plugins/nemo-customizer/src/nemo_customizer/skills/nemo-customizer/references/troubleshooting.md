@@ -103,7 +103,7 @@ Job errors like `Failed to pull image … nmp-unsloth-training:… Not Found`, `
 | Situation | Action |
 |-----------|--------|
 | **Remote platform** — user gave a host/URL (e.g. `10.0.0.51:8080`) or you set `NEMO_BASE_URL` / `NMP_BASE_URL` to something other than `http://127.0.0.1:8080` or `http://localhost:8080` | **Do not** run `docker build`, `docker pull`, or `docker buildx bake` on the agent machine — that only affects the agent's local daemon, not the remote platform. Tell the user they must build or load the image **on the target host** (the machine whose Docker daemon runs the GPU job steps). Report with **Report to user** in `SKILL.md`, then append **Report follow-up — missing image (remote platform)** below. Stop; do not retry submit until the user confirms the image is available on the target. |
-| **Local platform** — default URL only (`127.0.0.1:8080` / `localhost:8080`) | Build or pull on **that same host** where `nemo services run` and Docker share a daemon. See build commands below and `services/unsloth/docker/README.md` (unsloth) or automodel docker docs. Set env vars **before** starting/restarting the platform. |
+| **Local platform** — default URL only (`127.0.0.1:8080` / `localhost:8080`) | Build or pull on **that same host** where `nemo services run` and Docker share a daemon. See build commands below and `docker/unsloth/README.md` (unsloth) or automodel docker docs. Set env vars **before** starting/restarting the platform. |
 
 Image env vars are read when the platform starts (not per job):
 
@@ -135,7 +135,7 @@ export NMP_UNSLOTH_TRAINING_IMAGE="${IMAGE_REGISTRY:-my-registry/nemo-platform-d
 nemo services restart
 ```
 
-Or push to a registry the target can pull from — see **Option B** in `services/unsloth/docker/README.md` — then set `NMP_UNSLOTH_TRAINING_IMAGE` to that full ref before restart.
+Or push to a registry the target can pull from — see **Option B** in `docker/unsloth/README.md` — then set `NMP_UNSLOTH_TRAINING_IMAGE` to that full ref before restart.
 
 After the image is on the target, re-submit the same job JSON (use a fresh `output.name` if a prior partial run already registered an adapter).
 
@@ -143,7 +143,7 @@ After the image is on the target, re-submit the same job JSON (use a fresh `outp
 
 When submit or poll returns a missing-image error and the base URL is **user-overridden**, start with the **Report to user** template in `SKILL.md` (status `error`, **Output adapter fileset (planned):**, Notes quoting the pull error and naming the target host). Then append these sections:
 
-**What you need to do on the target host** — build or load the training image on the machine running the NeMo platform (where `docker info` works for the platform's daemon), set `NMP_UNSLOTH_TRAINING_IMAGE` or automodel image env vars, and restart platform services. Full steps: `services/unsloth/docker/README.md` (unsloth) or automodel docker docs.
+**What you need to do on the target host** — build or load the training image on the machine running the NeMo platform (where `docker info` works for the platform's daemon), set `NMP_UNSLOTH_TRAINING_IMAGE` or automodel image env vars, and restart platform services. Full steps: `docker/unsloth/README.md` (unsloth) or automodel docker docs.
 
 **Re-submit after the image is available:**
 
@@ -162,7 +162,7 @@ Then poll until terminal status. Offer to re-submit once the user confirms the i
 | `Unsloth does not support local run` | Used `run` instead of `submit` | `nemo customization unsloth submit <job.json> -w <workspace>` |
 | `Unsloth training requires platform.runtime: docker` | Platform not configured for Docker GPU jobs | Start platform with Docker runtime and a GPU execution profile |
 | Unknown execution profile | Default `gpu` profile missing or wrong | Re-list profiles; pass `--profile <exact-name>` on submit |
-| Missing `nmp-unsloth-training` image / `Failed to pull image` / `manifest unknown` | Image not on the **platform host's** Docker daemon | **Remote platform** (`NEMO_BASE_URL` not localhost): tell user to build on the target — **do not** `docker build` locally. **Local platform**: build on same host; see **Missing training images** above and `services/unsloth/docker/README.md` |
+| Missing `nmp-unsloth-training` image / `Failed to pull image` / `manifest unknown` | Image not on the **platform host's** Docker daemon | **Remote platform** (`NEMO_BASE_URL` not localhost): tell user to build on the target — **do not** `docker build` locally. **Local platform**: build on same host; see **Missing training images** above and `docker/unsloth/README.md` |
 | `torch.cuda.is_available()` False in training step logs | GPU not exposed to the container step | Confirm the execution profile is GPU-backed; check platform Docker GPU setup |
 | Job stuck in `active` after training step completes | Upload / model-entity steps still running | Keep polling top-level status (same as automodel) |
 

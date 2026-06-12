@@ -32,8 +32,9 @@ def _docker_available() -> bool:
     if find_spec("docker") is None:
         return False
 
-    import docker
     from docker.errors import DockerException
+
+    import docker
 
     try:
         client = docker.from_env()
