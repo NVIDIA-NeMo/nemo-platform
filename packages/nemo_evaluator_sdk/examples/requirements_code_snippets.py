@@ -164,14 +164,21 @@ async def collect_per_trial_and_aggregate_results() -> dict[str, object]:
 
 
 # 1c) Service Status
-def submit_plugin_job_and_check_status() -> dict[str, object]:
+# Note: service related code snippets leverage the `nemo_evaluator.sdk` plugin SDK.
+# The `nemo_evaluator.sdk` plugin SDK is a client that is used within the context of nemo-platform.
+# The `nemo_evaluator_sdk` is standalone evaluator package that is used independently of nemo-platform.
+# More details: https://jubilant-adventure-g4rv38m.pages.github.io/main/evaluator/#key-differences-from-standalone-library
+async def submit_plugin_job_and_check_status() -> dict[str, object]:
     """Submit through the plugin SDK and inspect the returned job status."""
+    from nemo_evaluator.sdk import AsyncEvaluator
     from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
     from nemo_platform import NeMoPlatform
 
     client = NeMoPlatform(base_url="http://localhost:8080", workspace="default")
+    nemo_plugin_client: AsyncEvaluator = client.evaluator
+
     try:
-        job = client.evaluator.submit(
+        job = await nemo_plugin_client.submit(
             metric=ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.model_output}}"),
             dataset=[
                 {"expected": "blue", "model_output": "blue"},
@@ -180,20 +187,21 @@ def submit_plugin_job_and_check_status() -> dict[str, object]:
             config=RunConfig(parallelism=2, limit_samples=2),
             metric_bundle_packager=CloudpickleMetricBundlePackager(),
         )
-        submitted_status = job.get_job_status()
-        job.wait_until_done(poll_interval_seconds=5)
+        submitted_status = await job.get_job_status()
+        await job.wait_until_done(poll_interval_seconds=5)
         return {
             "job_name": job.name,
             "submitted_status": submitted_status,
-            "terminal_status": job.get_job_status(),
+            "terminal_status": await job.get_job_status(),
         }
     finally:
         client.close()
 
 
 # 2a) Support for Local & Remote mode eval
-def run_local_and_submit_remote_with_plugin_sdk() -> dict[str, object]:
+async def run_local_and_submit_remote_with_plugin_sdk() -> dict[str, object]:
     """Use plugin SDK ``run`` locally and ``submit`` for service-backed execution."""
+    from nemo_evaluator.sdk import AsyncEvaluator
     from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
     from nemo_platform import NeMoPlatform
 
@@ -205,9 +213,11 @@ def run_local_and_submit_remote_with_plugin_sdk() -> dict[str, object]:
     config = RunConfig(parallelism=2, limit_samples=2)
 
     client = NeMoPlatform(base_url="http://localhost:8080", workspace="default")
+    nemo_plugin_client: AsyncEvaluator = client.evaluator
+
     try:
-        local_result = client.evaluator.run(metric=metric, dataset=dataset, config=config)
-        remote_job = client.evaluator.submit(
+        local_result = nemo_plugin_client.run(metric=metric, dataset=dataset, config=config)
+        remote_job = await nemo_plugin_client.submit(
             metric=metric,
             dataset=dataset,
             config=config,
@@ -216,7 +226,7 @@ def run_local_and_submit_remote_with_plugin_sdk() -> dict[str, object]:
         return {
             "local_result": local_result,
             "remote_job_name": remote_job.name,
-            "remote_status": remote_job.get_job_status(),
+            "remote_status": await remote_job.get_job_status(),
         }
     finally:
         client.close()
