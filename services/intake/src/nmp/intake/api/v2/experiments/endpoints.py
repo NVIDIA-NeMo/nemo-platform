@@ -148,10 +148,7 @@ async def list_experiment_groups(
     )
     responses = [ExperimentGroupResponse.from_entity(e) for e in result.data]
     counts = await asyncio.gather(
-        *[
-            _count_live_experiments_in_group(entity_client, workspace=workspace, group_id=g.id)
-            for g in result.data
-        ]
+        *[_count_live_experiments_in_group(entity_client, workspace=workspace, group_id=g.id) for g in result.data]
     )
     for response, count in zip(responses, counts):
         response.experiment_count = count
@@ -615,9 +612,7 @@ async def _soft_delete(entity_client: EntityClient, entity: Experiment | Experim
     await entity_client.update(entity, original_name=original_name)
 
 
-async def _count_live_experiments_in_group(
-    entity_client: EntityClient, *, workspace: str, group_id: str
-) -> int:
+async def _count_live_experiments_in_group(entity_client: EntityClient, *, workspace: str, group_id: str) -> int:
     """Return the number of non-soft-deleted experiments in a group.
 
     Fetches via ``list(page_size=1)`` so the response carries only ``pagination.total_results`` —
