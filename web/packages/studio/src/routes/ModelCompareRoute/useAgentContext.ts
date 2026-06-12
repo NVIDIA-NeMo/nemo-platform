@@ -39,13 +39,14 @@ function extractSystemPrompt(llm: unknown): string {
  * still in flight, or when the agent's config doesn't expose the workflow's
  * primary LLM in a recognizable shape.
  */
-export const useAgentContext = (workspace: string, agentName: string | null): AgentContextResult => {
+export const useAgentContext = (
+  workspace: string,
+  agentName: string | null
+): AgentContextResult => {
   const enabled = !!(workspace && agentName);
-  const { data, isLoading, error } = useAgentsGetAgent(
-    workspace,
-    agentName ?? '',
-    { query: { enabled } }
-  );
+  const { data, isLoading, error } = useAgentsGetAgent(workspace, agentName ?? '', {
+    query: { enabled },
+  });
 
   const context = useMemo<AgentContext | null>(() => {
     if (!enabled || !data) return null;
