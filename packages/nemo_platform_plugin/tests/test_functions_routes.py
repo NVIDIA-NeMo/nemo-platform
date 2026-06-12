@@ -427,3 +427,16 @@ class TestMountValidation:
         )
         with pytest.raises(TypeError, match="spec_schema is None"):
             add_function_routes(cls)
+
+    def test_permission_namespace_and_api_area_must_be_set_together(self) -> None:
+        with pytest.raises(ValueError, match="must be set together"):
+            add_function_routes(_NonStreamingGreet, permission_namespace="example")  # api_area missing
+
+    def test_permission_id_or_description_without_namespace_is_rejected(self) -> None:
+        # permission_id / permission_description only take effect when permission_namespace +
+        # api_area are set; supplying either alone would be silently discarded and leave the
+        # route unruled (→ DENY at bundle time), so it must raise rather than fail open.
+        with pytest.raises(ValueError, match="permission_id / permission_description require"):
+            add_function_routes(_NonStreamingGreet, permission_id="example.greet")
+        with pytest.raises(ValueError, match="permission_id / permission_description require"):
+            add_function_routes(_NonStreamingGreet, permission_description="Greet someone")

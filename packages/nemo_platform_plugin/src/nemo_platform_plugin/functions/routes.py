@@ -142,6 +142,16 @@ def add_function_routes(
             "permission_namespace and api_area must be set together (or both omitted): "
             f"got permission_namespace={permission_namespace!r}, api_area={api_area!r}."
         )
+    # permission_id / permission_description only take effect inside the stamping block below,
+    # which runs solely when permission_namespace + api_area are set. Supplying them alone would
+    # silently discard them and leave the route unruled (→ DENY at bundle time), so reject it.
+    if (permission_id is not None or permission_description is not None) and permission_namespace is None:
+        raise ValueError(
+            "permission_id / permission_description require permission_namespace and api_area to "
+            "also be set (the route's @path_rule is stamped only then); supplying them alone would "
+            f"silently discard them. Got permission_id={permission_id!r}, "
+            f"permission_description={permission_description!r}, permission_namespace=None."
+        )
 
     router = APIRouter()
     instance = function_cls()

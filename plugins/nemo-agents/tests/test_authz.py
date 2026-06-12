@@ -18,9 +18,11 @@ from nemo_platform_plugin.authz_discovery import _derive_service_contribution
 
 _BASE = "/apis/agents/v2/workspaces/{workspace}"
 _GATEWAY_AGENT = f"{_BASE}/agents/{{name}}/-/{{trailing_uri:path}}"
-# Every method the gateway forwards (see gateway._PROXY_METHODS), lower-cased
-# for the wire format.
-_PROXY_METHODS = {"get", "post", "put", "delete", "patch", "head", "options"}
+# Methods the gateway forwards, split by scope (see gateway._PROXY_READ_METHODS /
+# _PROXY_WRITE_METHODS), lower-cased for the wire format.
+_PROXY_READ_METHODS = {"get", "head", "options"}
+_PROXY_WRITE_METHODS = {"post", "put", "patch", "delete"}
+_PROXY_METHODS = _PROXY_READ_METHODS | _PROXY_WRITE_METHODS
 
 
 def _contribution() -> AuthzContribution:
@@ -64,17 +66,26 @@ def test_crud_binding_deployment_read_covers_logs() -> None:
 def test_gateway_proxy_binding() -> None:
     contrib = _contribution()
     methods = contrib.endpoints[_GATEWAY_AGENT]
-    # The single @path_rule covers the wildcard ``{trailing_uri:path}`` route
-    # across every proxied HTTP method.
+    # The proxy spans the wildcard ``{trailing_uri:path}`` route across every forwarded method.
+    # All methods require agents.gateway.invoke, but read-like methods are agents:read-scoped
+    # and mutating methods agents:write-scoped, so a read-scoped token isn't denied on read-only
+    # proxy calls (mirrors the Inference Gateway's per-method proxy scopes).
     assert set(methods) == _PROXY_METHODS
     for method, binding in methods.items():
         assert binding.permissions == ["agents.gateway.invoke"], method
         assert binding.callers == ["principal"], method
-        assert binding.scopes == ["agents:write", "platform:write"], method
         assert not binding.deny, method
-    # The deployment-name proxy route is annotated identically.
+        expected_scopes = (
+            ["agents:write", "platform:write"]
+            if method in _PROXY_WRITE_METHODS
+            else ["agents:read", "platform:read"]
+        )
+        assert binding.scopes == expected_scopes, method
+    # The deployment-name proxy route is split identically.
     deployment_gw = f"{_BASE}/deployments/{{name}}/-/{{trailing_uri:path}}"
     assert set(contrib.endpoints[deployment_gw]) == _PROXY_METHODS
+    assert contrib.endpoints[deployment_gw]["post"].scopes == ["agents:write", "platform:write"]
+    assert contrib.endpoints[deployment_gw]["get"].scopes == ["agents:read", "platform:read"]
     assert contrib.endpoints[deployment_gw]["post"].permissions == ["agents.gateway.invoke"]
     # The coarse permission is declared.
     assert "agents.gateway.invoke" in contrib.permissions

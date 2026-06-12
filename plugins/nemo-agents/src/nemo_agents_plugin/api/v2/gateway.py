@@ -43,8 +43,13 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# HTTP methods to forward through the proxy
-_PROXY_METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+# HTTP methods forwarded through the proxy, split by authorization scope. Read-like methods
+# require only agents:read; mutating methods require agents:write. This mirrors the Inference
+# Gateway's proxy precedent (its GET proxy is scoped inference:read), so a read-scoped token is
+# not denied on read-only proxy calls. Both groups still require the same agents.gateway.invoke
+# permission.
+_PROXY_READ_METHODS = ["GET", "HEAD", "OPTIONS"]
+_PROXY_WRITE_METHODS = ["POST", "PUT", "PATCH", "DELETE"]
 
 # Headers we strip before forwarding to the agent process (hop-by-hop + platform-internal)
 _HOP_BY_HOP = {
@@ -63,37 +68,47 @@ _HOP_BY_HOP = {
 }
 
 
-@router.api_route(
-    "/agents/{name}/-/{trailing_uri:path}",
-    methods=_PROXY_METHODS,
-    tags=["Agent Gateway"],
-    include_in_schema=False,
-)
-@path_rule(
-    callers=[CallerKind.PRINCIPAL],
-    permissions=[GatewayPerms.INVOKE],
-    scopes=scopes_for("agents", write=True),
-)
-async def proxy_by_agent_name(
+async def _serve_agent_proxy(
     workspace: str,
     name: str,
     trailing_uri: str,
     request: Request,
-    entity_client: NemoEntitiesClient = Depends(get_entity_client),
+    entity_client: NemoEntitiesClient,
 ) -> StreamingResponse:
-    """Proxy a request to the active deployment for *agent name*.
+    """Find the first ``running`` deployment for the named agent and forward the request to it.
 
-    The gateway finds the first ``running`` deployment for the named agent
-    and forwards the request to it.  Returns ``503`` if no running deployment
-    is found.
+    Returns ``503`` if no running deployment is found. Shared by the read/write route handlers,
+    which differ only in their authorization scope (``agents:read`` vs ``agents:write``).
     """
     endpoint = await _resolve_agent_endpoint(name, workspace, entity_client)
     return await _proxy(request, endpoint, trailing_uri, model_name=name)
 
 
 @router.api_route(
-    "/deployments/{name}/-/{trailing_uri:path}",
-    methods=_PROXY_METHODS,
+    "/agents/{name}/-/{trailing_uri:path}",
+    methods=_PROXY_READ_METHODS,
+    tags=["Agent Gateway"],
+    include_in_schema=False,
+)
+@path_rule(
+    callers=[CallerKind.PRINCIPAL],
+    permissions=[GatewayPerms.INVOKE],
+    scopes=scopes_for("agents", write=False),
+)
+async def proxy_by_agent_name_read(
+    workspace: str,
+    name: str,
+    trailing_uri: str,
+    request: Request,
+    entity_client: NemoEntitiesClient = Depends(get_entity_client),
+) -> StreamingResponse:
+    """Read-scoped (GET/HEAD/OPTIONS) proxy to the active deployment for *agent name*."""
+    return await _serve_agent_proxy(workspace, name, trailing_uri, request, entity_client)
+
+
+@router.api_route(
+    "/agents/{name}/-/{trailing_uri:path}",
+    methods=_PROXY_WRITE_METHODS,
     tags=["Agent Gateway"],
     include_in_schema=False,
 )
@@ -102,17 +117,28 @@ async def proxy_by_agent_name(
     permissions=[GatewayPerms.INVOKE],
     scopes=scopes_for("agents", write=True),
 )
-async def proxy_by_deployment_name(
+async def proxy_by_agent_name_write(
     workspace: str,
     name: str,
     trailing_uri: str,
     request: Request,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
 ) -> StreamingResponse:
+    """Write-scoped (POST/PUT/PATCH/DELETE) proxy to the active deployment for *agent name*."""
+    return await _serve_agent_proxy(workspace, name, trailing_uri, request, entity_client)
+
+
+async def _serve_deployment_proxy(
+    workspace: str,
+    name: str,
+    trailing_uri: str,
+    request: Request,
+    entity_client: NemoEntitiesClient,
+) -> StreamingResponse:
     """Proxy a request directly to the named deployment.
 
-    Returns ``404`` if the deployment doesn't exist, ``503`` if it isn't
-    currently running.
+    Returns ``404`` if the deployment doesn't exist, ``503`` if it isn't currently running.
+    Shared by the read/write route handlers, which differ only in authorization scope.
     """
     try:
         dep = await entity_client.get(AgentDeployment, name=name, workspace=workspace)
@@ -130,6 +156,50 @@ async def proxy_by_deployment_name(
         )
 
     return await _proxy(request, dep.endpoint, trailing_uri, model_name=name)
+
+
+@router.api_route(
+    "/deployments/{name}/-/{trailing_uri:path}",
+    methods=_PROXY_READ_METHODS,
+    tags=["Agent Gateway"],
+    include_in_schema=False,
+)
+@path_rule(
+    callers=[CallerKind.PRINCIPAL],
+    permissions=[GatewayPerms.INVOKE],
+    scopes=scopes_for("agents", write=False),
+)
+async def proxy_by_deployment_name_read(
+    workspace: str,
+    name: str,
+    trailing_uri: str,
+    request: Request,
+    entity_client: NemoEntitiesClient = Depends(get_entity_client),
+) -> StreamingResponse:
+    """Read-scoped (GET/HEAD/OPTIONS) proxy directly to the named deployment."""
+    return await _serve_deployment_proxy(workspace, name, trailing_uri, request, entity_client)
+
+
+@router.api_route(
+    "/deployments/{name}/-/{trailing_uri:path}",
+    methods=_PROXY_WRITE_METHODS,
+    tags=["Agent Gateway"],
+    include_in_schema=False,
+)
+@path_rule(
+    callers=[CallerKind.PRINCIPAL],
+    permissions=[GatewayPerms.INVOKE],
+    scopes=scopes_for("agents", write=True),
+)
+async def proxy_by_deployment_name_write(
+    workspace: str,
+    name: str,
+    trailing_uri: str,
+    request: Request,
+    entity_client: NemoEntitiesClient = Depends(get_entity_client),
+) -> StreamingResponse:
+    """Write-scoped (POST/PUT/PATCH/DELETE) proxy directly to the named deployment."""
+    return await _serve_deployment_proxy(workspace, name, trailing_uri, request, entity_client)
 
 
 async def _resolve_agent_endpoint(name: str, workspace: str, entity_client: NemoEntitiesClient) -> str:
