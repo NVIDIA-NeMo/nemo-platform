@@ -67,3 +67,55 @@ class TestFilesConfigAllowedExternalHosts:
         """Test that URL without scheme/netloc raises ValueError from model validator."""
         with pytest.raises(ValueError, match="must be a valid URL"):
             FilesConfig(allowed_external_hosts="https://valid.com,not-a-url")
+
+
+class TestFilesConfigHuggingFaceRetries:
+    """Tests for Hugging Face retry configuration."""
+
+    def test_hf_retry_defaults(self) -> None:
+        """Test Hugging Face retry default values."""
+        config = FilesConfig()
+        assert config.hf_retry_attempts == 4
+        assert config.hf_retry_initial_delay_seconds == 0.5
+        assert config.hf_retry_max_delay_seconds == 5.0
+
+    def test_hf_retry_from_env_vars(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test NMP_FILES_HF_RETRY_* env vars set Hugging Face retry config."""
+        monkeypatch.setenv("NMP_FILES_HF_RETRY_ATTEMPTS", "7")
+        monkeypatch.setenv("NMP_FILES_HF_RETRY_INITIAL_DELAY_SECONDS", "1")
+        monkeypatch.setenv("NMP_FILES_HF_RETRY_MAX_DELAY_SECONDS", "30")
+
+        config = FilesConfig()
+
+        assert config.hf_retry_attempts == 7
+        assert config.hf_retry_initial_delay_seconds == 1.0
+        assert config.hf_retry_max_delay_seconds == 30.0
+
+    def test_hf_retry_from_yaml(self) -> None:
+        """Test files.hf_retry_* values load from YAML settings."""
+        settings = {
+            "files": {
+                "hf_retry_attempts": 6,
+                "hf_retry_initial_delay_seconds": 2.5,
+                "hf_retry_max_delay_seconds": 20,
+            },
+        }
+
+        config = Configuration.global_settings_to_service_config(settings, FilesConfig)
+
+        assert config.hf_retry_attempts == 6
+        assert config.hf_retry_initial_delay_seconds == 2.5
+        assert config.hf_retry_max_delay_seconds == 20.0
+
+    def test_hf_retry_invalid_values_raise(self) -> None:
+        """Test invalid Hugging Face retry values fail validation."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            FilesConfig(hf_retry_attempts=0)
+
+        with pytest.raises(ValidationError):
+            FilesConfig(hf_retry_initial_delay_seconds=-1)
+
+        with pytest.raises(ValidationError):
+            FilesConfig(hf_retry_max_delay_seconds=-1)

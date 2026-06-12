@@ -188,6 +188,12 @@ files:
   file_lock_ttl_seconds: 300
   # Maximum concurrent downloads during cache warming | default: 3
   cache_warming_max_concurrent: 3
+  # Maximum Hugging Face request attempts for transient failures. | default: 4
+  hf_retry_attempts: 4
+  # Initial Hugging Face retry delay in seconds before exponential backoff. | default: 0.5
+  hf_retry_initial_delay_seconds: 0.5
+  # Maximum Hugging Face retry delay in seconds. | default: 5.0
+  hf_retry_max_delay_seconds: 5.0
 ```
 
 ### `inference_gateway`
