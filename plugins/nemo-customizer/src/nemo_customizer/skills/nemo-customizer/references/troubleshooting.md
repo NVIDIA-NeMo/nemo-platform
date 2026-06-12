@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Read this file when submit fails, jobs fail on images, the platform is unreachable, W&B/MLflow integrations fail, or the user asks for Unsloth.
+Read this file when submit fails, jobs fail on images, the platform is unreachable, W&B/MLflow integrations fail, gated HuggingFace model download fails, or the user asks for Unsloth.
 
 Resolve the CLI first per **Pre-flight — CLI resolution** in `SKILL.md` (`nemo` on `PATH`, else `uv run nemo`, else route to **nemo-setup**). Example commands below use `nemo …`.
 
@@ -103,6 +103,75 @@ Same rule for `nemo jobs list-execution-profiles -f json`: parse stdout only; us
 
 - **Automodel** and **Unsloth** both use **`submit` only**. `nemo customization <plugin> run …` hard-fails with a pointer to `submit`.
 - Dataset refs in job JSON: `default/<fileset>` (automodel: `dataset.training` / `dataset.validation`; unsloth: `dataset.path` / optional `dataset.validation_path`).
+
+## Gated HuggingFace models
+
+Gated or private HuggingFace repos (e.g. Llama, Gemma) require a **platform secret** and **`token_secret`** on the model fileset. The Files service does **not** use your local `~/.cache/huggingface` or shell `HF_TOKEN`. Unlike W&B, the HF token is **not** set in job JSON — it is wired on the **model fileset** storage config.
+
+| Symptom / log excerpt | Likely cause | Fix |
+|-----------------------|--------------|-----|
+| Job fails in **download** step; `Failed to access upstream storage`; `InternalServerError` 502; `Verify that the referenced credentials are valid` | Missing/stale `hf-token` secret, or fileset created without `token_secret` | Steps below — then re-submit |
+| Secret exists but download still fails | User has not **accepted the model license** on huggingface.co for that repo | Accept license with the same HF account as the token, then re-submit |
+| Public model (e.g. `Qwen/Qwen3-1.7B`) | No secret needed | Omit `token_secret` on the fileset |
+
+**Convention:** secret name `hf-token` in workspace `default`. Any valid secret name works if referenced consistently in `token_secret`.
+
+### 1. Check whether the secret exists
+
+```bash
+nemo secrets list --workspace default
+```
+
+If `hf-token` is missing, **ask the user** for a HuggingFace token with **Read** access (https://huggingface.co/settings/tokens). They must also accept the model license on the model's HF page.
+
+### 2. Create or update the secret
+
+```bash
+HF_SECRET=hf-token
+printf '%s' "$HF_TOKEN" | nemo secrets create "$HF_SECRET" \
+  --workspace default \
+  --from-file -
+
+# Or update if it already exists but is stale:
+printf '%s' "$HF_TOKEN" | nemo secrets update "$HF_SECRET" \
+  --workspace default \
+  --from-file -
+```
+
+### 3. Create or update the model fileset with `token_secret`
+
+**New fileset (gated repo):**
+
+```bash
+WEIGHTS=<weights-fileset>
+HF_REPO=<hf-repo>          # e.g. google/gemma-2-2b-it
+HF_SECRET=hf-token
+
+nemo files filesets create "$WEIGHTS" --workspace default --purpose model --exist-ok \
+  --storage '{"type":"huggingface","repo_id":"'"$HF_REPO"'","repo_type":"model","revision":"main","token_secret":"'"$HF_SECRET"'"}'
+```
+
+**Existing fileset missing `token_secret`:**
+
+```bash
+nemo files filesets update "$WEIGHTS" --workspace default \
+  --input-data '{"storage":{"type":"huggingface","repo_id":"'"$HF_REPO"'","repo_type":"model","revision":"main","token_secret":"'"$HF_SECRET"'"}}'
+```
+
+Then create or reuse the model entity pointing at `default/<weights-fileset>`.
+
+**Public repos** — omit `token_secret`:
+
+```bash
+nemo files filesets create "$WEIGHTS" --workspace default --purpose model --exist-ok \
+  --storage '{"type":"huggingface","repo_id":"'"$HF_REPO"'","repo_type":"model","revision":"main"}'
+```
+
+### 4. Re-submit
+
+After secret + fileset are wired, re-submit the same job JSON (use a fresh `output.name` if a prior partial run already registered an adapter).
+
+**Note:** `files-hf-token` in platform config is **internal** service-to-service auth between Models and Files — it is **not** your HuggingFace Hub token. Do not confuse the two.
 
 ## Missing training images
 
@@ -230,7 +299,8 @@ Shared:
 |--------|---------|
 | Execution profiles | `nemo jobs list-execution-profiles -f json` |
 | Create dataset fileset | `nemo files filesets create <name> --workspace default --purpose dataset --exist-ok` |
-| Create HF weights fileset | `nemo files filesets create <name> --workspace default --purpose model --exist-ok --storage '{"type":"huggingface","repo_id":"<repo>","repo_type":"model","revision":"main"}'` |
+| Create HF weights fileset (public) | `nemo files filesets create <name> --workspace default --purpose model --exist-ok --storage '{"type":"huggingface","repo_id":"<repo>","repo_type":"model","revision":"main"}'` |
+| Create HF weights fileset (gated) | Same as above plus `"token_secret":"hf-token"` — see § **Gated HuggingFace models** |
 | Upload | `nemo files upload <local> <fileset> --workspace default --remote-path train.jsonl` |
 | List files | `nemo files list <fileset> --workspace default` |
 | Create model | `nemo models create <name> --workspace default --exist-ok --input-data '<json>'` |

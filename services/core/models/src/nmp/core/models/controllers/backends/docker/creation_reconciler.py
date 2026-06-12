@@ -27,7 +27,6 @@ from docker.models.volumes import Volume
 from nemo_platform.types.inference.model_deployment import ModelDeployment
 from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig
 from nemo_platform.types.models.model_entity import ModelEntity
-from nemo_platform_plugin.jobs.image import get_qualified_image
 from nmp.common.config import get_auth_config, get_platform_config
 from nmp.common.config.base import LOOPBACK_ADDRESSES
 from nmp.common.docker.gpu_pool import DockerGPUPool, GPUAllocationError
@@ -35,6 +34,11 @@ from nmp.common.sdk_factory import get_sdk_on_behalf_of
 from nmp.core.models.app import ModelWeightsType, get_model_weights_type, is_multi_llm_image, parse_model_name_revision
 from nmp.core.models.app.constants import MODEL_MANAGED_BY_LABEL, MODEL_MANAGED_BY_MODELS_CONTROLLER
 from nmp.core.models.app.utils import _get_k8s_safe_name
+from nmp.core.models.controllers.backends.adapter_sidecar import (
+    ADAPTER_SIDECAR_DOCKER_COMMAND,
+    ADAPTER_SIDECAR_DOCKER_ENTRYPOINT,
+    get_adapter_sidecar_image,
+)
 from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate
 from nmp.core.models.controllers.backends.common import DeploymentConfigView, deployment_config_view
 from nmp.core.models.controllers.backends.docker import vllm_compiler
@@ -1082,7 +1086,7 @@ class DockerDeploymentCreationReconciler:
 
             if view.lora_enabled:
                 cfg = get_platform_config()
-                image = get_qualified_image("nmp-api")
+                image = get_adapter_sidecar_image()
                 sidecar_envs = cfg.to_shared_envvars()
                 sidecar_envs.update(env_vars)
                 # The adapters sidecar is engine-agnostic: it downloads enabled LoRA
@@ -1105,7 +1109,8 @@ class DockerDeploymentCreationReconciler:
                     "image": image,
                     "name": f"{container_name}-sidecar",
                     "environment": sidecar_envs,
-                    "command": ["--sidecars", "adapters", "--port", "60830"],
+                    "entrypoint": ADAPTER_SIDECAR_DOCKER_ENTRYPOINT,
+                    "command": ADAPTER_SIDECAR_DOCKER_COMMAND,
                     "detach": True,
                     "volumes": {
                         state.volume_name: {"bind": "/model-store", "mode": "rw"},

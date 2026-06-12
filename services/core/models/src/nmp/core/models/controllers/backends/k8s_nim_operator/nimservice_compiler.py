@@ -14,6 +14,10 @@ from nmp.common.config import get_platform_config
 from nmp.core.models.app import is_multi_llm_image, parse_model_name_revision
 from nmp.core.models.app.constants import MODEL_MANAGED_BY_LABEL, MODEL_MANAGED_BY_MODELS_CONTROLLER
 from nmp.core.models.app.utils import _get_k8s_safe_name
+from nmp.core.models.controllers.backends.adapter_sidecar import (
+    ADAPTER_SIDECAR_IMAGE_NAME,
+    ADAPTER_SIDECAR_K8S_COMMAND,
+)
 from nmp.core.models.controllers.backends.common import DeploymentConfigView, deployment_config_view
 from nmp.core.models.controllers.backends.k8s_nim_operator.config import K8sNimOperatorConfig
 from nmp.core.models.controllers.backends.k8s_nim_operator.types.nimcache import (
@@ -362,18 +366,12 @@ def compile_nimservice(
             ContainerSpec(
                 name=_get_k8s_safe_name(resource_name, max_length=63, suffix="-lora-sidecar", name_type="label"),
                 image=Image(
-                    repository=f"{platform_config.image_registry}/nmp-api",
+                    repository=f"{platform_config.image_registry}/{ADAPTER_SIDECAR_IMAGE_NAME}",
                     tag=platform_config.image_tag,
                     pullPolicy="IfNotPresent",
                     pullSecrets=image_pull_secrets if image_pull_secrets else None,
                 ),
-                command=[
-                    "nemo",
-                    "services",
-                    "run",
-                    "--sidecars",
-                    "adapters",
-                ],
+                command=ADAPTER_SIDECAR_K8S_COMMAND,
                 env=sidecar_env_vars,
             )
         ]

@@ -493,6 +493,8 @@ async def test_docker_backend_create_vllm_lora_sidecar(docker_backend, sample_de
     # vLLM's filesystem resolver requires the adapter's base_model_name_or_path to
     # equal vLLM's --model value, so the sidecar is told to rewrite it to /model-store.
     assert sidecar_env["VLLM_LORA_BASE_MODEL_OVERRIDE"] == "/model-store"
+    assert sidecar_args["entrypoint"] == ["/opt/venv/bin/python"]
+    assert sidecar_args["command"] == ["-m", "nmp.core.models.sidecars.adapters.main"]
     # vLLM's filesystem resolver validates VLLM_LORA_RESOLVER_CACHE_DIR exists at
     # startup, so the controller pre-creates it in the scratch volume via a busybox
     # run before launching the vLLM container (otherwise vLLM crash-loops).

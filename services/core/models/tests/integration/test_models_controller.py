@@ -447,7 +447,7 @@ def controller_with_docker(
     from nemo_platform_plugin.jobs.image import get_qualified_image as real_get_qualified_image
 
     def patched_get_qualified_image(name: str, tag=None, registry=None):
-        if name in ["nmp-core", "nmp-api"]:
+        if name in ["nmp-automodel-tasks"]:
             return mock_sidecar_image
         return real_get_qualified_image(name, tag=tag, registry=registry)
 

@@ -323,7 +323,7 @@ def docker_backend_config(worker_id: str, mock_sidecar_image: str) -> dict[str, 
     """Configuration for Docker backend in tests.
 
     Uses worker_id from pytest-xdist to allocate unique port ranges per worker.
-    Depends on mock_sidecar_image so the image get_qualified_image('nmp-core')
+    Depends on mock_sidecar_image so the image get_qualified_image('nmp-automodel-tasks')
     exists before any test runs.
     """
     start_port, end_port = get_worker_port_range(worker_id)

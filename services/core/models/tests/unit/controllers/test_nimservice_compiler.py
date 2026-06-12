@@ -339,7 +339,7 @@ def test_compile_nimservice_sidecar_container_name_truncated_for_long_resource_n
     assert sidecar_name.endswith("-lora-sidecar")
 
 
-def test_compile_nimservice_sidecar_command_includes_nemo_platform(backend_config, sample_deployment, full_config):
+def test_compile_nimservice_sidecar_command_runs_adapters_module(backend_config, sample_deployment, full_config):
     """Sidecar command must be full argv for K8s (container.command overrides image ENTRYPOINT)."""
     nimservice = compile_nimservice(
         backend_config=backend_config,
@@ -353,11 +353,9 @@ def test_compile_nimservice_sidecar_command_includes_nemo_platform(backend_confi
     assert len(nimservice.spec.sidecarContainers) == 1
     sidecar = nimservice.spec.sidecarContainers[0]
     assert sidecar.command == [
-        "nemo",
-        "services",
-        "run",
-        "--sidecars",
-        "adapters",
+        "/opt/venv/bin/python",
+        "-m",
+        "nmp.core.models.sidecars.adapters.main",
     ]
 
 
@@ -388,7 +386,7 @@ def test_compile_nimservice_sidecar_image_uses_platform_registry_and_tag(
     assert nimservice.spec.sidecarContainers is not None
     assert len(nimservice.spec.sidecarContainers) == 1
     sidecar = nimservice.spec.sidecarContainers[0]
-    assert sidecar.image.repository == "localhost:5000/nmp-api"
+    assert sidecar.image.repository == "localhost:5000/nmp-automodel-tasks"
     assert sidecar.image.tag == "sidecar-tag"
 
 
