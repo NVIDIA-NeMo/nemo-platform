@@ -17,7 +17,7 @@ import {
   type FileSampleMethod,
   sampleTextLines,
 } from '@nemo/common/src/utils/sampleTextLines';
-import { Banner, Stack, Text } from '@nvidia/foundations-react-core';
+import { Banner, Flex, Spinner, Stack, Text } from '@nvidia/foundations-react-core';
 import { useDatasetFileContent } from '@studio/api/datasets/useDatasetFileContent';
 import classnames from 'classnames';
 import {
@@ -178,11 +178,7 @@ export const FileSamplingSnippet: FC<FileSamplingSnippetProps> = ({
         <TableEmptyState
           className="py-8"
           header="No sample rows"
-          emptyMessage={
-            isLoadingFileContent
-              ? 'Loading file...'
-              : 'Adjust sampling or pick another file. Each line should be a JSON object for column headers.'
-          }
+          emptyMessage="Adjust sampling or pick another file. Each line should be a JSON object for column headers."
         />
       ),
     };
@@ -194,7 +190,6 @@ export const FileSamplingSnippet: FC<FileSamplingSnippetProps> = ({
         ...user.DataViewRoot,
         data: tableRows,
         totalCount: tableRows.length,
-        requestStatus: isLoadingFileContent ? ('loading' as const) : undefined,
         className: classnames(
           DEFAULT_TABLE_SHELL,
           tableShellClassName,
@@ -207,7 +202,7 @@ export const FileSamplingSnippet: FC<FileSamplingSnippetProps> = ({
         className: classnames(internalTableContent.className, user.DataViewTableContent?.className),
       },
     };
-  }, [attributes?.studioDataView, attributes?.table, tableRows, isLoadingFileContent]);
+  }, [attributes?.studioDataView, attributes?.table, tableRows]);
 
   useEffect(() => {
     if (!enabled) {
@@ -225,16 +220,28 @@ export const FileSamplingSnippet: FC<FileSamplingSnippetProps> = ({
   }, [enabled, isFileContentError, fileContent, sampledText, onSampledContentChange]);
 
   const editorAttrs = attributes?.editor ?? {};
+  const isLoadingSample = enabled && isLoadingFileContent;
+
+  const sampleShellClassName =
+    displayMode === 'code'
+      ? classnames(DEFAULT_EDITOR_CLASS, editorAttrs.className)
+      : classnames(DEFAULT_TABLE_SHELL, attributes?.table?.className);
+
+  if (isFileContentError) {
+    return (
+      <Banner kind="inline" status="error">
+        Failed to load file content. Please select a different file.
+      </Banner>
+    );
+  }
 
   return (
     <Stack gap="4">
-      {isFileContentError && (
-        <Banner kind="inline" status="error">
-          Failed to load file content. Please select a different file.
-        </Banner>
-      )}
-
-      {displayMode === 'code' ? (
+      {isLoadingSample ? (
+        <Flex align="center" justify="center" className={sampleShellClassName}>
+          <Spinner description="Loading file..." />
+        </Flex>
+      ) : displayMode === 'code' ? (
         <CodeEditor
           content={sampledText}
           contentType={ContentType.JSONL}

@@ -1,0 +1,44 @@
+---
+title: "Guardrail Configurations"
+description: ""
+---
+
+<a id="guardrails-configurations"></a>
+
+Guardrail configurations define the safety policies that protect your LLM interactions. A configuration specifies which safety checks (rails) to apply, the models to use, and the prompts to use for the safety checks.
+
+---
+
+## Overview
+
+A guardrail configuration contains several properties that customize how the service interacts with models and applies safety checks. Most configurations define these core components:
+
+1. **Models** – The models to use for each task.
+2. **Prompts** – Prompt templates to use for each task.
+3. **Rails** – Configuration that defines how to apply checks on the user input or LLM output.
+
+A guardrail configuration also supports general options such as instructions and sample conversations that you can customize.
+
+---
+
+## In This Section
+
+<Cards>
+
+<Card title="Configuration Structure" href="/documentation/guardrail-models/core-concepts/configurations/configuration-structure">
+
+Learn about models, prompts, and rails that make up a configuration.
+
+</Card>
+<Card title="Manage Configurations" href="/documentation/guardrail-models/core-concepts/configurations/manage-configurations">
+
+Create, list, retrieve, update, and delete guardrail configurations.
+
+</Card>
+<Card title="Default Configurations" href="/documentation/guardrail-models/core-concepts/configurations/default-configurations">
+
+Built-in configurations available in the `system` workspace: `default`, `content-safety`, and `self-check`.
+
+</Card>
+
+</Cards>

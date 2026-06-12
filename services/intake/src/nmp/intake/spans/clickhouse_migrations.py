@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from typing import Protocol
 from urllib.parse import urlparse
 
+from nmp.intake.spans.span_attribute_catalog import SpanAttributeField, spec_for_field
+
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
@@ -239,13 +241,19 @@ def _add_evaluator_results_skip_indexes(client, settings: ClickHouseMigrationSet
     client.command(f"ALTER TABLE {table} MATERIALIZE INDEX idx_created_at")
 
 
-def _create_experiment_sessions_schema(client, settings: ClickHouseMigrationSettings) -> None:
-    """Create the root-span experiment membership table and insert-time projection."""
+def _create_trace_index_schema(client, settings: ClickHouseMigrationSettings) -> None:
+    """Create the root-span trace index and insert-time projection."""
 
-    table = _table(settings, "experiment_sessions")
-    view = _table(settings, "experiment_sessions_mv")
+    table = _table(settings, "trace_index")
+    view = _table(settings, "trace_index_mv")
+    client.command(f"DROP TABLE IF EXISTS {_table(settings, 'experiment_sessions_mv')}")
+    client.command(f"DROP TABLE IF EXISTS {_table(settings, 'experiment_sessions')}")
     client.command(f"DROP TABLE IF EXISTS {view}")
     client.command(f"DROP TABLE IF EXISTS {table}")
+
+    project_key = spec_for_field(SpanAttributeField.PROJECT).bag_key
+    experiment_key = spec_for_field(SpanAttributeField.EVALUATION_ID).bag_key
+    test_case_key = spec_for_field(SpanAttributeField.TEST_CASE_ID).bag_key
 
     # Note this is logically a single table. CH requires creating an underlying table and then a view that writes to that table.
     client.command(
@@ -253,66 +261,77 @@ def _create_experiment_sessions_schema(client, settings: ClickHouseMigrationSett
         CREATE TABLE {table}
         (
             workspace LowCardinality(String),
-            experiment_id String,
-            session_id String,
-            test_case_id String DEFAULT '',
-
             source_format LowCardinality(String),
             trace_id String,
+            session_id String,
             root_span_id String,
+            root_name String DEFAULT '',
+            root_status LowCardinality(String) DEFAULT 'unknown',
+            root_input String CODEC(ZSTD(3)),
+            root_output String CODEC(ZSTD(3)),
 
-            start_time DateTime64(6) CODEC(Delta(8), ZSTD(1)),
-            end_time Nullable(DateTime64(6)) CODEC(Delta(8), ZSTD(1)),
+            project String DEFAULT '',
+            experiment_id String DEFAULT '',
+            test_case_id String DEFAULT '',
+
+            root_started_at DateTime64(6) CODEC(Delta(8), ZSTD(1)),
+            root_ended_at Nullable(DateTime64(6)) CODEC(Delta(8), ZSTD(1)),
             latency_ms Nullable(Float64),
 
             event_ts DateTime64(6),
-            is_deleted UInt8 DEFAULT 0
+            is_deleted UInt8 DEFAULT 0,
+
+            INDEX idx_trace_id trace_id TYPE bloom_filter(0.001) GRANULARITY 1,
+            INDEX idx_session_id session_id TYPE bloom_filter(0.01) GRANULARITY 1,
+            INDEX idx_experiment_id experiment_id TYPE bloom_filter(0.01) GRANULARITY 1,
+            INDEX idx_test_case_id test_case_id TYPE bloom_filter(0.01) GRANULARITY 1,
+            INDEX idx_root_status root_status TYPE set(4) GRANULARITY 4,
+            INDEX idx_source_format source_format TYPE set(8) GRANULARITY 4
         )
         ENGINE = ReplacingMergeTree(event_ts, is_deleted)
-        PARTITION BY toYYYYMM(start_time)
-        PRIMARY KEY (workspace, experiment_id, session_id)
-        ORDER BY (workspace, experiment_id, session_id, root_span_id)
-        TTL toDate(start_time) + INTERVAL 90 DAY
+        PARTITION BY toYYYYMM(root_started_at)
+        PRIMARY KEY (workspace, root_started_at)
+        ORDER BY (workspace, root_started_at, trace_id, root_span_id)
+        TTL toDate(root_started_at) + INTERVAL 90 DAY
         SETTINGS
             index_granularity = 256,
             ttl_only_drop_parts = 1
         """
     )
-    experiment_sessions_select_sql = f"""
+    trace_index_select_sql = f"""
         SELECT
             workspace,
-            attributes_string['experiment.id'] AS experiment_id,
-            session_id,
-            if(
-                has(mapKeys(attributes_string), 'test_case.id'),
-                attributes_string['test_case.id'],
-                ''
-            ) AS test_case_id,
             source_format,
             trace_id,
+            session_id,
             external_span_id AS root_span_id,
-            start_time,
-            nullIf(end_time, toDateTime64(0, 6)) AS end_time,
+            name AS root_name,
+            status AS root_status,
+            input AS root_input,
+            output AS root_output,
+            attributes_string['{project_key}'] AS project,
+            attributes_string['{experiment_key}'] AS experiment_id,
+            attributes_string['{test_case_key}'] AS test_case_id,
+            start_time AS root_started_at,
+            nullIf(end_time, toDateTime64(0, 6)) AS root_ended_at,
             if(end_time = toDateTime64(0, 6), NULL, dateDiff('millisecond', start_time, end_time)) AS latency_ms,
             event_ts,
             is_deleted
         FROM {_table(settings, "spans")}
         WHERE external_parent_span_id = ''
-            AND has(mapKeys(attributes_string), 'experiment.id')
-            AND attributes_string['experiment.id'] != ''
         """
     client.command(
         f"""
         CREATE MATERIALIZED VIEW {view}
         TO {table}
         AS
-        {experiment_sessions_select_sql}
+        {trace_index_select_sql}
         """
     )
     client.command(
         f"""
         INSERT INTO {table}
-        {experiment_sessions_select_sql}
+        {trace_index_select_sql}
         """
     )
 
@@ -322,7 +341,7 @@ _MIGRATIONS: list[tuple[str, Callable[..., None]]] = [
     ("ch_evaluator_results_0001", _create_evaluator_results_schema),
     ("ch_annotations_0001", _create_annotations_schema),
     ("ch_evaluator_results_0002", _add_evaluator_results_skip_indexes),
-    ("ch_experiment_sessions_0002", _create_experiment_sessions_schema),
+    ("ch_trace_index_0003", _create_trace_index_schema),
 ]
 CURRENT_SCHEMA_VERSION = _MIGRATIONS[-1][0]
 

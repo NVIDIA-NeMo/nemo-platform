@@ -26,6 +26,7 @@ import time
 from pathlib import Path
 
 import pytest
+from nemo_platform_ext.cli.app import app
 from nemo_platform_ext.cli.commands.services._process import (
     InstanceDescriptor,
     PortConflict,
@@ -36,10 +37,15 @@ from nemo_platform_ext.cli.commands.services._process import (
     is_instance_alive,
     is_port_bindable,
     list_instances,
+    prune_instances,
     read_descriptor,
+    remove_instance,
     stop_instance,
     write_descriptor,
 )
+from typer.testing import CliRunner
+
+_runner = CliRunner()
 
 _STARTUP_TIMEOUT = 15
 _SHUTDOWN_TIMEOUT = 5
@@ -527,6 +533,101 @@ class TestEndToEndHealthPolling:
             if proc.poll() is None:
                 proc.kill()
                 proc.wait(timeout=5)
+
+
+class TestInstanceCleanup:
+    """Integration tests for rm/prune and post-stop instance directories."""
+
+    def test_stop_leaves_record_until_rm(self, tmp_path: Path, monkeypatch) -> None:
+        base_dir = tmp_path / "state"
+        scope = "stop-then-rm"
+        monkeypatch.setenv("_NMP_STATE_DIR", str(base_dir))
+
+        proc = _spawn_platform(tmp_path / "scripts", base_dir, scope)
+        try:
+            stop_instance(scope, base_dir=base_dir, timeout=5.0)
+            proc.wait(timeout=_SHUTDOWN_TIMEOUT)
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait(timeout=5)
+
+        scope_dir = instance_dir(scope, base_dir=base_dir)
+        (scope_dir / "services.log").write_text("post-stop log\n")
+        instances = list_instances(base_dir=base_dir)
+        assert len(instances) == 1
+        assert instances[0].alive is False
+
+        assert remove_instance(scope, base_dir=base_dir) is True
+        assert not scope_dir.exists()
+
+    def test_stop_then_rm_via_cli(self, tmp_path: Path, monkeypatch) -> None:
+        base_dir = tmp_path / "state"
+        scope = "stop-then-rm-cli"
+        monkeypatch.setenv("_NMP_STATE_DIR", str(base_dir))
+
+        proc = _spawn_platform(tmp_path / "scripts-rm-cli", base_dir, scope)
+        try:
+            stop_instance(scope, base_dir=base_dir, timeout=5.0)
+            proc.wait(timeout=_SHUTDOWN_TIMEOUT)
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait(timeout=5)
+
+        scope_dir = instance_dir(scope, base_dir=base_dir)
+        (scope_dir / "services.log").write_text("post-stop log\n")
+        assert scope_dir.exists()
+
+        result = _runner.invoke(app, ["services", "rm", scope])
+        assert result.exit_code == 0
+        assert f"Removed instance '{scope}'" in result.stdout
+        assert not scope_dir.exists()
+
+    def test_sigkill_crash_then_prune(self, tmp_path: Path) -> None:
+        base_dir = tmp_path / "state"
+        scope = "crash-prune"
+        proc = _spawn_platform(tmp_path / "run1", base_dir, scope)
+        os.kill(proc.pid, signal.SIGKILL)
+        proc.wait(timeout=_SHUTDOWN_TIMEOUT)
+
+        scope_dir = instance_dir(scope, base_dir=base_dir)
+        (scope_dir / "services.log").write_text("crash log\n")
+
+        removed = prune_instances(base_dir=base_dir)
+        assert scope in removed
+        assert not scope_dir.exists()
+
+    def test_prune_skips_running(self, tmp_path: Path) -> None:
+        base_dir = tmp_path / "state"
+        running = _spawn_platform(tmp_path / "run-a", base_dir, "scope-running")
+        stopped_dir = instance_dir("scope-stopped", base_dir=base_dir)
+        (stopped_dir / "services.log").write_text("x\n")
+        try:
+            removed = prune_instances(base_dir=base_dir)
+            assert removed == ["scope-stopped"]
+            assert is_instance_alive("scope-running", base_dir=base_dir)
+            assert not stopped_dir.exists()
+        finally:
+            os.kill(running.pid, signal.SIGTERM)
+            running.wait(timeout=_SHUTDOWN_TIMEOUT)
+
+    def test_logs_available_before_rm_not_after(self, tmp_path: Path, monkeypatch) -> None:
+        base_dir = tmp_path / "state"
+        scope = "logs-rm"
+        monkeypatch.setenv("_NMP_STATE_DIR", str(base_dir))
+        d = instance_dir(scope, base_dir=base_dir)
+        (d / "services.log").write_text("debug line\n")
+
+        before = _runner.invoke(app, ["services", "logs", "--instance", scope])
+        assert before.exit_code == 0
+        assert "debug line" in before.stdout
+
+        remove_instance(scope, base_dir=base_dir)
+
+        after = _runner.invoke(app, ["services", "logs", "--instance", scope])
+        assert after.exit_code == 0
+        assert "No log file" in after.stdout
 
 
 class TestPortAvailability:

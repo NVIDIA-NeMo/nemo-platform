@@ -260,9 +260,19 @@ class TestJobs:
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
                     "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
                 },
-                "name": "name",
+                "name": {
+                    "eq": "$eq",
+                    "in_": ["string"],
+                    "like": "$like",
+                    "nin": ["string"],
+                },
                 "project": "project",
-                "source": "source",
+                "source": {
+                    "eq": "$eq",
+                    "in_": ["string"],
+                    "like": "$like",
+                    "nin": ["string"],
+                },
                 "status": "created",
                 "updated_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
@@ -944,9 +954,19 @@ class TestAsyncJobs:
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
                     "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
                 },
-                "name": "name",
+                "name": {
+                    "eq": "$eq",
+                    "in_": ["string"],
+                    "like": "$like",
+                    "nin": ["string"],
+                },
                 "project": "project",
-                "source": "source",
+                "source": {
+                    "eq": "$eq",
+                    "in_": ["string"],
+                    "like": "$like",
+                    "nin": ["string"],
+                },
                 "status": "created",
                 "updated_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),

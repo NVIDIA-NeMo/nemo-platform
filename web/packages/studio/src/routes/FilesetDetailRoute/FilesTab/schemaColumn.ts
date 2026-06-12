@@ -7,7 +7,7 @@ import type { DatasetMetadataContent } from '@nemo/sdk/generated/platform/schema
 /**
  * Resolve the Schema-column label for one file row.
  *
- *   `.json` / `.jsonl` only — non-data files (README, images, scripts) return
+ *   `.json` / `.jsonl` / `.csv` / `.parquet` only — non-data files (README, images, scripts) return
  *   null because they cannot carry a schema even when one is set.
  *
  *   Mapping precedence:

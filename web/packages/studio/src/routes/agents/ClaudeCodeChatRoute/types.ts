@@ -35,6 +35,16 @@ export interface ClaudeCodeHistorySession {
   tool_calls: string[];
 }
 
+export interface ClaudeCodeSkill {
+  name: string;
+  claude_name: string;
+  description: string;
+  source: string;
+  source_path?: string | null;
+  install_path: string;
+  installed: boolean;
+}
+
 export interface ClaudeCodeUserHistoryItem {
   kind: 'user';
   text: string;

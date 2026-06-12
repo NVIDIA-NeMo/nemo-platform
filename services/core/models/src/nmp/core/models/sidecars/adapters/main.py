@@ -56,6 +56,14 @@ class AdaptersController(Controller):
             logger.error(msg)
             raise ValueError(msg)
 
+        # vLLM's lora_filesystem_resolver only auto-loads an adapter whose
+        # adapter_config.json ``base_model_name_or_path`` equals vLLM's ``--model``
+        # value (the local model path). Adapters arrive from the Files service with
+        # their original base-model name, so when this override is set (vLLM only)
+        # we rewrite each downloaded adapter's base name to match. Empty for NIM,
+        # which scans the directory and does not require this equality.
+        self.base_model_name_override = os.getenv("VLLM_LORA_BASE_MODEL_OVERRIDE", "")
+
         self._stop_signal = stop_signal
 
         self._loop = asyncio.new_event_loop()
@@ -126,6 +134,32 @@ class AdaptersController(Controller):
                 with open(f"{prompt_tuned_model_dir}/config.json", "w") as f:
                     f.write(model_entity.prompt.model_dump_json())
 
+    def _rewrite_adapter_base_model(self, adapter_dir: str) -> bool:
+        """Rewrite ``adapter_config.json``'s ``base_model_name_or_path`` to the
+        configured override so vLLM's filesystem resolver will match and auto-load
+        the adapter against the locally served base model.
+
+        Returns ``True`` on success, ``False`` if the config is missing or can't be
+        read/written. The caller must not publish the adapter on ``False``: a
+        non-rewritten adapter would never auto-resolve in vLLM, and refusing to
+        publish keeps it eligible for retry on the next cycle.
+        """
+        cfg_path = os.path.join(adapter_dir, "adapter_config.json")
+        try:
+            with open(cfg_path) as f:
+                cfg = json.load(f)
+        except (OSError, json.JSONDecodeError) as e:
+            logger.warning(f"Could not read adapter_config.json in {adapter_dir} to rewrite base model: {e}")
+            return False
+        cfg["base_model_name_or_path"] = self.base_model_name_override
+        try:
+            with open(cfg_path, "w") as f:
+                json.dump(cfg, f)
+        except OSError as e:
+            logger.warning(f"Could not write rewritten adapter_config.json in {adapter_dir}: {e}")
+            return False
+        return True
+
     def _write_adapter_meta(self, adapter_dir: str, adapter: Adapter) -> None:
         """Persist adapter metadata so future cycles can detect fileset changes."""
         meta_path = os.path.join(adapter_dir, ADAPTER_META_FILENAME)
@@ -195,6 +229,14 @@ class AdaptersController(Controller):
         os.makedirs(temp_dir, exist_ok=True)
         try:
             if self.download_fileset(temp_dir, fileset_workspace, fileset_name):
+                if self.base_model_name_override and not self._rewrite_adapter_base_model(temp_dir):
+                    # Don't publish an adapter we couldn't rewrite for vLLM: it would
+                    # never auto-resolve. Raising here cleans up the temp dir (below)
+                    # and leaves the adapter un-published so it retries next cycle.
+                    raise RuntimeError(
+                        f"Failed to rewrite adapter_config.json base model for {adapter.name}; "
+                        "refusing to publish adapter directory"
+                    )
                 self._write_adapter_meta(temp_dir, adapter)
                 # os.rename fails if the destination directory already exists,
                 # so remove the old adapter dir first when updating in-place.

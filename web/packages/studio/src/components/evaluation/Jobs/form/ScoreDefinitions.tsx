@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Badge, Button, Flex, Stack, Text } from '@nvidia/foundations-react-core';
-import { ScoreModal } from '@studio/components/evaluation/Jobs/form/ScoreModal';
-import { InputErrorText } from '@studio/components/InputErrorText';
 import {
+  ScoreModal,
   type MetricPanelFormData,
   type PanelScoreFormData,
-} from '@studio/hooks/evaluation/useMetricPanelForm';
+} from '@studio/components/evaluation/Jobs/form/ScoreModal';
+import { InputErrorText } from '@studio/components/InputErrorText';
 import { Pencil, Plus, Trash } from 'lucide-react';
 import { FC, useState } from 'react';
 import { FieldError, useFormContext, useWatch } from 'react-hook-form';

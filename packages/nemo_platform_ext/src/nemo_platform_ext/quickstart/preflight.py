@@ -252,8 +252,9 @@ class PreflightChecker:
             )
 
         try:
-            import docker
             from docker.errors import DockerException, ImageNotFound
+
+            import docker
 
             from .container import ContainerManager
 

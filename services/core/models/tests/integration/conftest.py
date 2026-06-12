@@ -9,13 +9,13 @@ from collections.abc import Callable
 from typing import Any, Generator, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import docker
 import pytest
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform.types.inference.model_deployment import ModelDeployment
 from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig
 from nemo_platform.types.models.model_entity import ModelEntity
 from nmp.common.secrets.encryption import get_base64_encoded_random_bytes
+from nmp.core.files.app.backends.huggingface import HuggingfaceStorageImpl
 from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate, ServiceBackend
 from nmp.core.models.controllers.backends.registry import BackendRegistry
 from nmp.core.models.controllers.models_controller import ModelsController
@@ -34,7 +34,24 @@ from nmp.testing.docker import (
     get_worker_port_range,
 )
 
+import docker
+
 blockbuster = blockbuster_fixture(autouse=True)
+
+
+@pytest.fixture
+def no_hf_network(monkeypatch):
+    """Disable live HuggingFace API calls; keep fileset create/update paths local."""
+
+    async def _validate_noop(self):
+        return None
+
+    async def _resolve_passthrough(self):
+        return self.config
+
+    monkeypatch.setattr(HuggingfaceStorageImpl, "validate_storage", _validate_noop)
+    monkeypatch.setattr(HuggingfaceStorageImpl, "resolve_config", _resolve_passthrough)
+
 
 # =============================================================================
 # Constants

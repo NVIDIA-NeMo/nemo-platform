@@ -37,6 +37,12 @@ class ExperimentUpdateParams(TypedDict, total=False):
     dataset_name: Required[str]
     """Producer-supplied dataset name."""
 
+    experiment_group_id: Required[str]
+    """Entity id of the owning ExperimentGroup.
+
+    Required — the group must already exist.
+    """
+
     body_name: Required[Annotated[str, PropertyInfo(alias="name")]]
     """Producer-supplied, workspace-unique experiment id."""
 
@@ -45,12 +51,6 @@ class ExperimentUpdateParams(TypedDict, total=False):
 
     description: str
     """Human-readable description."""
-
-    experiment_group_id: str
-    """Entity id of the owning ExperimentGroup; optional.
-
-    Soft reference, not validated.
-    """
 
     metadata: Dict[str, object]
     """Free-form producer metadata."""

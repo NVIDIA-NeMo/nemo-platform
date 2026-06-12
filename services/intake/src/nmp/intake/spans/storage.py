@@ -90,3 +90,22 @@ def dict_to_row(row: dict[str, Any], columns: Sequence[str]) -> list[Any]:
 
 def result_rows(result: Any) -> list[dict[str, Any]]:
     return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
+
+
+def float_or_none(value: Any) -> float | None:
+    if value is None:
+        return None
+    return float(value)
+
+
+def int_or_none(value: Any) -> int | None:
+    if value is None:
+        return None
+    return int(value)
+
+
+def str_or_none(value: Any) -> str | None:
+    # ClickHouse String columns use "" as the null sentinel; treat it the same as SQL NULL.
+    if value is None or value == "":
+        return None
+    return str(value)

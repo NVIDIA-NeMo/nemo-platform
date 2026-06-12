@@ -9,7 +9,7 @@ Imports platform and service config classes directly; requires running under uv
 so workspace packages (nmp.common, nmp.core.*, etc.) are on the import path.
 
 Outputs:
-  - docs/set-up/config-reference.md   Markdown with YAML sections and inline comments
+  - docs/set-up/config-reference.mdx  Fern MDX with YAML sections and inline comments
 
 Usage (run from repository root):
 
@@ -40,6 +40,7 @@ from typing import Any, get_args, get_origin
 
 import yaml
 from nemo_safe_synthesizer_plugin.config import SafeSynthesizerConfig
+from nmp.automodel.config import AutomodelConfig
 from nmp.common.config.base import CommonServiceConfig, PlatformConfig
 from nmp.core.auth.config import AuthServiceConfig
 from nmp.core.entities.config import EntitiesConfig
@@ -48,15 +49,13 @@ from nmp.core.inference_gateway.config import InferenceGatewayConfig
 from nmp.core.jobs.config import JobsServiceConfig
 from nmp.core.models.config import ModelsConfig
 from nmp.core.secrets.config import SecretsServiceConfig
-from nmp.customizer.config import CustomizerConfig
-from nmp.evaluator.config import EvaluatorSettings
 from nmp.studio.config import StudioConfig
+from nmp.unsloth.config import UnslothConfig
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
 
 # Repo root (parent of script/) — used for default output paths
 REPO_ROOT = Path(__file__).resolve().parent.parent
-PLATFORM_NAME_TOKEN = "{{platform_name}}"
 
 # All config classes to include in the reference, in display order.
 # Excluded services (e.g. hello_world) are omitted from this list.
@@ -70,8 +69,8 @@ CONFIG_CLASSES: list[type[Any]] = [
     JobsServiceConfig,
     ModelsConfig,
     SecretsServiceConfig,
-    CustomizerConfig,
-    EvaluatorSettings,
+    AutomodelConfig,
+    UnslothConfig,
     SafeSynthesizerConfig,
     StudioConfig,
 ]
@@ -187,16 +186,11 @@ def _build_field_info_tree(model_class: type) -> dict[str, Any]:
     return out
 
 
-def _format_doc_description(desc: str) -> str:
-    """Apply docs-only substitutions to generated config comments."""
-    return desc.replace("NeMo Platform", PLATFORM_NAME_TOKEN)
-
-
 def _format_comment(desc: str, default: Any, possible: str | None) -> str:
     """Single-line YAML comment: description, default, possible values (no class names). Caller adds indent."""
     parts: list[str] = []
     if desc:
-        parts.append(_format_doc_description(desc))
+        parts.append(desc)
     default_str = _scalar_default_str(default) if default is not None and not callable(default) else ""
     if default_str:
         parts.append(f"default: {default_str}")
@@ -410,9 +404,12 @@ def generate_yaml(entries: list[tuple[str, Any]]) -> str:
 def generate_markdown(entries: list[tuple[str, Any]]) -> str:
     """Generate full markdown document: YAML-first with comments, no tables, no class names."""
     lines: list[str] = []
+    lines.append("---")
+    lines.append('title: "NeMo Platform configuration reference"')
+    lines.append('description: ""')
+    lines.append("---")
     lines.append("(platform-config-reference)=")
     lines.append("")
-    lines.append("# NeMo Platform configuration reference")
     lines.append("")
     lines.append(
         "This document describes the structure and defaults for the global config file for the NeMo Platform. "
@@ -443,7 +440,7 @@ def main() -> int:
     parser.add_argument(
         "--markdown",
         type=Path,
-        default=REPO_ROOT / "docs" / "set-up" / "config-reference.md",
+        default=REPO_ROOT / "docs" / "set-up" / "config-reference.mdx",
         help="Output path for markdown file",
     )
     parser.add_argument(

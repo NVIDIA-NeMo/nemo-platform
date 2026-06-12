@@ -10,7 +10,7 @@ from typing import Any
 
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 from nmp.intake.spans.span_attribute_catalog import COST_SCALE, SpanAttributeField, spec_for_field
-from nmp.intake.spans.storage import result_rows
+from nmp.intake.spans.storage import float_or_none, result_rows
 from nmp.intake.spans.trace_repository import current_spans_sql
 
 
@@ -51,11 +51,11 @@ class ExperimentRollupRepository:
 
         experiment_names_sql, experiment_parameters = _experiment_id_parameters(experiment_ids)
         parameters = {"workspace": workspace, **experiment_parameters}
-        sessions_table = self._client.table("experiment_sessions")
+        trace_index_table = self._client.table("trace_index")
 
         for row in result_rows(
             await self._client.query(
-                _run_counts_sql(sessions_table, experiment_names_sql),
+                _run_counts_sql(trace_index_table, experiment_names_sql),
                 parameters=parameters,
             )
         ):
@@ -64,7 +64,7 @@ class ExperimentRollupRepository:
         for row in result_rows(
             await self._client.query(
                 _score_rollups_sql(
-                    sessions_table=sessions_table,
+                    trace_index_table=trace_index_table,
                     evaluator_results_table=self._client.table("evaluator_results"),
                     experiment_names_sql=experiment_names_sql,
                 ),
@@ -72,19 +72,19 @@ class ExperimentRollupRepository:
             )
         ):
             rollups[row["experiment_id"]].evaluator_scores[row["evaluator_name"]] = ScoreRollup(
-                sum=_float_or_none(row["sum"]),
-                mean=_float_or_none(row["mean"]),
-                median=_float_or_none(row["median"]),
-                p90=_float_or_none(row["p90"]),
-                p95=_float_or_none(row["p95"]),
-                p99=_float_or_none(row["p99"]),
+                sum=float_or_none(row["sum"]),
+                mean=float_or_none(row["mean"]),
+                median=float_or_none(row["median"]),
+                p90=float_or_none(row["p90"]),
+                p95=float_or_none(row["p95"]),
+                p99=float_or_none(row["p99"]),
                 count=int(row["count"]),
             )
 
         for row in result_rows(
             await self._client.query(
                 _metric_rollups_sql(
-                    sessions_table=sessions_table,
+                    trace_index_table=trace_index_table,
                     spans_table=self._client.table("spans"),
                     experiment_names_sql=experiment_names_sql,
                 ),
@@ -108,22 +108,22 @@ def _experiment_id_parameters(experiment_ids: list[str]) -> tuple[str, dict[str,
     return ", ".join(f"%({name})s" for name in parameters), parameters
 
 
-def _scoped_sessions_sql(sessions_table: str, experiment_names_sql: str) -> str:
+def _scoped_sessions_sql(trace_index_table: str, experiment_names_sql: str) -> str:
     return f"""
         SELECT workspace, experiment_id, session_id, latency_ms
-        FROM {sessions_table} FINAL
+        FROM {trace_index_table} FINAL
         WHERE workspace = %(workspace)s
             AND is_deleted = 0
             AND experiment_id IN ({experiment_names_sql})
-        ORDER BY start_time ASC, root_span_id ASC
+        ORDER BY root_started_at ASC, root_span_id ASC
         LIMIT 1 BY workspace, session_id, experiment_id
     """
 
 
-def _run_counts_sql(sessions_table: str, experiment_names_sql: str) -> str:
+def _run_counts_sql(trace_index_table: str, experiment_names_sql: str) -> str:
     return f"""
         WITH scoped_sessions AS (
-            {_scoped_sessions_sql(sessions_table, experiment_names_sql)}
+            {_scoped_sessions_sql(trace_index_table, experiment_names_sql)}
         )
         SELECT
             experiment_id,
@@ -172,7 +172,7 @@ def _stat_columns(value_expr: str, *, prefix: str = "", guarded: bool = False) -
     return ",\n            ".join(columns)
 
 
-def _score_rollups_sql(*, sessions_table: str, evaluator_results_table: str, experiment_names_sql: str) -> str:
+def _score_rollups_sql(*, trace_index_table: str, evaluator_results_table: str, experiment_names_sql: str) -> str:
     # Each run (session) contributes one score per evaluator, so reduce the per-span
     # evaluator_results rows to a single per-(experiment, session, evaluator) value before
     # the distribution rollup. This keeps `count` aligned with run_count and the mean
@@ -180,7 +180,7 @@ def _score_rollups_sql(*, sessions_table: str, evaluator_results_table: str, exp
     return f"""
         WITH
         scoped_sessions AS (
-            {_scoped_sessions_sql(sessions_table, experiment_names_sql)}
+            {_scoped_sessions_sql(trace_index_table, experiment_names_sql)}
         ),
         session_scores AS (
             SELECT
@@ -213,11 +213,11 @@ def _score_rollups_sql(*, sessions_table: str, evaluator_results_table: str, exp
     """
 
 
-def _metric_rollups_sql(*, sessions_table: str, spans_table: str, experiment_names_sql: str) -> str:
+def _metric_rollups_sql(*, trace_index_table: str, spans_table: str, experiment_names_sql: str) -> str:
     return f"""
         WITH
         scoped_sessions AS (
-            {_scoped_sessions_sql(sessions_table, experiment_names_sql)}
+            {_scoped_sessions_sql(trace_index_table, experiment_names_sql)}
         ),
         current_session_spans AS (
             {
@@ -271,12 +271,12 @@ def _score_rollup(row: dict[str, Any], prefix: str) -> ScoreRollup | None:
     if count == 0:
         return None
     return ScoreRollup(
-        sum=_float_or_none(row[f"{prefix}_sum"]),
-        mean=_float_or_none(row[f"{prefix}_mean"]),
-        median=_float_or_none(row[f"{prefix}_median"]),
-        p90=_float_or_none(row[f"{prefix}_p90"]),
-        p95=_float_or_none(row[f"{prefix}_p95"]),
-        p99=_float_or_none(row[f"{prefix}_p99"]),
+        sum=float_or_none(row[f"{prefix}_sum"]),
+        mean=float_or_none(row[f"{prefix}_mean"]),
+        median=float_or_none(row[f"{prefix}_median"]),
+        p90=float_or_none(row[f"{prefix}_p90"]),
+        p95=float_or_none(row[f"{prefix}_p95"]),
+        p99=float_or_none(row[f"{prefix}_p99"]),
         count=count,
     )
 
@@ -285,9 +285,3 @@ def _string_list(value: Any) -> list[str]:
     if value is None:
         return []
     return sorted(str(item) for item in value if str(item))
-
-
-def _float_or_none(value: Any) -> float | None:
-    if value is None:
-        return None
-    return float(value)

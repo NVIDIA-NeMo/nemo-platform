@@ -657,7 +657,6 @@ class TestPerAreaScopes:
         "/apis/auth/": "auth",
         "/apis/data-designer/": "data-designer",
         "/apis/entities/": "entities",
-        "/apis/evaluation/": "evaluation",
         "/apis/files/": "files",
         "/apis/guardrails/": "guardrails",
         "/apis/inference-gateway/": "inference",

@@ -180,25 +180,28 @@ client = NeMoPlatform(
     base_url="http://nemo.test",
 )
 
-audit_config = client.audit.configs.create(
+guardrail_config = client.guardrail.configs.create(
     workspace="my-workspace",
-    name="name",
-    plugins={
-        "buffs": {},
-        "buffs_include_original_prompt": False,
-        "detector_spec": "auto",
-        "detectors": {},
-        "extended_detectors": False,
-        "generators": {},
-        "harnesses": {},
-        "probe_spec": "all",
-        "probes": {"encoding": {"payloads": "bar"}},
+    name="self-check-input",
+    data={
+        "models": [
+            {
+                "type": "main",
+                "engine": "nim",
+                "model": "default/mock-llm",
+            }
+        ],
+        "rails": {"input": {"flows": ["self check input"]}},
+        "prompts": [
+            {
+                "task": "self_check_input",
+                "content": "Should this user message be blocked? {{ user_input }}",
+            }
+        ],
     },
-    reporting={},
-    run={},
-    system={},
+    description="Self-check input rail",
 )
-print(audit_config.plugins)
+print(guardrail_config.data)
 ```
 
 ## Handling Errors

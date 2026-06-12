@@ -1,4 +1,0 @@
-{"messages": [{"role": "user", "content": "What is Python?"}, {"role": "assistant", "content": "Python is a programming language."}]}
-{"messages": [{"role": "user", "content": "Explain AI"}, {"role": "assistant", "content": "AI stands for Artificial Intelligence."}]}
-{"messages": [{"role": "system", "content": "You are a helpful assistant."}, {"role": "user", "content": "What is machine learning?"}, {"role": "assistant", "content": "Machine learning is a subset of AI."}]}
-{"messages": [{"role": "user", "content": "What is 2+2?"}, {"role": "assistant", "thinking": "Let me calculate this"}, {"role": "assistant", "content": "4"}]}

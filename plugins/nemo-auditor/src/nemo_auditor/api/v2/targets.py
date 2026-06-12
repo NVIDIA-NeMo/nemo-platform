@@ -11,7 +11,8 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from nemo_auditor.api.v2.schemas import CreateAuditTargetRequest, UpdateAuditTargetRequest
+from nemo_auditor.api.v2._filters import make_filter_dep
+from nemo_auditor.api.v2.schemas import CreateAuditTargetRequest, TargetFilter, UpdateAuditTargetRequest
 from nemo_auditor.entities import AuditTarget
 from nemo_platform_plugin.entity_client import (
     NemoEntitiesClient,
@@ -19,10 +20,13 @@ from nemo_platform_plugin.entity_client import (
     NemoEntityNotFoundError,
     get_entity_client,
 )
+from nemo_platform_plugin.jobs.openapi_utils import generate_openapi_extra_params
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+_target_filter_dep = make_filter_dep(TargetFilter)
 
 
 @router.post("/targets", response_model=AuditTarget, status_code=201, tags=["Auditor Targets"])
@@ -52,15 +56,21 @@ async def create_target(
         raise HTTPException(status_code=500, detail="Failed to create audit target.") from exc
 
 
-@router.get("/targets", tags=["Auditor Targets"])
+@router.get(
+    "/targets",
+    tags=["Auditor Targets"],
+    openapi_extra=generate_openapi_extra_params(filter_schema=TargetFilter),
+)
 async def list_targets(
     workspace: str,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     sort: str = Query(default="-created_at"),
+    parsed_filter: TargetFilter = Depends(_target_filter_dep),
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
 ) -> dict:
-    """List audit targets in the workspace."""
+    """List audit targets in the workspace with pagination and filter support."""
+    filter_dict = parsed_filter if isinstance(parsed_filter, dict) else parsed_filter.model_dump(exclude_none=True)
     try:
         result = await entity_client.list(
             AuditTarget,
@@ -68,6 +78,7 @@ async def list_targets(
             page=page,
             page_size=page_size,
             sort=sort,
+            filter_obj=filter_dict or None,
         )
     except Exception as exc:
         logger.exception("Failed to list audit targets in workspace '%s'", workspace)
@@ -76,6 +87,7 @@ async def list_targets(
         "data": [t.model_dump(mode="json") for t in result.data],
         "pagination": result.pagination.model_dump() if result.pagination else None,
         "sort": sort,
+        "filter": parsed_filter or None,
     }
 
 

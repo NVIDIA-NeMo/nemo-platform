@@ -346,6 +346,7 @@ class TestRunLocalEnvvarMirroring:
 
         monkeypatch.delenv("NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH", raising=False)
         monkeypatch.delenv("NEMO_JOB_EPHEMERAL_TASK_STORAGE_PATH", raising=False)
+        monkeypatch.setenv("NEMO_JOB_WORKSPACE", "default")
 
         seen: dict[str, object] = {}
 
@@ -375,6 +376,7 @@ class TestRunLocalEnvvarMirroring:
         # NEMO_JOB_ID in that case.
         assert seen["job_id"] is None
         assert seen["workspace"] == "my-ws"
+        assert os.environ.get("NEMO_JOB_WORKSPACE") == "default"
 
     def test_envvars_restored_after_run(self, monkeypatch) -> None:
         import os

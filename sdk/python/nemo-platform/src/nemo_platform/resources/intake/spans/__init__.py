@@ -23,6 +23,14 @@ from .spans import (
     SpansResourceWithStreamingResponse,
     AsyncSpansResourceWithStreamingResponse,
 )
+from .groups import (
+    GroupsResource,
+    AsyncGroupsResource,
+    GroupsResourceWithRawResponse,
+    AsyncGroupsResourceWithRawResponse,
+    GroupsResourceWithStreamingResponse,
+    AsyncGroupsResourceWithStreamingResponse,
+)
 from .evaluator_results import (
     EvaluatorResultsResource,
     AsyncEvaluatorResultsResource,
@@ -33,6 +41,12 @@ from .evaluator_results import (
 )
 
 __all__ = [
+    "GroupsResource",
+    "AsyncGroupsResource",
+    "GroupsResourceWithRawResponse",
+    "AsyncGroupsResourceWithRawResponse",
+    "GroupsResourceWithStreamingResponse",
+    "AsyncGroupsResourceWithStreamingResponse",
     "EvaluatorResultsResource",
     "AsyncEvaluatorResultsResource",
     "EvaluatorResultsResourceWithRawResponse",

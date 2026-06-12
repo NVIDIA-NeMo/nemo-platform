@@ -22,6 +22,11 @@ _test_serve/
 *.7z
 *.tmp
 *latest*
+!fern/versions/latest.yml
+
+# Fern build artifact: auto-generated API examples cache (regenerated on every
+# docs build; not referenced by generators.yml, so it must not be committed)
+fern/openapi/ai_examples_override.yml
 _static/versions1.json
 helm/_values.yaml
 

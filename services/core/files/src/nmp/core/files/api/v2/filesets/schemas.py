@@ -7,7 +7,7 @@ from typing import Annotated, Any, Dict, Optional
 
 from nmp.common.api.common import Page
 from nmp.common.entities import constants
-from nmp.common.entities.values import DatetimeFilter, Filter, map_entity_field
+from nmp.common.entities.values import DatetimeFilter, Filter, StringFilter, map_entity_field
 from nmp.common.files.metadata import FilesetMetadata
 from nmp.core.files.app.backends.base import StorageConfigType
 from nmp.core.files.app.backends.factory import StorageConfig
@@ -50,8 +50,8 @@ class FilesetOutput(BaseModel):
 class FilesetFilter(Filter):
     """Filter schema for listing filesets."""
 
-    name: Optional[str] = Field(default=None, description="Filter by fileset name.")
-    description: Optional[str] = Field(default=None, description="Filter by fileset description.")
+    name: StringFilter | str | None = Field(default=None, description="Filter by fileset name.")
+    description: StringFilter | str | None = Field(default=None, description="Filter by fileset description.")
     purpose: Optional[FilesetPurpose] = Field(
         default=None,
         description="Filter by the purpose of the fileset (e.g., 'dataset', 'generic').",

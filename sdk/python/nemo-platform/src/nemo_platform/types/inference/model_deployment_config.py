@@ -18,9 +18,11 @@
 from typing import Optional
 from datetime import datetime
 
+from .engine import Engine
 from ..._compat import PYDANTIC_V1, ConfigDict
 from ..._models import BaseModel
-from .nim_deployment import NIMDeployment
+from .container_executor_config import ContainerExecutorConfig
+from .model_deployment_config_model_spec import ModelDeploymentConfigModelSpec
 
 __all__ = ["ModelDeploymentConfig"]
 
@@ -36,8 +38,31 @@ class ModelDeploymentConfig(BaseModel):
     created_at: datetime
     """The timestamp of model entity creation"""
 
+    engine: Engine
+    """Inference engine selecting the compiler path for a deployment.
+
+    The engine determines what command, image, and env a deployment compiles to. The
+    fields a compiler consumes are not engine-specific; engines take the same inputs
+    (model_spec + executor_config) and differ in what they do with them.
+    """
+
     entity_version: int
     """Version of this deployment config. Automatically managed."""
+
+    executor_config: ContainerExecutorConfig
+    """Compute + container settings shared by the docker and k8s executors.
+
+    Both the docker and k8s executors run containers and share this shape. A future
+    non-container executor (e.g. subprocess) would warrant turning `executor_config`
+    into a discriminated union.
+    """
+
+    model_spec: ModelDeploymentConfigModelSpec
+    """What model to serve and how -- independent of the executor it runs on.
+
+    Executor-invariant facts about the model. The compiler resolves the weight
+    source per engine; serving fields override the model entity spec when set.
+    """
 
     name: str
     """Name of the entity.
@@ -45,9 +70,6 @@ class ModelDeploymentConfig(BaseModel):
     Name/workspace combo must be unique across all entities. Allowed characters:
     letters (a-z, A-Z), digits (0-9), underscores, hyphens, and dots.
     """
-
-    nim_deployment: NIMDeployment
-    """Configuration for NIM-based model deployment."""
 
     updated_at: datetime
     """The timestamp of the last model entity update"""

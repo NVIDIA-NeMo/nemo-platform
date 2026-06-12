@@ -8,12 +8,13 @@ from typing import Any, Optional
 from urllib.parse import urljoin
 
 from nemo_platform.types.inference.model_deployment import ModelDeployment
-from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig, NIMDeployment
+from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig
 from nemo_platform.types.models.model_entity import ModelEntity
 from nmp.common.config import get_platform_config
 from nmp.core.models.app import is_multi_llm_image, parse_model_name_revision
 from nmp.core.models.app.constants import MODEL_MANAGED_BY_LABEL, MODEL_MANAGED_BY_MODELS_CONTROLLER
 from nmp.core.models.app.utils import _get_k8s_safe_name
+from nmp.core.models.controllers.backends.common import DeploymentConfigView, deployment_config_view
 from nmp.core.models.controllers.backends.k8s_nim_operator.config import K8sNimOperatorConfig
 from nmp.core.models.controllers.backends.k8s_nim_operator.types.nimcache import (
     Hf,
@@ -201,7 +202,7 @@ def _generate_tool_plugin_container(
     backend_config: K8sNimOperatorConfig,
     huggingface_model_puller: str | None,
 ) -> list[ContainerSpec] | None:
-    nim_config = config.nim_deployment
+    nim_config = deployment_config_view(config)
     plugin_fileset: str | None = None
     if nim_config.tool_call_config and nim_config.tool_call_config.tool_call_plugin:
         plugin_fileset = nim_config.tool_call_config.tool_call_plugin
@@ -321,7 +322,7 @@ def compile_nimservice(
         f"with config {config.workspace}/{config.name}@{config.entity_version}"
     )
 
-    nim_config = config.nim_deployment
+    nim_config = deployment_config_view(config)
     platform_config = get_platform_config()
     image_pull_secrets = [secret.name for secret in platform_config.image_pull_secrets]
     pvc_size = nim_config.disk_size if nim_config.disk_size else backend_config.default_pvc_size
@@ -532,7 +533,7 @@ def _compile_startup_probe(grace_seconds: int | None = None) -> StartupProbe:
 
 def _compile_env_vars(
     backend_config: K8sNimOperatorConfig,
-    nim_config: NIMDeployment,
+    nim_config: DeploymentConfigView,
     nimcache_name: str | None = None,
     model_entity: ModelEntity | None = None,
     tool_call_plugin_path: str | None = None,

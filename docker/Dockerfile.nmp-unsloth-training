@@ -1,0 +1,109 @@
+# syntax=docker/dockerfile:1
+# nmp-unsloth training image — single GPU image used for all four steps of
+# an unsloth customization job (file_io download, training, file_io upload,
+# model_entity).
+#
+# Install steps:
+#   1. `uv pip install unsloth --torch-backend=auto`. This is unsloth's
+#      canonical install command (per their README). It pulls unsloth +
+#      unsloth_zoo + the entire HF stack (transformers, trl, peft, accelerate,
+#      datasets, bitsandbytes, xformers, etc.) at the versions unsloth's own
+#      pyproject.toml has constrained — including explicit !=X.Y.Z blocklists
+#      for known-broken transformers/trl releases. We deliberately don't
+#      second-guess these pins; they're tested upstream.
+#   1b. flash-attn — optional for unsloth and not installed by step 1. Without
+#       it Unsloth falls back when xformers is also missing (common on newer CUDA
+#       stacks), logging "FA2 = False / Xformers = None". Installed immediately
+#       after unsloth so pip does not re-resolve the HF stack.
+#   2. Editable installs of the platform glue (nemo-platform SDK, plugin,
+#      nmp-common, nmp-unsloth) from the in-repo workspace slice.
+#
+# Publish target: nmp-unsloth-training
+# Default tag:    `local` (override via BAKE_TAG at build time).
+
+# NGC PyTorch base. 26.02-py3 ships PyTorch 2.11 + CUDA 13.1 + Python 3.12.
+# Override at build time: --set nmp-unsloth-training.args.PYTORCH_BASE=...
+ARG PYTORCH_BASE=nvcr.io/nvidia/pytorch:26.02-py3
+
+FROM ${PYTORCH_BASE} AS base
+
+WORKDIR /opt
+
+COPY --from=ghcr.io/astral-sh/uv:0.9.14 /uv /bin/uv
+ENV PATH="/bin:${PATH}"
+
+ENV VIRTUAL_ENV=/opt/venv \
+    UV_PROJECT_ENVIRONMENT=/opt/venv \
+    UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1 \
+    HF_HUB_ENABLE_HF_TRANSFER=1 \
+    OTEL_PYTHON_EXCLUDED_URLS="health"
+ENV PATH="/opt/venv/bin:/root/.local/bin:${PATH}"
+
+# --system-site-packages lets the venv inherit the NGC base's pre-built torch.
+# Without this, `uv pip install unsloth --torch-backend=auto` would download a
+# fresh torch wheel from PyPI, ballooning image size.
+RUN uv venv ${UV_PROJECT_ENVIRONMENT} --system-site-packages
+
+# ──────────────────────────────────────────────────────────────────────────
+# Stage 2 — install unsloth's ML stack + our platform glue.
+# ──────────────────────────────────────────────────────────────────────────
+FROM base AS runtime
+
+ARG USERNAME=ubuntu
+ARG USER_UID=1000
+ARG USER_GID=1000
+ARG UNSLOTH_VERSION=2026.6.1
+
+WORKDIR /app
+
+RUN mkdir -p /home/${USERNAME}/.cache && \
+    chown -R ${USER_UID}:${USER_GID} /home/${USERNAME}
+
+# Step 1: install unsloth via its own resolver. --torch-backend=auto tells uv
+# to detect the existing torch's CUDA build (from --system-site-packages
+# inheritance) and pick the matching xformers / bitsandbytes wheels.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache \
+    --torch-backend=auto \
+    unsloth==${UNSLOTH_VERSION}
+
+# TODO: Step 1b: Flash Attention 2 — compiled from source against the NGC 26.02 torch.
+# /usr/local/cuda symlinks to an older toolkit; use /usr/local/cuda-13.1 instead.
+# Cap parallel nvcc/ninja work — default uses all CPUs and OOMs typical build hosts.
+# Put flash attention back in when we have a working wheel in a separate image.
+# ARG FLASH_ATTN_MAX_JOBS=40
+# ARG NVCC_THREADS=1
+# RUN --mount=type=cache,target=/root/.cache/uv \
+#     --mount=type=cache,target=/root/.cache/pip \
+#     uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache \
+#     ninja einops packaging && \
+#     CUDA_HOME=/usr/local/cuda-13.1 \
+#     MAX_JOBS=${FLASH_ATTN_MAX_JOBS} \
+#     NVCC_THREADS=${NVCC_THREADS} \
+#     FLASH_ATTN_FORCE_BUILD=TRUE \
+#     uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache \
+#     --no-build-isolation flash-attn==2.8.3
+
+COPY --from=platform-workspace / /app
+RUN chown -R ${USER_UID}:${USER_GID} /app
+
+# Step 2: install the platform glue editably. No [unsloth] extra here — that's
+# what we just installed in step 1, and re-triggering it would force the
+# resolver to re-evaluate the whole HF stack.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache \
+    -e /app/sdk/python/nemo-platform \
+    -e /app/packages/nemo_platform_plugin \
+    -e /app/packages/nmp_common \
+    -e /app/services/unsloth
+
+# Re-pin hf-transfer (used by HF_HUB_ENABLE_HF_TRANSFER above).
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache \
+    "hf-transfer>=0.1.8,<0.2"
+
+ENTRYPOINT ["/opt/venv/bin/python"]
+CMD ["-m", "nmp.unsloth.tasks.training", "--help"]
+
+USER ${USER_UID}:${USER_GID}

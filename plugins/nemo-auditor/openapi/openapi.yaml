@@ -55,7 +55,8 @@ paths:
       tags:
       - Auditor Configs
       summary: List Configs
-      description: List audit configs in the workspace.
+      description: List audit configs in the workspace with pagination and filter
+        support.
       operationId: list_configs_apis_auditor_v2_workspaces__workspace__configs_get
       parameters:
       - name: workspace
@@ -88,6 +89,18 @@ paths:
           type: string
           default: -created_at
           title: Sort
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/ConfigFilter'
+        description: 'Filter results on various criteria. Supports bracket notation
+          (?filter[field][$op]=value), JSON ({"field":{"$op":"value"}}), and text
+          syntax (field:"value"). Operators: $eq (exact match), $like (substring),
+          $lt, $lte, $gt, $gte (comparison), $in, $nin (set membership), $and, $or,
+          $not (logical). Default operator is $eq.'
       responses:
         '200':
           description: Successful Response
@@ -240,7 +253,8 @@ paths:
       tags:
       - Auditor Targets
       summary: List Targets
-      description: List audit targets in the workspace.
+      description: List audit targets in the workspace with pagination and filter
+        support.
       operationId: list_targets_apis_auditor_v2_workspaces__workspace__targets_get
       parameters:
       - name: workspace
@@ -273,6 +287,18 @@ paths:
           type: string
           default: -created_at
           title: Sort
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/TargetFilter'
+        description: 'Filter results on various criteria. Supports bracket notation
+          (?filter[field][$op]=value), JSON ({"field":{"$op":"value"}}), and text
+          syntax (field:"value"). Operators: $eq (exact match), $like (substring),
+          $lt, $lte, $gt, $gte (comparison), $in, $nin (set membership), $and, $or,
+          $not (logical). Default operator is $eq.'
       responses:
         '200':
           description: Successful Response
@@ -775,6 +801,28 @@ components:
       - parent
       title: AuditTarget
       description: Audit target (model under test) stored in the entity store.
+    ConfigFilter:
+      additionalProperties: false
+      description: Query filter for ``GET /v2/workspaces/{workspace}/configs``.
+      properties:
+        description:
+          description: Filter to configs with this description.
+          title: Description
+          type: string
+        project:
+          description: Filter to configs in this project.
+          title: Project
+          type: string
+        created_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Filter on creation time (supports $gte / $lte).
+        updated_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Filter on last-update time (supports $gte / $lte).
+      title: ConfigFilter
+      type: object
     CreateAuditConfigRequest:
       properties:
         name:
@@ -826,6 +874,21 @@ components:
       - model
       title: CreateAuditTargetRequest
       description: Request body for ``POST /v2/workspaces/{workspace}/targets``.
+    DatetimeFilter:
+      additionalProperties: false
+      properties:
+        $gte:
+          description: Filter for results greater than or equal to this datetime.
+          title: $Gte
+          format: date-time
+          type: string
+        $lte:
+          description: Filter for results less than or equal to this datetime.
+          title: $Lte
+          format: date-time
+          type: string
+      title: DatetimeFilter
+      type: object
     HTTPValidationError:
       properties:
         detail:
@@ -835,6 +898,36 @@ components:
           title: Detail
       type: object
       title: HTTPValidationError
+    TargetFilter:
+      additionalProperties: false
+      description: Query filter for ``GET /v2/workspaces/{workspace}/targets``.
+      properties:
+        type:
+          description: Filter to targets of this type (e.g., 'nim', 'openai').
+          title: Type
+          type: string
+        model:
+          description: Filter to targets using this model identifier.
+          title: Model
+          type: string
+        description:
+          description: Filter to targets with this description.
+          title: Description
+          type: string
+        project:
+          description: Filter to targets in this project.
+          title: Project
+          type: string
+        created_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Filter on creation time (supports $gte / $lte).
+        updated_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Filter on last-update time (supports $gte / $lte).
+      title: TargetFilter
+      type: object
     UpdateAuditConfigRequest:
       properties:
         description:

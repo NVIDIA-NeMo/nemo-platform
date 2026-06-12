@@ -7,7 +7,7 @@ import { KVPair } from '@nemo/common/src/components/KVPair';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { PlatformJobTerminalStatuses } from '@nemo/common/src/constants/query';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
-import { useDataDesignerListJobResults } from '@nemo/sdk/generated/data-designer/api';
+import { useDataDesignerListCreateJobResults } from '@nemo/sdk/generated/data-designer/api';
 import type { CreateJob as DataDesignerJob } from '@nemo/sdk/generated/data-designer/schema';
 import {
   getFilesListFilesetFilesQueryKey,
@@ -54,15 +54,12 @@ export const JobOutputFilesetSection: FC<JobOutputFilesetSectionProps> = ({
 
   const isTerminal = job.status != null && PlatformJobTerminalStatuses.includes(job.status);
 
-  const { data: resultsResponse, isLoading: isResultsLoading } = useDataDesignerListJobResults(
-    workspace,
-    jobName,
-    {
+  const { data: resultsResponse, isLoading: isResultsLoading } =
+    useDataDesignerListCreateJobResults(workspace, jobName, {
       query: {
         refetchInterval: isTerminal ? false : 3000,
       },
-    }
-  );
+    });
 
   const artifactsResult = useMemo(() => {
     const data = resultsResponse?.data;

@@ -24,6 +24,7 @@ import pytest
 
 from tests.utils import assert_matches_type
 from nemo_platform import NeMoPlatform, AsyncNeMoPlatform
+from nemo_platform._utils import parse_datetime
 from nemo_platform.pagination import SyncDefaultPagination, AsyncDefaultPagination
 from nemo_platform.types.experiments import (
     ExperimentResponse,
@@ -43,6 +44,7 @@ class TestExperiments:
             agent_name="agent_name",
             agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             name="name",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
@@ -55,10 +57,10 @@ class TestExperiments:
             agent_name="agent_name",
             agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             name="name",
             dataset_version="dataset_version",
             description="description",
-            experiment_group_id="experiment_group_id",
             metadata={"foo": "bar"},
             source_link="https://example.com",
             summary="summary",
@@ -73,6 +75,7 @@ class TestExperiments:
             agent_name="agent_name",
             agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             name="name",
         )
 
@@ -89,6 +92,7 @@ class TestExperiments:
             agent_name="agent_name",
             agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             name="name",
         ) as response:
             assert not response.is_closed
@@ -108,6 +112,7 @@ class TestExperiments:
                 agent_name="agent_name",
                 agent_version="agent_version",
                 dataset_name="dataset_name",
+                experiment_group_id="experiment_group_id",
                 name="name",
             )
 
@@ -172,6 +177,7 @@ class TestExperiments:
             agent_name="agent_name",
             agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             body_name="name",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
@@ -185,10 +191,10 @@ class TestExperiments:
             agent_name="agent_name",
             agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             body_name="name",
             dataset_version="dataset_version",
             description="description",
-            experiment_group_id="experiment_group_id",
             metadata={"foo": "bar"},
             source_link="https://example.com",
             summary="summary",
@@ -204,6 +210,7 @@ class TestExperiments:
             agent_name="agent_name",
             agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             body_name="name",
         )
 
@@ -221,6 +228,7 @@ class TestExperiments:
             agent_name="agent_name",
             agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             body_name="name",
         ) as response:
             assert not response.is_closed
@@ -241,6 +249,7 @@ class TestExperiments:
                 agent_name="agent_name",
                 agent_version="agent_version",
                 dataset_name="dataset_name",
+                experiment_group_id="experiment_group_id",
                 body_name="name",
             )
 
@@ -251,6 +260,7 @@ class TestExperiments:
                 agent_name="agent_name",
                 agent_version="agent_version",
                 dataset_name="dataset_name",
+                experiment_group_id="experiment_group_id",
                 body_name="name",
             )
 
@@ -269,9 +279,21 @@ class TestExperiments:
             workspace="workspace",
             filter={
                 "agent_name": "agent_name",
+                "agent_version": "agent_version",
+                "created_at": {
+                    "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
+                    "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
+                },
+                "created_by": "created_by",
                 "dataset_name": "dataset_name",
+                "dataset_version": "dataset_version",
                 "experiment_group_id": "experiment_group_id",
+                "is_deleted": True,
                 "name": "name",
+                "updated_at": {
+                    "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
+                    "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
+                },
             },
             page=1,
             page_size=1,
@@ -379,6 +401,7 @@ class TestAsyncExperiments:
             agent_name="agent_name",
             agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             name="name",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
@@ -391,10 +414,10 @@ class TestAsyncExperiments:
             agent_name="agent_name",
             agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             name="name",
             dataset_version="dataset_version",
             description="description",
-            experiment_group_id="experiment_group_id",
             metadata={"foo": "bar"},
             source_link="https://example.com",
             summary="summary",
@@ -409,6 +432,7 @@ class TestAsyncExperiments:
             agent_name="agent_name",
             agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             name="name",
         )
 
@@ -425,6 +449,7 @@ class TestAsyncExperiments:
             agent_name="agent_name",
             agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             name="name",
         ) as response:
             assert not response.is_closed
@@ -444,6 +469,7 @@ class TestAsyncExperiments:
                 agent_name="agent_name",
                 agent_version="agent_version",
                 dataset_name="dataset_name",
+                experiment_group_id="experiment_group_id",
                 name="name",
             )
 
@@ -508,6 +534,7 @@ class TestAsyncExperiments:
             agent_name="agent_name",
             agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             body_name="name",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
@@ -521,10 +548,10 @@ class TestAsyncExperiments:
             agent_name="agent_name",
             agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             body_name="name",
             dataset_version="dataset_version",
             description="description",
-            experiment_group_id="experiment_group_id",
             metadata={"foo": "bar"},
             source_link="https://example.com",
             summary="summary",
@@ -540,6 +567,7 @@ class TestAsyncExperiments:
             agent_name="agent_name",
             agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             body_name="name",
         )
 
@@ -557,6 +585,7 @@ class TestAsyncExperiments:
             agent_name="agent_name",
             agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             body_name="name",
         ) as response:
             assert not response.is_closed
@@ -577,6 +606,7 @@ class TestAsyncExperiments:
                 agent_name="agent_name",
                 agent_version="agent_version",
                 dataset_name="dataset_name",
+                experiment_group_id="experiment_group_id",
                 body_name="name",
             )
 
@@ -587,6 +617,7 @@ class TestAsyncExperiments:
                 agent_name="agent_name",
                 agent_version="agent_version",
                 dataset_name="dataset_name",
+                experiment_group_id="experiment_group_id",
                 body_name="name",
             )
 
@@ -605,9 +636,21 @@ class TestAsyncExperiments:
             workspace="workspace",
             filter={
                 "agent_name": "agent_name",
+                "agent_version": "agent_version",
+                "created_at": {
+                    "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
+                    "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
+                },
+                "created_by": "created_by",
                 "dataset_name": "dataset_name",
+                "dataset_version": "dataset_version",
                 "experiment_group_id": "experiment_group_id",
+                "is_deleted": True,
                 "name": "name",
+                "updated_at": {
+                    "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
+                    "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
+                },
             },
             page=1,
             page_size=1,
