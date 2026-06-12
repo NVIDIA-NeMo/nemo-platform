@@ -8,7 +8,7 @@ import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { useGetExperiment, useListExperimentSessions } from '@nemo/sdk/generated/platform/api';
 import type { ExperimentSessionResponse } from '@nemo/sdk/generated/platform/schema';
-import { Badge, Text, Tooltip } from '@nvidia/foundations-react-core';
+import { Text, Tooltip } from '@nvidia/foundations-react-core';
 import { Empty } from '@studio/components/dataViews/ExperimentSessionsDataView/Empty';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { tooltipClassName } from '@studio/styles/common';
@@ -162,37 +162,25 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
     }),
   ];
 
-  const serverTotal = sessionsResponse?.pagination?.total_results;
-
   return (
-    <div className="flex flex-col gap-4 border-t border-base pt-4">
-      <div className="flex items-center gap-3">
-        <Text kind="title/sm">Test cases</Text>
-        {serverTotal !== undefined && (
-          <Badge color="gray" kind="solid" className="text-sm">
-            {serverTotal}
-          </Badge>
-        )}
-      </div>
-      <StudioDataView
-        dataViewState={dataViewState}
-        makeColumns={makeColumns}
-        attributes={{
-          DataViewRoot: {
-            data: tableData,
-            totalCount,
-            requestStatus: isLoading && !sessionsData ? 'loading' : undefined,
-          },
-          DataViewTableContent: {
-            renderEmptyState: () => (
-              <Empty
-                experimentGroupName={experimentGroupName}
-                datasetName={experiment?.dataset_name ?? '<dataset>'}
-              />
-            ),
-          },
-        }}
-      />
-    </div>
+    <StudioDataView
+      dataViewState={dataViewState}
+      makeColumns={makeColumns}
+      attributes={{
+        DataViewRoot: {
+          data: tableData,
+          totalCount,
+          requestStatus: isLoading && !sessionsData ? 'loading' : undefined,
+        },
+        DataViewTableContent: {
+          renderEmptyState: () => (
+            <Empty
+              experimentGroupName={experimentGroupName}
+              datasetName={experiment?.dataset_name ?? '<dataset>'}
+            />
+          ),
+        },
+      }}
+    />
   );
 };

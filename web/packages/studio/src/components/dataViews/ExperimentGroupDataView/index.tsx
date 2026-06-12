@@ -18,7 +18,7 @@ import type {
   ExperimentResponse,
   ListExperimentsSort,
 } from '@nemo/sdk/generated/platform/schema';
-import { Badge, Text, Tooltip } from '@nvidia/foundations-react-core';
+import { Text, Tooltip } from '@nvidia/foundations-react-core';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getExperimentDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
@@ -240,56 +240,43 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
     return <ErrorMessage message="Failed to load experiments." />;
   }
 
-  const serverTotal = experimentsResponse?.pagination?.total_results;
-
   return (
-    <div className="flex flex-col gap-4 border-t border-base pt-4">
-      <div className="flex items-center gap-3">
-        <Text kind="title/sm">Experiments</Text>
-        {serverTotal !== undefined && (
-          <Badge color="gray" kind="solid" className="text-sm">
-            {serverTotal}
-          </Badge>
-        )}
-      </div>
-      <StudioDataView
-        dataViewState={dataViewState}
-        makeColumns={makeColumns}
-        searchField="name"
-        onRowClick={(row) =>
-          navigate(getExperimentDetailRoute(workspace, experimentGroupName, row.name))
-        }
-        toolbarSlotEnd={
-          <EditColumnsMenu
-            kind="secondary"
-            showChevron={false}
-            // EditColumnsMenu exposes no width control for its dropdown, so this zero-height
-            // spacer sets a min width on the menu (which sizes to its widest child).
-            slotContent={<div aria-hidden className="h-0 w-[230px]" />}
-          >
-            <>
-              <Columns3 />
-              <span className="hide-mobile">Columns</span>
-            </>
-          </EditColumnsMenu>
-        }
-        attributes={{
-          DataViewRoot: {
-            data: tableData,
-            totalCount,
-            requestStatus:
-              isGroupLoading || (isLoading && !experimentsData) ? 'loading' : undefined,
-          },
-          DataViewTableContent: {
-            renderEmptyState: () => (
-              <TableEmptyState
-                header="No Experiments"
-                emptyMessage="This group has no experiments yet."
-              />
-            ),
-          },
-        }}
-      />
-    </div>
+    <StudioDataView
+      dataViewState={dataViewState}
+      makeColumns={makeColumns}
+      searchField="name"
+      onRowClick={(row) =>
+        navigate(getExperimentDetailRoute(workspace, experimentGroupName, row.name))
+      }
+      toolbarSlotEnd={
+        <EditColumnsMenu
+          kind="secondary"
+          showChevron={false}
+          // EditColumnsMenu exposes no width control for its dropdown, so this zero-height
+          // spacer sets a min width on the menu (which sizes to its widest child).
+          slotContent={<div aria-hidden className="h-0 w-[230px]" />}
+        >
+          <>
+            <Columns3 />
+            <span className="hide-mobile">Columns</span>
+          </>
+        </EditColumnsMenu>
+      }
+      attributes={{
+        DataViewRoot: {
+          data: tableData,
+          totalCount,
+          requestStatus: isGroupLoading || (isLoading && !experimentsData) ? 'loading' : undefined,
+        },
+        DataViewTableContent: {
+          renderEmptyState: () => (
+            <TableEmptyState
+              header="No Experiments"
+              emptyMessage="This group has no experiments yet."
+            />
+          ),
+        },
+      }}
+    />
   );
 };

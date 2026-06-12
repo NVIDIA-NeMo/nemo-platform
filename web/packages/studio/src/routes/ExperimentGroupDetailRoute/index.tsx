@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useGetExperimentGroup } from '@nemo/sdk/generated/platform/api';
-import { PageHeader, Stack } from '@nvidia/foundations-react-core';
+import { Badge, PageHeader, Stack, Text } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { ExperimentGroupDataView } from '@studio/components/dataViews/ExperimentGroupDataView';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
@@ -34,7 +34,17 @@ export const ExperimentGroupDetailRoute: FC = () => {
           slotDescription={group?.description || undefined}
         />
         <ExperimentGroupMetrics experimentGroupName={experimentGroupName} />
-        <ExperimentGroupDataView experimentGroupName={experimentGroupName} />
+        <div className="flex flex-col gap-4 border-t border-base pt-4">
+          <div className="flex items-center gap-3">
+            <Text kind="title/sm">Experiments</Text>
+            {group?.experiment_count !== undefined && (
+              <Badge color="gray" kind="solid" className="text-sm">
+                {group.experiment_count}
+              </Badge>
+            )}
+          </div>
+          <ExperimentGroupDataView experimentGroupName={experimentGroupName} />
+        </div>
       </Stack>
     </AccessibleTitle>
   );

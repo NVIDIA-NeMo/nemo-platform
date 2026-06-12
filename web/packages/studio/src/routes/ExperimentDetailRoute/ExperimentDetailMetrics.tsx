@@ -4,7 +4,7 @@
 import { KVPair } from '@nemo/common/src/components/KVPair';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { useGetExperiment } from '@nemo/sdk/generated/platform/api';
-import { Divider, Text, Tooltip } from '@nvidia/foundations-react-core';
+import { Divider, Flex, Text, Tooltip } from '@nvidia/foundations-react-core';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { tooltipClassName } from '@studio/styles/common';
 import { type FC, type ReactNode } from 'react';
@@ -39,8 +39,8 @@ export const ExperimentDetailMetrics: FC<ExperimentDetailMetricsProps> = ({ expe
   ) : undefined;
 
   return (
-    <div className="flex items-stretch justify-between gap-8">
-      <div className="flex items-stretch gap-8">
+    <Flex align="stretch" justify="between" gap="density-3xl">
+      <Flex align="stretch" gap="density-3xl">
         <KVPair
           label="Dataset Name"
           value={experiment?.dataset_name || undefined}
@@ -72,14 +72,14 @@ export const ExperimentDetailMetrics: FC<ExperimentDetailMetricsProps> = ({ expe
           loading={isLoading}
           orientation="vertical"
         />
-      </div>
-      <div className="flex items-stretch gap-8">
+      </Flex>
+      <Flex align="stretch" gap="density-3xl">
         <KVPair label="Models" value={modelNamesValue} loading={isLoading} orientation="vertical" />
         <Divider orientation="vertical" className="grow-0 self-stretch" />
         <KVPair label="Avg Cost" value={avgCost} loading={isLoading} orientation="vertical" />
         <Divider orientation="vertical" className="grow-0 self-stretch" />
         <KVPair label="Avg Latency" value={avgLatency} loading={isLoading} orientation="vertical" />
-      </div>
-    </div>
+      </Flex>
+    </Flex>
   );
 };
