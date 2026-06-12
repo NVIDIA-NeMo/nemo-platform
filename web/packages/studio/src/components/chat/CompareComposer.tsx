@@ -4,7 +4,7 @@
 import { Button } from '@nvidia/foundations-react-core';
 import { SeedQuestions } from '@studio/components/chat/SeedQuestions';
 import type { ComposerSeed } from '@studio/routes/ModelCompareRoute/types';
-import { RotateCcw, Send, Square } from 'lucide-react';
+import { ArrowUp, RotateCcw, Square } from 'lucide-react';
 import * as React from 'react';
 import {
   type FC,
@@ -126,12 +126,13 @@ export const CompareComposer: FC<CompareComposerProps> = ({
           title="Clear all panels"
           aria-label="Clear all panels"
         >
-          <RotateCcw size={14} />
+          <RotateCcw />
         </Button>
         {isAnyRunning ? (
           <Button
             color="danger"
             size="small"
+            className="size-8 rounded-full p-0"
             onClick={onStop}
             title="Stop all panels"
             aria-label="Stop all panels"
@@ -142,12 +143,13 @@ export const CompareComposer: FC<CompareComposerProps> = ({
           <Button
             color="brand"
             size="small"
+            className="size-8 rounded-full p-0"
             onClick={handleSubmit}
             disabled={!canSend}
             title="Broadcast to all panels"
             aria-label="Broadcast to all panels"
           >
-            <Send size={14} />
+            <ArrowUp size={16} />
           </Button>
         )}
       </div>
