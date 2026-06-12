@@ -35,9 +35,15 @@ export const SUGGESTED_MODEL_GROUP_LABELS = {
  * not repeated under "All") so option values stay unique.
  */
 export const buildSuggestedModelOptions = (models: ModelListEntry[]): SelectItemOption[] => {
+  const seenValues = new Set<string>();
   const base = models
     .filter((m) => isLlmCandidate(m.name))
-    .map((m) => ({ value: m.name, label: m.name }));
+    .map((m) => ({ value: m.name, label: m.name }))
+    .filter((o) => {
+      if (seenValues.has(o.value)) return false;
+      seenValues.add(o.value);
+      return true;
+    });
   const suggested = base
     .filter((o) => isSuggested(o.value))
     .map((o) => ({ ...o, group: 'suggested' as const }));
