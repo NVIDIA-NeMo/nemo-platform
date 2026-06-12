@@ -108,11 +108,18 @@ def _quarantine_contribution(contribution_dict: dict) -> dict:
 def _merge_plugin_authz_contributions(static_data: dict) -> dict:
     """Overlay authorization rules from installed NeMo Platform plugins.
 
-    Applies the configured fail-mode (``authz.on_invalid_plugin``) to any plugin whose
-    derived authz is invalid. The offending routes are already explicit denies in the
-    derived contribution; this only controls blast radius — ``deny_route`` keeps just those
-    denies, ``quarantine`` denies the whole plugin, ``hard_fail`` refuses to build the
-    bundle. Degraded plugins are logged loudly and recorded for the status endpoint.
+    Applies the configured fail-mode (``authz.on_invalid_plugin``) to any plugin with
+    derived authz **errors** (``PluginAuthzResult.problems``: unruled routes, malformed or
+    cross-namespace permission ids, duplicate bindings, load failures). The offending routes
+    are already explicit denies in the derived contribution; this only controls blast radius
+    — ``deny_route`` keeps just those denies, ``quarantine`` denies the whole plugin,
+    ``hard_fail`` refuses to build the bundle. Plugins with errors are recorded for the
+    status endpoint.
+
+    Plugin *warnings* (``PluginAuthzResult.warnings``: missing or conflicting permission
+    descriptions) are metadata-only — the route still requires the right permission — so they
+    are logged but never escalate the fail-mode and never mark the plugin degraded. This is
+    what keeps a cosmetic description typo from quarantining a whole plugin.
     """
     global _degraded_plugins
     try:
@@ -158,6 +165,14 @@ def _merge_plugin_authz_contributions(static_data: dict) -> dict:
                     denied_prefixes.append(f"/apis/{result.mount_name}")
             elif on_invalid == "quarantine":
                 contribution_dict = _quarantine_contribution(contribution_dict)
+        if result.warnings:
+            logger.warning(
+                "Plugin %r has %d authz warning(s) (non-deny — e.g. missing or conflicting "
+                "permission descriptions): %s",
+                result.key,
+                len(result.warnings),
+                "; ".join(result.warnings),
+            )
         contributions.append(contribution_dict)
 
     _degraded_plugins = degraded

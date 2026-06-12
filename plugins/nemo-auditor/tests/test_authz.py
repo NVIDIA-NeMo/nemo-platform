@@ -10,7 +10,7 @@ from nemo_platform_plugin.authz_discovery import _derive_service_contribution
 
 
 def test_auditor_authz_derivation_has_no_problems() -> None:
-    contrib, problems = _derive_service_contribution(AuditorPluginService())
+    contrib, problems, _warnings = _derive_service_contribution(AuditorPluginService())
     assert problems == []
 
     # healthz: authenticated, no permission required.

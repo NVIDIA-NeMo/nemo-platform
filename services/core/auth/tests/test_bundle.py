@@ -13,25 +13,37 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_authorization_data_merges_plugin_authz_contributions(monkeypatch):
-    """Plugin authz contributions are included before validation and bundle build."""
+    """Plugin authz contributions are included before validation and bundle build.
+
+    The bundle derives contributions via ``discover_plugin_authz`` (routes-derived model),
+    so the stub returns a clean ``PluginAuthzResult`` rather than a raw contribution dict.
+    """
+    from nemo_platform_plugin.authz import AuthzContribution, AuthzEndpointMethod
+    from nemo_platform_plugin.authz_discovery import PluginAuthzResult
     from nmp.core.auth.app.bundle import _build_authorization_data_internal
 
     plugin_path = "/apis/example-plugin/v2/workspaces/{workspace}/jobs"
-    contribution = {
-        "permissions": {"example-plugin.jobs.read": "Read example plugin jobs"},
-        "endpoints": {
-            plugin_path: {
-                "get": {
-                    "permissions": ["example-plugin.jobs.read"],
-                    "scopes": ["example-plugin:read", "platform:read"],
+    result = PluginAuthzResult(
+        key="example-plugin",
+        contribution=AuthzContribution(
+            permissions={"example-plugin.jobs.read": "Read example plugin jobs"},
+            endpoints={
+                plugin_path: {
+                    "get": AuthzEndpointMethod(
+                        permissions=["example-plugin.jobs.read"],
+                        scopes=["example-plugin:read", "platform:read"],
+                    )
                 }
-            }
-        },
-    }
+            },
+        ),
+        problems=[],
+        warnings=[],
+        mount_name="example-plugin",
+    )
 
     monkeypatch.setattr(
-        "nemo_platform_plugin.authz_discovery.discover_authz_contribution_dicts",
-        lambda: [contribution],
+        "nemo_platform_plugin.authz_discovery.discover_plugin_authz",
+        lambda: [result],
     )
 
     data = await _build_authorization_data_internal(entities_client=None)

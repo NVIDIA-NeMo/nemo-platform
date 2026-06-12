@@ -10,7 +10,7 @@ from nemo_platform_plugin.authz_discovery import _derive_service_contribution
 
 
 def test_example_authz_derivation_has_no_problems() -> None:
-    contrib, problems = _derive_service_contribution(ExampleService())
+    contrib, problems, _warnings = _derive_service_contribution(ExampleService())
     assert problems == []
 
     # Minimal hello endpoint (non-workspace-scoped).

@@ -26,7 +26,7 @@ including prefix joins and ``{param:path}`` wildcards — exactly as it does at 
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cache
 from typing import Any
 
@@ -39,6 +39,7 @@ from nemo_platform_plugin.authz import (
     PathRule,
     Permission,
     get_path_rules,
+    is_valid_permission_id,
 )
 from nemo_platform_plugin.service import NemoService
 
@@ -110,18 +111,25 @@ def _collapse_rules(
 class PluginAuthzResult:
     """One plugin's derived authz, before the bundle applies its fail-mode policy.
 
-    ``problems`` is empty for a clean plugin. A non-empty list means the plugin's authz is
-    invalid (unruled routes, OR of distinct permission sets, conflicting descriptions, a
-    permission outside the service's namespace, or a load failure); the affected routes are
+    ``problems`` are deny-worthy **errors**: unruled routes, an OR of distinct permission
+    sets, a duplicate ``(path, method)``, a malformed permission id, a permission outside
+    the service's own namespace, or a load/derivation failure. The affected routes are
     already emitted as explicit DENY bindings in ``contribution`` (fail-closed), and the
     bundle decides — via ``authz.on_invalid_plugin`` — whether to keep just those denies
     (``deny_route``), deny the whole plugin (``quarantine``), or refuse to build the bundle
     (``hard_fail``).
+
+    ``warnings`` are non-deny-worthy: a missing or conflicting permission *description*.
+    These are metadata-only — the route still requires the right permission, so they are
+    surfaced (logged / status endpoint) but never escalate ``on_invalid_plugin`` and never
+    deny a route. Keeping them out of ``problems`` is what stops a cosmetic description
+    typo from quarantining a whole plugin (or hard-failing the bundle).
     """
 
     key: str
     contribution: AuthzContribution
     problems: list[str]
+    warnings: list[str] = field(default_factory=list)
     mount_name: str = ""
     """The ``/apis/<mount_name>`` segment the runner mounts this service at (its
     ``NemoService.name``). Captured so the degraded-plugin namespace fence can cover the real
@@ -134,65 +142,40 @@ def _deny_binding() -> AuthzEndpointMethod:
     return AuthzEndpointMethod(permissions=[], deny=True)
 
 
-def _infer_namespace(permission_ids: list[str]) -> str | None:
-    """Infer the service's permission namespace as the common dot-segment prefix of its ids.
+def _register_permission(catalog: dict[str, Permission], perm: Permission, warnings: list[str]) -> None:
+    """Record *perm* in *catalog*, flagging a missing or conflicting description as a warning.
 
-    The namespace is the prefix every permission id shares, never including a trailing
-    action segment (so a lone ``x.read`` infers ``x``, and ``agents.agents.*`` +
-    ``agents.suite.*`` infer ``agents``). This replaces the previously-*declared*
-    ``permission_namespace`` with a *derived* one while preserving the "one service, one
-    namespace" invariant.
-
-    Returns:
-        - The inferred namespace string.
-        - ``""`` when the service declares no permissions (only permissionless routes).
-        - ``None`` when the ids don't share a first segment or one lacks a namespace —
-          a malformed plugin whose routes the caller must fail closed.
-    """
-    if not permission_ids:
-        return ""
-    id_segments = [pid.split(".") for pid in permission_ids]
-    common = id_segments[0]
-    for segments in id_segments[1:]:
-        shared = 0
-        while shared < len(common) and shared < len(segments) and common[shared] == segments[shared]:
-            shared += 1
-        common = common[:shared]
-    max_len = min(len(segments) for segments in id_segments) - 1  # never include an action segment
-    common = common[: min(len(common), max_len)]
-    if not common:
-        return None
-    return ".".join(common)
-
-
-def _register_permission(catalog: dict[str, Permission], perm: Permission, problems: list[str]) -> None:
-    """Record *perm* in *catalog*, flagging a missing or conflicting description.
-
-    A description problem is metadata-only (it never denies a route — the route still
-    requires the right permission), so it is reported but does not change enforcement.
+    Description problems are metadata-only (the route still requires the right permission),
+    so they are surfaced but never deny a route. Id-format validity and namespace ownership
+    are checked over the whole catalog in :func:`_derive_service_contribution`.
     """
     if not perm.description:
-        problems.append(f"permission {perm.id!r} is missing a description")
+        warnings.append(f"permission {perm.id!r} is missing a description")
     previous = catalog.get(perm.id)
     if previous is not None and previous.description != perm.description:
-        problems.append(
+        warnings.append(
             f"permission {perm.id!r} defined with conflicting descriptions: "
             f"{previous.description!r} != {perm.description!r}"
         )
     catalog.setdefault(perm.id, perm)
 
 
-def _derive_service_contribution(service: NemoService) -> tuple[AuthzContribution, list[str]]:
-    """Derive one plugin's wire contribution and collect any authz problems.
+def _derive_service_contribution(service: NemoService) -> tuple[AuthzContribution, list[str], list[str]]:
+    """Derive one plugin's wire contribution, split into deny-worthy errors and warnings.
 
     Every mounted route must carry a valid ``@path_rule``. A route that doesn't — unruled,
-    or an unrepresentable OR of distinct permission sets — is emitted as an explicit DENY
-    binding (never omitted), so it can never fall through to the ``service:`` no-match
-    bypass. The permission catalog and namespace are derived from the permissions the routes
-    reference plus ``extra_permissions()``; if those permissions don't share one namespace
-    the whole plugin fails closed. The returned problem list drives the bundle fail-mode.
+    an unrepresentable OR of distinct permission sets, or a duplicate ``(path, method)`` — is
+    emitted as an explicit DENY binding (never omitted), so it can never fall through to the
+    ``service:`` no-match bypass. The permission catalog is derived from the permissions the
+    routes reference plus ``extra_permissions()``; if any permission id is malformed, or sits
+    outside the service's own ``/apis/<name>`` namespace, the whole plugin fails closed.
+
+    Returns ``(contribution, errors, warnings)``. ``errors`` are deny-worthy and drive the
+    bundle fail-mode; ``warnings`` (missing/conflicting descriptions) are metadata-only and
+    never deny a route.
     """
-    problems: list[str] = []
+    errors: list[str] = []
+    warnings: list[str] = []
     catalog: dict[str, Permission] = {}
 
     # Re-create the runtime mount: /apis/<name> + RouterSpec.prefix + route path.
@@ -213,26 +196,40 @@ def _derive_service_contribution(service: NemoService) -> tuple[AuthzContributio
         binding: AuthzEndpointMethod | None
         if not rules:
             binding = None
-            problems.append(f"{route.path} ({', '.join(methods) or 'no methods'}) has no @path_rule")
+            errors.append(f"{route.path} ({', '.join(methods) or 'no methods'}) has no @path_rule")
         else:
             try:
                 permissions, scopes, callers = _collapse_rules(
                     rules, path=route.path, method=methods[0] if methods else "", service=service.name
                 )
-            except ValueError as exc:
-                # A single malformed route denies only itself — it never crashes the plugin
-                # (which would empty the whole contribution and fall open).
+            except (ValueError, AttributeError, TypeError) as exc:
+                # A single malformed rule denies only its own route — it never crashes the
+                # plugin (which would empty the whole contribution and fall open). The broad
+                # catch also covers a bare-string permission that slipped past @path_rule
+                # (``p.id`` raises AttributeError), not just the unrepresentable-OR ValueError.
                 binding = None
-                problems.append(str(exc))
+                errors.append(str(exc))
             else:
                 for perm in permissions:
-                    _register_permission(catalog, perm, problems)
+                    _register_permission(catalog, perm, warnings)
                 binding = AuthzEndpointMethod(
                     permissions=[perm.id for perm in permissions], scopes=scopes, callers=callers
                 )
 
         for http_method in methods:
-            bindings.setdefault(route.path, {})[http_method.lower()] = binding
+            method_key = http_method.lower()
+            route_methods = bindings.setdefault(route.path, {})
+            if method_key in route_methods:
+                # Two handlers claim the same (path, method): Starlette serves the first
+                # registered, but the derived policy could describe the second. Rather than
+                # let the last writer silently win, fail the pair closed and flag it.
+                errors.append(
+                    f"duplicate route binding for {http_method.upper()} {route.path} — a second "
+                    f"handler would shadow the first; refusing to guess which policy applies"
+                )
+                route_methods[method_key] = None
+            else:
+                route_methods[method_key] = binding
 
     # Permissions with no 1:1 route (middleware-checked, declared-before-wired). A broken
     # extra_permissions() must NOT abort derivation — that would omit the route bindings and
@@ -241,60 +238,94 @@ def _derive_service_contribution(service: NemoService) -> tuple[AuthzContributio
         extra = service.extra_permissions()
     except Exception as exc:
         extra = []
-        problems.append(f"extra_permissions() raised {exc!r}")
+        errors.append(f"extra_permissions() raised {exc!r}")
     for perm in extra:
-        _register_permission(catalog, perm, problems)
+        _register_permission(catalog, perm, warnings)
 
-    # Pass 2: derive + validate the namespace. A plugin whose permissions don't share one
-    # namespace is malformed; fail every route closed and contribute no permissions.
-    namespace = _infer_namespace(list(catalog))
-    if namespace is None:
-        problems.append(f"permissions do not share a single namespace (fail-closed): {sorted(catalog)}")
+    # Pass 2: validate the catalog. A malformed permission id would 500 the bundle's
+    # ``validate_static_authz_data`` if it reached the wire; a permission whose first segment
+    # isn't the service's own name is namespace squatting (it would silently widen the
+    # Viewer/Editor role grants for another service's namespace). Either is a fail-closed
+    # error: deny every route and contribute no permissions, so nothing malformed or
+    # cross-namespace can reach the merged policy.
+    owner = service.name
+    malformed = sorted(pid for pid in catalog if not is_valid_permission_id(pid))
+    out_of_namespace = sorted(pid for pid in catalog if pid.split(".", 1)[0] != owner)
+    if malformed:
+        errors.append(f"malformed permission id(s) (fail-closed): {malformed}")
+    if out_of_namespace:
+        errors.append(f"permission id(s) outside the service namespace {owner!r} (fail-closed): {out_of_namespace}")
+    if malformed or out_of_namespace:
         denied = {path: {method: _deny_binding() for method in methods} for path, methods in bindings.items()}
-        return AuthzContribution(permissions={}, endpoints=denied), problems
+        return AuthzContribution(permissions={}, endpoints=denied), errors, warnings
 
     endpoints: dict[str, dict[str, AuthzEndpointMethod]] = {
         path: {method: (binding if binding is not None else _deny_binding()) for method, binding in methods.items()}
         for path, methods in bindings.items()
     }
     permissions = {perm.id: perm.description for perm in catalog.values()}
-    return AuthzContribution(permissions=permissions, endpoints=endpoints), problems
+    return AuthzContribution(permissions=permissions, endpoints=endpoints), errors, warnings
 
 
 @cache
 def discover_plugin_authz() -> list[PluginAuthzResult]:
-    """Derive per-plugin authz results from every discovered ``nemo.services`` plugin.
+    """Derive per-plugin authz results from every installed ``nemo.services`` entry point.
 
-    Each service class is instantiated once and its mounted routes inspected — a new
-    failure surface (instantiation transitively imports job/function modules and runs
-    ``get_routers()``). A plugin that fails to load is recorded as a fully-degraded result
-    (a problem, no usable contribution) rather than silently dropped — silent drop would
-    omit its routes and let them fall through the ``service:`` bypass once enforcement is on.
+    Each entry point is loaded and its service class instantiated in its own ``try/except``,
+    so a single broken plugin can never take down derivation for the others. Both a *load*
+    failure (the module won't import) and a *derivation* failure (instantiation / route walk
+    raises) are recorded as a fully-degraded result — a problem, no usable contribution —
+    rather than silently dropped. Silent drop would omit the plugin's routes and let them
+    fall through the ``service:`` no-match bypass once enforcement is on; the bundle instead
+    fences ``/apis/<name>`` for a degraded plugin.
 
-    Cached for the process lifetime — call ``discover_plugin_authz.cache_clear()`` in tests
-    after changing the installed plugin set.
+    Entry points are enumerated directly (not via ``discover_services``) because
+    ``discover()`` swallows load failures and excludes the plugin entirely — exactly the
+    silent drop this fail-closed path must avoid.
+
+    Cached for the process lifetime — call ``discover_plugin_authz.cache_clear()`` (and
+    ``discover_entry_points.cache_clear()``) in tests after changing the installed plugin set.
     """
-    from nemo_platform_plugin.discovery import discover_services
+    from nemo_platform_plugin.discovery import discover_entry_points
 
     results: list[PluginAuthzResult] = []
-    for key, service_cls in discover_services().items():
-        # Read the mount name off the class (a ClassVar, available even if instantiation
-        # below fails) so the degraded fence can cover /apis/<name>, not just /apis/<key>.
-        mount_name = getattr(service_cls, "name", key) or key
+    for ep_name, ep in discover_entry_points("nemo.services").items():
         try:
-            contribution, problems = _derive_service_contribution(service_cls())
+            service_cls = ep.load()
         except Exception as exc:
-            logger.warning("Failed to derive authz from nemo.services %r — recording as degraded", key, exc_info=True)
+            logger.warning("Failed to load nemo.services %r — recording as degraded", ep_name, exc_info=True)
             results.append(
                 PluginAuthzResult(
-                    key=key,
+                    key=ep_name,
                     contribution=AuthzContribution(),
                     problems=[f"failed to load plugin: {exc!r}"],
+                    mount_name=ep_name,
+                )
+            )
+            continue
+        # Read the mount name off the class (a ClassVar, available even if instantiation
+        # below fails) so the degraded fence can cover /apis/<name>, not just /apis/<key>.
+        mount_name = getattr(service_cls, "name", ep_name) or ep_name
+        try:
+            contribution, errors, warnings = _derive_service_contribution(service_cls())
+        except Exception as exc:
+            logger.warning(
+                "Failed to derive authz from nemo.services %r — recording as degraded", ep_name, exc_info=True
+            )
+            results.append(
+                PluginAuthzResult(
+                    key=ep_name,
+                    contribution=AuthzContribution(),
+                    problems=[f"failed to derive plugin authz: {exc!r}"],
                     mount_name=mount_name,
                 )
             )
             continue
-        results.append(PluginAuthzResult(key=key, contribution=contribution, problems=problems, mount_name=mount_name))
+        results.append(
+            PluginAuthzResult(
+                key=ep_name, contribution=contribution, problems=errors, warnings=warnings, mount_name=mount_name
+            )
+        )
     return results
 
 

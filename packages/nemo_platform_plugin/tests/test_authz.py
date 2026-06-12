@@ -31,6 +31,18 @@ class _ExampleSubmitJob(NemoJob):
 _ExampleSubmitJob.__module__ = "example_plugin.jobs.example_submit"
 
 
+class _FakeEntryPoint:
+    """Minimal EntryPoint stand-in: discover_plugin_authz only calls ``.load()`` / reads ``.name``."""
+
+    def __init__(self, name: str, loader) -> None:
+        self.name = name
+        self.value = f"test:{name}"
+        self._loader = loader
+
+    def load(self):
+        return self._loader()
+
+
 def test_derive_contribution_composes_mounted_path(monkeypatch) -> None:
     """A service's @path_rule routes derive to the final /apis/<name>/<prefix> paths.
 
@@ -54,7 +66,10 @@ def test_derive_contribution_composes_mounted_path(monkeypatch) -> None:
         def get_routers(self) -> list[RouterSpec]:
             return [RouterSpec(router)]
 
-    monkeypatch.setattr("nemo_platform_plugin.discovery.discover_services", lambda: {"example": _Svc})
+    monkeypatch.setattr(
+        "nemo_platform_plugin.discovery.discover_entry_points",
+        lambda group: {"example": _FakeEntryPoint("example", lambda: _Svc)},
+    )
     discover_plugin_authz.cache_clear()
     try:
         contribs = discover_authz_contributions()
@@ -86,7 +101,7 @@ def test_derive_service_only_route_emits_service_principal_callers() -> None:
         def get_routers(self) -> list[RouterSpec]:
             return [RouterSpec(router)]
 
-    contrib, problems = _derive_service_contribution(_Svc())
+    contrib, problems, _warnings = _derive_service_contribution(_Svc())
     assert problems == []
     binding = contrib.endpoints["/apis/svc/v2/internal/sync"]["post"]
     assert binding.callers == ["service_principal"]
@@ -95,11 +110,11 @@ def test_derive_service_only_route_emits_service_principal_callers() -> None:
 
 def test_derive_unions_callers_across_rules_with_shared_permissions() -> None:
     router = APIRouter()
-    y_read = Permission("y.read", "Read y")
+    svc_read = Permission("svc.read", "Read")
 
     @router.get("/v2/y")
-    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[y_read])
-    @path_rule(callers=[CallerKind.SERVICE_PRINCIPAL], permissions=[y_read])
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[svc_read])
+    @path_rule(callers=[CallerKind.SERVICE_PRINCIPAL], permissions=[svc_read])
     async def y() -> None: ...
 
     class _Svc(NemoService):
@@ -108,11 +123,11 @@ def test_derive_unions_callers_across_rules_with_shared_permissions() -> None:
         def get_routers(self) -> list[RouterSpec]:
             return [RouterSpec(router)]
 
-    contrib, problems = _derive_service_contribution(_Svc())
+    contrib, problems, _warnings = _derive_service_contribution(_Svc())
     assert problems == []
     binding = contrib.endpoints["/apis/svc/v2/y"]["get"]
     assert binding.callers == ["principal", "service_principal"]
-    assert binding.permissions == ["y.read"]
+    assert binding.permissions == ["svc.read"]
 
 
 def test_derive_denies_route_with_or_of_distinct_permission_sets() -> None:
@@ -131,7 +146,7 @@ def test_derive_denies_route_with_or_of_distinct_permission_sets() -> None:
         def get_routers(self) -> list[RouterSpec]:
             return [RouterSpec(router)]
 
-    contrib, problems = _derive_service_contribution(_Svc())
+    contrib, problems, _warnings = _derive_service_contribution(_Svc())
     assert contrib.endpoints["/apis/svc/v2/z"]["get"].deny is True
     assert any("distinct permission sets" in p for p in problems)
 
@@ -148,7 +163,7 @@ def test_derive_emits_deny_for_unruled_route() -> None:
         def get_routers(self) -> list[RouterSpec]:
             return [RouterSpec(router)]
 
-    contrib, problems = _derive_service_contribution(_Svc())
+    contrib, problems, _warnings = _derive_service_contribution(_Svc())
     # Unruled routes are explicit-deny (fail-closed), never omitted.
     assert contrib.endpoints["/apis/svc/v2/unruled"]["get"].deny is True
     assert any("no @path_rule" in p for p in problems)

@@ -10,7 +10,7 @@ from nemo_platform_plugin.authz_discovery import _derive_service_contribution
 
 
 def test_evaluator_authz_derivation_has_no_problems() -> None:
-    contrib, problems = _derive_service_contribution(EvaluatorPluginService())
+    contrib, problems, _warnings = _derive_service_contribution(EvaluatorPluginService())
     assert problems == []
 
     # Job-factory perms plus the hand-written hello read perm, all declared.

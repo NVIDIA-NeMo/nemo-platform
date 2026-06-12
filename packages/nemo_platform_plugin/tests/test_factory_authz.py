@@ -165,7 +165,7 @@ def test_job_factory_derivation_end_to_end() -> None:
             )
             return [RouterSpec(router, prefix="/v2/workspaces/{workspace}")]
 
-    contrib, problems = _derive_service_contribution(_Svc())
+    contrib, problems, _warnings = _derive_service_contribution(_Svc())
     assert problems == []
 
     # The catalog, derived from the routes, carries every id the stamped rules reference.

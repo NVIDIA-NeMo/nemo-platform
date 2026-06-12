@@ -186,7 +186,7 @@ def test_authz_derives_from_contributor_routes(monkeypatch: pytest.MonkeyPatch) 
     )
 
     service = CustomizationRouterService()
-    contribution, problems = _derive_service_contribution(service)
+    contribution, problems, _warnings = _derive_service_contribution(service)
 
     assert problems == []
     assert not any(spec.deny for methods in contribution.endpoints.values() for spec in methods.values())

@@ -40,7 +40,7 @@ def test_service_authz_derives_from_job_routes():
     pytest.importorskip("nemo_safe_synthesizer.config.job")
     from nemo_platform_plugin.authz_discovery import _derive_service_contribution
 
-    contribution, problems = _derive_service_contribution(SafeSynthesizerService())
+    contribution, problems, _warnings = _derive_service_contribution(SafeSynthesizerService())
 
     assert problems == []
     assert not any(spec.deny for methods in contribution.endpoints.values() for spec in methods.values())

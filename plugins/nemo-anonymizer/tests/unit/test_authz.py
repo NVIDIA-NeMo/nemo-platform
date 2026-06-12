@@ -10,7 +10,7 @@ from nemo_platform_plugin.authz_discovery import _derive_service_contribution
 
 
 def test_anonymizer_authz_derivation_has_no_problems() -> None:
-    contrib, problems = _derive_service_contribution(AnonymizerService())
+    contrib, problems, _warnings = _derive_service_contribution(AnonymizerService())
     assert problems == []
 
     # Job-factory perms plus the preview function perm, all declared.

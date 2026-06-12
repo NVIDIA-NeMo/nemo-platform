@@ -24,9 +24,9 @@ _PROXY_METHODS = {"get", "post", "put", "delete", "patch", "head", "options"}
 
 
 def _contribution() -> AuthzContribution:
-    contrib, problems = _derive_service_contribution(AgentsService())
+    contrib, problems, _warnings = _derive_service_contribution(AgentsService())
     # No problems is the load-bearing assertion: every route is ruled and every
-    # referenced permission shares the inferred ``agents`` namespace.
+    # referenced permission lives under the service's own ``agents`` namespace.
     assert problems == [], problems
     return contrib
 

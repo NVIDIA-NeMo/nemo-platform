@@ -10,7 +10,7 @@ from nemo_safe_synthesizer_plugin.service import SafeSynthesizerService
 
 
 def test_safe_synthesizer_authz_derivation_has_no_problems() -> None:
-    contrib, problems = _derive_service_contribution(SafeSynthesizerService())
+    contrib, problems, _warnings = _derive_service_contribution(SafeSynthesizerService())
     assert problems == []
 
     # Single job collection under the flat safe-synthesizer namespace.
