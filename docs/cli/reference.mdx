@@ -1391,6 +1391,7 @@ nemo inference [OPTIONS] COMMAND [ARGS]...
 * `deployments`: Manage deployments
 * `gateway`: Gateway operations
 * `models`: Manage models
+* `prompts`: Manage prompts
 * `providers`: Manage providers
 * `virtual-models`: Manage virtual_models
 
@@ -2855,6 +2856,218 @@ nemo inference models list [OPTIONS]
 * `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
 * `--no-truncate`: Don't truncate long values in table/markdown/csv output.
 * `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
+#### nemo inference prompts
+
+Manage prompts
+
+**Usage:**
+
+```shell
+nemo inference prompts [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `create`: Create a new prompt.
+* `delete`: Delete a prompt by workspace and name.
+* `list`: List prompts for a specific workspace.
+* `get`: Get a prompt by workspace and name.
+* `update`: Update an existing prompt (full replacement of mutable...
+
+##### nemo inference prompts create
+
+Create a new prompt.
+
+**Required fields:** name
+
+**Examples:**
+
+```shell
+nemo inference prompts create <name> --input-file config.json
+nemo inference prompts create <name> --input-data '{"name": "value"}'
+echo '{"json": "data"}' | nemo inference prompts create <name> --input-file -
+nemo inference prompts create <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo inference prompts create [OPTIONS] [NAME]
+```
+
+**Arguments:**
+
+* `<NAME>`: Name of the prompt.
+
+**Options:**
+
+* `--workspace`
+* `--description`
+* `--inference-params`: Parameters for model inference. Extra fields can be supplied for additional options applied to the inference request directly. Fields not supported by the model may cause inference errors during evaluation. (JSON string)
+* `--input-variables`: Can be repeated for multiple values
+* `--messages`: JSON string
+* `--project`: The URN of the project associated with this prompt.
+* `--response-format`: JSON string
+* `--tags`: Can be repeated for multiple values
+* `--tool-choice`: JSON string
+* `--tools`: JSON string
+* `--exist-ok`: Do not raise an error if the resource already exists. Returns the existing resource.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+##### nemo inference prompts delete
+
+Delete a prompt by workspace and name.
+
+**Usage:**
+
+```shell
+nemo inference prompts delete [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo inference prompts list
+
+List prompts for a specific workspace.
+
+**Usage:**
+
+```shell
+nemo inference prompts list [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace`
+* `--page <INTEGER>`: Page number.
+* `--page-size <INTEGER>`: Page size.
+* `--sort <CHOICE>`: The field to sort by. To sort in decreasing order, use `-` in front of the field name. [possible values: name, -name, created_at, -created_at, updated_at, -updated_at]
+* `--all-pages`: Fetch all pages
+
+**Filter Options:**
+
+* `--filter FILTER_JSON`: Use --filter with JSON for complex/nested queries, or --filter. FIELD options for simple fields. Both can be combined, with field options taking precedence.
+JSON-only fields:
+  created_at: \{gte: str, lte: str}
+  updated_at: \{gte: str, lte: str}
+
+Filter prompts by workspace, project, name, description, created_at, and updated_at.
+* `--filter.description`
+* `--filter.name`
+* `--filter.project`
+* `--filter.workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
+##### nemo inference prompts get
+
+Get a prompt by workspace and name.
+
+**Usage:**
+
+```shell
+nemo inference prompts get [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+##### nemo inference prompts update
+
+Update an existing prompt (full replacement of mutable fields).
+
+**Examples:**
+
+```shell
+nemo inference prompts update <name> --input-file config.json
+nemo inference prompts update <name> --input-data '{"field": "value"}'
+echo '{"json": "data"}' | nemo inference prompts update <name> --input-file -
+nemo inference prompts update <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo inference prompts update [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--description`
+* `--inference-params`: Parameters for model inference. Extra fields can be supplied for additional options applied to the inference request directly. Fields not supported by the model may cause inference errors during evaluation. (JSON string)
+* `--input-variables`: Can be repeated for multiple values
+* `--messages`: JSON string
+* `--project`: The URN of the project associated with this prompt.
+* `--response-format`: JSON string
+* `--tags`: Can be repeated for multiple values
+* `--tool-choice`: JSON string
+* `--tools`: JSON string
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
 
 #### nemo inference providers
 
