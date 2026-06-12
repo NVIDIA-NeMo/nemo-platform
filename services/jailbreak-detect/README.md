@@ -165,10 +165,12 @@ nemo inference deployment-configs create jbd-config \
 nemo inference deployments create jbd --config jbd-config --wait
 ```
 
-`model_spec` is safe here: the image is not a multi-LLM image, so weights stay
-`BAKED_CONTAINER` (no model puller runs), and the `nim` engine never overrides the
-container command — it only injects `NIM_SERVED_MODEL_NAME`, which the server reads to
-advertise the matching id.
+Populating `model_spec` is safe here. Because the image is not a multi-LLM image, the
+Models controller classifies its weights as `BAKED_CONTAINER` and runs no model puller —
+so `model_spec` does **not** make the controller fetch or mount anything, and the server
+still downloads its own weights at runtime exactly as before. All `model_spec` does on
+the `nim` path is make the controller inject `NIM_SERVED_MODEL_NAME` (the container
+command is never overridden); the server reads that env var to advertise the matching id.
 
 Once `READY`, the provider reconciler resolves the base id, publishes a `served_models`
 mapping, and auto-creates a **passthrough VirtualModel** keyed at workspace `default`,
