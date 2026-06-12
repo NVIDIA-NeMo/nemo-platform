@@ -72,6 +72,10 @@ def test_authz_contribution_grants_studio_deployments_list_to_viewer() -> None:
     deployments_path = "/apis/agents/v2/workspaces/{workspace}/deployments"
     assert endpoints[deployments_path]["get"]["permissions"] == ["agents.deployments.list"]
     assert endpoints[deployments_path]["get"]["scopes"] == ["agents:read", "platform:read"]
+    assert endpoints[deployments_path]["head"]["permissions"] == ["agents.deployments.list"]
+    assert endpoints[deployments_path]["head"]["scopes"] == ["agents:read", "platform:read"]
+    job_result_path = "/apis/agents/v2/workspaces/{workspace}/jobs/evaluate/{job}/results/{name}"
+    assert endpoints[job_result_path]["head"]["permissions"] == ["agents.jobs.read"]
     assert "agents.deployments.list" in viewer_permissions
     assert "agents.deployments.read" in viewer_permissions
     assert "agents.deployments.create" in editor_permissions
