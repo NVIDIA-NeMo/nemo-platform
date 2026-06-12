@@ -6,9 +6,9 @@ maintainers:
 description: NeMo Platform Helm Chart
 type: application
 # version is the version of the Helm chart, and can be different from the appVersion.
-version: 2.1.0
+version: 0.1.0
 # appVersion is the version of the application deployed in the chart.
-appVersion: "26.3.0"
+appVersion: "0.2.0"
 home: https://nvidia.com
 dependencies:
   ## NMP dependencies
