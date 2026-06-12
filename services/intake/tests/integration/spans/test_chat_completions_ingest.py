@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import time
 from decimal import Decimal
 from typing import Any
 
@@ -50,7 +51,9 @@ def _openai_response(**overrides: Any) -> dict[str, Any]:
     response = {
         "id": "chatcmpl-test-abc123",
         "object": "chat.completion",
-        "created": 1778698885,
+        # Now-based: span started_at derives from `created`, and the spans/traces
+        # list endpoints default to a 30-day lookback — a fixed date ages out.
+        "created": int(time.time()),
         "model": "gpt-4o-mini-2024-08-06",
         "choices": [
             {
