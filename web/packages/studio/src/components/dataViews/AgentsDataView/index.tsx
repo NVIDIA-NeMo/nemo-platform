@@ -4,6 +4,7 @@
 import { Root as DataViewRoot } from '@nemo/common/src/components/DataView/internal';
 import {
   ROW_ACTIONS_COLUMN_SIZE,
+  ROW_SELECTION_COLUMN_SIZE,
   StudioDataView,
 } from '@nemo/common/src/components/DataView/StudioDataView';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
@@ -24,15 +25,14 @@ import {
 } from '@nemo/sdk/generated/agents/api';
 import type { Agent } from '@nemo/sdk/generated/agents/schema/Agent';
 import type { AgentDeployment } from '@nemo/sdk/generated/agents/schema/AgentDeployment';
-import { Text } from '@nvidia/foundations-react-core';
-import { getErrorMessage } from '@studio/api/common/utils';
+import { Button, Divider, Flex, Text } from '@nvidia/foundations-react-core';
 import { getAgentModelNames } from '@studio/components/dataViews/AgentsDataView/utils';
 import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { DocumentationButton } from '@studio/components/DocumentationButton';
 import { LINK_DOCS_STUDIO } from '@studio/constants/links';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { keepPreviousData, useQueryClient } from '@tanstack/react-query';
-import { HatGlasses } from 'lucide-react';
+import { HatGlasses, Trash, X } from 'lucide-react';
 import { ComponentProps, FC, useEffect, useMemo, useState } from 'react';
 
 export type { Agent, AgentDeployment };
@@ -79,7 +79,10 @@ export type AgentTableRow = {
 const SORTABLE_FIELDS = ['name', 'created_at'] as const;
 const DEFAULT_SORT = '-created_at';
 
-type DeleteState = { kind: 'agent'; item: AgentTableRow } | null;
+type DeleteState =
+  | { kind: 'agent'; item: AgentTableRow }
+  | { kind: 'bulk'; items: AgentTableRow[] }
+  | null;
 
 export interface CombinedAgentsTableProps {
   onAgentRowClick?: (agent: AgentTableRow) => void;
@@ -166,24 +169,19 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
     });
   }, [agentsData, deploymentsData]);
 
-  const deleteAgentMutation = useAgentsDeleteAgent({
-    mutation: {
-      onSuccess: () => {
-        toast.success('Agent deleted.');
-        void queryClient.refetchQueries({
-          queryKey: getAgentsListAgentsQueryKey(workspace),
-        });
-        void queryClient.invalidateQueries({
-          queryKey: getAgentsListDeploymentsQueryKey(workspace),
-        });
-      },
-      onError: (error) => {
-        toast.error(getErrorMessage(error, 'Failed to delete agent.'));
-      },
-    },
-  });
+  const rowSelection = dataViewState.rowSelection.state;
+  const selectedAgents = useMemo(
+    () => tableData.filter((row) => rowSelection[row.id]),
+    [tableData, rowSelection]
+  );
 
+  const deleteAgentMutation = useAgentsDeleteAgent();
   const deleteDeploymentMutation = useAgentsDeleteDeployment();
+
+  const refreshAfterDelete = () => {
+    void queryClient.refetchQueries({ queryKey: getAgentsListAgentsQueryKey(workspace) });
+    void queryClient.invalidateQueries({ queryKey: getAgentsListDeploymentsQueryKey(workspace) });
+  };
 
   const fetchAgentDeploymentNames = async (agentName: string): Promise<string[]> => {
     const PAGE_SIZE = 100;
@@ -199,32 +197,46 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
     return names;
   };
 
-  const handleDelete = async () => {
-    try {
-      if (deleteState?.kind === 'agent') {
-        const agentName = deleteState.item.name;
-        const deploymentNames = await fetchAgentDeploymentNames(agentName);
-        await Promise.all(
-          deploymentNames.map((name) =>
-            deleteDeploymentMutation.mutateAsync({ workspace, name }).catch((err) => {
-              if ((err as { response?: { status?: number } })?.response?.status === 404) return;
-              toast.error(getErrorMessage(err as Error, `Failed to delete deployment "${name}".`));
-              throw err;
-            })
-          )
-        );
-        await deleteAgentMutation.mutateAsync({ workspace, name: agentName });
-      }
-      return true;
-    } catch {
+  const deleteAgentWithDeployments = async (agentName: string): Promise<void> => {
+    const deploymentNames = await fetchAgentDeploymentNames(agentName);
+    await Promise.all(
+      deploymentNames.map((name) =>
+        deleteDeploymentMutation.mutateAsync({ workspace, name }).catch((err) => {
+          // A deployment already gone (404) is fine; anything else aborts this agent.
+          if ((err as { response?: { status?: number } })?.response?.status === 404) return;
+          throw err;
+        })
+      )
+    );
+    await deleteAgentMutation.mutateAsync({ workspace, name: agentName });
+  };
+
+  const handleDelete = async (): Promise<boolean> => {
+    if (!deleteState) return false;
+    const agents = deleteState.kind === 'agent' ? [deleteState.item] : deleteState.items;
+    const results = await Promise.allSettled(agents.map((a) => deleteAgentWithDeployments(a.name)));
+    const failed = results.filter((r) => r.status === 'rejected').length;
+
+    refreshAfterDelete();
+    if (failed < agents.length) dataViewState.rowSelection.set({});
+
+    if (failed > 0) {
+      toast.error(
+        agents.length === 1
+          ? 'Failed to delete agent.'
+          : `Failed to delete ${failed} of ${agents.length} agents.`
+      );
       return false;
     }
+    toast.success(agents.length === 1 ? 'Agent deleted.' : `${agents.length} agents deleted.`);
+    return true;
   };
 
   const makeColumns: ComponentProps<typeof DataViewRoot<AgentTableRow>>['makeColumns'] = (
     { accessor },
-    { rowActionsColumn }
+    { rowActionsColumn, rowSelectionColumn }
   ) => [
+    rowSelectionColumn({ size: ROW_SELECTION_COLUMN_SIZE }),
     accessor('name', {
       header: 'Name',
       enableSorting: true,
@@ -284,6 +296,29 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
 
   return (
     <>
+      {selectedAgents.length > 0 && (
+        <Flex align="center" gap="2">
+          <Text kind="label/regular/md">
+            {selectedAgents.length} {selectedAgents.length === 1 ? 'row' : 'rows'} selected
+          </Text>
+          <Flex align="center" gap="1">
+            <Button
+              kind="tertiary"
+              aria-label="Delete selected agents"
+              onClick={() => setDeleteState({ kind: 'bulk', items: selectedAgents })}
+            >
+              <Trash /> Delete
+            </Button>
+            <Divider orientation="vertical" />
+            <Button kind="tertiary" onClick={() => dataViewState.rowSelection.set({})}>
+              <span className="only-mobile">
+                <X variant="line" />
+              </span>
+              <span className="hide-mobile">Cancel</span>
+            </Button>
+          </Flex>
+        </Flex>
+      )}
       <StudioDataView
         dataViewState={dataViewState}
         makeColumns={makeColumns}
@@ -311,8 +346,16 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
       {deleteState && (
         <DeleteConfirmationModal
           open
-          title="Delete Agent"
-          description="Are you sure you want to delete this agent and all its deployments?"
+          title={
+            deleteState.kind === 'bulk'
+              ? `Delete ${deleteState.items.length} Agent${deleteState.items.length === 1 ? '' : 's'}`
+              : 'Delete Agent'
+          }
+          description={
+            deleteState.kind === 'bulk'
+              ? `Are you sure you want to delete ${deleteState.items.length} agent${deleteState.items.length === 1 ? '' : 's'} and all their deployments?`
+              : 'Are you sure you want to delete this agent and all its deployments?'
+          }
           onDelete={handleDelete}
           onClose={() => setDeleteState(null)}
           simpleConfirm
