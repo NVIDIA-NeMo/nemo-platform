@@ -7,7 +7,9 @@ import { type FC, type ReactNode } from 'react';
 interface SeedQuestionsProps {
   questions?: string[];
   onSelect: (prompt: string) => void;
-  /** Rendered right-aligned at the trailing end of the flex-wrap row. */
+  /** Rendered bottom-aligned at the leading end of the row (e.g. metrics). */
+  slotStart?: ReactNode;
+  /** Rendered bottom-aligned at the trailing end of the row. */
   slotEnd?: ReactNode;
 }
 
@@ -20,10 +22,12 @@ interface SeedQuestionsProps {
 export const SeedQuestions: FC<SeedQuestionsProps> = ({
   questions = DEFAULT_SEED_QUESTIONS,
   onSelect,
+  slotStart,
   slotEnd,
 }) => {
   return (
     <div className="flex items-start gap-2">
+      {slotStart && <div className="shrink-0 self-end">{slotStart}</div>}
       <div className="flex min-w-0 flex-1 flex-wrap items-start gap-2">
         {questions.map((q) => (
           <button

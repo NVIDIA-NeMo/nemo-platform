@@ -56,6 +56,8 @@ export interface PanelChatControls {
   onRunningChange?: (id: number, isRunning: boolean) => void;
   slotComposerEnd?: ReactNode;
   composerSeed?: ComposerSeed;
+  /** Seed-question chips for the per-panel composer. Empty array hides them. */
+  seedQuestions?: string[];
 }
 
 /** One entry in the shared "models we are comparing" list owned by ModelCompareRoute. */

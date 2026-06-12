@@ -13,7 +13,7 @@ import {
 } from '@nvidia/foundations-react-core';
 import { DEFAULT_INFERENCE_PARAMS, type InferenceParams } from '@studio/components/chat/params';
 import { Info, RotateCcw, Sliders } from 'lucide-react';
-import { useState, type FC } from 'react';
+import { type FC } from 'react';
 
 interface ParamsPopoverProps {
   value: InferenceParams;
@@ -50,8 +50,6 @@ const SLIDERS: Array<{
 ];
 
 export const ParamsPopover: FC<ParamsPopoverProps> = ({ value, onChange }) => {
-  const [open, setOpen] = useState(false);
-
   const update = (key: keyof InferenceParams, v: number) => {
     onChange({ ...value, [key]: v });
   };
@@ -60,16 +58,9 @@ export const ParamsPopover: FC<ParamsPopoverProps> = ({ value, onChange }) => {
 
   return (
     <Popover
-      open={open}
-      onOpenChange={setOpen}
       slotContent={
         <Stack gap="density-lg" className="w-[380px] p-4">
-          <div className="flex items-center justify-between">
-            <Text kind="label/bold/lg">Inference parameters</Text>
-            <Button kind="tertiary" onClick={() => onChange(DEFAULT_INFERENCE_PARAMS)}>
-              Reset all
-            </Button>
-          </div>
+          <Text kind="label/bold/lg">Inference parameters</Text>
           {SLIDERS.map((s) => {
             const current = value[s.key] as number;
             return (

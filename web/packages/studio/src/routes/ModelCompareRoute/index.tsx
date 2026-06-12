@@ -90,8 +90,12 @@ export const ModelCompareRoute: FC = () => {
   const [stopCount, setStopCount] = useState(0);
   const [runningById, setRunningById] = useState<Map<number, boolean>>(() => new Map());
   const isAnyRunning = useMemo(() => Array.from(runningById.values()).some(Boolean), [runningById]);
+  // Seed-question chips are a first-run affordance: shown on initial page load,
+  // permanently dismissed once any message is sent (survives Reset).
+  const [seedsDismissed, setSeedsDismissed] = useState(false);
 
   const handleRunningChange = useCallback((id: number, running: boolean) => {
+    if (running) setSeedsDismissed(true);
     setRunningById((prev) => {
       if (prev.get(id) === running) return prev;
       const next = new Map(prev);
@@ -205,6 +209,43 @@ export const ModelCompareRoute: FC = () => {
             stopCount={stopCount}
             onRunningChange={handleRunningChange}
             onAddModel={!atMaxModels ? addModel : undefined}
+            seedQuestions={seedsDismissed ? [] : DEFAULT_SEED_QUESTIONS}
+            slotComposer={
+              !perPanelInput ? (
+                <CompareComposer
+                  isAnyRunning={isAnyRunning}
+                  readyPanelCount={readyPanelCount}
+                  totalPanelCount={models.length}
+                  onSubmit={handleBroadcast}
+                  onStop={handleStopAll}
+                  onResetAll={resetAll}
+                  seedQuestions={seedsDismissed ? [] : DEFAULT_SEED_QUESTIONS}
+                  draftRef={compareComposerDraftRef}
+                  seed={composerSeed ?? undefined}
+                  slotSeedEnd={
+                    <Tooltip slotContent="Per-panel input">
+                      <button
+                        onClick={() => {
+                          const draft = compareComposerDraftRef.current;
+                          if (draft) {
+                            setPanelSeed((prev) => ({
+                              triggerCount: (prev?.triggerCount ?? 0) + 1,
+                              text: draft,
+                            }));
+                          }
+                          setComposerSeed(null);
+                          setPerPanelInput(true);
+                        }}
+                        className="flex cursor-pointer items-center justify-center rounded border border-base bg-surface-raised p-1.5 text-fg-subdued transition-colors hover:bg-surface-sunken hover:text-fg-base"
+                        aria-label="Per-panel input"
+                      >
+                        <MessagesSquare size={15} />
+                      </button>
+                    </Tooltip>
+                  }
+                />
+              ) : undefined
+            }
           />
         </div>
         <div className={`h-full overflow-hidden ${activeView !== 'prompts' ? 'hidden' : ''}`}>
@@ -219,43 +260,6 @@ export const ModelCompareRoute: FC = () => {
           />
         </div>
       </div>
-
-      {activeView === 'compare' && !perPanelInput && (
-        <div className="shrink-0 px-6 pb-3">
-          <CompareComposer
-            isAnyRunning={isAnyRunning}
-            readyPanelCount={readyPanelCount}
-            totalPanelCount={models.length}
-            onSubmit={handleBroadcast}
-            onStop={handleStopAll}
-            onResetAll={resetAll}
-            seedQuestions={DEFAULT_SEED_QUESTIONS}
-            draftRef={compareComposerDraftRef}
-            seed={composerSeed ?? undefined}
-            slotSeedEnd={
-              <Tooltip slotContent="Per-panel input">
-                <button
-                  onClick={() => {
-                    const draft = compareComposerDraftRef.current;
-                    if (draft) {
-                      setPanelSeed((prev) => ({
-                        triggerCount: (prev?.triggerCount ?? 0) + 1,
-                        text: draft,
-                      }));
-                    }
-                    setComposerSeed(null);
-                    setPerPanelInput(true);
-                  }}
-                  className="flex cursor-pointer items-center justify-center rounded border border-base bg-surface-raised p-1.5 text-fg-subdued transition-colors hover:bg-surface-sunken hover:text-fg-base"
-                  aria-label="Per-panel input"
-                >
-                  <MessagesSquare size={15} />
-                </button>
-              </Tooltip>
-            }
-          />
-        </div>
-      )}
     </div>
   );
 };

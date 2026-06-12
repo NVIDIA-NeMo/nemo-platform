@@ -45,6 +45,7 @@ export const ModelChatPanel: FC<ModelChatPanelProps> = ({
   onRunningChange,
   slotComposerEnd,
   composerSeed,
+  seedQuestions,
 }) => {
   const selectedModel: ModelSelection | null = panel.modelURN ? { model: panel.modelURN } : null;
   const [inferenceParams, setInferenceParams] = useState<InferenceParams>(DEFAULT_INFERENCE_PARAMS);
@@ -152,6 +153,7 @@ export const ModelChatPanel: FC<ModelChatPanelProps> = ({
           composerMode={composerMode}
           slotComposerEnd={slotComposerEnd}
           composerSeed={composerSeed}
+          seedQuestions={seedQuestions}
           broadcast={broadcast}
           stopCount={stopCount}
           onRunningChange={

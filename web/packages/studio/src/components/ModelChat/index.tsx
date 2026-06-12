@@ -154,20 +154,14 @@ export const ModelChat: FC<ModelChatProps> = ({
 
   const chatSeedSlot =
     showChatSeeds || metricsInComposer || (slotComposerEnd && !isBroadcastAll) ? (
-      <>
-        {metricsInComposer && (
-          <div className="px-3 pt-1">
-            <StatsBadge metrics={latestMetrics} />
-          </div>
-        )}
-        {(showChatSeeds || (slotComposerEnd && !isBroadcastAll)) && (
-          <SeedQuestions
-            questions={showChatSeeds ? seedQuestions : []}
-            onSelect={seedComposer}
-            slotEnd={slotComposerEnd}
-          />
-        )}
-      </>
+      <SeedQuestions
+        questions={showChatSeeds ? seedQuestions : []}
+        onSelect={seedComposer}
+        slotStart={
+          metricsInComposer && latestMetrics ? <StatsBadge metrics={latestMetrics} /> : undefined
+        }
+        slotEnd={slotComposerEnd}
+      />
     ) : undefined;
 
   return (
