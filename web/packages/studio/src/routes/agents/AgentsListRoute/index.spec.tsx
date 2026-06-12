@@ -11,6 +11,7 @@ import { server } from '@studio/mocks/node';
 import { AgentsListRoute } from '@studio/routes/agents/AgentsListRoute';
 import { getAgentsListRoute } from '@studio/routes/utils';
 import { renderRoute, screen, waitFor } from '@studio/tests/util/render';
+import { within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 
@@ -46,15 +47,14 @@ const renderList = () =>
     ],
   });
 
-// Click the button as soon as it's in the DOM; the handler queues the create if models
-// are still loading and executes once they settle.
-const clickCreateOnceReady = async (user: ReturnType<typeof userEvent.setup>) => {
-  const button = await screen.findByRole('button', { name: 'Create Example Agent' });
-  await user.click(button);
+const openModal = async (user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> => {
+  await user.click(await screen.findByRole('button', { name: 'Create Example Agent' }));
+  const dialog = await screen.findByRole('dialog');
+  await within(dialog).findByRole('combobox');
+  return dialog;
 };
 
 describe('AgentsListRoute', () => {
-  // Opening the sidepanel + intro tour is gated on a per-session flag; isolate it.
   beforeEach(() => sessionStorage.clear());
 
   it('renders the page shell', async () => {
@@ -65,9 +65,20 @@ describe('AgentsListRoute', () => {
     ).toBeInTheDocument();
   });
 
-  it('creates the calculator example agent in one click and navigates to it', async () => {
+  it('opens the modal with the suggested model preselected', async () => {
     const user = userEvent.setup();
     mockModels(['nvidia-nemotron-nano-9b-v2']);
+    renderList();
+
+    const dialog = await openModal(user);
+    await waitFor(() =>
+      expect(within(dialog).getByRole('combobox')).toHaveTextContent('nvidia-nemotron-nano-9b-v2')
+    );
+  });
+
+  it('creates the example agent with the default suggested model and onboards (navigates)', async () => {
+    const user = userEvent.setup();
+    mockModels(['meta-llama-3-1-70b-instruct', 'nvidia-nemotron-super-49b']);
 
     let captured: { name?: string; description?: string; config?: Record<string, unknown> } = {};
     server.use(
@@ -78,17 +89,16 @@ describe('AgentsListRoute', () => {
     );
 
     renderList();
+    const dialog = await openModal(user);
+    await waitFor(() =>
+      expect(within(dialog).getByRole('combobox')).toHaveTextContent('nvidia-nemotron-super-49b')
+    );
+    await user.click(within(dialog).getByRole('button', { name: 'Create' }));
 
-    await clickCreateOnceReady(user);
-
-    // Navigated to the new agent's detail page on success.
     expect(await screen.findByText('Agent detail page')).toBeInTheDocument();
 
-    // Unique, registry-safe name so repeated clicks don't collide.
     expect(captured.name).toMatch(/^calculator-demo-agent-[a-z0-9]{6}$/);
     expect(captured.description).toBeTruthy();
-
-    // Calculator NAT config: ReAct workflow + calculator function group + datetime tool.
     const config = captured.config as {
       workflow: { _type: string; tool_names: string[]; use_native_tool_calling: boolean };
       function_groups: Record<string, { _type: string }>;
@@ -100,8 +110,57 @@ describe('AgentsListRoute', () => {
     expect(config.workflow.use_native_tool_calling).toBe(true);
     expect(config.function_groups.calculator._type).toBe('calculator');
     expect(config.functions.current_datetime._type).toBe('current_datetime');
-    // A concrete workspace model is chosen (service does not resolve ${NEMO_DEFAULT_MODEL}).
-    expect(config.llms.llm.model_name).toBe('nvidia-nemotron-nano-9b-v2');
+    expect(config.llms.llm.model_name).toBe('nvidia-nemotron-super-49b');
+  });
+
+  it('lets the user pick a different model', async () => {
+    const user = userEvent.setup();
+    mockModels(['nvidia-nemotron-super-49b', 'meta-llama-3-1-70b-instruct']);
+
+    let modelName: string | undefined;
+    server.use(
+      http.post(CREATE_AGENT_URL, async ({ request, params }) => {
+        const body = (await request.json()) as {
+          config: { llms: { llm: { model_name: string } } };
+        };
+        modelName = body.config.llms.llm.model_name;
+        return HttpResponse.json({
+          name: 'calculator-demo-agent-abc123',
+          workspace: params['workspace'],
+        });
+      })
+    );
+
+    renderList();
+    const dialog = await openModal(user);
+    await waitFor(() =>
+      expect(within(dialog).getByRole('combobox')).toHaveTextContent('nvidia-nemotron-super-49b')
+    );
+
+    await user.click(within(dialog).getByRole('combobox'));
+    await user.click(await screen.findByRole('option', { name: 'meta-llama-3-1-70b-instruct' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Create' }));
+
+    await waitFor(() => expect(modelName).toBe('meta-llama-3-1-70b-instruct'));
+  });
+
+  it('excludes non-chat models from the picker', async () => {
+    const user = userEvent.setup();
+    mockModels(['nvidia-nv-embedqa-e5-v5', 'nvidia-nemotron-nano-9b-v2']);
+    renderList();
+
+    const dialog = await openModal(user);
+    await waitFor(() =>
+      expect(within(dialog).getByRole('combobox')).toHaveTextContent('nvidia-nemotron-nano-9b-v2')
+    );
+    await user.click(within(dialog).getByRole('combobox'));
+
+    expect(
+      await screen.findByRole('option', { name: 'nvidia-nemotron-nano-9b-v2' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('option', { name: 'nvidia-nv-embedqa-e5-v5' })
+    ).not.toBeInTheDocument();
   });
 
   it('refetches the agents list after creating so the new agent appears immediately', async () => {
@@ -137,16 +196,19 @@ describe('AgentsListRoute', () => {
     await waitFor(() => expect(agentListFetches).toBeGreaterThan(0));
     const before = agentListFetches;
 
-    await clickCreateOnceReady(user);
+    const dialog = await openModal(user);
+    await waitFor(() =>
+      expect(within(dialog).getByRole('combobox')).toHaveTextContent('nvidia-nemotron-nano-9b-v2')
+    );
+    await user.click(within(dialog).getByRole('button', { name: 'Create' }));
 
     // Create invalidates the list, triggering an immediate refetch (not the 15s poll).
     await waitFor(() => expect(agentListFetches).toBeGreaterThan(before));
   });
 
-  it('does not reopen the sidepanel/intro for a later example agent in the same session', async () => {
+  it('does not onboard for a later example agent in the same session', async () => {
     const user = userEvent.setup();
     mockModels(['nvidia-nemotron-nano-9b-v2']);
-    // An example agent intro was already shown earlier this session.
     markExampleAgentIntroShown();
 
     let created = false;
@@ -159,18 +221,20 @@ describe('AgentsListRoute', () => {
     );
 
     renderList();
-    await clickCreateOnceReady(user);
+    const dialog = await openModal(user);
+    await waitFor(() =>
+      expect(within(dialog).getByRole('combobox')).toHaveTextContent('nvidia-nemotron-nano-9b-v2')
+    );
+    await user.click(within(dialog).getByRole('button', { name: 'Create' }));
 
-    // Creation still happens, but we stay on the list — no navigation to the detail panel.
     await waitFor(() => expect(created).toBe(true));
     expect(screen.queryByText('Agent detail page')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Create Example Agent' })).toBeInTheDocument();
   });
 
-  it('skips onboarding when an example agent already exists in the workspace', async () => {
+  it('does not onboard when an example agent already exists in the workspace', async () => {
     const user = userEvent.setup();
     mockModels(['nvidia-nemotron-nano-9b-v2']);
-    // Fresh session, but a calculator-demo agent already exists — a returning user.
     server.use(
       http.get(CREATE_AGENT_URL, () =>
         HttpResponse.json({
@@ -198,63 +262,19 @@ describe('AgentsListRoute', () => {
     );
 
     renderList();
-    // Wait until the existing example agent is visible so the agents query has settled.
     await screen.findByText('calculator-demo-agent-abc123');
-    await clickCreateOnceReady(user);
+    const dialog = await openModal(user);
+    await waitFor(() =>
+      expect(within(dialog).getByRole('combobox')).toHaveTextContent('nvidia-nemotron-nano-9b-v2')
+    );
+    await user.click(within(dialog).getByRole('button', { name: 'Create' }));
 
-    // No onboarding: stays on the list despite the fresh session.
     await waitFor(() => expect(created).toBe(true));
     expect(screen.queryByText('Agent detail page')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Create Example Agent' })).toBeInTheDocument();
   });
 
-  it('prefers a suggested Nemotron model over a non-suggested one', async () => {
-    const user = userEvent.setup();
-    // "All Models" order puts the non-Nemotron model first; selection must still
-    // prefer the suggested Nemotron model rather than blindly taking the first.
-    mockModels(['meta-llama-3-1-70b-instruct', 'nvidia-nemotron-super-49b']);
-
-    let modelName: string | undefined;
-    server.use(
-      http.post(CREATE_AGENT_URL, async ({ request, params }) => {
-        const body = (await request.json()) as {
-          config: { llms: { llm: { model_name: string } } };
-        };
-        modelName = body.config.llms.llm.model_name;
-        return HttpResponse.json({
-          name: 'calculator-demo-agent-abc123',
-          workspace: params['workspace'],
-        });
-      })
-    );
-
-    renderList();
-    await clickCreateOnceReady(user);
-
-    await waitFor(() => expect(modelName).toBe('nvidia-nemotron-super-49b'));
-  });
-
-  it('does not auto-select a non-LLM model; surfaces an error instead', async () => {
-    const user = userEvent.setup();
-    // Workspace has only an embedding model — not a usable agent LLM.
-    mockModels(['nvidia-nv-embedqa-e5-v5']);
-
-    let createCalled = false;
-    server.use(
-      http.post(CREATE_AGENT_URL, () => {
-        createCalled = true;
-        return HttpResponse.json({ name: 'unexpected', workspace });
-      })
-    );
-
-    renderList();
-    await clickCreateOnceReady(user);
-
-    expect(await screen.findByText(/No usable chat model in this workspace/i)).toBeInTheDocument();
-    expect(createCalled).toBe(false);
-  });
-
-  it('does not create an agent and surfaces an error when the workspace has no models', async () => {
+  it('does not create when the workspace has no models', async () => {
     const user = userEvent.setup();
     mockModels([]);
 
@@ -267,9 +287,10 @@ describe('AgentsListRoute', () => {
     );
 
     renderList();
-    await clickCreateOnceReady(user);
+    const dialog = await openModal(user);
+    await user.click(within(dialog).getByRole('button', { name: 'Create' }));
 
-    expect(await screen.findByText(/No usable chat model in this workspace/i)).toBeInTheDocument();
+    await waitFor(() => expect(within(dialog).getByRole('combobox')).toBeInTheDocument());
     expect(createCalled).toBe(false);
   });
 });
