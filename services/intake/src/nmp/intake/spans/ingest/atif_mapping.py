@@ -63,6 +63,7 @@ def trajectory_to_spans(
             workspace=workspace,
             default_session_id=trajectory.session_id,
             default_agent_name=trajectory.agent.name,
+            default_agent_version=trajectory.agent.version,
             default_model_name=trajectory.agent.model_name,
             external_parent_span_id=trajectory_span.external_span_id,
             step=step,
@@ -75,6 +76,7 @@ def trajectory_to_spans(
                 workspace=workspace,
                 default_session_id=trajectory.session_id,
                 default_agent_name=trajectory.agent.name,
+                default_agent_version=trajectory.agent.version,
                 default_model_name=trajectory.agent.model_name,
                 external_parent_span_id=step_span.external_span_id,
                 step=step,
@@ -90,6 +92,7 @@ def trajectory_to_spans(
                 workspace=workspace,
                 default_session_id=trajectory.session_id,
                 default_agent_name=trajectory.agent.name,
+                default_agent_version=trajectory.agent.version,
                 default_model_name=trajectory.agent.model_name,
                 external_parent_span_id=step_span.external_span_id,
                 step=step,
@@ -151,6 +154,7 @@ def _trajectory_to_span(
     attribute_bags = _span_attributes(
         model=trajectory.agent.model_name,
         agent_name=trajectory.agent.name,
+        agent_version=trajectory.agent.version,
         evaluation_context=trajectory.evaluation_context,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
@@ -184,6 +188,7 @@ def _step_to_span(
     workspace: str,
     default_session_id: str,
     default_agent_name: str,
+    default_agent_version: str | None,
     default_model_name: str | None,
     external_parent_span_id: str,
     step: AtifStep,
@@ -205,6 +210,7 @@ def _step_to_span(
     attribute_bags = _span_attributes(
         model=model_name or default_model_name,
         agent_name=default_agent_name,
+        agent_version=default_agent_version,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         cached_tokens=metrics.cached_tokens if metrics is not None else None,
@@ -237,6 +243,7 @@ def _tool_call_to_span(
     workspace: str,
     default_session_id: str,
     default_agent_name: str,
+    default_agent_version: str | None,
     default_model_name: str | None,
     external_parent_span_id: str,
     step: AtifStep,
@@ -260,6 +267,7 @@ def _tool_call_to_span(
     attribute_bags = _span_attributes(
         model=_step_model_name(step) or default_model_name,
         agent_name=default_agent_name,
+        agent_version=default_agent_version,
         tool_name=tool_call.function_name,
         error_message=error_message,
         raw_attributes={
@@ -293,6 +301,7 @@ def _subagent_ref_to_span(
     workspace: str,
     default_session_id: str,
     default_agent_name: str,
+    default_agent_version: str | None,
     default_model_name: str | None,
     external_parent_span_id: str,
     step: AtifStep,
@@ -320,6 +329,7 @@ def _subagent_ref_to_span(
     attribute_bags = _span_attributes(
         model=_step_model_name(step) or default_model_name,
         agent_name=default_agent_name,
+        agent_version=default_agent_version,
         error_message=error_message,
         raw_attributes={
             "step_id": step.step_id,
@@ -413,6 +423,7 @@ def _evaluator_result_to_span(
     attribute_bags = _span_attributes(
         model=trajectory.agent.model_name,
         agent_name=trajectory.agent.name,
+        agent_version=trajectory.agent.version,
         raw_attributes=raw_attributes,
     )
     return [
@@ -442,6 +453,7 @@ def _span_attributes(
     *,
     model: str | None = None,
     agent_name: str | None = None,
+    agent_version: str | None = None,
     evaluation_context: EvaluationContext | None = None,
     tool_name: str | None = None,
     error_message: str | None = None,
@@ -455,12 +467,10 @@ def _span_attributes(
     semantic_attributes = SpanSemanticAttributes(
         model=model,
         agent_name=agent_name,
+        agent_version=agent_version,
         evaluation_id=evaluation_context.evaluation_id if evaluation_context is not None else None,
         evaluation_sha=evaluation_context.evaluation_sha if evaluation_context is not None else None,
         evaluation_run_id=evaluation_context.evaluation_run_id if evaluation_context is not None else None,
-        dataset_id=evaluation_context.dataset_id if evaluation_context is not None else None,
-        dataset_name=evaluation_context.dataset_name if evaluation_context is not None else None,
-        dataset_version=evaluation_context.dataset_version if evaluation_context is not None else None,
         test_case_id=evaluation_context.test_case_id if evaluation_context is not None else None,
         tool_name=tool_name,
         error_message=error_message,
@@ -472,7 +482,7 @@ def _span_attributes(
     )
     attribute_bags = semantic_attributes.to_bags()
     if evaluation_context is not None and evaluation_context.metadata:
-        attribute_bags.put_json("experiment.metadata", evaluation_context.metadata)
+        attribute_bags.put_json("nemo.experiment.metadata", evaluation_context.metadata)
     if raw_attributes is not None:
         attribute_bags.put_json("atif.raw", raw_attributes)
     return attribute_bags

@@ -124,21 +124,17 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
           );
         },
       }),
-      accessor('agent_name', {
-        header: 'Agent Name',
+      accessor((original) => original.agent_names?.join(', '), {
+        id: 'agent_names',
+        header: 'Agent Names',
         enableSorting: false,
-        meta: {
-          filter: { type: 'text', label: 'Agent Name', placeholder: 'Filter by Agent Name' },
-        },
-        cell: ({ row }) => <Text>{row.original.agent_name || '-'}</Text>,
+        cell: ({ getValue }) => <Text>{getValue<string>() || '-'}</Text>,
       }),
-      accessor('agent_version', {
-        header: 'Agent Version',
+      accessor((original) => original.agent_versions?.join(', '), {
+        id: 'agent_versions',
+        header: 'Agent Versions',
         enableSorting: false,
-        meta: {
-          filter: { type: 'text', label: 'Agent Version', placeholder: 'Filter by Agent Version' },
-        },
-        cell: ({ row }) => <Text>{row.original.agent_version || '-'}</Text>,
+        cell: ({ getValue }) => <Text>{getValue<string>() || '-'}</Text>,
       }),
       accessor('dataset_name', {
         header: 'Dataset Name',

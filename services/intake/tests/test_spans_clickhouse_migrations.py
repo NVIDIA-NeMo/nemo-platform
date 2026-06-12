@@ -72,5 +72,5 @@ def test_trace_index_schema_is_root_span_projection():
 
 
 def test_trace_index_mv_keys_match_attribute_catalog():
-    assert spec_for_field(SpanAttributeField.EVALUATION_ID).bag_key == "experiment.id"
-    assert spec_for_field(SpanAttributeField.TEST_CASE_ID).bag_key == "test_case.id"
+    assert spec_for_field(SpanAttributeField.EVALUATION_ID).bag_key == "nemo.experiment.id"
+    assert spec_for_field(SpanAttributeField.TEST_CASE_ID).bag_key == "nemo.test_case.id"

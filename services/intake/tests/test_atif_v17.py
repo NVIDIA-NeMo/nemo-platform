@@ -26,9 +26,6 @@ EVALUATION_CONTEXT: dict[str, Any] = {
     "evaluation_id": "eval-sample-agent-baseline",
     "evaluation_sha": "abc132901",
     "evaluation_run_id": "evalrun-01JZ8Q7K6V7R3X9N2M4P5A6B7C",
-    "dataset_id": "sample-dataset",
-    "dataset_name": "Sample Dataset",
-    "dataset_version": "v1",
     "test_case_id": "sample-test-case",
     "metadata": {"attempt": 1},
 }
@@ -219,37 +216,31 @@ def test_atif_mapping_writes_evaluation_context_only_on_root_span() -> None:
 
     root = next(span for span in spans if span.name == "sample-agent")
     child = next(span for span in spans if span.name == "user-1")
-    assert root.attributes_string["experiment.id"] == EVALUATION_CONTEXT["evaluation_id"]
-    assert root.attributes_string["experiment.sha"] == EVALUATION_CONTEXT["evaluation_sha"]
-    assert root.attributes_string["experiment.run_id"] == EVALUATION_CONTEXT["evaluation_run_id"]
+    assert root.attributes_string["nemo.experiment.id"] == EVALUATION_CONTEXT["evaluation_id"]
+    assert root.attributes_string["nemo.experiment.sha"] == EVALUATION_CONTEXT["evaluation_sha"]
+    assert root.attributes_string["nemo.experiment.run_id"] == EVALUATION_CONTEXT["evaluation_run_id"]
     assert "evaluation.id" not in root.attributes_string
-    assert root.attributes_string["test_case.id"] == EVALUATION_CONTEXT["test_case_id"]
-    assert root.attributes_string["dataset.id"] == EVALUATION_CONTEXT["dataset_id"]
-    assert root.attributes_string["dataset.name"] == EVALUATION_CONTEXT["dataset_name"]
-    assert root.attributes_string["dataset.version"] == EVALUATION_CONTEXT["dataset_version"]
-    assert json.loads(root.attributes_string["experiment.metadata"]) == EVALUATION_CONTEXT["metadata"]
+    assert root.attributes_string["nemo.test_case.id"] == EVALUATION_CONTEXT["test_case_id"]
+    assert json.loads(root.attributes_string["nemo.experiment.metadata"]) == EVALUATION_CONTEXT["metadata"]
 
     root_response = Span.from_domain(root)
     assert root_response.evaluation_context is not None
     assert root_response.evaluation_context.evaluation_id == EVALUATION_CONTEXT["evaluation_id"]
     assert root_response.evaluation_context.evaluation_sha == EVALUATION_CONTEXT["evaluation_sha"]
     assert root_response.evaluation_context.evaluation_run_id == EVALUATION_CONTEXT["evaluation_run_id"]
-    assert root_response.evaluation_context.dataset_id == EVALUATION_CONTEXT["dataset_id"]
-    assert root_response.evaluation_context.dataset_name == EVALUATION_CONTEXT["dataset_name"]
-    assert root_response.evaluation_context.dataset_version == EVALUATION_CONTEXT["dataset_version"]
     assert root_response.evaluation_context.test_case_id == EVALUATION_CONTEXT["test_case_id"]
     assert root_response.evaluation_context.metadata == EVALUATION_CONTEXT["metadata"]
     assert root_response.raw_attributes is not None
     root_raw = json.loads(root_response.raw_attributes)
     assert "evaluation_context" not in root_raw
     assert "evaluation.metadata" not in root_raw
-    assert "experiment.metadata" not in root_raw
+    assert "nemo.experiment.metadata" not in root_raw
 
     child_response = Span.from_domain(child)
     assert child_response.evaluation_context is None
     assert "evaluation.id" not in child.attributes_string
-    assert "experiment.id" not in child.attributes_string
-    assert "test_case.id" not in child.attributes_string
+    assert "nemo.experiment.id" not in child.attributes_string
+    assert "nemo.test_case.id" not in child.attributes_string
 
 
 def test_atif_mapping_writes_experiment_context_to_experiment_attributes() -> None:
@@ -270,8 +261,8 @@ def test_atif_mapping_writes_experiment_context_to_experiment_attributes() -> No
     )
 
     root = next(span for span in spans if span.name == "sample-agent")
-    assert root.attributes_string["experiment.id"] == "exp-1"
-    assert root.attributes_string["test_case.id"] == "case-1"
+    assert root.attributes_string["nemo.experiment.id"] == "exp-1"
+    assert root.attributes_string["nemo.test_case.id"] == "case-1"
     assert "evaluation.id" not in root.attributes_string
 
 
