@@ -1,0 +1,50 @@
+{
+  "model": "default/qwen3-1.7b",
+  "dataset": {
+    "training": "default/train-data"
+  },
+  "training": {
+    "training_type": "sft",
+    "finetuning_type": "lora",
+    "max_seq_length": 2048
+  },
+  "schedule": {
+    "epochs": 1,
+    "max_steps": 10
+  },
+  "batch": {
+    "global_batch_size": 8,
+    "micro_batch_size": 1
+  },
+  "optimizer": {
+    "learning_rate": 5e-6
+  },
+  "parallelism": {
+    "num_nodes": 1,
+    "num_gpus_per_node": 1,
+    "tensor_parallel_size": 1
+  },
+  "output": {
+    "name": "test-out"
+  },
+  "integrations": {
+    "wandb": {
+      "project": "my-project",
+      "name": "run-001",
+      "entity": "my-team",
+      "tags": ["sft", "llama"],
+      "notes": "Experiment notes",
+      "base_url": "https://wandb.internal",
+      "api_key_secret": "default/wandb-api-key"
+    },
+    "mlflow": {
+      "experiment_name": "llama-finetuning",
+      "name": "run-001",
+      "tracking_uri": "http://mlflow:5000",
+      "tags": {
+        "team": "nlp"
+      },
+      "description": "SFT experiment"
+    }
+  }
+}

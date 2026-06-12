@@ -90,6 +90,10 @@ TRANSIENT_FILESYSTEM_EXCEPTIONS = (
     httpx.TimeoutException,
     httpx.ConnectError,
     httpx.ReadTimeout,
+    # Connection dropped mid-transfer (CDN/proxy closed the socket before the
+    # full body arrived). Common on large multi-GB model shards; safe to retry.
+    httpx.RemoteProtocolError,
+    httpx.ReadError,
 )
 
 
