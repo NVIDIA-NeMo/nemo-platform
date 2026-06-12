@@ -7,6 +7,10 @@ import { ControlledTextInput } from '@nemo/common/src/components/form/Controlled
 import { RadioCard } from '@nemo/common/src/components/RadioCard';
 import { getEntityReference } from '@nemo/common/src/namedEntity';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import {
+  checkDatasetQuality,
+  type DatasetQualityReport,
+} from '@nemo/common/src/utils/datasetQuality';
 import { FILESET_NAME_MAX_LENGTH, FILESET_NAME_REGEXP } from '@nemo/common/src/utils/filesetName';
 import {
   filesUploadFile,
@@ -32,6 +36,7 @@ import {
   RadioGroupRoot,
   SegmentedControl,
   SidePanel,
+  Spinner,
   Stack,
   TabsContent,
   TabsTrigger,
@@ -45,6 +50,7 @@ import { useSampleDatasetFiles } from '@studio/api/datasets/useSampleDatasetFile
 import { FILESET_DETAILS_ENABLED } from '@studio/constants/environment';
 import { SAMPLE_DATASETS, SampleDataset } from '@studio/constants/sampleDatasets';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
+import { DatasetQualityReportView } from '@studio/routes/FilesetNewRoute/components/DatasetQualityReportView';
 import { CreateSecretModal } from '@studio/routes/SecretsListRoute/CreateSecretModal';
 import { SecretSearchableSelect } from '@studio/routes/SecretsListRoute/SecretSearchableSelect';
 import {
@@ -60,7 +66,7 @@ import {
 } from '@studio/util/storageConfigFromUrl';
 import { QueryObserverResult, useQueryClient } from '@tanstack/react-query';
 import { FileCheck } from 'lucide-react';
-import { FC, useCallback, useMemo, useRef, useState } from 'react';
+import { FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import { z } from 'zod';
@@ -175,6 +181,16 @@ export const FilesetNewRoute: FC = () => {
     SAMPLE_DATASETS[0]
   );
   const [isSubmitPending, setIsSubmitPending] = useState(false);
+  const [qualityReports, setQualityReports] = useState<DatasetQualityReport[]>([]);
+  const [isValidating, setIsValidating] = useState(false);
+  const qualityReportRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (qualityReports.length > 0) {
+      qualityReportRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [qualityReports]);
+
   const navigate = useNavigate();
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -205,6 +221,15 @@ export const FilesetNewRoute: FC = () => {
   });
 
   const url = watch('url');
+  const purpose = watch('purpose');
+
+  useEffect(() => {
+    if (purpose !== FilesetPurpose.dataset) {
+      setQualityReports([]);
+      setIsValidating(false);
+    }
+  }, [purpose]);
+
   const selectedSecretName = watch('secretKey');
   const secretKeyLabel = useMemo(() => {
     if (!url?.trim()) return 'Secret Key';
@@ -272,6 +297,33 @@ export const FilesetNewRoute: FC = () => {
     []
   );
 
+  /**
+   * Runs dataset quality checks on newly selected JSONL files and updates the report state.
+   * Only runs when purpose is 'dataset'; clears reports for other purposes or non-JSONL files.
+   */
+  const handleFilesChange = useCallback(
+    async (files: File[]) => {
+      setValue('files', files, { shouldValidate: false });
+
+      if (purpose !== FilesetPurpose.dataset) {
+        setQualityReports([]);
+        return;
+      }
+
+      const jsonlFiles = files.filter((f) => f.name.endsWith('.jsonl'));
+      if (jsonlFiles.length === 0) {
+        setQualityReports([]);
+        return;
+      }
+
+      setIsValidating(true);
+      const reports = await Promise.all(jsonlFiles.map(checkDatasetQuality));
+      setQualityReports(reports);
+      setIsValidating(false);
+    },
+    [purpose, setValue]
+  );
+
   // Sync hidden name/description when a sample is selected (sample tab = simulated local form)
   const handleSelectSample = useCallback(
     (dataset: SampleDataset) => {
@@ -282,10 +334,11 @@ export const FilesetNewRoute: FC = () => {
     [workspace, setValue]
   );
 
-  // When switching tabs, reset the opposite tab’s form state so we don’t leak values
+  // When switching tabs, reset the opposite tab's form state so we don't leak values
   const handleTabChange = useCallback(
     (value: DatasetType) => {
       setActiveTab(value);
+      setQualityReports([]);
       if (value === DATASET_TYPE_CUSTOM) {
         setValue('name', '', { shouldValidate: false });
         setValue('description', '', { shouldValidate: false });
@@ -311,11 +364,19 @@ export const FilesetNewRoute: FC = () => {
     ]
   );
 
+  const hasValidationErrors =
+    purpose === FilesetPurpose.dataset && qualityReports.some((r) => r.hasErrors);
+
   const onSubmit = useCallback(
     async (data: DatasetFormFields) => {
       const { success, error } = DatasetCreateFilesetFormSchema.safeParse(data);
       if (!success) {
         toast.error(error.message);
+        return;
+      }
+
+      if (hasValidationErrors) {
+        toast.error('Fix dataset validation errors before creating this fileset.');
         return;
       }
 
@@ -427,6 +488,7 @@ export const FilesetNewRoute: FC = () => {
       activeTab,
       createFilesetStep,
       getValues,
+      hasValidationErrors,
       navigate,
       storageTab,
       toast,
@@ -464,7 +526,7 @@ export const FilesetNewRoute: FC = () => {
             <Button
               type="button"
               color="brand"
-              disabled={isSubmitPending}
+              disabled={isSubmitPending || hasValidationErrors}
               onClick={handleSubmit(
                 onSubmit,
                 handleFormErrorsGeneric({ title: 'Fileset New Form Errors' })
@@ -564,6 +626,8 @@ export const FilesetNewRoute: FC = () => {
                         if (next === 'local') {
                           setValue('url', '', { shouldValidate: false });
                           setValue('secretKey', '', { shouldValidate: false });
+                        } else {
+                          setQualityReports([]);
                         }
                       }}
                     >
@@ -572,16 +636,32 @@ export const FilesetNewRoute: FC = () => {
                         <TabsTrigger value="external">External</TabsTrigger>
                       </TabsList>
                       <TabsContent className="w-full min-w-0 p-0 items-stretch" value="local">
-                        <Upload
-                          accept="text/csv,text/json,.jsonl,.parquet"
-                          multiple
-                          onValueChange={(files) => {
-                            const list = Array.isArray(files) ? files : files ? [files] : undefined;
-                            setValue('files', toFileList(list), { shouldValidate: false });
-                          }}
-                        >
-                          Supports JSONL, CSV, and Parquet files up to 50 MB.
-                        </Upload>
+                        <Stack gap="density-md" className="w-full">
+                          <Upload
+                            accept="text/csv,text/json,.jsonl,.parquet"
+                            multiple
+                            onValueChange={(files) => {
+                              const list = Array.isArray(files)
+                                ? files
+                                : files
+                                  ? [files]
+                                  : undefined;
+                              void handleFilesChange(toFileList(list));
+                            }}
+                          >
+                            Supports JSONL, JSON, CSV, and Parquet files up to 50 MB.
+                          </Upload>
+                          {purpose === FilesetPurpose.dataset && (
+                            <Stack gap="density-sm" ref={qualityReportRef}>
+                              {isValidating && (
+                                <Spinner size="small" description="Validating dataset…" />
+                              )}
+                              {qualityReports.map((report) => (
+                                <DatasetQualityReportView key={report.fileName} report={report} />
+                              ))}
+                            </Stack>
+                          )}
+                        </Stack>
                       </TabsContent>
                       <TabsContent className="w-full min-w-0 p-0 items-stretch" value="external">
                         <Stack gap="density-lg" className="w-full min-w-0">

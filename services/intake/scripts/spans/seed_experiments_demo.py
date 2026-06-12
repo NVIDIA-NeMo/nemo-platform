@@ -60,6 +60,11 @@ class ExperimentSpec:
     summary: str | None = None
     agent_name: str = "sample-agent"
     agent_version: str = "1.0.0"
+    # Optional: sessions cycle through these instead of the scalar above, so a single
+    # experiment's rollup can surface multiple distinct agent names or versions (e.g.,
+    # an A/B between agent versions, or a comparison of agents within one experiment).
+    agent_name_cycle: tuple[str, ...] | None = None
+    agent_version_cycle: tuple[str, ...] | None = None
     model_name: str = "provider/sample-model"
     dataset_name: str = "sample-dataset"
     dataset_version: str = "v1"
@@ -164,6 +169,8 @@ DEMO_GROUPS: list[GroupSpec] = [
                 description="Cross-encoder reranker, 5 trials per case, averaged for variance.",
                 agent_name="codex-cli",
                 agent_version="1.2.3",
+                # Trials ran across a minor version bump mid-experiment.
+                agent_version_cycle=("1.2.3", "1.2.4"),
                 model_name="openai/gpt-4o-mini",
                 dataset_name="support-bench",
                 dataset_version="v3",
@@ -209,9 +216,11 @@ DEMO_GROUPS: list[GroupSpec] = [
             ),
             ExperimentSpec(
                 name="tb2-cursor-agent",
-                description="cursor-agent @ 0.4 with claude-sonnet.",
+                description="cursor-agent + cursor-cli mix @ 0.4 with claude-sonnet.",
                 agent_name="cursor-agent",
                 agent_version="0.4.1",
+                # Mix of cursor's agent and CLI binary running the same task.
+                agent_name_cycle=("cursor-agent", "cursor-cli"),
                 model_name="anthropic/claude-sonnet-4-6",
                 dataset_name="terminal-bench-2",
                 dataset_version="v1",
@@ -377,7 +386,7 @@ def seed(client: httpx.Client, base_url: str, workspace: str) -> None:
 
     for group_spec in DEMO_GROUPS:
         group_id, created = _create_group_if_missing(client, base_url, workspace, group_spec)
-        if not created:
+        if not created or group_id is None:
             print(f"\n[skip] group '{group_spec.name}' already exists; leaving it and its experiments alone")
             groups_skipped += 1
             continue
@@ -425,8 +434,6 @@ def _create_experiment(
 def _experiment_body(spec: ExperimentSpec, group_id: str) -> dict[str, Any]:
     body: dict[str, Any] = {
         "name": spec.name,
-        "agent_name": spec.agent_name,
-        "agent_version": spec.agent_version,
         "dataset_name": spec.dataset_name,
         "dataset_version": spec.dataset_version,
         "experiment_group_id": group_id,
@@ -469,6 +476,14 @@ def _seed_sessions(
         # Spread sessions across the ~5.5h prior to "now" so the Studio timeline looks varied.
         offset_seconds = (i / max(1, spec.n_sessions)) * 5.5 * 3600
 
+        session_agent_name = (
+            spec.agent_name_cycle[i % len(spec.agent_name_cycle)] if spec.agent_name_cycle else spec.agent_name
+        )
+        session_agent_version = (
+            spec.agent_version_cycle[i % len(spec.agent_version_cycle)]
+            if spec.agent_version_cycle
+            else spec.agent_version
+        )
         atif_body = _demo_atif_body(
             base_started_at=base_started_at,
             experiment_id=spec.name,
@@ -477,8 +492,8 @@ def _seed_sessions(
             cost_usd=cost_usd,
             latency_ms=latency_ms,
             offset_seconds=offset_seconds,
-            agent_name=spec.agent_name,
-            agent_version=spec.agent_version,
+            agent_name=session_agent_name,
+            agent_version=session_agent_version,
             model_name=spec.model_name,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,

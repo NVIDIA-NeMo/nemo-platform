@@ -10,8 +10,10 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Any, Literal, Self
 
+from nmp.common.api.common import Page
 from nmp.common.entities.values import DatetimeFilter
 from nmp.intake.spans.domain import IntakeSpan, SpanKind, SpanStatus
+from nmp.intake.spans.domain import SpanGroup as IntakeSpanGroup
 from nmp.intake.spans.span_attribute_bags import SpanAttributeBags
 from nmp.intake.spans.span_semantic_attributes import SpanSemanticAttributes
 from pydantic import BaseModel, ConfigDict, Field
@@ -20,6 +22,16 @@ from pydantic import BaseModel, ConfigDict, Field
 class SpanSortField(StrEnum):
     STARTED_AT_ASC = "started_at"
     STARTED_AT_DESC = "-started_at"
+
+
+class SpanGroupSortField(StrEnum):
+    SPAN_COUNT_ASC = "span_count"
+    SPAN_COUNT_DESC = "-span_count"
+
+
+class SpanGroupBy(StrEnum):
+    TRACE_ID = "trace_id"
+    SESSION_ID = "session_id"
 
 
 SpanMode = Literal["summary", "detailed"]
@@ -70,9 +82,6 @@ class SpanEvaluationContext(BaseModel):
     evaluation_id: str | None = None
     evaluation_sha: str | None = None
     evaluation_run_id: str | None = None
-    dataset_id: str | None = None
-    dataset_name: str | None = None
-    dataset_version: str | None = None
     test_case_id: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -87,9 +96,6 @@ class SpanEvaluationContext(BaseModel):
             evaluation_id=attributes.evaluation_id,
             evaluation_sha=attributes.evaluation_sha,
             evaluation_run_id=attributes.evaluation_run_id,
-            dataset_id=attributes.dataset_id,
-            dataset_name=attributes.dataset_name,
-            dataset_version=attributes.dataset_version,
             test_case_id=attributes.test_case_id,
             metadata=metadata or {},
         )
@@ -104,9 +110,6 @@ class SpanEvaluationContext(BaseModel):
                 self.evaluation_id,
                 self.evaluation_sha,
                 self.evaluation_run_id,
-                self.dataset_id,
-                self.dataset_name,
-                self.dataset_version,
                 self.test_case_id,
             )
         )
@@ -131,8 +134,6 @@ class Span(BaseModel):
     provider: str | None = None
     model: str | None = None
     prompt_id: str | None = None
-    prompt_name: str | None = None
-    prompt_version: str | None = None
     agent_id: str | None = None
     agent_name: str | None = None
     tool_name: str | None = None
@@ -179,8 +180,6 @@ class Span(BaseModel):
             provider=semantic_attributes.provider,
             model=semantic_attributes.model,
             prompt_id=semantic_attributes.prompt_id,
-            prompt_name=semantic_attributes.prompt_name,
-            prompt_version=semantic_attributes.prompt_version,
             agent_id=semantic_attributes.agent_id,
             agent_name=semantic_attributes.agent_name,
             tool_name=semantic_attributes.tool_name,
@@ -198,6 +197,19 @@ class Span(BaseModel):
             raw_attributes=None if summary else attribute_bags.raw_attributes_json(),
             ingested_at=span.event_ts,
         )
+
+
+class SpanGroup(BaseModel):
+    group: dict[str, str] = Field(description="Group key values, keyed by the requested group-by fields.")
+    span_count: int = Field(ge=0, description="Number of matching spans in this group.")
+
+    @classmethod
+    def from_domain(cls, group: IntakeSpanGroup) -> Self:
+        return cls(group=group.group, span_count=group.span_count)
+
+
+class SpanGroupsPage(Page[SpanGroup]):
+    grouped_by: list[SpanGroupBy] = Field(description="Span fields used to group the matching spans.")
 
 
 def _evaluation_context(

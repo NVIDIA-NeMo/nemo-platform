@@ -42,6 +42,7 @@ from .shared import (
     PlatformJobLogPage as PlatformJobLogPage,
     HTTPValidationError as HTTPValidationError,
     SlidingWindowConfig as SlidingWindowConfig,
+    FilesetMetadataParam as FilesetMetadataParam,
     ModelMetadataContent as ModelMetadataContent,
     AuthDiscoveryResponse as AuthDiscoveryResponse,
     OidcDiscoveryResponse as OidcDiscoveryResponse,

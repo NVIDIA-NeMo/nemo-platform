@@ -122,8 +122,6 @@ def _upsert_experiment(
 ) -> None:
     body = {
         "name": experiment,
-        "agent_name": AGENT_NAME,
-        "agent_version": AGENT_VERSION,
         "dataset_name": DATASET_NAME,
         "dataset_version": "v1",
         "experiment_group_id": group_id,

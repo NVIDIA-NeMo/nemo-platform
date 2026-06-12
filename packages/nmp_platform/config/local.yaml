@@ -20,7 +20,7 @@ platform:
 service: {}
 
 auth:
-  enabled: true
+  enabled: false
   allow_unsigned_jwt: true  # local CLI: nemo auth login --unsigned-token
   policy_decision_point_provider: embedded
   policy_decision_point_base_url: "http://localhost:8080"

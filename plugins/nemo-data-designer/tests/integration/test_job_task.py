@@ -101,9 +101,6 @@ async def test_task(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.skip(
-    reason="Batch-completion artifact saves are not yet available through the high-level library interfaces"
-)
 async def test_save_partial_dataset_on_failure(_failing_result_manager: None, tmp_path: Path) -> None:
     test_value = "test-value"
     builder = dd.DataDesignerConfigBuilder(model_configs=[u.make_model_config()])

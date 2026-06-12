@@ -542,6 +542,11 @@ async def test_get_cache_path_key_with_different_revision(hf_config_with_token, 
     assert cache_prefix == "cache/hf/test-org/test-repo/v1.0"
 
 
+def test_hf_config_does_not_own_storage_data(hf_config):
+    """HuggingFace is read-only external storage; the platform does not own the source data."""
+    assert hf_config.owns_storage_data is False
+
+
 async def test_list_files_gated_repo_error(hf_config, mock_hf_api, mock_httpx_response, hf_secrets_empty):
     """Test list_files when gated repo access is denied."""
     from huggingface_hub.utils import GatedRepoError

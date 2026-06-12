@@ -25,6 +25,9 @@ outputs:
   web-studio:
     description: "'true' if any web files changed"
     value: ${{ steps.filter.outputs.web-studio }}
+  docker:
+    description: "'true' if any Docker build files changed"
+    value: ${{ steps.filter.outputs.docker }}
 
 runs:
   using: "composite"
@@ -56,3 +59,7 @@ runs:
             - 'tools/**'
           web-studio:
             - 'web/**'
+          docker:
+            - 'docker-bake.hcl'
+            - 'docker/**'
+            - 'Makefile'

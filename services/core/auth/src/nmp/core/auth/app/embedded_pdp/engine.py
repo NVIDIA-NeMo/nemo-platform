@@ -7,7 +7,7 @@ import json
 import logging
 import threading
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from wasmtime import Config, Engine, Func, FuncType, Instance, Limits, Memory, MemoryType, Module, Store, ValType
 
@@ -26,7 +26,7 @@ class PolicyEngineError(Exception):
 class OPAPolicy:
     """Wrapper for OPA WASM policy evaluation."""
 
-    def __init__(self, wasm_path: str, *, fuel_limit: int = 100_000_000, memory_limit_mb: int = 32):
+    def __init__(self, wasm_path: str, *, fuel_limit: int = 200_000_000, memory_limit_mb: int = 32):
         config = Config()
         config.consume_fuel = True
         engine = Engine(config)
@@ -70,20 +70,24 @@ class OPAPolicy:
 
         self.instance = Instance(self.store, module, imports)
         self.exports = self.instance.exports(self.store)
-        self._base_heap = self.exports["opa_heap_ptr_get"](self.store)
+        self._base_heap = self._export_func("opa_heap_ptr_get")(self.store)
+        self._data_heap = self._base_heap
         self._data_addr: Optional[int] = None
         self._lock = threading.Lock()
+
+    def _export_func(self, name: str) -> Func:
+        return cast(Func, self.exports[name])
 
     def _write_json(self, data: Any) -> int:
         """Write JSON to WASM memory, return OPA value address."""
         json_bytes = json.dumps(data).encode("utf-8")
-        addr = self.exports["opa_malloc"](self.store, len(json_bytes))
+        addr = self._export_func("opa_malloc")(self.store, len(json_bytes))
         self.memory.write(self.store, json_bytes, addr)
-        return self.exports["opa_json_parse"](self.store, addr, len(json_bytes))
+        return self._export_func("opa_json_parse")(self.store, addr, len(json_bytes))
 
     def _read_json(self, addr: int) -> Any:
         """Read OPA value as JSON from WASM memory."""
-        json_addr = self.exports["opa_json_dump"](self.store, addr)
+        json_addr = self._export_func("opa_json_dump")(self.store, addr)
         mem = self.memory.data_ptr(self.store)
         end = json_addr
         while mem[end] != 0:
@@ -94,9 +98,9 @@ class OPAPolicy:
         """Set the base data document."""
         with self._lock:
             self.store.set_fuel(DATA_LOADING_FUEL)
-            self.exports["opa_heap_ptr_set"](self.store, self._base_heap)
+            self._export_func("opa_heap_ptr_set")(self.store, self._base_heap)
             self._data_addr = self._write_json(data)
-            self._data_heap = self.exports["opa_heap_ptr_get"](self.store)
+            self._data_heap = self._export_func("opa_heap_ptr_get")(self.store)
 
     def evaluate(self, input_data: Dict[str, Any], entrypoint: int = 0) -> Any:
         """Evaluate policy with given input."""
@@ -107,15 +111,15 @@ class OPAPolicy:
             self.store.set_fuel(self.fuel_limit)
 
             heap_base = getattr(self, "_data_heap", self._base_heap)
-            self.exports["opa_heap_ptr_set"](self.store, heap_base)
+            self._export_func("opa_heap_ptr_set")(self.store, heap_base)
 
-            ctx = self.exports["opa_eval_ctx_new"](self.store)
-            self.exports["opa_eval_ctx_set_input"](self.store, ctx, self._write_json(input_data))
-            self.exports["opa_eval_ctx_set_data"](self.store, ctx, self._data_addr)
-            self.exports["opa_eval_ctx_set_entrypoint"](self.store, ctx, entrypoint)
+            ctx = self._export_func("opa_eval_ctx_new")(self.store)
+            self._export_func("opa_eval_ctx_set_input")(self.store, ctx, self._write_json(input_data))
+            self._export_func("opa_eval_ctx_set_data")(self.store, ctx, self._data_addr)
+            self._export_func("opa_eval_ctx_set_entrypoint")(self.store, ctx, entrypoint)
 
-            self.exports["eval"](self.store, ctx)
-            return self._read_json(self.exports["opa_eval_ctx_get_result"](self.store, ctx))
+            self._export_func("eval")(self.store, ctx)
+            return self._read_json(self._export_func("opa_eval_ctx_get_result")(self.store, ctx))
 
 
 # Module-level singleton

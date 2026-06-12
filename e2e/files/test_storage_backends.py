@@ -21,8 +21,6 @@ from nemo_platform.types.files import HuggingfaceStorageConfigParam, NGCStorageC
 # ---------------------------------------------------------------------------
 # NGC configuration
 # ---------------------------------------------------------------------------
-NGC_API_KEY_ENV = "NGC_API_KEY"
-
 NGC_ORG = "nvidia"
 NGC_TEAM = "nemo-microservices"
 NGC_TARGET = "nemo-microservices-quickstart"
@@ -39,26 +37,6 @@ HF_REPO_TYPE = "model"
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-def ngc_api_key() -> str:
-    """Return the NGC API key from the environment."""
-    key = os.environ.get(NGC_API_KEY_ENV)
-    assert key, f"{NGC_API_KEY_ENV} must be set"
-    return key
-
-
-@pytest.fixture
-def ngc_secret(sdk: NeMoPlatform, workspace: str, ngc_api_key: str) -> Iterator[str]:
-    """Create a secret containing the NGC API key, cleaned up after test."""
-    secret_name = f"e2e-ngc-key-{uuid.uuid4().hex[:8]}"
-    sdk.secrets.create(workspace=workspace, name=secret_name, value=ngc_api_key)
-    yield secret_name
-    try:
-        sdk.secrets.delete(workspace=workspace, name=secret_name)
-    except Exception:
-        pass  # Best-effort cleanup; the workspace is deleted anyway
 
 
 @pytest.fixture
@@ -133,7 +111,6 @@ def hf_fileset(sdk: NeMoPlatform, workspace: str, hf_secret: str) -> Iterator[st
 # ===================================================================
 
 
-@pytest.mark.skipif(not os.environ.get(NGC_API_KEY_ENV), reason=f"{NGC_API_KEY_ENV} not set")
 class TestNGCFileset:
     """Tests for NGC-backed filesets."""
 

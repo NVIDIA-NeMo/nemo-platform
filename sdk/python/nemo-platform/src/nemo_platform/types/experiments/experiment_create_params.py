@@ -26,14 +26,14 @@ __all__ = ["ExperimentCreateParams"]
 class ExperimentCreateParams(TypedDict, total=False):
     workspace: str
 
-    agent_name: Required[str]
-    """Name of the agent under test."""
-
-    agent_version: Required[str]
-    """Version of the agent under test."""
-
     dataset_name: Required[str]
     """Producer-supplied dataset name."""
+
+    experiment_group_id: Required[str]
+    """Entity id of the owning ExperimentGroup.
+
+    Required — the group must already exist.
+    """
 
     name: Required[str]
     """Producer-supplied, workspace-unique experiment id."""
@@ -43,12 +43,6 @@ class ExperimentCreateParams(TypedDict, total=False):
 
     description: str
     """Human-readable description."""
-
-    experiment_group_id: str
-    """Entity id of the owning ExperimentGroup; optional.
-
-    Soft reference, not validated.
-    """
 
     metadata: Dict[str, object]
     """Free-form producer metadata."""

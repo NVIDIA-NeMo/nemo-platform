@@ -30,9 +30,6 @@ class EvaluationContext(BaseModel):
     evaluation_id: str | None = None
     evaluation_sha: str | None = None
     evaluation_run_id: str | None = None
-    dataset_id: str | None = None
-    dataset_name: str | None = None
-    dataset_version: str | None = None
     test_case_id: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 

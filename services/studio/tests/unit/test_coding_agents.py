@@ -5,6 +5,7 @@
 
 import asyncio
 import json
+import logging
 import re
 import uuid
 from pathlib import Path
@@ -13,7 +14,7 @@ from typing import Any
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
-from nmp.studio import coding_agents, studio_links
+from nmp.studio import coding_agent_skills, coding_agents, studio_links
 from nmp.studio.config import StudioConfig
 from nmp.studio.service import StudioService
 
@@ -49,6 +50,57 @@ def service_client_with_feature_flags(
 def supported_destinations_from_description(description: str) -> set[str]:
     _, _, values = description.partition("Supported values: ")
     return set(values.removesuffix(".").split(", "))
+
+
+def _inference_source_dir(root: Path) -> Path:
+    source_dir = root / "packages" / "nemo_platform_ext" / "skills" / "inference"
+    source_dir.mkdir(parents=True)
+    return source_dir
+
+
+def _inference_skill(source_dir: Path) -> coding_agent_skills.Skill:
+    return coding_agent_skills.Skill(
+        name="inference",
+        description="Use NeMo Platform inference.",
+        version="0.1",
+        content="# Inference",
+        raw="# Inference",
+        source_dir=source_dir,
+        source_plugin="platform",
+        source_dist="nemo-platform-ext",
+    )
+
+
+def _expected_inference_skill_response(*, installed: bool) -> dict[str, Any]:
+    return {
+        "name": "inference",
+        "claude_name": "nemo-inference",
+        "description": "Use NeMo Platform inference.",
+        "source": "nemo-platform",
+        "source_path": "packages/nemo_platform_ext/skills/inference",
+        "install_path": ".claude/skills/nemo-inference/SKILL.md",
+        "installed": installed,
+    }
+
+
+def test_vendored_load_skills_from_root_loads_selected_root_without_registry_private_helper(tmp_path: Path):
+    source_dir = _inference_source_dir(tmp_path)
+    (source_dir / "SKILL.md").write_text(
+        "---\nname: inference\ndescription: Use NeMo Platform inference.\nversion: 2\n---\n# Inference\n",
+        encoding="utf-8",
+    )
+
+    loaded = coding_agent_skills.load_skills_from_root(
+        tmp_path / "packages" / "nemo_platform_ext" / "skills",
+        source_plugin="platform",
+        source_dist="nemo-platform-ext",
+    )
+
+    assert list(loaded) == ["inference"]
+    assert loaded["inference"].description == "Use NeMo Platform inference."
+    assert loaded["inference"].version == "2"
+    assert loaded["inference"].source_plugin == "platform"
+    assert loaded["inference"].source_dist == "nemo-platform-ext"
 
 
 def test_create_session_returns_uuid(service_client: TestClient):
@@ -182,6 +234,75 @@ def test_list_and_get_history_sessions(
         ],
     }
     assert session_id in coding_agents._initialized_sessions
+
+
+def test_list_claude_skills_returns_claude_install_metadata(
+    service_client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    source_dir = _inference_source_dir(tmp_path)
+    installed_skill = tmp_path / ".claude" / "skills" / "nemo-inference" / "SKILL.md"
+    installed_skill.parent.mkdir(parents=True)
+    installed_skill.write_text("# Installed")
+    skill = _inference_skill(source_dir)
+
+    monkeypatch.setattr(coding_agents, "SERVER_CWD", tmp_path)
+    monkeypatch.setattr(coding_agent_skills, "load_skills", lambda: {"inference": skill})
+
+    response = service_client.get("/v2/coding-agents/skills")
+
+    assert response.status_code == 200
+    assert response.json() == [_expected_inference_skill_response(installed=True)]
+
+
+def test_load_claude_skills_falls_back_on_duplicate_skill_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+):
+    skill = _inference_skill(_inference_source_dir(tmp_path))
+    fallback_called = False
+
+    def fallback() -> dict[str, coding_agent_skills.Skill]:
+        nonlocal fallback_called
+        fallback_called = True
+        return {"inference": skill}
+
+    monkeypatch.setattr(
+        coding_agent_skills,
+        "load_skills",
+        lambda: (_ for _ in ()).throw(coding_agent_skills.DuplicateSkillError("vendored drift")),
+    )
+    monkeypatch.setattr(coding_agent_skills, "_load_skills_from_preferred_entry_points", fallback)
+
+    with caplog.at_level(logging.WARNING):
+        loaded = coding_agent_skills._load_claude_skills()
+
+    assert loaded == {"inference": skill}
+    assert fallback_called
+    assert "vendored drift" in caplog.text
+
+
+def test_list_claude_skills_returns_500_when_fallback_also_fails(
+    service_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(
+        coding_agent_skills,
+        "load_skills",
+        lambda: (_ for _ in ()).throw(coding_agent_skills.DuplicateSkillError("registry drift")),
+    )
+    monkeypatch.setattr(
+        coding_agent_skills,
+        "_load_skills_from_preferred_entry_points",
+        lambda: (_ for _ in ()).throw(coding_agent_skills.DuplicateSkillError("fallback drift")),
+    )
+
+    response = service_client.get("/v2/coding-agents/skills")
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "fallback drift"
 
 
 def test_invalid_session_id_returns_400(service_client: TestClient):

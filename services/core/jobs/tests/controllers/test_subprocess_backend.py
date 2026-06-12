@@ -221,13 +221,13 @@ def test_build_command_uses_current_interpreter_for_python_module_commands() -> 
     executor = SubprocessExecutionProvider(
         provider="subprocess",
         profile="default",
-        command=["python", "-m", "nmp.evaluator.tasks.evaluate_metric"],
+        command=["python", "-m", "nemo_evaluator.tasks.evaluate"],
     )
 
     assert SubprocessJobBackend._build_command(executor, None) == [
         sys.executable,
         "-m",
-        "nmp.evaluator.tasks.evaluate_metric",
+        "nemo_evaluator.tasks.evaluate",
     ]
 
 
@@ -235,13 +235,13 @@ def test_build_command_uses_current_interpreter_for_python3_commands() -> None:
     executor = SubprocessExecutionProvider(
         provider="subprocess",
         profile="default",
-        command=["python3", "-m", "nmp.evaluator.tasks.evaluate_metric"],
+        command=["python3", "-m", "nemo_evaluator.tasks.evaluate"],
     )
 
     assert SubprocessJobBackend._build_command(executor, None) == [
         sys.executable,
         "-m",
-        "nmp.evaluator.tasks.evaluate_metric",
+        "nemo_evaluator.tasks.evaluate",
     ]
 
 
@@ -253,13 +253,13 @@ def test_build_command_prefers_virtual_env_python(tmp_path) -> None:
     executor = SubprocessExecutionProvider(
         provider="subprocess",
         profile="default",
-        command=["python", "-m", "nmp.evaluator.tasks.evaluate_metric"],
+        command=["python", "-m", "nemo_evaluator.tasks.evaluate"],
     )
 
     assert SubprocessJobBackend._build_command(executor, str(tmp_path / "venv")) == [
         str(venv_python),
         "-m",
-        "nmp.evaluator.tasks.evaluate_metric",
+        "nemo_evaluator.tasks.evaluate",
     ]
 
 

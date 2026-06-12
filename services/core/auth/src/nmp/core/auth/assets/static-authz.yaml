@@ -965,6 +965,13 @@ authz:
         scopes:
         - intake:read
         - platform:read
+    /apis/intake/v2/workspaces/{workspace}/spans/groups:
+      get:
+        permissions:
+        - intake.spans.list
+        scopes:
+        - intake:read
+        - platform:read
     /apis/intake/v2/workspaces/{workspace}/spans/{span_id}:
       get:
         permissions:

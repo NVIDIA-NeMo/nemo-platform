@@ -17,9 +17,8 @@ export interface StudioDataViewToolbarProps<DataType = unknown> {
   }) => ReactNode;
   searchBarProps?: ComponentProps<typeof DataView.SearchBar>;
   /**
-   * Additional content rendered inside the toolbar row, between the search bar and
-   * the filter toggle button. Use this to inject view-specific controls such as a
-   * sort dropdown.
+   * Additional content rendered inside the toolbar row, after the filter toggle button.
+   * Use this to inject view-specific controls such as a sort dropdown.
    */
   slotEnd?: ReactNode;
 }
@@ -66,8 +65,8 @@ export function StudioDataViewToolbar<DataType = unknown>({
             {...searchBarProps}
           />
         )}
-        {slotEnd}
         <FilterPanelToggle showFilters={showFilters} onToggle={onToggleFilters} />
+        {slotEnd}
       </DataView.Toolbar>
       <StudioAppliedFilters />
     </>

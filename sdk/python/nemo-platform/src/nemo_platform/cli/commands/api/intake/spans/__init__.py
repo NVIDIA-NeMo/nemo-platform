@@ -8,7 +8,7 @@ from typing import Annotated, Literal
 
 import typer
 
-from nemo_platform.cli.commands.api.intake.spans import evaluator_results
+from nemo_platform.cli.commands.api.intake.spans import evaluator_results, groups
 from nemo_platform.cli.core.api import build_kwargs, merge_filter_dict
 from nemo_platform.cli.core.code_generator import handle_code_generation
 from nemo_platform.cli.core.context import CLIContext
@@ -26,6 +26,7 @@ from nemo_platform.cli.core.types import (
 app = create_typer_app(name="spans", help="Manage spans")
 
 app.add_typer(evaluator_results.app, name="evaluator-results")
+app.add_typer(groups.app, name="groups")
 
 
 @app.command("list")

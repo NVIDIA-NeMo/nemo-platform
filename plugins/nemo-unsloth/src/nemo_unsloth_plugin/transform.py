@@ -21,7 +21,7 @@ import re
 import uuid
 from typing import TYPE_CHECKING
 
-from nmp.common.entities.utils import parse_entity_ref
+from nemo_platform_plugin.refs import parse_entity_ref
 from nmp.unsloth.platform_client import check_dataset_access, fetch_model_entity
 from nmp.unsloth.schemas import OutputResponse, UnslothJobOutput
 

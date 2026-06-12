@@ -19,7 +19,8 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import typer
-from data_designer.cli.utils.config_loader import load_config_builder
+from data_designer.cli.ui import print_error
+from data_designer.cli.utils.config_loader import ConfigLoadError, load_config_builder
 from data_designer.config.config_builder import DataDesignerConfigBuilder
 from data_designer.config.utils.constants import DEFAULT_NUM_RECORDS
 
@@ -57,10 +58,17 @@ def get_current_config_builder() -> DataDesignerConfigBuilder | None:
 
 
 @contextlib.contextmanager
-def _stash_builder(builder: DataDesignerConfigBuilder) -> Iterator[None]:
+def _spec_from_builder(config_source: str, num_records: int) -> Iterator[str]:
+    try:
+        builder = load_config_builder(config_source)
+    except ConfigLoadError as e:
+        print_error(f"Could not load config: {e}")
+        raise typer.Exit(code=1) from e
+
+    spec_json = _build_spec_from_builder(builder, num_records)
     token = _current_config_builder.set(builder)
     try:
-        yield
+        yield spec_json
     finally:
         _current_config_builder.reset(token)
 
@@ -110,12 +118,10 @@ def _replace_function_run(group: typer.Typer) -> None:
         save_results: bool = typer.Option(False, "--save-results", help=_SAVE_RESULTS_HELP),
         artifact_path: str | None = typer.Option(None, "--artifact-path", "-o", help=_ARTIFACT_PATH_HELP),
     ) -> None:
-        builder = load_config_builder(config_source)
-        spec_json = _build_spec_from_builder(builder, num_records)
-        with _stash_builder(builder):
+        with _spec_from_builder(config_source, num_records) as spec:
             original(
                 typer_ctx,
-                spec=spec_json,
+                spec=spec,
                 spec_file=None,
                 workspace=workspace,
                 non_interactive=non_interactive,
@@ -140,12 +146,10 @@ def _replace_function_submit(group: typer.Typer) -> None:
         save_results: bool = typer.Option(False, "--save-results", help=_SAVE_RESULTS_HELP),
         artifact_path: str | None = typer.Option(None, "--artifact-path", "-o", help=_ARTIFACT_PATH_HELP),
     ) -> None:
-        builder = load_config_builder(config_source)
-        spec_json = _build_spec_from_builder(builder, num_records)
-        with _stash_builder(builder):
+        with _spec_from_builder(config_source, num_records) as spec:
             original(
                 typer_ctx,
-                spec=spec_json,
+                spec=spec,
                 spec_file=None,
                 cluster=cluster,
                 base_url=base_url,
@@ -168,10 +172,8 @@ def _replace_job_run(group: typer.Typer) -> None:
             DEFAULT_NUM_RECORDS, "--num-records", "-n", help="Number of records to generate.", min=1
         ),
     ) -> None:
-        builder = load_config_builder(config_source)
-        spec_json = _build_spec_from_builder(builder, num_records)
-        with _stash_builder(builder):
-            original(typer_ctx, spec=spec_json, spec_file=None, config=None, config_file=None)
+        with _spec_from_builder(config_source, num_records) as spec:
+            original(typer_ctx, spec=spec, spec_file=None, config=None, config_file=None)
 
 
 def _replace_job_submit(group: typer.Typer) -> None:
@@ -193,12 +195,10 @@ def _replace_job_submit(group: typer.Typer) -> None:
         ),
         options_file: Path | None = typer.Option(None, "--options-file"),
     ) -> None:
-        builder = load_config_builder(config_source)
-        spec_json = _build_spec_from_builder(builder, num_records)
-        with _stash_builder(builder):
+        with _spec_from_builder(config_source, num_records) as spec:
             original(
                 typer_ctx,
-                spec=spec_json,
+                spec=spec,
                 spec_file=None,
                 options=options,
                 options_file=options_file,

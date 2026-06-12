@@ -20,24 +20,23 @@ from nmp.intake.spans.api.query_filters import (
     require_string_value,
 )
 from nmp.intake.spans.api.traces_schemas import Trace, TraceFilter, TraceMode, TraceSortField
-from nmp.intake.spans.domain import SpanAttributeFilter, SpanStatus, TraceListFilter
+from nmp.intake.spans.domain import SpanStatus, TraceListFilter
 from nmp.intake.spans.service import TraceNotFoundError
 from nmp.intake.spans.storage import utc_now
 
 router = APIRouter(dependencies=[Depends(require_workspace_access)])
 API_TAG = "Traces"
 DEFAULT_LIST_LOOKBACK_DAYS = 30
-ROOT_ATTRIBUTE_FILTER_FIELDS = frozenset(
+TRACE_INDEX_FILTER_FIELDS = frozenset(
     {
-        "evaluation_id",
-        "evaluation_sha",
-        "evaluation_run_id",
-        "dataset_id",
-        "dataset_name",
-        "dataset_version",
+        "experiment_id",
         "test_case_id",
     }
 )
+TRACE_INDEX_FILTER_ALIASES = {
+    "experiment_id": "experiment_id",
+    "test_case_id": "test_case_id",
+}
 
 
 @router.get(
@@ -48,8 +47,8 @@ ROOT_ATTRIBUTE_FILTER_FIELDS = frozenset(
     openapi_extra=generate_openapi_extra_params(
         filter_schema=TraceFilter,
         filter_description=(
-            "Filter root-span-backed traces by id, session_id, rolled-up status, root span started_at, "
-            "and root-span evaluation context fields."
+            "Filter root-span-backed traces by id, session_id, root status, root span started_at, "
+            "experiment_id, and test_case_id."
         ),
     ),
 )
@@ -120,20 +119,30 @@ def _trace_filter(workspace: str, parsed: ParsedFilter) -> TraceListFilter:
             filters.started_at_gte = require_datetime_value(comparison)
         elif comparison.field == "started_at" and comparison.operator == FilterOperator.LTE:
             filters.started_at_lte = require_datetime_value(comparison)
-        elif comparison.field in ROOT_ATTRIBUTE_FILTER_FIELDS:
-            filters.root_attribute_filters.append(
-                SpanAttributeFilter(
-                    field=comparison.field,
-                    operator=comparison.operator.value,
-                    value=require_string_value(comparison),
+        elif comparison.field in TRACE_INDEX_FILTER_FIELDS:
+            if comparison.operator != FilterOperator.EQ:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Unsupported trace filter: {comparison.field} {comparison.operator.value}",
                 )
-            )
+            _set_trace_index_filter(filters, comparison.field, require_string_value(comparison))
         else:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Unsupported trace filter: {comparison.field} {comparison.operator.value}",
             )
     return filters
+
+
+def _set_trace_index_filter(filters: TraceListFilter, public_field: str, value: str) -> None:
+    field = TRACE_INDEX_FILTER_ALIASES[public_field]
+    current_value = getattr(filters, field)
+    if current_value is not None and current_value != value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Conflicting trace filters for {field}",
+        )
+    setattr(filters, field, value)
 
 
 def _apply_default_time_bound(filters: TraceListFilter) -> None:

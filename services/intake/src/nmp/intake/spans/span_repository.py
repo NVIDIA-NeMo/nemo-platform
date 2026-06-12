@@ -5,12 +5,13 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
 from nmp.common.api.common import PaginatedResult
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
-from nmp.intake.spans.domain import IntakeSpan, SpanListFilter
+from nmp.intake.spans.domain import IntakeSpan, SpanGroup, SpanListFilter
 from nmp.intake.spans.span_attribute_catalog import where_clause
 from nmp.intake.spans.storage import (
     dict_to_row,
@@ -47,7 +48,19 @@ SPAN_SORT_COLUMNS = {
     "started_at": "start_time",
 }
 
+SPAN_GROUP_COLUMN_FIELDS = {
+    "trace_id": "trace_id",
+    "session_id": "session_id",
+}
+
 _ZERO_DATETIME = datetime.fromtimestamp(0, tz=timezone.utc)
+
+
+@dataclass(frozen=True)
+class _GroupExpression:
+    select_sql: str
+    group_sql: str
+    required_sql: str
 
 
 class SpanRepository:
@@ -90,6 +103,56 @@ class SpanRepository:
             data=spans,
             pagination=make_pagination(
                 page=page, page_size=page_size, current_page_size=len(spans), total_results=total_results
+            ),
+        )
+
+    async def list_span_groups(
+        self,
+        *,
+        filters: SpanListFilter,
+        group_by: list[str],
+        page: int,
+        page_size: int,
+        sort: str,
+    ) -> PaginatedResult[SpanGroup]:
+        group_expressions = _group_expressions(group_by)
+        where_sql, parameters = _span_where(filters)
+
+        required_sql = " AND ".join(f"({expression.required_sql})" for expression in group_expressions)
+        if required_sql:
+            where_sql = f"{where_sql} AND {required_sql}"
+
+        table = self._client.table("spans")
+        select_sql = ", ".join(expression.select_sql for expression in group_expressions)
+        group_sql = ", ".join(expression.group_sql for expression in group_expressions)
+        grouped_sql = f"""
+            SELECT {select_sql}, count() AS span_count
+            FROM {table} FINAL
+            WHERE {where_sql}
+            GROUP BY {group_sql}
+        """
+
+        total_result = await self._client.query(
+            f"SELECT count() FROM ({grouped_sql}) AS span_groups",
+            parameters=parameters,
+        )
+        total_results = int(total_result.result_rows[0][0])
+        offset = (page - 1) * page_size
+        rows_result = await self._client.query(
+            f"""
+            SELECT *
+            FROM ({grouped_sql}) AS span_groups
+            ORDER BY {_group_order_by(sort, group_by)}
+            LIMIT %(limit)s OFFSET %(offset)s
+            """,
+            parameters={**parameters, "limit": page_size, "offset": offset},
+        )
+        rows = result_rows(rows_result)
+        groups = [_row_to_group(row, group_by=group_by) for row in rows]
+        return PaginatedResult(
+            data=groups,
+            pagination=make_pagination(
+                page=page, page_size=page_size, current_page_size=len(groups), total_results=total_results
             ),
         )
 
@@ -149,6 +212,23 @@ def _span_where(filters: SpanListFilter) -> tuple[str, dict[str, Any]]:
     return " AND ".join(clauses), parameters
 
 
+def _group_expressions(group_by: list[str]) -> list[_GroupExpression]:
+    if not group_by:
+        raise ValueError("At least one span group-by field is required.")
+    return [_group_expression(field) for field in group_by]
+
+
+def _group_expression(field: str) -> _GroupExpression:
+    if field in SPAN_GROUP_COLUMN_FIELDS:
+        column = SPAN_GROUP_COLUMN_FIELDS[field]
+        return _GroupExpression(
+            select_sql=f"{column} AS {field}",
+            group_sql=column,
+            required_sql=f"{column} != ''",
+        )
+    raise ValueError(f"Unsupported span group-by field: {field}")
+
+
 def _order_by(sort: str) -> str:
     direction = "DESC" if sort.startswith("-") else "ASC"
     field = sort.removeprefix("-")
@@ -156,6 +236,17 @@ def _order_by(sort: str) -> str:
     if column is None:
         raise ValueError(f"Unsupported span sort field: {field}")
     return f"{column} {direction}, id ASC"
+
+
+def _group_order_by(sort: str, group_by: list[str]) -> str:
+    direction = "DESC" if sort.startswith("-") else "ASC"
+    field = sort.removeprefix("-")
+    if field != "span_count":
+        raise ValueError(f"Unsupported span group sort field: {field}")
+    group_sort = ", ".join(f"{field} ASC" for field in group_by)
+    if group_sort:
+        return f"span_count {direction}, {group_sort}"
+    return f"span_count {direction}"
 
 
 def _span_to_row(span: IntakeSpan) -> dict[str, Any]:
@@ -189,6 +280,13 @@ def _rows_to_spans(rows: list[dict[str, Any]]) -> list[IntakeSpan]:
         for row in rows
     }
     return [_row_to_span(row, id_by_external=id_by_external) for row in rows]
+
+
+def _row_to_group(row: dict[str, Any], *, group_by: list[str]) -> SpanGroup:
+    return SpanGroup(
+        group={field: str(row[field]) for field in group_by},
+        span_count=int(row["span_count"]),
+    )
 
 
 def _row_to_span(

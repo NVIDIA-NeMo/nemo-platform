@@ -5,6 +5,24 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 
 import { useInferredDatasetSchema } from './index';
 
+vi.mock('hyparquet', () => ({
+  parquetRead: vi.fn(
+    async (options: {
+      rowStart?: number;
+      rowEnd?: number;
+      onComplete?: (rows: Record<string, unknown>[]) => void;
+    }) => {
+      const allRows: Record<string, unknown>[] = [
+        { id: 1n, label: 'alice' },
+        { id: 2n, label: 'bob' },
+      ];
+      const start = options.rowStart ?? 0;
+      const end = options.rowEnd ?? allRows.length;
+      options.onComplete?.(allRows.slice(start, end));
+    }
+  ),
+}));
+
 function makeJsonlFile(name: string, rows: Array<Record<string, unknown>>): File {
   const text = rows.map((r) => JSON.stringify(r)).join('\n');
   return new File([text], name, { type: 'application/x-ndjson' });
@@ -61,12 +79,33 @@ describe('useInferredDatasetSchema', () => {
 
   it('skips files with unsupported extensions', async () => {
     const supported = makeJsonlFile('data.jsonl', [{ a: 1 }]);
-    const csv = new File(['col\n1\n'], 'data.csv', { type: 'text/csv' });
-    const { result } = renderHook(() => useInferredDatasetSchema([supported, csv]));
+    const unknown = new File(['data'], 'data.feather', { type: 'application/octet-stream' });
+    const { result } = renderHook(() => useInferredDatasetSchema([supported, unknown]));
 
     await waitFor(() => expect(result.current.isInferring).toBe(false));
     const meta = result.current.metadata!;
     // Only the .jsonl was inferred -> single inline schema.
+    expect(meta.schema_defs).toEqual({});
+    expect(meta.schemas_by_path).toEqual({});
+  });
+
+  it('infers a JSON Schema from the first row of a CSV file', async () => {
+    const csvContent = 'name,score,active\nalice,42,true\nbob,7,false\n';
+    const file = new File([csvContent], 'data.csv', { type: 'text/csv' });
+    const { result } = renderHook(() => useInferredDatasetSchema([file]));
+
+    await waitFor(() => expect(result.current.isInferring).toBe(false));
+    expect(result.current.metadata).not.toBeNull();
+    const meta = result.current.metadata!;
+    // CSV columns all parse as strings via papaparse header mode.
+    expect(meta.schema).toMatchObject({
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        score: { type: 'string' },
+        active: { type: 'string' },
+      },
+    });
     expect(meta.schema_defs).toEqual({});
     expect(meta.schemas_by_path).toEqual({});
   });
@@ -104,6 +143,26 @@ describe('useInferredDatasetSchema', () => {
 
     act(() => result.current.setText('{ "type": "foobar" }'));
     expect(result.current.validation.valid).toBe(false);
+  });
+
+  it('infers a JSON Schema from the first row of a Parquet file', async () => {
+    // The hyparquet mock (top of file) returns [{ id: 1n, label: 'alice' }, ...].
+    // BigInt values are coerced to number before inferJsonSchema sees them.
+    const file = new File([], 'data.parquet', { type: 'application/octet-stream' });
+    const { result } = renderHook(() => useInferredDatasetSchema([file]));
+
+    await waitFor(() => expect(result.current.isInferring).toBe(false));
+    expect(result.current.metadata).not.toBeNull();
+    const meta = result.current.metadata!;
+    expect(meta.schema).toMatchObject({
+      type: 'object',
+      properties: {
+        id: { type: 'integer' },
+        label: { type: 'string' },
+      },
+    });
+    expect(meta.schema_defs).toEqual({});
+    expect(meta.schemas_by_path).toEqual({});
   });
 
   it('merges new files with existing metadata, preserving the existing default', async () => {

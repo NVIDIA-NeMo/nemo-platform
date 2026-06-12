@@ -1,0 +1,54 @@
+#######
+# Guardrails Callout server build targets.  Please use `docker buildx bake` to build.
+#######
+
+#deps: base container for both build and test
+FROM root-golang-base AS deps
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+
+
+#build: build the Go binaries
+FROM deps AS build
+ARG TARGETOS TARGETARCH
+# Build the Go application, creating a statically linked binary.
+# CGO_ENABLED=0 is important for creating a pure Go binary without C dependencies.
+#   This allows it to run in a minimal 'scratch' image.
+# GOOS=$TARGETOS GOARCH=$TARGETARCH is important for cross platform builds where the build platform might not be the same as the target platform.
+#   In this case, the target platform is the source of truth for building the Go binaries
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/main ./cmd/server/main.go
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/mock-server ./cmd/mock-server/main.go
+
+
+#gen-certs: Generate TLS certs. Since these certs are self-signed and internal, clients cannot verify them.
+# these are mainly for running the service in GCP, where GCP ALB's don't verify certs, but do require TLS for encryption.
+FROM alpine:3.22 AS gen-certs
+RUN apk add --no-cache openssl
+RUN mkdir -p /out/ssl_creds && \
+    openssl req -x509 -newkey rsa:4096 -nodes -days 365 \
+    -keyout /out/ssl_creds/server.key -out /out/ssl_creds/server.crt \
+    -subj "/CN=guardrails-ext-proc-service" \
+    -addext "subjectAltName = DNS:guardrails-ext-proc-service,DNS:localhost"
+
+#test:
+FROM deps AS test
+RUN  go test -race -count=1 ./...
+
+#docker: final minimal image for server
+FROM scratch AS docker
+WORKDIR /
+COPY --from=build /out/main /main
+COPY --from=deps /app/config.yaml /config.yaml
+COPY --from=gen-certs /out/ssl_creds /ssl_creds
+ENV CONFIG_PATH=/config.yaml
+EXPOSE 8443 8181
+ENTRYPOINT [ "/main" ]
+
+#mock-llm: for simulating fake chat completion chunks
+FROM scratch AS mock-llm
+WORKDIR /
+COPY --from=build /out/mock-server /mock-server
+EXPOSE 8000
+ENTRYPOINT [ "/mock-server" ]

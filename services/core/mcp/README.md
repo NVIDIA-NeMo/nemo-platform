@@ -101,7 +101,6 @@ This service follows NeMo Platform v2 patterns:
 Future expansion will support mounting service-specific MCP servers from:
 
 - `nmp.guardrails.mcp`
-- `nmp.evaluator.mcp`
 - `nemo_customizer` plugin MCP tools (when enabled)
 - etc.
 
