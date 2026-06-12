@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { ControlledDatasetFileSelect } from '@nemo/common/src/components/DatasetFileSelect/ControlledDatasetFileSelect';
 import type { AcceptedFileType } from '@nemo/common/src/components/DatasetFileSelect/DatasetFileSelect';
 import { parseFilesetLocation } from '@nemo/common/src/components/DatasetFileSelect/parseFilesetLocation';
+import { parseFilesetUrl } from '@nemo/common/src/components/DatasetFileSelect/utils';
 import { Stack } from '@nvidia/foundations-react-core';
 import { AgentBlockingInputFrame } from '@studio/components/agents/AgentBlockingInput/AgentBlockingInputFrame';
 import type {
@@ -70,6 +71,7 @@ export const FilesetFileBlockingInput: FC<FilesetFileBlockingInputBaseProps> = (
     control,
     handleSubmit,
     setError,
+    watch,
     formState: { errors },
   } = useForm<FilesetFileFormData>({
     defaultValues: { datasetFile: null },
@@ -77,6 +79,17 @@ export const FilesetFileBlockingInput: FC<FilesetFileBlockingInputBaseProps> = (
     disabled: isSubmitting,
   });
   const acceptedFileTypes = getAcceptedFileTypes(input, defaultAcceptedFileTypes);
+  const datasetFile = watch('datasetFile');
+
+  const submitSelection = (filesetRef: string) => {
+    const parsed = parseFilesetLocation(filesetRef);
+    if (!parsed?.name.trim() || !parsed.objectPath.trim()) return;
+
+    void onSubmit({
+      displayText: `${selectionDisplayLabel}: ${parsed.name}/${parsed.objectPath}`,
+      value: toValue({ name: parsed.name, objectPath: parsed.objectPath }),
+    });
+  };
 
   const submit = handleSubmit((data) => {
     const parsed =
@@ -98,6 +111,7 @@ export const FilesetFileBlockingInput: FC<FilesetFileBlockingInputBaseProps> = (
       request={request}
       secondaryActions={secondaryActions}
       secondaryActionLabel={secondaryActionLabel}
+      submitDisabled={!datasetFile}
       submitLabel={submitLabel}
     >
       <Stack className="max-h-[45vh] overflow-y-auto pr-density-sm">
@@ -113,6 +127,12 @@ export const FilesetFileBlockingInput: FC<FilesetFileBlockingInputBaseProps> = (
           workspace={workspace}
           inline
           autoCommit
+          onFileSelected={(file) => {
+            if (isSubmitting || !file?.url) return;
+            const parsed = parseFilesetUrl(file.url);
+            if (!parsed?.name.trim() || !parsed.path.trim()) return;
+            submitSelection(`${parsed.workspace}/${parsed.name}#${parsed.path}`);
+          }}
           formFieldProps={{
             slotError: errors.datasetFile?.message,
           }}
