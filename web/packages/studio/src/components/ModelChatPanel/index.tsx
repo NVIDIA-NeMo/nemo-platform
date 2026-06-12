@@ -81,64 +81,46 @@ export const ModelChatPanel: FC<ModelChatPanelProps> = ({
       data-model-panel
       className="relative flex h-full min-w-[360px] flex-1 flex-col rounded-lg border border-base bg-surface-raised"
     >
-      {/* Header — role label (compare mode) OR per-panel CTAs (single mode) */}
-      {panel.isSinglePanel ? (
+      {/* Role label + panel actions — only in compare mode (multiple panels). */}
+      {!panel.isSinglePanel && (
         <div className="flex shrink-0 items-center gap-2 border-b border-base px-3 py-2">
-          <div className="flex-1">
-            <ModelSelectV2
-              value={selectedModel}
-              onValueChange={handleModelChange}
-              groups={modelGroups}
-              loading={isLoadingModels}
-              placeholder={isLoadingModels ? 'Loading models…' : 'Select a model…'}
-              hideAdapters
-              fullWidth
-              disabled={panel.locked}
-            />
-          </div>
-          <ParamsPopover value={inferenceParams} onChange={setInferenceParams} />
-        </div>
-      ) : (
-        <>
-          <div className="flex shrink-0 items-center gap-2 border-b border-base px-3 py-2">
-            <span className={`h-2 w-2 rounded-full ${PANEL_ROLE_DOT_CLASS[panel.roleColor]}`} />
-            <Text kind="label/bold/md">{panel.roleLabel}</Text>
-            <div className="ml-auto flex items-center gap-1">
+          <span className={`h-2 w-2 rounded-full ${PANEL_ROLE_DOT_CLASS[panel.roleColor]}`} />
+          <Text kind="label/bold/md">{panel.roleLabel}</Text>
+          <div className="ml-auto flex items-center gap-1">
+            <button
+              onClick={() => onToggle(panel.id)}
+              className="text-fg-subdued hover:text-fg-base cursor-pointer rounded p-1.5 hover:bg-surface-sunken"
+              aria-label={`Collapse ${panel.roleLabel}`}
+            >
+              <Minimize2 size={16} />
+            </button>
+            {!hideRemove && (
               <button
-                onClick={() => onToggle(panel.id)}
+                onClick={() => onRemove(panel.id)}
                 className="text-fg-subdued hover:text-fg-base cursor-pointer rounded p-1.5 hover:bg-surface-sunken"
-                aria-label={`Collapse ${panel.roleLabel}`}
+                aria-label={`Remove ${panel.roleLabel}`}
               >
-                <Minimize2 size={16} />
+                <Trash2 size={16} />
               </button>
-              {!hideRemove && (
-                <button
-                  onClick={() => onRemove(panel.id)}
-                  className="text-fg-subdued hover:text-fg-base cursor-pointer rounded p-1.5 hover:bg-surface-sunken"
-                  aria-label={`Remove ${panel.roleLabel}`}
-                >
-                  <Trash2 size={16} />
-                </button>
-              )}
-            </div>
+            )}
           </div>
-          <div className="flex shrink-0 items-center gap-2 border-b border-base px-3 py-2">
-            <div className="flex-1">
-              <ModelSelectV2
-                value={selectedModel}
-                onValueChange={handleModelChange}
-                groups={modelGroups}
-                loading={isLoadingModels}
-                placeholder={isLoadingModels ? 'Loading models…' : 'Select a model…'}
-                hideAdapters
-                fullWidth
-                disabled={panel.locked}
-              />
-            </div>
-            <ParamsPopover value={inferenceParams} onChange={setInferenceParams} />
-          </div>
-        </>
+        </div>
       )}
+      {/* Model picker + inference params — shared across single and compare modes. */}
+      <div className="flex shrink-0 items-center gap-2 border-b border-base px-3 py-2">
+        <div className="flex-1">
+          <ModelSelectV2
+            value={selectedModel}
+            onValueChange={handleModelChange}
+            groups={modelGroups}
+            loading={isLoadingModels}
+            hideAdapters
+            fullWidth
+            disabled={panel.locked}
+          />
+        </div>
+        <ParamsPopover value={inferenceParams} onChange={setInferenceParams} />
+      </div>
 
       {/* Chat surface */}
       <div className="flex min-h-0 flex-1 flex-col px-3 pb-1">

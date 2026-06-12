@@ -142,7 +142,7 @@ export const DatasetSelect: FC<Props> = ({ project, disabled, error }) => {
           ]}
           value={selectedDatasetOption}
           onValueChange={handleDatasetSelect}
-          placeholder="Select a Dataset"
+          placeholder="Select a dataset"
         />
       )}
     </FormField>

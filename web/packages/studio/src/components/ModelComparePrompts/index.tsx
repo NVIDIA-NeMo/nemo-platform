@@ -192,6 +192,10 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
   const [sampleMethod, setSampleMethod] = useState<FileSampleMethod>('random');
   const [expandedCell, setExpandedCell] = useState<ExpandedCellState | null>(null);
   const [pickerValue, setPickerValue] = useState<string | undefined>(undefined);
+  // Bumped to remount the dataset Select after the "Select from dataset file..."
+  // sentinel is chosen, so the action can be retriggered (re-selecting the same
+  // option otherwise fires no change event).
+  const [pickerSelectKey, setPickerSelectKey] = useState(0);
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [isFilesetPickerOpen, setIsFilesetPickerOpen] = useState(false);
@@ -449,6 +453,7 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
       if (value === UPLOADED_FILE_VALUE) return;
       if (value === FILESET_PICKER_VALUE) {
         setIsFilesetPickerOpen(true);
+        setPickerSelectKey((k) => k + 1);
         return;
       }
       const sample = SAMPLE_DATASETS.find((s) => s.id === value);
@@ -504,7 +509,7 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
     if (uploadedFileName) {
       items.push({ value: UPLOADED_FILE_VALUE, children: uploadedFileName });
     }
-    items.push({ value: FILESET_PICKER_VALUE, children: 'Select File' });
+    items.push({ value: FILESET_PICKER_VALUE, children: 'Select from dataset file...' });
     return items;
   }, [uploadedFileName]);
 
@@ -590,10 +595,14 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
                   className={`${hasPrompts ? 'border-b ' : ''}border-r border-base px-3 py-2 align-top`}
                 >
                   <Select
+                    // Remount after the picker sentinel is chosen so its internal
+                    // selection resets to the real value — otherwise re-clicking
+                    // "Select from dataset file..." is a no-op (already selected).
+                    key={pickerSelectKey}
                     items={datasetItems}
                     value={pickerValue}
                     onValueChange={handleDatasetSelect}
-                    placeholder="Select File"
+                    placeholder="Select prompts"
                     disabled={isRunning}
                     className="w-full"
                   />
@@ -605,7 +614,7 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
                   {fileResult && !promptKeyAutoDetected && fileResult.availableKeys.length > 0 && (
                     <Flex align="center" gap="density-sm" className="mt-2">
                       <Text kind="label/regular/sm" className="shrink-0 text-fg-subdued">
-                        Prompt column
+                        Prompt Field
                       </Text>
                       <Select
                         items={fileResult.availableKeys.map((k) => ({
@@ -614,7 +623,7 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
                         }))}
                         value={fileResult.keyMapping.promptKey ?? undefined}
                         onValueChange={handlePromptKeyChange}
-                        placeholder="Select column"
+                        placeholder="Select a field"
                         disabled={isRunning}
                         size="small"
                         className="w-full"
@@ -707,8 +716,8 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
             {hasPrompts && anyAverages && (
               <tfoot className="sticky bottom-0 z-10 bg-surface-raised">
                 <tr>
-                  <td className="border-t-2 border-r border-base px-3 py-2 align-middle font-bold">
-                    Average
+                  <td className="border-t-2 border-r border-base px-3 py-2 align-middle">
+                    <Text kind="label/bold/md">Average</Text>
                   </td>
                   {models.map((m, idx) => {
                     const avg = averagesByModelId[m.id];
@@ -838,7 +847,6 @@ const ModelColumnSelect: FC<{
       groups={modelGroups}
       loading={isLoadingModels}
       disabled={disabled}
-      placeholder={isLoadingModels ? 'Loading models...' : 'Select model...'}
       hideAdapters
       fullWidth
     />
