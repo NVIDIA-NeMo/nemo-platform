@@ -115,7 +115,7 @@ ncclTest:
       tag: "latest"
   worker:
     image:
-      repository: nvcr.io/nvidia/nemo/nmp-automodel-training
+      repository: nvcr.io/nvidia/nemo-platform/nmp-automodel-training
       tag: ""
     resources:
       requests:
@@ -234,7 +234,7 @@ basePlatformConfig: |
     base_url: "{{ printf "http://%s:%s" (include "nmp-api.api-servicename" . ) (toString .Values.api.service.port) }}"
 
     # Image configuration for launching containers via the platform
-    image_registry: nvcr.io/nvidia/nemo
+    image_registry: nvcr.io/nvidia/nemo-platform
     image_tag: {{ .Chart.AppVersion | quote }}
     image_pull_secrets:
       {{ include "nemo-common.imagepullsecrets" . | nindent 8 }}
@@ -462,7 +462,7 @@ api:
   # @default -- This object has the following default values for the image configuration.
   image:
     # -- The registry where the NeMo Platform image is located.
-    repository: nvcr.io/nvidia/nemo/nmp-api
+    repository: nvcr.io/nvidia/nemo-platform/nmp-api
     # -- The image pull policy determining when to pull new images.
     pullPolicy: IfNotPresent
     # -- The image tag to use.
@@ -647,7 +647,7 @@ core:
   # @default -- This object has the following default values for the image configuration.
   image:
     # -- The registry where the NeMo Platform image is located.
-    repository: nvcr.io/nvidia/nemo/nmp-api
+    repository: nvcr.io/nvidia/nemo-platform/nmp-api
     # -- The image pull policy determining when to pull new images.
     pullPolicy: IfNotPresent
     # -- The image tag to use.

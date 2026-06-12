@@ -22,7 +22,7 @@ Documentation can be found at: https://docs.nvidia.com/nemo/microservices/.
 | api.extraArgs | list | `[]` | Additional arguments to pass to the Platform API service |
 | api.image | object | This object has the following default values for the image configuration. | Container image configuration for the api deployment. |
 | api.image.pullPolicy | string | `"IfNotPresent"` | The image pull policy determining when to pull new images. |
-| api.image.repository | string | `"nvcr.io/nvidia/nemo/nmp-api"` | The registry where the NeMo Platform image is located. |
+| api.image.repository | string | `"nvcr.io/nvidia/nemo-platform/nmp-api"` | The registry where the NeMo Platform image is located. |
 | api.image.tag | string | `""` | The image tag to use. |
 | api.livenessProbe | object | This object has the following default values for the liveness probe configuration. | Liveness probe configuration for the api service. |
 | api.livenessProbe.failureThreshold | int | `3` | The failure threshold for the liveness probe. |
@@ -111,7 +111,7 @@ Documentation can be found at: https://docs.nvidia.com/nemo/microservices/.
 | core.enabled | bool | `true` | Specifies whether to enable the core deployment. |
 | core.image | object | This object has the following default values for the image configuration. | Container image configuration for the core deployment. |
 | core.image.pullPolicy | string | `"IfNotPresent"` | The image pull policy determining when to pull new images. |
-| core.image.repository | string | `"nvcr.io/nvidia/nemo/nmp-api"` | The registry where the NeMo Platform image is located. |
+| core.image.repository | string | `"nvcr.io/nvidia/nemo-platform/nmp-api"` | The registry where the NeMo Platform image is located. |
 | core.image.tag | string | `""` | The image tag to use. |
 | core.jobs | object | This object has the following default values for the jobs service account configuration. | Service account configuration for pods created by the jobs controller (Kubernetes/Volcano job pods). |
 | core.jobs.serviceAccount.annotations | object | `{}` | Annotations to add to the service account. |
@@ -222,7 +222,7 @@ Documentation can be found at: https://docs.nvidia.com/nemo/microservices/.
 | multinodeNetworking.oci.enabled | bool | `false` | Enable OCI-specific Kyverno policy for InfiniBand/SR-IOV configuration |
 | multinodeNetworking.oci.rdmaDevicesPerGPU | int | `8` | Number of RDMA devices (mlnxnics) to request per GPU |
 | nameOverride | string | `""` | Overrides for name and fullname templates |
-| ncclTest | object | `{"configMapCleanupJob":{"image":{"repository":"bitnami/kubectl","tag":"latest"}},"gpuNodeLabelKey":"nvidia.com/gpu.present","gpuNodeLabelValue":"true","gpuResourceKey":"nvidia.com/gpu","gpusPerNode":1,"iterations":3,"orchestrator":{"image":{"repository":"docker.io/library/python","tag":"3.12-slim"},"resources":{"limits":{"cpu":"1","memory":"512Mi"},"requests":{"cpu":"100m","memory":"256Mi"}}},"validation":{"minBandwidthMBpsAt1024MB":8000},"waitTimeoutSeconds":900,"worker":{"image":{"repository":"nvcr.io/nvidia/nemo/nmp-automodel-training","tag":""},"resources":{"limits":{"cpu":"8","memory":"16Gi"},"requests":{"cpu":"4","memory":"8Gi"}}}}` | NCCL chart test (`helm test`): multi-node allreduce check. Templates use helm.sh/hook: test — they are not created on install/upgrade, only when you run helm test. Requires nodes labeled with gpuNodeLabelKey/gpuNodeLabelValue (default NFD / GPU operator style). See https://helm.sh/docs/topics/chart_tests/ |
+| ncclTest | object | `{"configMapCleanupJob":{"image":{"repository":"bitnami/kubectl","tag":"latest"}},"gpuNodeLabelKey":"nvidia.com/gpu.present","gpuNodeLabelValue":"true","gpuResourceKey":"nvidia.com/gpu","gpusPerNode":1,"iterations":3,"orchestrator":{"image":{"repository":"docker.io/library/python","tag":"3.12-slim"},"resources":{"limits":{"cpu":"1","memory":"512Mi"},"requests":{"cpu":"100m","memory":"256Mi"}}},"validation":{"minBandwidthMBpsAt1024MB":8000},"waitTimeoutSeconds":900,"worker":{"image":{"repository":"nvcr.io/nvidia/nemo-platform/nmp-automodel-training","tag":""},"resources":{"limits":{"cpu":"8","memory":"16Gi"},"requests":{"cpu":"4","memory":"8Gi"}}}}` | NCCL chart test (`helm test`): multi-node allreduce check. Templates use helm.sh/hook: test — they are not created on install/upgrade, only when you run helm test. Requires nodes labeled with gpuNodeLabelKey/gpuNodeLabelValue (default NFD / GPU operator style). See https://helm.sh/docs/topics/chart_tests/ |
 | ncclTest.configMapCleanupJob | object | `{"image":{"repository":"bitnami/kubectl","tag":"latest"}}` | Post-test hook Job (after orchestrator): kubectl deletes the scripts ConfigMap (helm.sh/hook-weight 5). |
 | ncclTest.gpuNodeLabelKey | string | `"nvidia.com/gpu.present"` | Node label used to discover GPU workers (must match your cluster). |
 | ncclTest.gpuResourceKey | string | `"nvidia.com/gpu"` | Resource name for GPU capacity on worker pods (e.g. nvidia.com/gpu or a MIG device). |

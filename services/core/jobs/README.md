@@ -56,7 +56,7 @@ from nemo_platform_plugin.jobs.api_factory import (
 from pydantic_settings import BaseSettings
 
 class MyFunctionalMicroserviceSettings(BaseSettings):
-    job_image: str = Field(default="nvcr.io/nvidia/nemo/my-functional-microservice:v0.0.1")
+    job_image: str = Field(default="nvcr.io/nvidia/nemo-platform/my-functional-microservice:v0.0.1")
     job_command: list[str] = Field(default=[])
     job_args: list[str] = Field(default=["--target", "default"])
     default_job_resource_cpu_request: str = Field(default="1")
@@ -225,7 +225,7 @@ curl http://localhost:8080/v1/jobs/job-some-random-id
           "provider": "cpu",
           "profile": "default",
           "container": {
-            "image": "nvcr.io/nvidia/nemo/my-functional-microservice:v0.0.1",
+            "image": "nvcr.io/nvidia/nemo-platform/my-functional-microservice:v0.0.1",
             "command": [],
             "args": ["--target", "default"]
           },
@@ -251,7 +251,7 @@ curl http://localhost:8080/v1/jobs/job-some-random-id
           "provider": "cpu",
           "profile": "default",
           "container": {
-            "image": "nvcr.io/nvidia/nemo/my-functional-microservice:v0.0.1"
+            "image": "nvcr.io/nvidia/nemo-platform/my-functional-microservice:v0.0.1"
           },
           "resources": {
             "requests": {
