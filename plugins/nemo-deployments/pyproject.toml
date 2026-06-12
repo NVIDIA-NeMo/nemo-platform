@@ -14,6 +14,9 @@ dependencies = [
 [project.entry-points."nemo.services"]
 deployments = "nemo_deployments_plugin.service:DeploymentsService"
 
+[project.entry-points."nemo.controllers"]
+deployments = "nemo_deployments_plugin.controller:DeploymentsController"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

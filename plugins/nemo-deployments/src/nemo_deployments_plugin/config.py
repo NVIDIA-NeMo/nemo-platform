@@ -8,13 +8,37 @@ from __future__ import annotations
 from typing import Any, ClassVar
 
 from nemo_platform_plugin.config import NemoConfig
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ExecutorConfigEntry(BaseModel):
     name: str = Field(description="Unique executor name used by Deployment.executor.")
     backend: str = Field(description="Backend type key registered in BACKEND_CLASSES.")
     config: dict[str, Any] = Field(default_factory=dict)
+
+
+class ControllerConfig(BaseModel):
+    """Configuration for the deployments reconcile controller."""
+
+    interval_seconds: int = Field(default=5, gt=0, description="Reconciliation loop interval in seconds.")
+    drift_recovery_max_attempts: int = Field(default=5, ge=0, description="Max drift recovery attempts before FAILED.")
+    drift_recovery_base_delay_seconds: int = Field(
+        default=5, ge=0, description="Base delay for drift recovery backoff."
+    )
+    drift_recovery_max_delay_seconds: int = Field(
+        default=300, ge=0, description="Max delay cap for drift recovery backoff."
+    )
+    orphan_cleanup_every_n_cycles: int = Field(
+        default=6,
+        ge=0,
+        description="Run orphan substrate cleanup every N reconcile cycles (0 disables).",
+    )
+
+    @model_validator(mode="after")
+    def _validate_backoff(self) -> ControllerConfig:
+        if self.drift_recovery_base_delay_seconds > self.drift_recovery_max_delay_seconds:
+            raise ValueError("drift_recovery_base_delay_seconds must not exceed drift_recovery_max_delay_seconds")
+        return self
 
 
 class DeploymentsConfig(NemoConfig):
@@ -28,4 +52,8 @@ class DeploymentsConfig(NemoConfig):
     default_executor: str | None = Field(
         default=None,
         description="Fallback executor when Deployment.executor is unset.",
+    )
+    controller: ControllerConfig = Field(
+        default_factory=ControllerConfig,
+        description="Deployment reconciler controller settings.",
     )
