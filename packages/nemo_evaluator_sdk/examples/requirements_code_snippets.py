@@ -164,7 +164,7 @@ async def collect_per_trial_and_aggregate_results() -> dict[str, object]:
 
 
 # 1c) Service Status
-# Note: service related code snippets leverage the `nemo_evaluator.sdk` plugin SDK.
+# Service related code snippets leverage the `nemo_evaluator.sdk` plugin SDK.
 # The `nemo_evaluator.sdk` plugin SDK is a client that is used within the context of nemo-platform.
 # The `nemo_evaluator_sdk` is standalone evaluator package that is used independently of nemo-platform.
 # More details: https://jubilant-adventure-g4rv38m.pages.github.io/main/evaluator/#key-differences-from-standalone-library
@@ -175,10 +175,10 @@ async def submit_plugin_job_and_check_status() -> dict[str, object]:
     from nemo_platform import NeMoPlatform
 
     client = NeMoPlatform(base_url="http://localhost:8080", workspace="default")
-    nemo_plugin_client: AsyncEvaluator = client.evaluator
+    evaluator_client: AsyncEvaluator = client.evaluator
 
     try:
-        job = await nemo_plugin_client.submit(
+        job = await evaluator_client.submit(
             metric=ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.model_output}}"),
             dataset=[
                 {"expected": "blue", "model_output": "blue"},
@@ -213,11 +213,11 @@ async def run_local_and_submit_remote_with_plugin_sdk() -> dict[str, object]:
     config = RunConfig(parallelism=2, limit_samples=2)
 
     client = NeMoPlatform(base_url="http://localhost:8080", workspace="default")
-    nemo_plugin_client: AsyncEvaluator = client.evaluator
+    evaluator_client: AsyncEvaluator = client.evaluator
 
     try:
-        local_result = nemo_plugin_client.run(metric=metric, dataset=dataset, config=config)
-        remote_job = await nemo_plugin_client.submit(
+        local_result = evaluator_client.run(metric=metric, dataset=dataset, config=config)
+        remote_job = await evaluator_client.submit(
             metric=metric,
             dataset=dataset,
             config=config,
