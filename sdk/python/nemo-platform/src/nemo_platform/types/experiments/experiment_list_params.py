@@ -30,7 +30,8 @@ class ExperimentListParams(TypedDict, total=False):
     filter: ExperimentFilterParam
     """
     Filter experiments by name, experiment_group_id, dataset_name, dataset_version,
-    created_by, created_at, or updated_at.
+    created_by, created_at, or updated_at. Pass is_deleted=true to return only
+    soft-deleted experiments; omit to see only live ones.
     """
 
     page: int
