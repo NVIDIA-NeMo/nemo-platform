@@ -23,37 +23,12 @@ The `training` field is a discriminated union on the `type` field. Each training
 
 | Parameter | Values | Description |
 |-----------|--------|-------------|
-| `training.type` | `sft`, `dpo`, `distillation` | Training method (discriminated union) |
+| `training.type` | `sft`, `distillation` | Training method (discriminated union) |
 | `training.peft` | `{ type: "lora", rank: 8, ... }` or omit | PEFT adapter configuration. If set, trains an adapter; if omitted, performs full-weight training |
 
 For generated SFT schema details, see the [Customizer API Reference](/documentation/reference/api-reference)
 and search for `SFTTrainingInput`.
 
-### DPO Configuration
-
-When `training.type` is `"dpo"`, additional DPO-specific fields are available:
-
-| Parameter | Description | Recommended Values |
-|-----------|-------------|-------------------|
-| `ref_policy_kl_penalty` | KL divergence penalty (beta) | `0.05-0.5` |
-| `preference_average_log_probs` | Average log probabilities for preference | `false` |
-| `sft_average_log_probs` | Average log probabilities for SFT | `false` |
-| `preference_loss_weight` | Weight for preference loss | `1.0` |
-| `sft_loss_weight` | Weight for SFT loss | `0.0` |
-
-For generated DPO schema details, see the [Customizer API Reference](/documentation/reference/api-reference)
-and search for `DPOTrainingInput`.
-
-<Note>
-
-PEFT (LoRA) is not yet supported with DPO training. Use full-weight training by omitting the `peft` field.
-
-</Note>
-<Tip>
-
-When setting `val_check_interval` for DPO, use a fractional value (e.g., `0.5` for twice per epoch) or omit it entirely (validates once at end of epoch). Avoid integer step counts — they may not divide evenly into the total training steps, which can prevent validation from running on the final step.
-
-</Tip>
 ### Parallelism Configuration
 
 Parallelism parameters are grouped inside `training.parallelism`:

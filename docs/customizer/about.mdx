@@ -147,7 +147,7 @@ Below are some examples of how you might format your dataset to perform a handfu
 
 When testing models trained with prompt/completion datasets, use the `/v1/completions` endpoint instead of `/v1/chat/completions`.
 
-For details, refer to the [Dataset Formatting tutorial](/documentation/fine-tune-models/tutorials/format-training-dataset#format-a-prompt-completion-dataset).
+For details, refer to the [Dataset Formatting tutorial](/documentation/customizer-reference/tutorials/format-training-dataset#format-a-prompt-completion-dataset).
 
 </Note>
 #### Document Classification
@@ -197,7 +197,7 @@ completion: "<simple>"
 
 Most of the models support Instruction Templates for training, the expected dataset conforms with the standard [OpenAI messages format](https://platform.openai.com/docs/guides/fine-tuning#multi-turn-chat-examples). Additionally, some models support tool calling which have additional optional parameters of `tools` at the top level of each entry and `tool_calls` per message.
 
-For more information refer to our [in-depth instructions](/documentation/fine-tune-models/tutorials/format-training-dataset#format-a-conversation-dataset).
+For more information refer to our [in-depth instructions](/documentation/customizer-reference/tutorials/format-training-dataset#format-a-conversation-dataset).
 
 ## Hyperparameters
 
@@ -221,7 +221,7 @@ NeMo Platform Customizer supports various distributed training parallelization m
 
 [Tensor Parallelism](https://docs.nvidia.com/nemo-framework/user-guide/latest/nemotoolkit/features/parallelisms.html#tensor-parallelism) (TP) distributes the parameter tensor of an individual layer across GPUs. In addition to reducing model state memory usage, it also saves activation memory as the per-GPU tensor sizes shrink. The tradeoff is increased CPU overhead.
 
-TP can be configured via `parallelism.tensor_parallel_size` in the [training configuration](/documentation/customizer-reference/manage-jobs/training-configuration).
+TP can be configured via `parallelism.tensor_parallel_size` in the [training configuration](/documentation/customizer-reference/manage-customization-jobs/training-configuration).
 
 <Note>
 
@@ -232,7 +232,7 @@ As of release 25.10.0, AutoModel engines including Phi-4, Qwen, and Gemma suppor
 
 [Pipeline Parallelism](https://docs.nvidia.com/nemo-framework/user-guide/latest/nemotoolkit/features/parallelisms.html#pipeline-parallelism) (PP) distributes the layers of a neural network across GPUs. The GPUs then process the different layers sequentially.
 
-PP can be configured via `parallelism.pipeline_parallel_size` in the [training configuration](/documentation/customizer-reference/manage-jobs/training-configuration).
+PP can be configured via `parallelism.pipeline_parallel_size` in the [training configuration](/documentation/customizer-reference/manage-customization-jobs/training-configuration).
 
 #### Configuration
 
@@ -250,7 +250,7 @@ PP can be configured via `parallelism.pipeline_parallel_size` in the [training c
 
 [Sequence Parallelism](https://docs.nvidia.com/nemo-framework/user-guide/latest/nemotoolkit/features/parallelisms.html#sequence-parallelism) (SP) extends tensor-level model parallelism by distributing computing load and activation memory across multiple GPUs along the sequence dimension of transformer layers. This method is particularly useful when training on the datasets with longer sequences. It also benefits portions of the layer that have previously not been parallelized, enhancing overall model performance and efficiency.
 
-Sequence Parallelism can be enabled/disabled using `parallelism.sequence_parallel` in the [training configuration](/documentation/customizer-reference/manage-jobs/training-configuration).
+Sequence Parallelism can be enabled/disabled using `parallelism.sequence_parallel` in the [training configuration](/documentation/customizer-reference/manage-customization-jobs/training-configuration).
 
 ## Sequence Packing
 

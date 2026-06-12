@@ -1,0 +1,84 @@
+---
+title: "Using the NeMo Customizer Skill"
+description: ""
+---
+<a id="ft-customizer-skill"></a>
+
+The `nemo-customizer` skill fine-tunes models on NeMo Platform from the command line. It drives the `nemo customization` CLI, which submits **SFT + LoRA** (as well as full-weight and distillation) training as GPU container jobs on the platform's Jobs service — training runs on the platform, not in your shell. Two backends ship in the repo: **`automodel`** (default, multi-GPU capable) and **`unsloth`** (single-GPU 4-bit LoRA). Both are `submit`-only.
+
+<Note>
+
+This page documents the plugin CLI workflow (`nemo customization automodel|unsloth submit`). The job JSON shape shown here (`training.training_type`, `training.finetuning_type`) is specific to these backends.
+
+</Note>
+
+## Prerequisites
+
+- A NeMo Platform deployment with a GPU execution profile (check with `nemo jobs list-execution-profiles`).
+- The `nemo-customizer` plugin and a backend (`nemo-automodel` or `nemo-unsloth`) installed.
+- A base model (Hugging Face repo) and a training dataset in mind.
+
+## Example: Fine-tune with Automodel
+
+Run these commands from the `nemo-platform` repository root. Substitute your own model, dataset, and names.
+
+### 1. Authenticate
+
+```bash
+uv run nemo auth login --unsigned-token --email admin@example.com
+```
+
+### 2. Upload the dataset as a fileset
+
+```bash
+uv run nemo files filesets create commonsense_qa --workspace default --purpose dataset --exist-ok
+uv run nemo files upload /tmp/train.jsonl commonsense_qa --workspace default --remote-path train.jsonl
+```
+
+See [Manage Files](/documentation/get-started/core-concepts/manage-files) for dataset upload details.
+
+### 3. Register the base model
+
+```bash
+uv run nemo files filesets create qwen3-1.7b --workspace default --purpose model --exist-ok \
+  --storage '{"type":"huggingface","repo_id":"Qwen/Qwen3-1.7B","repo_type":"model","revision":"main"}'
+uv run nemo models create qwen3-1.7b --workspace default --exist-ok \
+  --input-data '{"name":"qwen3-1.7b","fileset":"default/qwen3-1.7b"}'
+```
+
+### 4. Define the job
+
+Write `/tmp/job.json` describing an SFT + LoRA job:
+
+```json
+{
+  "model": "default/qwen3-1.7b",
+  "dataset": { "training": "default/commonsense_qa" },
+  "training": {
+    "training_type": "sft",
+    "finetuning_type": "lora",
+    "lora": { "rank": 16, "alpha": 32 },
+    "max_seq_length": 2048
+  },
+  "schedule": { "epochs": 1 },
+  "batch": { "global_batch_size": 4, "micro_batch_size": 1 },
+  "optimizer": { "learning_rate": 5e-5 },
+  "output": { "name": "qwen3-1.7b-commonsense-qa-lora" }
+}
+```
+
+### 5. Submit and poll
+
+```bash
+uv run nemo customization automodel submit /tmp/job.json --workspace default
+uv run nemo jobs get-status automodel-<job-id>
+```
+
+Read `<job-id>` from the `name` field in the submit output. The job is finished when its top-level `status` is `completed`, `error`, or `cancelled`.
+
+## Going Further
+
+- Use the `unsloth` backend for single-GPU 4-bit LoRA: `uv run nemo customization unsloth submit /tmp/job.json --workspace default`.
+- Print the live job schema: `uv run nemo customization automodel explain` (or `unsloth explain`).
+- For hyperparameters, batch sizing, multi-GPU, and distillation, see [Training Configuration](/documentation/customizer-reference/manage-customization-jobs/training-configuration).
+- The full skill, including dataset conversion and troubleshooting references, lives in the repository at `plugins/nemo-customizer/src/nemo_customizer/skills/nemo-customizer/SKILL.md`.

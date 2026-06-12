@@ -10,7 +10,7 @@ Before you can create a customization job, make sure that you have:
 - Obtained the base URL of your NeMo Platform.
 - Created a [FileSet and Model Entity](/documentation/customizer-reference/manage-model-entities/overview) for your base model.
 - [Uploaded a dataset](/documentation/get-started/core-concepts/manage-files) as a FileSet.
-- Determined the [training configuration](/documentation/customizer-reference/manage-jobs/training-configuration) you want to use for the customization job.
+- Determined the [training configuration](/documentation/customizer-reference/manage-customization-jobs/training-configuration) you want to use for the customization job.
 - Verified that the platform has sufficient storage for the job. Full SFT jobs require approximately 3× the base model size in free disk space; LoRA jobs require approximately 1.5×. See [ft-tut-understand-models](/documentation/customizer-reference/tutorials/understanding-models-and-training) for details. If you are also deploying the model from a base checkpoint fileset, plan for ~2.5× model size overall for LoRA.
 - Set the `NMP_BASE_URL` environment variable to your NeMo Platform endpoint.
 
@@ -131,14 +131,14 @@ job = client.customization.jobs.create(
 
 <Note>
 
-See [Knowledge Distillation constraints](/documentation/customizer-reference/manage-jobs/training-configuration) for requirements on model compatibility, tokenizer, and GPU memory.
+See [Knowledge Distillation constraints](/documentation/customizer-reference/manage-customization-jobs/training-configuration) for requirements on model compatibility, tokenizer, and GPU memory.
 
 </Note>
 ---
 
 ## Job Configuration Reference
 
-The job spec contains the model, dataset, training, output, deployment, and integration settings for the job. For key fields, the complete API schema, and W&B or MLflow integration options, see [Customization Job Reference](/documentation/customizer-reference/manage-jobs/customization-job-reference).
+The job spec contains the model, dataset, training, output, deployment, and integration settings for the job. For key fields, the complete API schema, and W&B or MLflow integration options, see [Customization Job Reference](/documentation/customizer-reference/manage-customization-jobs/customization-job-reference).
 
 ---
 
