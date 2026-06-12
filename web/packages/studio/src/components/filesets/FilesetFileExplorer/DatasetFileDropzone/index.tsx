@@ -28,7 +28,7 @@ export const DatasetFileDropzone: FC<DatasetFileDropzoneProps> = ({
           onUpload(acceptedFiles);
         }
       } catch (error) {
-        websiteLogger.error(`Error handling accepted files: ${String(error)}`);
+        websiteLogger.error('Error handling accepted files', error);
       }
     },
     [onUpload]

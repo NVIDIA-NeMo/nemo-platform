@@ -57,7 +57,7 @@ export const BulkDeleteModal: FC<BulkDeleteModalProps> = ({
       setOpen(false);
     } catch (error) {
       // Error handling is managed by the mutation hooks
-      websiteLogger.error(`Failed to delete items: ${String(error)}`);
+      websiteLogger.error('Failed to delete items', error);
     }
   };
 

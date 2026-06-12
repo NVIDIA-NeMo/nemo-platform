@@ -88,7 +88,7 @@ export const datasetFileContentQueryOptions = ({
           });
           return data;
         } catch (err) {
-          websiteLogger.error(String(err));
+          websiteLogger.error('Invalid response while downloading parquet file', err);
           throw new Error('Invalid response while downloading parquet file');
         }
       } else {

@@ -48,7 +48,7 @@ export const DatasetBulkDeleteModal: FC<DatasetBulkDeleteModalProps> = ({
       onConfirmSuccess();
       setOpen(false);
     } catch (error) {
-      websiteLogger.error(`Failed to delete datasets: ${String(error)}`);
+      websiteLogger.error('Failed to delete datasets', error);
     }
   };
 

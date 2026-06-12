@@ -21,7 +21,7 @@ export const extractUserMessage = (props: { row: Row; template?: string }): stri
       const compiled = Handlebars.compile(template);
       return compiled(row);
     } catch (err) {
-      websiteLogger.error(`Failed to compile template: ${String(err)}`);
+      websiteLogger.error('Failed to compile template', err);
       return '';
     }
   }

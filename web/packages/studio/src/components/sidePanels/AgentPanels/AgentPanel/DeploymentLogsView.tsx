@@ -137,7 +137,8 @@ const LogsForDeployment: FC<LogsForDeploymentProps> = ({ workspace, deploymentNa
       },
       onError: (err) => {
         websiteLogger.warn(
-          `Log stream interrupted for deployment ${deploymentName}; retrying. ${String(err)}`
+          `Log stream interrupted for deployment ${deploymentName}; retrying`,
+          err
         );
       },
     });

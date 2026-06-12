@@ -215,7 +215,7 @@ export function useDeleteDeploymentAndConfig(workspace: string) {
 
       void deleteRelatedResourcesAfterDeploymentReleased(workspace, deployment)
         .catch((error: unknown) => {
-          websiteLogger.error(`Failed to delete deployment related resources: ${String(error)}`);
+          websiteLogger.error('Failed to delete deployment related resources', error);
           toast.error('Failed to delete related deployment resources. Please try again later.');
         })
         .finally(() => {

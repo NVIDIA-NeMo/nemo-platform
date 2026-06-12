@@ -50,7 +50,7 @@ export const ActionMenu: FC<ActionMenuProps> = ({
       onDatasetDeleted?.(dataset);
       return true;
     } catch (error) {
-      websiteLogger.error(`Failed to delete dataset: ${String(error)}`);
+      websiteLogger.error('Failed to delete dataset', error);
       return false;
     }
   };

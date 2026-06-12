@@ -179,7 +179,7 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
               writeCell(row.sourceIndex, model.id, content);
             })
             .catch((error) => {
-              websiteLogger.error(`Inference request failed: ${String(error)}`);
+              websiteLogger.error('Inference request failed', error);
               writeCell(row.sourceIndex, model.id, null);
             })
         );

@@ -62,7 +62,7 @@ export const SafeSynthesizerNewRoute: FC | null = SAFE_SYNTHESIZER_ENABLED
             }
           },
           onError: (error) => {
-            websiteLogger.error(`Failed to create job: ${String(error)}`);
+            websiteLogger.error('Failed to create job', error);
             setErrorMessage(
               getErrorMessage(error, 'Failed to create job. Please check your input and try again.')
             );

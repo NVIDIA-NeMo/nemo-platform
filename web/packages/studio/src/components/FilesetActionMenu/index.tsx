@@ -50,7 +50,7 @@ export const FilesetActionMenu: FC<FilesetActionMenuProps> = ({
       onFilesetDeleted?.(fileset);
       return true;
     } catch (error) {
-      websiteLogger.error(`Failed to delete fileset: ${String(error)}`);
+      websiteLogger.error('Failed to delete fileset', error);
       return false;
     }
   };

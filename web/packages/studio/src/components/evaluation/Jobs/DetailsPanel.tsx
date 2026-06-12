@@ -60,7 +60,7 @@ export const DetailsPanel = ({ evaluationJob, error }: DetailsPanelProps) => {
 
       setCancelModalOpen(false);
     } catch (error) {
-      websiteLogger.error(`Failed to cancel job: ${String(error)}`);
+      websiteLogger.error('Failed to cancel job', error);
       toast.error('Failed to cancel job. Please try again.');
     }
   };

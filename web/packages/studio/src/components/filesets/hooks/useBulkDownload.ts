@@ -71,7 +71,7 @@ export function useBulkDownload(options: UseBulkDownloadOptions): UseBulkDownloa
           );
         }
       } catch (err) {
-        websiteLogger.error(`Bulk download failed: ${String(err)}`);
+        websiteLogger.error('Bulk download failed', err);
         toast.dismissToast(toastId);
         toast.error(files.length === 1 ? 'Failed to download file' : 'Failed to download files');
       } finally {

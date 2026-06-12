@@ -151,7 +151,7 @@ export function useBulkDuplicate(options: UseBulkDuplicateOptions): UseBulkDupli
           return false;
         }
       } catch (err) {
-        websiteLogger.error(`Bulk duplicate failed: ${String(err)}`);
+        websiteLogger.error('Bulk duplicate failed', err);
         toast.dismissToast(toastId);
         toast.error(files.length === 1 ? 'Failed to duplicate file' : 'Failed to duplicate files');
         return false;

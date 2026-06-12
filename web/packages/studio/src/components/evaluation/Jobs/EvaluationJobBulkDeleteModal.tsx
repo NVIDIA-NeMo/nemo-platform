@@ -39,7 +39,7 @@ export const EvaluationJobBulkDeleteModal: FC<EvaluationJobBulkDeleteModalProps>
       onConfirmSuccess();
       setOpen(false);
     } catch (error) {
-      websiteLogger.error(`Failed to delete evaluation jobs: ${String(error)}`);
+      websiteLogger.error('Failed to delete evaluation jobs', error);
       toast.error('Failed to delete evaluation jobs. Please try again.');
     }
   };

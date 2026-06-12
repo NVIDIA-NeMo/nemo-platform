@@ -46,7 +46,7 @@ export const ActionMenu: FC<ActionMenuProps> = ({ job, onNavigateToDetails, onJo
       onJobDeleted?.(job);
       handleModalClose();
     } catch (error) {
-      websiteLogger.error(`Failed to delete evaluation job: ${String(error)}`);
+      websiteLogger.error('Failed to delete evaluation job', error);
       toast.error('Failed to delete evaluation job. Please try again.');
     } finally {
       setIsDeleting(false);

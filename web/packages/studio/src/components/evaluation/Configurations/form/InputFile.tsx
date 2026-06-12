@@ -407,7 +407,7 @@ export const InputFile: FC<InputFileProps> = ({
           updateFormFromFile(validationResult, undefined);
         }
       } catch (error) {
-        websiteLogger.error(`Failed to validate selected file: ${String(error)}`);
+        websiteLogger.error('Failed to validate selected file', error);
         // Create error validation result
         const errorResult: FileValidationResult = {
           isValid: false,
