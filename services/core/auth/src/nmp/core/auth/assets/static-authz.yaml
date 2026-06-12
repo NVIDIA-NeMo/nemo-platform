@@ -299,7 +299,6 @@ authz:
       - models.adapters.read
       - models.list
       - models.read
-      - plugins.list
       - projects.list
       - projects.read
       - secrets.list
