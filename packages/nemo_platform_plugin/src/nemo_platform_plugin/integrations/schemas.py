@@ -1,14 +1,14 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Experiment-tracking integrations schema shared across platform services and plugins."""
+"""Experiment-tracking integrations schema shared across platform plugins and services."""
 
 from __future__ import annotations
 
 import warnings
 from typing import Self
 
-from nmp.common.api.common import SecretRef
+from nemo_platform_plugin.schema import SecretRef
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 

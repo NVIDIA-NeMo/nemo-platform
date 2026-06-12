@@ -8,7 +8,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from nmp.common.integrations import IntegrationsSpec
+from nemo_platform_plugin.integrations import IntegrationsSpec
 from nmp.customization_common.integrations import (
     IntegrationRuntimeContext,
     build_mlflow_config,

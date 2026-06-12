@@ -15,7 +15,7 @@ Both schemas use `extra="forbid"` — unknown keys raise validation errors. Fiel
 
 ## Integrations (automodel + unsloth)
 
-Both backends accept the same `integrations` object on job JSON (`IntegrationsSpec` in `nmp.common.integrations`). A non-null backend block **requests** that integration; the training runtime **activates** it only when credentials/URIs are available (W&B needs `WANDB_API_KEY`, MLflow needs a tracking URI). Omit the field or set a backend to `null` to disable. There is no `enabled` flag and no `report_to` on input — `report_to` is derived at runtime from activated backends. The compiler logs a warning when W&B is requested without `api_key_secret` or MLflow without `tracking_uri`.
+Both backends accept the same `integrations` object on job JSON (`IntegrationsSpec` in `nemo_platform_plugin.integrations`). A non-null backend block **requests** that integration; the training runtime **activates** it only when credentials/URIs are available (W&B needs `WANDB_API_KEY`, MLflow needs a tracking URI). Omit the field or set a backend to `null` to disable. There is no `enabled` flag and no `report_to` on input — `report_to` is derived at runtime from activated backends. The compiler logs a warning when W&B is requested without `api_key_secret` or MLflow without `tracking_uri`.
 
 ```json
 "integrations": {

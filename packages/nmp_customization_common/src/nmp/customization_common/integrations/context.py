@@ -6,7 +6,7 @@
 from dataclasses import dataclass
 from typing import Self
 
-from nmp.common.integrations import IntegrationsSpec, MlflowIntegration, WandbIntegration
+from nemo_platform_plugin.integrations import IntegrationsSpec, MlflowIntegration, WandbIntegration
 from nmp.customization_common.service.context import NMPJobContext
 
 

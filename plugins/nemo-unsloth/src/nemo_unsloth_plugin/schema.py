@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from typing import Literal, Self
 
-from nmp.common.integrations import IntegrationsSpec
+from nemo_platform_plugin.integrations import IntegrationsSpec
 from nmp.unsloth.schemas import (
     BatchSpec,
     DatasetSpec,

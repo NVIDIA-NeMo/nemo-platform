@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import pytest
-from nmp.common.api.common import SecretRef
-from nmp.common.integrations import IntegrationsSpec, WandbIntegration
+from nemo_platform_plugin.integrations import IntegrationsSpec, WandbIntegration
+from nemo_platform_plugin.schema import SecretRef
 from nmp.customization_common.integrations import collect_integration_secret_envs, warn_incomplete_integrations
 
 

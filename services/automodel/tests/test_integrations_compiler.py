@@ -5,6 +5,7 @@ from datetime import datetime
 
 import pytest
 from nemo_platform.types.models.model_entity import ModelEntity
+from nemo_platform_plugin.integrations import IntegrationsSpec
 from nmp.automodel.api.v2.jobs.schemas import (
     CustomizationJobOutput,
     LoRAParams,
@@ -13,7 +14,6 @@ from nmp.automodel.api.v2.jobs.schemas import (
 )
 from nmp.automodel.app.jobs.training.compiler import compile_training_step
 from nmp.common.entities.utils import get_random_id
-from nmp.common.integrations import IntegrationsSpec
 
 
 def _make_model_entity() -> ModelEntity:

@@ -52,7 +52,7 @@ def test_compile_training_step_no_integrations() -> None:
 def test_compile_training_step_warns_on_incomplete_wandb(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    from nmp.common.integrations import IntegrationsSpec
+    from nemo_platform_plugin.integrations import IntegrationsSpec
 
     spec = _job_spec_with_integrations().model_copy(
         update={

@@ -4,13 +4,13 @@
 from enum import Enum
 from typing import Optional
 
+from nemo_platform_plugin.integrations import IntegrationsSpec
 from nmp.automodel.app.constants import (
     DEFAULT_OUTPUT_MODEL_PATH,
     DEFAULT_SEED,
     DEFAULT_TRAINING_OUTPUT_PATH,
 )
 from nmp.automodel.entities.values import CheckpointFormat, FinetuningType, Precision, TrainingType
-from nmp.common.integrations import IntegrationsSpec
 from pydantic import BaseModel, Field
 
 

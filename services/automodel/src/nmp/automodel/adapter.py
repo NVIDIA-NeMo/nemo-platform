@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+from nemo_platform_plugin.integrations import IntegrationsSpec
 from nmp.automodel.api.v2.jobs.schemas import (
     CustomizationJobOutput,
     DistillationTraining,
@@ -15,7 +16,6 @@ from nmp.automodel.api.v2.jobs.schemas import (
     ParallelismParams,
     SFTTraining,
 )
-from nmp.common.integrations import IntegrationsSpec
 from pydantic import BaseModel
 
 

@@ -4,7 +4,7 @@
 from pathlib import Path
 
 import pytest
-from nmp.common.integrations import IntegrationsSpec, MlflowIntegration, WandbIntegration
+from nemo_platform_plugin.integrations import IntegrationsSpec, MlflowIntegration, WandbIntegration
 from nmp.customization_common.integrations import IntegrationRuntimeContext, build_mlflow_config, build_wandb_config
 from nmp.customization_common.service.context import NMPJobContext
 

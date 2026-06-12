@@ -29,4 +29,4 @@ Other customization backends may still use `nemo customization <backend> jobs su
 
 Job JSON uses the simplified `AutomodelJobInput` schema (see `nemo_automodel_plugin/schema.py`). Submit posts to `/apis/customization/v2/workspaces/{workspace}/automodel/jobs`.
 
-Optional `integrations` (W&B / MLflow) use the shared `IntegrationsSpec` from `nmp.common.integrations`. Example: `plugins/nemo-automodel/tests/fixtures/integrations_wandb_mlflow.json`. Field reference: customizer skill `references/hyperparameters.md` § **Integrations (automodel + unsloth)**.
+Optional `integrations` (W&B / MLflow) use the shared `IntegrationsSpec` from `nemo_platform_plugin.integrations`. Example: `plugins/nemo-automodel/tests/fixtures/integrations_wandb_mlflow.json`. Field reference: customizer skill `references/hyperparameters.md` § **Integrations (automodel + unsloth)**.

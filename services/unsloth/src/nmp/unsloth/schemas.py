@@ -31,7 +31,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from nmp.common.integrations import IntegrationsSpec
+from nemo_platform_plugin.integrations import IntegrationsSpec
 from pydantic import BaseModel, ConfigDict, Field
 
 

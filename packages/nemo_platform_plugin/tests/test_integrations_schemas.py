@@ -4,7 +4,7 @@
 import warnings
 
 import pytest
-from nmp.common.integrations import IntegrationsSpec, MlflowIntegration, WandbIntegration
+from nemo_platform_plugin.integrations import IntegrationsSpec, MlflowIntegration, WandbIntegration
 from pydantic import ValidationError
 
 

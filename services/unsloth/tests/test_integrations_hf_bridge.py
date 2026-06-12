@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 import pytest
-from nmp.common.integrations import IntegrationsSpec
+from nemo_platform_plugin.integrations import IntegrationsSpec
 from nmp.customization_common.service.context import NMPJobContext
 from nmp.unsloth.integrations.hf_bridge import apply_integrations_to_sft_config
 

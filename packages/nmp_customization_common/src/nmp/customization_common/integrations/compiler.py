@@ -5,11 +5,11 @@
 
 import logging
 
+from nemo_platform_plugin.integrations import IntegrationsSpec
 from nemo_platform_plugin.jobs.api_factory import (
     EnvironmentVariable,
     EnvironmentVariableFromSecret,
 )
-from nmp.common.integrations import IntegrationsSpec
 
 logger = logging.getLogger(__name__)
 

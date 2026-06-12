@@ -65,7 +65,7 @@ The container image targets the same compute capabilities NVIDIA's stock `pytorc
 - `batch: BatchSpec` — `per_device_train_batch_size`, `gradient_accumulation_steps`.
 - `optimizer: OptimizerSpec` — `learning_rate`, `weight_decay`, `optim`.
 - `hardware: HardwareSpec` — `gpus`, `precision` (`bf16` / `fp16`).
-- `integrations: IntegrationsSpec | None` — optional W&B / MLflow (`nmp.common.integrations`). Request by presence; `api_key_secret` carries a secret *reference* that the jobs launcher resolves into `WANDB_API_KEY` in the training container **at runtime** (compile only records the reference). Example: `plugins/nemo-unsloth/tests/fixtures/integrations_wandb_mlflow.json`.
+- `integrations: IntegrationsSpec | None` — optional W&B / MLflow (`nemo_platform_plugin.integrations`). Request by presence; `api_key_secret` carries a secret *reference* that the jobs launcher resolves into `WANDB_API_KEY` in the training container **at runtime** (compile only records the reference). Example: `plugins/nemo-unsloth/tests/fixtures/integrations_wandb_mlflow.json`.
 - `output: OutputRequest | None` — `name`, `description`, `save_method` (`lora` / `merged_16bit` / `merged_4bit`).
 
 `UnslothJobOutput` is the canonical post-`to_spec` form: same as the input plus a resolved `output: OutputResponse` carrying the auto-generated name, inferred type (adapter vs model), and the destination fileset name.
