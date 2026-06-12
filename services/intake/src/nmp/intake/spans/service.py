@@ -14,6 +14,7 @@ from nmp.intake.spans.domain import (
     EvaluatorResultListFilter,
     IntakeSpan,
     IntakeTrace,
+    SpanGroup,
     SpanListFilter,
     TraceBatch,
     TraceListFilter,
@@ -79,6 +80,23 @@ class IntakeSpansService:
         sort: str,
     ) -> PaginatedResult[IntakeSpan]:
         return await self._spans.list_spans(filters=filters, page=page, page_size=page_size, sort=sort)
+
+    async def list_span_groups(
+        self,
+        *,
+        filters: SpanListFilter,
+        group_by: list[str],
+        page: int,
+        page_size: int,
+        sort: str,
+    ) -> PaginatedResult[SpanGroup]:
+        return await self._spans.list_span_groups(
+            filters=filters,
+            group_by=group_by,
+            page=page,
+            page_size=page_size,
+            sort=sort,
+        )
 
     async def get_span(self, *, workspace: str, span_id: str) -> IntakeSpan:
         span = await self._spans.get_span(workspace=workspace, span_id=span_id)

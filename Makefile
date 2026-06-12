@@ -29,6 +29,31 @@ help:
 	@echo "Makefile commands:"
 	@grep -E '^[a-zA-Z_-][a-zA-Z0-9_/-]*:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 
+DOCKER_BAKE_FILE ?= docker-bake.hcl
+DOCKER_TARGET ?= $(if $(TARGET),$(TARGET),docker-cpu)
+DOCKER_PLATFORMS ?= $(BUILD_ARCH)
+DOCKER_PLATFORM_SET = $(if $(DOCKER_PLATFORMS),--set "*.platform=$(DOCKER_PLATFORMS)",)
+
+.PHONY: docker-list-targets
+docker-list-targets: ## List Docker bake targets
+	docker buildx bake -f $(DOCKER_BAKE_FILE) --list=targets
+
+.PHONY: docker-print
+docker-print: ## Print Docker bake graph for TARGET, default docker-cpu
+	docker buildx bake -f $(DOCKER_BAKE_FILE) --print $(DOCKER_TARGET)
+
+.PHONY: docker-build
+docker-build: ## Build Docker bake TARGET without pushing, default docker-cpu
+	docker buildx bake -f $(DOCKER_BAKE_FILE) $(DOCKER_TARGET)
+
+.PHONY: docker-load
+docker-load: ## Build and load single-platform Docker bake TARGET, default docker-cpu
+	docker buildx bake -f $(DOCKER_BAKE_FILE) $(DOCKER_TARGET) $(DOCKER_PLATFORM_SET) --load
+
+.PHONY: docker-push
+docker-push: ## Build and push Docker bake TARGET, default docker-cpu
+	docker buildx bake -f $(DOCKER_BAKE_FILE) $(DOCKER_TARGET) --push
+
 .PHONY: refresh-openapi
 refresh-openapi:  ## Generate the OpenAPI specification
 	uv run --frozen script/generate-openapi-spec.sh

@@ -35,10 +35,10 @@ def test_spans_schema_keeps_cityhash_identity_expression():
     ]
 
 
-def test_experiment_sessions_schema_is_ordered_by_experiment():
+def test_trace_index_schema_is_root_span_projection():
     source = Path(clickhouse_migrations.__file__).read_text(encoding="utf-8")
     function_match = re.search(
-        r"def _create_experiment_sessions_schema\(.*?^_MIGRATIONS",
+        r"def _create_trace_index_schema\(.*?^_MIGRATIONS",
         source,
         re.DOTALL | re.MULTILINE,
     )
@@ -54,21 +54,23 @@ def test_experiment_sessions_schema_is_ordered_by_experiment():
     assert table_match is not None
     ddl = source
 
-    assert '"experiment_sessions"' in source
-    assert '"experiment_sessions_mv"' in source
+    assert '"trace_index"' in source
+    assert '"trace_index_mv"' in source
     assert "CREATE TABLE {table}" in ddl
     assert "CREATE MATERIALIZED VIEW {view}" in ddl
     assert "TO {table}" in ddl
     assert "INSERT INTO {table}" in source
-    assert "attributes_string['experiment.id'] AS experiment_id" in ddl
-    assert "attributes_string['test_case.id']" in ddl
-    assert "attributes_string['evaluation.id']" not in ddl
-    assert "experiment_run_id" not in ddl
-    assert "PRIMARY KEY (workspace, experiment_id, session_id)" in ddl
-    assert "ORDER BY (workspace, experiment_id, session_id, root_span_id)" in ddl
+    assert "WHERE external_parent_span_id = ''" in ddl
+    assert "attributes_string['{experiment_key}'] AS experiment_id" in ddl
+    assert "attributes_string['{test_case_key}'] AS test_case_id" in ddl
+    assert "root_status LowCardinality(String)" in ddl
+    assert "root_input String" in ddl
+    assert "PRIMARY KEY (workspace, root_started_at)" in ddl
+    assert "ORDER BY (workspace, root_started_at, trace_id, root_span_id)" in ddl
+    assert "INDEX idx_experiment_id experiment_id" in ddl
     assert "index_granularity = 256" in ddl
 
 
-def test_experiment_sessions_mv_keys_match_attribute_catalog():
+def test_trace_index_mv_keys_match_attribute_catalog():
     assert spec_for_field(SpanAttributeField.EVALUATION_ID).bag_key == "experiment.id"
     assert spec_for_field(SpanAttributeField.TEST_CASE_ID).bag_key == "test_case.id"

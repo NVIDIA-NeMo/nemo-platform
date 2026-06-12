@@ -1,0 +1,98 @@
+#######
+# Guardrails Build Targets.  Please use `docker buildx bake` to build.  See `README.md`
+#######
+
+#build-guardrails:
+    FROM root-python-3-11 AS build
+
+    # This only installs all external deps of nemoguardrails and dep workspace members
+    ENV ANNOY_COMPILER_ARGS="-D_CRT_SECURE_NO_WARNINGS,-DANNOYLIB_MULTITHREADED_BUILD"
+
+    RUN if [ "$TARGETARCH" = "arm64" ]; then \
+      export ANNOY_COMPILER_ARGS="$ANNOY_COMPILER_ARGS,-march=armv8-a"; \
+      else \
+      export ANNOY_COMPILER_ARGS="$ANNOY_COMPILER_ARGS,-march=x86-64"; \
+      fi && \
+      echo $ANNOY_COMPILER_ARGS
+
+    # Create the non-root user and adjust permissions
+    # This approach works for running in OpenShift because:
+    # 1. OpenShift runs containers with arbitrary UIDs but using the root group (GID 0)
+    # 2. We're creating a specific user here, but the UID may be different in OpenShift
+    # 3. The important part is setting group permissions correctly
+    # We mainly create a user and move some directories, the rest of the permission changes happen below
+    RUN adduser --disabled-password --gecos "" nvs && \
+        # Create logs directory with appropriate permissions
+        mkdir -p /app/services/guardrails/logs && \
+        chmod -R g=u /app/services/guardrails/logs && \
+        # Copy passwd file to allow user to be recognized in distroless image
+        cp /etc/passwd /app/passwd
+
+    COPY --from=root-lib-source-artifacts /artifacts/uv.lock /artifacts/pyproject.toml /app/
+    RUN uv sync --frozen --no-install-project --no-dev --no-install-workspace --no-editable --package=guardrails
+
+    # Finally install the workspace members and the project
+    COPY --from=root-lib-source-artifacts /artifacts/packages /app/packages
+    COPY --from=root-lib-source-artifacts /artifacts/sdk /app/sdk
+    COPY --from=root-lib-source-artifacts /artifacts/docs /app/docs
+    COPY --from=root-lib-source-artifacts /artifacts/openapi /app/openapi
+
+    COPY . /app/services/guardrails
+
+    # Generate constraints.txt needed to extend our image and remove local dependencies
+    RUN uv pip compile services/guardrails/pyproject.toml -o constraints.txt && \
+        sed -i '/^-e file/d' constraints.txt
+
+    RUN mv /app/constraints.txt /app/services/guardrails/
+
+    COPY README.md /app
+
+    RUN uv sync --frozen --no-editable --no-dev --package=guardrails
+
+    ENV PATH="/app/.venv/bin:$PATH"
+
+    # Download the `all-MiniLM-L6-v2` model
+    RUN python -c "from fastembed.embedding import TextEmbedding; TextEmbedding('sentence-transformers/all-MiniLM-L6-v2');" && \
+        nemoguardrails --help
+
+
+#test-guardrails:
+    FROM build AS test
+    RUN uv sync --dev --frozen --no-editable --package=guardrails # get dev deps
+    RUN uv run --no-sync pytest services/guardrails
+
+#docker-guardrails:
+    FROM root-distroless-base-3-11 AS docker
+    ENV GUARDRAILS_HOST="0.0.0.0"
+    ENV GUARDRAILS_PORT="7331"
+    ENV NIM_ENDPOINT_URL="https://integrate.api.nvidia.com/v1"
+    ENV DEFAULT_LLM_PROVIDER="nim"
+    ENV DEFAULT_CONFIG_ID="default"
+    ENV CONFIG_STORE_PATH="/app/services/guardrails/config-store"
+    ENV NEMO_GUARDRAILS_SERVER_ENABLE_CORS=False
+    ENV NEMO_GUARDRAILS_SERVER_ALLOWED_ORIGINS="*"
+    ENV TELEMETRY_ENABLED=False
+    ENV DEMO=FALSE
+    ENV LOG_LEVEL=${LOG_LEVEL:-INFO}
+
+    ENV PATH="/app/.venv/bin:$PATH"
+
+    # TODO: is this a sensible canonical location? should this be somewhere in `/etc` or `/opt`?
+    COPY --chown=nvs:root --chmod=g=u config-store /app/services/guardrails/config-store
+    # Copy files from build stage with correct permissions
+    COPY --from=build --chown=nvs:root --chmod=g=u /app /app
+    COPY --from=build --chown=nvs:root --chmod=g=u /tmp /tmp
+    COPY --from=build --chown=nvs:root --chmod=g=u /app/passwd /etc/passwd
+
+    COPY fixes/cve-2025-8194/tarfile.py.fix  /usr/local/lib/python3.11/tarfile.py
+
+    # Set user to nvs for local testing
+    # Note: OpenShift will override this with an arbitrary UID,
+    # but the permissions set in build and on copy will ensure it works
+    USER nvs
+
+    # Set the working directory to services/guardrails
+    WORKDIR /app/services/guardrails
+
+    # CMD uvicorn was not setting PORT and HOST
+    ENTRYPOINT ["opentelemetry-instrument", "python", "/app/.venv/lib/python3.11/site-packages/guardrails/entrypoint.py"]

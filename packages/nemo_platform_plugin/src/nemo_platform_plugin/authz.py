@@ -56,7 +56,7 @@ class AuthzContribution:
     """Optional explicit role → permission grants (merged with defaults)."""
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize for :func:`nmp.common.auth.authz_merge.merge_authz_contributions`."""
+        """Serialize for :func:`nemo_platform_plugin.authz_merge.merge_authz_contributions`."""
         return {
             "permissions": dict(self.permissions),
             "endpoints": {

@@ -1,6 +1,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import {
+  checkDatasetQuality,
+  type DatasetQualityReport,
+} from '@nemo/common/src/utils/datasetQuality';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { workspace1 } from '@studio/mocks/entity-store/projects';
 import { FilesetNewRoute } from '@studio/routes/FilesetNewRoute';
@@ -9,6 +13,24 @@ import { render, screen } from '@studio/tests/util/render';
 import { TestProviders } from '@studio/tests/util/TestProviders';
 import { within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+
+vi.mock('@nemo/common/src/utils/datasetQuality', () => ({
+  checkDatasetQuality: vi.fn(),
+}));
+
+const mockCheckDatasetQuality = vi.mocked(checkDatasetQuality);
+
+function makeQualityReport(overrides: Partial<DatasetQualityReport> = {}): DatasetQualityReport {
+  return {
+    fileName: 'train.jsonl',
+    hasErrors: false,
+    hasWarnings: false,
+    issues: [],
+    scannedLines: 10,
+    totalLines: 10,
+    ...overrides,
+  };
+}
 
 const renderRoute = () => {
   return render(
@@ -178,5 +200,163 @@ describe('FilesetNewRoute', () => {
     await user.tab();
 
     expect(screen.queryByText(/must start with a lowercase letter/i)).not.toBeInTheDocument();
+  });
+
+  describe('dataset quality validation', () => {
+    beforeEach(() => {
+      mockCheckDatasetQuality.mockReset();
+    });
+
+    function makeJsonlFile(name = 'train.jsonl'): File {
+      return new File(['{"prompt":"q","completion":"a"}'], name, {
+        type: 'application/x-jsonlines',
+      });
+    }
+
+    async function uploadFile(user: ReturnType<typeof userEvent.setup>, file: File) {
+      // The Upload component renders a visually hidden file input with no accessible name;
+      // querySelector is the only reliable way to reach it in jsdom.
+      // eslint-disable-next-line testing-library/no-node-access
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+      await user.upload(input, file);
+    }
+
+    it('shows quality report after uploading a JSONL file when purpose is Dataset', async () => {
+      mockCheckDatasetQuality.mockResolvedValue(
+        makeQualityReport({ hasErrors: false, hasWarnings: false })
+      );
+      const user = userEvent.setup();
+      renderRoute();
+
+      await uploadFile(user, makeJsonlFile());
+
+      expect(await screen.findByText(/all quality checks passed/i)).toBeInTheDocument();
+    });
+
+    it('shows error issues from the quality report', async () => {
+      mockCheckDatasetQuality.mockResolvedValue(
+        makeQualityReport({
+          hasErrors: true,
+          issues: [
+            {
+              severity: 'error',
+              code: 'INVALID_JSON_LINES',
+              message: '2 lines could not be parsed as JSON objects.',
+              affectedLines: [3, 7],
+              count: 2,
+            },
+          ],
+        })
+      );
+      const user = userEvent.setup();
+      renderRoute();
+
+      await uploadFile(user, makeJsonlFile());
+
+      expect(
+        await screen.findByText(/2 lines could not be parsed as JSON objects/i)
+      ).toBeInTheDocument();
+    });
+
+    it('shows warning issues from the quality report', async () => {
+      mockCheckDatasetQuality.mockResolvedValue(
+        makeQualityReport({
+          hasWarnings: true,
+          issues: [
+            {
+              severity: 'warning',
+              code: 'UNKNOWN_SCHEMA',
+              message: 'No recognized fine-tuning schema detected.',
+            },
+          ],
+        })
+      );
+      const user = userEvent.setup();
+      renderRoute();
+
+      await uploadFile(user, makeJsonlFile());
+
+      expect(
+        await screen.findByText(/No recognized fine-tuning schema detected/i)
+      ).toBeInTheDocument();
+    });
+
+    it('disables the Create Fileset button when quality report has errors', async () => {
+      mockCheckDatasetQuality.mockResolvedValue(
+        makeQualityReport({
+          hasErrors: true,
+          issues: [{ severity: 'error', code: 'EMPTY_FILE', message: 'File is empty.' }],
+        })
+      );
+      const user = userEvent.setup();
+      renderRoute();
+
+      await uploadFile(user, makeJsonlFile());
+
+      await screen.findByText(/File is empty/i);
+      expect(await screen.findByRole('button', { name: 'Create Fileset' })).toBeDisabled();
+    });
+
+    it('does not disable submit for warning-only reports', async () => {
+      mockCheckDatasetQuality.mockResolvedValue(
+        makeQualityReport({
+          hasWarnings: true,
+          issues: [
+            {
+              severity: 'warning',
+              code: 'LONG_ENTRIES',
+              message: '1 row may exceed context window.',
+            },
+          ],
+        })
+      );
+      const user = userEvent.setup();
+      renderRoute();
+
+      await uploadFile(user, makeJsonlFile());
+
+      await screen.findByText(/1 row may exceed context window/i);
+      expect(await screen.findByRole('button', { name: 'Create Fileset' })).not.toBeDisabled();
+    });
+
+    it('does not show quality report section when purpose is not Dataset', async () => {
+      mockCheckDatasetQuality.mockResolvedValue(makeQualityReport());
+      const user = userEvent.setup();
+      renderRoute();
+
+      // Switch to Generic purpose
+      await user.click(await screen.findByRole('radio', { name: 'Generic' }));
+      await uploadFile(user, makeJsonlFile());
+
+      expect(screen.queryByText(/all quality checks passed/i)).not.toBeInTheDocument();
+      expect(mockCheckDatasetQuality).not.toHaveBeenCalled();
+    });
+
+    it('clears quality reports when switching to the Sample Dataset tab', async () => {
+      mockCheckDatasetQuality.mockResolvedValue(
+        makeQualityReport({ hasErrors: false, hasWarnings: false })
+      );
+      const user = userEvent.setup();
+      renderRoute();
+
+      await uploadFile(user, makeJsonlFile());
+      await screen.findByText(/all quality checks passed/i);
+
+      await user.click(await screen.findByText('Sample Dataset'));
+
+      expect(screen.queryByText(/all quality checks passed/i)).not.toBeInTheDocument();
+    });
+
+    it('shows scanned-lines note when file has more lines than the scan limit', async () => {
+      mockCheckDatasetQuality.mockResolvedValue(
+        makeQualityReport({ scannedLines: 1000, totalLines: 5000 })
+      );
+      const user = userEvent.setup();
+      renderRoute();
+
+      await uploadFile(user, makeJsonlFile());
+
+      expect(await screen.findByText(/Scanned first 1,000 of 5,000 lines/i)).toBeInTheDocument();
+    });
   });
 });

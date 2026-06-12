@@ -1,0 +1,25 @@
+# syntax=docker/dockerfile:1
+# NMP CPU Tasks - CPU-only batch task execution
+
+ARG NMP_PYTHON_BASE=nmp-python-base
+
+FROM ${NMP_PYTHON_BASE} AS builder
+COPY --from=nmp-workspace . .
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --only-group cpu-tasks --no-editable
+# Evaluator task entry points now come from the plugin; keep this until the
+# upstream cpu-tasks group includes nemo-evaluator-plugin directly.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --inexact --package nemo-evaluator-plugin --no-editable
+
+FROM ${NMP_PYTHON_BASE} AS runtime
+ENV USERNAME=nvs \
+    HOME=/home/nvs
+COPY --chown=nvs:nvs --from=builder /app/.venv /app/.venv
+COPY --chown=nvs:nvs --from=builder /app/plugins/nemo-data-designer/tiktoken-cache /app/tiktoken-cache
+ENV TIKTOKEN_CACHE_DIR=/app/tiktoken-cache
+ENV PATH="/app/.venv/bin:$PATH"
+USER 0
+ENTRYPOINT ["nemo-platform"]
+# Override CMD with "run" in orchestration (e.g., Helm, docker-compose)
+CMD ["--help"]

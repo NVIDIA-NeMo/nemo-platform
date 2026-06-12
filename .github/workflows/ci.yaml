@@ -30,6 +30,7 @@ jobs:
       docs: ${{ steps.changes.outputs.docs }}
       web-studio: ${{ steps.changes.outputs.web-studio }}
       tools: ${{ steps.changes.outputs.tools }}
+      docker: ${{ steps.changes.outputs.docker }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: ./.github/actions/changes
@@ -55,6 +56,31 @@ jobs:
         shell: bash
         run: |
           "${RUNNER_TEMP}/actionlint/actionlint"
+
+  docker-bake-graph:
+    name: Docker bake graph
+    needs: [changes]
+    if: >
+      !cancelled() && (
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.docker == 'true'
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - name: Print bake groups
+        shell: bash
+        run: |
+          make docker-print TARGET=docker-cpu
+          make docker-print TARGET=docker-gpu
+          make docker-print TARGET=docker-auditor
+          make docker-print TARGET=docker-python-base
+          make docker-print TARGET=gpu-wheels
+          make docker-print TARGET=nmp-automodel
+          make docker-print TARGET=nmp-unsloth
 
   lint:
     name: Lint all
@@ -755,6 +781,7 @@ jobs:
     needs:
       - changes
       - actionlint
+      - docker-bake-graph
       - lint
       - policy-wasm
       - python-unit-test-tools
@@ -797,4 +824,3 @@ jobs:
 
           printf '%s\n' "${NEEDS_JSON}" \
             | jq -e 'to_entries | map(.value.result) | all(. as $result | ["success", "skipped"] | any($result == .))'
-

@@ -4,9 +4,9 @@
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from nemo_platform_plugin.authz_format import validate_static_authz_data
+from nemo_platform_plugin.authz_merge import merge_authz_contributions
 from nemo_safe_synthesizer_plugin.service import SafeSynthesizerService
-from nmp.common.auth.authz_format import validate_static_authz_data
-from nmp.common.auth.authz_merge import merge_authz_contributions
 
 
 def test_service_metadata_preserves_public_name():

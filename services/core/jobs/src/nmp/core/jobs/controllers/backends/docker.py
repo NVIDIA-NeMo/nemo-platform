@@ -13,7 +13,6 @@ from abc import abstractmethod
 from concurrent.futures import ThreadPoolExecutor
 from typing import Generic, Literal, TypeVar
 
-import docker
 import docker.types
 from docker.errors import APIError, ImageNotFound, NotFound
 from docker.models.containers import Container
@@ -82,6 +81,8 @@ from nmp.core.jobs.controllers.backends.exceptions import (
 )
 from opentelemetry import trace
 from pydantic import BaseModel, Field
+
+import docker
 
 tracer = trace.get_tracer(__name__)
 logger = logging.getLogger(__name__)
