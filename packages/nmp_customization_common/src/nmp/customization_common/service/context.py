@@ -4,8 +4,7 @@
 """Job context for customization container task entrypoints.
 
 Populated from the Job Controller environment variables. Shared by both the
-unsloth and automodel services; each service re-exports ``NMPJobContext`` from
-its ``app/jobs/context.py`` so existing import paths keep working.
+unsloth and automodel backends.
 """
 
 import os

@@ -1,10 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Shared fileset path/IO + error-handling helpers for the file_io task.
-
-Re-exported by each backend's ``tasks/file_io/utils.py``.
-"""
+"""Shared fileset path/IO + error-handling helpers for the file_io task."""
 
 import json
 import logging

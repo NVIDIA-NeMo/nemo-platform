@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from nmp.automodel.platform_client import check_dataset_access, fetch_model_entity
 from nmp.customization_common.contributor.transform import generated_output_name
+from nmp.customization_common.service.platform_client import check_dataset_access, fetch_model_entity
 
 from nemo_automodel_plugin.schema import (
     AutomodelJobInput,

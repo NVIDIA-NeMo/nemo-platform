@@ -25,8 +25,8 @@ from dataclasses import replace
 from typing import Any, Literal
 
 from nemo_platform_plugin.job_context import JobContext
-from nmp.unsloth.app.jobs.context import NMPJobContext
-from nmp.unsloth.integrations import apply_integrations_to_sft_config
+from nmp.customization_common.service.context import NMPJobContext
+from nmp.unsloth.integrations.hf_bridge import apply_integrations_to_sft_config
 from nmp.unsloth.schemas import UnslothJobOutput
 from nmp.unsloth.tasks.training.backends.callbacks import TrainingProgressCallback
 from nmp.unsloth.tasks.training.progress import JobsServiceProgressReporter

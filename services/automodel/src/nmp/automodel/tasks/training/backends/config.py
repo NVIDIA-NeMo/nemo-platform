@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Any
 
 from nemo_automodel._transformers.registry import ModelRegistry
-from nmp.automodel.app.jobs.context import NMPJobContext
 from nmp.automodel.tasks.training.chat_templates import resolve_chat_template
 from nmp.automodel.tasks.training.datasets.preparation import (
     DatasetSchema,
@@ -40,6 +39,7 @@ from nmp.automodel.tasks.training.sequence_packing import (
     calculate_optimal_pack_size,
     estimate_dataset_sequence_lengths,
 )
+from nmp.customization_common.service.context import NMPJobContext
 
 logger = logging.getLogger(__name__)
 

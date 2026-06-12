@@ -3,8 +3,7 @@
 
 """Schemas for the model_entity container task configuration.
 
-Shared by both backends; each service re-exports these from its
-``app/jobs/model_entity/schemas.py`` so existing import paths keep working.
+Shared by both the unsloth and automodel backends.
 """
 
 from __future__ import annotations

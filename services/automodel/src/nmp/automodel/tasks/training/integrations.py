@@ -5,7 +5,6 @@
 
 from typing import Any
 
-from nmp.automodel.app.jobs.context import NMPJobContext
 from nmp.automodel.app.jobs.training.schemas import TrainingStepConfig
 from nmp.customization_common.integrations import (
     IntegrationRuntimeContext,
@@ -16,6 +15,7 @@ from nmp.customization_common.integrations import (
 from nmp.customization_common.integrations import (
     build_wandb_config as _build_wandb_config,
 )
+from nmp.customization_common.service.context import NMPJobContext
 
 
 def integration_context_from_training_step(

@@ -4,7 +4,7 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from nmp.unsloth.app.jobs.context import NMPJobContext
+from nmp.customization_common.service.context import NMPJobContext
 from nmp.unsloth.tasks.training.progress import JobsServiceProgressReporter
 
 

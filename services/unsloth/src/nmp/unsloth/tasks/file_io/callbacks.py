@@ -12,9 +12,9 @@ from typing import Any
 
 from fsspec.callbacks import Callback, TqdmCallback
 from nmp.common.jobs.schemas import PlatformJobStatus
+from nmp.customization_common.schemas.file_io import DownloadStats, TaskPhase, UploadStats
+from nmp.customization_common.tasks.file_io_progress_reporter import ProgressReporter
 from nmp.customization_common.tasks.file_io_utils import list_local_files as _list_local_files
-from nmp.unsloth.app.jobs.file_io.schemas import DownloadStats, TaskPhase, UploadStats
-from nmp.unsloth.tasks.file_io.progress_reporter import ProgressReporter
 
 logger = logging.getLogger(__name__)
 

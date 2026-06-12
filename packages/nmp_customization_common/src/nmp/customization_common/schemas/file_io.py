@@ -3,8 +3,7 @@
 
 """Schemas for the customization file_io task configuration.
 
-Shared by both the unsloth and automodel backends; each service re-exports these
-from its ``app/jobs/file_io/schemas.py`` so existing import paths keep working.
+Shared by both the unsloth and automodel backends.
 """
 
 from __future__ import annotations

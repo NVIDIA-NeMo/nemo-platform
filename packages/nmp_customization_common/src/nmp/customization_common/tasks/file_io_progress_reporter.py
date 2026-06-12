@@ -1,10 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Progress reporting for the file_io container task.
-
-Re-exported by each backend's ``tasks/file_io/progress_reporter.py``.
-"""
+"""Progress reporting for the file_io container task."""
 
 import logging
 from typing import Any, Protocol
