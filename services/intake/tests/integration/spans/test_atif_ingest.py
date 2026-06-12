@@ -189,9 +189,6 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
         "evaluation_id": "eval-sample-agent-baseline",
         "evaluation_sha": "abc132901",
         "evaluation_run_id": evaluation_run_id,
-        "dataset_id": "sample-dataset",
-        "dataset_name": "Sample Dataset",
-        "dataset_version": "v1",
         "test_case_id": "sample-test-case-a",
         "metadata": {"trial": "sample-test-case-a__trial-a"},
     }
@@ -382,9 +379,6 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
         "evaluation_id": evaluation_context["evaluation_id"],
         "evaluation_sha": evaluation_context["evaluation_sha"],
         "evaluation_run_id": evaluation_context["evaluation_run_id"],
-        "dataset_id": evaluation_context["dataset_id"],
-        "dataset_name": evaluation_context["dataset_name"],
-        "dataset_version": evaluation_context["dataset_version"],
         "test_case_id": evaluation_context["test_case_id"],
         "metadata": evaluation_context["metadata"],
     }
@@ -392,7 +386,7 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
     trajectory_raw = json.loads(trajectory["raw_attributes"])
     assert trajectory_raw["session_id"] == body["session_id"]
     assert "evaluation_context" not in trajectory_raw
-    assert "experiment.metadata" not in trajectory_raw
+    assert "nemo.experiment.metadata" not in trajectory_raw
     assert "evaluation.metadata" not in trajectory_raw
     assert trajectory["started_at"] == _span_started_at(user_step_time)
     assert trajectory["ended_at"] == _span_ended_at(verifier_finished_at)
@@ -717,8 +711,6 @@ def _create_experiment(client: TestClient, name: str) -> str:
         json={
             "name": name,
             "experiment_group_id": group_id,
-            "agent_name": "sample-agent",
-            "agent_version": "1.0.0",
             "dataset_name": "sample-dataset",
             "dataset_version": "v1",
         },

@@ -14,6 +14,9 @@ import { type FieldValues, type Path, useController, useFormContext } from 'reac
 export interface JudgeModelSelectProps<TFieldValues extends FieldValues = FieldValues> {
   required?: boolean;
   placeholder?: string;
+  slotLabel?: string;
+  requiredMessage?: string;
+  dropdownSide?: 'top' | 'bottom';
   formFieldName: Path<TFieldValues>;
   showParams?: boolean;
   inferenceParams?: Partial<InferenceParams>;
@@ -27,6 +30,9 @@ export interface JudgeModelSelectProps<TFieldValues extends FieldValues = FieldV
 export const JudgeModelSelect = <TFieldValues extends FieldValues = FieldValues>({
   required = false,
   placeholder = 'Select a judge model',
+  slotLabel = 'Judge Model',
+  requiredMessage = 'Judge model is required',
+  dropdownSide,
   formFieldName,
   showParams = false,
   inferenceParams,
@@ -40,7 +46,7 @@ export const JudgeModelSelect = <TFieldValues extends FieldValues = FieldValues>
   const { field, fieldState } = useController({
     control,
     name: formFieldName,
-    rules: required ? { required: 'Judge model is required' } : undefined,
+    rules: required ? { required: requiredMessage } : undefined,
   });
 
   const { data: judgeModels, isLoading, error } = useJudgeModels({ enabled: !disabled });
@@ -60,7 +66,7 @@ export const JudgeModelSelect = <TFieldValues extends FieldValues = FieldValues>
   };
 
   return (
-    <FormField slotLabel="Judge Model" slotError={fieldState.error?.message} required={required}>
+    <FormField slotLabel={slotLabel} slotError={fieldState.error?.message} required={required}>
       <ModelSelectV2
         value={value}
         onValueChange={handleValueChange}
@@ -72,6 +78,7 @@ export const JudgeModelSelect = <TFieldValues extends FieldValues = FieldValues>
         inferenceParams={inferenceParams}
         onInferenceParamsChange={onInferenceParamsChange}
         onOpenChange={handleOpenChange}
+        dropdownSide={dropdownSide}
         fullWidth
       />
     </FormField>

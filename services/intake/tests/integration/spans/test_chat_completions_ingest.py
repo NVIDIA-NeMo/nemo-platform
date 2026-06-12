@@ -18,9 +18,6 @@ EVALUATION_CONTEXT: dict[str, Any] = {
     "evaluation_id": "chat-eval",
     "evaluation_sha": "chat-eval-sha",
     "evaluation_run_id": "evalrun-chat-001",
-    "dataset_id": "chat-dataset",
-    "dataset_name": "Chat Dataset",
-    "dataset_version": "v1",
     "test_case_id": "chat-case-001",
     "metadata": {"source": "chat-completions-test"},
 }
@@ -261,9 +258,6 @@ def test_chat_completions_ingest_accepts_deprecated_evaluation_context(client: T
         "evaluation_id": EVALUATION_CONTEXT["evaluation_id"],
         "evaluation_sha": EVALUATION_CONTEXT["evaluation_sha"],
         "evaluation_run_id": EVALUATION_CONTEXT["evaluation_run_id"],
-        "dataset_id": EVALUATION_CONTEXT["dataset_id"],
-        "dataset_name": EVALUATION_CONTEXT["dataset_name"],
-        "dataset_version": EVALUATION_CONTEXT["dataset_version"],
         "test_case_id": EVALUATION_CONTEXT["test_case_id"],
         "metadata": EVALUATION_CONTEXT["metadata"],
     }
@@ -453,8 +447,6 @@ def _create_experiment(client: TestClient, name: str) -> str:
         json={
             "name": name,
             "experiment_group_id": group_id,
-            "agent_name": "sample-agent",
-            "agent_version": "1.0.0",
             "dataset_name": "chat-dataset",
             "dataset_version": "v1",
         },

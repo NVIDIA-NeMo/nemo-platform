@@ -33,8 +33,6 @@ def test_experiment_response_hydrates_clickhouse_rollups(client: TestClient) -> 
         json={
             "name": experiment_id,
             "experiment_group_id": group_id,
-            "agent_name": "sample-agent",
-            "agent_version": "1.0.0",
             "dataset_name": "rollup-dataset",
             "dataset_version": "v1",
         },
@@ -113,8 +111,6 @@ def test_atif_ingest_rejects_deleted_experiment(client: TestClient) -> None:
         json={
             "name": experiment_id,
             "experiment_group_id": group_id,
-            "agent_name": "sample-agent",
-            "agent_version": "1.0.0",
             "dataset_name": "rollup-dataset",
             "dataset_version": "v1",
         },
@@ -167,8 +163,6 @@ def test_deprecated_evaluation_context_hydrates_experiment_rollups(client: TestC
         json={
             "name": experiment_id,
             "experiment_group_id": group_id,
-            "agent_name": "sample-agent",
-            "agent_version": "1.0.0",
             "dataset_name": "rollup-dataset",
             "dataset_version": "v1",
         },

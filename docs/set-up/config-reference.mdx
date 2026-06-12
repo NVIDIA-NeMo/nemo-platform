@@ -117,8 +117,8 @@ auth:
   admin_email:
   # Name of the default workspace where all authenticated users get Editor role | default: 'default'
   default_workspace: default
-  # CPU budget for embedded PDP policy evaluation, in millions of WASM fuel units. Typical evaluations use 20-25; default of 100 provides ~4x headroom. | default: 100
-  embedded_pdp_cpu_limit: 100
+  # CPU budget for embedded PDP policy evaluation, in millions of WASM fuel units. Default of 200 provides headroom for full plugin-merged authorization data. | default: 200
+  embedded_pdp_cpu_limit: 200
   # Maximum linear memory (MB) the embedded PDP WASM runtime can consume. | default: 32
   embedded_pdp_memory_limit_mb: 32
 ```

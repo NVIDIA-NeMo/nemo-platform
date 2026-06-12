@@ -33,8 +33,6 @@ def test_list_experiment_sessions_returns_joined_session_rows(client: TestClient
         json={
             "name": experiment_name,
             "experiment_group_id": group_id,
-            "agent_name": "sample-agent",
-            "agent_version": "1.0.0",
             "dataset_name": "sessions-dataset",
             "dataset_version": "v1",
         },
@@ -111,8 +109,6 @@ def test_list_experiment_sessions_filter_by_test_case(client: TestClient) -> Non
         json={
             "name": experiment_name,
             "experiment_group_id": group_id,
-            "agent_name": "sample-agent",
-            "agent_version": "1.0.0",
             "dataset_name": "sessions-dataset",
             "dataset_version": "v1",
         },
@@ -160,8 +156,6 @@ def test_list_experiment_sessions_filter_by_status(client: TestClient) -> None:
         json={
             "name": experiment_name,
             "experiment_group_id": group_id,
-            "agent_name": "sample-agent",
-            "agent_version": "1.0.0",
             "dataset_name": "sessions-dataset",
             "dataset_version": "v1",
         },

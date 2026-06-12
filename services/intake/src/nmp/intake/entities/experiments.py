@@ -49,9 +49,6 @@ class Experiment(EntityBase):
         ),
     )
 
-    agent_name: str = Field(description="Name of the agent under test.")
-    agent_version: str = Field(description="Version of the agent under test.")
-
     dataset_name: str = Field(description="Producer-supplied dataset name.")
     dataset_version: str | None = Field(default=None, description="Producer-supplied dataset version.")
     source_link: AnyUrl | None = Field(default=None, description="Optional URL for the source experiment.")

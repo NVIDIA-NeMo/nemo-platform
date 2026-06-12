@@ -30,6 +30,8 @@ class ExperimentRollup:
     experiment_id: str
     run_count: int = 0
     model_names: list[str] = field(default_factory=list)
+    agent_names: list[str] = field(default_factory=list)
+    agent_versions: list[str] = field(default_factory=list)
     evaluator_scores: dict[str, ScoreRollup] = field(default_factory=dict)
     cost_usd: ScoreRollup | None = None
     latency_ms: ScoreRollup | None = None
@@ -92,11 +94,15 @@ class ExperimentRollupRepository:
                     **parameters,
                     "cost_key": spec_for_field(SpanAttributeField.COST_TOTAL_USD).bag_key,
                     "model_key": spec_for_field(SpanAttributeField.MODEL).bag_key,
+                    "agent_name_key": spec_for_field(SpanAttributeField.AGENT_NAME).bag_key,
+                    "agent_version_key": spec_for_field(SpanAttributeField.AGENT_VERSION).bag_key,
                 },
             )
         ):
             rollup = rollups[row["experiment_id"]]
             rollup.model_names = _string_list(row["model_names"])
+            rollup.agent_names = _string_list(row["agent_names"])
+            rollup.agent_versions = _string_list(row["agent_versions"])
             rollup.cost_usd = _score_rollup(row, "cost")
             rollup.latency_ms = _score_rollup(row, "latency")
 
@@ -247,7 +253,17 @@ def _metric_rollups_sql(*, trace_index_table: str, spans_table: str, experiment_
                     spans.attributes_string[%(model_key)s],
                     has(mapKeys(spans.attributes_string), %(model_key)s)
                         AND spans.attributes_string[%(model_key)s] != ''
-                ) AS model_names
+                ) AS model_names,
+                groupUniqArrayIf(
+                    spans.attributes_string[%(agent_name_key)s],
+                    has(mapKeys(spans.attributes_string), %(agent_name_key)s)
+                        AND spans.attributes_string[%(agent_name_key)s] != ''
+                ) AS agent_names,
+                groupUniqArrayIf(
+                    spans.attributes_string[%(agent_version_key)s],
+                    has(mapKeys(spans.attributes_string), %(agent_version_key)s)
+                        AND spans.attributes_string[%(agent_version_key)s] != ''
+                ) AS agent_versions
             FROM scoped_sessions AS sessions
             LEFT JOIN current_session_spans AS spans
                 ON sessions.workspace = spans.workspace
@@ -258,6 +274,8 @@ def _metric_rollups_sql(*, trace_index_table: str, spans_table: str, experiment_
         SELECT
             experiment_id,
             arraySort(arrayDistinct(arrayFlatten(groupArray(model_names)))) AS model_names,
+            arraySort(arrayDistinct(arrayFlatten(groupArray(agent_names)))) AS agent_names,
+            arraySort(arrayDistinct(arrayFlatten(groupArray(agent_versions)))) AS agent_versions,
             {_stat_columns("cost_usd", prefix="cost", guarded=True)},
             {_stat_columns("latency_ms", prefix="latency", guarded=True)}
         FROM session_costs
