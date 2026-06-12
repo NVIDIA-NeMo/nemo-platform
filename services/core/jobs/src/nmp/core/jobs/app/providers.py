@@ -18,8 +18,8 @@ class ContainerSpec(BaseModel):
     Defines the container image and related configuration for job execution.
     """
 
-    image: str
-    """The container image to use for execution"""
+    image: str | None = None
+    """The container image to use for execution. When omitted, the execution profile's default_task_image is used."""
 
     entrypoint: list[str] = Field(default_factory=list)
     """The entrypoint for the container as a list of strings (e.g., ['python', 'script.py']). This overrides a container's default entrypoint (e.g. ENTRYPOINT in Docker) if provided."""

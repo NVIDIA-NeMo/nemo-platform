@@ -30,7 +30,7 @@ class ContainerSpecParam(TypedDict, total=False):
     Defines the container image and related configuration for job execution.
     """
 
-    image: Required[str]
+    image: str
 
     command: SequenceNotStr[str]
 
