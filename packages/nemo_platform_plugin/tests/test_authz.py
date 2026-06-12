@@ -3,10 +3,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import httpx
 import pytest
+import yaml
+from fastapi.routing import APIRoute
 from nemo_platform_plugin.authz import (
     AuthzContribution,
     AuthzEndpointMethod,
@@ -18,6 +21,9 @@ from nemo_platform_plugin.authz_discovery import (
     _collect_from_plugin_surface,
     discover_authz_contributions,
 )
+from nemo_platform_plugin.authz_format import validate_static_authz_data
+from nemo_platform_plugin.authz_merge import merge_authz_contributions
+from nemo_platform_plugin.discovery import discover_services
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.scheduler import NemoJobScheduler
 from nemo_platform_plugin.service import NemoService
@@ -52,6 +58,17 @@ def test_authz_for_workspace_job_collection_paths() -> None:
     assert post.permissions == ["customization.automodel.jobs.create"]
     assert "customization:write" in (post.scopes or [])
     assert "customization.automodel.jobs.create" in contrib.permissions
+
+    endpoints = contrib.endpoints
+    cancel = endpoints["/apis/customization/v2/workspaces/{workspace}/automodel/jobs/{name}/cancel"]["post"]
+    status = endpoints["/apis/customization/v2/workspaces/{workspace}/automodel/jobs/{name}/status"]["get"]
+    download = endpoints["/apis/customization/v2/workspaces/{workspace}/automodel/jobs/{job}/results/{name}/download"][
+        "get"
+    ]
+    assert cancel.permissions == ["customization.automodel.jobs.cancel"]
+    assert status.permissions == ["customization.automodel.jobs.read"]
+    assert download.permissions == ["customization.automodel.jobs.read"]
+    assert "customization.automodel.jobs.cancel" in contrib.permissions
 
 
 def test_service_class_get_authz_contribution_without_instance() -> None:
@@ -118,7 +135,9 @@ def test_customization_router_authz_discovered_via_nemo_services(monkeypatch: py
                 },
             )
             backend_parts = [
-                contributor.get_authz_contribution() for contributor in discover_customization_contributors().values()
+                contribution
+                for contributor in discover_customization_contributors().values()
+                if isinstance((contribution := contributor.get_authz_contribution()), AuthzContribution)
             ]
             return combine_authz_contributions(hub, *backend_parts)
 
@@ -177,7 +196,7 @@ def test_nemo_authz_entry_point_discovered(monkeypatch: pytest.MonkeyPatch) -> N
 
 def test_submit_remote_forwards_authorization_header() -> None:
     """Authenticated CLI submit passes Authorization to the protected job route."""
-    capture: dict[str, object] = {}
+    capture: dict[str, dict[str, str]] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
         capture["headers"] = dict(request.headers)
@@ -197,5 +216,49 @@ def test_submit_remote_forwards_authorization_header() -> None:
 
     assert result == {"id": "job-123", "status": "queued"}
     headers = capture["headers"]
-    assert isinstance(headers, dict)
     assert headers.get("authorization") == "Bearer test-token"
+
+
+def test_discovered_service_routes_have_authz_entries() -> None:
+    static_path = Path(__file__).resolve().parents[3] / "services/core/auth/src/nmp/core/auth/assets/static-authz.yaml"
+    with static_path.open() as f:
+        static_authz = yaml.safe_load(f)
+
+    discover_authz_contributions.cache_clear()
+    try:
+        contributions = discover_authz_contributions()
+    finally:
+        discover_authz_contributions.cache_clear()
+
+    merged = merge_authz_contributions(static_authz, [contribution.to_dict() for contribution in contributions])
+    validate_static_authz_data(merged)
+    endpoints = merged["authz"]["endpoints"]
+
+    missing = sorted(
+        f"{method.upper()} {path}"
+        for path, method in _discovered_service_route_methods()
+        if method not in endpoints.get(path, {})
+    )
+
+    assert missing == []
+
+
+def _discovered_service_route_methods() -> set[tuple[str, str]]:
+    route_methods: set[tuple[str, str]] = set()
+    for service_name, service_cls in discover_services().items():
+        service = service_cls()
+        for spec in service.get_routers():
+            prefix = f"/apis/{service_name}{spec.prefix}".rstrip("/")
+            for route in spec.router.routes:
+                if not isinstance(route, APIRoute):
+                    continue
+                path = f"{prefix}{route.path}"
+                normalized_path = _normalize_route_path(path)
+                for method in route.methods or set():
+                    route_methods.add((normalized_path, method.lower()))
+    return route_methods
+
+
+def _normalize_route_path(path: str) -> str:
+    # Authz policy uses placeholder names only; FastAPI route converters are an implementation detail.
+    return path.replace("{trailing_uri:path}", "{trailing_uri}")
