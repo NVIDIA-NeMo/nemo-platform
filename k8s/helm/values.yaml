@@ -13,10 +13,51 @@ ngcAPIKey: YOUR-NGC-API-KEY
 env: {}
 
 # -- Optional. Name of an existing Kubernetes Secret to load as env vars (envFrom) for the API pod.
-# When set, the chart does not create the default api-env secret; use your own secret (e.g. from Vault, sealed-secrets).
-# When unset, the chart creates a default secret with the environment variable NMP_SECRETS_DEFAULT_ENCRYPTION_KEY for default installation.
-# See the NeMo Platform documentation for more details on secrets encryption.
+# When set, the chart does not create or generate the default api-env Secret; use your own Secret (for example, from Vault or sealed-secrets).
 envFromSecret: ""
+
+# -- Secrets service configuration.
+secrets:
+  defaultEncryptionKey:
+    # -- Optional base64-encoded key for encrypting platform secrets. The decoded key must be at least 32 bytes. If empty and envFromSecret is not set, a pre-install hook generates a per-install key.
+    value: ""
+    # -- Generated key configuration used only when value and envFromSecret are empty. The generated key is not rotated or recreated on upgrade.
+    generated:
+      enabled: true
+      image:
+        # -- Image repository for the pre-install key generation hook.
+        repository: docker.io/library/python
+        # -- Image tag for the pre-install key generation hook.
+        tag: "3.12-slim"
+        # -- Image pull policy for the pre-install key generation hook.
+        pullPolicy: IfNotPresent
+      serviceAccount:
+        # -- Specifies whether a service account should be created for the key generation hook.
+        create: true
+        # -- Automatically mount the ServiceAccount's API credentials.
+        automount: true
+        # -- Annotations to add to the key generation hook service account.
+        annotations: {}
+        # -- The name of the service account to use. If not set and create is true, a name is generated using the fullname template.
+        name: ""
+      # -- Number of retries before the key generation hook is marked failed.
+      backoffLimit: 3
+      # -- Maximum seconds for the key generation hook to run.
+      activeDeadlineSeconds: 120
+      # -- Seconds to keep the key generation hook Job after it finishes, if the hook is not deleted first.
+      ttlSecondsAfterFinished: 300
+      # -- Optional pod security context for the key generation hook.
+      podSecurityContext: {}
+      # -- Optional container security context for the key generation hook.
+      securityContext: {}
+      # -- Optional resource limits/requests for the key generation hook.
+      resources: {}
+      # -- Node selector for the key generation hook.
+      nodeSelector: {}
+      # -- Affinity for the key generation hook.
+      affinity: {}
+      # -- Tolerations for the key generation hook.
+      tolerations: []
 
 # -- You can use an existing Kubernetes secret for communicating with the NGC API for downloading models. The chart uses the `ngcAPIKey` value to generate the secret if you set this to an empty string.
 existingSecret: ngc-api
@@ -108,11 +149,11 @@ ncclTest:
       limits:
         cpu: "1"
         memory: 512Mi
-  # -- Post-test hook Job (after orchestrator): kubectl deletes the scripts ConfigMap (helm.sh/hook-weight 5).
+  # -- Post-test hook Job (after orchestrator): deletes the scripts ConfigMap (helm.sh/hook-weight 5).
   configMapCleanupJob:
     image:
-      repository: bitnami/kubectl
-      tag: "latest"
+      repository: docker.io/library/python
+      tag: "3.12-slim"
   worker:
     image:
       repository: nvcr.io/nvidia/nemo-platform/nmp-automodel-training

@@ -149,6 +149,61 @@ checksum/config: {{ include (print $.Template.BasePath "/platform-configmap.yaml
 {{- end -}}
 
 {{/*
+Name of the API environment Secret. This Secret provides environment variables
+loaded via envFrom, including the secrets service default encryption key when the
+chart manages it.
+*/}}
+{{- define "nemo-platform.apiEnvSecretName" -}}
+{{- .Values.envFromSecret | default (printf "%s-api-env" (include "nemo-platform.fullname" .)) -}}
+{{- end -}}
+
+{{/*
+Environment variable name used by the secrets service secret_key provider.
+*/}}
+{{- define "nemo-platform.defaultEncryptionKeyEnvName" -}}
+NMP_SECRETS_DEFAULT_ENCRYPTION_KEY
+{{- end -}}
+
+{{/*
+Whether the chart should generate the API env Secret through a pre-install hook.
+Generation is install-only. On upgrade, a missing generated key is unrecoverable
+without restoring the original key or rotating/re-encrypting secrets through the
+supported admin flow, so the chart must not generate a replacement.
+*/}}
+{{- define "nemo-platform.generateDefaultEncryptionKey" -}}
+{{- if and .Release.IsInstall (not .Values.envFromSecret) (not .Values.secrets.defaultEncryptionKey.value) .Values.secrets.defaultEncryptionKey.generated.enabled -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{/*
+Whether an upgrade should require the generated API env Secret to already exist.
+*/}}
+{{- define "nemo-platform.requireExistingGeneratedDefaultEncryptionKey" -}}
+{{- if and .Release.IsUpgrade (not .Values.envFromSecret) (not .Values.secrets.defaultEncryptionKey.value) .Values.secrets.defaultEncryptionKey.generated.enabled -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{/*
+Name shared by the key generation hook RBAC and Job resources.
+*/}}
+{{- define "nemo-platform.defaultEncryptionKeyGeneratorName" -}}
+{{- printf "%s-api-env-keygen" (include "nemo-platform.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{/*
+ServiceAccount name for the key generation hook.
+*/}}
+{{- define "nemo-platform.defaultEncryptionKeyGeneratorServiceAccountName" -}}
+{{- if .Values.secrets.defaultEncryptionKey.generated.serviceAccount.create -}}
+{{- default (include "nemo-platform.defaultEncryptionKeyGeneratorName" .) .Values.secrets.defaultEncryptionKey.generated.serviceAccount.name -}}
+{{- else -}}
+{{- default "default" .Values.secrets.defaultEncryptionKey.generated.serviceAccount.name -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Custom image pull secret if not defined
 */}}
 {{- define "nemo-common.imagePullSecretName" -}}

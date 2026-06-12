@@ -295,7 +295,7 @@ spec:
       imagePullSecrets:
         {{ include "nemo-common.imagepullsecrets" . | nindent 8 | trim }}
       containers:
-        - name: kubectl
+        - name: configmap-cleanup
           image: "{{ .Values.ncclTest.configMapCleanupJob.image.repository }}:{{ .Values.ncclTest.configMapCleanupJob.image.tag }}"
           imagePullPolicy: IfNotPresent
           env:
@@ -305,10 +305,48 @@ spec:
                   fieldPath: metadata.namespace
             - name: CM_NAME
               value: {{ printf "%s-cm" $ncclTestBase | trunc 63 | quote }}
-          command: ["/bin/bash", "-lc"]
+          command:
+            - python
+            - -c
           args:
             - |
-              set -e
-              echo "Deleting ConfigMap ${CM_NAME} in ${NAMESPACE}"
-              kubectl delete configmap "${CM_NAME}" -n "${NAMESPACE}" --ignore-not-found
-              echo "ConfigMap cleanup done."
+              import os
+              import ssl
+              import urllib.error
+              import urllib.request
+
+              namespace = os.environ["NAMESPACE"]
+              configmap_name = os.environ["CM_NAME"]
+              api_host = os.environ["KUBERNETES_SERVICE_HOST"]
+              api_port = os.environ.get("KUBERNETES_SERVICE_PORT", "443")
+              token_path = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+              ca_path = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+
+              with open(token_path, encoding="utf-8") as token_file:
+                  token = token_file.read().strip()
+
+              request = urllib.request.Request(
+                  "https://{}:{}/api/v1/namespaces/{}/configmaps/{}".format(
+                      api_host,
+                      api_port,
+                      namespace,
+                      configmap_name,
+                  ),
+                  headers={
+                      "Authorization": "Bearer " + token,
+                      "Accept": "application/json",
+                  },
+                  method="DELETE",
+              )
+
+              print("Deleting ConfigMap {} in {}".format(configmap_name, namespace))
+              try:
+                  urllib.request.urlopen(
+                      request,
+                      context=ssl.create_default_context(cafile=ca_path),
+                      timeout=30,
+                  ).close()
+              except urllib.error.HTTPError as exc:
+                  if exc.code != 404:
+                      raise
+              print("ConfigMap cleanup done.")

@@ -4,6 +4,24 @@
 
 Documentation can be found at: https://docs.nvidia.com/nemo/microservices/.
 
+## Platform Secrets Encryption Key
+
+The platform secrets service reads `NMP_SECRETS_DEFAULT_ENCRYPTION_KEY` from the
+API env Secret. The value must be base64-encoded and decode to at least 32 bytes.
+
+Set `secrets.defaultEncryptionKey.value` to provide your own key. When that value
+is empty and `envFromSecret` is not set, the chart runs a pre-install hook that
+creates `<fullname>-api-env` with a per-install random key. The hook is
+install-only and refuses to patch or rotate an existing Secret.
+
+Set `envFromSecret` to use a fully user-managed API env Secret. In that mode the
+chart does not create or generate the API env Secret.
+
+On upgrade, the generated Secret must already exist and contain
+`NMP_SECRETS_DEFAULT_ENCRYPTION_KEY`. If it is missing, restore the original
+Secret instead of generating a replacement key; existing encrypted platform
+secrets will not decrypt with a new key.
+
 ## Values
 
 | Key | Type | Default | Description |
@@ -131,7 +149,7 @@ Documentation can be found at: https://docs.nvidia.com/nemo/microservices/.
 | core.storage.volumePermissionsImage | string | `"busybox"` | volumePermissionsImage is the image used to set permissions on the volume |
 | core.telemetry | object | `{}` | OpenTelemetry configuration overrides for the platform deployment. |
 | env | object | `{}` | Environment variables that will be applied to every deployment pod. Uses a simple key value map structure like MY_ENV_VAR: the-key and works with valueFrom as well. |
-| envFromSecret | string | `""` | Optional. Name of an existing Kubernetes Secret to load as env vars (envFrom) for the API pod. When set, the chart does not create the default api-env secret; use your own secret (e.g. from Vault, sealed-secrets). When unset, the chart creates a default secret with the environment variable NMP_SECRETS_DEFAULT_ENCRYPTION_KEY for default installation. See the NeMo Platform documentation for more details on secrets encryption. |
+| envFromSecret | string | `""` | Optional. Name of an existing Kubernetes Secret to load as env vars (envFrom) for the API pod. When set, the chart does not create or generate the default api-env Secret; use your own Secret (for example, from Vault or sealed-secrets). |
 | envoyProxy | object | This object has the following default values for the envoy proxy configuration. | Envoy proxy configuration settings. Resources are created only when platform config has auth.enabled: true (see platformConfig.auth.enabled). |
 | envoyProxy.adminPort | int | `9901` | Envoy Admin port |
 | envoyProxy.affinity | object | `{}` | Affinity configuration for the Envoy pods. |
@@ -222,8 +240,8 @@ Documentation can be found at: https://docs.nvidia.com/nemo/microservices/.
 | multinodeNetworking.oci.enabled | bool | `false` | Enable OCI-specific Kyverno policy for InfiniBand/SR-IOV configuration |
 | multinodeNetworking.oci.rdmaDevicesPerGPU | int | `8` | Number of RDMA devices (mlnxnics) to request per GPU |
 | nameOverride | string | `""` | Overrides for name and fullname templates |
-| ncclTest | object | `{"configMapCleanupJob":{"image":{"repository":"bitnami/kubectl","tag":"latest"}},"gpuNodeLabelKey":"nvidia.com/gpu.present","gpuNodeLabelValue":"true","gpuResourceKey":"nvidia.com/gpu","gpusPerNode":1,"iterations":3,"orchestrator":{"image":{"repository":"docker.io/library/python","tag":"3.12-slim"},"resources":{"limits":{"cpu":"1","memory":"512Mi"},"requests":{"cpu":"100m","memory":"256Mi"}}},"validation":{"minBandwidthMBpsAt1024MB":8000},"waitTimeoutSeconds":900,"worker":{"image":{"repository":"nvcr.io/nvidia/nemo-platform/nmp-automodel-training","tag":""},"resources":{"limits":{"cpu":"8","memory":"16Gi"},"requests":{"cpu":"4","memory":"8Gi"}}}}` | NCCL chart test (`helm test`): multi-node allreduce check. Templates use helm.sh/hook: test — they are not created on install/upgrade, only when you run helm test. Requires nodes labeled with gpuNodeLabelKey/gpuNodeLabelValue (default NFD / GPU operator style). See https://helm.sh/docs/topics/chart_tests/ |
-| ncclTest.configMapCleanupJob | object | `{"image":{"repository":"bitnami/kubectl","tag":"latest"}}` | Post-test hook Job (after orchestrator): kubectl deletes the scripts ConfigMap (helm.sh/hook-weight 5). |
+| ncclTest | object | `{"configMapCleanupJob":{"image":{"repository":"docker.io/library/python","tag":"3.12-slim"}},"gpuNodeLabelKey":"nvidia.com/gpu.present","gpuNodeLabelValue":"true","gpuResourceKey":"nvidia.com/gpu","gpusPerNode":1,"iterations":3,"orchestrator":{"image":{"repository":"docker.io/library/python","tag":"3.12-slim"},"resources":{"limits":{"cpu":"1","memory":"512Mi"},"requests":{"cpu":"100m","memory":"256Mi"}}},"validation":{"minBandwidthMBpsAt1024MB":8000},"waitTimeoutSeconds":900,"worker":{"image":{"repository":"nvcr.io/nvidia/nemo-platform/nmp-automodel-training","tag":""},"resources":{"limits":{"cpu":"8","memory":"16Gi"},"requests":{"cpu":"4","memory":"8Gi"}}}}` | NCCL chart test (`helm test`): multi-node allreduce check. Templates use helm.sh/hook: test — they are not created on install/upgrade, only when you run helm test. Requires nodes labeled with gpuNodeLabelKey/gpuNodeLabelValue (default NFD / GPU operator style). See https://helm.sh/docs/topics/chart_tests/ |
+| ncclTest.configMapCleanupJob | object | `{"image":{"repository":"docker.io/library/python","tag":"3.12-slim"}}` | Post-test hook Job (after orchestrator): deletes the scripts ConfigMap (helm.sh/hook-weight 5). |
 | ncclTest.gpuNodeLabelKey | string | `"nvidia.com/gpu.present"` | Node label used to discover GPU workers (must match your cluster). |
 | ncclTest.gpuResourceKey | string | `"nvidia.com/gpu"` | Resource name for GPU capacity on worker pods (e.g. nvidia.com/gpu or a MIG device). |
 | ncclTest.gpusPerNode | int | `1` | GPUs per worker pod / per node (torch.distributed nproc_per_node). IMPORTANT: Set this value before testing |
@@ -275,6 +293,25 @@ Documentation can be found at: https://docs.nvidia.com/nemo/microservices/.
 | rbac | object | `{"k8sNimOperatorEnabled":true,"volcanoEnabled":true}` | RBAC configuration settings for optional dependencies |
 | rbac.k8sNimOperatorEnabled | bool | `true` | Specifies whether to enable the core Controller to have RBAC permissions to k8s-nim-operator's NIMService for scheduling NIMs. |
 | rbac.volcanoEnabled | bool | `true` | Specifies whether to enable the core Controller to have RBAC permissions to Volcano for scheduling distributed jobs. |
+| secrets | object | `{"defaultEncryptionKey":{"generated":{"activeDeadlineSeconds":120,"affinity":{},"backoffLimit":3,"enabled":true,"image":{"pullPolicy":"IfNotPresent","repository":"docker.io/library/python","tag":"3.12-slim"},"nodeSelector":{},"podSecurityContext":{},"resources":{},"securityContext":{},"serviceAccount":{"annotations":{},"automount":true,"create":true,"name":""},"tolerations":[],"ttlSecondsAfterFinished":300},"value":""}}` | Secrets service configuration. |
+| secrets.defaultEncryptionKey.generated | object | `{"activeDeadlineSeconds":120,"affinity":{},"backoffLimit":3,"enabled":true,"image":{"pullPolicy":"IfNotPresent","repository":"docker.io/library/python","tag":"3.12-slim"},"nodeSelector":{},"podSecurityContext":{},"resources":{},"securityContext":{},"serviceAccount":{"annotations":{},"automount":true,"create":true,"name":""},"tolerations":[],"ttlSecondsAfterFinished":300}` | Generated key configuration used only when value and envFromSecret are empty. The generated key is not rotated or recreated on upgrade. |
+| secrets.defaultEncryptionKey.generated.activeDeadlineSeconds | int | `120` | Maximum seconds for the key generation hook to run. |
+| secrets.defaultEncryptionKey.generated.affinity | object | `{}` | Affinity for the key generation hook. |
+| secrets.defaultEncryptionKey.generated.backoffLimit | int | `3` | Number of retries before the key generation hook is marked failed. |
+| secrets.defaultEncryptionKey.generated.image.pullPolicy | string | `"IfNotPresent"` | Image pull policy for the pre-install key generation hook. |
+| secrets.defaultEncryptionKey.generated.image.repository | string | `"docker.io/library/python"` | Image repository for the pre-install key generation hook. |
+| secrets.defaultEncryptionKey.generated.image.tag | string | `"3.12-slim"` | Image tag for the pre-install key generation hook. |
+| secrets.defaultEncryptionKey.generated.nodeSelector | object | `{}` | Node selector for the key generation hook. |
+| secrets.defaultEncryptionKey.generated.podSecurityContext | object | `{}` | Optional pod security context for the key generation hook. |
+| secrets.defaultEncryptionKey.generated.resources | object | `{}` | Optional resource limits/requests for the key generation hook. |
+| secrets.defaultEncryptionKey.generated.securityContext | object | `{}` | Optional container security context for the key generation hook. |
+| secrets.defaultEncryptionKey.generated.serviceAccount.annotations | object | `{}` | Annotations to add to the key generation hook service account. |
+| secrets.defaultEncryptionKey.generated.serviceAccount.automount | bool | `true` | Automatically mount the ServiceAccount's API credentials. |
+| secrets.defaultEncryptionKey.generated.serviceAccount.create | bool | `true` | Specifies whether a service account should be created for the key generation hook. |
+| secrets.defaultEncryptionKey.generated.serviceAccount.name | string | `""` | The name of the service account to use. If not set and create is true, a name is generated using the fullname template. |
+| secrets.defaultEncryptionKey.generated.tolerations | list | `[]` | Tolerations for the key generation hook. |
+| secrets.defaultEncryptionKey.generated.ttlSecondsAfterFinished | int | `300` | Seconds to keep the key generation hook Job after it finishes, if the hook is not deleted first. |
+| secrets.defaultEncryptionKey.value | string | `""` | Optional base64-encoded key for encrypting platform secrets. The decoded key must be at least 32 bytes. If empty and envFromSecret is not set, a pre-install hook generates a per-install key. |
 | securityContext | object | This object has the following default values for the container security context. | Container security context settings applied to all services by default. These can be overridden in individual service configurations. |
 | telemetry.OTEL_EXPORTER_OTLP_ENDPOINT | string | `""` | The OpenTelemetry grpc collector endpoint to export traces and metrics to. |
 | telemetry.OTEL_EXPORTER_OTLP_INSECURE | bool | `true` | Whether to use an insecure connection (no TLS) to the OpenTelemetry collector endpoint. |

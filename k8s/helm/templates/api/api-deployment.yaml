@@ -52,7 +52,7 @@ spec:
             {{- end }}
           envFrom:
             - secretRef:
-                name: {{ .Values.envFromSecret | default (printf "%s-api-env" (include "nemo-platform.fullname" .)) }}
+                name: {{ include "nemo-platform.apiEnvSecretName" . }}
           env:
             - name: NMP_CONFIG_FILE_PATH
               value: /etc/nmp/config.yaml
