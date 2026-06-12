@@ -344,6 +344,26 @@ normalize_endpoint(path) := pattern if {
 	pattern_scores[pattern] == min_score
 }
 
+# --- Request-scoped memoization -------------------------------------------------
+# extract_path and extract_method are 0-arg rules, and OPA caches complete-rule
+# results for the lifetime of a single query. normalize_endpoint scans every
+# configured endpoint pattern (O(endpoints)); binding it to a 0-arg rule here makes
+# that scan run ONCE per evaluation instead of once per call site. The allow/deny
+# rules reference these instead of re-calling the path/method helper functions.
+# The functions above are kept intact — the policy tests call them with explicit
+# paths/methods, which must not be tied to the live request path.
+endpoint_scan := e if {
+	e := normalize_endpoint(extract_path)
+} else := ""
+
+req_method_lower := lower(extract_method)
+
+req_permissions := data.authz.endpoints[endpoint_scan][req_method_lower].permissions
+
+req_callers := data.authz.endpoints[endpoint_scan][req_method_lower].callers
+
+req_deny if data.authz.endpoints[endpoint_scan][req_method_lower].deny == true
+
 # UTILITY HELPERS
 
 # Helper to format boolean as string for headers

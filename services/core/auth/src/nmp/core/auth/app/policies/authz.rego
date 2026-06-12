@@ -6,16 +6,13 @@ import future.keywords.in
 
 import data.authz.extract_method
 import data.authz.extract_path
-import data.authz.extract_scopes
-import data.authz.extract_workspace_from_path
 import data.authz.scope_check_passed
-import data.common.endpoint_callers
-import data.common.endpoint_denied
+import data.common.endpoint_scan
 import data.common.get_applicable_principals
-import data.common.get_required_permissions
 import data.common.has_permissions
-import data.common.normalize_endpoint
-import data.common.path_matches_pattern
+import data.common.req_callers
+import data.common.req_deny
+import data.common.req_permissions
 
 # Main entry point - returns result with X-NMP-Authorized header
 #
@@ -61,13 +58,7 @@ allow_request if {
 allow_request if {
 	principal_id := extract_principal_id
 	startswith(principal_id, "service:")
-	path := extract_path
-	base_path := split(path, "?")[0]
-	matching_patterns := {p |
-		some p in object.keys(data.authz.endpoints)
-		path_matches_pattern(base_path, p)
-	}
-	count(matching_patterns) == 0
+	endpoint_scan == ""
 }
 
 # Allow if any applicable principal has required permissions and scopes (if provided)
@@ -80,10 +71,11 @@ allow_request if {
 
 	path := extract_path
 	method := extract_method
-	required_permissions := get_required_permissions(path, method)
+	required_permissions := req_permissions
 	count(required_permissions) > 0
 
-	workspace := extract_workspace_from_path(path)
+	workspace_scan != ""
+	workspace := workspace_scan
 
 	# Skip this rule for wildcard workspace - use cross-workspace rule instead
 	workspace != "-"
@@ -105,10 +97,11 @@ allow_request if {
 
 	path := extract_path
 	method := extract_method
-	required_permissions := get_required_permissions(path, method)
+	required_permissions := req_permissions
 	count(required_permissions) > 0
 
-	workspace := extract_workspace_from_path(path)
+	workspace_scan != ""
+	workspace := workspace_scan
 	workspace == "-"
 	method in ["POST", "PUT", "PATCH", "DELETE"]
 
@@ -128,9 +121,9 @@ allow_request if {
 	base_path := split(path, "?")[0]
 	startswith(base_path, "/apis/auth/v2/iam/")
 	method := extract_method
-	required_permissions := get_required_permissions(path, method)
+	required_permissions := req_permissions
 	count(required_permissions) > 0
-	not extract_workspace_from_path(path)
+	workspace_scan == ""
 	some principal in applicable_principals
 	has_permissions(principal, "system", required_permissions)
 }
@@ -154,14 +147,14 @@ allow_request if {
 
 	# Ensure the path matches a known endpoint pattern.
 	# normalize_endpoint is undefined for unknown paths, failing the rule (deny by default).
-	normalize_endpoint(path)
+	endpoint_scan != ""
 
 	# Match if no workspace can be extracted from path (undefined = no workspace placeholder)
-	not extract_workspace_from_path(path)
+	workspace_scan == ""
 
 	# Permissionless only: an endpoint with no `permissions` (empty or absent) keeps the
 	# "any authenticated user" behavior; a permissioned one falls through to the rule below.
-	not endpoint_requires_permissions(path, method)
+	not req_has_permissions
 }
 
 # A permission-stamped no-workspace GET/HEAD must satisfy its declared permission in the system
@@ -176,10 +169,10 @@ allow_request if {
 	method := extract_method
 	method in ["GET", "HEAD"]
 	path := extract_path
-	normalize_endpoint(path)
-	not extract_workspace_from_path(path)
+	endpoint_scan != ""
+	workspace_scan == ""
 
-	required_permissions := get_required_permissions(path, method)
+	required_permissions := req_permissions
 	count(required_permissions) > 0
 
 	some principal in applicable_principals
@@ -189,8 +182,8 @@ allow_request if {
 # True when the matched endpoint declares one or more required permissions for this method.
 # Undefined required-permissions (an endpoint with no `permissions` key) makes count() undefined,
 # so this is false there — absent/empty permissions are treated alike (no permission required).
-endpoint_requires_permissions(path, method) if {
-	count(get_required_permissions(path, method)) > 0
+req_has_permissions if {
+	count(req_permissions) > 0
 }
 
 # Allow cross-workspace LIST operations with "-" wildcard workspace
@@ -206,7 +199,8 @@ allow_request if {
 	path := extract_path
 
 	# Match if workspace is "-" wildcard
-	workspace := extract_workspace_from_path(path)
+	workspace_scan != ""
+	workspace := workspace_scan
 	workspace == "-"
 }
 
@@ -227,9 +221,7 @@ allow_request if {
 	scope_check_passed
 	path := extract_path
 	method := extract_method
-	endpoint := normalize_endpoint(path)
-	method_lower := lower(method)
-	data.authz.endpoints[endpoint][method_lower].permissions == []
+	req_permissions == []
 }
 
 # DENY REQUEST RULES
@@ -242,7 +234,7 @@ default deny_request := false
 # the ServiceSystem "*" wildcard and the PlatformAdmin bypass, so an un-annotated plugin route
 # can never fall through to the service: no-match bypass and become accessible.
 deny_request if {
-	endpoint_denied(extract_path, extract_method)
+	req_deny
 }
 
 # Fence a degraded plugin's entire namespace. The bundle records /apis/<plugin> prefixes for
@@ -327,7 +319,7 @@ deny_request if {
 default service_only_route := false
 
 service_only_route if {
-	callers := endpoint_callers(extract_path, extract_method)
+	callers := req_callers
 	"service_principal" in callers
 	not "principal" in callers
 }
@@ -355,7 +347,7 @@ deny_request if {
 default principal_only_route := false
 
 principal_only_route if {
-	callers := endpoint_callers(extract_path, extract_method)
+	callers := req_callers
 	"principal" in callers
 	not "service_principal" in callers
 }
