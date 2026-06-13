@@ -126,19 +126,19 @@ print(f' model: "{model.workspace}/{model.name}"')
 
 ## Using the Model Entity in Customization Jobs
 
-After your Model Entity is ready (has a populated `spec`), reference it in customization jobs:
+After your Model Entity is ready (has a populated `spec`), reference it in a customization job. Jobs are submitted to a backend (`automodel` shown here; `unsloth` is also available):
 
 ```python
+from nemo_automodel_plugin.schema import AutomodelJobInput
+
 # Create a customization job using the Model Entity
-job = client.customization.jobs.create(
-    workspace="default",
-    name="my-lora-job",
-    spec={
-        "model": "default/llama-3-2-1b",  # Created above
-        "dataset": "fileset://default/my-training-dataset",
-        "training": {"type": "sft", "peft": {"type": "lora"}, "epochs": 1},
-    },
+spec = AutomodelJobInput(
+    model="default/llama-3-2-1b",  # Created above
+    dataset={"training": "default/my-training-dataset"},
+    training={"training_type": "sft", "finetuning_type": "lora"},
+    schedule={"epochs": 1},
 )
+job = client.customization.automodel.jobs.create(spec=spec, workspace="default", name="my-lora-job")
 ```
 
 Refer to [create-job](/documentation/customizer-reference/manage-customization-jobs/create-a-customization-job) for complete job creation details.
@@ -147,10 +147,10 @@ Refer to [create-job](/documentation/customizer-reference/manage-customization-j
 
 ## Post-Training Output
 
-After a customization job completes, the output depends on the finetuning type:
+After a customization job completes, the output depends on the fine-tuning regime (`training.finetuning_type`):
 
-- **LoRA training** (`peft: {"type": "lora"}`): An **adapter** is attached to this Model Entity. The adapter contains only the trained LoRA weights.
-- **Full SFT training** (no `peft` config): A **new Model Entity** is created containing the complete fine-tuned model weights. This new entity has a `base_model` field linking back to the original.
+- **LoRA training** (`finetuning_type: "lora"`): An **adapter** is attached to this Model Entity. The adapter contains only the trained LoRA weights.
+- **Full-weight training** (`finetuning_type: "all_weights"`): A **new Model Entity** is created containing the complete fine-tuned model weights. This new entity has a `base_model` field linking back to the original.
 
 For LoRA jobs, you can list adapters attached to a model:
 
