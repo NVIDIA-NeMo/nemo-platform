@@ -84,7 +84,7 @@ describe('getLanguageFromFilePath', () => {
   });
 
   it('handles files with multiple dots', () => {
-    expect(getLanguageFromFilePath('file.spec.ts')).toBe('typescript');
+    expect(getLanguageFromFilePath('file.test.ts')).toBe('typescript');
     expect(getLanguageFromFilePath('config.prod.json')).toBe('json');
   });
 

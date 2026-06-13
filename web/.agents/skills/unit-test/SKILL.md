@@ -92,14 +92,14 @@ Two acceptable patterns from `web/`:
 ```bash
 # Pattern A — filter from web/ root
 pnpm --filter nemo-studio-ui test                                # whole package
-pnpm --filter nemo-studio-ui test -- src/components/Button.spec.tsx   # specific file
+pnpm --filter nemo-studio-ui test -- src/components/Button.test.tsx   # specific file
 pnpm --filter nemo-studio-ui test -- --reporter=verbose Button   # pattern match
 pnpm --filter nemo-studio-ui test -- --coverage                  # with coverage
 
 # Pattern B — cd into the package
 cd packages/studio
 pnpm test                                                        # whole package
-pnpm test -- src/components/Button.spec.tsx                      # specific file
+pnpm test -- src/components/Button.test.tsx                      # specific file
 ```
 
 `pnpm test` already passes `--run` (no watch mode) — tests run to completion so results can be read and iterated on.

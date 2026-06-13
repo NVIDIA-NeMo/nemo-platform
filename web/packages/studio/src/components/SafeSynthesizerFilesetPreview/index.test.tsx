@@ -308,7 +308,7 @@ describe('SafeSynthesizerFilesetPreview', () => {
   });
 
   // Note: Data Source Preview functionality is now handled by FilesetFilePreviewLink
-  // which is tested separately in FilesetFilePreviewLink.spec.tsx
+  // which is tested separately in FilesetFilePreviewLink.test.tsx
   describe('Data Source Preview', () => {
     it('should render FilesetFilePreviewLink for data source', () => {
       const job = createMockJob();

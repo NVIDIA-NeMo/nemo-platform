@@ -46,7 +46,7 @@ const test = baseTest.extend<TestFixtures>({
   },
   testProject: async ({ request }, runFixture) => {
     const projectDisplayName = generateTestResourceName('project');
-    const projectDescription = `Project created by datasets.spec.ts E2E test on ${CURRENT_YYYY_MM_DD}`;
+    const projectDescription = `Project created by datasets.test.ts E2E test on ${CURRENT_YYYY_MM_DD}`;
     await testProjectFixture(
       request,
       runFixture,
@@ -57,7 +57,7 @@ const test = baseTest.extend<TestFixtures>({
   },
   testDataset: async ({ request, testProject }, runFixture) => {
     const datasetName = generateTestResourceName('dataset');
-    const datasetDescription = `Dataset created by datasets.spec.ts E2E test on ${CURRENT_YYYY_MM_DD}`;
+    const datasetDescription = `Dataset created by datasets.test.ts E2E test on ${CURRENT_YYYY_MM_DD}`;
     await testDatasetFixture(
       request,
       runFixture,
