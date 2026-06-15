@@ -1,0 +1,13 @@
+# This assumes that KAI Scheduler is installed in the cluster and that the default queue is named "default".
+
+platformConfig:
+  jobs:
+    executor_defaults:
+      kubernetes_job:
+        scheduler_name: kai-scheduler
+        job_metadata:
+          labels:
+            kai.scheduler/queue-name: default
+        pod_metadata:
+          labels:
+            kai.scheduler/queue-name: default
