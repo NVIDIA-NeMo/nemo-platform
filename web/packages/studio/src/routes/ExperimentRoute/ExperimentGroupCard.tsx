@@ -1,9 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useListExperiments } from '@nemo/sdk/generated/platform/api';
 import type { ExperimentGroupResponse } from '@nemo/sdk/generated/platform/schema';
-import { Card, Divider, Text } from '@nvidia/foundations-react-core';
+import { Card, Text } from '@nvidia/foundations-react-core';
 import { Metric } from '@studio/routes/ExperimentRoute/Metric';
 import { UpdatedAt } from '@studio/routes/ExperimentRoute/UpdatedAt';
 import { getExperimentGroupDetailRoute } from '@studio/routes/utils';
@@ -17,28 +16,6 @@ interface ExperimentGroupCardProps {
 
 export const ExperimentGroupCard: FC<ExperimentGroupCardProps> = ({ group, workspace }) => {
   const navigate = useNavigate();
-
-  const { data: experimentsData } = useListExperiments(workspace, {
-    filter: { experiment_group_id: group.id },
-    page_size: 100,
-  });
-
-  const experiments = experimentsData?.data ?? [];
-  const experimentCount = experimentsData?.pagination?.total_results ?? experiments.length;
-
-  // Collect evaluator names and average their means across experiments in this group
-  const evaluatorNames = [
-    ...new Set(experiments.flatMap((e) => Object.keys(e.aggregate_scores ?? {}))),
-  ];
-  const scoreEntries = evaluatorNames
-    .map((name) => {
-      const means = experiments
-        .map((e) => e.aggregate_scores?.[name]?.mean)
-        .filter((v): v is number => v !== undefined && v !== null);
-      const avg = means.length > 0 ? means.reduce((a, b) => a + b, 0) / means.length : null;
-      return { name, avg };
-    })
-    .filter((entry): entry is { name: string; avg: number } => entry.avg !== null);
 
   return (
     <Card
@@ -71,11 +48,7 @@ export const ExperimentGroupCard: FC<ExperimentGroupCardProps> = ({ group, works
 
       {/* Stats */}
       <div className="flex shrink-0 items-center gap-6">
-        {scoreEntries.map(({ name, avg }) => (
-          <Metric key={name} title={name} value={`${(avg * 100).toFixed(1)}%`} />
-        ))}
-        {scoreEntries.length > 0 && <Divider orientation="vertical" />}
-        <Metric title="Experiments" value={String(experimentCount)} />
+        <Metric title="Experiments" value={String(group.experiment_count ?? 0)} />
       </div>
     </Card>
   );

@@ -7,17 +7,15 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+from nemo_platform_plugin.integrations import IntegrationsSpec
 from nmp.automodel.api.v2.jobs.schemas import (
     CustomizationJobOutput,
     DistillationTraining,
-    IntegrationParams,
     LoRAParams,
     OutputResponse,
     ParallelismParams,
     SFTTraining,
-    WandBParams,
 )
-from nmp.common.api.common import SecretRef
 from pydantic import BaseModel
 
 
@@ -85,19 +83,11 @@ def _build_training_block(spec: dict[str, Any]) -> SFTTraining | DistillationTra
     return SFTTraining(**common)
 
 
-def _build_integrations(spec: dict[str, Any]) -> IntegrationParams | None:
+def _build_integrations(spec: dict[str, Any]) -> IntegrationsSpec | None:
     raw = spec.get("integrations")
     if not raw:
         return None
-    wandb = raw.get("wandb")
-    wandb_params = None
-    if wandb:
-        secret = wandb.get("api_key_secret")
-        wandb_params = WandBParams(
-            project=wandb.get("project"),
-            api_key_secret=SecretRef(secret) if isinstance(secret, str) else secret,
-        )
-    return IntegrationParams(wandb=wandb_params, mlflow=raw.get("mlflow"))
+    return IntegrationsSpec.model_validate(raw)
 
 
 def automodel_spec_to_compiler_output(spec: dict[str, Any] | BaseModel) -> CustomizationJobOutput:

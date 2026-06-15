@@ -5,11 +5,10 @@
 
 from __future__ import annotations
 
-import uuid
 from typing import TYPE_CHECKING
 
-from nemo_platform_plugin.refs import parse_entity_ref
-from nmp.automodel.platform_client import check_dataset_access, fetch_model_entity
+from nmp.customization_common.contributor.transform import generated_output_name
+from nmp.customization_common.service.platform_client import check_dataset_access, fetch_model_entity
 
 from nemo_automodel_plugin.schema import (
     AutomodelJobInput,
@@ -19,25 +18,6 @@ from nemo_automodel_plugin.schema import (
 
 if TYPE_CHECKING:
     from nemo_platform import AsyncNeMoPlatform
-
-_MAX_PREFIX_LEN = 50
-_HEX_LEN = 12
-
-
-def _random_suffix(prefix: str) -> str:
-    truncated = prefix[:_MAX_PREFIX_LEN].rstrip("-")
-    return f"{truncated}-{uuid.uuid4().hex[:_HEX_LEN]}"
-
-
-def _entity_basename(model_ref: str, workspace: str) -> str:
-    return parse_entity_ref(model_ref, workspace).name
-
-
-def _dataset_basename(uri: str) -> str:
-    normalized = uri
-    if normalized.startswith("fileset://"):
-        normalized = normalized[len("fileset://") :]
-    return parse_entity_ref(normalized, "default").name
 
 
 def _infer_output_type(input_spec: AutomodelJobInput, is_embedding_model: bool) -> str:
@@ -67,12 +47,10 @@ async def transform_input_to_output(
             "Use a causal LM checkpoint or wait for a future release."
         )
 
-    entity_name = _entity_basename(input_spec.model, workspace)
-    dataset_name = _dataset_basename(input_spec.dataset.training)
     output_type = _infer_output_type(input_spec, is_embedding)
 
     if input_spec.output is None:
-        out_name = _random_suffix(f"{entity_name}-{dataset_name}")
+        out_name = generated_output_name(input_spec.model, input_spec.dataset.training, workspace)
         fileset = out_name
     else:
         out_name = input_spec.output.name

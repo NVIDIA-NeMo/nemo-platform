@@ -1,41 +1,30 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Automodel training job (NemoJob)."""
+"""Automodel training job (NemoJob).
+
+Shared scaffold (``to_spec`` + the Docker-runtime guard) lives in
+:class:`nmp.customization_common.contributor.jobs.BaseSubmitJob`; ``compile`` stays here
+because it validates for training and resolves the execution profile from the
+schema (automodel-specific).
+"""
 
 from __future__ import annotations
 
 from typing import ClassVar, cast
 
-from nemo_platform import AsyncNeMoPlatform
-from nemo_platform_plugin.config import NemoPlatformConfig, Runtime
-from nemo_platform_plugin.job import NemoJob
-from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
-from nemo_platform_plugin.jobs.docker import validate_gpu_available_for_docker
-from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
-from nmp.automodel.compile import platform_job_config_compiler
-from pydantic import BaseModel
-
 from nemo_automodel_plugin.config import get_config
 from nemo_automodel_plugin.schema import AutomodelJobInput, AutomodelJobOutput
 from nemo_automodel_plugin.transform import transform_input_to_output
+from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
+from nemo_platform_plugin.jobs.docker import validate_gpu_available_for_docker
+from nmp.automodel.compile import platform_job_config_compiler
+from nmp.customization_common.contributor.jobs import BaseSubmitJob, require_docker_runtime
+from pydantic import BaseModel
 
 
-def _require_docker_runtime() -> None:
-    platform_config = NemoPlatformConfig.get()
-    if platform_config.runtime != Runtime.DOCKER:
-        raise PlatformJobCompilationError(
-            "Automodel training requires platform.runtime: docker with GPU-backed container execution.",
-        )
-    from nemo_platform_plugin.config import validate_docker_available
-
-    if not validate_docker_available():
-        raise PlatformJobCompilationError(
-            "Automodel training requires a reachable Docker daemon (platform.runtime: docker).",
-        )
-
-
-class AutomodelJob(NemoJob):
+class AutomodelJob(BaseSubmitJob):
     """GPU Automodel fine-tuning job under the customization router."""
 
     name: ClassVar[str] = "automodel.jobs"
@@ -43,23 +32,11 @@ class AutomodelJob(NemoJob):
     job_collection_path: ClassVar[str | None] = "/automodel/jobs"
     input_spec_schema: ClassVar[type[BaseModel] | None] = AutomodelJobInput
     spec_schema: ClassVar[type[BaseModel] | None] = AutomodelJobOutput
-    dependencies: ClassVar[list[str]] = ["entities", "auth", "jobs", "secrets", "files", "models"]
+    docker_runtime_label: ClassVar[str] = "Automodel"
 
     @classmethod
-    async def to_spec(
-        cls,
-        input_spec: BaseModel,
-        workspace: str,
-        entity_client: object,
-        async_sdk: object,
-        is_local: bool,
-    ) -> AutomodelJobOutput:
-        job_input = (
-            input_spec
-            if isinstance(input_spec, AutomodelJobInput)
-            else AutomodelJobInput.model_validate(input_spec.model_dump())
-        )
-        return await transform_input_to_output(job_input, workspace, cast(AsyncNeMoPlatform, async_sdk))
+    async def _transform(cls, job_input: BaseModel, workspace: str, async_sdk: AsyncNeMoPlatform) -> AutomodelJobOutput:
+        return await transform_input_to_output(cast(AutomodelJobInput, job_input), workspace, async_sdk)
 
     @classmethod
     async def compile(
@@ -72,7 +49,8 @@ class AutomodelJob(NemoJob):
         profile: str | None = None,
         options: dict | None = None,
     ) -> PlatformJobSpec:
-        _require_docker_runtime()
+        del entity_client, options
+        require_docker_runtime(cls.docker_runtime_label)
         canonical = (
             spec if isinstance(spec, AutomodelJobOutput) else AutomodelJobOutput.model_validate(spec.model_dump())
         )

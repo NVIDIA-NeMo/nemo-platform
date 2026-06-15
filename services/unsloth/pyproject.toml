@@ -6,6 +6,8 @@ readme = "README.md"
 requires-python = ">=3.11,<3.14"
 dependencies = [
     "nmp-common",
+    "nmp-customization-common",
+    "nemo-platform-plugin",
     "nemo-platform-sdk",
     "pydantic>=2.10.6",
     "pydantic-settings>=2.6.1",
@@ -29,6 +31,12 @@ dependencies = [
 # command (per unsloth's README), so this extra is mainly for non-container
 # callers that want a single-package handle.
 unsloth = ["unsloth[huggingface]"]
+# HF Trainer callbacks for integrations.wandb / integrations.mlflow (report_to).
+# Container image installs this extra; keep out of core deps so compile/API stay lean.
+integrations = [
+    "wandb>=0.25.1",
+    "mlflow-skinny",
+]
 
 [project.scripts]
 # Container entrypoints. Each script matches the automodel name pattern for parity.
@@ -45,6 +53,8 @@ packages = ["src/nmp"]
 
 [tool.uv.sources]
 nmp-common = { workspace = true }
+nmp-customization-common = { workspace = true }
+nemo-platform-plugin = { workspace = true }
 nemo-platform-sdk = { workspace = true }
 
 [dependency-groups]

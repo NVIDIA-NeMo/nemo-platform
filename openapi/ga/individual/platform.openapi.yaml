@@ -10013,6 +10013,11 @@ components:
           title: Updated At
           type: string
           format: date-time
+        experiment_count:
+          type: integer
+          title: Experiment Count
+          description: Number of live (non-soft-deleted) experiments in this group.
+          default: 0
       type: object
       required:
       - id

@@ -60,12 +60,12 @@ The container image targets the same compute capabilities NVIDIA's stock `pytorc
 
 - `model: ModelLoadSpec` — `name`, `max_seq_length`, `load_in_4bit`, `load_in_8bit`, `dtype`, `trust_remote_code`.
 - `dataset: DatasetSpec` — `path` (required), `text_field`, `apply_chat_template`, `validation_path`, `packing`.
-- `training: TrainingSpec` — `training_type`, `finetuning_type` (`lora` or `full`), `lora: LoRAParams`, `use_gradient_checkpointing`.
+- `training: TrainingSpec` — `training_type`, `finetuning_type` (`lora` or `all_weights`), `lora: LoRAParams`, `use_gradient_checkpointing`.
 - `schedule: ScheduleSpec` — `epochs` xor `max_steps`, `warmup_steps` xor `warmup_ratio`, `lr_scheduler_type`, `logging_steps`, `save_steps`, `eval_steps`, `seed`.
 - `batch: BatchSpec` — `per_device_train_batch_size`, `gradient_accumulation_steps`.
 - `optimizer: OptimizerSpec` — `learning_rate`, `weight_decay`, `optim`.
 - `hardware: HardwareSpec` — `gpus`, `precision` (`bf16` / `fp16`).
-- `integrations: IntegrationsSpec | None` — `wandb` (`enabled`/`project`/`run_name`; WANDB_API_KEY pulled from platform Secrets), `report_to`.
+- `integrations: IntegrationsSpec | None` — optional W&B / MLflow (`nemo_platform_plugin.integrations`). Request by presence; `api_key_secret` carries a secret *reference* that the jobs launcher resolves into `WANDB_API_KEY` in the training container **at runtime** (compile only records the reference). Example: `plugins/nemo-unsloth/tests/fixtures/integrations_wandb_mlflow.json`.
 - `output: OutputRequest | None` — `name`, `description`, `save_method` (`lora` / `merged_16bit` / `merged_4bit`).
 
 `UnslothJobOutput` is the canonical post-`to_spec` form: same as the input plus a resolved `output: OutputResponse` carrying the auto-generated name, inferred type (adapter vs model), and the destination fileset name.

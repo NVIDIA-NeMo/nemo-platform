@@ -18,7 +18,7 @@ from types import TracebackType
 
 import yaml
 from nmp.automodel.app.constants import DEFAULT_TRAINING_RESULT_FILE_NAME
-from nmp.automodel.app.jobs.context import NMPJobContext
+from nmp.customization_common.service.context import NMPJobContext
 
 from .backends.backend import AUTOMODEL_CONFIG_FILENAME, AutomodelBackend
 from .distributed import DistributedContext
