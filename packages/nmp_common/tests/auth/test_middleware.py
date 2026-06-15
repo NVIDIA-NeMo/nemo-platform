@@ -3,6 +3,7 @@
 
 """Unit tests for authorization middleware."""
 
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -85,7 +86,7 @@ def create_test_app(auth_config: AuthConfig) -> FastAPI:
     # Override config
     Configuration.set_override(auth_config)
 
-    app.add_middleware(AuthorizationMiddleware, service_name="test-service")
+    app.add_middleware(cast(Any, AuthorizationMiddleware), service_name="test-service")
 
     return app
 
@@ -140,7 +141,7 @@ class TestHealthEndpointsBypass:
             return {"status": "ok"}
 
         Configuration.set_override(auth_config_enabled)
-        app.add_middleware(AuthorizationMiddleware, service_name="test-service")
+        app.add_middleware(cast(Any, AuthorizationMiddleware), service_name="test-service")
 
         client = TestClient(app)
         with patch("nmp.common.auth.client.AuthClient.authorize_request") as mock_authorize:
@@ -219,6 +220,28 @@ class TestBearerTokenAuth:
 
             assert response.status_code == 401
             assert "Invalid or expired token" in response.json()["detail"]
+
+    def test_bearer_token_not_validated_when_auth_disabled(self):
+        """Auth disabled allows requests even when local unsigned-JWT support is enabled."""
+        config = AuthConfig(
+            enabled=False,
+            allow_unsigned_jwt=True,
+            policy_decision_point_base_url="http://localhost:8181",
+            oidc=OIDCConfig(enabled=False),
+        )
+        app = create_test_app(config)
+        client = TestClient(app, raise_server_exceptions=False)
+
+        with patch("nmp.common.auth.jwt.JWTValidator.validate_token") as mock_validate:
+            mock_validate.return_value = None
+
+            response = client.get(
+                "/test",
+                headers={"Authorization": "Bearer not-used"},
+            )
+
+            assert response.status_code == 200
+            mock_validate.assert_not_called()
 
     def test_bearer_token_unsigned_token_rejected_message(self, auth_config_enabled):
         """Test that unsigned JWT rejection returns actionable 401 detail."""

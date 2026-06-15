@@ -239,15 +239,14 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
 
         # Try to extract principal from Authorization: Bearer header (native OIDC or unsigned JWT)
         auth_header = headers_dict.get("authorization", "")
-        if auth_header.lower().startswith("bearer "):
+        if auth_header.lower().startswith("bearer ") and self.config.enabled:
             if self.config.oidc.enabled or self.config.allow_unsigned_jwt:
                 return await self._handle_bearer_token_request(request, call_next, auth_header)
-            if self.config.enabled:
-                logger.warning("Bearer token provided but OIDC is not configured")
-                return JSONResponse(
-                    status_code=401,
-                    content={"detail": "Bearer token authentication not configured"},
-                )
+            logger.warning("Bearer token provided but OIDC is not configured")
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Bearer token authentication not configured"},
+            )
 
         # Skip authorization if auth is disabled, but still extract principal
         if not self.config.enabled:
@@ -309,6 +308,7 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
         principal, error_response = self._principal_from_headers(headers_dict)
         if error_response is not None:
             return error_response
+        assert principal is not None
         auth_client = AuthClient(
             principal=principal, config=self.config, http_client=self._client, service_name=self.service_name
         )
@@ -334,6 +334,7 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
         principal, error_response = self._principal_from_headers(headers_dict)
         if error_response is not None:
             return error_response
+        assert principal is not None
 
         if not self.config.enabled:
             # Auth disabled - just extract principal and proceed
@@ -519,6 +520,7 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
         principal, error_response = self._principal_from_headers(headers_dict)
         if error_response is not None:
             return error_response
+        assert principal is not None
 
         logger.debug(
             "Auth disabled - principal for %s %s: id=%s, email=%s, groups=%s",
@@ -559,6 +561,7 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
         principal, error_response = self._principal_from_headers(headers_dict)
         if error_response is not None:
             return error_response
+        assert principal is not None
 
         # Extract scopes from headers (space-separated list per OAuth2 standard)
         scopes_header = headers_dict.get("x-nmp-scopes", "")
