@@ -61,6 +61,19 @@ class ModelLoadSpec(BaseModel):
     load_in_8bit: bool = False
     dtype: Literal["auto", "bfloat16", "float16", "float32"] = "auto"
     trust_remote_code: bool = False
+    device_map: str | int | dict[str, int] | None = Field(
+        default=None,
+        description=(
+            "Device placement forwarded to FastLanguageModel.from_pretrained. "
+            "Omit (null) to pin the whole model to the single visible GPU "
+            "({'': 0}) — the right default for this single-GPU backend, and it "
+            "avoids accelerate's auto-placement under-sizing GPU memory on "
+            "unified-memory parts (e.g. GB10 / DGX Spark), which otherwise "
+            "spills layers to CPU and aborts 4-bit loads. Set 'auto', "
+            "'balanced', 'sequential', a device index, or a custom map for "
+            "multi-device experiments."
+        ),
+    )
 
 
 class LoRAParams(BaseModel):

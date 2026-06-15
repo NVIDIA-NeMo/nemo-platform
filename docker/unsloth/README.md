@@ -46,8 +46,16 @@ docker buildx bake \
 # Result: `${IMAGE_REGISTRY}/nmp-unsloth-training:${BAKE_TAG}` in the registry.
 ```
 
-The build pulls the NGC PyTorch base, then runs unsloth's canonical install
-in two steps:
+> **Prebuilt wheels (local builds).** The image installs `mamba-ssm` +
+> `causal-conv1d` from the shared `causal-conv1d-wheel` / `mamba-ssm-wheel`
+> bake contexts (same wheels as `nmp-automodel-base`). A **local** bake must
+> build those wheels first — prepend `USE_LOCAL_WHEELS=1` (or point
+> `WHEELS_REGISTRY`/`WHEELS_TAG` at prebuilt wheels), otherwise bake tries to
+> pull `${WHEELS_REGISTRY}/causal-conv1d-wheel:${WHEELS_TAG}` and fails. To
+> avoid recompiling on every image build, build the wheels once with
+> `USE_LOCAL_WHEELS=1 docker buildx bake -f docker-bake.hcl nmp-automodel-gpu-wheels`.
+
+The build pulls the NGC PyTorch base, then:
 
 1. `uv pip install unsloth --torch-backend=auto transformers==4.57.6 huggingface-hub==0.36.2` with
    `preserve_base_torch.txt` overrides so the NGC base's PyTorch + CUDA are not
@@ -55,12 +63,14 @@ in two steps:
    accelerate, datasets, bitsandbytes, and xformers. **transformers is pinned
    explicitly** to `4.57.6` (override at build time via
    `--build-arg TRANSFORMERS_VERSION=...`).
-1b. Flash Attention 2 (Dockerfile step 1b) — source build with
-    `--no-build-isolation` against the NGC base torch (cached Docker layer).
-    Parallelism is capped via `MAX_JOBS` (default `2`, override with bake arg
-    `FLASH_ATTN_MAX_JOBS`) and `NVCC_THREADS=1` to avoid OOM during nvcc.
-    Unsloth does not depend on `flash-attn`; without it you may see
-    `FA2 = False` and `Xformers = None` on newer CUDA stacks.
+1b. bitsandbytes — compiled from source against the NGC CUDA 13.1 toolkit
+    (PyPI wheels only ship through cuda130), replacing the wheel from step 1.
+1c. mamba-ssm + causal-conv1d — installed from the prebuilt `cu13.1.1` / `cp312`
+    wheels shared with `nmp-automodel-base` (see the **Prebuilt wheels** note
+    above). Required by hybrid Mamba/SSM models (e.g. NVIDIA Nemotron-H `*-A3B`).
+1d. Flash Attention 2 — **not currently installed** (commented TODO in the
+    Dockerfile). Unsloth does not depend on it; without it you may see
+    `FA2 = False` / `Xformers = None` on newer CUDA stacks.
 2. Editable install of the platform glue: `nemo-platform-sdk`,
    `nemo-platform-plugin`, `nmp-common`, `nmp-unsloth`.
 
@@ -140,12 +150,19 @@ docker buildx bake \
 ```bash
 export IMAGE_REGISTRY="my-registry/nemo-platform-dev"
 export BAKE_TAG="$(git rev-parse --short HEAD)"
+# The image needs the mamba-ssm + causal-conv1d wheel images as build contexts.
+# A direct `docker buildx build` can't resolve the bake `*_wheel_context()`
+# functions, so prefer `docker buildx bake nmp-unsloth-training` (with
+# USE_LOCAL_WHEELS=1) which wires them automatically. If you must use
+# `docker buildx build`, pass both contexts explicitly:
 docker buildx build \
   -f docker/Dockerfile.nmp-unsloth-training \
   --output type=docker,dest=/tmp/nmp-unsloth-training.tar \
   --target runtime \
   -t "${IMAGE_REGISTRY}/nmp-unsloth-training:${BAKE_TAG}" \
   --build-context "platform-workspace=path-to-platform-workspace" \
+  --build-context "causal-conv1d-wheel-image=docker-image://${WHEELS_REGISTRY}/causal-conv1d-wheel:${WHEELS_TAG}" \
+  --build-context "mamba-ssm-wheel-image=docker-image://${WHEELS_REGISTRY}/mamba-ssm-wheel:${WHEELS_TAG}" \
   .
 
 scp /tmp/nmp-unsloth-training.tar gpu-pod:/tmp/

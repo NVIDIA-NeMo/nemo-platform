@@ -781,7 +781,9 @@ target "nmp-unsloth-training" {
   dockerfile = "docker/Dockerfile.nmp-unsloth-training"
   target     = "runtime"
   contexts = {
-    platform-workspace = "target:unsloth-platform-workspace"
+    platform-workspace        = "target:unsloth-platform-workspace"
+    causal-conv1d-wheel-image = causal_conv1d_wheel_context()
+    mamba-ssm-wheel-image     = mamba_ssm_wheel_context()
   }
   cache-to   = maybe_registry_cache_to("nmp-unsloth-training")
   cache-from = maybe_registry_cache_from("nmp-unsloth-training")

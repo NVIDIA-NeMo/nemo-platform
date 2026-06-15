@@ -74,6 +74,7 @@ def build_model_load_kwargs(spec: UnslothJobOutput, resolved_model: str) -> dict
         "load_in_8bit": spec.model.load_in_8bit,
         "full_finetuning": spec.training.finetuning_type == "all_weights",
         "trust_remote_code": spec.model.trust_remote_code,
+        "device_map": spec.model.device_map if spec.model.device_map is not None else {"": 0},
     }
 
 

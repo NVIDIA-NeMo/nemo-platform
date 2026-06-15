@@ -28,17 +28,20 @@ jobs:
         ttl_seconds_before_active: 60
         ttl_seconds_active: 3600
         ttl_seconds_after_finished: 300
-    # Uncomment for using customizer
-    # - provider: cpu
-    #   profile: gpu
-    #   backend: docker
-    #   config:
-    #     launcher_tool_path: ./services/core/jobs/jobs-launcher/jobs-launcher
-    # - provider: gpu
-    #   profile: gpu
-    #   backend: docker
-    #   config:
-    #     launcher_tool_path: ./services/core/jobs/jobs-launcher/jobs-launcher
+    # Customizer (automodel / unsloth) GPU jobs. The unsloth backend stamps the
+    # profile name "gpu" onto all 4 steps, so both cpu/gpu and gpu/gpu must
+    # exist. `profile` is a name, not a resource claim — `provider` governs
+    # CPU vs GPU, so provider: cpu + profile: gpu is correct (not a mismatch).
+    - provider: cpu
+      profile: gpu
+      backend: docker
+      config:
+        launcher_tool_path: ./services/core/jobs/jobs-launcher/jobs-launcher
+    - provider: gpu
+      profile: gpu
+      backend: docker
+      config:
+        launcher_tool_path: ./services/core/jobs/jobs-launcher/jobs-launcher
 
   executor_defaults:
     docker:
