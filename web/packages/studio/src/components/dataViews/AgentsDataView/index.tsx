@@ -30,10 +30,12 @@ import { getAgentModelNames } from '@studio/components/dataViews/AgentsDataView/
 import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { DocumentationButton } from '@studio/components/DocumentationButton';
 import { LINK_DOCS_STUDIO } from '@studio/constants/links';
+import { ROUTES } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { keepPreviousData, useQueryClient } from '@tanstack/react-query';
 import { HatGlasses, Trash, X } from 'lucide-react';
 import { ComponentProps, FC, useEffect, useMemo, useState } from 'react';
+import { generatePath, useNavigate } from 'react-router-dom';
 
 export type { Agent, AgentDeployment };
 
@@ -96,6 +98,7 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
   onAgentsLoaded,
 }) => {
   const workspace = useWorkspaceFromPath();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const toast = useToast();
   const [deleteState, setDeleteState] = useState<DeleteState>(null);
@@ -279,6 +282,15 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
         {
           children: 'Deploy',
           onSelect: () => onCreateDeployment?.(row.name),
+        },
+        {
+          children: 'Test models',
+          onSelect: () => {
+            const target = generatePath(ROUTES.workspace.modelCompare, { workspace });
+            const model = row.models[0];
+            const urn = model ? `${row.workspace}/${model}` : null;
+            navigate(urn ? `${target}?model=${encodeURIComponent(urn)}` : target);
+          },
         },
         { kind: 'divider' as const },
         {

@@ -7,7 +7,7 @@ import {
   type ThreadMessageLike,
   useExternalStoreRuntime,
 } from '@assistant-ui/react';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { getCompletionText, isAbortError, isChatCompletionStream } from './completionUtils';
 import { CANCELLED_STATUS, COMPLETE_STATUS, RUNNING_STATUS } from './constants';
@@ -24,10 +24,15 @@ import { useChatCompletion } from '../../hooks/useChatCompletion';
 type UseAssistantChatRuntimeOptions = Pick<
   AssistantChatProps,
   | 'baseURL'
+  | 'broadcast'
+  | 'stopCount'
   | 'disabled'
   | 'initialMessages'
   | 'model'
   | 'onError'
+  | 'onMessageComplete'
+  | 'onRunningChange'
+  | 'onEmptyChange'
   | 'promptData'
   | 'tools'
   | 'workspace'
@@ -42,6 +47,11 @@ export const useAssistantChatRuntime = ({
   disabled = false,
   initialMessages = [],
   onError,
+  onMessageComplete,
+  onRunningChange,
+  onEmptyChange,
+  broadcast,
+  stopCount,
 }: UseAssistantChatRuntimeOptions) => {
   const [messages, setMessages] = useState<readonly ThreadMessageLike[]>(initialMessages);
   const [isRunning, setIsRunning] = useState(false);
@@ -84,6 +94,13 @@ export const useAssistantChatRuntime = ({
       setThreadMessages([...conversationMessages, assistantMessage]);
       setIsRunning(true);
       let responseText = '';
+      // Timing for per-message metrics (TTFT, total, tokens/sec). Emitted via
+      // onMessageComplete so callers (e.g. Studio's Chat route) can render a
+      // stats badge without owning the runtime.
+      // TODO: provide time metric from backend inference gateway (issue 219)
+      const startMs = performance.now();
+      let ttftMs = 0;
+      let chunkCount = 0;
 
       try {
         const result = await createChatCompletion({
@@ -111,16 +128,53 @@ export const useAssistantChatRuntime = ({
           if (runController.signal.aborted) streamController.abort();
           for await (const chunk of result) {
             if (runController.signal.aborted || !isCurrentRun()) break;
-            responseText += chunk.choices[0]?.delta.content ?? '';
-            updateAssistantMessage(assistantMessage.id!, responseText, RUNNING_STATUS);
+            const delta = chunk.choices[0]?.delta.content ?? '';
+            if (delta) {
+              if (ttftMs === 0) ttftMs = Math.round(performance.now() - startMs);
+              responseText += delta;
+              chunkCount += 1;
+              updateAssistantMessage(assistantMessage.id!, responseText, RUNNING_STATUS);
+            }
           }
           updateAssistantMessage(
             assistantMessage.id!,
             responseText,
             runController.signal.aborted ? CANCELLED_STATUS : COMPLETE_STATUS
           );
+          if (!runController.signal.aborted && onMessageComplete) {
+            const totalMs = Math.round(performance.now() - startMs);
+            const completionTokens = Math.max(chunkCount, Math.round(responseText.length / 4));
+            // Throughput over total wall-clock. Using the post-first-token
+            // window instead collapses to a near-zero interval when tokens
+            // arrive in a single chunk or an end-of-stream burst, inflating the
+            // rate by orders of magnitude. Total time is stable and matches the
+            // duration shown alongside it.
+            onMessageComplete({
+              assistantMessageId: assistantMessage.id!,
+              text: responseText,
+              ttftMs,
+              totalMs,
+              chunkCount,
+              tokensPerSec: (completionTokens * 1000) / Math.max(1, totalMs),
+              completionTokens,
+            });
+          }
         } else {
-          updateAssistantMessage(assistantMessage.id!, getCompletionText(result), COMPLETE_STATUS);
+          const text = getCompletionText(result);
+          updateAssistantMessage(assistantMessage.id!, text, COMPLETE_STATUS);
+          if (onMessageComplete) {
+            const totalMs = Math.round(performance.now() - startMs);
+            const completionTokens = Math.round(text.length / 4);
+            onMessageComplete({
+              assistantMessageId: assistantMessage.id!,
+              text,
+              ttftMs: totalMs,
+              totalMs,
+              chunkCount: 1,
+              tokensPerSec: (completionTokens * 1000) / Math.max(1, totalMs),
+              completionTokens,
+            });
+          }
         }
       } catch (error: unknown) {
         if (runController.signal.aborted || isAbortError(error)) {
@@ -149,6 +203,7 @@ export const useAssistantChatRuntime = ({
       disabled,
       model,
       onError,
+      onMessageComplete,
       promptData?.inference_params?.max_tokens,
       promptData?.inference_params?.temperature,
       promptData?.system_prompt,
@@ -226,6 +281,54 @@ export const useAssistantChatRuntime = ({
     setIsRunning(false);
     setThreadMessages([]);
   }, [setThreadMessages]);
+
+  // External broadcast — when the caller bumps `broadcast.seq`, append the
+  // payload text as a new user message and run a completion. The ref is seeded
+  // with whatever seq is present at mount, so an AssistantChat that mounts
+  // mid-flight (with a non-null broadcast prop) doesn't re-fire the last
+  // broadcast it sees on first render. Subsequent changes fire.
+  const broadcastSeenSeqRef = useRef<number | undefined>(broadcast?.seq);
+  useEffect(() => {
+    if (!broadcast) return;
+    if (broadcast.seq === broadcastSeenSeqRef.current) return;
+    broadcastSeenSeqRef.current = broadcast.seq;
+    const text = broadcast.text.trim();
+    if (!text || disabled) return;
+    const synthetic: AppendMessage = {
+      role: 'user',
+      content: [{ type: 'text', text }],
+    } as unknown as AppendMessage;
+    void handleNewMessage(synthetic);
+  }, [broadcast, disabled, handleNewMessage]);
+
+  // External cancel — same sequence pattern.
+  const stopSeenCountRef = useRef<number | undefined>(stopCount);
+  useEffect(() => {
+    if (stopCount === undefined) return;
+    if (stopCount === stopSeenCountRef.current) return;
+    stopSeenCountRef.current = stopCount;
+    void handleCancel();
+  }, [stopCount, handleCancel]);
+
+  // Abort any in-flight request on unmount (panel removed or remounted).
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, []);
+
+  // Surface running-state transitions so a parent can aggregate Stop logic
+  // across multiple AssistantChat instances.
+  useEffect(() => {
+    onRunningChange?.(isRunning);
+  }, [isRunning, onRunningChange]);
+
+  // Surface empty/non-empty transitions so callers can derive seed-chip
+  // visibility from whether the thread has any messages.
+  const isEmpty = messages.length === 0;
+  useEffect(() => {
+    onEmptyChange?.(isEmpty);
+  }, [isEmpty, onEmptyChange]);
 
   const runtime = useExternalStoreRuntime<ThreadMessageLike>({
     messages,

@@ -11,6 +11,14 @@ const isSuggested = (name: string): boolean => {
   return lower.includes('nvidia') && lower.includes('nemotron');
 };
 
+// Not chat LLMs — never valid as an agent's LLM, so excluded from the picker entirely.
+const NON_LLM_TERMS = ['embed', 'rerank', 'reward', 'safeguard', 'safety', 'parse', 'vl', 'guard'];
+
+const isLlmCandidate = (name: string): boolean => {
+  const lower = name.toLowerCase();
+  return !NON_LLM_TERMS.some((term) => lower.includes(term));
+};
+
 export interface ModelListEntry {
   name: string;
 }
@@ -22,25 +30,28 @@ export const SUGGESTED_MODEL_GROUP_LABELS = {
 
 /**
  * Build the option set for the Studio model picker with a Suggested / All split.
- * Suggested = NVIDIA Nemotron models, excluding llama/safety/embed/vl/reward/parse
- * variants. Same model can appear in both groups; the picker dedupes by composite
- * key, so the Suggested row stays clickable.
+ * Only chat-LLM candidates are listed (embedding/rerank/safety/vl/... are excluded).
+ * Suggested = NVIDIA Nemotron models. Each model appears once (suggested models are
+ * not repeated under "All") so option values stay unique.
  */
 export const buildSuggestedModelOptions = (models: ModelListEntry[]): SelectItemOption[] => {
-  const base = models.map((m) => ({ value: m.name, label: m.name }));
+  const seenValues = new Set<string>();
+  const base = models
+    .filter((m) => isLlmCandidate(m.name))
+    .map((m) => ({ value: m.name, label: m.name }))
+    .filter((o) => {
+      if (seenValues.has(o.value)) return false;
+      seenValues.add(o.value);
+      return true;
+    });
   const suggested = base
     .filter((o) => isSuggested(o.value))
     .map((o) => ({ ...o, group: 'suggested' as const }));
-  const all = base.map((o) => ({ ...o, group: 'all' as const }));
+  const suggestedValues = new Set(suggested.map((o) => o.value));
+  const all = base
+    .filter((o) => !suggestedValues.has(o.value))
+    .map((o) => ({ ...o, group: 'all' as const }));
   return [...suggested, ...all];
-};
-
-// Not chat LLMs — must never be auto-selected as an agent's LLM.
-const NON_LLM_TERMS = ['embed', 'rerank', 'reward', 'safeguard', 'safety', 'parse', 'vl', 'guard'];
-
-const isLlmCandidate = (name: string): boolean => {
-  const lower = name.toLowerCase();
-  return !NON_LLM_TERMS.some((term) => lower.includes(term));
 };
 
 export const pickDefaultModelName = (models: ModelListEntry[]): string | undefined => {

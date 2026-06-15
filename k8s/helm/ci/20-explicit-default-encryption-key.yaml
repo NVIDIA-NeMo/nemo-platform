@@ -1,0 +1,8 @@
+# Test explicit secrets.defaultEncryptionKey.value: render the chart-managed API env Secret
+# with a user-provided base64 key instead of the pre-install key generation hook.
+# CI validates by running: helm template nemo-platform . -f ci/20-explicit-default-encryption-key.yaml
+
+secrets:
+  defaultEncryptionKey:
+    # Base64 for 32 zero bytes. This is only a deterministic render-test value.
+    value: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="

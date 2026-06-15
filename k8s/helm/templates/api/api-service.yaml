@@ -1,0 +1,23 @@
+{{- if .Values.api.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "nmp-api.api-servicename" . }}
+  labels:
+    app.kubernetes.io/component: nmp-api
+    {{- include "nemo-platform.labels" . | nindent 4 }}
+  {{- with .Values.api.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.api.service.type }}
+  ports:
+    - port: {{ .Values.api.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/component: nmp-api
+    {{- include "nemo-platform.selectorLabels" . | nindent 4 }}
+{{- end }}

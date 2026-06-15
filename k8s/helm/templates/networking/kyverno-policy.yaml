@@ -1,0 +1,549 @@
+{{- /*
+These Kyverno policies inject cloud-specific networking and NCCL configurations
+for multi-node GPU training jobs. They are triggered by the "nmp.nvidia.com/enable-multi-node-networking"
+annotation set by the Volcano backend when num_nodes > 1.
+
+Requirements:
+- Kyverno must be installed in the cluster
+- Enable the appropriate cloud policy via values.yaml (multinodeNetworking.aws, azure, gcp, or oci)
+- Configure device counts per GPU for your cloud provider
+
+The policies watch for pods created by Volcano Jobs (batch.volcano.sh) and inject:
+- AWS: EFA devices, mounts, and configuration
+- Azure: RDMA devices, InfiniBand configuration, NCCL topology
+- GCP: TCP-X daemon, multi-network interfaces
+- OCI: RDMA devices, SR-IOV networks
+
+Annotations used:
+- nmp.nvidia.com/enable-multi-node-networking: "true" (triggers policy)
+- nmp.nvidia.com/num-nodes: "<count>" (used by OCI policy for network calculation)
+
+Note: Only enable ONE cloud policy per cluster deployment.
+*/ -}}
+{{- $enabledCount := 0 }}
+{{- if .Values.multinodeNetworking.aws.enabled }}{{ $enabledCount = add1 $enabledCount }}{{- end }}
+{{- if .Values.multinodeNetworking.azure.enabled }}{{ $enabledCount = add1 $enabledCount }}{{- end }}
+{{- if .Values.multinodeNetworking.gcp.enabled }}{{ $enabledCount = add1 $enabledCount }}{{- end }}
+{{- if .Values.multinodeNetworking.oci.enabled }}{{ $enabledCount = add1 $enabledCount }}{{- end }}
+{{- if gt $enabledCount 1 }}
+{{- fail "Error: Only ONE cloud provider can be enabled at a time in multinodeNetworking. Please enable only aws, azure, gcp, or oci." }}
+{{- end }}
+{{- if .Values.multinodeNetworking.aws.enabled }}
+---
+apiVersion: kyverno.io/v1
+kind: Policy
+metadata:
+  name: {{ include "nemo-platform.fullname" . }}-aws-efa-policy
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nemo-platform.labels" . | nindent 4 }}
+spec:
+  admission: true
+  background: false
+  rules:
+  - match:
+      any:
+        - resources:
+            kinds:
+              - Pod
+            operations:
+              - CREATE
+            annotations:
+              nmp.nvidia.com/enable-multi-node-networking: "true"
+    mutate:
+      foreach:
+      - list: request.object.spec.containers
+        context:
+          - name: requestedGpus
+            variable:
+              jmesPath: "to_number(element.resources.requests.\"nvidia.com/gpu\" || '0')"
+          - name: efaNum
+            variable:
+              jmesPath: to_string(multiply(requestedGpus,`{{ .Values.multinodeNetworking.aws.efaDevicesPerGPU }}`))
+        preconditions:
+          all:
+            - key: '{{ `{{ element.resources.requests."nvidia.com/gpu" || '''' }}` }}'
+              operator: NotEquals
+              value: ""
+        patchStrategicMerge:
+          spec:
+            volumes:
+              - hostPath:
+                  path: /opt/amazon-efa-ofi
+                  type: Directory
+                name: amazon-efa
+              - name: nv-shared-memory
+                emptyDir:
+                  medium: Memory
+            containers:
+            - (name): '{{ `{{ element.name }}` }}'
+              resources:
+                limits:
+                  vpc.amazonaws.com/efa: '{{ `{{ efaNum }}` }}'
+                requests:
+                  cpu: '{{ `{{ element.resources.requests.cpu || ''100m'' }}` }}'
+                  vpc.amazonaws.com/efa: '{{ `{{ efaNum }}` }}'
+              env:
+                # Disable huge pages. Reference: https://github.com/aws/aws-ofi-nccl/blob/master/doc/efa-env-var.md
+                # TLDR Disabling huge page causes minor performance hit, but it's needed to prevent fork fails due to the operating system running out of huge pages.
+                - name: FI_EFA_USE_HUGE_PAGE
+                  value: "0"
+              volumeMounts:
+                - mountPath: /opt/amazon-efa-ofi
+                  name: amazon-efa
+                  readOnly: true
+                - mountPath: /dev/shm
+                  name: nv-shared-memory
+    name: container-efa-volume-mounts-worker
+    preconditions:
+      all:
+      - key: '{{ `{{ request.object.metadata.ownerReferences[].kind || '''' }}` }}'
+        operator: AnyIn
+        value:
+        - PyTorchJob
+        - MPIJob
+        - Job
+        - RunaiJob
+        - JobSet
+      - key: '{{ `{{ request.object.metadata.ownerReferences[].apiVersion.split(@, ''/'')[0]  }}` }}'
+        operator: AnyIn
+        value:
+        - batch.volcano.sh
+        - kubeflow.org
+        - run.ai
+        - jobset.x-k8s.io
+        - batch
+    skipBackgroundRequests: true
+{{- end }}
+
+{{- if .Values.multinodeNetworking.azure.enabled }}
+---
+apiVersion: kyverno.io/v1
+kind: Policy
+metadata:
+  name: {{ include "nemo-platform.fullname" . }}-azure-rdma-policy
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nemo-platform.labels" . | nindent 4 }}
+spec:
+  admission: true
+  background: false
+  rules:
+  - match:
+      any:
+      - resources:
+          kinds:
+          - Pod
+          operations:
+          - CREATE
+          annotations:
+            nmp.nvidia.com/enable-multi-node-networking: "true"
+    mutate:
+      foreach:
+      - list: request.object.spec.containers
+        context:
+          - name: requestedGpus
+            variable:
+              jmesPath: "to_number(element.resources.requests.\"nvidia.com/gpu\" || '0')"
+          - name: rdmaNum
+            variable:
+              jmesPath: to_string(multiply(requestedGpus,`{{ .Values.multinodeNetworking.azure.rdmaDevicesPerGPU }}`))
+        preconditions:
+          all:
+            - key: '{{ `{{ element.resources.requests."nvidia.com/gpu" || '''' }}` }}'
+              operator: NotEquals
+              value: ""
+        patchStrategicMerge:
+          spec:
+            volumes:
+            - emptyDir:
+                medium: Memory
+              name: nv-shared-memory
+            - configMap:
+                defaultMode: 420
+                name: {{ include "nemo-platform.fullname" . }}-nccl-topo
+              name: nccl-topo
+            containers:
+            - (name): '{{ `{{ element.name }}` }}'
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  add:
+                  - IPC_LOCK
+                seccompProfile:
+                  type: RuntimeDefault
+              resources:
+                limits:
+                  rdma/{{ .Values.multinodeNetworking.azure.rdmaDeviceName }}: '{{ `{{ rdmaNum }}` }}'
+                requests:
+                  rdma/{{ .Values.multinodeNetworking.azure.rdmaDeviceName }}: '{{ `{{ rdmaNum }}` }}'
+              env:
+                - name: "CUDA_DEVICE_ORDER"
+                  value: "PCI_BUS_ID"
+                - name: "NCCL_IB_PCI_RELAXED_ORDERING"
+                  value: "1"
+                - name: "NCCL_SOCKET_IFNAME"
+                  value: "eth0"
+                - name: "NCCL_TOPO_FILE"
+                  value: "/etc/nccl/nccl-topo.xml"
+                - name: "OMPI_MCA_coll_hcoll_enable"
+                  value: "0"
+                - name: "OMPI_MCA_orte_keep_fqdn_hostnames"
+                  value: "t"
+                - name: "UCX_IB_PCI_RELAXED_ORDERING"
+                  value: "on"
+                - name: "UCX_MEM_EVENTS"
+                  value: "n"
+                - name: "UCX_NET_DEVICES"
+                  value: "eth0"
+                - name: "UCX_TLS"
+                  value: "tcp"
+                - name: "KUBE_NODE_TYPE"
+                  value: "kube-gpu-node"
+              volumeMounts:
+              - mountPath: /dev/shm
+                name: nv-shared-memory
+              - mountPath: /etc/nccl
+                name: nccl-topo
+                readOnly: true
+
+    name: container-rdma-nccl-configs-worker
+    preconditions:
+      all:
+      - key: '{{ `{{ request.object.metadata.ownerReferences[].kind || '''' }}` }}'
+        operator: AnyIn
+        value:
+        - PyTorchJob
+        - MPIJob
+        - Job
+        - RunaiJob
+        - JobSet
+      - key: '{{ `{{ request.object.metadata.ownerReferences[].apiVersion.split(@, ''/'')[0] }}` }}'
+        operator: AnyIn
+        value:
+        - batch.volcano.sh
+        - kubeflow.org
+        - run.ai
+        - jobset.x-k8s.io
+        - batch
+    skipBackgroundRequests: true
+{{- end }}
+
+{{- if .Values.multinodeNetworking.gcp.enabled -}}
+---
+apiVersion: kyverno.io/v1
+kind: Policy
+metadata:
+  name: {{ include "nemo-platform.fullname" . }}-gcp-tcpxo-policy
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nemo-platform.labels" . | nindent 4 }}
+spec:
+  admission: true
+  background: false
+  rules:
+  - match:
+      any:
+        - resources:
+            kinds:
+              - Pod
+            operations:
+              - CREATE
+            annotations:
+              nmp.nvidia.com/enable-multi-node-networking: "true"
+    mutate:
+      foreach:
+        - list: request.object.spec.containers
+          preconditions:
+            all:
+              - key: '{{ `{{ element.resources.requests."nvidia.com/gpu" || '''' }}` }}'
+                operator: NotEquals
+                value: ""
+          patchStrategicMerge:
+            annotations:
+              devices.gke.io/container.tcpxo-daemon: |
+                - path: /dev/nvidia0
+                - path: /dev/nvidia1
+                - path: /dev/nvidia2
+                - path: /dev/nvidia3
+                - path: /dev/nvidia4
+                - path: /dev/nvidia5
+                - path: /dev/nvidia6
+                - path: /dev/nvidia7
+                - path: /dev/nvidiactl
+                - path: /dev/nvidia-uvm
+                - path: /dev/dmabuf_import_helper
+              networking.gke.io/default-interface: eth0
+              networking.gke.io/interfaces: |
+                [
+                  {"interfaceName":"eth0","network":"default"},
+                  {"interfaceName":"eth1","network":"gpu-nic0"},
+                  {"interfaceName":"eth2","network":"gpu-nic1"},
+                  {"interfaceName":"eth3","network":"gpu-nic2"},
+                  {"interfaceName":"eth4","network":"gpu-nic3"},
+                  {"interfaceName":"eth5","network":"gpu-nic4"},
+                  {"interfaceName":"eth6","network":"gpu-nic5"},
+                  {"interfaceName":"eth7","network":"gpu-nic6"},
+                  {"interfaceName":"eth8","network":"gpu-nic7"}
+                ]
+            spec:
+              initContainers:
+                - args:
+                  - |2
+                    set -ex
+                    chmod 755 /fts/entrypoint_rxdm_container.sh
+                    /fts/entrypoint_rxdm_container.sh --num_hops=2 --num_nics=8 --uid= --alsologtostderr --enforce_kernel_ipv6_support=false
+                  command:
+                  - /bin/sh
+                  - -c
+                  env:
+                  - name: LD_LIBRARY_PATH
+                    value: /usr/local/nvidia/lib64
+                  image: us-docker.pkg.dev/gce-ai-infra/gpudirect-tcpxo/tcpgpudmarxd-dev:v1.0.8
+                  imagePullPolicy: Always
+                  name: tcpxo-daemon
+                  resources: {}
+                  restartPolicy: Always
+                  securityContext:
+                    capabilities:
+                      add:
+                      - CAP_NET_ADMIN
+                      - CAP_NET_BIND_SERVICE
+                  terminationMessagePath: /dev/termination-log
+                  terminationMessagePolicy: File
+                  volumeMounts:
+                  - mountPath: /usr/local/nvidia
+                    name: nvtcpxo-libraries
+                    readOnly: true
+                  - mountPath: /hostsysfs
+                    name: nvtcpxo-sys
+                  - mountPath: /hostprocsysfs
+                    name: nvtcpxo-proc-sys
+              containers:
+              - (name): '{{ `{{ element.name }}` }}'
+                env:
+                  - name: NCCL_FASTRAK_CTRL_DEV
+                    value: "eth0"
+                  - name: NCCL_FASTRAK_IFNAME
+                    value: "eth1,eth2,eth3,eth4,eth5,eth6,eth7,eth8"
+                  - name: NCCL_SOCKET_IFNAME
+                    value: "eth0"
+                  - name: NCCL_CROSS_NIC
+                    value: "0"
+                  - name: NCCL_ALGO
+                    value: "Ring,Tree"
+                  - name: NCCL_PROTO
+                    value: "Simple"
+                  - name: NCCL_MIN_NCHANNELS
+                    value: "4"
+                  - name: NCCL_TUNER_PLUGIN
+                    value: "libnccl-tuner.so"
+                  - name: NCCL_TUNER_CONFIG_PATH
+                    value: "/usr/local/nvidia/lib64/a3plus_tuner_config.textproto"
+                  - name: NCCL_SHIMNET_GUEST_CONFIG_CHECKER_CONFIG_FILE
+                    value: "/usr/local/nvidia/lib64/a3plus_guest_config.textproto"
+                  - name: NCCL_DYNAMIC_CHUNK_SIZE
+                    value: "524288"
+                  - name: NCCL_P2P_NET_CHUNKSIZE
+                    value: "524288"
+                  - name: NCCL_P2P_PCI_CHUNKSIZE
+                    value: "524288"
+                  - name: NCCL_P2P_NVL_CHUNKSIZE
+                    value: "1048576"
+                  - name: NCCL_FASTRAK_NUM_FLOWS
+                    value: "2"
+                  - name: NCCL_FASTRAK_USE_SNAP
+                    value: "1"
+                  - name: NCCL_FASTRAK_PLUGIN_ACCEPT_TIMEOUT_MS
+                    value: "600000"
+                  - name: NCCL_FASTRAK_ENABLE_CONTROL_CHANNEL
+                    value: "0"
+                  - name: NCCL_BUFFSIZE
+                    value: "8388608"
+                  - name: NCCL_NET_GDR_LEVEL
+                    value: "PIX"
+                  - name: NCCL_FASTRAK_ENABLE_HOTPATH_LOGGING
+                    value: "0"
+                  - name: NCCL_FASTRAK_USE_LLCM
+                    value: "1"
+                  - name: NCCL_NVLS_ENABLE
+                    value: "0"
+                  - name: NCCL_FASTRAK_LLCM_DEVICE_DIRECTORY
+                    value: "/dev/aperture_devices"
+                volumeMounts:
+                  - mountPath: /scratch
+                    name: scratch
+                  - mountPath: /dev/shm
+                    name: nv-shared-memory
+                  - mountPath: /usr/local/nvidia
+                    name: nvtcpxo-libraries
+                    readOnly: true
+                  - mountPath: /dev/aperture_devices
+                    name: nvtcpxo-aperture-devices
+              volumes:
+              - name: scratch
+                emptyDir: {}
+              - name: nv-shared-memory
+                emptyDir:
+                  medium: Memory
+              - name: nvtcpxo-sys
+                hostPath:
+                  path: /sys
+              - name: nvtcpxo-proc-sys
+                hostPath:
+                  path: /proc/sys
+              - name: nvtcpxo-libraries
+                hostPath:
+                  path: /home/kubernetes/bin/nvidia
+              - name: nvtcpxo-aperture-devices
+                hostPath:
+                  path: /dev/aperture_devices
+    name: container-gcp-rdma-nccl-configs-worker
+    preconditions:
+      all:
+      - key: '{{ `{{ request.object.metadata.ownerReferences[].kind || '''' }}` }}'
+        operator: AnyIn
+        value:
+        - PyTorchJob
+        - MPIJob
+        - Job
+        - RunaiJob
+        - JobSet
+      - key: '{{ `{{ request.object.metadata.ownerReferences[].apiVersion.split(@, ''/'')[0] }}` }}'
+        operator: AnyIn
+        value:
+        - batch.volcano.sh
+        - kubeflow.org
+        - run.ai
+        - jobset.x-k8s.io
+        - batch
+    skipBackgroundRequests: true
+{{- end }}
+
+{{- if .Values.multinodeNetworking.oci.enabled }}
+---
+apiVersion: kyverno.io/v1
+kind: Policy
+metadata:
+  name: {{ include "nemo-platform.fullname" . }}-oci-rdma-policy
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nemo-platform.labels" . | nindent 4 }}
+spec:
+  admission: true
+  background: false
+  rules:
+  - match:
+      any:
+      - resources:
+          kinds:
+          - Pod
+          operations:
+          - CREATE
+          annotations:
+            nmp.nvidia.com/enable-multi-node-networking: "true"
+    context:
+      - name: numNodes
+        variable:
+          jmesPath: "to_number(request.object.metadata.annotations.\"nmp.nvidia.com/num-nodes\" || '1')"
+      - name: baseNetworkListString
+        variable:
+          value: {{ repeat 128 "network-operator/sriov-net," | trimSuffix ","  }}
+      - name: operatorLength
+        variable:
+          jmesPath: length('network-operator/sriov-net,')
+    mutate:
+      foreach:
+      - list: request.object.spec.containers
+        context:
+          - name: requestedGpus
+            variable:
+              jmesPath: "to_number(element.resources.requests.\"nvidia.com/gpu\" || '0')"
+          - name: mlnxnicsNum
+            variable:
+              jmesPath: to_string(multiply(requestedGpus,`{{ .Values.multinodeNetworking.oci.rdmaDevicesPerGPU }}`))
+          - name: nodeGpuProduct
+            variable:
+              jmesPath: multiply(numNodes,requestedGpus)
+          - name: truncateLength
+            variable:
+              jmesPath: subtract(multiply(operatorLength, to_number(mlnxnicsNum)), `1`)
+          - name: truncatedNetwork
+            variable:
+              jmesPath: truncate(baseNetworkListString, truncateLength)
+        preconditions:
+          all:
+            - key: '{{ `{{ element.resources.requests."nvidia.com/gpu" || '''' }}` }}'
+              operator: NotEquals
+              value: ""
+        patchStrategicMerge:
+          metadata:
+            annotations:
+              k8s.v1.cni.cncf.io/networks: '{{ `{{ truncatedNetwork }}` }}'
+          spec:
+            containers:
+            - (name): '{{ `{{ element.name }}` }}'
+              resources:
+                limits:
+                  nvidia.com/mlnxnics: '{{ `{{ mlnxnicsNum }}` }}'
+                requests:
+                  nvidia.com/mlnxnics: '{{ `{{ mlnxnicsNum }}` }}'
+              env:
+                - name: "CUDA_DEVICE_ORDER"
+                  value: "PCI_BUS_ID"
+                - name: "NCCL_IB_PCI_RELAXED_ORDERING"
+                  value: "1"
+                - name: "NCCL_SOCKET_IFNAME"
+                  value: "eth0"
+                - name: "OMPI_MCA_coll_hcoll_enable"
+                  value: "0"
+                - name: "OMPI_MCA_orte_keep_fqdn_hostnames"
+                  value: "t"
+                - name: "UCX_IB_PCI_RELAXED_ORDERING"
+                  value: "on"
+                - name: "UCX_MEM_EVENTS"
+                  value: "n"
+                - name: "UCX_NET_DEVICES"
+                  value: "eth0"
+                - name: "UCX_TLS"
+                  value: "tcp"
+                - name: "KUBE_NODE_TYPE"
+                  value: "kube-gpu-node"
+                - name: "NCCL_IB_TC"
+                  value: "41"
+                - name: "NCCL_IB_SL"
+                  value: "0"
+                - name: "NCCL_IB_QPS_PER_CONNECTION"
+                  value: "4"
+                - name: "NCCL_IB_GID_INDEX"
+                  value: "3"
+                - name: "NCCL_IB_SPLIT_DATA_ON_QPS"
+                  value: "0"
+              volumeMounts:
+                - mountPath: /dev/shm
+                  name: nv-shared-memory
+            volumes:
+            - emptyDir:
+                medium: Memory
+              name: nv-shared-memory
+    name: container-oci-rdma-nccl-configs-worker
+    preconditions:
+      all:
+      - key: '{{ `{{ request.object.metadata.ownerReferences[].kind || '''' }}` }}'
+        operator: AnyIn
+        value:
+        - PyTorchJob
+        - MPIJob
+        - Job
+        - RunaiJob
+        - JobSet
+      - key: '{{ `{{ request.object.metadata.ownerReferences[].apiVersion.split(@, ''/'')[0] }}` }}'
+        operator: AnyIn
+        value:
+        - batch.volcano.sh
+        - kubeflow.org
+        - run.ai
+        - jobset.x-k8s.io
+        - batch
+    skipBackgroundRequests: true
+{{- end }}

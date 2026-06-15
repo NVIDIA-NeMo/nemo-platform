@@ -1,0 +1,1 @@
+{{- tpl .Values.basePlatformConfig . -}}

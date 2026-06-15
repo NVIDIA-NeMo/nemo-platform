@@ -25,6 +25,14 @@ from .models import (
     ModelsResourceWithStreamingResponse,
     AsyncModelsResourceWithStreamingResponse,
 )
+from .prompts import (
+    PromptsResource,
+    AsyncPromptsResource,
+    PromptsResourceWithRawResponse,
+    AsyncPromptsResourceWithRawResponse,
+    PromptsResourceWithStreamingResponse,
+    AsyncPromptsResourceWithStreamingResponse,
+)
 from ..._compat import cached_property
 from .providers import (
     ProvidersResource,
@@ -93,6 +101,10 @@ class InferenceResource(SyncAPIResource):
         return ProvidersResource(self._client)
 
     @cached_property
+    def prompts(self) -> PromptsResource:
+        return PromptsResource(self._client)
+
+    @cached_property
     def gateway(self) -> GatewayResource:
         return GatewayResource(self._client)
 
@@ -136,6 +148,10 @@ class AsyncInferenceResource(AsyncAPIResource):
     @cached_property
     def providers(self) -> AsyncProvidersResource:
         return AsyncProvidersResource(self._client)
+
+    @cached_property
+    def prompts(self) -> AsyncPromptsResource:
+        return AsyncPromptsResource(self._client)
 
     @cached_property
     def gateway(self) -> AsyncGatewayResource:
@@ -186,6 +202,10 @@ class InferenceResourceWithRawResponse:
         return ProvidersResourceWithRawResponse(self._inference.providers)
 
     @cached_property
+    def prompts(self) -> PromptsResourceWithRawResponse:
+        return PromptsResourceWithRawResponse(self._inference.prompts)
+
+    @cached_property
     def gateway(self) -> GatewayResourceWithRawResponse:
         return GatewayResourceWithRawResponse(self._inference.gateway)
 
@@ -213,6 +233,10 @@ class AsyncInferenceResourceWithRawResponse:
     @cached_property
     def providers(self) -> AsyncProvidersResourceWithRawResponse:
         return AsyncProvidersResourceWithRawResponse(self._inference.providers)
+
+    @cached_property
+    def prompts(self) -> AsyncPromptsResourceWithRawResponse:
+        return AsyncPromptsResourceWithRawResponse(self._inference.prompts)
 
     @cached_property
     def gateway(self) -> AsyncGatewayResourceWithRawResponse:
@@ -244,6 +268,10 @@ class InferenceResourceWithStreamingResponse:
         return ProvidersResourceWithStreamingResponse(self._inference.providers)
 
     @cached_property
+    def prompts(self) -> PromptsResourceWithStreamingResponse:
+        return PromptsResourceWithStreamingResponse(self._inference.prompts)
+
+    @cached_property
     def gateway(self) -> GatewayResourceWithStreamingResponse:
         return GatewayResourceWithStreamingResponse(self._inference.gateway)
 
@@ -271,6 +299,10 @@ class AsyncInferenceResourceWithStreamingResponse:
     @cached_property
     def providers(self) -> AsyncProvidersResourceWithStreamingResponse:
         return AsyncProvidersResourceWithStreamingResponse(self._inference.providers)
+
+    @cached_property
+    def prompts(self) -> AsyncPromptsResourceWithStreamingResponse:
+        return AsyncPromptsResourceWithStreamingResponse(self._inference.prompts)
 
     @cached_property
     def gateway(self) -> AsyncGatewayResourceWithStreamingResponse:
