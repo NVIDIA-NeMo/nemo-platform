@@ -31,7 +31,7 @@ import { type FC, useState } from 'react';
 const DEFAULT_PAGE_SIZE = 5;
 
 export const ExperimentRoute: FC = () => {
-  useBreadcrumbs({ items: [{ slotLabel: 'Experiments' }] });
+  useBreadcrumbs({ items: [{ slotLabel: 'Experiment Groups' }] });
 
   const workspace = useWorkspaceFromPath();
   const [page, setPage] = useState(1);

@@ -34,6 +34,9 @@ Located in `./sample-datasets/`:
 
 ## Directory Layout
 
+Submit-time job JSON (including W&B / MLflow integrations) lives in
+`plugins/nemo-automodel/tests/fixtures/`.
+
 Input configs are grouped by model so the generation script downloads each model only once:
 
 ```

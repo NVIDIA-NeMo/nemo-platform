@@ -1,8 +1,16 @@
 # Troubleshooting
 
-Read this file when submit fails, jobs fail on images, the platform is unreachable, or the user asks for Unsloth.
+Read this file when submit fails, jobs fail on images, the platform is unreachable, W&B/MLflow integrations fail, gated HuggingFace model download fails, or the user asks for Unsloth.
 
 Resolve the CLI first per **Pre-flight — CLI resolution** in `SKILL.md` (`nemo` on `PATH`, else `uv run nemo`, else route to **nemo-setup**). Example commands below use `nemo …`.
+
+## Prerequisites
+
+Before working through any section below, confirm:
+
+- **NeMo CLI available** — `nemo` on `PATH`, otherwise `uv run nemo` from the nemo-platform repo root (see **Pre-flight — CLI resolution** in `SKILL.md`).
+- **Platform base URL configured** — via the CLI context, `--base-url`, or `$NMP_BASE_URL`; defaults to `http://localhost:8080`.
+- **Workspace access** — authenticated (`nemo auth login`) with access to the target workspace.
 
 ## Platform unreachable (connection error)
 
@@ -96,6 +104,75 @@ Same rule for `nemo jobs list-execution-profiles -f json`: parse stdout only; us
 - **Automodel** and **Unsloth** both use **`submit` only**. `nemo customization <plugin> run …` hard-fails with a pointer to `submit`.
 - Dataset refs in job JSON: `default/<fileset>` (automodel: `dataset.training` / `dataset.validation`; unsloth: `dataset.path` / optional `dataset.validation_path`).
 
+## Gated HuggingFace models
+
+Gated or private HuggingFace repos (e.g. Llama, Gemma) require a **platform secret** and **`token_secret`** on the model fileset. The Files service does **not** use your local `~/.cache/huggingface` or shell `HF_TOKEN`. Unlike W&B, the HF token is **not** set in job JSON — it is wired on the **model fileset** storage config.
+
+| Symptom / log excerpt | Likely cause | Fix |
+|-----------------------|--------------|-----|
+| Job fails in **download** step; `Failed to access upstream storage`; `InternalServerError` 502; `Verify that the referenced credentials are valid` | Missing/stale `hf-token` secret, or fileset created without `token_secret` | Steps below — then re-submit |
+| Secret exists but download still fails | User has not **accepted the model license** on huggingface.co for that repo | Accept license with the same HF account as the token, then re-submit |
+| Public model (e.g. `Qwen/Qwen3-1.7B`) | No secret needed | Omit `token_secret` on the fileset |
+
+**Convention:** secret name `hf-token` in workspace `default`. Any valid secret name works if referenced consistently in `token_secret`.
+
+### 1. Check whether the secret exists
+
+```bash
+nemo secrets list --workspace default
+```
+
+If `hf-token` is missing, **ask the user** for a HuggingFace token with **Read** access (https://huggingface.co/settings/tokens). They must also accept the model license on the model's HF page.
+
+### 2. Create or update the secret
+
+```bash
+HF_SECRET=hf-token
+printf '%s' "$HF_TOKEN" | nemo secrets create "$HF_SECRET" \
+  --workspace default \
+  --from-file -
+
+# Or update if it already exists but is stale:
+printf '%s' "$HF_TOKEN" | nemo secrets update "$HF_SECRET" \
+  --workspace default \
+  --from-file -
+```
+
+### 3. Create or update the model fileset with `token_secret`
+
+**New fileset (gated repo):**
+
+```bash
+WEIGHTS=<weights-fileset>
+HF_REPO=<hf-repo>          # e.g. google/gemma-2-2b-it
+HF_SECRET=hf-token
+
+nemo files filesets create "$WEIGHTS" --workspace default --purpose model --exist-ok \
+  --storage '{"type":"huggingface","repo_id":"'"$HF_REPO"'","repo_type":"model","revision":"main","token_secret":"'"$HF_SECRET"'"}'
+```
+
+**Existing fileset missing `token_secret`:**
+
+```bash
+nemo files filesets update "$WEIGHTS" --workspace default \
+  --input-data '{"storage":{"type":"huggingface","repo_id":"'"$HF_REPO"'","repo_type":"model","revision":"main","token_secret":"'"$HF_SECRET"'"}}'
+```
+
+Then create or reuse the model entity pointing at `default/<weights-fileset>`.
+
+**Public repos** — omit `token_secret`:
+
+```bash
+nemo files filesets create "$WEIGHTS" --workspace default --purpose model --exist-ok \
+  --storage '{"type":"huggingface","repo_id":"'"$HF_REPO"'","repo_type":"model","revision":"main"}'
+```
+
+### 4. Re-submit
+
+After secret + fileset are wired, re-submit the same job JSON (use a fresh `output.name` if a prior partial run already registered an adapter).
+
+**Note:** `files-hf-token` in platform config is **internal** service-to-service auth between Models and Files — it is **not** your HuggingFace Hub token. Do not confuse the two.
+
 ## Missing training images
 
 Job errors like `Failed to pull image … nmp-unsloth-training:… Not Found`, `manifest unknown`, or a missing automodel training image mean the **connected platform's Docker daemon** (the one that runs GPU job steps) does not have the image. With the default `NEMO_BASE_URL` / `NMP_BASE_URL` (`127.0.0.1:8080` / `localhost:8080`), that daemon is usually on the same machine as the agent; with a user-overridden URL (e.g. `10.0.0.51:8080`), it is on the remote target host instead.
@@ -157,6 +234,50 @@ nemo customization <plugin> submit /tmp/job.json --workspace default [--profile 
 
 Then poll until terminal status. Offer to re-submit once the user confirms the image is on the target — do not attempt a local Docker build from the agent for a remote platform.
 
+## W&B / integrations not working
+
+Job JSON has `integrations.wandb` (and/or `integrations.mlflow`) but tracking fails or never starts. Full setup: `references/integrations-setup.md`.
+
+| Symptom / log excerpt | Likely cause | Fix |
+|-----------------------|--------------|-----|
+| Training logs **omit** `[launcher]` lines; entrypoint is the training module directly (e.g. `Running main process: /opt/venv/bin/python [-m nmp.unsloth.tasks.training]` with **no** preceding `Fetching secret wandb-api-key`) | **jobs-launcher** binary missing or `launcher_tool_path` wrong — secrets are never injected | Build launcher on the **platform host**, set absolute `launcher_tool_path`, restart services. See § **jobs-launcher missing** below and `integrations-setup.md` § **jobs-launcher**. |
+| `wandb: ERROR` / HTTP 401 / `permission denied` after launcher lines present | Platform secret `wandb-api-key` has wrong or placeholder value; local `wandb login` cache is **not** used | `uv run nemo secrets update wandb-api-key --value "$WANDB_API_KEY" --workspace default` (or `--from-file -`). Re-submit. |
+| `RuntimeError: WandbCallback requires wandb to be installed` (unsloth) | `nmp-unsloth-training` image lacks `wandb` | Rebuild image with `nmp-unsloth[integrations]` extra; set `NMP_UNSLOTH_TRAINING_IMAGE`; restart platform. See **Missing training images**. |
+| Compile/submit warning: `integrations.wandb is configured but api_key_secret is missing` | Job JSON has `wandb` block without `api_key_secret` | Add `"api_key_secret": "default/wandb-api-key"` (or your secret ref). |
+| MLflow run never appears; W&B works | `tracking_uri` unreachable from container (`localhost`, wrong port) | Use `docker0` host IP + published port (e.g. `http://${DOCKER_HOST_IP}:5001`). See `integrations-setup.md` § **`tracking_uri`**. |
+
+### jobs-launcher missing (W&B secret not injected)
+
+The Docker executor wraps the training entrypoint with **jobs-launcher** only when `launcher_tool_path` points to a built binary on the platform host. If the path is missing or still the default stub, the container runs training **without** secret injection — `WANDB_API_KEY` never reaches the process even when `integrations.wandb.api_key_secret` is set in job JSON.
+
+**Working** — launcher fetched the secret before training:
+
+```text
+[launcher] 2026/06/11 22:03:03 Fetching secret wandb-api-key from workspace default...
+[launcher] 2026/06/11 22:03:03 Successfully fetched secret wandb-api-key and mapped to WANDB_API_KEY
+[launcher] 2026/06/11 22:03:03 Injected 1 secret(s) as environment variables
+[launcher] 2026/06/11 22:03:03 Running main process: /opt/venv/bin/python [-m nmp.unsloth.tasks.training]
+...
+wandb: Syncing run my-run
+```
+
+**Broken** — no launcher wrapper (typical when binary was never built or path is wrong):
+
+```text
+2026-06-11 21:47:42,848 - __main__ - INFO - Container: CUDA_VISIBLE_DEVICES=0
+...
+# No wandb: Syncing run … — W&B never initialized because WANDB_API_KEY was not injected
+```
+
+On the platform host:
+
+```bash
+cd /path/to/nemo-platform/services/core/jobs/jobs-launcher
+./build-manual.sh linux amd64
+```
+
+Set `jobs.executors.docker.launcher_tool_path` in `~/.nemo/config.yaml` to the **absolute** path of the built `jobs-launcher` binary, then `uv run nemo services restart`. Re-submit with a fresh `output.name`.
+
 ## Unsloth submit errors
 
 | Error / symptom | Cause | Fix |
@@ -178,7 +299,8 @@ Shared:
 |--------|---------|
 | Execution profiles | `nemo jobs list-execution-profiles -f json` |
 | Create dataset fileset | `nemo files filesets create <name> --workspace default --purpose dataset --exist-ok` |
-| Create HF weights fileset | `nemo files filesets create <name> --workspace default --purpose model --exist-ok --storage '{"type":"huggingface","repo_id":"<repo>","repo_type":"model","revision":"main"}'` |
+| Create HF weights fileset (public) | `nemo files filesets create <name> --workspace default --purpose model --exist-ok --storage '{"type":"huggingface","repo_id":"<repo>","repo_type":"model","revision":"main"}'` |
+| Create HF weights fileset (gated) | Same as above plus `"token_secret":"hf-token"` — see § **Gated HuggingFace models** |
 | Upload | `nemo files upload <local> <fileset> --workspace default --remote-path train.jsonl` |
 | List files | `nemo files list <fileset> --workspace default` |
 | Create model | `nemo models create <name> --workspace default --exist-ok --input-data '<json>'` |

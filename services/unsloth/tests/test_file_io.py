@@ -26,8 +26,8 @@ import pytest
 
 
 def _make_runner(sdk, workspace: str = "default", storage_path: Path | None = None):
-    from nmp.unsloth.app.jobs.context import NMPJobContext
-    from nmp.unsloth.tasks.file_io.progress_reporter import NoOpProgressReporter
+    from nmp.customization_common.service.context import NMPJobContext
+    from nmp.customization_common.tasks.file_io_progress_reporter import NoOpProgressReporter
     from nmp.unsloth.tasks.file_io.run import FileIORunner
 
     job_ctx = NMPJobContext(
@@ -94,7 +94,7 @@ def _make_dir(tmp_path: Path) -> Path:
 
 class TestCreateFileset:
     def test_creates_fileset_with_service_source_and_metadata(self) -> None:
-        from nmp.unsloth.app.jobs.file_io.schemas import FileSetRef
+        from nmp.customization_common.schemas.file_io import FileSetRef
 
         sdk = _make_sdk()
         runner = _make_runner(sdk)
@@ -111,7 +111,7 @@ class TestCreateFileset:
         assert call.kwargs["metadata"] == metadata
 
     def test_conflict_patches_metadata_on_existing(self) -> None:
-        from nmp.unsloth.app.jobs.file_io.schemas import FileSetRef
+        from nmp.customization_common.schemas.file_io import FileSetRef
 
         sdk = _make_sdk(conflict_on_create=True)
         runner = _make_runner(sdk)
@@ -126,7 +126,7 @@ class TestCreateFileset:
         assert update_call.kwargs["metadata"] == {"model": "x"}
 
     def test_conflict_no_metadata_skips_update(self) -> None:
-        from nmp.unsloth.app.jobs.file_io.schemas import FileSetRef
+        from nmp.customization_common.schemas.file_io import FileSetRef
 
         sdk = _make_sdk(conflict_on_create=True)
         runner = _make_runner(sdk)
@@ -140,7 +140,7 @@ class TestCreateFileset:
         self,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        from nmp.unsloth.app.jobs.file_io.schemas import FileSetRef
+        from nmp.customization_common.schemas.file_io import FileSetRef
 
         sdk = _make_sdk(conflict_on_create=True)
         sdk.files.filesets.update.side_effect = RuntimeError("backend down")
@@ -160,7 +160,7 @@ class TestCreateFileset:
 
 class TestUploadFileset:
     def test_directory_uploads_with_trailing_slash(self, tmp_path: Path) -> None:
-        from nmp.unsloth.app.jobs.file_io.schemas import FileSetRef
+        from nmp.customization_common.schemas.file_io import FileSetRef
 
         sdk = _make_sdk()
         runner = _make_runner(sdk)
@@ -178,7 +178,7 @@ class TestUploadFileset:
         assert call.kwargs["workspace"] == "default"
 
     def test_single_file_uploads_to_basename(self, tmp_path: Path) -> None:
-        from nmp.unsloth.app.jobs.file_io.schemas import FileSetRef
+        from nmp.customization_common.schemas.file_io import FileSetRef
 
         sdk = _make_sdk()
         runner = _make_runner(sdk)
@@ -193,7 +193,7 @@ class TestUploadFileset:
         assert call.kwargs["remote_path"] == src.name
 
     def test_upload_failure_propagates_as_file_upload_error(self, tmp_path: Path) -> None:
-        from nmp.unsloth.app.jobs.file_io.schemas import FileSetRef, FileUploadError
+        from nmp.customization_common.schemas.file_io import FileSetRef, FileUploadError
 
         sdk = _make_sdk()
         sdk.files.upload.side_effect = RuntimeError("upload broke")
@@ -212,7 +212,7 @@ class TestUploadFileset:
 
 class TestDownloadFileset:
     def test_lists_then_downloads(self, tmp_path: Path) -> None:
-        from nmp.unsloth.app.jobs.file_io.schemas import FileSetRef
+        from nmp.customization_common.schemas.file_io import FileSetRef
 
         sdk = _make_sdk()
         # files.list returns an object with .data (a list of FilesetFile-ish objects).
@@ -237,7 +237,7 @@ class TestDownloadFileset:
         assert dest.exists()
 
     def test_empty_fileset_returns_zero_stats_without_downloading(self, tmp_path: Path) -> None:
-        from nmp.unsloth.app.jobs.file_io.schemas import FileSetRef
+        from nmp.customization_common.schemas.file_io import FileSetRef
 
         sdk = _make_sdk()
         sdk.files.list.return_value = types.SimpleNamespace(data=[])
@@ -275,7 +275,7 @@ class TestBuildOutputMetadata:
                 load_in_8bit=False,
             ),
             dataset=DatasetSpec(path="/data/sample.jsonl"),
-            training=TrainingSpec(finetuning_type="full", lora=None),
+            training=TrainingSpec(finetuning_type="all_weights", lora=None),
             output=OutputResponse(
                 name="qwen-out",
                 type="model",
@@ -287,7 +287,7 @@ class TestBuildOutputMetadata:
         meta = build_output_metadata(spec)
         assert meta == {
             "model": "Qwen/Qwen3-0.6B",
-            "finetuning_type": "full",
+            "finetuning_type": "all_weights",
             "save_method": "lora",
             "output_type": "model",
         }
@@ -300,14 +300,14 @@ class TestBuildOutputMetadata:
 
 class TestValidateSafePath:
     def test_safe_path_resolves(self, tmp_path: Path) -> None:
-        from nmp.unsloth.tasks.file_io.utils import validate_safe_path
+        from nmp.customization_common.tasks.file_io_utils import validate_safe_path
 
         result = validate_safe_path(tmp_path, "subdir/file.txt")
         assert result == (tmp_path / "subdir/file.txt").resolve()
 
     def test_traversal_raises(self, tmp_path: Path) -> None:
-        from nmp.unsloth.app.jobs.file_io.schemas import PathTraversalError
-        from nmp.unsloth.tasks.file_io.utils import validate_safe_path
+        from nmp.customization_common.schemas.file_io import PathTraversalError
+        from nmp.customization_common.tasks.file_io_utils import validate_safe_path
 
         with pytest.raises(PathTraversalError):
             validate_safe_path(tmp_path, "../../etc/passwd")

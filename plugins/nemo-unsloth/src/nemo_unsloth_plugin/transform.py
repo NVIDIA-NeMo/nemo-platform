@@ -17,44 +17,16 @@ download from.
 
 from __future__ import annotations
 
-import re
-import uuid
 from typing import TYPE_CHECKING
 
-from nemo_platform_plugin.refs import parse_entity_ref
-from nmp.unsloth.platform_client import check_dataset_access, fetch_model_entity
+from nmp.customization_common.contributor.transform import generated_output_name
+from nmp.customization_common.service.platform_client import check_dataset_access, fetch_model_entity
 from nmp.unsloth.schemas import OutputResponse, UnslothJobOutput
 
 from nemo_unsloth_plugin.schema import OutputRequest, UnslothJobInput
 
 if TYPE_CHECKING:
     from nemo_platform import AsyncNeMoPlatform
-
-_MAX_PREFIX_LEN = 50
-_HEX_LEN = 12
-_NAME_SAFE_RE = re.compile(r"[^a-zA-Z0-9_-]+")
-
-
-def _slugify(token: str) -> str:
-    cleaned = _NAME_SAFE_RE.sub("-", token).strip("-")
-    return cleaned or "x"
-
-
-def _model_basename(model_ref: str, workspace: str) -> str:
-    """Last segment of a model entity ref (handles 'workspace/name' and 'name')."""
-    return _slugify(parse_entity_ref(model_ref, workspace).name)
-
-
-def _dataset_basename(uri: str) -> str:
-    """Last segment of a fileset ref (handles 'workspace/name' and 'name')."""
-    cleaned = uri.split("://", 1)[-1]
-    last = cleaned.rsplit("/", 1)[-1] or cleaned
-    return _slugify(last)
-
-
-def _random_suffix(prefix: str) -> str:
-    truncated = prefix[:_MAX_PREFIX_LEN].rstrip("-")
-    return f"{truncated}-{uuid.uuid4().hex[:_HEX_LEN]}"
 
 
 def _infer_output_type(output_request: OutputRequest) -> str:
@@ -102,9 +74,7 @@ async def transform_input_to_output(
 
     output_request = input_spec.output or OutputRequest()
     if output_request.name is None:
-        model_part = _model_basename(input_spec.model.name, workspace)
-        dataset_part = _dataset_basename(input_spec.dataset.path)
-        out_name = _random_suffix(f"{model_part}-{dataset_part}")
+        out_name = generated_output_name(input_spec.model.name, input_spec.dataset.path, workspace)
     else:
         out_name = output_request.name
 

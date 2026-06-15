@@ -31,9 +31,7 @@ from nemo_platform import (
 from nemo_platform.types.files.fileset_file import FilesetFile
 from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.common.sdk_factory import get_task_sdk
-from nmp.unsloth.app.constants import SERVICE_NAME
-from nmp.unsloth.app.jobs.context import NMPJobContext
-from nmp.unsloth.app.jobs.file_io.schemas import (
+from nmp.customization_common.schemas.file_io import (
     DownloadItem,
     DownloadStats,
     FileDownloadError,
@@ -44,20 +42,22 @@ from nmp.unsloth.app.jobs.file_io.schemas import (
     UploadItem,
     UploadStats,
 )
+from nmp.customization_common.service.context import NMPJobContext
+from nmp.customization_common.tasks.file_io_progress_reporter import JobsServiceProgressReporter, ProgressReporter
+from nmp.customization_common.tasks.file_io_utils import (
+    filesystem_sdk_error_handler,
+    get_config,
+    sdk_error_handler,
+    validate_safe_path,
+    validate_storage_path,
+)
+from nmp.unsloth.app.constants import SERVICE_NAME
 from nmp.unsloth.tasks.file_io.callbacks import (
     CompositeCallback,
     FileDownloadProgressCallback,
     FileUploadProgressCallback,
     TqdmPerFileDownloadCallback,
     TqdmPerFileUploadCallback,
-)
-from nmp.unsloth.tasks.file_io.progress_reporter import JobsServiceProgressReporter, ProgressReporter
-from nmp.unsloth.tasks.file_io.utils import (
-    filesystem_sdk_error_handler,
-    get_config,
-    sdk_error_handler,
-    validate_safe_path,
-    validate_storage_path,
 )
 from tenacity import before_sleep_log, retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
@@ -90,6 +90,10 @@ TRANSIENT_FILESYSTEM_EXCEPTIONS = (
     httpx.TimeoutException,
     httpx.ConnectError,
     httpx.ReadTimeout,
+    # Connection dropped mid-transfer (CDN/proxy closed the socket before the
+    # full body arrived). Common on large multi-GB model shards; safe to retry.
+    httpx.RemoteProtocolError,
+    httpx.ReadError,
 )
 
 

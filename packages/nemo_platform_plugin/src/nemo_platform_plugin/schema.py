@@ -74,7 +74,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Generic, Optional, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, RootModel, model_validator
 
 __all__ = [
     "DatetimeFilter",
@@ -83,6 +83,7 @@ __all__ = [
     "NemoListResponse",
     "Page",
     "PaginationData",
+    "SecretRef",
     "StringFilter",
     "Value",
 ]
@@ -98,6 +99,19 @@ class Value(BaseModel):
     """
 
     model_config = {"arbitrary_types_allowed": True, "protected_namespaces": ()}
+
+
+class SecretRef(RootModel):
+    """Reference to a platform secret by name."""
+
+    root: str = Field(
+        description="Reference to a secret. Format: 'secret_name' (uses request workspace) or 'workspace/secret_name' (explicit workspace).",
+        pattern=r"^[a-z0-9_-]+(/[a-z0-9_-]+)?$",
+        examples=[
+            "my-secret",
+            "my-workspace/my-secret",
+        ],
+    )
 
 
 class PaginationData(Value):
