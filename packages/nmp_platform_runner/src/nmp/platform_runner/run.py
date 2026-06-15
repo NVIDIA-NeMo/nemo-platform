@@ -28,6 +28,7 @@ from rich.text import Text
 
 logger = logging.getLogger(__name__)
 console = Console()
+error_console = Console(stderr=True)
 
 
 def _startup_phase(name: str, t0: float) -> None:
@@ -50,6 +51,25 @@ def _database_display(db_url: str) -> str:
     if db_type == "sqlite":
         return f"{db_type} ({parsed.database or ''})"
     return db_type
+
+
+def _is_policy_wasm_error(error: Exception) -> bool:
+    return (
+        error.__class__.__name__ == "PolicyWasmError"
+        and error.__class__.__module__ == "nmp.core.auth.app.embedded_pdp.policy_wasm"
+    )
+
+
+def _display_policy_wasm_error(error: Exception) -> None:
+    error_console.print()
+    error_console.print(
+        Panel(
+            str(error),
+            title="Embedded Auth Policy WASM Startup Failed",
+            border_style="red",
+            expand=False,
+        )
+    )
 
 
 def run_controllers_in_threads(
@@ -163,6 +183,9 @@ def run_platform(
     except KeyboardInterrupt:
         logger.info("Received keyboard interrupt, shutting down")
     except Exception as error:
+        if _is_policy_wasm_error(error):
+            _display_policy_wasm_error(error)
+            raise SystemExit(1) from None
         logger.exception("Fatal error occurred")
         raise SystemExit(1) from error
     finally:
