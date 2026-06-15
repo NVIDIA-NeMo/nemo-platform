@@ -1,0 +1,129 @@
+name: Docker CPU smoke-test images
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/docker-cpu-smoketest.yaml"
+      - "docker-bake.hcl"
+      - "docker/**"
+      - "Makefile"
+      - "packages/**"
+      - "plugins/**"
+      - "sdk/**"
+      - "services/**"
+      - "src/**"
+      - "uv.lock"
+      - "pyproject.toml"
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/docker-cpu-smoketest.yaml"
+      - "docker-bake.hcl"
+      - "docker/**"
+      - "Makefile"
+      - "packages/**"
+      - "plugins/**"
+      - "sdk/**"
+      - "services/**"
+      - "src/**"
+      - "uv.lock"
+      - "pyproject.toml"
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Optional image tag. Defaults to the commit SHA.
+        required: false
+        type: string
+        default: ""
+      publish:
+        description: Publish images to GHCR.
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build-cpu-images:
+    name: Build CPU images
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Free disk space
+        uses: ./.github/actions/free-disk-space
+        with:
+          disable_swap: "true"
+          remove_haskell: "true"
+          remove_java: "true"
+          remove_ruby: "true"
+          remove_swift: "true"
+          prune_docker: "true"
+
+      - name: Set up Docker Buildx
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker buildx create --name nmp-builder --driver docker-container --use
+          docker buildx inspect --bootstrap
+
+      - name: Configure bake variables
+        shell: bash
+        env:
+          INPUT_IMAGE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.image_tag || '' }}
+          INPUT_PUBLISH: ${{ inputs.publish }}
+        run: |
+          set -euo pipefail
+
+          image_registry="ghcr.io/${GITHUB_REPOSITORY,,}"
+          bake_tag="${INPUT_IMAGE_TAG:-$GITHUB_SHA}"
+          publish_images="false"
+
+          if [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            publish_images="true"
+          fi
+
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$INPUT_PUBLISH" = "true" ]; then
+            publish_images="true"
+          fi
+
+          {
+            printf 'IMAGE_REGISTRY=%s\n' "$image_registry"
+            printf 'BASE_REGISTRY=%s\n' "$image_registry"
+            printf 'CACHE_REGISTRY=%s\n' "$image_registry"
+            printf 'BAKE_TAG=%s\n' "$bake_tag"
+            printf 'CI_COMMIT_SHA=%s\n' "$GITHUB_SHA"
+            printf 'PUBLISH_IMAGES=%s\n' "$publish_images"
+          } >> "$GITHUB_ENV"
+
+      - name: Log in to GHCR
+        if: env.PUBLISH_IMAGES == 'true'
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+      - name: Print Docker bake graph
+        shell: bash
+        run: make docker-print TARGET=docker-cpu
+
+      - name: Build CPU images
+        if: env.PUBLISH_IMAGES != 'true'
+        shell: bash
+        run: make docker-load TARGET=docker-cpu
+
+      - name: Build and publish CPU images
+        if: env.PUBLISH_IMAGES == 'true'
+        shell: bash
+        run: make docker-push TARGET=docker-cpu
