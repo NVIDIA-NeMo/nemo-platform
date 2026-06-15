@@ -28,6 +28,9 @@ outputs:
   docker:
     description: "'true' if any Docker build files changed"
     value: ${{ steps.filter.outputs.docker }}
+  helm:
+    description: "'true' if any Helm chart files changed"
+    value: ${{ steps.filter.outputs.helm }}
 
 runs:
   using: "composite"
@@ -63,3 +66,9 @@ runs:
             - 'docker-bake.hcl'
             - 'docker/**'
             - 'Makefile'
+          helm:
+            - 'k8s/**'
+            - 'tools/lint/lint-helm.sh'
+            - '.github/workflows/ci.yaml'
+            - '.github/actions/changes/action.yaml'
+            - '.pre-commit-config.yaml'

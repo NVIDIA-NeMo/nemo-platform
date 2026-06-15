@@ -8,6 +8,7 @@ from typing import Any, ClassVar, Optional, Self
 from nmp.common.auth import AuthContext
 from nmp.common.entities import constants
 from nmp.common.entities.client import EntityBase
+from nmp.common.inference import InferenceParams
 from nmp.core.models.constants import (
     MODEL_REF_MAX_LEN,
     MODEL_REF_PATTERN_DESCRIPTION,
@@ -16,6 +17,7 @@ from nmp.core.models.constants import (
 from nmp.core.models.schemas import (
     APIEndpointData,
     BackendFormat,
+    ChatCompletionTool,
     ContainerExecutorConfig,
     Engine,
     FinetuningType,
@@ -25,6 +27,7 @@ from nmp.core.models.schemas import (
     ModelProviderStatus,
     ModelSpec,
     PromptData,
+    PromptMessage,
     ServedModelMapping,
 )
 from pydantic import Field, PrivateAttr, computed_field, field_validator, model_validator
@@ -350,4 +353,54 @@ class ModelDeploymentConfig(EntityBase):
         default=None,
         description="Optional description of the deployment configuration.",
         max_length=1000,
+    )
+
+
+class Prompt(EntityBase):
+    """A reusable, stored chat prompt, addressed by workspace/name.
+
+    Captures the messages, declared template variables, optional tool definitions,
+    and default inference parameters needed to invoke a model through the
+    Inference Gateway.
+    """
+
+    __entity_type__: ClassVar[str] = "prompt"
+
+    project: str | None = Field(
+        default=None,
+        description="The URN of the project associated with this prompt.",
+        max_length=constants.MAX_LENGTH_255,
+    )
+    description: str | None = Field(
+        default=None,
+        description="Optional description of the prompt.",
+        max_length=1000,
+    )
+    messages: list[PromptMessage] = Field(
+        default_factory=list,
+        description="Ordered list of chat messages that make up the prompt.",
+    )
+    input_variables: list[str] = Field(
+        default_factory=list,
+        description="Names of the Jinja2 template variables the prompt expects.",
+    )
+    tools: list[ChatCompletionTool] | None = Field(
+        default=None,
+        description="Optional OpenAI-compatible tool definitions to send with the prompt.",
+    )
+    tool_choice: str | dict[str, Any] | None = Field(
+        default=None,
+        description="Controls which (if any) tool is called: 'none', 'auto', 'required', or a named-tool object.",
+    )
+    response_format: dict[str, Any] | None = Field(
+        default=None,
+        description="Optional OpenAI-compatible response_format, e.g. a json_schema structured-output spec.",
+    )
+    inference_params: InferenceParams | None = Field(
+        default=None,
+        description="Optional default model and sampling parameters (temperature, top_p, max_tokens, ...).",
+    )
+    tags: list[str] = Field(
+        default_factory=list,
+        description="Optional free-form tags for organizing prompts.",
     )

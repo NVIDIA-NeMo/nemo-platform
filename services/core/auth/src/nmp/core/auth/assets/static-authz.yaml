@@ -182,6 +182,17 @@ authz:
           description: "Update model adapters"
         delete:
           description: "Delete model adapters"
+      prompts:
+        read:
+          description: "Read model prompts"
+        list:
+          description: "List model prompts"
+        create:
+          description: "Create model prompts"
+        update:
+          description: "Update model prompts"
+        delete:
+          description: "Delete model prompts"
       create:
         description: "Create models"
       delete:
@@ -298,6 +309,7 @@ authz:
       - models.adapters.list
       - models.adapters.read
       - models.list
+      - models.prompts.read
       - models.read
       - projects.list
       - projects.read
@@ -349,6 +361,9 @@ authz:
       - models.adapters.update
       - models.create
       - models.delete
+      - models.prompts.create
+      - models.prompts.delete
+      - models.prompts.update
       - models.update
       - projects.create
       - projects.delete
@@ -1342,6 +1357,38 @@ authz:
       patch:
         permissions:
         - models.update
+        scopes:
+        - models:write
+        - platform:write
+    /apis/models/v2/workspaces/{workspace}/prompts:
+      get:
+        permissions:
+        - models.prompts.read
+        scopes:
+        - models:read
+        - platform:read
+      post:
+        permissions:
+        - models.prompts.create
+        scopes:
+        - models:write
+        - platform:write
+    /apis/models/v2/workspaces/{workspace}/prompts/{name}:
+      delete:
+        permissions:
+        - models.prompts.delete
+        scopes:
+        - models:write
+        - platform:write
+      get:
+        permissions:
+        - models.prompts.read
+        scopes:
+        - models:read
+        - platform:read
+      put:
+        permissions:
+        - models.prompts.update
         scopes:
         - models:write
         - platform:write

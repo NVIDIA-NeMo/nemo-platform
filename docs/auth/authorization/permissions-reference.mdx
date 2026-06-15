@@ -89,6 +89,9 @@ PlatformAdmin is omitted — it bypasses permission checks entirely at the polic
 | `models.(create \\| update \\| delete)` | Create, update, delete models |  | ✓ | ✓ |
 | `models.adapters.(read \\| list)` | Read, list models adapters | ✓ | ✓ | ✓ |
 | `models.adapters.(create \\| update \\| delete)` | Create, update, delete models adapters |  | ✓ | ✓ |
+| `models.prompts.read` | Read model prompts | ✓ | ✓ | ✓ |
+| `models.prompts.(create \\| update \\| delete)` | Create, update, delete models prompts |  | ✓ | ✓ |
+| `models.prompts.list` | List model prompts |  |  |  |
 | `models.tool-call-plugin.set` | Whether this user can set tool_call_plugin on Models or Deployment Configs *(policy-enforced)* |  |  | ✓ |
 | `models.trust-remote-code.set` | Whether this user can set trust_remote_code on Models *(policy-enforced)* |  |  | ✓ |
 

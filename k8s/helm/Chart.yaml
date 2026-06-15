@@ -1,0 +1,18 @@
+apiVersion: v2
+name: nemo-platform
+maintainers:
+  - name: NVIDIA, Inc.
+    url: https://www.nvidia.com
+description: NeMo Platform Helm Chart
+type: application
+# version is the version of the Helm chart, and can be different from the appVersion.
+version: 0.1.0
+# appVersion is the version of the application deployed in the chart.
+appVersion: "0.2.0"
+home: https://nvidia.com
+dependencies:
+  ## NMP dependencies
+  - name: k8s-nim-operator
+    condition: k8s-nim-operator.enabled
+    repository: https://helm.ngc.nvidia.com/nvidia/
+    version: "~3.1.0"

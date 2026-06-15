@@ -4,7 +4,6 @@
 """Custom fsspec callbacks for progress reporting during file I/O operations."""
 
 import logging
-import os
 import threading
 from abc import abstractmethod
 from dataclasses import dataclass
@@ -12,9 +11,10 @@ from pathlib import Path
 from typing import Any
 
 from fsspec.callbacks import Callback, TqdmCallback
-from nmp.automodel.app.jobs.file_io.schemas import DownloadStats, TaskPhase, UploadStats
-from nmp.automodel.tasks.file_io.progress_reporter import ProgressReporter
 from nmp.common.jobs.schemas import PlatformJobStatus
+from nmp.customization_common.schemas.file_io import DownloadStats, TaskPhase, UploadStats
+from nmp.customization_common.tasks.file_io_progress_reporter import ProgressReporter
+from nmp.customization_common.tasks.file_io_utils import list_local_files as _list_local_files
 
 logger = logging.getLogger(__name__)
 
@@ -264,46 +264,8 @@ class BaseProgressCallback(Callback):
 
     @staticmethod
     def list_local_files(src_path: Path) -> list[FileInfo]:
-        """List all files from a local path (file or directory).
-
-        If src_path is a file, returns a single FileInfo with the filename.
-        If src_path is a directory, recursively lists all files.
-
-        Returns list of FileInfo objects with 'path' (relative path) and 'size' keys.
-        This mirrors the format returned by list_fileset_files.
-        """
-        if not src_path.exists():
-            logger.warning(f"Failed to list local files. Source path does not exist: {src_path}")
-            return []
-
-        try:
-            # Handle single file
-            if src_path.is_file():
-                logger.info(f"Found 1 file: {src_path.name}")
-                return [
-                    FileInfo(
-                        path=src_path.name,
-                        size=src_path.stat().st_size,
-                    ),
-                ]
-
-            # Handle directory
-            files = []
-            for root, _, filenames in os.walk(src_path):
-                for filename in filenames:
-                    full_path = Path(root) / filename
-                    relative_path = full_path.relative_to(src_path)
-                    files.append(
-                        FileInfo(
-                            path=str(relative_path),
-                            size=full_path.stat().st_size,
-                        ),
-                    )
-            logger.info(f"Found {len(files)} files in {src_path}")
-            return files
-        except Exception as e:
-            logger.warning(f"Failed to list local files. Source path: {src_path}. Error: {e}")
-            return []
+        """List all files from a local path (see shared ``list_local_files``)."""
+        return [FileInfo(path=f.path, size=f.size) for f in _list_local_files(src_path)]
 
     @abstractmethod
     def branched(self, source_path: str, dest_path: str, **kwargs: Any) -> "BaseSingleFileCallback":

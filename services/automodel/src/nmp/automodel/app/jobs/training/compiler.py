@@ -10,7 +10,6 @@ from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
     DistributedGPUExecutionProviderSpec,
     EnvironmentVariable,
-    EnvironmentVariableFromSecret,
     GPUExecutionProviderSpec,
     PlatformJobStep,
     ResourcesSpec,
@@ -21,8 +20,6 @@ from nmp.automodel.api.v2.jobs.schemas import (
     CustomizationJobOutput,
     DistillationTraining,
     LoRAParams,
-    MLflowParams,
-    WandBParams,
 )
 from nmp.automodel.app.constants import (
     DEFAULT_DATASET_PATH,
@@ -33,15 +30,17 @@ from nmp.automodel.app.constants import (
 from nmp.automodel.app.jobs.training.schemas import (
     DistillationConfig,
     LoRAConfig,
-    MLflowConfig,
     ModelConfig,
     TrainingStepConfig,
-    WandBConfig,
 )
 from nmp.automodel.config import config
 from nmp.automodel.entities.values import Precision, TrainingType
 from nmp.automodel.images import AUTOMODEL_PYTHON_ENTRYPOINT, get_training_image
 from nmp.common.model_utils import is_embedding_model
+from nmp.customization_common.integrations import (
+    collect_integration_secret_envs,
+    warn_incomplete_integrations,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +175,7 @@ def compile_training_step(
             expert_parallel_size=p.expert_parallel_size,
             sequence_parallel=p.sequence_parallel,
         ),
-        integrations=_translate_integrations(job_spec),
+        integrations=job_spec.integrations,
         output_model=job_spec.output.name,
     )
 
@@ -214,7 +213,8 @@ def compile_training_step(
             ),
         )
 
-    secret_envs = _collect_integration_secret_envs(job_spec)
+    warn_incomplete_integrations(job_spec.integrations)
+    secret_envs = collect_integration_secret_envs(job_spec.integrations)
 
     return PlatformJobStep(
         name="training",
@@ -314,69 +314,6 @@ def _translate_lora_config(api_lora: LoRAParams, me: ModelEntity) -> LoRAConfig:
         else:
             lora.target_modules = ["*proj"]
     return lora
-
-
-def _translate_wandb_config(api_wandb: WandBParams | None) -> WandBConfig | None:
-    """Translate API WandBParams to internal WandBConfig."""
-    if api_wandb is None:
-        return None
-
-    return WandBConfig(
-        project=api_wandb.project,
-        name=api_wandb.name,
-        entity=api_wandb.entity,
-        tags=api_wandb.tags,
-        notes=api_wandb.notes,
-        base_url=api_wandb.base_url,
-    )
-
-
-def _translate_mlflow_config(api_mlflow: MLflowParams | None) -> MLflowConfig | None:
-    """Translate API MLflowParams to internal MLflowConfig."""
-    if api_mlflow is None:
-        return None
-
-    return MLflowConfig(
-        experiment_name=api_mlflow.experiment_name,
-        run_name=api_mlflow.run_name,
-        tags=api_mlflow.tags,
-        description=api_mlflow.description,
-        tracking_uri=api_mlflow.tracking_uri,
-    )
-
-
-def _translate_integrations(job_spec: CustomizationJobOutput) -> TrainingStepConfig.IntegrationsConfig:
-    """Translate API IntegrationsConfig to internal IntegrationsConfig."""
-    if not job_spec.integrations:
-        return TrainingStepConfig.IntegrationsConfig()
-
-    return TrainingStepConfig.IntegrationsConfig(
-        wandb=_translate_wandb_config(job_spec.integrations.wandb),
-        mlflow=_translate_mlflow_config(job_spec.integrations.mlflow),
-    )
-
-
-def _collect_integration_secret_envs(job_input: CustomizationJobOutput) -> list[EnvironmentVariable]:
-    """Collect secret environment variables from integration configs.
-
-    Secrets are propagated via PlatformJobStep.environment (not config) so that
-    the Jobs service can resolve secret references at runtime.
-    """
-    secret_envs: list[EnvironmentVariable] = []
-    if not job_input.integrations:
-        return secret_envs
-
-    if job_input.integrations.wandb and job_input.integrations.wandb.api_key_secret:
-        secret_envs.append(
-            EnvironmentVariable(
-                name="WANDB_API_KEY",
-                from_secret=EnvironmentVariableFromSecret(
-                    name=job_input.integrations.wandb.api_key_secret.root,
-                ),
-            )
-        )
-
-    return secret_envs
 
 
 def _extract_model_name(job_spec: CustomizationJobOutput) -> str | None:

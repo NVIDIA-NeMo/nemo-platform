@@ -1,0 +1,91 @@
+{{- if and (include "nemo-platform.authEnabled" .) .Values.envoyProxy.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nmp-envoy.servicename" . }}
+  labels:
+    {{- include "nmp-envoy.labels" . | nindent 4 }}
+  annotations:
+    {{- with .Values.envoyProxy.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- if not .Values.envoyProxy.autoscaling.enabled }}
+  replicas: {{ .Values.envoyProxy.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: nmp-envoy
+      {{- include "nemo-platform.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/proxy/envoy-configmap.yaml") . | sha256sum }}
+        {{- with .Values.envoyProxy.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "nmp-envoy.labels" . | nindent 8 }}
+        {{- with .Values.envoyProxy.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "nmp-envoy.serviceAccountName" . }}
+      securityContext:
+        {{- include "nemo-common.podSecurityContext" (dict "global" .Values.podSecurityContext "local" .Values.envoyProxy.podSecurityContext) | nindent 8 }}
+      imagePullSecrets:
+        {{ include "nemo-common.imagepullsecrets" . | nindent 8 | trim }}
+      containers:
+        - name: envoy
+          securityContext:
+            {{- include "nemo-common.securityContext" (dict "global" .Values.securityContext "local" .Values.envoyProxy.securityContext) | nindent 12 }}
+          image: "{{ .Values.envoyProxy.image.repository }}:{{ .Values.envoyProxy.image.tag }}"
+          imagePullPolicy: {{ .Values.envoyProxy.image.pullPolicy }}
+          args:
+            - -c
+            - /etc/envoy/envoy.yaml
+            - -l
+            - info
+            {{- range .Values.envoyProxy.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          env:
+            {{ include "nemo-platform.envoyProxy.env" . | nindent 12 | trim }}
+          ports:
+            - name: proxy
+              containerPort: {{ .Values.envoyProxy.service.port }}
+            - name: admin
+              containerPort: {{ .Values.envoyProxy.adminPort }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/envoy
+              readOnly: true
+          startupProbe:
+            {{- toYaml .Values.envoyProxy.startupProbe | nindent 12 }}
+          livenessProbe:
+            {{- toYaml .Values.envoyProxy.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.envoyProxy.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.envoyProxy.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "nmp-envoy.servicename" . }}
+      {{- with .Values.envoyProxy.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.envoyProxy.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.envoyProxy.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.envoyProxy.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

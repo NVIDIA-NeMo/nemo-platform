@@ -1,0 +1,9 @@
+# Test that PodDisruptionBudget renders with minAvailable.
+# CI validates by running: helm template nemo-platform . -f ci/14-pdb-min-available.yaml
+# The rendered output must include a PodDisruptionBudget for the API with spec.minAvailable: 2.
+
+api:
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 2
+

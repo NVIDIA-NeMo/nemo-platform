@@ -12,7 +12,7 @@
  *   1. Studio code defaults (featureFlags.ts)
  *   2. Local env overrides (.env.dev.local)
  *   3. env_mappings.py defaults (deployment runtime injection)
- *   4. Helm CI values files (deploy/helm/values/ci/*.yaml)
+ *   4. Optional deployment values files from HELM_DEPLOYMENT_VALUES_DIR
  *
  * Usage:
  *   pnpm feature-flags          # CLI color-coded per-flag cards
@@ -34,7 +34,9 @@ const FEATURE_FLAGS_TS = path.join(
 );
 const ENV_MAPPINGS_PY = path.join(REPO_ROOT, 'services/studio/src/nmp/studio/env_mappings.py');
 const LOCAL_ENV_FILE = path.join(REPO_ROOT, 'web/packages/studio/env/.env.dev.local');
-const HELM_CI_DIR = path.join(REPO_ROOT, 'deploy/helm/values/ci');
+const HELM_DEPLOYMENT_VALUES_DIR = process.env.HELM_DEPLOYMENT_VALUES_DIR
+  ? path.resolve(REPO_ROOT, process.env.HELM_DEPLOYMENT_VALUES_DIR)
+  : '';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -106,7 +108,7 @@ function parseLocalEnv(src: string): Record<string, string> {
 }
 
 /**
- * Parse per-target overrides from a Helm CI values yaml (e.g. dev-values.yaml).
+ * Parse per-target overrides from a Helm deployment values yaml (e.g. dev-values.yaml).
  * Reads platformConfig.studio.feature_flags and extracts snake_case key/value pairs.
  * These are the highest-priority values for deployed environments, overriding
  * env_mappings.py defaults for that specific target.
@@ -142,13 +144,16 @@ const localEnvOverrides = fs.existsSync(LOCAL_ENV_FILE)
   : {};
 const envMappingDefaults = safeRead(ENV_MAPPINGS_PY, parseEnvMappings, {});
 
-const ciFiles = fs
-  .readdirSync(HELM_CI_DIR)
-  .filter((f) => f.endsWith('.yaml'))
-  .sort();
+const ciFiles =
+  HELM_DEPLOYMENT_VALUES_DIR && fs.existsSync(HELM_DEPLOYMENT_VALUES_DIR)
+    ? fs
+        .readdirSync(HELM_DEPLOYMENT_VALUES_DIR)
+        .filter((f) => f.endsWith('.yaml'))
+        .sort()
+    : [];
 const ciOverrides: Record<string, Record<string, string>> = {};
 for (const file of ciFiles) {
-  ciOverrides[file] = safeRead(path.join(HELM_CI_DIR, file), parseHelmYaml, {});
+  ciOverrides[file] = safeRead(path.join(HELM_DEPLOYMENT_VALUES_DIR, file), parseHelmYaml, {});
 }
 
 const allFlags = [
@@ -199,7 +204,7 @@ if (process.argv.includes('--json')) {
       deployments[envName(file)] = {
         value: resolveDeployment(flag, file),
         override: {
-          path: rel(path.join(HELM_CI_DIR, file)),
+          path: rel(path.join(HELM_DEPLOYMENT_VALUES_DIR, file)),
           value: ciOverrides[file]?.[flag] ?? null,
         },
       };

@@ -5,7 +5,7 @@
 
 from unittest.mock import MagicMock
 
-from nmp.automodel.tasks.training.backends.callbacks import TrainingProgressCallback
+from nmp.customization_common.training.callbacks import TrainingProgressCallback
 
 
 class TestTrainingProgressCallback:

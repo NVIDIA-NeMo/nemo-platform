@@ -1082,7 +1082,7 @@ class DockerDeploymentCreationReconciler:
 
             if view.lora_enabled:
                 cfg = get_platform_config()
-                image = get_qualified_image("nmp-api")
+                image = get_qualified_image(self._backend_config.lora_sidecar_image_name)
                 sidecar_envs = cfg.to_shared_envvars()
                 sidecar_envs.update(env_vars)
                 # The adapters sidecar is engine-agnostic: it downloads enabled LoRA
@@ -1105,7 +1105,7 @@ class DockerDeploymentCreationReconciler:
                     "image": image,
                     "name": f"{container_name}-sidecar",
                     "environment": sidecar_envs,
-                    "command": ["--sidecars", "adapters", "--port", "60830"],
+                    "command": self._backend_config.lora_sidecar_command,
                     "detach": True,
                     "volumes": {
                         state.volume_name: {"bind": "/model-store", "mode": "rw"},
@@ -1120,6 +1120,8 @@ class DockerDeploymentCreationReconciler:
                     "healthcheck": {"test": ["NONE"]},
                     "ports": {},
                 }
+                if self._backend_config.lora_sidecar_entrypoint:
+                    sidecar_args["entrypoint"] = self._backend_config.lora_sidecar_entrypoint
 
                 self._assign_network(sidecar_args)
 

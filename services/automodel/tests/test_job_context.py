@@ -7,13 +7,6 @@ from pathlib import Path
 
 import pytest
 from nmp.automodel.app.constants import DEFAULT_JOB_STORAGE_PATH, NMP_FILES_URL_ENVVAR, NMP_JOBS_URL_ENVVAR
-from nmp.automodel.app.jobs.context import (
-    DEFAULT_ATTEMPT_ID,
-    DEFAULT_JOB_ID,
-    DEFAULT_STEP,
-    DEFAULT_TASK,
-    NMPJobContext,
-)
 from nmp.common.entities.constants import DEFAULT_WORKSPACE
 from nmp.common.jobs.constants import (
     DEFAULT_NEMO_JOB_STEP_CONFIG_FILE_PATH,
@@ -24,6 +17,13 @@ from nmp.common.jobs.constants import (
     NEMO_JOB_TASK_ENVVAR,
     NEMO_JOB_WORKSPACE_ENVVAR,
     PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
+)
+from nmp.customization_common.service.context import (
+    DEFAULT_ATTEMPT_ID,
+    DEFAULT_JOB_ID,
+    DEFAULT_STEP,
+    DEFAULT_TASK,
+    NMPJobContext,
 )
 
 

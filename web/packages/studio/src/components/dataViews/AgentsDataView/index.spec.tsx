@@ -530,4 +530,164 @@ describe('CombinedAgentsTable', () => {
       expect(agentDeleteCalled).toBe(false);
     });
   });
+
+  describe('bulk delete', () => {
+    it('deletes every selected agent and its deployments, then shows a summary toast', async () => {
+      const deletedAgents: string[] = [];
+      const deletedDeployments: string[] = [];
+      server.use(
+        http.get(`${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/:workspace/agents`, () =>
+          HttpResponse.json({
+            data: [
+              { name: 'react-agent', description: '', config: {} },
+              { name: 'react-agent2', description: '', config: {} },
+            ],
+            pagination: {
+              page: 1,
+              page_size: 50,
+              current_page_size: 2,
+              total_pages: 1,
+              total_results: 2,
+            },
+          })
+        ),
+        http.get(`${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/:workspace/deployments`, () =>
+          HttpResponse.json({
+            data: [
+              {
+                name: 'react-agent-dep',
+                agent: 'react-agent',
+                status: 'running',
+                workspace: WORKSPACE,
+              },
+            ],
+            pagination: {
+              page: 1,
+              page_size: 100,
+              current_page_size: 1,
+              total_pages: 1,
+              total_results: 1,
+            },
+          })
+        ),
+        http.delete(
+          `${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/:workspace/deployments/:name`,
+          ({ params }) => {
+            deletedDeployments.push(String(params.name));
+            return new HttpResponse(null, { status: 204 });
+          }
+        ),
+        http.delete(
+          `${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/:workspace/agents/:name`,
+          ({ params }) => {
+            deletedAgents.push(String(params.name));
+            return new HttpResponse(null, { status: 204 });
+          }
+        )
+      );
+
+      const user = userEvent.setup();
+      renderTable();
+      await screen.findByText('react-agent');
+      await screen.findByText('react-agent2');
+
+      // KUI disables checkboxes while loading and swaps nodes on re-render, so wait
+      // for each to be enabled, click, and confirm it registered before continuing.
+      const rowCheckboxAt = (index: number) =>
+        screen.getAllByRole('checkbox', { name: /(De)?select row/i })[index];
+      const selectRow = async (index: number) => {
+        await waitFor(() => expect(rowCheckboxAt(index)).toBeEnabled());
+        if (!(rowCheckboxAt(index) as HTMLInputElement).checked) {
+          await user.click(rowCheckboxAt(index));
+        }
+        await waitFor(() => expect(rowCheckboxAt(index)).toBeChecked());
+      };
+      await selectRow(0);
+      await selectRow(1);
+
+      // The selection bar's Delete button opens the confirmation.
+      await user.click(await screen.findByRole('button', { name: 'Delete selected agents' }));
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getByText('Delete 2 Agents')).toBeInTheDocument();
+      await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+      await waitFor(() =>
+        expect([...deletedAgents].sort()).toEqual(['react-agent', 'react-agent2'])
+      );
+      expect(deletedDeployments).toContain('react-agent-dep');
+      expect(await screen.findByTestId('mock-toast-success')).toHaveTextContent(
+        '2 agents deleted.'
+      );
+    });
+
+    it('reports a partial failure when one selected agent fails to delete', async () => {
+      const deletedAgents: string[] = [];
+      server.use(
+        http.get(`${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/:workspace/agents`, () =>
+          HttpResponse.json({
+            data: [
+              { name: 'react-agent', description: '', config: {} },
+              { name: 'react-agent2', description: '', config: {} },
+            ],
+            pagination: {
+              page: 1,
+              page_size: 50,
+              current_page_size: 2,
+              total_pages: 1,
+              total_results: 2,
+            },
+          })
+        ),
+        http.get(`${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/:workspace/deployments`, () =>
+          HttpResponse.json({
+            data: [],
+            pagination: {
+              page: 1,
+              page_size: 100,
+              current_page_size: 0,
+              total_pages: 1,
+              total_results: 0,
+            },
+          })
+        ),
+        http.delete(
+          `${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/:workspace/agents/:name`,
+          ({ params }) => {
+            if (params.name === 'react-agent2') {
+              return HttpResponse.json({ detail: 'boom' }, { status: 500 });
+            }
+            deletedAgents.push(String(params.name));
+            return new HttpResponse(null, { status: 204 });
+          }
+        )
+      );
+
+      const user = userEvent.setup();
+      renderTable();
+      await screen.findByText('react-agent');
+      await screen.findByText('react-agent2');
+
+      const rowCheckboxAt = (index: number) =>
+        screen.getAllByRole('checkbox', { name: /(De)?select row/i })[index];
+      const selectRow = async (index: number) => {
+        await waitFor(() => expect(rowCheckboxAt(index)).toBeEnabled());
+        if (!(rowCheckboxAt(index) as HTMLInputElement).checked) {
+          await user.click(rowCheckboxAt(index));
+        }
+        await waitFor(() => expect(rowCheckboxAt(index)).toBeChecked());
+      };
+      await selectRow(0);
+      await selectRow(1);
+
+      await user.click(await screen.findByRole('button', { name: 'Delete selected agents' }));
+      const dialog = await screen.findByRole('dialog');
+      await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+      // The succeeded agent is still deleted; the failure is surfaced as a summary toast.
+      await waitFor(() => expect(deletedAgents).toEqual(['react-agent']));
+      expect(await screen.findByTestId('mock-toast-error')).toHaveTextContent(
+        'Failed to delete 1 of 2 agents.'
+      );
+    });
+  });
 });

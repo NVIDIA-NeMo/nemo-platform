@@ -7,16 +7,15 @@ Mirrors :mod:`nmp.automodel.images`. Consumed by the compiler in
 :mod:`nmp.unsloth.app.jobs.compiler` (and its training sub-compiler) to
 stamp the right image refs onto each container step.
 
-Today we ship **one** image, ``nmp-unsloth-training``, used by all four
-steps (file_io, model_entity, training). Production environments that
-want a leaner CPU image for file_io / model_entity can publish a separate
-``nmp-unsloth-tasks`` and point ``NMP_UNSLOTH_TASKS_IMAGE`` at it.
+Unsloth ships a **single** image, ``nmp-unsloth-training``, used by all four
+steps (file_io, model_entity, training) — the CPU task steps reuse the training
+image rather than a separate ``nmp-unsloth-tasks`` build. Override the whole
+image via ``NMP_UNSLOTH_TRAINING_IMAGE``.
 """
 
 from __future__ import annotations
 
-from nemo_platform_plugin.config import get_platform_config
-from nemo_platform_plugin.jobs.image import get_qualified_image
+from nmp.customization_common.service.images import resolve_qualified_image
 from nmp.unsloth.config import config
 
 BASE_IMAGE_NAME = "nmp-unsloth-base"
@@ -30,34 +29,16 @@ UNSLOTH_PYTHON_ENTRYPOINT = ["/opt/venv/bin/python"]
 
 
 def get_unsloth_qualified_image(name: str, override: str | None = None) -> str:
-    """Resolve a job step image reference.
-
-    Args:
-        name: Image repository name under the registry (e.g. ``nmp-unsloth-tasks``).
-        override: Full image ref from ``NMP_UNSLOTH_TASKS_IMAGE`` /
-            ``NMP_UNSLOTH_TRAINING_IMAGE``.
-
-    Returns:
-        Fully qualified image (``{registry}/{name}:{tag}``) unless ``override`` is set.
-    """
-    if override:
-        return override
-
-    platform_config = get_platform_config()
-    registry = config.image_registry or platform_config.image_registry
-    return get_qualified_image(name, registry=registry)
+    """Resolve a job step image reference (see ``resolve_qualified_image``)."""
+    return resolve_qualified_image(name, override, config.image_registry)
 
 
 def get_tasks_image() -> str:
     """CPU task steps (file_io, model_entity).
 
-    When no explicit ``NMP_UNSLOTH_TASKS_IMAGE`` is set we reuse the
-    training image — it has the platform glue (``nmp-common`` SDK +
-    ``nemo-platform``) needed by file_io / model_entity in addition to
-    the ML stack. Override at deploy time once a leaner image exists.
+    Unsloth ships a single image, so the CPU task steps reuse the
+    ``nmp-unsloth-training`` image rather than a separate tasks image.
     """
-    if config.tasks_image:
-        return get_unsloth_qualified_image(TASKS_IMAGE_NAME, config.tasks_image)
     return get_training_image()
 
 

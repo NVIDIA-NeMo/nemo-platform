@@ -4,7 +4,7 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from nmp.unsloth.app.jobs.context import NMPJobContext
+from nmp.customization_common.service.context import NMPJobContext
 from nmp.unsloth.tasks.training.progress import JobsServiceProgressReporter
 
 
@@ -22,7 +22,7 @@ def test_progress_reporter_calls_sdk_create_or_update() -> None:
     )
     mock_sdk = MagicMock()
 
-    with patch("nmp.unsloth.tasks.training.progress.get_task_sdk", return_value=mock_sdk):
+    with patch("nmp.customization_common.training.progress.get_task_sdk", return_value=mock_sdk):
         reporter = JobsServiceProgressReporter(ctx)
         reporter.report_running(phase="training", step=1, train_loss=2.5, backend="unsloth")
 
