@@ -185,19 +185,11 @@ class K8sReconciler(BaseReconciler):
         completed and the Deployment doesn't exist yet, this advances creation
         (phase P3) by emitting the Deployment + Service.
         """
-        return await self._status(resolved.deployment, resolved.resource_name, resolved.view, resolved.model_entity)
+        deployment = resolved.deployment
+        resource_name = resolved.resource_name
+        view = resolved.view
+        model_entity = resolved.model_entity
 
-    async def get_status_orphan(self, deployment: ModelDeployment, resource_name: str) -> DeploymentStatusUpdate:
-        """Status read without a config: never advances creation (no serving spec)."""
-        return await self._status(deployment, resource_name, None, None)
-
-    async def _status(
-        self,
-        deployment: ModelDeployment,
-        resource_name: str,
-        view: Optional[DeploymentConfigView],
-        model_entity: Optional[ModelEntity],
-    ) -> DeploymentStatusUpdate:
         # The serving Deployment is the source of truth once it exists. We create
         # it at P3 and delete the puller Job in the same step (to release the RWO
         # volume), so a present Deployment means "past the pull phase" -- project
@@ -224,13 +216,8 @@ class K8sReconciler(BaseReconciler):
             # deleted a *succeeded* puller Job to release the RWO volume (the PVC
             # still exists and holds the weights -> resume P3 by creating the
             # serving objects), or (b) genuine drift (PVC also gone -> LOST).
-            if self._pvc_exists(resource_name) and view is not None:
-                return self._create_vllm_serving_objects(deployment, resource_name, view, model_entity)
             if self._pvc_exists(resource_name):
-                # PVC present but no config to compile the serving spec (orphan path).
-                return DeploymentStatusUpdate(
-                    status="PENDING", status_message="Waiting to start vLLM server", host_url=None
-                )
+                return self._create_vllm_serving_objects(deployment, resource_name, view, model_entity)
             return DeploymentStatusUpdate(
                 status="LOST",
                 status_message="Weight-puller Job and PVC not found; resources may have been deleted externally.",
@@ -252,16 +239,7 @@ class K8sReconciler(BaseReconciler):
         if not job_complete:
             return DeploymentStatusUpdate(status="PENDING", status_message="Downloading model weights", host_url=None)
 
-        # Job complete and no Deployment yet: phase P3. Need the config-derived view
-        # to compile the serving spec (the controller threads it through).
-        if view is None:
-            logger.warning(
-                "vLLM puller Job for %s complete but no config provided; cannot create serving Deployment",
-                resource_name,
-            )
-            return DeploymentStatusUpdate(
-                status="PENDING", status_message="Waiting to start vLLM server", host_url=None
-            )
+        # Job complete and no Deployment yet: phase P3 -- create the serving objects.
         return self._create_vllm_serving_objects(deployment, resource_name, view, model_entity)
 
     async def delete(self, workspace: str, name: str) -> DeploymentStatusUpdate:

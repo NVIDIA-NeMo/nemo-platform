@@ -132,17 +132,6 @@ class BaseReconciler(ABC):
         ...
 
     @abstractmethod
-    async def get_status_orphan(self, deployment: ModelDeployment, resource_name: str) -> DeploymentStatusUpdate:
-        """Project status without a config (orphan-reconciliation paths).
-
-        Same as :meth:`get_status` but for callers that lack a
-        ``ModelDeploymentConfig`` (e.g. orphan reconciliation). Reconcilers MUST
-        NOT advance creation here: with no config they cannot compile a serving
-        spec, so they degrade to reporting the current phase.
-        """
-        ...
-
-    @abstractmethod
     async def delete(self, workspace: str, name: str) -> DeploymentStatusUpdate:
         """Delete the backend resources this reconciler owns (idempotent)."""
         ...

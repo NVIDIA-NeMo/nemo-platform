@@ -269,40 +269,44 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
     ) -> DeploymentStatusUpdate:
         """Get the current status of a model deployment.
 
+        The engine is taken from ``config`` (same selection as create/update), so a
+        config is required. When ``config`` is ``None`` (e.g. the controller failed
+        to fetch it this cycle) the backend cannot determine the deployment's state
+        and returns ``UNKNOWN``; the controller retries on the next poll (which
+        normally has a config) and escalates to ERROR after its retry budget.
+
         In addition to the reconciler's status, this method enforces the PENDING
         timeout policy: if the deployment has been alive longer than
         ``pending_timeout_seconds`` and is still PENDING, transition to ERROR with
         diagnostic information. (Crash-loop detection is handled inside the
         reconciler's pod drill-down.)
-
-        When ``config`` is provided the engine is taken from it; otherwise (orphan
-        reconciliation paths that lack a config) the vLLM path is detected by the
-        presence of its directly-emitted objects, falling back to the NIM path.
         """
         logger.debug(
             f"Checking deployment status: {deployment.workspace}/{deployment.name} "
             f"(version: {deployment.entity_version})"
         )
 
+        if config is None:
+            logger.warning(
+                f"No config available for {deployment.workspace}/{deployment.name}; cannot determine status this cycle"
+            )
+            return DeploymentStatusUpdate(
+                status="UNKNOWN",
+                status_message="Deployment config unavailable; will retry.",
+                host_url=None,
+            )
+
         try:
             resource_name = self._get_resource_name(deployment)
 
-            if config is not None:
-                is_vllm = config_engine(config) == ENGINE_VLLM
-            else:
-                is_vllm = self._k8s_reconciler._vllm_objects_exist(resource_name)
-
-            if is_vllm:
-                # vLLM may advance creation in get_status; it needs the config to
-                # compile the serving spec. When config is absent (orphan path) the
-                # reconciler degrades gracefully (no Deployment created yet).
-                if config is not None:
-                    resolved = self._resolve(deployment, config, model_entity)
-                    result = await self._k8s_reconciler.get_status(resolved)
-                else:
-                    result = await self._k8s_reconciler.get_status_orphan(deployment, resource_name)
-            else:
-                result = self._nim_reconciler._get_nimservice_status(resource_name)
+            engine = config_engine(config)
+            reconciler = self._select_reconciler(engine)
+            if reconciler is None:
+                return self._unsupported_engine(engine)
+            # A reconciler MAY advance creation in get_status; it needs the
+            # resolved config to compile the serving spec.
+            resolved = self._resolve(deployment, config, model_entity)
+            result = await reconciler.get_status(resolved)
 
             if result.status == "PENDING":
                 elapsed = deployment_elapsed_seconds(deployment)

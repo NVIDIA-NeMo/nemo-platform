@@ -20,7 +20,6 @@ from logging import getLogger
 from kubernetes import client as k8s_client
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic import exceptions as k8s_dynamic_exceptions
-from nemo_platform.types.inference.model_deployment import ModelDeployment
 from nmp.core.models.app import ModelWeightsType
 from nmp.core.models.app.constants import MODEL_MANAGED_BY_LABEL, MODEL_MANAGED_BY_MODELS_CONTROLLER
 from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate
@@ -317,9 +316,6 @@ class NimOperatorReconciler(BaseReconciler):
 
     async def get_status(self, resolved: ResolvedDeployment) -> DeploymentStatusUpdate:
         return self._get_nimservice_status(resolved.resource_name)
-
-    async def get_status_orphan(self, deployment: ModelDeployment, resource_name: str) -> DeploymentStatusUpdate:
-        return self._get_nimservice_status(resource_name)
 
     async def delete(self, workspace: str, name: str) -> DeploymentStatusUpdate:
         """Delete the NIMService / NIMCache CRs this reconciler owns (idempotent).
