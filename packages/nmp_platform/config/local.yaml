@@ -62,8 +62,8 @@ jobs:
   # keys; `merge_executor_profiles` keys on (provider, profile) so subprocess
   # and Docker entries coexist.
   executors:
-    - provider: subprocess
-      profile: default
+    - provider: cpu
+      profile: subprocess
       backend: subprocess
       config:
         working_directory: /tmp/nmp-subprocess-jobs

@@ -19,8 +19,8 @@ entities: {}
 
 jobs:
   executors:
-    - provider: subprocess
-      profile: default
+    - provider: cpu
+      profile: subprocess
       backend: subprocess
       config:
         working_directory: /tmp/nmp-subprocess-jobs
