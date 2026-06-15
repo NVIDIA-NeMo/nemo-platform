@@ -147,6 +147,35 @@ describe('CombinedAgentsTable', () => {
       expect(deployItems.length).toBeGreaterThan(0);
       expect(deleteItems.length).toBeGreaterThan(0);
     });
+
+    it('calls onCloneAgent with the row when Clone is selected', async () => {
+      const user = userEvent.setup();
+      const onCloneAgent = vi.fn();
+      renderRoute(<AgentsTable onCloneAgent={onCloneAgent} />, {
+        history: getAgentsListRoute(WORKSPACE),
+        routes: [
+          {
+            path: ROUTES.workspace.agentsList,
+            element: <AgentsTable onCloneAgent={onCloneAgent} />,
+          },
+        ],
+      });
+
+      await screen.findByText(MOCK_AGENTS[0].name);
+
+      await user.click(screen.getAllByRole('button', { name: /actions/i })[0]);
+      await user.click((await screen.findAllByRole('menuitem', { name: 'Clone' }))[0]);
+
+      // Row order follows the default -created_at sort, so assert on shape rather than which
+      // row is first: the full row (including its config) must be handed to the clone handler.
+      expect(onCloneAgent).toHaveBeenCalledTimes(1);
+      expect(onCloneAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: expect.stringMatching(/^react-agent2?$/),
+          workspace: WORKSPACE,
+        })
+      );
+    });
   });
 
   describe('sorting', () => {
