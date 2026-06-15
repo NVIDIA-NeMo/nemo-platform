@@ -22,7 +22,6 @@ from urllib.parse import urljoin
 from kubernetes import client as k8s_client
 from kubernetes import config as k8s_config
 from kubernetes.dynamic import DynamicClient
-from kubernetes.dynamic import exceptions as k8s_dynamic_exceptions
 from nemo_platform.types.inference.model_deployment import ModelDeployment
 from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig
 from nemo_platform.types.models.model_entity import ModelEntity
@@ -44,8 +43,6 @@ from nmp.core.models.controllers.backends.k8s_nim_operator.config import K8sNimO
 from nmp.core.models.controllers.backends.k8s_nim_operator.reconcilers.base import ResolvedDeployment
 from nmp.core.models.controllers.backends.k8s_nim_operator.reconcilers.k8s import K8sReconciler
 from nmp.core.models.controllers.backends.k8s_nim_operator.reconcilers.nim_operator import (
-    NIMCACHE_API_VERSION,
-    NIMSERVICE_API_VERSION,
     NimOperatorReconciler,
 )
 
@@ -91,8 +88,6 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
         self._k8s_namespace = self._get_current_namespace()
         logger.info(f"Models controller will deploy models to namespace: {self._k8s_namespace}")
 
-        self._validate_nim_operator_crds()
-
         self._nim_reconciler = NimOperatorReconciler(
             k8s_client_=self._k8s_client,
             dynamic_client=self._dynamic_client,
@@ -130,48 +125,6 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
 
         logger.warning("Could not determine k8s namespace, using 'default'")
         return "default"
-
-    def _validate_nim_operator_crds(self) -> None:
-        """
-        Validate that NIM Operator APIs are available via API discovery.
-
-        Raises:
-            RuntimeError: If required APIs are not found. This will prevent the backend
-                        from initializing and cause the controller to fail fast.
-        """
-        # Validate NIMService API is available
-        try:
-            self._dynamic_client.resources.get(
-                api_version=NIMSERVICE_API_VERSION,
-                kind="NIMService",
-            )
-            logger.info(f"Validated NIMService API is available: {NIMSERVICE_API_VERSION} NIMService")
-        except k8s_dynamic_exceptions.ResourceNotFoundError as e:
-            logger.error(f"NIMService CRD not found: {e}")
-            raise RuntimeError(
-                f"NIMService API ({NIMSERVICE_API_VERSION}) not found. "
-                f"The k8s-nim-operator must be installed before starting this backend."
-            ) from e
-        except Exception as e:
-            logger.exception("Unexpected error validating NIMService API")
-            raise RuntimeError(f"Failed to validate NIMService API ({NIMSERVICE_API_VERSION}): {e}") from e
-
-        # Validate NIMCache API is available
-        try:
-            self._dynamic_client.resources.get(
-                api_version=NIMCACHE_API_VERSION,
-                kind="NIMCache",
-            )
-            logger.info(f"Validated NIMCache API is available: {NIMCACHE_API_VERSION} NIMCache")
-        except k8s_dynamic_exceptions.ResourceNotFoundError as e:
-            logger.error(f"NIMCache CRD not found: {e}")
-            raise RuntimeError(
-                f"NIMCache API ({NIMCACHE_API_VERSION}) not found. "
-                f"The k8s-nim-operator must be installed before starting this backend."
-            ) from e
-        except Exception as e:
-            logger.exception("Unexpected error validating NIMCache API")
-            raise RuntimeError(f"Failed to validate NIMCache API ({NIMCACHE_API_VERSION}): {e}") from e
 
     # ------------------------------------------------------------------
     # Name + weight-source resolution (API-object work owned by the backend)

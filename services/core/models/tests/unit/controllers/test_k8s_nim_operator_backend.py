@@ -119,7 +119,6 @@ def mock_k8s_config():
         patch(f"{_K8S_BACKEND_MODULE}.k8s_config.load_kube_config"),
         patch(f"{_K8S_BACKEND_MODULE}.k8s_client.ApiClient"),
         patch(f"{_K8S_BACKEND_MODULE}.DynamicClient"),
-        patch(f"{_K8S_BACKEND_MODULE}.K8sNimOperatorServiceBackend._validate_nim_operator_crds"),
         patch(f"{_K8S_BACKEND_MODULE}.os.path.exists", return_value=False),
     ):
         yield
