@@ -69,6 +69,7 @@ export const CloneAgentModal: FC<CloneAgentModalProps> = ({
   const {
     control,
     reset: resetForm,
+    setValue,
     handleSubmit,
     formState: { errors },
   } = useForm({
@@ -93,11 +94,12 @@ export const CloneAgentModal: FC<CloneAgentModalProps> = ({
         ? currentModel
         : (pickDefaultModelName(models) ?? '');
     if (seededModel) {
-      resetForm({ name: '', modelName: seededModel });
+      // Seed only the model so a name the user typed before models loaded isn't wiped.
+      setValue('modelName', seededModel, { shouldValidate: true });
       seededRef.current = true;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, modelsPage, sourceAgent, resetForm]);
+  }, [open, modelsPage, sourceAgent, setValue]);
 
   const reset = () => {
     resetMutation();

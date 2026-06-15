@@ -160,4 +160,43 @@ describe('CloneAgentModal', () => {
 
     await waitFor(() => expect(captured.body.config?.llms?.llm.model_name).toBe('new-model'));
   });
+
+  it('keeps a name typed before the models query resolves', async () => {
+    const user = userEvent.setup();
+    // Gate the models response so seeding fires only after the user has typed a name.
+    let releaseModels!: () => void;
+    const modelsLoaded = new Promise<void>((resolve) => {
+      releaseModels = resolve;
+    });
+    server.use(
+      http.get(MODELS_URL, async () => {
+        await modelsLoaded;
+        return HttpResponse.json({
+          data: [{ name: 'old-model', workspace }],
+          pagination: {
+            page: 1,
+            page_size: 50,
+            current_page_size: 1,
+            total_pages: 1,
+            total_results: 1,
+          },
+          sort: '-created_at',
+          filter: null,
+        });
+      })
+    );
+
+    renderModal();
+    const dialog = await screen.findByRole('dialog');
+    const nameInput = await within(dialog).findByRole('textbox', { name: 'Name' });
+    await user.type(nameInput, 'my-typed-name');
+    expect(nameInput).toHaveValue('my-typed-name');
+
+    // Models resolve now → the effect seeds the model. The typed name must survive.
+    releaseModels();
+    await waitFor(() =>
+      expect(within(dialog).getByRole('combobox')).toHaveTextContent('old-model')
+    );
+    expect(nameInput).toHaveValue('my-typed-name');
+  });
 });
