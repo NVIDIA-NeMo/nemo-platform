@@ -370,6 +370,7 @@ nemo-automodel-plugin = { workspace = true }
 nemo-unsloth-plugin = { workspace = true }
 nmp-automodel = { workspace = true }
 nmp-unsloth = { workspace = true }
+nmp-customization-common = { workspace = true }
 
 
 [tool.uv.workspace]
@@ -379,6 +380,7 @@ members = [
   "packages/nemo_platform",
   "packages/filesets",
   "packages/nmp_common",
+  "packages/nmp_customization_common",
   "packages/nmp_platform_runner",
   "packages/garak_api/",
   "packages/nmp_testing",

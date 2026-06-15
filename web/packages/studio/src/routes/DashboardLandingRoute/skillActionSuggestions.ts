@@ -9,12 +9,7 @@ import {
   type SkillActionTemplate,
   type SkillActionTemplateName,
 } from '@studio/routes/DashboardLandingRoute/skillActionTemplateCatalog';
-import {
-  getSkillDisplayName,
-  getSkillLookupKeys,
-} from '@studio/routes/DashboardLandingRoute/skillDisplayName';
-import { Wrench } from 'lucide-react';
-import { createElement } from 'react';
+import { getSkillLookupKeys } from '@studio/routes/DashboardLandingRoute/skillDisplayName';
 
 export type {
   SkillActionSuggestion,
@@ -34,13 +29,6 @@ const getSkillActionTemplate = (skill: ClaudeCodeSkill): SkillActionTemplate | u
   return undefined;
 };
 
-const getFallbackSkillActionTemplate = (skill: ClaudeCodeSkill): SkillActionTemplate => ({
-  title: getSkillDisplayName(skill),
-  description: skill.description || 'Use this NeMo Platform skill in Claude Code.',
-  prompt: `Use the ${skill.name} skill for this NeMo Platform task. Inspect the workspace first and ask for anything missing before acting.`,
-  icon: createElement(Wrench, { size: 18 }),
-});
-
 export const isSkillActionEnabled = (template: SkillActionTemplate) =>
   template.requiredFeatureFlags?.every((flag) => featureFlags[flag] !== false) ?? true;
 
@@ -52,8 +40,8 @@ export const getSkillActionSuggestions = (skills: ClaudeCodeSkill[]): SkillActio
     const skillKey = `${skill.name}:${skill.claude_name}`;
     if (seenSkills.has(skillKey)) continue;
 
-    const template = getSkillActionTemplate(skill) ?? getFallbackSkillActionTemplate(skill);
-    if (!isSkillActionEnabled(template)) continue;
+    const template = getSkillActionTemplate(skill);
+    if (!template || !isSkillActionEnabled(template)) continue;
 
     seenSkills.add(skillKey);
     suggestions.push({

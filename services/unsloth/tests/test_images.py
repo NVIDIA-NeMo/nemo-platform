@@ -4,6 +4,7 @@
 from types import SimpleNamespace
 
 import nemo_platform_plugin.jobs.image as platform_image
+import nmp.customization_common.service.images as shared_images
 import nmp.unsloth.images as unsloth_images
 import pytest
 from nmp.unsloth.config import UnslothConfig
@@ -19,7 +20,7 @@ from nmp.unsloth.images import (
 @pytest.fixture
 def platform_config(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     config = SimpleNamespace(image_registry="registry.example.com/nemo", image_tag="test-tag")
-    monkeypatch.setattr(unsloth_images, "get_platform_config", lambda: config)
+    monkeypatch.setattr(shared_images, "get_platform_config", lambda: config)
     monkeypatch.setattr(platform_image, "get_platform_config", lambda: config)
     return config
 
@@ -32,7 +33,7 @@ def test_default_unsloth_images_use_platform_registry(monkeypatch, platform_conf
 
     expected_training = f"{platform_config.image_registry}/{TRAINING_IMAGE_NAME}:{platform_config.image_tag}"
     assert training == expected_training
-    assert tasks == expected_training  # tasks falls back to training when tasks_image is unset
+    assert tasks == expected_training  # unsloth ships one image: tasks reuse the training image
     assert TASKS_IMAGE_NAME.count("/") == 0  # single repo segment, no nested paths
 
 
@@ -49,13 +50,16 @@ def test_unsloth_image_registry_override(monkeypatch, platform_config):
     )
 
 
-def test_unsloth_full_image_override(monkeypatch, platform_config):
+def test_unsloth_training_image_override_used_for_all_steps(monkeypatch, platform_config):
+    # A single training-image override drives both the training step and the
+    # CPU task steps, since unsloth reuses the training image for tasks.
     monkeypatch.setattr(
         unsloth_images,
         "config",
         UnslothConfig(
-            tasks_image="my-registry/nemo-platform-dev/nmp-unsloth-tasks:dev",
+            training_image="my-registry/nemo-platform-dev/nmp-unsloth-training:dev",
         ),
     )
 
-    assert get_tasks_image() == "my-registry/nemo-platform-dev/nmp-unsloth-tasks:dev"
+    assert get_training_image() == "my-registry/nemo-platform-dev/nmp-unsloth-training:dev"
+    assert get_tasks_image() == "my-registry/nemo-platform-dev/nmp-unsloth-training:dev"

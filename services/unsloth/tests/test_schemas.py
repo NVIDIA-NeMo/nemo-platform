@@ -73,11 +73,9 @@ class TestSubShapesIndependently:
             ModelLoadSpec.model_validate({})
 
     def test_schedule_defaults_pass_through(self) -> None:
-        # Canonical schedule allows neither epochs nor max_steps because
-        # the input-side validator already enforced that. Plugin-side
-        # UnslothJobInput owns the mutex.
+        # Consistent with Automodel: epochs defaults to 1; max_steps (when set) overrides it.
         sched = ScheduleSpec()
-        assert sched.epochs is None
+        assert sched.epochs == 1
         assert sched.max_steps is None
 
     def test_training_defaults(self) -> None:

@@ -1,9 +1,9 @@
-"""E2E tests for platform jobs via the subprocess executor.
+"""E2E tests for platform jobs.
 
-These tests submit jobs with CPUExecutionProviderSpec (container image + command).
-In subprocess mode, the jobs service translates cpu/default steps to subprocess
-steps automatically — the container image is discarded and the command runs
-directly on the host.
+These tests submit jobs with CPUExecutionProviderSpec (container + command).
+The container image is omitted so that:
+- On subprocess mode, the cpu→subprocess translation discards it anyway.
+- On Kubernetes/Docker, the execution profile's default_task_image is used.
 
 Ported from Platform-Deploy e2e/test_jobs.py, adapted for the SDK's TypedDict
 param types and filtered to tests that work without Docker.
@@ -16,10 +16,6 @@ from nemo_platform import NeMoPlatform
 from nmp.testing.e2e import wait_for_job_logs, wait_for_platform_job
 
 JOB_SOURCE = "e2e-test-jobs"
-
-# The image is discarded by the cpu→subprocess translation, but must be
-# syntactically valid for the API to accept the CPUExecutionProvider.
-PLACEHOLDER_IMAGE = "placeholder:unused"
 
 pytestmark = [pytest.mark.timeout(600)]
 
@@ -62,7 +58,6 @@ def test_basic_platform_job_lifecycle(sdk: NeMoPlatform, workspace: str):
                     "executor": {
                         "provider": "cpu",
                         "container": {
-                            "image": PLACEHOLDER_IMAGE,
                             "command": ["echo", "Hello from e2e test!"],
                         },
                     },
@@ -106,7 +101,6 @@ def test_job_logs_across_multiple_batches(sdk: NeMoPlatform, workspace: str):
                     "executor": {
                         "provider": "cpu",
                         "container": {
-                            "image": PLACEHOLDER_IMAGE,
                             "command": ["sh", "-c", log_command],
                         },
                     },
@@ -146,7 +140,6 @@ def test_job_config_is_readable(sdk: NeMoPlatform, workspace: str):
                     "executor": {
                         "provider": "cpu",
                         "container": {
-                            "image": PLACEHOLDER_IMAGE,
                             "command": ["sh", "-c", "echo 'Step config:'; cat $NEMO_JOB_STEP_CONFIG_FILE_PATH;"],
                         },
                     },
@@ -181,7 +174,6 @@ def test_job_passing_data_between_steps(sdk: NeMoPlatform, workspace: str):
                     "executor": {
                         "provider": "cpu",
                         "container": {
-                            "image": PLACEHOLDER_IMAGE,
                             "command": [
                                 "sh",
                                 "-c",
@@ -195,7 +187,6 @@ def test_job_passing_data_between_steps(sdk: NeMoPlatform, workspace: str):
                     "executor": {
                         "provider": "cpu",
                         "container": {
-                            "image": PLACEHOLDER_IMAGE,
                             "command": [
                                 "sh",
                                 "-c",
@@ -237,7 +228,6 @@ def test_job_using_secret_environment_variable(sdk: NeMoPlatform, workspace: str
                     "executor": {
                         "provider": "cpu",
                         "container": {
-                            "image": PLACEHOLDER_IMAGE,
                             "command": ["sh", "-c", 'echo "Secret value is: $SECRET_ENV_VAR"'],
                         },
                     },
@@ -275,7 +265,6 @@ def test_job_with_expected_failure(sdk: NeMoPlatform, workspace: str):
                     "executor": {
                         "provider": "cpu",
                         "container": {
-                            "image": PLACEHOLDER_IMAGE,
                             "command": ["sh", "-c", "echo 'This step will fail'; exit 1;"],
                         },
                     },
@@ -305,7 +294,6 @@ def test_job_cancel_immediately(sdk: NeMoPlatform, workspace: str):
                     "executor": {
                         "provider": "cpu",
                         "container": {
-                            "image": PLACEHOLDER_IMAGE,
                             "command": ["sh", "-c", "sleep 60"],
                         },
                     },
@@ -335,7 +323,6 @@ def test_job_cancel_once_active(sdk: NeMoPlatform, workspace: str):
                     "executor": {
                         "provider": "cpu",
                         "container": {
-                            "image": PLACEHOLDER_IMAGE,
                             "command": ["sh", "-c", "sleep 300"],
                         },
                     },
@@ -376,7 +363,6 @@ def test_job_pause_resume(sdk: NeMoPlatform, workspace: str):
                     "executor": {
                         "provider": "cpu",
                         "container": {
-                            "image": PLACEHOLDER_IMAGE,
                             "command": ["sh", "-c", "sleep 300"],
                         },
                     },
@@ -418,7 +404,6 @@ def test_job_pause_and_cancel(sdk: NeMoPlatform, workspace: str):
                     "executor": {
                         "provider": "cpu",
                         "container": {
-                            "image": PLACEHOLDER_IMAGE,
                             "command": ["sh", "-c", "sleep 300"],
                         },
                     },
@@ -455,7 +440,6 @@ def test_job_using_additional_volume(sdk: NeMoPlatform, workspace: str):
                     "executor": {
                         "provider": "cpu",
                         "container": {
-                            "image": PLACEHOLDER_IMAGE,
                             "command": [
                                 "sh",
                                 "-c",
@@ -470,7 +454,6 @@ def test_job_using_additional_volume(sdk: NeMoPlatform, workspace: str):
                     "executor": {
                         "provider": "cpu",
                         "container": {
-                            "image": PLACEHOLDER_IMAGE,
                             "command": [
                                 "sh",
                                 "-c",

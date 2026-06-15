@@ -30,8 +30,16 @@ from nemo_platform import (
 )
 from nemo_platform.types.files.fileset_file import FilesetFile
 from nmp.automodel.app.constants import SERVICE_NAME
-from nmp.automodel.app.jobs.context import NMPJobContext
-from nmp.automodel.app.jobs.file_io.schemas import (
+from nmp.automodel.tasks.file_io.callbacks import (
+    CompositeCallback,
+    FileDownloadProgressCallback,
+    FileUploadProgressCallback,
+    TqdmPerFileDownloadCallback,
+    TqdmPerFileUploadCallback,
+)
+from nmp.common.jobs.schemas import PlatformJobStatus
+from nmp.common.sdk_factory import get_task_sdk
+from nmp.customization_common.schemas.file_io import (
     DownloadItem,
     DownloadStats,
     FileDownloadError,
@@ -42,23 +50,15 @@ from nmp.automodel.app.jobs.file_io.schemas import (
     UploadItem,
     UploadStats,
 )
-from nmp.automodel.tasks.file_io.callbacks import (
-    CompositeCallback,
-    FileDownloadProgressCallback,
-    FileUploadProgressCallback,
-    TqdmPerFileDownloadCallback,
-    TqdmPerFileUploadCallback,
-)
-from nmp.automodel.tasks.file_io.progress_reporter import JobsServiceProgressReporter, ProgressReporter
-from nmp.automodel.tasks.file_io.utils import (
+from nmp.customization_common.service.context import NMPJobContext
+from nmp.customization_common.tasks.file_io_progress_reporter import JobsServiceProgressReporter, ProgressReporter
+from nmp.customization_common.tasks.file_io_utils import (
     filesystem_sdk_error_handler,
     get_config,
     sdk_error_handler,
     validate_safe_path,
     validate_storage_path,
 )
-from nmp.common.jobs.schemas import PlatformJobStatus
-from nmp.common.sdk_factory import get_task_sdk
 from tenacity import before_sleep_log, retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
@@ -88,6 +88,10 @@ TRANSIENT_FILESYSTEM_EXCEPTIONS = (
     httpx.TimeoutException,
     httpx.ConnectError,
     httpx.ReadTimeout,
+    # Connection dropped mid-transfer (CDN/proxy closed the socket before the
+    # full body arrived). Common on large multi-GB model shards; safe to retry.
+    httpx.RemoteProtocolError,
+    httpx.ReadError,
 )
 
 

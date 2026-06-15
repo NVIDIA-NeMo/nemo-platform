@@ -105,18 +105,22 @@ class TestRequiredFields:
             UnslothJobInput.model_validate(payload)
 
 
-class TestScheduleMutex:
-    def test_neither_epochs_nor_max_steps_rejected(self) -> None:
+class TestSchedule:
+    def test_empty_schedule_defaults_to_one_epoch(self) -> None:
+        # Consistent with Automodel: epochs defaults to 1 (no epochs/max_steps mutex).
         payload = _minimal_payload()
         payload["schedule"] = {}
-        with pytest.raises(ValidationError, match="schedule.epochs or schedule.max_steps"):
-            UnslothJobInput.model_validate(payload)
+        spec = UnslothJobInput.model_validate(payload)
+        assert spec.schedule.epochs == 1
+        assert spec.schedule.max_steps is None
 
-    def test_both_epochs_and_max_steps_rejected(self) -> None:
+    def test_epochs_and_max_steps_both_allowed(self) -> None:
+        # max_steps caps/overrides epochs at train time; the two are not mutually exclusive.
         payload = _minimal_payload()
-        payload["schedule"] = {"epochs": 1, "max_steps": 60}
-        with pytest.raises(ValidationError, match="mutually exclusive"):
-            UnslothJobInput.model_validate(payload)
+        payload["schedule"] = {"epochs": 3, "max_steps": 60}
+        spec = UnslothJobInput.model_validate(payload)
+        assert spec.schedule.epochs == 3
+        assert spec.schedule.max_steps == 60
 
     def test_either_one_is_fine(self) -> None:
         for sched in ({"epochs": 3}, {"max_steps": 60}):
@@ -138,25 +142,25 @@ class TestQuantizationMutex:
             UnslothJobInput.model_validate(payload)
 
 
-class TestFullFinetuneRules:
-    def test_full_ft_rejects_4bit(self) -> None:
+class TestAllWeightsFinetuneRules:
+    def test_all_weights_ft_rejects_4bit(self) -> None:
         payload = _minimal_payload()
-        payload["training"] = {"finetuning_type": "full"}
+        payload["training"] = {"finetuning_type": "all_weights"}
         # default load_in_4bit=True
         with pytest.raises(ValidationError, match="incompatible with 4-bit/8-bit"):
             UnslothJobInput.model_validate(payload)
 
-    def test_full_ft_rejects_lora_block(self) -> None:
+    def test_all_weights_ft_rejects_lora_block(self) -> None:
         payload = _minimal_payload()
         payload["model"]["load_in_4bit"] = False
-        payload["training"] = {"finetuning_type": "full", "lora": {"rank": 8}}
+        payload["training"] = {"finetuning_type": "all_weights", "lora": {"rank": 8}}
         with pytest.raises(ValidationError, match="training.lora must be unset"):
             UnslothJobInput.model_validate(payload)
 
-    def test_full_ft_clean(self) -> None:
+    def test_all_weights_ft_clean(self) -> None:
         payload = _minimal_payload()
         payload["model"]["load_in_4bit"] = False
-        payload["training"] = {"finetuning_type": "full"}
+        payload["training"] = {"finetuning_type": "all_weights"}
         spec = UnslothJobInput.model_validate(payload)
         assert spec.training.lora is None
 
@@ -175,10 +179,10 @@ class TestSaveMethodCompatibility:
         payload["output"] = {"save_method": "merged_16bit"}
         UnslothJobInput.model_validate(payload)
 
-    def test_merged_save_with_full_rejected(self) -> None:
+    def test_merged_save_with_all_weights_rejected(self) -> None:
         payload = _minimal_payload()
         payload["model"]["load_in_4bit"] = False
-        payload["training"] = {"finetuning_type": "full"}
+        payload["training"] = {"finetuning_type": "all_weights"}
         payload["output"] = {"save_method": "merged_16bit"}
         with pytest.raises(ValidationError, match="only valid for training.finetuning_type='lora'"):
             UnslothJobInput.model_validate(payload)

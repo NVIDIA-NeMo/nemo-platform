@@ -7,9 +7,9 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from nemo_platform import omit
-from nmp.automodel.app.jobs.context import NMPJobContext
-from nmp.automodel.tasks.progress_reporter import JobsServiceProgressReporter
 from nmp.common.jobs.schemas import PlatformJobStatus
+from nmp.customization_common.service.context import NMPJobContext
+from nmp.customization_common.tasks.file_io_progress_reporter import JobsServiceProgressReporter
 
 
 def test_progress_reporter_calls_sdk_create_or_update() -> None:

@@ -144,6 +144,7 @@ describe('DashboardLandingRoute', () => {
     ).toBeInTheDocument();
     expect(screen.getByTestId('skill-action-card-nemo-guardrails')).toHaveClass(
       'w-72',
+      'h-44',
       'flex-none'
     );
     expect(screen.getByRole('button', { name: /Debug guardrails middleware/ })).toBeInTheDocument();
@@ -169,7 +170,7 @@ describe('DashboardLandingRoute', () => {
       '[scrollbar-color:var(--border-color-interaction-base)_var(--background-color-interaction-hover)]',
       '[&::-webkit-scrollbar-thumb]:rounded-full'
     );
-    expect(screen.getByTestId('skill-action-row')).toHaveClass('pb-density-lg');
+    expect(screen.getByTestId('skill-action-row')).toHaveClass('pb-6');
     expect(screen.queryByTestId('skill-action-scrollbar')).not.toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Previous skill actions' })
@@ -274,7 +275,7 @@ describe('DashboardLandingRoute', () => {
     expect(screen.getByText('No skills found')).toBeInTheDocument();
   });
 
-  it('shows a fallback action card for skills without curated templates', async () => {
+  it('shows a disabled message for skills without curated templates', async () => {
     mocks.listClaudeCodeSkills.mockResolvedValue([
       {
         name: 'custom-plugin-skill',
@@ -288,8 +289,8 @@ describe('DashboardLandingRoute', () => {
 
     renderRoute();
 
-    expect(await screen.findByRole('button', { name: /Custom Plugin Skill/ })).toBeInTheDocument();
-    expect(screen.getByText('custom-plugin-skill')).toBeInTheDocument();
+    expect(await screen.findByTestId('skill-actions-disabled')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Custom Plugin Skill/ })).not.toBeInTheDocument();
   });
 
   it('lets skill action cards populate the landing composer', async () => {

@@ -3,7 +3,7 @@
 
 """Model entity job configuration."""
 
-from .schemas import ModelEntityCreationError, ModelEntityTaskConfig
+from nmp.customization_common.schemas.model_entity import ModelEntityCreationError, ModelEntityTaskConfig
 
 __all__ = [
     "ModelEntityCreationError",
