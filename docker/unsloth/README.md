@@ -49,12 +49,12 @@ docker buildx bake \
 The build pulls the NGC PyTorch base, then runs unsloth's canonical install
 in two steps:
 
-1. `uv pip install unsloth --torch-backend=auto` — this is the command
-   straight from unsloth's README. It pulls `unsloth`, `unsloth_zoo`, and the
-   full HF stack (transformers, trl, peft, accelerate, datasets, bitsandbytes,
-   xformers) at versions tested upstream — we deliberately don't pin any of
-   them on our end, because unsloth's pyproject already has precise
-   `!=X.Y.Z` blocklists for known-broken releases.
+1. `uv pip install unsloth --torch-backend=auto transformers==4.57.6 huggingface-hub==0.36.2` with
+   `preserve_base_torch.txt` overrides so the NGC base's PyTorch + CUDA are not
+   replaced. Unsloth's resolver still pulls `unsloth_zoo`, trl, peft,
+   accelerate, datasets, bitsandbytes, and xformers. **transformers is pinned
+   explicitly** to `4.57.6` (override at build time via
+   `--build-arg TRANSFORMERS_VERSION=...`).
 1b. Flash Attention 2 (Dockerfile step 1b) — source build with
     `--no-build-isolation` against the NGC base torch (cached Docker layer).
     Parallelism is capped via `MAX_JOBS` (default `2`, override with bake arg
@@ -275,7 +275,8 @@ nemo models adapters retrieve qwen-unsloth-smoke-out \
 | `compile()` errors with "platform.runtime: docker" | Set `platform.runtime: docker` in `~/.nemo/config.yaml` and restart services. |
 | `compile()` errors with "Docker daemon unreachable" | Confirm `docker info` works as the user running `nemo services`. |
 | First job step errors with `Model 'X' has no fileset attached` | Attach a fileset to the model entity (`nemo models update --fileset ...`). |
-| `training` step errors with `bitsandbytes`/CUDA mismatch | Rebuild the image — the base NGC PyTorch tag may have moved. |
+| `training` step errors with `bitsandbytes`/CUDA mismatch (`libbitsandbytes_cuda131.so` not found) | Rebuild `nmp-unsloth-training` — the image compiles bitsandbytes from source against NGC CUDA 13.1 (same pattern as `nmp-automodel-base`). Override `BNB_MAX_JOBS` at build time if nvcc OOMs. |
+| `WandbCallback requires wandb to be installed` | Rebuild `nmp-unsloth-training` — the image installs `wandb` and `mlflow-skinny` for integrations. |
 | `training` step OOMs on a small GPU | Reduce `model.max_seq_length` and / or set `model.load_in_4bit: true`. |
 | `model-entity-creation` errors with "Adapter already exists" | Pick a fresh `output.name` (the unsloth compiler is "always create"; no overwrite). |
 | Step config not picked up (`NEMO_JOB_STEP_CONFIG_FILE_PATH is not set`) | The container was started outside the Jobs runner — only platform-driven submit populates this. |
@@ -300,13 +301,13 @@ nemo files filesets delete qwen-unsloth-smoke-out -w default
   separate ML stack. If you need both backends on the same cluster, run
   both images side by side; jobs from each backend route to their own
   `nmp-{backend}-training` image via env-var overrides.
-- **Why we don't pin transformers / trl / peft / bitsandbytes** — unsloth's
-  own pyproject already constrains them tightly (e.g.
-  `transformers>=4.51.3,!=4.52.0..3,!=4.53.0,!=4.54.0,!=4.55.0..1,!=4.57.0,
-  !=4.57.4..5,!=5.0.0,!=5.1.0,<=5.5.0`). Our `[unsloth]` extra in
-  `services/unsloth/pyproject.toml` is just `["unsloth[huggingface]"]` —
-  delegating everything to upstream so we don't ship our own subtly-wrong
-  constraints.
-- **No CUDA wheels are pre-built** — `bitsandbytes` ships PyPI wheels
-  (Ampere+; for older arches, swap to a source build or pin a compatible
-  release).
+- **transformers + huggingface-hub pins** — the training image pins `transformers==4.57.6`
+  and `huggingface-hub==0.36.2` in
+  `Dockerfile.nmp-unsloth-training` (compatible with unsloth's upstream
+  blocklists). Other HF deps (trl, peft, bitsandbytes, etc.) still come from
+  unsloth's resolver. **PyTorch + CUDA** stay on the NGC base stack via
+  `--system-site-packages` and `preserve_base_torch.txt` / `no_override_requirements.txt`
+  overrides (same impossible-marker pattern as automodel).
+- **bitsandbytes** — compiled from source in the image (v0.49.1, same approach as
+  `nmp-automodel-base`) because NGC 26.02 is CUDA 13.1 and PyPI only ships
+  prebuilt libs through cuda130.

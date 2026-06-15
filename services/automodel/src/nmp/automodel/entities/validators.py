@@ -6,8 +6,8 @@
 import re
 from typing import Optional
 
-from nmp.automodel.app.jobs.file_io.schemas import FILESET_PROTOCOL, FileSetRef
 from nmp.common.entities.constants import REGEX_WORD_CHARACTER_DOT_DASH
+from nmp.customization_common.schemas.file_io import FILESET_PROTOCOL, FileSetRef
 
 _NAME_REGEX = re.compile(REGEX_WORD_CHARACTER_DOT_DASH)
 _UNSUPPORTED_PROTOCOLS = ("hf://", "ngc://", "s3://", "gs://")

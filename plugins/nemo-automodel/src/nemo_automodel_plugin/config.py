@@ -5,15 +5,14 @@
 
 from __future__ import annotations
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from nmp.customization_common.contributor.config import BaseTrainingPluginConfig, generate_job_id
+from pydantic_settings import SettingsConfigDict
 
 
-class AutomodelPluginConfig(BaseSettings):
+class AutomodelPluginConfig(BaseTrainingPluginConfig):
     """Environment-driven Automodel plugin settings."""
 
     model_config = SettingsConfigDict(env_prefix="NMP_AUTOMODEL_", extra="ignore")
-
-    default_training_execution_profile: str = "gpu"
 
 
 def get_config() -> AutomodelPluginConfig:
@@ -22,6 +21,4 @@ def get_config() -> AutomodelPluginConfig:
 
 def generate_automodel_id() -> str:
     """Generate a job name when the submitter omits ``name``."""
-    import uuid
-
-    return f"automodel-{uuid.uuid4().hex[:12]}"
+    return generate_job_id("automodel")

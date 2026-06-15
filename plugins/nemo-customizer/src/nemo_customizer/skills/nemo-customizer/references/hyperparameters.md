@@ -13,6 +13,54 @@ Both schemas use `extra="forbid"` — unknown keys raise validation errors. Fiel
 
 ---
 
+## Integrations (automodel + unsloth)
+
+Both backends accept the same `integrations` object on job JSON (`IntegrationsSpec` in `nemo_platform_plugin.integrations`). A non-null backend block **requests** that integration; the training runtime **activates** it only when credentials/URIs are available (W&B needs `WANDB_API_KEY`, MLflow needs a tracking URI). Omit the field or set a backend to `null` to disable. There is no `enabled` flag and no `report_to` on input — `report_to` is derived at runtime from activated backends. The compiler logs a warning when W&B is requested without `api_key_secret` or MLflow without `tracking_uri`.
+
+```json
+"integrations": {
+  "wandb": {
+    "project": "my-project",
+    "name": "run-001",
+    "entity": "my-team",
+    "tags": ["sft", "llama"],
+    "notes": "Experiment notes",
+    "base_url": "https://wandb.internal",
+    "api_key_secret": "default/wandb-api-key"
+  },
+  "mlflow": {
+    "experiment_name": "llama-finetuning",
+    "name": "run-001",
+    "tracking_uri": "http://mlflow:5000",
+    "tags": { "team": "nlp" },
+    "description": "SFT experiment"
+  }
+}
+```
+
+| Field | Notes |
+|-------|-------|
+| `wandb` | Non-null requests W&B (requires `WANDB_API_KEY` at runtime). |
+| `wandb.project` | W&B project; defaults to `output.name` at runtime if unset. |
+| `wandb.name` | W&B run name; defaults to job ID. Legacy `run_name` is accepted with a deprecation warning. |
+| `wandb.entity` | W&B team or username. |
+| `wandb.tags` / `wandb.notes` | Optional run metadata. |
+| `wandb.base_url` | Self-hosted W&B server URL. Without `api_key_secret`, W&B may still activate when `base_url` is set **and** the server allows access without a cloud API key — a compile-time warning is logged. |
+| `wandb.api_key_secret` | Platform secret ref (`secret_name` or `workspace/secret_name`). The compiler injects `WANDB_API_KEY` into the training step environment. |
+| `mlflow` | Non-null requests MLflow (requires tracking URI at runtime). |
+| `mlflow.tracking_uri` | MLflow tracking server; can also come from `MLFLOW_TRACKING_URI` in the container. |
+| `mlflow.experiment_name` | Defaults to `output.name` if unset. |
+| `mlflow.name` | MLflow run name; defaults to job ID. Legacy `run_name` is accepted with a deprecation warning. |
+| `mlflow.tags` / `mlflow.description` | Optional run metadata. |
+
+Set `"integrations": null` or omit the field when tracking is not needed. Contract examples: `plugins/nemo-automodel/tests/fixtures/integrations_wandb_mlflow.json`, `plugins/nemo-unsloth/tests/fixtures/integrations_wandb_mlflow.json`.
+
+**Local setup (MLflow server, `docker0` tracking URI, jobs-launcher, W&B secret):** `references/integrations-setup.md`.
+
+**Unsloth note:** HuggingFace `TrainingArguments.run_name` is shared by W&B and MLflow. When both backends are active, `wandb.name` wins if set; otherwise `mlflow.name` is used. If both names are set to different values, a runtime warning is logged and W&B's name is used.
+
+---
+
 # Automodel job JSON
 
 Job JSON for `nemo customization automodel submit` uses **`AutomodelJobInput`** (`plugins/nemo-automodel/src/nemo_automodel_plugin/schema.py`). Only fields in that schema are accepted (`extra="forbid"`).
@@ -175,12 +223,7 @@ Example: 1 node, 2 GPUs, TP=1 → DP=2 → GBS must be a multiple of `2 × micro
 
 ### Automodel `integrations` (optional)
 
-```json
-"integrations": {
-  "wandb": { "enabled": true, "project": "my-project", "api_key_secret": "wandb-api-key" },
-  "mlflow": null
-}
-```
+See **Integrations (automodel + unsloth)** above.
 
 ---
 
@@ -336,7 +379,7 @@ Unsloth is **submit-only, single-GPU inside the training container**. There is n
 | `batch` | `per_device_train_batch_size` × `gradient_accumulation_steps` = effective batch |
 | `optimizer` | LR, weight decay, optimizer choice (`adamw_8bit` default) |
 | `hardware` | GPU selection (`CUDA_VISIBLE_DEVICES`) + mixed precision (`bf16` / `fp16`) |
-| `integrations` | Optional W&B + `report_to` |
+| `integrations` | Optional W&B / MLflow (same shape as automodel) |
 | `output` | Output entity name, optional description, **`save_method`** (controls what's persisted) |
 
 Full template (every section, defaults inline):
@@ -421,7 +464,7 @@ Full template (every section, defaults inline):
 | `dtype` | `"auto"` | One of `"auto"`, `"bfloat16"`, `"float16"`, `"float32"`. |
 | `trust_remote_code` | `false` | HF `trust_remote_code` flag for custom model code. |
 
-**Mutex:** `load_in_4bit` xor `load_in_8bit`. Both quantization flags are also **incompatible with `training.finetuning_type: "full"`** — full SFT must use a non-quantized base.
+**Mutex:** `load_in_4bit` xor `load_in_8bit`. Both quantization flags are also **incompatible with `training.finetuning_type: "all_weights"`** — full SFT must use a non-quantized base.
 
 ### `dataset`
 
@@ -440,7 +483,7 @@ See `references/dataset-formats.md` § Unsloth for row-shape rules.
 | Field | Default | Notes |
 |-------|---------|-------|
 | `training_type` | `"sft"` | Only `"sft"` is implemented today. |
-| `finetuning_type` | `"lora"` | `"lora"` (adapter; default) or `"full"` (full SFT — heavy, no quantization). |
+| `finetuning_type` | `"lora"` | `"lora"` (adapter; default) or `"all_weights"` (full SFT — heavy, no quantization). |
 | `lora` | auto-filled when `finetuning_type` is `lora` | See LoRA subsection below. |
 | `use_gradient_checkpointing` | `"unsloth"` | `"unsloth"` (recommended), `"true"`, or `"false"`. Unsloth's variant is faster than HF's. |
 
@@ -456,7 +499,7 @@ See `references/dataset-formats.md` § Unsloth for row-shape rules.
 | `use_rslora` | `false` | Rank-stabilized LoRA. |
 | `random_state` | `3407` | Reproducibility seed for the LoRA init. |
 
-`lora` is auto-filled with these defaults when `finetuning_type: "lora"` and the user omits the block. Must be `null` / omitted when `finetuning_type: "full"`.
+`lora` is auto-filled with these defaults when `finetuning_type: "lora"` and the user omits the block. Must be `null` / omitted when `finetuning_type: "all_weights"`.
 
 ### Unsloth `schedule`
 
@@ -502,21 +545,7 @@ See `references/dataset-formats.md` § Unsloth for row-shape rules.
 
 ### Unsloth `integrations`
 
-```json
-"integrations": {
-  "wandb": { "enabled": true, "project": "my-project", "run_name": "qwen3-1.7b-lora" },
-  "report_to": ["wandb"]
-}
-```
-
-| Field | Notes |
-|-------|-------|
-| `wandb.enabled` | Toggle. |
-| `wandb.project` | Sets `WANDB_PROJECT` env var. |
-| `wandb.run_name` | Becomes `TrainingArguments.run_name`. |
-| `report_to` | List of `"wandb"`, `"tensorboard"`, `"mlflow"`, `"none"`. Empty default = `["none"]`. |
-
-The platform pulls `WANDB_API_KEY` from Secrets when W&B is enabled — the plugin does **not** read a local shell env for training containers. No `api_key_secret` field in job JSON today.
+See **Integrations (automodel + unsloth)** above.
 
 ### `output`
 

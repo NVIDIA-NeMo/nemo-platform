@@ -15,6 +15,7 @@ members = [
   "sdk/python/nemo-platform",
   "packages/nemo_platform_plugin",
   "packages/nmp_common",
+  "packages/nmp_customization_common",
   "services/unsloth",
 ]
 
@@ -23,4 +24,5 @@ nmp-build-tools = { workspace = true }
 nemo-platform-sdk = { workspace = true }
 nemo-platform-plugin = { workspace = true }
 nmp-common = { workspace = true }
+nmp-customization-common = { workspace = true }
 nmp-unsloth = { workspace = true }

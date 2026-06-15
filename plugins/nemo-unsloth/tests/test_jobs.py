@@ -88,7 +88,7 @@ class TestCompile:
         )
 
         with (
-            patch("nemo_unsloth_plugin.jobs.jobs._require_docker_runtime"),
+            patch("nemo_unsloth_plugin.jobs.jobs.require_docker_runtime"),
             patch(
                 "nemo_unsloth_plugin.jobs.jobs.platform_job_config_compiler",
                 new=AsyncMock(return_value=fake_spec),
@@ -121,7 +121,7 @@ class TestCompile:
     def test_compile_passes_caller_profile_override(self) -> None:
         canonical = _make_canonical()
         with (
-            patch("nemo_unsloth_plugin.jobs.jobs._require_docker_runtime"),
+            patch("nemo_unsloth_plugin.jobs.jobs.require_docker_runtime"),
             patch(
                 "nemo_unsloth_plugin.jobs.jobs.platform_job_config_compiler",
                 new=AsyncMock(return_value=SimpleNamespace(steps=[])),
@@ -146,7 +146,7 @@ class TestCompile:
         # Force the runtime check to raise so we don't need a Docker daemon
         # in CI. The check is what runs first; the rest never executes.
         with patch(
-            "nemo_unsloth_plugin.jobs.jobs._require_docker_runtime",
+            "nemo_unsloth_plugin.jobs.jobs.require_docker_runtime",
             side_effect=PlatformJobCompilationError("not docker"),
         ):
             with pytest.raises(PlatformJobCompilationError, match="not docker"):

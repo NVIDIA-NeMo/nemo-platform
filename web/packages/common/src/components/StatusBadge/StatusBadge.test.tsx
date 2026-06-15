@@ -5,6 +5,7 @@ import { BadgeStatus, badgeStatus } from '@nemo/common/src/components/StatusBadg
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge/index';
 import * as customQueries from '@nemo/common/src/tests/customQueries';
 import { queries, render, screen, within } from '@testing-library/react';
+import { CircleCheck } from 'lucide-react';
 
 const allQueries = {
   ...queries,
@@ -142,6 +143,68 @@ describe('StatusBadge component', () => {
           expect(badge).toHaveClass(`nv-badge--color-${expectedStatus.color}`);
         }
       });
+    });
+  });
+
+  describe('statusConfig prop (config-driven path)', () => {
+    const STATUS_CONFIG = {
+      success: { label: 'Success', color: 'green' as const, icon: CircleCheck },
+      error: { label: 'Error', color: 'red' as const },
+    };
+
+    it('renders the label for a known status', () => {
+      render(<StatusBadge status="success" statusConfig={STATUS_CONFIG} />);
+      expect(screen.getByTestId('nv-badge')).toHaveTextContent('Success');
+    });
+
+    it('renders icon when config entry has one', () => {
+      render(<StatusBadge status="success" statusConfig={STATUS_CONFIG} />);
+      expect(screen.getByRole('img')).toBeInTheDocument();
+    });
+
+    it('renders no icon when config entry omits one', () => {
+      render(<StatusBadge status="error" statusConfig={STATUS_CONFIG} />);
+      expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    });
+
+    it('falls back to provided fallback for unknown status', () => {
+      render(
+        <StatusBadge
+          status="pending"
+          statusConfig={STATUS_CONFIG}
+          fallback={{ label: 'Unknown', color: 'gray' }}
+        />
+      );
+      expect(screen.getByTestId('nv-badge')).toHaveTextContent('Unknown');
+    });
+
+    it('falls back to default (gray Unknown) when no fallback is provided', () => {
+      render(<StatusBadge status="pending" statusConfig={STATUS_CONFIG} />);
+      expect(screen.getByTestId('nv-badge')).toHaveTextContent('Unknown');
+    });
+
+    it('falls back when status is undefined', () => {
+      render(
+        <StatusBadge
+          status={undefined}
+          statusConfig={STATUS_CONFIG}
+          fallback={{ label: 'Unknown', color: 'gray' }}
+        />
+      );
+      expect(screen.getByTestId('nv-badge')).toHaveTextContent('Unknown');
+    });
+
+    it('overrides the config label when label prop is provided', () => {
+      render(<StatusBadge status="success" statusConfig={STATUS_CONFIG} label="Running (50%)" />);
+      const badge = screen.getByTestId('nv-badge');
+      expect(badge).toHaveTextContent('Running (50%)');
+      expect(badge).not.toHaveTextContent('Success');
+    });
+
+    it('does not apply SCREAMING_SNAKE normalization', () => {
+      render(<StatusBadge status="SUCCESS" statusConfig={STATUS_CONFIG} />);
+      // "SUCCESS" is not in the config (case-sensitive), so falls through to default
+      expect(screen.getByTestId('nv-badge')).toHaveTextContent('Unknown');
     });
   });
 });

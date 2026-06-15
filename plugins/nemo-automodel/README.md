@@ -28,3 +28,5 @@ nemo customization automodel run path/to/job.json   # exits with error
 Other customization backends may still use `nemo customization <backend> jobs submit ...`.
 
 Job JSON uses the simplified `AutomodelJobInput` schema (see `nemo_automodel_plugin/schema.py`). Submit posts to `/apis/customization/v2/workspaces/{workspace}/automodel/jobs`.
+
+Optional `integrations` (W&B / MLflow) use the shared `IntegrationsSpec` from `nemo_platform_plugin.integrations`. Example: `plugins/nemo-automodel/tests/fixtures/integrations_wandb_mlflow.json`. Field reference: customizer skill `references/hyperparameters.md` § **Integrations (automodel + unsloth)**.

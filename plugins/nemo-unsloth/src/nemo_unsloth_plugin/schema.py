@@ -23,12 +23,12 @@ from __future__ import annotations
 
 from typing import Literal, Self
 
+from nemo_platform_plugin.integrations import IntegrationsSpec
 from nmp.unsloth.schemas import (
     BatchSpec,
     DatasetSpec,
     DeploymentParams,
     HardwareSpec,
-    IntegrationsSpec,
     LoRAParams,
     ModelLoadSpec,
     OptimizerSpec,
@@ -37,7 +37,6 @@ from nmp.unsloth.schemas import (
     ToolCallParams,
     TrainingSpec,
     UnslothJobOutput,
-    WandbIntegration,
 )
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -46,7 +45,6 @@ __all__ = [
     "DatasetSpec",
     "DeploymentParams",
     "HardwareSpec",
-    "IntegrationsSpec",
     "LoRAParams",
     "ModelLoadSpec",
     "OptimizerSpec",
@@ -57,7 +55,6 @@ __all__ = [
     "TrainingSpec",
     "UnslothJobInput",
     "UnslothJobOutput",
-    "WandbIntegration",
 ]
 
 
@@ -98,23 +95,20 @@ class UnslothJobInput(BaseModel):
 
     @model_validator(mode="after")
     def _validate(self) -> Self:
-        # exactly one of epochs / max_steps
-        if self.schedule.epochs is None and self.schedule.max_steps is None:
-            raise ValueError("schedule.epochs or schedule.max_steps must be set")
-        if self.schedule.epochs is not None and self.schedule.max_steps is not None:
-            raise ValueError("schedule.epochs and schedule.max_steps are mutually exclusive")
+        # Schedule: epochs defaults to 1; max_steps (when set) caps training. Both may be
+        # present — the trainer honours max_steps as an override (consistent with Automodel).
         # 4bit / 8bit mutex (bitsandbytes — they really are exclusive)
         if self.model.load_in_4bit and self.model.load_in_8bit:
             raise ValueError("model.load_in_4bit and model.load_in_8bit are mutually exclusive")
-        # full FT cannot quantize
-        if self.training.finetuning_type == "full":
+        # all-weights (full) FT cannot quantize
+        if self.training.finetuning_type == "all_weights":
             if self.model.load_in_4bit or self.model.load_in_8bit:
                 raise ValueError(
-                    "training.finetuning_type='full' is incompatible with 4-bit/8-bit loading; "
+                    "training.finetuning_type='all_weights' is incompatible with 4-bit/8-bit loading; "
                     "set model.load_in_4bit=false and model.load_in_8bit=false"
                 )
             if self.training.lora is not None:
-                raise ValueError("training.lora must be unset when training.finetuning_type='full'")
+                raise ValueError("training.lora must be unset when training.finetuning_type='all_weights'")
         # auto-fill LoRA when implied but not provided
         if self.training.finetuning_type == "lora" and self.training.lora is None:
             self.training.lora = LoRAParams()

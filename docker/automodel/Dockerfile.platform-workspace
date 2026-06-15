@@ -6,6 +6,9 @@
 FROM scratch AS platform-workspace
 # Use a reduced workspace file for this partial source tree.
 COPY docker/automodel/pyproject.workspace.toml pyproject.toml
+# uv --overrides file the training Dockerfile reads at /app/docker/automodel/.
+# (The docker/ tree moved out of services/automodel/, so it no longer rides in
+# via `COPY services/automodel`; copy it explicitly into the workspace slice.)
 COPY docker/automodel/no_override_requirements.txt docker/automodel/no_override_requirements.txt
 # nemo-platform-sdk hatch build force-includes docs/ from repo root.
 # docs/fern/openapi/openapi.yaml is a symlink to ../../../openapi/openapi.yaml.
@@ -14,6 +17,7 @@ COPY openapi openapi
 COPY packages/nmp_build_tools packages/nmp_build_tools
 COPY packages/models packages/models
 COPY packages/nmp_common packages/nmp_common
+COPY packages/nmp_customization_common packages/nmp_customization_common
 COPY packages/nemo_platform_plugin packages/nemo_platform_plugin
 COPY sdk/python/nemo-platform sdk/python/nemo-platform
 COPY services/automodel services/automodel

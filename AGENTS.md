@@ -234,3 +234,47 @@ Ensure all pre-commit hooks pass by running `uv run pre-commit run -a`. A clean 
 - Re-run failed tests: `make test-failed`
 
 **Note:** E2E tests are currently disabled. Use `make test-unit` iteratively, then `make test-integration` for comprehensive verification.
+
+## Cursor Cloud specific instructions
+
+### Bootstrap prerequisites
+
+- **uv version pin:** Root `pyproject.toml` requires `uv>=0.9.14,<0.10.0`. Newer uv releases (e.g. 0.11.x) fail `uv sync` with a version mismatch. Install the pinned range before bootstrapping: `pip install 'uv>=0.9.14,<0.10.0'`.
+- **Native build deps:** `make bootstrap-python` builds `annoy` (via `nemoguardrails`). Install system headers once per VM image: `sudo apt-get install -y python3-dev build-essential`.
+- **Python bootstrap:** Run `make bootstrap-python` from repo root (creates `.venv`, runs `uv sync --frozen --all-packages`). See [SETUP.md](SETUP.md) for the full playbook.
+- **Studio (optional):** `make bootstrap-studio` requires Node **22.18.x** and pnpm per `web/package.json` engines. The VM may ship an older Node (e.g. 22.14); API services still run without Studio assets. Upgrade Node then run `make bootstrap-studio` if you need `http://localhost:8080/studio/`.
+
+### Running the platform
+
+Before any `nemo` CLI command against a local instance, set:
+
+```bash
+export NMP_BASE_URL=http://localhost:8080
+```
+
+Check for an existing instance before starting (`lsof -iTCP:8080 -sTCP:LISTEN` or `nemo workspaces list`). To start all default services in the background, use a tmux session:
+
+```bash
+tmux -f /exec-daemon/tmux.portal.conf new-session -d -s nemo-platform -c /workspace -- \
+  'export NMP_BASE_URL=http://localhost:8080 && uv run nemo services run --service-group all --port 8080'
+```
+
+Wait for readiness: `curl -sf http://localhost:8080/health/ready` → `{"status":"ready"}`.
+
+Minimal subset for inference-focused work (documented in SETUP.md): `uv run nemo services run --services entities,models,inference-gateway,secrets --controllers models`.
+
+### Lint and test
+
+Standard commands from repo root (see sections above): `uv run ruff check`, `uv run --frozen ty check`, `make test-unit`, `make test-package PACKAGE=<name>`.
+
+- **Docker:** Not required for core platform smoke tests. One `nmp_common` config test expects Docker and sets runtime to `none` when Docker is unavailable.
+- **Inference providers:** `nemo setup`, `nemo chat`, and agent invoke require an API key (`NVIDIA_API_KEY`, `OPENAI_API_KEY`, etc.). Core APIs (workspaces, secrets, hello-world, entities) work without provider credentials.
+
+### Quick smoke verification
+
+```bash
+export NMP_BASE_URL=http://localhost:8080
+curl -sf http://localhost:8080/health/ready
+curl -sf http://localhost:8080/apis/hello-world/v2/workspaces/default/hello
+uv run nemo workspaces list
+```
