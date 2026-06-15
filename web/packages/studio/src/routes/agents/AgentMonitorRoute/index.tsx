@@ -74,9 +74,10 @@ export const AgentMonitorRoute: FC = () => {
   const filesError = isNotFoundError(filesListQuery.error) ? null : filesListQuery.error;
   const files = useMemo(() => filesListQuery.data?.data ?? [], [filesListQuery.data?.data]);
   const hasFiles = files.length > 0;
+  const filePaths = useMemo(() => files.map((f) => f.path), [files]);
 
   const runsQuery = useQuery({
-    queryKey: ['agent-monitor', 'telemetry-runs', workspace, files.map((f) => f.path)],
+    queryKey: ['agent-monitor', 'telemetry-runs', workspace, filePaths],
     queryFn: ({ signal }) => fetchTelemetryRuns(workspace, files, signal),
     enabled: !!workspace && hasFiles,
     retry: false,
