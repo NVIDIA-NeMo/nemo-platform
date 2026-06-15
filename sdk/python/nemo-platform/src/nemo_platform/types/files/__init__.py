@@ -22,6 +22,7 @@ from .secret_ref import SecretRef as SecretRef
 from .cache_status import CacheStatus as CacheStatus
 from .fileset_file import FilesetFile as FilesetFile
 from .fileset_purpose import FilesetPurpose as FilesetPurpose
+from .fileset_metadata import FilesetMetadata as FilesetMetadata
 from .s3_storage_config import S3StorageConfig as S3StorageConfig
 from .ngc_storage_config import NGCStorageConfig as NGCStorageConfig
 from .fileset_list_params import FilesetListParams as FilesetListParams
@@ -35,11 +36,8 @@ from .file_list_files_params import FileListFilesParams as FileListFilesParams
 from .fileset_metadata_param import FilesetMetadataParam as FilesetMetadataParam
 from .file_upload_file_params import FileUploadFileParams as FileUploadFileParams
 from .s3_storage_config_param import S3StorageConfigParam as S3StorageConfigParam
-from .dataset_metadata_content import DatasetMetadataContent as DatasetMetadataContent
 from .ngc_storage_config_param import NGCStorageConfigParam as NGCStorageConfigParam
 from .huggingface_storage_config import HuggingfaceStorageConfig as HuggingfaceStorageConfig
 from .local_storage_config_param import LocalStorageConfigParam as LocalStorageConfigParam
 from .list_fileset_files_response import ListFilesetFilesResponse as ListFilesetFilesResponse
-from .fileset_metadata_param_param import FilesetMetadataParamParam as FilesetMetadataParamParam
-from .dataset_metadata_content_param import DatasetMetadataContentParam as DatasetMetadataContentParam
 from .huggingface_storage_config_param import HuggingfaceStorageConfigParam as HuggingfaceStorageConfigParam

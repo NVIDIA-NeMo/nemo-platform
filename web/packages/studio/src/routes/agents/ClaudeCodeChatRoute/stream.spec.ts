@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { CLAUDE_CODE_JOB_PROGRESS_MCP_TOOL_NAME } from '@studio/routes/agents/ClaudeCodeChatRoute/jobProgressConsts';
 import {
   getAssistantPartsFromClaudeEvent,
   getAssistantTextFromClaudeEvent,
@@ -149,6 +150,48 @@ describe('Claude Code stream utilities', () => {
             { args: { file_path: 'README.md' }, toolCallId: 'toolu_read', toolName: 'Read' },
           ],
         },
+      },
+    ]);
+  });
+
+  it('keeps the job progress card out of subtle streamed tool groups', () => {
+    const event = {
+      type: 'assistant',
+      message: {
+        content: [
+          { type: 'tool_use', id: 'toolu_bash', name: 'Bash', input: { command: 'pwd' } },
+          {
+            type: 'tool_use',
+            id: 'toolu_job',
+            name: CLAUDE_CODE_JOB_PROGRESS_MCP_TOOL_NAME,
+            input: { job_name: 'studio-job-1' },
+          },
+          { type: 'tool_use', id: 'toolu_read', name: 'Read', input: { file_path: 'README.md' } },
+        ],
+      },
+    };
+
+    expect(getAssistantPartsFromClaudeEvent(event)).toEqual([
+      {
+        type: 'tool-call',
+        toolCallId: 'toolu_bash',
+        toolName: 'Bash',
+        args: { command: 'pwd' },
+        argsText: '{"command":"pwd"}',
+      },
+      {
+        type: 'tool-call',
+        toolCallId: 'toolu_job',
+        toolName: CLAUDE_CODE_JOB_PROGRESS_MCP_TOOL_NAME,
+        args: { job_name: 'studio-job-1' },
+        argsText: '{"job_name":"studio-job-1"}',
+      },
+      {
+        type: 'tool-call',
+        toolCallId: 'toolu_read',
+        toolName: 'Read',
+        args: { file_path: 'README.md' },
+        argsText: '{"file_path":"README.md"}',
       },
     ]);
   });

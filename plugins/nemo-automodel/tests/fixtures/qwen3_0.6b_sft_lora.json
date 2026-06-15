@@ -1,0 +1,30 @@
+{
+  "model": "default/qwen3-0.6b",
+  "dataset": {
+    "training": "default/qwen3-0.6b-train"
+  },
+  "training": {
+    "training_type": "sft",
+    "finetuning_type": "lora",
+    "max_seq_length": 2048
+  },
+  "schedule": {
+    "epochs": 1,
+    "max_steps": 50
+  },
+  "batch": {
+    "global_batch_size": 4,
+    "micro_batch_size": 1
+  },
+  "optimizer": {
+    "learning_rate": 5e-5
+  },
+  "parallelism": {
+    "num_nodes": 1,
+    "num_gpus_per_node": 1,
+    "tensor_parallel_size": 1
+  },
+  "output": {
+    "name": "qwen3-0.6b-lora-out"
+  }
+}

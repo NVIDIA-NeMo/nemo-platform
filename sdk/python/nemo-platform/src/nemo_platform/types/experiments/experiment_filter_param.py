@@ -19,20 +19,42 @@ from __future__ import annotations
 
 from typing_extensions import TypedDict
 
+from ..shared_params.datetime_filter import DatetimeFilter
+
 __all__ = ["ExperimentFilterParam"]
 
 
 class ExperimentFilterParam(TypedDict, total=False):
     """Filter for listing Experiments."""
 
-    agent_name: str
-    """Filter experiments by agent name."""
+    created_at: DatetimeFilter
+    """
+    Filter experiments by creation timestamp; supports `$gte` and `$lte` for ranges.
+    """
+
+    created_by: str
+    """Filter experiments by the principal that created them."""
 
     dataset_name: str
     """Filter experiments by dataset name."""
 
+    dataset_version: str
+    """Filter experiments by dataset version."""
+
     experiment_group_id: str
     """Filter experiments by owning group id."""
 
+    is_deleted: bool
+    """When true, returns only soft-deleted experiments.
+
+    Omit (or false) to see only live experiments.
+    """
+
     name: str
     """Filter experiments by name."""
+
+    updated_at: DatetimeFilter
+    """
+    Filter experiments by last-updated timestamp; supports `$gte` and `$lte` for
+    ranges.
+    """

@@ -8,3 +8,4 @@ export { parseAndValidate, validateJsonSchemaDocument } from './validate';
 export type { ParseAndValidateResult, ValidationResult } from './validate';
 export { buildDatasetMetadata } from './dedupe';
 export type { PerFileInferred } from './dedupe';
+export { isSchemaAssignableFile } from './schemaAssignable';

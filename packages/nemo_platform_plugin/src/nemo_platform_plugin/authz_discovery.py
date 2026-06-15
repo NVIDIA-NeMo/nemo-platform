@@ -129,6 +129,8 @@ def discover_authz_contributions() -> list[AuthzContribution]:
 
     1. ``nemo.authz`` entry points (callable or class)
     2. ``nemo.services`` classes implementing :meth:`get_authz_contribution`
+       (e.g. :class:`~nemo_customizer.router.CustomizationRouterService` aggregates
+       ``nemo.customization.contributors`` backend policy)
     """
     from nemo_platform_plugin.discovery import discover_entry_points, discover_services
 

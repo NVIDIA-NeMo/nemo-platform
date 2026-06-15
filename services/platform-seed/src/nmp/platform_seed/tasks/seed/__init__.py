@@ -9,7 +9,6 @@ from nmp.platform_seed.tasks.seed.run import (
     run,
     run_platform_seed,
     run_platform_seed_from_startup,
-    seed_evaluator,
     seed_guardrails,
 )
 
@@ -19,6 +18,5 @@ __all__ = [
     "run",
     "run_platform_seed",
     "run_platform_seed_from_startup",
-    "seed_evaluator",
     "seed_guardrails",
 ]

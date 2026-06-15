@@ -24,8 +24,9 @@ from types import MappingProxyType
 from typing import Any, cast
 
 from langchain_core.language_models import BaseChatModel
+from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.sdk_provider import get_forwarding_headers
 from nemoguardrails.llm.models import langchain_initializer
-from nmp.common.service.headers import build_downstream_service_headers
 
 NIM_PROVIDER_NAME = "nim"
 """NeMo Guardrails provider name for NVIDIA NIM chat models."""
@@ -40,24 +41,13 @@ _request_headers_ctx: ContextVar[RequestHeaders] = ContextVar(
 )
 
 
-def build_platform_headers(service_name: str = "nemo-guardrails") -> dict[str, str]:
-    """Build the headers cached rail clients should add to downstream calls.
-
-    This intentionally does not forward arbitrary incoming request headers
-    such as ``Authorization`` or cookies. Cached rail clients only need the
-    platform-generated service-principal and observability headers derived from
-    the current NeMo Platform execution context.
-    """
-    return build_downstream_service_headers(service_name)
-
-
 def get_request_headers() -> RequestHeaders:
     """Return the platform headers in scope for the current rail execution."""
     return _request_headers_ctx.get()
 
 
 @contextmanager
-def platform_headers_context(service_name: str = "nemo-guardrails") -> Iterator[None]:
+def platform_headers_context(sdk: AsyncNeMoPlatform) -> Iterator[None]:
     """Make platform headers visible to rail model calls in this context.
 
     Model calls happen deep inside nemoguardrails/LangChain library code that
@@ -65,10 +55,15 @@ def platform_headers_context(service_name: str = "nemo-guardrails") -> Iterator[
     calls access to request-scoped headers without adding mutable request data
     on the cached LangChain client itself.
 
+    Args:
+        sdk: The SDK whose forwarding headers should be propagated.
+            For per-request auth, pass a request-scoped SDK built via
+            ``sdk.with_options(set_default_headers=...)``.
+
     The data flow is:
 
-    1. ``build_platform_headers`` builds the per-request service-principal and
-       tracing headers.
+    1. ``get_forwarding_headers(sdk)`` extracts the per-request
+       service-principal, on-behalf-of, and tracing headers.
     2. This context manager stores them in ``_request_headers_ctx`` for the
        current execution context.
     3. Non-streaming rails run via ``asyncio.to_thread``; Python copies the
@@ -81,7 +76,7 @@ def platform_headers_context(service_name: str = "nemo-guardrails") -> Iterator[
        ``_prepare_inputs_and_payload`` override reads ``_request_headers_ctx``
        and merges those headers into the request.
     """
-    headers = _request_headers_ctx.set(build_platform_headers(service_name))
+    headers = _request_headers_ctx.set(get_forwarding_headers(sdk))
     try:
         yield
     finally:

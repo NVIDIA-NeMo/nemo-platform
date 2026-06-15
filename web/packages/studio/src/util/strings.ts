@@ -4,22 +4,7 @@
 import { Row } from '@studio/util/files';
 import Papa from 'papaparse';
 
-/**
- * Returns a formatted string with count and properly pluralized text.
- * @param text - The singular form of the word (e.g., "entry", "file")
- * @param count - The number to display
- * @param plural - Optional custom plural form for irregular words (e.g., "entries", "children").
- *                 If not provided, defaults to appending 's' to the text.
- * @returns Formatted string like "1 entry" or "3 entries"
- * @example
- * getTextWithCount('file', 1)           // "1 file"
- * getTextWithCount('file', 3)           // "3 files"
- * getTextWithCount('entry', 2, 'entries') // "2 entries"
- */
-export const getTextWithCount = (text: string, count: number, plural?: string) => {
-  const pluralForm = plural ?? `${text}s`;
-  return `${count} ${count !== 1 ? pluralForm : text}`;
-};
+export { getTextWithCount } from '@nemo/common/src/utils/formatters';
 
 export const capitalize = (str: string) => {
   return str.charAt(0).toUpperCase() + str.slice(1);

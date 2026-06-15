@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-from nmp.common.auth.authz_format import (
+from nemo_platform_plugin.authz_format import (
     is_valid_nmp_scope_id,
     is_valid_permission_id,
     is_wildcard_permission,

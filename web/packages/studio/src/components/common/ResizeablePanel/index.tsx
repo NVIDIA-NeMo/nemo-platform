@@ -71,7 +71,7 @@ export const ResizeablePanel: FC<ResizeablePanelProps> = ({
   }, [isDragging]);
 
   return (
-    <div ref={containerRef} className={cn('flex h-full', className)}>
+    <div ref={containerRef} className={cn('flex h-full w-full', className)}>
       {/* Left panel */}
       <div
         // eslint-disable-next-line no-restricted-syntax

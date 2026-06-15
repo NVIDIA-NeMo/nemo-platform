@@ -20,7 +20,6 @@ import * as DataView from '@nemo/common/src/components/DataView/internal';
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
-import { getEntityReference } from '@nemo/common/src/namedEntity';
 import { getModelEntityChatStatus } from '@nemo/common/src/utils/models';
 import { getSortParam } from '@nemo/common/src/utils/query';
 import { useModelsGetModel } from '@nemo/sdk/generated/platform/api';
@@ -44,7 +43,7 @@ import { VirtualizedCardGrid } from '@studio/components/VirtualizedCardGrid';
 import { CUSTOMIZER_ENABLED, EVALUATOR_ENABLED } from '@studio/constants/environment';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
-import { getEvaluationMetricsRunRoute, getWorkspaceBaseModelsRoute } from '@studio/routes/utils';
+import { getEvaluationResultsRoute, getWorkspaceBaseModelsRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
 import { useEffect, useMemo, useRef, useState, type ComponentProps, type FC } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -306,13 +305,7 @@ export const WorkspaceBaseModelsRoute: FC = () => {
                 <Button
                   kind="secondary"
                   size="small"
-                  onClick={() =>
-                    navigate(
-                      getEvaluationMetricsRunRoute(workspace, {
-                        model: selectedModel ? getEntityReference(selectedModel) : undefined,
-                      })
-                    )
-                  }
+                  onClick={() => navigate(getEvaluationResultsRoute(workspace))}
                   className="flex-1"
                 >
                   Evaluate this Model

@@ -31,6 +31,14 @@ from .gateway import (
     GatewayResourceWithStreamingResponse,
     AsyncGatewayResourceWithStreamingResponse,
 )
+from .prompts import (
+    PromptsResource,
+    AsyncPromptsResource,
+    PromptsResourceWithRawResponse,
+    AsyncPromptsResourceWithRawResponse,
+    PromptsResourceWithStreamingResponse,
+    AsyncPromptsResourceWithStreamingResponse,
+)
 from .inference import (
     InferenceResource,
     AsyncInferenceResource,
@@ -103,6 +111,12 @@ __all__ = [
     "AsyncProvidersResourceWithRawResponse",
     "ProvidersResourceWithStreamingResponse",
     "AsyncProvidersResourceWithStreamingResponse",
+    "PromptsResource",
+    "AsyncPromptsResource",
+    "PromptsResourceWithRawResponse",
+    "AsyncPromptsResourceWithRawResponse",
+    "PromptsResourceWithStreamingResponse",
+    "AsyncPromptsResourceWithStreamingResponse",
     "GatewayResource",
     "AsyncGatewayResource",
     "GatewayResourceWithRawResponse",

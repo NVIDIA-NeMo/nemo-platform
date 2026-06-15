@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { FileFormatType } from '@nemo/common/src/types';
 import type {
   FileFormatDetectionResult,
   FileValidationResult,
@@ -17,7 +18,7 @@ export interface DatasetLocation {
 
 /** File-level metadata needed once validation completes */
 export interface FileMetadata {
-  format: 'json' | 'jsonl';
+  format: FileFormatType;
   firstRow: Record<string, unknown>;
   parsedRows: Record<string, unknown>[];
   rowCount: number;

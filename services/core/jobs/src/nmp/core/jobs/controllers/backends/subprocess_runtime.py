@@ -9,6 +9,7 @@ import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from time import time_ns
 from typing import IO
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, unquote, urlparse
@@ -43,6 +44,7 @@ class SubprocessOtelLogger:
         severity_text = "INFO" if stream_name == "stdout" else "ERROR"
         self.logger.emit(
             body=message,
+            timestamp=time_ns(),
             severity_number=severity_number,
             severity_text=severity_text,
             attributes={"stream": stream_name},

@@ -23,8 +23,14 @@ outputs:
     description: "'true' if any files under tools/ changed"
     value: ${{ steps.filter.outputs.tools }}
   web-studio:
-    description: "'true' if any Studio, common, or SDK package files changed"
+    description: "'true' if any web files changed"
     value: ${{ steps.filter.outputs.web-studio }}
+  docker:
+    description: "'true' if any Docker build files changed"
+    value: ${{ steps.filter.outputs.docker }}
+  helm:
+    description: "'true' if any Helm chart files changed"
+    value: ${{ steps.filter.outputs.helm }}
 
 runs:
   using: "composite"
@@ -39,6 +45,7 @@ runs:
         filters: |
           openapi:
             - 'openapi/**'
+            - 'plugins/*/openapi/**'
           tests:
             - 'tests/**'
             - 'pytest.ini'
@@ -54,6 +61,14 @@ runs:
           tools:
             - 'tools/**'
           web-studio:
-            - 'web/packages/studio/**'
-            - 'web/packages/common/**'
-            - 'web/packages/sdk/**'
+            - 'web/**'
+          docker:
+            - 'docker-bake.hcl'
+            - 'docker/**'
+            - 'Makefile'
+          helm:
+            - 'k8s/**'
+            - 'tools/lint/lint-helm.sh'
+            - '.github/workflows/ci.yaml'
+            - '.github/actions/changes/action.yaml'
+            - '.pre-commit-config.yaml'

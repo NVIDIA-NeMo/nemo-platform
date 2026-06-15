@@ -24,6 +24,7 @@ import pytest
 
 from tests.utils import assert_matches_type
 from nemo_platform import NeMoPlatform, AsyncNeMoPlatform
+from nemo_platform._utils import parse_datetime
 from nemo_platform.pagination import SyncDefaultPagination, AsyncDefaultPagination
 from nemo_platform.types.experiments import (
     ExperimentResponse,
@@ -40,9 +41,8 @@ class TestExperiments:
     def test_method_create(self, client: NeMoPlatform) -> None:
         experiment = client.experiments.create(
             workspace="workspace",
-            agent_name="agent_name",
-            agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             name="name",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
@@ -52,13 +52,11 @@ class TestExperiments:
     def test_method_create_with_all_params(self, client: NeMoPlatform) -> None:
         experiment = client.experiments.create(
             workspace="workspace",
-            agent_name="agent_name",
-            agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             name="name",
             dataset_version="dataset_version",
             description="description",
-            experiment_group_id="experiment_group_id",
             metadata={"foo": "bar"},
             source_link="https://example.com",
             summary="summary",
@@ -70,9 +68,8 @@ class TestExperiments:
     def test_raw_response_create(self, client: NeMoPlatform) -> None:
         response = client.experiments.with_raw_response.create(
             workspace="workspace",
-            agent_name="agent_name",
-            agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             name="name",
         )
 
@@ -86,9 +83,8 @@ class TestExperiments:
     def test_streaming_response_create(self, client: NeMoPlatform) -> None:
         with client.experiments.with_streaming_response.create(
             workspace="workspace",
-            agent_name="agent_name",
-            agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             name="name",
         ) as response:
             assert not response.is_closed
@@ -105,9 +101,8 @@ class TestExperiments:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
             client.experiments.with_raw_response.create(
                 workspace="",
-                agent_name="agent_name",
-                agent_version="agent_version",
                 dataset_name="dataset_name",
+                experiment_group_id="experiment_group_id",
                 name="name",
             )
 
@@ -169,9 +164,8 @@ class TestExperiments:
         experiment = client.experiments.update(
             path_name="name",
             workspace="workspace",
-            agent_name="agent_name",
-            agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             body_name="name",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
@@ -182,13 +176,11 @@ class TestExperiments:
         experiment = client.experiments.update(
             path_name="name",
             workspace="workspace",
-            agent_name="agent_name",
-            agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             body_name="name",
             dataset_version="dataset_version",
             description="description",
-            experiment_group_id="experiment_group_id",
             metadata={"foo": "bar"},
             source_link="https://example.com",
             summary="summary",
@@ -201,9 +193,8 @@ class TestExperiments:
         response = client.experiments.with_raw_response.update(
             path_name="name",
             workspace="workspace",
-            agent_name="agent_name",
-            agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             body_name="name",
         )
 
@@ -218,9 +209,8 @@ class TestExperiments:
         with client.experiments.with_streaming_response.update(
             path_name="name",
             workspace="workspace",
-            agent_name="agent_name",
-            agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             body_name="name",
         ) as response:
             assert not response.is_closed
@@ -238,9 +228,8 @@ class TestExperiments:
             client.experiments.with_raw_response.update(
                 path_name="name",
                 workspace="",
-                agent_name="agent_name",
-                agent_version="agent_version",
                 dataset_name="dataset_name",
+                experiment_group_id="experiment_group_id",
                 body_name="name",
             )
 
@@ -248,9 +237,8 @@ class TestExperiments:
             client.experiments.with_raw_response.update(
                 path_name="",
                 workspace="workspace",
-                agent_name="agent_name",
-                agent_version="agent_version",
                 dataset_name="dataset_name",
+                experiment_group_id="experiment_group_id",
                 body_name="name",
             )
 
@@ -268,10 +256,20 @@ class TestExperiments:
         experiment = client.experiments.list(
             workspace="workspace",
             filter={
-                "agent_name": "agent_name",
+                "created_at": {
+                    "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
+                    "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
+                },
+                "created_by": "created_by",
                 "dataset_name": "dataset_name",
+                "dataset_version": "dataset_version",
                 "experiment_group_id": "experiment_group_id",
+                "is_deleted": True,
                 "name": "name",
+                "updated_at": {
+                    "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
+                    "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
+                },
             },
             page=1,
             page_size=1,
@@ -376,9 +374,8 @@ class TestAsyncExperiments:
     async def test_method_create(self, async_client: AsyncNeMoPlatform) -> None:
         experiment = await async_client.experiments.create(
             workspace="workspace",
-            agent_name="agent_name",
-            agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             name="name",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
@@ -388,13 +385,11 @@ class TestAsyncExperiments:
     async def test_method_create_with_all_params(self, async_client: AsyncNeMoPlatform) -> None:
         experiment = await async_client.experiments.create(
             workspace="workspace",
-            agent_name="agent_name",
-            agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             name="name",
             dataset_version="dataset_version",
             description="description",
-            experiment_group_id="experiment_group_id",
             metadata={"foo": "bar"},
             source_link="https://example.com",
             summary="summary",
@@ -406,9 +401,8 @@ class TestAsyncExperiments:
     async def test_raw_response_create(self, async_client: AsyncNeMoPlatform) -> None:
         response = await async_client.experiments.with_raw_response.create(
             workspace="workspace",
-            agent_name="agent_name",
-            agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             name="name",
         )
 
@@ -422,9 +416,8 @@ class TestAsyncExperiments:
     async def test_streaming_response_create(self, async_client: AsyncNeMoPlatform) -> None:
         async with async_client.experiments.with_streaming_response.create(
             workspace="workspace",
-            agent_name="agent_name",
-            agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             name="name",
         ) as response:
             assert not response.is_closed
@@ -441,9 +434,8 @@ class TestAsyncExperiments:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
             await async_client.experiments.with_raw_response.create(
                 workspace="",
-                agent_name="agent_name",
-                agent_version="agent_version",
                 dataset_name="dataset_name",
+                experiment_group_id="experiment_group_id",
                 name="name",
             )
 
@@ -505,9 +497,8 @@ class TestAsyncExperiments:
         experiment = await async_client.experiments.update(
             path_name="name",
             workspace="workspace",
-            agent_name="agent_name",
-            agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             body_name="name",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
@@ -518,13 +509,11 @@ class TestAsyncExperiments:
         experiment = await async_client.experiments.update(
             path_name="name",
             workspace="workspace",
-            agent_name="agent_name",
-            agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             body_name="name",
             dataset_version="dataset_version",
             description="description",
-            experiment_group_id="experiment_group_id",
             metadata={"foo": "bar"},
             source_link="https://example.com",
             summary="summary",
@@ -537,9 +526,8 @@ class TestAsyncExperiments:
         response = await async_client.experiments.with_raw_response.update(
             path_name="name",
             workspace="workspace",
-            agent_name="agent_name",
-            agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             body_name="name",
         )
 
@@ -554,9 +542,8 @@ class TestAsyncExperiments:
         async with async_client.experiments.with_streaming_response.update(
             path_name="name",
             workspace="workspace",
-            agent_name="agent_name",
-            agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             body_name="name",
         ) as response:
             assert not response.is_closed
@@ -574,9 +561,8 @@ class TestAsyncExperiments:
             await async_client.experiments.with_raw_response.update(
                 path_name="name",
                 workspace="",
-                agent_name="agent_name",
-                agent_version="agent_version",
                 dataset_name="dataset_name",
+                experiment_group_id="experiment_group_id",
                 body_name="name",
             )
 
@@ -584,9 +570,8 @@ class TestAsyncExperiments:
             await async_client.experiments.with_raw_response.update(
                 path_name="",
                 workspace="workspace",
-                agent_name="agent_name",
-                agent_version="agent_version",
                 dataset_name="dataset_name",
+                experiment_group_id="experiment_group_id",
                 body_name="name",
             )
 
@@ -604,10 +589,20 @@ class TestAsyncExperiments:
         experiment = await async_client.experiments.list(
             workspace="workspace",
             filter={
-                "agent_name": "agent_name",
+                "created_at": {
+                    "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
+                    "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
+                },
+                "created_by": "created_by",
                 "dataset_name": "dataset_name",
+                "dataset_version": "dataset_version",
                 "experiment_group_id": "experiment_group_id",
+                "is_deleted": True,
                 "name": "name",
+                "updated_at": {
+                    "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
+                    "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
+                },
             },
             page=1,
             page_size=1,

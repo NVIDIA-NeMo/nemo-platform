@@ -4,14 +4,14 @@
 from abc import ABC
 from datetime import datetime
 from enum import Enum, StrEnum
-from typing import Annotated, Any, Dict, List, Optional, Union
+from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 from jinja2 import Environment
 from jinja2 import nodes as jinja_nodes
 from nmp.common.auth import AuthContext
 from nmp.common.entities import Filter, constants
 from nmp.common.entities.utils import get_random_id
-from nmp.common.entities.values import DatetimeFilter, map_entity_field
+from nmp.common.entities.values import DatetimeFilter, StringFilter, map_entity_field
 from nmp.common.inference import InferenceParams
 from nmp.core.models.constants import (
     MODEL_REF_MAX_LEN,
@@ -700,6 +700,204 @@ class DeleteModelProviderRequest(BaseModel):
 
 
 # ============================================================================
+# Prompt Schemas
+# ============================================================================
+
+
+class PromptMessageRole(StrEnum):
+    """Role of a message author in a chat prompt.
+
+    Follows the OpenAI chat schema the Inference Gateway speaks
+    (``/v1/chat/completions``).
+    """
+
+    SYSTEM = "system"
+    DEVELOPER = "developer"
+    USER = "user"
+    ASSISTANT = "assistant"
+
+
+class PromptMessage(BaseModel):
+    """A single templated message in a chat prompt.
+
+    ``content`` is a Jinja2 template body that may reference the prompt's
+    declared ``input_variables`` (e.g. ``{{ topic }}``).
+    """
+
+    role: PromptMessageRole = Field(description="The role of the message author.")
+    content: str = Field(description="Templated message content. May contain template variables.")
+
+
+class FunctionDefinition(BaseModel):
+    """An OpenAI-compatible function definition for tool calling.
+
+    Mirrors the ``function`` object the Inference Gateway forwards to
+    OpenAI-compatible backends.
+    """
+
+    name: str = Field(
+        description="The name of the function to be called.",
+        max_length=constants.MAX_LENGTH_255,
+    )
+    description: Optional[str] = Field(
+        default=None,
+        description="A description of what the function does, used by the model to decide when and how to call it.",
+    )
+    parameters: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="The parameters the function accepts, described as a JSON Schema object.",
+    )
+    strict: Optional[bool] = Field(
+        default=None,
+        description="Whether to enforce strict schema adherence when generating the function call.",
+    )
+
+
+class ChatCompletionTool(BaseModel):
+    """An OpenAI-compatible tool definition (currently always a function tool)."""
+
+    type: Literal["function"] = Field(
+        description="The type of the tool. Currently only 'function' is supported.",
+    )
+    function: FunctionDefinition = Field(description="The function definition for this tool.")
+
+
+class Prompt(ModelEntityBaseModel):
+    """A reusable, stored chat prompt.
+
+    A Prompt captures the messages, declared template variables, optional tool
+    definitions, and default inference parameters needed to invoke a model
+    through the Inference Gateway. The unique identifier is workspace/name.
+    """
+
+    id: str = Field(
+        default_factory=lambda: get_model_id("prompt"),
+        description="Unique identifier for the prompt.",
+    )
+    description: Optional[str] = Field(
+        default=None,
+        description="Optional description of the prompt.",
+        max_length=1000,
+    )
+    messages: List[PromptMessage] = Field(
+        default_factory=list,
+        description="Ordered list of chat messages that make up the prompt.",
+    )
+    input_variables: List[str] = Field(
+        default_factory=list,
+        description="Names of the Jinja2 template variables the prompt expects.",
+    )
+    tools: Optional[List[ChatCompletionTool]] = Field(
+        default=None,
+        description="Optional OpenAI-compatible tool definitions to send with the prompt.",
+    )
+    tool_choice: Optional[Union[str, Dict[str, Any]]] = Field(
+        default=None,
+        description="Controls which (if any) tool is called: 'none', 'auto', 'required', or a named-tool object.",
+    )
+    response_format: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Optional OpenAI-compatible response_format, e.g. a json_schema structured-output spec.",
+    )
+    inference_params: Optional[InferenceParams] = Field(
+        default=None,
+        description="Optional default model and sampling parameters (temperature, top_p, max_tokens, ...).",
+    )
+    tags: List[str] = Field(
+        default_factory=list,
+        description="Optional free-form tags for organizing prompts.",
+    )
+
+
+class PromptSort(StrEnum):
+    """Sort fields for Prompt queries."""
+
+    NAME_ASC = "name"
+    NAME_DESC = "-name"
+    CREATED_AT_ASC = "created_at"
+    CREATED_AT_DESC = "-created_at"
+    UPDATED_AT_ASC = "updated_at"
+    UPDATED_AT_DESC = "-updated_at"
+
+
+class CreatePromptRequest(BaseModel):
+    """Request model for creating a Prompt."""
+
+    name: str = Field(
+        description=f"Name of the prompt. {constants.REGEX_WORD_CHARACTER_DOT_DASH_DESCRIPTION}",
+        max_length=constants.MAX_LENGTH_255,
+        pattern=constants.REGEX_WORD_CHARACTER_DOT_DASH,
+        examples=["support-bot-system", "summarizer"],
+    )
+    project: Optional[str] = Field(
+        default=None,
+        description="The URN of the project associated with this prompt.",
+        max_length=constants.MAX_LENGTH_255,
+        pattern=constants.REGEX_WORD_CHARACTER_DOT_DASH_SLASH,
+    )
+    description: Optional[str] = Field(default=None, max_length=1000)
+    messages: List[PromptMessage] = Field(default_factory=list)
+    input_variables: List[str] = Field(default_factory=list)
+    tools: Optional[List[ChatCompletionTool]] = Field(default=None)
+    tool_choice: Optional[Union[str, Dict[str, Any]]] = Field(default=None)
+    response_format: Optional[Dict[str, Any]] = Field(default=None)
+    inference_params: Optional[InferenceParams] = Field(default=None)
+    tags: Optional[List[str]] = Field(default=None)
+
+
+class UpdatePromptRequest(BaseModel):
+    """Request model for replacing a Prompt's mutable fields (full update).
+
+    The prompt name and workspace come from the URL path and cannot be changed.
+    """
+
+    project: Optional[str] = Field(
+        default=None,
+        description="The URN of the project associated with this prompt.",
+        max_length=constants.MAX_LENGTH_255,
+        pattern=constants.REGEX_WORD_CHARACTER_DOT_DASH_SLASH,
+    )
+    description: Optional[str] = Field(default=None, max_length=1000)
+    messages: List[PromptMessage] = Field(default_factory=list)
+    input_variables: List[str] = Field(default_factory=list)
+    tools: Optional[List[ChatCompletionTool]] = Field(default=None)
+    tool_choice: Optional[Union[str, Dict[str, Any]]] = Field(default=None)
+    response_format: Optional[Dict[str, Any]] = Field(default=None)
+    inference_params: Optional[InferenceParams] = Field(default=None)
+    tags: Optional[List[str]] = Field(default=None)
+
+
+class GetPromptRequest(BaseModel):
+    """Request model for getting a Prompt."""
+
+    workspace: str = Field(
+        description=f"The workspace of the prompt. {constants.REGEX_WORD_CHARACTER_DOT_DASH_DESCRIPTION}",
+        max_length=constants.MAX_LENGTH_255,
+        pattern=constants.REGEX_WORD_CHARACTER_DOT_DASH,
+    )
+    name: str = Field(
+        description=f"Name of the prompt. {constants.REGEX_WORD_CHARACTER_DOT_DASH_DESCRIPTION}",
+        max_length=constants.MAX_LENGTH_255,
+        pattern=constants.REGEX_WORD_CHARACTER_DOT_DASH,
+    )
+
+
+class DeletePromptRequest(BaseModel):
+    """Request model for deleting a Prompt."""
+
+    workspace: str = Field(
+        description=f"The workspace of the prompt. {constants.REGEX_WORD_CHARACTER_DOT_DASH_DESCRIPTION}",
+        max_length=constants.MAX_LENGTH_255,
+        pattern=constants.REGEX_WORD_CHARACTER_DOT_DASH,
+    )
+    name: str = Field(
+        description=f"Name of the prompt. {constants.REGEX_WORD_CHARACTER_DOT_DASH_DESCRIPTION}",
+        max_length=constants.MAX_LENGTH_255,
+        pattern=constants.REGEX_WORD_CHARACTER_DOT_DASH,
+    )
+
+
+# ============================================================================
 # Model Entity Schemas
 # ============================================================================
 
@@ -1021,7 +1219,7 @@ class GetModelEntityRequest(BaseModel):
 class BaseModelFilter(Filter):
     """Filter for base model properties."""
 
-    name: Optional[str] = Field(None, description="Filter by name of the base model.")
+    name: StringFilter | str | None = Field(None, description="Filter by name of the base model.")
 
 
 class FinetuningTypeFilter(Filter):
@@ -1035,7 +1233,7 @@ class FinetuningTypeFilter(Filter):
 class ModelEntityFilter(Filter):
     """Filter for Model Entity queries."""
 
-    name: Optional[str] = Field(None, description="Filter by name.")
+    name: StringFilter | str | None = Field(None, description="Filter by name.")
     project: Optional[str] = Field(None, description="Filter by project name.")
     workspace: Optional[str] = Field(None, description="Filter by workspace id.")
     base_model: Optional[Union[BaseModelFilter, bool, str]] = Field(
@@ -1055,7 +1253,7 @@ class ModelEntityFilter(Filter):
         default=None,
         description="Filter models by whether their deployment config has LoRA enabled.",
     )
-    description: Optional[str] = Field(None, description="Filter by description.")
+    description: StringFilter | str | None = Field(None, description="Filter by description.")
     created_at: Optional[DatetimeFilter] = Field(None, description="Filter entities based on creation date.")
     updated_at: Optional[DatetimeFilter] = Field(None, description="Filter entities based on update date.")
 
@@ -1063,12 +1261,12 @@ class ModelEntityFilter(Filter):
 class AdapterEntityFilter(Filter):
     """Filter for Adapter list queries."""
 
-    name: Optional[str] = Field(None, description="Filter by adapter name.")
-    model: Annotated[Optional[str], map_entity_field("data.model")] = Field(
+    name: StringFilter | str | None = Field(None, description="Filter by adapter name.")
+    model: Annotated[StringFilter | str | None, map_entity_field("data.model")] = Field(
         default=None,
         description="Filter by parent (base) model entity reference in the form {workspace}/{model_name}.",
     )
-    description: Optional[str] = Field(None, description="Filter by description.")
+    description: StringFilter | str | None = Field(None, description="Filter by description.")
     fileset: Optional[str] = Field(
         None,
         description="Filter by fileset reference in the form {workspace}/{fileset_name}.",
@@ -1126,27 +1324,30 @@ class K8sNIMOperatorConfig(BaseModel):
     )
 
 
-class NIMDeployment(BaseModel):
-    """Configuration for NIM-based model deployment."""
+class Engine(str, Enum):
+    """Inference engine selecting the compiler path for a deployment.
+
+    The engine determines what command, image, and env a deployment compiles to.
+    The fields a compiler consumes are not engine-specific; engines take the same
+    inputs (model_spec + executor_config) and differ in what they do with them.
+    """
+
+    NIM = "nim"
+    VLLM = "vllm"
+    # Plain container: run image + args + env, no inference-engine compiler.
+    GENERIC = "generic"
+
+
+class ModelDeploymentConfigModelSpec(BaseModel):
+    """What model to serve and how -- independent of the executor it runs on.
+
+    Executor-invariant facts about the model. The compiler resolves the weight
+    source per engine; serving fields override the model entity spec when set.
+    """
 
     model_type: Optional[ModelType] = Field(default=None, description="Type of model being deployed")
-    lora_enabled: bool = Field(default=False, description="Whether to enable LoRA support")
-    gpu: int = Field(description="Number of GPUs required for the deployment", ge=0)
-    disk_size: str = Field(default="50Gi", description="Disk size for the deployment")
 
-    # Image configuration
-    image_name: Optional[str] = Field(
-        default=None,
-        description="Container image name from NGC. If not specified, defaults to multi-llm",
-        max_length=constants.MAX_LENGTH_255,
-    )
-    image_tag: Optional[str] = Field(
-        default=None,
-        description="Container image tag from NGC",
-        max_length=constants.MAX_LENGTH_255,
-    )
-
-    # Model source configuration
+    # Model source configuration (the compiler resolves these per engine)
     model_namespace: Optional[str] = Field(
         default=None,
         description="Model repository namespace - organization/user namespace as it exists in repo_id.",
@@ -1162,41 +1363,83 @@ class NIMDeployment(BaseModel):
         description="Model revision (branch, tag, or commit). If not specified, parsed from model_name @revision suffix or defaults to 'main'",
         max_length=constants.MAX_LENGTH_255,
     )
-    model_provider: Optional[str] = Field(
-        default=None,
-        description="Model provider: 'hf' for HuggingFace or 'nmp' for NeMo Platform",
-        max_length=constants.MAX_LENGTH_255,
-    )
 
-    # NIM serving configuration (overrides model entity spec if set)
+    # Serving configuration (overrides model entity spec if set)
     chat_template: Optional[str] = Field(
         default=None,
         description="Jinja2 chat template string for the model. Overrides the chat_template from ModelEntity.spec "
-        "if both are set. Used by NIM to format chat completions.",
+        "if both are set. Used by the engine to format chat completions.",
     )
     tool_call_config: Optional[ToolCallConfig] = Field(
         default=None,
-        description="Tool calling configuration for NIM deployments. Overrides tool_call_config from "
+        description="Tool calling configuration for the deployment. Overrides tool_call_config from "
         "ModelEntity.spec if both are set. Controls how the model handles function/tool calling.",
     )
 
-    # Additional configuration
-    additional_envs: Optional[Dict[str, Any]] = Field(
+    # LoRA -- drives the adapter sidecar wiring (see LoRA Hot-Reload)
+    lora_enabled: bool = Field(default=False, description="Whether to enable LoRA support")
+
+
+class ContainerExecutorConfig(BaseModel):
+    """Compute + container settings shared by the docker and k8s executors.
+
+    Both the docker and k8s executors run containers and share this shape.
+    A future non-container executor (e.g. subprocess) would warrant turning
+    ``executor_config`` into a discriminated union.
+    """
+
+    gpu: int = Field(description="Number of GPUs required for the deployment. 0 = CPU-only.", ge=0)
+    disk_size: str = Field(default="50Gi", description="Disk size for the deployment")
+
+    # Image -- None falls back to the engine's configured default
+    # (e.g. default_vllm_image / default_nimservice_image). Required for
+    # engine="generic" (no platform default exists).
+    image_name: Optional[str] = Field(
+        default=None,
+        description="Container image name. If not specified, defaults to the engine's configured image "
+        "(e.g. default_vllm_image / default_nimservice_image). Required for engine='generic'.",
+        max_length=constants.MAX_LENGTH_255,
+    )
+    image_tag: Optional[str] = Field(
+        default=None,
+        description="Container image tag. If not specified, defaults to the engine's configured image tag.",
+        max_length=constants.MAX_LENGTH_255,
+    )
+
+    # Readiness probe -- None falls back to the engine's default health path
+    # (NIM: /v1/health/ready, vLLM: /health). Required for engine="generic"
+    # (no engine default exists for an arbitrary container).
+    health_check_path: Optional[str] = Field(
+        default=None,
+        description="HTTP path used for the container readiness probe. If not specified, defaults to the "
+        "engine's standard health endpoint (e.g. '/v1/health/ready' for NIM, '/health' for vLLM). "
+        "Set this for engine='generic' containers that expose a non-standard health endpoint.",
+        max_length=constants.MAX_LENGTH_255,
+    )
+
+    # Escape hatches -- for anything not surfaced as a first-class field above
+    additional_envs: Optional[Dict[str, str]] = Field(
         default=None, description="Additional environment variables for the deployment"
     )
-
-    # Kubernetes configuration for k8s-nim-operator
-    k8s_nim_operator_config: Optional[K8sNIMOperatorConfig] = Field(
-        default=None,
-        description="Typed Kubernetes configuration for common NIMService Spec fields. "
-        "Applied after defaults but before override_config.",
+    additional_args: list[str] = Field(
+        default_factory=list,
+        description="Raw container/`serve` args appended verbatim to the container's arg vector.",
     )
 
-    # Raw NIMService spec override
+    # Kubernetes configuration for k8s-nim-operator (NIM engine on k8s only).
+    # Carried here so the k8s NIM operator backend keeps working; ignored by the
+    # docker and vLLM paths.
+    k8s_nim_operator_config: Optional[K8sNIMOperatorConfig] = Field(
+        default=None,
+        description="Typed Kubernetes configuration for common NIMService Spec fields (NIM engine on k8s). "
+        "Applied after defaults but before override_config. Ignored by non-NIM engines.",
+    )
+
+    # Raw NIMService spec override (NIM engine on k8s only).
     override_config: Optional[Dict[str, Any]] = Field(
         default=None,
-        description="Raw NIMService spec configuration that takes precedence over generated config. "
-        "Allows end users to provide advanced configuration options directly.",
+        description="Raw NIMService spec configuration that takes precedence over generated config (NIM engine "
+        "on k8s). Allows advanced configuration options directly. Ignored by non-NIM engines.",
     )
 
 
@@ -1241,7 +1484,13 @@ class ModelDeploymentConfig(ModelEntityBaseModel):
         description="Optional description of the deployment configuration",
         max_length=1000,
     )
-    nim_deployment: NIMDeployment = Field(description="Configuration for NIM-based deployment")
+    engine: Engine = Field(description="Inference engine selecting the compiler path (nim/vllm/generic)")
+    model_spec: ModelDeploymentConfigModelSpec = Field(
+        description="What model to serve and how -- independent of the executor it runs on"
+    )
+    executor_config: ContainerExecutorConfig = Field(
+        description="Compute + container settings for the executor the deployment runs on"
+    )
     model_entity_id: Optional[str] = Field(
         default=None,
         description="Optional reference to the base model entity ID for this deployment",
@@ -1318,7 +1567,13 @@ class CreateModelDeploymentConfigRequest(BaseModel):
         description="Optional description of the deployment configuration",
         max_length=1000,
     )
-    nim_deployment: NIMDeployment = Field(description="Configuration for NIM-based deployment")
+    engine: Engine = Field(description="Inference engine selecting the compiler path (nim/vllm/generic)")
+    model_spec: ModelDeploymentConfigModelSpec = Field(
+        description="What model to serve and how -- independent of the executor it runs on"
+    )
+    executor_config: ContainerExecutorConfig = Field(
+        description="Compute + container settings for the executor the deployment runs on"
+    )
     model_entity_id: Optional[str] = Field(
         default=None,
         description="Optional reference to the base model entity ID for this deployment",
@@ -1334,7 +1589,13 @@ class UpdateModelDeploymentConfigRequest(BaseModel):
         description="Optional description of the deployment configuration",
         max_length=1000,
     )
-    nim_deployment: NIMDeployment = Field(description="Configuration for NIM-based deployment")
+    engine: Engine = Field(description="Inference engine selecting the compiler path (nim/vllm/generic)")
+    model_spec: ModelDeploymentConfigModelSpec = Field(
+        description="What model to serve and how -- independent of the executor it runs on"
+    )
+    executor_config: ContainerExecutorConfig = Field(
+        description="Compute + container settings for the executor the deployment runs on"
+    )
     model_entity_id: Optional[str] = Field(
         default=None,
         description="Optional reference to the base model entity ID for this deployment",
@@ -1442,6 +1703,17 @@ class ListModelDeploymentsRequest(BaseModel):
 # ============================================================================
 
 
+class PromptFilter(Filter):
+    """Filter for Prompt queries."""
+
+    workspace: Optional[str] = Field(None, description="Filter by workspace.")
+    project: Optional[str] = Field(None, description="Filter by project URN.")
+    name: Optional[str] = Field(None, description="Filter by name.")
+    description: Optional[str] = Field(None, description="Filter by description.")
+    created_at: Optional[DatetimeFilter] = Field(None, description="Filter by creation date.")
+    updated_at: Optional[DatetimeFilter] = Field(None, description="Filter by update date.")
+
+
 class ModelProviderFilter(Filter):
     """Filter for ModelProvider queries."""
 
@@ -1449,9 +1721,9 @@ class ModelProviderFilter(Filter):
     project: Optional[str] = Field(None, description="Filter by project URN.")
     status: Optional[ModelProviderStatus] = Field(None, description="Filter by status.")
     model_deployment_id: Optional[str] = Field(None, description="Filter by associated deployment ID.")
-    name: Optional[str] = Field(None, description="Filter by name.")
-    description: Optional[str] = Field(None, description="Filter by description.")
-    host_url: Optional[str] = Field(None, description="Filter by host URL.")
+    name: StringFilter | str | None = Field(None, description="Filter by name.")
+    description: StringFilter | str | None = Field(None, description="Filter by description.")
+    host_url: StringFilter | str | None = Field(None, description="Filter by host URL.")
     created_at: Optional[DatetimeFilter] = Field(None, description="Filter by creation date.")
     updated_at: Optional[DatetimeFilter] = Field(None, description="Filter by update date.")
 
@@ -1462,10 +1734,10 @@ class ModelDeploymentConfigFilter(Filter):
     workspace: Optional[str] = Field(None, description="Filter by workspace.")
     project: Optional[str] = Field(None, description="Filter by project URN.")
     model_entity_id: Optional[str] = Field(None, description="Filter by associated model entity ID.")
-    name: Annotated[Optional[str], map_entity_field("data.base_name")] = Field(
+    name: Annotated[StringFilter | str | None, map_entity_field("data.base_name")] = Field(
         None, description="Filter by config name."
     )
-    description: Optional[str] = Field(None, description="Filter by description.")
+    description: StringFilter | str | None = Field(None, description="Filter by description.")
     created_at: Optional[DatetimeFilter] = Field(None, description="Filter by creation date.")
     updated_at: Optional[DatetimeFilter] = Field(None, description="Filter by update date.")
 
@@ -1476,11 +1748,11 @@ class ModelDeploymentFilter(Filter):
     workspace: Optional[str] = Field(None, description="Filter by workspace.")
     project: Optional[str] = Field(None, description="Filter by project URN.")
     status: Optional[ModelDeploymentStatus] = Field(None, description="Filter by status.")
-    config: Optional[str] = Field(None, description="Filter by config name.")
+    config: StringFilter | str | None = Field(None, description="Filter by config name.")
     model_provider_id: Optional[str] = Field(None, description="Filter by model provider ID.")
-    name: Annotated[Optional[str], map_entity_field("data.base_name")] = Field(
+    name: Annotated[StringFilter | str | None, map_entity_field("data.base_name")] = Field(
         None, description="Filter by deployment name."
     )
-    status_message: Optional[str] = Field(None, description="Filter by status message.")
+    status_message: StringFilter | str | None = Field(None, description="Filter by status message.")
     created_at: Optional[DatetimeFilter] = Field(None, description="Filter by creation date.")
     updated_at: Optional[DatetimeFilter] = Field(None, description="Filter by update date.")

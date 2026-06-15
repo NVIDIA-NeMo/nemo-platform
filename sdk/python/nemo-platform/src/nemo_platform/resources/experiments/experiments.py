@@ -24,6 +24,14 @@ import httpx
 
 from ..._types import Body, Omit, Query, Headers, NoneType, NotGiven, omit, not_given
 from ..._utils import path_template, maybe_transform, async_maybe_transform
+from .sessions import (
+    SessionsResource,
+    AsyncSessionsResource,
+    SessionsResourceWithRawResponse,
+    AsyncSessionsResourceWithRawResponse,
+    SessionsResourceWithStreamingResponse,
+    AsyncSessionsResourceWithStreamingResponse,
+)
 from ..._compat import cached_property
 from ..._resource import SyncAPIResource, AsyncAPIResource
 from ..._response import (
@@ -48,6 +56,10 @@ __all__ = ["ExperimentsResource", "AsyncExperimentsResource"]
 
 class ExperimentsResource(SyncAPIResource):
     @cached_property
+    def sessions(self) -> SessionsResource:
+        return SessionsResource(self._client)
+
+    @cached_property
     def with_raw_response(self) -> ExperimentsResourceWithRawResponse:
         """
         This property can be used as a prefix for any HTTP method call to return
@@ -70,13 +82,11 @@ class ExperimentsResource(SyncAPIResource):
         self,
         *,
         workspace: str | None = None,
-        agent_name: str,
-        agent_version: str,
         dataset_name: str,
+        experiment_group_id: str,
         name: str,
         dataset_version: str | Omit = omit,
         description: str | Omit = omit,
-        experiment_group_id: str | Omit = omit,
         metadata: Dict[str, object] | Omit = omit,
         source_link: str | Omit = omit,
         summary: str | Omit = omit,
@@ -92,20 +102,16 @@ class ExperimentsResource(SyncAPIResource):
         Create Experiment
 
         Args:
-          agent_name: Name of the agent under test.
-
-          agent_version: Version of the agent under test.
-
           dataset_name: Producer-supplied dataset name.
+
+          experiment_group_id: Entity id of the owning ExperimentGroup. Required — the group must already
+              exist.
 
           name: Producer-supplied, workspace-unique experiment id.
 
           dataset_version: Producer-supplied dataset version.
 
           description: Human-readable description.
-
-          experiment_group_id: Entity id of the owning ExperimentGroup; optional. Soft reference, not
-              validated.
 
           metadata: Free-form producer metadata.
 
@@ -134,13 +140,11 @@ class ExperimentsResource(SyncAPIResource):
                 path_template("/apis/intake/v2/workspaces/{workspace}/experiments", workspace=workspace),
                 body=maybe_transform(
                     {
-                        "agent_name": agent_name,
-                        "agent_version": agent_version,
                         "dataset_name": dataset_name,
+                        "experiment_group_id": experiment_group_id,
                         "name": name,
                         "dataset_version": dataset_version,
                         "description": description,
-                        "experiment_group_id": experiment_group_id,
                         "metadata": metadata,
                         "source_link": source_link,
                         "summary": summary,
@@ -200,13 +204,11 @@ class ExperimentsResource(SyncAPIResource):
         path_name: str,
         *,
         workspace: str | None = None,
-        agent_name: str,
-        agent_version: str,
         dataset_name: str,
+        experiment_group_id: str,
         body_name: str,
         dataset_version: str | Omit = omit,
         description: str | Omit = omit,
-        experiment_group_id: str | Omit = omit,
         metadata: Dict[str, object] | Omit = omit,
         source_link: str | Omit = omit,
         summary: str | Omit = omit,
@@ -221,20 +223,16 @@ class ExperimentsResource(SyncAPIResource):
         Update Experiment
 
         Args:
-          agent_name: Name of the agent under test.
-
-          agent_version: Version of the agent under test.
-
           dataset_name: Producer-supplied dataset name.
+
+          experiment_group_id: Entity id of the owning ExperimentGroup. Required — the group must already
+              exist.
 
           body_name: Producer-supplied, workspace-unique experiment id.
 
           dataset_version: Producer-supplied dataset version.
 
           description: Human-readable description.
-
-          experiment_group_id: Entity id of the owning ExperimentGroup; optional. Soft reference, not
-              validated.
 
           metadata: Free-form producer metadata.
 
@@ -264,13 +262,11 @@ class ExperimentsResource(SyncAPIResource):
             ),
             body=maybe_transform(
                 {
-                    "agent_name": agent_name,
-                    "agent_version": agent_version,
                     "dataset_name": dataset_name,
+                    "experiment_group_id": experiment_group_id,
                     "body_name": body_name,
                     "dataset_version": dataset_version,
                     "description": description,
-                    "experiment_group_id": experiment_group_id,
                     "metadata": metadata,
                     "source_link": source_link,
                     "summary": summary,
@@ -302,7 +298,9 @@ class ExperimentsResource(SyncAPIResource):
         List Experiments
 
         Args:
-          filter: Filter experiments by name, experiment_group_id, agent_name, and dataset_name.
+          filter: Filter experiments by name, experiment_group_id, dataset_name, dataset_version,
+              created_by, created_at, or updated_at. Pass is_deleted=true to return only
+              soft-deleted experiments; omit to see only live ones.
 
           page: Page number.
 
@@ -385,6 +383,10 @@ class ExperimentsResource(SyncAPIResource):
 
 class AsyncExperimentsResource(AsyncAPIResource):
     @cached_property
+    def sessions(self) -> AsyncSessionsResource:
+        return AsyncSessionsResource(self._client)
+
+    @cached_property
     def with_raw_response(self) -> AsyncExperimentsResourceWithRawResponse:
         """
         This property can be used as a prefix for any HTTP method call to return
@@ -407,13 +409,11 @@ class AsyncExperimentsResource(AsyncAPIResource):
         self,
         *,
         workspace: str | None = None,
-        agent_name: str,
-        agent_version: str,
         dataset_name: str,
+        experiment_group_id: str,
         name: str,
         dataset_version: str | Omit = omit,
         description: str | Omit = omit,
-        experiment_group_id: str | Omit = omit,
         metadata: Dict[str, object] | Omit = omit,
         source_link: str | Omit = omit,
         summary: str | Omit = omit,
@@ -429,20 +429,16 @@ class AsyncExperimentsResource(AsyncAPIResource):
         Create Experiment
 
         Args:
-          agent_name: Name of the agent under test.
-
-          agent_version: Version of the agent under test.
-
           dataset_name: Producer-supplied dataset name.
+
+          experiment_group_id: Entity id of the owning ExperimentGroup. Required — the group must already
+              exist.
 
           name: Producer-supplied, workspace-unique experiment id.
 
           dataset_version: Producer-supplied dataset version.
 
           description: Human-readable description.
-
-          experiment_group_id: Entity id of the owning ExperimentGroup; optional. Soft reference, not
-              validated.
 
           metadata: Free-form producer metadata.
 
@@ -471,13 +467,11 @@ class AsyncExperimentsResource(AsyncAPIResource):
                 path_template("/apis/intake/v2/workspaces/{workspace}/experiments", workspace=workspace),
                 body=await async_maybe_transform(
                     {
-                        "agent_name": agent_name,
-                        "agent_version": agent_version,
                         "dataset_name": dataset_name,
+                        "experiment_group_id": experiment_group_id,
                         "name": name,
                         "dataset_version": dataset_version,
                         "description": description,
-                        "experiment_group_id": experiment_group_id,
                         "metadata": metadata,
                         "source_link": source_link,
                         "summary": summary,
@@ -537,13 +531,11 @@ class AsyncExperimentsResource(AsyncAPIResource):
         path_name: str,
         *,
         workspace: str | None = None,
-        agent_name: str,
-        agent_version: str,
         dataset_name: str,
+        experiment_group_id: str,
         body_name: str,
         dataset_version: str | Omit = omit,
         description: str | Omit = omit,
-        experiment_group_id: str | Omit = omit,
         metadata: Dict[str, object] | Omit = omit,
         source_link: str | Omit = omit,
         summary: str | Omit = omit,
@@ -558,20 +550,16 @@ class AsyncExperimentsResource(AsyncAPIResource):
         Update Experiment
 
         Args:
-          agent_name: Name of the agent under test.
-
-          agent_version: Version of the agent under test.
-
           dataset_name: Producer-supplied dataset name.
+
+          experiment_group_id: Entity id of the owning ExperimentGroup. Required — the group must already
+              exist.
 
           body_name: Producer-supplied, workspace-unique experiment id.
 
           dataset_version: Producer-supplied dataset version.
 
           description: Human-readable description.
-
-          experiment_group_id: Entity id of the owning ExperimentGroup; optional. Soft reference, not
-              validated.
 
           metadata: Free-form producer metadata.
 
@@ -601,13 +589,11 @@ class AsyncExperimentsResource(AsyncAPIResource):
             ),
             body=await async_maybe_transform(
                 {
-                    "agent_name": agent_name,
-                    "agent_version": agent_version,
                     "dataset_name": dataset_name,
+                    "experiment_group_id": experiment_group_id,
                     "body_name": body_name,
                     "dataset_version": dataset_version,
                     "description": description,
-                    "experiment_group_id": experiment_group_id,
                     "metadata": metadata,
                     "source_link": source_link,
                     "summary": summary,
@@ -639,7 +625,9 @@ class AsyncExperimentsResource(AsyncAPIResource):
         List Experiments
 
         Args:
-          filter: Filter experiments by name, experiment_group_id, agent_name, and dataset_name.
+          filter: Filter experiments by name, experiment_group_id, dataset_name, dataset_version,
+              created_by, created_at, or updated_at. Pass is_deleted=true to return only
+              soft-deleted experiments; omit to see only live ones.
 
           page: Page number.
 
@@ -740,6 +728,10 @@ class ExperimentsResourceWithRawResponse:
             experiments.delete,
         )
 
+    @cached_property
+    def sessions(self) -> SessionsResourceWithRawResponse:
+        return SessionsResourceWithRawResponse(self._experiments.sessions)
+
 
 class AsyncExperimentsResourceWithRawResponse:
     def __init__(self, experiments: AsyncExperimentsResource) -> None:
@@ -760,6 +752,10 @@ class AsyncExperimentsResourceWithRawResponse:
         self.delete = async_to_raw_response_wrapper(
             experiments.delete,
         )
+
+    @cached_property
+    def sessions(self) -> AsyncSessionsResourceWithRawResponse:
+        return AsyncSessionsResourceWithRawResponse(self._experiments.sessions)
 
 
 class ExperimentsResourceWithStreamingResponse:
@@ -782,6 +778,10 @@ class ExperimentsResourceWithStreamingResponse:
             experiments.delete,
         )
 
+    @cached_property
+    def sessions(self) -> SessionsResourceWithStreamingResponse:
+        return SessionsResourceWithStreamingResponse(self._experiments.sessions)
+
 
 class AsyncExperimentsResourceWithStreamingResponse:
     def __init__(self, experiments: AsyncExperimentsResource) -> None:
@@ -802,3 +802,7 @@ class AsyncExperimentsResourceWithStreamingResponse:
         self.delete = async_to_streamed_response_wrapper(
             experiments.delete,
         )
+
+    @cached_property
+    def sessions(self) -> AsyncSessionsResourceWithStreamingResponse:
+        return AsyncSessionsResourceWithStreamingResponse(self._experiments.sessions)

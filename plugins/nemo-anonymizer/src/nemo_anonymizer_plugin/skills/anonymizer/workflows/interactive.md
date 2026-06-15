@@ -2,7 +2,7 @@
 
 This is an interactive, iterative anonymization design process. Do not disengage from the loop unless the user says they are satisfied.
 
-Source of truth for this workflow: `docs/anonymizer/quickstart.md`, `docs/anonymizer/tutorials/preview.md`, and `docs/anonymizer/tutorials/run.md`. Defer to them if the CLI flags or capabilities here look out of date.
+Source of truth for this workflow: `docs/anonymizer/tutorials/index.md`, `docs/anonymizer/tutorials/preview.md`, and `docs/anonymizer/tutorials/run.md`. Defer to them if the CLI flags or capabilities here look out of date.
 
 1. **Resolve CLI command** — Run `command -v nemo 2>/dev/null || (test -x .venv/bin/nemo && realpath .venv/bin/nemo) || echo CLI_NOT_FOUND`.
    - If the output is a path, use `<path> anonymizer` as the command prefix for all `nemo anonymizer …` invocations in this workflow.

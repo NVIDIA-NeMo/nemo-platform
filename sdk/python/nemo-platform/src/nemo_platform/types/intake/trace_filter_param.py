@@ -29,23 +29,8 @@ class TraceFilterParam(TypedDict, total=False):
     id: str
     """Filter by canonical Intake trace id."""
 
-    dataset_id: str
-    """Filter by root-span dataset id."""
-
-    dataset_name: str
-    """Filter by root-span dataset name."""
-
-    dataset_version: str
-    """Filter by root-span dataset version."""
-
-    evaluation_id: str
-    """Filter by root-span evaluation id."""
-
-    evaluation_run_id: str
-    """Filter by root-span evaluation run id."""
-
-    evaluation_sha: str
-    """Filter by root-span evaluation sha."""
+    experiment_id: str
+    """Filter by root-span experiment id."""
 
     session_id: str
     """Filter by session id."""
@@ -54,7 +39,7 @@ class TraceFilterParam(TypedDict, total=False):
     """Filter by root span start timestamp."""
 
     status: SpanStatus
-    """Filter by rolled-up trace status."""
+    """Filter by root span status."""
 
     test_case_id: str
-    """Filter by root-span dataset test case id."""
+    """Filter by root-span experiment test case id."""

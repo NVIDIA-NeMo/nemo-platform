@@ -27,10 +27,20 @@ import pandas as pd
 from datasets import Dataset, DatasetDict, load_dataset
 from nemo_platform import NeMoPlatform
 from nemo_platform.filesets import parse_fileset_ref
+from nemo_platform_plugin.config import get_platform_config
+from nemo_platform_plugin.jobs.constants import (
+    DEFAULT_TASK_STORAGE_PATH,
+    EPHEMERAL_TASK_STORAGE_PATH_ENVVAR,
+    NEMO_JOB_ID_ENVVAR,
+    NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR,
+    NEMO_JOB_WORKSPACE_ENVVAR,
+)
+from nemo_platform_plugin.jobs.file_manager import FilesetFileManager
+from nemo_platform_plugin.sdk_provider import get_platform_sdk
 from nemo_safe_synthesizer.config.internal_results import SafeSynthesizerResults
 from nemo_safe_synthesizer.observability import initialize_observability
 from nemo_safe_synthesizer.sdk.library_builder import SafeSynthesizer
-from nemo_safe_synthesizer_plugin.api.v2.jobs.endpoints import (
+from nemo_safe_synthesizer_plugin.job_config import (
     SafeSynthesizerJobConfig,
     parse_pretrained_model_job_ref,
 )
@@ -42,16 +52,6 @@ from nemo_safe_synthesizer_plugin.tasks.safe_synthesizer.adapter_resolution impo
 from nemo_safe_synthesizer_plugin.tasks.safe_synthesizer.jsonl_loader import load_jsonl_file
 from nemo_safe_synthesizer_plugin.tasks.safe_synthesizer.logging_setup import configure_logging
 from nemo_safe_synthesizer_plugin.tasks.safe_synthesizer.model_init import init_models_sync
-from nmp.common.config import get_platform_config
-from nmp.common.jobs.constants import (
-    DEFAULT_TASK_STORAGE_PATH,
-    EPHEMERAL_TASK_STORAGE_PATH_ENVVAR,
-    NEMO_JOB_ID_ENVVAR,
-    NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR,
-    NEMO_JOB_WORKSPACE_ENVVAR,
-)
-from nmp.common.jobs.file_manager import FilesetFileManager
-from nmp.common.sdk_factory import get_platform_sdk
 
 configure_logging(os.environ.get("LOG_LEVEL", "INFO"))
 
@@ -264,7 +264,7 @@ def _resolve_pretrained_model(
 
 
 def _setup_classify_endpoint():
-    """Set up the NIM_ENDPOINT_URL for column classification from platform env vars."""
+    """Set up upstream Safe Synthesizer PII classification env vars from platform env vars."""
     endpoint_path = os.environ.get("CLASSIFY_LLM_ENDPOINT_PATH")
     if endpoint_path:
         models_url = os.environ.get("NMP_MODELS_URL")
@@ -275,7 +275,8 @@ def _setup_classify_endpoint():
             )
             return
         full_url = models_url.rstrip("/") + endpoint_path
-        os.environ["NIM_ENDPOINT_URL"] = full_url
+        os.environ["NSS_INFERENCE_ENDPOINT"] = full_url
+        os.environ.setdefault("NSS_INFERENCE_KEY", "not-needed")
         logger.info("Configured column classification endpoint: %s", full_url)
 
 

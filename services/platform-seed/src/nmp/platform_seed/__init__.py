@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Platform seeding: guardrails configs, evaluator system entities, data designer filesets."""
+"""Platform seeding for built-in and plugin-contributed seed jobs."""
 
 from nmp.platform_seed.config import PlatformSeedConfig
 from nmp.platform_seed.tasks.seed import (

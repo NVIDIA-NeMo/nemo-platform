@@ -22,14 +22,19 @@ from typing_extensions import TypeAlias, TypedDict
 
 from ..shared.finetuning_type import FinetuningType
 from .base_model_filter_param import BaseModelFilterParam
+from ..shared_params.string_filter import StringFilter
 from .finetuning_type_filter_param import FinetuningTypeFilterParam
 from ..shared_params.datetime_filter import DatetimeFilter
 
-__all__ = ["ModelEntityFilterParam", "Adapters", "BaseModel"]
+__all__ = ["ModelEntityFilterParam", "Adapters", "BaseModel", "Description", "Name"]
 
 Adapters: TypeAlias = Union[FinetuningTypeFilterParam, bool]
 
 BaseModel: TypeAlias = Union[BaseModelFilterParam, bool, str]
+
+Description: TypeAlias = Union[StringFilter, str]
+
+Name: TypeAlias = Union[StringFilter, str]
 
 
 class ModelEntityFilterParam(TypedDict, total=False):
@@ -47,7 +52,7 @@ class ModelEntityFilterParam(TypedDict, total=False):
     created_at: DatetimeFilter
     """Filter entities based on creation date."""
 
-    description: str
+    description: Description
     """Filter by description."""
 
     finetuning_type: Union[FinetuningType, bool]
@@ -56,7 +61,7 @@ class ModelEntityFilterParam(TypedDict, total=False):
     lora_enabled: bool
     """Filter models by whether their deployment config has LoRA enabled."""
 
-    name: str
+    name: Name
     """Filter by name."""
 
     project: str

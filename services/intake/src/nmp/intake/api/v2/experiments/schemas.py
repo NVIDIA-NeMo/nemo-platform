@@ -12,8 +12,10 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from nmp.common.entities.values import Filter
+from nmp.common.entities.values import DatetimeFilter, Filter
 from nmp.intake.entities.experiments import Experiment, ExperimentGroup
+from nmp.intake.spans.domain import SpanStatus
+from nmp.intake.spans.experiment_session_repository import ExperimentSessionRow
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field
 
 
@@ -32,12 +34,9 @@ class ExperimentRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(description="Producer-supplied, workspace-unique experiment id.")
-    experiment_group_id: str | None = Field(
-        default=None,
-        description="Entity id of the owning ExperimentGroup; optional. Soft reference, not validated.",
+    experiment_group_id: str = Field(
+        description="Entity id of the owning ExperimentGroup. Required — the group must already exist.",
     )
-    agent_name: str = Field(description="Name of the agent under test.")
-    agent_version: str = Field(description="Version of the agent under test.")
     dataset_name: str = Field(description="Producer-supplied dataset name.")
     dataset_version: str | None = Field(default=None, description="Producer-supplied dataset version.")
     source_link: AnyUrl | None = Field(default=None, description="Optional URL for the source experiment.")
@@ -55,6 +54,10 @@ class ExperimentGroupResponse(BaseModel):
     description: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    experiment_count: int = Field(
+        default=0,
+        description="Number of live (non-soft-deleted) experiments in this group.",
+    )
 
     @classmethod
     def from_entity(cls, entity: ExperimentGroup) -> ExperimentGroupResponse:
@@ -86,12 +89,9 @@ class ExperimentResponse(BaseModel):
     id: str
     name: str
     workspace: str
-    experiment_group_id: str | None = Field(
-        default=None,
-        description="Entity id of the owning ExperimentGroup; null when ungrouped. Soft reference, not validated.",
+    experiment_group_id: str = Field(
+        description="Entity id of the owning ExperimentGroup. Required for every Experiment.",
     )
-    agent_name: str
-    agent_version: str
     dataset_name: str
     dataset_version: str | None = None
     source_link: AnyUrl | None = None
@@ -105,6 +105,16 @@ class ExperimentResponse(BaseModel):
     model_names: list[str] = Field(
         default_factory=list,
         description="Distinct model names observed across ingested sessions for this experiment.",
+        json_schema_extra={"uniqueItems": True},
+    )
+    agent_names: list[str] = Field(
+        default_factory=list,
+        description="Distinct agent names observed across ingested sessions for this experiment.",
+        json_schema_extra={"uniqueItems": True},
+    )
+    agent_versions: list[str] = Field(
+        default_factory=list,
+        description="Distinct agent versions observed across ingested sessions for this experiment.",
         json_schema_extra={"uniqueItems": True},
     )
     aggregate_scores: dict[str, EvaluatorAggregate] | None = None
@@ -122,8 +132,6 @@ class ExperimentResponse(BaseModel):
             name=entity.name,
             workspace=entity.workspace,
             experiment_group_id=entity.experiment_group_id,
-            agent_name=entity.agent_name,
-            agent_version=entity.agent_version,
             dataset_name=entity.dataset_name,
             dataset_version=entity.dataset_version,
             source_link=entity.source_link,
@@ -139,6 +147,10 @@ class ExperimentGroupFilter(Filter):
     """Filter for listing ExperimentGroups."""
 
     name: str | None = Field(default=None, description="Filter groups by name.")
+    is_deleted: bool | None = Field(
+        default=None,
+        description="When true, returns only soft-deleted groups. Omit (or false) to see only live groups.",
+    )
 
 
 class ExperimentFilter(Filter):
@@ -146,5 +158,86 @@ class ExperimentFilter(Filter):
 
     name: str | None = Field(default=None, description="Filter experiments by name.")
     experiment_group_id: str | None = Field(default=None, description="Filter experiments by owning group id.")
-    agent_name: str | None = Field(default=None, description="Filter experiments by agent name.")
     dataset_name: str | None = Field(default=None, description="Filter experiments by dataset name.")
+    dataset_version: str | None = Field(default=None, description="Filter experiments by dataset version.")
+    created_by: str | None = Field(default=None, description="Filter experiments by the principal that created them.")
+    created_at: DatetimeFilter | None = Field(
+        default=None,
+        description="Filter experiments by creation timestamp; supports `$gte` and `$lte` for ranges.",
+    )
+    updated_at: DatetimeFilter | None = Field(
+        default=None,
+        description="Filter experiments by last-updated timestamp; supports `$gte` and `$lte` for ranges.",
+    )
+    is_deleted: bool | None = Field(
+        default=None,
+        description=("When true, returns only soft-deleted experiments. Omit (or false) to see only live experiments."),
+    )
+
+
+class ExperimentSessionFilter(Filter):
+    """Filter for listing ExperimentSessions."""
+
+    test_case_id: str | None = Field(default=None, description="Filter by producer-supplied test case id.")
+    status: str | None = Field(
+        default=None, description="Filter by root-span status (success, error, cancelled, unknown)."
+    )
+
+
+class ExperimentSessionResponse(BaseModel):
+    """One ingested session of an Experiment — a single test case execution.
+
+    Hydrated from ClickHouse at read time by reading root/session membership from
+    ``trace_index`` and joining page-bounded span/evaluator rollups.
+    """
+
+    workspace: str
+    experiment_name: str
+    session_id: str
+    test_case_id: str | None = Field(
+        default=None,
+        description="Producer-supplied test case identifier; null when the producer did not set one.",
+    )
+    trace_id: str
+    root_span_id: str
+
+    started_at: datetime
+    ended_at: datetime | None = None
+    latency_ms: float | None = None
+
+    status: SpanStatus = Field(description="Root-span status: success, error, cancelled, or unknown.")
+    input: str | None = Field(default=None, description="Root-span input text (the query).")
+
+    input_tokens: int | None = Field(default=None, description="Sum of input tokens across this session's spans.")
+    output_tokens: int | None = Field(default=None, description="Sum of output tokens across this session's spans.")
+    cached_tokens: int | None = Field(default=None, description="Sum of cached tokens across this session's spans.")
+    cost_total_usd: float | None = Field(default=None, description="Sum of cost across this session's spans.")
+
+    evaluator_scores: dict[str, float] = Field(
+        default_factory=dict,
+        description=(
+            "Per-evaluator session-mean score. Includes NUMERIC and BOOLEAN evaluator results only; "
+            "text/categorical results are omitted."
+        ),
+    )
+
+    @classmethod
+    def from_row(cls, row: ExperimentSessionRow) -> ExperimentSessionResponse:
+        return cls(
+            workspace=row.workspace,
+            experiment_name=row.experiment_name,
+            session_id=row.session_id,
+            test_case_id=row.test_case_id,
+            trace_id=row.trace_id,
+            root_span_id=row.root_span_id,
+            started_at=row.started_at,
+            ended_at=row.ended_at,
+            latency_ms=row.latency_ms,
+            status=row.status,
+            input=row.input,
+            input_tokens=row.input_tokens,
+            output_tokens=row.output_tokens,
+            cached_tokens=row.cached_tokens,
+            cost_total_usd=row.cost_total_usd,
+            evaluator_scores=row.evaluator_scores,
+        )

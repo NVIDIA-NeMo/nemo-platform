@@ -46,7 +46,9 @@ def _entity_to_schema(entity: ModelDeploymentConfigEntity) -> ModelDeploymentCon
         workspace=entity.workspace,
         project=entity.project,
         description=entity.description,
-        nim_deployment=entity.nim_deployment,
+        engine=entity.engine,
+        model_spec=entity.model_spec,
+        executor_config=entity.executor_config,
         model_entity_id=entity.model_entity_id,
         entity_version=entity.entity_version,
         created_at=entity.created_at,
@@ -105,12 +107,12 @@ class ModelDeploymentConfigService:
         if not request.model_entity_id:
             try:
                 model_workspace, model_name, _ = parse_model_name_revision(
-                    model_namespace=request.nim_deployment.model_namespace,
-                    model_name=request.nim_deployment.model_name,
-                    model_revision=request.nim_deployment.model_revision,
+                    model_namespace=request.model_spec.model_namespace,
+                    model_name=request.model_spec.model_name,
+                    model_revision=request.model_spec.model_revision,
                 )
                 if not model_name:
-                    logger.warning("No model name found in the nim_deployment skipping the model entity id set")
+                    logger.warning("No model name found in the model_spec, skipping the model entity id set")
                 else:
                     me: ModelEntity = await self.entity_client.get(
                         workspace=model_workspace,
@@ -120,7 +122,7 @@ class ModelDeploymentConfigService:
                     request.model_entity_id = f"{me.workspace}/{me.name}"
 
             except (EntityNotFoundError, PermissionDeniedError) as err:
-                logger.warning(f"Failed to fetch the model entity referenced in the nim_deployment {err}")
+                logger.warning(f"Failed to fetch the model entity referenced in the model_spec {err}")
 
         # Create the entity with versioned name
         entity = ModelDeploymentConfigEntity(
@@ -130,7 +132,9 @@ class ModelDeploymentConfigService:
             entity_version=1,
             project=request.project,
             description=request.description,
-            nim_deployment=request.nim_deployment,
+            engine=request.engine,
+            model_spec=request.model_spec,
+            executor_config=request.executor_config,
             model_entity_id=request.model_entity_id,
         )
 
@@ -261,7 +265,9 @@ class ModelDeploymentConfigService:
             entity_version=new_version,
             project=current.project,  # Preserve project
             description=request.description,
-            nim_deployment=request.nim_deployment,
+            engine=request.engine,
+            model_spec=request.model_spec,
+            executor_config=request.executor_config,
             model_entity_id=request.model_entity_id,
         )
 

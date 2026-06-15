@@ -211,3 +211,59 @@ class TestDeleteConfig:
         mock_entity_client.delete = AsyncMock(side_effect=NemoEntityNotFoundError("nope"))
         resp = client.delete("/apis/auditor/v2/workspaces/default/configs/missing")
         assert resp.status_code == 404
+
+
+class TestListConfigsFiltering:
+    def test_filter_by_description_forwards_filter_obj(self, client, mock_entity_client) -> None:
+        mock_entity_client.list = AsyncMock(return_value=_list_response([_make_config("a", description="prod")]))
+        resp = client.get("/apis/auditor/v2/workspaces/default/configs?filter[description]=prod")
+        assert resp.status_code == 200, resp.text
+        kwargs = mock_entity_client.list.await_args.kwargs
+        assert kwargs["filter_obj"] == {"description": "prod"}
+        body = resp.json()
+        assert body["filter"] == {"description": "prod"}
+        assert [c["name"] for c in body["data"]] == ["a"]
+
+    def test_filter_by_project_narrows(self, client, mock_entity_client) -> None:
+        mock_entity_client.list = AsyncMock(return_value=_list_response([]))
+        resp = client.get("/apis/auditor/v2/workspaces/default/configs?filter[project]=team-a")
+        assert resp.status_code == 200, resp.text
+        assert mock_entity_client.list.await_args.kwargs["filter_obj"] == {"project": "team-a"}
+
+    def test_filter_created_at_range_parses_gte_lte(self, client, mock_entity_client) -> None:
+        mock_entity_client.list = AsyncMock(return_value=_list_response([]))
+        resp = client.get(
+            "/apis/auditor/v2/workspaces/default/configs"
+            "?filter[created_at][$gte]=2024-01-01T00:00:00Z"
+            "&filter[created_at][$lte]=2024-12-31T00:00:00Z"
+        )
+        assert resp.status_code == 200, resp.text
+        filter_obj = mock_entity_client.list.await_args.kwargs["filter_obj"]
+        assert set(filter_obj["created_at"].keys()) == {"$gte", "$lte"}
+        assert filter_obj["created_at"]["$gte"].startswith("2024-01-01")
+        assert filter_obj["created_at"]["$lte"].startswith("2024-12-31")
+
+    def test_unknown_filter_key_returns_422(self, client, mock_entity_client) -> None:
+        mock_entity_client.list = AsyncMock(return_value=_list_response([]))
+        resp = client.get("/apis/auditor/v2/workspaces/default/configs?filter[bogus]=x")
+        assert resp.status_code == 422
+
+    def test_empty_filter_forwards_none(self, client, mock_entity_client) -> None:
+        mock_entity_client.list = AsyncMock(return_value=_list_response([_make_config("a"), _make_config("b")]))
+        resp = client.get("/apis/auditor/v2/workspaces/default/configs")
+        assert resp.status_code == 200, resp.text
+        kwargs = mock_entity_client.list.await_args.kwargs
+        assert kwargs["filter_obj"] is None
+        body = resp.json()
+        assert [c["name"] for c in body["data"]] == ["a", "b"]
+        assert body["filter"] is None
+
+    def test_response_still_has_data_pagination_sort(self, client, mock_entity_client) -> None:
+        mock_entity_client.list = AsyncMock(return_value=_list_response([_make_config("a")]))
+        resp = client.get("/apis/auditor/v2/workspaces/default/configs?filter[description]=prod&sort=name")
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert "data" in body
+        assert "pagination" in body
+        assert body["sort"] == "name"
+        assert body["filter"] == {"description": "prod"}

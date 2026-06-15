@@ -1,0 +1,15 @@
+# syntax=docker/dockerfile:1
+
+# require >= 1.25.8 for CVE-2026-25679 and others
+FROM golang:1.25.8 AS build
+COPY ./services/core/jobs/jobs-launcher /app/services/jobs-launcher
+WORKDIR /app/services/jobs-launcher
+RUN go mod download
+RUN CGO_ENABLED=0 go build -a -installsuffix cgo -ldflags="-s -w -extldflags '-static'" -trimpath -o jobs-launcher ./main.go
+# Verify the binary works
+RUN ./jobs-launcher help
+
+FROM scratch AS artifacts
+WORKDIR /artifacts
+COPY --from=build /app/services/jobs-launcher/jobs-launcher .
+# Outputs the static binary to /artifacts/jobs-launcher

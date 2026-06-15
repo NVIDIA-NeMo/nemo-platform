@@ -130,4 +130,4 @@ The wheel gets thinner, the dependency metadata stays correct, and `pip install 
 
 ## Other vendoring (`make vendor`)
 
-The `make vendor` command also handles SDK client extensions (`nemo_platform_ext`, `data_designer_sdk`, `models`, `filesets`, `safe_synthesizer_sdk`, `nemo_evaluator_sdk`). These are **not** bundled via `[tool.bundle-package]` — they use the older `[tool.vendor-package]` mechanism which copies source files into the SDK tree with import rewriting. This is separate from the bundling described above and is only relevant to SDK client-side extensions.
+The `make vendor` command also handles SDK client extensions (`nemo_platform_ext`, `data_designer_sdk`, `models`, `filesets`, `nemo_evaluator_sdk`). These are **not** bundled via `[tool.bundle-package]` — they use the older `[tool.vendor-package]` mechanism which copies source files into the SDK tree with import rewriting. This is separate from the bundling described above and is only relevant to SDK client-side extensions.

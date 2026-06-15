@@ -74,7 +74,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Generic, Optional, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, RootModel, model_validator
 
 __all__ = [
     "DatetimeFilter",
@@ -83,6 +83,8 @@ __all__ = [
     "NemoListResponse",
     "Page",
     "PaginationData",
+    "SecretRef",
+    "StringFilter",
     "Value",
 ]
 
@@ -97,6 +99,19 @@ class Value(BaseModel):
     """
 
     model_config = {"arbitrary_types_allowed": True, "protected_namespaces": ()}
+
+
+class SecretRef(RootModel):
+    """Reference to a platform secret by name."""
+
+    root: str = Field(
+        description="Reference to a secret. Format: 'secret_name' (uses request workspace) or 'workspace/secret_name' (explicit workspace).",
+        pattern=r"^[a-z0-9_-]+(/[a-z0-9_-]+)?$",
+        examples=[
+            "my-secret",
+            "my-workspace/my-secret",
+        ],
+    )
 
 
 class PaginationData(Value):
@@ -207,6 +222,39 @@ class DatetimeFilter(Filter):
         alias="$lte",
         serialization_alias="$lte",
         description="Filter for results less than or equal to this datetime.",
+    )
+
+    model_config = ConfigDict(
+        extra="forbid",
+        protected_namespaces=(),
+        populate_by_name=True,
+    )
+
+
+class StringFilter(Filter):
+    eq: Optional[str] = Field(
+        None,
+        alias="$eq",
+        serialization_alias="$eq",
+        description="Filter for results equal to this value.",
+    )
+    like: Optional[str] = Field(
+        None,
+        alias="$like",
+        serialization_alias="$like",
+        description="Filter for results matching this pattern.",
+    )
+    in_: Optional[list[str]] = Field(
+        None,
+        alias="$in",
+        serialization_alias="$in",
+        description="Filter for results in this list of values.",
+    )
+    nin: Optional[list[str]] = Field(
+        None,
+        alias="$nin",
+        serialization_alias="$nin",
+        description="Filter for results not in this list of values.",
     )
 
     model_config = ConfigDict(

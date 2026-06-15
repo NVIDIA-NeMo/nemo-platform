@@ -3,6 +3,7 @@
 
 """Unit tests for ModelProviderReconciler."""
 
+import logging
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -11,6 +12,7 @@ from nemo_platform import AsyncNeMoPlatform
 from nemo_platform._exceptions import APIStatusError, ConflictError, NotFoundError
 from nemo_platform.types.inference import ServedModelMapping
 from nemo_platform.types.inference.model_provider import ModelProvider
+from nmp.core.models.config import ControllerConfig
 from nmp.core.models.controllers.context import ModelContext
 from nmp.core.models.controllers.provider_reconciler import (
     PROVIDER_ERROR_RETRY_INTERVAL_SECONDS,
@@ -57,6 +59,50 @@ def test_infer_backend_format():
     assert _infer_backend_format("my-claude-like-model") == "OPENAI_CHAT"
 
 
+def _make_discoverable_provider(
+    *,
+    name: str = "test-provider",
+    workspace: str = "test-ns",
+    host_url: str = "https://test-provider.com/v1",
+    created_at: datetime | None = None,
+    updated_at: datetime | None = None,
+) -> ModelProvider:
+    """Build a ModelProvider suitable for autodiscovery unit tests."""
+    now = datetime.now(timezone.utc)
+    return ModelProvider(
+        name=name,
+        workspace=workspace,
+        host_url=host_url,
+        created_at=created_at or now,
+        updated_at=updated_at or now,
+    )
+
+
+def _configure_discovery_sdk(mock_models_sdk: MagicMock) -> MagicMock:
+    """Wire mock_models_sdk.with_options to return a discovery-scoped SDK mock."""
+    discovery_sdk = MagicMock()
+    discovery_sdk.inference.gateway.provider.get = AsyncMock(
+        return_value={"object": "list", "data": [{"id": "model-1"}]}
+    )
+    mock_models_sdk.with_options = MagicMock(return_value=discovery_sdk)
+    return discovery_sdk
+
+
+def _assert_discovery_failure_logged_at_debug_not_warning(caplog) -> None:
+    """Discovery transient failures must log at DEBUG, not WARNING."""
+    assert not any(r.levelname == "WARNING" and "Failed to get models" in r.getMessage() for r in caplog.records)
+    assert any(
+        r.levelname == "DEBUG" and "Failed to get models from provider via gateway" in r.getMessage()
+        for r in caplog.records
+    )
+
+
+@pytest.fixture
+def controller_config():
+    """Default controller config for provider reconciler tests."""
+    return ControllerConfig()
+
+
 @pytest.fixture
 def mock_models_sdk():
     """Create a mock AsyncNeMoPlatform SDK."""
@@ -66,13 +112,15 @@ def mock_models_sdk():
     sdk.inference.virtual_models.create = AsyncMock(return_value=None)
     sdk.inference.virtual_models.delete = AsyncMock(return_value=None)
     sdk.inference.virtual_models.list = MagicMock(return_value=_AsyncPaginator([]))
+    sdk.inference.gateway.provider.get = AsyncMock()
+    sdk.with_options = MagicMock(return_value=sdk)
     return sdk
 
 
 @pytest.fixture
-def reconciler(mock_models_sdk):
+def reconciler(mock_models_sdk, controller_config):
     """Create a ModelProviderReconciler instance."""
-    return ModelProviderReconciler(models_sdk=mock_models_sdk)
+    return ModelProviderReconciler(models_sdk=mock_models_sdk, controller_config=controller_config)
 
 
 # ============================================================================
@@ -81,7 +129,7 @@ def reconciler(mock_models_sdk):
 
 
 @pytest.mark.asyncio
-async def test_get_available_models_from_provider_success(reconciler, mock_models_sdk):
+async def test_get_available_models_from_provider_success(reconciler, mock_models_sdk, controller_config):
     """Test successfully getting models from OpenAI-compliant provider."""
     mock_models_sdk.inference.gateway.provider.get = AsyncMock(
         return_value={
@@ -94,13 +142,7 @@ async def test_get_available_models_from_provider_success(reconciler, mock_model
         }
     )
 
-    model_provider = ModelProvider(
-        name="test-provider",
-        workspace="test-ns",
-        host_url="https://test-provider.com/v1",
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
-    )
+    model_provider = _make_discoverable_provider()
     result = await reconciler._discover_models(model_provider)
 
     assert isinstance(result, DiscoverySuccess)
@@ -109,7 +151,95 @@ async def test_get_available_models_from_provider_success(reconciler, mock_model
         "v1/models",
         workspace="test-ns",
         name="test-provider",
+        timeout=controller_config.provider_discovery_timeout_seconds,
     )
+    mock_models_sdk.with_options.assert_called_once_with(
+        max_retries=controller_config.provider_discovery_max_retries,
+    )
+
+
+@pytest.mark.asyncio
+async def test_discover_models_passes_configured_timeout(mock_models_sdk):
+    """Discovery should honor controller_config.provider_discovery_timeout_seconds."""
+    mock_models_sdk.inference.gateway.provider.get = AsyncMock(
+        return_value={"object": "list", "data": [{"id": "model-1"}]}
+    )
+    config = ControllerConfig(provider_discovery_timeout_seconds=240)
+    reconciler = ModelProviderReconciler(models_sdk=mock_models_sdk, controller_config=config)
+
+    await reconciler._discover_models(_make_discoverable_provider())
+
+    mock_models_sdk.inference.gateway.provider.get.assert_called_once_with(
+        "v1/models",
+        workspace="test-ns",
+        name="test-provider",
+        timeout=240,
+    )
+
+
+@pytest.mark.parametrize(
+    ("max_retries", "expect_get_call_kwargs"),
+    [
+        (0, None),
+        (
+            2,
+            {
+                "path": "v1/models",
+                "workspace": "test-ns",
+                "name": "test-provider",
+            },
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_discover_models_uses_discovery_sdk_with_configured_retries(
+    mock_models_sdk, max_retries, expect_get_call_kwargs
+):
+    """Discovery SDK should honor controller_config.provider_discovery_max_retries."""
+    discovery_sdk = _configure_discovery_sdk(mock_models_sdk)
+    config = ControllerConfig(provider_discovery_max_retries=max_retries)
+    reconciler = ModelProviderReconciler(models_sdk=mock_models_sdk, controller_config=config)
+
+    await reconciler._discover_models(_make_discoverable_provider())
+
+    mock_models_sdk.with_options.assert_called_once_with(max_retries=max_retries)
+    if expect_get_call_kwargs is None:
+        discovery_sdk.inference.gateway.provider.get.assert_called_once()
+    else:
+        discovery_sdk.inference.gateway.provider.get.assert_called_once_with(
+            expect_get_call_kwargs["path"],
+            workspace=expect_get_call_kwargs["workspace"],
+            name=expect_get_call_kwargs["name"],
+            timeout=config.provider_discovery_timeout_seconds,
+        )
+
+
+@pytest.mark.parametrize(
+    "discovery_side_effect",
+    [
+        pytest.param(
+            APIStatusError(
+                "Error code: 502 - {'detail': 'Backend networking error: Connection refused'}",
+                response=MagicMock(status_code=502),
+                body={"detail": "Backend networking error: Connection refused"},
+            ),
+            id="http_502",
+        ),
+        pytest.param(Exception("Request timed out."), id="network_timeout"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_discover_models_transient_errors_log_debug_not_warning(
+    reconciler, mock_models_sdk, caplog, discovery_side_effect
+):
+    """Transient gateway and network failures during discovery must log at debug, not warning."""
+    mock_models_sdk.inference.gateway.provider.get = AsyncMock(side_effect=discovery_side_effect)
+
+    with caplog.at_level(logging.DEBUG):
+        result = await reconciler._discover_models(_make_discoverable_provider())
+
+    assert isinstance(result, DiscoveryTransientError)
+    _assert_discovery_failure_logged_at_debug_not_warning(caplog)
 
 
 @pytest.mark.asyncio
@@ -382,9 +512,9 @@ async def test_get_artifact_details_huggingface(reconciler):
     """Test getting artifact details for HuggingFace model."""
     provider = MagicMock()
     config = MagicMock()
-    config.nim_deployment.model_namespace = "meta"
-    config.nim_deployment.model_name = "llama-3.1-8b-instruct"
-    config.nim_deployment.model_revision = "v1.0"
+    config.model_spec.model_namespace = "meta"
+    config.model_spec.model_name = "llama-3.1-8b-instruct"
+    config.model_spec.model_revision = "v1.0"
 
     with patch("nmp.core.models.controllers.provider_reconciler.get_model_weights_type") as mock_get_location:
         from nmp.core.models.app import ModelWeightsType
@@ -409,9 +539,9 @@ async def test_get_artifact_details_huggingface_no_revision(reconciler):
     """Test getting artifact details for HuggingFace model without revision."""
     provider = MagicMock()
     config = MagicMock()
-    config.nim_deployment.model_namespace = "meta"
-    config.nim_deployment.model_name = "llama-3.1-8b-instruct"
-    config.nim_deployment.model_revision = None
+    config.model_spec.model_namespace = "meta"
+    config.model_spec.model_name = "llama-3.1-8b-instruct"
+    config.model_spec.model_revision = None
 
     with patch("nmp.core.models.controllers.provider_reconciler.get_model_weights_type") as mock_get_location:
         from nmp.core.models.app import ModelWeightsType
@@ -435,9 +565,9 @@ async def test_get_artifact_details_files_service(reconciler):
     """Test getting artifact details for Files service model."""
     provider = MagicMock()
     config = MagicMock()
-    config.nim_deployment.model_namespace = "test-org"
-    config.nim_deployment.model_name = "custom-model"
-    config.nim_deployment.model_revision = "v2.1"
+    config.model_spec.model_namespace = "test-org"
+    config.model_spec.model_name = "custom-model"
+    config.model_spec.model_revision = "v2.1"
 
     with patch("nmp.core.models.controllers.provider_reconciler.get_model_weights_type") as mock_get_location:
         from nmp.core.models.app import ModelWeightsType
@@ -1363,7 +1493,7 @@ async def test_reconcile_keeps_valid_lora_composite_through_gate(reconciler):
 
     config = MagicMock()
     config.model_entity_id = "ws/base"
-    config.nim_deployment = MagicMock(model_namespace="ws", model_name="base", model_revision=None)
+    config.model_spec = MagicMock(model_namespace="ws", model_name="base", model_revision=None)
 
     ctx = ModelContext(
         model_provider=provider, model_deployment=None, model_deployment_config=config, model_entity=None
@@ -1718,8 +1848,6 @@ async def test_ensure_passthrough_virtual_model_ignores_conflict_error(reconcile
 @pytest.mark.asyncio
 async def test_ensure_passthrough_virtual_model_logs_warning_on_unexpected_error(reconciler, mock_models_sdk, caplog):
     """Unexpected exceptions are logged as warnings and must not propagate."""
-    import logging
-
     mock_models_sdk.inference.virtual_models.create = AsyncMock(side_effect=RuntimeError("network timeout"))
 
     with caplog.at_level(logging.WARNING):
@@ -1924,8 +2052,6 @@ async def test_cleanup_never_deletes_user_created_virtual_model(reconciler, mock
 @pytest.mark.asyncio
 async def test_cleanup_delete_failure_is_logged_and_non_fatal(reconciler, mock_models_sdk, caplog):
     """Delete failures are swallowed so the next reconcile cycle can retry."""
-    import logging
-
     mock_models_sdk.inference.virtual_models.list = MagicMock(
         return_value=_AsyncPaginator(
             [
@@ -2189,7 +2315,7 @@ def test_resolve_base_backend_model_id_from_nim_deployment_only():
     """When model_entity_id is unset, nim_deployment model_namespace/model_name resolves base id."""
     config = MagicMock()
     config.model_entity_id = None
-    config.nim_deployment = MagicMock(model_namespace="my-ws", model_name="qwen-base", model_revision=None)
+    config.model_spec = MagicMock(model_namespace="my-ws", model_name="qwen-base", model_revision=None)
     assert _resolve_base_backend_model_id(config, None) == "my-ws/qwen-base"
 
 
@@ -2197,7 +2323,7 @@ def test_resolve_base_backend_model_id_prefers_model_entity_over_nim():
     """Explicit model_entity_id wins over nim_deployment."""
     config = MagicMock()
     config.model_entity_id = "a/b"
-    config.nim_deployment = MagicMock(model_namespace="ignored", model_name="ignored", model_revision=None)
+    config.model_spec = MagicMock(model_namespace="ignored", model_name="ignored", model_revision=None)
     assert _resolve_base_backend_model_id(config, None) == "a/b"
 
 
@@ -2205,7 +2331,7 @@ def test_handle_model_deployment_provider_uses_nim_when_no_model_entity_id(recon
     """Classification works when only nim_deployment references the base model (no model_entity_id)."""
     config = MagicMock()
     config.model_entity_id = None
-    config.nim_deployment = MagicMock(model_namespace="ws", model_name="base", model_revision=None)
+    config.model_spec = MagicMock(model_namespace="ws", model_name="base", model_revision=None)
     provider = MagicMock()
     provider.workspace = "ws"
     provider.enabled_models = None
@@ -2234,7 +2360,7 @@ def test_deployment_lora_strips_provider_workspace_prefix_from_adapter_segment(r
     """NIM echoing a qualified adapter id (``ws/lora-1``) must not produce a double-prefixed composite."""
     config = MagicMock()
     config.model_entity_id = "ws/base"
-    config.nim_deployment = MagicMock(model_namespace="ws", model_name="base", model_revision=None)
+    config.model_spec = MagicMock(model_namespace="ws", model_name="base", model_revision=None)
     provider = MagicMock(workspace="ws", enabled_models=None)
     result = DiscoverySuccess(
         [
@@ -2264,7 +2390,7 @@ def test_deployment_lora_decodes_double_dash_into_cross_workspace_composite(reco
     """
     config = MagicMock()
     config.model_entity_id = "ws-base/qwen-base"
-    config.nim_deployment = MagicMock(model_namespace="ws-base", model_name="qwen-base", model_revision=None)
+    config.model_spec = MagicMock(model_namespace="ws-base", model_name="qwen-base", model_revision=None)
     provider = MagicMock(workspace="ws-base", enabled_models=None)
     result = DiscoverySuccess(
         [
@@ -2318,7 +2444,7 @@ def test_deployment_lora_qualified_double_dash_decodes_same_name_across_workspac
     """
     config = MagicMock()
     config.model_entity_id = "ws-base/qwen-base"
-    config.nim_deployment = MagicMock(model_namespace="ws-base", model_name="qwen-base", model_revision=None)
+    config.model_spec = MagicMock(model_namespace="ws-base", model_name="qwen-base", model_revision=None)
     provider = MagicMock(workspace="ws-base", enabled_models=None)
     result = DiscoverySuccess(
         [
@@ -2472,7 +2598,7 @@ def test_deployment_prompt_tuned_strips_provider_workspace_prefix(reconciler):
     """NIM echoing a qualified prompt-tuned id (``ws/tuned``) must produce ``ws/tuned``, not ``ws/ws/tuned``."""
     config = MagicMock()
     config.model_entity_id = "ws/base"
-    config.nim_deployment = MagicMock(model_namespace="ws", model_name="base", model_revision=None)
+    config.model_spec = MagicMock(model_namespace="ws", model_name="base", model_revision=None)
     provider = MagicMock(workspace="ws", enabled_models=None)
     result = DiscoverySuccess(
         [

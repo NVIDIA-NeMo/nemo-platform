@@ -14,7 +14,6 @@ import os
 from logging import getLogger
 from typing import Any, Optional
 
-import docker
 import httpx
 from docker.errors import APIError, NotFound
 from nemo_platform import NotFoundError
@@ -41,6 +40,8 @@ from nmp.core.models.controllers.backends.docker.creation_reconciler import (
 from requests.exceptions import ConnectionError as RequestsConnectionError
 from requests.exceptions import ReadTimeout
 from urllib3.exceptions import ReadTimeoutError as Urllib3ReadTimeoutError
+
+import docker
 
 logger = getLogger(__name__)
 
@@ -249,7 +250,10 @@ class DockerServiceBackend(ServiceBackend):
 
             if state == "running":
                 started_at = container.attrs.get("State", {}).get("StartedAt", "unknown")
-                is_healthy, health_failure_reason = await self._probe_nim_health(host_url, container_id=container_id)
+                health_path = self._reconciler.get_health_path_from_container(container)
+                is_healthy, health_failure_reason = await self._probe_nim_health(
+                    host_url, container_id=container_id, health_path=health_path
+                )
 
                 if is_healthy:
                     return DeploymentStatusUpdate(
@@ -273,9 +277,9 @@ class DockerServiceBackend(ServiceBackend):
 
                     # Use a stable message (no elapsed/timeout) so we don't create a new history entry every poll
                     status_msg = (
-                        f"Container is running but NIM is still initializing "
+                        f"Container is running but the inference engine is still initializing "
                         f"(ID: {container_id}, started: {started_at}, "
-                        f"health_url: {host_url}/v1/health/ready"
+                        f"health_url: {host_url}{health_path}"
                     )
                     if health_failure_reason:
                         status_msg += f", probe_result: {health_failure_reason}"
@@ -679,22 +683,28 @@ class DockerServiceBackend(ServiceBackend):
         )
 
     async def _probe_nim_health(
-        self, host_url: str, timeout: float = 5.0, container_id: str | None = None
+        self,
+        host_url: str,
+        timeout: float = 5.0,
+        container_id: str | None = None,
+        health_path: str = "/v1/health/ready",
     ) -> tuple[bool, str]:
-        """Probe the NIM's health endpoint to check if it's ready for inference.
+        """Probe the inference engine's health endpoint to check readiness.
 
-        NIMs expose /v1/health/ready which returns 200 when the model is fully loaded
-        and ready to serve requests.
+        NIM exposes /v1/health/ready and vLLM exposes /health; both return 200 when
+        the model is fully loaded and ready to serve. The path is engine-specific and
+        provided by the caller.
 
         Args:
-            host_url: The base URL of the NIM container (e.g., http://localhost:8500)
+            host_url: The base URL of the container (e.g., http://localhost:8500)
             timeout: Request timeout in seconds
             container_id: Optional container ID for logging context
+            health_path: Engine-specific readiness path appended to host_url
 
         Returns:
             Tuple of (is_healthy, failure_reason). failure_reason is empty string if healthy.
         """
-        health_url = f"{host_url}/v1/health/ready"
+        health_url = f"{host_url}{health_path}"
         container_ctx = f" (container: {container_id})" if container_id else ""
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:

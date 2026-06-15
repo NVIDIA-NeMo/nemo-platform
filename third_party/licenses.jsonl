@@ -153,6 +153,7 @@
 {"name": "multiprocess", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "mypy-extensions", "license": "MIT", "compatible": true}
 {"name": "nemo-anonymizer", "license": "APACHE-2.0", "compatible": true}
+{"name": "nemo-safe-synthesizer", "license": "APACHE-2.0", "compatible": true}
 {"name": "nemoguardrails", "license": "APACHE-2.0", "compatible": true}
 {"name": "nest-asyncio", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "nest-asyncio2", "license": "BSD-3-CLAUSE", "compatible": true}
@@ -232,7 +233,6 @@
 {"name": "pyopenssl", "license": "APACHE-2.0", "compatible": true}
 {"name": "pyperclip", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "pytest", "license": "MIT", "compatible": true}
-{"name": "python-box", "license": "MIT", "compatible": true}
 {"name": "python-dateutil", "license": "APACHE-2.0", "compatible": true}
 {"name": "python-dotenv", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "python-json-logger", "license": "BSD-3-CLAUSE", "compatible": true}
@@ -255,6 +255,7 @@
 {"name": "ruff", "license": "MIT", "compatible": true}
 {"name": "s3transfer", "license": "APACHE-2.0", "compatible": true}
 {"name": "sacrebleu", "license": "APACHE-2.0", "compatible": true}
+{"name": "safetensors", "license": "APACHE-2.0", "compatible": true}
 {"name": "scikit-network", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "scipy", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "secretstorage", "license": "BSD-3-CLAUSE", "compatible": true}
@@ -284,6 +285,7 @@
 {"name": "tomlkit", "license": "MIT", "compatible": true}
 {"name": "tornado", "license": "APACHE-2.0", "compatible": true}
 {"name": "tqdm", "license": "MIT", "compatible": true}
+{"name": "transformers", "license": "APACHE-2.0", "compatible": true}
 {"name": "typer", "license": "MIT", "compatible": true}
 {"name": "types-aioboto3", "license": "MIT", "compatible": true}
 {"name": "types-aiobotocore", "license": "MIT", "compatible": true}

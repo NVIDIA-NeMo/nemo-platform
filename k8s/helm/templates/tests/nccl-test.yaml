@@ -1,0 +1,352 @@
+{{- /* Chart test (helm test only): resources use helm.sh/hook: test and are not applied on install/upgrade. See https://helm.sh/docs/topics/chart_tests/ */ -}}
+{{- /* kyverno-policy.yaml: only one multinodeNetworking.<cloud>.enabled; $cloud is the active profile. */ -}}
+{{- $cloud := "" }}
+{{- if .Values.multinodeNetworking.aws.enabled }}{{- $cloud = "aws" }}
+{{- else if .Values.multinodeNetworking.azure.enabled }}{{- $cloud = "azure" }}
+{{- else if .Values.multinodeNetworking.gcp.enabled }}{{- $cloud = "gcp" }}
+{{- else if .Values.multinodeNetworking.oci.enabled }}{{- $cloud = "oci" }}
+{{- end }}
+{{- $ncclTestKyvernoAlign := ne $cloud "" }}
+{{- $v := .Values.ncclTest.validation | default dict }}
+{{- /* Per-cloud derived resources and checks (see multicloud-nccl-test README + kyverno mutate rules). */ -}}
+{{- $allocatableResource := "rdma/rdma_shared_device" }}
+{{- if eq $cloud "aws" }}{{- $allocatableResource = "vpc.amazonaws.com/efa" }}{{- end }}
+{{- if eq $cloud "azure" }}{{- $allocatableResource = printf "rdma/%s" .Values.multinodeNetworking.azure.rdmaDeviceName }}{{- end }}
+{{- if eq $cloud "oci" }}{{- $allocatableResource = "nvidia.com/mlnxnics" }}{{- end }}
+{{- if eq $cloud "gcp" }}{{- $allocatableResource = "" }}{{- end }}
+
+{{- /* expectIb: azure+oci target mlx5 / NET/IB in NCCL logs; aws=EFA/socket, gcp=TCP-X (not NET/IB). strictIb: PORT_ACTIVE only where IB is mandatory in-network-operator docs (Azure); oci/aws/gcp skip in-pod ibv strict check. */ -}}
+{{- $expectIb := or (eq $cloud "azure") (eq $cloud "oci") }}
+{{- $strictIb := eq $cloud "azure" }}
+{{- $requireRdmaAlloc := and $ncclTestKyvernoAlign (ne $cloud "gcp") }}
+{{- $gpuKey := .Values.ncclTest.gpuResourceKey | default "nvidia.com/gpu" }}
+{{- $gpuN := .Values.ncclTest.gpusPerNode | default 1 | toString | int }}
+{{- $gpuReq := .Values.ncclTest.gpusPerNode | default 1 | toString }}
+{{- $workerNetName := "" }}
+{{- $workerNetQty := "0" }}
+{{- if eq $cloud "aws" }}
+{{- $workerNetName = "vpc.amazonaws.com/efa" }}
+{{- $workerNetQty = mul $gpuN (int .Values.multinodeNetworking.aws.efaDevicesPerGPU) | toString }}
+{{- else if eq $cloud "azure" }}
+{{- $workerNetName = printf "rdma/%s" .Values.multinodeNetworking.azure.rdmaDeviceName }}
+{{- $workerNetQty = mul $gpuN (int .Values.multinodeNetworking.azure.rdmaDevicesPerGPU) | toString }}
+{{- else if eq $cloud "oci" }}
+{{- $workerNetName = "nvidia.com/mlnxnics" }}
+{{- $workerNetQty = mul $gpuN (int .Values.multinodeNetworking.oci.rdmaDevicesPerGPU) | toString }}
+{{- end }}
+{{- $fullname := include "nemo-platform.fullname" . }}
+{{- $ncclTestBase := printf "%s-nccl-test" ($fullname | trunc 40 | trimSuffix "-") | trunc 42 }}
+{{- $hookDel := "before-hook-creation,hook-succeeded,hook-failed" }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ printf "%s-sa" $ncclTestBase | trunc 63 }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-weight: "-20"
+    helm.sh/hook-delete-policy: {{ $hookDel | quote }}
+  labels:
+    {{- include "nemo-platform.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ printf "%s-role" $ncclTestBase | trunc 63 }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-weight: "-20"
+    helm.sh/hook-delete-policy: {{ $hookDel | quote }}
+  labels:
+    {{- include "nemo-platform.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames:
+      - {{ printf "%s-cm" $ncclTestBase | trunc 63 }}
+    verbs: ["get", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ printf "%s-rb" $ncclTestBase | trunc 63 }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-weight: "-20"
+    helm.sh/hook-delete-policy: {{ $hookDel | quote }}
+  labels:
+    {{- include "nemo-platform.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ printf "%s-role" $ncclTestBase | trunc 63 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ printf "%s-sa" $ncclTestBase | trunc 63 }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ printf "%s-cr" $ncclTestBase | trunc 63 }}
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-weight: "-20"
+    helm.sh/hook-delete-policy: {{ $hookDel | quote }}
+  labels:
+    {{- include "nemo-platform.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ printf "%s-crb" $ncclTestBase | trunc 63 }}
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-weight: "-20"
+    helm.sh/hook-delete-policy: {{ $hookDel | quote }}
+  labels:
+    {{- include "nemo-platform.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ printf "%s-cr" $ncclTestBase | trunc 63 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ printf "%s-sa" $ncclTestBase | trunc 63 }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ printf "%s-cm" $ncclTestBase | trunc 63 }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-weight: "-25"
+    helm.sh/hook-delete-policy: {{ $hookDel | quote }}
+  labels:
+    {{- include "nemo-platform.labels" . | nindent 4 }}
+data:
+  nccl_test.py: |
+{{ .Files.Get "files/nccl-test/nccl_test.py" | nindent 4 }}
+  entrypoint.sh: |
+{{ .Files.Get "files/nccl-test/entrypoint.sh" | nindent 4 }}
+  orchestrator.py: |
+{{ .Files.Get "files/nccl-test/orchestrator.py" | nindent 4 }}
+  nccl-env.sh: |
+{{ .Files.Get "files/nccl-test/nccl-env.sh" | nindent 4 }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ printf "%s-job" $ncclTestBase | trunc 63 }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: "before-hook-creation,hook-succeeded"
+  labels:
+    {{- include "nemo-platform.labels" . | nindent 4 }}
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        {{- include "nemo-platform.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: nccl-test-orchestrator
+    spec:
+      restartPolicy: Never
+      terminationGracePeriodSeconds: 0
+      serviceAccountName: {{ printf "%s-sa" $ncclTestBase | trunc 63 }}
+      imagePullSecrets:
+        {{ include "nemo-common.imagepullsecrets" . | nindent 8 | trim }}
+      containers:
+        - name: orchestrator
+          image: "{{ .Values.ncclTest.orchestrator.image.repository }}:{{ .Values.ncclTest.orchestrator.image.tag }}"
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/bash", "-lc"]
+          args:
+            - |
+              set -e
+              pip install --no-cache-dir 'kubernetes>=28.0.0' >/dev/null
+              python -u /scripts/orchestrator.py
+          env:
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: HELM_HOOK
+              value: test
+            - name: HELM_HOOK_DELETE_POLICY
+              value: {{ $hookDel | quote }}
+            - name: NCCL_TEST_KYVERNO_ENABLE_MULTI_NODE
+              value: {{ ternary "true" "false" $ncclTestKyvernoAlign | quote }}
+            - name: NCCL_TEST_ALLOW_PLATFORM_INJECTION
+              value: {{ ternary "true" "false" $ncclTestKyvernoAlign | quote }}
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: TEST_FULLNAME
+              value: {{ $ncclTestBase | quote }}
+            - name: SCRIPTS_CONFIGMAP_NAME
+              value: {{ printf "%s-cm" $ncclTestBase | trunc 63 | quote }}
+            - name: RELEASE_NAME
+              value: {{ .Release.Name | quote }}
+            - name: GPU_NODE_LABEL_KEY
+              value: {{ .Values.ncclTest.gpuNodeLabelKey | quote }}
+            - name: GPU_NODE_LABEL_VALUE
+              value: {{ .Values.ncclTest.gpuNodeLabelValue | quote }}
+            - name: WORKER_IMAGE
+              value: "{{ .Values.ncclTest.worker.image.repository }}:{{ default .Chart.AppVersion .Values.ncclTest.worker.image.tag }}"
+            - name: IMAGE_PULL_SECRET
+              value: {{ include "nemo-common.imagePullSecretName" . | quote }}
+            - name: MASTER_PORT
+              value: "29500"
+            - name: WAIT_TIMEOUT_SECONDS
+              value: {{ .Values.ncclTest.waitTimeoutSeconds | quote }}
+            - name: NCCL_TEST_ITERATIONS
+              value: {{ .Values.ncclTest.iterations | default 10 | quote }}
+            - name: WORKER_GPU_RESOURCE_KEY
+              value: {{ $gpuKey | quote }}
+            - name: WORKER_GPU_REQUEST
+              value: {{ $gpuReq | quote }}
+            - name: WORKER_CPU_REQUEST
+              value: {{ .Values.ncclTest.worker.resources.requests.cpu | quote }}
+            - name: WORKER_CPU_LIMIT
+              value: {{ .Values.ncclTest.worker.resources.limits.cpu | quote }}
+            - name: WORKER_MEMORY_REQUEST
+              value: {{ .Values.ncclTest.worker.resources.requests.memory | quote }}
+            - name: WORKER_MEMORY_LIMIT
+              value: {{ .Values.ncclTest.worker.resources.limits.memory | quote }}
+            - name: NCCL_TEST_MIN_BANDWIDTH_MBPS
+              value: {{ $v.minBandwidthMBpsAt1024MB | default 8000 | quote }}
+            - name: NCCL_TEST_EXPECT_IB_TRANSPORT
+              value: {{ ternary "true" "false" $expectIb | quote }}
+            - name: NCCL_TEST_STRICT_IB_PORT_ACTIVE
+              value: {{ ternary "true" "false" $strictIb | quote }}
+            - name: REQUIRE_RDMA_ALLOCATABLE
+              value: {{ ternary "true" "false" $requireRdmaAlloc | quote }}
+            - name: RDMA_ALLOCATABLE_RESOURCE
+              value: {{ $allocatableResource | quote }}
+            - name: WORKER_INTERCONNECT_RESOURCE_ENABLED
+              value: {{ ternary "true" "false" (ne $workerNetName "") | quote }}
+            - name: WORKER_INTERCONNECT_RESOURCE_NAME
+              value: {{ $workerNetName | quote }}
+            - name: WORKER_INTERCONNECT_RESOURCE_REQUEST
+              value: {{ $workerNetQty | quote }}
+            - name: WORKER_INTERCONNECT_RESOURCE_LIMIT
+              value: {{ $workerNetQty | quote }}
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+          {{- with .Values.ncclTest.orchestrator.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: scripts
+          configMap:
+            name: {{ printf "%s-cm" $ncclTestBase | trunc 63 }}
+            defaultMode: 420
+---
+# Runs after the orchestrator Job (hook-weight 0). Deletes the scripts ConfigMap so it is not left behind if Helm hook delete races.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ printf "%s-clean-cm" $ncclTestBase | trunc 63 }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-weight: "5"
+    helm.sh/hook-delete-policy: {{ $hookDel | quote }}
+  labels:
+    {{- include "nemo-platform.labels" . | nindent 4 }}
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        {{- include "nemo-platform.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: nccl-test-cleanup-configmap
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ printf "%s-sa" $ncclTestBase | trunc 63 }}
+      imagePullSecrets:
+        {{ include "nemo-common.imagepullsecrets" . | nindent 8 | trim }}
+      containers:
+        - name: configmap-cleanup
+          image: "{{ .Values.ncclTest.configMapCleanupJob.image.repository }}:{{ .Values.ncclTest.configMapCleanupJob.image.tag }}"
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: CM_NAME
+              value: {{ printf "%s-cm" $ncclTestBase | trunc 63 | quote }}
+          command:
+            - python
+            - -c
+          args:
+            - |
+              import os
+              import ssl
+              import urllib.error
+              import urllib.request
+
+              namespace = os.environ["NAMESPACE"]
+              configmap_name = os.environ["CM_NAME"]
+              api_host = os.environ["KUBERNETES_SERVICE_HOST"]
+              api_port = os.environ.get("KUBERNETES_SERVICE_PORT", "443")
+              token_path = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+              ca_path = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+
+              with open(token_path, encoding="utf-8") as token_file:
+                  token = token_file.read().strip()
+
+              request = urllib.request.Request(
+                  "https://{}:{}/api/v1/namespaces/{}/configmaps/{}".format(
+                      api_host,
+                      api_port,
+                      namespace,
+                      configmap_name,
+                  ),
+                  headers={
+                      "Authorization": "Bearer " + token,
+                      "Accept": "application/json",
+                  },
+                  method="DELETE",
+              )
+
+              print("Deleting ConfigMap {} in {}".format(configmap_name, namespace))
+              try:
+                  urllib.request.urlopen(
+                      request,
+                      context=ssl.create_default_context(cafile=ca_path),
+                      timeout=30,
+                  ).close()
+              except urllib.error.HTTPError as exc:
+                  if exc.code != 404:
+                      raise
+              print("ConfigMap cleanup done.")

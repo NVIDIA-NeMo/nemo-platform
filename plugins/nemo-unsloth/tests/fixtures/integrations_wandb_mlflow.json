@@ -1,0 +1,35 @@
+{
+  "name": "qwen-integrations-smoke",
+  "model": {
+    "name": "unsloth/Qwen2.5-0.5B-Instruct",
+    "max_seq_length": 2048
+  },
+  "dataset": {
+    "path": "default/my-dataset",
+    "text_field": "text"
+  },
+  "schedule": {
+    "max_steps": 60,
+    "warmup_ratio": 0.1
+  },
+  "integrations": {
+    "wandb": {
+      "project": "my-project",
+      "name": "run-001",
+      "entity": "my-team",
+      "tags": ["sft", "llama"],
+      "notes": "Experiment notes",
+      "base_url": "https://wandb.internal",
+      "api_key_secret": "default/wandb-api-key"
+    },
+    "mlflow": {
+      "experiment_name": "llama-finetuning",
+      "name": "run-001",
+      "tracking_uri": "http://mlflow:5000",
+      "tags": {
+        "team": "nlp"
+      },
+      "description": "SFT experiment"
+    }
+  }
+}

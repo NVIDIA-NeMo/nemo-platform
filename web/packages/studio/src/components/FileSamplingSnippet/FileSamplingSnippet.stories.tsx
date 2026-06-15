@@ -105,6 +105,26 @@ export const FileLoadError: Story = {
   },
 };
 
+/** Slow file fetch — spinner while content loads. */
+export const Loading: Story = {
+  name: 'Loading',
+  parameters: {
+    msw: {
+      handlers: [
+        http.head(FILES_FILESET_OBJECT_REGEX, async () => {
+          await new Promise((resolve) => setTimeout(resolve, 60_000));
+          return new HttpResponse(null, { status: 200 });
+        }),
+        http.get(FILES_FILESET_OBJECT_REGEX, async () => {
+          await new Promise((resolve) => setTimeout(resolve, 60_000));
+          const blob = new Blob([SAMPLE_JSONL], { type: 'application/octet-stream' });
+          return new HttpResponse(blob, { status: 200 });
+        }),
+      ],
+    },
+  },
+};
+
 /** Optional footer slot (e.g. evaluation limits copy). */
 export const WithFooter: Story = {
   name: 'With footer',

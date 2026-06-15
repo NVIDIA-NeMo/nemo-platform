@@ -13,7 +13,6 @@ from abc import abstractmethod
 from concurrent.futures import ThreadPoolExecutor
 from typing import Generic, Literal, TypeVar
 
-import docker
 import docker.types
 from docker.errors import APIError, ImageNotFound, NotFound
 from docker.models.containers import Container
@@ -73,6 +72,7 @@ from nmp.core.jobs.controllers.backends.base import (
     JobUpdate,
     get_logs_endpoint_from_fileset,
     resolve_gpu_job_shm_size,
+    resolve_task_image,
     staleness_error_message,
 )
 from nmp.core.jobs.controllers.backends.exceptions import (
@@ -82,6 +82,8 @@ from nmp.core.jobs.controllers.backends.exceptions import (
 )
 from opentelemetry import trace
 from pydantic import BaseModel, Field
+
+import docker
 
 tracer = trace.get_tracer(__name__)
 logger = logging.getLogger(__name__)
@@ -679,11 +681,14 @@ chmod -R 777 {job_vol}/{storage_subpath}
         else:
             labels[JOB_USES_PERSISTENT_STORAGE_LABEL] = "false"
 
+        task_image = resolve_task_image(
+            executor_config.container.image, self._execution_profile_config.default_task_image
+        )
         container_args = {
             "name": self.name_for_step(step),
             "entrypoint": executor_config.container.entrypoint or [],
             "command": executor_config.container.command or [],
-            "image": executor_config.container.image,
+            "image": task_image,
             "labels": labels,
             "log_config": log_config,
             "environment": env,

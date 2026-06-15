@@ -6,11 +6,13 @@ import {
   ComposerPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
-  type TextMessagePartComponent,
   type ToolCallMessagePartComponent,
 } from '@assistant-ui/react';
 import { ChatEmptyState } from '@nemo/common/src/components/Chat/ChatEmptyState';
-import { MessageContent } from '@nemo/common/src/components/Chat/MessageContent';
+import {
+  MessageContent,
+  type MessageContentProps,
+} from '@nemo/common/src/components/Chat/MessageContent';
 import {
   Banner,
   Button,
@@ -29,6 +31,8 @@ export interface AssistantChatThreadAttributes {
   ThreadViewport?: ComponentProps<typeof ThreadPrimitive.Viewport>;
 }
 
+type AssistantChatMessageContentProps = Pick<MessageContentProps, 'markdownLinkComponent'>;
+
 interface AssistantChatThreadProps {
   disabled?: boolean;
   placeholder: string;
@@ -45,21 +49,20 @@ interface AssistantChatThreadProps {
   toolCallPartComponent?: ToolCallMessagePartComponent;
   viewportClassName?: string;
   composerOverride?: ReactNode;
+  messageContentProps?: AssistantChatMessageContentProps;
 }
 
-const AssistantChatTextPart: TextMessagePartComponent = ({ text }) => (
-  <MessageContent content={text} />
-);
-
 const AssistantChatMessageContent = ({
+  messageContentProps,
   toolCallPartComponent,
 }: {
+  messageContentProps?: AssistantChatMessageContentProps;
   toolCallPartComponent?: ToolCallMessagePartComponent;
 }) => (
   <>
     <MessagePrimitive.Parts
       components={{
-        Text: AssistantChatTextPart,
+        Text: ({ text }) => <MessageContent content={text} {...messageContentProps} />,
         tools: { Fallback: toolCallPartComponent },
       }}
     />
@@ -100,10 +103,12 @@ const CopyAction = () => (
 
 const AssistantMessage = ({
   hideAssistantMessageActions,
+  messageContentProps,
   showRunningIndicator = true,
   toolCallPartComponent,
 }: {
   hideAssistantMessageActions?: boolean;
+  messageContentProps?: AssistantChatMessageContentProps;
   showRunningIndicator?: boolean;
   toolCallPartComponent?: ToolCallMessagePartComponent;
 }) => (
@@ -112,7 +117,10 @@ const AssistantMessage = ({
     data-testspeaker="assistant"
     className="group/message self-stretch whitespace-normal"
   >
-    <AssistantChatMessageContent toolCallPartComponent={toolCallPartComponent} />
+    <AssistantChatMessageContent
+      messageContentProps={messageContentProps}
+      toolCallPartComponent={toolCallPartComponent}
+    />
     {showRunningIndicator ? (
       <MessagePrimitive.If last>
         <ThreadPrimitive.If running>
@@ -150,8 +158,10 @@ const AssistantMessage = ({
 );
 
 const UserMessage = ({
+  messageContentProps,
   toolCallPartComponent,
 }: {
+  messageContentProps?: AssistantChatMessageContentProps;
   toolCallPartComponent?: ToolCallMessagePartComponent;
 }) => (
   <MessagePrimitive.Root
@@ -160,7 +170,10 @@ const UserMessage = ({
     className="group/message flex w-full flex-col items-end gap-density-xs whitespace-normal"
   >
     <div className="max-w-[80%] rounded-xl rounded-br-none bg-surface-overlay px-3 py-2">
-      <AssistantChatMessageContent toolCallPartComponent={toolCallPartComponent} />
+      <AssistantChatMessageContent
+        messageContentProps={messageContentProps}
+        toolCallPartComponent={toolCallPartComponent}
+      />
     </div>
     <div className="flex h-8 shrink-0 items-center">
       <ActionBarPrimitive.Root
@@ -294,6 +307,7 @@ export const AssistantChatThread = ({
   toolCallPartComponent,
   viewportClassName,
   composerOverride,
+  messageContentProps,
 }: AssistantChatThreadProps) => {
   const { className: threadViewportClassName, ...threadViewportAttributes } =
     attributes?.ThreadViewport ?? {};
@@ -301,15 +315,21 @@ export const AssistantChatThread = ({
     () => (
       <AssistantMessage
         hideAssistantMessageActions={hideAssistantMessageActions}
+        messageContentProps={messageContentProps}
         showRunningIndicator={showRunningIndicator}
         toolCallPartComponent={toolCallPartComponent}
       />
     ),
-    [hideAssistantMessageActions, showRunningIndicator, toolCallPartComponent]
+    [hideAssistantMessageActions, messageContentProps, showRunningIndicator, toolCallPartComponent]
   );
   const UserMessageWithToolCallPart = useCallback(
-    () => <UserMessage toolCallPartComponent={toolCallPartComponent} />,
-    [toolCallPartComponent]
+    () => (
+      <UserMessage
+        messageContentProps={messageContentProps}
+        toolCallPartComponent={toolCallPartComponent}
+      />
+    ),
+    [messageContentProps, toolCallPartComponent]
   );
   const messageComponents = useMemo(
     () => ({

@@ -1,0 +1,160 @@
+---
+title: "Policy Engine"
+description: ""
+---
+The Policy Decision Point (PDP) evaluates every authorization request in NeMo Platform. It checks role bindings and scopes against the operation's requirements and returns allow or deny. This page covers the PDP internals, configuration, and operational details.
+
+For the conceptual overview, see [Authorization Concepts](/documentation/access-control/concepts). For configuration, see [Auth Configuration](/documentation/access-control/deployment/configuration).
+
+## How the PDP Works
+
+For each request, the authorization middleware:
+
+1. Extracts the principal (from JWT or headers), workspace (from URL), method, and path.
+2. Sends this context to the PDP.
+3. The PDP evaluates the Rego policy:
+ - Looks up the principal's role bindings in the workspace
+ - Checks if the role includes the permissions required by the operation
+ - Checks if the token has the required scopes
+4. Returns allow or deny.
+
+## Embedded PDP (Default)
+
+The embedded PDP uses a WASM-compiled Rego policy engine built into the auth service. No external OPA sidecar is required.
+
+### How It Works
+
+- Policy data (role bindings, workspace visibility, endpoint permissions) is served by the auth service
+- Data is refreshed on a configurable interval (default: 30 seconds)
+
+### Configuration
+
+```yaml
+auth:
+ enabled: true
+ policy_decision_point_provider: "embedded"
+ policy_decision_point_base_url: "http://auth:8000"
+ policy_data_refresh_interval: 30 # seconds
+```
+
+### PDP URL Format
+
+```text
+{policy_decision_point_base_url}/apis/auth/v2/authz/{entrypoint}
+```
+
+### When to Use
+
+Use embedded PDP for:
+
+- New deployments
+- Deployments that don't already have an OPA fleet
+- Simpler operations (no external OPA sidecar to manage)
+
+This is the default in both Helm and quickstart deployments.
+
+## External OPA
+
+An external Open Policy Agent sidecar (or server) fetches policy bundles from the auth service and evaluates requests independently.
+
+### How It Works
+
+- OPA polls the auth service at `/internal/iam/opa-bundle.tar.gz` for the latest bundle
+- The bundle contains Rego policy files + data (role bindings, visibility, endpoint permissions)
+- OPA caches the bundle locally; uses E-Tag for conditional requests
+- Services call OPA for authorization decisions instead of the embedded PDP
+
+### Configuration
+
+```yaml
+auth:
+ enabled: true
+ policy_decision_point_provider: "opa"
+ policy_decision_point_base_url: "http://opa:8181"
+ bundle_cache_seconds: 5 # seconds
+```
+
+### PDP URL Format
+
+```text
+{policy_decision_point_base_url}/v1/data/authz/{entrypoint}
+```
+
+### When to Use
+
+Use external OPA when you:
+
+- Already run OPA for other services and want a single policy engine
+- Need gateway-level auth via Envoy `ext_authz` with gRPC
+- Want to add custom policy rules alongside NeMo Platform authorization
+- Prefer to manage OPA's lifecycle separately
+
+### Bundle Caching and Propagation Delay
+
+The worst-case propagation delay for authorization changes is approximately **2× the cache time**:
+
+1. Auth service caches the bundle server-side for `bundle_cache_seconds`
+2. OPA caches the bundle client-side for the same duration
+3. If OPA fetches just before server cache expires, it holds the old version
+
+| `bundle_cache_seconds` | Max propagation delay |
+|------------------------|----------------------|
+| 5 (default) | ~10 seconds |
+| 30 | ~60 seconds |
+| 60 | ~120 seconds |
+
+## Policy Entrypoints
+
+The PDP exposes three entrypoints:
+
+| Entrypoint | Purpose | Used By |
+|------------|---------|---------|
+| `allow` | Authorize a request (method + path + principal + workspace) | Middleware (every request) |
+| `has_permissions` | Check if a principal has specific permissions in a workspace | Services (programmatic checks) |
+| `has_role` | Check if a principal has a specific role in a workspace | Services (role checks) |
+
+### `allow` — Request Authorization
+
+The primary entrypoint. Evaluates whether the request should be allowed based on:
+
+- Principal identity and role bindings
+- Required permissions for the operation (endpoint + method)
+- Token scopes
+- Workspace visibility (public workspaces grant Viewer to all)
+
+### `has_permissions` — Programmatic Permission Checks
+
+Services use this for fine-grained authorization beyond the middleware.
+
+```python
+if await auth_client.has_permissions(workspace_id, ["models.create"]):
+    # Allow model creation
+```
+
+### `has_role` — Role Checks
+
+Check if a principal has a specific role in a workspace. Used less frequently than `has_permissions`.
+
+## Policy Data
+
+The PDP operates on two types of data:
+
+### Static Data
+
+Defined in `static-authz.yaml` in the auth service:
+
+- **Role definitions**: Which permissions each role includes (Viewer, Editor, Admin, PlatformAdmin)
+- **Endpoint mappings**: Which permissions and scopes each endpoint + method requires
+
+### Dynamic Data (runtime)
+
+Loaded from the entity store:
+
+- **Role bindings**: Which principals have which roles in which workspaces
+
+## Related
+
+- [Auth Configuration](/documentation/access-control/deployment/configuration) — PDP provider settings and environment variables.
+- [Authorization Concepts](/documentation/access-control/concepts) — RBAC model and role propagation.
+- [API Scopes](/documentation/access-control/authorization/api-scopes) — Scope checking in the PDP.
+- [Security Model](/documentation/access-control/security-model) — Architecture and trust boundaries.
