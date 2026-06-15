@@ -28,3 +28,19 @@ def test_service_mounts_core_routes() -> None:
 
 def test_service_name_matches_entry_point() -> None:
     assert DeploymentsService.name == "deployments"
+
+
+def test_service_authz_covers_mounted_routes() -> None:
+    contribution = DeploymentsService.get_authz_contribution()
+    endpoint_paths = set(contribution.endpoints.keys())
+    for path in _mounted_paths():
+        assert path in endpoint_paths, f"missing authz entry for {path}"
+        route_methods = {
+            method.lower()
+            for spec in DeploymentsService().get_routers()
+            for route in spec.router.routes
+            if isinstance(route, APIRoute) and f"/apis/deployments{spec.prefix}{route.path}" == path
+            for method in route.methods or set()
+        }
+        for method in route_methods:
+            assert method in contribution.endpoints[path], f"missing authz method {method} for {path}"

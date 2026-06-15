@@ -129,6 +129,8 @@ async def delete_deployment_config(
     name: str,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
 ) -> None:
+    # Best-effort referential check before delete. Entity store has no conditional
+    # delete API today, so this cannot be fully atomic against concurrent creates.
     referencing = await deployment_names_using_config(
         entity_client,
         workspace=workspace,
