@@ -216,7 +216,7 @@ secrets will not decrypt with a new key.
 | httpRoute.filters | list | `[]` | This is a list of filters for the objects, such as CORS settings. |
 | httpRoute.hostnames | list | `[]` | If this has a specific hostname, add the name or names here in an array. |
 | httpRoute.labels | object | `{}` | Extra labels for the HTTP Route object. |
-| httpRoute.parentRefs | list | `[]` | A list of Gateways to enable this route on. This is required if httpsRoute.enabled is true. |
+| httpRoute.parentRefs | list | `[]` | A list of Gateways to enable this route on. This is required if httpRoute.enabled is true. |
 | httpRoute.pathRules | list | `[{"backends":[{"port":"{{ include \"nemo-platform.ingressBackendPort\" . }}","service":"{{ include \"nemo-platform.ingressBackendService\" . }}"}],"matches":[{"path":"/","type":"Exact"},{"path":"/apis","type":"PathPrefix"},{"path":"/studio","type":"PathPrefix"},{"path":"/cluster-info","type":"Exact"},{"path":"/status","type":"Exact"}]}]` | Path matches to route queries. |
 | ingress.annotations | object | `{}` | Annotations for the ingress resource. |
 | ingress.className | string | `""` | The ingress class to use if your cluster has more than one class. |

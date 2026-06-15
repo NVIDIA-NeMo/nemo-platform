@@ -185,7 +185,7 @@ spec:
                 - name: "NCCL_SOCKET_IFNAME"
                   value: "eth0"
                 - name: "NCCL_TOPO_FILE"
-                  value: NcclTopoFilePath
+                  value: "/etc/nccl/nccl-topo.xml"
                 - name: "OMPI_MCA_coll_hcoll_enable"
                   value: "0"
                 - name: "OMPI_MCA_orte_keep_fqdn_hostnames"

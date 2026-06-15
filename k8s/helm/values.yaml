@@ -419,7 +419,7 @@ httpRoute:
   labels: {}
   # -- Extra annotations for the HTTP Route object.
   annotations: {}
-  # -- A list of Gateways to enable this route on. This is required if httpsRoute.enabled is true.
+  # -- A list of Gateways to enable this route on. This is required if httpRoute.enabled is true.
   parentRefs: []
   # -- If this has a specific hostname, add the name or names here in an array.
   hostnames: []
