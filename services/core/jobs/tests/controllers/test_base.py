@@ -164,7 +164,9 @@ def _make_step(
     if step_spec is ...:
         step_spec = PlatformJobStepSpec(
             name="test-step",
-            executor=ContainerExecutionProvider(provider="cpu", profile="default", container=ContainerSpec(image="img")),
+            executor=ContainerExecutionProvider(
+                provider="cpu", profile="default", container=ContainerSpec(image="img")
+            ),
             config={},
             lifecycle=StepLifecycle(staleness_timeout_seconds=staleness_timeout),
         )

@@ -122,7 +122,9 @@ def test_api_factory_routes():
 
 
 def test_validate_job_spec():
-    executor = ContainerExecutionProviderSpec(kind="container", provider="cpu", profile="default", container=ContainerSpec(image="foo_image"))
+    executor = ContainerExecutionProviderSpec(
+        kind="container", provider="cpu", profile="default", container=ContainerSpec(image="foo_image")
+    )
     valid_job = PlatformJobSpec(
         steps=[
             PlatformJobStep(

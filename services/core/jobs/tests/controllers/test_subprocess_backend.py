@@ -26,9 +26,7 @@ def _subprocess_backend(mock_nmp_client, tmp_path, mock_platform_config) -> Subp
 
 def _step_with_command(step, command: list[str]):
     updated_step = step.model_copy(deep=True)
-    updated_step.step_spec.executor = SubprocessExecutionProvider(
-        provider="cpu", profile="subprocess", command=command
-    )
+    updated_step.step_spec.executor = SubprocessExecutionProvider(provider="cpu", profile="subprocess", command=command)
     return updated_step
 
 
