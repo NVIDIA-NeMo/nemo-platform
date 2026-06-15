@@ -13,9 +13,9 @@ from __future__ import annotations
 import logging
 
 from nemo_platform_plugin.jobs.api_factory import (
+    ContainerExecutionProviderSpec,
     ContainerSpec,
     EnvironmentVariable,
-    GPUExecutionProviderSpec,
     PlatformJobStep,
     ResourcesSpec,
 )
@@ -62,7 +62,8 @@ def compile_training_step(
         output_path=DEFAULT_OUTPUT_MODEL_PATH,
     )
 
-    executor: GPUExecutionProviderSpec = {
+    executor: ContainerExecutionProviderSpec = {
+        "kind": "container",
         "provider": "gpu",
         "container": ContainerSpec(
             image=get_training_image(),

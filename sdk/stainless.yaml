@@ -501,20 +501,16 @@ resources:
     models:
       compute_resource_spec: ComputeResourceSpec
       compute_resources: ComputeResources
+      container_execution_provider: ContainerExecutionProviderOutput
+      container_execution_provider_param: ContainerExecutionProviderInput
       container_spec: ContainerSpec
-      cpu_execution_provider: CPUExecutionProviderOutput
-      cpu_execution_provider_param: CPUExecutionProviderInput
       create_platform_job_request: CreatePlatformJobRequest
-      distributed_gpu_execution_provider: DistributedGPUExecutionProviderOutput
-      distributed_gpu_execution_provider_param: DistributedGPUExecutionProviderInput
       docker_job_execution_profile: DockerJobExecutionProfile
       docker_job_execution_profile_config: DockerJobExecutionProfileConfig
       docker_job_network_config: DockerJobNetworkConfig
       docker_job_storage_config: DockerJobStorageConfig
       docker_volume_mount: DockerVolumeMount
       e2e_job_execution_profile: E2EJobExecutionProfile
-      gpu_execution_provider: GPUExecutionProviderOutput
-      gpu_execution_provider_param: GPUExecutionProviderInput
       image_pull_secret: ImagePullSecret
       job_execution_profile_config: JobExecutionProfileConfig
       kubernetes_empty_dir_volume: KubernetesEmptyDirVolume

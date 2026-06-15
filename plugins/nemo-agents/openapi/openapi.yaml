@@ -2549,6 +2549,13 @@ components:
           title: Custom Fields
           additionalProperties: true
           type: object
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
       type: object
       required:
       - spec
@@ -2838,6 +2845,13 @@ components:
           title: Custom Fields
           additionalProperties: true
           type: object
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
       type: object
       required:
       - spec
@@ -3051,6 +3065,13 @@ components:
           type: object
         custom_fields:
           title: Custom Fields
+          additionalProperties: true
+          type: object
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
           additionalProperties: true
           type: object
       type: object
@@ -3408,6 +3429,13 @@ components:
           title: Custom Fields
           additionalProperties: true
           type: object
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
       type: object
       required:
       - spec
@@ -3622,6 +3650,13 @@ components:
           type: object
         custom_fields:
           title: Custom Fields
+          additionalProperties: true
+          type: object
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
           additionalProperties: true
           type: object
       type: object

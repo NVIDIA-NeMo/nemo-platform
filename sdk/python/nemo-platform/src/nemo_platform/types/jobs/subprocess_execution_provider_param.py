@@ -25,10 +25,16 @@ __all__ = ["SubprocessExecutionProviderParam"]
 
 
 class SubprocessExecutionProviderParam(TypedDict, total=False):
-    """Host subprocess execution provider."""
+    """Host subprocess execution provider.
+
+    Runs a job step as a local OS process. The ``provider`` field
+    expresses compute intent while ``kind`` identifies the payload shape.
+    """
 
     command: Required[SequenceNotStr[str]]
 
+    kind: Literal["subprocess"]
+
     profile: str
 
-    provider: Literal["subprocess"]
+    provider: Literal["cpu", "gpu"]

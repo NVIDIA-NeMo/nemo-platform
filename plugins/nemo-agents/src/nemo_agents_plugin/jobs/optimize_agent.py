@@ -164,6 +164,7 @@ class OptimizeAgentJob(NemoJob):
                 PlatformJobStep(
                     name="optimize-agent",
                     executor=SubprocessExecutionProviderSpec(
+                        kind="subprocess",
                         provider="cpu",
                         command=["python", "-m", "nemo_agents_plugin.tasks.optimize"],
                     ),

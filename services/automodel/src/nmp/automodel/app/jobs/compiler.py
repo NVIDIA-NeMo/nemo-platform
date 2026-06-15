@@ -8,8 +8,8 @@ import logging
 from nemo_platform import AsyncNeMoPlatform, NotFoundError
 from nemo_platform.types.models.model_entity import ModelEntity
 from nemo_platform_plugin.jobs.api_factory import (
+    ContainerExecutionProviderSpec,
     ContainerSpec,
-    CPUExecutionProviderSpec,
     EnvironmentVariable,
     PlatformJobSpec,
     PlatformJobStep,
@@ -447,7 +447,8 @@ async def platform_job_config_compiler(
         # Step 1: Download model and dataset files from Files service
         PlatformJobStep(
             name="model-and-dataset-download",
-            executor=CPUExecutionProviderSpec(
+            executor=ContainerExecutionProviderSpec(
+                kind="container",
                 provider="cpu",
                 container=ContainerSpec(
                     image=get_tasks_image(),
@@ -469,7 +470,8 @@ async def platform_job_config_compiler(
         # Step 3: Upload customized model
         PlatformJobStep(
             name="model-upload",
-            executor=CPUExecutionProviderSpec(
+            executor=ContainerExecutionProviderSpec(
+                kind="container",
                 provider="cpu",
                 container=ContainerSpec(
                     image=get_tasks_image(),
@@ -484,7 +486,8 @@ async def platform_job_config_compiler(
         # Step 4: Create model entity
         PlatformJobStep(
             name="model-entity-creation",
-            executor=CPUExecutionProviderSpec(
+            executor=ContainerExecutionProviderSpec(
+                kind="container",
                 provider="cpu",
                 container=ContainerSpec(
                     image=get_tasks_image(),

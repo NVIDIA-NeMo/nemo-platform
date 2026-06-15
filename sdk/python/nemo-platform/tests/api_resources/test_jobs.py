@@ -53,7 +53,7 @@ class TestJobs:
                     {
                         "executor": {
                             "container": {"image": "image"},
-                            "provider": "cpu",
+                            "kind": "container",
                         },
                         "name": "preprocess",
                     }
@@ -78,6 +78,7 @@ class TestJobs:
                                 "command": ["string"],
                                 "entrypoint": ["string"],
                             },
+                            "kind": "container",
                             "profile": "profile",
                             "provider": "cpu",
                             "resources": {
@@ -127,7 +128,7 @@ class TestJobs:
                     {
                         "executor": {
                             "container": {"image": "image"},
-                            "provider": "cpu",
+                            "kind": "container",
                         },
                         "name": "preprocess",
                     }
@@ -152,7 +153,7 @@ class TestJobs:
                     {
                         "executor": {
                             "container": {"image": "image"},
-                            "provider": "cpu",
+                            "kind": "container",
                         },
                         "name": "preprocess",
                     }
@@ -180,7 +181,7 @@ class TestJobs:
                         {
                             "executor": {
                                 "container": {"image": "image"},
-                                "provider": "cpu",
+                                "kind": "container",
                             },
                             "name": "preprocess",
                         }
@@ -747,7 +748,7 @@ class TestAsyncJobs:
                     {
                         "executor": {
                             "container": {"image": "image"},
-                            "provider": "cpu",
+                            "kind": "container",
                         },
                         "name": "preprocess",
                     }
@@ -772,6 +773,7 @@ class TestAsyncJobs:
                                 "command": ["string"],
                                 "entrypoint": ["string"],
                             },
+                            "kind": "container",
                             "profile": "profile",
                             "provider": "cpu",
                             "resources": {
@@ -821,7 +823,7 @@ class TestAsyncJobs:
                     {
                         "executor": {
                             "container": {"image": "image"},
-                            "provider": "cpu",
+                            "kind": "container",
                         },
                         "name": "preprocess",
                     }
@@ -846,7 +848,7 @@ class TestAsyncJobs:
                     {
                         "executor": {
                             "container": {"image": "image"},
-                            "provider": "cpu",
+                            "kind": "container",
                         },
                         "name": "preprocess",
                     }
@@ -874,7 +876,7 @@ class TestAsyncJobs:
                         {
                             "executor": {
                                 "container": {"image": "image"},
-                                "provider": "cpu",
+                                "kind": "container",
                             },
                             "name": "preprocess",
                         }

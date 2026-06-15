@@ -18,8 +18,8 @@ from nemo_platform.types.jobs import PlatformJobResponse as PlatformJob
 from nemo_platform.types.shared.platform_job_status import PlatformJobStatus
 from nemo_platform_plugin.entities import EntityClient
 from nemo_platform_plugin.jobs.api_factory import (
+    ContainerExecutionProviderSpec,
     ContainerSpec,
-    CPUExecutionProviderSpec,
     FileResultSerializer,
     JobRouteOption,
     PlatformJobResultRoute,
@@ -69,7 +69,8 @@ def foo_job_config_compiler(
         steps=[
             PlatformJobStep(
                 name="foo_step",
-                executor=CPUExecutionProviderSpec(
+                executor=ContainerExecutionProviderSpec(
+                    kind="container",
                     provider="cpu",
                     profile="default",
                     container=ContainerSpec(
@@ -121,7 +122,7 @@ def test_api_factory_routes():
 
 
 def test_validate_job_spec():
-    executor = CPUExecutionProviderSpec(provider="cpu", profile="default", container=ContainerSpec(image="foo_image"))
+    executor = ContainerExecutionProviderSpec(kind="container", provider="cpu", profile="default", container=ContainerSpec(image="foo_image"))
     valid_job = PlatformJobSpec(
         steps=[
             PlatformJobStep(
@@ -1396,7 +1397,8 @@ def test_create_job_injects_workspace_and_entity_client():
             steps=[
                 PlatformJobStep(
                     name="test_step",
-                    executor=CPUExecutionProviderSpec(
+                    executor=ContainerExecutionProviderSpec(
+                        kind="container",
                         provider="cpu",
                         profile="default",
                         container=ContainerSpec(image="test_image"),
@@ -1443,7 +1445,8 @@ def test_sync_compiler_is_called_correctly():
             steps=[
                 PlatformJobStep(
                     name="test_step",
-                    executor=CPUExecutionProviderSpec(
+                    executor=ContainerExecutionProviderSpec(
+                        kind="container",
                         provider="cpu",
                         profile="default",
                         container=ContainerSpec(image="test_image"),
@@ -1659,7 +1662,8 @@ class TestCompilePlatformSpec:
             steps=[
                 PlatformJobStep(
                     name="step",
-                    executor=CPUExecutionProviderSpec(
+                    executor=ContainerExecutionProviderSpec(
+                        kind="container",
                         provider="cpu",
                         profile="default",
                         container=ContainerSpec(image="img"),
@@ -1719,7 +1723,8 @@ class TestCompilePlatformSpec:
                 steps=[
                     PlatformJobStep(
                         name="step",
-                        executor=CPUExecutionProviderSpec(
+                        executor=ContainerExecutionProviderSpec(
+                            kind="container",
                             provider="cpu",
                             profile="default",
                             container=ContainerSpec(image="img"),

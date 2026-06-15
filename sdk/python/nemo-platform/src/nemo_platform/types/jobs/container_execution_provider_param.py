@@ -22,14 +22,15 @@ from typing_extensions import Literal, Required, TypedDict
 from .container_spec_param import ContainerSpecParam
 from .compute_resources_param import ComputeResourcesParam
 
-__all__ = ["CPUExecutionProviderParam"]
+__all__ = ["ContainerExecutionProviderParam"]
 
 
-class CPUExecutionProviderParam(TypedDict, total=False):
-    """CPU-based execution provider.
+class ContainerExecutionProviderParam(TypedDict, total=False):
+    """Container-based execution provider.
 
-    Provides configuration for running jobs on CPU resources with
-    resource requests and limits.
+    Runs a job step inside a container image. The ``provider`` field
+    expresses compute intent (cpu, gpu, gpu_distributed) while ``kind``
+    identifies the payload shape.
     """
 
     container: Required[ContainerSpecParam]
@@ -38,9 +39,11 @@ class CPUExecutionProviderParam(TypedDict, total=False):
     Defines the container image and related configuration for job execution.
     """
 
+    kind: Literal["container"]
+
     profile: str
 
-    provider: Literal["cpu"]
+    provider: Literal["cpu", "gpu", "gpu_distributed"]
 
     resources: ComputeResourcesParam
     """Resource requirements matching k8s ResourceRequirements format."""

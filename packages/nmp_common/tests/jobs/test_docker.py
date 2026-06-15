@@ -7,9 +7,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from nemo_platform_plugin.jobs.api_factory import (
+    ContainerExecutionProviderSpec,
     ContainerSpec,
-    CPUExecutionProviderSpec,
-    GPUExecutionProviderSpec,
     PlatformJobSpec,
     PlatformJobStep,
 )
@@ -20,11 +19,11 @@ from nmp.common.jobs.exceptions import PlatformJobCompilationError
 
 def test_spec_has_gpu_step():
     """spec_has_gpu_step returns True when any step has provider gpu or gpu_distributed."""
-    cpu_executor = CPUExecutionProviderSpec(
-        provider="cpu", profile="default", container=ContainerSpec(image="foo_image")
+    cpu_executor = ContainerExecutionProviderSpec(
+        kind="container", provider="cpu", profile="default", container=ContainerSpec(image="foo_image")
     )
-    gpu_executor = GPUExecutionProviderSpec(
-        provider="gpu", profile="default", container=ContainerSpec(image="gpu_image")
+    gpu_executor = ContainerExecutionProviderSpec(
+        kind="container", provider="gpu", profile="default", container=ContainerSpec(image="gpu_image")
     )
     cpu_only_job = PlatformJobSpec(
         steps=[
@@ -61,8 +60,8 @@ def test_spec_has_gpu_step():
 )
 def test_validate_gpu_available_for_docker(runtime, reserved_gpu_ids, config_raises, expect_raise, message_contains):
     """GPU job validation: raise when Docker has no GPUs; pass or skip otherwise."""
-    gpu_executor = GPUExecutionProviderSpec(
-        provider="gpu", profile="default", container=ContainerSpec(image="gpu_image")
+    gpu_executor = ContainerExecutionProviderSpec(
+        kind="container", provider="gpu", profile="default", container=ContainerSpec(image="gpu_image")
     )
     gpu_job = PlatformJobSpec(
         steps=[

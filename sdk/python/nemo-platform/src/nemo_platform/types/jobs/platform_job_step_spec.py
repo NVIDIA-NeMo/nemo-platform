@@ -21,17 +21,14 @@ from typing_extensions import Annotated, TypeAlias
 from ..._utils import PropertyInfo
 from ..._models import BaseModel
 from .step_lifecycle import StepLifecycle
-from .cpu_execution_provider import CPUExecutionProvider
-from .gpu_execution_provider import GPUExecutionProvider
+from .container_execution_provider import ContainerExecutionProvider
 from .subprocess_execution_provider import SubprocessExecutionProvider
 from .platform_job_environment_variable import PlatformJobEnvironmentVariable
-from .distributed_gpu_execution_provider import DistributedGPUExecutionProvider
 
 __all__ = ["PlatformJobStepSpec", "Executor"]
 
 Executor: TypeAlias = Annotated[
-    Union[CPUExecutionProvider, GPUExecutionProvider, DistributedGPUExecutionProvider, SubprocessExecutionProvider],
-    PropertyInfo(discriminator="provider"),
+    Union[ContainerExecutionProvider, SubprocessExecutionProvider], PropertyInfo(discriminator="kind")
 ]
 
 

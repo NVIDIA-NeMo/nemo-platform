@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import re
-from typing import Annotated, Any, Literal, Union
+from typing import Annotated, Literal, Union
 
-from pydantic import BaseModel, BeforeValidator, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # SHM: megabyte/gigabyte scale only — Mi, Gi (binary) or M, G (decimal SI).
 # Ki / Ti / Pi / Ei and other suffixes are not accepted for /dev/shm.
@@ -134,28 +134,9 @@ class SubprocessExecutionProvider(BaseModel):
         return self
 
 
-def _infer_executor_kind(v: Any) -> Any:
-    """Infer ``kind`` from payload shape when absent.
-
-    The SDK types haven't been regenerated yet, so incoming requests may
-    omit ``kind``. Infer it from the presence of ``container`` (→ container)
-    vs ``command`` (→ subprocess), or from the legacy ``provider="subprocess"``.
-    """
-    if not isinstance(v, dict) or "kind" in v:
-        return v
-    if v.get("provider") == "subprocess" or "command" in v:
-        v = {**v, "kind": "subprocess"}
-        if v.get("provider") == "subprocess":
-            v["provider"] = "cpu"
-    else:
-        v = {**v, "kind": "container"}
-    return v
-
-
 # Discriminated union type for execution providers.
 # Uses ``kind`` to distinguish container vs subprocess payload shapes.
 Provider = Annotated[
     Union[ContainerExecutionProvider, SubprocessExecutionProvider],
-    BeforeValidator(_infer_executor_kind),
     Field(discriminator="kind"),
 ]

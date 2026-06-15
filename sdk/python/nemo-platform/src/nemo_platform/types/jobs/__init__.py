@@ -36,8 +36,6 @@ from .result_create_params import ResultCreateParams as ResultCreateParams
 from .step_lifecycle_param import StepLifecycleParam as StepLifecycleParam
 from .compute_resource_spec import ComputeResourceSpec as ComputeResourceSpec
 from .platform_job_response import PlatformJobResponse as PlatformJobResponse
-from .cpu_execution_provider import CPUExecutionProvider as CPUExecutionProvider
-from .gpu_execution_provider import GPUExecutionProvider as GPUExecutionProvider
 from .platform_job_step_spec import PlatformJobStepSpec as PlatformJobStepSpec
 from .compute_resources_param import ComputeResourcesParam as ComputeResourcesParam
 from .kubernetes_volume_mount import KubernetesVolumeMount as KubernetesVolumeMount
@@ -51,9 +49,8 @@ from .kubernetes_object_metadata import KubernetesObjectMetadata as KubernetesOb
 from .compute_resource_spec_param import ComputeResourceSpecParam as ComputeResourceSpecParam
 from .kubernetes_empty_dir_volume import KubernetesEmptyDirVolume as KubernetesEmptyDirVolume
 from .platform_job_responses_page import PlatformJobResponsesPage as PlatformJobResponsesPage
-from .cpu_execution_provider_param import CPUExecutionProviderParam as CPUExecutionProviderParam
+from .container_execution_provider import ContainerExecutionProvider as ContainerExecutionProvider
 from .docker_job_execution_profile import DockerJobExecutionProfile as DockerJobExecutionProfile
-from .gpu_execution_provider_param import GPUExecutionProviderParam as GPUExecutionProviderParam
 from .job_execution_profile_config import JobExecutionProfileConfig as JobExecutionProfileConfig
 from .platform_job_step_spec_param import PlatformJobStepSpecParam as PlatformJobStepSpecParam
 from .task_create_or_update_params import TaskCreateOrUpdateParams as TaskCreateOrUpdateParams
@@ -67,7 +64,7 @@ from .job_update_status_details_params import JobUpdateStatusDetailsParams as Jo
 from .kubernetes_job_execution_profile import KubernetesJobExecutionProfile as KubernetesJobExecutionProfile
 from .subprocess_job_execution_profile import SubprocessJobExecutionProfile as SubprocessJobExecutionProfile
 from .platform_job_environment_variable import PlatformJobEnvironmentVariable as PlatformJobEnvironmentVariable
-from .distributed_gpu_execution_provider import DistributedGPUExecutionProvider as DistributedGPUExecutionProvider
+from .container_execution_provider_param import ContainerExecutionProviderParam as ContainerExecutionProviderParam
 from .kubernetes_persistent_volume_claim import KubernetesPersistentVolumeClaim as KubernetesPersistentVolumeClaim
 from .docker_job_execution_profile_config import DockerJobExecutionProfileConfig as DockerJobExecutionProfileConfig
 from .subprocess_execution_provider_param import SubprocessExecutionProviderParam as SubprocessExecutionProviderParam
@@ -83,9 +80,6 @@ from .platform_job_environment_variable_param import (
 )
 from .subprocess_job_execution_profile_config import (
     SubprocessJobExecutionProfileConfig as SubprocessJobExecutionProfileConfig,
-)
-from .distributed_gpu_execution_provider_param import (
-    DistributedGPUExecutionProviderParam as DistributedGPUExecutionProviderParam,
 )
 from .platform_job_secret_environment_variable_ref import (
     PlatformJobSecretEnvironmentVariableRef as PlatformJobSecretEnvironmentVariableRef,

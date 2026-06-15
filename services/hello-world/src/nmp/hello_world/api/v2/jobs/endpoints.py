@@ -7,8 +7,8 @@ from fastapi import APIRouter
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.entities import EntityClient
 from nemo_platform_plugin.jobs.api_factory import (
+    ContainerExecutionProviderSpec,
     ContainerSpec,
-    CPUExecutionProviderSpec,
     PlatformJobSpec,
     PlatformJobStep,
     job_route_factory,
@@ -41,7 +41,8 @@ def compile_hello_world_job(
         steps=[
             PlatformJobStep(
                 name="hello-world",
-                executor=CPUExecutionProviderSpec(
+                executor=ContainerExecutionProviderSpec(
+                    kind="container",
                     provider="cpu",
                     profile="default",
                     container=ContainerSpec(

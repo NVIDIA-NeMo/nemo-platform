@@ -19,8 +19,8 @@ import logging
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform.types.models.model_entity import ModelEntity
 from nemo_platform_plugin.jobs.api_factory import (
+    ContainerExecutionProviderSpec,
     ContainerSpec,
-    CPUExecutionProviderSpec,
     EnvironmentVariable,
     PlatformJobSpec,
     PlatformJobStep,
@@ -240,7 +240,8 @@ async def platform_job_config_compiler(
     steps: list[PlatformJobStep] = [
         PlatformJobStep(
             name="model-and-dataset-download",
-            executor=CPUExecutionProviderSpec(
+            executor=ContainerExecutionProviderSpec(
+                kind="container",
                 provider="cpu",
                 container=ContainerSpec(
                     image=get_tasks_image(),
@@ -260,7 +261,8 @@ async def platform_job_config_compiler(
         ),
         PlatformJobStep(
             name="model-upload",
-            executor=CPUExecutionProviderSpec(
+            executor=ContainerExecutionProviderSpec(
+                kind="container",
                 provider="cpu",
                 container=ContainerSpec(
                     image=get_tasks_image(),
@@ -274,7 +276,8 @@ async def platform_job_config_compiler(
         ),
         PlatformJobStep(
             name="model-entity-creation",
-            executor=CPUExecutionProviderSpec(
+            executor=ContainerExecutionProviderSpec(
+                kind="container",
                 provider="cpu",
                 container=ContainerSpec(
                     image=get_tasks_image(),

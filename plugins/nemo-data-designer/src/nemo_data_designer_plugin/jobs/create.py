@@ -16,8 +16,8 @@ from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.jobs.api_factory import (
+    ContainerExecutionProviderSpec,
     ContainerSpec,
-    CPUExecutionProviderSpec,
     PlatformJobSpec,
     PlatformJobStep,
 )
@@ -73,7 +73,8 @@ class CreateJob(NemoJob):
             steps=[
                 PlatformJobStep(
                     name="data-designer-job",
-                    executor=CPUExecutionProviderSpec(
+                    executor=ContainerExecutionProviderSpec(
+                        kind="container",
                         profile=profile or "default",
                         provider="cpu",
                         container=ContainerSpec(

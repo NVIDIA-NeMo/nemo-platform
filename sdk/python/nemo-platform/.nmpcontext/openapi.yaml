@@ -8028,60 +8028,6 @@ components:
           title: Name
       title: BaseModelFilter
       type: object
-    CPUExecutionProviderInput:
-      properties:
-        provider:
-          type: string
-          const: cpu
-          title: Provider
-          default: cpu
-        profile:
-          type: string
-          title: Profile
-          default: default
-        container:
-          $ref: '#/components/schemas/ContainerSpec'
-        resources:
-          allOf:
-          - $ref: '#/components/schemas/ComputeResources'
-          description: Resource requests and limits for CPU execution.
-      type: object
-      required:
-      - container
-      title: CPUExecutionProviderInput
-      description: 'CPU-based execution provider.
-
-
-        Provides configuration for running jobs on CPU resources with
-
-        resource requests and limits.'
-    CPUExecutionProviderOutput:
-      properties:
-        provider:
-          type: string
-          const: cpu
-          title: Provider
-          default: cpu
-        profile:
-          type: string
-          title: Profile
-          default: default
-        container:
-          $ref: '#/components/schemas/ContainerSpec'
-        resources:
-          allOf:
-          - $ref: '#/components/schemas/ComputeResources'
-          description: Resource requests and limits for CPU execution.
-      type: object
-      required:
-      - container
-      title: CPUExecutionProviderOutput
-      description: 'CPU-based execution provider.
-
-
-        Provides configuration for running jobs on CPU resources with
-
-        resource requests and limits.'
     CacheStatsConfig:
       properties:
         enabled:
@@ -8523,6 +8469,80 @@ components:
       type: object
       title: ComputeResources
       description: Resource requirements matching k8s ResourceRequirements format.
+    ContainerExecutionProviderInput:
+      properties:
+        kind:
+          type: string
+          const: container
+          title: Kind
+          default: container
+        provider:
+          type: string
+          enum:
+          - cpu
+          - gpu
+          - gpu_distributed
+          title: Provider
+          default: cpu
+        profile:
+          type: string
+          title: Profile
+          default: default
+        container:
+          $ref: '#/components/schemas/ContainerSpec'
+        resources:
+          allOf:
+          - $ref: '#/components/schemas/ComputeResources'
+          description: Resource requests and limits.
+      type: object
+      required:
+      - container
+      title: ContainerExecutionProviderInput
+      description: 'Container-based execution provider.
+
+
+        Runs a job step inside a container image. The ``provider`` field
+
+        expresses compute intent (cpu, gpu, gpu_distributed) while ``kind``
+
+        identifies the payload shape.'
+    ContainerExecutionProviderOutput:
+      properties:
+        kind:
+          type: string
+          const: container
+          title: Kind
+          default: container
+        provider:
+          type: string
+          enum:
+          - cpu
+          - gpu
+          - gpu_distributed
+          title: Provider
+          default: cpu
+        profile:
+          type: string
+          title: Profile
+          default: default
+        container:
+          $ref: '#/components/schemas/ContainerSpec'
+        resources:
+          allOf:
+          - $ref: '#/components/schemas/ComputeResources'
+          description: Resource requests and limits.
+      type: object
+      required:
+      - container
+      title: ContainerExecutionProviderOutput
+      description: 'Container-based execution provider.
+
+
+        Runs a job step inside a container image. The ``provider`` field
+
+        expresses compute intent (cpu, gpu, gpu_distributed) while ``kind``
+
+        identifies the payload shape.'
     ContainerExecutorConfig:
       properties:
         gpu:
@@ -9246,60 +9266,6 @@ components:
       type: object
       title: DialogRails
       description: Configuration of topical rails.
-    DistributedGPUExecutionProviderInput:
-      properties:
-        provider:
-          type: string
-          const: gpu_distributed
-          title: Provider
-          default: gpu_distributed
-        profile:
-          type: string
-          title: Profile
-          default: default
-        container:
-          $ref: '#/components/schemas/ContainerSpec'
-        resources:
-          allOf:
-          - $ref: '#/components/schemas/ComputeResources'
-          description: Resource requests and limits for distributed GPU execution.
-      type: object
-      required:
-      - container
-      title: DistributedGPUExecutionProviderInput
-      description: 'GPU-based execution provider.
-
-
-        Provides configuration for running jobs on GPU resources with
-
-        resource requests and limits.'
-    DistributedGPUExecutionProviderOutput:
-      properties:
-        provider:
-          type: string
-          const: gpu_distributed
-          title: Provider
-          default: gpu_distributed
-        profile:
-          type: string
-          title: Profile
-          default: default
-        container:
-          $ref: '#/components/schemas/ContainerSpec'
-        resources:
-          allOf:
-          - $ref: '#/components/schemas/ComputeResources'
-          description: Resource requests and limits for distributed GPU execution.
-      type: object
-      required:
-      - container
-      title: DistributedGPUExecutionProviderOutput
-      description: 'GPU-based execution provider.
-
-
-        Provides configuration for running jobs on GPU resources with
-
-        resource requests and limits.'
     DockerJobExecutionProfile:
       properties:
         provider:
@@ -10753,60 +10719,6 @@ components:
       type: object
       title: GLiNERDetectionOptions
       description: Configuration options for GLiNER.
-    GPUExecutionProviderInput:
-      properties:
-        provider:
-          type: string
-          const: gpu
-          title: Provider
-          default: gpu
-        profile:
-          type: string
-          title: Profile
-          default: default
-        container:
-          $ref: '#/components/schemas/ContainerSpec'
-        resources:
-          allOf:
-          - $ref: '#/components/schemas/ComputeResources'
-          description: Resource requests and limits for GPU execution.
-      type: object
-      required:
-      - container
-      title: GPUExecutionProviderInput
-      description: 'GPU-based execution provider.
-
-
-        Provides configuration for running jobs on GPU resources with
-
-        resource requests and limits.'
-    GPUExecutionProviderOutput:
-      properties:
-        provider:
-          type: string
-          const: gpu
-          title: Provider
-          default: gpu
-        profile:
-          type: string
-          title: Profile
-          default: default
-        container:
-          $ref: '#/components/schemas/ContainerSpec'
-        resources:
-          allOf:
-          - $ref: '#/components/schemas/ComputeResources'
-          description: Resource requests and limits for GPU execution.
-      type: object
-      required:
-      - container
-      title: GPUExecutionProviderOutput
-      description: 'GPU-based execution provider.
-
-
-        Provides configuration for running jobs on GPU resources with
-
-        resource requests and limits.'
     GenerationLog:
       properties:
         activated_rails:
@@ -14576,18 +14488,14 @@ components:
           type: array
         executor:
           oneOf:
-          - $ref: '#/components/schemas/CPUExecutionProviderInput'
-          - $ref: '#/components/schemas/GPUExecutionProviderInput'
-          - $ref: '#/components/schemas/DistributedGPUExecutionProviderInput'
+          - $ref: '#/components/schemas/ContainerExecutionProviderInput'
           - $ref: '#/components/schemas/SubprocessExecutionProvider'
           title: Executor
           description: The executor for the step
           discriminator:
-            propertyName: provider
+            propertyName: kind
             mapping:
-              cpu: '#/components/schemas/CPUExecutionProviderInput'
-              gpu: '#/components/schemas/GPUExecutionProviderInput'
-              gpu_distributed: '#/components/schemas/DistributedGPUExecutionProviderInput'
+              container: '#/components/schemas/ContainerExecutionProviderInput'
               subprocess: '#/components/schemas/SubprocessExecutionProvider'
         config:
           additionalProperties: true
@@ -14626,18 +14534,14 @@ components:
           type: array
         executor:
           oneOf:
-          - $ref: '#/components/schemas/CPUExecutionProviderOutput'
-          - $ref: '#/components/schemas/GPUExecutionProviderOutput'
-          - $ref: '#/components/schemas/DistributedGPUExecutionProviderOutput'
+          - $ref: '#/components/schemas/ContainerExecutionProviderOutput'
           - $ref: '#/components/schemas/SubprocessExecutionProvider'
           title: Executor
           description: The executor for the step
           discriminator:
-            propertyName: provider
+            propertyName: kind
             mapping:
-              cpu: '#/components/schemas/CPUExecutionProviderOutput'
-              gpu: '#/components/schemas/GPUExecutionProviderOutput'
-              gpu_distributed: '#/components/schemas/DistributedGPUExecutionProviderOutput'
+              container: '#/components/schemas/ContainerExecutionProviderOutput'
               subprocess: '#/components/schemas/SubprocessExecutionProvider'
         config:
           additionalProperties: true
@@ -16469,15 +16373,22 @@ components:
       type: object
     SubprocessExecutionProvider:
       properties:
-        provider:
+        kind:
           type: string
           const: subprocess
-          title: Provider
+          title: Kind
           default: subprocess
+        provider:
+          type: string
+          enum:
+          - cpu
+          - gpu
+          title: Provider
+          default: cpu
         profile:
           type: string
           title: Profile
-          default: default
+          default: subprocess
         command:
           items:
             type: string
@@ -16487,14 +16398,19 @@ components:
       required:
       - command
       title: SubprocessExecutionProvider
-      description: Host subprocess execution provider.
+      description: 'Host subprocess execution provider.
+
+
+        Runs a job step as a local OS process. The ``provider`` field
+
+        expresses compute intent while ``kind`` identifies the payload shape.'
     SubprocessJobExecutionProfile:
       properties:
         provider:
           type: string
-          const: subprocess
+          const: cpu
           title: Provider
-          default: subprocess
+          default: cpu
         profile:
           type: string
           title: Profile

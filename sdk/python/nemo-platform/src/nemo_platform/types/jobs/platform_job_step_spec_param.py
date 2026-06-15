@@ -21,20 +21,13 @@ from typing import Dict, Union, Iterable
 from typing_extensions import Required, TypeAlias, TypedDict
 
 from .step_lifecycle_param import StepLifecycleParam
-from .cpu_execution_provider_param import CPUExecutionProviderParam
-from .gpu_execution_provider_param import GPUExecutionProviderParam
+from .container_execution_provider_param import ContainerExecutionProviderParam
 from .subprocess_execution_provider_param import SubprocessExecutionProviderParam
 from .platform_job_environment_variable_param import PlatformJobEnvironmentVariableParam
-from .distributed_gpu_execution_provider_param import DistributedGPUExecutionProviderParam
 
 __all__ = ["PlatformJobStepSpecParam", "Executor"]
 
-Executor: TypeAlias = Union[
-    CPUExecutionProviderParam,
-    GPUExecutionProviderParam,
-    DistributedGPUExecutionProviderParam,
-    SubprocessExecutionProviderParam,
-]
+Executor: TypeAlias = Union[ContainerExecutionProviderParam, SubprocessExecutionProviderParam]
 
 
 class PlatformJobStepSpecParam(TypedDict, total=False):

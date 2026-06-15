@@ -8,8 +8,8 @@ from __future__ import annotations
 from nemo_evaluator.jobs.evaluate import EvaluateSpec
 from nemo_evaluator_sdk.values import Agent, Model, RunConfig, RunConfigOnline, RunConfigOnlineModel
 from nemo_platform_plugin.jobs.api_factory import (
+    ContainerExecutionProviderSpec,
     ContainerSpec,
-    CPUExecutionProviderSpec,
     EnvironmentVariable,
     EnvironmentVariableFromSecret,
     PlatformJobSpec,
@@ -80,7 +80,8 @@ def _secret_environment(spec: EvaluateSpec) -> list[EnvironmentVariable]:
 def _evaluate_step(spec: EvaluateSpec, profile: str | None) -> PlatformJobStep:
     return PlatformJobStep(
         name=EVALUATE_STEP_NAME,
-        executor=CPUExecutionProviderSpec(
+        executor=ContainerExecutionProviderSpec(
+            kind="container",
             profile=profile or "default",
             provider="cpu",
             container=ContainerSpec(

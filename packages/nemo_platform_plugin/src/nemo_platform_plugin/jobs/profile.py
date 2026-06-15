@@ -23,10 +23,9 @@ The helper mutates *spec* in place and also returns it for chaining.
 Why it lives in ``nemo_platform_plugin`` and not in the Jobs service:
 
 Each step's ``executor`` is a discriminated union
-(``CPUExecutionProviderParam`` / ``GPUExecutionProviderParam`` /
-``DistributedGPUExecutionProviderParam``) from the generated
-``nemo_platform`` SDK. All three carry a ``profile: str`` field — that's the
-only attribute the stamper touches. Keeping the helper in ``nemo_platform_plugin``
+(``ContainerExecutionProviderParam`` / ``SubprocessExecutionProviderParam``)
+from the generated ``nemo_platform`` SDK. Both carry a ``profile: str``
+field — that's the only attribute the stamper touches. Keeping the helper in ``nemo_platform_plugin``
 alongside the factory avoids dragging plugin-service code through the Jobs
 service's internals and matches where ``add_job_routes()`` already lives.
 """

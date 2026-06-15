@@ -1502,6 +1502,13 @@ components:
           title: Custom Fields
           additionalProperties: true
           type: object
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
       type: object
       required:
       - spec

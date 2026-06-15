@@ -34,10 +34,8 @@ from nemo_platform import AsyncNeMoPlatform
 from nemo_platform.types.jobs import (
     ComputeResourcesParam,
     ComputeResourceSpecParam,
+    ContainerExecutionProviderParam,
     ContainerSpecParam,
-    CPUExecutionProviderParam,
-    DistributedGPUExecutionProviderParam,
-    GPUExecutionProviderParam,
     PlatformJobEnvironmentVariableParam,
     PlatformJobSecretEnvironmentVariableRefParam,
     PlatformJobSpecParam,
@@ -75,13 +73,8 @@ PlatformJobSpec = PlatformJobSpecParam
 PlatformJobStep = PlatformJobStepSpecParam
 StepLifecycle = StepLifecycleParam
 ExecutorSpec = Executor
-CPUExecutionProviderSpec = CPUExecutionProviderParam
-GPUExecutionProviderSpec = GPUExecutionProviderParam
-DistributedGPUExecutionProviderSpec = DistributedGPUExecutionProviderParam
+ContainerExecutionProviderSpec = ContainerExecutionProviderParam
 SubprocessExecutionProviderSpec = SubprocessExecutionProviderParam
-# Container providers (cpu, gpu, gpu_distributed) share the same shape today.
-# This alias will point at a dedicated SDK type once the SDK is regenerated.
-ContainerExecutionProviderSpec = CPUExecutionProviderParam
 ResourcesSpec = ComputeResourcesParam
 ResourcesLimitsSpec = ComputeResourceSpecParam
 ResourcesRequestsSpec = ComputeResourceSpecParam

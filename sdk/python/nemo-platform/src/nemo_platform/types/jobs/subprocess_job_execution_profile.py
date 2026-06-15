@@ -33,4 +33,4 @@ class SubprocessJobExecutionProfile(BaseModel):
     profile: Optional[str] = None
     """The profile name for the executor, e.g., high_priority_a100, low_priority, etc."""
 
-    provider: Optional[Literal["subprocess"]] = None
+    provider: Optional[Literal["cpu"]] = None

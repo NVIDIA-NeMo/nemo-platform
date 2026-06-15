@@ -24,10 +24,16 @@ __all__ = ["SubprocessExecutionProvider"]
 
 
 class SubprocessExecutionProvider(BaseModel):
-    """Host subprocess execution provider."""
+    """Host subprocess execution provider.
+
+    Runs a job step as a local OS process. The ``provider`` field
+    expresses compute intent while ``kind`` identifies the payload shape.
+    """
 
     command: List[str]
 
+    kind: Optional[Literal["subprocess"]] = None
+
     profile: Optional[str] = None
 
-    provider: Optional[Literal["subprocess"]] = None
+    provider: Optional[Literal["cpu", "gpu"]] = None

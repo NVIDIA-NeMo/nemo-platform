@@ -1,6 +1,6 @@
 """E2E tests for platform jobs via the subprocess executor.
 
-These tests submit jobs with CPUExecutionProviderSpec (container image + command).
+These tests submit jobs with ContainerExecutionProviderSpec (container image + command).
 In subprocess mode, the jobs service translates cpu/default steps to subprocess
 steps automatically — the container image is discarded and the command runs
 directly on the host.

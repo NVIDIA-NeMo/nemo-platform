@@ -15,32 +15,35 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from __future__ import annotations
+from typing import Optional
+from typing_extensions import Literal
 
-from typing_extensions import Literal, Required, TypedDict
+from ..._models import BaseModel
+from .container_spec import ContainerSpec
+from .compute_resources import ComputeResources
 
-from .container_spec_param import ContainerSpecParam
-from .compute_resources_param import ComputeResourcesParam
-
-__all__ = ["DistributedGPUExecutionProviderParam"]
+__all__ = ["ContainerExecutionProvider"]
 
 
-class DistributedGPUExecutionProviderParam(TypedDict, total=False):
-    """GPU-based execution provider.
+class ContainerExecutionProvider(BaseModel):
+    """Container-based execution provider.
 
-    Provides configuration for running jobs on GPU resources with
-    resource requests and limits.
+    Runs a job step inside a container image. The ``provider`` field
+    expresses compute intent (cpu, gpu, gpu_distributed) while ``kind``
+    identifies the payload shape.
     """
 
-    container: Required[ContainerSpecParam]
+    container: ContainerSpec
     """Specification for a container configuration.
 
     Defines the container image and related configuration for job execution.
     """
 
-    profile: str
+    kind: Optional[Literal["container"]] = None
 
-    provider: Literal["gpu_distributed"]
+    profile: Optional[str] = None
 
-    resources: ComputeResourcesParam
+    provider: Optional[Literal["cpu", "gpu", "gpu_distributed"]] = None
+
+    resources: Optional[ComputeResources] = None
     """Resource requirements matching k8s ResourceRequirements format."""

@@ -6,8 +6,8 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from nemo_platform import APIError, AsyncNeMoPlatform
 from nemo_platform_plugin.jobs.api_factory import (
+    ContainerExecutionProviderSpec,
     ContainerSpec,
-    CPUExecutionProviderSpec,
     EnvironmentVariable,
     PlatformJobSpec,
     PlatformJobStep,
@@ -267,7 +267,8 @@ async def start_update_model_spec_job(model_entity: ModelEntity):
             # Step 1: Download model and dataset files from Files service
             PlatformJobStep(
                 name="model-spec-analysis",
-                executor=CPUExecutionProviderSpec(
+                executor=ContainerExecutionProviderSpec(
+                    kind="container",
                     provider="cpu",
                     container=ContainerSpec(
                         image=get_qualified_image("nmp-automodel-tasks"),

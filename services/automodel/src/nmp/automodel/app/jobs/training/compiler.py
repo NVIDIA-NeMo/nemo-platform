@@ -7,11 +7,10 @@ import logging
 
 from nemo_platform.types.models.model_entity import ModelEntity
 from nemo_platform_plugin.jobs.api_factory import (
+    ContainerExecutionProviderSpec,
     ContainerSpec,
-    DistributedGPUExecutionProviderSpec,
     EnvironmentVariable,
     EnvironmentVariableFromSecret,
-    GPUExecutionProviderSpec,
     PlatformJobStep,
     ResourcesSpec,
     StepLifecycle,
@@ -194,7 +193,8 @@ def compile_training_step(
 
     if p.num_nodes > 1:
         logger.debug(f"Using distributed GPU executor: num_nodes={p.num_nodes}, num_gpus_per_node={num_gpus_per_node}")
-        executor = DistributedGPUExecutionProviderSpec(
+        executor = ContainerExecutionProviderSpec(
+            kind="container",
             provider="gpu_distributed",
             profile=profile,
             container=container,
@@ -205,7 +205,8 @@ def compile_training_step(
         )
     else:
         logger.debug(f"Using single-node GPU executor: num_gpus={num_gpus_per_node}")
-        executor = GPUExecutionProviderSpec(
+        executor = ContainerExecutionProviderSpec(
+            kind="container",
             provider="gpu",
             profile=profile,
             container=container,

@@ -15,11 +15,11 @@ from nemo_platform import AsyncNeMoPlatform, NotFoundError, PermissionDeniedErro
 from nemo_platform.filesets import FilesetPathError, parse_fileset_ref
 from nemo_platform_plugin.entities import EntityClient
 from nemo_platform_plugin.jobs.api_factory import (
+    ContainerExecutionProviderSpec,
     ContainerSpec,
     EnvironmentVariable,
     EnvironmentVariableFromSecret,
     FileResultSerializer,
-    GPUExecutionProviderSpec,
     PlatformJobResultRoute,
     PlatformJobSpec,
     PlatformJobStep,
@@ -62,6 +62,7 @@ def _create_job_step(job_config: SafeSynthesizerJobConfig, environment: list[Env
         return PlatformJobStep(
             name="safe-synthesizer",
             executor=SubprocessExecutionProviderSpec(
+                kind="subprocess",
                 provider="cpu",
                 profile=config.job_executor_profile,
                 command=command,
@@ -85,7 +86,8 @@ def _create_job_step(job_config: SafeSynthesizerJobConfig, environment: list[Env
     )
     return PlatformJobStep(
         name="safe-synthesizer",
-        executor=GPUExecutionProviderSpec(
+        executor=ContainerExecutionProviderSpec(
+            kind="container",
             provider="gpu",
             profile=config.job_executor_profile,
             container=ContainerSpec(

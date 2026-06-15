@@ -69,6 +69,7 @@ async def test_create_job_using_sdk(test_sdk: AsyncNeMoPlatform):
                 {
                     "name": "basic",
                     "executor": {
+                        "kind": "container",
                         "provider": "cpu",
                         "profile": "default",
                         "container": {
