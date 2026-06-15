@@ -1,4 +1,5 @@
 {{- if and (include "nemo-platform.authEnabled" .) .Values.envoyProxy.enabled }}
+{{- $imagePullSecrets := include "nemo-common.imagepullsecrets" . }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -33,8 +34,10 @@ spec:
       serviceAccountName: {{ include "nmp-envoy.serviceAccountName" . }}
       securityContext:
         {{- include "nemo-common.podSecurityContext" (dict "global" .Values.podSecurityContext "local" .Values.envoyProxy.podSecurityContext) | nindent 8 }}
+{{- if $imagePullSecrets }}
       imagePullSecrets:
-        {{ include "nemo-common.imagepullsecrets" . | nindent 8 | trim }}
+{{- $imagePullSecrets | nindent 8 }}
+{{- end }}
       containers:
         - name: envoy
           securityContext:

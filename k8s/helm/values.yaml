@@ -6,7 +6,7 @@
 nameOverride: ""
 fullnameOverride: ""
 
-# -- Your NVIDIA GPU Cloud (NGC) API key authenticates and enables pulling images from the NGC container registry. The existing secret overrides this key if you provide one to the `existingSecret` key.
+# -- Your NVIDIA GPU Cloud (NGC) API key authenticates API calls to NGC services, such as model downloads. The existing secret overrides this key if you provide one to the `existingSecret` key.
 ngcAPIKey: YOUR-NGC-API-KEY
 
 # -- Environment variables that will be applied to every deployment pod. Uses a simple key value map structure like MY_ENV_VAR: the-key and works with valueFrom as well.
@@ -60,11 +60,8 @@ secrets:
 # -- You can use an existing Kubernetes secret for communicating with the NGC API for downloading models. The chart uses the `ngcAPIKey` value to generate the secret if you set this to an empty string.
 existingSecret: ngc-api
 
-# -- You can specify an existing Kubernetes image pull secret for pulling images from the NGC container registry. The chart uses the `ngcAPIKey` value to generate the secret if you set this to an empty string.
-existingImagePullSecret: nvcrimagepullsecret
-
-# -- List of additional image pull secrets to use for pulling container images. Can be used when multiple image pull secrets are required in your environment.
-additionalImagePullSecrets: {}
+# -- Existing Kubernetes image pull secrets to use for pulling container images from private registries or mirrors.
+imagePullSecrets: []
 
 # -- RBAC configuration settings for optional dependencies
 rbac:
@@ -275,8 +272,7 @@ basePlatformConfig: |
     # Image configuration for launching containers via the platform
     image_registry: nvcr.io/nvidia/nemo-platform
     image_tag: {{ .Chart.AppVersion | quote }}
-    image_pull_secrets:
-      {{ include "nemo-common.imagepullsecrets" . | nindent 8 }}
+    image_pull_secrets: {{ default (list) .Values.imagePullSecrets | toJson }}
 
   studio:
     # -- platform_base_url is the base URL used to access the platform.

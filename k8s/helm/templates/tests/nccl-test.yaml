@@ -1,5 +1,6 @@
 {{- /* Chart test (helm test only): resources use helm.sh/hook: test and are not applied on install/upgrade. See https://helm.sh/docs/topics/chart_tests/ */ -}}
 {{- /* kyverno-policy.yaml: only one multinodeNetworking.<cloud>.enabled; $cloud is the active profile. */ -}}
+{{- $imagePullSecrets := include "nemo-common.imagepullsecrets" . }}
 {{- $cloud := "" }}
 {{- if .Values.multinodeNetworking.aws.enabled }}{{- $cloud = "aws" }}
 {{- else if .Values.multinodeNetworking.azure.enabled }}{{- $cloud = "azure" }}
@@ -175,8 +176,10 @@ spec:
       restartPolicy: Never
       terminationGracePeriodSeconds: 0
       serviceAccountName: {{ printf "%s-sa" $ncclTestBase | trunc 63 }}
+{{- if $imagePullSecrets }}
       imagePullSecrets:
-        {{ include "nemo-common.imagepullsecrets" . | nindent 8 | trim }}
+{{- $imagePullSecrets | nindent 8 }}
+{{- end }}
       containers:
         - name: orchestrator
           image: "{{ .Values.ncclTest.orchestrator.image.repository }}:{{ .Values.ncclTest.orchestrator.image.tag }}"
@@ -218,8 +221,8 @@ spec:
               value: {{ .Values.ncclTest.gpuNodeLabelValue | quote }}
             - name: WORKER_IMAGE
               value: "{{ .Values.ncclTest.worker.image.repository }}:{{ default .Chart.AppVersion .Values.ncclTest.worker.image.tag }}"
-            - name: IMAGE_PULL_SECRET
-              value: {{ include "nemo-common.imagePullSecretName" . | quote }}
+            - name: IMAGE_PULL_SECRETS
+              value: {{ include "nemo-common.imagepullsecretnames" . | quote }}
             - name: MASTER_PORT
               value: "29500"
             - name: WAIT_TIMEOUT_SECONDS
@@ -292,8 +295,10 @@ spec:
     spec:
       restartPolicy: Never
       serviceAccountName: {{ printf "%s-sa" $ncclTestBase | trunc 63 }}
+{{- if $imagePullSecrets }}
       imagePullSecrets:
-        {{ include "nemo-common.imagepullsecrets" . | nindent 8 | trim }}
+{{- $imagePullSecrets | nindent 8 }}
+{{- end }}
       containers:
         - name: configmap-cleanup
           image: "{{ .Values.ncclTest.configMapCleanupJob.image.repository }}:{{ .Values.ncclTest.configMapCleanupJob.image.tag }}"
