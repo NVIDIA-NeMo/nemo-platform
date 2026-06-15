@@ -13,7 +13,7 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.jobs.api_factory import ContainerSpec as FactoryContainerSpec
-from nemo_platform_plugin.jobs.api_factory import ContainerExecutionProviderSpec as FactoryCPUExecutionProviderSpec
+from nemo_platform_plugin.jobs.api_factory import ContainerExecutionProviderSpec as FactoryContainerExecutionProviderSpec
 from nemo_platform_plugin.jobs.api_factory import PlatformJobEnvironmentVariableParam, job_route_factory
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec as FactoryPlatformJobSpec
 from nemo_platform_plugin.jobs.api_factory import PlatformJobStep as FactoryPlatformJobStep
@@ -490,7 +490,7 @@ def hello_world_job_config(
         steps=[
             FactoryPlatformJobStep(
                 name="hello-world-step-1",
-                executor=FactoryCPUExecutionProviderSpec(
+                executor=FactoryContainerExecutionProviderSpec(
                     kind="container",
                     provider="cpu",
                     profile="default",
