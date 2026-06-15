@@ -29,62 +29,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AuthDiscoveryResponse'
-  /apis/auth/v2/authz/{entrypoint}:
-    post:
-      tags:
-      - Authorization
-      summary: Evaluate authorization policy
-      description: "Evaluate an authorization policy entrypoint with the provided\
-        \ input.\n\n**Supported entrypoints:**\n\n- `allow` - Main request authorization\
-        \ (checks permissions, scopes, path)\n- `has_permissions` - Check if principal\
-        \ has specific permissions in a workspace\n- `has_role` - Check if principal\
-        \ has a specific role in a workspace\n\n**Example request for `allow`:**\n\
-        ```json\n{\n  \"input\": {\n    \"principal_id\": \"user@example.com\",\n\
-        \    \"method\": \"GET\",\n    \"path\": \"/v2/workspaces/my-workspace/models\"\
-        \n  }\n}\n```\n\n**Example request for `has_permissions`:**\n```json\n{\n\
-        \  \"input\": {\n    \"principal_id\": \"user@example.com\",\n    \"workspace\"\
-        : \"my-workspace\",\n    \"permissions\": [\"models.read\"]\n  }\n}\n```"
-      operationId: evaluate_policy_apis_auth_v2_authz__entrypoint__post
-      parameters:
-      - name: entrypoint
-        in: path
-        required: true
-        schema:
-          type: string
-          description: Policy entrypoint to evaluate
-          examples:
-          - allow
-          - has_permissions
-          - has_role
-          title: Entrypoint
-        description: Policy entrypoint to evaluate
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AuthzRequest'
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthzResponse'
-        '400':
-          description: Invalid entrypoint
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthzErrorResponse'
-        '500':
-          description: Policy evaluation error
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
   /apis/auth/v2/iam/role-bindings:
     get:
       tags:
@@ -8036,51 +7980,6 @@ components:
       - auth_enabled
       title: AuthDiscoveryResponse
       description: Auth discovery response for CLI/SDK.
-    AuthzErrorResponse:
-      properties:
-        error:
-          type: string
-          title: Error
-          description: Error message
-        valid_entrypoints:
-          items:
-            type: string
-          type: array
-          title: Valid Entrypoints
-          description: List of valid entrypoints
-      type: object
-      required:
-      - error
-      title: AuthzErrorResponse
-      description: Authorization error response.
-    AuthzRequest:
-      properties:
-        input:
-          additionalProperties: true
-          type: object
-          title: Input
-          description: Input data for policy evaluation
-          examples:
-          - method: GET
-            path: /v2/workspaces/my-workspace/models
-            principal_id: user@example.com
-      type: object
-      required:
-      - input
-      title: AuthzRequest
-      description: Authorization request input.
-    AuthzResponse:
-      properties:
-        result:
-          additionalProperties: true
-          type: object
-          title: Result
-          description: Policy evaluation result
-      type: object
-      required:
-      - result
-      title: AuthzResponse
-      description: Authorization response.
     AutoAlignOptions:
       properties:
         guardrails_config:
