@@ -49,9 +49,6 @@ navigation:
     - page: Customization Concepts
       path: ../../customizer/about.mdx
       slug: customization-concepts
-    - page: Using the NeMo Customizer Skill
-      path: ../../customizer/cli.mdx
-      slug: cli
     - section: Manage Customization Jobs
       slug: manage-customization-jobs
       path: ../../customizer/manage-customization-jobs/index.mdx
