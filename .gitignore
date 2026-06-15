@@ -146,3 +146,7 @@ site/
 
 # Generated Fern-only public API reference spec
 docs/fern/openapi/openapi.public.yaml
+
+# Data Flywheels
+data_flywheels/**/*.json*
+data_flywheels/**/*.parquet
