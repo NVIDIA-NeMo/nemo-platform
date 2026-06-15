@@ -2552,10 +2552,6 @@ components:
         profile:
           title: Profile
           type: string
-        options:
-          title: Options
-          additionalProperties: true
-          type: object
       type: object
       required:
       - spec
@@ -2848,10 +2844,6 @@ components:
         profile:
           title: Profile
           type: string
-        options:
-          title: Options
-          additionalProperties: true
-          type: object
       type: object
       required:
       - spec
@@ -3070,10 +3062,6 @@ components:
         profile:
           title: Profile
           type: string
-        options:
-          title: Options
-          additionalProperties: true
-          type: object
       type: object
       required:
       - spec
@@ -3432,10 +3420,6 @@ components:
         profile:
           title: Profile
           type: string
-        options:
-          title: Options
-          additionalProperties: true
-          type: object
       type: object
       required:
       - spec
@@ -3655,10 +3639,6 @@ components:
         profile:
           title: Profile
           type: string
-        options:
-          title: Options
-          additionalProperties: true
-          type: object
       type: object
       required:
       - spec
