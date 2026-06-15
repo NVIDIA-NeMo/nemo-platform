@@ -51,6 +51,8 @@ interface ModelChatProps extends Pick<
   slotComposerEnd?: ReactNode;
   /** When triggerCount changes, pre-fills the panel's composer textarea with text. */
   composerSeed?: ComposerSeed;
+  /** Fires when this panel's thread transitions between empty and non-empty. */
+  onEmptyChange?: (isEmpty: boolean) => void;
 }
 
 const STATUS_EMPTY_STATE: Record<
@@ -79,6 +81,7 @@ export const ModelChat: FC<ModelChatProps> = ({
   showMetrics = true,
   slotComposerEnd,
   composerSeed,
+  onEmptyChange,
   workspace,
   ...rest
 }) => {
@@ -143,9 +146,18 @@ export const ModelChat: FC<ModelChatProps> = ({
 
   const isBroadcastAll = rest.composerMode === ComposerMode.BROADCAST_ALL;
 
+  // Track empty/non-empty so per-panel seeds only show in an empty thread.
+  const [isEmpty, setIsEmpty] = useState(true);
+  const handleEmptyChange = (empty: boolean) => {
+    setIsEmpty(empty);
+    onEmptyChange?.(empty);
+    // Reset clears the thread → drop the stale metrics badge too.
+    if (empty) setLatestMetrics(null);
+  };
+
   // Seeds render inside the composer card. In broadcast-all mode the page-level
-  // CompareComposer owns seeds, so suppress them here.
-  const showChatSeeds = !!seedQuestions && seedQuestions.length > 0 && !isBroadcastAll;
+  // CompareComposer owns seeds, so suppress them here. Only show in an empty thread.
+  const showChatSeeds = !!seedQuestions && seedQuestions.length > 0 && !isBroadcastAll && isEmpty;
 
   // In per-panel mode: metrics sit above seeds in slotComposerStart.
   // In broadcast-all mode: slotComposerStart is hidden, so metrics fall below.
@@ -176,6 +188,7 @@ export const ModelChat: FC<ModelChatProps> = ({
           onError={onError ?? handleGenericError}
           promptData={promptData}
           onMessageComplete={handleMessageComplete}
+          onEmptyChange={handleEmptyChange}
           {...rest}
           slotComposerStart={chatSeedSlot}
         />

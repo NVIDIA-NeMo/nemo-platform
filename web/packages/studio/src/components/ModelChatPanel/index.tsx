@@ -43,6 +43,7 @@ export const ModelChatPanel: FC<ModelChatPanelProps> = ({
   broadcast,
   stopCount,
   onRunningChange,
+  onEmptyChange,
   slotComposerEnd,
   composerSeed,
   seedQuestions,
@@ -141,6 +142,7 @@ export const ModelChatPanel: FC<ModelChatPanelProps> = ({
           onRunningChange={
             onRunningChange ? (running) => onRunningChange(panel.id, running) : undefined
           }
+          onEmptyChange={onEmptyChange ? (empty) => onEmptyChange(panel.id, empty) : undefined}
         />
       </div>
     </div>

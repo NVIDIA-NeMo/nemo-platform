@@ -28,6 +28,7 @@ export const AssistantChat: FC<AssistantChatProps> = ({
   onError,
   onMessageComplete,
   onRunningChange,
+  onEmptyChange,
   composerMode,
   broadcast,
   stopCount,
@@ -46,6 +47,7 @@ export const AssistantChat: FC<AssistantChatProps> = ({
     onError,
     onMessageComplete,
     onRunningChange,
+    onEmptyChange,
     broadcast,
     stopCount,
   });

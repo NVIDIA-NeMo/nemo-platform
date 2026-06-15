@@ -32,6 +32,7 @@ type UseAssistantChatRuntimeOptions = Pick<
   | 'onError'
   | 'onMessageComplete'
   | 'onRunningChange'
+  | 'onEmptyChange'
   | 'promptData'
   | 'tools'
   | 'workspace'
@@ -48,6 +49,7 @@ export const useAssistantChatRuntime = ({
   onError,
   onMessageComplete,
   onRunningChange,
+  onEmptyChange,
   broadcast,
   stopCount,
 }: UseAssistantChatRuntimeOptions) => {
@@ -320,6 +322,13 @@ export const useAssistantChatRuntime = ({
   useEffect(() => {
     onRunningChange?.(isRunning);
   }, [isRunning, onRunningChange]);
+
+  // Surface empty/non-empty transitions so callers can derive seed-chip
+  // visibility from whether the thread has any messages.
+  const isEmpty = messages.length === 0;
+  useEffect(() => {
+    onEmptyChange?.(isEmpty);
+  }, [isEmpty, onEmptyChange]);
 
   const runtime = useExternalStoreRuntime<ThreadMessageLike>({
     messages,

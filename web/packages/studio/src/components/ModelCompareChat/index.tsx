@@ -42,6 +42,7 @@ export const ModelCompareChat: FC<ModelCompareChatProps> = ({
   broadcast,
   stopCount,
   onRunningChange,
+  onEmptyChange,
   slotComposerEnd,
   composerSeed,
   seedQuestions,
@@ -124,6 +125,7 @@ export const ModelCompareChat: FC<ModelCompareChatProps> = ({
               broadcast={broadcast}
               stopCount={stopCount}
               onRunningChange={onRunningChange}
+              onEmptyChange={onEmptyChange}
               seedQuestions={seedQuestions}
             />
           ))}

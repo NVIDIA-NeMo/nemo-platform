@@ -54,6 +54,8 @@ export interface PanelChatControls {
   broadcast?: BroadcastSignal;
   stopCount?: number;
   onRunningChange?: (id: number, isRunning: boolean) => void;
+  /** Fires when a panel's thread transitions between empty and non-empty. */
+  onEmptyChange?: (id: number, isEmpty: boolean) => void;
   slotComposerEnd?: ReactNode;
   composerSeed?: ComposerSeed;
   /** Seed-question chips for the per-panel composer. Empty array hides them. */

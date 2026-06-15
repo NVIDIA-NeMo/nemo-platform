@@ -90,16 +90,26 @@ export const ModelCompareRoute: FC = () => {
   const [stopCount, setStopCount] = useState(0);
   const [runningById, setRunningById] = useState<Map<number, boolean>>(() => new Map());
   const isAnyRunning = useMemo(() => Array.from(runningById.values()).some(Boolean), [runningById]);
-  // Seed-question chips are a first-run affordance: shown on initial page load,
-  // permanently dismissed once any message is sent (survives Reset).
-  const [seedsDismissed, setSeedsDismissed] = useState(false);
+  // Per-panel empty/non-empty state. Drives seed-chip visibility: the broadcast
+  // composer only shows chips when every open panel is in its empty initial
+  // state. Panels default to empty until they report otherwise.
+  const [emptyById, setEmptyById] = useState<Map<number, boolean>>(() => new Map());
+  const allPanelsEmpty = models.every((m) => emptyById.get(m.id) ?? true);
 
   const handleRunningChange = useCallback((id: number, running: boolean) => {
-    if (running) setSeedsDismissed(true);
     setRunningById((prev) => {
       if (prev.get(id) === running) return prev;
       const next = new Map(prev);
       next.set(id, running);
+      return next;
+    });
+  }, []);
+
+  const handleEmptyChange = useCallback((id: number, empty: boolean) => {
+    setEmptyById((prev) => {
+      if (prev.get(id) === empty) return prev;
+      const next = new Map(prev);
+      next.set(id, empty);
       return next;
     });
   }, []);
@@ -115,6 +125,12 @@ export const ModelCompareRoute: FC = () => {
   const removeModel = useCallback((id: number) => {
     setModels((prev) => prev.filter((m) => m.id !== id));
     setRunningById((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Map(prev);
+      next.delete(id);
+      return next;
+    });
+    setEmptyById((prev) => {
       if (!prev.has(id)) return prev;
       const next = new Map(prev);
       next.delete(id);
@@ -208,8 +224,9 @@ export const ModelCompareRoute: FC = () => {
             broadcast={!perPanelInput ? (broadcast ?? undefined) : undefined}
             stopCount={stopCount}
             onRunningChange={handleRunningChange}
+            onEmptyChange={handleEmptyChange}
             onAddModel={!atMaxModels ? addModel : undefined}
-            seedQuestions={seedsDismissed ? [] : DEFAULT_SEED_QUESTIONS}
+            seedQuestions={DEFAULT_SEED_QUESTIONS}
             slotComposer={
               !perPanelInput ? (
                 <CompareComposer
@@ -219,7 +236,7 @@ export const ModelCompareRoute: FC = () => {
                   onSubmit={handleBroadcast}
                   onStop={handleStopAll}
                   onResetAll={resetAll}
-                  seedQuestions={seedsDismissed ? [] : DEFAULT_SEED_QUESTIONS}
+                  seedQuestions={allPanelsEmpty ? DEFAULT_SEED_QUESTIONS : []}
                   draftRef={compareComposerDraftRef}
                   seed={composerSeed ?? undefined}
                   slotSeedEnd={

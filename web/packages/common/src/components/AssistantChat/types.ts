@@ -62,6 +62,11 @@ export interface AssistantChatProps {
    */
   onRunningChange?: (isRunning: boolean) => void;
   /**
+   * Fires whenever the thread transitions between empty and non-empty. Lets a
+   * parent derive seed-chip visibility from whether any messages exist.
+   */
+  onEmptyChange?: (isEmpty: boolean) => void;
+  /**
    * Controls whether the internal composer is shown and how input is driven.
    * In `broadcast-all` mode the composer is suppressed; a page-level composer
    * drives every AssistantChat in parallel.
