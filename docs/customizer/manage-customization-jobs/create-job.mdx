@@ -45,7 +45,7 @@ client = NeMoPlatform(
 
 # Build the job spec (SFT + LoRA)
 spec = AutomodelJobInput(
-    model="default/llama-3-2-1b-instruct",  # Base Model Entity (workspace/name)
+    model="default/qwen3-1.7b",  # Base Model Entity (workspace/name)
     dataset={"training": "default/my-training-dataset"},
     training={
         "training_type": "sft",
@@ -78,7 +78,7 @@ print(f"Job status: {job.job.status}")
   "id": "platform-job-2k8i3i1HqJHHPVB5M6Bk9Z",
   "status": "queued",
   "spec": {
-    "model": "default/llama-3-2-1b-instruct",
+    "model": "default/qwen3-1.7b",
     "dataset": { "training": "default/my-training-dataset" },
     "training": {
       "training_type": "sft",
@@ -117,7 +117,7 @@ client = NeMoPlatform(
 )
 
 spec = UnslothJobInput(
-    model={"name": "default/llama-3-2-1b-instruct", "load_in_4bit": True},
+    model={"name": "default/qwen3-1.7b", "load_in_4bit": True},
     dataset={"path": "default/my-training-dataset", "apply_chat_template": True},
     training={"finetuning_type": "lora", "lora": {"rank": 16, "alpha": 16}},
     schedule={"epochs": 3},
@@ -139,12 +139,12 @@ Knowledge distillation is an Automodel feature. Set `training.training_type` to 
 
 ```python
 spec = AutomodelJobInput(
-    model="default/llama-3-2-1b-instruct",  # Student model
+    model="default/qwen3-1.7b",  # Student model
     dataset={"training": "default/my-training-dataset"},
     training={
         "training_type": "distillation",
         "finetuning_type": "lora",
-        "teacher_model": "default/llama-3-2-3b-instruct",  # Teacher model
+        "teacher_model": "default/qwen3-4b",  # Teacher model
         "teacher_precision": "bf16",
         "distillation_ratio": 0.5,
         "distillation_temperature": 2.0,
@@ -190,7 +190,7 @@ For LoRA jobs, the adapter is added to the parent Model Entity's `adapters` list
 
 ```python
 # After training completes, retrieve the model to see the adapter
-model = client.models.retrieve(workspace="default", name="llama-3-2-1b-instruct")
+model = client.models.retrieve(workspace="default", name="qwen3-1.7b")
 
 for adapter in model.adapters or []:
     print(f"Adapter: {adapter.name}")

@@ -132,9 +132,6 @@ navigation:
       - page: LoRA Customization Job
         path: ../../customizer/tutorials/lora-customization-job.mdx
         slug: lora-customization-job
-      - page: DPO Customization Job
-        path: ../../customizer/tutorials/dpo-customization-job.mdx
-        slug: dpo-customization-job
       - page: Distillation Customization Job
         path: ../../customizer/tutorials/distillation-customization-job.mdx
         slug: distillation-customization-job

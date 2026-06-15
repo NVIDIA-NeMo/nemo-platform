@@ -45,7 +45,7 @@ from nemo_automodel_plugin.schema import AutomodelJobInput
 client = NeMoPlatform(base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"), workspace="default")
 
 spec = AutomodelJobInput(
-    model="default/llama-3-2-1b-instruct",
+    model="default/qwen3-1.7b",
     dataset={"training": "default/my-dataset"},
     training={"training_type": "sft", "finetuning_type": "lora"},
     schedule={"epochs": 3},
@@ -53,7 +53,7 @@ spec = AutomodelJobInput(
         "wandb": {
             "project": "my-finetuning-project",
             "entity": "my-team",
-            "tags": ["fine-tuning", "llama"],
+                "tags": ["fine-tuning", "qwen"],
             "api_key_secret": "my-wandb-key",
         }
     },
@@ -84,13 +84,13 @@ Add an `mlflow` block to the same `integrations` object to request MLflow tracki
 
 ```python
 spec = AutomodelJobInput(
-    model="default/llama-3-2-1b-instruct",
+    model="default/qwen3-1.7b",
     dataset={"training": "default/my-dataset"},
     training={"training_type": "sft", "finetuning_type": "lora"},
     schedule={"epochs": 3},
     integrations={
         "mlflow": {
-            "experiment_name": "llama-finetuning",
+            "experiment_name": "qwen-finetuning",
             "tracking_uri": "http://mlflow.example.com:5000",
         }
     },
