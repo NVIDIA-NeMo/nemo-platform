@@ -58,7 +58,6 @@ export const CloneAgentModal: FC<CloneAgentModalProps> = ({
     mutation: {
       onSuccess: (agent) => {
         toast.success(`Agent "${agent.name}" created`);
-        // Refresh the table immediately instead of waiting for its poll interval.
         void queryClient.invalidateQueries({ queryKey: getAgentsListAgentsQueryKey(workspace) });
         resetAndClose();
         if (agent.name) navigate(getAgentDetailRoute(workspace, agent.name));
