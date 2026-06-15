@@ -70,7 +70,12 @@ repos:
     rev: "v1.14.2"
     hooks:
       - id: helm-docs-container
-        files: '^k8s\/helm\/values.yaml$'
+        files: |
+          (?x)^(
+            k8s/helm/values\.yaml|
+            k8s/helm/Chart\.yaml|
+            k8s/helm/helm-docs-template/nemo-helm-readme\.md\.gotmpl
+          )$
         args:
           - --chart-search-root=k8s/helm/
           - --template-files=k8s/helm/helm-docs-template/nemo-helm-readme.md.gotmpl
