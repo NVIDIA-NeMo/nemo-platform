@@ -562,6 +562,10 @@ exclude = [
   "services/automodel/src/nmp/automodel/tasks/training/backends/",
   "services/automodel/src/nmp/automodel/tasks/training/utils.py",
   "services/unsloth/src/nmp/unsloth/tasks/training/backends/",
+  # Helm chart test payloads run inside purpose-built Kubernetes containers.
+  # The NCCL worker imports torch at runtime, which is not part of the root
+  # workspace type-checking environment.
+  "k8s/helm/files/nccl-test/",
 
   "./services/guardrails/",
 

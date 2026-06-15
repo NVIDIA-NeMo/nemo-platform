@@ -31,6 +31,7 @@ jobs:
       web-studio: ${{ steps.changes.outputs.web-studio }}
       tools: ${{ steps.changes.outputs.tools }}
       docker: ${{ steps.changes.outputs.docker }}
+      helm: ${{ steps.changes.outputs.helm }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: ./.github/actions/changes
@@ -81,6 +82,134 @@ jobs:
           make docker-print TARGET=nmp-automodel-gpu-wheels
           make docker-print TARGET=nmp-automodel
           make docker-print TARGET=nmp-unsloth
+
+  helm-lint:
+    name: Helm lint
+    needs: [changes]
+    if: >
+      !cancelled() && (
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.helm == 'true'
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      HELM_FOLDER: k8s/helm
+      HELM_RELEASE_NAME: nemo-platform
+      KUBECONFORM_VERSION: v0.6.7
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - name: Install Helm
+        uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
+      - name: Install kubeconform
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p "${RUNNER_TEMP}/kubeconform"
+          kubeconform_archive="kubeconform-linux-amd64.tar.gz"
+          curl -fsSL \
+            -o "${RUNNER_TEMP}/kubeconform.tar.gz" \
+            "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/${kubeconform_archive}"
+          curl -fsSL \
+            -o "${RUNNER_TEMP}/kubeconform.CHECKSUMS" \
+            "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/CHECKSUMS"
+          grep "  ${kubeconform_archive}$" "${RUNNER_TEMP}/kubeconform.CHECKSUMS" \
+            | sed "s#  ${kubeconform_archive}#  ${RUNNER_TEMP}/kubeconform.tar.gz#" \
+            | sha256sum -c -
+          tar -xzf "${RUNNER_TEMP}/kubeconform.tar.gz" -C "${RUNNER_TEMP}/kubeconform" kubeconform
+          chmod +x "${RUNNER_TEMP}/kubeconform/kubeconform"
+          echo "${RUNNER_TEMP}/kubeconform" >> "${GITHUB_PATH}"
+      - name: Add NVIDIA Helm repo
+        shell: bash
+        run: |
+          helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
+          helm repo update
+      - name: Lint and validate Helm chart
+        shell: bash
+        run: tools/lint/lint-helm.sh
+      - name: Upload Helm lint artifacts
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: helm-lint-artifacts
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            k8s/helm/ci/*.output
+            k8s/helm/ci/*.kubeconform.json
+
+  helm-chart-verifier:
+    name: Helm chart verifier
+    needs: [changes]
+    if: >
+      !cancelled() && (
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.helm == 'true'
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CHART_VERIFIER_VERSION: "1.14.0"
+      HELM_FOLDER: k8s/helm
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - name: Install Helm
+        uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
+      - name: Install chart-verifier
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p "${RUNNER_TEMP}/chart-verifier"
+          chart_verifier_archive="chart-verifier-${CHART_VERIFIER_VERSION}.tgz"
+          curl -fsSL \
+            -o "${RUNNER_TEMP}/chart-verifier.tar.gz" \
+            "https://github.com/redhat-certification/chart-verifier/releases/download/${CHART_VERIFIER_VERSION}/${chart_verifier_archive}"
+          chart_verifier_sha256="$(
+            curl -fsSL "https://api.github.com/repos/redhat-certification/chart-verifier/releases/tags/${CHART_VERIFIER_VERSION}" \
+              | python3 -c 'import json, sys; target = sys.argv[1]; digests = [asset.get("digest", "") for asset in json.load(sys.stdin).get("assets", []) if asset.get("name") == target]; digest = digests[0] if digests else ""; print(digest.removeprefix("sha256:")) if digest.startswith("sha256:") else sys.exit(1)' "${chart_verifier_archive}"
+          )"
+          printf '%s  %s\n' "${chart_verifier_sha256}" "${RUNNER_TEMP}/chart-verifier.tar.gz" \
+            | sha256sum -c -
+          tar -xzf "${RUNNER_TEMP}/chart-verifier.tar.gz" -C "${RUNNER_TEMP}/chart-verifier" chart-verifier
+          chmod +x "${RUNNER_TEMP}/chart-verifier/chart-verifier"
+          echo "${RUNNER_TEMP}/chart-verifier" >> "${GITHUB_PATH}"
+      - name: Prepare Helm dependencies
+        shell: bash
+        run: |
+          helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
+          helm repo update
+          helm dep update "${HELM_FOLDER}"
+      - name: Run chart verifier
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          report_json="${RUNNER_TEMP}/chart-verifier-report.json"
+          chart-verifier verify --enable helm-lint,is-helm-v3,contains-values,has-readme \
+            -o json "${HELM_FOLDER}" | tee "${report_json}"
+
+          python3 - "${report_json}" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as report_file:
+              data = json.load(report_file)
+
+          failed = [
+              result.get("check", "?")
+              for result in data.get("results", [])
+              if result.get("outcome") == "FAIL"
+          ]
+          if failed:
+              print("chart-verifier failed checks: " + ", ".join(failed), file=sys.stderr)
+              sys.exit(1)
+          PY
 
   lint:
     name: Lint all
@@ -782,6 +911,8 @@ jobs:
       - changes
       - actionlint
       - docker-bake-graph
+      - helm-lint
+      - helm-chart-verifier
       - lint
       - policy-wasm
       - python-unit-test-tools

@@ -1,0 +1,11 @@
+api:
+  image:
+    repository: registry.example.com/nemo-platform/nmp-api
+
+core:
+  image:
+    repository: registry.example.com/nemo-platform/nmp-api
+
+platformConfig:
+  platform:
+    image_registry: registry.example.com/nemo-platform

@@ -1,0 +1,7 @@
+# Test Azure Kyverno policy for multi-node GPU training with RDMA
+
+multinodeNetworking:
+  azure:
+    enabled: true
+    rdmaDevicesPerGPU: 1
+    rdmaDeviceName: "hca_shared_devices_a"

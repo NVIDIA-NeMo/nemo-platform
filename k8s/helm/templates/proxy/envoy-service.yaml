@@ -1,0 +1,28 @@
+{{- if and (include "nemo-platform.authEnabled" .) .Values.envoyProxy.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "nmp-envoy.servicename" . }}
+  labels:
+    {{- include "nmp-envoy.labels" . | nindent 4 }}
+  {{- with .Values.envoyProxy.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.envoyProxy.service.type }}
+  ports:
+    - name: proxy
+      port: {{ .Values.envoyProxy.service.port }}
+      targetPort: proxy
+      protocol: TCP
+    {{- if .Values.envoyProxy.service.exposeAdminPort }}
+    - name: admin
+      port: {{ .Values.envoyProxy.adminPort }}
+      targetPort: admin
+      protocol: TCP
+    {{- end }}
+  selector:
+    app.kubernetes.io/component: nmp-envoy
+    {{- include "nemo-platform.selectorLabels" . | nindent 4 }}
+{{- end }}
