@@ -173,8 +173,17 @@ class MockServiceBackend(ServiceBackend):
         self.update_calls.append((deployment, config, model_entity))
         return self.create_response  # Update returns same as create
 
-    async def get_model_deployment_status(self, deployment: ModelDeployment) -> DeploymentStatusUpdate:
+    async def get_model_deployment_status(
+        self,
+        deployment: ModelDeployment,
+        config: Optional[ModelDeploymentConfig] = None,
+        model_entity: Optional[ModelEntity] = None,
+    ) -> DeploymentStatusUpdate:
         """Record call and return configured response.
+
+        Mirrors the ``ServiceBackend`` signature: the controller threads ``config``
+        and ``model_entity`` through so backends that advance creation in the
+        status path (e.g. the k8s vLLM path) can compile their serving objects.
 
         Uses per-deployment responses from status_responses dict if available,
         otherwise falls back to default_status_response.

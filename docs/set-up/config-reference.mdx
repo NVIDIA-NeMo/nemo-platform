@@ -537,8 +537,8 @@ models:
         files_auth_secret: nemo-models-files-token
         # The name of the image pull secret for the modelPuller image | default: 'nvcrimagepullsecret'
         huggingface_model_puller_image_pull_secret: nvcrimagepullsecret
-        # BusyBox image repository used by plugin init containers. | default: 'busybox'
-        busybox_image: busybox
+        # BusyBox image repository used by plugin init containers. Fully qualified (docker.io/library/...) so it resolves on container runtimes that enforce fully-qualified image names (short names like 'busybox' fail there). | default: 'docker.io/library/busybox'
+        busybox_image: docker.io/library/busybox
         # BusyBox image tag used by plugin init containers. | default: 'latest'
         busybox_image_tag: latest
         # NGC API key secret name for pulling NIM images | default: 'ngc-api'

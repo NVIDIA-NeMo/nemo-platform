@@ -107,7 +107,9 @@ class MockServiceBackend(ServiceBackend):
         self.update_calls.append((deployment, config, model_entity))
         return self.create_response
 
-    async def get_model_deployment_status(self, deployment: Any) -> DeploymentStatusUpdate:
+    async def get_model_deployment_status(
+        self, deployment: Any, config: Any = None, model_entity: Any = None
+    ) -> DeploymentStatusUpdate:
         """Record call and return configured response."""
         self.status_calls.append(deployment)
         return self.status_response

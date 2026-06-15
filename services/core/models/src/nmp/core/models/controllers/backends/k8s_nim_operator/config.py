@@ -109,8 +109,10 @@ class K8sNimOperatorConfig(BaseModel):
     )
 
     busybox_image: str = Field(
-        default="busybox",
-        description="BusyBox image repository used by plugin init containers.",
+        default="docker.io/library/busybox",
+        description="BusyBox image repository used by plugin init containers. "
+        "Fully qualified (docker.io/library/...) so it resolves on container runtimes "
+        "that enforce fully-qualified image names (short names like 'busybox' fail there).",
     )
 
     busybox_image_tag: str = Field(
