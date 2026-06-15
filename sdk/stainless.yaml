@@ -26,16 +26,16 @@ custom_casings:
     initialism: true
 
 targets:
-#  typescript:
-#    _skip_running_tests: false
-#    package_name: nemo-platform-v1
-#    publish:
-#      npm: false
-#    skip: false
-#    options:
-#      mcp_server:
-#        package_name: nemo-platform-v1-mcp
-#        enable_all_resources: true
+  #  typescript:
+  #    _skip_running_tests: false
+  #    package_name: nemo-platform-v1
+  #    publish:
+  #      npm: false
+  #    skip: false
+  #    options:
+  #      mcp_server:
+  #        package_name: nemo-platform-v1-mcp
+  #        enable_all_resources: true
 
   python:
     # [docs]: https://www.stainless.com/docs/reference/editions
@@ -81,86 +81,86 @@ client_settings:
 # `pagination` defines [pagination schemes] which provides a template to match
 # endpoints and generate next-page and auto-pagination helpers in the SDKs.
 pagination:
-- name: default_pagination
-  type: page_number
-  request:
-    page:
-      type: integer
-      x-stainless-pagination-property:
-        purpose: page_number_param
-    page_size:
-      type: integer
-  response:
-    data:
-      type: array
-      x-stainless-pagination-property:
-        purpose: items
-      items:
+  - name: default_pagination
+    type: page_number
+    request:
+      page:
+        type: integer
+        x-stainless-pagination-property:
+          purpose: page_number_param
+      page_size:
+        type: integer
+    response:
+      data:
+        type: array
+        x-stainless-pagination-property:
+          purpose: items
+        items:
+          type: object
+          additionalProperties: true
+      pagination:
         type: object
-        additionalProperties: true
-    pagination:
-      type: object
-      properties:
-        page:
-          type: integer
-          title: Page
-          description: The current page number.
-          x-stainless-pagination-property:
-            purpose: current_page_number_field
-        page_size:
-          type: integer
-          title: Page Size
-          description: The page size used for the query.
-        current_page_size:
-          type: integer
-          title: Current Page Size
-          description: The size for the current page.
-        total_pages:
-          type: integer
-          title: Total Pages
-          description: The total number of pages.
-          x-stainless-pagination-property:
-            purpose: total_page_count_field
-        total_results:
-          type: integer
-          title: Total Results
-          description: The total number of results.
-      required:
-      - page
-      - page_size
-      - total_pages
-      - total_results
-      - current_page_size
-- name: logs_pagination
-  type: cursor
-  request:
-    limit:
-      type: integer
-    page_cursor:
-      type: string
-      x-stainless-pagination-property:
-        purpose: next_cursor_param
-  response:
-    data:
-      type: array
-      x-stainless-pagination-property:
-        purpose: items
-      items:
-        type: object
-        additionalProperties: true
-    next_page:
-      type: string
-      x-stainless-pagination-property:
-        purpose: next_cursor_field
+        properties:
+          page:
+            type: integer
+            title: Page
+            description: The current page number.
+            x-stainless-pagination-property:
+              purpose: current_page_number_field
+          page_size:
+            type: integer
+            title: Page Size
+            description: The page size used for the query.
+          current_page_size:
+            type: integer
+            title: Current Page Size
+            description: The size for the current page.
+          total_pages:
+            type: integer
+            title: Total Pages
+            description: The total number of pages.
+            x-stainless-pagination-property:
+              purpose: total_page_count_field
+          total_results:
+            type: integer
+            title: Total Results
+            description: The total number of results.
+        required:
+          - page
+          - page_size
+          - total_pages
+          - total_results
+          - current_page_size
+  - name: logs_pagination
+    type: cursor
+    request:
+      limit:
+        type: integer
+      page_cursor:
+        type: string
+        x-stainless-pagination-property:
+          purpose: next_cursor_param
+    response:
+      data:
+        type: array
+        x-stainless-pagination-property:
+          purpose: items
+        items:
+          type: object
+          additionalProperties: true
+      next_page:
+        type: string
+        x-stainless-pagination-property:
+          purpose: next_cursor_field
 
 streaming:
   on_event:
-  - data_starts_with: "[DONE]"
-    handle: done
-  - event_type: error
-    handle: error
-  - event_type:
-    handle: yield
+    - data_starts_with: "[DONE]"
+      handle: done
+    - event_type: error
+      handle: error
+    - event_type:
+      handle: yield
 
 readme:
   example_requests:
@@ -328,15 +328,20 @@ resources:
       pangea_rail_config: PangeaRailConfig
       pangea_rail_options: PangeaRailOptions
       patronus_evaluate_api_params: PatronusEvaluateApiParams
-      patronus_evaluate_config: PatronusEvaluateConfig
+      patronus_evaluate_config: PatronusEvaluateConfigOutput
+      patronus_evaluate_config_param: PatronusEvaluateConfigInput
       patronus_evaluation_success_strategy: PatronusEvaluationSuccessStrategy
-      patronus_rail_config: PatronusRailConfig
+      patronus_rail_config: PatronusRailConfigOutput
+      patronus_rail_config_param: PatronusRailConfigInput
       private_ai_detection: PrivateAIDetection
       private_ai_detection_options: PrivateAIDetectionOptions
       rail_status: RailStatus
-      rails: Rails
-      rails_config: RailsConfig
-      rails_config_data: RailsConfigData
+      rails: RailsOutput
+      rails_config: RailsConfigOutput
+      rails_config_data: RailsConfigDataOutput
+      rails_config_data_param: RailsConfigDataInput
+      rails_config_param: RailsConfigInput
+      rails_param: RailsInput
       reasoning_config: ReasoningConfig
       regex_detection: RegexDetection
       regex_detection_options: RegexDetectionOptions
@@ -457,6 +462,24 @@ resources:
           update: put /apis/models/v2/workspaces/{workspace}/providers/{name}
           delete: delete /apis/models/v2/workspaces/{workspace}/providers/{name}
           update_status: put /apis/models/v2/workspaces/{workspace}/providers/{name}/status
+      prompts:
+        models:
+          chat_completion_tool: ChatCompletionTool
+          create_prompt_request: CreatePromptRequest
+          function_definition: FunctionDefinition
+          prompt: Prompt
+          prompt_filter: PromptFilter
+          prompt_message: PromptMessage
+          prompt_message_role: PromptMessageRole
+          prompt_sort: PromptSort
+          prompts_page: PromptsPage
+          update_prompt_request: UpdatePromptRequest
+        methods:
+          list: get /apis/models/v2/workspaces/{workspace}/prompts
+          create: post /apis/models/v2/workspaces/{workspace}/prompts
+          retrieve: get /apis/models/v2/workspaces/{workspace}/prompts/{name}
+          update: put /apis/models/v2/workspaces/{workspace}/prompts/{name}
+          delete: delete /apis/models/v2/workspaces/{workspace}/prompts/{name}
       gateway:
         subresources:
           openai:
@@ -497,16 +520,19 @@ resources:
       compute_resource_spec: ComputeResourceSpec
       compute_resources: ComputeResources
       container_spec: ContainerSpec
-      cpu_execution_provider: CPUExecutionProvider
+      cpu_execution_provider: CPUExecutionProviderOutput
+      cpu_execution_provider_param: CPUExecutionProviderInput
       create_platform_job_request: CreatePlatformJobRequest
-      distributed_gpu_execution_provider: DistributedGPUExecutionProvider
+      distributed_gpu_execution_provider: DistributedGPUExecutionProviderOutput
+      distributed_gpu_execution_provider_param: DistributedGPUExecutionProviderInput
       docker_job_execution_profile: DockerJobExecutionProfile
       docker_job_execution_profile_config: DockerJobExecutionProfileConfig
       docker_job_network_config: DockerJobNetworkConfig
       docker_job_storage_config: DockerJobStorageConfig
       docker_volume_mount: DockerVolumeMount
       e2e_job_execution_profile: E2EJobExecutionProfile
-      gpu_execution_provider: GPUExecutionProvider
+      gpu_execution_provider: GPUExecutionProviderOutput
+      gpu_execution_provider_param: GPUExecutionProviderInput
       image_pull_secret: ImagePullSecret
       job_execution_profile_config: JobExecutionProfileConfig
       kubernetes_empty_dir_volume: KubernetesEmptyDirVolume
@@ -522,8 +548,10 @@ resources:
       platform_job_responses_page: PlatformJobResponsesPage
       platform_job_secret_environment_variable_ref: PlatformJobSecretEnvironmentVariableRef
       platform_job_sort_field: PlatformJobSortField
-      platform_job_spec: PlatformJobSpec
-      platform_job_step_spec: PlatformJobStepSpec
+      platform_job_spec: PlatformJobSpecOutput
+      platform_job_spec_param: PlatformJobSpecInput
+      platform_job_step_spec: PlatformJobStepSpecOutput
+      platform_job_step_spec_param: PlatformJobStepSpecInput
       platform_jobs_list_filter: PlatformJobsListFilter
       step_lifecycle: StepLifecycle
       subprocess_execution_provider: SubprocessExecutionProvider
@@ -844,6 +872,14 @@ resources:
           list: get /apis/intake/v2/workspaces/{workspace}/spans
           retrieve: get /apis/intake/v2/workspaces/{workspace}/spans/{span_id}
         subresources:
+          groups:
+            models:
+              span_group: SpanGroup
+              span_group_by: SpanGroupBy
+              span_group_sort_field: SpanGroupSortField
+              span_groups_page: SpanGroupsPage
+            methods:
+              list: get /apis/intake/v2/workspaces/{workspace}/spans/groups
           evaluator_results:
             methods:
               list: get /apis/intake/v2/workspaces/{workspace}/spans/{span_id}/evaluator-results
@@ -891,9 +927,3 @@ resources:
           experiment_session_responses_page: ExperimentSessionResponsesPage
         methods:
           list: get /apis/intake/v2/workspaces/{workspace}/experiments/{name}/sessions
-  spans:
-    standalone_api: true
-    subresources:
-      groups:
-        methods:
-          reviewme_list: get /apis/intake/v2/workspaces/{workspace}/spans/groups
