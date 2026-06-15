@@ -9,7 +9,8 @@ set -euo pipefail
 # Counts reflect the violation count at the time of suppression.
 ci_ignored_rules=(
   invalid-argument-type   # 148
-  unused-ignore-comment   # 14
+  unused-ignore-comment       # 14
+  unused-type-ignore-comment  # triggered by SDK type changes
   unresolved-attribute    # 141
   not-subscriptable       # 19
   invalid-assignment      # 9
