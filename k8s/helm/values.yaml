@@ -890,6 +890,8 @@ envoyProxy:
     type: ClusterIP
     # -- The port number to expose for the service.
     port: 8080
+    # -- Expose the Envoy admin port through the Kubernetes Service. Enable only for controlled in-cluster scraping or debugging.
+    exposeAdminPort: false
     # -- Annotations for the Envoy service.
     annotations: {}
 

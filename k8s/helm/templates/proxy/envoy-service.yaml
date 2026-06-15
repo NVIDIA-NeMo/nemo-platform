@@ -16,10 +16,12 @@ spec:
       port: {{ .Values.envoyProxy.service.port }}
       targetPort: proxy
       protocol: TCP
+    {{- if .Values.envoyProxy.service.exposeAdminPort }}
     - name: admin
       port: {{ .Values.envoyProxy.adminPort }}
       targetPort: admin
       protocol: TCP
+    {{- end }}
   selector:
     app.kubernetes.io/component: nmp-envoy
     {{- include "nemo-platform.selectorLabels" . | nindent 4 }}

@@ -177,6 +177,7 @@ secrets will not decrypt with a new key.
 | envoyProxy.securityContext | object | `{}` | Container-level security context settings for the Envoy service. |
 | envoyProxy.service | object | This object has the following default values for the service configuration. | Service configuration for the Envoy service. |
 | envoyProxy.service.annotations | object | `{}` | Annotations for the Envoy service. |
+| envoyProxy.service.exposeAdminPort | bool | `false` | Expose the Envoy admin port through the Kubernetes Service. Enable only for controlled in-cluster scraping or debugging. |
 | envoyProxy.service.port | int | `8080` | The port number to expose for the service. |
 | envoyProxy.service.type | string | `"ClusterIP"` | The Kubernetes service type to create. |
 | envoyProxy.serviceAccount | object | This object has the following default values for the service account configuration. | Service account configuration for the Envoy service. |
