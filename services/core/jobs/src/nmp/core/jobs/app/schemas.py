@@ -7,7 +7,7 @@ from typing import Optional, Self
 
 from nmp.common.entities.constants import NAME_PATTERN, NAME_PATTERN_DESCRIPTION
 from nmp.common.jobs.constants import PERSISTENT_JOB_STORAGE_PATH_ENVVAR
-from nmp.core.jobs.app.providers import Provider
+from nmp.core.jobs.app.providers import ExecutorKind, Provider
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # =============================================================================
@@ -129,6 +129,10 @@ class BaseExecutionProfile(BaseModel):
     profile: str = Field(
         default="default",
         description="The profile name for the executor, e.g., high_priority_a100, low_priority, etc.",
+    )
+    kind: ExecutorKind = Field(
+        default="container",
+        description="The executor payload shape this profile expects: 'container' or 'subprocess'.",
     )
 
     @property

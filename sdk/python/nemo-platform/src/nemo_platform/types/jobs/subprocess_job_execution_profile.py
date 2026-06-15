@@ -30,6 +30,8 @@ class SubprocessJobExecutionProfile(BaseModel):
     config: Optional[SubprocessJobExecutionProfileConfig] = None
     """Additional configuration for the subprocess executor"""
 
+    kind: Optional[Literal["subprocess"]] = None
+
     profile: Optional[str] = None
     """The profile name for the executor, e.g., high_priority_a100, low_priority, etc."""
 

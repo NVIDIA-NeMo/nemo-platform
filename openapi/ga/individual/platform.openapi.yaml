@@ -9279,6 +9279,15 @@ components:
           description: The profile name for the executor, e.g., high_priority_a100,
             low_priority, etc.
           default: default
+        kind:
+          type: string
+          enum:
+          - container
+          - subprocess
+          title: Kind
+          description: 'The executor payload shape this profile expects: ''container''
+            or ''subprocess''.'
+          default: container
         backend:
           type: string
           const: docker
@@ -9419,6 +9428,15 @@ components:
           description: The profile name for the executor, e.g., high_priority_a100,
             low_priority, etc.
           default: default
+        kind:
+          type: string
+          enum:
+          - container
+          - subprocess
+          title: Kind
+          description: 'The executor payload shape this profile expects: ''container''
+            or ''subprocess''.'
+          default: container
         backend:
           type: string
           const: e2e
@@ -11758,6 +11776,15 @@ components:
           description: The profile name for the executor, e.g., high_priority_a100,
             low_priority, etc.
           default: default
+        kind:
+          type: string
+          enum:
+          - container
+          - subprocess
+          title: Kind
+          description: 'The executor payload shape this profile expects: ''container''
+            or ''subprocess''.'
+          default: container
         backend:
           type: string
           const: kubernetes_job
@@ -16417,6 +16444,11 @@ components:
           description: The profile name for the executor, e.g., high_priority_a100,
             low_priority, etc.
           default: default
+        kind:
+          type: string
+          const: subprocess
+          title: Kind
+          default: subprocess
         backend:
           type: string
           const: subprocess
@@ -17432,6 +17464,15 @@ components:
           description: The profile name for the executor, e.g., high_priority_a100,
             low_priority, etc.
           default: default
+        kind:
+          type: string
+          enum:
+          - container
+          - subprocess
+          title: Kind
+          description: 'The executor payload shape this profile expects: ''container''
+            or ''subprocess''.'
+          default: container
         backend:
           type: string
           const: volcano_job

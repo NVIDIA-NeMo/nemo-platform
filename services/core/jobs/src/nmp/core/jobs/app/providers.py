@@ -85,6 +85,10 @@ class TaskSpec(BaseModel):
     """Arguments to pass to the command. Can be a list of strings or a single string."""
 
 
+ExecutorKind = Literal["container", "subprocess"]
+"""Executor payload shape: ``"container"`` for image-backed work, ``"subprocess"`` for host commands."""
+
+
 class ContainerExecutionProvider(BaseModel):
     """Container-based execution provider.
 

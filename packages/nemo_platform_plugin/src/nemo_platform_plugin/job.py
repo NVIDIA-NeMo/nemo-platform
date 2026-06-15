@@ -172,9 +172,6 @@ class NemoJob(_NamedPlugin):
     description: ClassVar[str] = ""
     container: ClassVar[str] = "cpu-tasks"
     execution_provider: ClassVar[str] = "cpu"
-    # Execution kind: "container" (default) or "subprocess".
-    # Subprocess jobs override this to "subprocess".
-    execution_kind: ClassVar[str] = "container"
 
     # ------------------------------------------------------------------ #
     # Spec schemas — canonical ``spec_schema``; optional ``input_spec_schema``
@@ -287,6 +284,11 @@ class NemoJob(_NamedPlugin):
         Every :class:`NemoJob` that participates in remote submission
         must override this method; the plugin service produces the
         ``PlatformJobSpec`` the Jobs service expects by invoking it.
+
+        Compilers that need to support both container and subprocess
+        backends can use :func:`~nemo_platform_plugin.jobs.profiles.resolve_profile_kind`
+        to determine the executor kind for the given profile, rather
+        than hardcoding profile names.
 
         Args:
             workspace: Workspace scope.

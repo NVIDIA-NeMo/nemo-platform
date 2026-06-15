@@ -36,6 +36,9 @@ class KubernetesJobExecutionProfile(BaseModel):
 
     backend: Optional[Literal["kubernetes_job"]] = None
 
+    kind: Optional[Literal["container", "subprocess"]] = None
+    """The executor payload shape this profile expects: 'container' or 'subprocess'."""
+
     profile: Optional[str] = None
     """The profile name for the executor, e.g., high_priority_a100, low_priority, etc."""
 
