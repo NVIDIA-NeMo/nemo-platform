@@ -3,10 +3,9 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ControlledSearchableSelect } from '@nemo/common/src/components/form/ControlledSearchableSelect';
-import { FormModal, type FormModalProps } from '@nemo/common/src/components/FormModal';
+import { FormModal } from '@nemo/common/src/components/FormModal';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { getAgentsListAgentsQueryKey, useAgentsCreateAgent } from '@nemo/sdk/generated/agents/api';
-import type { Agent } from '@nemo/sdk/generated/agents/schema/Agent';
 import { useModelsListModels } from '@nemo/sdk/generated/platform/api';
 import { getErrorMessage } from '@studio/api/common/utils';
 import {
@@ -15,6 +14,17 @@ import {
   markExampleAgentIntroShown,
 } from '@studio/components/sidePanels/AgentPanels/AgentPanel/walkthroughStorage';
 import { DEFAULT_LARGE_PAGE_SIZE } from '@studio/constants/constants';
+import {
+  buildExampleAgentConfig,
+  buildExampleAgentName,
+  EXAMPLE_AGENT_DESCRIPTION,
+  exampleAgentFormSchema,
+  isExampleAgentName,
+} from '@studio/routes/agents/AgentsListRoute/CreateExampleAgentModal/const';
+import type {
+  CreateExampleAgentModalProps,
+  ExampleAgentFormData,
+} from '@studio/routes/agents/AgentsListRoute/CreateExampleAgentModal/type';
 import { getAgentDetailRoute, getAgentsListRoute } from '@studio/routes/utils';
 import {
   buildSuggestedModelOptions,
@@ -25,53 +35,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { type FC, useEffect, useRef } from 'react';
 import { type SubmitHandler, useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
-import { z } from 'zod';
-
-const EXAMPLE_AGENT_DESCRIPTION = 'A ReAct agent with a calculator and datetime tool.';
-
-const EXAMPLE_AGENT_NAME_PREFIX = 'calculator-demo-agent';
-
-const buildExampleAgentName = (): string =>
-  `${EXAMPLE_AGENT_NAME_PREFIX}-${Math.random().toString(36).slice(2, 8)}`;
-
-const isExampleAgentName = (name: string): boolean => name.startsWith(EXAMPLE_AGENT_NAME_PREFIX);
-
-// model_name is concrete: the service doesn't resolve ${NEMO_DEFAULT_MODEL} (only the CLI does).
-const buildExampleAgentConfig = (modelName: string): Record<string, unknown> => ({
-  function_groups: {
-    calculator: { _type: 'calculator' },
-  },
-  functions: {
-    current_datetime: { _type: 'current_datetime' },
-  },
-  llms: {
-    llm: {
-      _type: 'openai',
-      api_key: 'not-used', // platform overrides at deploy time
-      model_name: modelName,
-      temperature: 0,
-    },
-  },
-  workflow: {
-    _type: 'react_agent',
-    tool_names: ['calculator', 'current_datetime'],
-    llm_name: 'llm',
-    verbose: false,
-    parse_agent_response_max_retries: 3,
-    use_native_tool_calling: true,
-  },
-});
-
-const exampleAgentFormSchema = z.object({
-  modelName: z.string().min(1, 'Model is required'),
-});
-
-type ExampleAgentFormData = z.infer<typeof exampleAgentFormSchema>;
-
-interface CreateExampleAgentModalProps extends Pick<FormModalProps, 'open' | 'onClose'> {
-  workspace: string;
-  existingAgents: Agent[];
-}
 
 export const CreateExampleAgentModal: FC<CreateExampleAgentModalProps> = ({
   open,
