@@ -57,11 +57,6 @@
   },
   "pnpm": {
     "overrides": {
-      "react": "^19.2.7",
-      "react-dom": "^19.2.7",
-      "dompurify": "^3.4.10",
-      "qs": "^6.15.2",
-      "react-is@>=19.2.0 <19.2.7": "19.2.7",
       "brace-expansion": "^5.0.6",
       "shell-quote": "^1.8.4",
       "follow-redirects": "^1.16.0",
