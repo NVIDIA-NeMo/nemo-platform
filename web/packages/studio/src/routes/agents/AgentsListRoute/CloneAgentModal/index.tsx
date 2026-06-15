@@ -78,8 +78,6 @@ export const CloneAgentModal: FC<CloneAgentModalProps> = ({
     mode: 'onChange',
   });
 
-  // Seed the model picker with the source agent's current model when the modal opens, falling
-  // back to the suggested default if that model isn't a usable option in this workspace.
   const seededRef = useRef(false);
   useEffect(() => {
     if (!open) {

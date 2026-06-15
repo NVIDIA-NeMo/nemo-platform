@@ -166,8 +166,6 @@ describe('CombinedAgentsTable', () => {
       await user.click(screen.getAllByRole('button', { name: /actions/i })[0]);
       await user.click((await screen.findAllByRole('menuitem', { name: 'Clone' }))[0]);
 
-      // Row order follows the default -created_at sort, so assert on shape rather than which
-      // row is first: the full row (including its config) must be handed to the clone handler.
       expect(onCloneAgent).toHaveBeenCalledTimes(1);
       expect(onCloneAgent).toHaveBeenCalledWith(
         expect.objectContaining({

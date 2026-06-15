@@ -21,9 +21,6 @@ export const getPrimaryModelName = (config: AgentConfig | undefined): string | u
   return primary ?? getAgentModelNames(config)[0];
 };
 
-// Deep-clone the source config and point it at the chosen model. Prefer the workflow's primary
-// llm; if it can't be identified, swap every llm that already declares a model_name (leaving
-// non-model entries untouched so e.g. embedding llms aren't clobbered).
 export const applyModelToConfig = (
   config: AgentConfig | undefined,
   modelName: string
