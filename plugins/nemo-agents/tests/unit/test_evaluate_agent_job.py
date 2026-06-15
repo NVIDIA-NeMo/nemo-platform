@@ -37,7 +37,7 @@ async def test_compile_produces_single_cpu_step() -> None:
     step = steps[0]
     assert step["name"] == "evaluate-agent"
     assert step["executor"]["provider"] == "cpu"
-    assert step["executor"]["command"] == ["python", "-m", "nemo_agents_plugin.tasks.evaluate"]
+    assert step["executor"]["command"] == ["python", "-m", "nemo_agents_plugin.tasks.evaluate"]  # type: ignore[invalid-key]
     assert step["config"]["agent"] == "calc"
     assert step["config"]["eval_config"] == "config.yml"
     assert step["config"]["eval_config_fileset"] == "nemo-agent-eval-calc"

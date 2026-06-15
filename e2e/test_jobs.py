@@ -55,6 +55,7 @@ def test_basic_platform_job_lifecycle(sdk: NeMoPlatform, workspace: str):
                 {
                     "name": "echo-step",
                     "executor": {
+                        "kind": "container",
                         "provider": "cpu",
                         "container": {
                             "command": ["echo", "Hello from e2e test!"],
@@ -98,6 +99,7 @@ def test_job_logs_across_multiple_batches(sdk: NeMoPlatform, workspace: str):
                 {
                     "name": "multi-log-step",
                     "executor": {
+                        "kind": "container",
                         "provider": "cpu",
                         "container": {
                             "command": ["sh", "-c", log_command],
@@ -137,6 +139,7 @@ def test_job_config_is_readable(sdk: NeMoPlatform, workspace: str):
                 {
                     "name": "config-step",
                     "executor": {
+                        "kind": "container",
                         "provider": "cpu",
                         "container": {
                             "command": ["sh", "-c", "echo 'Step config:'; cat $NEMO_JOB_STEP_CONFIG_FILE_PATH;"],
@@ -171,6 +174,7 @@ def test_job_passing_data_between_steps(sdk: NeMoPlatform, workspace: str):
                 {
                     "name": "generate-data-step",
                     "executor": {
+                        "kind": "container",
                         "provider": "cpu",
                         "container": {
                             "command": [
@@ -184,6 +188,7 @@ def test_job_passing_data_between_steps(sdk: NeMoPlatform, workspace: str):
                 {
                     "name": "consume-data-step",
                     "executor": {
+                        "kind": "container",
                         "provider": "cpu",
                         "container": {
                             "command": [
@@ -225,6 +230,7 @@ def test_job_using_secret_environment_variable(sdk: NeMoPlatform, workspace: str
                 {
                     "name": "secret-envvar-step",
                     "executor": {
+                        "kind": "container",
                         "provider": "cpu",
                         "container": {
                             "command": ["sh", "-c", 'echo "Secret value is: $SECRET_ENV_VAR"'],
@@ -262,6 +268,7 @@ def test_job_with_expected_failure(sdk: NeMoPlatform, workspace: str):
                 {
                     "name": "failing-step",
                     "executor": {
+                        "kind": "container",
                         "provider": "cpu",
                         "container": {
                             "command": ["sh", "-c", "echo 'This step will fail'; exit 1;"],
@@ -291,6 +298,7 @@ def test_job_cancel_immediately(sdk: NeMoPlatform, workspace: str):
                 {
                     "name": "long-running-step",
                     "executor": {
+                        "kind": "container",
                         "provider": "cpu",
                         "container": {
                             "command": ["sh", "-c", "sleep 60"],
@@ -320,6 +328,7 @@ def test_job_cancel_once_active(sdk: NeMoPlatform, workspace: str):
                 {
                     "name": "long-running-step",
                     "executor": {
+                        "kind": "container",
                         "provider": "cpu",
                         "container": {
                             "command": ["sh", "-c", "sleep 300"],
@@ -360,6 +369,7 @@ def test_job_pause_resume(sdk: NeMoPlatform, workspace: str):
                 {
                     "name": "long-running-step-pause-resume",
                     "executor": {
+                        "kind": "container",
                         "provider": "cpu",
                         "container": {
                             "command": ["sh", "-c", "sleep 300"],
@@ -401,6 +411,7 @@ def test_job_pause_and_cancel(sdk: NeMoPlatform, workspace: str):
                 {
                     "name": "long-running-step-pause-cancel",
                     "executor": {
+                        "kind": "container",
                         "provider": "cpu",
                         "container": {
                             "command": ["sh", "-c", "sleep 300"],
@@ -437,6 +448,7 @@ def test_job_using_additional_volume(sdk: NeMoPlatform, workspace: str):
                 {
                     "name": "write-data",
                     "executor": {
+                        "kind": "container",
                         "provider": "cpu",
                         "container": {
                             "command": [
@@ -451,6 +463,7 @@ def test_job_using_additional_volume(sdk: NeMoPlatform, workspace: str):
                 {
                     "name": "read-data",
                     "executor": {
+                        "kind": "container",
                         "provider": "cpu",
                         "container": {
                             "command": [
@@ -492,6 +505,7 @@ def test_job_invalid_image_format(sdk: NeMoPlatform, workspace: str, bad_image: 
                 {
                     "name": "bad-image-step",
                     "executor": {
+                        "kind": "container",
                         "provider": "cpu",
                         "container": {
                             "image": bad_image,

@@ -87,7 +87,7 @@ async def test_evaluate_suite_compile_produces_single_subprocess_step() -> None:
     step = steps[0]
     assert step["name"] == "evaluate-suite"
     assert step["executor"]["provider"] == "cpu"
-    assert step["executor"]["command"] == ["python", "-m", "nemo_agents_plugin.tasks.evaluate_suite"]
+    assert step["executor"]["command"] == ["python", "-m", "nemo_agents_plugin.tasks.evaluate_suite"]  # type: ignore[invalid-key]
     assert step["config"]["evals"] == "/abs/evals"
     assert step["config"]["agent"] == "/abs/agent"
 
