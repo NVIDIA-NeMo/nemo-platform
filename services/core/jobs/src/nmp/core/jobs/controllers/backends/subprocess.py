@@ -83,7 +83,7 @@ class SubprocessJobExecutionProfileConfig(JobExecutionProfileConfig):
 
 
 class SubprocessJobExecutionProfile(BaseExecutionProfile):
-    provider: Literal["subprocess"] = "subprocess"
+    provider: Literal["cpu"] = "cpu"
     backend: Literal["subprocess"] = "subprocess"
     config: SubprocessJobExecutionProfileConfig = Field(
         default_factory=SubprocessJobExecutionProfileConfig,

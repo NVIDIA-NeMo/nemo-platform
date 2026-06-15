@@ -25,7 +25,7 @@ from nmp.core.jobs.api.v2.jobs.schemas import (
     PlatformJobStepsListFilter,
 )
 from nmp.core.jobs.app.dispatcher import JobDispatcher
-from nmp.core.jobs.app.providers import ContainerSpec, GPUExecutionProvider, SubprocessExecutionProvider
+from nmp.core.jobs.app.providers import ContainerExecutionProvider, ContainerSpec, SubprocessExecutionProvider
 from nmp.core.jobs.app.schemas import (
     PlatformJobSpec,
     PlatformJobStepSpec,
@@ -48,23 +48,13 @@ def to_sdk_create_params(request: CreatePlatformJobRequest) -> Dict[str, Any]:
     return data
 
 
-def expected_translated_executor_dump() -> Dict[str, Any]:
+def expected_persisted_executor_dump() -> Dict[str, Any]:
     """Return the expected persisted executor for ``TestConstants.TEST_EXECUTOR``.
 
-    The Jobs API rewrites ``cpu/<profile>`` steps into ``subprocess/<profile>``
-    steps before persistence (see
-    ``translate_cpu_container_steps_to_subprocess`` in
-    ``services/core/jobs/src/nmp/core/jobs/api/v2/jobs/endpoints.py``), so the
-    round-trip representation of a step submitted with ``TestConstants.TEST_EXECUTOR``
-    is the translated subprocess executor — with ``command`` set to
-    ``container.entrypoint + container.command``.
+    The executor is stored as-is — a ``ContainerExecutionProvider`` with
+    ``provider="cpu"`` and the container spec from the test constant.
     """
-    container = TestConstants.TEST_EXECUTOR.container
-    return SubprocessExecutionProvider(
-        provider="subprocess",
-        profile=TestConstants.TEST_EXECUTOR.profile,
-        command=[*container.entrypoint, *container.command],
-    ).model_dump()
+    return TestConstants.TEST_EXECUTOR.model_dump()
 
 
 @pytest.mark.asyncio
@@ -81,12 +71,6 @@ async def test_create_job_using_sdk(test_sdk: AsyncNeMoPlatform):
                     "executor": {
                         "provider": "cpu",
                         "profile": "default",
-                        # entrypoint+command are required so the cpu→subprocess
-                        # translation hop in the Jobs API (see
-                        # `translate_cpu_container_steps_to_subprocess`) can
-                        # produce a non-empty subprocess command. Real plugin
-                        # compilers always set both; mirroring that here keeps
-                        # the SDK round-trip path realistic.
                         "container": {
                             "image": "test-image",
                             "entrypoint": ["python", "-m"],
@@ -238,7 +222,7 @@ async def test_create_job_gpu_fail_fast_when_docker_no_gpus(test_client: AsyncCl
     """Direct Jobs API create with GPU step fails fast with 422 when platform is Docker with no GPUs."""
     from nmp.common.config import Runtime
 
-    gpu_executor = GPUExecutionProvider(
+    gpu_executor = ContainerExecutionProvider(
         provider="gpu",
         profile="default",
         container=ContainerSpec(image="gpu-image"),
@@ -398,7 +382,7 @@ async def test_job_lifecycle_single_step(test_client: AsyncClient):
     # Assert that the platform_spec is created correctly
     assert len(get_data["platform_spec"]["steps"]) == 1
     assert get_data["platform_spec"]["steps"][0]["name"] == "step1"
-    assert get_data["platform_spec"]["steps"][0]["executor"] == expected_translated_executor_dump()
+    assert get_data["platform_spec"]["steps"][0]["executor"] == expected_persisted_executor_dump()
     assert get_data["platform_spec"]["steps"][0]["config"] == {}
 
     # list all steps (scoped to this job name — list_steps injects filter.job = name)
@@ -557,10 +541,10 @@ async def test_job_lifecycle_multi_step(test_client: AsyncClient):
     # Assert that the platform_spec is created correctly
     assert len(get_data["platform_spec"]["steps"]) == 2
     assert get_data["platform_spec"]["steps"][0]["name"] == "step1"
-    assert get_data["platform_spec"]["steps"][0]["executor"] == expected_translated_executor_dump()
+    assert get_data["platform_spec"]["steps"][0]["executor"] == expected_persisted_executor_dump()
     assert get_data["platform_spec"]["steps"][0]["config"] == {}
     assert get_data["platform_spec"]["steps"][1]["name"] == "step2"
-    assert get_data["platform_spec"]["steps"][1]["executor"] == expected_translated_executor_dump()
+    assert get_data["platform_spec"]["steps"][1]["executor"] == expected_persisted_executor_dump()
     assert get_data["platform_spec"]["steps"][1]["config"] == {}
 
     # Assert from the api that the first step is created correctly

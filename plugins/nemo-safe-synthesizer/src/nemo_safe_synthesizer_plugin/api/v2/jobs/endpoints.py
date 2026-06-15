@@ -62,7 +62,7 @@ def _create_job_step(job_config: SafeSynthesizerJobConfig, environment: list[Env
         return PlatformJobStep(
             name="safe-synthesizer",
             executor=SubprocessExecutionProviderSpec(
-                provider="subprocess",
+                provider="cpu",
                 profile=config.job_executor_profile,
                 command=command,
             ),

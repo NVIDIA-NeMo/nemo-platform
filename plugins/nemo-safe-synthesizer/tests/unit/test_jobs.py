@@ -92,7 +92,7 @@ async def test_job_config_compiler_with_classify_provider(mock_sdk):
 
     mock_sdk.inference.providers.retrieve.assert_awaited_once_with("my-nim", workspace="default")
     step = next(iter(result["steps"]))
-    assert step["executor"]["provider"] == "subprocess"
+    assert step["executor"]["provider"] == "cpu"
     assert step["executor"]["command"] == ["/runtime/bin/python", "-m", TASK_MODULE]
     env = {e["name"]: e.get("value") for e in step.get("environment", [])}
     assert env["CLASSIFY_LLM_ENDPOINT_PATH"] == "/apis/inference-gateway/v2/workspaces/default/provider/my-nim/-/v1"

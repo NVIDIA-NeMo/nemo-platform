@@ -29,7 +29,7 @@ from nmp.core.jobs.app.constants import (
     JOB_WORKSPACE_ID_LABEL,
     KUBE_JOB_SELECTOR_LABELS,
 )
-from nmp.core.jobs.app.providers import ComputeResources, ContainerSpec, DistributedGPUExecutionProvider
+from nmp.core.jobs.app.providers import ComputeResources, ContainerSpec, ContainerExecutionProvider
 from nmp.core.jobs.app.schemas import (
     PlatformJobEnvironmentVariable,
     PlatformJobSecretEnvironmentVariableRef,
@@ -115,7 +115,8 @@ def volcano_execution_profile_config():
 @pytest.fixture
 def distributed_gpu_execution_provider():
     """Create a test Distributed GPU execution provider."""
-    return DistributedGPUExecutionProvider(
+    return ContainerExecutionProvider(
+        provider="gpu_distributed",
         container=ContainerSpec(
             image="nvidia/cuda:11.8-runtime-ubuntu20.04",
             command=["python", "-c", "print('Hello World')"],
@@ -335,7 +336,8 @@ def test_schedule_job_single_node_success(
     volcano_job._custom_v1.create_namespaced_custom_object.return_value = MagicMock()  # ty: ignore[invalid-assignment]
 
     # Tweak the distributed_gpu_execution_provider for this one
-    distributed_gpu_execution_provider = DistributedGPUExecutionProvider(
+    distributed_gpu_execution_provider = ContainerExecutionProvider(
+        provider="gpu_distributed",
         container=ContainerSpec(
             image="nvidia/cuda:11.8-runtime-ubuntu20.04",
             command=["python", "-c", "print('Hello World')"],
@@ -469,7 +471,7 @@ def test_volcano_job_nemo_job_secrets_format_same_and_cross_workspace(
         fileset="test-logs-fileset",
         step_spec=PlatformJobStepSpec(
             name="test-step",
-            executor=DistributedGPUExecutionProvider(
+            executor=ContainerExecutionProvider(
                 provider="gpu_distributed",
                 profile="default",
                 container=ContainerSpec(image="test-image"),
@@ -551,7 +553,8 @@ def test_multi_node_networking_annotations_added(
     volcano_job._custom_v1.create_namespaced_custom_object.return_value = MagicMock()  # ty: ignore[invalid-assignment]
 
     # Create multi-node job (num_nodes > 1)
-    distributed_gpu_execution_provider = DistributedGPUExecutionProvider(
+    distributed_gpu_execution_provider = ContainerExecutionProvider(
+        provider="gpu_distributed",
         container=ContainerSpec(
             image="nvidia/cuda:11.8-runtime-ubuntu20.04",
             command=["python", "-c", "print('Hello World')"],
@@ -591,7 +594,8 @@ def test_single_node_no_networking_annotations(
     volcano_job._custom_v1.create_namespaced_custom_object.return_value = MagicMock()  # ty: ignore[invalid-assignment]
 
     # Create single-node job (num_nodes = 1)
-    distributed_gpu_execution_provider = DistributedGPUExecutionProvider(
+    distributed_gpu_execution_provider = ContainerExecutionProvider(
+        provider="gpu_distributed",
         container=ContainerSpec(
             image="nvidia/cuda:11.8-runtime-ubuntu20.04",
             command=["python", "-c", "print('Hello World')"],
@@ -658,7 +662,8 @@ def test_networking_annotations_disabled_via_config(
     volcano_job._custom_v1.create_namespaced_custom_object.return_value = MagicMock()  # ty: ignore[invalid-assignment]
 
     # Create multi-node job (num_nodes > 1)
-    distributed_gpu_execution_provider = DistributedGPUExecutionProvider(
+    distributed_gpu_execution_provider = ContainerExecutionProvider(
+        provider="gpu_distributed",
         container=ContainerSpec(
             image="nvidia/cuda:11.8-runtime-ubuntu20.04",
             command=["python", "-c", "print('Hello World')"],
@@ -801,7 +806,7 @@ def test_name_for_job_truncation(volcano_job: VolcanoJobBackend):
         name="test-step-",  # Job name with trailing dash.
         step_spec=PlatformJobStepSpec(
             name="test-step",
-            executor=DistributedGPUExecutionProvider(
+            executor=ContainerExecutionProvider(
                 provider="gpu_distributed", profile="volcano_profile", container=ContainerSpec(image="test-image")
             ),
             config={"command": ["echo", "Hello"]},

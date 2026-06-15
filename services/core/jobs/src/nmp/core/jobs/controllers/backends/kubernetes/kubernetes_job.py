@@ -24,10 +24,8 @@ from nmp.core.jobs.app.constants import (
 )
 from nmp.core.jobs.app.providers import (
     ComputeResources,
+    ContainerExecutionProvider,
     ContainerSpec,
-    CPUExecutionProvider,
-    ExecutionProviderT,
-    GPUExecutionProvider,
 )
 from nmp.core.jobs.app.schemas import BaseExecutionProfile
 from nmp.core.jobs.controllers.backends.base import JobBackend, JobUpdate, staleness_error_message
@@ -51,7 +49,7 @@ from pydantic import Field
 
 logger = logging.getLogger(__name__)
 
-ProviderT = TypeVar("ProviderT", bound=ExecutionProviderT)
+ProviderT = TypeVar("ProviderT", bound=ContainerExecutionProvider)
 
 
 class KubernetesJobExecutionProfileConfig(BaseKubernetesExecutionProfileConfig):
@@ -546,12 +544,12 @@ class KubernetesJobBackend(JobBackend[ProviderT, KubernetesJobExecutionProfileCo
                 self.terminate_job(job)
 
 
-class CPUKubernetesJobBackend(KubernetesJobBackend[CPUExecutionProvider]):
+class CPUKubernetesJobBackend(KubernetesJobBackend[ContainerExecutionProvider]):
     """Kubernetes job backend for CPU execution."""
 
     def schedule(
         self,
-        executor_config: CPUExecutionProvider,
+        executor_config: ContainerExecutionProvider,
         step: PlatformJobStepWithContext,
     ) -> JobUpdate:
         return self.schedule_job(executor_config.container, step)
@@ -563,12 +561,12 @@ class CPUKubernetesJobBackend(KubernetesJobBackend[CPUExecutionProvider]):
         return self._sync(step)
 
 
-class GPUKubernetesJobBackend(KubernetesJobBackend[GPUExecutionProvider]):
+class GPUKubernetesJobBackend(KubernetesJobBackend[ContainerExecutionProvider]):
     """Kubernetes job backend for GPU execution."""
 
     def schedule(
         self,
-        executor_config: GPUExecutionProvider,
+        executor_config: ContainerExecutionProvider,
         step: PlatformJobStepWithContext,
     ) -> JobUpdate:
         if executor_config.resources is not None and executor_config.resources.num_gpus is not None:

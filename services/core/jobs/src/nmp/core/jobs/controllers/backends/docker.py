@@ -61,9 +61,7 @@ from nmp.core.jobs.app.constants import (
 from nmp.core.jobs.app.ctx import JobContext
 from nmp.core.jobs.app.providers import (
     ComputeResources,
-    CPUExecutionProvider,
-    ExecutionProviderT,
-    GPUExecutionProvider,
+    ContainerExecutionProvider,
 )
 from nmp.core.jobs.app.schemas import BaseExecutionProfile
 from nmp.core.jobs.controllers.backends.base import (
@@ -112,7 +110,7 @@ NEMO_JOBS_DEFAULT_DOCKER_NETWORK = os.getenv("NEMO_JOBS_DEFAULT_DOCKER_NETWORK",
 DOCKER_STOP_TIMEOUT = int(os.getenv("NEMO_JOBS_DEFAULT_DOCKER_STOP_TIMEOUT", "30"))
 
 
-ProviderT = TypeVar("ProviderT", bound=ExecutionProviderT)
+ProviderT = TypeVar("ProviderT", bound=ContainerExecutionProvider)
 
 
 class DockerVolumeMount(BaseModel):
@@ -1342,12 +1340,12 @@ chmod -R 777 {job_vol}/{storage_subpath}
         return f"{step.job}-{step.name}"
 
 
-class CPUDockerJobBackend(DockerJobBackend[CPUExecutionProvider]):
+class CPUDockerJobBackend(DockerJobBackend[ContainerExecutionProvider]):
     """Docker job backend for CPU execution."""
 
     def schedule(
         self,
-        executor_config: CPUExecutionProvider,
+        executor_config: ContainerExecutionProvider,
         step: PlatformJobStepWithContext,
     ) -> JobUpdate:
         return self.schedule_single_container(executor_config, step)
@@ -1358,12 +1356,12 @@ class CPUDockerJobBackend(DockerJobBackend[CPUExecutionProvider]):
     ) -> JobUpdate:
         return self._sync(step)
 
-    def configure_container(self, container_args: dict, executor_config: CPUExecutionProvider) -> dict:
+    def configure_container(self, container_args: dict, executor_config: ContainerExecutionProvider) -> dict:
         """Customize container arguments for CPU execution."""
         return self.apply_resource_limits(container_args, executor_config.resources)
 
 
-class GPUDockerJobBackend(DockerJobBackend[GPUExecutionProvider]):
+class GPUDockerJobBackend(DockerJobBackend[ContainerExecutionProvider]):
     """Docker job backend for GPU execution."""
 
     def init(self) -> None:
@@ -1381,7 +1379,7 @@ class GPUDockerJobBackend(DockerJobBackend[GPUExecutionProvider]):
 
     def schedule(
         self,
-        executor_config: GPUExecutionProvider,
+        executor_config: ContainerExecutionProvider,
         step: PlatformJobStepWithContext,
     ) -> JobUpdate:
         return self.schedule_single_container(executor_config, step)
@@ -1402,7 +1400,7 @@ class GPUDockerJobBackend(DockerJobBackend[GPUExecutionProvider]):
             self.gpu_pool.release_gpu(step.id)
         return job_update
 
-    def configure_container(self, container_args: dict, executor_config: GPUExecutionProvider) -> dict:
+    def configure_container(self, container_args: dict, executor_config: ContainerExecutionProvider) -> dict:
         """Customize container arguments for GPU execution."""
         # Apply resource limits
         container_args = self.apply_resource_limits(container_args, executor_config.resources)

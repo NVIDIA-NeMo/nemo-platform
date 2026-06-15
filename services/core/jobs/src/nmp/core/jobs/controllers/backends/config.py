@@ -96,8 +96,8 @@ def get_default_executor_profiles_for_runtime(
     if enable_subprocess_executor:
         executors.append(
             SubprocessJobExecutionProfile(
-                provider="subprocess",
-                profile="default",
+                provider="cpu",
+                profile="subprocess",
                 backend="subprocess",
                 config=defaults.subprocess,
             )

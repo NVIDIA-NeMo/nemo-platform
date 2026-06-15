@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 from nmp.common.config import PlatformConfig
 from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.core.jobs.api.v2.jobs.schemas import PlatformJobStepWithContext
-from nmp.core.jobs.app.providers import ContainerSpec, CPUExecutionProvider
+from nmp.core.jobs.app.providers import ContainerSpec, ContainerExecutionProvider
 from nmp.core.jobs.app.schemas import PlatformJobStepSpec, StepLifecycle
 from nmp.core.jobs.controllers.backends.base import get_logs_endpoint_from_fileset
 from nmp.core.jobs.controllers.backends.test import MockKubernetesCPUJobBackend
@@ -164,7 +164,7 @@ def _make_step(
     if step_spec is ...:
         step_spec = PlatformJobStepSpec(
             name="test-step",
-            executor=CPUExecutionProvider(provider="cpu", profile="default", container=ContainerSpec(image="img")),
+            executor=ContainerExecutionProvider(provider="cpu", profile="default", container=ContainerSpec(image="img")),
             config={},
             lifecycle=StepLifecycle(staleness_timeout_seconds=staleness_timeout),
         )

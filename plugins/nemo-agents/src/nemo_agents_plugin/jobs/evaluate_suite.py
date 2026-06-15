@@ -201,7 +201,7 @@ class EvaluateSuiteJob(NemoJob):
                 PlatformJobStep(
                     name="evaluate-suite",
                     executor=SubprocessExecutionProviderSpec(
-                        provider="subprocess",
+                        provider="cpu",
                         command=["python", "-m", "nemo_agents_plugin.tasks.evaluate_suite"],
                     ),
                     config=spec_dict,

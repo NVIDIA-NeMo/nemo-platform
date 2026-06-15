@@ -86,7 +86,7 @@ async def test_evaluate_suite_compile_produces_single_subprocess_step() -> None:
     assert len(steps) == 1
     step = steps[0]
     assert step["name"] == "evaluate-suite"
-    assert step["executor"]["provider"] == "subprocess"
+    assert step["executor"]["provider"] == "cpu"
     assert step["executor"]["command"] == ["python", "-m", "nemo_agents_plugin.tasks.evaluate_suite"]
     assert step["config"]["evals"] == "/abs/evals"
     assert step["config"]["agent"] == "/abs/agent"
@@ -199,7 +199,7 @@ async def test_optimize_skills_compile_produces_single_subprocess_step() -> None
     step = steps[0]
     assert step["name"] == "optimize-skills"
     executor = step["executor"]
-    assert executor.get("provider") == "subprocess"
+    assert executor.get("provider") == "cpu"
     assert executor.get("command") == ["python", "-m", "nemo_agents_plugin.tasks.optimize_skills"]
 
     env = {e["name"]: e for e in step["environment"]}
@@ -279,7 +279,7 @@ async def test_analyze_compile_produces_single_subprocess_step() -> None:
     step = next(iter(platform_spec["steps"]))
     assert step["name"] == "analyze"
     executor = step["executor"]
-    assert executor.get("provider") == "subprocess"
+    assert executor.get("provider") == "cpu"
     assert executor.get("command") == ["python", "-m", "nemo_agents_plugin.tasks.analyze"]
 
 
@@ -328,7 +328,7 @@ async def test_optimize_agent_compile_produces_single_subprocess_step() -> None:
     step = next(iter(platform_spec["steps"]))
     assert step["name"] == "optimize-agent"
     executor = step["executor"]
-    assert executor.get("provider") == "subprocess"
+    assert executor.get("provider") == "cpu"
     assert executor.get("command") == ["python", "-m", "nemo_agents_plugin.tasks.optimize"]
     assert step["config"]["workspace"] == "staging"
 

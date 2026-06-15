@@ -27,7 +27,7 @@ def _subprocess_backend(mock_nmp_client, tmp_path, mock_platform_config) -> Subp
 def _step_with_command(step, command: list[str]):
     updated_step = step.model_copy(deep=True)
     updated_step.step_spec.executor = SubprocessExecutionProvider(
-        provider="subprocess", profile="default", command=command
+        provider="cpu", profile="subprocess", command=command
     )
     return updated_step
 
@@ -35,7 +35,7 @@ def _step_with_command(step, command: list[str]):
 def _step_with_unvalidated_command(step, command: list[str]):
     updated_step = step.model_copy(deep=True)
     updated_step.step_spec.executor = SubprocessExecutionProvider.model_construct(
-        provider="subprocess", profile="default", command=command
+        provider="cpu", profile="subprocess", command=command
     )
     return updated_step
 
@@ -219,8 +219,8 @@ def test_missing_command_fails_without_process(mock_nmp_client, tmp_path, mock_p
 
 def test_build_command_uses_current_interpreter_for_python_module_commands() -> None:
     executor = SubprocessExecutionProvider(
-        provider="subprocess",
-        profile="default",
+        provider="cpu",
+        profile="subprocess",
         command=["python", "-m", "nemo_evaluator.tasks.evaluate"],
     )
 
@@ -233,8 +233,8 @@ def test_build_command_uses_current_interpreter_for_python_module_commands() -> 
 
 def test_build_command_uses_current_interpreter_for_python3_commands() -> None:
     executor = SubprocessExecutionProvider(
-        provider="subprocess",
-        profile="default",
+        provider="cpu",
+        profile="subprocess",
         command=["python3", "-m", "nemo_evaluator.tasks.evaluate"],
     )
 
@@ -251,8 +251,8 @@ def test_build_command_prefers_virtual_env_python(tmp_path) -> None:
     venv_python.write_text("#!/bin/sh\n", encoding="utf-8")
     venv_python.chmod(0o755)
     executor = SubprocessExecutionProvider(
-        provider="subprocess",
-        profile="default",
+        provider="cpu",
+        profile="subprocess",
         command=["python", "-m", "nemo_evaluator.tasks.evaluate"],
     )
 

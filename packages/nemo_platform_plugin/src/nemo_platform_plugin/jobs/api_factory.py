@@ -79,6 +79,9 @@ CPUExecutionProviderSpec = CPUExecutionProviderParam
 GPUExecutionProviderSpec = GPUExecutionProviderParam
 DistributedGPUExecutionProviderSpec = DistributedGPUExecutionProviderParam
 SubprocessExecutionProviderSpec = SubprocessExecutionProviderParam
+# Container providers (cpu, gpu, gpu_distributed) share the same shape today.
+# This alias will point at a dedicated SDK type once the SDK is regenerated.
+ContainerExecutionProviderSpec = CPUExecutionProviderParam
 ResourcesSpec = ComputeResourcesParam
 ResourcesLimitsSpec = ComputeResourceSpecParam
 ResourcesRequestsSpec = ComputeResourceSpecParam
@@ -102,6 +105,8 @@ class BaseJobRequest(BaseModel, Generic[JobConfigT]):
     spec: JobConfigT
     ownership: dict | None = None
     custom_fields: dict | None = None
+    profile: str | None = None
+    options: dict | None = None
 
 
 class BaseJob(BaseModel, Generic[JobConfigT]):

@@ -28,7 +28,7 @@ from nmp.core.jobs.app.constants import (
     JOB_WORKSPACE_ID_LABEL,
     KUBE_JOB_SELECTOR_LABELS,
 )
-from nmp.core.jobs.app.providers import ContainerSpec, CPUExecutionProvider, GPUExecutionProvider
+from nmp.core.jobs.app.providers import ContainerSpec, ContainerExecutionProvider
 from nmp.core.jobs.app.schemas import (
     PlatformJobEnvironmentVariable,
     PlatformJobSecretEnvironmentVariableRef,
@@ -126,7 +126,7 @@ def kubernetes_execution_profile_config():
 @pytest.fixture
 def cpu_execution_provider():
     """Create a test CPU execution provider."""
-    return CPUExecutionProvider(
+    return ContainerExecutionProvider(
         container=ContainerSpec(
             image="nvidia/cuda:11.8-runtime-ubuntu20.04",
             command=["python", "-c", "print('Hello World')"],
@@ -1184,7 +1184,7 @@ def test_name_for_job_truncation(kubernetes_job):
         name="test-step-",  # Job name with trailing dash.
         step_spec=PlatformJobStepSpec(
             name="test-step",
-            executor=CPUExecutionProvider(
+            executor=ContainerExecutionProvider(
                 provider="cpu", profile="k8s_profile", container=ContainerSpec(image="test-image")
             ),
             config={"command": ["echo", "Hello"]},
@@ -1204,7 +1204,7 @@ def test_name_for_job_truncation(kubernetes_job):
 def test_schedule_kubernetes_gpu(mock_nmp_client, kubernetes_execution_profile_config):
     """Test successful job scheduling."""
 
-    gpu_executor_config = GPUExecutionProvider.model_validate(
+    gpu_executor_config = ContainerExecutionProvider.model_validate(
         {
             "provider": "gpu",
             "profile": "default",
@@ -1392,7 +1392,7 @@ def test_schedule_nemo_job_secrets_format_same_and_cross_workspace(kubernetes_jo
         fileset="test-logs-fileset",
         step_spec=PlatformJobStepSpec(
             name="test-step",
-            executor=CPUExecutionProvider(
+            executor=ContainerExecutionProvider(
                 provider="cpu", profile="default", container=ContainerSpec(image="test-image")
             ),
             config={},
@@ -1439,7 +1439,7 @@ def test_schedule_without_storage_no_label(kubernetes_job, cpu_execution_provide
         fileset="test-logs-fileset",
         step_spec=PlatformJobStepSpec(
             name="test-step",
-            executor=CPUExecutionProvider(
+            executor=ContainerExecutionProvider(
                 provider="cpu", profile="default", container=ContainerSpec(image="test-image")
             ),
             config={},
@@ -1705,7 +1705,7 @@ def test_step_pending_with_auth_context() -> PlatformJobStepWithContext:
         name="test-step",
         step_spec=PlatformJobStepSpec(
             name="test-step",
-            executor=CPUExecutionProvider(
+            executor=ContainerExecutionProvider(
                 provider="cpu",
                 profile="default",
                 container=ContainerSpec(image="nvidia/cuda:11.8-runtime-ubuntu20.04"),

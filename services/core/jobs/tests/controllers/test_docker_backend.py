@@ -39,8 +39,7 @@ from nmp.core.jobs.app.providers import (
     ComputeResources,
     ComputeResourceSpec,
     ContainerSpec,
-    CPUExecutionProvider,
-    GPUExecutionProvider,
+    ContainerExecutionProvider,
 )
 from nmp.core.jobs.app.schemas import (
     PlatformJobEnvironmentVariable,
@@ -128,7 +127,7 @@ def test_job_step():
         name="test-step",
         step_spec=PlatformJobStepSpec(
             name="test-step",
-            executor=CPUExecutionProvider(
+            executor=ContainerExecutionProvider(
                 provider="cpu",
                 profile="default",
                 container=ContainerSpec(image="test-image"),
@@ -161,7 +160,7 @@ def test_job_step_with_persistence():
         workspace="default",
         step_spec=PlatformJobStepSpec(
             name="test-step",
-            executor=CPUExecutionProvider(
+            executor=ContainerExecutionProvider(
                 provider="cpu",
                 profile="default",
                 container=ContainerSpec(image="test-image"),
@@ -467,7 +466,7 @@ def test_docker_job_sync_cancelling_sigkill(docker_job, docker_client_mock, test
 def test_docker_job_schedule_no_resources(docker_job, docker_client_mock):
     """Test that scheduling works with providers that don't have resources attribute."""
     # Create a provider without resources attribute
-    provider = CPUExecutionProvider(container=ContainerSpec(image="test-image:latest"))
+    provider = ContainerExecutionProvider(container=ContainerSpec(image="test-image:latest"))
 
     test_job_step = PlatformJobStepWithContext(
         id="test-step-id",
@@ -478,7 +477,7 @@ def test_docker_job_schedule_no_resources(docker_job, docker_client_mock):
         name="test-step",
         step_spec=PlatformJobStepSpec(
             name="test-step",
-            executor=CPUExecutionProvider(
+            executor=ContainerExecutionProvider(
                 provider="cpu",
                 profile="default",
                 container=ContainerSpec(image="test-image"),
@@ -516,7 +515,7 @@ def test_docker_job_schedule_no_resources(docker_job, docker_client_mock):
 def test_docker_job_schedule_with_secrets(docker_job, docker_client_mock):
     """Test that scheduling works when secrets are provided."""
     # Create a provider without resources attribute
-    provider = CPUExecutionProvider(container=ContainerSpec(image="test-image:latest"))
+    provider = ContainerExecutionProvider(container=ContainerSpec(image="test-image:latest"))
 
     test_job_step = PlatformJobStepWithContext(
         id="test-step-id",
@@ -527,7 +526,7 @@ def test_docker_job_schedule_with_secrets(docker_job, docker_client_mock):
         name="test-step",
         step_spec=PlatformJobStepSpec(
             name="test-step",
-            executor=CPUExecutionProvider(
+            executor=ContainerExecutionProvider(
                 provider="cpu",
                 profile="default",
                 container=ContainerSpec(image="test-image"),
@@ -576,7 +575,7 @@ def test_docker_job_nemo_job_secrets_format_same_and_cross_workspace(docker_job,
     Format must be ENV_VAR=workspace/secret_name per SECRETS.md; cross-workspace refs
     use the explicit workspace/secret_name from from_secret.name.
     """
-    provider = CPUExecutionProvider(container=ContainerSpec(image="test-image:latest"))
+    provider = ContainerExecutionProvider(container=ContainerSpec(image="test-image:latest"))
     # Step in workspace "default"; one secret in same workspace, one in other workspace
     test_job_step = PlatformJobStepWithContext(
         id="test-step-id",
@@ -587,7 +586,7 @@ def test_docker_job_nemo_job_secrets_format_same_and_cross_workspace(docker_job,
         name="test-step",
         step_spec=PlatformJobStepSpec(
             name="test-step",
-            executor=CPUExecutionProvider(
+            executor=ContainerExecutionProvider(
                 provider="cpu",
                 profile="default",
                 container=ContainerSpec(image="test-image"),
@@ -633,7 +632,7 @@ def test_docker_job_nemo_job_secrets_format_same_and_cross_workspace(docker_job,
 
 def test_docker_job_profile_environment_applied(mock_nmp_client, docker_client_mock, mock_platform_config):
     """Profile environment (e.g. HOME=/tmp) is applied to scheduled job containers."""
-    provider = CPUExecutionProvider(container=ContainerSpec(image="test-image:latest"))
+    provider = ContainerExecutionProvider(container=ContainerSpec(image="test-image:latest"))
     config = DockerJobExecutionProfileConfig(
         storage=DockerJobStorageConfig(volume_name="test_jobs_storage"),
         env={"HOME": "/tmp"},
@@ -651,7 +650,7 @@ def test_docker_job_profile_environment_applied(mock_nmp_client, docker_client_m
         name="test-step",
         step_spec=PlatformJobStepSpec(
             name="test-step",
-            executor=CPUExecutionProvider(
+            executor=ContainerExecutionProvider(
                 provider="cpu",
                 profile="default",
                 container=ContainerSpec(image="test-image"),
@@ -690,7 +689,7 @@ def test_schedule_docker_gpu(mock_nmp_client, docker_client_mock):
     """Test successful job scheduling."""
 
     gpus = 2
-    gpu_executor_config = GPUExecutionProvider.model_validate(
+    gpu_executor_config = ContainerExecutionProvider.model_validate(
         {
             "provider": "gpu",
             "profile": "default",
@@ -828,7 +827,7 @@ def test_schedule_docker_gpu(mock_nmp_client, docker_client_mock):
 def test_gpu_cleanup_on_job_completion(mock_nmp_client, docker_client_mock):
     """Test that GPU resources are released when a job completes successfully."""
 
-    gpu_executor_config = GPUExecutionProvider.model_validate(
+    gpu_executor_config = ContainerExecutionProvider.model_validate(
         {
             "provider": "gpu",
             "profile": "default",
@@ -928,7 +927,7 @@ def test_gpu_cleanup_on_job_completion(mock_nmp_client, docker_client_mock):
 def test_gpu_cleanup_on_job_error(mock_nmp_client, docker_client_mock):
     """Test that GPU resources are released when a job fails with an error."""
 
-    gpu_executor_config = GPUExecutionProvider.model_validate(
+    gpu_executor_config = ContainerExecutionProvider.model_validate(
         {
             "provider": "gpu",
             "profile": "default",
@@ -1836,7 +1835,7 @@ def test_job_step_with_auth_context():
         name="test-step",
         step_spec=PlatformJobStepSpec(
             name="test-step",
-            executor=CPUExecutionProvider(
+            executor=ContainerExecutionProvider(
                 provider="cpu",
                 profile="default",
                 container=ContainerSpec(image="test-image"),

@@ -6,14 +6,14 @@ from typing import Generic, Literal, TypeVar
 
 from nemo_platform.types.jobs import PlatformJobStepWithContext
 from nmp.common.jobs.schemas import PlatformJobStatus
-from nmp.core.jobs.app.providers import CPUExecutionProvider, ExecutionProviderT, GPUExecutionProvider
+from nmp.core.jobs.app.providers import ContainerExecutionProvider
 from nmp.core.jobs.app.schemas import BaseExecutionProfile
 from nmp.core.jobs.controllers.backends.base import JobBackend, JobExecutionProfileConfig, JobUpdate
 from nmp.core.jobs.controllers.backends.docker import DockerJobExecutionProfileConfig
 from nmp.core.jobs.controllers.backends.kubernetes import KubernetesJobExecutionProfileConfig
 from pydantic import Field
 
-ProviderT = TypeVar("ProviderT", bound=ExecutionProviderT)
+ProviderT = TypeVar("ProviderT", bound=ContainerExecutionProvider)
 
 
 class E2EJobExecutionProfile(BaseExecutionProfile):
@@ -136,25 +136,25 @@ class MockKubernetesJobBackend(JobBackend[ProviderT, KubernetesJobExecutionProfi
         return
 
 
-class TestE2ECPUJobBackend(TestE2EJobBackend[CPUExecutionProvider]):
+class TestE2ECPUJobBackend(TestE2EJobBackend[ContainerExecutionProvider]):
     pass
 
 
-class TestE2EGPUJobBackend(TestE2EJobBackend[GPUExecutionProvider]):
+class TestE2EGPUJobBackend(TestE2EJobBackend[ContainerExecutionProvider]):
     pass
 
 
-class MockDockerCPUJobBackend(MockDockerJobBackend[CPUExecutionProvider]):
+class MockDockerCPUJobBackend(MockDockerJobBackend[ContainerExecutionProvider]):
     pass
 
 
-class MockDockerGPUJobBackend(MockDockerJobBackend[GPUExecutionProvider]):
+class MockDockerGPUJobBackend(MockDockerJobBackend[ContainerExecutionProvider]):
     pass
 
 
-class MockKubernetesCPUJobBackend(MockKubernetesJobBackend[CPUExecutionProvider]):
+class MockKubernetesCPUJobBackend(MockKubernetesJobBackend[ContainerExecutionProvider]):
     pass
 
 
-class MockKubernetesGPUJobBackend(MockKubernetesJobBackend[GPUExecutionProvider]):
+class MockKubernetesGPUJobBackend(MockKubernetesJobBackend[ContainerExecutionProvider]):
     pass

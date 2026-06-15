@@ -24,7 +24,7 @@ from nmp.core.jobs.app.constants import (
     JOB_WORKSPACE_ID_LABEL,
     KUBE_JOB_SELECTOR_LABELS,
 )
-from nmp.core.jobs.app.providers import DistributedGPUExecutionProvider
+from nmp.core.jobs.app.providers import ContainerExecutionProvider
 from nmp.core.jobs.app.schemas import BaseExecutionProfile
 from nmp.core.jobs.controllers.backends.base import JobBackend, JobUpdate, staleness_error_message
 from nmp.core.jobs.controllers.backends.kubernetes.common import (
@@ -86,7 +86,7 @@ class VolcanoJobExecutionProfile(BaseExecutionProfile):
 
 
 class VolcanoJobBackend(
-    JobBackend[DistributedGPUExecutionProvider, VolcanoJobExecutionProfileConfig],
+    JobBackend[ContainerExecutionProvider, VolcanoJobExecutionProfileConfig],
 ):
     BACKEND_NAME: str = "volcano_job"
 
@@ -151,7 +151,7 @@ class VolcanoJobBackend(
 
     def schedule(
         self,
-        executor_config: DistributedGPUExecutionProvider,
+        executor_config: ContainerExecutionProvider,
         step: PlatformJobStepWithContext,
     ) -> JobUpdate:
         """

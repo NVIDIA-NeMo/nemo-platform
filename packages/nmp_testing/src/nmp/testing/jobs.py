@@ -30,7 +30,10 @@ def subprocess_job_executor_patch(
     from nmp.core.jobs.api.v2.jobs import endpoints as jobs_endpoints
 
     patched_executors = list(executors)
-    if not any(executor.provider == "subprocess" and executor.profile == profile for executor in patched_executors):
+    if not any(
+        getattr(executor, "backend", None) == "subprocess" and getattr(executor, "profile", None) == profile
+        for executor in patched_executors
+    ):
         patched_executors.insert(0, SubprocessJobExecutionProfile(profile=profile))
 
     with ExitStack() as stack:

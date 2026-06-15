@@ -172,6 +172,9 @@ class NemoJob(_NamedPlugin):
     description: ClassVar[str] = ""
     container: ClassVar[str] = "cpu-tasks"
     execution_provider: ClassVar[str] = "cpu"
+    # Execution kind: "container" (default) or "subprocess".
+    # Subprocess jobs override this to "subprocess".
+    execution_kind: ClassVar[str] = "container"
 
     # ------------------------------------------------------------------ #
     # Spec schemas — canonical ``spec_schema``; optional ``input_spec_schema``

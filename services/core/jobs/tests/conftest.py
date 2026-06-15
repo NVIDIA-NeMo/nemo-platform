@@ -35,7 +35,7 @@ from nmp.core.jobs.api.v2.jobs.schemas import (
     PlatformJobStepWithContext,
 )
 from nmp.core.jobs.app.dispatcher import JobDispatcher
-from nmp.core.jobs.app.providers import ContainerSpec, CPUExecutionProvider
+from nmp.core.jobs.app.providers import ContainerExecutionProvider, ContainerSpec
 from nmp.core.jobs.app.schemas import (
     PlatformJobEnvironmentVariable,
     PlatformJobStepSpec,
@@ -212,6 +212,7 @@ def sample_job_dict():
                 {
                     "name": "docker-step-cpu-1",
                     "executor": {
+                        "kind": "container",
                         "provider": "cpu",
                         "profile": "default",
                         "container": {"image": "ubuntu:latest", "command": ["c1", "c2"], "entrypoint": ["a1", "a2"]},
@@ -221,6 +222,7 @@ def sample_job_dict():
                 {
                     "name": "docker-step-gpu",
                     "executor": {
+                        "kind": "container",
                         "provider": "gpu",
                         "profile": "default",
                         "container": {"image": "ubuntu:latest", "command": ["c1", "c2"], "entrypoint": ["a1", "a2"]},
@@ -231,6 +233,7 @@ def sample_job_dict():
                 {
                     "name": "docker-step-no-command-or-entrypoint",
                     "executor": {
+                        "kind": "container",
                         "provider": "cpu",
                         "profile": "default",
                         "container": {"image": "ubuntu:latest"},
@@ -341,7 +344,7 @@ def create_step_with_status(status: PlatformJobStatus) -> PlatformJobStepWithCon
         fileset="test-logs-fileset",
         step_spec=PlatformJobStepSpec(
             name="test-step",
-            executor=CPUExecutionProvider(
+            executor=ContainerExecutionProvider(
                 provider="cpu", profile="default", container=ContainerSpec(image="test-image")
             ),
             config={},
@@ -385,16 +388,10 @@ executor_defaults:
       volume_name: test_jobs_storage
 
 jobs:
-  # Executor profiles configuration. The subprocess/default entry mirrors what
-  # ships in `packages/nmp_platform/config/local.yaml` and opts the documented
-  # `cpu/default` plugin steps into the cpu→subprocess translation in the Jobs
-  # API (see `translate_cpu_container_steps_to_subprocess`). Tests that submit
-  # jobs through the core /apis/jobs/v2/workspaces/{ws}/jobs endpoint with a
-  # `cpu/default` step will get rewritten to `subprocess/default` before
-  # validation, matching production deployment behavior.
+  # Executor profiles configuration.
   executors:
-    - provider: subprocess
-      profile: default
+    - provider: cpu
+      profile: subprocess
       backend: subprocess
       config:
         working_directory: /tmp/nmp-subprocess-jobs
@@ -464,16 +461,14 @@ def backend_registry(mock_nmp_client, job_config_with_many_profiles) -> BackendR
         nmp_sdk=mock_nmp_client,
         profiles=job_config_with_many_profiles.executors,
         # Mock the backends. Register the real SubprocessJobBackend to satisfy
-        # the subprocess/default executor that ships in
-        # `job_config_with_many_profiles` (added so test_client picks up the
-        # subprocess profile and the cpu→subprocess translation in the Jobs
-        # API fires consistently with production deployments).
+        # the cpu/subprocess executor that ships in
+        # `job_config_with_many_profiles`.
         backends={
             BackendKey("cpu", "docker"): MockDockerCPUJobBackend,
             BackendKey("gpu", "docker"): MockDockerGPUJobBackend,
             BackendKey("cpu", "kubernetes_job"): MockKubernetesCPUJobBackend,
             BackendKey("gpu", "kubernetes_job"): MockKubernetesGPUJobBackend,
-            BackendKey("subprocess", "subprocess"): SubprocessJobBackend,
+            BackendKey("cpu", "subprocess"): SubprocessJobBackend,
         },
     )
 
@@ -513,8 +508,7 @@ def hello_world_job_config(
 
 @pytest_asyncio.fixture
 async def test_client(mock_dispatcher, mock_store, job_config_with_many_profiles) -> AsyncGenerator[AsyncClient, None]:
-    # Mock the config.executors to have the test execution profiles, including
-    # subprocess/default for cpu/default to subprocess/default translation.
+    # Mock the config.executors to have the test execution profiles.
     from nmp.common.auth.middleware import AuthorizationMiddleware
     from nmp.common.service.dependencies import get_sdk_client
 

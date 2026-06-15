@@ -7,7 +7,7 @@ This module contains test constants, fixtures, and helper functions
 that are shared across test files.
 """
 
-from nmp.core.jobs.app.providers import ComputeResources, ComputeResourceSpec, ContainerSpec, CPUExecutionProvider
+from nmp.core.jobs.app.providers import ComputeResources, ComputeResourceSpec, ContainerExecutionProvider, ContainerSpec
 from nmp.core.jobs.app.schemas import (
     PlatformJobSpec,
     PlatformJobStepSpec,
@@ -45,7 +45,7 @@ class TestConstants:
     # etc.) all set both fields; the fixture mirrors that so submissions through the
     # core /apis/jobs/v2/workspaces/{ws}/jobs endpoint validate successfully and we
     # exercise the same translation path the user-facing tutorials do.
-    TEST_EXECUTOR = CPUExecutionProvider(
+    TEST_EXECUTOR = ContainerExecutionProvider(
         provider="cpu",
         profile="default",
         container=ContainerSpec(

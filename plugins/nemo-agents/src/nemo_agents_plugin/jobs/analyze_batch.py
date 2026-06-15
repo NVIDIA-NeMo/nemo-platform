@@ -107,7 +107,7 @@ class AnalyzeBatchJob(NemoJob):
                 PlatformJobStep(
                     name="analyze",
                     executor=SubprocessExecutionProviderSpec(
-                        provider="subprocess",
+                        provider="cpu",
                         command=["python", "-m", "nemo_agents_plugin.tasks.analyze"],
                     ),
                     config=spec_dict,

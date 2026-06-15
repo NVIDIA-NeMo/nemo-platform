@@ -8,9 +8,8 @@ import pytest
 from nmp.common.config import Configuration, Runtime
 from nmp.core.jobs.app.providers import (
     ComputeResources,
+    ContainerExecutionProvider,
     ContainerSpec,
-    CPUExecutionProvider,
-    GPUExecutionProvider,
     SubprocessExecutionProvider,
 )
 from nmp.core.jobs.app.schemas import PlatformJobEnvironmentVariable
@@ -67,7 +66,7 @@ def test_job_instantiation_and_validation(sample_job_dict):
     assert cpu_step.executor.profile == "default"
     assert cpu_step.executor.container.image == "ubuntu:latest"
     assert cpu_step.environment == [PlatformJobEnvironmentVariable(name="TEST_ENV", value="test_value")]
-    assert isinstance(cpu_step.executor, CPUExecutionProvider)
+    assert isinstance(cpu_step.executor, ContainerExecutionProvider)
 
     # Validate second step (GPU)
     gpu_step = job.platform_spec.steps[1]
@@ -77,7 +76,7 @@ def test_job_instantiation_and_validation(sample_job_dict):
     assert gpu_step.executor.container.image == "ubuntu:latest"
     assert gpu_step.environment == [PlatformJobEnvironmentVariable(name="TEST_ENV", value="test_value")]
     assert gpu_step.executor.resources.num_gpus == 2
-    assert isinstance(gpu_step.executor, GPUExecutionProvider)
+    assert isinstance(gpu_step.executor, ContainerExecutionProvider)
 
 
 def test_step_container_command_configuration(sample_job_dict):
@@ -309,13 +308,13 @@ def test_default_profiles_include_subprocess_for_docker_runtime():
 
     assert ("cpu", "default", "docker") in [(p.provider, p.profile, p.backend) for p in profiles]
     assert ("gpu", "default", "docker") in [(p.provider, p.profile, p.backend) for p in profiles]
-    assert ("subprocess", "default", "subprocess") in [(p.provider, p.profile, p.backend) for p in profiles]
+    assert ("cpu", "subprocess", "subprocess") in [(p.provider, p.profile, p.backend) for p in profiles]
 
 
 def test_default_profiles_include_subprocess_for_none_runtime():
     profiles = get_default_executor_profiles_for_runtime(Runtime.NONE, DefaultExecutionProfileConfig())
 
-    assert [(p.provider, p.profile, p.backend) for p in profiles] == [("subprocess", "default", "subprocess")]
+    assert [(p.provider, p.profile, p.backend) for p in profiles] == [("cpu", "subprocess", "subprocess")]
 
 
 def test_backend_registry_resolves_subprocess_default(mock_nmp_client):
@@ -330,23 +329,23 @@ def test_backend_registry_resolves_subprocess_default(mock_nmp_client):
     registry = BackendRegistry.from_config(
         nmp_sdk=mock_nmp_client,
         profiles=profiles,
-        backends={BackendKey("subprocess", "subprocess"): DummyBackend},
+        backends={BackendKey("cpu", "subprocess"): DummyBackend},
     )
 
-    assert registry.get_backend(provider="subprocess", profile="default") is not None
+    assert registry.get_backend(provider="cpu", profile="subprocess") is not None
 
 
-def test_subprocess_execution_profile_defaults_provider_to_subprocess():
-    profile = SubprocessJobExecutionProfile(profile="default")
+def test_subprocess_execution_profile_defaults_provider_to_cpu():
+    profile = SubprocessJobExecutionProfile(profile="subprocess")
 
-    assert profile.provider == "subprocess"
+    assert profile.provider == "cpu"
     assert profile.backend == "subprocess"
 
 
 def test_default_profiles_exclude_subprocess_for_kubernetes_runtime():
     profiles = get_default_executor_profiles_for_runtime(Runtime.KUBERNETES, DefaultExecutionProfileConfig())
 
-    assert ("subprocess", "default", "subprocess") not in [(p.provider, p.profile, p.backend) for p in profiles]
+    assert ("cpu", "subprocess", "subprocess") not in [(p.provider, p.profile, p.backend) for p in profiles]
 
 
 def test_merged_profiles():
@@ -422,7 +421,7 @@ def test_merged_profiles():
     assert type(gpu_distributed.config) is VolcanoJobExecutionProfileConfig
     assert gpu_distributed.config.storage.pvc_name == "default-pvc"
 
-    subprocess_default = next((p for p in merged if p.provider == "subprocess" and p.profile == "default"), None)
+    subprocess_default = next((p for p in merged if p.provider == "cpu" and p.profile == "subprocess"), None)
     assert subprocess_default is not None
     assert type(subprocess_default.config) is SubprocessJobExecutionProfileConfig
 

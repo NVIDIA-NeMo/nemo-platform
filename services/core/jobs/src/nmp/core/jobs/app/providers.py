@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import re
-from typing import Annotated, Literal, Union
+from typing import Annotated, Any, Literal, Union
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, BeforeValidator, Field, field_validator, model_validator
 
 # SHM: megabyte/gigabyte scale only — Mi, Gi (binary) or M, G (decimal SI).
 # Ki / Ti / Pi / Ei and other suffixes are not accepted for /dev/shm.
@@ -85,80 +85,44 @@ class TaskSpec(BaseModel):
     """Arguments to pass to the command. Can be a list of strings or a single string."""
 
 
-class CPUExecutionProvider(BaseModel):
-    """
-    CPU-based execution provider.
+class ContainerExecutionProvider(BaseModel):
+    """Container-based execution provider.
 
-    Provides configuration for running jobs on CPU resources with
-    resource requests and limits.
+    Runs a job step inside a container image. The ``provider`` field
+    expresses compute intent (cpu, gpu, gpu_distributed) while ``kind``
+    identifies the payload shape.
     """
 
-    provider: Literal["cpu"] = "cpu"
-    """The provider type, always 'cpu' for CPU execution."""
+    kind: Literal["container"] = "container"
+    """Executor payload shape — always ``"container"`` for image-backed work."""
+
+    provider: Literal["cpu", "gpu", "gpu_distributed"] = "cpu"
+    """Compute requirement: ``cpu``, ``gpu``, or ``gpu_distributed``."""
 
     profile: str = "default"
-    """The execution profile to use. Defaults to 'default'."""
+    """Operator-configured execution profile (e.g. ``"default"``, ``"a100"``)."""
 
     container: ContainerSpec
     """Container specification defining the execution environment."""
 
-    resources: ComputeResources = Field(
-        default_factory=ComputeResources, description="Resource requests and limits for CPU execution."
-    )
-
-
-class GPUExecutionProvider(BaseModel):
-    """
-    GPU-based execution provider.
-
-    Provides configuration for running jobs on GPU resources with
-    resource requests and limits.
-    """
-
-    provider: Literal["gpu"] = "gpu"
-    """The provider type, always 'gpu' for GPU execution."""
-
-    profile: str = "default"
-    """The execution profile to use. Defaults to 'default'."""
-
-    container: ContainerSpec
-    """Container specification defining the execution environment."""
-
-    resources: ComputeResources = Field(
-        default_factory=ComputeResources, description="Resource requests and limits for GPU execution."
-    )
-
-
-class DistributedGPUExecutionProvider(BaseModel):
-    """
-    GPU-based execution provider.
-
-    Provides configuration for running jobs on GPU resources with
-    resource requests and limits.
-    """
-
-    provider: Literal["gpu_distributed"] = "gpu_distributed"
-    """The provider type, always 'gpu_distributed' for distributed GPU execution."""
-
-    profile: str = "default"
-    """The execution profile to use. Defaults to 'default'."""
-
-    container: ContainerSpec
-    """Container specification defining the execution environment."""
-
-    resources: ComputeResources = Field(
-        default_factory=ComputeResources, description="Resource requests and limits for distributed GPU execution."
-    )
+    resources: ComputeResources = Field(default_factory=ComputeResources, description="Resource requests and limits.")
 
 
 class SubprocessExecutionProvider(BaseModel):
-    """Host subprocess execution provider."""
+    """Host subprocess execution provider.
 
-    provider: Literal["subprocess"] = "subprocess"
-    """The provider type, always 'subprocess' for host subprocess execution."""
+    Runs a job step as a local OS process. The ``provider`` field
+    expresses compute intent while ``kind`` identifies the payload shape.
+    """
 
-    profile: str = "default"
-    """The execution profile to use. Defaults to 'default'."""
+    kind: Literal["subprocess"] = "subprocess"
+    """Executor payload shape — always ``"subprocess"`` for host command execution."""
+
+    provider: Literal["cpu", "gpu"] = "cpu"
+    """Compute requirement: ``"cpu"`` or ``"gpu"`` (GPU subprocess inherits host devices)."""
+
+    profile: str = "subprocess"
+    """Execution profile. Defaults to ``"subprocess"`` to match the registered backend."""
 
     command: list[str]
     """The host command to execute as a list of strings (e.g., ['python', '-m', 'my_task'])."""
@@ -170,20 +134,28 @@ class SubprocessExecutionProvider(BaseModel):
         return self
 
 
-# Type alias for the current execution provider implementation
-ExecutionProviderT = Union[
-    CPUExecutionProvider, GPUExecutionProvider, DistributedGPUExecutionProvider, SubprocessExecutionProvider
-]
-"""Type alias representing the current execution provider type."""
+def _infer_executor_kind(v: Any) -> Any:
+    """Infer ``kind`` from payload shape when absent.
 
-# Discriminated union type for execution providers
+    The SDK types haven't been regenerated yet, so incoming requests may
+    omit ``kind``. Infer it from the presence of ``container`` (→ container)
+    vs ``command`` (→ subprocess), or from the legacy ``provider="subprocess"``.
+    """
+    if not isinstance(v, dict) or "kind" in v:
+        return v
+    if v.get("provider") == "subprocess" or "command" in v:
+        v = {**v, "kind": "subprocess"}
+        if v.get("provider") == "subprocess":
+            v["provider"] = "cpu"
+    else:
+        v = {**v, "kind": "container"}
+    return v
+
+
+# Discriminated union type for execution providers.
+# Uses ``kind`` to distinguish container vs subprocess payload shapes.
 Provider = Annotated[
-    ExecutionProviderT,
-    Field(discriminator="provider"),
+    Union[ContainerExecutionProvider, SubprocessExecutionProvider],
+    BeforeValidator(_infer_executor_kind),
+    Field(discriminator="kind"),
 ]
-"""
-Discriminated union type for execution providers.
-
-Uses the 'provider' field to determine the specific provider type.
-Currently supports CPU execution providers, with extensibility for future provider types.
-"""

@@ -46,11 +46,10 @@ from nmp.core.jobs.api.v2.jobs.schemas import (
 from nmp.core.jobs.app.ctx import JobContext
 from nmp.core.jobs.app.dispatcher import JobDispatcher, StateTransitionConflictError
 from nmp.core.jobs.app.profiles import ExecutionProfileT
-from nmp.core.jobs.app.providers import CPUExecutionProvider, SubprocessExecutionProvider
 from nmp.core.jobs.app.schemas import (
     PlatformJobSpec,
 )
-from nmp.core.jobs.config import config, profiles
+from nmp.core.jobs.config import profiles
 from nmp.core.jobs.entities import PlatformJobStep, PlatformJobTask
 from pydantic import ValidationError
 from starlette.responses import FileResponse
@@ -102,34 +101,6 @@ def validate_job_spec(
         ) from e
 
 
-def translate_cpu_container_steps_to_subprocess(
-    job_spec: PlatformJobSpec,
-    subprocess_profiles: set[str],
-) -> PlatformJobSpec:
-    """Translate CPU container steps when explicitly configured for subprocess compatibility."""
-    if not subprocess_profiles:
-        return job_spec
-
-    translated_spec = job_spec.model_copy(deep=True)
-    for step in translated_spec.steps:
-        executor = step.executor
-        if not isinstance(executor, CPUExecutionProvider) or executor.profile not in subprocess_profiles:
-            continue
-        command = [*executor.container.entrypoint, *executor.container.command]
-        if not command:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail=f"Subprocess execution for step '{step.name}' requires container.entrypoint and/or container.command.",
-            )
-        step.executor = SubprocessExecutionProvider(provider="subprocess", profile=executor.profile, command=command)
-    return translated_spec
-
-
-def configured_subprocess_translation_profiles() -> set[str]:
-    """Return explicitly configured subprocess profiles that should accept CPU container jobs."""
-    return {profile.profile for profile in config.executors if profile.provider == "subprocess"}
-
-
 # Execution Profiles Endpoint
 @router.get("/v2/execution-profiles")
 async def get_execution_profiles() -> list[ExecutionProfileT]:
@@ -149,10 +120,6 @@ async def create_job(
     sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
 ) -> PlatformJobResponse:
     """Create a new platform job."""
-    platform_spec = translate_cpu_container_steps_to_subprocess(
-        request.platform_spec, configured_subprocess_translation_profiles()
-    )
-    request = request.model_copy(update={"platform_spec": platform_spec})
     validate_job_spec(request.platform_spec, profiles)
 
     try:
