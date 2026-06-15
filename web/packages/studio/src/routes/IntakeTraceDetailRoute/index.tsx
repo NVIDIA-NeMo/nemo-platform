@@ -56,15 +56,7 @@ interface IntakeTraceDetailContentProps {
 
 const IntakeTraceDetailContent: FC<IntakeTraceDetailContentProps> = ({ traceId }) => {
   const workspace = useWorkspaceFromPath();
-
-  const {
-    data: trace,
-    error,
-    isLoading,
-  } = useGetTrace(workspace, traceId, {
-    mode: 'detailed',
-  });
-
+  const { data: trace } = useGetTrace(workspace, traceId, { mode: 'detailed' });
   const { setBreadcrumbs } = useBreadcrumbs();
   const traceBreadcrumbLabel = trace ? getTraceDisplayName(trace) : traceId;
 
@@ -79,6 +71,49 @@ const IntakeTraceDetailContent: FC<IntakeTraceDetailContentProps> = ({ traceId }
       },
     ]);
   }, [setBreadcrumbs, traceBreadcrumbLabel, workspace]);
+
+  return (
+    <AccessibleTitle title={`Trace ${traceBreadcrumbLabel}`}>
+      <Stack gap="density-2xl" padding="density-2xl" className="h-full overflow-auto">
+        <PageHeader
+          className="p-0"
+          slotHeading={`Trace ${traceBreadcrumbLabel}`}
+          slotActions={
+            <div
+              id={TRACE_DETAIL_SPANS_FILTER_TARGET_ID}
+              className="flex shrink-0 items-center justify-end"
+            />
+          }
+        />
+        <IntakeTraceDetailBody
+          traceId={traceId}
+          filterTogglePortalTargetId={TRACE_DETAIL_SPANS_FILTER_TARGET_ID}
+        />
+      </Stack>
+    </AccessibleTitle>
+  );
+};
+
+interface IntakeTraceDetailBodyProps {
+  traceId: string;
+  filterTogglePortalTargetId?: string;
+  showSpans?: boolean;
+}
+
+export const IntakeTraceDetailBody: FC<IntakeTraceDetailBodyProps> = ({
+  traceId,
+  filterTogglePortalTargetId,
+  showSpans = true,
+}) => {
+  const workspace = useWorkspaceFromPath();
+
+  const {
+    data: trace,
+    error,
+    isLoading,
+  } = useGetTrace(workspace, traceId, {
+    mode: 'detailed',
+  });
 
   if (error?.response?.status === 404) {
     return (
@@ -109,7 +144,6 @@ const IntakeTraceDetailContent: FC<IntakeTraceDetailContentProps> = ({ traceId }
     return null;
   }
 
-  const title = getTraceDisplayName(trace);
   const showExperimentContext = Boolean(
     trace.experiment_context?.experiment_id || trace.experiment_context?.test_case_id
   );
@@ -121,153 +155,138 @@ const IntakeTraceDetailContent: FC<IntakeTraceDetailContentProps> = ({ traceId }
     },
   };
 
+  const summaryPanels = (
+    <Stack gap="density-2xl" className="min-w-0">
+      <Panel
+        elevation="high"
+        slotIcon={<Activity />}
+        slotHeading="Trace Summary"
+        className="min-w-0 overflow-hidden"
+      >
+        <Stack gap="density-xl">
+          <Grid className="grid-cols-2 gap-density-lg">
+            <KVPair
+              label="Started"
+              value={formatAbsoluteTimestamp(trace.started_at)}
+              orientation="vertical"
+            />
+            <KVPair
+              label="Ended"
+              value={trace.ended_at ? formatAbsoluteTimestamp(trace.ended_at) : EMPTY_VALUE}
+              orientation="vertical"
+            />
+            <KVPair
+              label="Duration"
+              value={formatDurationMs(trace.duration_ms)}
+              orientation="vertical"
+            />
+            <KVPair label="Spans" value={formatInteger(trace.span_count)} orientation="vertical" />
+            <KVPair
+              label="Errors"
+              value={formatInteger(trace.error_count)}
+              orientation="vertical"
+            />
+            <KVPair label="Total Cost" value={formatCost(trace.cost_usd)} orientation="vertical" />
+          </Grid>
+          <Grid className="grid-cols-1 gap-density-lg min-w-0">
+            <KVPair
+              label="Trace ID"
+              value={trace.id}
+              orientation="vertical"
+              attributes={wrappingValueAttributes}
+            />
+            <KVPair
+              label="Root Span"
+              value={
+                trace.root_span_id ? (
+                  <Link
+                    to={getIntakeSpanRoute(workspace, trace.root_span_id)}
+                    className="break-all"
+                  >
+                    {trace.root_span_id}
+                  </Link>
+                ) : (
+                  EMPTY_VALUE
+                )
+              }
+              orientation="vertical"
+              attributes={wrappingValueAttributes}
+            />
+            <KVPair
+              label="Status"
+              value={<IntakeTelemetryStatusBadge status={trace.status} />}
+              orientation="vertical"
+            />
+            <KVPair
+              label="Session ID"
+              value={trace.session_id}
+              orientation="vertical"
+              attributes={wrappingValueAttributes}
+            />
+          </Grid>
+        </Stack>
+      </Panel>
+      {showExperimentContext && (
+        <Panel
+          elevation="high"
+          slotIcon={<Hash />}
+          slotHeading="Experiment Context"
+          className="min-w-0 overflow-hidden"
+        >
+          <Stack gap="density-lg" className="min-w-0">
+            <KVPair
+              label="Summary"
+              value={formatMaybe(
+                trace.experiment_context?.experiment_id || trace.experiment_context?.test_case_id
+              )}
+              orientation="vertical"
+              attributes={wrappingValueAttributes}
+            />
+            <KVPair
+              label="Experiment ID"
+              value={formatMaybe(trace.experiment_context?.experiment_id)}
+              orientation="vertical"
+              attributes={wrappingValueAttributes}
+            />
+            <KVPair
+              label="Test Case ID"
+              value={formatMaybe(trace.experiment_context?.test_case_id)}
+              orientation="vertical"
+              attributes={wrappingValueAttributes}
+            />
+          </Stack>
+        </Panel>
+      )}
+    </Stack>
+  );
+
+  if (!showSpans) {
+    return summaryPanels;
+  }
+
   return (
-    <AccessibleTitle title={`Trace ${title}`}>
-      <Stack gap="density-2xl" padding="density-2xl" className="h-full overflow-auto">
-        <PageHeader
-          className="p-0"
-          slotHeading={`Trace ${title}`}
-          slotActions={
-            <div
-              id={TRACE_DETAIL_SPANS_FILTER_TARGET_ID}
-              className="flex shrink-0 items-center justify-end"
-            />
-          }
+    <Grid className="grid-cols-1 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)] gap-density-2xl items-start">
+      <Stack gap="density-md" className="min-w-0 min-h-[420px]">
+        {showSpanLimitMessage && (
+          <Text kind="body/regular/sm" className="text-secondary">
+            Showing first {TRACE_SPANS_PAGE_SIZE.toLocaleString()} of{' '}
+            {trace.span_count?.toLocaleString()} spans. Parent spans outside this page are marked in
+            the hierarchy.
+          </Text>
+        )}
+        <IntakeSpansTable
+          workspace={workspace}
+          filterTogglePortalTargetId={filterTogglePortalTargetId}
+          fixedFilter={{ trace_id: trace.id }}
+          defaultPageSize={TRACE_SPANS_PAGE_SIZE}
+          mode="summary"
+          showTraceColumn={false}
+          showHierarchy
+          emptyHeader="No Spans"
+          emptyMessage="No spans were found for this trace."
         />
-        <Grid className="grid-cols-1 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)] gap-density-2xl items-start">
-          <Stack gap="density-md" className="min-w-0 min-h-[420px]">
-            {showSpanLimitMessage && (
-              <Text kind="body/regular/sm" className="text-secondary">
-                Showing first {TRACE_SPANS_PAGE_SIZE.toLocaleString()} of{' '}
-                {trace.span_count?.toLocaleString()} spans. Parent spans outside this page are
-                marked in the hierarchy.
-              </Text>
-            )}
-            <IntakeSpansTable
-              workspace={workspace}
-              filterTogglePortalTargetId={TRACE_DETAIL_SPANS_FILTER_TARGET_ID}
-              fixedFilter={{ trace_id: trace.id }}
-              defaultPageSize={TRACE_SPANS_PAGE_SIZE}
-              mode="summary"
-              showTraceColumn={false}
-              showHierarchy
-              emptyHeader="No Spans"
-              emptyMessage="No spans were found for this trace."
-            />
-          </Stack>
-          <Stack gap="density-2xl" className="min-w-0">
-            <Panel
-              elevation="high"
-              slotIcon={<Activity />}
-              slotHeading="Trace Summary"
-              className="min-w-0 overflow-hidden"
-            >
-              <Stack gap="density-xl">
-                <Grid className="grid-cols-2 gap-density-lg">
-                  <KVPair
-                    label="Started"
-                    value={formatAbsoluteTimestamp(trace.started_at)}
-                    orientation="vertical"
-                  />
-                  <KVPair
-                    label="Ended"
-                    value={trace.ended_at ? formatAbsoluteTimestamp(trace.ended_at) : EMPTY_VALUE}
-                    orientation="vertical"
-                  />
-                  <KVPair
-                    label="Duration"
-                    value={formatDurationMs(trace.duration_ms)}
-                    orientation="vertical"
-                  />
-                  <KVPair
-                    label="Spans"
-                    value={formatInteger(trace.span_count)}
-                    orientation="vertical"
-                  />
-                  <KVPair
-                    label="Errors"
-                    value={formatInteger(trace.error_count)}
-                    orientation="vertical"
-                  />
-                  <KVPair
-                    label="Total Cost"
-                    value={formatCost(trace.cost_usd)}
-                    orientation="vertical"
-                  />
-                </Grid>
-                <Grid className="grid-cols-1 gap-density-lg min-w-0">
-                  <KVPair
-                    label="Trace ID"
-                    value={trace.id}
-                    orientation="vertical"
-                    attributes={wrappingValueAttributes}
-                  />
-                  <KVPair
-                    label="Root Span"
-                    value={
-                      trace.root_span_id ? (
-                        <Link
-                          to={getIntakeSpanRoute(workspace, trace.root_span_id)}
-                          className="break-all"
-                        >
-                          {trace.root_span_id}
-                        </Link>
-                      ) : (
-                        EMPTY_VALUE
-                      )
-                    }
-                    orientation="vertical"
-                    attributes={wrappingValueAttributes}
-                  />
-                  <KVPair
-                    label="Status"
-                    value={<IntakeTelemetryStatusBadge status={trace.status} />}
-                    orientation="vertical"
-                  />
-                  <KVPair
-                    label="Session ID"
-                    value={trace.session_id}
-                    orientation="vertical"
-                    attributes={wrappingValueAttributes}
-                  />
-                </Grid>
-              </Stack>
-            </Panel>
-            {showExperimentContext && (
-              <Panel
-                elevation="high"
-                slotIcon={<Hash />}
-                slotHeading="Experiment Context"
-                className="min-w-0 overflow-hidden"
-              >
-                <Stack gap="density-lg" className="min-w-0">
-                  <KVPair
-                    label="Summary"
-                    value={formatMaybe(
-                      trace.experiment_context?.experiment_id ||
-                        trace.experiment_context?.test_case_id
-                    )}
-                    orientation="vertical"
-                    attributes={wrappingValueAttributes}
-                  />
-                  <KVPair
-                    label="Experiment ID"
-                    value={formatMaybe(trace.experiment_context?.experiment_id)}
-                    orientation="vertical"
-                    attributes={wrappingValueAttributes}
-                  />
-                  <KVPair
-                    label="Test Case ID"
-                    value={formatMaybe(trace.experiment_context?.test_case_id)}
-                    orientation="vertical"
-                    attributes={wrappingValueAttributes}
-                  />
-                </Stack>
-              </Panel>
-            )}
-          </Stack>
-        </Grid>
       </Stack>
-    </AccessibleTitle>
+      {summaryPanels}
+    </Grid>
   );
 };

@@ -16,13 +16,14 @@ import type {
   ExperimentSessionFilter,
   ExperimentSessionResponse,
 } from '@nemo/sdk/generated/platform/schema';
-import { Text, Tooltip } from '@nvidia/foundations-react-core';
+import { Button, Stack, Text, Tooltip } from '@nvidia/foundations-react-core';
 import { Empty } from '@studio/components/dataViews/ExperimentSessionsDataView/Empty';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
+import { IntakeTraceDetailBody } from '@studio/routes/IntakeTraceDetailRoute';
 import { tooltipClassName } from '@studio/styles/common';
 import { keepPreviousData } from '@tanstack/react-query';
-import { Columns3 } from 'lucide-react';
-import { type ComponentProps, type FC, useMemo } from 'react';
+import { Columns3, X } from 'lucide-react';
+import { type ComponentProps, type FC, useMemo, useState } from 'react';
 
 type SessionRow = ExperimentSessionResponse & { _rowId: string };
 
@@ -41,6 +42,7 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
   experimentGroupName,
 }) => {
   const workspace = useWorkspaceFromPath();
+  const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
   const dataViewState = useStudioDataViewState<ExperimentSessionFilter>({ columnVisibility: {} });
   const { data: experiment } = useGetExperiment(workspace, experimentName);
 
@@ -210,62 +212,91 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
     ),
   ];
 
+  const showTraceDetail = selectedTraceId !== null;
+
   return (
-    <StudioDataView
-      dataViewState={dataViewState}
-      makeColumns={makeColumns}
-      searchField="test_case_id"
-      toolbarSlotEnd={
-        <EditColumnsMenu
-          kind="secondary"
-          showChevron={false}
-          slotContent={<div aria-hidden className="h-0 w-[230px]" />}
-        >
-          <>
-            <Columns3 />
-            <span className="hide-mobile">Columns</span>
-          </>
-        </EditColumnsMenu>
-      }
-      attributes={{
-        DataViewRoot: {
-          data: visibleTableData,
-          totalCount,
-          requestStatus: isLoading && !sessionsData ? 'loading' : undefined,
-        },
-        DataViewSearchBar: { placeholder: 'Search case...' },
-        DataViewTableContent: {
-          renderEmptyState: () => {
-            const hasActiveFilters =
-              !!dataViewState.searchBar.state || dataViewState.columnFiltering.state.length > 0;
-            if (hasActiveFilters) {
-              return (
-                <TableEmptyState
-                  header="No matching test cases"
-                  emptyMessage={
-                    <>
-                      Change your filters and try again, or{' '}
-                      <button
-                        className="text-content-link hover:underline"
-                        onClick={dataViewState.resetFilters}
-                      >
-                        clear filters
-                      </button>
-                      .
-                    </>
-                  }
-                />
-              );
-            }
-            return (
-              <Empty
-                experimentGroupName={experimentGroupName}
-                datasetName={experiment?.dataset_name ?? '<dataset>'}
-              />
-            );
-          },
-        },
-      }}
-    />
+    <div className="flex gap-density-xl items-start">
+      <div className="min-w-0 flex-1">
+        <StudioDataView
+          dataViewState={dataViewState}
+          makeColumns={makeColumns}
+          searchField="test_case_id"
+          onRowClick={(row) => {
+            if (row.trace_id) setSelectedTraceId(row.trace_id);
+          }}
+          toolbarSlotEnd={
+            <EditColumnsMenu
+              kind="secondary"
+              showChevron={false}
+              slotContent={<div aria-hidden className="h-0 w-[230px]" />}
+            >
+              <>
+                <Columns3 />
+                <span className="hide-mobile">Columns</span>
+              </>
+            </EditColumnsMenu>
+          }
+          attributes={{
+            DataViewRoot: {
+              data: visibleTableData,
+              totalCount,
+              requestStatus: isLoading && !sessionsData ? 'loading' : undefined,
+            },
+            DataViewSearchBar: { placeholder: 'Search case...' },
+            DataViewTableContent: {
+              renderEmptyState: () => {
+                const hasActiveFilters =
+                  !!dataViewState.searchBar.state || dataViewState.columnFiltering.state.length > 0;
+                if (hasActiveFilters) {
+                  return (
+                    <TableEmptyState
+                      header="No matching test cases"
+                      emptyMessage={
+                        <>
+                          Change your filters and try again, or{' '}
+                          <button
+                            className="text-content-link hover:underline"
+                            onClick={dataViewState.resetFilters}
+                          >
+                            clear filters
+                          </button>
+                          .
+                        </>
+                      }
+                    />
+                  );
+                }
+                return (
+                  <Empty
+                    experimentGroupName={experimentGroupName}
+                    datasetName={experiment?.dataset_name ?? '<dataset>'}
+                  />
+                );
+              },
+            },
+          }}
+        />
+      </div>
+      <Stack
+        className={[
+          'gap-density-xl',
+          'transition-[width,opacity] duration-300 ease-out motion-reduce:transition-none shrink-0  overflow-hidden',
+          showTraceDetail ? 'w-[480px] opacity-100' : 'w-0 opacity-0 pointer-events-none',
+        ].join(' ')}
+      >
+        <div className="flex justify-end py-density-xs">
+          <Button
+            kind="tertiary"
+            aria-label="Close trace detail"
+            onClick={() => setSelectedTraceId(null)}
+          >
+            <X className="size-4" />
+          </Button>
+        </div>
+        {selectedTraceId !== null && (
+          <IntakeTraceDetailBody traceId={selectedTraceId} showSpans={false} />
+        )}
+      </Stack>
+    </div>
   );
 };
