@@ -41,7 +41,14 @@ blockbuster = blockbuster_fixture(autouse=True)
 
 @pytest.fixture
 def no_hf_network(monkeypatch):
-    """Disable live HuggingFace API calls; keep fileset create/update paths local."""
+    """Disable live HuggingFace API calls; keep fileset create/update paths local.
+
+    Patches validate_storage and resolve_config to no-ops, then poisons
+    HfApi.repo_info (the method that actually egresses to huggingface.co)
+    so any un-patched code path fails loudly instead of silently succeeding
+    when we happen to not be rate-limited.
+    """
+    from huggingface_hub import HfApi
 
     async def _validate_noop(self):
         return None
@@ -51,6 +58,14 @@ def no_hf_network(monkeypatch):
 
     monkeypatch.setattr(HuggingfaceStorageImpl, "validate_storage", _validate_noop)
     monkeypatch.setattr(HuggingfaceStorageImpl, "resolve_config", _resolve_passthrough)
+
+    def _poisoned_repo_info(self, *args, **kwargs):
+        raise RuntimeError(
+            "HfApi.repo_info() called during a test using no_hf_network! "
+            "A code path is making real HuggingFace API calls that should be mocked."
+        )
+
+    monkeypatch.setattr(HfApi, "repo_info", _poisoned_repo_info)
 
 
 # =============================================================================
