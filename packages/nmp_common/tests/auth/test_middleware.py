@@ -3,7 +3,6 @@
 
 """Unit tests for authorization middleware."""
 
-from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -83,10 +82,8 @@ def create_test_app(auth_config: AuthConfig) -> FastAPI:
     async def hf_download_endpoint(workspace: str, name: str, revision: str, path: str):
         return {"workspace": workspace, "name": name, "path": path}
 
-    # Override config
     Configuration.set_override(auth_config)
-
-    app.add_middleware(cast(Any, AuthorizationMiddleware), service_name="test-service")
+    app.add_middleware(AuthorizationMiddleware, service_name="test-service")
 
     return app
 
@@ -141,7 +138,7 @@ class TestHealthEndpointsBypass:
             return {"status": "ok"}
 
         Configuration.set_override(auth_config_enabled)
-        app.add_middleware(cast(Any, AuthorizationMiddleware), service_name="test-service")
+        app.add_middleware(AuthorizationMiddleware, service_name="test-service")
 
         client = TestClient(app)
         with patch("nmp.common.auth.client.AuthClient.authorize_request") as mock_authorize:
@@ -172,6 +169,7 @@ class TestBearerTokenAuth:
             # Should return 401 because OIDC is not configured
             assert response.status_code == 401
             assert "Bearer token authentication not configured" in response.json()["detail"]
+            mock_authorize.assert_not_called()
 
     def test_bearer_token_unsigned_jwt_accepted_when_allowed(self):
         """Test that unsigned JWTs are accepted when allow_unsigned_jwt is true, even without OIDC."""
