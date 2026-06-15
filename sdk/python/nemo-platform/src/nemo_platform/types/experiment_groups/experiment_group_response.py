@@ -36,4 +36,7 @@ class ExperimentGroupResponse(BaseModel):
 
     description: Optional[str] = None
 
+    experiment_count: Optional[int] = None
+    """Number of live (non-soft-deleted) experiments in this group."""
+
     updated_at: Optional[datetime] = None

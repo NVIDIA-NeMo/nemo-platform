@@ -1135,15 +1135,17 @@ def _prepare_aut_config_for_runtime(
     All AUT LLM traffic routes through the Inference Gateway.  The config is
     rewritten so that ``base_url`` points at the IGW OpenAI-compatible endpoint
     and ``api_key`` is set to ``not-used`` (IGW retrieves upstream credentials
-    from the secrets service).  ``model_name`` stays in entity form (dashes,
-    e.g. ``aws-anthropic-claude-opus-4-5``) because IGW resolves entity names
-    to the served model name internally.
+    from the secrets service).  ``${NEMO_DEFAULT_MODEL}`` is resolved from the
+    host CLI context before the config is mounted into the task container.
+    ``model_name`` stays in entity form (dashes, e.g.
+    ``aws-anthropic-claude-opus-4-5``) because IGW resolves entity names to the
+    served model name internally.
 
     Uses the same :func:`nemo_agents_plugin.utils.inject_gateway_url` function
     that production ``nemo agents deployments create`` calls, ensuring parity
     between benchmark runs and deployed agents.
     """
-    from nemo_agents_plugin.utils import inject_gateway_url
+    from nemo_agents_plugin.utils import inject_default_model, inject_gateway_url
 
     config = yaml.safe_load(config_path.read_text())
 
@@ -1153,6 +1155,7 @@ def _prepare_aut_config_for_runtime(
                 llm_cfg["model_name"] = nat_model
                 break
 
+    config = inject_default_model(config)
     config = inject_gateway_url(config, workspace, base_url=nmp_base_url)
 
     rewritten = output_dir / "aut.runtime.yml"

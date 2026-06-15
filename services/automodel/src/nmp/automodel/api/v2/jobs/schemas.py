@@ -5,9 +5,9 @@
 
 from typing import Annotated, Any, Dict, Literal, Optional, Self, Union
 
+from nemo_platform_plugin.integrations import IntegrationsSpec
 from nmp.automodel.entities.validators import validate_fileset_uri
 from nmp.automodel.entities.values import FinetuningType, OutputNameType, Precision
-from nmp.common.api.common import SecretRef
 from nmp.common.entities.constants import (
     MAX_LENGTH_255,
     REGEX_WORD_CHARACTER_DOT_DASH,
@@ -324,93 +324,6 @@ TrainingMethod = Annotated[AnyTraining, Discriminator("type")]
 
 
 # ============================================================
-# Integration Configs (unchanged)
-# ============================================================
-
-
-class WandBParams(BaseModel):
-    """Weights & Biases integration configuration.
-
-    To use W&B, provide an api_key_secret referencing a secret that contains
-    the WANDB_API_KEY value. Optionally provide base_url for self-hosted W&B servers.
-    """
-
-    project: Optional[str] = Field(
-        default=None,
-        description="W&B project name (groups related runs). Defaults to output.name if not set.",
-    )
-    name: Optional[str] = Field(
-        default=None,
-        description="W&B run name. Defaults to job_id if not provided.",
-    )
-    entity: Optional[str] = Field(
-        default=None,
-        description="W&B entity (team or username).",
-    )
-    tags: Optional[list[str]] = Field(
-        default=None,
-        description="W&B tags for filtering runs.",
-    )
-    notes: Optional[str] = Field(
-        default=None,
-        description="W&B notes/description for the run.",
-    )
-    base_url: Optional[str] = Field(
-        default=None,
-        description="Base URL for self-hosted W&B server (e.g., 'https://wandb.mycompany.com'). "
-        "If not provided, uses the default W&B cloud service.",
-    )
-    api_key_secret: SecretRef | None = Field(
-        default=None,
-        description="Reference to a secret containing the WANDB_API_KEY. "
-        "Format: 'secret_name' (uses request workspace) or 'workspace/secret_name' (explicit workspace).",
-    )
-
-
-class MLflowParams(BaseModel):
-    """MLflow integration configuration."""
-
-    experiment_name: Optional[str] = Field(
-        default=None,
-        description="MLflow experiment name (groups related runs). Defaults to output.name if not set.",
-    )
-    run_name: Optional[str] = Field(
-        default=None,
-        description="MLflow run name. Defaults to job_id if not provided.",
-    )
-    tags: Optional[dict[str, str]] = Field(
-        default=None,
-        description="MLflow tags as key-value pairs for filtering runs.",
-    )
-    description: Optional[str] = Field(
-        default=None,
-        description="MLflow run description.",
-    )
-    tracking_uri: Optional[str] = Field(
-        default=None,
-        description="MLflow tracking server URI (e.g., 'http://mlflow.mycompany.com:5000'). "
-        "Can also be set via MLFLOW_TRACKING_URI environment variable.",
-    )
-
-
-class IntegrationParams(BaseModel):
-    """Third-party integration configurations.
-
-    Each integration type has its own optional field. To enable an integration,
-    provide its configuration object. Omit or set to None to disable.
-    """
-
-    wandb: Optional[WandBParams] = Field(
-        default=None,
-        description="Weights & Biases integration configuration.",
-    )
-    mlflow: Optional[MLflowParams] = Field(
-        default=None,
-        description="MLflow integration configuration.",
-    )
-
-
-# ============================================================
 # Deployment Config
 # ============================================================
 
@@ -521,7 +434,7 @@ class _CustomizationJobBase(BaseModel):
         description="Training dataset fileset as 'workspace/name' or 'name' (resolved in the job path workspace)."
     )
     training: TrainingMethod = Field(description="Training method and hyperparameters.")
-    integrations: Optional[IntegrationParams] = Field(
+    integrations: Optional[IntegrationsSpec] = Field(
         default=None,
         description="Third-party integrations (e.g., Weights & Biases, MLflow).",
     )

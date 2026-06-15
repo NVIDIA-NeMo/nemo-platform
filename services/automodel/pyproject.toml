@@ -6,6 +6,8 @@ readme = "README.md"
 requires-python = ">=3.11,<3.14"
 dependencies = [
     "nmp-common",
+    "nmp-customization-common",
+    "nemo-platform-plugin",
     "nemo-platform-sdk",
     "pydantic>=2.10.6",
     "pydantic-settings>=2.6.1",
@@ -32,6 +34,8 @@ packages = ["src/nmp"]
 
 [tool.uv.sources]
 nmp-common = { workspace = true }
+nmp-customization-common = { workspace = true }
+nemo-platform-plugin = { workspace = true }
 nemo-platform-sdk = { workspace = true }
 
 [tool.pytest.ini_options]

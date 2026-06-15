@@ -1,9 +1,18 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Value types for the Customizer service."""
+"""Value types for the Customizer service.
 
-from enum import Enum, StrEnum
+``FinetuningType`` and ``OutputNameType`` are shared with unsloth via
+:mod:`nmp.customization_common.schemas.values`. ``TrainingType`` (4 algorithms),
+``CheckpointFormat`` and ``Precision`` are automodel-specific.
+"""
+
+from enum import Enum
+
+from nmp.customization_common.schemas.values import FinetuningType, OutputNameType
+
+__all__ = ["CheckpointFormat", "FinetuningType", "OutputNameType", "Precision", "TrainingType"]
 
 
 class CheckpointFormat(str, Enum):
@@ -79,18 +88,3 @@ class TrainingType(str, Enum):
     DISTILLATION = "distillation"
     DPO = "dpo"
     GRPO = "grpo"
-
-
-class FinetuningType(str, Enum):
-    """Finetuning strategy (full weights vs PEFT)."""
-
-    ALL_WEIGHTS = "all_weights"
-    LORA = "lora"
-    LORA_MERGED = "lora_merged"
-
-
-class OutputNameType(StrEnum):
-    """Output artifact type."""
-
-    ADAPTER = "adapter"
-    MODEL = "model"

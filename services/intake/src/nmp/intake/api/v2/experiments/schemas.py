@@ -54,6 +54,10 @@ class ExperimentGroupResponse(BaseModel):
     description: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    experiment_count: int = Field(
+        default=0,
+        description="Number of live (non-soft-deleted) experiments in this group.",
+    )
 
     @classmethod
     def from_entity(cls, entity: ExperimentGroup) -> ExperimentGroupResponse:
