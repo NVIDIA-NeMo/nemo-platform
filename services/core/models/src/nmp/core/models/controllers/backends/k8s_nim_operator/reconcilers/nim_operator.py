@@ -9,10 +9,8 @@ custom resources and projects status by reading the operator-reported
 ``NIMService.status`` (drilling into the operator-created Deployment's pods when
 the operator reports ``NotReady``).
 
-The logic here is moved verbatim from the previous monolithic
-``K8sNimOperatorServiceBackend``; the only change is that inputs arrive
-pre-resolved on a :class:`ResolvedDeployment` (the ServiceBackend does the SDK /
-entity-shaping work) instead of being recomputed here.
+Inputs arrive pre-resolved on a :class:`ResolvedDeployment` (the ServiceBackend
+does the SDK / entity-shaping work); this reconciler talks only to Kubernetes.
 """
 
 from logging import getLogger

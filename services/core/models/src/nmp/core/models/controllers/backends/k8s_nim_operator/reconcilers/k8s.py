@@ -14,10 +14,8 @@ directly -- there is no operator. Creation is staged and driven from
   puller Job to release its ReadWriteOnce volume, then emit the serving
   Deployment + Service with ownerReferences so a later delete cascades.
 
-The logic here is moved verbatim from the previous monolithic
-``K8sNimOperatorServiceBackend``; the only change is that inputs arrive
-pre-resolved on a :class:`ResolvedDeployment` (the ServiceBackend does the SDK /
-entity-shaping work) instead of being recomputed here.
+Inputs arrive pre-resolved on a :class:`ResolvedDeployment` (the ServiceBackend
+does the SDK / entity-shaping work); this reconciler talks only to Kubernetes.
 """
 
 from logging import getLogger
