@@ -22,7 +22,7 @@ import pytest
 
 
 def _make_job_ctx(workspace: str = "default"):
-    from nmp.unsloth.app.jobs.context import NMPJobContext
+    from nmp.customization_common.service.context import NMPJobContext
 
     return NMPJobContext(
         workspace=workspace,
@@ -106,8 +106,8 @@ class TestSanitizeName:
 
 class TestCreateFullEntity:
     def test_creates_model_entity_for_full_sft(self) -> None:
-        from nmp.unsloth.app.jobs.file_io.schemas import FileSetRef
-        from nmp.unsloth.app.jobs.model_entity.schemas import ModelEntityTaskConfig
+        from nmp.customization_common.schemas.file_io import FileSetRef
+        from nmp.customization_common.schemas.model_entity import ModelEntityTaskConfig
 
         sdk = _make_sdk()
         sdk.models.retrieve.return_value = _model_entity(name="base-model")
@@ -133,8 +133,8 @@ class TestCreateFullEntity:
         assert result is not None
 
     def test_conflict_falls_back_to_update(self) -> None:
-        from nmp.unsloth.app.jobs.file_io.schemas import FileSetRef
-        from nmp.unsloth.app.jobs.model_entity.schemas import ModelEntityTaskConfig
+        from nmp.customization_common.schemas.file_io import FileSetRef
+        from nmp.customization_common.schemas.model_entity import ModelEntityTaskConfig
 
         sdk = _make_sdk()
         sdk.models.retrieve.return_value = _model_entity(name="base-model")
@@ -158,8 +158,8 @@ class TestCreateFullEntity:
         assert update_call.kwargs["workspace"] == "default"
 
     def test_missing_fileset_raises_creation_error(self) -> None:
-        from nmp.unsloth.app.jobs.file_io.schemas import FileSetRef
-        from nmp.unsloth.app.jobs.model_entity.schemas import ModelEntityCreationError, ModelEntityTaskConfig
+        from nmp.customization_common.schemas.file_io import FileSetRef
+        from nmp.customization_common.schemas.model_entity import ModelEntityCreationError, ModelEntityTaskConfig
 
         sdk = _make_sdk()
         sdk.files.filesets.retrieve.side_effect = RuntimeError("fileset missing")
@@ -182,8 +182,8 @@ class TestCreateFullEntity:
 
 class TestCreateAdapter:
     def test_creates_adapter_for_lora(self) -> None:
-        from nmp.unsloth.app.jobs.file_io.schemas import FileSetRef
-        from nmp.unsloth.app.jobs.model_entity.schemas import ModelEntityTaskConfig, PEFTConfig
+        from nmp.customization_common.schemas.file_io import FileSetRef
+        from nmp.customization_common.schemas.model_entity import ModelEntityTaskConfig, PEFTConfig
         from nmp.unsloth.entities.values import FinetuningType
 
         sdk = _make_sdk()
@@ -207,8 +207,8 @@ class TestCreateAdapter:
         assert deploy_target is base_me
 
     def test_adapter_conflict_falls_back_to_update(self) -> None:
-        from nmp.unsloth.app.jobs.file_io.schemas import FileSetRef
-        from nmp.unsloth.app.jobs.model_entity.schemas import ModelEntityTaskConfig, PEFTConfig
+        from nmp.customization_common.schemas.file_io import FileSetRef
+        from nmp.customization_common.schemas.model_entity import ModelEntityTaskConfig, PEFTConfig
         from nmp.unsloth.entities.values import FinetuningType
 
         sdk = _make_sdk()
@@ -237,8 +237,8 @@ class TestCreateAdapter:
 
 class TestLaunchModel:
     def test_no_deployment_config_returns_early(self) -> None:
-        from nmp.unsloth.app.jobs.file_io.schemas import FileSetRef
-        from nmp.unsloth.app.jobs.model_entity.schemas import ModelEntityTaskConfig
+        from nmp.customization_common.schemas.file_io import FileSetRef
+        from nmp.customization_common.schemas.model_entity import ModelEntityTaskConfig
 
         sdk = _make_sdk()
         runner = _make_runner(sdk)
@@ -257,8 +257,8 @@ class TestLaunchModel:
         sdk.inference.deployment_configs.create.assert_not_called()
 
     def test_inline_params_creates_config_then_deployment(self) -> None:
-        from nmp.unsloth.app.jobs.file_io.schemas import FileSetRef
-        from nmp.unsloth.app.jobs.model_entity.schemas import DeploymentParameters, ModelEntityTaskConfig
+        from nmp.customization_common.schemas.file_io import FileSetRef
+        from nmp.customization_common.schemas.model_entity import DeploymentParameters, ModelEntityTaskConfig
 
         sdk = _make_sdk()
         sdk.inference.deployment_configs.create.return_value = types.SimpleNamespace(
@@ -291,8 +291,8 @@ class TestLaunchModel:
         sdk.inference.deployments.create.assert_called_once()
 
     def test_string_ref_resolves_existing_config(self) -> None:
-        from nmp.unsloth.app.jobs.file_io.schemas import FileSetRef
-        from nmp.unsloth.app.jobs.model_entity.schemas import ModelEntityTaskConfig
+        from nmp.customization_common.schemas.file_io import FileSetRef
+        from nmp.customization_common.schemas.model_entity import ModelEntityTaskConfig
 
         sdk = _make_sdk()
         sdk.inference.deployment_configs.retrieve.return_value = types.SimpleNamespace(
@@ -329,8 +329,12 @@ class TestLaunchModel:
         sdk.inference.deployments.create.assert_called_once()
 
     def test_lora_with_active_deployment_skips(self) -> None:
-        from nmp.unsloth.app.jobs.file_io.schemas import FileSetRef
-        from nmp.unsloth.app.jobs.model_entity.schemas import DeploymentParameters, ModelEntityTaskConfig, PEFTConfig
+        from nmp.customization_common.schemas.file_io import FileSetRef
+        from nmp.customization_common.schemas.model_entity import (
+            DeploymentParameters,
+            ModelEntityTaskConfig,
+            PEFTConfig,
+        )
         from nmp.unsloth.entities.values import FinetuningType
 
         sdk = _make_sdk()
@@ -360,8 +364,12 @@ class TestLaunchModel:
         self,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        from nmp.unsloth.app.jobs.file_io.schemas import FileSetRef
-        from nmp.unsloth.app.jobs.model_entity.schemas import DeploymentParameters, ModelEntityTaskConfig, PEFTConfig
+        from nmp.customization_common.schemas.file_io import FileSetRef
+        from nmp.customization_common.schemas.model_entity import (
+            DeploymentParameters,
+            ModelEntityTaskConfig,
+            PEFTConfig,
+        )
         from nmp.unsloth.entities.values import FinetuningType
 
         sdk = _make_sdk()

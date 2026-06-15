@@ -1,0 +1,24 @@
+{{- if .Values.core.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "nmp-core.controller-servicename" . }}
+  labels:
+    app.kubernetes.io/component: nmp-core-controller
+    {{- include "nemo-platform.labels" . | nindent 4 }}
+  {{- with .Values.core.controller.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - port: {{ .Values.core.controller.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/component: nmp-core-controller
+    {{- include "nemo-platform.selectorLabels" . | nindent 4 }}
+{{- end }}

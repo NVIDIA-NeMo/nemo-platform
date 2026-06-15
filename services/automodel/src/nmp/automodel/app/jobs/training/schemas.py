@@ -4,6 +4,7 @@
 from enum import Enum
 from typing import Optional
 
+from nemo_platform_plugin.integrations import IntegrationsSpec
 from nmp.automodel.app.constants import (
     DEFAULT_OUTPUT_MODEL_PATH,
     DEFAULT_SEED,
@@ -157,27 +158,6 @@ class EmbeddingConfig(BaseModel):
     passage_prefix: str = Field(default="passage:", description="Prefix to prepend to passages before tokenization")
 
 
-class WandBConfig(BaseModel):
-    """Internal Weights & Biases configuration."""
-
-    project: Optional[str] = Field(default=None, description="W&B project name")
-    name: Optional[str] = Field(default=None, description="W&B run name")
-    entity: Optional[str] = Field(default=None, description="W&B entity")
-    tags: Optional[list[str]] = Field(default=None, description="W&B tags")
-    notes: Optional[str] = Field(default=None, description="W&B notes")
-    base_url: Optional[str] = Field(default=None, description="Self-hosted W&B server URL")
-
-
-class MLflowConfig(BaseModel):
-    """Internal MLflow configuration."""
-
-    experiment_name: Optional[str] = Field(default=None, description="MLflow experiment name")
-    run_name: Optional[str] = Field(default=None, description="MLflow run name")
-    tags: Optional[dict[str, str]] = Field(default=None, description="MLflow tags")
-    description: Optional[str] = Field(default=None, description="MLflow description")
-    tracking_uri: Optional[str] = Field(default=None, description="MLflow tracking URI")
-
-
 class TrainingStepConfig(BaseModel):
     """Normalized training configuration compiled into nemo-automodel recipe YAML."""
 
@@ -223,10 +203,6 @@ class TrainingStepConfig(BaseModel):
         expert_parallel_size: Optional[int] = None
         sequence_parallel: bool = False
 
-    class IntegrationsConfig(BaseModel):
-        wandb: Optional[WandBConfig] = None
-        mlflow: Optional[MLflowConfig] = None
-
     # === Main Config Fields ===
     model: ModelConfig
     dataset: DatasetConfig
@@ -235,7 +211,7 @@ class TrainingStepConfig(BaseModel):
     batch: BatchConfig
     optimizer: OptimizerConfig
     parallelism: ParallelismConfig
-    integrations: IntegrationsConfig = Field(default_factory=IntegrationsConfig)
+    integrations: IntegrationsSpec | None = None
 
     # === Output Paths ===
     output_model: str  # Set at compile-time from CustomizationJobOutput

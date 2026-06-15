@@ -1,0 +1,122 @@
+{{- if .Values.postgresql.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "nemo-common.postgresql.fullname" . }}
+  labels:
+    app.kubernetes.io/component: postgres
+    {{- include "nemo-platform.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "nemo-common.postgresql.fullname" . }}
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: postgres
+      {{- include "nemo-platform.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: postgres
+        {{- include "nemo-platform.labels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "nemo-common.postgresql.serviceAccountName" . }}
+      securityContext:
+        {{- include "nemo-common.podSecurityContext" (dict "global" .Values.podSecurityContext "local" .Values.postgresql.podSecurityContext) | nindent 8 }}
+      {{- with .Values.postgresql.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.postgresql.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.postgresql.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: postgres
+          image: {{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}
+          imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+          securityContext:
+            {{- include "nemo-common.securityContext" (dict "global" .Values.securityContext "local" .Values.postgresql.securityContext) | nindent 12 }}
+          env:
+            - name: POSTGRES_USER
+              value: {{ include "nemo-common.postgresql.user" . }}
+            - name: POSTGRES_DB
+              value: {{ include "nemo-common.postgresql.name" . }}
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nemo-common.postgresql.secret-name" . }}
+                  key: {{ include "nemo-common.postgresql.password-key" . }}
+          ports:
+            - name: postgresql
+              containerPort: 5432
+              protocol: TCP
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - {{ include "nemo-common.postgresql.user" . }}
+                - -d
+                - {{ include "nemo-common.postgresql.name" . }}
+                - -p
+                - "5432"
+                - -h
+                - 127.0.0.1
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - {{ include "nemo-common.postgresql.user" . }}
+                - -d
+                - {{ include "nemo-common.postgresql.name" . }}
+                - -p
+                - "5432"
+                - -h
+                - 127.0.0.1
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 3
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          {{- with .Values.postgresql.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        {{- if not .Values.postgresql.persistence.enabled }}
+        - name: data
+          emptyDir: {}
+        {{- end }}
+  {{- if .Values.postgresql.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app.kubernetes.io/component: postgres
+          {{- include "nemo-platform.labels" . | nindent 10 }}
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: {{ .Values.postgresql.persistence.size | quote }}
+        {{- with .Values.postgresql.persistence.storageClass }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+  {{- end }}
+{{- end }}

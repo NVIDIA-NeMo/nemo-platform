@@ -29,6 +29,14 @@ class DockerJobExecutionProfileConfig(BaseModel):
 
     cleanup_completed_jobs_immediately: Optional[bool] = None
 
+    default_task_image: Optional[str] = None
+    """Default container image for job task pods.
+
+    Used when a job step omits container.image. When unset, falls back to the
+    platform CPU tasks image
+    (platform.image_registry/nmp-cpu-tasks:platform.image_tag).
+    """
+
     env: Optional[Dict[str, str]] = None
     """Optional env vars applied to all jobs (e.g.
 

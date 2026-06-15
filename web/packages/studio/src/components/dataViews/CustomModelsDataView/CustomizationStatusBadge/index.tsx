@@ -1,10 +1,19 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
-import { Badge, BadgeProps } from '@nvidia/foundations-react-core';
+import { StatusBadge, type StatusConfigEntry } from '@nemo/common/src/components/StatusBadge';
+import type { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
 import { getFormattedCustomizationStatus } from '@studio/util/customizations';
-import { FC } from 'react';
+import type { FC } from 'react';
+
+const STATUS_CONFIG: Record<string, StatusConfigEntry> = {
+  cancelled: { label: 'Cancelled', color: 'red' },
+  failed: { label: 'Failed', color: 'red' },
+  created: { label: 'Created', color: 'blue' },
+  running: { label: 'Running', color: 'blue' },
+  pending: { label: 'Pending', color: 'yellow' },
+  completed: { label: 'Completed', color: 'green' },
+};
 
 interface Props {
   status: PlatformJobStatus | string;
@@ -12,32 +21,10 @@ interface Props {
 }
 
 // TODO: Rename this to JobStatusBadge
-export const CustomizationStatusBadge: FC<Props> = ({ status, progressPercent }) => {
-  const getBadgeColor = (): BadgeProps['color'] => {
-    switch (status) {
-      case 'cancelled':
-      case 'failed': {
-        return 'red';
-      }
-      case 'created':
-      case 'running': {
-        return 'blue';
-      }
-      case 'pending': {
-        return 'yellow';
-      }
-      case 'completed': {
-        return 'green';
-      }
-      default: {
-        return 'gray';
-      }
-    }
-  };
-
-  return (
-    <Badge color={getBadgeColor()} kind="solid">
-      {getFormattedCustomizationStatus(status, progressPercent)}
-    </Badge>
-  );
-};
+export const CustomizationStatusBadge: FC<Props> = ({ status, progressPercent }) => (
+  <StatusBadge
+    status={status}
+    statusConfig={STATUS_CONFIG}
+    label={getFormattedCustomizationStatus(status, progressPercent)}
+  />
+);

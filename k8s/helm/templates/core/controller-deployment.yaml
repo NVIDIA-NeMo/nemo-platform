@@ -1,0 +1,133 @@
+{{- if .Values.core.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nmp-core.controller-servicename" . }}
+  labels:
+    app.kubernetes.io/component: nmp-core-controller
+    {{- include "nemo-platform.labels" . | nindent 4 }}
+  annotations:
+    {{- with .Values.core.controller.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  # Controller always runs with a single replica
+  strategy:
+    type:  Recreate
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: nmp-core-controller
+      {{- include "nemo-platform.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        {{- with .Values.core.controller.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- include "nemo-platform.podAnnotations" . | nindent 8 }}
+      labels:
+        app.kubernetes.io/component: nmp-core-controller
+        {{- include "nemo-platform.labels" . | nindent 8 }}
+        {{- with .Values.core.controller.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      imagePullSecrets:
+        {{ include "nemo-common.imagepullsecrets" . | nindent 8 | trim }}
+      serviceAccountName: {{ include "nmp-core.controllerServiceAccountName" . }}
+      securityContext:
+        {{- include "nemo-common.podSecurityContext" (dict "global" .Values.podSecurityContext "local" .Values.core.controller.podSecurityContext) | nindent 8 }}
+      containers:
+        - name: nmp-core
+          securityContext:
+            {{- include "nemo-common.securityContext" (dict "global" .Values.securityContext "local" .Values.core.controller.securityContext) | nindent 12 }}
+          image: {{ include "nmp-core.image" . | quote }}
+          imagePullPolicy: {{ .Values.core.image.pullPolicy }}
+          args:
+            - "--controller-group=all"
+            - "--host={{ include "nemo-platform.bindHost" . }}"
+            - "--port={{ .Values.core.controller.service.port | default 8000 }}"
+            {{- range .Values.core.controller.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          env:
+            - name: NMP_CONFIG_FILE_PATH
+              value: /etc/nmp/config.yaml
+            - name: NMP_BASE_URL
+              value: {{ include "nemo-platform.internalBaseUrl" . | quote }}
+            - name: OTEL_SERVICE_NAME
+              value: {{ include "nmp-core.controller-servicename" . }}
+            {{- include "nemo-common.otel-env" (dict "root" $ "local" .Values) | indent 12 }}
+            {{- if ( and .Values.externalDatabase.uriSecret.name .Values.externalDatabase.uriSecret.key ) }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.externalDatabase.uriSecret.name }}
+                  key: {{ .Values.externalDatabase.uriSecret.key }}
+            {{- else }}
+            - name: DATABASE_DIALECT
+              value: "postgresql"
+            - name: DATABASE_USER
+              value: {{ include "nemo-common.postgresql.user" . }}
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nemo-common.postgresql.secret-name" . }}
+                  key: {{ include "nemo-common.postgresql.password-key" . }}
+            - name: DATABASE_NAME
+              value: "{{ include "nemo-common.postgresql.name" . }}"
+            - name: DATABASE_HOST
+              value: "{{ include "nemo-common.postgresql.host" . }}"
+            - name: DATABASE_PORT
+              value: "{{ include "nemo-common.postgresql.port" . }}"
+            {{- end }}
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            {{ include "nemo-platform.env" . | nindent 12 | trim }}
+            {{ include "nemo-platform.controller.env" . | nindent 12 | trim }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.core.controller.service.port | default 8000 }}
+              protocol: TCP
+          {{- with .Values.core.controller.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.core.controller.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.core.controller.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.core.controller.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath:  /etc/nmp/config.yaml
+              subPath: config.yaml
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "nemo-platform.platform-configmap" . }}
+      {{- with .Values.core.controller.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.core.controller.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.core.controller.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.core.controller.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

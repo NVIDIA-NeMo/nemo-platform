@@ -370,6 +370,7 @@ nemo-automodel-plugin = { workspace = true }
 nemo-unsloth-plugin = { workspace = true }
 nmp-automodel = { workspace = true }
 nmp-unsloth = { workspace = true }
+nmp-customization-common = { workspace = true }
 
 
 [tool.uv.workspace]
@@ -379,6 +380,7 @@ members = [
   "packages/nemo_platform",
   "packages/filesets",
   "packages/nmp_common",
+  "packages/nmp_customization_common",
   "packages/nmp_platform_runner",
   "packages/garak_api/",
   "packages/nmp_testing",
@@ -560,6 +562,10 @@ exclude = [
   "services/automodel/src/nmp/automodel/tasks/training/backends/",
   "services/automodel/src/nmp/automodel/tasks/training/utils.py",
   "services/unsloth/src/nmp/unsloth/tasks/training/backends/",
+  # Helm chart test payloads run inside purpose-built Kubernetes containers.
+  # The NCCL worker imports torch at runtime, which is not part of the root
+  # workspace type-checking environment.
+  "k8s/helm/files/nccl-test/",
 
   "./services/guardrails/",
 

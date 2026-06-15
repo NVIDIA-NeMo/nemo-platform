@@ -146,6 +146,33 @@ Methods:
 - <code title="delete /apis/models/v2/workspaces/{workspace}/providers/{name}">client.inference.providers.<a href="./src/nemo_platform/resources/inference/providers.py">delete</a>(name, \*, workspace) -> None</code>
 - <code title="put /apis/models/v2/workspaces/{workspace}/providers/{name}/status">client.inference.providers.<a href="./src/nemo_platform/resources/inference/providers.py">update_status</a>(name, \*, workspace, \*\*<a href="src/nemo_platform/types/inference/provider_update_status_params.py">params</a>) -> <a href="./src/nemo_platform/types/inference/model_provider.py">ModelProvider</a></code>
 
+## Prompts
+
+Types:
+
+```python
+from nemo_platform.types.inference import (
+    ChatCompletionTool,
+    CreatePromptRequest,
+    FunctionDefinition,
+    Prompt,
+    PromptFilter,
+    PromptMessage,
+    PromptMessageRole,
+    PromptSort,
+    PromptsPage,
+    UpdatePromptRequest,
+)
+```
+
+Methods:
+
+- <code title="post /apis/models/v2/workspaces/{workspace}/prompts">client.inference.prompts.<a href="./src/nemo_platform/resources/inference/prompts.py">create</a>(\*, workspace, \*\*<a href="src/nemo_platform/types/inference/prompt_create_params.py">params</a>) -> <a href="./src/nemo_platform/types/inference/prompt.py">Prompt</a></code>
+- <code title="get /apis/models/v2/workspaces/{workspace}/prompts/{name}">client.inference.prompts.<a href="./src/nemo_platform/resources/inference/prompts.py">retrieve</a>(name, \*, workspace) -> <a href="./src/nemo_platform/types/inference/prompt.py">Prompt</a></code>
+- <code title="put /apis/models/v2/workspaces/{workspace}/prompts/{name}">client.inference.prompts.<a href="./src/nemo_platform/resources/inference/prompts.py">update</a>(name, \*, workspace, \*\*<a href="src/nemo_platform/types/inference/prompt_update_params.py">params</a>) -> <a href="./src/nemo_platform/types/inference/prompt.py">Prompt</a></code>
+- <code title="get /apis/models/v2/workspaces/{workspace}/prompts">client.inference.prompts.<a href="./src/nemo_platform/resources/inference/prompts.py">list</a>(\*, workspace, \*\*<a href="src/nemo_platform/types/inference/prompt_list_params.py">params</a>) -> <a href="./src/nemo_platform/types/inference/prompt.py">SyncDefaultPagination[Prompt]</a></code>
+- <code title="delete /apis/models/v2/workspaces/{workspace}/prompts/{name}">client.inference.prompts.<a href="./src/nemo_platform/resources/inference/prompts.py">delete</a>(name, \*, workspace) -> None</code>
+
 ## Gateway
 
 ### OpenAI

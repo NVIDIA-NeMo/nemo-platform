@@ -2,7 +2,7 @@
 
 set -xeo pipefail
 
-HELM_FOLDER=${HELM_FOLDER:-deploy/helm/platform}
+HELM_FOLDER=${HELM_FOLDER:-k8s/helm}
 HELM_RELEASE_NAME=${HELM_RELEASE_NAME:-nemo-platform}
 OPENSHIFT_VERSION=${OPENSHIFT_VERSION:-4.1.0}
 

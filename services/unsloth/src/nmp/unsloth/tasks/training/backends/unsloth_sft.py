@@ -21,11 +21,15 @@ imports silently degrade performance.
 
 import logging
 import os
+from dataclasses import replace
 from typing import Any, Literal
 
 from nemo_platform_plugin.job_context import JobContext
+from nmp.customization_common.service.context import NMPJobContext
+from nmp.unsloth.integrations.hf_bridge import apply_integrations_to_sft_config
 from nmp.unsloth.schemas import UnslothJobOutput
 from nmp.unsloth.tasks.training.backends.callbacks import TrainingProgressCallback
+from nmp.unsloth.tasks.training.progress import JobsServiceProgressReporter
 
 logger = logging.getLogger(__name__)
 
@@ -171,9 +175,9 @@ def train_sft(
             use_gradient_checkpointing=gc_value,
             max_seq_length=spec.model.max_seq_length,
         )
-    # Full FT: leave `model` as-is. `from_pretrained` already returned the
+    # All-weights FT: leave `model` as-is. `from_pretrained` already returned the
     # un-wrapped HF model since `load_in_4bit`/`load_in_8bit` were both
-    # rejected by the spec validator for `finetuning_type='full'`.
+    # rejected by the spec validator for `finetuning_type='all_weights'`.
 
     # ── Dataset ────────────────────────────────────────────────────────
     resolved_train_path = dataset_path or spec.dataset.path
@@ -203,6 +207,23 @@ def train_sft(
     bf16 = spec.hardware.precision == "bf16"
     fp16 = spec.hardware.precision == "fp16"
 
+    # Prefer identifiers from the passed JobContext; the in-process UnslothJob.run()
+    # path may not have the Job Controller env vars set. Fall back to env-derived
+    # values for fields JobContext doesn't carry (step/task).
+    job_ctx = NMPJobContext.from_env()
+    if ctx.job_id:
+        job_ctx = replace(job_ctx, job_id=ctx.job_id, workspace=ctx.workspace)
+
+    report_to, integration_kwargs, integration_env = apply_integrations_to_sft_config(
+        integrations=spec.integrations,
+        job_ctx=job_ctx,
+        output_name=spec.output.name,
+        workspace_path=output_dir,
+        model_name=spec.model.name,
+    )
+    for key, value in integration_env.items():
+        os.environ[key] = value
+
     args_kwargs: dict[str, Any] = {
         "output_dir": str(output_dir),
         "per_device_train_batch_size": spec.batch.per_device_train_batch_size,
@@ -216,9 +237,7 @@ def train_sft(
         "seed": spec.schedule.seed,
         "bf16": bf16,
         "fp16": fp16,
-        "report_to": list(
-            spec.integrations.report_to if spec.integrations is not None else ["none"],
-        ),
+        "report_to": list(report_to),
         # SFT-specific — belong on SFTConfig in trl>=0.13, not on SFTTrainer.
         "dataset_text_field": spec.dataset.text_field,
         "max_length": spec.model.max_seq_length,
@@ -226,8 +245,8 @@ def train_sft(
     }
     if spec.schedule.warmup_ratio is not None:
         args_kwargs["warmup_ratio"] = spec.schedule.warmup_ratio
-    if spec.schedule.epochs is not None:
-        args_kwargs["num_train_epochs"] = spec.schedule.epochs
+    # epochs always set (defaults to 1); max_steps, when present, caps/overrides it (trl semantics).
+    args_kwargs["num_train_epochs"] = spec.schedule.epochs
     if spec.schedule.max_steps is not None:
         args_kwargs["max_steps"] = spec.schedule.max_steps
     if spec.schedule.save_steps is not None:
@@ -251,13 +270,7 @@ def train_sft(
         args_kwargs["eval_steps"] = eval_steps
         args_kwargs["eval_strategy"] = "steps"
 
-    # Wandb run-name: surfaces in W&B when WANDB_API_KEY is set in the
-    # environment. We don't manage the secret — the user does.
-    if spec.integrations is not None and spec.integrations.wandb is not None and spec.integrations.wandb.enabled:
-        if spec.integrations.wandb.run_name:
-            args_kwargs["run_name"] = spec.integrations.wandb.run_name
-        if spec.integrations.wandb.project:
-            os.environ.setdefault("WANDB_PROJECT", spec.integrations.wandb.project)
+    args_kwargs.update(integration_kwargs)
 
     args = SFTConfig(**args_kwargs)
 
@@ -297,9 +310,6 @@ def train_sft(
 
 def _create_progress_callback() -> TrainingProgressCallback:
     """Build a Jobs-service progress callback from platform env vars."""
-    from nmp.unsloth.app.jobs.context import NMPJobContext
-    from nmp.unsloth.tasks.training.progress import JobsServiceProgressReporter
-
     return TrainingProgressCallback(JobsServiceProgressReporter(NMPJobContext.from_env()))
 
 

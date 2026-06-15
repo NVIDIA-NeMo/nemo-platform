@@ -30,21 +30,6 @@ from nmp.automodel.app.constants import (
     DEFAULT_OUTPUT_MODEL_PATH,
     DEFAULT_TEACHER_MODEL_PATH,
 )
-from nmp.automodel.app.jobs.file_io.schemas import (
-    DownloadItem,
-    FileIOTaskConfig,
-    FileSetRef,
-    UploadItem,
-)
-from nmp.automodel.app.jobs.model_entity.schemas import (
-    DeploymentParameters as ModelEntityDeploymentParameters,
-)
-from nmp.automodel.app.jobs.model_entity.schemas import (
-    ModelEntityTaskConfig,
-)
-from nmp.automodel.app.jobs.model_entity.schemas import (
-    PEFTConfig as ModelEntityPEFTConfig,
-)
 from nmp.automodel.app.jobs.training.compiler import (
     _extract_model_name,
     _resolve_is_embedding_model,
@@ -53,11 +38,26 @@ from nmp.automodel.app.jobs.training.compiler import (
 from nmp.automodel.config import config
 from nmp.automodel.entities.values import FinetuningType
 from nmp.automodel.images import AUTOMODEL_PYTHON_ENTRYPOINT, get_tasks_image
-from nmp.automodel.platform_client import fetch_model_entity
 from nmp.common.auth import AuthClient, auth_client_context
 from nmp.common.entities.utils import parse_entity_ref
 from nmp.common.jobs.constants import DEFAULT_JOB_STORAGE_PATH, PERSISTENT_JOB_STORAGE_PATH_ENVVAR
 from nmp.common.jobs.exceptions import PlatformJobCompilationError
+from nmp.customization_common.schemas.file_io import (
+    DownloadItem,
+    FileIOTaskConfig,
+    FileSetRef,
+    UploadItem,
+)
+from nmp.customization_common.schemas.model_entity import (
+    DeploymentParameters as ModelEntityDeploymentParameters,
+)
+from nmp.customization_common.schemas.model_entity import (
+    ModelEntityTaskConfig,
+)
+from nmp.customization_common.schemas.model_entity import (
+    PEFTConfig as ModelEntityPEFTConfig,
+)
+from nmp.customization_common.service.platform_client import fetch_model_entity
 
 logger = logging.getLogger(__name__)
 

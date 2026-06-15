@@ -55,9 +55,9 @@ else:
     sys.path.insert(0, "/app/services/automodel/src")
 
 from nmp.automodel.app.constants import V4_MODEL_FOR_CAUSAL_LM_MAPPING_NAMES  # noqa: E402
-from nmp.automodel.app.jobs.context import NMPJobContext  # noqa: E402
 from nmp.automodel.tasks.training.backends.config import compile_automodel_config  # noqa: E402
 from nmp.automodel.tasks.training.schemas import TrainingStepConfig  # noqa: E402
+from nmp.customization_common.service.context import NMPJobContext  # noqa: E402
 
 INPUT_DIR = SCRIPT_DIR / "input_configs"
 OUTPUT_DIR = SCRIPT_DIR / "output_configs"

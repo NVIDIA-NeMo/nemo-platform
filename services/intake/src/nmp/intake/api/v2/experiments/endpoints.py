@@ -145,8 +145,14 @@ async def list_experiment_groups(
         page=page,
         page_size=page_size,
     )
+    responses = [ExperimentGroupResponse.from_entity(e) for e in result.data]
+    counts = await _count_live_experiments_by_group(
+        entity_client, workspace=workspace, group_ids=[g.id for g in result.data]
+    )
+    for response in responses:
+        response.experiment_count = counts.get(response.id, 0)
     return Page(
-        data=[ExperimentGroupResponse.from_entity(e) for e in result.data],
+        data=responses,
         pagination=PaginationData(**result.pagination.model_dump()),
         sort=sort,
         filter=parsed.to_response(),
@@ -172,7 +178,11 @@ async def get_experiment_group(
         label="Experiment group",
     )
     _reject_if_deleted(entity, workspace=workspace, name=name, label="Experiment group")
-    return ExperimentGroupResponse.from_entity(entity)
+    response = ExperimentGroupResponse.from_entity(entity)
+    response.experiment_count = await _count_live_experiments_in_group(
+        entity_client, workspace=workspace, group_id=entity.id
+    )
+    return response
 
 
 @router.put(
@@ -205,7 +215,11 @@ async def update_experiment_group(
         )
     existing.description = body.description
     updated = await entity_client.update(existing)
-    return ExperimentGroupResponse.from_entity(updated)
+    response = ExperimentGroupResponse.from_entity(updated)
+    response.experiment_count = await _count_live_experiments_in_group(
+        entity_client, workspace=workspace, group_id=updated.id
+    )
+    return response
 
 
 @router.delete(
@@ -599,6 +613,81 @@ async def _soft_delete(entity_client: EntityClient, entity: Experiment | Experim
     entity.is_deleted = True
     entity.name = _deleted_name(original_name)
     await entity_client.update(entity, original_name=original_name)
+
+
+async def _count_live_experiments_in_group(entity_client: EntityClient, *, workspace: str, group_id: str) -> int:
+    """Return the number of non-soft-deleted experiments in a single group.
+
+    Fetches via ``list(page_size=1)`` so the response carries only ``pagination.total_results``.
+    Used by single-group endpoints (GET, PUT). List endpoints should use the bulk variant.
+    """
+    result = await entity_client.list(
+        Experiment,
+        workspace=workspace,
+        filter_operation=LogicalOperation(
+            operator=FilterOperator.AND,
+            operations=[
+                ComparisonOperation(operator=FilterOperator.EQ, field="data.experiment_group_id", value=group_id),
+                LogicalOperation(
+                    operator=FilterOperator.NOT,
+                    operations=[
+                        ComparisonOperation(operator=FilterOperator.EQ, field="data.is_deleted", value=True),
+                    ],
+                ),
+            ],
+        ),
+        page=1,
+        page_size=1,
+    )
+    return result.pagination.total_results
+
+
+async def _count_live_experiments_by_group(
+    entity_client: EntityClient, *, workspace: str, group_ids: list[str]
+) -> dict[str, int]:
+    """Bulk-count non-soft-deleted experiments for many groups in one (paginated) query.
+
+    Issues a single ``IN``-filter list against the entity store and tallies per group_id
+    client-side. Replaces N parallel ``_count_live_experiments_in_group`` calls on the
+    group-list endpoint so the request shape is 1-to-1 with the entity store rather than
+    1-to-N (which is fragile under web-server concurrency).
+
+    Returns a ``{group_id: count}`` map covering every requested group_id, with ``0`` for
+    groups that have no live experiments.
+    """
+    counts: dict[str, int] = {group_id: 0 for group_id in group_ids}
+    if not group_ids:
+        return counts
+    page = 1
+    # Aligned with ``EntityClient.list``'s max — paginates when a workspace's total live
+    # experiment count across the requested groups exceeds this.
+    page_size = 1000
+    filter_operation = LogicalOperation(
+        operator=FilterOperator.AND,
+        operations=[
+            ComparisonOperation(operator=FilterOperator.IN, field="data.experiment_group_id", value=list(group_ids)),
+            LogicalOperation(
+                operator=FilterOperator.NOT,
+                operations=[
+                    ComparisonOperation(operator=FilterOperator.EQ, field="data.is_deleted", value=True),
+                ],
+            ),
+        ],
+    )
+    while True:
+        result = await entity_client.list(
+            Experiment,
+            workspace=workspace,
+            filter_operation=filter_operation,
+            page=page,
+            page_size=page_size,
+        )
+        for experiment in result.data:
+            counts[experiment.experiment_group_id] = counts.get(experiment.experiment_group_id, 0) + 1
+        if page >= result.pagination.total_pages:
+            break
+        page += 1
+    return counts
 
 
 async def _validate_group_exists(entity_client: EntityClient, *, group_id: str) -> None:

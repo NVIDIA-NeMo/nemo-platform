@@ -52,7 +52,7 @@ class TestJobs:
                 "steps": [
                     {
                         "executor": {
-                            "container": {"image": "image"},
+                            "container": {},
                             "kind": "container",
                         },
                         "name": "preprocess",
@@ -74,9 +74,9 @@ class TestJobs:
                     {
                         "executor": {
                             "container": {
-                                "image": "image",
                                 "command": ["string"],
                                 "entrypoint": ["string"],
+                                "image": "x",
                             },
                             "kind": "container",
                             "profile": "profile",
@@ -127,7 +127,7 @@ class TestJobs:
                 "steps": [
                     {
                         "executor": {
-                            "container": {"image": "image"},
+                            "container": {},
                             "kind": "container",
                         },
                         "name": "preprocess",
@@ -152,7 +152,7 @@ class TestJobs:
                 "steps": [
                     {
                         "executor": {
-                            "container": {"image": "image"},
+                            "container": {},
                             "kind": "container",
                         },
                         "name": "preprocess",
@@ -180,7 +180,7 @@ class TestJobs:
                     "steps": [
                         {
                             "executor": {
-                                "container": {"image": "image"},
+                                "container": {},
                                 "kind": "container",
                             },
                             "name": "preprocess",
@@ -747,7 +747,7 @@ class TestAsyncJobs:
                 "steps": [
                     {
                         "executor": {
-                            "container": {"image": "image"},
+                            "container": {},
                             "kind": "container",
                         },
                         "name": "preprocess",
@@ -769,9 +769,9 @@ class TestAsyncJobs:
                     {
                         "executor": {
                             "container": {
-                                "image": "image",
                                 "command": ["string"],
                                 "entrypoint": ["string"],
+                                "image": "x",
                             },
                             "kind": "container",
                             "profile": "profile",
@@ -822,7 +822,7 @@ class TestAsyncJobs:
                 "steps": [
                     {
                         "executor": {
-                            "container": {"image": "image"},
+                            "container": {},
                             "kind": "container",
                         },
                         "name": "preprocess",
@@ -847,7 +847,7 @@ class TestAsyncJobs:
                 "steps": [
                     {
                         "executor": {
-                            "container": {"image": "image"},
+                            "container": {},
                             "kind": "container",
                         },
                         "name": "preprocess",
@@ -875,7 +875,7 @@ class TestAsyncJobs:
                     "steps": [
                         {
                             "executor": {
-                                "container": {"image": "image"},
+                                "container": {},
                                 "kind": "container",
                             },
                             "name": "preprocess",

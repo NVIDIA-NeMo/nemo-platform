@@ -5,12 +5,11 @@
 
 from __future__ import annotations
 
-import uuid
+from nmp.customization_common.contributor.config import BaseTrainingPluginConfig, generate_job_id
+from pydantic_settings import SettingsConfigDict
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
-class UnslothPluginConfig(BaseSettings):
+class UnslothPluginConfig(BaseTrainingPluginConfig):
     """Environment-driven Unsloth plugin settings.
 
     All fields are optional. The only knob the contributor actually
@@ -21,8 +20,6 @@ class UnslothPluginConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="NMP_UNSLOTH_", extra="ignore")
 
-    default_training_execution_profile: str = "gpu"
-
 
 def get_config() -> UnslothPluginConfig:
     return UnslothPluginConfig()
@@ -30,4 +27,4 @@ def get_config() -> UnslothPluginConfig:
 
 def generate_unsloth_id() -> str:
     """Generate a job name when the submitter omits ``name``."""
-    return f"unsloth-{uuid.uuid4().hex[:12]}"
+    return generate_job_id("unsloth")

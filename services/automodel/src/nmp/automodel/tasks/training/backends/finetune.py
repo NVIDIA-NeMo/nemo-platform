@@ -18,9 +18,9 @@ from nemo_automodel.components.training.step_scheduler import StepScheduler
 from nemo_automodel.recipes.biencoder.train_biencoder import TrainBiencoderRecipe
 from nemo_automodel.recipes.llm.kd import KnowledgeDistillationRecipeForNextTokenPrediction
 from nemo_automodel.recipes.llm.train_ft import TrainFinetuneRecipeForNextTokenPrediction
-from nmp.automodel.app.jobs.context import NMPJobContext
-from nmp.automodel.tasks.training.backends.callbacks import TrainingProgressCallback
 from nmp.automodel.tasks.training.progress import JobsServiceProgressReporter
+from nmp.customization_common.service.context import NMPJobContext
+from nmp.customization_common.training.callbacks import TrainingProgressCallback
 
 logger = logging.getLogger(__name__)
 

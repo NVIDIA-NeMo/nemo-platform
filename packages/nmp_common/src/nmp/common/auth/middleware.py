@@ -12,6 +12,7 @@ from nmp.common.config import AuthConfig, get_auth_config
 from nmp.common.observability.context import get_app_ctx
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
+from starlette.types import ASGIApp
 
 from .client import AuthClient
 from .dependencies import auth_client_context
@@ -19,6 +20,17 @@ from .exceptions import InvalidPrincipalHeader, InvalidScopeFormatError
 from .models import Principal
 
 logger = logging.getLogger(__name__)
+
+
+class PrincipalExtractionError(RuntimeError):
+    """Raised when principal extraction returns an impossible success state."""
+
+
+def _require_principal(principal: Principal | None) -> Principal:
+    """Return a principal from a successful extraction result or fail loudly."""
+    if principal is None:
+        raise PrincipalExtractionError("principal extraction succeeded without returning a principal")
+    return principal
 
 
 def _describe_pdp_failure(exc: BaseException) -> str:
@@ -92,7 +104,7 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
 
     def __init__(
         self,
-        app,
+        app: ASGIApp,
         service_name: Optional[str] = None,
         http_client: Optional[httpx.AsyncClient] = None,
     ):
@@ -237,21 +249,20 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
         if headers_dict.get("x-nmp-principal-id"):
             return await self._handle_principal_headers_request(request, call_next, headers_dict)
 
+        # Skip authorization if auth is disabled, but still extract principal
+        if not self.config.enabled:
+            return await self._handle_auth_disabled_request(request, call_next)
+
         # Try to extract principal from Authorization: Bearer header (native OIDC or unsigned JWT)
         auth_header = headers_dict.get("authorization", "")
         if auth_header.lower().startswith("bearer "):
             if self.config.oidc.enabled or self.config.allow_unsigned_jwt:
                 return await self._handle_bearer_token_request(request, call_next, auth_header)
-            if self.config.enabled:
-                logger.warning("Bearer token provided but OIDC is not configured")
-                return JSONResponse(
-                    status_code=401,
-                    content={"detail": "Bearer token authentication not configured"},
-                )
-
-        # Skip authorization if auth is disabled, but still extract principal
-        if not self.config.enabled:
-            return await self._handle_auth_disabled_request(request, call_next)
+            logger.warning("Bearer token provided but OIDC is not configured")
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Bearer token authentication not configured"},
+            )
 
         # Perform authorization check with auth endpoint (allows PDP to decide for anonymous access)
         return await self._handle_auth_check(request, call_next)
@@ -309,6 +320,7 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
         principal, error_response = self._principal_from_headers(headers_dict)
         if error_response is not None:
             return error_response
+        principal = _require_principal(principal)
         auth_client = AuthClient(
             principal=principal, config=self.config, http_client=self._client, service_name=self.service_name
         )
@@ -334,6 +346,7 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
         principal, error_response = self._principal_from_headers(headers_dict)
         if error_response is not None:
             return error_response
+        principal = _require_principal(principal)
 
         if not self.config.enabled:
             # Auth disabled - just extract principal and proceed
@@ -519,6 +532,7 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
         principal, error_response = self._principal_from_headers(headers_dict)
         if error_response is not None:
             return error_response
+        principal = _require_principal(principal)
 
         logger.debug(
             "Auth disabled - principal for %s %s: id=%s, email=%s, groups=%s",
@@ -559,6 +573,7 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
         principal, error_response = self._principal_from_headers(headers_dict)
         if error_response is not None:
             return error_response
+        principal = _require_principal(principal)
 
         # Extract scopes from headers (space-separated list per OAuth2 standard)
         scopes_header = headers_dict.get("x-nmp-scopes", "")
