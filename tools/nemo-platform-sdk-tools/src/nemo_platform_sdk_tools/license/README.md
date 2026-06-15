@@ -13,6 +13,9 @@ nemo-platform-sdk-tools license generate --format jsonl
 
 # Generate in CSV format (good for spreadsheets)
 nemo-platform-sdk-tools license generate --format csv
+
+# Generate CSV at a custom path
+nemo-platform-sdk-tools license generate --format csv --output third_party/licenses.csv
 ```
 
 ## Available Formats
@@ -63,9 +66,9 @@ nemo-platform-sdk-tools license generate --format csv
 Output:
 
 ```csv
-name,version,license,compatible
-requests,2.31.0,APACHE-2.0,true
-numpy,1.24.0,BSD-3-CLAUSE,true
+Package,License,License URL
+aiofiles,APACHE-2.0,https://github.com/Tinche/aiofiles/blob/main/LICENSE
+requests,APACHE-2.0,https://github.com/psf/requests/blob/main/LICENSE
 ```
 
 Opens directly in Excel or Google Sheets.
@@ -179,6 +182,7 @@ nemo-platform-sdk-tools license generate [OPTIONS]
 **Options:**
 
 - `--format, -f TEXT`: Output format (table, jsonl, json, csv, markdown, text) [default: table]
+- `--output, -o PATH`: Optional path for the formatted license report [default: third_party/licenses.jsonl]
 - `--sequential`: Run scans sequentially instead of in parallel
 - `--verbose, -v`: Enable verbose logging
 

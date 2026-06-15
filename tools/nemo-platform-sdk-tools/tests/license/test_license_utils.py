@@ -3,6 +3,8 @@
 
 """Tests for license utility functions."""
 
+import csv
+import io
 import json
 from typing import Any, cast
 
@@ -225,3 +227,59 @@ class TestFormatLicenses:
         assert output_file.read_text(encoding="utf-8") == (
             '{"name": "cloudpickle", "license": "BSD-3-CLAUSE", "compatible": true}'
         )
+
+    def test_format_licenses_csv_uses_third_party_license_columns(self, tmp_path, monkeypatch):
+        """CSV output is Package, License, License URL and supports custom output directories."""
+        from nemo_platform_sdk_tools.license import generator
+
+        license_dir = tmp_path / "third_party"
+        license_dir.mkdir()
+        osv_json = license_dir / "osv-licenses.json"
+        osv_json.write_text(
+            json.dumps(
+                {
+                    "results": [
+                        {
+                            "packages": [
+                                {
+                                    "package": {"name": "aiofiles", "version": "25.1.0"},
+                                    "licenses": ["Apache-2.0"],
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        output_file = tmp_path / "reports" / "licenses.csv"
+
+        monkeypatch.setattr(
+            generator,
+            "resolve_license_url",
+            lambda name, version, license_str: "https://github.com/Tinche/aiofiles/blob/main/LICENSE",
+        )
+
+        generator.format_licenses(osv_json, output_file, format_type="csv")
+
+        rows = list(csv.DictReader(io.StringIO(output_file.read_text(encoding="utf-8"))))
+        assert rows == [
+            {
+                "Package": "aiofiles",
+                "License": "APACHE-2.0",
+                "License URL": "https://github.com/Tinche/aiofiles/blob/main/LICENSE",
+            }
+        ]
+
+    def test_get_projects_allows_report_output_file_override(self, tmp_path):
+        """The formatted report path can be overridden independently of scan artifacts."""
+        from nemo_platform_sdk_tools.license.generator import get_projects
+
+        workspace_root = tmp_path / "repo"
+        output_file = tmp_path / "reports" / "licenses.csv"
+
+        projects = get_projects(workspace_root, output_file=output_file)
+
+        assert projects[0]["output_file"] == output_file
+        assert projects[0]["osv_json"] == workspace_root / "third_party" / "osv-licenses.json"
+        assert projects[0]["output_lockfile"] == workspace_root / "third_party" / "requirements-main.txt"

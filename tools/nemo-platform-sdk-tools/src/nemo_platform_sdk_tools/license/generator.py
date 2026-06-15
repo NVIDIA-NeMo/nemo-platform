@@ -17,7 +17,9 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
+import requests
 from nemo_platform_sdk_tools.license.format_osv_licenses import format_licenses_table
 from nemo_platform_sdk_tools.license.formats import get_formatter
 from nemo_platform_sdk_tools.license.license_utils import (
@@ -32,12 +34,112 @@ from packaging.requirements import InvalidRequirement, Requirement
 logger = logging.getLogger(__name__)
 
 OVERRIDES_FILE = overrides_file = Path(__file__).parent / "overrides.yaml"
+_PYPI_JSON_CACHE: dict[tuple[str, str], dict] = {}
+
+PROJECT_URL_REPOSITORY_KEYS = (
+    "Source",
+    "Source Code",
+    "Repository",
+    "Code",
+    "Homepage",
+    "Home",
+    "Project",
+)
+
+PROJECT_URL_LICENSE_KEYS = (
+    "License",
+    "License File",
+    "License URL",
+)
+
+SPDX_LICENSE_URLS = {
+    "APACHE-2.0": "https://www.apache.org/licenses/LICENSE-2.0",
+    "BSD-2-CLAUSE": "https://opensource.org/license/bsd-2-clause",
+    "BSD-3-CLAUSE": "https://opensource.org/license/bsd-3-clause",
+    "ISC": "https://opensource.org/licenses/ISC",
+    "MIT": "https://opensource.org/licenses/MIT",
+    "PSF-2.0": "https://docs.python.org/3/license.html",
+    "ZLIB": "https://opensource.org/license/zlib",
+}
 
 
 class LicenseGenerationError(Exception):
     """Raised when license generation fails."""
 
     pass
+
+
+def _get_pypi_json(package_name: str, version: str) -> dict:
+    """Return PyPI JSON metadata for a package, falling back to the unversioned endpoint."""
+    cache_key = (package_name, version)
+    if cache_key in _PYPI_JSON_CACHE:
+        return _PYPI_JSON_CACHE[cache_key]
+
+    normalized_version = version.split("+", 1)[0]
+    urls = []
+    if normalized_version:
+        urls.append(f"https://pypi.org/pypi/{package_name}/{normalized_version}/json")
+    urls.append(f"https://pypi.org/pypi/{package_name}/json")
+
+    for url in urls:
+        try:
+            response = requests.get(url, timeout=10)
+        except requests.RequestException as exc:
+            logger.debug("Could not fetch PyPI metadata for %s from %s: %s", package_name, url, exc)
+            continue
+
+        if response.ok:
+            data = response.json()
+            _PYPI_JSON_CACHE[cache_key] = data
+            return data
+
+        logger.debug("Could not fetch PyPI metadata for %s from %s: HTTP %s", package_name, url, response.status_code)
+
+    _PYPI_JSON_CACHE[cache_key] = {}
+    return {}
+
+
+def _github_repository_url(url: str) -> str:
+    """Normalize common GitHub project URLs to an owner/repository URL."""
+    parsed = urlparse(url)
+    if parsed.netloc.lower() not in {"github.com", "www.github.com"}:
+        return ""
+
+    path_parts = [part for part in parsed.path.strip("/").split("/") if part]
+    if len(path_parts) < 2:
+        return ""
+
+    owner, repo = path_parts[:2]
+    repo = repo.removesuffix(".git")
+    return f"https://github.com/{owner}/{repo}"
+
+
+def _license_url_from_pypi_info(info: dict, license_str: str) -> str:
+    """Resolve a best-effort license URL from PyPI metadata."""
+    project_urls = info.get("project_urls") or {}
+
+    for key in PROJECT_URL_LICENSE_KEYS:
+        if url := project_urls.get(key):
+            return url
+
+    for key in PROJECT_URL_REPOSITORY_KEYS:
+        if repo_url := _github_repository_url(project_urls.get(key, "")):
+            return f"{repo_url}/blob/main/LICENSE"
+
+    if repo_url := _github_repository_url(info.get("home_page", "")):
+        return f"{repo_url}/blob/main/LICENSE"
+
+    return SPDX_LICENSE_URLS.get(license_str.upper(), "")
+
+
+def resolve_license_url(package_name: str, version: str, license_str: str) -> str:
+    """Return a best-effort URL for the package's license text."""
+    pypi_data = _get_pypi_json(package_name, version)
+    info = pypi_data.get("info", {})
+    if not info:
+        return SPDX_LICENSE_URLS.get(license_str.upper(), "")
+
+    return _license_url_from_pypi_info(info, license_str)
 
 
 def get_osv_scanner() -> Path:
@@ -289,10 +391,15 @@ def format_licenses(
             # Sort by name
             unique_packages.sort(key=lambda x: x["name"].lower())
 
+            if format_type == "csv":
+                for pkg in unique_packages:
+                    pkg["license_url"] = resolve_license_url(pkg["name"], pkg.get("version", ""), pkg["license"])
+
             # Format using selected formatter
             formatted = formatter.format(unique_packages)
 
         # Write output
+        output_file.parent.mkdir(parents=True, exist_ok=True)
         with open(output_file, "w") as f:
             f.write(formatted)
 
@@ -416,7 +523,7 @@ def generate_project_licenses(
         raise
 
 
-def get_projects(workspace_root: Path) -> list[dict]:
+def get_projects(workspace_root: Path, output_file: Optional[Path] = None) -> list[dict]:
     import os
 
     # Check for environment variable overrides (used in CI)
@@ -424,6 +531,7 @@ def get_projects(workspace_root: Path) -> list[dict]:
     license_dir = Path(license_dir_str)
 
     main_license_name = os.environ.get("LICENSE_NAME", "licenses.jsonl")
+    main_output_file = output_file or license_dir / main_license_name
 
     # Define projects to scan
     projects = [
@@ -432,7 +540,7 @@ def get_projects(workspace_root: Path) -> list[dict]:
             "lockfile_dir": workspace_root,
             "osv_json": license_dir / "osv-licenses.json",
             "output_lockfile": license_dir / "requirements-main.txt",
-            "output_file": license_dir / main_license_name,
+            "output_file": main_output_file,
             "cwd": workspace_root,
             "overrides_file": OVERRIDES_FILE,
             "packages": ["nemoplatform"],
@@ -441,7 +549,9 @@ def get_projects(workspace_root: Path) -> list[dict]:
     return projects
 
 
-def generate_all_licenses(workspace_root: Path, parallel: bool = True, format_type: str = "table") -> None:
+def generate_all_licenses(
+    workspace_root: Path, parallel: bool = True, format_type: str = "table", output_file: Optional[Path] = None
+) -> None:
     """
     Generate license reports for the main project.
 
@@ -449,11 +559,12 @@ def generate_all_licenses(workspace_root: Path, parallel: bool = True, format_ty
         workspace_root: Path to the workspace root
         parallel: Whether to run scans in parallel (default: True)
         format_type: Output format (table, jsonl, json, csv, markdown, text)
+        output_file: Optional output path for the formatted license report
 
     Raises:
         LicenseGenerationError: If generation fails
     """
-    projects = get_projects(workspace_root)
+    projects = get_projects(workspace_root, output_file=output_file)
     if parallel:
         logger.info("Generating licenses for main project...")
 
