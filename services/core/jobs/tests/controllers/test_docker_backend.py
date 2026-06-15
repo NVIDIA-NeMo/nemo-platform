@@ -38,8 +38,8 @@ from nmp.core.jobs.app.constants import (
 from nmp.core.jobs.app.providers import (
     ComputeResources,
     ComputeResourceSpec,
-    ContainerSpec,
     ContainerExecutionProvider,
+    ContainerSpec,
 )
 from nmp.core.jobs.app.schemas import (
     PlatformJobEnvironmentVariable,

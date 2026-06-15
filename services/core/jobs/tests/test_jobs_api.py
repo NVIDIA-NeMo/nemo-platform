@@ -25,7 +25,7 @@ from nmp.core.jobs.api.v2.jobs.schemas import (
     PlatformJobStepsListFilter,
 )
 from nmp.core.jobs.app.dispatcher import JobDispatcher
-from nmp.core.jobs.app.providers import ContainerExecutionProvider, ContainerSpec, SubprocessExecutionProvider
+from nmp.core.jobs.app.providers import ContainerExecutionProvider, ContainerSpec
 from nmp.core.jobs.app.schemas import (
     PlatformJobSpec,
     PlatformJobStepSpec,

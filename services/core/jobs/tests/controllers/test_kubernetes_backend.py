@@ -28,7 +28,7 @@ from nmp.core.jobs.app.constants import (
     JOB_WORKSPACE_ID_LABEL,
     KUBE_JOB_SELECTOR_LABELS,
 )
-from nmp.core.jobs.app.providers import ContainerSpec, ContainerExecutionProvider
+from nmp.core.jobs.app.providers import ContainerExecutionProvider, ContainerSpec
 from nmp.core.jobs.app.schemas import (
     PlatformJobEnvironmentVariable,
     PlatformJobSecretEnvironmentVariableRef,

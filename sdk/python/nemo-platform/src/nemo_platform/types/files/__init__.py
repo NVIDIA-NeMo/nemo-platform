@@ -22,6 +22,7 @@ from .secret_ref import SecretRef as SecretRef
 from .cache_status import CacheStatus as CacheStatus
 from .fileset_file import FilesetFile as FilesetFile
 from .fileset_purpose import FilesetPurpose as FilesetPurpose
+from ..shared.fileset_metadata import FilesetMetadata as FilesetMetadata
 from .s3_storage_config import S3StorageConfig as S3StorageConfig
 from .ngc_storage_config import NGCStorageConfig as NGCStorageConfig
 from .fileset_list_params import FilesetListParams as FilesetListParams
