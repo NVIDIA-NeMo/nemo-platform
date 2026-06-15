@@ -34,7 +34,7 @@ spec:
       backendRefs:
         {{ range .backends }}
         - name: {{ tpl .service $ }}
-          port: {{ tpl .port $ }}
+          port: {{ int (tpl .port $) }}
         {{- end }}
     {{- end }}
 {{- end }}

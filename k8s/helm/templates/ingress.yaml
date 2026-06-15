@@ -23,10 +23,17 @@ spec:
   {{- end }}
   rules:
     {{- if .Values.ingress.defaultHost }}
+    {{- if not .Values.ingress.hosts }}
+    {{- fail "ingress.hosts must contain at least one entry with paths when ingress.defaultHost is set" }}
+    {{- end }}
+    {{- $defaultHostPaths := (index .Values.ingress.hosts 0).paths }}
+    {{- if not $defaultHostPaths }}
+    {{- fail "ingress.hosts[0].paths must contain at least one path when ingress.defaultHost is set" }}
+    {{- end }}
     - host: {{ .Values.ingress.defaultHost | quote }}
       http:
         paths:
-          {{- range (index .Values.ingress.hosts 0).paths }}
+          {{- range $defaultHostPaths }}
           - path: {{ .path }}
             pathType: {{ .pathType }}
             backend:
