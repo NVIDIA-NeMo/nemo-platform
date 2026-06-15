@@ -31,8 +31,10 @@ optional ``pip install``). ``setup`` steps are carried as plan metadata — they
 runtime concerns handled outside the image build — so this module does not
 execute them.
 
-``yaml`` is imported lazily so that importing this module costs nothing for
-callers that never load a spec.
+``PyYAML`` is not a hard dependency of this package, so ``yaml`` is imported only
+inside :func:`load_environment_spec` (when a ``environment.yaml`` is actually
+read). The module stays importable — e.g. for the Dockerfile escape hatch — even
+where PyYAML is absent.
 """
 
 from __future__ import annotations
@@ -70,7 +72,7 @@ def load_environment_spec(task_dir: str | Path) -> EnvironmentSpec:
     root = Path(task_dir)
     spec_path = root / ENVIRONMENT_SPEC_FILENAME
     if spec_path.is_file():
-        import yaml
+        import yaml  # optional dependency; imported only when a spec is read
 
         return _parse_spec(yaml.safe_load(spec_path.read_text(encoding="utf-8")) or {}, root)
 

@@ -17,6 +17,7 @@ role wrappers kept for caller convenience and protocol compatibility.
 
 from __future__ import annotations
 
+import abc
 import asyncio
 import subprocess
 from collections.abc import Callable
@@ -83,7 +84,7 @@ class AgentEnvironmentProvider(Protocol):
     ) -> AgentEnvironmentHandle: ...
 
 
-class AbstractEnvironmentHandle:
+class AbstractEnvironmentHandle(abc.ABC):
     """Base handle that routes both roles through a single :meth:`run`.
 
     Concrete handles implement :meth:`run`; ``run_agent``/``run_verifier`` are
@@ -91,8 +92,8 @@ class AbstractEnvironmentHandle:
     reimplemented per backend.
     """
 
-    async def run(self, spec: EnvRunSpec, role: EnvRole) -> EnvCommandResult:
-        raise NotImplementedError
+    @abc.abstractmethod
+    async def run(self, spec: EnvRunSpec, role: EnvRole) -> EnvCommandResult: ...
 
     async def run_agent(self, spec: EnvRunSpec) -> EnvCommandResult:
         return await self.run(spec, "agent")

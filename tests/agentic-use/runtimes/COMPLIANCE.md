@@ -14,9 +14,10 @@ The generic building blocks have been **promoted into the SDK**
 (`runtimes.environment`/`environment_spec`/`docker`), gating (`gating`), attempt
 helpers (`attempts`), generic layout (`runtimes.layout`), reusable metrics
 (`common_metrics`: `AgentPhaseSuccessMetric` + a real metric-over-evidence
-`EvidencePresenceMetric`), the generic orchestrator (`orchestrator`), the
-`AgentAttemptSource` protocol, the verifier mechanic (`runtimes.verify`), and the
-coding-agent driver seam (`runtimes.coding_agent`). Those SDK homes are imported
+`EvidencePresenceMetric`), the generic pipeline (`pipeline`), the
+`AgentAttemptSerde` protocol, the verifier mechanic (`runtimes.verify`), and the
+generalized-agent driver seam (`runtimes.generalized_agent` + reference
+`runtimes.claude_code`/`runtimes.cursor_agent` specs). Those SDK homes are imported
 **directly** by the runtime scripts — there are no re-export shims. The only
 NeMo-Platform specifics that remain (the agentic task loader, `result.json`
 import, attempt construction, the pytest verifier command, the `state` evidence
@@ -31,16 +32,16 @@ keeps `agent_eval/` free of NeMo-Platform imports.
 | `nat_runner` responsibility | Belongs in `AgentAttemptRuntime`? | Current location |
 |----------------------------|-----------------------------------|------------------|
 | AGENT phase — run backend in Docker, capture logs/trajectory | **Yes** | `runtimes/<backend>/runtime.py` |
-| BUILD — task image | **No** | `AgenticEvalOrchestrator` via `agent_eval.runtimes.environment_spec` (env spec / Dockerfile) + `agent_eval.runtimes.docker` |
+| BUILD — task image | **No** | `AgenticEvalPipeline` via `agent_eval.runtimes.environment_spec` (env spec / Dockerfile) + `agent_eval.runtimes.docker` |
 | VERIFY — pytest `test_outputs.py`, `reward.txt` | **Through env boundary** | `shared/platform.py` via `AgentEnvironmentHandle.run_verifier` (runtimes call it after the agent when `shared.run_verify=True`) |
 | CLI — task globs, manifests, summaries | **No** | Still `nat_runner.main` (not migrated) |
-| `result.json` contract | **No** (still produced by `nat_runner`) | Importable as an attempt via `shared/platform.py`; scored offline via `AgenticEvalOrchestrator.score_captured_attempts` |
+| `result.json` contract | **No** (still produced by `nat_runner`) | Importable as an attempt via `shared/platform.py`; scored offline via `AgenticEvalPipeline.score_captured_attempts` |
 
 ## Task metrics (authored on the task)
 
-Per the SDK doc, metrics are concrete `Metric` instances **on the task**, not an
-orchestrator concern. `agentic_task_from_dir` defaults a task's `metrics` to
-`[AgentPhaseSuccessMetric()]` (override via the `metrics=` arg). The orchestrator
+Per the SDK doc, metrics are concrete `Metric` instances **on the task**, not a
+pipeline concern. `agentic_task_from_dir` defaults a task's `metrics` to
+`[AgentPhaseSuccessMetric()]` (override via the `metrics=` arg). The pipeline
 only *appends* `VerifierRewardMetric` (a compatibility shim for the legacy pytest
 reward) when `run_verify=True`, and never replaces the task's own metric set.
 `inputs` carries only agent-facing material (`instruction`); runtime
@@ -122,10 +123,10 @@ expects the portable `CapturedAgentAttempt` type.
 
 | Doc section | Status in this package |
 |-------------|------------------------|
-| **B1** wrap `nat_runner` as attempt runtime(s) | In progress — AGENT phase extracted to per-backend runtimes (`workflow`, `aut` done; 3 CLI backends scaffolded); live VERIFY wired through the B2 boundary; `result.json` import path added via `shared/platform.py`, exposed as the first-class **stored-attempt scoring** path via `AgenticEvalOrchestrator.score_captured_attempts` (and `run_agent_eval.py --rescore-dir`) — no Docker/agent execution. Remaining: 3 CLI backends + converging `nat_runner.main` onto the orchestrator. Note: doc proposes one `NatRunnerAttemptRuntime`; we deliberately split per backend per user direction. |
+| **B1** wrap `nat_runner` as attempt runtime(s) | In progress — AGENT phase extracted to per-backend runtimes (`workflow`, `aut` done; 3 CLI backends scaffolded); live VERIFY wired through the B2 boundary; `result.json` import path added via `shared/platform.py`, exposed as the first-class **stored-attempt scoring** path via `AgenticEvalPipeline.score_captured_attempts` (and `run_agent_eval.py --rescore-dir`) — no Docker/agent execution. Remaining: 3 CLI backends + converging `nat_runner.main` onto the pipeline. Note: doc proposes one `NatRunnerAttemptRuntime`; we deliberately split per backend per user direction. |
 | **B2** `EnvironmentProvider` boundary | **Implemented** — `agent_eval.runtimes.environment` defines `AgentEnvironmentProvider`/`AgentEnvironmentHandle` below `AgentAttemptRuntime`; the platform `DockerEnvironmentProvider` (`shared/platform.py`) wraps `agent_eval.runtimes.docker` with the `nmp-nat-<id>` image tag. `workflow` + `aut` runtimes execute through the boundary (provider is injectable). NeMo Gym/local providers can now be added without touching runtimes. |
-| **B3** standardize environment authoring | **Implemented (minimal)** — `agent_eval.runtimes.environment_spec` adds a declarative `environment.yaml` (`image` + `profile` + python `dependencies` + `setup`) with a `dockerfile:` escape hatch and backward-compatible auto-detection of `environment/Dockerfile`. `plan_task_build` resolves a spec to a `BuildPlan` (image-based specs generate a tiny derived Dockerfile); the orchestrator BUILD step uses it. `setup` steps are carried as plan/label metadata, not executed (runtime concern). |
-| **B4** productize results + CI | **Implemented** — SDK `persist_run` writes `tasks/attempts/results.jsonl`, `summary.json`, `report.html`; `agent_eval.gating` adds candidate-vs-baseline gating (pass-rate, token/cost, runtime tie-breaker) + deterministic provenance checks, persisted as `gate.json` by the orchestrator. `result.json` → attempt adapter + `VerifierRewardMetric` compatibility metric also done. |
+| **B3** standardize environment authoring | **Implemented (minimal)** — `agent_eval.runtimes.environment_spec` adds a declarative `environment.yaml` (`image` + `profile` + python `dependencies` + `setup`) with a `dockerfile:` escape hatch and backward-compatible auto-detection of `environment/Dockerfile`. `plan_task_build` resolves a spec to a `BuildPlan` (image-based specs generate a tiny derived Dockerfile); the pipeline BUILD step uses it. `setup` steps are carried as plan/label metadata, not executed (runtime concern). |
+| **B4** productize results + CI | **Implemented** — SDK `persist_run` writes `tasks/attempts/results.jsonl`, `summary.json`, `report.html`; `agent_eval.gating` adds candidate-vs-baseline gating (pass-rate, token/cost, runtime tie-breaker) + deterministic provenance checks, persisted as `gate.json` by the pipeline. `result.json` → attempt adapter + `VerifierRewardMetric` compatibility metric also done. |
 
 ### B4 reporting / gating detail
 
@@ -142,7 +143,7 @@ expects the portable `CapturedAgentAttempt` type.
   `baseline_candidate_task_sets_match`, `commit_sha_consistent_within_run`,
   `commit_sha_matches_baseline` (cross-commit guard). Semantics mirror
   `passrate_token_policy_gate.py`, so summaries are interchangeable as baselines.
-- **Orchestrator wiring**: `AgenticOrchestratorConfig.write_gate` /
+- **Pipeline wiring**: `AgenticPipelineConfig.write_gate` /
   `gate_thresholds` / `baseline_summary_path` control emission of `gate.json`
   next to the run bundle.
 

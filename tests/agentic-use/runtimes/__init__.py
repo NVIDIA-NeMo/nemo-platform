@@ -33,7 +33,7 @@ from runtimes.aut.runtime import AutAgentAttemptRuntime
 from runtimes.claude_code.runtime import ClaudeCodeAgentAttemptRuntime
 from runtimes.codex.runtime import CodexAgentAttemptRuntime
 from runtimes.cursor_agent.runtime import CursorAgentAttemptRuntime
-from runtimes.orchestrator import AgenticEvalOrchestrator, AgenticOrchestratorConfig, runtime_for_backend
+from runtimes.pipeline import AgenticEvalPipeline, AgenticPipelineConfig, runtime_for_backend
 from runtimes.shared.platform import (
     AgentPhaseSuccessMetric,
     DockerEnvironmentProvider,
@@ -50,8 +50,8 @@ __all__ = [
     "AgentEnvironmentHandle",
     "AgentEnvironmentProvider",
     "AgentPhaseSuccessMetric",
-    "AgenticEvalOrchestrator",
-    "AgenticOrchestratorConfig",
+    "AgenticEvalPipeline",
+    "AgenticPipelineConfig",
     "AutAgentAttemptRuntime",
     "BuildPlan",
     "ClaudeCodeAgentAttemptRuntime",

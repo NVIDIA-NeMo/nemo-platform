@@ -1,13 +1,13 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Agentic-use adapter over the generic SDK orchestrator.
+"""Agentic-use adapter over the generic SDK pipeline.
 
 This is a thin NeMo-Platform factory: the generic run/score/gate loop lives in
-:class:`nemo_evaluator_sdk.agent_eval.orchestrator.AgentEvalOrchestrator`. Here we
-inject the platform specifics it deliberately does not know about — the agentic
-task loader, the Docker image build (``prepare_task``), the ``run_verify``-derived
-``VerifierRewardMetric``, and the ``result.json`` :class:`AgentAttemptSource`.
+:class:`nemo_evaluator_sdk.agent_eval.pipeline.AgentEvalPipeline`. Here we inject
+the platform specifics it deliberately does not know about — the agentic task
+loader, the Docker image build (``prepare_task``), the ``run_verify``-derived
+``VerifierRewardMetric``, and the ``result.json`` :class:`AgentAttemptSerde`.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from nemo_evaluator_sdk.agent_eval.gating import GateThresholds
-from nemo_evaluator_sdk.agent_eval.orchestrator import AgentEvalOrchestrator, OrchestratorConfig
+from nemo_evaluator_sdk.agent_eval.pipeline import AgentEvalPipeline, PipelineConfig
 from nemo_evaluator_sdk.agent_eval.runtimes.docker import docker_image_exists
 from nemo_evaluator_sdk.agent_eval.runtimes.environment_spec import execute_build_plan, plan_task_build
 from nemo_evaluator_sdk.agent_eval.types import (
@@ -37,7 +37,7 @@ from runtimes.shared.platform import (
 
 
 @dataclass(frozen=True)
-class AgenticOrchestratorConfig:
+class AgenticPipelineConfig:
     skip_build: bool = False
     skip_verify: bool = False
     write_dashboard: bool = True
@@ -46,19 +46,19 @@ class AgenticOrchestratorConfig:
     baseline_summary_path: Path | None = None
 
 
-class AgenticEvalOrchestrator:
-    """Run agentic-use tasks through the generic orchestrator + optional verify metric."""
+class AgenticEvalPipeline:
+    """Run agentic-use tasks through the generic pipeline + optional verify metric."""
 
     def __init__(
         self,
         runtime: AgentAttemptRuntime,
         *,
-        config: AgenticOrchestratorConfig | None = None,
+        config: AgenticPipelineConfig | None = None,
     ) -> None:
         self.runtime = runtime
-        self.config = config or AgenticOrchestratorConfig()
-        self._orchestrator = AgentEvalOrchestrator(
-            config=OrchestratorConfig(
+        self.config = config or AgenticPipelineConfig()
+        self._pipeline = AgentEvalPipeline(
+            config=PipelineConfig(
                 parallelism=1,
                 write_dashboard=self.config.write_dashboard,
                 write_gate=self.config.write_gate,
@@ -77,7 +77,7 @@ class AgenticEvalOrchestrator:
     ) -> AgentEvalRunResult:
         """Build the task image when needed, run the agent runtime, return SDK result."""
         task = agentic_task_from_dir(task_name)
-        return await self._orchestrator.run_tasks(
+        return await self._pipeline.run_tasks(
             [task],
             target=self.runtime,
             benchmark={"benchmark": "agentic-use", "task": task_name},
@@ -97,14 +97,14 @@ class AgenticEvalOrchestrator:
         """Score already-captured ``result.json`` runs without re-running the agent.
 
         The SDK's first-class *stored-attempt* path: each ``nat_runner`` output
-        dir is adapted via :class:`ResultDirAttemptSource` and scored through the
-        generic orchestrator, so metrics can be exercised (and runs rescored) with
-        no Docker/agent execution.
+        dir is adapted via :class:`ResultDirAttemptSource` (an
+        :class:`AgentAttemptSerde`) and scored through the generic pipeline, so
+        metrics can be exercised (and runs rescored) with no Docker/agent
+        execution.
         """
         task = agentic_task_from_dir(task_name)
-        source = ResultDirAttemptSource()
-        attempts = [source.load_attempt(result_dir, task=task) for result_dir in result_dirs]
-        return await self._orchestrator.score_attempts(
+        attempts = [ResultDirAttemptSource(result_dir, task=task).read() for result_dir in result_dirs]
+        return await self._pipeline.score_attempts(
             [task],
             attempts=attempts,
             benchmark={"benchmark": "agentic-use", "task": task_name, "mode": "offline"},
@@ -116,7 +116,7 @@ class AgenticEvalOrchestrator:
         """Append :class:`VerifierRewardMetric` only when the runtime runs verify.
 
         The verify-enable decision stays in the adapter (it knows its own runtime
-        config); the generic orchestrator never introspects the runtime.
+        config); the generic pipeline never introspects the runtime.
         """
         return [VerifierRewardMetric()] if self._verify_enabled() else []
 

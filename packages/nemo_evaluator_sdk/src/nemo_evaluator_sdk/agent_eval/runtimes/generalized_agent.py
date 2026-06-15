@@ -1,23 +1,26 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Plug-and-play seam for coding-agent CLIs (codex/claude/cursor/...).
+"""Plug-and-play seam for generalized-agent CLIs (codex/claude/cursor/...).
 
-The split that makes these "plug-and-play":
+"Generalized agents" follows the *Agents Improving Agents* terminology: a single
+CLI that takes a prompt and autonomously drives a task to completion. The split
+that makes these plug-and-play:
 
-* :class:`CliAgentDriver` is the **driver** — a generic ``AgentAttemptRuntime``
-  that runs a CLI which reads a prompt on stdin and writes its final answer to a
-  file, then captures workspace/stdout/stderr/final-output as evidence. This is
-  the stable, reusable part.
-* :class:`CodingAgentSpec` is the **per-agent adapter** — the bespoke part: how to
-  build the CLI command and (optionally) how to parse that agent's trajectory into
-  extra evidence. Implementing a new agent means subclassing this, not rewriting a
-  runtime.
+* :class:`GeneralizedAgentDriver` is the **driver** — a generic
+  ``AgentAttemptRuntime`` that runs a CLI which reads a prompt on stdin and writes
+  its final answer to a file, then captures workspace/stdout/stderr/final-output
+  as evidence. This is the stable, reusable part.
+* :class:`GeneralizedAgentSpec` is the **per-agent adapter** — the bespoke part:
+  how to build the CLI command and (optionally) how to parse that agent's
+  trajectory into extra evidence. Implementing a new agent means subclassing this,
+  not rewriting a runtime.
 
-The shipped :class:`ClaudeCodeSpec` / :class:`CursorAgentSpec` are *reference*
-command builders: the driver and evidence contract are stable, but each CLI's
-exact flags and trajectory format are the integrator's responsibility and may
-drift with upstream releases. Auth is the caller's concern (inject via env);
+Reference specs (e.g. :class:`~nemo_evaluator_sdk.agent_eval.runtimes.claude_code.ClaudeCodeSpec`
+and :class:`~nemo_evaluator_sdk.agent_eval.runtimes.cursor_agent.CursorAgentSpec`)
+live in their own modules: the driver and evidence contract are stable, but each
+CLI's exact flags and trajectory format are the integrator's responsibility and
+may drift with upstream releases. Auth is the caller's concern (inject via env);
 nothing here hardcodes credentials.
 """
 
@@ -39,13 +42,13 @@ from nemo_evaluator_sdk.agent_eval.types import (
 )
 from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
 
-DEFAULT_CODING_AGENT_TIMEOUT_S = 600
+DEFAULT_GENERALIZED_AGENT_TIMEOUT_S = 600
 ProcessFactory = Callable[..., Awaitable[object]]
 
 
 @dataclass(frozen=True)
 class RunArtifacts:
-    """Resolved on-disk paths for one coding-agent attempt."""
+    """Resolved on-disk paths for one generalized-agent attempt."""
 
     evidence_dir: Path
     workspace_dir: Path
@@ -56,14 +59,14 @@ class RunArtifacts:
     final_output_path: Path
 
 
-class CodingAgentSpec:
+class GeneralizedAgentSpec:
     """Per-agent adapter: prompt, command, and trajectory→evidence parsing.
 
     Subclass and implement :meth:`build_command`. Override :meth:`build_prompt`,
     :meth:`extra_evidence`, or :meth:`final_output` for agent-specific behavior.
     """
 
-    name: str = "coding_agent"
+    name: str = "generalized_agent"
     binary: str = ""
     model: str | None = None
 
@@ -86,15 +89,15 @@ class CodingAgentSpec:
         return stdout_text
 
 
-class CliAgentDriver:
-    """Generic ``AgentAttemptRuntime`` for stdin-prompt coding-agent CLIs."""
+class GeneralizedAgentDriver:
+    """Generic ``AgentAttemptRuntime`` for stdin-prompt generalized-agent CLIs."""
 
     def __init__(
         self,
-        spec: CodingAgentSpec,
+        spec: GeneralizedAgentSpec,
         *,
         work_root: str | Path | None = None,
-        timeout_s: int = DEFAULT_CODING_AGENT_TIMEOUT_S,
+        timeout_s: int = DEFAULT_GENERALIZED_AGENT_TIMEOUT_S,
         process_factory: ProcessFactory | None = None,
     ) -> None:
         if not spec.binary:
@@ -222,54 +225,6 @@ class CliAgentDriver:
         )
 
 
-class ClaudeCodeSpec(CodingAgentSpec):
-    """Reference command builder for the Claude Code CLI (``claude``)."""
-
-    name = "claude_code"
-    binary = "claude"
-
-    def __init__(self, *, model: str | None = None, binary: str = "claude") -> None:
-        self.model = model
-        self.binary = binary
-
-    def build_command(self, artifacts: RunArtifacts) -> list[str]:
-        command = [
-            self.binary,
-            "--print",
-            "--output-format",
-            "stream-json",
-            "--add-dir",
-            str(artifacts.workspace_dir),
-        ]
-        if self.model is not None:
-            command.extend(["--model", self.model])
-        return command
-
-
-class CursorAgentSpec(CodingAgentSpec):
-    """Reference command builder for the Cursor Agent CLI (``cursor-agent``)."""
-
-    name = "cursor_agent"
-    binary = "cursor-agent"
-
-    def __init__(self, *, model: str | None = None, binary: str = "cursor-agent") -> None:
-        self.model = model
-        self.binary = binary
-
-    def build_command(self, artifacts: RunArtifacts) -> list[str]:
-        command = [
-            self.binary,
-            "--print",
-            "--output-format",
-            "text",
-            "--workdir",
-            str(artifacts.workspace_dir),
-        ]
-        if self.model is not None:
-            command.extend(["--model", self.model])
-        return command
-
-
 def _decode(value: bytes | str | None) -> str:
     if value is None:
         return ""
@@ -283,9 +238,8 @@ def _safe_path_name(value: str) -> str:
 
 
 __all__ = [
-    "CliAgentDriver",
-    "ClaudeCodeSpec",
-    "CodingAgentSpec",
-    "CursorAgentSpec",
+    "DEFAULT_GENERALIZED_AGENT_TIMEOUT_S",
+    "GeneralizedAgentDriver",
+    "GeneralizedAgentSpec",
     "RunArtifacts",
 ]

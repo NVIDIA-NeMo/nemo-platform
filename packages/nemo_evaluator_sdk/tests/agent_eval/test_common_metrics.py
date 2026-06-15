@@ -53,7 +53,7 @@ async def test_agent_phase_success_metric_reads_metadata_and_namespaces_type() -
     ok = await metric.compute_scores(
         MetricInput(row=DatasetRow(data={}), candidate=CandidateOutput(metadata={"agent_ok": True}))
     )
-    assert ok.outputs[0].value == 1.0
+    assert ok.outputs[0].value is True
 
     class Namespaced(AgentPhaseSuccessMetric):
         metric_type = "agentic_use_agent_phase"
@@ -74,13 +74,13 @@ async def test_evidence_presence_metric_scores_over_evidence(tmp_path: Path) -> 
     present = await metric.compute_scores(
         MetricInput(row=DatasetRow(data={}), candidate=CandidateOutput(evidence=evidence))
     )
-    assert present.outputs[0].value == 1.0
+    assert present.outputs[0].value is True
 
-    # Empty workspace -> non-empty requirement fails; no evidence -> 0.
+    # Empty workspace -> non-empty requirement fails; no evidence -> False.
     (final_state / "result.txt").unlink()
     empty = await metric.compute_scores(
         MetricInput(row=DatasetRow(data={}), candidate=CandidateOutput(evidence=evidence))
     )
-    assert empty.outputs[0].value == 0.0
+    assert empty.outputs[0].value is False
     missing = await metric.compute_scores(MetricInput(row=DatasetRow(data={}), candidate=CandidateOutput()))
-    assert missing.outputs[0].value == 0.0
+    assert missing.outputs[0].value is False

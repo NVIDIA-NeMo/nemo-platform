@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for the generic agent-eval orchestrator (online + offline paths)."""
+"""Tests for the generic agent-eval pipeline (online + offline paths)."""
 
 from __future__ import annotations
 
@@ -11,8 +11,9 @@ from pathlib import Path
 
 import pytest
 from nemo_evaluator_sdk.agent_eval.common_metrics import AgentPhaseSuccessMetric
-from nemo_evaluator_sdk.agent_eval.orchestrator import AgentEvalOrchestrator, OrchestratorConfig
+from nemo_evaluator_sdk.agent_eval.pipeline import AgentEvalPipeline, PipelineConfig
 from nemo_evaluator_sdk.agent_eval.types import (
+    AgentAttemptSerde,
     AgentEvalAttempt,
     AgentEvalRunConfig,
     AgentEvalTask,
@@ -60,12 +61,12 @@ def _task() -> AgentEvalTask:
 async def test_run_tasks_appends_extra_metrics_and_runs_prepare_hook(tmp_path: Path) -> None:
     runtime = _FakeRuntime()
     seen: list[str] = []
-    orch = AgentEvalOrchestrator(
-        config=OrchestratorConfig(write_dashboard=False, write_gate=True),
+    pipeline = AgentEvalPipeline(
+        config=PipelineConfig(write_dashboard=False, write_gate=True),
         extra_metrics=[_ExtraMetric()],
     )
 
-    result = await orch.run_tasks(
+    result = await pipeline.run_tasks(
         [_task()],
         target=runtime,
         benchmark={"benchmark": "demo"},
@@ -83,7 +84,7 @@ async def test_run_tasks_appends_extra_metrics_and_runs_prepare_hook(tmp_path: P
 
 @pytest.mark.asyncio
 async def test_score_attempts_offline_does_not_invoke_runtime() -> None:
-    orch = AgentEvalOrchestrator(config=OrchestratorConfig(write_dashboard=False, write_gate=False))
+    pipeline = AgentEvalPipeline(config=PipelineConfig(write_dashboard=False, write_gate=False))
     attempt = AgentEvalAttempt(
         id="demo:stored",
         task_id="demo",
@@ -91,7 +92,7 @@ async def test_score_attempts_offline_does_not_invoke_runtime() -> None:
         output=AgentOutput(text="ok"),
         metadata={"agent_ok": True},
     )
-    result = await orch.score_attempts([_task()], attempts=[attempt])
+    result = await pipeline.score_attempts([_task()], attempts=[attempt])
     assert [m.type for m in result.tasks[0].metrics] == ["agent_phase_success"]
     assert any(r.metric_type == "agent_phase_success" for r in result.results)
 
@@ -99,33 +100,40 @@ async def test_score_attempts_offline_does_not_invoke_runtime() -> None:
 @pytest.mark.asyncio
 async def test_extra_metrics_deduplicated_by_type() -> None:
     task = AgentEvalTask(id="demo", intent="i", inputs={}, metrics=[AgentPhaseSuccessMetric(), _ExtraMetric()])
-    orch = AgentEvalOrchestrator(
-        config=OrchestratorConfig(write_dashboard=False, write_gate=False),
+    pipeline = AgentEvalPipeline(
+        config=PipelineConfig(write_dashboard=False, write_gate=False),
         extra_metrics=[_ExtraMetric()],
     )
     attempt = AgentEvalAttempt(id="demo:s", task_id="demo", status="completed", output=AgentOutput(text="ok"))
-    result = await orch.score_attempts([task], attempts=[attempt])
+    result = await pipeline.score_attempts([task], attempts=[attempt])
     types = [m.type for m in result.tasks[0].metrics]
     assert types.count("extra") == 1
 
 
-def test_result_dir_attempt_source_protocol_shape(tmp_path: Path) -> None:
-    # A minimal AgentAttemptSource implementation satisfies the protocol.
-    from nemo_evaluator_sdk.agent_eval.types import AgentAttemptSource
+def test_attempt_serde_round_trips_through_one_codec(tmp_path: Path) -> None:
+    # A directory-bound serde satisfies the symmetric read/write protocol.
+    class _DirSerde:
+        def __init__(self, path: str | Path, *, task: AgentEvalTask) -> None:
+            self._path = Path(path)
+            self._task = task
 
-    class _Source:
-        def load_attempt(self, source: str | Path, *, task: AgentEvalTask) -> AgentEvalAttempt:
-            payload = json.loads(Path(source).read_text(encoding="utf-8"))
+        def read(self) -> AgentEvalAttempt:
+            payload = json.loads((self._path / "attempt.json").read_text(encoding="utf-8"))
             return AgentEvalAttempt(
-                id=f"{task.id}:stored",
-                task_id=task.id,
+                id=f"{self._task.id}:stored",
+                task_id=self._task.id,
                 status="completed",
                 output=AgentOutput(text=payload["agent"]),
             )
 
-    src_path = tmp_path / "result.json"
-    src_path.write_text(json.dumps({"agent": "ok"}), encoding="utf-8")
-    source: AgentAttemptSource = _Source()
-    assert isinstance(source, AgentAttemptSource)
-    attempt = source.load_attempt(src_path, task=_task())
-    assert attempt.task_id == "demo"
+        def write(self, attempt: AgentEvalAttempt) -> None:
+            self._path.mkdir(parents=True, exist_ok=True)
+            (self._path / "attempt.json").write_text(
+                json.dumps({"agent": attempt.output.text if attempt.output else ""}), encoding="utf-8"
+            )
+
+    serde: AgentAttemptSerde = _DirSerde(tmp_path, task=_task())
+    assert isinstance(serde, AgentAttemptSerde)
+    serde.write(AgentEvalAttempt(id="demo:x", task_id="demo", status="completed", output=AgentOutput(text="ok")))
+    attempt = serde.read()
+    assert attempt.task_id == "demo" and attempt.output is not None and attempt.output.text == "ok"

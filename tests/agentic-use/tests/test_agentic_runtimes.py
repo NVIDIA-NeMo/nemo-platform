@@ -234,7 +234,7 @@ def test_attempt_from_result_marks_unsuccessful_agent_partial(tmp_path: Path) ->
 async def test_score_captured_attempts_offline(tmp_path: Path) -> None:
     import json
 
-    from runtimes.orchestrator import AgenticEvalOrchestrator
+    from runtimes.pipeline import AgenticEvalPipeline
     from runtimes.workflow.runtime import NatWorkflowAttemptRuntime
 
     run_dir = tmp_path / "run"
@@ -255,11 +255,11 @@ async def test_score_captured_attempts_offline(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    orchestrator = AgenticEvalOrchestrator(
+    pipeline = AgenticEvalPipeline(
         NatWorkflowAttemptRuntime(WorkflowRuntimeConfig(shared=AgenticSharedConfig(jobs_dir=tmp_path))),
     )
     # Stored-attempt path: no Docker / agent execution, scores result.json directly.
-    result = await orchestrator.score_captured_attempts(WORKSPACE_BASIC.name, result_dirs=[run_dir])
+    result = await pipeline.score_captured_attempts(WORKSPACE_BASIC.name, result_dirs=[run_dir])
 
     assert [metric.type for metric in result.tasks[0].metrics] == ["agentic_use_agent_phase"]
     assert result.attempts[0].status == "completed"

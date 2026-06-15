@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Generic orchestration: agent/scoring run + deterministic gate.
+"""Generic agent-eval pipeline: agent/scoring run + deterministic gate.
 
 Wraps :class:`~nemo_evaluator_sdk.agent_eval.evaluator.AgentEvaluator` with the
 gate from :mod:`nemo_evaluator_sdk.agent_eval.gating`. It is intentionally lean —
@@ -9,13 +9,13 @@ the only collaborators are the tasks and a target (online) or attempts (offline)
 Two seams keep it backend-agnostic:
 
 * **verify-enable is inverted to data**: callers pass ``extra_metrics`` to append
-  (e.g. a verifier-reward metric). The orchestrator never introspects a runtime's
+  (e.g. a verifier-reward metric). The pipeline never introspects a runtime's
   config to decide what to score.
 * **environment prep is an injected hook**: ``prepare_task`` (e.g. "build the task
   image") runs per task before execution, so Docker/build specifics live in the
   caller, not here.
 
-The common Docker case stays a few lines via :meth:`AgentEvalOrchestrator`'s plain
+The common Docker case stays a few lines via :meth:`AgentEvalPipeline`'s plain
 constructor (config + optional ``extra_metrics``); richer wiring is opt-in.
 """
 
@@ -43,7 +43,7 @@ from nemo_evaluator_sdk.metrics.protocol import Metric
 
 
 @dataclass(frozen=True)
-class OrchestratorConfig:
+class PipelineConfig:
     """Run-level knobs shared by the online and offline paths."""
 
     parallelism: int = 1
@@ -53,16 +53,16 @@ class OrchestratorConfig:
     baseline_summary_path: Path | None = None
 
 
-class AgentEvalOrchestrator:
+class AgentEvalPipeline:
     """Run tasks through ``AgentEvaluator`` (online or offline) and apply the gate."""
 
     def __init__(
         self,
         *,
-        config: OrchestratorConfig | None = None,
+        config: PipelineConfig | None = None,
         extra_metrics: Sequence[Metric] = (),
     ) -> None:
-        self.config = config or OrchestratorConfig()
+        self.config = config or PipelineConfig()
         self._extra_metrics = list(extra_metrics)
 
     async def run_tasks(
@@ -147,7 +147,7 @@ class AgentEvalOrchestrator:
 
 
 __all__ = [
-    "AgentEvalOrchestrator",
+    "AgentEvalPipeline",
     "GateThresholds",
-    "OrchestratorConfig",
+    "PipelineConfig",
 ]

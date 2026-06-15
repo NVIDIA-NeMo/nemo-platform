@@ -16,8 +16,8 @@ AGENTIC_USE_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(AGENTIC_USE_DIR))
 sys.path.insert(0, str(AGENTIC_USE_DIR / "shared"))
 
-from runtimes import AgenticEvalOrchestrator, AgenticOrchestratorConfig, runtime_for_backend
-from runtimes.shared.config import AgenticSharedConfig
+from runtimes import AgenticEvalPipeline, AgenticPipelineConfig, runtime_for_backend  # noqa: E402
+from runtimes.shared.config import AgenticSharedConfig  # noqa: E402
 
 
 async def _main() -> int:
@@ -53,18 +53,18 @@ async def _main() -> int:
         backend_kwargs["aut_agent_config"] = args.aut_agent_config
 
     runtime = runtime_for_backend(args.backend, shared_kwargs=shared.__dict__, backend_kwargs=backend_kwargs)
-    orchestrator = AgenticEvalOrchestrator(
+    pipeline = AgenticEvalPipeline(
         runtime,
-        config=AgenticOrchestratorConfig(skip_build=args.skip_build),
+        config=AgenticPipelineConfig(skip_build=args.skip_build),
     )
     if args.rescore_dir:
-        result = await orchestrator.score_captured_attempts(
+        result = await pipeline.score_captured_attempts(
             args.task,
             result_dirs=args.rescore_dir,
             output_dir=args.output_dir,
         )
     else:
-        result = await orchestrator.run_agent_eval(args.task, output_dir=args.output_dir)
+        result = await pipeline.run_agent_eval(args.task, output_dir=args.output_dir)
 
     print(f"run_id: {result.run_id}")
     print(f"attempts: {len(result.attempts)}")

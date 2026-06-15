@@ -288,15 +288,20 @@ class AgentAttemptRuntime(Protocol):
 
 
 @runtime_checkable
-class AgentAttemptSource(Protocol):
-    """Loads a previously captured attempt for a task from a stored artifact.
+class AgentAttemptSerde(Protocol):
+    """Symmetric read/write of a captured attempt to/from a stored artifact.
 
     The offline counterpart to :class:`AgentAttemptRuntime`: instead of executing
-    the agent, it adapts an already-produced run directory/file into an
-    :class:`AgentEvalAttempt` so it can be (re)scored through ``AgentEvaluator``.
+    the agent, a concrete serde is bound to a location (passed to its ``__init__``)
+    and adapts a stored artifact to/from an :class:`AgentEvalAttempt`. :meth:`read`
+    materializes a captured run so it can be (re)scored through ``AgentEvaluator``;
+    :meth:`write` persists an attempt back to the same location, so capture and
+    replay share one codec instead of two one-sided helpers.
     """
 
-    def load_attempt(self, source: str | Path, *, task: AgentEvalTask) -> AgentEvalAttempt: ...
+    def read(self) -> AgentEvalAttempt: ...
+
+    def write(self, attempt: AgentEvalAttempt) -> None: ...
 
 
 def _metric_coverage(

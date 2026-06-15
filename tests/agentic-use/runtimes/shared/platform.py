@@ -466,14 +466,33 @@ _METRIC_KEYS = (
 
 
 class ResultDirAttemptSource:
-    """``AgentAttemptSource`` adapting ``nat_runner`` ``result.json`` dirs into attempts.
+    """``AgentAttemptSerde`` for a ``nat_runner`` run directory.
 
-    Implements the SDK :class:`~nemo_evaluator_sdk.agent_eval.types.AgentAttemptSource`
-    protocol so the generic orchestrator's offline path can rescore captured runs.
+    Implements the SDK :class:`~nemo_evaluator_sdk.agent_eval.types.AgentAttemptSerde`
+    protocol so the generic pipeline's offline path can rescore captured runs. The
+    serde is bound to one directory: :meth:`read` materializes an attempt from a
+    persisted ``attempt.json`` when present, otherwise it projects ``nat_runner``'s
+    legacy ``result.json``; :meth:`write` persists an attempt back as
+    ``attempt.json`` so capture/replay round-trips through the same codec.
     """
 
-    def load_attempt(self, source: str | Path, *, task: AgentEvalTask) -> AgentEvalAttempt:
-        return attempt_from_result_dir(source, task=task)
+    ATTEMPT_FILENAME = "attempt.json"
+
+    def __init__(self, path: str | Path, *, task: AgentEvalTask | None = None) -> None:
+        self._path = Path(path)
+        self._task = task
+
+    def read(self) -> AgentEvalAttempt:
+        attempt_path = self._path / self.ATTEMPT_FILENAME
+        if attempt_path.is_file():
+            return AgentEvalAttempt.model_validate_json(attempt_path.read_text(encoding="utf-8"))
+        return attempt_from_result_dir(self._path, task=self._task)
+
+    def write(self, attempt: AgentEvalAttempt) -> None:
+        self._path.mkdir(parents=True, exist_ok=True)
+        (self._path / self.ATTEMPT_FILENAME).write_text(
+            attempt.model_dump_json(indent=2), encoding="utf-8"
+        )
 
 
 def attempt_from_result_dir(output_dir: str | Path, *, task: AgentEvalTask | None = None) -> AgentEvalAttempt:

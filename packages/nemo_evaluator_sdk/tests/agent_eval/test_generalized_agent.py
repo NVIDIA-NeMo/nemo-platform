@@ -1,24 +1,24 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Fixture-based tests for the coding-agent driver seam (no real CLIs)."""
+"""Fixture-based tests for the generalized-agent driver seam (no real CLIs)."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 import pytest
-from nemo_evaluator_sdk.agent_eval.runtimes.coding_agent import (
-    ClaudeCodeSpec,
-    CliAgentDriver,
-    CodingAgentSpec,
-    CursorAgentSpec,
+from nemo_evaluator_sdk.agent_eval.runtimes.claude_code import ClaudeCodeSpec
+from nemo_evaluator_sdk.agent_eval.runtimes.cursor_agent import CursorAgentSpec
+from nemo_evaluator_sdk.agent_eval.runtimes.generalized_agent import (
+    GeneralizedAgentDriver,
+    GeneralizedAgentSpec,
     RunArtifacts,
 )
 from nemo_evaluator_sdk.agent_eval.types import AgentEvalRunConfig, AgentEvalTask
 
 
-class _EchoSpec(CodingAgentSpec):
+class _EchoSpec(GeneralizedAgentSpec):
     name = "echo_agent"
     binary = "echo-agent"
 
@@ -66,7 +66,7 @@ def _task() -> AgentEvalTask:
 @pytest.mark.asyncio
 async def test_driver_produces_completed_attempt_with_evidence(tmp_path: Path) -> None:
     factory, captured = _factory()
-    driver = CliAgentDriver(_EchoSpec(), work_root=tmp_path, process_factory=factory)
+    driver = GeneralizedAgentDriver(_EchoSpec(), work_root=tmp_path, process_factory=factory)
 
     attempts = await driver.run_tasks([_task()], AgentEvalRunConfig())
     attempt = attempts[0]
@@ -82,7 +82,7 @@ async def test_driver_produces_completed_attempt_with_evidence(tmp_path: Path) -
 @pytest.mark.asyncio
 async def test_driver_marks_failed_on_nonzero_exit(tmp_path: Path) -> None:
     factory, _ = _factory(returncode=1, write_final=False)
-    driver = CliAgentDriver(_EchoSpec(), work_root=tmp_path, process_factory=factory)
+    driver = GeneralizedAgentDriver(_EchoSpec(), work_root=tmp_path, process_factory=factory)
 
     attempt = (await driver.run_tasks([_task()]))[0]
     assert attempt.status == "failed"
@@ -109,9 +109,9 @@ def test_reference_specs_build_expected_commands(tmp_path: Path) -> None:
 
 
 def test_driver_rejects_spec_without_binary(tmp_path: Path) -> None:
-    class _NoBinary(CodingAgentSpec):
+    class _NoBinary(GeneralizedAgentSpec):
         def build_command(self, artifacts: RunArtifacts) -> list[str]:
             return []
 
     with pytest.raises(ValueError, match="non-empty"):
-        CliAgentDriver(_NoBinary(), work_root=tmp_path)
+        GeneralizedAgentDriver(_NoBinary(), work_root=tmp_path)

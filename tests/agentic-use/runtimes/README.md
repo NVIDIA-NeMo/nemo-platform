@@ -2,8 +2,8 @@
 
 NeMo-Platform **adapter** over the generic agent-eval framework in
 `nemo_evaluator_sdk.agent_eval`. The backend-agnostic building blocks (environment
-boundary, gating, attempt/evidence helpers, orchestrator, verify mechanic,
-coding-agent driver seam) now live in the SDK; this directory holds only the
+boundary, gating, attempt/evidence helpers, pipeline, verify mechanic,
+generalized-agent driver seam) now live in the SDK; this directory holds only the
 NeMo-Platform glue (the `workflow`/`aut` backends, agentic task/result formats,
 the pytest verifier, the platform Docker build/image-tag) plus a thin factory.
 
@@ -21,7 +21,7 @@ generic comes from these SDK homes:
 | Gating (`GateThresholds`, `evaluate_gate`, `summarize_run`, …) | `agent_eval.gating` |
 | Verify mechanic (`apply_verify_to_metadata`, `collect_verifier_outcome`) | `agent_eval.runtimes.verify` |
 | `AgentPhaseSuccessMetric`, attempt-status + evidence helpers | `agent_eval.common_metrics`, `agent_eval.attempts` |
-| Generic orchestrator + run layout | `agent_eval.orchestrator`, `agent_eval.runtimes.layout` |
+| Generic pipeline + run layout | `agent_eval.pipeline`, `agent_eval.runtimes.layout` |
 
 All NeMo-Platform-specific glue is consolidated into a single module,
 `shared/platform.py`: the run layout with the platform `state_dir`, the
@@ -30,10 +30,10 @@ All NeMo-Platform-specific glue is consolidated into a single module,
 and the shared container env, attempt construction (live + `result.json`), the
 live VERIFY phase, and the agentic-use task loader.
 
-The orchestrator (`orchestrator.py`) is a thin factory over
-`agent_eval.orchestrator.AgentEvalOrchestrator`: it injects the platform image
+The pipeline (`pipeline.py`) is a thin factory over
+`agent_eval.pipeline.AgentEvalPipeline`: it injects the platform image
 build (`prepare_task`), the `run_verify`-derived `VerifierRewardMetric`
-(`extra_metrics`), and the `result.json` `AgentAttemptSource`.
+(`extra_metrics`), and the `result.json` `AgentAttemptSerde`.
 
 ## Layout
 
@@ -45,19 +45,21 @@ runtimes/
                     #   constants.py — paths / container constants
   workflow/         # NatWorkflowAttemptRuntime (implemented, NeMo construct)
   aut/              # AutAgentAttemptRuntime (implemented, NeMo construct)
-  claude_code/      # scaffold (stub) — see "Coding-agent runtimes" below
+  claude_code/      # scaffold (stub) — see "Generalized-agent runtimes" below
   codex/            # scaffold (stub)
   cursor_agent/     # scaffold (stub)
-  orchestrator.py   # thin factory over agent_eval.orchestrator.AgentEvalOrchestrator
+  pipeline.py       # thin factory over agent_eval.pipeline.AgentEvalPipeline
 ```
 
-## Coding-agent runtimes (SDK driver seam)
+## Generalized-agent runtimes (SDK driver seam)
 
-Coding-agent CLIs plug into the SDK via
-`agent_eval.runtimes.coding_agent`: `CliAgentDriver` (the reusable driver) +
-`CodingAgentSpec` (per-agent command builder + trajectory→evidence parser).
-Reference `ClaudeCodeSpec`/`CursorAgentSpec` are shipped. The profbench codex
-runtime (`agent_eval.runtimes.codex`) remains a separate, standalone-CLI runtime.
+Generalized-agent CLIs plug into the SDK via
+`agent_eval.runtimes.generalized_agent`: `GeneralizedAgentDriver` (the reusable
+driver) + `GeneralizedAgentSpec` (per-agent command builder + trajectory→evidence
+parser). Reference `ClaudeCodeSpec`/`CursorAgentSpec` ship in their own modules
+(`agent_eval.runtimes.claude_code`, `agent_eval.runtimes.cursor_agent`). The
+profbench codex runtime (`agent_eval.runtimes.codex`) remains a separate,
+standalone-CLI runtime.
 
 The agentic-use `codex`/`claude_code`/`cursor_agent` backends here are still
 stubs: wiring them to run the SDK driver *inside* the `nmp-agentic-base` Docker
@@ -79,14 +81,14 @@ uv run python tests/agentic-use/runtimes/run_agent_eval.py \
 Programmatic use:
 
 ```python
-from runtimes import AgenticEvalOrchestrator, NatWorkflowAttemptRuntime
+from runtimes import AgenticEvalPipeline, NatWorkflowAttemptRuntime
 from runtimes.shared.config import AgenticSharedConfig, WorkflowRuntimeConfig
 
 runtime = NatWorkflowAttemptRuntime(
     WorkflowRuntimeConfig(shared=AgenticSharedConfig(nvidia_api_key=os.environ.get("NVIDIA_API_KEY")))
 )
-orchestrator = AgenticEvalOrchestrator(runtime)
-result = await orchestrator.run_agent_eval("workspace-basic-cli-easy")
+pipeline = AgenticEvalPipeline(runtime)
+result = await pipeline.run_agent_eval("workspace-basic-cli-easy")
 ```
 
 See [COMPLIANCE.md](./COMPLIANCE.md) for the full `nat_runner` → runtime mapping.
@@ -120,10 +122,10 @@ Design-doc implementation path (see [COMPLIANCE.md](./COMPLIANCE.md) for detail)
 - `attempt_from_result(result_dict, output_dir=...)` projects a parsed record.
 
 Stored-attempt scoring is the SDK's first-class path. Score captured runs
-without re-executing the agent (no Docker) via the orchestrator:
+without re-executing the agent (no Docker) via the pipeline:
 
 ```python
-await orchestrator.score_captured_attempts("my-task", result_dirs=["runs/abc"])
+await pipeline.score_captured_attempts("my-task", result_dirs=["runs/abc"])
 # or:  python run_agent_eval.py --task my-task --rescore-dir runs/abc
 ```
 
@@ -133,7 +135,7 @@ still count as a `0` for gating. The verifier outcome is scored by
 `VerifierRewardMetric` (compatibility metric) rather than baked into the status.
 
 Metrics are authored **on the task** (`agentic_task_from_dir` defaults to
-`AgentPhaseSuccessMetric`); the orchestrator only *appends* `VerifierRewardMetric`
+`AgentPhaseSuccessMetric`); the pipeline only *appends* `VerifierRewardMetric`
 when `run_verify=True`. `inputs` holds only agent-facing `instruction`;
 `task_dir` lives in `task.metadata`.
 
@@ -173,7 +175,7 @@ environment:
 `load_environment_spec` falls back to detecting `environment/Dockerfile` so
 existing tasks keep working without a spec. `plan_task_build` resolves a spec to
 a `BuildPlan` (image-based specs generate a minimal `FROM <image>` + `pip install`
-Dockerfile); the orchestrator's BUILD step builds it. `setup` steps are recorded
+Dockerfile); the pipeline's BUILD step builds it. `setup` steps are recorded
 as metadata, not executed here (they are runtime concerns).
 
 ## B4 — CI / reporting + gating
@@ -193,7 +195,7 @@ report = evaluate_gate(
 write_gate_report(report, run_result.output_dir)  # -> gate.json
 ```
 
-The orchestrator emits `gate.json` automatically (`AgenticOrchestratorConfig.write_gate`,
+The pipeline emits `gate.json` automatically (`AgenticPipelineConfig.write_gate`,
 `gate_thresholds`, `baseline_summary_path`). Gate semantics match
 `passrate_token_policy_gate.py`, so summaries are interchangeable as baselines.
 
@@ -203,7 +205,7 @@ The orchestrator emits `gate.json` automatically (`AgenticOrchestratorConfig.wri
 through `AgentEnvironmentHandle.run_verifier`, in the same prepared environment
 and against the same persisted workspace/state as the agent phase. Enable it via
 `AgenticSharedConfig(run_verify=True)`; the runtime stamps `reward`/`passed`/
-`verify_status` onto the attempt metadata, and the orchestrator attaches
+`verify_status` onto the attempt metadata, and the pipeline attaches
 `VerifierRewardMetric` so the reward scores through the Evaluator SDK and feeds
 the gate.
 
