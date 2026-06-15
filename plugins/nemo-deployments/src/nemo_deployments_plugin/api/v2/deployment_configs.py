@@ -8,8 +8,9 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from nemo_deployments_plugin.api.v1.dependencies import get_entity_client
+from nemo_deployments_plugin.api.v2.dependencies import get_entity_client
 from nemo_deployments_plugin.entities import DeploymentConfig
+from nemo_deployments_plugin.references import deployment_names_using_config
 from nemo_deployments_plugin.schema import (
     CreateDeploymentConfigRequest,
     DeploymentConfigFilter,
@@ -128,6 +129,20 @@ async def delete_deployment_config(
     name: str,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
 ) -> None:
+    referencing = await deployment_names_using_config(
+        entity_client,
+        workspace=workspace,
+        config_name=name,
+    )
+    if referencing:
+        joined = ", ".join(referencing)
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"DeploymentConfig '{name}' is referenced by deployment(s): {joined}. Delete those deployments first."
+            ),
+        )
+
     try:
         await entity_client.delete(DeploymentConfig, name=name, workspace=workspace)
     except NemoEntityNotFoundError as exc:

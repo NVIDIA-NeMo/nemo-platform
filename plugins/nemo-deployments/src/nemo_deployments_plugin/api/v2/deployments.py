@@ -9,7 +9,7 @@ import logging
 from typing import cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from nemo_deployments_plugin.api.v1.dependencies import get_entity_client
+from nemo_deployments_plugin.api.v2.dependencies import get_entity_client
 from nemo_deployments_plugin.entities import Deployment, DeploymentConfig, DeploymentStatus
 from nemo_deployments_plugin.schema import CreateDeploymentRequest, DeploymentFilter, DeploymentPage
 from nemo_platform_plugin.api.filters import make_filter_obj_dep

@@ -33,14 +33,14 @@ class DeploymentsService(NemoService):
         return self._executor_registry
 
     def get_routers(self) -> list[RouterSpec]:
-        from nemo_deployments_plugin.api.v1 import (
+        from nemo_deployments_plugin.api.v2 import (
             deployment_configs,
             deployments,
             status,
             volumes,
         )
 
-        prefix = "/v1/workspaces/{workspace}"
+        prefix = "/v2/workspaces/{workspace}"
         return [
             RouterSpec(
                 deployment_configs.router,

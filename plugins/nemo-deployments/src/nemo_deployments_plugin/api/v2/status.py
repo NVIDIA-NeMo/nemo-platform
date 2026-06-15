@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
-from nemo_deployments_plugin.api.v1.dependencies import get_entity_client, require_service_principal
+from nemo_deployments_plugin.api.v2.dependencies import get_entity_client, require_service_principal
 from nemo_deployments_plugin.entities import Deployment, Volume
 from nemo_deployments_plugin.schema import UpdateDeploymentStatusRequest, UpdateVolumeStatusRequest
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError, NemoEntityNotFoundError
@@ -35,8 +35,6 @@ async def update_deployment_status(
     deployment.endpoints = body.endpoints
     deployment.exit_code = body.exit_code
     deployment.error_details = body.error_details
-    if body.status_history is not None:
-        deployment.status_history = body.status_history
 
     try:
         return await entity_client.update(deployment)

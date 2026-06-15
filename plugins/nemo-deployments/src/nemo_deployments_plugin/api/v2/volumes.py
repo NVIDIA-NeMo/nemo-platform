@@ -6,8 +6,9 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from nemo_deployments_plugin.api.v1.dependencies import get_entity_client
+from nemo_deployments_plugin.api.v2.dependencies import get_entity_client
 from nemo_deployments_plugin.entities import Volume
+from nemo_deployments_plugin.references import deployment_config_names_referencing_volume
 from nemo_deployments_plugin.schema import CreateVolumeRequest, VolumeFilter, VolumePage
 from nemo_platform_plugin.api.filters import make_filter_obj_dep
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError, NemoEntityNotFoundError
@@ -82,6 +83,21 @@ async def delete_volume(
     name: str,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
 ) -> None:
+    referencing = await deployment_config_names_referencing_volume(
+        entity_client,
+        workspace=workspace,
+        volume_name=name,
+    )
+    if referencing:
+        joined = ", ".join(referencing)
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Volume '{name}' is referenced by deployment-config(s): {joined}. "
+                "Remove volume mounts from those configs first."
+            ),
+        )
+
     try:
         await entity_client.delete(Volume, name=name, workspace=workspace)
     except NemoEntityNotFoundError as exc:

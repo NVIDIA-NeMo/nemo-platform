@@ -19,11 +19,11 @@ def _mounted_paths() -> set[str]:
 
 def test_service_mounts_core_routes() -> None:
     paths = _mounted_paths()
-    assert "/apis/deployments/v1/workspaces/{workspace}/deployment-configs" in paths
-    assert "/apis/deployments/v1/workspaces/{workspace}/deployments" in paths
-    assert "/apis/deployments/v1/workspaces/{workspace}/volumes" in paths
-    assert "/apis/deployments/v1/workspaces/{workspace}/deployments/{name}/status" in paths
-    assert "/apis/deployments/v1/workspaces/{workspace}/volumes/{name}/status" in paths
+    assert "/apis/deployments/v2/workspaces/{workspace}/deployment-configs" in paths
+    assert "/apis/deployments/v2/workspaces/{workspace}/deployments" in paths
+    assert "/apis/deployments/v2/workspaces/{workspace}/volumes" in paths
+    assert "/apis/deployments/v2/workspaces/{workspace}/deployments/{name}/status" in paths
+    assert "/apis/deployments/v2/workspaces/{workspace}/volumes/{name}/status" in paths
 
 
 def test_service_name_matches_entry_point() -> None:

@@ -20,7 +20,6 @@ from nemo_deployments_plugin.entities import (
     Endpoint,
     Prerequisite,
     RestartPolicy,
-    StatusEvent,
     Volume,
     VolumeBackendConfig,
     VolumeMount,
@@ -64,7 +63,6 @@ class UpdateDeploymentStatusRequest(BaseModel):
     endpoints: list[Endpoint] = Field(default_factory=list)
     exit_code: int | None = None
     error_details: dict[str, Any] | None = None
-    status_history: list[StatusEvent] | None = None
 
 
 class UpdateVolumeStatusRequest(BaseModel):

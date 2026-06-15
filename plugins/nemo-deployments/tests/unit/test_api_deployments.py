@@ -9,8 +9,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from helpers import list_response, make_deployment, make_deployment_config
-from nemo_deployments_plugin.api.v1 import deployments as deployments_module
-from nemo_deployments_plugin.api.v1.dependencies import get_entity_client
+from nemo_deployments_plugin.api.v2 import deployments as deployments_module
+from nemo_deployments_plugin.api.v2.dependencies import get_entity_client
 from nemo_platform_plugin.entity_client import NemoEntityConflictError, NemoEntityNotFoundError
 
 
@@ -24,7 +24,7 @@ def client(mock_entity_client: AsyncMock) -> TestClient:
     app = FastAPI()
     app.include_router(
         deployments_module.router,
-        prefix="/apis/deployments/v1/workspaces/{workspace}",
+        prefix="/apis/deployments/v2/workspaces/{workspace}",
     )
     app.dependency_overrides[get_entity_client] = lambda: mock_entity_client
     return TestClient(app, raise_server_exceptions=False)
@@ -33,7 +33,7 @@ def client(mock_entity_client: AsyncMock) -> TestClient:
 def test_create_deployment_validates_config(client: TestClient, mock_entity_client: AsyncMock) -> None:
     mock_entity_client.get.side_effect = NemoEntityNotFoundError("missing")
     resp = client.post(
-        "/apis/deployments/v1/workspaces/default/deployments",
+        "/apis/deployments/v2/workspaces/default/deployments",
         json={"name": "dep1", "deployment_config_name": "missing"},
     )
     assert resp.status_code == 404
@@ -43,7 +43,7 @@ def test_create_deployment_201(client: TestClient, mock_entity_client: AsyncMock
     mock_entity_client.get.return_value = make_deployment_config()
     mock_entity_client.create.return_value = make_deployment()
     resp = client.post(
-        "/apis/deployments/v1/workspaces/default/deployments",
+        "/apis/deployments/v2/workspaces/default/deployments",
         json={"name": "dep1", "deployment_config_name": "cfg1"},
     )
     assert resp.status_code == 201
@@ -53,7 +53,7 @@ def test_create_deployment_201(client: TestClient, mock_entity_client: AsyncMock
 def test_list_deployments_status_in(client: TestClient, mock_entity_client: AsyncMock) -> None:
     mock_entity_client.list.return_value = list_response([make_deployment()])
     resp = client.get(
-        "/apis/deployments/v1/workspaces/default/deployments",
+        "/apis/deployments/v2/workspaces/default/deployments",
         params={"status_in": "pending,starting"},
     )
     assert resp.status_code == 200
@@ -65,7 +65,7 @@ def test_list_deployments_status_in(client: TestClient, mock_entity_client: Asyn
 
 def test_list_deployments_invalid_status_in_400(client: TestClient) -> None:
     resp = client.get(
-        "/apis/deployments/v1/workspaces/default/deployments",
+        "/apis/deployments/v2/workspaces/default/deployments",
         params={"status_in": "banana"},
     )
     assert resp.status_code == 400
@@ -74,7 +74,7 @@ def test_list_deployments_invalid_status_in_400(client: TestClient) -> None:
 def test_delete_deployment_marks_deleting(client: TestClient, mock_entity_client: AsyncMock) -> None:
     deployment = make_deployment()
     mock_entity_client.get.return_value = deployment
-    resp = client.delete("/apis/deployments/v1/workspaces/default/deployments/dep1")
+    resp = client.delete("/apis/deployments/v2/workspaces/default/deployments/dep1")
     assert resp.status_code == 204
     mock_entity_client.update.assert_awaited_once()
     updated = mock_entity_client.update.await_args.args[0]
@@ -84,5 +84,5 @@ def test_delete_deployment_marks_deleting(client: TestClient, mock_entity_client
 def test_delete_deployment_conflict_409(client: TestClient, mock_entity_client: AsyncMock) -> None:
     mock_entity_client.get.return_value = make_deployment()
     mock_entity_client.update.side_effect = NemoEntityConflictError("conflict")
-    resp = client.delete("/apis/deployments/v1/workspaces/default/deployments/dep1")
+    resp = client.delete("/apis/deployments/v2/workspaces/default/deployments/dep1")
     assert resp.status_code == 409

@@ -9,8 +9,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from helpers import make_deployment, make_volume
-from nemo_deployments_plugin.api.v1 import status as status_module
-from nemo_deployments_plugin.api.v1.dependencies import get_entity_client
+from nemo_deployments_plugin.api.v2 import status as status_module
+from nemo_deployments_plugin.api.v2.dependencies import get_entity_client
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 
 _SERVICE_HEADERS = {"X-NMP-Principal-Id": "service:deployments"}
@@ -27,7 +27,7 @@ def client(mock_entity_client: AsyncMock) -> TestClient:
     app = FastAPI()
     app.include_router(
         status_module.router,
-        prefix="/apis/deployments/v1/workspaces/{workspace}",
+        prefix="/apis/deployments/v2/workspaces/{workspace}",
     )
     app.dependency_overrides[get_entity_client] = lambda: mock_entity_client
     return TestClient(app, raise_server_exceptions=False)
@@ -35,7 +35,7 @@ def client(mock_entity_client: AsyncMock) -> TestClient:
 
 def test_status_put_rejects_user(client: TestClient) -> None:
     resp = client.put(
-        "/apis/deployments/v1/workspaces/default/deployments/dep1/status",
+        "/apis/deployments/v2/workspaces/default/deployments/dep1/status",
         json={"status": "READY"},
         headers=_USER_HEADERS,
     )
@@ -44,7 +44,7 @@ def test_status_put_rejects_user(client: TestClient) -> None:
 
 def test_status_put_ignores_on_behalf_of_for_auth(client: TestClient) -> None:
     resp = client.put(
-        "/apis/deployments/v1/workspaces/default/deployments/dep1/status",
+        "/apis/deployments/v2/workspaces/default/deployments/dep1/status",
         json={"status": "READY"},
         headers={
             "X-NMP-Principal-Id": "user@example.com",
@@ -58,7 +58,7 @@ def test_status_put_accepts_service_principal(client: TestClient, mock_entity_cl
     mock_entity_client.get.return_value = make_deployment()
     mock_entity_client.update.return_value = make_deployment()
     resp = client.put(
-        "/apis/deployments/v1/workspaces/default/deployments/dep1/status",
+        "/apis/deployments/v2/workspaces/default/deployments/dep1/status",
         json={"status": "READY", "status_message": "up"},
         headers=_SERVICE_HEADERS,
     )
@@ -69,7 +69,7 @@ def test_volume_status_put_accepts_service_principal(client: TestClient, mock_en
     mock_entity_client.get.return_value = make_volume()
     mock_entity_client.update.return_value = make_volume()
     resp = client.put(
-        "/apis/deployments/v1/workspaces/default/volumes/vol1/status",
+        "/apis/deployments/v2/workspaces/default/volumes/vol1/status",
         json={"status": "BOUND"},
         headers=_SERVICE_HEADERS,
     )
@@ -79,7 +79,7 @@ def test_volume_status_put_accepts_service_principal(client: TestClient, mock_en
 def test_status_put_404(client: TestClient, mock_entity_client: AsyncMock) -> None:
     mock_entity_client.get.side_effect = NemoEntityNotFoundError("missing")
     resp = client.put(
-        "/apis/deployments/v1/workspaces/default/deployments/missing/status",
+        "/apis/deployments/v2/workspaces/default/deployments/missing/status",
         json={"status": "READY"},
         headers=_SERVICE_HEADERS,
     )
