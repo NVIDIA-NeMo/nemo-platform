@@ -99,7 +99,6 @@ class BaseJobRequest(BaseModel, Generic[JobConfigT]):
     ownership: dict | None = None
     custom_fields: dict | None = None
     profile: str | None = None
-    options: dict | None = None
 
 
 class BaseJob(BaseModel, Generic[JobConfigT]):

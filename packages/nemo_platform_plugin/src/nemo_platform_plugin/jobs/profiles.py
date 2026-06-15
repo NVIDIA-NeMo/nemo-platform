@@ -35,9 +35,10 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Literal
+from typing import Literal
 
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform.types.jobs.job_list_execution_profiles_response import JobListExecutionProfilesResponseItem
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 
 ExecutorKind = Literal["container", "subprocess"]
@@ -51,18 +52,20 @@ logger = logging.getLogger(__name__)
 # execution profiles.
 
 _CACHE_TTL_SECONDS = 300  # 5 minutes
-_cache: dict[str, Any] = {"profiles": None, "fetched_at": 0.0}
+_cached_profiles: list[JobListExecutionProfilesResponseItem] | None = None
+_cached_at: float = 0.0
 
 
-async def _fetch_execution_profiles(sdk: AsyncNeMoPlatform) -> list[Any]:
+async def _fetch_execution_profiles(sdk: AsyncNeMoPlatform) -> list[JobListExecutionProfilesResponseItem]:
     """Fetch execution profiles from the Jobs service, with caching."""
+    global _cached_profiles, _cached_at
     now = time.monotonic()
-    if _cache["profiles"] is not None and (now - _cache["fetched_at"]) < _CACHE_TTL_SECONDS:
-        return _cache["profiles"]
+    if _cached_profiles is not None and (now - _cached_at) < _CACHE_TTL_SECONDS:
+        return _cached_profiles
 
     profiles = await sdk.jobs.list_execution_profiles()
-    _cache["profiles"] = profiles
-    _cache["fetched_at"] = now
+    _cached_profiles = profiles
+    _cached_at = now
     return profiles
 
 
@@ -90,10 +93,8 @@ async def resolve_profile_kind(
     """
     profiles = await _fetch_execution_profiles(sdk)
     for p in profiles:
-        if getattr(p, "provider", None) == provider and getattr(p, "profile", None) == profile:
-            kind = getattr(p, "kind", None)
-            if kind is not None:
-                return kind
+        if p.provider == provider and p.profile == profile and p.kind is not None:
+            return p.kind
 
     raise PlatformJobCompilationError(
         f"Execution profile '{provider}/{profile}' not found. "
