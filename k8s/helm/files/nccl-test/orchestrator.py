@@ -160,7 +160,9 @@ def _print_pod_status_snapshot(v1, ns, name):
     for cs in st.container_statuses or []:
         parts = [f"ready={cs.ready}", f"restart_count={cs.restart_count}"]
         state = cs.state
-        if state.waiting:
+        if state is None:
+            parts.append("state=unknown")
+        elif state.waiting:
             parts.append(f"waiting reason={state.waiting.reason} msg={state.waiting.message or ''}")
         elif state.terminated:
             t = state.terminated
