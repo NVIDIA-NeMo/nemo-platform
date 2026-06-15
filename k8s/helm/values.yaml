@@ -36,7 +36,7 @@ secrets:
         create: true
         # -- Annotations to add to the key generation hook service account.
         annotations: {}
-        # -- The name of the service account to use. If not set and create is true, a name is generated using the fullname template.
+        # -- The name of the service account to use. Required when create is false. If not set and create is true, a name is generated using the fullname template.
         name: ""
       # -- Number of retries before the key generation hook is marked failed.
       backoffLimit: 3

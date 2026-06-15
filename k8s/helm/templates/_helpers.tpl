@@ -199,7 +199,7 @@ ServiceAccount name for the key generation hook.
 {{- if .Values.secrets.defaultEncryptionKey.generated.serviceAccount.create -}}
 {{- default (include "nemo-platform.defaultEncryptionKeyGeneratorName" .) .Values.secrets.defaultEncryptionKey.generated.serviceAccount.name -}}
 {{- else -}}
-{{- default "default" .Values.secrets.defaultEncryptionKey.generated.serviceAccount.name -}}
+{{- required "secrets.defaultEncryptionKey.generated.serviceAccount.name is required when secrets.defaultEncryptionKey.generated.serviceAccount.create is false" .Values.secrets.defaultEncryptionKey.generated.serviceAccount.name -}}
 {{- end -}}
 {{- end -}}
 

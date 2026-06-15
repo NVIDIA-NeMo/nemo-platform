@@ -307,7 +307,7 @@ secrets will not decrypt with a new key.
 | secrets.defaultEncryptionKey.generated.securityContext | object | `{}` | Optional container security context for the key generation hook. |
 | secrets.defaultEncryptionKey.generated.serviceAccount.annotations | object | `{}` | Annotations to add to the key generation hook service account. |
 | secrets.defaultEncryptionKey.generated.serviceAccount.create | bool | `true` | Specifies whether a service account should be created for the key generation hook. |
-| secrets.defaultEncryptionKey.generated.serviceAccount.name | string | `""` | The name of the service account to use. If not set and create is true, a name is generated using the fullname template. |
+| secrets.defaultEncryptionKey.generated.serviceAccount.name | string | `""` | The name of the service account to use. Required when create is false. If not set and create is true, a name is generated using the fullname template. |
 | secrets.defaultEncryptionKey.generated.tolerations | list | `[]` | Tolerations for the key generation hook. |
 | secrets.defaultEncryptionKey.generated.ttlSecondsAfterFinished | int | `300` | Seconds to keep the key generation hook Job after it finishes, if the hook is not deleted first. |
 | secrets.defaultEncryptionKey.value | string | `""` | Optional base64-encoded key for encrypting platform secrets. The decoded key must be at least 32 bytes. If empty and envFromSecret is not set, a pre-install hook generates a per-install key. |
