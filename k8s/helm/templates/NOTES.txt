@@ -67,7 +67,7 @@ Successfully installed {{ .Chart.Name }}-{{ .Chart.Version }}, named {{ .Release
      > nemo auth login --base-url <URL> (If authentication is enabled)
      > nemo workspaces list
 
-  Documentation: https://docs.nvidia.com/nemo/microservices/
+  Documentation: https://docs.nvidia.com/nemo-platform
 
 {{- if .Values.postgresql.enabled }}
 
