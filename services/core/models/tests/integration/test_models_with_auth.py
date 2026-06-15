@@ -19,7 +19,7 @@ Uses the create_test_client pattern with auth_enabled=True for fast in-memory te
 
 from contextlib import contextmanager
 from typing import Generator
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import pytest
 from nemo_platform import NeMoPlatform, PermissionDeniedError
@@ -1333,20 +1333,8 @@ class TestTrustRemoteCodePermission:
     """
 
     @pytest.fixture(autouse=True)
-    def _mock_hf_storage(self):
-        """Prevent real HuggingFace API calls during fileset creation.
-
-        These tests verify authorization logic, not HF connectivity.
-        Mocking the HfApi avoids rate-limit failures in CI.
-        """
-        with patch("nmp.core.files.app.backends.huggingface.HfApi") as mock_cls:
-            mock_api = Mock()
-            mock_repo_info = Mock()
-            mock_repo_info.sha = "abc123mocked"
-            mock_repo_info.siblings = []  # skip file metadata check
-            mock_api.repo_info.return_value = mock_repo_info
-            mock_cls.return_value = mock_api
-            yield
+    def _no_hf(self, no_hf_network):
+        """These tests verify authorization logic, not HF connectivity."""
 
     def test_create_model_trust_remote_code_true_has_permission_succeeds(self, sdk: NeMoPlatform):
         """Create with trust_remote_code=True succeeds when principal has models.trust-remote-code.set (repo not on allow list)."""
