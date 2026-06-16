@@ -3,11 +3,16 @@
 
 """Post-training evaluation helpers — keep eval dataset shape aligned with CHAT training JSONL.
 
-LoRA adapters registered on the model entity are hot-reloaded automatically on
-deployments with ``lora_enabled: true`` — no deployment update before eval.
+**LoRA** (``output.save_method: lora``): adapters registered on the base model entity
+are hot-reloaded on deployments with ``lora_enabled: true`` — no deployment update or
+new inference deployment before eval.
 
-Run from the nemo-platform git root (reads ``$NMP_BASE_URL`` / ``$NEMO_BASE_URL`` when
-``--base-url`` is omitted)::
+**Full SFT** (``finetuning_type: all_weights``) or **merged LoRA checkpoints**
+(``save_method: merged_16bit`` / ``merged_4bit``): the job registers a new **model**
+entity at ``output.name``. Deploy that entity for inference before chat or eval — full
+weights are not hot-reloaded onto the base model's deployment.
+
+Run from the nemo-platform git root (reads ``$NMP_BASE_URL`` when ``--base-url`` is omitted)::
 
     export NMP_BASE_URL=http://127.0.0.1:8080
     uv run python plugins/nemo-customizer/src/nemo_customizer/skills/nemo-customizer/references/eval_helpers.py \\
@@ -355,17 +360,18 @@ def build_platform_model_target(
     from nemo_evaluator_sdk.enums import ModelFormat
     from nemo_evaluator_sdk.values.models import Model
 
-    if adapter_name:
-        resolved_provider = provider_name or find_ready_provider_for_model_entity(
-            base_url=base_url,
-            workspace=workspace,
-            model_entity=model_entity,
+    resolved_provider = provider_name or find_ready_provider_for_model_entity(
+        base_url=base_url,
+        workspace=workspace,
+        model_entity=model_entity,
+    )
+    if not resolved_provider:
+        raise ValueError(
+            f"No READY inference provider serves {workspace}/{model_entity}. "
+            "Deploy the base model (with lora_enabled: true for LoRA eval) or pass --provider <name>."
         )
-        if not resolved_provider:
-            raise ValueError(
-                f"No READY inference provider serves {workspace}/{model_entity}. "
-                "Deploy the base model with lora_enabled: true or pass --provider <name>."
-            )
+
+    if adapter_name:
         return Model(
             url=provider_gateway_url(
                 base_url=base_url,
@@ -658,7 +664,7 @@ def build_eval_payload(
 
 def default_base_url() -> str:
     """Platform URL from env or localhost default."""
-    return os.environ.get("NMP_BASE_URL") or os.environ.get("NEMO_BASE_URL") or "http://127.0.0.1:8080"
+    return os.environ.get("NMP_BASE_URL") or "http://127.0.0.1:8080"
 
 
 def _parse_args() -> argparse.Namespace:
@@ -666,7 +672,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--base-url",
         default=default_base_url(),
-        help="Platform URL (default: $NMP_BASE_URL, $NEMO_BASE_URL, or http://127.0.0.1:8080)",
+        help="Platform URL (default: $NMP_BASE_URL or http://127.0.0.1:8080)",
     )
     parser.add_argument("--workspace", default="default")
     parser.add_argument("--model-entity", required=True)

@@ -50,16 +50,32 @@ For thinking-enabled eval, set `reasoning=ReasoningParams(end_token="``")` **and
 
 ## Inference after customization (wrap-up)
 
-Include this in the **Using the adapter** section of every completed customization report. Agents must discover `<provider>` from `nemo inference providers list --workspace default -f json` and fill concrete URLs — do not leave placeholders.
+Include this in the completed-job report. Agents must discover `<provider>` from `nemo inference providers list --workspace default -f json` and fill concrete URLs — do not leave placeholders.
 
-### LoRA adapters load automatically
+### LoRA adapters: no new deployment
 
-After a customization job reaches **`completed`**, the platform registers the adapter on the base **model entity**. On a deployment with **`lora_enabled: true`**, enabled adapters are **hot-reloaded automatically** (adapter sidecar → vLLM). **Do not** update the deployment, re-create providers, or add the adapter to a `served_models` list before post-training eval — run eval as soon as the job completes.
+Applies when the job used **`finetuning_type: lora`** and **`output.save_method: lora`** (adapter output).
+
+After a customization job reaches **`completed`**, the platform registers the adapter on the base **model entity**. On a deployment with **`lora_enabled: true`**, enabled adapters are **hot-reloaded automatically** (adapter sidecar → vLLM). **Do not** create a new inference deployment, update the deployment, re-create providers, or add the adapter to a `served_models` list before post-training eval — run eval as soon as the job completes.
 
 | Prerequisite (one-time) | Per-adapter step after training |
 |-------------------------|----------------------------------|
-| A **READY** inference deployment for the base model entity with `lora_enabled: true` | Confirm adapter appears under `nemo models get <model-entity>` → `adapters` |
-| Gateway reachable at the model-entity URL below | Target the adapter by name in the eval request (see table) |
+| A **READY** inference deployment for the **base** model entity with `lora_enabled: true` | Confirm adapter appears under `nemo models get <model-entity>` → `adapters` |
+| Gateway reachable at the provider URL below | Target the adapter by name in the eval request (see table) |
+
+### Full SFT / merged checkpoints: deploy the output model
+
+Applies when the job used **`finetuning_type: all_weights`** (full-weight SFT) or **`save_method: merged_16bit` / `merged_4bit`** (merged LoRA checkpoint). Output `type` is **`model`**, not `adapter`.
+
+The fine-tuned weights live on a **new model entity** at `output.name` (`default/<output.name>`). **You must deploy that entity for inference** — create a new inference deployment or add it to a provider's `served_models` before chat or eval. Full checkpoints are **not** hot-reloaded onto the base model's LoRA deployment.
+
+| Step | Action |
+|------|--------|
+| Confirm registration | `nemo models get <output.name> --workspace default` — entity exists with fine-tuned weights |
+| Deploy for inference | Create or update an inference deployment / provider that serves `default/<output.name>` |
+| Inference / eval route | **Model-entity** URL on `<output.name>` with `model: default/<output.name>` (not the base entity) |
+
+Post-training eval for full models: compare against the base entity on its deployment, or eval the fine-tuned entity directly via `eval_helpers.py` is LoRA-oriented (`--adapter`); for full SFT, run generation eval against the **output** model entity's gateway URL.
 
 ### Request routing (base vs LoRA)
 
@@ -70,9 +86,7 @@ The model-entity proxy path **always** resolves to the base VirtualModel. Settin
 | Base entity | **Model entity** | `$NMP_BASE_URL/apis/inference-gateway/v2/workspaces/default/model/<model-entity>/-/v1` | `default/<model-entity>` |
 | LoRA adapter | **Provider** | `$NMP_BASE_URL/apis/inference-gateway/v2/workspaces/default/provider/<provider>/-/v1` | `default--<adapter-name>` |
 
-(`NEMO_BASE_URL` is an alias for `NMP_BASE_URL`.)
-
-`eval_helpers.py` auto-discovers a READY provider that serves the base entity (or pass `--provider <name>`). Adapter weights still hot-reload on the deployment — no provider update per adapter.
+`eval_helpers.py` auto-discovers a READY provider that serves the base entity (or pass `--provider <name>`). LoRA adapter weights hot-reload on that deployment — no provider update per adapter. (Full SFT / merged outputs need a separate deployment — see above.)
 
 Optional sanity checks:
 
@@ -104,7 +118,7 @@ Resolve adapter names from completed job specs instead of guessing:
 import os
 from eval_helpers import list_completed_job_adapters, compare_adapters, build_eval_payload
 
-base_url = os.environ.get("NMP_BASE_URL") or os.environ.get("NEMO_BASE_URL") or "http://127.0.0.1:8080"
+base_url = os.environ.get("NMP_BASE_URL") or "http://127.0.0.1:8080"
 
 jobs = list_completed_job_adapters(
     base_url=base_url,

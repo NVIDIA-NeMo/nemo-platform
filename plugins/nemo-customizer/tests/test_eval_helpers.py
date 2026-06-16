@@ -69,9 +69,23 @@ def test_build_platform_model_target_routes_base_via_model_entity() -> None:
         base_url="http://10.0.0.51:8080",
         workspace="default",
         model_entity="qwen3-1.7b",
+        provider_name="my-provider",
     )
     assert "/model/qwen3-1.7b/-/v1" in target.url
+    assert "/provider/" not in target.url
     assert target.name == "default/qwen3-1.7b"
+
+
+def test_build_platform_model_target_requires_ready_provider_for_base(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(eval_helpers, "find_ready_provider_for_model_entity", lambda **kwargs: None)
+    with pytest.raises(ValueError, match="No READY inference provider"):
+        eval_helpers.build_platform_model_target(
+            base_url="http://10.0.0.51:8080",
+            workspace="default",
+            model_entity="qwen3-1.7b",
+        )
 
 
 def test_gateway_path_from_url() -> None:
