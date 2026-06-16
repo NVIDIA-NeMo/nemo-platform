@@ -11,8 +11,7 @@
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit --noErrorTruncation",
     "typecheck:go": "tsgo --noEmit --noErrorTruncation",
-    "sortEnv": "tsx ./src/sortEnv.ts ",
-    "rename-nemo-studio": "tsx ./src/rename-nemo-studio.ts"
+    "sortEnv": "tsx ./src/sortEnv.ts "
   },
   "devDependencies": {
     "@types/node": "catalog:",

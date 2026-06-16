@@ -28,9 +28,21 @@ outputs:
   docker:
     description: "'true' if any Docker build files changed"
     value: ${{ steps.filter.outputs.docker }}
+  docker-scripts:
+    description: "'true' if scripts directly invoked by Docker builds changed"
+    value: ${{ steps.filter.outputs.docker-scripts }}
   helm:
     description: "'true' if any Helm chart files changed"
     value: ${{ steps.filter.outputs.helm }}
+  python-runtime:
+    description: "'true' if Python runtime packages, services, plugins, or SDK files changed"
+    value: ${{ steps.filter.outputs.python-runtime }}
+  k8s-smoke:
+    description: "'true' if Kubernetes smoke test support files changed"
+    value: ${{ steps.filter.outputs.k8s-smoke }}
+  cpu-smoke:
+    description: "'true' if CPU smoke image or Kubernetes smoke test inputs changed"
+    value: ${{ steps.filter.outputs.deps == 'true' || steps.filter.outputs.docker == 'true' || steps.filter.outputs.docker-scripts == 'true' || steps.filter.outputs.helm == 'true' || steps.filter.outputs.openapi == 'true' || steps.filter.outputs.python-runtime == 'true' || steps.filter.outputs.web-studio == 'true' || steps.filter.outputs.k8s-smoke == 'true' }}
 
 runs:
   using: "composite"
@@ -66,9 +78,22 @@ runs:
             - 'docker-bake.hcl'
             - 'docker/**'
             - 'Makefile'
+          docker-scripts:
+            - 'script/install_duckdb_extensions.sh'
+            - 'script/build_policy_wasm.sh'
           helm:
             - 'k8s/**'
             - 'tools/lint/lint-helm.sh'
             - '.github/workflows/ci.yaml'
             - '.github/actions/changes/action.yaml'
             - '.pre-commit-config.yaml'
+          python-runtime:
+            - 'packages/**'
+            - 'services/**'
+            - 'plugins/**'
+            - 'sdk/python/nemo-platform/**'
+          k8s-smoke:
+            - 'e2e/k8s/scripts/**'
+            - 'e2e/k8s/values/**'
+            - 'e2e/test_jobs.py'
+            - '.github/actions/free-disk-space/action.yaml'

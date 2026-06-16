@@ -46,7 +46,7 @@ Combine **`coverage-final.json`** with judgment—**do not** use only the bottom
 - Sort by low **`lines.pct`** / **`statements.pct`** among included source files.
 - **Prefer:** logic-heavy modules, hooks, API glue, non-trivial components, error paths.
 - **Skip or defer:** thin re-exports, empty barrels, generated-only files, trivial constants (unless user asked otherwise).
-- **Exclude:** `*.spec.*`, `*.test.*`, `e2e-tests/**`, `node_modules/**`, outside **`coverage.include`**.
+- **Exclude:** `*.test.*`, `e2e-tests/**`, `node_modules/**`, outside **`coverage.include`**.
 
 Output a **numbered list** (path, %, one-line rationale). **Do not wait for approval** unless the user explicitly asked to confirm the list; proceed to the loop.
 
@@ -73,15 +73,15 @@ If the file is **untestable without refactor**, add a **short skip note** in the
 
 - **React:** **`web/.agents/skills/unit-test/SKILL.md`** (RTL, MSW, `findBy*`, `vi.mock`).
 - **Non-React:** Vitest + **`vi.mock`** as needed.
-- Colocate **`*.spec.ts` / `*.spec.tsx`** unless the package uses another established pattern.
+- Colocate **`*.test.ts` / `*.test.tsx`** unless the package uses another established pattern.
 
 ### 3d. Verify before next file
 
-1. `pnpm vitest --run path/to/File.spec.ts` (and any related specs) until **exit 0**.
+1. `pnpm vitest --run path/to/File.test.ts` (and any related specs) until **exit 0**.
 2. **`pnpm typecheck`**; **`pnpm typecheck:go`** if defined. Fix TypeScript issues (TanStack context, SDK types, etc.).
 3. Optionally re-run coverage for the package and note improvement for that file.
 
-Keep a **running list** of every file path you **create or edit** during §3 (new **`*.spec.*`**, and any production files you touch). You will pass that list to eslint in §4.
+Keep a **running list** of every file path you **create or edit** during §3 (new **`*.test.*`**, and any production files you touch). You will pass that list to eslint in §4.
 
 You may fix obvious **ESLint** issues (e.g. **`import/order`**) during §3d when **`typecheck`** is already clean.
 
@@ -92,7 +92,7 @@ When **all** shortlist iterations in §3 are finished (not after each file):
 1. `cd web/packages/<target>`.
 2. From **`package.json`**, read the **`lint`** script and reuse the **same eslint flags** as the project (everything after the `eslint` command—e.g. **`--report-unused-disable-directives --max-warnings 0`** for Studio), but **replace the path glob** (e.g. `.`) with **only your tracked file paths**:
    ```bash
-   pnpm exec eslint --report-unused-disable-directives --max-warnings 0 path/to/A.spec.ts path/to/B.spec.ts
+   pnpm exec eslint --report-unused-disable-directives --max-warnings 0 path/to/A.test.ts path/to/B.test.ts
    ```
 3. If the package uses **`lint:fix`** for local workflow, you may run **`pnpm exec eslint --fix ...`** with the **same file list** first, then re-run without **`--fix`** if needed to confirm **exit 0**.
 4. Fix any reported issues until eslint exits **0** on that list.

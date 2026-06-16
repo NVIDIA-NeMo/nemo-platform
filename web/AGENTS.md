@@ -40,7 +40,7 @@ Cursor/Claude skills for this monorepo live under **`web/.agents/skills/`** (for
 - **Never invoke `vitest` directly** (e.g. `pnpm vitest --run`). Always go through a package's `test` script so env/config (e.g. `NODE_OPTIONS=--max-old-space-size=10240` in `studio`) is applied.
 - Use one of these patterns from `web/`:
   - Whole package: `pnpm --filter <package-name> test` (e.g. `pnpm --filter nemo-studio-ui test`, `pnpm --filter @nemo/common test`)
-  - Targeted file: `pnpm --filter <package-name> test path/to/file.spec.tsx`
+  - Targeted file: `pnpm --filter <package-name> test path/to/file.test.tsx`
 
 ## CI Scripts Convention
 

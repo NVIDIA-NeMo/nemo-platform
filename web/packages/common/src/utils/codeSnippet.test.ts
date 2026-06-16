@@ -1,7 +1,11 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { getLanguageFromFilePath, isCodeSnippetLanguage, languageInCode } from './codeSnippet';
+import {
+  getLanguageFromFilePath,
+  isCodeSnippetLanguage,
+  languageInCode,
+} from '@nemo/common/src/utils/codeSnippet';
 
 describe('isCodeSnippetLanguage', () => {
   it('returns true for supported languages', () => {
