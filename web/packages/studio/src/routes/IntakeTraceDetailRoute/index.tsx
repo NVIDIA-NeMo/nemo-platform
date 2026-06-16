@@ -153,6 +153,7 @@ export const IntakeTraceDetailContent: FC<IntakeTraceDetailContentProps> = ({
               showHierarchy
               emptyHeader="No Spans"
               emptyMessage="No spans were found for this trace."
+              onRowClick={parentBreadcrumbs ? null : undefined}
             />
           </Stack>
           <Stack gap="density-2xl" className="min-w-0">
@@ -206,12 +207,16 @@ export const IntakeTraceDetailContent: FC<IntakeTraceDetailContentProps> = ({
                     label="Root Span"
                     value={
                       trace.root_span_id ? (
-                        <Link
-                          to={getIntakeSpanRoute(workspace, trace.root_span_id)}
-                          className="break-all"
-                        >
-                          {trace.root_span_id}
-                        </Link>
+                        parentBreadcrumbs ? (
+                          trace.root_span_id
+                        ) : (
+                          <Link
+                            to={getIntakeSpanRoute(workspace, trace.root_span_id)}
+                            className="break-all"
+                          >
+                            {trace.root_span_id}
+                          </Link>
+                        )
                       ) : (
                         EMPTY_VALUE
                       )
