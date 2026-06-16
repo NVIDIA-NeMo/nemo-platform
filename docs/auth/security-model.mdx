@@ -8,46 +8,25 @@ For hands-on setup, see [Auth Configuration](/documentation/access-control/deplo
 
 ## Architecture Overview
 
-```text
- ┌─────┐
- │ IdP │
- └──▲──┘
- │
- Validate credentials
- │
- ┌────────┐ │
- │ Client │──── Bearer token ────┐ │
- └────────┘ │ │
- │ │
-┌────────────────────────────────┼───────┼───────────────────────────────────┐
-│ Trust Boundary │ │
-│ │ │ │
-│ ┌───────────▼───┐ │ │
-│ │ Gateway │───┘ │
-│ │ (e.g. Envoy)│ │
-│ │ │── X-NMP-Principal-* ──►┌────────────┐ │
-│ └───────┬───────┘ │ PDP │ │
-│ │ │ (Embedded │ │
-│ │◄──── Allow/Deny ───────────────│ or OPA) │ │
-│ │ └─────┬──────┘ │
-│ │ │ │
-│ X-NMP-Principal-* Fetches policy │
-│ X-NMP-Authorized + role data │
-│ │ │ │
-│ ▼ ▼ │
-│ ┌─────────┐ Check permissions ┌──────────────┐ │
-│ │ Service │◄───────────────────────►│ │ │
-│ │ │ (if not pre-authorized) │ Auth Service │ │
-│ └────┬────┘ │ │ │
-│ │ └──────────────┘ │
-│ Forward X-NMP-Principal-* │
-│ │ │
-│ ▼ │
-│ ┌──────────┐ │
-│ │Downstream│ (Jobs, inference, other services) │
-│ │ Service │ │
-│ └──────────┘ │
-└────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+sequenceDiagram
+    participant IdP
+    participant Client
+    participant Gateway as Gateway / First Service
+    participant PDP as PDP (Embedded or OPA)
+    participant Auth as Auth Service
+    participant Downstream as Downstream Services
+
+    Note over Gateway,Downstream: Trust Boundary
+
+    Client->>IdP: Validate credentials
+    IdP-->>Client: JWT
+    Client->>Gateway: Authorization: Bearer token
+    Gateway->>PDP: Check authorization
+    Auth-->>PDP: Policy + role data
+    PDP-->>Gateway: Allow / deny
+    Gateway->>Downstream: Forward trusted X-NMP-Principal-* headers
+    Gateway->>Downstream: Forward X-NMP-Authorized: true
 ```
 
 The request flow:
