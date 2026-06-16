@@ -302,6 +302,12 @@ STUDIO_LINK_DESTINATIONS: dict[str, StudioLinkDestination] = {
         aliases=("experiment_group_detail",),
         requires_name=True,
     ),
+    "experiment_detail": StudioLinkDestination(
+        "Experiment {experiment_name}",
+        "/workspaces/{workspace}/experiment/{name}/{experiment_name}",
+        aliases=("experiment_run",),
+        required_args=("name", "experiment_name"),
+    ),
 }
 
 _STUDIO_LINK_DESTINATION_ALIASES = {
@@ -332,6 +338,7 @@ _STUDIO_LINK_ARGUMENT_ALIASES: dict[str, tuple[str, ...]] = {
         "experiment_group_id",
         "experimentGroupId",
     ),
+    "experiment_name": ("experimentName", "experiment_id", "experimentId"),
     "file_path": ("file", "filePath", "file_path_encoded", "filePathEncoded", "path"),
 }
 
@@ -392,6 +399,7 @@ _STUDIO_LINK_DESTINATION_FEATURE_FLAGS: dict[str, tuple[str, ...]] = {
     "members": ("members_enabled",),
     "experiment": ("experiment",),
     "experiment_group": ("experiment",),
+    "experiment_detail": ("experiment",),
 }
 
 _STUDIO_LINK_DESTINATION_ANY_FEATURE_FLAGS: dict[str, tuple[str, ...]] = {

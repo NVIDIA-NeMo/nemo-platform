@@ -19,6 +19,17 @@ from urllib.parse import urlencode, urlparse
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from nmp.studio import studio_links
+from nmp.studio.coding_agent_artifacts import (
+    ChatArtifactsResponse,
+    record_answer_selections,
+    record_coding_agent_model,
+    record_spec_text_artifacts,
+    record_tool_artifacts,
+    record_tool_name,
+    record_user_tool_result_artifacts,
+    record_workspace_artifact,
+    string_value,
+)
 from nmp.studio.coding_agent_mcp_tools import (
     APPROVAL_TOOL_NAME,
     CLAUDE_MCP_SERVER_NAME,
@@ -92,6 +103,7 @@ class HistorySessionResponse(BaseModel):
     token_count: int
     tool_call_count: int
     tool_calls: list[str]
+    chat_artifacts: ChatArtifactsResponse
 
 
 class SessionHistoryResponse(BaseModel):
@@ -99,6 +111,7 @@ class SessionHistoryResponse(BaseModel):
 
     session_id: str
     items: list[dict[str, Any]]
+    chat_artifacts: ChatArtifactsResponse
 
 
 _initialized_sessions: set[str] = set()
@@ -117,6 +130,7 @@ class HistorySummary:
     token_count: int = 0
     tool_call_count: int = 0
     tool_calls: list[str] = dataclass_field(default_factory=list)
+    chat_artifacts: ChatArtifactsResponse = dataclass_field(default_factory=ChatArtifactsResponse)
 
 
 def _mcp_tools_for_destinations(
@@ -270,11 +284,16 @@ def _build_studio_system_prompt(
         "If studio_link is unavailable and you must construct a Studio UI link manually, use only a known enabled Studio route and prefer a relative Markdown link that starts with /workspaces/ or /models/.",
         "Evaluation pages use /workspaces/{workspace}/evaluation/... with singular evaluation; never nest evaluation links under /dashboard/evaluations/.",
         "Interactive Studio choice behavior:",
-        "When you need the user to choose from a finite set of agents, deployments, models, jobs, filesets, resources, or next actions, do not ask them to type the choice in plain text.",
-        "Use Claude Code's AskUserQuestion tool so Studio can render the choices as clickable options.",
+        "Studio ships dedicated visual picker tools. When a picker fits, you MUST use it instead of plain text and instead of AskUserQuestion.",
+        "Whenever you need the user to name, pick, confirm, or disambiguate an agent (including choosing among deployed agents), you MUST call mcp__nemo_studio__select_agent to render the agent dropdown. Never ask for an agent in plain text and never use AskUserQuestion for an agent choice.",
+        "Whenever you need the user to choose a model, you MUST call mcp__nemo_studio__select_model. Never use AskUserQuestion or plain text for a model choice.",
+        "Whenever you need a fileset, fileset reference, dataset, or input/source data file (including an anonymizer or evaluation input, or a CSV/Parquet file), you MUST call mcp__nemo_studio__select_dataset_file instead of asking for a fileset reference or '<workspace>/<fileset>#<file>' path in plain text; for an evaluation config file, you MUST call mcp__nemo_studio__select_eval_config.",
+        "Treat 'which agent', 'pick an agent', 'choose a model', 'which fileset', and 'what is your fileset reference' as mandatory tool-use requests for the matching select_* tool, exactly like Studio link requests are mandatory studio_link requests.",
+        "Set the picker title and description to match the current workflow, for example title='Select agent to audit'.",
+        "Only skip a picker when the user already gave the value, the value is already unambiguous from the conversation, or a previous picker call returned skipped or error.",
+        "For finite choices that have no dedicated Studio picker (for example deployments, jobs, or next actions) and for yes/no or multiple-choice clarifications, use Claude Code's AskUserQuestion tool so Studio can render clickable options instead of asking the user to type.",
         "For AskUserQuestion, provide input shaped as {'questions': [{'header': '<short title>', 'question': '<what should the user choose?>', 'options': [{'label': '<option>', 'description': '<short impact/details>'}]}]}.",
         "If you need both a finite choice and free-form text, ask multiple AskUserQuestion questions: first the finite options, then a text question without options.",
-        "For a list of deployed agents, make each option label the agent name and put status/model/tool details in the description.",
         "Required Studio-link behavior:",
         "Default to trying to include a Studio link in Studio-related responses.",
         "When your answer mentions or depends on a Studio resource, page, workflow, or result, first choose the nearest studio_link destination and include that link unless no relevant Studio page exists.",
@@ -285,6 +304,9 @@ def _build_studio_system_prompt(
         "After any successful Studio action, you must include a Studio link in the response even if the user did not ask for one.",
         "Before your final response for any successful create, start, deploy, evaluate, inspect, or modify action, call mcp__nemo_studio__studio_link and include the returned markdown exactly.",
         "Never finish a successful Studio action without a visible Markdown link to the most relevant Studio page.",
+        "Required job-progress behavior:",
+        "Whenever you start, submit, or kick off any platform job and you know its job name, you MUST call mcp__nemo_studio__job_progress with that job name before your final response, once for every job you launch.",
+        "Do not replace the job_progress card with a plain-text job summary or by telling the user to run a status command; call job_progress in addition to any Studio link.",
         "Use the returned markdown from studio_link exactly; do not replace it with localhost, the API host, or the MCP server host.",
         "If the user asks for an agent link and an agent name is known from the conversation, use destination='agent' with that name; otherwise use destination='agents'.",
         "If the user asks for an agent chat or playground link and an agent name is known from the conversation, use destination='agent_chat' with that name; otherwise use destination='agents'.",
@@ -339,6 +361,11 @@ def _int_metric(value: Any) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) else 0
 
 
+def _append_unique_string(items: list[str], value: str) -> None:
+    if value not in items:
+        items.append(value)
+
+
 def _usage_token_count(usage: Any) -> int:
     if not isinstance(usage, dict):
         return 0
@@ -364,17 +391,25 @@ def _usage_identity(entry: dict[str, Any], message: dict[str, Any]) -> tuple[str
 
 def _append_tool_call(summary: HistorySummary, tool_name: str) -> None:
     summary.tool_call_count += 1
-    if tool_name not in summary.tool_calls:
-        summary.tool_calls.append(tool_name)
+    _append_unique_string(summary.tool_calls, tool_name)
+    record_tool_name(summary.chat_artifacts, tool_name)
 
 
 def _record_assistant_tool_calls(
     summary: HistorySummary,
     message: dict[str, Any],
     seen_tool_use_ids: set[str],
+    question_labels_by_tool_use_id: dict[str, dict[str, str]],
 ) -> None:
     for part in message.get("content") or []:
-        if not isinstance(part, dict) or part.get("type") != "tool_use":
+        if not isinstance(part, dict):
+            continue
+        if part.get("type") == "text":
+            text = string_value(part.get("text"))
+            if text:
+                record_spec_text_artifacts(summary.chat_artifacts, text)
+            continue
+        if part.get("type") != "tool_use":
             continue
         tool_use_id = part.get("id")
         if isinstance(tool_use_id, str):
@@ -382,13 +417,22 @@ def _record_assistant_tool_calls(
                 continue
             seen_tool_use_ids.add(tool_use_id)
         tool_name = part.get("name")
-        _append_tool_call(summary, tool_name if isinstance(tool_name, str) and tool_name else "tool")
+        tool_name = tool_name if isinstance(tool_name, str) and tool_name else "tool"
+        _append_tool_call(summary, tool_name)
+        record_tool_artifacts(
+            summary.chat_artifacts,
+            tool_name,
+            part.get("input") or {},
+            tool_use_id if isinstance(tool_use_id, str) else None,
+            question_labels_by_tool_use_id,
+        )
 
 
 def _summarize_history_session(path: Path) -> HistorySummary:
     summary = HistorySummary()
     seen_usage_events: set[tuple[str, str]] = set()
     seen_tool_use_ids: set[str] = set()
+    question_labels_by_tool_use_id: dict[str, dict[str, str]] = {}
     try:
         with path.open("r", encoding="utf-8", errors="replace") as fh:
             for line in fh:
@@ -406,6 +450,7 @@ def _summarize_history_session(path: Path) -> HistorySummary:
 
                 message = entry.get("message")
                 if isinstance(message, dict):
+                    record_coding_agent_model(summary.chat_artifacts, string_value(message.get("model")))
                     usage_identity = _usage_identity(entry, message)
                     if usage_identity is None or usage_identity not in seen_usage_events:
                         summary.token_count += _usage_token_count(message.get("usage"))
@@ -416,15 +461,27 @@ def _summarize_history_session(path: Path) -> HistorySummary:
 
                 entry_type = entry.get("type")
                 if entry_type == "assistant" and isinstance(message, dict):
-                    _record_assistant_tool_calls(summary, message, seen_tool_use_ids)
+                    _record_assistant_tool_calls(
+                        summary,
+                        message,
+                        seen_tool_use_ids,
+                        question_labels_by_tool_use_id,
+                    )
                 elif entry_type == "user" and isinstance(message, dict):
                     content = message.get("content")
-                    if not isinstance(content, str):
-                        continue
-                    content = _strip_studio_context_from_prompt(content)
-                    summary.message_count += 1
-                    if summary.first_prompt is None:
-                        summary.first_prompt = content
+                    if isinstance(content, str):
+                        record_workspace_artifact(summary.chat_artifacts, content)
+                        record_answer_selections(summary.chat_artifacts, content)
+                        content = _strip_studio_context_from_prompt(content)
+                        summary.message_count += 1
+                        if summary.first_prompt is None:
+                            summary.first_prompt = content
+                    else:
+                        record_user_tool_result_artifacts(
+                            summary.chat_artifacts,
+                            content,
+                            question_labels_by_tool_use_id,
+                        )
     except OSError:
         return HistorySummary()
     return summary
@@ -498,6 +555,7 @@ def list_history_sessions() -> list[HistorySessionResponse]:
                 token_count=summary.token_count,
                 tool_call_count=summary.tool_call_count,
                 tool_calls=summary.tool_calls,
+                chat_artifacts=summary.chat_artifacts,
             )
         )
     sessions.sort(key=lambda session: session.mtime, reverse=True)
@@ -513,6 +571,7 @@ def get_session_history(session_id: str) -> SessionHistoryResponse:
         raise HTTPException(status_code=404, detail="no such session history")
 
     items: list[dict[str, Any]] = []
+    summary = _summarize_history_session(path)
     try:
         with path.open("r", encoding="utf-8", errors="replace") as fh:
             for line in fh:
@@ -541,7 +600,7 @@ def get_session_history(session_id: str) -> SessionHistoryResponse:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     _initialized_sessions.add(sid)
-    return SessionHistoryResponse(session_id=sid, items=items)
+    return SessionHistoryResponse(session_id=sid, items=items, chat_artifacts=summary.chat_artifacts)
 
 
 @router.get("/skills", response_model=list[ClaudeSkillResponse])

@@ -7,7 +7,7 @@ Create a Model Entity that references your FileSet to enable customization jobs.
 
 ## Prerequisites
 
-- Created a FileSet containing your model checkpoint (refer to [Create a Model FileSet](/documentation/fine-tune-models/manage-model-entities/create-a-model-file-set)).
+- Created a FileSet containing your model checkpoint (refer to [Create a Model FileSet](/documentation/customizer-reference/manage-model-entities/create-a-model-file-set)).
 - Set the `NMP_BASE_URL` environment variable.
 
 ```bash
@@ -31,14 +31,14 @@ client = NeMoPlatform(
 try:
     model = client.models.create(
         workspace="default",
-        name="llama-3-2-1b",
-        fileset="default/llama-3-2-1b",  # Reference: workspace/fileset-name
-        description="Llama 3.2 1B base model for customization",
+        name="qwen3-1.7b",
+        fileset="default/qwen3-1.7b",  # Reference: workspace/fileset-name
+        description="Qwen3 1.7B base model for customization",
     )
     print(f"Created Model Entity: {model.name}")
 except ConflictError:
     print("Model Entity already exists")
-    model = client.models.retrieve(workspace="default", name="llama-3-2-1b")
+    model = client.models.retrieve(workspace="default", name="qwen3-1.7b")
 ```
 
 <Accordion title="Example Response">
@@ -46,10 +46,10 @@ except ConflictError:
 ```json
 {
   "id": "model-abc123def456",
-  "name": "llama-3-2-1b",
+  "name": "qwen3-1.7b",
   "workspace": "default",
-  "description": "Llama 3.2 1B base model for customization",
-  "fileset": "default/llama-3-2-1b",
+  "description": "Qwen3 1.7B base model for customization",
+  "fileset": "default/qwen3-1.7b",
   "spec": null,
   "adapters": [],
   "created_at": "2026-02-09T10:30:00Z",
@@ -72,7 +72,7 @@ import time
 # Poll until spec is populated
 print("Waiting for model spec to be auto-populated...")
 while True:
-    model = client.models.retrieve(workspace="default", name="llama-3-2-1b")
+    model = client.models.retrieve(workspace="default", name="qwen3-1.7b")
     if model.spec:
         break
     print(" Still waiting...")
@@ -91,14 +91,14 @@ print(f" Attention Heads: {model.spec.num_attention_heads}")
 ```json
 {
   "spec": {
-    "family": "llama",
-    "base_num_parameters": 1235814400,
+    "family": "qwen",
+    "base_num_parameters": 1720574976,
     "hidden_size": 2048,
-    "num_layers": 16,
-    "num_attention_heads": 32,
+    "num_layers": 28,
+    "num_attention_heads": 16,
     "num_key_value_heads": 8,
-    "vocab_size": 128256,
-    "max_sequence_length": 131072
+    "vocab_size": 151936,
+    "max_sequence_length": 40960
   }
 }
 ```
@@ -111,7 +111,7 @@ print(f" Attention Heads: {model.spec.num_attention_heads}")
 Before using in a customization job, verify everything is set up correctly:
 
 ```python
-model = client.models.retrieve(workspace="default", name="llama-3-2-1b")
+model = client.models.retrieve(workspace="default", name="qwen3-1.7b")
 
 # Verification checks
 assert model.spec is not None, "Model spec not yet populated - wait longer"
@@ -126,36 +126,36 @@ print(f' model: "{model.workspace}/{model.name}"')
 
 ## Using the Model Entity in Customization Jobs
 
-After your Model Entity is ready (has a populated `spec`), reference it in customization jobs:
+After your Model Entity is ready (has a populated `spec`), reference it in a customization job. Jobs are submitted to a backend (`automodel` shown here; `unsloth` is also available):
 
 ```python
+from nemo_automodel_plugin.schema import AutomodelJobInput
+
 # Create a customization job using the Model Entity
-job = client.customization.jobs.create(
-    workspace="default",
-    name="my-lora-job",
-    spec={
-        "model": "default/llama-3-2-1b",  # Created above
-        "dataset": "fileset://default/my-training-dataset",
-        "training": {"type": "sft", "peft": {"type": "lora"}, "epochs": 1},
-    },
+spec = AutomodelJobInput(
+    model="default/qwen3-1.7b",  # Created above
+    dataset={"training": "default/my-training-dataset"},
+    training={"training_type": "sft", "finetuning_type": "lora"},
+    schedule={"epochs": 1},
 )
+job = client.customization.automodel.jobs.create(spec=spec, workspace="default", name="my-lora-job")
 ```
 
-Refer to [create-job](/documentation/fine-tune-models/manage-customization-jobs/create-a-customization-job) for complete job creation details.
+Refer to [create-job](/documentation/customizer-reference/manage-customization-jobs/create-a-customization-job) for complete job creation details.
 
 ---
 
 ## Post-Training Output
 
-After a customization job completes, the output depends on the finetuning type:
+After a customization job completes, the output depends on the fine-tuning regime (`training.finetuning_type`):
 
-- **LoRA training** (`peft: {"type": "lora"}`): An **adapter** is attached to this Model Entity. The adapter contains only the trained LoRA weights.
-- **Full SFT training** (no `peft` config): A **new Model Entity** is created containing the complete fine-tuned model weights. This new entity has a `base_model` field linking back to the original.
+- **LoRA training** (`finetuning_type: "lora"`): An **adapter** is attached to this Model Entity. The adapter contains only the trained LoRA weights.
+- **Full-weight training** (`finetuning_type: "all_weights"`): A **new Model Entity** is created containing the complete fine-tuned model weights. This new entity has a `base_model` field linking back to the original.
 
 For LoRA jobs, you can list adapters attached to a model:
 
 ```python
-model = client.models.retrieve(workspace="default", name="llama-3-2-1b")
+model = client.models.retrieve(workspace="default", name="qwen3-1.7b")
 
 if model.adapters:
     print(f"Adapters attached to {model.name}:")
@@ -169,5 +169,5 @@ else:
 
 ## Next Steps
 
-- [Create a customization job](/documentation/fine-tune-models/manage-customization-jobs/create-a-customization-job)
-- [Understand hyperparameters](/documentation/customizer-reference/manage-jobs/training-configuration)
+- [Create a customization job](/documentation/customizer-reference/manage-customization-jobs/create-a-customization-job)
+- [Understand hyperparameters](/documentation/customizer-reference/manage-customization-jobs/training-configuration)
