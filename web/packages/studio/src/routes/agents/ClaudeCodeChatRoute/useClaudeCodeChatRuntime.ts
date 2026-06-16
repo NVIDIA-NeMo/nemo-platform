@@ -242,9 +242,7 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
   initialArtifactsRef.current = options?.initialArtifacts;
 
   useEffect(() => {
-    const nextArtifacts = initialArtifactsRef.current;
-    if (!nextArtifacts) return;
-    setArtifacts(createWorkspaceArtifacts(nextArtifacts, workspace));
+    setArtifacts(createWorkspaceArtifacts(initialArtifactsRef.current, workspace));
   }, [initialArtifactsSignature, workspace]);
 
   const ensureSessionId = useCallback(async (): Promise<string> => {

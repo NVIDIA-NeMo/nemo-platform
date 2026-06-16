@@ -121,6 +121,10 @@ describe('useClaudeCodeChatRuntime', () => {
       expect(result.current.artifacts.coding_agent_model).toBe('claude-sonnet-4-6')
     );
     expect(result.current.artifacts.model).toBeUndefined();
+
+    rerender({ model: undefined });
+
+    await waitFor(() => expect(result.current.artifacts.coding_agent_model).toBeUndefined());
   });
 
   it('does not append denial text when permission resolution fails', async () => {

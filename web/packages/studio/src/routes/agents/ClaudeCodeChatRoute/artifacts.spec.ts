@@ -89,6 +89,37 @@ describe('Claude Code chat artifacts', () => {
     expect(artifacts.tools).toEqual(['Write', 'mcp__nemo_studio__studio_link']);
   });
 
+  it('does not double encode encoded file paths in studio link artifacts', () => {
+    const artifacts = updateClaudeCodeChatArtifactsFromEvent(
+      { ...createEmptyClaudeCodeChatArtifacts(), workspace: 'default' },
+      {
+        type: 'assistant',
+        message: {
+          content: [
+            {
+              type: 'tool_use',
+              name: 'mcp__nemo_studio__studio_link',
+              input: {
+                destination: 'fileset_file',
+                name: 'training data',
+                file_path_encoded: 'nested%2Fexamples.jsonl',
+                label: 'Dataset file',
+              },
+            },
+          ],
+        },
+      },
+    );
+
+    expect(artifacts.links).toEqual([
+      {
+        label: 'Dataset file',
+        destination: 'fileset_file',
+        href: '/workspaces/default/filesets/training%20data/file/nested%2Fexamples.jsonl',
+      },
+    ]);
+  });
+
   it('promotes draft spec name and model over the coding-agent model', () => {
     const withCodingModel = updateClaudeCodeChatArtifactsFromEvent(
       createEmptyClaudeCodeChatArtifacts(),
