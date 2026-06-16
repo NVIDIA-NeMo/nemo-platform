@@ -21,6 +21,12 @@ secrets:
   defaultEncryptionKey:
     # -- Optional base64-encoded key for encrypting platform secrets. The decoded key must be at least 32 bytes. If empty and envFromSecret is not set, a pre-install hook generates a per-install key.
     value: ""
+    # -- Existing Kubernetes Secret containing the key for encrypting platform secrets. If name is set, the chart does not create or generate the default api-env Secret.
+    existingSecret:
+      # -- Name of an existing Kubernetes Secret containing the encryption key.
+      name: ""
+      # -- Key in the existing Secret. After Kubernetes decodes the Secret data, the loaded value must be the base64-encoded NMP_SECRETS_DEFAULT_ENCRYPTION_KEY string.
+      key: NMP_SECRETS_DEFAULT_ENCRYPTION_KEY
     # -- Generated key configuration used only when value and envFromSecret are empty. The generated key is not rotated or recreated on upgrade.
     generated:
       enabled: true

@@ -53,10 +53,19 @@ spec:
             {{- range .Values.api.extraArgs }}
             - {{ . | quote }}
             {{- end }}
+          {{- if not (include "nemo-platform.defaultEncryptionKeyExistingSecretName" .) }}
           envFrom:
             - secretRef:
                 name: {{ include "nemo-platform.apiEnvSecretName" . }}
+          {{- end }}
           env:
+            {{- if include "nemo-platform.defaultEncryptionKeyExistingSecretName" . }}
+            - name: {{ include "nemo-platform.defaultEncryptionKeyEnvName" . }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nemo-platform.defaultEncryptionKeyExistingSecretName" . | quote }}
+                  key: {{ include "nemo-platform.defaultEncryptionKeySecretKey" . | quote }}
+            {{- end }}
             - name: NMP_CONFIG_FILE_PATH
               value: /etc/nmp/config.yaml
             - name: NMP_BASE_URL
