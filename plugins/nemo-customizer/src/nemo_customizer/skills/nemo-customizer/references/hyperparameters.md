@@ -462,9 +462,12 @@ Full template (every section, defaults inline):
 | `load_in_4bit` | `true` | bitsandbytes 4-bit. Mutex with `load_in_8bit`. Default for Unsloth's headline path; required to fit larger models on small GPUs. |
 | `load_in_8bit` | `false` | bitsandbytes 8-bit. Mutex with `load_in_4bit`. |
 | `dtype` | `"auto"` | One of `"auto"`, `"bfloat16"`, `"float16"`, `"float32"`. |
-| `trust_remote_code` | `false` | HF `trust_remote_code` flag for custom model code. |
+| `trust_remote_code` | `false` | HF `trust_remote_code` flag for custom model code (required by some hybrid Mamba/MoE models, e.g. Nemotron-H). |
+| `device_map` | `null` | Placement for `FastLanguageModel.from_pretrained`. `null` pins the whole model to the single visible GPU (`{"": 0}`) — the right default for this single-GPU backend. Leave unset unless experimenting; `"auto"`/`"balanced"`/`"sequential"` can spill layers to CPU on unified-memory hosts (GB10 / DGX Spark) and abort 4-bit loads. |
 
 **Mutex:** `load_in_4bit` xor `load_in_8bit`. Both quantization flags are also **incompatible with `training.finetuning_type: "all_weights"`** — full SFT must use a non-quantized base.
+
+> **Hybrid Mamba/MoE models (e.g. NVIDIA Nemotron-H `*-A3B`):** load in **16-bit** (`load_in_4bit: false`, `load_in_8bit: false`) — Unsloth's supported path for these. The 4-bit (bitsandbytes) path can hit a dtype mismatch inside the model's MoE expert accumulation. Keep `device_map` unset (single-GPU default) and set `trust_remote_code: true`.
 
 ### `dataset`
 

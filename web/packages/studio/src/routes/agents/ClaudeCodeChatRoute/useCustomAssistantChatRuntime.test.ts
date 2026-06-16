@@ -3,7 +3,10 @@
 
 import type { ThreadAssistantMessagePart, ThreadMessageLike } from '@assistant-ui/react';
 import { getMessageText } from '@nemo/common/src/components/AssistantChat/messageUtils';
-import { CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME } from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
+import {
+  CLAUDE_CODE_COLLAPSED_THINKING_TOOL_NAME,
+  CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME,
+} from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
 import {
   type CustomAssistantRunContext,
   useCustomAssistantChatRuntime,
@@ -165,6 +168,124 @@ describe('useCustomAssistantChatRuntime', () => {
 
     await act(async () => {
       await getMockRuntime(result.current.runtime).onCancel();
+    });
+  });
+
+  it('does not collapse agent thinking while waiting for user input', async () => {
+    const bashPart: ThreadAssistantMessagePart = {
+      type: 'tool-call',
+      toolCallId: 'toolu_bash',
+      toolName: 'Bash',
+      args: { command: 'pwd' },
+      argsText: '{"command":"pwd"}',
+    };
+    let runContext: CustomAssistantRunContext | undefined;
+    const onRun = vi.fn(async (context: CustomAssistantRunContext) => {
+      runContext = context;
+      context.appendAssistantParts([{ type: 'text', text: 'I will inspect the repo first.' }]);
+      context.appendAssistantParts([bashPart]);
+      context.prepareForUserInput();
+      await new Promise<void>((resolve) => {
+        context.signal.addEventListener('abort', () => resolve(), { once: true });
+      });
+    });
+    const { result } = renderHook(() => useCustomAssistantChatRuntime({ onRun }));
+
+    act(() => {
+      void result.current.submitPrompt('Check files');
+    });
+
+    await waitFor(() => {
+      expect(runContext).toBeDefined();
+      const content = getAssistantContent(getMockRuntime(result.current.runtime).messages);
+      expect(content).toEqual([{ type: 'text', text: 'I will inspect the repo first.' }, bashPart]);
+      expect(getMockRuntime(result.current.runtime).messages[1]?.status).toEqual({
+        type: 'complete',
+        reason: 'stop',
+      });
+    });
+
+    await act(async () => {
+      await getMockRuntime(result.current.runtime).onCancel();
+    });
+  });
+
+  it('keeps completed tool activity before the final summary', async () => {
+    const bashPart: ThreadAssistantMessagePart = {
+      type: 'tool-call',
+      toolCallId: 'toolu_bash',
+      toolName: 'Bash',
+      args: { command: 'pwd' },
+      argsText: '{"command":"pwd"}',
+    };
+    const readPart: ThreadAssistantMessagePart = {
+      type: 'tool-call',
+      toolCallId: 'toolu_read',
+      toolName: 'Read',
+      args: { file_path: 'README.md' },
+      argsText: '{"file_path":"README.md"}',
+    };
+    let runContext: CustomAssistantRunContext | undefined;
+    let finishRun!: () => void;
+    const onRun = vi.fn(async (context: CustomAssistantRunContext) => {
+      runContext = context;
+      context.appendAssistantParts([
+        { type: 'text', text: 'I will inspect the repo first.' },
+        bashPart,
+      ]);
+      await new Promise<void>((resolve) => {
+        finishRun = resolve;
+      });
+      context.appendAssistantParts([
+        readPart,
+        {
+          type: 'text',
+          text: 'I found the relevant files.\n\nI checked the repo.\n\nTests passed.',
+        },
+      ]);
+    });
+    const { result } = renderHook(() => useCustomAssistantChatRuntime({ onRun }));
+
+    act(() => {
+      void result.current.submitPrompt('Check files');
+    });
+
+    await waitFor(() => {
+      expect(runContext).toBeDefined();
+      const content = getAssistantContent(getMockRuntime(result.current.runtime).messages);
+      expect(content).toEqual([{ type: 'text', text: 'I will inspect the repo first.' }, bashPart]);
+    });
+
+    await act(async () => {
+      finishRun();
+    });
+
+    await waitFor(() => {
+      const content = getAssistantContent(getMockRuntime(result.current.runtime).messages);
+      expect(content).toMatchObject([
+        {
+          type: 'tool-call',
+          toolName: CLAUDE_CODE_COLLAPSED_THINKING_TOOL_NAME,
+          args: {
+            text: 'I will inspect the repo first.\n\nI found the relevant files.',
+          },
+        },
+        {
+          type: 'tool-call',
+          toolName: CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME,
+          args: {
+            actions: [
+              { toolName: 'Bash', args: { command: 'pwd' } },
+              { toolName: 'Read', args: { file_path: 'README.md' } },
+            ],
+          },
+        },
+        { type: 'text', text: 'I checked the repo.\n\nTests passed.' },
+      ]);
+      expect(getMockRuntime(result.current.runtime).messages[1]?.status).toEqual({
+        type: 'complete',
+        reason: 'stop',
+      });
     });
   });
 });

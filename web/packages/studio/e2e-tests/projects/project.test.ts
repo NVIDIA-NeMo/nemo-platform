@@ -37,7 +37,7 @@ const test = baseTest.extend<TestFixtures>({
   },
   testProject: async ({ request }, runFixture) => {
     const projectDisplayName = generateTestResourceName('project');
-    const projectDescription = `Project created by project.spec.ts E2E test on ${CURRENT_YYYY_MM_DD}`;
+    const projectDescription = `Project created by project.test.ts E2E test on ${CURRENT_YYYY_MM_DD}`;
     await testProjectFixture(
       request,
       runFixture,
@@ -59,7 +59,7 @@ test.describe('Projects', () => {
   test('Creates a project', async ({ page, projectsPage, projectsApi }) => {
     test.slow();
     const projectDisplayName = generateTestResourceName('project');
-    const projectDescription = `Project created by project.spec.ts E2E test on ${CURRENT_YYYY_MM_DD}`;
+    const projectDescription = `Project created by project.test.ts E2E test on ${CURRENT_YYYY_MM_DD}`;
 
     await projectsPage.goto();
     await projectsPage.waitForPageLoad();

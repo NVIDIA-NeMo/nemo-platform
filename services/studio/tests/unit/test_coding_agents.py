@@ -169,6 +169,7 @@ def test_list_and_get_history_sessions(
                         "type": "assistant",
                         "message": {
                             "id": "msg_1",
+                            "model": "claude-sonnet-4-5",
                             "content": [
                                 {"type": "thinking", "thinking": "checking"},
                                 {"type": "text", "text": "done"},
@@ -187,6 +188,88 @@ def test_list_and_get_history_sessions(
                             },
                         },
                         "requestId": "req_1",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "assistant",
+                        "message": {
+                            "id": "msg_2",
+                            "model": "claude-sonnet-4-6",
+                            "content": [
+                                {
+                                    "type": "tool_use",
+                                    "id": "toolu_write",
+                                    "name": "Write",
+                                    "input": {"file_path": "agents/beach-finder.yml", "content": "name: beach-finder"},
+                                },
+                                {
+                                    "type": "tool_use",
+                                    "id": "toolu_link",
+                                    "name": "mcp__nemo_studio__studio_link",
+                                    "input": {"destination": "agents", "label": "Agents"},
+                                },
+                                {
+                                    "type": "tool_use",
+                                    "id": "toolu_question",
+                                    "name": "AskUserQuestion",
+                                    "input": {
+                                        "questions": [
+                                            {
+                                                "question": "Which agent should be used?",
+                                                "header": "Agent",
+                                                "options": [{"label": "beach-finder"}],
+                                            }
+                                        ]
+                                    },
+                                },
+                            ],
+                        },
+                        "requestId": "req_2",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "user",
+                        "message": {
+                            "content": [
+                                {
+                                    "type": "tool_result",
+                                    "tool_use_id": "toolu_question",
+                                    "content": (
+                                        'Your question has been answered: "Which agent should be used?"='
+                                        '"beach-finder". You can now continue with this answer in mind.'
+                                    ),
+                                }
+                            ]
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "assistant",
+                        "message": {
+                            "id": "msg_3",
+                            "model": "claude-sonnet-4-6",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": "\n".join(
+                                        [
+                                            "Draft Spec: `cat-identifier`",
+                                            "Name: `cat-identifier`",
+                                            "",
+                                            "Model",
+                                            "`cloud, nvidia/llama-3.3-nemotron-super-49b-v1` - default, good reasoning",
+                                            "",
+                                            "Framework",
+                                            "langgraph-nat",
+                                        ]
+                                    ),
+                                }
+                            ],
+                        },
+                        "requestId": "req_3",
                     }
                 ),
                 json.dumps(
@@ -223,8 +306,19 @@ def test_list_and_get_history_sessions(
             "first_prompt": "first prompt",
             "message_count": 1,
             "token_count": 30,
-            "tool_call_count": 1,
-            "tool_calls": ["Bash"],
+            "tool_call_count": 4,
+            "tool_calls": ["Bash", "Write", "mcp__nemo_studio__studio_link", "AskUserQuestion"],
+            "chat_artifacts": {
+                "agent": "cat-identifier",
+                "model": "cloud, nvidia/llama-3.3-nemotron-super-49b-v1",
+                "model_source": "spec",
+                "coding_agent_model": "claude-sonnet-4-6",
+                "workspace": "default",
+                "selections": [{"label": "Agent", "value": "beach-finder"}],
+                "files": [{"action": "Wrote", "path": "agents/beach-finder.yml"}],
+                "links": [{"label": "Agents", "destination": "agents", "href": "/workspaces/default/agents"}],
+                "tools": ["Bash", "Write", "mcp__nemo_studio__studio_link", "AskUserQuestion"],
+            },
         }
     ]
 
@@ -243,7 +337,69 @@ def test_list_and_get_history_sessions(
                     {"type": "tool_use", "id": "toolu_1", "name": "Bash", "input": {"command": "pwd"}},
                 ],
             },
+            {
+                "kind": "assistant",
+                "parts": [
+                    {
+                        "type": "tool_use",
+                        "id": "toolu_write",
+                        "name": "Write",
+                        "input": {"file_path": "agents/beach-finder.yml", "content": "name: beach-finder"},
+                    },
+                    {
+                        "type": "tool_use",
+                        "id": "toolu_link",
+                        "name": "mcp__nemo_studio__studio_link",
+                        "input": {"destination": "agents", "label": "Agents"},
+                    },
+                    {
+                        "type": "tool_use",
+                        "id": "toolu_question",
+                        "name": "AskUserQuestion",
+                        "input": {
+                            "questions": [
+                                {
+                                    "question": "Which agent should be used?",
+                                    "header": "Agent",
+                                    "options": [{"label": "beach-finder"}],
+                                }
+                            ]
+                        },
+                    },
+                ],
+            },
+            {
+                "kind": "assistant",
+                "parts": [
+                    {
+                        "type": "text",
+                        "text": "\n".join(
+                            [
+                                "Draft Spec: `cat-identifier`",
+                                "Name: `cat-identifier`",
+                                "",
+                                "Model",
+                                "`cloud, nvidia/llama-3.3-nemotron-super-49b-v1` - default, good reasoning",
+                                "",
+                                "Framework",
+                                "langgraph-nat",
+                            ]
+                        ),
+                    }
+                ],
+            },
         ],
+        "chat_artifacts": {
+            "agent": "cat-identifier",
+            "model": "cloud, nvidia/llama-3.3-nemotron-super-49b-v1",
+            "model_source": "spec",
+            "coding_agent_model": "claude-sonnet-4-6",
+            "workspace": "default",
+            "selections": [{"label": "Agent", "value": "beach-finder"}],
+            "files": [{"action": "Wrote", "path": "agents/beach-finder.yml"}],
+            "links": [{"label": "Agents", "destination": "agents", "href": "/workspaces/default/agents"}],
+            "tools": ["Bash", "Write", "mcp__nemo_studio__studio_link", "AskUserQuestion"],
+        },
     }
     assert session_id in coding_agents._initialized_sessions
 
@@ -454,6 +610,7 @@ def test_studio_link_destinations_cover_registered_workspace_routes():
         "evaluationResultDetails": "evaluation_result",
         "evaluationResults": "evaluation_results",
         "experiment": "experiment",
+        "experimentDetail": "experiment_detail",
         "experimentGroupDetail": "experiment_group",
         "filesetDetail": "fileset",
         "filesetDetails": "fileset_panel",
