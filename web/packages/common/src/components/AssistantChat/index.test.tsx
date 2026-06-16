@@ -365,7 +365,7 @@ describe('AssistantChat', () => {
   it(
     'edits a user message and re-runs inference with the edited prompt',
     async () => {
-      const user = userEvent.setup();
+      const user = userEvent.setup({ delay: null });
       mocks.createChatCompletion
         .mockResolvedValueOnce(createCompletion('Original response.'))
         .mockResolvedValueOnce(createCompletion('Edited response.'));
@@ -456,7 +456,7 @@ describe('AssistantChat', () => {
   it(
     'aborts a pending completion request when stop is clicked',
     async () => {
-      const user = userEvent.setup();
+      const user = userEvent.setup({ delay: null });
       let requestSignal: AbortSignal | undefined;
       const abortError = new Error('aborted');
       abortError.name = 'AbortError';
