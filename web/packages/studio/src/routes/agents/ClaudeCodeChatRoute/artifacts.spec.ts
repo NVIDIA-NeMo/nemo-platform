@@ -79,7 +79,7 @@ describe('Claude Code chat artifacts', () => {
             },
           ],
         },
-      },
+      }
     );
 
     expect(artifacts.files).toEqual([{ action: 'Wrote', path: 'agents/beach-finder.yml' }]);
@@ -108,7 +108,7 @@ describe('Claude Code chat artifacts', () => {
             },
           ],
         },
-      },
+      }
     );
 
     expect(artifacts.links).toEqual([

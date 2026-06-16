@@ -316,9 +316,7 @@ def test_list_and_get_history_sessions(
                 "workspace": "default",
                 "selections": [{"label": "Agent", "value": "beach-finder"}],
                 "files": [{"action": "Wrote", "path": "agents/beach-finder.yml"}],
-                "links": [
-                    {"label": "Agents", "destination": "agents", "href": "/workspaces/default/agents"}
-                ],
+                "links": [{"label": "Agents", "destination": "agents", "href": "/workspaces/default/agents"}],
                 "tools": ["Bash", "Write", "mcp__nemo_studio__studio_link", "AskUserQuestion"],
             },
         }
@@ -399,9 +397,7 @@ def test_list_and_get_history_sessions(
             "workspace": "default",
             "selections": [{"label": "Agent", "value": "beach-finder"}],
             "files": [{"action": "Wrote", "path": "agents/beach-finder.yml"}],
-            "links": [
-                {"label": "Agents", "destination": "agents", "href": "/workspaces/default/agents"}
-            ],
+            "links": [{"label": "Agents", "destination": "agents", "href": "/workspaces/default/agents"}],
             "tools": ["Bash", "Write", "mcp__nemo_studio__studio_link", "AskUserQuestion"],
         },
     }

@@ -730,7 +730,7 @@ const ClaudeCodeToolCallPartContent = ({
           toolName,
         },
       ]}
-      />
+    />
   );
 };
 

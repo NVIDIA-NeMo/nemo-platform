@@ -579,12 +579,7 @@ def _studio_link_artifact_from_input(
         if "markdown" in result:
             markdown_label, markdown_href = _markdown_link_parts(str(result["markdown"]))
             label = _string_value(input_value.get("label")) or markdown_label or label
-            href = (
-                _string_value(result.get("url"))
-                or _string_value(result.get("path"))
-                or markdown_href
-                or href
-            )
+            href = _string_value(result.get("url")) or _string_value(result.get("path")) or markdown_href or href
             destination = _string_value(result.get("destination")) or destination
 
     if not label:

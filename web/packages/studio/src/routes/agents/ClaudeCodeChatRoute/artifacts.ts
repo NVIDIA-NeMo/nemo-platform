@@ -160,7 +160,10 @@ const decodeEncodedFilePath = (value: string): string => {
 };
 
 const normalizeStudioLinkDestination = (value: string | undefined): string | undefined => {
-  const normalized = value?.trim().toLowerCase().replace(/[-\s]+/g, '_');
+  const normalized = value
+    ?.trim()
+    .toLowerCase()
+    .replace(/[-\s]+/g, '_');
   return normalized && STUDIO_LINK_PATH_TEMPLATES[normalized] ? normalized : undefined;
 };
 
