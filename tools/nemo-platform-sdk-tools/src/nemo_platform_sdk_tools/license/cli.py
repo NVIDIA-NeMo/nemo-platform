@@ -66,7 +66,11 @@ def generate(
         typer.Option(
             "--output",
             "-o",
-            help="Optional path for the formatted license report. Defaults to third_party/licenses.jsonl.",
+            help=(
+                "Optional path for the formatted license report. "
+                "When omitted, the path is built from LICENSE_DIR and LICENSE_NAME "
+                "(default: third_party/licenses.jsonl)."
+            ),
         ),
     ] = None,
 ):

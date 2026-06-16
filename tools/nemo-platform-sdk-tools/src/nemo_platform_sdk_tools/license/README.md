@@ -2,6 +2,10 @@
 
 Generate and manage license reports for the Platform monorepo.
 
+## Requirements
+
+- `osv-scanner` must be installed
+
 ## Quick Start
 
 ```bash
@@ -232,7 +236,3 @@ Generated files are saved to `third_party/`:
 - `osv-licenses.json` - Raw OSV scanner output (main) - **always generated**
 
 **Note:** The `osv-licenses*.json` files are always created regardless of output format, and are used by the `find-missing` and `discover-overrides` commands.
-
-## Requirements
-
-- `osv-scanner` must be installed

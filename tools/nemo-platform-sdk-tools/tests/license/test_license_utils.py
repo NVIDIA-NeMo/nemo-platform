@@ -271,6 +271,43 @@ class TestFormatLicenses:
             }
         ]
 
+    def test_format_licenses_csv_escapes_formula_license_urls(self, tmp_path, monkeypatch):
+        """CSV license URLs are escaped before spreadsheet import can evaluate them."""
+        from nemo_platform_sdk_tools.license import generator
+
+        license_dir = tmp_path / "third_party"
+        license_dir.mkdir()
+        osv_json = license_dir / "osv-licenses.json"
+        osv_json.write_text(
+            json.dumps(
+                {
+                    "results": [
+                        {
+                            "packages": [
+                                {
+                                    "package": {"name": "malicious", "version": "1.0.0"},
+                                    "licenses": ["Apache-2.0"],
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        output_file = tmp_path / "reports" / "licenses.csv"
+
+        monkeypatch.setattr(
+            generator,
+            "resolve_license_url",
+            lambda name, version, license_str: '=HYPERLINK("https://example.com")',
+        )
+
+        generator.format_licenses(osv_json, output_file, format_type="csv")
+
+        rows = list(csv.DictReader(io.StringIO(output_file.read_text(encoding="utf-8"))))
+        assert rows[0]["License URL"] == '\'=HYPERLINK("https://example.com")'
+
     def test_get_projects_allows_report_output_file_override(self, tmp_path):
         """The formatted report path can be overridden independently of scan artifacts."""
         from nemo_platform_sdk_tools.license.generator import get_projects
@@ -283,3 +320,66 @@ class TestFormatLicenses:
         assert projects[0]["output_file"] == output_file
         assert projects[0]["osv_json"] == workspace_root / "third_party" / "osv-licenses.json"
         assert projects[0]["output_lockfile"] == workspace_root / "third_party" / "requirements-main.txt"
+
+
+class TestPypiMetadata:
+    """Tests for PyPI metadata handling."""
+
+    def test_get_pypi_json_skips_invalid_json_and_uses_next_url(self, monkeypatch):
+        from nemo_platform_sdk_tools.license import generator
+
+        class FakeResponse:
+            def __init__(self, payload: dict[str, Any] | None = None, error: Exception | None = None):
+                self.ok = True
+                self.payload = payload or {}
+                self.error = error
+                self.status_code = 200
+
+            def json(self) -> dict[str, Any]:
+                if self.error:
+                    raise self.error
+                return self.payload
+
+        generator._PYPI_JSON_CACHE.clear()
+        responses = [
+            FakeResponse(error=ValueError("invalid json")),
+            FakeResponse(payload={"info": {"name": "demo"}}),
+        ]
+        calls = []
+
+        def fake_get(url, timeout):
+            calls.append((url, timeout))
+            return responses.pop(0)
+
+        monkeypatch.setattr(generator.requests, "get", fake_get)
+
+        assert generator._get_pypi_json("demo", "1.2.3") == {"info": {"name": "demo"}}
+        assert calls == [
+            ("https://pypi.org/pypi/demo/1.2.3/json", 10),
+            ("https://pypi.org/pypi/demo/json", 10),
+        ]
+
+    def test_license_url_from_pypi_info_accepts_only_http_urls(self):
+        from nemo_platform_sdk_tools.license.generator import _license_url_from_pypi_info
+
+        assert (
+            _license_url_from_pypi_info(
+                {"project_urls": {"License": "https://example.com/LICENSE"}},
+                "NON-STANDARD",
+            )
+            == "https://example.com/LICENSE"
+        )
+        assert (
+            _license_url_from_pypi_info(
+                {"project_urls": {"License": "ftp://example.com/LICENSE"}},
+                "NON-STANDARD",
+            )
+            == ""
+        )
+        assert (
+            _license_url_from_pypi_info(
+                {"project_urls": {"License": '=HYPERLINK("https://example.com")'}},
+                "NON-STANDARD",
+            )
+            == ""
+        )
