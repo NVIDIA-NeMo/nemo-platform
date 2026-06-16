@@ -34,7 +34,8 @@
     "bundle-visualize": "pnpm exec vite-bundle-visualizer -c vite.config.ts",
     "update-warning-count": "pnpm tsx ../common/scripts/update-max-warnings.ts",
     "screenshots": "tsx screenshots/capture.ts",
-    "feature-flags": "tsx scripts/feature-flag-matrix.ts"
+    "feature-flags": "tsx scripts/feature-flag-matrix.ts",
+    "fetch-styles": "tsx scripts/fetch-styles.ts"
   },
   "dependencies": {
     "@assistant-ui/react": "^0.12.28",
