@@ -275,17 +275,12 @@ jobs:
             "${NMP_E2E_REGISTRY}/nmp-core:${NMP_E2E_TAG}" \
             "${NMP_E2E_REGISTRY}/nmp-cpu-tasks:${NMP_E2E_TAG}"
 
-      - name: Build Helm dependencies
-        shell: bash
-        run: |
-          helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
-          helm repo update
-          helm dependency build "${HELM_CHART}"
-
       - name: Install NeMo Platform
         shell: bash
+        env:
+          REQUIRE_NMP_E2E_IMAGES: "true"
         run: |
-          if ! HELM_VALUES="${K8S_E2E_VALUES}/kind.yaml" "${K8S_E2E_SCRIPTS}/install_nmp_e2e.sh"; then
+          if ! HELM_VALUES="${K8S_E2E_VALUES}/kind.yaml" "${K8S_E2E_SCRIPTS}/install_helm_e2e.sh"; then
             echo "--- helm list -A ---"
             helm list -A || true
             echo "--- helm status ${NAMESPACE}/nemo-platform ---"

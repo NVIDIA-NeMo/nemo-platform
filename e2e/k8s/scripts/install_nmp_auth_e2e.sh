@@ -14,4 +14,6 @@ export NMP_E2E_TAG="${NMP_E2E_TAG:-local}"
 export POSTGRES_IMAGE="${POSTGRES_IMAGE:-docker.io/library/postgres}"
 export BUSYBOX_IMAGE="${BUSYBOX_IMAGE:-busybox}"
 
-exec "${SCRIPT_DIR}/install_nmp_e2e.sh"
+export REQUIRE_NMP_E2E_IMAGES="${REQUIRE_NMP_E2E_IMAGES:-true}"
+
+exec "${SCRIPT_DIR}/install_helm_e2e.sh"
