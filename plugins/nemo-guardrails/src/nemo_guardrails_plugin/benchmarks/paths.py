@@ -54,6 +54,13 @@ class RunPaths:
     nmp_data_dir: Path
     # Checked-in YAML template for the AIPerf sweep config.
     config_template: Path
+    # In-repo copies of the upstream mock-LLM `.env` files. We point the
+    # mock server processes at these (via `--config-file`) so we can change
+    # mock latency or refusal behavior without touching the NeMo-Guardrails
+    # checkout, and so the exact mock config a benchmark ran against stays
+    # versioned alongside our results.
+    mock_app_env: Path
+    mock_content_safety_env: Path
     # Per-run materialized copy of `config_template` with `output_base_dir`
     # overridden to `aiperf_output_dir`. AIPerf is invoked against this file.
     runtime_config: Path
@@ -74,6 +81,23 @@ class RunPaths:
             self.nmp_data_dir,
         ):
             path.mkdir(parents=True, exist_ok=True)
+
+    def aiperf_output_dir_for(self, variant: str) -> Path:
+        """Per-variant AIPerf output dir under ``aiperf_results/<variant>/``.
+
+        Each variant gets its own subtree so a single run can hold side-by-side
+        sweeps (e.g. ``with-guardrails`` and ``without-guardrails``) without
+        their outputs colliding.
+        """
+        return self.aiperf_output_dir / variant
+
+    def runtime_config_for(self, variant: str) -> Path:
+        """Per-variant materialized AIPerf config under ``generated/``."""
+        return self.generated_dir / f"aiperf_config_{variant}.yaml"
+
+    def aiperf_log_for(self, variant: str) -> Path:
+        """Per-variant AIPerf stdout/stderr log under ``logs/``."""
+        return self.log_dir / f"aiperf_{variant}.log"
 
 
 def _now_run_id() -> str:
@@ -120,4 +144,6 @@ def build_run_paths(
         config_template=benchmark_dir / "configs" / "nmp_igw_guardrails_sweep_concurrency.yaml",
         runtime_config=run_dir / "generated" / "nmp_igw_guardrails_sweep_concurrency.yaml",
         aiperf_venv_dir=artifacts_dir / "venvs" / "aiperf",
+        mock_app_env=benchmark_dir / "configs" / "mock_llm" / "app-llm.env",
+        mock_content_safety_env=benchmark_dir / "configs" / "mock_llm" / "content-safety-llm.env",
     )
