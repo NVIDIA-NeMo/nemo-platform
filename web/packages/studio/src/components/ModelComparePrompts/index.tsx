@@ -23,7 +23,7 @@ import {
   PANEL_ROLE_LABELS,
   type SharedModelEntry,
 } from '@studio/routes/ModelCompareRoute/types';
-import { websiteLogger } from '@studio/util/logger';
+import { logger } from '@studio/util/logger';
 import { Maximize2, Plus, Trash2 } from 'lucide-react';
 import { type FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -323,7 +323,7 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
               });
             })
             .catch((error) => {
-              websiteLogger.error('Inference request failed', error);
+              logger.error('Inference request failed', error);
               writeCell(row.sourceIndex, model.id, null);
             });
         });

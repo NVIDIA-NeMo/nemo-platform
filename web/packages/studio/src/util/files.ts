@@ -3,7 +3,7 @@
 
 import { ContentType } from '@nemo/common/src/components/CodeEditor/constants';
 import { FileSystemDirectory, FileSystemNode } from '@studio/components/FilesTable/utils';
-import { websiteLogger } from '@studio/util/logger';
+import { logger } from '@studio/util/logger';
 import { getTextWithCount, parseCSV } from '@studio/util/strings';
 
 /**
@@ -159,7 +159,7 @@ export const parseFileContent = ({
               return rows;
             } catch {
               failures.push(row);
-              websiteLogger.warn(`Invalid JSON row ignored: ${row}`);
+              logger.warn(`Invalid JSON row ignored: ${row}`);
               return rows;
             }
           },

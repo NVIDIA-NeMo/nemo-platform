@@ -18,7 +18,7 @@ import {
   getSafeSynthesizerFormDefaults,
 } from '@studio/routes/SafeSynthesizerNewRoute/schema';
 import { getSafeSynthesizerJobRoute, getSafeSynthesizerRoute } from '@studio/routes/utils';
-import { websiteLogger } from '@studio/util/logger';
+import { logger } from '@studio/util/logger';
 import { FC, useState } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
@@ -62,7 +62,7 @@ export const SafeSynthesizerNewRoute: FC | null = SAFE_SYNTHESIZER_ENABLED
             }
           },
           onError: (error) => {
-            websiteLogger.error('Failed to create job', error);
+            logger.error('Failed to create job', error);
             setErrorMessage(
               getErrorMessage(error, 'Failed to create job. Please check your input and try again.')
             );
@@ -95,7 +95,7 @@ export const SafeSynthesizerNewRoute: FC | null = SAFE_SYNTHESIZER_ENABLED
       };
 
       const handleSubmitError = (errors: unknown) => {
-        websiteLogger.error(`Form validation errors: ${String(errors)}`);
+        logger.error(`Form validation errors: ${String(errors)}`);
         setErrorMessage('Please fix the form errors before submitting.');
       };
 

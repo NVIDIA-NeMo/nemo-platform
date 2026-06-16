@@ -23,7 +23,7 @@ import { useRecentWorkspaces } from '@studio/components/WorkspaceDropdown/useRec
 import { DEFAULT_LARGE_PAGE_SIZE } from '@studio/constants/constants';
 import { getWorkspaceDetailsDefaultRoute } from '@studio/routes/utils';
 import { useBoolean } from '@studio/util/hooks/useBoolean';
-import { websiteLogger } from '@studio/util/logger';
+import { logger } from '@studio/util/logger';
 import cn from 'classnames';
 import { Plus, Filter } from 'lucide-react';
 import { ChangeEvent, FC, lazy, useMemo, useState } from 'react';
@@ -118,7 +118,7 @@ export const WorkspaceDropdown: FC<Props> = ({ onValueChange }) => {
         // Open modal for new workspace
         openModal();
       } else {
-        websiteLogger.error(`Workspace selected without name: ${JSON.stringify(newWorkspace)}`);
+        logger.error(`Workspace selected without name: ${JSON.stringify(newWorkspace)}`);
       }
       return;
     }

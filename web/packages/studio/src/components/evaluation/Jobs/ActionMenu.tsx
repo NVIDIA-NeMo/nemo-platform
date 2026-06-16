@@ -17,7 +17,7 @@ import {
 } from '@nvidia/foundations-react-core';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getEvaluationJobName } from '@studio/selectors/evaluationJob';
-import { websiteLogger } from '@studio/util/logger';
+import { logger } from '@studio/util/logger';
 import { ArrowRight, EllipsisVertical, Trash } from 'lucide-react';
 import { FC, useState } from 'react';
 
@@ -46,7 +46,7 @@ export const ActionMenu: FC<ActionMenuProps> = ({ job, onNavigateToDetails, onJo
       onJobDeleted?.(job);
       handleModalClose();
     } catch (error) {
-      websiteLogger.error('Failed to delete evaluation job', error);
+      logger.error('Failed to delete evaluation job', error);
       toast.error('Failed to delete evaluation job. Please try again.');
     } finally {
       setIsDeleting(false);

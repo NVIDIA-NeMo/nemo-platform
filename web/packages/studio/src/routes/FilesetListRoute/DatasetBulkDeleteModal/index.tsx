@@ -6,7 +6,7 @@ import { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
 import { Button, Flex, Modal } from '@nvidia/foundations-react-core';
 import { useMutateMany } from '@studio/api/common/useMutateMany';
 import { invalidateDatasetCaches } from '@studio/api/datasets/invalidateDatasetCaches';
-import { websiteLogger } from '@studio/util/logger';
+import { logger } from '@studio/util/logger';
 import { Trash } from 'lucide-react';
 import { FC, ReactNode, useState } from 'react';
 
@@ -48,7 +48,7 @@ export const DatasetBulkDeleteModal: FC<DatasetBulkDeleteModalProps> = ({
       onConfirmSuccess();
       setOpen(false);
     } catch (error) {
-      websiteLogger.error('Failed to delete datasets', error);
+      logger.error('Failed to delete datasets', error);
     }
   };
 

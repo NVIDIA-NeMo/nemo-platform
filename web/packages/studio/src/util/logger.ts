@@ -63,7 +63,7 @@ class WebsiteLogger {
 }
 
 // Global instance of our logger that should be used by individual modules, in-place of `console.log`.
-export const websiteLogger = new WebsiteLogger();
+export const logger = new WebsiteLogger();
 
 /**
  * Converts a unknown error to an Error object.
@@ -77,9 +77,9 @@ export function toError(err: unknown): Error {
  */
 export const handleGenericError = (error: Error | string) => {
   if (error instanceof Error) {
-    websiteLogger.error(error.message, error);
+    logger.error(error.message, error);
   } else {
-    websiteLogger.error(error);
+    logger.error(error);
   }
 };
 
@@ -88,6 +88,6 @@ export const handleGenericError = (error: Error | string) => {
  */
 export const logVersion = async () => {
   if (VERSION_SHA) {
-    websiteLogger.info(`Version: ${VERSION_SHA}`);
+    logger.info(`Version: ${VERSION_SHA}`);
   }
 };

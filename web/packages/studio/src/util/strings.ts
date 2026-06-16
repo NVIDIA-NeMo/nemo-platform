@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Row } from '@studio/util/files';
-import { websiteLogger } from '@studio/util/logger';
+import { logger } from '@studio/util/logger';
 import Papa from 'papaparse';
 
 export { getTextWithCount } from '@nemo/common/src/utils/formatters';
@@ -34,7 +34,7 @@ export const parseCSV = (props: { csvString: string; options: Papa.ParseConfig }
   const { data, errors } = Papa.parse(csvString, options);
 
   if (errors.length) {
-    websiteLogger.error(`CSV Parse Errors: ${JSON.stringify(errors)}`);
+    logger.error(`CSV Parse Errors: ${JSON.stringify(errors)}`);
     return [];
   }
 

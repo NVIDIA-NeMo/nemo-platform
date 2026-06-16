@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { websiteLogger } from '@studio/util/logger';
+import { logger } from '@studio/util/logger';
 import { FieldErrors } from 'react-hook-form';
 
 /**
@@ -25,5 +25,5 @@ export const handleFormErrorsGeneric =
       });
       errorMessages.push(`${key}: ${errorInfo}`);
     }
-    websiteLogger.error(`${title || 'Form Errors'}: \n${errorMessages.join('\n')}`);
+    logger.error(`${title || 'Form Errors'}: \n${errorMessages.join('\n')}`);
   };

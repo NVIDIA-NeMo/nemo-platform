@@ -9,7 +9,7 @@ import {
   parseSseChunk,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/stream';
 import { CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME } from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
-import { websiteLogger } from '@studio/util/logger';
+import { logger } from '@studio/util/logger';
 
 describe('Claude Code stream utilities', () => {
   it('parses SSE events and preserves incomplete trailing data', () => {
@@ -243,7 +243,7 @@ describe('Claude Code stream utilities', () => {
   });
 
   it('returns undefined and logs when JSON parsing fails', () => {
-    const loggerSpy = vi.spyOn(websiteLogger, 'error').mockImplementation(() => undefined);
+    const loggerSpy = vi.spyOn(logger, 'error').mockImplementation(() => undefined);
 
     expect(parseJsonObject('{')).toBeUndefined();
     expect(loggerSpy).toHaveBeenCalledWith(
