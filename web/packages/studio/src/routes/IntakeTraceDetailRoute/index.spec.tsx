@@ -19,8 +19,8 @@ describe('IntakeTraceDetailRoute', () => {
   it('renders experiment context only when present and filters spans to the trace', async () => {
     renderTraceDetail('trace-agent-run-001');
 
-    expect(await screen.findByText('Trace Answer customer policy question')).toBeInTheDocument();
-    expect(screen.getByText('Experiment Context')).toBeInTheDocument();
+    expect(await screen.findByText('Trace trace-agent-run-001')).toBeInTheDocument();
+    expect(await screen.findByText('Experiment Context')).toBeInTheDocument();
     expect(await screen.findByText('Generate final response')).toBeInTheDocument();
     expect(screen.queryByText('Retrieve deployment troubleshooting steps')).not.toBeInTheDocument();
   });
@@ -29,7 +29,7 @@ describe('IntakeTraceDetailRoute', () => {
     renderTraceDetail('trace-agent-run-002');
 
     expect(
-      await screen.findByText('Trace Retrieve deployment troubleshooting steps')
+      await screen.findByText('Trace trace-agent-run-002')
     ).toBeInTheDocument();
     expect(screen.queryByText('Experiment Context')).not.toBeInTheDocument();
   });

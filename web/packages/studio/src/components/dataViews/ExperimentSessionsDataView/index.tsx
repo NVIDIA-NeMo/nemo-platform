@@ -18,8 +18,8 @@ import type {
 } from '@nemo/sdk/generated/platform/schema';
 import { Button, Stack, Text, Tooltip } from '@nvidia/foundations-react-core';
 import { Empty } from '@studio/components/dataViews/ExperimentSessionsDataView/Empty';
-import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { IntakeTraceDetailBody } from '@studio/components/IntakeTraceDetailBody';
+import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { tooltipClassName } from '@studio/styles/common';
 import { keepPreviousData } from '@tanstack/react-query';
 import { Columns3, X } from 'lucide-react';
