@@ -286,7 +286,10 @@ class ExperimentsResource(SyncAPIResource):
         filter: ExperimentFilterParam | Omit = omit,
         page: int | Omit = omit,
         page_size: int | Omit = omit,
-        sort: Literal["-created_at", "created_at", "-updated_at", "updated_at", "-name", "name"] | Omit = omit,
+        sort: Literal[
+            "-created_at", "created_at", "-updated_at", "updated_at", "-name", "name", "-pinned_at", "pinned_at"
+        ]
+        | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -699,7 +702,10 @@ class AsyncExperimentsResource(AsyncAPIResource):
         filter: ExperimentFilterParam | Omit = omit,
         page: int | Omit = omit,
         page_size: int | Omit = omit,
-        sort: Literal["-created_at", "created_at", "-updated_at", "updated_at", "-name", "name"] | Omit = omit,
+        sort: Literal[
+            "-created_at", "created_at", "-updated_at", "updated_at", "-name", "name", "-pinned_at", "pinned_at"
+        ]
+        | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,

@@ -41,5 +41,5 @@ class ExperimentListParams(TypedDict, total=False):
     page_size: int
     """Page size."""
 
-    sort: Literal["-created_at", "created_at", "-updated_at", "updated_at", "-name", "name"]
+    sort: Literal["-created_at", "created_at", "-updated_at", "updated_at", "-name", "name", "-pinned_at", "pinned_at"]
     """Sort field; prefix with '-' for descending."""

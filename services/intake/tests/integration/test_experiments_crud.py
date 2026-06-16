@@ -444,3 +444,21 @@ def test_filter_by_is_pinned(client: TestClient) -> None:
     no_filter = client.get(EXPERIMENTS)
     all_names = {e["name"] for e in no_filter.json()["data"]}
     assert {"exp-pinned-a", "exp-pinned-b", "exp-not-pinned"} <= all_names
+
+
+def test_sort_by_pinned_at_most_recent_first(client: TestClient) -> None:
+    group = _create_group(client)
+    client.post(EXPERIMENTS, json=_experiment_body(name="exp-old-pin", experiment_group_id=group["id"]))
+    client.post(EXPERIMENTS, json=_experiment_body(name="exp-new-pin", experiment_group_id=group["id"]))
+    client.post(f"{EXPERIMENTS}/exp-old-pin/pin")
+    client.post(f"{EXPERIMENTS}/exp-new-pin/pin")
+
+    pinned_desc = client.get(EXPERIMENTS, params={"filter[is_pinned]": "true", "sort": "-pinned_at"})
+    assert pinned_desc.status_code == 200, pinned_desc.text
+    names_desc = [e["name"] for e in pinned_desc.json()["data"]]
+    assert names_desc.index("exp-new-pin") < names_desc.index("exp-old-pin")
+
+    pinned_asc = client.get(EXPERIMENTS, params={"filter[is_pinned]": "true", "sort": "pinned_at"})
+    assert pinned_asc.status_code == 200, pinned_asc.text
+    names_asc = [e["name"] for e in pinned_asc.json()["data"]]
+    assert names_asc.index("exp-old-pin") < names_asc.index("exp-new-pin")

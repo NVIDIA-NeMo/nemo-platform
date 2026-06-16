@@ -3719,6 +3719,8 @@ paths:
           - updated_at
           - -name
           - name
+          - -pinned_at
+          - pinned_at
           type: string
           description: Sort field; prefix with '-' for descending.
           default: -created_at

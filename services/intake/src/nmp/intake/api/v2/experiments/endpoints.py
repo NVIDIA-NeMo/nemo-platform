@@ -60,6 +60,16 @@ GROUPS_TAG = "Experiment Groups"
 EXPERIMENTS_TAG = "Experiments"
 
 SortField = Literal["-created_at", "created_at", "-updated_at", "updated_at", "-name", "name"]
+ExperimentSortField = Literal[
+    "-created_at",
+    "created_at",
+    "-updated_at",
+    "updated_at",
+    "-name",
+    "name",
+    "-pinned_at",
+    "pinned_at",
+]
 EntityT = TypeVar("EntityT", Experiment, ExperimentGroup)
 
 EntityClientDep = Annotated[EntityClient, Depends(get_entity_client)]
@@ -340,16 +350,17 @@ async def list_experiments(
     parsed: ExperimentFilterDep,
     page: int = Query(default=1, ge=1, description="Page number."),
     page_size: int = Query(default=100, ge=1, le=1000, description="Page size."),
-    sort: SortField = Query(default="-created_at", description="Sort field; prefix with '-' for descending."),
+    sort: ExperimentSortField = Query(default="-created_at", description="Sort field; prefix with '-' for descending."),
 ) -> Page[ExperimentResponse]:
     validate_list_query_params(request)
     _apply_is_deleted_filter(parsed)
     _apply_is_pinned_filter(parsed)
+    entity_sort = sort.replace("pinned_at", "data.pinned_at") if "pinned_at" in sort else sort
     result = await entity_client.list(
         Experiment,
         workspace=workspace,
         filter_operation=parsed.operation,
-        sort=sort,
+        sort=entity_sort,
         page=page,
         page_size=page_size,
     )
