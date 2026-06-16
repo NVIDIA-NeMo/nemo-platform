@@ -28,9 +28,7 @@ describe('IntakeTraceDetailRoute', () => {
   it('omits experiment context when the trace has none', async () => {
     renderTraceDetail('trace-agent-run-002');
 
-    expect(
-      await screen.findByText('Trace trace-agent-run-002')
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Trace trace-agent-run-002')).toBeInTheDocument();
     expect(screen.queryByText('Experiment Context')).not.toBeInTheDocument();
   });
 });
