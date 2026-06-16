@@ -10,6 +10,7 @@ import type { AssistantChatProps } from './types';
 import { useAssistantChatRuntime } from './useAssistantChatRuntime';
 
 export type { AssistantChatProps } from './types';
+export { ComposerMode } from './types';
 
 export const AssistantChat: FC<AssistantChatProps> = ({
   model,
@@ -25,6 +26,13 @@ export const AssistantChat: FC<AssistantChatProps> = ({
   className,
   initialMessages = [],
   onError,
+  onMessageComplete,
+  onRunningChange,
+  onEmptyChange,
+  composerMode,
+  broadcast,
+  stopCount,
+  slotComposerStart,
   emptyState,
   composerOverride,
 }) => {
@@ -37,6 +45,11 @@ export const AssistantChat: FC<AssistantChatProps> = ({
     disabled,
     initialMessages,
     onError,
+    onMessageComplete,
+    onRunningChange,
+    onEmptyChange,
+    broadcast,
+    stopCount,
   });
 
   const composerPlaceholder = useMemo(
@@ -53,6 +66,8 @@ export const AssistantChat: FC<AssistantChatProps> = ({
           onReset={handleReset}
           showRunningIndicator={showRunningIndicator}
           attributes={attributes}
+          composerMode={composerMode}
+          slotComposerStart={slotComposerStart}
           emptyState={emptyState}
           composerOverride={composerOverride}
         />

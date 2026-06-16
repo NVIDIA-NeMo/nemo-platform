@@ -483,6 +483,16 @@ models:
         busybox_image: busybox
         # BusyBox image tag used for helper containers. | default: 'latest'
         busybox_image_tag: latest
+        # Image name (without registry/tag) used for the LoRA adapters sidecar container. Registry and tag are taken from NMP_IMAGE_REGISTRY / NMP_IMAGE_TAG. The sidecar is invoked via the lora_sidecar_command. | default: 'nmp-api'
+        lora_sidecar_image_name: nmp-api
+        # Command passed to the LoRA sidecar container. Default uses the nmp-platform-runner entrypoint present in nmp-api.
+        lora_sidecar_command:
+        - --sidecars
+        - adapters
+        - --port
+        - '60830'
+        # Optional entrypoint override for the LoRA sidecar container. Leave empty to use the image's default entrypoint (correct for nmp-api). | default: ''
+        lora_sidecar_entrypoint: ''
         # Maximum time (in seconds) a deployment may stay in PENDING before being transitioned to ERROR. Default: 7200 (2 hours). | default: 7200
         pending_timeout_seconds: 7200
         # Maximum number of container restarts before a PENDING deployment is transitioned to ERROR (crash loop detection). Default: 5. | default: 5
@@ -502,6 +512,17 @@ models:
         peft_source: http://nemo-entity-store:8000
         # PEFT refresh interval in seconds (only used when lora_enabled is true) | default: 30
         peft_refresh_interval: 30
+        # Image name (without registry/tag) for the LoRA adapters sidecar container. Registry and tag are taken from the platform config (NMP_IMAGE_REGISTRY / NMP_IMAGE_TAG). Override to 'nmp-automodel-tasks' for local dev when that image is already available but nmp-api is not. | default: 'nmp-api'
+        lora_sidecar_image_name: nmp-api
+        # Kubernetes container command (entrypoint) for the LoRA sidecar. Default uses the nmp-platform-runner entrypoint present in nmp-api. When using nmp-automodel-tasks set to ['python'] and set lora_sidecar_args to ['-m', 'nmp.core.models.sidecars.adapters.main'].
+        lora_sidecar_command:
+        - nemo
+        - services
+        - run
+        - --sidecars
+        - adapters
+        # Kubernetes container args for the LoRA sidecar (appended after lora_sidecar_command). Leave empty for nmp-api. Set to ['-m', 'nmp.core.models.sidecars.adapters.main'] when using nmp-automodel-tasks. | default: []
+        lora_sidecar_args: []
         # Default user ID for NIM containers (security context)
         default_user_id:
         # Default group ID for NIM containers (security context)

@@ -1332,6 +1332,10 @@ class TestTrustRemoteCodePermission:
     trust_remote_code=True requires models.trust-remote-code.set.
     """
 
+    @pytest.fixture(autouse=True)
+    def _no_hf(self, no_hf_network):
+        """These tests verify authorization logic, not HF connectivity."""
+
     def test_create_model_trust_remote_code_true_has_permission_succeeds(self, sdk: NeMoPlatform):
         """Create with trust_remote_code=True succeeds when principal has models.trust-remote-code.set (repo not on allow list)."""
         workspace = short_unique_name("trc-has")

@@ -173,6 +173,31 @@ class DockerBackendConfig(BaseModel):
         description="BusyBox image tag used for helper containers.",
     )
 
+    lora_sidecar_image_name: str = Field(
+        default="nmp-api",
+        description=(
+            "Image name (without registry/tag) used for the LoRA adapters sidecar container. "
+            "Registry and tag are taken from NMP_IMAGE_REGISTRY / NMP_IMAGE_TAG. "
+            "The sidecar is invoked via the lora_sidecar_command."
+        ),
+    )
+
+    lora_sidecar_command: list[str] = Field(
+        default=["--sidecars", "adapters", "--port", "60830"],
+        description=(
+            "Command passed to the LoRA sidecar container. "
+            "Default uses the nmp-platform-runner entrypoint present in nmp-api. "
+        ),
+    )
+
+    lora_sidecar_entrypoint: str = Field(
+        default="",
+        description=(
+            "Optional entrypoint override for the LoRA sidecar container. "
+            "Leave empty to use the image's default entrypoint (correct for nmp-api). "
+        ),
+    )
+
     # ==========================================================================
     # PENDING timeout and crash loop detection
     # ==========================================================================

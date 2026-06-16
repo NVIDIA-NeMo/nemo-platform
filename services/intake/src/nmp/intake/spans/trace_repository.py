@@ -35,8 +35,6 @@ TRACE_COLUMNS = [
     "source_format",
     "root_span_id",
     "name",
-    "input",
-    "output",
     "project",
     "experiment_id",
     "test_case_id",
@@ -69,8 +67,6 @@ _CURRENT_SPAN_VALUE_COLUMNS = (
     "attributes_string",
     "attributes_number",
     "attributes_bool",
-    "input",
-    "output",
     "event_ts",
     "is_deleted",
 )
@@ -199,8 +195,6 @@ def _trace_select_columns(*, include_aggregates: bool) -> str:
         "traces.source_format AS source_format",
         "traces.root_span_id AS root_span_id",
         "traces.name AS name",
-        "traces.input AS input",
-        "traces.output AS output",
         "traces.project AS project",
         "traces.experiment_id AS experiment_id",
         "traces.test_case_id AS test_case_id",
@@ -215,6 +209,8 @@ def _trace_select_columns(*, include_aggregates: bool) -> str:
 
 def _trace_index_sql(table: str, filters: TraceListFilter) -> tuple[str, dict[str, Any]]:
     where_sql, parameters = _trace_index_where(filters, qualifier="trace_roots")
+    # Trace responses do not expose root payloads; including those wide text
+    # columns here forces ClickHouse to scan them before pagination.
     query = f"""
         SELECT
             trace_roots.trace_id AS id,
@@ -223,8 +219,6 @@ def _trace_index_sql(table: str, filters: TraceListFilter) -> tuple[str, dict[st
             trace_roots.source_format AS source_format,
             nullIf(trace_roots.root_span_id, '') AS root_span_id,
             nullIf(trace_roots.root_name, '') AS name,
-            nullIf(trace_roots.root_input, '') AS input,
-            nullIf(trace_roots.root_output, '') AS output,
             nullIf(trace_roots.project, '') AS project,
             nullIf(trace_roots.experiment_id, '') AS experiment_id,
             nullIf(trace_roots.test_case_id, '') AS test_case_id,
@@ -232,7 +226,7 @@ def _trace_index_sql(table: str, filters: TraceListFilter) -> tuple[str, dict[st
             trace_roots.root_ended_at AS ended_at,
             trace_roots.root_status AS status,
             trace_roots.event_ts AS ingested_at
-        FROM (SELECT * FROM {table} FINAL) AS trace_roots
+        FROM {table} AS trace_roots FINAL
         WHERE {where_sql}
         ORDER BY trace_roots.root_started_at ASC, trace_roots.root_span_id ASC
         LIMIT 1 BY trace_roots.workspace, trace_roots.source_format, trace_roots.trace_id
@@ -325,7 +319,11 @@ def _trace_index_where(filters: TraceListFilter, *, qualifier: str) -> tuple[str
     return " AND ".join(clauses), parameters
 
 
-def current_spans_sql(table: str, *, extra_where_sql: str | None = None) -> str:
+def current_spans_sql(
+    table: str,
+    *,
+    extra_where_sql: str | None = None,
+) -> str:
     source_alias = "span_versions"
     columns = [
         *[f"{source_alias}.{column} AS {column}" for column in _CURRENT_SPAN_IDENTITY_COLUMNS],

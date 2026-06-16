@@ -56,7 +56,7 @@ from nemo_platform_plugin.jobs.api_factory import (
 from pydantic_settings import BaseSettings
 
 class MyFunctionalMicroserviceSettings(BaseSettings):
-    job_image: str = Field(default="nvcr.io/nvidia/nemo-microservices/my-functional-microservice:v0.0.1")
+    job_image: str = Field(default="nvcr.io/nvidia/nemo-platform/my-functional-microservice:v0.0.1")
     job_command: list[str] = Field(default=[])
     job_args: list[str] = Field(default=["--target", "default"])
     default_job_resource_cpu_request: str = Field(default="1")
@@ -225,7 +225,7 @@ curl http://localhost:8080/v1/jobs/job-some-random-id
           "provider": "cpu",
           "profile": "default",
           "container": {
-            "image": "nvcr.io/nvidia/nemo-microservices/my-functional-microservice:v0.0.1",
+            "image": "nvcr.io/nvidia/nemo-platform/my-functional-microservice:v0.0.1",
             "command": [],
             "args": ["--target", "default"]
           },
@@ -251,7 +251,7 @@ curl http://localhost:8080/v1/jobs/job-some-random-id
           "provider": "cpu",
           "profile": "default",
           "container": {
-            "image": "nvcr.io/nvidia/nemo-microservices/my-functional-microservice:v0.0.1"
+            "image": "nvcr.io/nvidia/nemo-platform/my-functional-microservice:v0.0.1"
           },
           "resources": {
             "requests": {
@@ -412,7 +412,7 @@ docker buildx ls
 - Install kind: https://kind.sigs.k8s.io/docs/user/quick-start/#installation
 - Create a kind cluster with registry support using `bash /script/kind-with-registry.sh`
 - Install Skaffold: https://skaffold.dev/docs/install/
-- Update dependencies of the helm chart using `helm dep update helm/platform-ea`
+- Update dependencies of the Helm chart using `helm dep update k8s/helm`
 - Run skaffold: `skaffold dev --default-repo=localhost:5001 --keep-running-on-failure`
 - If port forward doesn't work, try manually portforwarding: `kubectl port-forward service/nemo-core-api 8000:8000`
 

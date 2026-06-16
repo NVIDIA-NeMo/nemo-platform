@@ -6661,6 +6661,205 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/models/v2/workspaces/{workspace}/prompts:
+    get:
+      tags:
+      - Prompts
+      summary: List Prompts By Workspace
+      description: List prompts for a specific workspace.
+      operationId: list_prompts_apis_models_v2_workspaces__workspace__prompts_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          description: Page size.
+          default: 100
+          title: Page Size
+        description: Page size.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/PromptSort'
+          description: The field to sort by. To sort in decreasing order, use `-`
+            in front of the field name.
+          default: created_at
+        description: The field to sort by. To sort in decreasing order, use `-` in
+          front of the field name.
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/PromptFilter'
+        description: Filter prompts by workspace, project, name, description, created_at,
+          and updated_at.
+      responses:
+        '200':
+          description: Return prompts for a workspace
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromptsPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - Prompts
+      summary: Create Prompt
+      description: Create a new prompt.
+      operationId: create_prompt_apis_models_v2_workspaces__workspace__prompts_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePromptRequest'
+      responses:
+        '201':
+          description: Create a new prompt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Prompt'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/models/v2/workspaces/{workspace}/prompts/{name}:
+    get:
+      tags:
+      - Prompts
+      summary: Get Prompt
+      description: Get a prompt by workspace and name.
+      operationId: get_prompt_apis_models_v2_workspaces__workspace__prompts__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Return prompt details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Prompt'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    put:
+      tags:
+      - Prompts
+      summary: Update Prompt
+      description: Update an existing prompt (full replacement of mutable fields).
+      operationId: update_prompt_apis_models_v2_workspaces__workspace__prompts__name__put
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePromptRequest'
+      responses:
+        '200':
+          description: Update an existing prompt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Prompt'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Prompts
+      summary: Delete Prompt
+      description: Delete a prompt by workspace and name.
+      operationId: delete_prompt_apis_models_v2_workspaces__workspace__prompts__name__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '204':
+          description: Delete a prompt
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /apis/models/v2/workspaces/{workspace}/providers:
     get:
       tags:
@@ -8294,6 +8493,24 @@ components:
       - role
       title: ChatCompletionSystemMessageParam
       description: System message parameter for chat completion.
+    ChatCompletionTool:
+      properties:
+        type:
+          type: string
+          const: function
+          title: Type
+          description: The type of the tool. Currently only 'function' is supported.
+        function:
+          allOf:
+          - $ref: '#/components/schemas/FunctionDefinition'
+          description: The function definition for this tool.
+      type: object
+      required:
+      - type
+      - function
+      title: ChatCompletionTool
+      description: An OpenAI-compatible tool definition (currently always a function
+        tool).
     ChatCompletionToolMessageParam:
       properties:
         content:
@@ -9082,6 +9299,65 @@ components:
       - source
       title: CreatePlatformJobRequest
       description: Request model for creating a new platform job.
+    CreatePromptRequest:
+      properties:
+        name:
+          type: string
+          maxLength: 255
+          pattern: ^[\w\-.]+$
+          title: Name
+          description: 'Name of the prompt. Allowed characters: letters (a-z, A-Z),
+            digits (0-9), underscores, hyphens, and dots.'
+          examples:
+          - support-bot-system
+          - summarizer
+        project:
+          title: Project
+          description: The URN of the project associated with this prompt.
+          type: string
+          maxLength: 255
+          pattern: ^[\w\-./]+$
+        description:
+          title: Description
+          type: string
+          maxLength: 1000
+        messages:
+          items:
+            $ref: '#/components/schemas/PromptMessage'
+          type: array
+          title: Messages
+        input_variables:
+          items:
+            type: string
+          type: array
+          title: Input Variables
+        tools:
+          title: Tools
+          items:
+            $ref: '#/components/schemas/ChatCompletionTool'
+          type: array
+        tool_choice:
+          anyOf:
+          - type: string
+          - additionalProperties: true
+            type: object
+          title: Tool Choice
+        response_format:
+          title: Response Format
+          additionalProperties: true
+          type: object
+        inference_params:
+          $ref: '#/components/schemas/InferenceParams'
+        tags:
+          title: Tags
+          items:
+            type: string
+          type: array
+      type: object
+      required:
+      - name
+      title: CreatePromptRequest
+      description: Request model for creating a Prompt.
     CreateVirtualModelRequest:
       properties:
         default_model_entity:
@@ -10708,6 +10984,39 @@ components:
       - name
       title: FunctionCall
       description: Function call information.
+    FunctionDefinition:
+      properties:
+        name:
+          type: string
+          maxLength: 255
+          title: Name
+          description: The name of the function to be called.
+        description:
+          title: Description
+          description: A description of what the function does, used by the model
+            to decide when and how to call it.
+          type: string
+        parameters:
+          title: Parameters
+          description: The parameters the function accepts, described as a JSON Schema
+            object.
+          additionalProperties: true
+          type: object
+        strict:
+          title: Strict
+          description: Whether to enforce strict schema adherence when generating
+            the function call.
+          type: boolean
+      type: object
+      required:
+      - name
+      title: FunctionDefinition
+      description: 'An OpenAI-compatible function definition for tool calling.
+
+
+        Mirrors the ``function`` object the Inference Gateway forwards to
+
+        OpenAI-compatible backends.'
     GLiNERDetection:
       properties:
         server_endpoint:
@@ -15275,6 +15584,110 @@ components:
       required:
       - data
       title: ProjectsPage
+    Prompt:
+      properties:
+        id:
+          type: string
+          title: Id
+          description: Unique identifier for the prompt.
+        name:
+          type: string
+          maxLength: 255
+          pattern: ^[\w\-.]+$
+          title: Name
+          description: 'Name of the entity. Name/workspace combo must be unique across
+            all entities. Allowed characters: letters (a-z, A-Z), digits (0-9), underscores,
+            hyphens, and dots.'
+          examples:
+          - llama-3.1-8b
+          - my-custom-model
+        workspace:
+          type: string
+          maxLength: 255
+          pattern: ^[\w\-.]+$
+          title: Workspace
+          description: 'The workspace of the entity. Allowed characters: letters (a-z,
+            A-Z), digits (0-9), underscores, hyphens, and dots.'
+        project:
+          title: Project
+          description: The URN of the project associated with this entity.
+          type: string
+          maxLength: 255
+          pattern: ^[\w\-./]+$
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+          description: The timestamp of model entity creation
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+          description: The timestamp of the last model entity update
+        description:
+          title: Description
+          description: Optional description of the prompt.
+          type: string
+          maxLength: 1000
+        messages:
+          items:
+            $ref: '#/components/schemas/PromptMessage'
+          type: array
+          title: Messages
+          description: Ordered list of chat messages that make up the prompt.
+        input_variables:
+          items:
+            type: string
+          type: array
+          title: Input Variables
+          description: Names of the Jinja2 template variables the prompt expects.
+        tools:
+          title: Tools
+          description: Optional OpenAI-compatible tool definitions to send with the
+            prompt.
+          items:
+            $ref: '#/components/schemas/ChatCompletionTool'
+          type: array
+        tool_choice:
+          anyOf:
+          - type: string
+          - additionalProperties: true
+            type: object
+          title: Tool Choice
+          description: 'Controls which (if any) tool is called: ''none'', ''auto'',
+            ''required'', or a named-tool object.'
+        response_format:
+          title: Response Format
+          description: Optional OpenAI-compatible response_format, e.g. a json_schema
+            structured-output spec.
+          additionalProperties: true
+          type: object
+        inference_params:
+          allOf:
+          - $ref: '#/components/schemas/InferenceParams'
+          description: Optional default model and sampling parameters (temperature,
+            top_p, max_tokens, ...).
+        tags:
+          items:
+            type: string
+          type: array
+          title: Tags
+          description: Optional free-form tags for organizing prompts.
+      type: object
+      required:
+      - name
+      - workspace
+      - created_at
+      - updated_at
+      title: Prompt
+      description: 'A reusable, stored chat prompt.
+
+
+        A Prompt captures the messages, declared template variables, optional tool
+
+        definitions, and default inference parameters needed to invoke a model
+
+        through the Inference Gateway. The unique identifier is workspace/name.'
     PromptData:
       properties:
         system_prompt:
@@ -15297,6 +15710,106 @@ components:
       type: object
       title: PromptData
       description: Configuration for prompt engineering.
+    PromptFilter:
+      additionalProperties: false
+      description: Filter for Prompt queries.
+      properties:
+        workspace:
+          description: Filter by workspace.
+          title: Workspace
+          type: string
+        project:
+          description: Filter by project URN.
+          title: Project
+          type: string
+        name:
+          description: Filter by name.
+          title: Name
+          type: string
+        description:
+          description: Filter by description.
+          title: Description
+          type: string
+        created_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Filter by creation date.
+        updated_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Filter by update date.
+      title: PromptFilter
+      type: object
+    PromptMessage:
+      properties:
+        role:
+          allOf:
+          - $ref: '#/components/schemas/PromptMessageRole'
+          description: The role of the message author.
+        content:
+          type: string
+          title: Content
+          description: Templated message content. May contain template variables.
+      type: object
+      required:
+      - role
+      - content
+      title: PromptMessage
+      description: 'A single templated message in a chat prompt.
+
+
+        ``content`` is a Jinja2 template body that may reference the prompt''s
+
+        declared ``input_variables`` (e.g. ``{{ topic }}``).'
+    PromptMessageRole:
+      type: string
+      enum:
+      - system
+      - developer
+      - user
+      - assistant
+      title: PromptMessageRole
+      description: 'Role of a message author in a chat prompt.
+
+
+        Follows the OpenAI chat schema the Inference Gateway speaks
+
+        (``/v1/chat/completions``).'
+    PromptSort:
+      type: string
+      enum:
+      - name
+      - -name
+      - created_at
+      - -created_at
+      - updated_at
+      - -updated_at
+      title: PromptSort
+      description: Sort fields for Prompt queries.
+    PromptsPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/Prompt'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: PromptsPage
     RailStatus:
       properties:
         status:
@@ -17157,6 +17670,56 @@ components:
 
 
         This endpoint supports partial updates for fields managed by Models Controller.'
+    UpdatePromptRequest:
+      properties:
+        project:
+          title: Project
+          description: The URN of the project associated with this prompt.
+          type: string
+          maxLength: 255
+          pattern: ^[\w\-./]+$
+        description:
+          title: Description
+          type: string
+          maxLength: 1000
+        messages:
+          items:
+            $ref: '#/components/schemas/PromptMessage'
+          type: array
+          title: Messages
+        input_variables:
+          items:
+            type: string
+          type: array
+          title: Input Variables
+        tools:
+          title: Tools
+          items:
+            $ref: '#/components/schemas/ChatCompletionTool'
+          type: array
+        tool_choice:
+          anyOf:
+          - type: string
+          - additionalProperties: true
+            type: object
+          title: Tool Choice
+        response_format:
+          title: Response Format
+          additionalProperties: true
+          type: object
+        inference_params:
+          $ref: '#/components/schemas/InferenceParams'
+        tags:
+          title: Tags
+          items:
+            type: string
+          type: array
+      type: object
+      title: UpdatePromptRequest
+      description: 'Request model for replacing a Prompt''s mutable fields (full update).
+
+
+        The prompt name and workspace come from the URL path and cannot be changed.'
     UpdateVirtualModelRequest:
       properties:
         default_model_entity:

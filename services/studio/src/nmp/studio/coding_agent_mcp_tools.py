@@ -33,7 +33,10 @@ SELECT_AGENT_TOOL: dict[str, Any] = {
     "name": SELECT_AGENT_TOOL_NAME,
     "description": (
         "Ask the Studio user to choose an agent from a visual dropdown. "
-        "Use this instead of plain text prompting when a Studio workflow needs a concrete agent name."
+        "This is the required way to get an agent name in Studio: call it whenever a workflow needs the "
+        "user to name, pick, confirm, or disambiguate an agent (including choosing among deployed agents). "
+        "Always prefer this over plain-text prompting and over Claude Code's AskUserQuestion tool for agent choices. "
+        "Returns the chosen agent name, or status=skipped / status=error if the user dismisses the dropdown."
     ),
     "inputSchema": {
         "type": "object",
@@ -75,8 +78,14 @@ SELECT_DATASET_FILE_TOOL: dict[str, Any] = {
     "name": SELECT_DATASET_FILE_TOOL_NAME,
     "description": (
         "Ask the Studio user to choose a dataset file from a visual fileset file picker. "
-        "Use this instead of plain text prompting when a workflow needs source data, "
-        "for example while helping create an evaluation config. Returns dataset_fileset and dataset_path."
+        "This is the required way to get a fileset, fileset reference, dataset, or input/source data file "
+        "in Studio (for example an anonymizer or evaluation input, or a CSV/Parquet file). Call it whenever "
+        "a workflow needs the user to pick a fileset or a file inside one, instead of asking for a fileset "
+        "reference, path, or '<workspace>/<fileset>#<file>' string in plain text. "
+        "Always prefer this over plain-text prompting and over AskUserQuestion for file/fileset choices. "
+        "Pass accepted_file_types (for example ['.csv', '.parquet']) to constrain the picker. "
+        "Returns dataset_fileset and dataset_path, which you can combine as '<fileset>#<path>' when a tool "
+        "needs a fileset reference. Returns status=skipped / status=error if the user dismisses the picker."
     ),
     "inputSchema": {
         "type": "object",
@@ -120,7 +129,10 @@ JOB_PROGRESS_TOOL: dict[str, Any] = {
     "name": JOB_PROGRESS_TOOL_NAME,
     "description": (
         "Show a compact Studio progress card for a long-running job. "
-        "Call this only after a real Studio job has been started and you know its job_name. "
+        "This is the required way to surface a launched job in Studio: after you start, submit, or kick off "
+        "any platform job and know its job_name, you must call this before your final response, once for "
+        "every job you launch. Do not substitute a plain-text job summary or a manual status command. "
+        "Call it only after a real job has been started and you know its job_name. "
         "Pass job_type or source when known so Studio can link to the best detail page."
     ),
     "inputSchema": {
@@ -168,22 +180,40 @@ STUDIO_UI_TOOL_NAMES = (
 STUDIO_CODING_AGENT_CONTEXT = "\n".join(
     [
         "You are running inside NeMo Studio's Code Agent chat.",
-        "NeMo Studio and the NeMo Platform API are already running for this workspace.",
-        "Do not spend time starting the platform or checking whether Studio is up unless the user asks.",
-        "Your local shell and file tools may be sandboxed; use the normal Studio approval flow when needed.",
+        (
+            "NeMo Studio and the NeMo Platform API are already installed, set up, and running for this "
+            "workspace. Treat the platform as healthy and available."
+        ),
+        (
+            "Do not run setup, bootstrap, install, start, or health-check steps for the platform: skip "
+            "'nemo setup', 'make bootstrap', 'nemo services run', service restarts, port probes, and "
+            "'health/ready' checks unless the user explicitly asks you to. Assume services are up and "
+            "go straight to the actual task."
+        ),
+        ("Prefer NeMo Studio MCP tools and the nemo CLI over ad-hoc shell or filesystem commands. "),
         (
             "When you need to prompt the user for input, use a Studio UI tool instead of writing a "
             "plain-text question whenever a suitable tool exists."
         ),
         (
-            "Use mcp__nemo_studio__select_agent for agent names, "
-            "mcp__nemo_studio__select_model for model names, "
-            "mcp__nemo_studio__select_dataset_file for dataset or source files, and "
-            "mcp__nemo_studio__select_eval_config for evaluation config files."
+            "These needs are mandatory tool calls, not plain-text questions and not AskUserQuestion: "
+            "use mcp__nemo_studio__select_agent whenever you need the user to name, pick, confirm, or "
+            "disambiguate an agent (including among deployed agents); "
+            "mcp__nemo_studio__select_model for model names; "
+            "mcp__nemo_studio__select_dataset_file whenever you need a fileset, fileset reference, dataset, "
+            "or input/source data file (for example an anonymizer or evaluation input, or a CSV/Parquet "
+            "file) instead of asking for a fileset reference or '<workspace>/<fileset>#<file>' path in text; "
+            "and mcp__nemo_studio__select_eval_config for evaluation config files."
         ),
         (
-            "For broader clarification, multiple-choice, yes/no, or freeform questions, use Claude "
-            "Code's AskUserQuestion tool rather than writing a questionnaire in markdown."
+            "Never use AskUserQuestion or a plain-text question to choose an agent, model, fileset, "
+            "dataset or input file, or eval config; those each have a dedicated select_* tool you must "
+            "call instead."
+        ),
+        (
+            "For clarification, multiple-choice, yes/no, or freeform questions that do NOT map to one of "
+            "the select_* tools, use Claude Code's AskUserQuestion tool rather than writing a "
+            "questionnaire in markdown."
         ),
         (
             "Only fall back to plain chat questions when no suitable UI tool is available, the user "
@@ -194,9 +224,15 @@ STUDIO_CODING_AGENT_CONTEXT = "\n".join(
             "current workflow while keeping the tools reusable."
         ),
         (
-            "When you start a long-running Studio job and a matching progress/status MCP tool is "
-            "available, call it after job creation with the job id or name so Studio can render "
-            "progress inline. Use mcp__nemo_studio__job_progress for Studio jobs."
+            "Whenever you start, submit, or kick off any platform job (for example an anonymizer run, "
+            "customization, data designer, safe synthesizer, or evaluation job) and you know its job name, "
+            "you MUST call mcp__nemo_studio__job_progress with that job name before your final response so "
+            "Studio renders the progress card inline. Do this for every job you launch, not only the first, "
+            "and pass job_type or source when known so the card links to the right detail page."
+        ),
+        (
+            "Never replace the job_progress card with a plain-text job summary or by telling the user to "
+            "run a status command; call job_progress in addition to any Studio link you include."
         ),
     ]
 )

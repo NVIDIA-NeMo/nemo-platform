@@ -1,0 +1,6 @@
+# Test OCI Kyverno policy for multi-node GPU training with RDMA
+
+multinodeNetworking:
+  oci:
+    enabled: true
+    rdmaDevicesPerGPU: 8

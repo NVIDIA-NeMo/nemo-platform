@@ -1,0 +1,40 @@
+{{- if .Values.httpRoute.enabled -}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "nemo-platform.name" . }}
+  labels:
+    {{- include "nemo-platform.labels" . | nindent 4 }}
+    {{- with .Values.httpRoute.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.httpRoute.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  parentRefs:
+    {{- required "A valid .Values.httpRoute.parentRefs entry is required when httpRoute.enabled is true" .Values.httpRoute.parentRefs | toYaml | nindent 4 }}
+  {{- with .Values.httpRoute.hostnames }}
+  hostnames:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{ range .Values.httpRoute.pathRules }}
+    - matches:
+        {{ range .matches }}
+        - path:
+            type: {{ .type }}
+            value: {{ .path }}
+        {{- end }}
+      {{- if $.Values.httpRoute.filters }}
+      filters:
+        {{- toYaml $.Values.httpRoute.filters | nindent 8 }}
+      {{- end }}
+      backendRefs:
+        {{ range .backends }}
+        - name: {{ tpl .service $ }}
+          port: {{ int (tpl .port $) }}
+        {{- end }}
+    {{- end }}
+{{- end }}

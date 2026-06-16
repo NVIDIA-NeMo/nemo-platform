@@ -1,0 +1,5 @@
+# Test GCP Kyverno policy for multi-node GPU training with TCP-X
+
+multinodeNetworking:
+  gcp:
+    enabled: true
