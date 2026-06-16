@@ -278,6 +278,22 @@ jobs:
       - name: Install NeMo Platform
         shell: bash
         run: |
+          watch_pods() {
+            while true; do
+              echo "--- kubectl get pods -n ${NAMESPACE} $(date -u +%Y-%m-%dT%H:%M:%SZ) ---"
+              kubectl get pods -n "${NAMESPACE}" -o wide || true
+              sleep 5
+            done
+          }
+
+          watch_pods &
+          watch_pods_pid="$!"
+          cleanup_pod_watch() {
+            kill "${watch_pods_pid}" 2>/dev/null || true
+            wait "${watch_pods_pid}" 2>/dev/null || true
+          }
+          trap cleanup_pod_watch EXIT
+
           if ! HELM_VALUES="${K8S_E2E_VALUES}/kind.yaml" "${K8S_E2E_SCRIPTS}/install_nmp_e2e.sh"; then
             echo "--- helm list -A ---"
             helm list -A || true
