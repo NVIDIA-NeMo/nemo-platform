@@ -4,6 +4,7 @@
 """Tests for _prepare_aut_config_for_runtime IGW routing logic."""
 
 import json
+import stat
 import subprocess
 import sys
 from importlib import util
@@ -668,6 +669,58 @@ workflow:
         assert (str(codex_auth), "/tmp/codex_host_auth.json:ro") in captured_mounts
         assert (str(workspace_dir), "/app/workspace") in captured_mounts
         assert (str(codex_home), "/tmp/codex_host_home") not in captured_mounts
+
+    def test_run_agent_phase_relaxes_bind_mount_directory_permissions(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        task_dir = tmp_path / "task"
+        task_dir.mkdir()
+        (task_dir / "instruction.md").write_text("Do the thing.")
+        output_dir = tmp_path / "out"
+        state_dir = tmp_path / "state"
+        workspace_dir = tmp_path / "workspace"
+        state_dir.mkdir()
+        workspace_dir.mkdir()
+        state_dir.chmod(0o775)
+        workspace_dir.chmod(0o775)
+
+        monkeypatch.setenv("OPENAI_API_KEY", "openai-secret")
+        captured_mounts: list[tuple[str, str]] = []
+
+        def fake_docker_run(*_args: object, **kwargs: object) -> subprocess.CompletedProcess:
+            mounts = cast(list[tuple[str, str]], kwargs["mounts"])
+            captured_mounts.extend(mounts)
+            return subprocess.CompletedProcess(args=["docker"], returncode=0, stdout="", stderr="")
+
+        monkeypatch.setattr(nat_runner, "_docker_run", fake_docker_run)
+
+        assert run_agent_phase(
+            task_dir,
+            "task-image",
+            output_dir,
+            nvidia_api_key="",
+            anthropic_api_key="",
+            anthropic_base_url="https://anthropic.example",
+            nmp_base_url="http://localhost:8080",
+            agent_model=None,
+            agent_params={},
+            codex_auth_json=None,
+            timeout=10,
+            agent_backend="codex",
+            aut_agent_name="test-agent",
+            aut_agent_config=None,
+            aut_seed_providers=True,
+            state_dir=state_dir,
+            workspace_dir=workspace_dir,
+        )
+
+        agent_log_dir = output_dir / "agent"
+        assert stat.S_IMODE(agent_log_dir.stat().st_mode) == 0o777
+        assert stat.S_IMODE(state_dir.stat().st_mode) == 0o777
+        assert stat.S_IMODE(workspace_dir.stat().st_mode) == 0o777
+        assert (str(agent_log_dir), "/logs/agent") in captured_mounts
+        assert (str(state_dir), "/data") in captured_mounts
+        assert (str(workspace_dir), "/app/workspace") in captured_mounts
 
     def test_run_verify_phase_mounts_shared_evaluator_harness(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path

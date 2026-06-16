@@ -73,6 +73,7 @@ import fnmatch
 import json
 import os
 import shlex
+import stat
 import subprocess
 import sys
 import textwrap
@@ -99,6 +100,7 @@ PLATFORM_CONFIG_PATH = "/app/packages/nmp_platform/config/local.yaml"
 DOCKER_SOCKET_HOST_PATH = Path("/var/run/docker.sock")
 DOCKER_SOCKET_CONTAINER_PATH = "/var/run/docker.sock"
 PLACEHOLDER_SECRET_VALUES = {"null", "none"}
+CONTAINER_WRITABLE_DIR_MODE = 0o777
 
 
 def _normalize_secret(value: str | None) -> str:
@@ -111,6 +113,15 @@ def _normalize_secret(value: str | None) -> str:
 
 def _secret_from_env(name: str) -> str:
     return _normalize_secret(os.environ.get(name))
+
+
+def _ensure_container_writable_dir(path: Path) -> None:
+    """Create a bind-mount directory writable by container users with mismatched UID/GID."""
+    path.mkdir(parents=True, exist_ok=True)
+    current_mode = stat.S_IMODE(path.stat().st_mode)
+    desired_mode = current_mode | CONTAINER_WRITABLE_DIR_MODE
+    if desired_mode != current_mode:
+        path.chmod(desired_mode)
 
 
 _CANDIDATE_PARAM_STRING_KEYS = frozenset(
@@ -925,8 +936,9 @@ def run_agent_phase(
 
     instruction = instruction_path.read_text()
     agent_log_dir = output_dir / "agent"
-    agent_log_dir.mkdir(parents=True, exist_ok=True)
-    workspace_dir.mkdir(parents=True, exist_ok=True)
+    _ensure_container_writable_dir(agent_log_dir)
+    _ensure_container_writable_dir(workspace_dir)
+    _ensure_container_writable_dir(state_dir)
 
     # Build the environment passed into the container
     env: dict[str, str] = {
@@ -1514,9 +1526,12 @@ def run_verify_phase(
         print(f"[nat_runner] ERROR: No test_outputs.py in {tests_dir}; verification failed")
         return False, ""
 
+    agent_log_dir = output_dir / "agent"
     verifier_log_dir = output_dir / "verifier"
-    verifier_log_dir.mkdir(parents=True, exist_ok=True)
-    workspace_dir.mkdir(parents=True, exist_ok=True)
+    _ensure_container_writable_dir(agent_log_dir)
+    _ensure_container_writable_dir(verifier_log_dir)
+    _ensure_container_writable_dir(workspace_dir)
+    _ensure_container_writable_dir(state_dir)
 
     smoke_seed_cmd = ""
     smoke_cleanup_cmd = ""
@@ -1570,7 +1585,7 @@ def run_verify_phase(
             (str(workspace_dir), "/app/workspace"),
             (str(SHARED_DIR), "/app/tests/agentic-use/shared:ro"),
             (str(REPO_ROOT / "packages" / "nemo_evaluator_sdk" / "src"), "/app/packages/nemo_evaluator_sdk/src:ro"),
-            (str(output_dir / "agent"), "/logs/agent"),
+            (str(agent_log_dir), "/logs/agent"),
             (str(verifier_log_dir), "/logs/verifier"),
             # Persist service/database state across AGENT and VERIFY containers.
             # This restores Harbor-like state continuity while keeping phase isolation.
@@ -1635,9 +1650,9 @@ def run_task(
     output_dir = jobs_dir / f"{ts}-{task_name}"
     output_dir.mkdir(parents=True, exist_ok=True)
     state_dir = output_dir / "state"
-    state_dir.mkdir(parents=True, exist_ok=True)
+    _ensure_container_writable_dir(state_dir)
     workspace_dir = output_dir / "workspace"
-    workspace_dir.mkdir(parents=True, exist_ok=True)
+    _ensure_container_writable_dir(workspace_dir)
 
     image_tag = f"nmp-nat-{task_name}:latest"
 
