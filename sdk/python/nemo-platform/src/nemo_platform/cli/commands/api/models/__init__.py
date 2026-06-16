@@ -263,6 +263,7 @@ def list_models(
     filter_description: Annotated[
         str | None, typer.Option("--filter.description", rich_help_panel="Filter Options")
     ] = None,
+    filter_fileset: Annotated[str | None, typer.Option("--filter.fileset", rich_help_panel="Filter Options")] = None,
     filter_finetuning_type: Annotated[
         bool | None, typer.Option("--filter.finetuning-type", rich_help_panel="Filter Options")
     ] = None,
@@ -313,6 +314,7 @@ def list_models(
             adapters=filter_adapters,
             base_model=filter_base_model,
             description=filter_description,
+            fileset=filter_fileset,
             finetuning_type=filter_finetuning_type,
             lora_enabled=filter_lora_enabled,
             name=filter_name,
