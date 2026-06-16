@@ -141,6 +141,8 @@ Training never runs inside the `nemo` CLI process. After `submit`, the platform'
 - For submit/image/plugin errors (both backends), read `references/troubleshooting.md`. Unsloth needs the `nmp-unsloth-training` container image on the **platform host's** Docker daemon (see `docker/unsloth/README.md`).
 - **Missing training image on a remote platform** — if the user gave a non-localhost `NEMO_BASE_URL` / `NMP_BASE_URL` (e.g. `10.0.0.51:8080`) and the job errors with `Failed to pull image`, `manifest unknown`, or missing `nmp-unsloth-training` / automodel training image: **do not** run `docker build`, `docker pull`, or `docker buildx bake` on the agent machine. Report with **Report to user** (use **Output adapter fileset (planned):** on error), then append on-target build steps from `references/troubleshooting.md` § **Missing training images**.
 - **Gated HuggingFace models** (Llama, Gemma, …) — confirm `hf-token` + fileset `token_secret` before submit; download fails with `Failed to access upstream storage` / 502 when missing. See **HuggingFace token (gated models)** and `references/troubleshooting.md` § **Gated HuggingFace models**.
+- **Post-training eval format** — use the same CHAT `messages` JSONL as training. **Do not** flatten rows to `prompt`/`expected` for the evaluator. Send `messages[:-1]` at inference (exclude final assistant label); score against `messages[-1].content`. See `references/post-training-eval.md` and `references/eval_helpers.py`.
+- **LoRA adapters load automatically for eval** — when a job completes, the adapter is registered on the model entity and hot-reloaded on any **READY** deployment with `lora_enabled: true`. **Do not** update deployments or providers before eval. **Do** route LoRA eval through the **provider** gateway (`/provider/<name>/-/v1` with `model: default--<adapter>`); the model-entity path (`/model/<entity>/-/v1`) always hits the base model. See `references/post-training-eval.md` § **Request routing (base vs LoRA)**.
 
 ## Workflow
 
@@ -162,12 +164,14 @@ Common steps then **branch by plugin pick**:
 - [ ] nemo customization automodel submit /tmp/job.json --workspace default
 - [ ] Poll until top-level terminal (`poll_customization_job.sh`; default 15s interval, or 30–60s manual polls)
 - [ ] Report using output template below
+- [ ] Optional: compare base vs adapter on validation — `references/eval_helpers.py …` (CHAT format; adapters hot-reload automatically; see `references/post-training-eval.md`)
 
 # unsloth branch (submit → Docker GPU job)
 - [ ] Write /tmp/job.json using the UnslothJobInput shape (see Fast path — unsloth)
 - [ ] nemo customization unsloth submit /tmp/job.json --workspace default [--profile <gpu-profile>]
 - [ ] Poll until top-level terminal (`poll_customization_job.sh unsloth-<job-id>`; default 15s interval)
 - [ ] Report using output template below
+- [ ] Optional: compare base vs adapter on validation — `references/eval_helpers.py …` (CHAT format; adapters hot-reload automatically; see `references/post-training-eval.md`)
 ```
 
 ## Fast path — automodel
@@ -513,7 +517,7 @@ After polling reaches a **terminal** status (`completed`, `error`, or `cancelled
 
 | Status | Notes |
 |--------|-------|
-| `completed` | Brief success summary (e.g. adapter registered on model entity). When `metrics.train_loss` has ≥2 entries, add a loss-drop sentence: *Loss dropped from \<first value, 1 dp\> at step 1 to \<last value, 3 dp\> at step \<N\>; validation loss was \<val or n/a\>.* |
+| `completed` | Brief success summary (e.g. adapter registered on model entity). When `metrics.train_loss` has ≥2 entries, add a loss-drop sentence: *Loss dropped from \<first value, 1 dp\> at step 1 to \<last value, 3 dp\> at step \<N\>; validation loss was \<val or n/a\>.* Always append **Using the adapter** with discovered provider name and concrete gateway URLs (see below). |
 | `error` | Quote `error_details.message` or the failing step; note setup that succeeded before the failure (auth, dataset upload, submit). |
 | `cancelled` | Cancellation reason if available. |
 
@@ -580,21 +584,85 @@ After polling reaches a **terminal** status (`completed`, `error`, or `cancelled
 | Output save method | lora |
 ```
 
-**Using the adapter (`completed` only)** — after **Training configuration**, run `nemo models get <model-entity> --workspace default` (parse stdout only) to confirm the adapter is listed under `adapters`. Append this section:
+**Using the adapter (`completed` only)** — after **Training configuration**, run these discovery commands (parse stdout only; do not pipe `2>&1` into JSON parsers):
+
+1. `nemo models get <model-entity> --workspace default` — confirm `<output.name>` appears under `adapters` with `enabled: true`.
+2. `nemo inference providers list --workspace default -f json` — pick a **READY** provider whose `served_models` includes `default/<model-entity>` (base or LoRA composite). Record its `name` as `<provider>` (often matches the deployment name).
+
+On a deployment with `lora_enabled: true`, the adapter is **hot-reloaded automatically** — no deployment update or provider reconfiguration is required before inference or post-training eval. Append this section with **concrete URLs and provider name** from discovery:
 
 ```markdown
 ### Using the adapter
 
-The adapter `<output.name>` is attached to `default/<model-entity>`. List adapters with:
+The adapter `<output.name>` is registered on `default/<model-entity>`. Weights are hot-reloaded on LoRA-enabled deployments — no deployment or provider update is required after training.
+
+#### Request routing (base vs LoRA)
+
+| Target | Gateway path | OpenAI base URL | Request `"model"` field |
+|--------|--------------|-----------------|-------------------------|
+| **Base** weights | model-entity | `<NEMO_BASE_URL>/apis/inference-gateway/v2/workspaces/default/model/<model-entity>/-/v1` | `default/<model-entity>` |
+| **LoRA adapter** | **provider** | `<NEMO_BASE_URL>/apis/inference-gateway/v2/workspaces/default/provider/<provider>/-/v1` | `default--<output.name>` |
+
+**Common mistake:** posting to the model-entity URL with `"model": "default--<output.name>"` still runs the **base** model. Base-vs-adapter eval will look identical until LoRA requests use the **provider** URL above. See `references/post-training-eval.md` § **Request routing (base vs LoRA)**.
+
+#### Chat inference (CHAT-trained models)
+
+Match training context at inference — send **`messages[:-1]`** (all turns except the final assistant label). Single-turn rows are just the user message; multi-turn rows keep prior user/assistant history.
+
+| Setting | Value | Why |
+|---------|-------|-----|
+| `messages` | All turns except the final assistant label from the JSONL row | Same decode path as SFT |
+| `max_tokens` | `64` for short assistant labels | Training targets are brief (e.g. MCQA choice text) |
+| `temperature` | `0` | Reproducible eval / regression checks |
+| `chat_template_kwargs.enable_thinking` | `false` for Qwen3 short-answer SFT | Thinking mode needs extra tokens and changes output shape vs training |
+
+#### Example — LoRA adapter via provider
 
 \`\`\`bash
-export NEMO_BASE_URL=<platform-url>   # omit line when using default localhost
-cd /path/to/nemo-platform
-nemo models get <model-entity> --workspace default
+export NEMO_BASE_URL=<platform-url>   # omit when using default localhost
+nemo inference gateway provider post v1/chat/completions <provider> --workspace default \\
+  --body '{
+    "model": "default--<output.name>",
+    "messages": [<all turns except final assistant label from the eval row>],
+    "max_tokens": 64,
+    "temperature": 0,
+    "chat_template_kwargs": {"enable_thinking": false}
+  }'
 \`\`\`
+
+#### Example — base model via model-entity (comparison)
+
+\`\`\`bash
+export NEMO_BASE_URL=<platform-url>
+nemo inference gateway model post v1/chat/completions <model-entity> --workspace default \\
+  --body '{
+    "model": "default/<model-entity>",
+    "messages": [<same prompt turns as LoRA example — exclude final assistant label>],
+    "max_tokens": 64,
+    "temperature": 0,
+    "chat_template_kwargs": {"enable_thinking": false}
+  }'
+\`\`\`
+
+#### Post-training eval (optional)
+
+Validation loss from training is **not** accuracy. To compare base vs adapter on the validation split with correct routing:
+
+\`\`\`bash
+cd /path/to/nemo-platform
+uv run python plugins/nemo-customizer/src/nemo_customizer/skills/nemo-customizer/references/eval_helpers.py \\
+  --base-url <platform-url> \\
+  --model-entity <model-entity> \\
+  --adapter <output.name> \\
+  --provider <provider> \\
+  --dataset-fileset <dataset-fileset> \\
+  --split validation.jsonl
+\`\`\`
+
+Uses CHAT `messages` rows unchanged from the training fileset (`messages[:-1]` at inference). Repeat `--adapter` for multi-adapter compare. `--provider` is optional when a READY provider is auto-discovered.
 ```
 
-Use the user's platform URL in `NEMO_BASE_URL` when they overrode it; omit the export line for default `http://127.0.0.1:8080`. The JSON `adapters` array shows `name`, `fileset`, `finetuning_type`, and `lora_config` for each registered adapter.
+Use the user's platform URL in `NEMO_BASE_URL` when they overrode it; omit the export line for default `http://127.0.0.1:8080`. Substitute `<provider>`, `<NEMO_BASE_URL>`, and entity/adapter names with values from discovery — do not leave generic placeholders in the user-facing report. Do **not** tell the user to update the deployment or add the adapter to a provider before calling it — registration on the model entity is sufficient.
 
 **Save report to `/tmp`** — unless the user opts out, write the full Markdown report (header, **Training configuration**, **Using the adapter** when `completed`, and **Resources created** when a slug or new filesets were used) to `/tmp/fine-tune-result-<slug-or-job-suffix>.md`. Use the random slug from the run when one was assigned; otherwise use the job id suffix (e.g. `a925b07ff678`).
 
@@ -626,5 +694,6 @@ For other terminal errors, keep the same header template; put remediation detail
 | W&B / MLflow field reference | `references/hyperparameters.md` § **Integrations (automodel + unsloth)** |
 | W&B secret + MLflow local server + jobs-launcher | `references/integrations-setup.md` |
 | Gated HF model auth (`hf-token`, fileset `token_secret`) | `references/troubleshooting.md` § **Gated HuggingFace models** |
+| Post-training eval (base vs LoRA, CHAT format parity) | `references/post-training-eval.md`, `references/eval_helpers.py` |
 
 Related: `plugins/nemo-automodel/README.md`, `plugins/nemo-unsloth/README.md`, `plugins/nemo-customizer/docs/CUSTOMIZATION.md`, skills **`nemo-files`**, **`nemo-status`**, **`nemo-secrets`**.
