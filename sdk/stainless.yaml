@@ -26,16 +26,16 @@ custom_casings:
     initialism: true
 
 targets:
-#  typescript:
-#    _skip_running_tests: false
-#    package_name: nemo-platform-v1
-#    publish:
-#      npm: false
-#    skip: false
-#    options:
-#      mcp_server:
-#        package_name: nemo-platform-v1-mcp
-#        enable_all_resources: true
+  #  typescript:
+  #    _skip_running_tests: false
+  #    package_name: nemo-platform-v1
+  #    publish:
+  #      npm: false
+  #    skip: false
+  #    options:
+  #      mcp_server:
+  #        package_name: nemo-platform-v1-mcp
+  #        enable_all_resources: true
 
   python:
     # [docs]: https://www.stainless.com/docs/reference/editions
@@ -81,86 +81,86 @@ client_settings:
 # `pagination` defines [pagination schemes] which provides a template to match
 # endpoints and generate next-page and auto-pagination helpers in the SDKs.
 pagination:
-- name: default_pagination
-  type: page_number
-  request:
-    page:
-      type: integer
-      x-stainless-pagination-property:
-        purpose: page_number_param
-    page_size:
-      type: integer
-  response:
-    data:
-      type: array
-      x-stainless-pagination-property:
-        purpose: items
-      items:
+  - name: default_pagination
+    type: page_number
+    request:
+      page:
+        type: integer
+        x-stainless-pagination-property:
+          purpose: page_number_param
+      page_size:
+        type: integer
+    response:
+      data:
+        type: array
+        x-stainless-pagination-property:
+          purpose: items
+        items:
+          type: object
+          additionalProperties: true
+      pagination:
         type: object
-        additionalProperties: true
-    pagination:
-      type: object
-      properties:
-        page:
-          type: integer
-          title: Page
-          description: The current page number.
-          x-stainless-pagination-property:
-            purpose: current_page_number_field
-        page_size:
-          type: integer
-          title: Page Size
-          description: The page size used for the query.
-        current_page_size:
-          type: integer
-          title: Current Page Size
-          description: The size for the current page.
-        total_pages:
-          type: integer
-          title: Total Pages
-          description: The total number of pages.
-          x-stainless-pagination-property:
-            purpose: total_page_count_field
-        total_results:
-          type: integer
-          title: Total Results
-          description: The total number of results.
-      required:
-      - page
-      - page_size
-      - total_pages
-      - total_results
-      - current_page_size
-- name: logs_pagination
-  type: cursor
-  request:
-    limit:
-      type: integer
-    page_cursor:
-      type: string
-      x-stainless-pagination-property:
-        purpose: next_cursor_param
-  response:
-    data:
-      type: array
-      x-stainless-pagination-property:
-        purpose: items
-      items:
-        type: object
-        additionalProperties: true
-    next_page:
-      type: string
-      x-stainless-pagination-property:
-        purpose: next_cursor_field
+        properties:
+          page:
+            type: integer
+            title: Page
+            description: The current page number.
+            x-stainless-pagination-property:
+              purpose: current_page_number_field
+          page_size:
+            type: integer
+            title: Page Size
+            description: The page size used for the query.
+          current_page_size:
+            type: integer
+            title: Current Page Size
+            description: The size for the current page.
+          total_pages:
+            type: integer
+            title: Total Pages
+            description: The total number of pages.
+            x-stainless-pagination-property:
+              purpose: total_page_count_field
+          total_results:
+            type: integer
+            title: Total Results
+            description: The total number of results.
+        required:
+          - page
+          - page_size
+          - total_pages
+          - total_results
+          - current_page_size
+  - name: logs_pagination
+    type: cursor
+    request:
+      limit:
+        type: integer
+      page_cursor:
+        type: string
+        x-stainless-pagination-property:
+          purpose: next_cursor_param
+    response:
+      data:
+        type: array
+        x-stainless-pagination-property:
+          purpose: items
+        items:
+          type: object
+          additionalProperties: true
+      next_page:
+        type: string
+        x-stainless-pagination-property:
+          purpose: next_cursor_field
 
 streaming:
   on_event:
-  - data_starts_with: "[DONE]"
-    handle: done
-  - event_type: error
-    handle: error
-  - event_type:
-    handle: yield
+    - data_starts_with: "[DONE]"
+      handle: done
+    - event_type: error
+      handle: error
+    - event_type:
+      handle: yield
 
 readme:
   example_requests:
@@ -462,6 +462,24 @@ resources:
           update: put /apis/models/v2/workspaces/{workspace}/providers/{name}
           delete: delete /apis/models/v2/workspaces/{workspace}/providers/{name}
           update_status: put /apis/models/v2/workspaces/{workspace}/providers/{name}/status
+      prompts:
+        models:
+          chat_completion_tool: ChatCompletionTool
+          create_prompt_request: CreatePromptRequest
+          function_definition: FunctionDefinition
+          prompt: Prompt
+          prompt_filter: PromptFilter
+          prompt_message: PromptMessage
+          prompt_message_role: PromptMessageRole
+          prompt_sort: PromptSort
+          prompts_page: PromptsPage
+          update_prompt_request: UpdatePromptRequest
+        methods:
+          list: get /apis/models/v2/workspaces/{workspace}/prompts
+          create: post /apis/models/v2/workspaces/{workspace}/prompts
+          retrieve: get /apis/models/v2/workspaces/{workspace}/prompts/{name}
+          update: put /apis/models/v2/workspaces/{workspace}/prompts/{name}
+          delete: delete /apis/models/v2/workspaces/{workspace}/prompts/{name}
       gateway:
         subresources:
           openai:

@@ -9,7 +9,7 @@ Before running a customization job, you need to set up a **Model Entity** that p
 
 <Cards>
 
-<Card title="Create a Model FileSet" href="/documentation/fine-tune-models/manage-model-entities/create-a-model-file-set">
+<Card title="Create a Model FileSet" href="/documentation/customizer-reference/manage-model-entities/create-a-model-file-set">
 
 Create a FileSet containing your base model checkpoint from HuggingFace, NGC, or local storage.
 
@@ -75,38 +75,37 @@ client = NeMoPlatform(
 try:
     fileset = client.files.filesets.create(
         workspace="default",
-        name="llama-3-2-1b",
-        description="Llama 3.2 1B base model from HuggingFace",
+        name="qwen3-1.7b",
+        description="Qwen3 1.7B base model from HuggingFace",
         storage=HuggingfaceStorageConfigParam(
             type="huggingface",
-            repo_id="meta-llama/Llama-3.2-1B-Instruct",
+            repo_id="Qwen/Qwen3-1.7B",
             repo_type="model",
-            token_secret="my-hf-token",  # Refer to Manage Secrets documentation
         ),
     )
     print(f"Created FileSet: {fileset.name}")
 except ConflictError:
     print("FileSet already exists, retrieving...")
-    fileset = client.files.filesets.retrieve(workspace="default", name="llama-3-2-1b")
+    fileset = client.files.filesets.retrieve(workspace="default", name="qwen3-1.7b")
 
 # Step 2: Create Model Entity
 try:
     model = client.models.create(
         workspace="default",
-        name="llama-3-2-1b",
-        fileset="default/llama-3-2-1b",  # Reference to the FileSet
-        description="Llama 3.2 1B base model for customization",
+        name="qwen3-1.7b",
+        fileset="default/qwen3-1.7b",  # Reference to the FileSet
+        description="Qwen3 1.7B base model for customization",
     )
     print(f"Created Model Entity: {model.name}")
 except ConflictError:
     print("Model Entity already exists, retrieving...")
-    model = client.models.retrieve(workspace="default", name="llama-3-2-1b")
+    model = client.models.retrieve(workspace="default", name="qwen3-1.7b")
 
 # Step 3: Wait for ModelSpec to be auto-populated
 print("Waiting for model spec to be populated...")
 while not model.spec:
     time.sleep(5)
-    model = client.models.retrieve(workspace="default", name="llama-3-2-1b")
+    model = client.models.retrieve(workspace="default", name="qwen3-1.7b")
 
 print(f"Model ready!")
 print(f" Architecture: {model.spec.family}")
@@ -114,6 +113,6 @@ print(f" Parameters: {model.spec.base_num_parameters:,}")
 print(f" Layers: {model.spec.num_layers}")
 ```
 
-After the Model Entity is ready (has a `spec`), you can use it in customization jobs with `model: "default/llama-3-2-1b"`.
+After the Model Entity is ready (has a `spec`), you can use it in customization jobs with `model: "default/qwen3-1.7b"`.
 
 ---

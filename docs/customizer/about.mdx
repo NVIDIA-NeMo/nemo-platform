@@ -147,7 +147,7 @@ Below are some examples of how you might format your dataset to perform a handfu
 
 When testing models trained with prompt/completion datasets, use the `/v1/completions` endpoint instead of `/v1/chat/completions`.
 
-For details, refer to the [Dataset Formatting tutorial](/documentation/fine-tune-models/tutorials/format-training-dataset#format-a-prompt-completion-dataset).
+For details, refer to the [Dataset Formatting tutorial](/documentation/customizer-reference/tutorials/format-training-dataset#format-a-prompt-completion-dataset).
 
 </Note>
 #### Document Classification
@@ -197,31 +197,37 @@ completion: "<simple>"
 
 Most of the models support Instruction Templates for training, the expected dataset conforms with the standard [OpenAI messages format](https://platform.openai.com/docs/guides/fine-tuning#multi-turn-chat-examples). Additionally, some models support tool calling which have additional optional parameters of `tools` at the top level of each entry and `tool_calls` per message.
 
-For more information refer to our [in-depth instructions](/documentation/fine-tune-models/tutorials/format-training-dataset#format-a-conversation-dataset).
+For more information refer to our [in-depth instructions](/documentation/customizer-reference/tutorials/format-training-dataset#format-a-conversation-dataset).
 
 ## Hyperparameters
 
 Hyperparameters are configuration settings used to control the training process. You'll set these values before training begins to optimize how the model learns from your data. While the model automatically learns its internal parameters during training, these hyperparameters help guide that learning process. The right values depend on your specific use case, dataset size, and computational resources.
 
-| Hyperparameter | Description | Default |
-|----------------|-------------|---------|
-| `epochs` | Number of complete passes through the training dataset | Model-dependent |
-| `batch_size` | Number of samples processed before updating model weights | Model-dependent |
-| `learning_rate` | Step size for weight updates during training | Model-dependent |
-| `training.type` | Training type: `"sft"` for supervised fine-tuning | `"sft"` |
-| `training.peft.type` | PEFT method: `"lora"` for Low-Rank Adaptation | — |
-| `training.peft.rank` | LoRA rank (lower = fewer parameters, higher = more expressive) | 8 |
-| `training.peft.alpha` | LoRA scaling factor | 32 |
+Common hyperparameters you'll tune include:
+
+| Hyperparameter | Description |
+|----------------|-------------|
+| Epochs | Number of complete passes through the training dataset |
+| Batch size | Number of samples processed before updating model weights |
+| Learning rate | Step size for weight updates during training |
+| LoRA rank | Low-rank dimension of the adapter (lower = fewer parameters, higher = more expressive) |
+| LoRA alpha | LoRA scaling factor |
+
+<Note>
+
+NeMo Customizer offers **two training backends** — Automodel (multi-GPU) and Unsloth (single-GPU, quantized) — and each accepts its own job configuration. The exact field names, defaults, and available knobs differ between them. For the full per-backend hyperparameter reference, see [Training Configuration](/documentation/customizer-reference/manage-customization-jobs/training-configuration).
+
+</Note>
 
 ## Parallelism
 
-NeMo Platform Customizer supports various distributed training parallelization methods, which can be mixed together.
+The Automodel backend supports several distributed training parallelization methods, which can be mixed together. The Unsloth backend runs on a single GPU and does not use these settings.
 
 ### Tensor Parallelism
 
 [Tensor Parallelism](https://docs.nvidia.com/nemo-framework/user-guide/latest/nemotoolkit/features/parallelisms.html#tensor-parallelism) (TP) distributes the parameter tensor of an individual layer across GPUs. In addition to reducing model state memory usage, it also saves activation memory as the per-GPU tensor sizes shrink. The tradeoff is increased CPU overhead.
 
-TP can be configured via `parallelism.tensor_parallel_size` in the [training configuration](/documentation/customizer-reference/manage-jobs/training-configuration).
+TP can be configured via `parallelism.tensor_parallel_size` in the [training configuration](/documentation/customizer-reference/manage-customization-jobs/training-configuration).
 
 <Note>
 
@@ -232,7 +238,7 @@ As of release 25.10.0, AutoModel engines including Phi-4, Qwen, and Gemma suppor
 
 [Pipeline Parallelism](https://docs.nvidia.com/nemo-framework/user-guide/latest/nemotoolkit/features/parallelisms.html#pipeline-parallelism) (PP) distributes the layers of a neural network across GPUs. The GPUs then process the different layers sequentially.
 
-PP can be configured via `parallelism.pipeline_parallel_size` in the [training configuration](/documentation/customizer-reference/manage-jobs/training-configuration).
+PP can be configured via `parallelism.pipeline_parallel_size` in the [training configuration](/documentation/customizer-reference/manage-customization-jobs/training-configuration).
 
 #### Configuration
 
@@ -246,11 +252,11 @@ PP can be configured via `parallelism.pipeline_parallel_size` in the [training c
  - Smaller TP values generally have less communication overhead.
  - Larger TP values provide more memory savings but increase communication costs.
 
-### Sequence Parallelism
+### Context Parallelism
 
-[Sequence Parallelism](https://docs.nvidia.com/nemo-framework/user-guide/latest/nemotoolkit/features/parallelisms.html#sequence-parallelism) (SP) extends tensor-level model parallelism by distributing computing load and activation memory across multiple GPUs along the sequence dimension of transformer layers. This method is particularly useful when training on the datasets with longer sequences. It also benefits portions of the layer that have previously not been parallelized, enhancing overall model performance and efficiency.
+[Context Parallelism](https://docs.nvidia.com/nemo-framework/user-guide/latest/nemotoolkit/features/parallelisms.html#context-parallelism) (CP) distributes activation memory along the sequence dimension across GPUs, which is particularly useful when training on datasets with very long sequences.
 
-Sequence Parallelism can be enabled/disabled using `parallelism.sequence_parallel` in the [training configuration](/documentation/customizer-reference/manage-jobs/training-configuration).
+Context Parallelism can be configured via `parallelism.context_parallel_size` in the [training configuration](/documentation/customizer-reference/manage-customization-jobs/training-configuration).
 
 ## Sequence Packing
 
@@ -260,46 +266,24 @@ Sequence Parallelism can be enabled/disabled using `parallelism.sequence_paralle
 - Maximize GPU compute efficiency
 - Optimize GPU memory usage
 
-When enabled, the `batch_size` and number of training steps update so that each gradient iteration sees, on average, the same number of tokens compared to running fine-tuning _without_ sequence packing.
+When enabled, the effective batch size and number of training steps update so that each gradient iteration sees, on average, the same number of tokens compared to running fine-tuning _without_ sequence packing.
+
+Sequence packing is enabled per backend:
+
+- **Automodel**: set `batch.sequence_packing` to `true`.
+- **Unsloth**: set `dataset.packing` to `true`.
+
+See [Training Configuration](/documentation/customizer-reference/manage-customization-jobs/training-configuration) for the full batch and dataset options.
 
 ### Limitations
 
-- Sequence packing is an experimental feature only supprted by the following models:
- - meta/llama-3.1-8b-instruct
- - meta/llama-3.1-70b-instruct
- - meta/llama3-70b-instruct
- - meta/llama-3.2-3b-instruct
- - meta/llama-3.2-1b
- - meta/llama-3.2-1b-instruct
-
+- Sequence packing is an experimental feature whose support varies by model and backend.
 - Chat prompt templates do not have support for sequence packing.
 
 <Note>
 
-If `training.sequence_packing` is enabled when using a model that does not support sequence packing, the fine-tuning will proceed _without_ sequence packing and a warning will be returned in the API response.
+If sequence packing is enabled for a model that does not support it, fine-tuning proceeds _without_ sequence packing and a warning is returned in the API response.
 
 </Note>
-### Example of using in the API
 
-Example of creating a customization job with sequence packing enabled:
-
-```python
-job = client.customization.jobs.create(
-    workspace="default",
-    name="my-packed-job",
-    spec={
-        "model": "default/llama-3.1-8b-instruct",
-        "dataset": "fileset://default/test-dataset",
-        "training": {
-            "type": "sft",
-            "peft": {"type": "lora", "rank": 16},
-            "sequence_packing": True,
-            "epochs": 10,
-            "batch_size": 16,
-            "learning_rate": 0.00001,
-        },
-    },
-)
-```
-
-Learn how to create a LoRA customization job with sequence packing by following the [Optimizing for Tokens/GPU](tutorials/optimize-throughput.ipynb) tutorial.
+Learn how to create a LoRA customization job with sequence packing by following the [Optimizing for Tokens/GPU](/documentation/customizer-reference/tutorials/optimize-throughput) tutorial.

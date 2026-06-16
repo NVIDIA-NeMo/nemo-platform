@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { FileSampleMethod } from '@nemo/common/src/utils/sampleTextLines';
-import { Flex, Select, Text } from '@nvidia/foundations-react-core';
+import { Flex, Select } from '@nvidia/foundations-react-core';
 import classnames from 'classnames';
 import type { FC } from 'react';
 
@@ -56,6 +56,8 @@ export interface FileSamplingMethodSelectProps {
   attributes?: FileSamplingMethodSelectAttributes;
   /** Renders method + "max rows" select in one grouped control. */
   rowCountGroup?: FileSamplingRowCountGroup;
+  /** Size of the underlying selects. Defaults to 'small'. */
+  size?: 'small' | 'medium' | 'large';
 }
 
 export const FileSamplingMethodSelect: FC<FileSamplingMethodSelectProps> = ({
@@ -63,12 +65,9 @@ export const FileSamplingMethodSelect: FC<FileSamplingMethodSelectProps> = ({
   onValueChange,
   attributes,
   rowCountGroup,
+  size = 'small',
 }) => {
   const selectAttrs = attributes?.select ?? {};
-
-  const countItems = rowCountGroup
-    ? buildCountItems(rowCountGroup.maxRows, rowCountGroup.value)
-    : [];
 
   const methodSelect = (
     <Select
@@ -77,6 +76,7 @@ export const FileSamplingMethodSelect: FC<FileSamplingMethodSelectProps> = ({
       value={value}
       onValueChange={(next) => onValueChange(next as FileSampleMethod)}
       disabled={selectAttrs.disabled}
+      size={size}
       className={classnames(DEFAULT_SELECT_CLASS, selectAttrs.className)}
     />
   );
@@ -85,22 +85,21 @@ export const FileSamplingMethodSelect: FC<FileSamplingMethodSelectProps> = ({
     return methodSelect;
   }
 
+  const countItems = buildCountItems(rowCountGroup.maxRows, rowCountGroup.value);
   const countValue = String(clampRowCount(rowCountGroup.value, rowCountGroup.maxRows));
 
   return (
-    <Flex role="group" gap="density-md" align="center" wrap="wrap" aria-label="File sampling">
-      <Flex gap="density-xs" align="center" className="min-w-0">
-        <Text kind="body/regular/sm">Max rows</Text>
-        <Select
-          multiple={false}
-          items={countItems}
-          value={countValue}
-          onValueChange={(next) => rowCountGroup.onValueChange(Number(next))}
-          disabled={selectAttrs.disabled || rowCountGroup.disabled}
-          className="w-[72px] grow-0"
-        />
-      </Flex>
+    <Flex role="group" gap="density-sm" align="center" aria-label="File sampling">
       {methodSelect}
+      <Select
+        multiple={false}
+        items={countItems}
+        value={countValue}
+        onValueChange={(next) => rowCountGroup.onValueChange(Number(next))}
+        disabled={selectAttrs.disabled || rowCountGroup.disabled}
+        size={size}
+        className="w-[72px] grow-0"
+      />
     </Flex>
   );
 };

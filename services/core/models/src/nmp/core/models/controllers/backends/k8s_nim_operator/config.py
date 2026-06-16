@@ -35,6 +35,32 @@ class K8sNimOperatorConfig(BaseModel):
         ge=1,
         description="PEFT refresh interval in seconds (only used when lora_enabled is true)",
     )
+    lora_sidecar_image_name: str = Field(
+        default="nmp-api",
+        description=(
+            "Image name (without registry/tag) for the LoRA adapters sidecar container. "
+            "Registry and tag are taken from the platform config (NMP_IMAGE_REGISTRY / NMP_IMAGE_TAG). "
+            "Override to 'nmp-automodel-tasks' for local dev when that image is already available "
+            "but nmp-api is not."
+        ),
+    )
+    lora_sidecar_command: list[str] = Field(
+        default=["nemo", "services", "run", "--sidecars", "adapters"],
+        description=(
+            "Kubernetes container command (entrypoint) for the LoRA sidecar. "
+            "Default uses the nmp-platform-runner entrypoint present in nmp-api. "
+            "When using nmp-automodel-tasks set to ['python'] and set lora_sidecar_args to "
+            "['-m', 'nmp.core.models.sidecars.adapters.main']."
+        ),
+    )
+    lora_sidecar_args: list[str] = Field(
+        default=[],
+        description=(
+            "Kubernetes container args for the LoRA sidecar (appended after lora_sidecar_command). "
+            "Leave empty for nmp-api. "
+            "Set to ['-m', 'nmp.core.models.sidecars.adapters.main'] when using nmp-automodel-tasks."
+        ),
+    )
 
     # Security context
     default_user_id: Optional[int] = Field(

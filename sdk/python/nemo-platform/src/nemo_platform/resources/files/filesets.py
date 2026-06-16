@@ -34,6 +34,7 @@ from ..._response import (
 from ...pagination import SyncDefaultPagination, AsyncDefaultPagination
 from ...types.files import (
     FilesetPurpose,
+    FilesetMetadataParam,
     fileset_list_params,
     fileset_create_params,
     fileset_update_params,

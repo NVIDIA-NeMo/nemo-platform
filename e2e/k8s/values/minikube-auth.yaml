@@ -1,0 +1,48 @@
+# CPU-only minikube values for local auth E2E verification.
+#
+# Usage:
+#   helm upgrade -i nemo-platform k8s/helm -f e2e/k8s/values/minikube-auth.yaml
+#
+# This values file is intentionally local-friendly:
+# - disables the NIM operator dependency
+# - enables platform auth without requiring external OIDC
+# - relies on the chart default that keeps split pods on the API service URL
+#   while the API pod itself loops back to localhost
+# - keeps ingress enabled for browser/curl access through minikube ingress
+
+k8s-nim-operator:
+  enabled: false
+
+postgresql:
+  persistence:
+    storageClass: standard
+
+core:
+  storage:
+    storageClass: standard
+    volumePermissionsImage: busybox
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+
+platformConfig:
+  auth:
+    enabled: true
+    policy_decision_point_provider: embedded
+    policy_data_refresh_interval: 2
+    bundle_cache_seconds: 2
+    admin_email: "admin@example.com"
+  inference_gateway:
+    mock_provider_prefix: igw-mock-
+  models:
+    controller:
+      backends:
+        nim_operator:
+          enabled: false

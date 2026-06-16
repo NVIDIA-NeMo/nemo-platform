@@ -6,7 +6,10 @@ import {
   CLAUDE_CODE_JOB_PROGRESS_MCP_TOOL_NAME,
   CLAUDE_CODE_JOB_PROGRESS_TOOL_NAME,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/jobProgressConsts';
-import { CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME } from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
+import {
+  CLAUDE_CODE_COLLAPSED_THINKING_TOOL_NAME,
+  CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME,
+} from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -94,6 +97,39 @@ const expectLineChangeColors = ({
 };
 
 describe('ClaudeCodeToolCallPart', () => {
+  it('renders collapsed thinking as an expandable subtle disclosure', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ClaudeCodeToolCallPart
+        addResult={vi.fn()}
+        args={{
+          text: 'I will inspect the repo first.\n\nI found the files that matter.',
+        }}
+        argsText='{"text":"I will inspect the repo first.\\n\\nI found the files that matter."}'
+        resume={vi.fn()}
+        status={{ type: 'complete' }}
+        toolCallId="claude-code-collapsed-thinking"
+        toolName={CLAUDE_CODE_COLLAPSED_THINKING_TOOL_NAME}
+        type="tool-call"
+      />
+    );
+
+    const disclosure = screen.getByTestId('claude-code-collapsed-thinking');
+    expect(disclosure).toHaveTextContent('Earlier thinking');
+    expect(disclosure).not.toHaveAttribute('open');
+
+    await user.click(screen.getByText('Earlier thinking'));
+
+    expect(disclosure).toHaveAttribute('open');
+    expect(screen.getByTestId('claude-code-collapsed-thinking-content')).toHaveTextContent(
+      'I will inspect the repo first.'
+    );
+    expect(screen.getByTestId('claude-code-collapsed-thinking-content')).toHaveTextContent(
+      'I found the files that matter.'
+    );
+  });
+
   it.each(subtleToolCases)(
     'renders $toolName as subtle text',
     ({ args, expectedText, toolName }) => {

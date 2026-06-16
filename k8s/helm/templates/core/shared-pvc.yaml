@@ -1,0 +1,25 @@
+{{- if .Values.core.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "nmp-core.persistentVolumeClaim" . }}
+  labels:
+    {{- include "nemo-platform.labels" . | nindent 4 }}
+  {{- with .Values.core.storage.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.core.storage.existingPersistentVolumeName }}
+  volumeName: {{ .Values.core.storage.existingPersistentVolumeName }}
+  {{- else if .Values.core.storage.storageClass }}
+  storageClassName: {{ .Values.core.storage.storageClass }}
+  {{- end }}
+  {{- with .Values.core.storage.accessModes }}
+  accessModes:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.core.storage.size }}
+{{- end }}

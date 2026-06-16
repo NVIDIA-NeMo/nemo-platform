@@ -20,6 +20,12 @@ export interface BadgeProps {
   color?: Exclude<KuiBadgeProps['color'], null>;
 }
 
+export interface StatusConfigEntry {
+  label: string;
+  color: Exclude<KuiBadgeProps['color'], null>;
+  icon?: ComponentType<SVGProps<SVGSVGElement>>;
+}
+
 export type BadgeStatus<T = PlatformJobStatus> =
   | Exclude<T, undefined>
   | 'error'

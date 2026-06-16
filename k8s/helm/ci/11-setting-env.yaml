@@ -1,0 +1,17 @@
+env:
+  MY_ENV_VAR:
+    valueFrom:
+      secretKeyRef:
+        name: foo
+        key: bar
+  ANOTHER_VAR: bloop
+  THIS_WILL_BE_QUOTED_BY_TEMPLATE: true
+
+api:
+  env:
+    HELLO: THERE
+
+core:
+  controller:
+    env:
+      WHAT: 22
