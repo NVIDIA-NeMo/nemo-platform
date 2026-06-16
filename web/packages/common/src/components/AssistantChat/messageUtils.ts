@@ -16,6 +16,10 @@ import type {
 /** Content parts a user message can carry into the runtime: text plus images. */
 export type UserMessageContentPart = TextMessagePart | ImageMessagePart;
 
+const supportsImagesSubstrings = ['vision', 'image', 'images'];
+export const modelSupportsImageAttachments = (model?: string): boolean =>
+  !!model && supportsImagesSubstrings.some((substring) => model.toLowerCase().includes(substring));
+
 const createMessageId = (): string => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();

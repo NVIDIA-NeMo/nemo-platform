@@ -6,6 +6,7 @@ import cn from 'classnames';
 import { type FC, useMemo } from 'react';
 
 import { AssistantChatThread } from './AssistantChatThread';
+import { modelSupportsImageAttachments } from './messageUtils';
 import type { AssistantChatProps } from './types';
 import { useAssistantChatRuntime } from './useAssistantChatRuntime';
 
@@ -37,6 +38,10 @@ export const AssistantChat: FC<AssistantChatProps> = ({
   composerOverride,
   enableImageAttachments = true,
 }) => {
+  // Gate image attachments on both the caller's opt-in and a naive model
+  // capability check, so a text-only model never offers an image affordance.
+  const imageAttachmentsEnabled = enableImageAttachments && modelSupportsImageAttachments(model);
+
   const { handleReset, runtime } = useAssistantChatRuntime({
     model,
     workspace,
@@ -51,7 +56,7 @@ export const AssistantChat: FC<AssistantChatProps> = ({
     onEmptyChange,
     broadcast,
     stopCount,
-    enableImageAttachments,
+    enableImageAttachments: imageAttachmentsEnabled,
   });
 
   const composerPlaceholder = useMemo(
@@ -72,7 +77,7 @@ export const AssistantChat: FC<AssistantChatProps> = ({
           slotComposerStart={slotComposerStart}
           emptyState={emptyState}
           composerOverride={composerOverride}
-          enableImageAttachments={enableImageAttachments}
+          enableImageAttachments={imageAttachmentsEnabled}
         />
       </div>
     </AssistantRuntimeProvider>

@@ -3,7 +3,11 @@
 
 import type { AppendMessage, ThreadMessageLike } from '@assistant-ui/react';
 
-import { getOpenAIMessages, getUserMessageContent } from './messageUtils';
+import {
+  getOpenAIMessages,
+  getUserMessageContent,
+  modelSupportsImageAttachments,
+} from './messageUtils';
 
 const createMessage = (role: ThreadMessageLike['role'], text: string): ThreadMessageLike => ({
   id: `${role}-${text}`,
@@ -100,5 +104,18 @@ describe('getUserMessageContent', () => {
     } as unknown as AppendMessage;
 
     expect(getUserMessageContent(message)).toEqual([]);
+  });
+});
+
+describe('modelSupportsImageAttachments', () => {
+  it('matches the vision substring case-insensitively', () => {
+    expect(modelSupportsImageAttachments('meta/llama-3.2-11b-vision-instruct')).toBe(true);
+    expect(modelSupportsImageAttachments('Some-Vision-Model')).toBe(true);
+  });
+
+  it('rejects models without the vision substring or with no name', () => {
+    expect(modelSupportsImageAttachments('meta/llama-3.1-8b-instruct')).toBe(false);
+    expect(modelSupportsImageAttachments('')).toBe(false);
+    expect(modelSupportsImageAttachments(undefined)).toBe(false);
   });
 });

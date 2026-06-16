@@ -254,9 +254,9 @@ describe('AssistantChat', () => {
     expect(screen.getByRole('button', { name: /Edit message/i })).toBeInTheDocument();
   });
 
-  it('offers an enabled add-image affordance when image attachments are enabled', () => {
+  it('offers an enabled add-image affordance for a vision model when enabled', () => {
     renderAssistantChat(
-      <AssistantChat model="test-model" workspace="default" enableImageAttachments />
+      <AssistantChat model="test-vision-model" workspace="default" enableImageAttachments />
     );
 
     const addImageButton = screen.getByRole('button', { name: /Add image/i });
@@ -266,7 +266,15 @@ describe('AssistantChat', () => {
 
   it('hides the add-image affordance when image attachments are disabled', () => {
     renderAssistantChat(
-      <AssistantChat model="test-model" workspace="default" enableImageAttachments={false} />
+      <AssistantChat model="test-vision-model" workspace="default" enableImageAttachments={false} />
+    );
+
+    expect(screen.queryByRole('button', { name: /Add image/i })).not.toBeInTheDocument();
+  });
+
+  it('hides the add-image affordance for a non-vision model even when enabled', () => {
+    renderAssistantChat(
+      <AssistantChat model="test-model" workspace="default" enableImageAttachments />
     );
 
     expect(screen.queryByRole('button', { name: /Add image/i })).not.toBeInTheDocument();
@@ -274,7 +282,12 @@ describe('AssistantChat', () => {
 
   it('disables the add-image affordance when the chat is disabled', () => {
     renderAssistantChat(
-      <AssistantChat model="test-model" workspace="default" enableImageAttachments disabled />
+      <AssistantChat
+        model="test-vision-model"
+        workspace="default"
+        enableImageAttachments
+        disabled
+      />
     );
 
     expect(screen.getByRole('button', { name: /Add image/i })).toBeDisabled();
@@ -306,7 +319,7 @@ describe('AssistantChat', () => {
     const imageUrl = 'data:image/png;base64,AAAA';
     renderAssistantChat(
       <AssistantChat
-        model="test-model"
+        model="test-vision-model"
         workspace="default"
         enableImageAttachments
         initialMessages={[
