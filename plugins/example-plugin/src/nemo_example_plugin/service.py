@@ -35,9 +35,9 @@ from nemo_example_plugin.core import say_hello
 from nemo_example_plugin.entities import ExampleItem
 from nemo_example_plugin.functions.greet import CountFunction, GreetFunction
 from nemo_example_plugin.middleware_service import build_middleware_config_router
-from nemo_example_plugin.schema import (
+from nemo_example_plugin.schema import ExampleItemFilter
+from nemo_example_plugin.types.payloads import (
     CreateExampleItemRequest,
-    ExampleItemFilter,
     ExampleItemPage,
     UpdateExampleItemRequest,
 )
@@ -50,18 +50,10 @@ from nemo_platform_plugin.entity_client import (
 from nemo_platform_plugin.functions.routes import add_function_routes
 from nemo_platform_plugin.schema import PaginationData
 from nemo_platform_plugin.service import NemoService, RouterSpec
-from pydantic import BaseModel
+
+from nemo_example_plugin.types.payloads import HelloResponse
 
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Response model for the minimal hello endpoint
-# ---------------------------------------------------------------------------
-
-
-class HelloResponse(BaseModel):
-    message: str
 
 
 # ---------------------------------------------------------------------------

@@ -1,185 +1,111 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""SDK resources for the example plugin."""
+"""SDK resources for the example plugin.
+
+Uses :class:`~nemo_platform_plugin.client.client.NemoClient` with typed
+:class:`~nemo_platform_plugin.client.endpoint.Endpoint` definitions so that
+every ``send()`` call has full type inference on the response.
+"""
 
 from __future__ import annotations
 
-from typing import Any
+from nemo_example_plugin.entities import ExampleItem
+from nemo_example_plugin.types.endpoints import (
+    CreateItemEndpoint,
+    DeleteItemEndpoint,
+    GetItemEndpoint,
+    HelloEndpoint,
+    ListItemsEndpoint,
+    UpdateItemEndpoint,
+)
+from nemo_example_plugin.types.payloads import (
+    CreateExampleItemRequest,
+    ExampleItemPage,
+    UpdateExampleItemRequest,
+)
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform_plugin.sdk import NemoPluginSDKResources
 
+class ExampleClient(NemoClient):
+    """Sync client for the example plugin API."""
 
-class ExampleResource:
-    """Sync SDK namespace mounted as ``client.example``."""
-
-    def __init__(self, platform: NeMoPlatform) -> None:
-        self._platform = platform
-        self._http_client = platform._client
+    api_prefix = "/apis/example"
 
     # ------------------------------------------------------------------
     # Hello
     # ------------------------------------------------------------------
 
     def hello(self, name: str) -> str:
-        response = self._http_client.get(self._example_url(f"/hello/{name}"))
-        response.raise_for_status()
-        payload: dict[str, Any] = response.json()
-        return str(payload["message"])
+        resp = self.send(HelloEndpoint.request(name=name))
+        return resp.body.message
 
     # ------------------------------------------------------------------
-    # Middleware configs CRUD
+    # Items CRUD
     # ------------------------------------------------------------------
 
-    def create_middleware_config(
+    def create_item(self, workspace: str, name: str, title: str, body: str = "", tags: list[str] | None = None) -> ExampleItem:
+        req = CreateExampleItemRequest(name=name, title=title, body=body, tags=tags or [])
+        return self.send(CreateItemEndpoint.request(req, workspace=workspace)).data()
+
+    def list_items(self, workspace: str) -> ExampleItemPage:
+        return self.send(ListItemsEndpoint.request(workspace=workspace)).data()
+
+    def get_item(self, workspace: str, name: str) -> ExampleItem:
+        return self.send(GetItemEndpoint.request(workspace=workspace, name=name)).data()
+
+    def update_item(
         self,
         workspace: str,
         name: str,
-        blocked_keywords: list[str] | None = None,
-        block_message: str | None = None,
-    ) -> dict[str, Any]:
-        """Create an :class:`~nemo_example_plugin.middleware_config.ExampleMiddlewareConfig`."""
-        body: dict[str, Any] = {"name": name}
-        if blocked_keywords is not None:
-            body["blocked_keywords"] = blocked_keywords
-        if block_message is not None:
-            body["block_message"] = block_message
-        response = self._http_client.post(self._workspace_url(workspace, "/middleware-configs"), json=body)
-        response.raise_for_status()
-        return response.json()
+        title: str | None = None,
+        body: str | None = None,
+        tags: list[str] | None = None,
+    ) -> ExampleItem:
+        req = UpdateExampleItemRequest(title=title, body=body, tags=tags)
+        return self.send(UpdateItemEndpoint.request(req, workspace=workspace, name=name)).data()
 
-    def list_middleware_configs(self, workspace: str) -> list[dict[str, Any]]:
-        """List all middleware configs in *workspace*."""
-        response = self._http_client.get(self._workspace_url(workspace, "/middleware-configs"))
-        response.raise_for_status()
-        return response.json()
-
-    def get_middleware_config(self, workspace: str, name: str) -> dict[str, Any]:
-        """Get a single middleware config by *name*."""
-        response = self._http_client.get(self._workspace_url(workspace, f"/middleware-configs/{name}"))
-        response.raise_for_status()
-        return response.json()
-
-    def update_middleware_config(
-        self,
-        workspace: str,
-        name: str,
-        blocked_keywords: list[str] | None = None,
-        block_message: str | None = None,
-    ) -> dict[str, Any]:
-        """Partially update a middleware config."""
-        body: dict[str, Any] = {}
-        if blocked_keywords is not None:
-            body["blocked_keywords"] = blocked_keywords
-        if block_message is not None:
-            body["block_message"] = block_message
-        response = self._http_client.patch(self._workspace_url(workspace, f"/middleware-configs/{name}"), json=body)
-        response.raise_for_status()
-        return response.json()
-
-    def delete_middleware_config(self, workspace: str, name: str) -> None:
-        """Delete a middleware config."""
-        response = self._http_client.delete(self._workspace_url(workspace, f"/middleware-configs/{name}"))
-        response.raise_for_status()
-
-    # ------------------------------------------------------------------
-    # URL helpers
-    # ------------------------------------------------------------------
-
-    def _example_url(self, path: str) -> str:
-        return str(self._platform.base_url).rstrip("/") + "/apis/example" + path
-
-    def _workspace_url(self, workspace: str, path: str) -> str:
-        return self._example_url(f"/v2/workspaces/{workspace}{path}")
+    def delete_item(self, workspace: str, name: str) -> None:
+        self.send(DeleteItemEndpoint.request(workspace=workspace, name=name))
 
 
-class AsyncExampleResource:
-    """Async SDK namespace mounted as ``client.example``."""
+class AsyncExampleClient(AsyncNemoClient):
+    """Async client for the example plugin API."""
 
-    def __init__(self, platform: AsyncNeMoPlatform) -> None:
-        self._platform = platform
-        self._http_client = platform._client
+    api_prefix = "/apis/example"
 
     # ------------------------------------------------------------------
     # Hello
     # ------------------------------------------------------------------
 
     async def hello(self, name: str) -> str:
-        response = await self._http_client.get(self._example_url(f"/hello/{name}"))
-        response.raise_for_status()
-        payload: dict[str, Any] = response.json()
-        return str(payload["message"])
+        resp = await self.send(HelloEndpoint.request(name=name))
+        return resp.body.message
 
     # ------------------------------------------------------------------
-    # Middleware configs CRUD
+    # Items CRUD
     # ------------------------------------------------------------------
 
-    async def create_middleware_config(
+    async def create_item(self, workspace: str, name: str, title: str, body: str = "", tags: list[str] | None = None) -> ExampleItem:
+        req = CreateExampleItemRequest(name=name, title=title, body=body, tags=tags or [])
+        return (await self.send(CreateItemEndpoint.request(req, workspace=workspace))).data()
+
+    async def list_items(self, workspace: str) -> ExampleItemPage:
+        return (await self.send(ListItemsEndpoint.request(workspace=workspace))).data()
+
+    async def get_item(self, workspace: str, name: str) -> ExampleItem:
+        return (await self.send(GetItemEndpoint.request(workspace=workspace, name=name))).data()
+
+    async def update_item(
         self,
         workspace: str,
         name: str,
-        blocked_keywords: list[str] | None = None,
-        block_message: str | None = None,
-    ) -> dict[str, Any]:
-        """Create an :class:`~nemo_example_plugin.middleware_config.ExampleMiddlewareConfig`."""
-        body: dict[str, Any] = {"name": name}
-        if blocked_keywords is not None:
-            body["blocked_keywords"] = blocked_keywords
-        if block_message is not None:
-            body["block_message"] = block_message
-        response = await self._http_client.post(self._workspace_url(workspace, "/middleware-configs"), json=body)
-        response.raise_for_status()
-        return response.json()
+        title: str | None = None,
+        body: str | None = None,
+        tags: list[str] | None = None,
+    ) -> ExampleItem:
+        req = UpdateExampleItemRequest(title=title, body=body, tags=tags)
+        return (await self.send(UpdateItemEndpoint.request(req, workspace=workspace, name=name))).data()
 
-    async def list_middleware_configs(self, workspace: str) -> list[dict[str, Any]]:
-        """List all middleware configs in *workspace*."""
-        response = await self._http_client.get(self._workspace_url(workspace, "/middleware-configs"))
-        response.raise_for_status()
-        return response.json()
-
-    async def get_middleware_config(self, workspace: str, name: str) -> dict[str, Any]:
-        """Get a single middleware config by *name*."""
-        response = await self._http_client.get(self._workspace_url(workspace, f"/middleware-configs/{name}"))
-        response.raise_for_status()
-        return response.json()
-
-    async def update_middleware_config(
-        self,
-        workspace: str,
-        name: str,
-        blocked_keywords: list[str] | None = None,
-        block_message: str | None = None,
-    ) -> dict[str, Any]:
-        """Partially update a middleware config."""
-        body: dict[str, Any] = {}
-        if blocked_keywords is not None:
-            body["blocked_keywords"] = blocked_keywords
-        if block_message is not None:
-            body["block_message"] = block_message
-        response = await self._http_client.patch(
-            self._workspace_url(workspace, f"/middleware-configs/{name}"), json=body
-        )
-        response.raise_for_status()
-        return response.json()
-
-    async def delete_middleware_config(self, workspace: str, name: str) -> None:
-        """Delete a middleware config."""
-        response = await self._http_client.delete(self._workspace_url(workspace, f"/middleware-configs/{name}"))
-        response.raise_for_status()
-
-    # ------------------------------------------------------------------
-    # URL helpers
-    # ------------------------------------------------------------------
-
-    def _example_url(self, path: str) -> str:
-        return str(self._platform.base_url).rstrip("/") + "/apis/example" + path
-
-    def _workspace_url(self, workspace: str, path: str) -> str:
-        return self._example_url(f"/v2/workspaces/{workspace}{path}")
-
-
-example_sdk_resources = NemoPluginSDKResources(
-    sync_resource=ExampleResource,
-    async_resource=AsyncExampleResource,
-)
+    async def delete_item(self, workspace: str, name: str) -> None:
+        await self.send(DeleteItemEndpoint.request(workspace=workspace, name=name))
