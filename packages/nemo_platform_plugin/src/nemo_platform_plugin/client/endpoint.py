@@ -38,7 +38,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterable, Iterable
 from dataclasses import dataclass
-from typing import Generic, TypedDict, TypeVar, Unpack
+from typing import Generic, TypedDict, TypeVar, Unpack, overload
 
 from pydantic import BaseModel
 
@@ -46,6 +46,10 @@ ModelT = TypeVar("ModelT", bound=BaseModel)
 
 # Type alias for binary content accepted by upload endpoints.
 BinaryContent = bytes | Iterable[bytes] | AsyncIterable[bytes]
+
+
+class BinaryUpload:
+    """Marker type: endpoint accepts binary content (file upload)."""
 
 
 class BinaryStream:
@@ -165,18 +169,39 @@ def get(path: str, path_type: type[PathT], response_type: type[ResponseT]) -> No
     return NoBodyEndpoint(path, "GET", response_type)
 
 
-def post(path: str, path_type: type[PathT], request_type: type[RequestT], response_type: type[ResponseT]) -> BodyEndpoint[PathT, RequestT, ResponseT]:
-    """Define a POST endpoint with a JSON body."""
+@overload
+def post(path: str, path_type: type[PathT], request_type: type[BinaryUpload], response_type: type[ResponseT]) -> BinaryBodyEndpoint[PathT, ResponseT]: ...
+@overload
+def post(path: str, path_type: type[PathT], request_type: type[RequestT], response_type: type[ResponseT]) -> BodyEndpoint[PathT, RequestT, ResponseT]: ...
+
+def post(path: str, path_type: type[PathT], request_type: type[RequestT] | type[BinaryUpload], response_type: type[ResponseT] | None = None) -> BodyEndpoint | BinaryBodyEndpoint:
+    """Define a POST endpoint. Pass ``BinaryUpload`` as ``request_type`` for binary uploads."""
+    if request_type is BinaryUpload:
+        return BinaryBodyEndpoint(path, "POST", response_type)
     return BodyEndpoint(path, "POST", request_type, response_type)
 
 
-def put_binary(path: str, path_type: type[PathT], response_type: type[ResponseT]) -> BinaryBodyEndpoint[PathT, ResponseT]:
-    """Define a PUT endpoint with a binary body (file upload)."""
-    return BinaryBodyEndpoint(path, "PUT", response_type)
+@overload
+def put(path: str, path_type: type[PathT], request_type: type[BinaryUpload], response_type: type[ResponseT]) -> BinaryBodyEndpoint[PathT, ResponseT]: ...
+@overload
+def put(path: str, path_type: type[PathT], request_type: type[RequestT], response_type: type[ResponseT]) -> BodyEndpoint[PathT, RequestT, ResponseT]: ...
+
+def put(path: str, path_type: type[PathT], request_type: type[RequestT] | type[BinaryUpload], response_type: type[ResponseT] | None = None) -> BodyEndpoint | BinaryBodyEndpoint:
+    """Define a PUT endpoint. Pass ``BinaryUpload`` as ``request_type`` for binary uploads."""
+    if request_type is BinaryUpload:
+        return BinaryBodyEndpoint(path, "PUT", response_type)
+    return BodyEndpoint(path, "PUT", request_type, response_type)
 
 
-def patch(path: str, path_type: type[PathT], request_type: type[RequestT], response_type: type[ResponseT]) -> BodyEndpoint[PathT, RequestT, ResponseT]:
-    """Define a PATCH endpoint with a JSON body."""
+@overload
+def patch(path: str, path_type: type[PathT], request_type: type[BinaryUpload], response_type: type[ResponseT]) -> BinaryBodyEndpoint[PathT, ResponseT]: ...
+@overload
+def patch(path: str, path_type: type[PathT], request_type: type[RequestT], response_type: type[ResponseT]) -> BodyEndpoint[PathT, RequestT, ResponseT]: ...
+
+def patch(path: str, path_type: type[PathT], request_type: type[RequestT] | type[BinaryUpload], response_type: type[ResponseT] | None = None) -> BodyEndpoint | BinaryBodyEndpoint:
+    """Define a PATCH endpoint. Pass ``BinaryUpload`` as ``request_type`` for binary uploads."""
+    if request_type is BinaryUpload:
+        return BinaryBodyEndpoint(path, "PATCH", response_type)
     return BodyEndpoint(path, "PATCH", request_type, response_type)
 
 
