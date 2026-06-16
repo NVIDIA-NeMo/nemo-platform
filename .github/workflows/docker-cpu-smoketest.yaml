@@ -236,6 +236,14 @@ jobs:
       - name: Install Helm
         uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          python-version: "3.13"
+          enable-cache: true
+          version-file: pyproject.toml
+          cache-dependency-glob: uv.lock
+
       - name: Start kind cluster
         shell: bash
         env:
@@ -274,52 +282,6 @@ jobs:
           helm repo update
           helm dependency build "${HELM_CHART}"
 
-      - name: Verify Helm install inputs
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          required_vars=(
-            BUSYBOX_IMAGE
-            HELM_CHART
-            K8S_E2E_SCRIPTS
-            K8S_E2E_VALUES
-            KUBE_GATEWAY_NAME
-            NAMESPACE
-            NMP_E2E_REGISTRY
-            NMP_E2E_TAG
-            POSTGRES_IMAGE
-          )
-
-          for var_name in "${required_vars[@]}"; do
-            if [ -z "${!var_name:-}" ]; then
-              echo "${var_name} must be set before installing the Helm chart" >&2
-              exit 1
-            fi
-          done
-
-          test -d "${HELM_CHART}"
-          test -f "${K8S_E2E_VALUES}/kind.yaml"
-          test -x "${K8S_E2E_SCRIPTS}/install_nmp_e2e.sh"
-          test -x "${K8S_E2E_SCRIPTS}/wait_for_release_ready.sh"
-
-          echo "Helm install context:"
-          printf '  kubectl context: '
-          kubectl config current-context
-          printf '  namespace: %s\n' "${NAMESPACE}"
-          printf '  chart: %s\n' "${HELM_CHART}"
-          printf '  values: %s\n' "${K8S_E2E_VALUES}/kind.yaml"
-          printf '  image registry: %s\n' "${NMP_E2E_REGISTRY}"
-          printf '  image tag: %s\n' "${NMP_E2E_TAG}"
-          printf '  api image: %s/nmp-api:%s\n' "${NMP_E2E_REGISTRY}" "${NMP_E2E_TAG}"
-          printf '  core image: %s/nmp-api:%s\n' "${NMP_E2E_REGISTRY}" "${NMP_E2E_TAG}"
-          printf '  cpu tasks image: %s/nmp-cpu-tasks:%s\n' "${NMP_E2E_REGISTRY}" "${NMP_E2E_TAG}"
-          printf '  postgres image: %s\n' "${POSTGRES_IMAGE}"
-          printf '  busybox image: %s\n' "${BUSYBOX_IMAGE}"
-          helm version
-          kubectl get namespace "${NAMESPACE}"
-          kubectl -n "${NAMESPACE}" get gateway "${KUBE_GATEWAY_NAME}"
-
       - name: Install NeMo Platform
         shell: bash
         run: |
@@ -338,6 +300,22 @@ jobs:
         run: |
           test -n "${NMP_E2E_CLUSTER_URL}"
           "${K8S_E2E_SCRIPTS}/wait_for_api.sh" "${NMP_E2E_CLUSTER_URL}/cluster-info" 120
+
+      - name: Run CPU job e2e smoke test
+        shell: bash
+        env:
+          _TYPER_FORCE_DISABLE_TERMINAL: "1"
+          E2E_SERVICES_LOG_DIR: ${{ runner.temp }}/e2e-services-logs
+          NGC_API_KEY: not-used-for-ghcr-cpu-smoke
+        run: |
+          test -n "${NMP_E2E_CLUSTER_URL}"
+          export NMP_BASE_URL="${NMP_E2E_CLUSTER_URL}"
+          uv run --frozen pytest \
+            e2e/test_jobs.py::test_job_using_secret_environment_variable \
+            -v \
+            --run-e2e \
+            --no-cov \
+            --junitxml=report-kubernetes-smoke.xml
 
       - name: Collect Kubernetes logs
         if: always()
@@ -366,7 +344,10 @@ jobs:
           name: kind-smoke-kubernetes-artifacts
           retention-days: 7
           if-no-files-found: ignore
-          path: k8s-logs/
+          path: |
+            k8s-logs/
+            report-kubernetes-smoke.xml
+            ${{ runner.temp }}/e2e-services-logs/
 
       - name: Delete kind cluster
         if: always()
