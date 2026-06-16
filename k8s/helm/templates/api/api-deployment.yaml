@@ -1,5 +1,6 @@
 {{- if .Values.api.enabled }}
 {{- $imagePullSecrets := include "nemo-common.imagepullsecrets" . }}
+{{- $platformConfig := include "nemo-platform.calculatedConfig" . | fromYaml }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -74,6 +75,10 @@ spec:
               {{- else }}
               value: {{ include "nemo-platform.internalBaseUrl" . | quote }}
               {{- end }}
+            - name: NMP_AUTOMODEL_DEFAULT_TRAINING_EXECUTION_PROFILE
+              value: {{ dig "automodel" "default_training_execution_profile" "default" $platformConfig | quote }}
+            - name: NMP_UNSLOTH_DEFAULT_TRAINING_EXECUTION_PROFILE
+              value: {{ dig "unsloth" "default_training_execution_profile" "default" $platformConfig | quote }}
             {{- if include "nemo-platform.embeddedPdpEnabled" . }}
             - name: NMP_AUTH_POLICY_DECISION_POINT_BASE_URL
               value: {{ include "nemo-platform.apiLoopbackBaseUrl" . | quote }}
