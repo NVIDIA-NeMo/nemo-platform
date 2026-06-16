@@ -3860,10 +3860,10 @@ paths:
       description: 'Pin an experiment to the top of the list (workspace-shared).
 
 
-        Idempotent: re-pinning an already-pinned experiment refreshes ``pinned_at``
-        to the current
+        Re-pinning an already-pinned experiment refreshes ``pinned_at`` to the current
+        timestamp,
 
-        timestamp, which is intentional (most-recently-pinned sorts first).'
+        which is intentional (most-recently-pinned sorts first).'
       operationId: pin_experiment_apis_intake_v2_workspaces__workspace__experiments__name__pin_post
       parameters:
       - name: workspace
@@ -10502,6 +10502,7 @@ components:
           title: Pinned At
           description: Timestamp at which the experiment was pinned, or null if unpinned.
             Managed via POST/DELETE /experiments/{name}/pin.
+          nullable: true
           type: string
           format: date-time
         evaluator_names:

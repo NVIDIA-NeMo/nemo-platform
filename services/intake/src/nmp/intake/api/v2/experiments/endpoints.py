@@ -478,8 +478,8 @@ async def pin_experiment(
 ) -> ExperimentResponse:
     """Pin an experiment to the top of the list (workspace-shared).
 
-    Idempotent: re-pinning an already-pinned experiment refreshes ``pinned_at`` to the current
-    timestamp, which is intentional (most-recently-pinned sorts first).
+    Re-pinning an already-pinned experiment refreshes ``pinned_at`` to the current timestamp,
+    which is intentional (most-recently-pinned sorts first).
     """
     entity = await _get_or_404(
         entity_client,

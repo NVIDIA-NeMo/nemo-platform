@@ -948,13 +948,13 @@ authz:
     /apis/intake/v2/workspaces/{workspace}/experiments/{name}/pin:
       delete:
         permissions:
-        - intake.experiments.delete
+        - intake.experiments.update
         scopes:
         - intake:write
         - platform:write
       post:
         permissions:
-        - intake.experiments.create
+        - intake.experiments.update
         scopes:
         - intake:write
         - platform:write

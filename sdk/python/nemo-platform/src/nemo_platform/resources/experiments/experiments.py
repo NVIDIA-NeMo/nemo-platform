@@ -396,8 +396,8 @@ class ExperimentsResource(SyncAPIResource):
         """
         Pin an experiment to the top of the list (workspace-shared).
 
-        Idempotent: re-pinning an already-pinned experiment refreshes `pinned_at` to the
-        current timestamp, which is intentional (most-recently-pinned sorts first).
+        Re-pinning an already-pinned experiment refreshes `pinned_at` to the current
+        timestamp, which is intentional (most-recently-pinned sorts first).
 
         Args:
           extra_headers: Send extra headers
@@ -809,8 +809,8 @@ class AsyncExperimentsResource(AsyncAPIResource):
         """
         Pin an experiment to the top of the list (workspace-shared).
 
-        Idempotent: re-pinning an already-pinned experiment refreshes `pinned_at` to the
-        current timestamp, which is intentional (most-recently-pinned sorts first).
+        Re-pinning an already-pinned experiment refreshes `pinned_at` to the current
+        timestamp, which is intentional (most-recently-pinned sorts first).
 
         Args:
           extra_headers: Send extra headers

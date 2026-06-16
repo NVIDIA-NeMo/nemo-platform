@@ -106,6 +106,7 @@ class ExperimentResponse(BaseModel):
             "Timestamp at which the experiment was pinned, or null if unpinned. "
             "Managed via POST/DELETE /experiments/{name}/pin."
         ),
+        json_schema_extra={"nullable": True},
     )
 
     evaluator_names: list[str] = Field(default_factory=list)
