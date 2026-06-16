@@ -20,6 +20,7 @@ from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
     PlatformJobSpec,
     PlatformJobStep,
+    SubprocessExecutionProviderSpec,
 )
 from nemo_platform_plugin.jobs.image import get_qualified_image
 from pydantic import BaseModel
@@ -66,23 +67,39 @@ class CreateJob(NemoJob):
         entity_client: object,
         job_name: str | None,
         async_sdk: object,
+        kind: str | None = None,
         profile: str | None = None,
         options: dict | None = None,
     ) -> PlatformJobSpec:
+        resolved_profile = profile or "default"
+
+        # Use the kind parameter directly; default to container when not provided.
+        resolved_kind = kind or "container"
+
+        if resolved_kind == "subprocess":
+            executor = SubprocessExecutionProviderSpec(
+                kind="subprocess",
+                provider="cpu",
+                profile=resolved_profile,
+                command=["python", "-m", "nemo_data_designer_plugin.jobs.bridge"],
+            )
+        else:
+            executor = ContainerExecutionProviderSpec(
+                kind="container",
+                provider="cpu",
+                profile=resolved_profile,
+                container=ContainerSpec(
+                    image=get_qualified_image("nmp-cpu-tasks"),
+                    entrypoint=["python", "-m"],
+                    command=["nemo_data_designer_plugin.jobs.bridge"],
+                ),
+            )
+
         return PlatformJobSpec(
             steps=[
                 PlatformJobStep(
                     name="data-designer-job",
-                    executor=ContainerExecutionProviderSpec(
-                        kind="container",
-                        profile=profile or "default",
-                        provider="cpu",
-                        container=ContainerSpec(
-                            image=get_qualified_image("nmp-cpu-tasks"),
-                            entrypoint=["python", "-m"],
-                            command=["nemo_data_designer_plugin.jobs.bridge"],
-                        ),
-                    ),
+                    executor=executor,
                     config=spec.model_dump(),
                     environment=[],
                 )

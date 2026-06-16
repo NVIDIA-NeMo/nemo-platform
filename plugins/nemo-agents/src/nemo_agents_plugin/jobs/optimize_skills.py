@@ -87,6 +87,7 @@ class OptimizeSkillsJob(NemoJob):
         entity_client: object,
         job_name: str | None,
         async_sdk: object,
+        kind: str | None = None,
         profile: str | None = None,
         options: dict | None = None,
     ) -> PlatformJobSpec:

@@ -58,7 +58,6 @@ from nemo_platform_plugin.jobs.api_factory import (
     job_route_factory,
 )
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
-from nemo_platform_plugin.jobs.profile import stamp_profile
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -258,11 +257,12 @@ def _adapt_compile(
     """Bridge ``NemoJob.compile`` to the factory's ``platform_job_config_compiler`` shape.
 
     The factory calls ``compiler(workspace, original_spec, transformed_spec,
-    entity_client, job_name, sdk)``. :meth:`NemoJob.compile` is an
-    ``async classmethod`` that uses kwargs and also accepts
-    ``profile`` / ``options`` — phase 1 MR 1.1b passes ``None`` for
-    both (body-field wiring is a follow-up). After ``compile`` returns,
-    the adapter applies :func:`stamp_profile` with ``default_profile``.
+    entity_client, job_name, sdk, kind)`` where ``kind`` is the resolved
+    executor payload shape (``"container"`` or ``"subprocess"``), already
+    resolved by ``_compile_platform_spec`` from the submitter's profile.
+
+    ``stamp_profile`` is applied by ``_compile_platform_spec`` after this
+    adapter returns — the adapter only handles the NemoJob.compile bridge.
 
     Missing-override errors from the ``NemoJob.compile`` base marker
     become :class:`PlatformJobCompilationError` so the factory's
@@ -276,6 +276,8 @@ def _adapt_compile(
         entity_client: Any,
         job_name: str | None,
         sdk: Any,
+        kind: str | None = None,
+        profile: str | None = None,
     ) -> Any:
         del original_spec  # NemoJob.compile only needs the canonical (transformed) spec
         try:
@@ -285,13 +287,13 @@ def _adapt_compile(
                 entity_client=entity_client,
                 job_name=job_name,
                 async_sdk=sdk,
-                profile=None,
+                kind=kind,
+                profile=profile,
                 options=None,
             )
         except NotImplementedError as exc:
             raise PlatformJobCompilationError(str(exc)) from exc
 
-        stamp_profile(result, default_profile)
         return result
 
     return compile_adapter

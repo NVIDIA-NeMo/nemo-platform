@@ -273,6 +273,7 @@ class NemoJob(_NamedPlugin):
         entity_client: object,
         job_name: str | None,
         async_sdk: AsyncNeMoPlatform,
+        kind: str | None = None,
         profile: str | None = None,
         options: dict | None = None,
     ) -> object:
@@ -285,10 +286,12 @@ class NemoJob(_NamedPlugin):
         must override this method; the plugin service produces the
         ``PlatformJobSpec`` the Jobs service expects by invoking it.
 
-        Compilers that need to support both container and subprocess
-        backends can use :func:`~nemo_platform_plugin.jobs.profiles.resolve_profile_kind`
-        to determine the executor kind for the given profile, rather
-        than hardcoding profile names.
+        The ``kind`` parameter is the resolved executor payload shape
+        (``"container"`` or ``"subprocess"``), resolved by the framework
+        from the submitter's profile before ``compile()`` is called.
+        Compilers use this to decide which executor type to emit without
+        querying execution profiles themselves. ``profile`` is also
+        provided for compilers that need to stamp it on specific steps.
 
         Args:
             workspace: Workspace scope.
@@ -298,9 +301,12 @@ class NemoJob(_NamedPlugin):
             async_sdk: ``AsyncNeMoPlatform`` handle. Same contract as
                 :meth:`to_spec`: this runs in the API process so only
                 the async client is offered.
-            profile: Submitter-selected profile. The factory applies
-                ``stamp_profile(spec, profile)`` after this method
-                returns; per-step overrides set here take precedence.
+            kind: Resolved executor payload shape — ``"container"`` or
+                ``"subprocess"``. ``None`` when no profile was specified
+                (compilers should default to ``"container"``).
+            profile: The submitter-selected execution profile name
+                (e.g. ``"subprocess"``, ``"default"``). ``None`` when
+                no profile was specified.
             options: Opaque wire ``{"<backend>": {...}}`` bag; read keys
                 defensively.
 

@@ -64,6 +64,8 @@ def foo_job_config_compiler(
     entity_client: EntityClient,
     job_name: str | None,
     sdk,
+    kind: str | None = None,
+    profile: str | None = None,
 ) -> PlatformJobSpec:
     return PlatformJobSpec(
         steps=[
@@ -1389,7 +1391,14 @@ def test_create_job_injects_workspace_and_entity_client():
     received_entity_client = None
 
     def compiler(
-        workspace: str, input_spec: FooJobConfig, output_spec: FooJobConfig, entity_client, job_name: str | None, sdk
+        workspace: str,
+        input_spec: FooJobConfig,
+        output_spec: FooJobConfig,
+        entity_client,
+        job_name: str | None,
+        sdk,
+        kind: str | None = None,
+        profile: str | None = None,
     ) -> PlatformJobSpec:
         nonlocal received_workspace
         received_workspace = workspace
@@ -1439,7 +1448,14 @@ def test_sync_compiler_is_called_correctly():
     compiler_called = False
 
     def sync_compiler(
-        workspace: str, input_spec: FooJobConfig, output_spec: FooJobConfig, entity_client, job_name: str | None, sdk
+        workspace: str,
+        input_spec: FooJobConfig,
+        output_spec: FooJobConfig,
+        entity_client,
+        job_name: str | None,
+        sdk,
+        kind: str | None = None,
+        profile: str | None = None,
     ) -> PlatformJobSpec:
         nonlocal compiler_called
         compiler_called = True
@@ -1681,7 +1697,7 @@ class TestCompilePlatformSpec:
         spec = FooJobConfig(foo="a", bar=1)
         expected = self._make_platform_spec(spec)
 
-        def compiler(workspace, input_spec, output_spec, entity_client, job_name, sdk):
+        def compiler(workspace, input_spec, output_spec, entity_client, job_name, sdk, kind=None, profile=None):
             return expected
 
         result = await _compile_platform_spec(compiler, "ws", spec, spec, MagicMock(), "name", "svc", MagicMock())
@@ -1693,7 +1709,7 @@ class TestCompilePlatformSpec:
         spec = FooJobConfig(foo="a", bar=1)
         expected = self._make_platform_spec(spec)
 
-        async def compiler(workspace, input_spec, output_spec, entity_client, job_name, sdk):
+        async def compiler(workspace, input_spec, output_spec, entity_client, job_name, sdk, kind=None, profile=None):
             return expected
 
         result = await _compile_platform_spec(compiler, "ws", spec, spec, MagicMock(), "name", "svc", MagicMock())
@@ -1704,7 +1720,7 @@ class TestCompilePlatformSpec:
         """PlatformJobCompilationError is wrapped in HTTPException 422."""
         from fastapi import HTTPException
 
-        def bad_compiler(workspace, input_spec, output_spec, entity_client, job_name, sdk):
+        def bad_compiler(workspace, input_spec, output_spec, entity_client, job_name, sdk, kind=None, profile=None):
             raise PlatformJobCompilationError("missing field")
 
         spec = FooJobConfig(foo="a", bar=1)
@@ -1719,7 +1735,9 @@ class TestCompilePlatformSpec:
         """_validate_job_spec is invoked on the compiled result (catches non-serializable config)."""
         from fastapi import HTTPException
 
-        def compiler_bad_config(workspace, input_spec, output_spec, entity_client, job_name, sdk):
+        def compiler_bad_config(
+            workspace, input_spec, output_spec, entity_client, job_name, sdk, kind=None, profile=None
+        ):
             # Return a spec whose step config is not JSON serializable
             return PlatformJobSpec(
                 steps=[

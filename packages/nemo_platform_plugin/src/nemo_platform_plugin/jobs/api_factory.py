@@ -439,11 +439,15 @@ class PlatformJobResultRoute(BaseModel):
 # Signature: (workspace, original_spec, transformed_spec, entity_client, job_name, sdk) -> PlatformJobSpec
 # job_name is the resolved name (user-provided or auto-generated), None when no name is available
 # sdk is always provided for accessing secrets, files, and models with user context
+# kind is the resolved executor payload shape ("container" or "subprocess")
+# profile is the submitter-selected execution profile name
 PlatformJobSpecCompiler = Callable[
-    [str, JobInputT, JobOutputT, EntityClient, str | None, AsyncNeMoPlatform], PlatformJobSpec
+    [str, JobInputT, JobOutputT, EntityClient, str | None, AsyncNeMoPlatform, str | None, str | None],
+    PlatformJobSpec,
 ]
 PlatformJobSpecCompilerAsync = Callable[
-    [str, JobInputT, JobOutputT, EntityClient, str | None, AsyncNeMoPlatform], Awaitable[PlatformJobSpec]
+    [str, JobInputT, JobOutputT, EntityClient, str | None, AsyncNeMoPlatform, str | None, str | None],
+    Awaitable[PlatformJobSpec],
 ]
 
 # Input-to-output transformer types: receives job_name to use for related fields (e.g., output)
@@ -625,12 +629,18 @@ async def _compile_platform_spec(
     job_name: str | None,
     service_name: str,
     sdk: AsyncNeMoPlatform,
+    profile: str | None = None,
+    default_provider: str = "cpu",
 ) -> PlatformJobSpec:
     """Compile input and output specs into a PlatformJobSpec for execution.
 
     The compiler receives both the input spec (user-provided fields) and output spec
     (with auto-generated fields), allowing it to distinguish between user intent and
     system-generated values.
+
+    The ``kind`` (executor payload shape) is resolved here from the
+    ``(provider, profile)`` pair before being passed to the compiler, so
+    individual compilers never need to query execution profiles themselves.
 
     Supports both sync and async compiler callables. Validates the resulting
     spec for common misconfigurations.
@@ -639,14 +649,35 @@ async def _compile_platform_spec(
         HTTPException(422): If the compiler raises PlatformJobCompilationError.
         PermissionError: If the compiler raises a PermissionError.
     """
+    from nemo_platform_plugin.jobs.profiles import resolve_profile_kind
+
+    kind: str | None = None
+    if profile is not None:
+        try:
+            kind = await resolve_profile_kind(sdk, default_provider, profile)
+        except PlatformJobCompilationError:
+            logger.warning(
+                "Could not resolve kind for profile '%s/%s', defaulting to container", default_provider, profile
+            )
+            kind = "container"
+
     try:
         if inspect.iscoroutinefunction(compiler):
-            platform_spec = await compiler(workspace, original_spec, transformed_spec, entity_client, job_name, sdk)
+            platform_spec = await compiler(
+                workspace, original_spec, transformed_spec, entity_client, job_name, sdk, kind, profile
+            )
         else:
             # Run sync compilers in a thread pool to avoid blocking the event loop.
             platform_spec = await to_thread.run_sync(
-                partial(compiler, workspace, original_spec, transformed_spec, entity_client, job_name, sdk)
+                partial(
+                    compiler, workspace, original_spec, transformed_spec, entity_client, job_name, sdk, kind, profile
+                )
             )
+
+        if profile is not None:
+            from nemo_platform_plugin.jobs.profile import stamp_profile
+
+            stamp_profile(platform_spec, profile)
 
         _validate_job_spec(platform_spec)
         return platform_spec
@@ -816,6 +847,7 @@ def job_route_factory(
                 job_name,
                 service_name,
                 sdk,
+                profile=request.profile,
             )
 
             # Create the job using the SDK pointed to the platform jobs microservice.

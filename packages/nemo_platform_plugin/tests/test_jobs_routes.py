@@ -73,6 +73,7 @@ class _WidgetJob(NemoJob):
         entity_client,
         job_name,
         async_sdk,
+        kind=None,
         profile=None,
         options=None,
     ):
@@ -115,6 +116,7 @@ class _WithInputJob(NemoJob):
         entity_client,
         job_name,
         async_sdk,
+        kind=None,
         profile=None,
         options=None,
     ):
@@ -274,15 +276,14 @@ class TestAdaptToSpec:
 
 
 @pytest.mark.asyncio
-async def test_compile_adapter_invokes_nemo_compile_and_stamps_default_profile() -> None:
+async def test_compile_adapter_invokes_nemo_compile() -> None:
     adapter = _adapt_compile(_WidgetJob, default_profile="research")
     spec = _WidgetSpec(name="w")
-    platform_spec = await adapter("ws", spec, spec, "entity_client", "job-1", "sdk")
+    # Adapter receives kind and profile from _compile_platform_spec.
+    # Profile stamping is now done by _compile_platform_spec, not the adapter.
+    platform_spec = await adapter("ws", spec, spec, "entity_client", "job-1", "sdk", "container", "research")
 
     assert isinstance(platform_spec, _FakePlatformSpec)
-    # Profile stamped on every step since the compiler didn't set one.
-    for step in platform_spec.steps:
-        assert step.executor.profile == "research"
 
 
 @pytest.mark.asyncio
@@ -299,7 +300,7 @@ async def test_compile_adapter_preserves_profile_set_by_plugin_compile() -> None
             return _FakePlatformSpec(steps=[_FakeStep(profile="explicit")])
 
     adapter = _adapt_compile(CompileSetsProfile, default_profile="default")
-    platform_spec = await adapter("ws", None, _WidgetSpec(name="x"), "ec", None, "sdk")
+    platform_spec = await adapter("ws", None, _WidgetSpec(name="x"), "ec", None, "sdk", None, None)
 
     assert platform_spec.steps[0].executor.profile == "explicit"
 
@@ -308,7 +309,7 @@ async def test_compile_adapter_preserves_profile_set_by_plugin_compile() -> None
 async def test_compile_adapter_converts_not_implemented_to_compilation_error() -> None:
     adapter = _adapt_compile(_NoCompileJob, default_profile="default")
     with pytest.raises(PlatformJobCompilationError, match="must override compile"):
-        await adapter("ws", None, _WidgetSpec(name="x"), "ec", None, "sdk")
+        await adapter("ws", None, _WidgetSpec(name="x"), "ec", None, "sdk", None, None)
 
 
 # ---------------------------------------------------------------------------
