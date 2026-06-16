@@ -202,14 +202,15 @@ def compile_puller_job(
 ) -> k8s_client.V1Job:
     """Compile the weight-puller Job.
 
-    Mirrors the docker puller: a single container running the puller image's
-    entrypoint with ``args`` (e.g. ``["download", "<repo>", "--local-dir",
-    "/model-store"]``), mounting the PVC at ``/model-store``. ``args`` is passed as
-    the container ``args`` (appended to the image ENTRYPOINT) -- NOT ``command``,
-    which would override the entrypoint and try to exec the first token as a
-    binary. The puller requests the same ``gpu`` as the server -- not for compute,
-    but to pin it into GPU topology so the shared RWO PVC binds where the server
-    can mount it (correct across any StorageClass ``volumeBindingMode``).
+    Mirrors the docker puller: a single container running ``hf download <repo>
+    --local-dir /model-store [...]`` against ``image`` (the platform nmp-api
+    image), mounting the PVC at ``/model-store``. ``command=["hf"]`` overrides the
+    image ENTRYPOINT (nmp-api's is ``nemo services run``) to the Hugging Face CLI,
+    and ``args`` (e.g. ``["download", "<repo>", "--local-dir", "/model-store"]``)
+    are the CLI arguments. The puller requests the same ``gpu`` as the server --
+    not for compute, but to pin it into GPU topology so the shared RWO PVC binds
+    where the server can mount it (correct across any StorageClass
+    ``volumeBindingMode``).
     """
     labels = common_labels(workspace, name, engine)
     job_annotations = _merge_annotations(annotations, model_source)
@@ -219,6 +220,7 @@ def compile_puller_job(
     container = k8s_client.V1Container(
         name="weight-puller",
         image=image,
+        command=["hf"],
         args=args,
         env=env_list or None,
         resources=_gpu_resources(gpu),
@@ -237,7 +239,7 @@ def compile_puller_job(
     # The puller writes to a freshly-provisioned PVC, so it needs fsGroup to own
     # the volume's filesystem (without it, a non-root puller can't create files at
     # the PVC root -> PermissionError on /model-store). Default to 1000/2000; the
-    # puller image (huggingface-cli) has a passwd entry for these.
+    # nmp-api puller image runs as the 'nvs' user (uid/gid 1000).
     puller_security_context = k8s_client.V1PodSecurityContext(
         run_as_user=user_id if user_id is not None else DEFAULT_USER_ID,
         run_as_group=group_id if group_id is not None else DEFAULT_GROUP_ID,

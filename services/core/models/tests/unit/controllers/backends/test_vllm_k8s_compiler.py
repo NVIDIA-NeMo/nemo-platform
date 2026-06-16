@@ -103,7 +103,9 @@ def test_compile_puller_job_basic():
 
     ctr = pod.containers[0]
     assert ctr.args == ["download", "default/qwen", "--local-dir", "/model-store"]
-    assert ctr.command is None
+    # Entrypoint overridden to the HF CLI (nmp-api's image entrypoint is `nemo
+    # services run`); args run as `hf download ...`.
+    assert ctr.command == ["hf"]
     env = {e.name: e.value for e in ctr.env}
     assert env["HF_ENDPOINT"] == "http://files/apis/files/v2/hf"
     assert env["HF_TOKEN"] == "service:models"
