@@ -19,7 +19,7 @@ import type {
 import { Button, Stack, Text, Tooltip } from '@nvidia/foundations-react-core';
 import { Empty } from '@studio/components/dataViews/ExperimentSessionsDataView/Empty';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
-import { IntakeTraceDetailBody } from '@studio/routes/IntakeTraceDetailRoute';
+import { IntakeTraceDetailBody } from '@studio/components/IntakeTraceDetailBody';
 import { tooltipClassName } from '@studio/styles/common';
 import { keepPreviousData } from '@tanstack/react-query';
 import { Columns3, X } from 'lucide-react';
