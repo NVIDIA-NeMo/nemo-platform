@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { AssistantRuntimeProvider } from '@assistant-ui/react';
+import { modelSupportsImageAttachments } from '@nemo/common/src/components/AssistantChat/messageUtils';
 import cn from 'classnames';
 import { type FC, useMemo } from 'react';
 
 import { AssistantChatThread } from './AssistantChatThread';
-import { modelSupportsImageAttachments } from './messageUtils';
 import type { AssistantChatProps } from './types';
 import { useAssistantChatRuntime } from './useAssistantChatRuntime';
 

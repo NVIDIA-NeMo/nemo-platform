@@ -127,7 +127,7 @@ export interface AssistantChatProps {
   };
   composerOverride?: ReactNode;
   /**
-   * @default false
+   * @default true
    */
   enableImageAttachments?: boolean;
 }

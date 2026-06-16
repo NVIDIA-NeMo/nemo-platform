@@ -67,7 +67,7 @@ Related documentation:
 ## Supported
 
 - Text user prompts with Enter-to-send and Shift+Enter newlines.
-- Image attachments (pick or paste) forwarded as OpenAI multimodal content, enabled by the `enableImageAttachments` prop.
+- Image attachments (pick or paste) forwarded as OpenAI multimodal content, enabled only when `enableImageAttachments` is true and the selected model supports image attachments.
 - Streaming assistant responses through `useChatCompletion` with `model`, `workspace`, or explicit `baseURL`.
 - Optional `PromptData` support for system prompt, temperature, and max tokens.
 - Optional OpenAI-compatible tool definitions on the completion request.

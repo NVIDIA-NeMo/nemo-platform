@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { AppendMessage, ThreadMessageLike } from '@assistant-ui/react';
-
 import {
   getOpenAIMessages,
   getUserMessageContent,
   modelSupportsImageAttachments,
-} from './messageUtils';
+} from '@nemo/common/src/components/AssistantChat/messageUtils';
 
 const createMessage = (role: ThreadMessageLike['role'], text: string): ThreadMessageLike => ({
   id: `${role}-${text}`,
