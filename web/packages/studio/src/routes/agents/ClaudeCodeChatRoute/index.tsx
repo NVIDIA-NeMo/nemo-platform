@@ -18,7 +18,10 @@ import { BlockingInputComposer } from '@studio/routes/agents/ClaudeCodeChatRoute
 import { ClaudeCodeLayout } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeLayout';
 import { ClaudeCodeStudioLink } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeStudioLink';
 import { ClaudeCodeToolCallPart } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeToolCallPart';
-import type { ClaudeCodeChatRouteState } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
+import type {
+  ClaudeCodeChatArtifacts,
+  ClaudeCodeChatRouteState,
+} from '@studio/routes/agents/ClaudeCodeChatRoute/types';
 import { useClaudeCodeChatRuntime } from '@studio/routes/agents/ClaudeCodeChatRoute/useClaudeCodeChatRuntime';
 import {
   getClaudeCodeHistoryMessages,
@@ -40,6 +43,7 @@ const getInitialPrompt = (state: unknown): string | undefined => {
 };
 
 interface ClaudeCodeChatSurfaceProps {
+  initialArtifacts?: ClaudeCodeChatArtifacts;
   initialMessages?: ReturnType<typeof getClaudeCodeHistoryMessages>;
   initialPrompt?: string;
   initialSessionId?: string;
@@ -81,6 +85,7 @@ const ClaudeCodeChatErrorState = ({ selectedSessionId }: { selectedSessionId?: s
 );
 
 const ClaudeCodeChatSurface: FC<ClaudeCodeChatSurfaceProps> = ({
+  initialArtifacts,
   initialMessages = [],
   initialPrompt,
   initialSessionId,
@@ -92,6 +97,7 @@ const ClaudeCodeChatSurface: FC<ClaudeCodeChatSurfaceProps> = ({
   const consumedInitialPromptRef = useRef<string | undefined>(undefined);
   const chatViewportRef = useRef<HTMLDivElement>(null);
   const {
+    artifacts,
     decisionChoices,
     decisionRequest,
     decisionStatus,
@@ -106,6 +112,7 @@ const ClaudeCodeChatSurface: FC<ClaudeCodeChatSurfaceProps> = ({
     skipDecisionRequest,
     submitPrompt,
   } = useClaudeCodeChatRuntime({
+    initialArtifacts,
     initialMessages,
     initialSessionId,
     onError: (error) => toast.error(error.message),
@@ -159,7 +166,7 @@ const ClaudeCodeChatSurface: FC<ClaudeCodeChatSurfaceProps> = ({
   }, [decisionRequest, inputRequest]);
 
   return (
-    <ClaudeCodeLayout activeSessionId={activeSessionId}>
+    <ClaudeCodeLayout activeSessionId={activeSessionId} artifacts={artifacts}>
       <AccessibleTitle title={`Code Agent chat for ${workspace}`}>
         <Stack className="h-full w-full py-density-lg">
           <Stack className="min-h-0 w-full flex-1">
@@ -220,6 +227,7 @@ export const ClaudeCodeChatRoute: FC = () => {
     queryKey: getClaudeCodeSessionHistoryQueryKey(selectedSessionId ?? ''),
     queryFn: () => getClaudeCodeSessionHistory(selectedSessionId ?? ''),
     enabled: !!selectedSessionId,
+    refetchOnMount: 'always',
   });
   const initialMessages = useMemo(
     () => getClaudeCodeHistoryMessages(sessionHistoryQuery.data),
@@ -237,6 +245,7 @@ export const ClaudeCodeChatRoute: FC = () => {
   return (
     <ClaudeCodeChatSurface
       key={selectedSessionId ?? 'new'}
+      initialArtifacts={sessionHistoryQuery.data?.chat_artifacts}
       initialMessages={initialMessages}
       initialPrompt={selectedSessionId ? undefined : initialPrompt}
       initialSessionId={selectedSessionId}

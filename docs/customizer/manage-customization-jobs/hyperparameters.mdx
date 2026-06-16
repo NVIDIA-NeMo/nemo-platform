@@ -8,167 +8,226 @@ description: ""
 Want to learn about training concepts at a high level? Check out the [Customization concepts](/documentation/customizer-reference/customization-concepts) page.
 
 </Tip>
-## Complete Schema Reference
 
-For generated REST API details, see the [Customizer API Reference](/documentation/reference/api-reference) and
-search for `CustomizationJobInput`.
+NeMo Customizer ships **two training backends**, and each accepts its own job configuration. Choose the backend that matches your hardware and training goal, then configure the hyperparameters from that backend's schema below.
 
-Training is configured in the job's `spec.training` object.
+| Backend | Best for | Training methods | Hardware |
+|---------|----------|------------------|----------|
+| **Automodel** (default) | Production fine-tuning, larger models, multi-GPU scaling | SFT, distillation; LoRA, merged-LoRA, or full-weight | Single- or multi-GPU (tensor / pipeline / context / expert parallel) |
+| **Unsloth** | Memory-constrained single-GPU LoRA | SFT; LoRA or full-weight | Single GPU (4-bit / 8-bit quantization) |
 
-## Quick Reference
+<Note>
 
-The `training` field is a discriminated union on the `type` field. Each training method inherits common hyperparameters and adds method-specific fields.
+The two backends do **not** share field names. For example, Automodel uses `batch.global_batch_size` / `batch.micro_batch_size` and a `parallelism` block; Unsloth uses `batch.per_device_train_batch_size` / `batch.gradient_accumulation_steps` and a `hardware` block. Both schemas reject unknown keys, so a field from one backend will not validate against the other.
+
+</Note>
+
+Each backend can also print its live schema, and the generated REST shapes are in the [Customizer API Reference](/documentation/reference/api-reference) (search for `AutomodelJobInput` and `UnslothJobInput`).
+
+---
+
+## Automodel Configuration
+
+An Automodel job is configured with the following top-level sections: `model`, `dataset`, `training`, `schedule`, `batch`, `optimizer`, `parallelism`, `output`, and (optionally) `integrations`.
+
+### Model and Dataset
+
+| Field | Description | Default |
+|-------|-------------|---------|
+| `model` | Base **Model Entity** reference (`name` or `workspace/name`) to fine-tune | *(required)* |
+| `dataset.training` | Training fileset reference (`name` or `workspace/name`) | *(required)* |
+| `dataset.validation` | Optional validation fileset reference | `null` |
+| `dataset.prompt_template` | Optional prompt template for custom dataset schemas | `null` |
 
 ### Training Method
 
-| Parameter | Values | Description |
-|-----------|--------|-------------|
-| `training.type` | `sft`, `dpo`, `distillation` | Training method (discriminated union) |
-| `training.peft` | `{ type: "lora", rank: 8, ... }` or omit | PEFT adapter configuration. If set, trains an adapter; if omitted, performs full-weight training |
+| Parameter | Values | Description | Default |
+|-----------|--------|-------------|---------|
+| `training.training_type` | `sft`, `distillation` | Training method | `sft` |
+| `training.finetuning_type` | `lora`, `lora_merged`, `all_weights` | Adapter regime. `lora` trains an adapter; `lora_merged` merges it into the base weights; `all_weights` performs full-weight training | `lora` |
+| `training.lora` | `{ rank, alpha, merge, target_modules }` | LoRA configuration (auto-filled with defaults when `finetuning_type` is a LoRA variant) | *(see below)* |
+| `training.max_seq_length` | integer | Maximum sequence length | `2048` |
 
-For generated SFT schema details, see the [Customizer API Reference](/documentation/reference/api-reference)
-and search for `SFTTrainingInput`.
+LoRA parameters (`training.lora`):
 
-### DPO Configuration
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `rank` | LoRA rank (low-rank dimension). Higher = more capacity and memory | `16` |
+| `alpha` | LoRA scaling factor | `32` |
+| `merge` | Merge the adapter into the base model at the end of training | `false` |
+| `target_modules` | List of module patterns to adapt; `null` applies LoRA to all linear layers | `null` |
 
-When `training.type` is `"dpo"`, additional DPO-specific fields are available:
+### Schedule
 
-| Parameter | Description | Recommended Values |
-|-----------|-------------|-------------------|
-| `ref_policy_kl_penalty` | KL divergence penalty (beta) | `0.05-0.5` |
-| `preference_average_log_probs` | Average log probabilities for preference | `false` |
-| `sft_average_log_probs` | Average log probabilities for SFT | `false` |
-| `preference_loss_weight` | Weight for preference loss | `1.0` |
-| `sft_loss_weight` | Weight for SFT loss | `0.0` |
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `schedule.epochs` | Number of passes over the training data | `1` |
+| `schedule.max_steps` | Optional cap on training steps. When set, training stops at this many steps even if `epochs` is not reached | `null` |
+| `schedule.val_check_interval` | Validation cadence. Use a fractional value (e.g. `0.5` for twice per epoch); avoid integer step counts that may not divide evenly | `null` |
+| `schedule.seed` | Random seed | `null` |
 
-For generated DPO schema details, see the [Customizer API Reference](/documentation/reference/api-reference)
-and search for `DPOTrainingInput`.
+### Batch
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `batch.global_batch_size` | Effective batch size across all data-parallel ranks | `8` |
+| `batch.micro_batch_size` | Per-step batch size on each device | `1` |
+| `batch.sequence_packing` | Pack multiple samples into one sequence to reduce padding | `false` |
+
+### Optimizer
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `optimizer.learning_rate` | Step size for weight updates | `5e-6` |
+| `optimizer.weight_decay` | L2 regularization strength | `0.01` |
+| `optimizer.warmup_steps` | Linear warmup steps before the main schedule | `0` |
+
+### Parallelism
+
+The `parallelism` block scales Automodel training across GPUs and nodes.
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `parallelism.num_nodes` | Number of training nodes | `1` |
+| `parallelism.num_gpus_per_node` | GPUs per node | `1` |
+| `parallelism.tensor_parallel_size` | GPUs for tensor parallelism (splits layers across GPUs for large models) | `1` |
+| `parallelism.pipeline_parallel_size` | GPUs for pipeline parallelism (splits model stages across GPUs) | `1` |
+| `parallelism.context_parallel_size` | GPUs for context parallelism (for very long sequences) | `1` |
+| `parallelism.expert_parallel_size` | Expert parallelism for MoE models; must divide the number of experts | `null` |
 
 <Note>
 
-PEFT (LoRA) is not yet supported with DPO training. Use full-weight training by omitting the `peft` field.
+**GPU relationships and constraints:**
+
+- `total_gpus = num_gpus_per_node × num_nodes`.
+- `total_gpus` must be divisible by `tensor_parallel_size × pipeline_parallel_size × context_parallel_size`.
+- `data_parallel_size` is derived as `total_gpus / (TP × PP × CP)`, and `global_batch_size` must be divisible by `micro_batch_size × data_parallel_size`.
+- For MoE models, tensor parallelism must be `1` when `expert_parallel_size > 1`.
 
 </Note>
-<Tip>
 
-When setting `val_check_interval` for DPO, use a fractional value (e.g., `0.5` for twice per epoch) or omit it entirely (validates once at end of epoch). Avoid integer step counts — they may not divide evenly into the total training steps, which can prevent validation from running on the final step.
+### Distillation
 
-</Tip>
-### Parallelism Configuration
+When `training.training_type` is `"distillation"`, the following additional fields configure knowledge distillation from a teacher model:
 
-Parallelism parameters are grouped inside `training.parallelism`:
-
-| Parameter | Description | Notes |
-|-----------|-------------|-------|
-| `parallelism.num_gpus_per_node` | Number of GPUs per node | Default: `1` |
-| `parallelism.num_nodes` | Number of training nodes | Use 1 unless multi-node setup |
-| `parallelism.tensor_parallel_size` | GPUs for tensor parallelism | Split layers across GPUs (for large models) |
-| `parallelism.pipeline_parallel_size` | GPUs for pipeline parallelism | Split model stages across GPUs |
-| `parallelism.context_parallel_size` | GPUs for context parallelism | For very long sequences |
-| `parallelism.expert_parallel_size` | Expert parallelism for MoE models | Must divide number of experts |
-| `parallelism.sequence_parallel` | Enable sequence parallelism | Memory optimization for long sequences |
-
-<Note>
-
-**GPU Relationship**: `total_gpus = num_gpus_per_node x num_nodes`
-
-`data_parallel_size` is automatically derived as `total_gpus / (TP × PP × CP)`.
-
-</Note>
-### PEFT / LoRA Configuration
-
-To train a LoRA adapter, set `training.peft`:
-
-| Parameter | Description | Recommended Values |
-|-----------|-------------|-------------------|
-| `peft.type` | PEFT method type | `"lora"` (currently the only supported method) |
-| `peft.rank` | LoRA rank (low-rank dimension) | `8-64`. Higher = more capacity, more memory |
-| `peft.alpha` | LoRA alpha scaling factor | `2-4× rank` (e.g., `32` for rank `8`) |
-| `peft.dropout` | LoRA dropout probability | `0.0-0.1` for regularization |
-| `peft.target_modules` | Module patterns to apply LoRA | `null` = all linear layers (default) |
-| `peft.merge` | Merge LoRA weights into base model | `false` (default). If `true`, produces full-weight checkpoint |
-| `peft.use_dora` | Enable DoRA (Weight-Decomposed Low-Rank Adaptation) | `false` (default) |
-
-```python
-"training": {
-    "type": "sft",
-    "peft": {
-        "type": "lora",
-        "rank": 8,
-        "alpha": 32,
-        "dropout": 0.0,
-        "target_modules": ["*.q_proj", "*.v_proj"] # Optional: specific modules
-    }
-}
-```
-
-### Distillation Configuration
-
-When `training.type` is `"distillation"`, additional KD-specific fields are available:
-
-| Parameter | Description | Recommended Values |
-|-----------|-------------|-------------------|
-| `teacher_model` | Teacher model entity URN (`workspace/name`). Must share the same vocabulary and tokenizer as the student. | *(required)* |
-| `teacher_precision` | Precision for loading the frozen teacher model | `bf16` (default). Use `fp16` or `fp32` if needed |
-| `distillation_ratio` | Balance between CE loss and KD loss. `0.0` = CE only, `1.0` = KD only | `0.3–0.5` (start with `0.5`) |
-| `distillation_temperature` | Softmax temperature for KD. Higher = softer probability distributions | `1.0–5.0` (start with `2.0`) |
-
-For generated distillation schema details, see the
-[Customizer API Reference](/documentation/reference/api-reference) and search for
-`DistillationTrainingInput`.
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `training.teacher_model` | Teacher Model Entity reference. Required for distillation. Must share the student's tokenizer and vocabulary | *(required)* |
+| `training.teacher_precision` | Precision for loading the frozen teacher (`bf16`, `fp16`, `fp32`) | `bf16` |
+| `training.distillation_ratio` | Balance between cross-entropy loss and KD loss. `0.0` = CE only, `1.0` = KD only | `0.5` |
+| `training.distillation_temperature` | Softmax temperature for KD. Higher = softer distributions | `1.0` |
+| `training.offload_teacher` | Offload the teacher model to save GPU memory | `false` |
 
 <a id="kd-constraints"></a>
 <Note>
 
-- Knowledge distillation uses **logit-pair distillation only** — the student learns to match the teacher's output probability distribution.
-- Both student and teacher models must be **full-weight Model Entities**. LoRA adapters cannot be used as teacher models.
-- Student and teacher must **share the same tokenizer and vocabulary**. Use models from the same family (e.g., Llama 3.2 1B Instruct + Llama 3.2 3B Instruct).
-- Both models are loaded during training. Plan GPU memory accordingly.
+- Knowledge distillation uses **logit-pair distillation** — the student learns to match the teacher's output probability distribution.
+- Both student and teacher must be **full-weight Model Entities** and **share the same tokenizer and vocabulary**. Use models from the same family (e.g. Qwen3 1.7B + Qwen3 4B).
+- Both models are loaded during training; plan GPU memory accordingly (or set `offload_teacher`).
 
 </Note>
+
 ---
 
-## Common Tuning Scenarios
+## Unsloth Configuration
 
-### Loss Not Decreasing (Underfitting)
+An Unsloth job is configured with the following top-level sections: `model`, `dataset`, `training`, `schedule`, `batch`, `optimizer`, `hardware`, `output`, and (optionally) `integrations`. Unsloth runs on a **single GPU** and supports 4-bit / 8-bit quantized loading.
 
-```python
-"training": {
-    "type": "sft",
-    "peft": {"type": "lora"},
-    "epochs": 5, # Increase from 3
-    "learning_rate": 0.0001, # Increase from 5e-5
-    "warmup_steps": 50 # Add warmup
-}
-```
+### Model
 
-### Out of Memory (OOM) Errors
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `model.name` | Base Model Entity reference (`name` or `workspace/name`) | *(required)* |
+| `model.max_seq_length` | Maximum sequence length | `2048` |
+| `model.load_in_4bit` | Load the base model in 4-bit (bitsandbytes). Mutually exclusive with `load_in_8bit` | `true` |
+| `model.load_in_8bit` | Load the base model in 8-bit | `false` |
+| `model.dtype` | Compute dtype (`auto`, `bfloat16`, `float16`, `float32`) | `auto` |
+| `model.trust_remote_code` | Allow custom model code from the checkpoint | `false` |
 
-```python
-"training": {
-    "type": "sft",
-    "peft": {"type": "lora"},
-    "batch_size": 8, # Reduce from 32
-    "micro_batch_size": 1, # Reduce from 2
-    "max_seq_length": 1024 # Reduce from 2048
-}
-```
+<Note>
 
-### Overfitting (Validation Loss Increasing)
+Full-weight training (`training.finetuning_type: "all_weights"`) cannot be combined with quantized loading. Set `load_in_4bit` and `load_in_8bit` to `false` for full-weight runs.
 
-```python
-"training": {
-    "type": "sft",
-    "peft": {
-        "type": "lora",
-        "rank": 8,
-        "dropout": 0.1 # Add dropout
-    },
-    "epochs": 2, # Reduce from 5
-    "learning_rate": 0.00002, # Lower to 2e-5
-    "weight_decay": 0.01
-}
-```
+</Note>
+
+### Dataset
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `dataset.path` | Training fileset reference (`name` or `workspace/name`) | *(required)* |
+| `dataset.text_field` | Row field consumed by the trainer | `text` |
+| `dataset.apply_chat_template` | Apply the tokenizer's chat template to rows containing a `messages` field | `false` |
+| `dataset.validation_path` | Optional validation fileset reference | `null` |
+| `dataset.packing` | Pack multiple samples into one sequence to reduce padding | `false` |
+
+### Training Method
+
+| Parameter | Values | Description | Default |
+|-----------|--------|-------------|---------|
+| `training.training_type` | `sft` | Training method | `sft` |
+| `training.finetuning_type` | `lora`, `all_weights` | Adapter regime. `lora` trains an adapter; `all_weights` performs full-weight training | `lora` |
+| `training.lora` | `{ rank, alpha, dropout, target_modules, bias, use_rslora, random_state }` | LoRA configuration (auto-filled with defaults when `finetuning_type` is `lora`) | *(see below)* |
+| `training.use_gradient_checkpointing` | `unsloth`, `true`, `false` | Gradient checkpointing mode. `unsloth` uses Unsloth's optimized implementation | `unsloth` |
+
+LoRA parameters (`training.lora`):
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `rank` | LoRA rank | `16` |
+| `alpha` | LoRA scaling factor | `16` |
+| `dropout` | LoRA dropout probability | `0.0` |
+| `target_modules` | Modules to adapt | Unsloth's 7-module set: `q_proj`, `k_proj`, `v_proj`, `o_proj`, `gate_proj`, `up_proj`, `down_proj` |
+| `bias` | Bias training mode (`none`, `all`, `lora_only`) | `none` |
+| `use_rslora` | Use rank-stabilized LoRA | `false` |
+| `random_state` | LoRA initialization seed | `3407` |
+
+### Schedule
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `schedule.epochs` | Number of passes over the training data | `1` |
+| `schedule.max_steps` | Optional cap on training steps (overrides `epochs` when set) | `null` |
+| `schedule.warmup_steps` | Linear warmup steps. Mutually exclusive with `warmup_ratio` | `0` |
+| `schedule.warmup_ratio` | Warmup as a fraction of total steps | `null` |
+| `schedule.lr_scheduler_type` | `linear`, `cosine`, `constant`, `constant_with_warmup`, `cosine_with_restarts` | `linear` |
+| `schedule.logging_steps` | Logging cadence (steps) | `1` |
+| `schedule.save_steps` | Checkpoint cadence (steps) | `null` |
+| `schedule.eval_steps` | Evaluation cadence (steps) | `null` |
+| `schedule.seed` | Random seed | `3407` |
+
+### Batch
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `batch.per_device_train_batch_size` | Per-step batch size on the GPU | `1` |
+| `batch.gradient_accumulation_steps` | Steps to accumulate before a weight update | `1` |
+
+### Optimizer
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `optimizer.learning_rate` | Step size for weight updates | `2e-4` |
+| `optimizer.weight_decay` | L2 regularization strength | `0.0` |
+| `optimizer.optim` | Optimizer (`adamw_torch`, `adamw_torch_fused`, `adamw_8bit`, `paged_adamw_8bit`, `sgd`). 8-bit optimizers reduce optimizer-state memory | `adamw_8bit` |
+
+### Hardware
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `hardware.gpus` | Comma-separated GPU indices (`0` or `0,1`) for `CUDA_VISIBLE_DEVICES` (selection, not reservation) | `null` |
+| `hardware.precision` | Mixed-precision dtype (`bf16`, `fp16`). `bf16` recommended for Ampere+ | `bf16` |
+
+### Output (save method)
+
+Unsloth's output `save_method` controls the saved checkpoint shape:
+
+| `save_method` | Result |
+|---------------|--------|
+| `lora` | Saves the LoRA adapter (default) |
+| `merged_16bit` | Merges the adapter into the base and saves a 16-bit checkpoint |
+| `merged_4bit` | Merges the adapter into the base and saves a 4-bit checkpoint |
+
+The `merged_*` methods are only valid when `training.finetuning_type` is `lora`.
 
 ---
 
@@ -178,14 +237,14 @@ Estimated GPU requirements by model size:
 
 | Model Size | LoRA (1 GPU) | Full FT (min GPUs) |
 |------------|--------------|-------------------|
-| 1B | 16GB | 1 × 24GB |
-| 3B | 24GB | 2 × 24GB |
-| 7-8B | 40GB | 2-4 × 80GB |
-| 13B | 80GB | 4 × 80GB |
-| 70B | 2 × 80GB | 8+ × 80GB |
+| 1B | 16 GB | 1 × 24 GB |
+| 3B | 24 GB | 2 × 24 GB |
+| 7-8B | 40 GB | 2-4 × 80 GB |
+| 13B | 80 GB | 4 × 80 GB |
+| 70B | 2 × 80 GB | 8+ × 80 GB |
 
 <Tip>
 
-Use LoRA for most fine-tuning tasks. It's significantly more memory-efficient and often achieves comparable results to full fine-tuning.
+Use LoRA for most fine-tuning tasks — it is significantly more memory-efficient and often achieves results comparable to full fine-tuning. On a single memory-constrained GPU, the Unsloth backend with 4-bit loading fits the largest adapters.
 
 </Tip>

@@ -1,0 +1,38 @@
+# Minikube values for local development
+# This is a standalone values file - use it in place of ./default.yaml
+#
+# Usage: helm upgrade -i nemo-platform k8s/helm -f e2e/k8s/values/minikube.yaml
+
+# Enable NIM operator for local GPU testing
+k8s-nim-operator:
+  enabled: true
+  operator:
+    admissionController:
+      enabled: false
+
+postgresql:
+  image:
+    repository: docker.io/library/postgres
+  persistence:
+    storageClass: standard
+
+core:
+  storage:
+    storageClass: standard
+  volumePermissionsImage: docker.io/library/busybox
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+
+platformConfig:
+  inference_gateway:
+    mock_provider_prefix: igw-mock-
+  safe_synthesizer:
+    job_mode: container

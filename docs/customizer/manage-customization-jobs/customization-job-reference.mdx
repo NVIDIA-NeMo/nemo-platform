@@ -5,88 +5,64 @@ description: ""
 <a id="ft-customization-job-reference"></a>
 Use this page when you need field-level details for customization job specifications, the complete API schema, or integration options.
 
-For concepts, see [Customization Job overview](/documentation/fine-tune-models/manage-customization-jobs).
+For concepts, see [Customization Job overview](/documentation/customizer-reference/manage-customization-jobs).
 
 ## Key Fields
 
-All job configuration (model, dataset, training, and output) is specified in the job spec.
+A customization job is submitted with a backend-specific spec (`AutomodelJobInput` for the automodel backend, `UnslothJobInput` for the unsloth backend). Both specs share the same top-level envelope, but several field names differ between backends. The table below lists the common envelope; for the full per-backend field list, see [Training Configuration](/documentation/customizer-reference/manage-customization-jobs/training-configuration).
 
 | Field | Required | Description |
 |-------|----------|-------------|
 | `name` | No | Name for this customization job. Auto-generated if not provided |
-| `workspace` | Yes | Workspace where the job runs. Determines what datasets and models are authorized to be used in the job. |
-| `spec.model` | Yes | Reference to the Model Entity (`workspace/name` format) |
-| `spec.dataset` | Yes | Dataset URI (`fileset://workspace/name`) |
-| `spec.training` | Yes | Training method and hyperparameters (see [Training Configuration](/documentation/customizer-reference/manage-jobs/training-configuration)) |
-| `spec.training.type` | Yes | Training method: `sft`, `distillation`, or `dpo` |
-| `spec.training.peft` | No | PEFT adapter configuration (e.g., `{"type": "lora", ...}`). Omit for full-weight training |
+| `workspace` | Yes | Workspace where the job runs. Determines which datasets and models are authorized for the job. Passed to `jobs.create()`, not part of the spec |
+| `spec.model` | Yes | Base Model Entity to fine-tune. Automodel takes a string (`workspace/name`); Unsloth takes an object (`{"name": "workspace/name", ...}`) |
+| `spec.dataset` | Yes | Training data filesets. Automodel uses `{"training": "...", "validation": "..."}`; Unsloth uses `{"path": "..."}` |
+| `spec.training` | Yes | Training method and hyperparameters (see [Training Configuration](/documentation/customizer-reference/manage-customization-jobs/training-configuration)) |
+| `spec.training.training_type` | No | Training method. Automodel: `sft` or `distillation`. Unsloth: `sft`. Defaults to `sft` |
+| `spec.training.finetuning_type` | No | Adapter regime. Automodel: `lora`, `lora_merged`, or `all_weights`. Unsloth: `lora` or `all_weights`. Defaults to `lora` |
+| `spec.training.lora` | No | LoRA configuration (`{"rank": 16, "alpha": 32, ...}`). Auto-filled with defaults for LoRA regimes |
 | `spec.output` | No | Output artifact configuration (`{"name": "..."}`). Auto-generated if not provided |
-| `spec.deployment_config` | No | Deployment configuration. Pass a string to reference an existing config by name, or an object with inline NIM deployment parameters (e.g., `{"lora_enabled": true}`). Omit to skip deployment |
+| `spec.integrations` | No | Optional W&B / MLflow tracking configuration (see below) |
+| `spec.deployment_config` | No | **Unsloth only.** Auto-deploy the trained model. Pass a string to reference an existing config by name, or an object with inline NIM deployment parameters (e.g., `{"lora_enabled": true}`). Omit to skip deployment |
 
 ---
 
 ## Complete API Reference
 
-For generated REST API details, see the [Customizer API Reference](/documentation/reference/api-reference) and
-search for `CustomizationJobInput`.
+For generated REST API details, see the [Customizer API Reference](/documentation/reference/api-reference) and search for `AutomodelJobInput` or `UnslothJobInput`.
 
 ---
 
 ## Weights & Biases Integration
 
-To enable W&B integration, add the `integrations` configuration:
-
-<Tabs>
-
-<Tab title="Python">
+Both backends accept the same `integrations` object on the job spec. Add a `wandb` block to request W&B tracking; the training runtime activates it when the required credentials are available.
 
 ```python
-job = client.customization.jobs.create(
-    name="my-job",
-    workspace="default",
-    spec={
-        "model": "default/llama-3-2-1b",
-        "dataset": "fileset://default/my-dataset",
-        "training": {"type": "sft", "peft": {"type": "lora"}, "epochs": 3},
-        "integrations": {
-            "wandb": {
-                "project": "my-finetuning-project",
-                "entity": "my-team",
-                "tags": ["fine-tuning", "llama"],
-                "api_key_secret": "my-wandb-key",
-            }
-        },
+import os
+from nemo_platform import NeMoPlatform
+from nemo_automodel_plugin.schema import AutomodelJobInput
+
+client = NeMoPlatform(base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"), workspace="default")
+
+spec = AutomodelJobInput(
+    model="default/qwen3-1.7b",
+    dataset={"training": "default/my-dataset"},
+    training={"training_type": "sft", "finetuning_type": "lora"},
+    schedule={"epochs": 3},
+    integrations={
+        "wandb": {
+            "project": "my-finetuning-project",
+            "entity": "my-team",
+                "tags": ["fine-tuning", "qwen"],
+            "api_key_secret": "my-wandb-key",
+        }
     },
 )
+
+job = client.customization.automodel.jobs.create(spec=spec, workspace="default", name="my-job")
 ```
 
-</Tab>
-<Tab title="CLI">
-
-```bash
-nemo customization jobs create my-job \
-  --workspace default \
-  --spec '{
-    "model": "default/llama-3-2-1b",
-    "dataset": "fileset://default/my-dataset",
-    "training": {"type": "sft", "peft": {"type": "lora"}, "epochs": 3},
-    "integrations": {
-      "wandb": {
-        "project": "my-finetuning-project",
-        "entity": "my-team",
-        "tags": ["fine-tuning", "llama"],
-        "api_key_secret": "my-wandb-key"
-      }
-    }
-  }'
-```
-
-</Tab>
-
-</Tabs>
-The `api_key_secret` field references a stored secret containing your `WANDB_API_KEY`.
-Use the secret name (e.g., `"my-wandb-key"`) to resolve it from the request workspace.
-To create the secret, see [Weights & Biases Keys](/documentation/get-started/core-concepts/manage-secrets).
+The `api_key_secret` field references a stored secret containing your `WANDB_API_KEY`. Use the secret name (e.g., `"my-wandb-key"`) to resolve it from the request workspace. To create the secret, see [Weights & Biases Keys](/documentation/get-started/core-concepts/manage-secrets).
 
 | Field | Description |
 |-------|-------------|
@@ -98,69 +74,42 @@ To create the secret, see [Weights & Biases Keys](/documentation/get-started/cor
 | `notes` | Notes or description for the run |
 | `base_url` | Base URL for self-hosted W&B servers (e.g., `https://wandb.mycompany.com`). Omit to use W&B cloud |
 
-To view your training metrics in W&B after the job starts, see [ft-tut-metrics-wandb](/documentation/customizer-reference/tutorials/job-metrics).
+To view your training metrics in W&B after the job starts, see [ft-tut-metrics-wandb](/documentation/customizer-reference/tutorials/metrics).
 
 ---
 
 ## MLflow Integration
 
-To enable MLflow integration:
-
-<Tabs>
-
-<Tab title="Python">
+Add an `mlflow` block to the same `integrations` object to request MLflow tracking:
 
 ```python
-job = client.customization.jobs.create(
-    name="my-job",
-    workspace="default",
-    spec={
-        "model": "default/llama-3-2-1b",
-        "dataset": "fileset://default/my-dataset",
-        "training": {"type": "sft", "peft": {"type": "lora"}, "epochs": 3},
-        "integrations": {
-            "mlflow": {
-                "experiment_name": "llama-finetuning",
-                "tracking_uri": "http://mlflow.example.com:5000",
-            }
-        },
+spec = AutomodelJobInput(
+    model="default/qwen3-1.7b",
+    dataset={"training": "default/my-dataset"},
+    training={"training_type": "sft", "finetuning_type": "lora"},
+    schedule={"epochs": 3},
+    integrations={
+        "mlflow": {
+            "experiment_name": "qwen-finetuning",
+            "tracking_uri": "http://mlflow.example.com:5000",
+        }
     },
 )
+
+job = client.customization.automodel.jobs.create(spec=spec, workspace="default", name="my-job")
 ```
 
-</Tab>
-<Tab title="CLI">
-
-```bash
-nemo customization jobs create my-job \
-  --workspace default \
-  --spec '{
-    "model": "default/llama-3-2-1b",
-    "dataset": "fileset://default/my-dataset",
-    "training": {"type": "sft", "peft": {"type": "lora"}, "epochs": 3},
-    "integrations": {
-      "mlflow": {
-        "experiment_name": "llama-finetuning",
-        "tracking_uri": "http://mlflow.example.com:5000"
-      }
-    }
-  }'
-```
-
-</Tab>
-
-</Tabs>
 | Field | Description |
 |-------|-------------|
 | `experiment_name` | MLflow experiment name. Defaults to `output.name` if not set |
-| `tracking_uri` | Set this to the MLflow tracking server URI. This can also be set via `MLFLOW_TRACKING_URI`. |
-| `run_name` | MLflow run name. Defaults to the job ID if not provided |
+| `tracking_uri` | The MLflow tracking server URI. Can also be set via `MLFLOW_TRACKING_URI` |
+| `name` | MLflow run name. Defaults to the job ID if not provided |
 | `tags` | Key-value pairs for filtering runs (e.g., `{"team": "nlp", "task": "sft"}`) |
 | `description` | Description for the MLflow run |
 
 ## Next Steps
 
-- [Create a customization job](/documentation/fine-tune-models/manage-customization-jobs/create-a-customization-job): Start a job with a model, dataset, training configuration, and optional integrations.
-- [Monitor training metrics](/documentation/customizer-reference/tutorials/job-metrics): View logs and metrics through MLflow or W&B.
+- [Create a customization job](/documentation/customizer-reference/manage-customization-jobs/create-a-customization-job): Start a job with a model, dataset, training configuration, and optional integrations.
+- [Monitor training metrics](/documentation/customizer-reference/tutorials/metrics): View logs and metrics through MLflow or W&B.
 - [Manage secrets](/documentation/get-started/core-concepts/manage-secrets): Store credentials such as W&B API keys and provider tokens.
 - [Troubleshooting MLflow integrations](/documentation/reference/troubleshooting/customizer): Diagnose failed or misconfigured customization jobs.

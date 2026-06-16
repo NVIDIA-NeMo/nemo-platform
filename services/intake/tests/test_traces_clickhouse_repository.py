@@ -65,8 +65,10 @@ async def test_summary_mode_reads_root_spans_without_metric_aggregates():
     )
 
     assert client.queries[0].lstrip().startswith("SELECT count()")
-    assert "FROM (SELECT * FROM trace_index FINAL) AS trace_roots" in client.queries[0]
+    assert "FROM trace_index AS trace_roots FINAL" in client.queries[0]
     assert "trace_roots.root_status AS status" in client.queries[0]
+    assert "trace_roots.root_input" not in client.queries[0]
+    assert "trace_roots.root_output" not in client.queries[0]
     assert "LIMIT 1 BY trace_roots.workspace, trace_roots.source_format, trace_roots.trace_id" in client.queries[0]
     assert "span_versions" not in client.queries[0]
     assert "sumIf" not in client.queries[1]
@@ -87,12 +89,16 @@ async def test_detailed_mode_adds_trace_aggregate_block():
         mode="detailed",
     )
 
-    assert "FROM (SELECT * FROM trace_index FINAL) AS trace_roots" in client.queries[0]
+    assert "FROM trace_index AS trace_roots FINAL" in client.queries[0]
     assert "span_versions" not in client.queries[0]
     assert "page_traces AS" in client.queries[1]
     assert "AS trace_spans" in client.queries[1]
     assert "(span_versions.workspace, span_versions.source_format, span_versions.trace_id) IN" in client.queries[1]
     assert "SELECT workspace, source_format, id FROM page_traces" in client.queries[1]
+    assert "argMax(span_versions.input," not in client.queries[1]
+    assert "argMax(span_versions.output," not in client.queries[1]
+    assert "argMax(span_versions.attributes_string," in client.queries[1]
+    assert "argMax(span_versions.attributes_number," in client.queries[1]
     assert "sumIf" in client.queries[1]
     assert "groupUniqArrayIf" in client.queries[1]
     assert "count() AS span_count" in client.queries[1]
@@ -120,8 +126,8 @@ async def test_list_traces_maps_detailed_row():
     assert trace.session_id == "session-a"
     assert trace.root_span_id == "span-root"
     assert trace.name == "root"
-    assert trace.input == "root input"
-    assert trace.output == "root output"
+    assert trace.input is None
+    assert trace.output is None
     assert trace.duration_ms == 2500
     assert trace.project == "project-a"
     assert trace.experiment_id == "experiment-a"
@@ -218,8 +224,6 @@ def _trace_row(
         "source_format": "otel",
         "root_span_id": "span-root",
         "name": "root",
-        "input": "root input",
-        "output": "root output",
         "project": "project-a",
         "experiment_id": "experiment-a",
         "test_case_id": "case-a",

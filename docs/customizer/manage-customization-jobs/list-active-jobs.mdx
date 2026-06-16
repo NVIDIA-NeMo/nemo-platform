@@ -3,11 +3,11 @@ title: "List Active Jobs"
 description: ""
 ---
 <a id="ft-list-active-customization-jobs"></a>
-List all customization jobs and their high-level status. This returns job definitions including the model, dataset, training configuration, and overall status.
+List customization jobs and their high-level status. Customization jobs run on the platform's Jobs service, so you list them through that service and filter by `source` to scope the results to a backend (`automodel` or `unsloth`). Each entry includes the job definition (model, dataset, training configuration) and overall status.
 
 <Tip>
 
-To get **detailed execution progress** (step-by-step status, training metrics like loss/epoch/step), use [Get Job Status](/documentation/customizer-reference/manage-jobs/get-job-status) instead.
+To get **detailed execution progress** (step-by-step status, training metrics like loss/epoch/step), use [Get Job Status](/documentation/customizer-reference/manage-customization-jobs/get-job-status) instead.
 
 </Tip>
 ## Prerequisites
@@ -25,7 +25,7 @@ export NMP_BASE_URL="https://your-nmp-base-url"
 
 ## To List Active Customization Jobs
 
-Use the SDK to list customization jobs:
+Use the SDK to list jobs, filtering by `source` to scope the results to a customization backend:
 
 ```python
 import os
@@ -37,22 +37,26 @@ client = NeMoPlatform(
     workspace="default",
 )
 
-# List all customization jobs
-jobs = client.customization.jobs.list(
-    workspace="default", page=1, page_size=10, sort="created_at"
+# List automodel customization jobs
+jobs = client.jobs.list(
+    workspace="default",
+    filter={"source": "automodel"},  # Use "unsloth" for the Unsloth backend
+    page=1,
+    page_size=10,
+    sort="created_at",
 )
 
 print(f"Found {len(jobs.data)} jobs")
 for job in jobs.data:
     print(f"Job {job.name}: {job.status}")
 
-# List jobs with filters (optional)
-# Valid filter fields: name, status, project, workspace, created_at, updated_at
-filtered_jobs = client.customization.jobs.list(
+# Add more filters (optional)
+# Valid filter fields: workspace, project, name, status, source, created_at, updated_at
+filtered_jobs = client.jobs.list(
     workspace="default",
     filter={
+        "source": "automodel",
         "status": "active",  # Filter by job status
-        "name": "my-sft-job",  # Filter by job name
     },
     sort="-created_at",  # Sort by created_at descending
 )
@@ -71,8 +75,9 @@ for job in filtered_jobs.data:
   "data": [
     {
       "id": "platform-job-QtyhRY5ub4t4tTLPY4sTkz",
-      "name": "my-sft-job-99da",
+      "name": "automodel-99da3f7c1b2e",
       "workspace": "default",
+      "source": "automodel",
       "created_at": "2026-02-09T22:12:45",
       "updated_at": "2026-02-09T22:12:45",
       "status": "active",
@@ -80,29 +85,28 @@ for job in filtered_jobs.data:
         "message": "Job is running"
       },
       "spec": {
-        "model": "default/llama-3-2-1b",
-        "dataset": "fileset://default/sft-dataset",
+        "model": "default/qwen3-1.7b",
+        "dataset": { "training": "default/sft-dataset" },
         "training": {
-          "type": "sft",
-          "batch_size": 64,
-          "epochs": 2,
-          "learning_rate": 5e-05,
-          "weight_decay": 0.01,
-          "max_seq_length": 2048,
-          "parallelism": {
-            "num_gpus_per_node": 1,
-            "num_nodes": 1,
-            "tensor_parallel_size": 1,
-            "pipeline_parallel_size": 1,
-            "context_parallel_size": 1
-          }
+          "training_type": "sft",
+          "finetuning_type": "all_weights",
+          "max_seq_length": 2048
+        },
+        "schedule": { "epochs": 2 },
+        "batch": { "global_batch_size": 64, "micro_batch_size": 1 },
+        "optimizer": { "learning_rate": 5e-05, "weight_decay": 0.01 },
+        "parallelism": {
+          "num_gpus_per_node": 1,
+          "num_nodes": 1,
+          "tensor_parallel_size": 1,
+          "pipeline_parallel_size": 1,
+          "context_parallel_size": 1
         },
         "output": {
           "name": "customization-407790d32cfb",
           "type": "model",
           "fileset": "customization-407790d32cfb"
-        },
-        "custom_fields": {}
+        }
       }
     }
   ],

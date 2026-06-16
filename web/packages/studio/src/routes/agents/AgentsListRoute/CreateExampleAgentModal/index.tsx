@@ -63,7 +63,6 @@ export const CreateExampleAgentModal: FC<CreateExampleAgentModalProps> = ({
     mutation: {
       onSuccess: (agent) => {
         toast.success(`Agent "${agent.name}" created`);
-        // Refresh the table immediately instead of waiting for its poll interval.
         void queryClient.invalidateQueries({ queryKey: getAgentsListAgentsQueryKey(workspace) });
         const priorExampleAgentExists = existingAgents.some(
           (existing) =>

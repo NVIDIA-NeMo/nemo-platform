@@ -55,6 +55,38 @@ describe('Claude Code API helpers', () => {
     );
   });
 
+  it('keeps historical chat artifact selections when loading a session', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          session_id: 'session-1',
+          items: [],
+          chat_artifacts: {
+            selections: [
+              { label: 'Agent', value: 'cat-identifier' },
+              { label: 'Model', value: '`cloud, nvidia/example` - good for this agent' },
+            ],
+            files: [],
+            links: [{ label: 'Agents', destination: 'agents', href: '/workspaces/default/agents' }],
+            tools: [],
+          },
+        }),
+        { status: 200 }
+      )
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const history = await getClaudeCodeSessionHistory('session-1');
+
+    expect(history.chat_artifacts.selections).toEqual([
+      { label: 'Agent', value: 'cat-identifier' },
+      { label: 'Model', value: 'cloud, nvidia/example' },
+    ]);
+    expect(history.chat_artifacts.links).toEqual([
+      { label: 'Agents', destination: 'agents', href: '/workspaces/default/agents' },
+    ]);
+  });
+
   it('emits structured permission requests from SSE events', async () => {
     const fetchMock = vi
       .fn()
@@ -388,6 +420,17 @@ describe('Claude Code API helpers', () => {
 
     await expect(getClaudeCodeSessionHistory('session-1')).resolves.toEqual({
       session_id: 'session-1',
+      chat_artifacts: {
+        agent: undefined,
+        coding_agent_model: undefined,
+        files: [],
+        links: [],
+        model: undefined,
+        model_source: undefined,
+        selections: [],
+        tools: ['job_progress'],
+        workspace: undefined,
+      },
       items: [
         {
           kind: 'assistant',

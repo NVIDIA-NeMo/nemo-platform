@@ -89,12 +89,14 @@ type DeleteState =
 export interface CombinedAgentsTableProps {
   onAgentRowClick?: (agent: AgentTableRow) => void;
   onCreateDeployment?: (agentName: string) => void;
+  onCloneAgent?: (agent: AgentTableRow) => void;
   onAgentsLoaded?: (agents: Agent[]) => void;
 }
 
 export const AgentsTable: FC<CombinedAgentsTableProps> = ({
   onAgentRowClick,
   onCreateDeployment,
+  onCloneAgent,
   onAgentsLoaded,
 }) => {
   const workspace = useWorkspaceFromPath();
@@ -291,6 +293,10 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
             const urn = model ? `${row.workspace}/${model}` : null;
             navigate(urn ? `${target}?model=${encodeURIComponent(urn)}` : target);
           },
+        },
+        {
+          children: 'Clone',
+          onSelect: () => onCloneAgent?.(row),
         },
         { kind: 'divider' as const },
         {
