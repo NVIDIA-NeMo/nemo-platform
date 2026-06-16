@@ -22,8 +22,6 @@ import {
 import type { AssistantChatProps } from './types';
 import { useChatCompletion } from '../../hooks/useChatCompletion';
 
-// Stateless adapter that turns picked/pasted images into data-URL image parts.
-// A single shared instance avoids re-creating it on every render.
 const imageAttachmentAdapter = new SimpleImageAttachmentAdapter();
 
 type UseAssistantChatRuntimeOptions = Pick<

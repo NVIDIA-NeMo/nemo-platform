@@ -105,9 +105,6 @@ const getOpenAIMessage = (message: ThreadMessageLike): ChatCompletionMessagePara
 
   const text = getMessageText(message);
 
-  // Only user turns carry images — forward them as OpenAI multimodal content
-  // (text part followed by image_url parts) so the inference gateway receives
-  // a vision-capable request.
   if (message.role === 'user') {
     const imageParts = getMessageImageParts(message);
     if (imageParts.length > 0) {

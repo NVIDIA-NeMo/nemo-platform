@@ -6,12 +6,6 @@ import { Flex, Tooltip } from '@nvidia/foundations-react-core';
 import { Image as ImageIcon, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
-// Pending composer attachments expose the raw File but no data URL yet (the
-// SimpleImageAttachmentAdapter only produces one on send), so build a transient
-// object URL for the preview thumbnail. The URL is created and revoked inside a
-// single effect so the exact URL handed to <img> is the one revoked on cleanup
-// — creating it in useMemo instead breaks under React StrictMode, whose
-// mount→unmount→mount cycle revokes the blob while the image still points at it.
 const useImagePreviewUrl = (file?: File): string | undefined => {
   const [url, setUrl] = useState<string>();
   useEffect(() => {
@@ -30,8 +24,6 @@ const useImagePreviewUrl = (file?: File): string | undefined => {
 };
 
 const ComposerAttachmentChip = ({ attachment }: { attachment: Attachment }) => {
-  // Sent attachments lifted back into the edit composer carry their data URL in
-  // `content` rather than a `file`, so fall back to it for the preview.
   const liftedImage = attachment.content?.find((part) => part.type === 'image')?.image;
   const previewFromFile = useImagePreviewUrl(attachment.file);
   const previewUrl = previewFromFile ?? liftedImage;
