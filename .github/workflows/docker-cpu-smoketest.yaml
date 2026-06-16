@@ -7,6 +7,8 @@ on:
       - ".github/workflows/docker-cpu-smoketest.yaml"
       - "docker-bake.hcl"
       - "docker/**"
+      - "e2e/k8s/**"
+      - "k8s/helm/**"
       - "Makefile"
       - "packages/**"
       - "plugins/**"
@@ -21,6 +23,8 @@ on:
       - ".github/workflows/docker-cpu-smoketest.yaml"
       - "docker-bake.hcl"
       - "docker/**"
+      - "e2e/k8s/**"
+      - "k8s/helm/**"
       - "Makefile"
       - "packages/**"
       - "plugins/**"
@@ -55,6 +59,10 @@ jobs:
     name: Build CPU images
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    outputs:
+      image_registry: ${{ steps.bake-vars.outputs.image_registry }}
+      image_tag: ${{ steps.bake-vars.outputs.image_tag }}
+      publish_images: ${{ steps.bake-vars.outputs.publish_images }}
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -77,18 +85,26 @@ jobs:
           docker buildx inspect --bootstrap
 
       - name: Configure bake variables
+        id: bake-vars
         shell: bash
         env:
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
           INPUT_IMAGE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.image_tag || '' }}
           INPUT_PUBLISH: ${{ inputs.publish }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
 
           image_registry="ghcr.io/${GITHUB_REPOSITORY,,}"
-          bake_tag="${INPUT_IMAGE_TAG:-$GITHUB_SHA}"
+          source_sha="${SOURCE_SHA:-$GITHUB_SHA}"
+          bake_tag="${INPUT_IMAGE_TAG:-$source_sha}"
           publish_images="false"
 
           if [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            publish_images="true"
+          fi
+
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ] && [ "$HEAD_REPOSITORY" = "$GITHUB_REPOSITORY" ]; then
             publish_images="true"
           fi
 
@@ -101,9 +117,14 @@ jobs:
             printf 'BASE_REGISTRY=%s\n' "$image_registry"
             printf 'CACHE_REGISTRY=%s\n' "$image_registry"
             printf 'BAKE_TAG=%s\n' "$bake_tag"
-            printf 'CI_COMMIT_SHA=%s\n' "$GITHUB_SHA"
+            printf 'CI_COMMIT_SHA=%s\n' "$source_sha"
             printf 'PUBLISH_IMAGES=%s\n' "$publish_images"
           } >> "$GITHUB_ENV"
+          {
+            printf 'image_registry=%s\n' "$image_registry"
+            printf 'image_tag=%s\n' "$bake_tag"
+            printf 'publish_images=%s\n' "$publish_images"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
         if: env.PUBLISH_IMAGES == 'true'
@@ -127,3 +148,158 @@ jobs:
         if: env.PUBLISH_IMAGES == 'true'
         shell: bash
         run: make docker-push TARGET=docker-cpu
+
+  kind-smoke:
+    name: Set up kind CPU environment
+    needs: [build-cpu-images]
+    if: needs.build-cpu-images.outputs.publish_images == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      BUSYBOX_IMAGE: docker.io/library/busybox
+      HELM_CHART: k8s/helm
+      K8S_E2E_SCRIPTS: e2e/k8s/scripts
+      K8S_E2E_VALUES: e2e/k8s/values
+      KIND_CLUSTER_NAME: gha-${{ github.run_id }}-${{ github.run_attempt }}-kind-smoke
+      KUBE_GATEWAY_NAME: nmp-e2e-gateway
+      KUBE_NAMESPACE: nemo-platform
+      NAMESPACE: nemo-platform
+      NMP_E2E_INTERNAL_HOST: nemo-platform-api:8080
+      NMP_E2E_REGISTRY: ${{ needs.build-cpu-images.outputs.image_registry }}
+      NMP_E2E_TAG: ${{ needs.build-cpu-images.outputs.image_tag }}
+      POSTGRES_IMAGE: docker.io/library/postgres
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Free disk space
+        uses: ./.github/actions/free-disk-space
+        with:
+          disable_swap: "true"
+          remove_haskell: "true"
+          remove_java: "true"
+          remove_ruby: "true"
+          remove_swift: "true"
+          prune_docker: "true"
+
+      - name: Install kind
+        shell: bash
+        env:
+          KIND_VERSION: v0.32.0
+        run: |
+          set -euo pipefail
+
+          case "$(uname -m)" in
+            x86_64) arch=amd64 ;;
+            aarch64|arm64) arch=arm64 ;;
+            *)
+              echo "Unsupported architecture: $(uname -m)" >&2
+              exit 1
+              ;;
+          esac
+
+          kind_url="https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-linux-${arch}"
+          curl -fsSLo "${RUNNER_TEMP}/kind" "${kind_url}"
+          curl -fsSLo "${RUNNER_TEMP}/kind.sha256sum" "${kind_url}.sha256sum"
+          sed "s#  kind-linux-${arch}#  ${RUNNER_TEMP}/kind#" "${RUNNER_TEMP}/kind.sha256sum" | sha256sum -c -
+          sudo install -m 0755 "${RUNNER_TEMP}/kind" /usr/local/bin/kind
+
+      - name: Install kubectl
+        shell: bash
+        env:
+          KUBECTL_VERSION: v1.33.7
+        run: |
+          set -euo pipefail
+
+          case "$(uname -m)" in
+            x86_64) arch=amd64 ;;
+            aarch64|arm64) arch=arm64 ;;
+            *)
+              echo "Unsupported architecture: $(uname -m)" >&2
+              exit 1
+              ;;
+          esac
+
+          kubectl_url="https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${arch}/kubectl"
+          curl -fsSLo "${RUNNER_TEMP}/kubectl" "${kubectl_url}"
+          curl -fsSLo "${RUNNER_TEMP}/kubectl.sha256" "${kubectl_url}.sha256"
+          echo "$(cat "${RUNNER_TEMP}/kubectl.sha256")  ${RUNNER_TEMP}/kubectl" | sha256sum -c -
+          sudo install -m 0755 "${RUNNER_TEMP}/kubectl" /usr/local/bin/kubectl
+
+      - name: Install Helm
+        uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
+
+      - name: Start kind cluster
+        shell: bash
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          NGC_API_KEY: not-used-for-ghcr-cpu-smoke
+        run: bash "${K8S_E2E_SCRIPTS}/setup_local_kind_cpu.sh"
+
+      - name: Set default kubectl namespace
+        shell: bash
+        run: kubectl config set-context --current --namespace="${NAMESPACE}"
+
+      - name: Pre-pull GHCR images into kind
+        shell: bash
+        env:
+          KIND_IMAGE_PULL_TOKEN: ${{ github.token }}
+          KIND_IMAGE_PULL_USER: ${{ github.actor }}
+        run: |
+          "${K8S_E2E_SCRIPTS}/prepull_kind_images.sh" \
+            "${NMP_E2E_REGISTRY}/nmp-api:${NMP_E2E_TAG}" \
+            "${NMP_E2E_REGISTRY}/nmp-core:${NMP_E2E_TAG}" \
+            "${NMP_E2E_REGISTRY}/nmp-cpu-tasks:${NMP_E2E_TAG}"
+
+      - name: Build Helm dependencies
+        shell: bash
+        run: |
+          helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
+          helm repo update
+          helm dependency build "${HELM_CHART}"
+
+      - name: Install NeMo Platform
+        shell: bash
+        run: HELM_VALUES="${K8S_E2E_VALUES}/kind.yaml" "${K8S_E2E_SCRIPTS}/install_nmp_e2e.sh"
+
+      - name: Wait for API
+        shell: bash
+        run: |
+          test -n "${NMP_E2E_CLUSTER_URL}"
+          "${K8S_E2E_SCRIPTS}/wait_for_api.sh" "${NMP_E2E_CLUSTER_URL}/cluster-info" 120
+
+      - name: Collect Kubernetes logs
+        if: always()
+        shell: bash
+        run: |
+          "${K8S_E2E_SCRIPTS}/collect_k8s_logs.sh"
+
+      - name: Disk usage summary
+        if: always()
+        shell: bash
+        run: |
+          echo "=== Host disk ==="
+          df -h /
+          echo "=== Docker system ==="
+          docker system df
+          echo "=== kind node storage ==="
+          for node in $(kind get nodes --name "${KIND_CLUSTER_NAME}" 2>/dev/null); do
+            echo "--- ${node} ---"
+            docker exec "${node}" sh -c "du -sh /var/lib/containerd /var/lib/kubelet /var/log 2>/dev/null | sort -h" || true
+          done
+
+      - name: Upload Kubernetes artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: kind-smoke-kubernetes-artifacts
+          retention-days: 7
+          if-no-files-found: ignore
+          path: k8s-logs/
+
+      - name: Delete kind cluster
+        if: always()
+        shell: bash
+        run: |
+          docker rm -f "cloud-provider-kind-${KIND_CLUSTER_NAME}" || true
+          kind delete cluster --name "${KIND_CLUSTER_NAME}" || true
