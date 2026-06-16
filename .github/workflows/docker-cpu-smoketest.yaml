@@ -170,7 +170,6 @@ jobs:
       KUBE_GATEWAY_NAME: nmp-e2e-gateway
       KUBE_NAMESPACE: nemo-platform
       NAMESPACE: nemo-platform
-      CORE_STORAGE_BINDER_ENABLED: "false"
       NMP_E2E_CLUSTER_URL: ""
       NMP_E2E_INTERNAL_HOST: nemo-platform-api:8080
       NMP_E2E_REGISTRY: ${{ needs.build-cpu-images.outputs.image_registry }}
@@ -275,25 +274,55 @@ jobs:
           helm repo update
           helm dependency build "${HELM_CHART}"
 
+      - name: Verify Helm install inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          required_vars=(
+            BUSYBOX_IMAGE
+            HELM_CHART
+            K8S_E2E_SCRIPTS
+            K8S_E2E_VALUES
+            KUBE_GATEWAY_NAME
+            NAMESPACE
+            NMP_E2E_REGISTRY
+            NMP_E2E_TAG
+            POSTGRES_IMAGE
+          )
+
+          for var_name in "${required_vars[@]}"; do
+            if [ -z "${!var_name:-}" ]; then
+              echo "${var_name} must be set before installing the Helm chart" >&2
+              exit 1
+            fi
+          done
+
+          test -d "${HELM_CHART}"
+          test -f "${K8S_E2E_VALUES}/kind.yaml"
+          test -x "${K8S_E2E_SCRIPTS}/install_nmp_e2e.sh"
+          test -x "${K8S_E2E_SCRIPTS}/wait_for_release_ready.sh"
+
+          echo "Helm install context:"
+          printf '  kubectl context: '
+          kubectl config current-context
+          printf '  namespace: %s\n' "${NAMESPACE}"
+          printf '  chart: %s\n' "${HELM_CHART}"
+          printf '  values: %s\n' "${K8S_E2E_VALUES}/kind.yaml"
+          printf '  image registry: %s\n' "${NMP_E2E_REGISTRY}"
+          printf '  image tag: %s\n' "${NMP_E2E_TAG}"
+          printf '  api image: %s/nmp-api:%s\n' "${NMP_E2E_REGISTRY}" "${NMP_E2E_TAG}"
+          printf '  core image: %s/nmp-api:%s\n' "${NMP_E2E_REGISTRY}" "${NMP_E2E_TAG}"
+          printf '  cpu tasks image: %s/nmp-cpu-tasks:%s\n' "${NMP_E2E_REGISTRY}" "${NMP_E2E_TAG}"
+          printf '  postgres image: %s\n' "${POSTGRES_IMAGE}"
+          printf '  busybox image: %s\n' "${BUSYBOX_IMAGE}"
+          helm version
+          kubectl get namespace "${NAMESPACE}"
+          kubectl -n "${NAMESPACE}" get gateway "${KUBE_GATEWAY_NAME}"
+
       - name: Install NeMo Platform
         shell: bash
         run: |
-          watch_pods() {
-            while true; do
-              echo "--- kubectl get pods -n ${NAMESPACE} $(date -u +%Y-%m-%dT%H:%M:%SZ) ---"
-              kubectl get pods -n "${NAMESPACE}" -o wide || true
-              sleep 5
-            done
-          }
-
-          watch_pods &
-          watch_pods_pid="$!"
-          cleanup_pod_watch() {
-            kill "${watch_pods_pid}" 2>/dev/null || true
-            wait "${watch_pods_pid}" 2>/dev/null || true
-          }
-          trap cleanup_pod_watch EXIT
-
           if ! HELM_VALUES="${K8S_E2E_VALUES}/kind.yaml" "${K8S_E2E_SCRIPTS}/install_nmp_e2e.sh"; then
             echo "--- helm list -A ---"
             helm list -A || true
