@@ -23,6 +23,11 @@ export interface AssistantChatThreadAttributes {
 
 export type AssistantChatMessageContentProps = Pick<MessageContentProps, 'markdownLinkComponent'>;
 
+export interface MessageRenderProps {
+  messageContentProps?: AssistantChatMessageContentProps;
+  toolCallPartComponent?: ToolCallMessagePartComponent;
+}
+
 export interface AssistantChatThreadProps {
   disabled?: boolean;
   placeholder: string;

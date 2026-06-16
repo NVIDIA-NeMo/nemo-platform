@@ -365,28 +365,26 @@ describe('AssistantChat', () => {
   it(
     'edits a user message and re-runs inference with the edited prompt',
     async () => {
+      const user = userEvent.setup();
       mocks.createChatCompletion
         .mockResolvedValueOnce(createCompletion('Original response.'))
         .mockResolvedValueOnce(createCompletion('Edited response.'));
 
       renderAssistantChat(<AssistantChat model="test-model" workspace="default" />);
 
-      await userEvent.type(
-        screen.getByRole('textbox', { name: /Task prompt/i }),
-        'Original prompt'
-      );
-      await userEvent.click(screen.getByRole('button', { name: /Submit/i }));
+      await user.type(screen.getByRole('textbox', { name: /Task prompt/i }), 'Original prompt');
+      await user.click(screen.getByRole('button', { name: /Submit/i }));
 
       expect(await screen.findByText('Original response.')).toBeInTheDocument();
 
-      await userEvent.click(screen.getByRole('button', { name: /Edit message/i }));
+      await user.click(screen.getByRole('button', { name: /Edit message/i }));
       const editInput = screen.getByRole('textbox', { name: /Edit message/i });
       expect(editInput).toHaveValue('Original prompt');
       expect(editInput.tagName).toBe('TEXTAREA');
 
-      await userEvent.clear(editInput);
-      await userEvent.type(editInput, 'Edited prompt');
-      await userEvent.click(screen.getByRole('button', { name: /Save edit/i }));
+      await user.clear(editInput);
+      await user.type(editInput, 'Edited prompt');
+      await user.click(screen.getByRole('button', { name: /Save edit/i }));
 
       expect(await screen.findByText('Edited response.')).toBeInTheDocument();
       expect(screen.getByText('Edited prompt')).toBeInTheDocument();
@@ -458,6 +456,7 @@ describe('AssistantChat', () => {
   it(
     'aborts a pending completion request when stop is clicked',
     async () => {
+      const user = userEvent.setup();
       let requestSignal: AbortSignal | undefined;
       const abortError = new Error('aborted');
       abortError.name = 'AbortError';
@@ -472,16 +471,14 @@ describe('AssistantChat', () => {
 
       renderAssistantChat(<AssistantChat model="test-model" workspace="default" />);
 
-      await userEvent.type(
-        screen.getByRole('textbox', { name: /Task prompt/i }),
-        'Hang before stream'
-      );
-      await userEvent.click(screen.getByRole('button', { name: /Submit/i }));
+      await user.type(screen.getByRole('textbox', { name: /Task prompt/i }), 'Hang before stream');
+      await user.click(screen.getByRole('button', { name: /Submit/i }));
 
       await waitFor(() => expect(requestSignal).toBeDefined());
       expect(requestSignal?.aborted).toBe(false);
 
-      await userEvent.click(screen.getByRole('button', { name: /Stop/i }));
+      // Wait for isRunning to be reflected in the DOM before clicking Stop.
+      await user.click(await screen.findByRole('button', { name: /Stop/i }));
 
       await waitFor(() => expect(requestSignal?.aborted).toBe(true));
       await waitFor(() =>

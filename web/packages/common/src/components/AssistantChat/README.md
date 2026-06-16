@@ -81,7 +81,10 @@ Related documentation:
 - `index.tsx` — `AssistantChat` entry point; instantiates the runtime and renders the thread.
 - `useAssistantChatRuntime.ts` — assistant-ui `ExternalStoreRuntime`, message conversion, and edit/reload/cancel/reset handlers.
 - `AssistantChatThread.tsx` — thread viewport layout that wires message renderers and the composer together.
-- `AssistantChatMessages.tsx` — assistant/user/system message renderers and message actions.
+- `AssistantMessage.tsx` / `UserMessage.tsx` — assistant/system and user message renderers (`AssistantMessage` also renders system messages).
+- `UserEditComposer.tsx` — the inline composer shown when editing a user message.
+- `AssistantChatMessageContent.tsx` — shared message-parts renderer (text, image, tool-call fallback, error banner) used by both message renderers.
+- `messageActions.tsx` — shared message-action styles and the copy-message button.
 - `AssistantComposer.tsx` — the prompt composer, send/stop/reset controls, and image-attachment chips.
 - `types.ts` — shared prop and config types. `messageUtils.ts` / `completionUtils.ts` — message and completion helpers.
 

@@ -2,16 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ThreadPrimitive } from '@assistant-ui/react';
-import {
-  AssistantMessage,
-  UserEditComposer,
-  UserMessage,
-} from '@nemo/common/src/components/AssistantChat/AssistantChatMessages';
 import { AssistantComposer } from '@nemo/common/src/components/AssistantChat/AssistantComposer';
+import { AssistantMessage } from '@nemo/common/src/components/AssistantChat/AssistantMessage';
 import {
   ComposerMode,
   type AssistantChatThreadProps,
 } from '@nemo/common/src/components/AssistantChat/types';
+import { UserEditComposer } from '@nemo/common/src/components/AssistantChat/UserEditComposer';
+import { UserMessage } from '@nemo/common/src/components/AssistantChat/UserMessage';
 import { ChatEmptyState } from '@nemo/common/src/components/Chat/ChatEmptyState';
 import { Flex, Stack } from '@nvidia/foundations-react-core';
 import cn from 'classnames';
