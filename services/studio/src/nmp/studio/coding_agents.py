@@ -7,7 +7,6 @@ import asyncio
 import json
 import logging
 import os
-import re
 import shutil
 import uuid
 from collections.abc import AsyncIterator, Mapping
@@ -20,6 +19,17 @@ from urllib.parse import urlencode, urlparse
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from nmp.studio import studio_links
+from nmp.studio.coding_agent_artifacts import (
+    ChatArtifactsResponse,
+    record_answer_selections,
+    record_coding_agent_model,
+    record_spec_text_artifacts,
+    record_tool_artifacts,
+    record_tool_name,
+    record_user_tool_result_artifacts,
+    record_workspace_artifact,
+    string_value,
+)
 from nmp.studio.coding_agent_mcp_tools import (
     APPROVAL_TOOL_NAME,
     CLAUDE_MCP_SERVER_NAME,
@@ -74,42 +84,6 @@ class PermissionDecision(BaseModel):
     approved: bool
     reason: str | None = None
     updated_input: dict[str, Any] | None = None
-
-
-class ChatSelectionArtifactResponse(BaseModel):
-    """A user selection captured during the chat."""
-
-    label: str
-    value: str
-
-
-class ChatFileArtifactResponse(BaseModel):
-    """A file touched by the local coding agent."""
-
-    action: str
-    path: str
-
-
-class ChatLinkArtifactResponse(BaseModel):
-    """A Studio link requested by the local coding agent."""
-
-    label: str
-    destination: str | None = None
-    href: str | None = None
-
-
-class ChatArtifactsResponse(BaseModel):
-    """Structured chat metadata shown in Studio's artifacts pane."""
-
-    agent: str | None = None
-    model: str | None = None
-    model_source: str | None = None
-    coding_agent_model: str | None = None
-    workspace: str | None = None
-    selections: list[ChatSelectionArtifactResponse] = Field(default_factory=list)
-    files: list[ChatFileArtifactResponse] = Field(default_factory=list)
-    links: list[ChatLinkArtifactResponse] = Field(default_factory=list)
-    tools: list[str] = Field(default_factory=list)
 
 
 class AgentInputDecision(BaseModel):
@@ -382,56 +356,14 @@ _TOKEN_USAGE_FIELDS = (
     "output_tokens",
 )
 
-_ANSWER_PAIR_RE = re.compile(r'"((?:\\.|[^"\\])*)"\s*=\s*"((?:\\.|[^"\\])*)"')
-_INLINE_CODE_VALUE_RE = re.compile(r"(`+)(?P<value>.*?)\1", re.DOTALL)
-_MARKDOWN_LINK_RE = re.compile(r"\[(?P<label>[^\]]+)\]\((?P<href>[^)]+)\)")
-_FILE_CHANGE_TOOL_ACTIONS = {
-    "Edit": "Edited",
-    "MultiEdit": "Edited",
-    "Write": "Wrote",
-}
-_STUDIO_CONTEXT_WORKSPACE_RE = re.compile(r"^Current Studio workspace:\s*(?P<workspace>.+)$", re.MULTILINE)
-_SPEC_HEADINGS = {
-    "behavior",
-    "change scope",
-    "evaluation setup",
-    "framework",
-    "harness",
-    "model",
-    "name",
-    "open questions",
-    "purpose",
-    "role",
-    "scope",
-    "signals",
-    "success criteria",
-    "tools",
-}
-
 
 def _int_metric(value: Any) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) else 0
 
 
-def _string_value(value: Any) -> str | None:
-    if not isinstance(value, str):
-        return None
-    stripped = value.strip()
-    return stripped or None
-
-
 def _append_unique_string(items: list[str], value: str) -> None:
     if value not in items:
         items.append(value)
-
-
-def _clean_artifact_value(value: str) -> str:
-    stripped = value.strip()
-    match = _INLINE_CODE_VALUE_RE.search(stripped)
-    if not match:
-        return stripped
-    unwrapped = match.group("value").strip()
-    return unwrapped or stripped
 
 
 def _usage_token_count(usage: Any) -> int:
@@ -460,257 +392,7 @@ def _usage_identity(entry: dict[str, Any], message: dict[str, Any]) -> tuple[str
 def _append_tool_call(summary: HistorySummary, tool_name: str) -> None:
     summary.tool_call_count += 1
     _append_unique_string(summary.tool_calls, tool_name)
-    _append_unique_string(summary.chat_artifacts.tools, tool_name)
-
-
-def _set_coding_agent_model(artifacts: ChatArtifactsResponse, model: str | None) -> None:
-    if not model:
-        return
-    artifacts.coding_agent_model = model
-
-
-def _set_spec_model(artifacts: ChatArtifactsResponse, model: str) -> None:
-    artifacts.model = _clean_artifact_value(model)
-    artifacts.model_source = "spec"
-
-
-def _set_selection_artifact(artifacts: ChatArtifactsResponse, label: str, value: str) -> None:
-    cleaned_value = _clean_artifact_value(value)
-    if label == "Agent":
-        artifacts.agent = cleaned_value
-    elif label == "Model":
-        artifacts.model = cleaned_value
-        artifacts.model_source = "selection"
-
-    for index, selection in enumerate(artifacts.selections):
-        if selection.label == label:
-            artifacts.selections[index] = ChatSelectionArtifactResponse(
-                label=label,
-                value=cleaned_value,
-            )
-            return
-    artifacts.selections.append(ChatSelectionArtifactResponse(label=label, value=cleaned_value))
-
-
-def _selection_label(question: str, header: str | None = None) -> str:
-    combined = f"{header or ''} {question}".lower()
-    if "agent" in combined:
-        return "Agent"
-    if "model" in combined:
-        return "Model"
-    if "deployment" in combined:
-        return "Deployment"
-    if "fileset" in combined:
-        return "Fileset"
-    if "dataset" in combined:
-        return "Dataset"
-    if "provider" in combined:
-        return "Provider"
-
-    label = header or question.strip().rstrip("?")
-    return label[:40] if len(label) > 40 else label
-
-
-def _decode_answer_pair_value(value: str) -> str:
-    try:
-        decoded = json.loads(f'"{value}"')
-    except json.JSONDecodeError:
-        return value.replace('\\"', '"').replace("\\\\", "\\")
-    return decoded if isinstance(decoded, str) else value
-
-
-def _record_answer_selections(
-    artifacts: ChatArtifactsResponse,
-    text: str,
-    question_labels: dict[str, str] | None = None,
-) -> None:
-    for match in _ANSWER_PAIR_RE.finditer(text):
-        question = _decode_answer_pair_value(match.group(1)).strip()
-        answer = _decode_answer_pair_value(match.group(2)).strip()
-        if not question or not answer:
-            continue
-        label = question_labels.get(question) if question_labels else None
-        _set_selection_artifact(artifacts, label or _selection_label(question), answer)
-
-
-def _ask_user_question_labels(input_value: Any) -> dict[str, str]:
-    if not isinstance(input_value, dict):
-        return {}
-
-    questions = input_value.get("questions")
-    if not isinstance(questions, list):
-        question = _string_value(input_value.get("question"))
-        if not question:
-            return {}
-        return {question: _selection_label(question, _string_value(input_value.get("header")))}
-
-    labels: dict[str, str] = {}
-    for question_value in questions:
-        if not isinstance(question_value, dict):
-            continue
-        question = _string_value(question_value.get("question"))
-        if not question:
-            continue
-        labels[question] = _selection_label(question, _string_value(question_value.get("header")))
-    return labels
-
-
-def _upsert_file_artifact(artifacts: ChatArtifactsResponse, action: str, path: str) -> None:
-    for index, file_artifact in enumerate(artifacts.files):
-        if file_artifact.path == path:
-            artifacts.files[index] = ChatFileArtifactResponse(action=action, path=path)
-            return
-    artifacts.files.append(ChatFileArtifactResponse(action=action, path=path))
-
-
-def _markdown_link_parts(value: str) -> tuple[str | None, str | None]:
-    match = _MARKDOWN_LINK_RE.search(value)
-    if not match:
-        return None, None
-    return match.group("label").strip() or None, match.group("href").strip() or None
-
-
-def _studio_link_artifact_from_input(
-    input_value: dict[str, Any],
-    workspace: str | None,
-) -> ChatLinkArtifactResponse | None:
-    destination = (
-        _string_value(input_value.get("destination"))
-        or _string_value(input_value.get("page"))
-        or _string_value(input_value.get("resource_type"))
-    )
-    label = _string_value(input_value.get("label")) or destination
-    href = _string_value(input_value.get("href")) or _string_value(input_value.get("url"))
-
-    if workspace:
-        result = studio_links.build_studio_link_result(workspace, None, input_value)
-        if "markdown" in result:
-            markdown_label, markdown_href = _markdown_link_parts(str(result["markdown"]))
-            label = _string_value(input_value.get("label")) or markdown_label or label
-            href = _string_value(result.get("url")) or _string_value(result.get("path")) or markdown_href or href
-            destination = _string_value(result.get("destination")) or destination
-
-    if not label:
-        return None
-
-    return ChatLinkArtifactResponse(label=label, destination=destination, href=href)
-
-
-def _append_link_artifact(artifacts: ChatArtifactsResponse, input_value: Any) -> None:
-    if not isinstance(input_value, dict):
-        return
-    artifact = _studio_link_artifact_from_input(input_value, artifacts.workspace)
-    if artifact is None:
-        return
-
-    for link in artifacts.links:
-        if link.label == artifact.label and link.destination == artifact.destination:
-            if artifact.href and not link.href:
-                link.href = artifact.href
-            return
-    artifacts.links.append(artifact)
-
-
-def _normalize_spec_line(line: str) -> str:
-    normalized = line.strip()
-    normalized = re.sub(r"^#{1,6}\s+", "", normalized)
-    normalized = re.sub(r"^\s*[-*]\s+", "", normalized)
-    return normalized.replace("**", "").strip()
-
-
-def _normalize_heading(line: str) -> str:
-    return _normalize_spec_line(line).removesuffix(":").strip().lower()
-
-
-def _inline_spec_value(text: str, label: str) -> str | None:
-    prefix = f"{label.lower()}:"
-    for line in text.splitlines():
-        normalized = _normalize_spec_line(line)
-        if not normalized.lower().startswith(prefix):
-            continue
-        return _string_value(normalized[len(prefix) :])
-    return None
-
-
-def _clean_spec_value(value: str) -> str:
-    normalized = _normalize_spec_line(value)
-    without_parenthetical = re.sub(r"\s+\([^)]*\)\s*$", "", normalized).strip()
-    return _clean_artifact_value(without_parenthetical or normalized)
-
-
-def _section_spec_value(text: str, heading: str) -> str | None:
-    lines = text.splitlines()
-    target_heading = heading.lower()
-    for index, line in enumerate(lines):
-        if _normalize_heading(line) != target_heading:
-            continue
-        for value_line in lines[index + 1 :]:
-            normalized = _normalize_spec_line(value_line)
-            if not normalized:
-                continue
-            if _normalize_heading(normalized) in _SPEC_HEADINGS:
-                return None
-            return _clean_spec_value(normalized)
-    return None
-
-
-def _record_spec_text_artifacts(artifacts: ChatArtifactsResponse, text: str) -> None:
-    agent_name = _inline_spec_value(text, "Name") or _inline_spec_value(text, "Draft Spec")
-    if agent_name:
-        artifacts.agent = _clean_spec_value(agent_name)
-
-    model = _section_spec_value(text, "Model") or _inline_spec_value(text, "Model")
-    if model:
-        _set_spec_model(artifacts, _clean_spec_value(model))
-
-
-def _record_tool_artifacts(
-    artifacts: ChatArtifactsResponse,
-    tool_name: str,
-    input_value: Any,
-    tool_use_id: str | None,
-    question_labels_by_tool_use_id: dict[str, dict[str, str]],
-) -> None:
-    if tool_name == "AskUserQuestion" and tool_use_id:
-        labels = _ask_user_question_labels(input_value)
-        if labels:
-            question_labels_by_tool_use_id[tool_use_id] = labels
-
-    action = _FILE_CHANGE_TOOL_ACTIONS.get(tool_name)
-    if action and isinstance(input_value, dict):
-        path = _string_value(input_value.get("file_path")) or _string_value(input_value.get("path"))
-        if path:
-            _upsert_file_artifact(artifacts, action, path)
-
-    if tool_name == "studio_link" or tool_name.endswith("__studio_link"):
-        _append_link_artifact(artifacts, input_value)
-
-
-def _record_workspace_artifact(artifacts: ChatArtifactsResponse, content: str) -> None:
-    if artifacts.workspace:
-        return
-    match = _STUDIO_CONTEXT_WORKSPACE_RE.search(content)
-    if match:
-        artifacts.workspace = match.group("workspace").strip()
-
-
-def _record_user_tool_result_artifacts(
-    artifacts: ChatArtifactsResponse,
-    content: Any,
-    question_labels_by_tool_use_id: dict[str, dict[str, str]],
-) -> None:
-    if not isinstance(content, list):
-        return
-
-    for part in content:
-        if not isinstance(part, dict) or part.get("type") != "tool_result":
-            continue
-        result_text = _string_value(part.get("content"))
-        if not result_text:
-            continue
-        tool_use_id = _string_value(part.get("tool_use_id"))
-        labels = question_labels_by_tool_use_id.get(tool_use_id or "")
-        _record_answer_selections(artifacts, result_text, labels)
+    record_tool_name(summary.chat_artifacts, tool_name)
 
 
 def _record_assistant_tool_calls(
@@ -723,9 +405,9 @@ def _record_assistant_tool_calls(
         if not isinstance(part, dict):
             continue
         if part.get("type") == "text":
-            text = _string_value(part.get("text"))
+            text = string_value(part.get("text"))
             if text:
-                _record_spec_text_artifacts(summary.chat_artifacts, text)
+                record_spec_text_artifacts(summary.chat_artifacts, text)
             continue
         if part.get("type") != "tool_use":
             continue
@@ -737,7 +419,7 @@ def _record_assistant_tool_calls(
         tool_name = part.get("name")
         tool_name = tool_name if isinstance(tool_name, str) and tool_name else "tool"
         _append_tool_call(summary, tool_name)
-        _record_tool_artifacts(
+        record_tool_artifacts(
             summary.chat_artifacts,
             tool_name,
             part.get("input") or {},
@@ -768,7 +450,7 @@ def _summarize_history_session(path: Path) -> HistorySummary:
 
                 message = entry.get("message")
                 if isinstance(message, dict):
-                    _set_coding_agent_model(summary.chat_artifacts, _string_value(message.get("model")))
+                    record_coding_agent_model(summary.chat_artifacts, string_value(message.get("model")))
                     usage_identity = _usage_identity(entry, message)
                     if usage_identity is None or usage_identity not in seen_usage_events:
                         summary.token_count += _usage_token_count(message.get("usage"))
@@ -788,14 +470,14 @@ def _summarize_history_session(path: Path) -> HistorySummary:
                 elif entry_type == "user" and isinstance(message, dict):
                     content = message.get("content")
                     if isinstance(content, str):
-                        _record_workspace_artifact(summary.chat_artifacts, content)
-                        _record_answer_selections(summary.chat_artifacts, content)
+                        record_workspace_artifact(summary.chat_artifacts, content)
+                        record_answer_selections(summary.chat_artifacts, content)
                         content = _strip_studio_context_from_prompt(content)
                         summary.message_count += 1
                         if summary.first_prompt is None:
                             summary.first_prompt = content
                     else:
-                        _record_user_tool_result_artifacts(
+                        record_user_tool_result_artifacts(
                             summary.chat_artifacts,
                             content,
                             question_labels_by_tool_use_id,
