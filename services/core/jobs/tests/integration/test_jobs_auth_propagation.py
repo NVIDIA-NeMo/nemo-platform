@@ -61,6 +61,7 @@ class TestJobCreationWithAuth:
                     {
                         "name": "test-step",
                         "executor": {
+                            "kind": "container",
                             "provider": "cpu",
                             "profile": "default",
                             "container": {
@@ -97,6 +98,7 @@ class TestJobCreationWithAuth:
                     {
                         "name": "test-step",
                         "executor": {
+                            "kind": "container",
                             "provider": "cpu",
                             "profile": "default",
                             "container": {

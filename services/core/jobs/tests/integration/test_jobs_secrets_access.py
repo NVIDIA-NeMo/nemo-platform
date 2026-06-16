@@ -49,6 +49,7 @@ def _platform_spec_with_secret(secret_ref: str, env_var_name: str = "MY_SECRET")
             {
                 "name": "step-with-secret",
                 "executor": {
+                    "kind": "container",
                     "provider": "cpu",
                     "profile": "default",
                     "container": {

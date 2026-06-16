@@ -20,7 +20,7 @@ async def test_search_jobs_by_name(test_sdk: AsyncNeMoPlatform):
         spec={},
         platform_spec={
             "steps": [
-                {"name": "step1", "executor": {"provider": "cpu", "profile": "default", "container": {"image": "test"}}}
+                {"name": "step1", "executor": {"kind": "container", "provider": "cpu", "profile": "default", "container": {"image": "test"}}}
             ]
         },
     )
@@ -31,7 +31,7 @@ async def test_search_jobs_by_name(test_sdk: AsyncNeMoPlatform):
         spec={},
         platform_spec={
             "steps": [
-                {"name": "step1", "executor": {"provider": "cpu", "profile": "default", "container": {"image": "test"}}}
+                {"name": "step1", "executor": {"kind": "container", "provider": "cpu", "profile": "default", "container": {"image": "test"}}}
             ]
         },
     )
@@ -53,7 +53,7 @@ async def test_search_jobs_by_project(test_sdk: AsyncNeMoPlatform):
         spec={},
         platform_spec={
             "steps": [
-                {"name": "step1", "executor": {"provider": "cpu", "profile": "default", "container": {"image": "test"}}}
+                {"name": "step1", "executor": {"kind": "container", "provider": "cpu", "profile": "default", "container": {"image": "test"}}}
             ]
         },
     )
@@ -65,7 +65,7 @@ async def test_search_jobs_by_project(test_sdk: AsyncNeMoPlatform):
         spec={},
         platform_spec={
             "steps": [
-                {"name": "step1", "executor": {"provider": "cpu", "profile": "default", "container": {"image": "test"}}}
+                {"name": "step1", "executor": {"kind": "container", "provider": "cpu", "profile": "default", "container": {"image": "test"}}}
             ]
         },
     )
@@ -85,7 +85,7 @@ async def test_search_jobs_multiple_values_or_logic(test_sdk: AsyncNeMoPlatform)
         spec={},
         platform_spec={
             "steps": [
-                {"name": "step1", "executor": {"provider": "cpu", "profile": "default", "container": {"image": "test"}}}
+                {"name": "step1", "executor": {"kind": "container", "provider": "cpu", "profile": "default", "container": {"image": "test"}}}
             ]
         },
     )
@@ -96,7 +96,7 @@ async def test_search_jobs_multiple_values_or_logic(test_sdk: AsyncNeMoPlatform)
         spec={},
         platform_spec={
             "steps": [
-                {"name": "step1", "executor": {"provider": "cpu", "profile": "default", "container": {"image": "test"}}}
+                {"name": "step1", "executor": {"kind": "container", "provider": "cpu", "profile": "default", "container": {"image": "test"}}}
             ]
         },
     )
@@ -107,7 +107,7 @@ async def test_search_jobs_multiple_values_or_logic(test_sdk: AsyncNeMoPlatform)
         spec={},
         platform_spec={
             "steps": [
-                {"name": "step1", "executor": {"provider": "cpu", "profile": "default", "container": {"image": "test"}}}
+                {"name": "step1", "executor": {"kind": "container", "provider": "cpu", "profile": "default", "container": {"image": "test"}}}
             ]
         },
     )
@@ -133,7 +133,7 @@ async def test_search_jobs_multiple_fields_and_logic(test_sdk: AsyncNeMoPlatform
         spec={},
         platform_spec={
             "steps": [
-                {"name": "step1", "executor": {"provider": "cpu", "profile": "default", "container": {"image": "test"}}}
+                {"name": "step1", "executor": {"kind": "container", "provider": "cpu", "profile": "default", "container": {"image": "test"}}}
             ]
         },
     )
@@ -145,7 +145,7 @@ async def test_search_jobs_multiple_fields_and_logic(test_sdk: AsyncNeMoPlatform
         spec={},
         platform_spec={
             "steps": [
-                {"name": "step1", "executor": {"provider": "cpu", "profile": "default", "container": {"image": "test"}}}
+                {"name": "step1", "executor": {"kind": "container", "provider": "cpu", "profile": "default", "container": {"image": "test"}}}
             ]
         },
     )
@@ -157,7 +157,7 @@ async def test_search_jobs_multiple_fields_and_logic(test_sdk: AsyncNeMoPlatform
         spec={},
         platform_spec={
             "steps": [
-                {"name": "step1", "executor": {"provider": "cpu", "profile": "default", "container": {"image": "test"}}}
+                {"name": "step1", "executor": {"kind": "container", "provider": "cpu", "profile": "default", "container": {"image": "test"}}}
             ]
         },
     )
@@ -181,7 +181,7 @@ async def test_search_jobs_case_insensitive(test_sdk: AsyncNeMoPlatform):
         spec={},
         platform_spec={
             "steps": [
-                {"name": "step1", "executor": {"provider": "cpu", "profile": "default", "container": {"image": "test"}}}
+                {"name": "step1", "executor": {"kind": "container", "provider": "cpu", "profile": "default", "container": {"image": "test"}}}
             ]
         },
     )
@@ -204,7 +204,7 @@ async def test_search_jobs_partial_match(test_sdk: AsyncNeMoPlatform):
         spec={},
         platform_spec={
             "steps": [
-                {"name": "step1", "executor": {"provider": "cpu", "profile": "default", "container": {"image": "test"}}}
+                {"name": "step1", "executor": {"kind": "container", "provider": "cpu", "profile": "default", "container": {"image": "test"}}}
             ]
         },
     )
@@ -224,7 +224,7 @@ async def test_search_combined_with_filter(test_sdk: AsyncNeMoPlatform):
         spec={},
         platform_spec={
             "steps": [
-                {"name": "step1", "executor": {"provider": "cpu", "profile": "default", "container": {"image": "test"}}}
+                {"name": "step1", "executor": {"kind": "container", "provider": "cpu", "profile": "default", "container": {"image": "test"}}}
             ]
         },
     )
@@ -235,7 +235,7 @@ async def test_search_combined_with_filter(test_sdk: AsyncNeMoPlatform):
         spec={},
         platform_spec={
             "steps": [
-                {"name": "step1", "executor": {"provider": "cpu", "profile": "default", "container": {"image": "test"}}}
+                {"name": "step1", "executor": {"kind": "container", "provider": "cpu", "profile": "default", "container": {"image": "test"}}}
             ]
         },
     )
@@ -259,7 +259,7 @@ async def test_search_no_results(test_sdk: AsyncNeMoPlatform):
         spec={},
         platform_spec={
             "steps": [
-                {"name": "step1", "executor": {"provider": "cpu", "profile": "default", "container": {"image": "test"}}}
+                {"name": "step1", "executor": {"kind": "container", "provider": "cpu", "profile": "default", "container": {"image": "test"}}}
             ]
         },
     )
@@ -278,7 +278,7 @@ async def test_search_empty_string(test_sdk: AsyncNeMoPlatform):
         spec={},
         platform_spec={
             "steps": [
-                {"name": "step1", "executor": {"provider": "cpu", "profile": "default", "container": {"image": "test"}}}
+                {"name": "step1", "executor": {"kind": "container", "provider": "cpu", "profile": "default", "container": {"image": "test"}}}
             ]
         },
     )
@@ -289,7 +289,7 @@ async def test_search_empty_string(test_sdk: AsyncNeMoPlatform):
         spec={},
         platform_spec={
             "steps": [
-                {"name": "step1", "executor": {"provider": "cpu", "profile": "default", "container": {"image": "test"}}}
+                {"name": "step1", "executor": {"kind": "container", "provider": "cpu", "profile": "default", "container": {"image": "test"}}}
             ]
         },
     )
@@ -330,7 +330,7 @@ async def test_search_pagination(test_sdk: AsyncNeMoPlatform):
                 "steps": [
                     {
                         "name": "step1",
-                        "executor": {"provider": "cpu", "profile": "default", "container": {"image": "test"}},
+                        "executor": {"kind": "container", "provider": "cpu", "profile": "default", "container": {"image": "test"}},
                     }
                 ]
             },
@@ -359,7 +359,7 @@ async def test_search_underscore_behavior(test_sdk: AsyncNeMoPlatform):
         spec={},
         platform_spec={
             "steps": [
-                {"name": "step1", "executor": {"provider": "cpu", "profile": "default", "container": {"image": "test"}}}
+                {"name": "step1", "executor": {"kind": "container", "provider": "cpu", "profile": "default", "container": {"image": "test"}}}
             ]
         },
     )
@@ -370,7 +370,7 @@ async def test_search_underscore_behavior(test_sdk: AsyncNeMoPlatform):
         spec={},
         platform_spec={
             "steps": [
-                {"name": "step1", "executor": {"provider": "cpu", "profile": "default", "container": {"image": "test"}}}
+                {"name": "step1", "executor": {"kind": "container", "provider": "cpu", "profile": "default", "container": {"image": "test"}}}
             ]
         },
     )
@@ -388,7 +388,7 @@ async def test_search_underscore_behavior(test_sdk: AsyncNeMoPlatform):
         spec={},
         platform_spec={
             "steps": [
-                {"name": "step1", "executor": {"provider": "cpu", "profile": "default", "container": {"image": "test"}}}
+                {"name": "step1", "executor": {"kind": "container", "provider": "cpu", "profile": "default", "container": {"image": "test"}}}
             ]
         },
     )
@@ -410,7 +410,7 @@ async def test_search_long_string(test_sdk: AsyncNeMoPlatform):
         spec={},
         platform_spec={
             "steps": [
-                {"name": "step1", "executor": {"provider": "cpu", "profile": "default", "container": {"image": "test"}}}
+                {"name": "step1", "executor": {"kind": "container", "provider": "cpu", "profile": "default", "container": {"image": "test"}}}
             ]
         },
     )
@@ -434,7 +434,7 @@ async def test_search_result_limit(test_sdk: AsyncNeMoPlatform):
                 "steps": [
                     {
                         "name": "step1",
-                        "executor": {"provider": "cpu", "profile": "default", "container": {"image": "test"}},
+                        "executor": {"kind": "container", "provider": "cpu", "profile": "default", "container": {"image": "test"}},
                     }
                 ]
             },
@@ -473,7 +473,7 @@ async def test_search_special_characters(test_sdk: AsyncNeMoPlatform):
         spec={},
         platform_spec={
             "steps": [
-                {"name": "step1", "executor": {"provider": "cpu", "profile": "default", "container": {"image": "test"}}}
+                {"name": "step1", "executor": {"kind": "container", "provider": "cpu", "profile": "default", "container": {"image": "test"}}}
             ]
         },
     )

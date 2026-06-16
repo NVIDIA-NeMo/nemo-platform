@@ -1,8 +1,7 @@
 """E2E tests for platform jobs.
 
-These tests submit jobs with ContainerExecutionProviderSpec (container + command).
-The container image is omitted so that the execution profile's default_task_image
-is used on Kubernetes/Docker backends.
+These tests submit jobs with SubprocessExecutionProviderSpec (host command).
+The e2e test environment runs against the subprocess backend.
 
 Ported from Platform-Deploy e2e/test_jobs.py, adapted for the SDK's TypedDict
 param types and filtered to tests that work without Docker.
@@ -55,11 +54,9 @@ def test_basic_platform_job_lifecycle(sdk: NeMoPlatform, workspace: str):
                 {
                     "name": "echo-step",
                     "executor": {
-                        "kind": "container",
+                        "kind": "subprocess",
                         "provider": "cpu",
-                        "container": {
-                            "command": ["echo", "Hello from e2e test!"],
-                        },
+                        "command": ["echo", "Hello from e2e test!"],
                     },
                 },
             ],
@@ -99,11 +96,9 @@ def test_job_logs_across_multiple_batches(sdk: NeMoPlatform, workspace: str):
                 {
                     "name": "multi-log-step",
                     "executor": {
-                        "kind": "container",
+                        "kind": "subprocess",
                         "provider": "cpu",
-                        "container": {
-                            "command": ["sh", "-c", log_command],
-                        },
+                        "command": ["sh", "-c", log_command],
                     },
                 },
             ],
@@ -139,11 +134,9 @@ def test_job_config_is_readable(sdk: NeMoPlatform, workspace: str):
                 {
                     "name": "config-step",
                     "executor": {
-                        "kind": "container",
+                        "kind": "subprocess",
                         "provider": "cpu",
-                        "container": {
-                            "command": ["sh", "-c", "echo 'Step config:'; cat $NEMO_JOB_STEP_CONFIG_FILE_PATH;"],
-                        },
+                        "command": ["sh", "-c", "echo 'Step config:'; cat $NEMO_JOB_STEP_CONFIG_FILE_PATH;"],
                     },
                     "config": {
                         "message": "Hello from job config!",
@@ -174,29 +167,25 @@ def test_job_passing_data_between_steps(sdk: NeMoPlatform, workspace: str):
                 {
                     "name": "generate-data-step",
                     "executor": {
-                        "kind": "container",
+                        "kind": "subprocess",
                         "provider": "cpu",
-                        "container": {
-                            "command": [
-                                "sh",
-                                "-c",
-                                "echo 'Data from first step' > $NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH/data.txt",
-                            ],
-                        },
+                        "command": [
+                            "sh",
+                            "-c",
+                            "echo 'Data from first step' > $NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH/data.txt",
+                        ],
                     },
                 },
                 {
                     "name": "consume-data-step",
                     "executor": {
-                        "kind": "container",
+                        "kind": "subprocess",
                         "provider": "cpu",
-                        "container": {
-                            "command": [
-                                "sh",
-                                "-c",
-                                "echo 'Consuming data:'; cat $NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH/data.txt",
-                            ],
-                        },
+                        "command": [
+                            "sh",
+                            "-c",
+                            "echo 'Consuming data:'; cat $NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH/data.txt",
+                        ],
                     },
                 },
             ],
@@ -230,11 +219,9 @@ def test_job_using_secret_environment_variable(sdk: NeMoPlatform, workspace: str
                 {
                     "name": "secret-envvar-step",
                     "executor": {
-                        "kind": "container",
+                        "kind": "subprocess",
                         "provider": "cpu",
-                        "container": {
-                            "command": ["sh", "-c", 'echo "Secret value is: $SECRET_ENV_VAR"'],
-                        },
+                        "command": ["sh", "-c", 'echo "Secret value is: $SECRET_ENV_VAR"'],
                     },
                     "environment": [
                         {
@@ -268,11 +255,9 @@ def test_job_with_expected_failure(sdk: NeMoPlatform, workspace: str):
                 {
                     "name": "failing-step",
                     "executor": {
-                        "kind": "container",
+                        "kind": "subprocess",
                         "provider": "cpu",
-                        "container": {
-                            "command": ["sh", "-c", "echo 'This step will fail'; exit 1;"],
-                        },
+                        "command": ["sh", "-c", "echo 'This step will fail'; exit 1;"],
                     },
                 },
             ],
@@ -298,11 +283,9 @@ def test_job_cancel_immediately(sdk: NeMoPlatform, workspace: str):
                 {
                     "name": "long-running-step",
                     "executor": {
-                        "kind": "container",
+                        "kind": "subprocess",
                         "provider": "cpu",
-                        "container": {
-                            "command": ["sh", "-c", "sleep 60"],
-                        },
+                        "command": ["sh", "-c", "sleep 60"],
                     },
                 },
             ],
@@ -328,11 +311,9 @@ def test_job_cancel_once_active(sdk: NeMoPlatform, workspace: str):
                 {
                     "name": "long-running-step",
                     "executor": {
-                        "kind": "container",
+                        "kind": "subprocess",
                         "provider": "cpu",
-                        "container": {
-                            "command": ["sh", "-c", "sleep 300"],
-                        },
+                        "command": ["sh", "-c", "sleep 300"],
                     },
                 },
             ],
@@ -369,11 +350,9 @@ def test_job_pause_resume(sdk: NeMoPlatform, workspace: str):
                 {
                     "name": "long-running-step-pause-resume",
                     "executor": {
-                        "kind": "container",
+                        "kind": "subprocess",
                         "provider": "cpu",
-                        "container": {
-                            "command": ["sh", "-c", "sleep 300"],
-                        },
+                        "command": ["sh", "-c", "sleep 300"],
                     },
                 },
             ],
@@ -411,11 +390,9 @@ def test_job_pause_and_cancel(sdk: NeMoPlatform, workspace: str):
                 {
                     "name": "long-running-step-pause-cancel",
                     "executor": {
-                        "kind": "container",
+                        "kind": "subprocess",
                         "provider": "cpu",
-                        "container": {
-                            "command": ["sh", "-c", "sleep 300"],
-                        },
+                        "command": ["sh", "-c", "sleep 300"],
                     },
                 },
             ],
@@ -448,31 +425,27 @@ def test_job_using_additional_volume(sdk: NeMoPlatform, workspace: str):
                 {
                     "name": "write-data",
                     "executor": {
-                        "kind": "container",
+                        "kind": "subprocess",
                         "provider": "cpu",
-                        "container": {
-                            "command": [
-                                "sh",
-                                "-c",
-                                "echo 'Hello, World!' > /mnt/additional_storage/shared_data.txt; "
-                                "echo 'Successfully wrote data to persistent storage';",
-                            ],
-                        },
+                        "command": [
+                            "sh",
+                            "-c",
+                            "echo 'Hello, World!' > /mnt/additional_storage/shared_data.txt; "
+                            "echo 'Successfully wrote data to persistent storage';",
+                        ],
                     },
                 },
                 {
                     "name": "read-data",
                     "executor": {
-                        "kind": "container",
+                        "kind": "subprocess",
                         "provider": "cpu",
-                        "container": {
-                            "command": [
-                                "sh",
-                                "-c",
-                                "cat /mnt/additional_storage/shared_data.txt; "
-                                "echo 'Successfully read data from persistent storage';",
-                            ],
-                        },
+                        "command": [
+                            "sh",
+                            "-c",
+                            "cat /mnt/additional_storage/shared_data.txt; "
+                            "echo 'Successfully read data from persistent storage';",
+                        ],
                     },
                 },
             ],
@@ -505,12 +478,10 @@ def test_job_invalid_image_format(sdk: NeMoPlatform, workspace: str, bad_image: 
                 {
                     "name": "bad-image-step",
                     "executor": {
-                        "kind": "container",
+                        "kind": "subprocess",
                         "provider": "cpu",
-                        "container": {
-                            "image": bad_image,
-                            "command": ["echo", "This should not run"],
-                        },
+                        "image": bad_image,
+                        "command": ["echo", "This should not run"],
                     },
                 },
             ],

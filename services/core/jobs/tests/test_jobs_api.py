@@ -165,6 +165,7 @@ async def test_create_job_with_secrets(test_sdk: AsyncNeMoPlatform):
                 {
                     "name": "basic",
                     "executor": {
+                        "kind": "container",
                         "provider": "cpu",
                         "profile": "default",
                         "container": {"image": "test-image"},
