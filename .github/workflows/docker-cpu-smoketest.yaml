@@ -48,7 +48,7 @@ on:
 
 permissions:
   contents: read
-  packages: write
+  packages: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref || github.run_id }}
@@ -59,6 +59,9 @@ jobs:
     name: Build CPU images
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
     outputs:
       image_registry: ${{ steps.bake-vars.outputs.image_registry }}
       image_tag: ${{ steps.bake-vars.outputs.image_tag }}
@@ -155,6 +158,9 @@ jobs:
     if: needs.build-cpu-images.outputs.publish_images == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: read
     env:
       BUSYBOX_IMAGE: docker.io/library/busybox
       HELM_CHART: k8s/helm
@@ -233,12 +239,20 @@ jobs:
         shell: bash
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          NGC_API_KEY: not-used-for-ghcr-cpu-smoke
         run: bash "${K8S_E2E_SCRIPTS}/setup_local_kind_cpu.sh"
 
       - name: Set default kubectl namespace
         shell: bash
         run: kubectl config set-context --current --namespace="${NAMESPACE}"
+
+      - name: Verify Gateway API setup
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl wait --for=condition=Established crd/gateways.gateway.networking.k8s.io --timeout=2m
+          kubectl wait --for=condition=Established crd/httproutes.gateway.networking.k8s.io --timeout=2m
+          kubectl get gatewayclass cloud-provider-kind
+          kubectl -n "${NAMESPACE}" get gateway "${KUBE_GATEWAY_NAME}"
 
       - name: Pre-pull GHCR images into kind
         shell: bash
