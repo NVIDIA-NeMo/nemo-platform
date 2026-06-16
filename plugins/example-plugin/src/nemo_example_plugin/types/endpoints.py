@@ -42,16 +42,16 @@ class WorkspaceItemPath(BasePath):
 
 # -- Hello -----------------------------------------------------------------
 
-HelloEndpoint = get("/hello/{name}", NamePath, HelloResponse)
+HelloEndpoint = get("/hello/{name}", path_type=NamePath, response_type=HelloResponse)
 
 # -- Items CRUD ------------------------------------------------------------
 
-CreateItemEndpoint = post("/v2/workspaces/{workspace}/items", WorkspacePath, CreateExampleItemRequest, ExampleItem)
+CreateItemEndpoint = post("/v2/workspaces/{workspace}/items", path_type=WorkspacePath, request_type=CreateExampleItemRequest, response_type=ExampleItem)
 
-ListItemsEndpoint = get("/v2/workspaces/{workspace}/items", WorkspacePath, ExampleItemPage)
+ListItemsEndpoint = get("/v2/workspaces/{workspace}/items", path_type=WorkspacePath, response_type=ExampleItemPage)
 
-GetItemEndpoint = get("/v2/workspaces/{workspace}/items/{name}", WorkspaceItemPath, ExampleItem)
+GetItemEndpoint = get("/v2/workspaces/{workspace}/items/{name}", path_type=WorkspaceItemPath, response_type=ExampleItem)
 
-UpdateItemEndpoint = patch("/v2/workspaces/{workspace}/items/{name}", WorkspaceItemPath, UpdateExampleItemRequest, ExampleItem)
+UpdateItemEndpoint = patch("/v2/workspaces/{workspace}/items/{name}", path_type=WorkspaceItemPath, request_type=UpdateExampleItemRequest, response_type=ExampleItem)
 
-DeleteItemEndpoint = delete("/v2/workspaces/{workspace}/items/{name}", WorkspaceItemPath)
+DeleteItemEndpoint = delete("/v2/workspaces/{workspace}/items/{name}", path_type=WorkspaceItemPath)

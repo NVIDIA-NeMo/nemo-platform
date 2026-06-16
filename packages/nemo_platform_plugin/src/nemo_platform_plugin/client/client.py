@@ -9,7 +9,7 @@ responses.  The return type of :meth:`send` is determined by the endpoint's
 
 - ``BaseModel`` → :class:`~.response.NemoResponse[T]`
 - ``None`` → :class:`~.response.NemoResponse[None]`
-- ``BinaryStream`` → :class:`~.response.NemoBinaryResponse`
+- ``BinaryContent`` → :class:`~.response.NemoBinaryResponse`
 - ``Stream[T]`` → :class:`~.response.NemoStreamResponse[T]`
 """
 
@@ -21,7 +21,7 @@ from typing import TypeVar, get_args, get_origin, overload
 import httpx
 from pydantic import BaseModel
 
-from nemo_platform_plugin.client.endpoint import BinaryStream, PreparedRequest, Stream
+from nemo_platform_plugin.client.endpoint import BinaryContent, PreparedRequest, Stream
 from nemo_platform_plugin.client.response import (
     AsyncNemoBinaryResponse,
     AsyncNemoStreamResponse,
@@ -88,7 +88,7 @@ class BaseNemoClient:
         return None
 
     def _is_binary(self, request: PreparedRequest) -> bool:
-        return request.response_type is BinaryStream
+        return request.response_type is BinaryContent
 
     def _is_stream(self, request: PreparedRequest) -> bool:
         return get_origin(request.response_type) is Stream
@@ -117,7 +117,7 @@ class NemoClient(BaseNemoClient):
         )
 
     @overload
-    def send(self, request: PreparedRequest[BinaryStream]) -> NemoBinaryResponse: ...
+    def send(self, request: PreparedRequest[BinaryContent]) -> NemoBinaryResponse: ...
     @overload
     def send(self, request: PreparedRequest[Stream[ModelT]]) -> NemoStreamResponse[ModelT]: ...
     @overload
@@ -182,7 +182,7 @@ class AsyncNemoClient(BaseNemoClient):
         )
 
     @overload
-    async def send(self, request: PreparedRequest[BinaryStream]) -> AsyncNemoBinaryResponse: ...
+    async def send(self, request: PreparedRequest[BinaryContent]) -> AsyncNemoBinaryResponse: ...
     @overload
     async def send(self, request: PreparedRequest[Stream[ModelT]]) -> AsyncNemoStreamResponse[ModelT]: ...
     @overload

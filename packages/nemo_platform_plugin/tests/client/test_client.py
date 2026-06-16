@@ -39,10 +39,10 @@ class WorkspacePath(BasePath):
     workspace: NotRequired[str]
 
 
-CREATE_ITEM = post("/v2/items", EmptyPath, ItemRequest, ItemResponse)
-GET_ITEM = get("/v2/items/{name}", NamePath, ItemResponse)
-DELETE_ITEM = delete("/v2/items/{name}", NamePath)
-GET_WS_ITEM = get("/v2/workspaces/{workspace}/items", WorkspacePath, ItemResponse)
+CREATE_ITEM = post("/v2/items", path_type=EmptyPath, request_type=ItemRequest, response_type=ItemResponse)
+GET_ITEM = get("/v2/items/{name}", path_type=NamePath, response_type=ItemResponse)
+DELETE_ITEM = delete("/v2/items/{name}", path_type=NamePath)
+GET_WS_ITEM = get("/v2/workspaces/{workspace}/items", path_type=WorkspacePath, response_type=ItemResponse)
 
 
 class StubClient(NemoClient):

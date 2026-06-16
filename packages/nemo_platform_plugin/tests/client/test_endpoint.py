@@ -31,7 +31,7 @@ class IdPath(BasePath):
 
 
 def test_post_endpoint_produces_prepared_request() -> None:
-    ep = post("/v2/workspaces/{workspace}/items", WorkspacePath, FakeRequest, FakeResponse)
+    ep = post("/v2/workspaces/{workspace}/items", path_type=WorkspacePath, request_type=FakeRequest, response_type=FakeResponse)
     payload = FakeRequest(name="alice")
     prepared = ep.request(payload, workspace="default")
 
@@ -45,7 +45,7 @@ def test_post_endpoint_produces_prepared_request() -> None:
 
 
 def test_get_endpoint_no_body() -> None:
-    ep = get("/v2/workspaces/{workspace}/items/{name}", WorkspaceItemPath, FakeResponse)
+    ep = get("/v2/workspaces/{workspace}/items/{name}", path_type=WorkspaceItemPath, response_type=FakeResponse)
     prepared = ep.request(workspace="default", name="item-1")
 
     assert prepared.path_template == "/v2/workspaces/{workspace}/items/{name}"
@@ -57,7 +57,7 @@ def test_get_endpoint_no_body() -> None:
 
 
 def test_delete_endpoint() -> None:
-    ep = delete("/v2/workspaces/{workspace}/items/{name}", WorkspaceItemPath)
+    ep = delete("/v2/workspaces/{workspace}/items/{name}", path_type=WorkspaceItemPath)
     prepared = ep.request(workspace="default", name="item-1")
 
     assert prepared.path_params == {"workspace": "default", "name": "item-1"}
@@ -66,7 +66,7 @@ def test_delete_endpoint() -> None:
 
 
 def test_patch_endpoint() -> None:
-    ep = patch("/items/{id}", IdPath, FakeRequest, FakeResponse)
+    ep = patch("/items/{id}", path_type=IdPath, request_type=FakeRequest, response_type=FakeResponse)
     payload = FakeRequest(name="updated")
     prepared = ep.request(payload, id="42")
 
@@ -76,7 +76,7 @@ def test_patch_endpoint() -> None:
 
 
 def test_endpoint_repr() -> None:
-    ep = post("/items/{id}", IdPath, FakeRequest, FakeResponse)
+    ep = post("/items/{id}", path_type=IdPath, request_type=FakeRequest, response_type=FakeResponse)
     r = repr(ep)
     assert "/items" in r
     assert "FakeRequest" in r
