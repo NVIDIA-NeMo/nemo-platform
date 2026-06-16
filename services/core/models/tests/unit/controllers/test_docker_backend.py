@@ -621,6 +621,9 @@ async def test_docker_backend_create_sft_model_success(
     ]
     assert len(puller_calls) == 1
     assert puller_calls[0][1]["command"][0] == "download"
+    # Entrypoint overridden to the HF CLI (puller image is nmp-api, whose
+    # entrypoint is `nemo services run`); command runs as `hf download ...`.
+    assert puller_calls[0][1]["entrypoint"] == ["hf"]
 
     # Verify NIM and sidecar containers were created with managed-by label
     assert mock_docker_client.containers.create.call_count == 2
