@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -10,16 +11,25 @@ from pathlib import Path
 import pytest
 
 SKILL_REFERENCES = (
-    Path(__file__).resolve().parents[1]
-    / "src"
-    / "nemo_customizer"
-    / "skills"
-    / "nemo-customizer"
-    / "references"
+    Path(__file__).resolve().parents[1] / "src" / "nemo_customizer" / "skills" / "nemo-customizer" / "references"
 )
-sys.path.insert(0, str(SKILL_REFERENCES))
 
-import eval_helpers  # noqa: E402
+
+def _load_eval_helpers():
+    module_name = "nemo_customizer_eval_helpers_test"
+    spec = importlib.util.spec_from_file_location(
+        module_name,
+        SKILL_REFERENCES / "eval_helpers.py",
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    # Dataclasses resolve cls.__module__ during decoration; register before exec.
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+eval_helpers = _load_eval_helpers()
 
 
 def test_served_model_names() -> None:
@@ -101,6 +111,11 @@ def test_assert_chat_row_accepts_multi_turn() -> None:
     }
     eval_helpers.assert_chat_row(row)
     assert eval_helpers.reference_content(row) == "final label"
+
+
+def test_assert_chat_row_rejects_non_dict_message_turns() -> None:
+    with pytest.raises(ValueError, match="messages\\[0\\] must be an object"):
+        eval_helpers.assert_chat_row({"messages": ["x", "y"]})
 
 
 def test_assert_chat_row_rejects_missing_final_assistant() -> None:

@@ -6,11 +6,13 @@
 LoRA adapters registered on the model entity are hot-reloaded automatically on
 deployments with ``lora_enabled: true`` — no deployment update before eval.
 
-Run from the nemo-platform git root::
+Run from the nemo-platform git root (reads ``$NMP_BASE_URL`` / ``$NEMO_BASE_URL`` when
+``--base-url`` is omitted)::
 
+    export NMP_BASE_URL=http://127.0.0.1:8080
     uv run python plugins/nemo-customizer/src/nemo_customizer/skills/nemo-customizer/references/eval_helpers.py \\
-        --model-entity qwen3-1.7b --adapter lora-a --adapter lora-b \\
-        --provider qwen3-1.7b-csqa-lora-deploy --dataset-fileset commonsense_qa --split validation
+        --model-entity <model-entity> --adapter <adapter-a> --adapter <adapter-b> \\
+        --provider <provider> --dataset-fileset <dataset-fileset> --split validation.jsonl
 
 Import in agent scripts (add references/ to sys.path or run via uv from repo root).
 """
@@ -19,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import urllib.error
 import urllib.request
@@ -43,6 +46,15 @@ CHAT_SINGLE_TURN_USER_PROMPT_TEMPLATE = {
     "messages": [{"role": "user", "content": "{{ item.messages[0].content }}"}],
 }
 
+PLATFORM_HTTP_TIMEOUT_SEC = 60
+
+
+def _assert_message_turn(turn: Any, *, label: str, index: int | str) -> dict[str, Any]:
+    """Validate one messages[] element is a dict before reading role/content."""
+    if not isinstance(turn, dict):
+        raise ValueError(f"{label}: messages[{index}] must be an object with role/content, got {type(turn).__name__}")
+    return turn
+
 
 def assert_chat_row(row: dict[str, Any], *, index: int | None = None) -> None:
     """Validate one dataset row matches automodel/unsloth CHAT training shape."""
@@ -55,9 +67,11 @@ def assert_chat_row(row: dict[str, Any], *, index: int | None = None) -> None:
     messages = row["messages"]
     if not isinstance(messages, list) or len(messages) < 2:
         raise ValueError(f"{label}: messages must be a list with at least one prompt turn + final assistant label")
-    if messages[0].get("role") != "user":
+    first = _assert_message_turn(messages[0], label=label, index=0)
+    if first.get("role") != "user":
         raise ValueError(f"{label}: expected messages[0]=user")
-    if messages[-1].get("role") != "assistant":
+    last = _assert_message_turn(messages[-1], label=label, index=-1)
+    if last.get("role") != "assistant":
         raise ValueError(f"{label}: expected final messages[-1]=assistant (the label to score)")
 
 
@@ -88,11 +102,8 @@ def load_chat_jsonl_from_platform(
     remote_path: str,
 ) -> list[dict[str, Any]]:
     """Download a JSONL split from a platform fileset and validate CHAT rows."""
-    url = (
-        f"{base_url.rstrip('/')}/apis/files/v2/workspaces/{workspace}/filesets/"
-        f"{fileset}/-/{remote_path.lstrip('/')}"
-    )
-    with urllib.request.urlopen(url) as response:
+    url = f"{base_url.rstrip('/')}/apis/files/v2/workspaces/{workspace}/filesets/{fileset}/-/{remote_path.lstrip('/')}"
+    with urllib.request.urlopen(url, timeout=PLATFORM_HTTP_TIMEOUT_SEC) as response:
         content = response.read().decode("utf-8")
     rows: list[dict[str, Any]] = []
     for index, line in enumerate(content.splitlines(), start=1):
@@ -137,9 +148,7 @@ def served_model_name(*, workspace: str, entity_or_adapter: str, finetuning: str
     raise ValueError("finetuning must be 'base' or 'lora'")
 
 
-def adapter_composite_entity_name(
-    *, model_entity: str, workspace: str, adapter_name: str
-) -> str:
+def adapter_composite_entity_name(*, model_entity: str, workspace: str, adapter_name: str) -> str:
     """LoRA composite model-entity path segment (for reference / OpenAI-route body only).
 
     The model-entity proxy path ``model/{composite}/-/v1`` requires a dedicated
@@ -151,18 +160,12 @@ def adapter_composite_entity_name(
 
 def model_entity_gateway_url(*, base_url: str, workspace: str, model_entity: str) -> str:
     """OpenAI-compatible inference-gateway URL for a registered base model entity."""
-    return (
-        f"{base_url.rstrip('/')}/apis/inference-gateway/v2/workspaces/{workspace}/"
-        f"model/{model_entity}/-/v1"
-    )
+    return f"{base_url.rstrip('/')}/apis/inference-gateway/v2/workspaces/{workspace}/model/{model_entity}/-/v1"
 
 
 def provider_gateway_url(*, base_url: str, workspace: str, provider_name: str) -> str:
     """OpenAI-compatible inference-gateway URL for a model provider (LoRA eval route)."""
-    return (
-        f"{base_url.rstrip('/')}/apis/inference-gateway/v2/workspaces/{workspace}/"
-        f"provider/{provider_name}/-/v1"
-    )
+    return f"{base_url.rstrip('/')}/apis/inference-gateway/v2/workspaces/{workspace}/provider/{provider_name}/-/v1"
 
 
 def gateway_path_from_url(url: str) -> str:
@@ -175,7 +178,7 @@ def gateway_path_from_url(url: str) -> str:
 
 
 def _platform_get_json(url: str) -> dict[str, Any]:
-    with urllib.request.urlopen(url) as response:
+    with urllib.request.urlopen(url, timeout=PLATFORM_HTTP_TIMEOUT_SEC) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
@@ -186,10 +189,7 @@ def find_ready_provider_for_model_entity(
     model_entity: str,
 ) -> str | None:
     """Return a READY provider name that serves ``workspace/model_entity`` (base or LoRA)."""
-    url = (
-        f"{base_url.rstrip('/')}/apis/models/v2/workspaces/{workspace}/providers"
-        f"?page_size=100&filter.status=READY"
-    )
+    url = f"{base_url.rstrip('/')}/apis/models/v2/workspaces/{workspace}/providers?page_size=100&filter.status=READY"
     payload = _platform_get_json(url)
     base_entity_id = f"{workspace}/{model_entity}"
     matches: list[str] = []
@@ -276,8 +276,7 @@ def list_completed_job_adapters(
 ) -> list[JobAdapterInfo]:
     """List completed customization jobs and their output adapter names."""
     url = (
-        f"{base_url.rstrip('/')}/apis/jobs/v2/workspaces/{workspace}/jobs"
-        f"?page_size={page_size}&filter.status=completed"
+        f"{base_url.rstrip('/')}/apis/jobs/v2/workspaces/{workspace}/jobs?page_size={page_size}&filter.status=completed"
     )
     payload = _platform_get_json(url)
     dataset_ref = f"{workspace}/{dataset_fileset}" if dataset_fileset else None
@@ -373,9 +372,7 @@ def build_platform_model_target(
                 workspace=workspace,
                 provider_name=resolved_provider,
             ),
-            name=served_model_name(
-                workspace=workspace, entity_or_adapter=adapter_name, finetuning="lora"
-            ),
+            name=served_model_name(workspace=workspace, entity_or_adapter=adapter_name, finetuning="lora"),
             format=ModelFormat.NVIDIA_NIM,
         )
 
@@ -415,15 +412,12 @@ def summarize_chat_eval_result(*, target: str, model_name: str, gateway_url: str
     em_rows = result.per_metric["exact-match"].row_scores
     num_samples = len(em_rows)
     raw_correct = sum(
-        1
-        for rs in em_rows
-        if rs.sample.get("output_text", "").strip() == reference_content(rs.item).strip()
+        1 for rs in em_rows if rs.sample.get("output_text", "").strip() == reference_content(rs.item).strip()
     )
     norm_correct = sum(
         1
         for rs in em_rows
-        if normalize_mcqa_answer(rs.sample.get("output_text", ""))
-        == normalize_mcqa_answer(reference_content(rs.item))
+        if normalize_mcqa_answer(rs.sample.get("output_text", "")) == normalize_mcqa_answer(reference_content(rs.item))
     )
     aggregate_metrics: dict[str, dict[str, float | None]] = {}
     for metric_name, metric_result in result.per_metric.items():
@@ -601,8 +595,7 @@ def routing_sanity_warnings(
         if summary.target == "base":
             if summary.gateway_path != "model-entity":
                 warnings.append(
-                    f"base eval used {summary.gateway_path} route; expected model-entity "
-                    f"({summary.gateway_url})"
+                    f"base eval used {summary.gateway_path} route; expected model-entity ({summary.gateway_url})"
                 )
             continue
         if summary.gateway_path != "provider":
@@ -632,12 +625,8 @@ def build_eval_payload(
     if any(summary.target == "base" for summary in summaries):
         routing["base"] = {
             "gateway_path": "model-entity",
-            "url": model_entity_gateway_url(
-                base_url=base_url, workspace=workspace, model_entity=model_entity
-            ),
-            "model_field": served_model_name(
-                workspace=workspace, entity_or_adapter=model_entity, finetuning="base"
-            ),
+            "url": model_entity_gateway_url(base_url=base_url, workspace=workspace, model_entity=model_entity),
+            "model_field": served_model_name(workspace=workspace, entity_or_adapter=model_entity, finetuning="base"),
         }
     for adapter_name in adapter_names:
         target = build_platform_model_target(
@@ -667,9 +656,18 @@ def build_eval_payload(
     return payload
 
 
+def default_base_url() -> str:
+    """Platform URL from env or localhost default."""
+    return os.environ.get("NMP_BASE_URL") or os.environ.get("NEMO_BASE_URL") or "http://127.0.0.1:8080"
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Compare base vs LoRA on CHAT validation JSONL")
-    parser.add_argument("--base-url", default="http://127.0.0.1:8080")
+    parser.add_argument(
+        "--base-url",
+        default=default_base_url(),
+        help="Platform URL (default: $NMP_BASE_URL, $NEMO_BASE_URL, or http://127.0.0.1:8080)",
+    )
     parser.add_argument("--workspace", default="default")
     parser.add_argument("--model-entity", required=True)
     parser.add_argument(

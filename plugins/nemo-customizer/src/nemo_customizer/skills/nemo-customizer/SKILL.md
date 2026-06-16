@@ -113,7 +113,7 @@ Training never runs inside the `nemo` CLI process. After `submit`, the platform'
 - Resolve the CLI per **Pre-flight — CLI resolution** before any `nemo …` command; run from the **nemo-platform** git root, not a plugin subfolder.
 - Set `NEMO_BASE_URL` (or `NMP_BASE_URL`) only when the user gives a platform URL; default `http://127.0.0.1:8080` (same as `http://localhost:8080`). Track whether the user **overrode** the base URL — see **Platform unreachable** below.
 - **Platform unreachable** — if any platform API call fails with a connection error (`Connection error`, timeout, refused):
-  - **User gave a custom URL** (e.g. `10.0.0.51:8080`) or you exported a non-default `NEMO_BASE_URL` / `NMP_BASE_URL`: stop and tell the user the platform is not reachable at that address. Do **not** offer to start local services.
+  - **User gave a custom URL** (e.g. `$NMP_BASE_URL`) or you exported a non-default `NMP_BASE_URL` / `NEMO_BASE_URL`: stop and tell the user the platform is not reachable at that address. Do **not** offer to start local services.
   - **Default URL only** (no user override): **ask** whether to start the platform locally. If they agree, from the **nemo-platform** git root run in the **background**:
 
     ```bash
@@ -139,7 +139,7 @@ Training never runs inside the `nemo` CLI process. After `submit`, the platform'
 - **Do not use local `docker info`** to pick automodel vs unsloth. Run `nemo jobs list-execution-profiles -f json` against the user's platform (login first only if auth is enabled — see **Authentication**; see `references/troubleshooting.md`). Default output is a table — **`-f json` is required** for scripting; parse **stdout only** (do not pipe `2>&1` into `json.load`).
 - **Do not merge stderr into stdout when parsing JSON** — `submit`, `explain`, and `-f json` commands write **JSON on stdout**; harmless warnings like `Configuration file not found, using defaults` go to **stderr**. Piping with **`2>&1`** before `json.load` raises `JSONDecodeError` even when submit **succeeded** — a common cause of **duplicate jobs** when the agent re-submits after a parse error. Parse stdout only; redirect stderr if needed (`2>/dev/null`). See `references/troubleshooting.md` § **Parsing CLI JSON**.
 - For submit/image/plugin errors (both backends), read `references/troubleshooting.md`. Unsloth needs the `nmp-unsloth-training` container image on the **platform host's** Docker daemon (see `docker/unsloth/README.md`).
-- **Missing training image on a remote platform** — if the user gave a non-localhost `NEMO_BASE_URL` / `NMP_BASE_URL` (e.g. `10.0.0.51:8080`) and the job errors with `Failed to pull image`, `manifest unknown`, or missing `nmp-unsloth-training` / automodel training image: **do not** run `docker build`, `docker pull`, or `docker buildx bake` on the agent machine. Report with **Report to user** (use **Output adapter fileset (planned):** on error), then append on-target build steps from `references/troubleshooting.md` § **Missing training images**.
+- **Missing training image on a remote platform** — if the user gave a non-localhost `NMP_BASE_URL` / `NEMO_BASE_URL` and the job errors with `Failed to pull image`, `manifest unknown`, or missing `nmp-unsloth-training` / automodel training image: **do not** run `docker build`, `docker pull`, or `docker buildx bake` on the agent machine. Report with **Report to user** (use **Output adapter fileset (planned):** on error), then append on-target build steps from `references/troubleshooting.md` § **Missing training images**.
 - **Gated HuggingFace models** (Llama, Gemma, …) — confirm `hf-token` + fileset `token_secret` before submit; download fails with `Failed to access upstream storage` / 502 when missing. See **HuggingFace token (gated models)** and `references/troubleshooting.md` § **Gated HuggingFace models**.
 - **Post-training eval format** — use the same CHAT `messages` JSONL as training. **Do not** flatten rows to `prompt`/`expected` for the evaluator. Send `messages[:-1]` at inference (exclude final assistant label); score against `messages[-1].content`. See `references/post-training-eval.md` and `references/eval_helpers.py`.
 - **LoRA adapters load automatically for eval** — when a job completes, the adapter is registered on the model entity and hot-reloaded on any **READY** deployment with `lora_enabled: true`. **Do not** update deployments or providers before eval. **Do** route LoRA eval through the **provider** gateway (`/provider/<name>/-/v1` with `model: default--<adapter>`); the model-entity path (`/model/<entity>/-/v1`) always hits the base model. See `references/post-training-eval.md` § **Request routing (base vs LoRA)**.
@@ -600,8 +600,8 @@ The adapter `<output.name>` is registered on `default/<model-entity>`. Weights a
 
 | Target | Gateway path | OpenAI base URL | Request `"model"` field |
 |--------|--------------|-----------------|-------------------------|
-| **Base** weights | model-entity | `<NEMO_BASE_URL>/apis/inference-gateway/v2/workspaces/default/model/<model-entity>/-/v1` | `default/<model-entity>` |
-| **LoRA adapter** | **provider** | `<NEMO_BASE_URL>/apis/inference-gateway/v2/workspaces/default/provider/<provider>/-/v1` | `default--<output.name>` |
+| **Base** weights | model-entity | `$NMP_BASE_URL/apis/inference-gateway/v2/workspaces/default/model/<model-entity>/-/v1` | `default/<model-entity>` |
+| **LoRA adapter** | **provider** | `$NMP_BASE_URL/apis/inference-gateway/v2/workspaces/default/provider/<provider>/-/v1` | `default--<output.name>` |
 
 **Common mistake:** posting to the model-entity URL with `"model": "default--<output.name>"` still runs the **base** model. Base-vs-adapter eval will look identical until LoRA requests use the **provider** URL above. See `references/post-training-eval.md` § **Request routing (base vs LoRA)**.
 
@@ -619,7 +619,7 @@ Match training context at inference — send **`messages[:-1]`** (all turns exce
 #### Example — LoRA adapter via provider
 
 \`\`\`bash
-export NEMO_BASE_URL=<platform-url>   # omit when using default localhost
+export NMP_BASE_URL=<platform-url>   # omit when using default localhost; NEMO_BASE_URL also works
 nemo inference gateway provider post v1/chat/completions <provider> --workspace default \\
   --body '{
     "model": "default--<output.name>",
@@ -633,7 +633,7 @@ nemo inference gateway provider post v1/chat/completions <provider> --workspace 
 #### Example — base model via model-entity (comparison)
 
 \`\`\`bash
-export NEMO_BASE_URL=<platform-url>
+export NMP_BASE_URL=<platform-url>
 nemo inference gateway model post v1/chat/completions <model-entity> --workspace default \\
   --body '{
     "model": "default/<model-entity>",
@@ -651,7 +651,6 @@ Validation loss from training is **not** accuracy. To compare base vs adapter on
 \`\`\`bash
 cd /path/to/nemo-platform
 uv run python plugins/nemo-customizer/src/nemo_customizer/skills/nemo-customizer/references/eval_helpers.py \\
-  --base-url <platform-url> \\
   --model-entity <model-entity> \\
   --adapter <output.name> \\
   --provider <provider> \\
@@ -659,10 +658,10 @@ uv run python plugins/nemo-customizer/src/nemo_customizer/skills/nemo-customizer
   --split validation.jsonl
 \`\`\`
 
-Uses CHAT `messages` rows unchanged from the training fileset (`messages[:-1]` at inference). Repeat `--adapter` for multi-adapter compare. `--provider` is optional when a READY provider is auto-discovered.
+Uses CHAT `messages` rows unchanged from the training fileset (`messages[:-1]` at inference). Repeat `--adapter` for multi-adapter compare. `--provider` is optional when a READY provider is auto-discovered. Set `NMP_BASE_URL` (or pass `--base-url`) when the platform is not localhost — the helper reads `$NMP_BASE_URL` / `$NEMO_BASE_URL` by default.
 ```
 
-Use the user's platform URL in `NEMO_BASE_URL` when they overrode it; omit the export line for default `http://127.0.0.1:8080`. Substitute `<provider>`, `<NEMO_BASE_URL>`, and entity/adapter names with values from discovery — do not leave generic placeholders in the user-facing report. Do **not** tell the user to update the deployment or add the adapter to a provider before calling it — registration on the model entity is sufficient.
+Use the user's platform URL in `NMP_BASE_URL` when they overrode it; omit the export line for default `http://127.0.0.1:8080`. Substitute `<provider>`, concrete URLs, and entity/adapter names with values from discovery — do not leave generic placeholders in the user-facing report. Do **not** tell the user to update the deployment or add the adapter to a provider before calling it — registration on the model entity is sufficient.
 
 **Save report to `/tmp`** — unless the user opts out, write the full Markdown report (header, **Training configuration**, **Using the adapter** when `completed`, and **Resources created** when a slug or new filesets were used) to `/tmp/fine-tune-result-<slug-or-job-suffix>.md`. Use the random slug from the run when one was assigned; otherwise use the job id suffix (e.g. `a925b07ff678`).
 

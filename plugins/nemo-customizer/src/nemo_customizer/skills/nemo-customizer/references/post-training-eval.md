@@ -9,8 +9,8 @@ Training and evaluation must use the **same CHAT JSONL row shape**:
 ```json
 {
   "messages": [
-    {"role": "user", "content": "Question: …\nChoices:\n…\nAnswer:"},
-    {"role": "assistant", "content": "bank"}
+    {"role": "user", "content": "<user turn or multi-turn prompt>"},
+    {"role": "assistant", "content": "<label to predict>"}
   ]
 }
 ```
@@ -23,7 +23,7 @@ Multi-turn rows use the same rule: the **final** `messages[-1]` turn is the assi
 | Send **`messages[:-1]`** at inference (exclude only the final assistant label) | Pass full `messages` including the label turn, or use `{"messages": "{{ item.messages }}"}` unfiltered |
 | Score against **`messages[-1].content`** (final assistant turn) | Score against a renamed `expected` field unless you also keep `messages` |
 
-Single-turn MCQA (user + assistant) is the degenerate case: `messages[:-1]` is just the user turn.
+Single-turn rows (one user prompt + one assistant label) are the degenerate case: `messages[:-1]` is just the user turn.
 
 Automodel and unsloth both train on this shape when `has_chat` is true (see `hf-conversion.md`, `dataset-formats.md`).
 
@@ -38,15 +38,15 @@ CHAT_REFERENCE_TEMPLATE = "{{ item.messages[-1].content }}"
 
 Import from `references/eval_helpers.py` — do not re-type these in one-off scripts.
 
-## Inference defaults (Qwen3 / thinking models)
+## Inference defaults (thinking models, e.g. Qwen3)
 
 | Setting | Recommended | Avoid |
 |---------|-------------|-------|
-| `enable_thinking` | `false` via `chat_template_kwargs` for short-answer SFT | Thinking on without enough tokens — model never closes ``, strip hook fails |
+| `enable_thinking` | `false` via `chat_template_kwargs` for short-answer SFT | Thinking on without enough tokens — model never closes thinking tag so the strip hook fails |
 | `max_tokens` | `64` (short assistant labels) | `16` with thinking on; `1024` thinking on without strip (verbose prose) |
 | System prompt | Omit unless user asks — matches training | Extra system prompt changes decode path vs SFT |
 
-For thinking-enabled eval, set `reasoning=ReasoningParams(end_token="")` **and** ensure `max_tokens` is large enough for the model to emit the end token before generating the answer.
+For thinking-enabled eval, set `reasoning=ReasoningParams(end_token="``")` **and** ensure `max_tokens` is large enough for the model to emit the end token before generating the answer.
 
 ## Inference after customization (wrap-up)
 
@@ -67,8 +67,10 @@ The model-entity proxy path **always** resolves to the base VirtualModel. Settin
 
 | Target | Gateway route | URL pattern | Request `model` field |
 |--------|---------------|-------------|------------------------|
-| Base entity | **Model entity** | `{NEMO_BASE_URL}/apis/inference-gateway/v2/workspaces/default/model/<model-entity>/-/v1` | `default/<model-entity>` |
-| LoRA adapter | **Provider** | `{NEMO_BASE_URL}/apis/inference-gateway/v2/workspaces/default/provider/<provider>/-/v1` | `default--<adapter-name>` |
+| Base entity | **Model entity** | `$NMP_BASE_URL/apis/inference-gateway/v2/workspaces/default/model/<model-entity>/-/v1` | `default/<model-entity>` |
+| LoRA adapter | **Provider** | `$NMP_BASE_URL/apis/inference-gateway/v2/workspaces/default/provider/<provider>/-/v1` | `default--<adapter-name>` |
+
+(`NEMO_BASE_URL` is an alias for `NMP_BASE_URL`.)
 
 `eval_helpers.py` auto-discovers a READY provider that serves the base entity (or pass `--provider <name>`). Adapter weights still hot-reload on the deployment — no provider update per adapter.
 
@@ -83,37 +85,40 @@ Optional sanity checks:
 
 If base and LoRA scores were identical (~99% same outputs), the adapter was almost certainly called through the **model-entity** path. That path always resolves to the base VirtualModel — the `"model": "default--<adapter>"` field in the body is ignored. Fix: route LoRA through the **provider** URL with the same `model` field. `eval_helpers.build_platform_model_target()` and the CLI implement this split automatically.
 
-### MCQA metric interpretation
+### Classification / short-answer metric interpretation
 
-For commonsense_qa-style MCQA, treat **`normalized_accuracy`** as the primary metric (`normalize_mcqa_answer` strips `A. foo` / markdown).
+For multiple-choice or short-label SFT, treat **`normalized_accuracy`** as the primary metric when labels need normalization (`normalize_mcqa_answer` strips `A. foo`, markdown, etc.).
 
 | Observation | Likely meaning |
 |-------------|----------------|
-| Base & LoRA both ~59% normalized, within ~1 pp | LoRA hit **model-entity** path (base only) — check `warnings` and gateway logs |
-| Base raw exact 0%, normalized ~59% | Normal for base on MCQA (formatted prose answers) |
-| LoRA normalized >> base (e.g. 76% vs 59%) | Correct provider routing and real adapter lift |
-| Train loss dropped sharply but eval flat | Wrong eval routing or need more epochs — val loss ≠ accuracy |
+| Base & LoRA normalized scores match within ~1–2 pp | LoRA likely hit **model-entity** path (base only) — check `warnings` and gateway logs |
+| Base raw exact match low, normalized much higher | Normal when the base model emits formatted prose but normalized labels match |
+| LoRA normalized clearly above base | Correct provider routing and real adapter lift |
+| Train loss dropped sharply but eval flat | Wrong eval routing, mismatched inference settings, or need more epochs — val loss ≠ accuracy |
 
 ### Epoch / adapter ablations
 
 Resolve adapter names from completed job specs instead of guessing:
 
 ```python
+import os
 from eval_helpers import list_completed_job_adapters, compare_adapters, build_eval_payload
 
+base_url = os.environ.get("NMP_BASE_URL") or os.environ.get("NEMO_BASE_URL") or "http://127.0.0.1:8080"
+
 jobs = list_completed_job_adapters(
-    base_url="http://10.0.0.51:8080",
+    base_url=base_url,
     workspace="default",
-    model_entity="qwen3-1.7b",
-    dataset_fileset="commonsense_qa",
+    model_entity="<model-entity>",
+    dataset_fileset="<dataset-fileset>",
 )
 # jobs[0].epochs, jobs[0].adapter_name, jobs[0].backend — sorted newest first
 
 summaries = compare_adapters(
-    base_url="...",
+    base_url=base_url,
     workspace="default",
-    model_entity="qwen3-1.7b",
-    adapter_names=[jobs[0].adapter_name, jobs[2].adapter_name],
+    model_entity="<model-entity>",
+    adapter_names=[jobs[0].adapter_name, jobs[1].adapter_name],
     rows=rows,
 )
 payload = build_eval_payload(..., summaries=summaries, adapter_names=[...])
@@ -129,7 +134,7 @@ When comparing adapters from **different backends** (automodel vs unsloth) or ba
 | HTTP base URL | `…/provider/<provider>/-/v1` | `…/model/<model-entity>/-/v1` |
 | `"model"` | `default--<adapter-name>` | `default/<model-entity>` |
 | `messages` | `messages[:-1]` from the training row (exclude final assistant label) | Same |
-| Qwen3 short SFT | `"chat_template_kwargs": {"enable_thinking": false}` | Same |
+| Short-answer SFT (e.g. Qwen3) | `"chat_template_kwargs": {"enable_thinking": false}` | Same |
 | `max_tokens` / `temperature` | `64` / `0` typical for short labels | Same |
 
 CLI shortcuts (substitute names from the job):
@@ -158,23 +163,23 @@ Val loss from training is **not** accuracy — always run a generation eval for 
 From **nemo-platform** git root:
 
 ```bash
-# Base vs one adapter
+export NMP_BASE_URL=http://127.0.0.1:8080   # user platform URL when not localhost
+
+# Base vs one adapter (--base-url optional when NMP_BASE_URL is set)
 uv run python plugins/nemo-customizer/src/nemo_customizer/skills/nemo-customizer/references/eval_helpers.py \
-  --base-url http://10.0.0.51:8080 \
-  --model-entity qwen3-1.7b \
-  --adapter qwen3-1.7b-csqa-unsloth-jun16-e3 \
-  --provider qwen3-1.7b-csqa-lora-deploy \
-  --dataset-fileset commonsense_qa \
+  --model-entity <model-entity> \
+  --adapter <adapter-name> \
+  --provider <provider> \
+  --dataset-fileset <dataset-fileset> \
   --split validation.jsonl \
   --output /tmp/fine-tune-eval.json
 
 # Base vs multiple adapters (epoch ablation)
 uv run python plugins/nemo-customizer/src/nemo_customizer/skills/nemo-customizer/references/eval_helpers.py \
-  --base-url http://10.0.0.51:8080 \
-  --model-entity qwen3-1.7b \
-  --adapter qwen3-1.7b-commonsense-qa-lora-jun12-v2 \
-  --adapter qwen3-1.7b-csqa-unsloth-jun16-e3 \
-  --dataset-fileset commonsense_qa \
+  --model-entity <model-entity> \
+  --adapter <adapter-a> \
+  --adapter <adapter-b> \
+  --dataset-fileset <dataset-fileset> \
   --split validation.jsonl \
   --output /tmp/fine-tune-eval-multi.json
 ```
