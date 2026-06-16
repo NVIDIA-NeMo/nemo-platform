@@ -1088,10 +1088,12 @@ def test_platform_route_stream_uses_public_mcp_callback(monkeypatch: pytest.Monk
     assert "Current Studio workspace: default" in captured["studio_system_prompt"]
     assert "Studio UI base URL: https://studio.test/studio" in captured["studio_system_prompt"]
     assert "Current Studio route path: /workspaces/default/dashboard/code-agent" in captured["studio_system_prompt"]
-    assert "Use Claude Code's AskUserQuestion tool" in captured["studio_system_prompt"]
-    assert "finite set of agents, deployments, models, jobs, filesets" in captured["studio_system_prompt"]
+    assert "use Claude Code's AskUserQuestion tool" in captured["studio_system_prompt"]
+    assert "you MUST call mcp__nemo_studio__select_agent" in captured["studio_system_prompt"]
+    assert "never use AskUserQuestion for an agent choice" in captured["studio_system_prompt"]
+    assert "you MUST call mcp__nemo_studio__select_model" in captured["studio_system_prompt"]
     assert "ask multiple AskUserQuestion questions" in captured["studio_system_prompt"]
-    assert "For a list of deployed agents, make each option label the agent name" in captured["studio_system_prompt"]
+    assert "no dedicated Studio picker" in captured["studio_system_prompt"]
     assert "Default to trying to include a Studio link in Studio-related responses" in captured["studio_system_prompt"]
     assert "link to the closest list page for the current workspace" in captured["studio_system_prompt"]
     assert "Base Models or available base models use destination='base_models'" in captured["studio_system_prompt"]
@@ -1112,6 +1114,8 @@ def test_platform_route_stream_uses_public_mcp_callback(monkeypatch: pytest.Monk
     )
     assert "Before your final response" in captured["studio_system_prompt"]
     assert "mcp__nemo_studio__studio_link" in captured["studio_system_prompt"]
+    assert "Required job-progress behavior:" in captured["studio_system_prompt"]
+    assert "you MUST call mcp__nemo_studio__job_progress" in captured["studio_system_prompt"]
     assert (
         "For a newly created agent, use studio_link with destination='agent_chat'" in captured["studio_system_prompt"]
     )
