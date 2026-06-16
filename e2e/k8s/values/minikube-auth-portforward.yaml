@@ -1,0 +1,42 @@
+# CPU-only minikube values for local auth E2E verification without ingress.
+#
+# Usage:
+#   helm upgrade -i nemo-platform k8s/helm -f e2e/k8s/values/minikube-auth-portforward.yaml
+#
+# This keeps the auth-enabled local harness but disables ingress so the stack
+# can be validated through kubectl port-forward on machines where registry.k8s.io
+# is blocked and the ingress addon cannot bootstrap. The chart still keeps split
+# pods on the API service URL while the API pod itself loops back to localhost.
+
+k8s-nim-operator:
+  enabled: false
+
+postgresql:
+  persistence:
+    storageClass: standard
+
+core:
+  storage:
+    storageClass: standard
+    volumePermissionsImage: busybox
+
+envoyProxy:
+  enabled: false
+
+ingress:
+  enabled: false
+
+platformConfig:
+  auth:
+    enabled: true
+    policy_decision_point_provider: embedded
+    policy_data_refresh_interval: 2
+    bundle_cache_seconds: 2
+    admin_email: "admin@example.com"
+  inference_gateway:
+    mock_provider_prefix: igw-mock-
+  models:
+    controller:
+      backends:
+        nim_operator:
+          enabled: false

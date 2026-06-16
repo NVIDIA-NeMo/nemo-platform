@@ -1,0 +1,25 @@
+# {{ template "chart.description" . }}
+
+{{ template "chart.typeBadge" . }}
+
+Documentation can be found at: https://docs.nvidia.com/nemo-platform.
+
+## Platform Secrets Encryption Key
+
+The platform secrets service reads `NMP_SECRETS_DEFAULT_ENCRYPTION_KEY` from the
+API env Secret. The value must be base64-encoded and decode to at least 32 bytes.
+
+Set `secrets.defaultEncryptionKey.value` to provide your own key. When that value
+is empty and `envFromSecret` is not set, the chart runs a pre-install hook that
+creates `<fullname>-api-env` with a per-install random key. The hook is
+install-only and refuses to patch or rotate an existing Secret.
+
+Set `envFromSecret` to use a fully user-managed API env Secret. In that mode the
+chart does not create or generate the API env Secret.
+
+On upgrade, the generated Secret must already exist and contain
+`NMP_SECRETS_DEFAULT_ENCRYPTION_KEY`. If it is missing, restore the original
+Secret instead of generating a replacement key; existing encrypted platform
+secrets will not decrypt with a new key.
+
+{{ template "chart.valuesSection" . }}

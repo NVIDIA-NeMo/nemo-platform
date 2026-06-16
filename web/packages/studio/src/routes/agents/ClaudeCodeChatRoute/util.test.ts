@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { CLAUDE_CODE_JOB_PROGRESS_MCP_TOOL_NAME } from '@studio/routes/agents/ClaudeCodeChatRoute/jobProgressConsts';
-import { CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME } from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
+import {
+  CLAUDE_CODE_COLLAPSED_THINKING_TOOL_NAME,
+  CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME,
+} from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
 import type { ClaudeCodeSessionHistory } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
 import {
   getClaudeCodeChatRouteForSession,
@@ -26,6 +29,7 @@ describe('Claude Code utilities', () => {
   it('converts stored transcript items to assistant-ui messages', () => {
     const history: ClaudeCodeSessionHistory = {
       session_id: '2dc6e5a6-acd7-43bf-b128-c9fd5cf6eb9a',
+      chat_artifacts: { selections: [], files: [], links: [], tools: [] },
       items: [
         { kind: 'user', text: 'check the repo' },
         {
@@ -36,6 +40,7 @@ describe('Claude Code utilities', () => {
             { type: 'tool_use', name: 'Bash', input: { command: 'pwd' } },
             { type: 'tool_use', name: 'Grep', input: { pattern: 'TODO' } },
             { type: 'tool_use', name: 'Read', input: { file_path: 'README.md' } },
+            { type: 'text', text: 'I updated the route.\n\nTests passed.' },
           ],
         },
         {
@@ -74,7 +79,13 @@ describe('Claude Code utilities', () => {
       id: '2dc6e5a6-acd7-43bf-b128-c9fd5cf6eb9a-1',
       role: 'assistant',
       content: [
-        { type: 'text', text: 'I found the route.' },
+        {
+          type: 'tool-call',
+          toolName: CLAUDE_CODE_COLLAPSED_THINKING_TOOL_NAME,
+          args: {
+            text: 'I found the route.',
+          },
+        },
         {
           type: 'tool-call',
           toolName: CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME,
@@ -87,6 +98,7 @@ describe('Claude Code utilities', () => {
             ],
           },
         },
+        { type: 'text', text: 'I updated the route.\n\nTests passed.' },
       ],
       status: { type: 'complete', reason: 'stop' },
     });
@@ -115,7 +127,13 @@ describe('Claude Code utilities', () => {
       id: '2dc6e5a6-acd7-43bf-b128-c9fd5cf6eb9a-3',
       role: 'assistant',
       content: [
-        { type: 'text', text: 'I found another route.' },
+        {
+          type: 'tool-call',
+          toolName: CLAUDE_CODE_COLLAPSED_THINKING_TOOL_NAME,
+          args: {
+            text: 'I found another route.',
+          },
+        },
         {
           type: 'tool-call',
           toolName: CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME,
@@ -136,6 +154,7 @@ describe('Claude Code utilities', () => {
   it('combines consecutive tool-only assistant transcript items', () => {
     const history: ClaudeCodeSessionHistory = {
       session_id: 'session-1',
+      chat_artifacts: { selections: [], files: [], links: [], tools: [] },
       items: [
         { kind: 'user', text: 'map the repo' },
         {
@@ -203,6 +222,7 @@ describe('Claude Code utilities', () => {
   it('keeps stored job progress tool calls visible in history', () => {
     const history: ClaudeCodeSessionHistory = {
       session_id: 'session-1',
+      chat_artifacts: { selections: [], files: [], links: [], tools: [] },
       items: [
         { kind: 'user', text: 'evaluate my agent' },
         {

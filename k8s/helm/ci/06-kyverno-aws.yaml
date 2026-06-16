@@ -1,0 +1,6 @@
+# Test AWS Kyverno policy for multi-node GPU training with EFA
+
+multinodeNetworking:
+  aws:
+    enabled: true
+    efaDevicesPerGPU: 1

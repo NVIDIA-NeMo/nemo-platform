@@ -126,7 +126,18 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
           const { name, summary } = row.original;
           if (!summary) return <Text>{name}</Text>;
           return (
-            <Tooltip slotContent={summary} className={tooltipClassName} side="bottom">
+            <Tooltip
+              slotContent={
+                <div className="flex flex-col gap-1">
+                  <Text kind="label/regular/sm" className="text-secondary">
+                    Summary
+                  </Text>
+                  <Text kind="body/regular/sm">{summary}</Text>
+                </div>
+              }
+              className={tooltipClassName}
+              side="bottom"
+            >
               <Text className="cursor-default border-b border-dotted border-brand">{name}</Text>
             </Tooltip>
           );
@@ -166,7 +177,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
       }),
       accessor((original) => original.model_names?.join(', '), {
         id: 'model_names',
-        header: 'Model Names',
+        header: 'Models',
         enableSorting: false,
         cell: ({ getValue }) => <Text>{getValue<string>() || '-'}</Text>,
       }),

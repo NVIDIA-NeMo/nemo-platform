@@ -168,7 +168,7 @@ describe('DatasetSelect', () => {
       expect(enabledOptions.length).toBeGreaterThan(0);
     });
 
-    // Find the first enabled dataset option (not "New Dataset" which is at the end)
+    // Find an existing dataset option (not "New Dataset", which is now first)
     const datasetOption = screen.getByRole('option', { name: 'dataset1' });
     await user.click(datasetOption);
 

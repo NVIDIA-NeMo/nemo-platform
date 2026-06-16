@@ -1,0 +1,141 @@
+{{- $apiServiceName := include "nmp-api.api-servicename" . -}}
+{{- $apiServicePort := .Values.api.service.port -}}
+{{- $apiEnvSecretName := include "nemo-platform.apiEnvSecretName" . -}}
+{{- $defaultEncryptionKeyName := include "nemo-platform.defaultEncryptionKeyEnvName" . -}}
+{{- $namespace := .Release.Namespace -}}
+================================================================================
+🚀 NVIDIA NeMo Microservices Platform
+   v{{ .Chart.AppVersion }}
+================================================================================
+
+Successfully installed {{ .Chart.Name }}-{{ .Chart.Version }}, named {{ .Release.Name }}
+
+{{- if .Values.ingress.enabled }}
+  External URL (via Ingress):
+  {{- if and .Values.ingress.defaultHost .Values.ingress.hosts }}
+  {{- range (index .Values.ingress.hosts 0).paths }}
+    http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $.Values.ingress.defaultHost }}{{ .path }}
+  {{- end }}
+  {{- else }}
+  {{- range $host := .Values.ingress.hosts }}
+  {{- if $host.name }}
+  {{- range $host.paths }}
+    http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host.name }}{{ .path }}
+  {{- end }}
+  {{- else }}
+  {{- range $host.paths }}
+    Configure your ingress controller for path: {{ .path }}
+  {{- end }}
+  {{- end }}
+  {{- end }}
+  {{- end }}
+{{- else if .Values.openshiftRoute.enabled }}
+  External URL (via OpenShift Route):
+  {{- if .Values.openshiftRoute.host }}
+    https://{{ .Values.openshiftRoute.host }}
+  {{- else }}
+    Check the Route status for the assigned hostname: kubectl get route -n {{ $namespace }} {{ include "nemo-platform.name" . }}
+  {{- end }}
+{{- else if .Values.httpRoute.enabled }}
+  External URL (via Gateway API HTTP Route):
+  {{- if .Values.httpRoute.hostnames }}
+  {{- range .Values.httpRoute.hostnames }}
+    https://{{ . }}
+  {{- end }}
+  {{- end }}
+{{- else }}
+
+  Internal Service URL (from within cluster):
+    http://{{ $apiServiceName }}.{{ $namespace }}.svc.cluster.local:{{ $apiServicePort }}
+
+  To access from your local machine, use port-forward:
+    kubectl port-forward -n {{ $namespace }} svc/{{ $apiServiceName }} 8080:{{ $apiServicePort }}
+
+  Then access the platform at:
+    http://localhost:8080
+{{- end }}
+
+{{- if not (include "nemo-platform.authEnabled" .) }}
+
+  AUTHENTICATION IS DISABLED. This is only suitable for
+  development and testing.
+
+{{- end }}
+
+  Install the CLI (if not already installed) and verify:
+
+     > pip install nemo-platform
+     > nemo config set --base-url <URL>
+     > nemo auth login --base-url <URL> (If authentication is enabled)
+     > nemo workspaces list
+
+  Documentation: https://docs.nvidia.com/nemo-platform
+
+  Back up the {{ $apiEnvSecretName }} Secret. If it is lost, existing encrypted
+  platform secrets become unrecoverable. To print {{ $defaultEncryptionKeyName }}
+  for secure backup:
+
+    kubectl get secret -n {{ $namespace }} {{ $apiEnvSecretName }} -o go-template='{{ "{{" }} index .data {{ $defaultEncryptionKeyName | quote }} | base64decode {{ "}}" }}{{ "{{" }} "\n" {{ "}}" }}'
+
+{{- if .Values.postgresql.enabled }}
+
+  You are using the embedded PostgreSQL. It is NOT recommended for production.
+  For production use, enable an external PostgreSQL database:
+    --set postgresql.enabled=false
+    --set externalDatabase.host=my-external-database-host
+    --set externalDatabase.port=5432
+    --set externalDatabase.user=nemo
+    --set externalDatabase.database=nemoplatform
+    --set externalDatabase.existingSecret=my-existing-secret
+    --set externalDatabase.existingSecretPasswordKey=password
+
+{{- if not .Values.postgresql.persistence.enabled }}
+
+  DATABASE PERSISTENCE DISABLED. Data will be lost if the pod restarts.
+{{- end }}
+{{- end }}
+
+{{- if or .Values.multinodeNetworking.aws.enabled .Values.multinodeNetworking.azure.enabled .Values.multinodeNetworking.gcp.enabled .Values.multinodeNetworking.oci.enabled }}
+{{- $ncclFullname := include "nemo-platform.fullname" . }}
+{{- $ncclTestBase := printf "%s-nccl-test" ($ncclFullname | trunc 40 | trimSuffix "-") | trunc 42 }}
+{{- $ncclTestConfigMap := printf "%s-cm" $ncclTestBase | trunc 63 }}
+
+  Multi-node networking is ENABLED. Kyverno policies will inject
+  appropriate configurations for distributed jobs.
+
+  {{- if .Values.multinodeNetworking.aws.enabled }}
+  • AWS EFA devices configured ({{ .Values.multinodeNetworking.aws.efaDevicesPerGPU }} per GPU)
+  {{- end }}
+  {{- if .Values.multinodeNetworking.azure.enabled }}
+  • Azure InfiniBand/RDMA configured ({{ .Values.multinodeNetworking.azure.rdmaDevicesPerGPU }} per GPU)
+  {{- end }}
+  {{- if .Values.multinodeNetworking.gcp.enabled }}
+  • GCP TCP-X/TCP-XO configured
+  {{- end }}
+  {{- if .Values.multinodeNetworking.oci.enabled }}
+  • OCI InfiniBand/SR-IOV configured ({{ .Values.multinodeNetworking.oci.rdmaDevicesPerGPU }} per GPU)
+  {{- end }}
+
+  Validate multi-node networking with the chart test (NCCL allreduce across nodes):
+
+    helm test -n {{ $namespace }} {{ .Release.Name }}
+
+  Set ncclTest.gpusPerNode in your values file to match the GPU count per node before
+  running the test. After changing any ncclTest values, run helm upgrade so the chart
+  state matches; then run helm test.
+
+  You may also set ncclTest.waitTimeoutSeconds (wait for each worker pod) and
+  ncclTest.iterations (full test loops performed to increase reliability of the test) as needed; current settings are
+  {{ .Values.ncclTest.waitTimeoutSeconds }} seconds and
+  {{ .Values.ncclTest.iterations }} iterations.
+
+  If you increase these, raise the Helm CLI timeout as well so the run can finish:
+  pass --timeout to helm test (e.g. --timeout 45m) and set it high enough for your
+  worker waits and iteration count.
+
+  The test runs a cleanup job afterward, but the scripts ConfigMap may still remain;
+  deleting it is harmless if needed:
+
+    kubectl delete configmap {{ $ncclTestConfigMap }} -n {{ $namespace }}
+
+{{- end }}

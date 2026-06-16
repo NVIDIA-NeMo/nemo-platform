@@ -4,7 +4,7 @@
 from abc import ABC
 from datetime import datetime
 from enum import Enum, StrEnum
-from typing import Annotated, Any, Dict, List, Optional, Union
+from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 from jinja2 import Environment
 from jinja2 import nodes as jinja_nodes
@@ -694,6 +694,204 @@ class DeleteModelProviderRequest(BaseModel):
     )
     name: str = Field(
         description=f"Name of the model provider. {constants.REGEX_WORD_CHARACTER_DOT_DASH_DESCRIPTION}",
+        max_length=constants.MAX_LENGTH_255,
+        pattern=constants.REGEX_WORD_CHARACTER_DOT_DASH,
+    )
+
+
+# ============================================================================
+# Prompt Schemas
+# ============================================================================
+
+
+class PromptMessageRole(StrEnum):
+    """Role of a message author in a chat prompt.
+
+    Follows the OpenAI chat schema the Inference Gateway speaks
+    (``/v1/chat/completions``).
+    """
+
+    SYSTEM = "system"
+    DEVELOPER = "developer"
+    USER = "user"
+    ASSISTANT = "assistant"
+
+
+class PromptMessage(BaseModel):
+    """A single templated message in a chat prompt.
+
+    ``content`` is a Jinja2 template body that may reference the prompt's
+    declared ``input_variables`` (e.g. ``{{ topic }}``).
+    """
+
+    role: PromptMessageRole = Field(description="The role of the message author.")
+    content: str = Field(description="Templated message content. May contain template variables.")
+
+
+class FunctionDefinition(BaseModel):
+    """An OpenAI-compatible function definition for tool calling.
+
+    Mirrors the ``function`` object the Inference Gateway forwards to
+    OpenAI-compatible backends.
+    """
+
+    name: str = Field(
+        description="The name of the function to be called.",
+        max_length=constants.MAX_LENGTH_255,
+    )
+    description: Optional[str] = Field(
+        default=None,
+        description="A description of what the function does, used by the model to decide when and how to call it.",
+    )
+    parameters: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="The parameters the function accepts, described as a JSON Schema object.",
+    )
+    strict: Optional[bool] = Field(
+        default=None,
+        description="Whether to enforce strict schema adherence when generating the function call.",
+    )
+
+
+class ChatCompletionTool(BaseModel):
+    """An OpenAI-compatible tool definition (currently always a function tool)."""
+
+    type: Literal["function"] = Field(
+        description="The type of the tool. Currently only 'function' is supported.",
+    )
+    function: FunctionDefinition = Field(description="The function definition for this tool.")
+
+
+class Prompt(ModelEntityBaseModel):
+    """A reusable, stored chat prompt.
+
+    A Prompt captures the messages, declared template variables, optional tool
+    definitions, and default inference parameters needed to invoke a model
+    through the Inference Gateway. The unique identifier is workspace/name.
+    """
+
+    id: str = Field(
+        default_factory=lambda: get_model_id("prompt"),
+        description="Unique identifier for the prompt.",
+    )
+    description: Optional[str] = Field(
+        default=None,
+        description="Optional description of the prompt.",
+        max_length=1000,
+    )
+    messages: List[PromptMessage] = Field(
+        default_factory=list,
+        description="Ordered list of chat messages that make up the prompt.",
+    )
+    input_variables: List[str] = Field(
+        default_factory=list,
+        description="Names of the Jinja2 template variables the prompt expects.",
+    )
+    tools: Optional[List[ChatCompletionTool]] = Field(
+        default=None,
+        description="Optional OpenAI-compatible tool definitions to send with the prompt.",
+    )
+    tool_choice: Optional[Union[str, Dict[str, Any]]] = Field(
+        default=None,
+        description="Controls which (if any) tool is called: 'none', 'auto', 'required', or a named-tool object.",
+    )
+    response_format: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Optional OpenAI-compatible response_format, e.g. a json_schema structured-output spec.",
+    )
+    inference_params: Optional[InferenceParams] = Field(
+        default=None,
+        description="Optional default model and sampling parameters (temperature, top_p, max_tokens, ...).",
+    )
+    tags: List[str] = Field(
+        default_factory=list,
+        description="Optional free-form tags for organizing prompts.",
+    )
+
+
+class PromptSort(StrEnum):
+    """Sort fields for Prompt queries."""
+
+    NAME_ASC = "name"
+    NAME_DESC = "-name"
+    CREATED_AT_ASC = "created_at"
+    CREATED_AT_DESC = "-created_at"
+    UPDATED_AT_ASC = "updated_at"
+    UPDATED_AT_DESC = "-updated_at"
+
+
+class CreatePromptRequest(BaseModel):
+    """Request model for creating a Prompt."""
+
+    name: str = Field(
+        description=f"Name of the prompt. {constants.REGEX_WORD_CHARACTER_DOT_DASH_DESCRIPTION}",
+        max_length=constants.MAX_LENGTH_255,
+        pattern=constants.REGEX_WORD_CHARACTER_DOT_DASH,
+        examples=["support-bot-system", "summarizer"],
+    )
+    project: Optional[str] = Field(
+        default=None,
+        description="The URN of the project associated with this prompt.",
+        max_length=constants.MAX_LENGTH_255,
+        pattern=constants.REGEX_WORD_CHARACTER_DOT_DASH_SLASH,
+    )
+    description: Optional[str] = Field(default=None, max_length=1000)
+    messages: List[PromptMessage] = Field(default_factory=list)
+    input_variables: List[str] = Field(default_factory=list)
+    tools: Optional[List[ChatCompletionTool]] = Field(default=None)
+    tool_choice: Optional[Union[str, Dict[str, Any]]] = Field(default=None)
+    response_format: Optional[Dict[str, Any]] = Field(default=None)
+    inference_params: Optional[InferenceParams] = Field(default=None)
+    tags: Optional[List[str]] = Field(default=None)
+
+
+class UpdatePromptRequest(BaseModel):
+    """Request model for replacing a Prompt's mutable fields (full update).
+
+    The prompt name and workspace come from the URL path and cannot be changed.
+    """
+
+    project: Optional[str] = Field(
+        default=None,
+        description="The URN of the project associated with this prompt.",
+        max_length=constants.MAX_LENGTH_255,
+        pattern=constants.REGEX_WORD_CHARACTER_DOT_DASH_SLASH,
+    )
+    description: Optional[str] = Field(default=None, max_length=1000)
+    messages: List[PromptMessage] = Field(default_factory=list)
+    input_variables: List[str] = Field(default_factory=list)
+    tools: Optional[List[ChatCompletionTool]] = Field(default=None)
+    tool_choice: Optional[Union[str, Dict[str, Any]]] = Field(default=None)
+    response_format: Optional[Dict[str, Any]] = Field(default=None)
+    inference_params: Optional[InferenceParams] = Field(default=None)
+    tags: Optional[List[str]] = Field(default=None)
+
+
+class GetPromptRequest(BaseModel):
+    """Request model for getting a Prompt."""
+
+    workspace: str = Field(
+        description=f"The workspace of the prompt. {constants.REGEX_WORD_CHARACTER_DOT_DASH_DESCRIPTION}",
+        max_length=constants.MAX_LENGTH_255,
+        pattern=constants.REGEX_WORD_CHARACTER_DOT_DASH,
+    )
+    name: str = Field(
+        description=f"Name of the prompt. {constants.REGEX_WORD_CHARACTER_DOT_DASH_DESCRIPTION}",
+        max_length=constants.MAX_LENGTH_255,
+        pattern=constants.REGEX_WORD_CHARACTER_DOT_DASH,
+    )
+
+
+class DeletePromptRequest(BaseModel):
+    """Request model for deleting a Prompt."""
+
+    workspace: str = Field(
+        description=f"The workspace of the prompt. {constants.REGEX_WORD_CHARACTER_DOT_DASH_DESCRIPTION}",
+        max_length=constants.MAX_LENGTH_255,
+        pattern=constants.REGEX_WORD_CHARACTER_DOT_DASH,
+    )
+    name: str = Field(
+        description=f"Name of the prompt. {constants.REGEX_WORD_CHARACTER_DOT_DASH_DESCRIPTION}",
         max_length=constants.MAX_LENGTH_255,
         pattern=constants.REGEX_WORD_CHARACTER_DOT_DASH,
     )
@@ -1503,6 +1701,17 @@ class ListModelDeploymentsRequest(BaseModel):
 # ============================================================================
 # Filter and Search classes for Pagination Support
 # ============================================================================
+
+
+class PromptFilter(Filter):
+    """Filter for Prompt queries."""
+
+    workspace: Optional[str] = Field(None, description="Filter by workspace.")
+    project: Optional[str] = Field(None, description="Filter by project URN.")
+    name: Optional[str] = Field(None, description="Filter by name.")
+    description: Optional[str] = Field(None, description="Filter by description.")
+    created_at: Optional[DatetimeFilter] = Field(None, description="Filter by creation date.")
+    updated_at: Optional[DatetimeFilter] = Field(None, description="Filter by update date.")
 
 
 class ModelProviderFilter(Filter):

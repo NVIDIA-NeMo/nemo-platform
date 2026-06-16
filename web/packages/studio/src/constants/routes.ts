@@ -118,7 +118,7 @@ export const ROUTES = {
     agentEvaluationsList: `/workspaces/:${P.workspace}/agents/evaluations`,
     /** Detail view for a single agent-evaluation job. */
     agentEvaluationDetail: `/workspaces/:${P.workspace}/agents/evaluations/:${P.agentEvalJobName}`,
-    modelCompare: `/workspaces/:${P.workspace}/model-compare`,
+    modelCompare: `/workspaces/:${P.workspace}/playground`,
     agentOptimizations: `/workspaces/:${P.workspace}/agents/suggestions`,
     agentMonitor: `/workspaces/:${P.workspace}/agents/monitor`,
   },

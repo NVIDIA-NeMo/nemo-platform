@@ -9,7 +9,7 @@ First build local docker images required.
 BUILD_ARCH=<linux/arm64 or your arch> docker buildx bake guardrails-docker guardrails-callout-docker guardrails-callout-mock-llm --load
 ```
 
-Create nemoguard configs similar to the ones described in [guardrails-callout-values.yaml](../../../deploy/helm/values/gcp/guardrails-callout-values.yaml).
+Create nemoguard configs using the Guardrails configuration examples in the product documentation.
 
 Spin up Guardrails MS via compose.
 

@@ -68,6 +68,65 @@ describe('useClaudeCodeChatRuntime', () => {
     vi.clearAllMocks();
   });
 
+  it('exposes the latest streamed coding-agent model without promoting it to selected model', async () => {
+    mocks.createClaudeCodeSession.mockResolvedValue('session-1');
+    mocks.streamClaudeCodeMessage.mockImplementation(
+      async ({ handlers }: { handlers: { onClaudeEvent: (event: unknown) => void } }) => {
+        handlers.onClaudeEvent({
+          type: 'assistant',
+          message: { model: 'claude-sonnet-4-5', content: [] },
+        });
+        handlers.onClaudeEvent({
+          type: 'assistant',
+          message: { model: 'claude-sonnet-4-6', content: [] },
+        });
+      }
+    );
+
+    const { result } = renderUseClaudeCodeChatRuntime();
+
+    await act(async () => {
+      await result.current.submitPrompt('List files');
+    });
+
+    await waitFor(() =>
+      expect(result.current.artifacts.coding_agent_model).toBe('claude-sonnet-4-6')
+    );
+    expect(result.current.artifacts.model).toBeUndefined();
+    expect(result.current.artifacts.model_source).toBeUndefined();
+  });
+
+  it('syncs artifacts when historical session metadata arrives after mount', async () => {
+    const { rerender, result } = renderHook(
+      ({ model }: { model?: string }) =>
+        useClaudeCodeChatRuntime({
+          initialArtifacts: model
+            ? {
+                coding_agent_model: model,
+                selections: [],
+                files: [],
+                links: [],
+                tools: [],
+              }
+            : undefined,
+        }),
+      { initialProps: {} }
+    );
+
+    expect(result.current.artifacts.model).toBeUndefined();
+
+    rerender({ model: 'claude-sonnet-4-6' });
+
+    await waitFor(() =>
+      expect(result.current.artifacts.coding_agent_model).toBe('claude-sonnet-4-6')
+    );
+    expect(result.current.artifacts.model).toBeUndefined();
+
+    rerender({ model: undefined });
+
+    await waitFor(() => expect(result.current.artifacts.coding_agent_model).toBeUndefined());
+  });
+
   it('does not append denial text when permission resolution fails', async () => {
     const onError = vi.fn();
     let finishStream!: () => void;
