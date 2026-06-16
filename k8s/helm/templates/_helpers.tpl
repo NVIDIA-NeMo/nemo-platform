@@ -175,7 +175,11 @@ Existing Secret name for the secrets service default encryption key.
 Secret key that contains the secrets service default encryption key.
 */}}
 {{- define "nemo-platform.defaultEncryptionKeySecretKey" -}}
+{{- if include "nemo-platform.defaultEncryptionKeyExistingSecretName" . -}}
 {{- .Values.secrets.defaultEncryptionKey.existingSecret.key | default (include "nemo-platform.defaultEncryptionKeyEnvName" .) -}}
+{{- else -}}
+{{- include "nemo-platform.defaultEncryptionKeyEnvName" . -}}
+{{- end -}}
 {{- end -}}
 
 {{/*
