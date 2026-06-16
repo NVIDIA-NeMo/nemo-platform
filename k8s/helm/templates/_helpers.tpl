@@ -204,24 +204,23 @@ ServiceAccount name for the key generation hook.
 {{- end -}}
 
 {{/*
-Custom image pull secret if not defined
-*/}}
-{{- define "nemo-common.imagePullSecretName" -}}
-{{- if .Values.existingImagePullSecret -}}
-{{ printf "%s" .Values.existingImagePullSecret }}
-{{- else -}}
-{{ printf "%s-imagepullsecret" (include "nemo-platform.fullname" .) }}
-{{- end -}}
-{{- end -}}
-
-{{/*
 Image Pull Secrets
 */}}
 {{- define "nemo-common.imagepullsecrets" -}}
-- name: {{ include "nemo-common.imagePullSecretName" . }}
-{{- with .Values.additionalImagePullSecrets }}
-{{ toYaml . }}
-{{ end }}
+{{- with .Values.imagePullSecrets -}}
+{{- toYaml . -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+JSON list of image pull secret names for scripts that create pods.
+*/}}
+{{- define "nemo-common.imagepullsecretnames" -}}
+{{- $names := list -}}
+{{- range .Values.imagePullSecrets -}}
+{{- $names = append $names .name -}}
+{{- end -}}
+{{- toJson $names -}}
 {{- end }}
 
 {{/*

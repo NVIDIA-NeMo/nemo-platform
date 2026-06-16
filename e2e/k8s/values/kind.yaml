@@ -1,0 +1,35 @@
+# kind values for CPU-only GitHub Actions Kubernetes E2E runs.
+
+k8s-nim-operator:
+  enabled: false
+
+rbac:
+  k8sNimOperatorEnabled: false
+  volcanoEnabled: false
+
+postgresql:
+  image:
+    repository: docker.io/library/postgres
+
+core:
+  storage:
+    accessModes:
+      - ReadWriteOnce
+    volumePermissionsImage: docker.io/library/busybox
+
+ingress:
+  enabled: false
+
+httpRoute:
+  enabled: true
+  parentRefs:
+    - name: nmp-e2e-gateway
+
+platformConfig:
+  inference_gateway:
+    mock_provider_prefix: igw-mock-
+  models:
+    controller:
+      backends:
+        nim_operator:
+          enabled: false

@@ -3,20 +3,22 @@ title: "Manage Customization Jobs"
 description: ""
 ---
 <a id="ft-manage-customization-jobs"></a>
-Use customization jobs to fine-tune a [model](/documentation/customizer-reference/models/model-catalog) using a [dataset](/documentation/get-started/core-concepts/manage-files) and [hyperparameters](/documentation/customizer-reference/manage-jobs/training-configuration).
+Use customization jobs to fine-tune a [model](/documentation/customizer-reference/models/model-catalog) using a [dataset](/documentation/get-started/core-concepts/manage-files) and [hyperparameters](/documentation/customizer-reference/manage-customization-jobs/training-configuration).
 
 ## How It Works
 
-Customization jobs reference a **Model Entity** that contains the base model checkpoint. When training completes:
+A customization job references a **Model Entity** that contains the base model checkpoint, and is submitted to one of two backends — **automodel** (default, multi-GPU) or **unsloth** (single-GPU, quantized). The job then runs on the platform's GPU cluster. When training completes:
 
 -   **LoRA jobs**: Create an **Adapter** attached to the original Model Entity. Adapters can be auto-deployed to NIMs.
 -   **Full fine-tuning jobs**: Create a **new Model Entity** with the customized weights, linked to the base model.
 
 This design keeps adapters organized with their parent models and simplifies deployment workflows.
 
+Submission is backend-specific (you submit to the automodel or unsloth backend), but every job runs on the shared platform **Jobs** service. As a result, you poll status, list, and cancel jobs through that service the same way regardless of which backend you used.
+
 ## Prerequisites
 
-Before you can customize a model using a customization job, make sure that you have [prepared and uploaded a dataset](/documentation/fine-tune-models/tutorials/format-training-dataset) to the dataset repository.
+Before you can customize a model using a customization job, make sure that you have [prepared and uploaded a dataset](/documentation/customizer-reference/tutorials/format-training-dataset) to the dataset repository.
 
 ---
 
@@ -31,22 +33,22 @@ The value for `NMP_BASE_URL` will depend on your deployment. After the standard 
 </Tip>
 <Cards>
 
-<Card title="Create a Customization Job" href="/documentation/fine-tune-models/manage-customization-jobs/create-a-customization-job">
+<Card title="Create a Customization Job" href="/documentation/customizer-reference/manage-customization-jobs/create-a-customization-job">
 
-Create a customization job using SFT, DPO, or Knowledge Distillation.
+Create a customization job using SFT or Knowledge Distillation.
 
 </Card>
-<Card title="Get Job Status" href="/documentation/customizer-reference/manage-jobs/get-job-status">
+<Card title="Get Job Status" href="/documentation/customizer-reference/manage-customization-jobs/get-job-status">
 
 Check the status of a customization job.
 
 </Card>
-<Card title="List Active Jobs" href="/documentation/customizer-reference/manage-jobs/list-active-jobs">
+<Card title="List Active Jobs" href="/documentation/customizer-reference/manage-customization-jobs/list-active-jobs">
 
 List all active customization jobs to find a job name for use with Get Status or Cancel.
 
 </Card>
-<Card title="Cancel a Job" href="/documentation/customizer-reference/manage-jobs/cancel-job">
+<Card title="Cancel a Job" href="/documentation/customizer-reference/manage-customization-jobs/cancel-job">
 
 Cancel a customization job using its name and workspace.
 
@@ -60,7 +62,7 @@ Refer to the following pages for more information on customization jobs.
 
 <Cards>
 
-<Card title="Hyperparameters" href="/documentation/customizer-reference/manage-jobs/training-configuration">
+<Card title="Hyperparameters" href="/documentation/customizer-reference/manage-customization-jobs/training-configuration">
 
 Review the hyperparameters that you can use to customize a model.
 

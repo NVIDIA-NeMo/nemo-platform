@@ -26,7 +26,6 @@ secrets will not decrypt with a new key.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| additionalImagePullSecrets | object | `{}` | List of additional image pull secrets to use for pulling container images. Can be used when multiple image pull secrets are required in your environment. |
 | api | object | This object has the following default values for the API configuration. | API configuration settings for the api deployment |
 | api.affinity | object | `{}` | Affinity configuration for the API service. |
 | api.annotations | object | `{}` | Annotations to add to the API service deployment. |
@@ -199,7 +198,6 @@ secrets will not decrypt with a new key.
 | envoyProxy.timeouts.streamIdle | string | `"0s"` | Stream idle timeout. Time with no activity before stream is closed. 0 = disabled (required for long-lived streams). |
 | envoyProxy.tolerations | list | `[]` | Tolerations configuration for the Envoy pods. |
 | envoyProxy.topologySpreadConstraints | list | `[]` | Topology spread constraints for the Envoy pods. See https://kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/ |
-| existingImagePullSecret | string | `"nvcrimagepullsecret"` | You can specify an existing Kubernetes image pull secret for pulling images from the NGC container registry. The chart uses the `ngcAPIKey` value to generate the secret if you set this to an empty string. |
 | existingSecret | string | `"ngc-api"` | You can use an existing Kubernetes secret for communicating with the NGC API for downloading models. The chart uses the `ngcAPIKey` value to generate the secret if you set this to an empty string. |
 | externalDatabase | object | This object has the following default values for the external PostgreSQL configuration. | External PostgreSQL configuration settings. These values are only used when postgresql.enabled is set to false. |
 | externalDatabase.database | string | `"nemoplatform"` | Database name. |
@@ -219,6 +217,7 @@ secrets will not decrypt with a new key.
 | httpRoute.labels | object | `{}` | Extra labels for the HTTP Route object. |
 | httpRoute.parentRefs | list | `[]` | A list of Gateways to enable this route on. This is required if httpRoute.enabled is true. |
 | httpRoute.pathRules | list | `[{"backends":[{"port":"{{ include \"nemo-platform.ingressBackendPort\" . }}","service":"{{ include \"nemo-platform.ingressBackendService\" . }}"}],"matches":[{"path":"/","type":"Exact"},{"path":"/apis","type":"PathPrefix"},{"path":"/studio","type":"PathPrefix"},{"path":"/cluster-info","type":"Exact"},{"path":"/status","type":"Exact"}]}]` | Path matches to route queries. |
+| imagePullSecrets | list | `[]` | Existing Kubernetes image pull secrets to use for pulling container images from private registries or mirrors. |
 | ingress.annotations | object | `{}` | Annotations for the ingress resource. |
 | ingress.className | string | `""` | The ingress class to use if your cluster has more than one class. |
 | ingress.defaultHost | string | `""` | Optional default hostname. When set, one rule is generated with this host and paths from the first entry in ingress.hosts. |
@@ -249,7 +248,7 @@ secrets will not decrypt with a new key.
 | ncclTest.iterations | int | `3` | How many times to run the full multinode NCCL test (orchestrator loop; env NCCL_TEST_ITERATIONS). Increase the test timeout on helm test if increasing this variable |
 | ncclTest.validation.minBandwidthMBpsAt1024MB | int | `8000` | Minimum allreduce bandwidth (MB/s) at 1024MB message size; 0 disables the floor check in nccl_test.py. |
 | ncclTest.waitTimeoutSeconds | int | `900` | Max seconds to wait for each worker pod to complete. |
-| ngcAPIKey | string | `"YOUR-NGC-API-KEY"` | Your NVIDIA GPU Cloud (NGC) API key authenticates and enables pulling images from the NGC container registry. The existing secret overrides this key if you provide one to the `existingSecret` key. |
+| ngcAPIKey | string | `"YOUR-NGC-API-KEY"` | Your NVIDIA GPU Cloud (NGC) API key authenticates API calls to NGC services, such as model downloads. The existing secret overrides this key if you provide one to the `existingSecret` key. |
 | openshiftRoute | object | `{"annotations":{},"enabled":false,"host":"","labels":{},"service":"{{ include \"nemo-platform.ingressBackendService\" . }}","targetPort":"{{ include \"nemo-platform.ingressBackendPort\" . }}","tls":{}}` | OpenShift Route (route.openshift.io/v1). Use on OpenShift to expose the API via a Route instead of Ingress. |
 | openshiftRoute.annotations | object | `{}` | Annotations for the route resource. |
 | openshiftRoute.enabled | bool | `false` | Specifies whether to create an OpenShift Route for the API service. |

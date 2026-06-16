@@ -1,0 +1,24 @@
+# Default E2E values for running tests in a Kubernetes cluster, for ephemeral testing
+
+# Always disable nim operator for E2E tests
+k8s-nim-operator:
+  enabled: false
+
+postgresql:
+  image:
+    repository: docker.io/library/postgres
+  persistence:
+    storageClass: local-path
+
+ingress:
+  enabled: false
+
+platformConfig:
+  # This is used to enable mock provider mode for E2E tests.
+  inference_gateway:
+    mock_provider_prefix: igw-mock-
+
+core:
+  storage:
+    storageClass: oci-nfs
+    volumePermissionsImage: docker.io/library/busybox

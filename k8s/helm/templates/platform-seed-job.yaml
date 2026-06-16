@@ -1,4 +1,5 @@
 {{- if and .Values.api.enabled .Values.platformSeedJob.enabled }}
+{{- $imagePullSecrets := include "nemo-common.imagepullsecrets" . }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -26,8 +27,10 @@ spec:
         {{- end }}
     spec:
       restartPolicy: OnFailure
+{{- if $imagePullSecrets }}
       imagePullSecrets:
-        {{ include "nemo-common.imagepullsecrets" . | nindent 8 | trim }}
+{{- $imagePullSecrets | nindent 8 }}
+{{- end }}
       serviceAccountName: {{ include "nmp-api.apiServiceAccountName" . }}
       securityContext:
         {{- include "nemo-common.podSecurityContext" (dict "global" .Values.podSecurityContext "local" .Values.platformSeedJob.podSecurityContext) | nindent 8 }}

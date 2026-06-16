@@ -42,6 +42,108 @@ navigation:
         path: ../../run-inference/tutorials/run-inference.mdx
       - page: Deploy Models
         path: ../../run-inference/tutorials/deploy-models.mdx
+  - section: Fine-tune Models
+    slug: customizer-reference
+    path: ../../customizer/index.mdx
+    contents:
+    - page: Customization Concepts
+      path: ../../customizer/about.mdx
+      slug: customization-concepts
+    - section: Manage Customization Jobs
+      slug: manage-customization-jobs
+      path: ../../customizer/manage-customization-jobs/index.mdx
+      contents:
+      - page: Create a Customization Job
+        path: ../../customizer/manage-customization-jobs/create-job.mdx
+        slug: create-a-customization-job
+      - page: Get Job Status
+        path: ../../customizer/manage-customization-jobs/get-job-status.mdx
+        slug: get-job-status
+      - page: List Active Jobs
+        path: ../../customizer/manage-customization-jobs/list-active-jobs.mdx
+        slug: list-active-jobs
+      - page: Cancel a Job
+        path: ../../customizer/manage-customization-jobs/cancel-job.mdx
+        slug: cancel-job
+      - page: Training Configuration
+        path: ../../customizer/manage-customization-jobs/hyperparameters.mdx
+        slug: training-configuration
+      - page: Customization Job Reference
+        path: ../../customizer/manage-customization-jobs/customization-job-reference.mdx
+        slug: customization-job-reference
+    - section: Manage Model Entities
+      slug: manage-model-entities
+      contents:
+      - page: Overview
+        path: ../../customizer/manage-model-entities/index.mdx
+        slug: overview
+      - page: Create a Model Entity
+        path: ../../customizer/manage-model-entities/create-model-entity.mdx
+        slug: create-a-model-entity
+      - page: Create a Model FileSet
+        path: ../../customizer/manage-model-entities/create-fileset.mdx
+        slug: create-a-model-file-set
+    - section: Models
+      slug: models
+      contents:
+      - page: Model Catalog
+        path: ../../customizer/models/index.mdx
+        slug: model-catalog
+      - page: Dataset Format
+        path: ../../customizer/models/data-format.mdx
+        slug: dataset-format
+      - page: Embedding
+        path: ../../customizer/models/embedding.mdx
+        slug: embedding
+      - page: GPT-OSS
+        path: ../../customizer/models/gpt-oss.mdx
+        slug: gpt-oss
+      - page: Llama
+        path: ../../customizer/models/llama.mdx
+        slug: llama
+      - page: Llama Nemotron
+        path: ../../customizer/models/llama-nemotron.mdx
+        slug: llama-nemotron
+      - page: Mistral
+        path: ../../customizer/models/mistral.mdx
+        slug: mistral
+      - page: Phi
+        path: ../../customizer/models/phi.mdx
+        slug: phi
+      - page: Qwen
+        path: ../../customizer/models/qwen.mdx
+        slug: qwen
+    - section: Tutorials
+      slug: tutorials
+      path: ../../customizer/tutorials/index.mdx
+      contents:
+      - page: Understanding Models and Training
+        path: ../../customizer/tutorials/understand-configurations-and-models.mdx
+        slug: understanding-models-and-training
+      - page: Format Training Dataset
+        path: ../../customizer/tutorials/format-training-dataset.mdx
+        slug: format-training-dataset
+      - page: Import HuggingFace Models
+        path: ../../customizer/tutorials/import-hf-model.mdx
+        slug: import-hugging-face-models
+      - page: SFT Customization Job
+        path: ../../customizer/tutorials/sft-customization-job.mdx
+        slug: sft-customization-job
+      - page: LoRA Customization Job
+        path: ../../customizer/tutorials/lora-customization-job.mdx
+        slug: lora-customization-job
+      - page: Distillation Customization Job
+        path: ../../customizer/tutorials/distillation-customization-job.mdx
+        slug: distillation-customization-job
+      - page: Embedding Customization Job
+        path: ../../customizer/tutorials/embedding-customization-job.mdx
+        slug: embedding-customization-job
+      - page: Job Metrics
+        path: ../../customizer/tutorials/metrics.mdx
+        slug: metrics
+      - page: Optimize Throughput
+        path: ../../customizer/tutorials/optimize-throughput.mdx
+        slug: optimize-throughput
   - section: Agents
     path: ../../agents/index.mdx
     contents:
@@ -234,6 +336,8 @@ navigation:
     - section: Troubleshooting
       path: ../../troubleshooting/index.mdx
       contents:
+      - page: Customizer
+        path: ../../troubleshooting/customizer.mdx
       - page: Data Designer
         path: ../../troubleshooting/data-designer.mdx
       - page: Evaluator

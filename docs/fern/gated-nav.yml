@@ -51,72 +51,6 @@
     path: ../../auth/security-model.mdx
   - page: Troubleshooting
     path: ../../auth/troubleshooting.mdx
-- section: Fine-tune Models
-  contents:
-  - page: Customization Concepts
-    path: ../../customizer/about.mdx
-  - page: About
-    path: ../../customizer/index.mdx
-  - page: Cancel Job
-    path: ../../customizer/manage-customization-jobs/cancel-job.mdx
-  - page: Create Job
-    path: ../../customizer/manage-customization-jobs/create-job.mdx
-  - page: Customization Job Reference
-    path: ../../customizer/manage-customization-jobs/customization-job-reference.mdx
-  - page: Get Job Status
-    path: ../../customizer/manage-customization-jobs/get-job-status.mdx
-  - page: Training Configuration
-    path: ../../customizer/manage-customization-jobs/hyperparameters.mdx
-  - page: Overview
-    path: ../../customizer/manage-customization-jobs/index.mdx
-  - page: List Active Jobs
-    path: ../../customizer/manage-customization-jobs/list-active-jobs.mdx
-  - page: Create a Model FileSet
-    path: ../../customizer/manage-model-entities/create-fileset.mdx
-  - page: Create a Model Entity
-    path: ../../customizer/manage-model-entities/create-model-entity.mdx
-  - page: Overview
-    path: ../../customizer/manage-model-entities/index.mdx
-  - page: Dataset Format
-    path: ../../customizer/models/data-format.mdx
-  - page: Embedding
-    path: ../../customizer/models/embedding.mdx
-  - page: GPT-OSS
-    path: ../../customizer/models/gpt-oss.mdx
-  - page: Model Catalog
-    path: ../../customizer/models/index.mdx
-  - page: Llama Nemotron
-    path: ../../customizer/models/llama-nemotron.mdx
-  - page: Llama
-    path: ../../customizer/models/llama.mdx
-  - page: Mistral
-    path: ../../customizer/models/mistral.mdx
-  - page: Phi
-    path: ../../customizer/models/phi.mdx
-  - page: Qwen
-    path: ../../customizer/models/qwen.mdx
-  - page: Distillation Customization Job
-    path: ../../customizer/tutorials/distillation-customization-job.mdx
-  - page: Dpo Customization Job
-    path: ../../customizer/tutorials/dpo-customization-job.mdx
-  - page: Embedding Customization Job
-    path: ../../customizer/tutorials/embedding-customization-job.mdx
-  - page: Format Training Dataset
-    path: ../../customizer/tutorials/format-training-dataset.mdx
-  - page: Import HuggingFace Models
-    path: ../../customizer/tutorials/import-hf-model.mdx
-  - page: Overview
-    path: ../../customizer/tutorials/index.mdx
-  - page: Lora Customization Job
-    path: ../../customizer/tutorials/lora-customization-job.mdx
-  - page: Job Metrics
-    path: ../../customizer/tutorials/metrics.mdx
-  - page: Optimize Throughput
-    path: ../../customizer/tutorials/optimize-throughput.mdx
-  - page: Sft Customization Job
-    path: ../../customizer/tutorials/sft-customization-job.mdx
-  - page: Understanding Models and Training
-    path: ../../customizer/tutorials/understand-configurations-and-models.mdx
 - section: Safe Synthesizer
   contents:
   - page: Data Synthesis
@@ -211,5 +145,8 @@
   contents:
   - page: Cluster Setup
     path: ../../troubleshooting/cluster-setup.mdx
-  - page: Customizer
-    path: ../../troubleshooting/customizer.mdx
+- section: Fine-tune Models
+  contents:
+  # DPO is not yet a documented training type; the tutorial stays in the repo but out of nav.
+  - page: DPO Customization Job
+    path: ../../customizer/tutorials/dpo-customization-job.mdx

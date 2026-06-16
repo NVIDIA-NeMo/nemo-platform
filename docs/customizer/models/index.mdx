@@ -9,7 +9,7 @@ Explore the model families and sizes supported by NVIDIA NeMo Customizer.
 <Note>
 
 For information on setting up model entities for customization, see the [Manage Model Entities](/documentation/customizer-reference/manage-model-entities/overview) guide.
-For fine-tuning and deployment tutorials, see the [Tutorials](/documentation/fine-tune-models/tutorials) guide.
+For fine-tuning and deployment tutorials, see the [Tutorials](/documentation/customizer-reference/tutorials) guide.
 
 </Note>
 ## Before You Start
@@ -38,7 +38,7 @@ View the available Llama Nemotron models from NVIDIA, including Nano and Super v
 View the available Phi models from Microsoft, designed for strong reasoning capabilities with efficient deployment.
 
 </Card>
-<Card title="Embedding Models" href="/documentation/fine-tune-models/models/embedding">
+<Card title="Embedding Models" href="/documentation/customizer-reference/models/embedding">
 
 View the available embedding models optimized for retrieval and question-answering tasks.
 
@@ -63,7 +63,7 @@ View the available Mistral models, including Mistral and Ministral variants for 
 
 ## Tested Models
 
-The following table lists models that NVIDIA tested and their available features. While NeMo Customizer works with all LLM NIM microservices, the table lists the models that NVIDIA tested. Models available for fine-tuning with NeMo Customizer are not limited to those listed.
+The following table lists models that NVIDIA tested and their available features. This is a list of *known-good* combinations, not a list of limits: NeMo Customizer can fine-tune many models and regimes beyond those listed, including additional Hugging Face checkpoints, other fine-tuning regimes (LoRA, merged-LoRA, full-weight, distillation), and either training backend (Automodel or Unsloth). Models and regimes outside this table may work but have not been formally validated.
 
 For detailed technical specifications of each model such as architecture, parameters, and token limits, refer to the [model family](#model-families) pages.
 
@@ -96,4 +96,4 @@ The following models support both chat and completion model training.
 |--|--|--|
 | [nvidia/llama-nemotron-embed-1b-v2](https://huggingface.co/nvidia/llama-nemotron-embed-1b-v2) | Full SFT, LoRA (merged) | Supported |
 
-For detailed technical specifications and configuration information for embedding models, see the [Embedding Models](/documentation/fine-tune-models/models/embedding) page.
+For detailed technical specifications and configuration information for embedding models, see the [Embedding Models](/documentation/customizer-reference/models/embedding) page.
