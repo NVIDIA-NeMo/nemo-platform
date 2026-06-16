@@ -12,7 +12,7 @@ from typing import TypedDict
 from pydantic import BaseModel
 
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
-from nemo_platform_plugin.client.endpoint import Endpoint
+from nemo_platform_plugin.client.endpoint import delete, get, post
 from nemo_platform_plugin.client.response import NemoResponse
 
 BASE = "http://test:8000"
@@ -39,10 +39,10 @@ class WorkspacePath(TypedDict):
     workspace: str
 
 
-CREATE_ITEM = Endpoint.post("/v2/items", EmptyPath, ItemRequest, ItemResponse)
-GET_ITEM = Endpoint.get("/v2/items/{name}", NamePath, ItemResponse)
-DELETE_ITEM = Endpoint.delete("/v2/items/{name}", NamePath)
-GET_WS_ITEM = Endpoint.get("/v2/workspaces/{workspace}/items", WorkspacePath, ItemResponse)
+CREATE_ITEM = post("/v2/items", EmptyPath, ItemRequest, ItemResponse)
+GET_ITEM = get("/v2/items/{name}", NamePath, ItemResponse)
+DELETE_ITEM = delete("/v2/items/{name}", NamePath)
+GET_WS_ITEM = get("/v2/workspaces/{workspace}/items", WorkspacePath, ItemResponse)
 
 
 class StubClient(NemoClient):

@@ -5,7 +5,7 @@ Tracking file for the typed HTTP client work in `nemo_platform_plugin/client/`.
 ## What we built
 
 A typed endpoint/client system where:
-- **`Endpoint[PathT, RequestT, ResponseT]`** — frozen dataclass linking a URL template to typed path params, request body, and response body. Classmethods `get`, `post`, `patch`, `delete` for construction.
+- **`BodyEndpoint[PathT, RequestT, ResponseT]`** / **`NoBodyEndpoint[PathT, ResponseT]`** — frozen dataclasses linking a URL template to typed path params, request body (if any), and response body. `BodyEndpoint.request(payload, **path_params)` requires payload; `NoBodyEndpoint.request(**path_params)` has no payload parameter. `Endpoint` is a union alias of both. Constructed via standalone factory functions `get()`, `post()`, `patch()`, `delete()` (not classmethods — see `ty` limitation below).
 - **`PreparedRequest[ResponseT]`** — frozen dataclass produced by calling `.request()` on an endpoint with a payload + path params. Carries the resolved path, method, body, and response type.
 - **`NemoResponse[ResponseT]`** — frozen dataclass wrapping the full `httpx.Response` and a parsed Pydantic body. `.data()` for the common "give me the body or raise" case.
 - **`BaseNemoClient`** — shared logic: URL construction, workspace default injection, JSON serialization, response parsing.
@@ -36,7 +36,7 @@ plugins/example-plugin/src/nemo_example_plugin/
 - `ResponseT` is currently `bound=BaseModel | None` — will need to be widened to support streaming (see below).
 - `PathT` is unbound — it's a TypedDict, not a BaseModel.
 - Generic order is `Endpoint[PathT, RequestT, ResponseT]` — path first since it's always present.
-- Classmethods use `Endpoint(...)` not `cls(...)` — `ty` infers `cls(...)` as `Self` which doesn't match the concrete return type.
+- Factory functions instead of classmethods — `ty` can't infer class-level TypeVars from classmethod/staticmethod args ([astral-sh/ty#541](https://github.com/astral-sh/ty/issues/541)). Standalone functions infer correctly. Repro in `ty_classmethod_repro.py`.
 - `path_type` is always required on classmethods — no `EmptyPath` default.
 
 ## Streaming design (spike results)
@@ -78,11 +78,13 @@ def send(self, request: PreparedRequest[ModelT]) -> NemoResponse[ModelT]: ...
   - `PreparedRequest[BinaryStream]` → `NemoBinaryResponse` ✓
   - `PreparedRequest[None]` → `NemoResponse[None]` ✓
 
-### Known `ty` limitation
+### Known `ty` limitation (verified on ty 0.0.17)
 
-- When the generic flows through chained calls (`Endpoint.get(...)` → `.request()` → `PreparedRequest[ResponseT]`), `ty` resolves to `Unknown` instead of propagating the concrete type. This is a `ty` inference gap with multi-hop generic propagation, not a problem with our design. The overloads themselves are correct.
-- The Delete/None case works because `None` is a literal type, not a generic resolution.
-- This may improve in future `ty` versions. For now, explicit type annotations on endpoint variables can help if needed.
+- **`ty` does not infer generic parameters from classmethod arguments.** `Endpoint.get("/path", WorkspacePath, UserResponse)` is inferred as `Endpoint[Unknown, None, Unknown]` — `ty` doesn't propagate `type[PathT]` / `type[ResponseT]` args into the return type. This means `PreparedRequest` also carries `Unknown`, and overloaded `send()` can't pick the right return type.
+- The overloads themselves are correct — when `PreparedRequest` is constructed with an explicit type parameter (e.g. `PreparedRequest[UserResponse]`), `ty` resolves perfectly. The gap is specifically in classmethod generic inference.
+- This is not a `from __future__ import annotations` issue — same behavior with or without it.
+- **Impact on overloaded `send()`:** At the type-checking level, `ty` would pick a fallback overload (or `Unknown`) rather than the correct one. Runtime dispatch still works correctly.
+- This may require a different construction pattern (e.g. standalone factory functions, or explicit type annotations on variables) to get full static type safety in `ty`.
 
 ### Upload considerations
 

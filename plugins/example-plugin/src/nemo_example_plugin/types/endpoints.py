@@ -21,7 +21,7 @@ from nemo_example_plugin.types.payloads import (
     HelloResponse,
     UpdateExampleItemRequest,
 )
-from nemo_platform_plugin.client.endpoint import Endpoint
+from nemo_platform_plugin.client.endpoint import delete, get, patch, post
 
 
 # -- Path parameter types --------------------------------------------------
@@ -42,16 +42,16 @@ class WorkspaceItemPath(TypedDict):
 
 # -- Hello -----------------------------------------------------------------
 
-HelloEndpoint = Endpoint.get("/hello/{name}", NamePath, HelloResponse)
+HelloEndpoint = get("/hello/{name}", NamePath, HelloResponse)
 
 # -- Items CRUD ------------------------------------------------------------
 
-CreateItemEndpoint = Endpoint.post("/v2/workspaces/{workspace}/items", WorkspacePath, CreateExampleItemRequest, ExampleItem)
+CreateItemEndpoint = post("/v2/workspaces/{workspace}/items", WorkspacePath, CreateExampleItemRequest, ExampleItem)
 
-ListItemsEndpoint = Endpoint.get("/v2/workspaces/{workspace}/items", WorkspacePath, ExampleItemPage)
+ListItemsEndpoint = get("/v2/workspaces/{workspace}/items", WorkspacePath, ExampleItemPage)
 
-GetItemEndpoint = Endpoint.get("/v2/workspaces/{workspace}/items/{name}", WorkspaceItemPath, ExampleItem)
+GetItemEndpoint = get("/v2/workspaces/{workspace}/items/{name}", WorkspaceItemPath, ExampleItem)
 
-UpdateItemEndpoint = Endpoint.patch("/v2/workspaces/{workspace}/items/{name}", WorkspaceItemPath, UpdateExampleItemRequest, ExampleItem)
+UpdateItemEndpoint = patch("/v2/workspaces/{workspace}/items/{name}", WorkspaceItemPath, UpdateExampleItemRequest, ExampleItem)
 
-DeleteItemEndpoint = Endpoint.delete("/v2/workspaces/{workspace}/items/{name}", WorkspaceItemPath)
+DeleteItemEndpoint = delete("/v2/workspaces/{workspace}/items/{name}", WorkspaceItemPath)

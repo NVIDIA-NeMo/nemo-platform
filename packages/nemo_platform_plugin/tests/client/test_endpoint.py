@@ -7,7 +7,7 @@ from typing import TypedDict
 
 from pydantic import BaseModel
 
-from nemo_platform_plugin.client.endpoint import Endpoint, PreparedRequest
+from nemo_platform_plugin.client.endpoint import PreparedRequest, delete, get, patch, post
 
 
 class FakeRequest(BaseModel):
@@ -33,7 +33,7 @@ class IdPath(TypedDict):
 
 
 def test_post_endpoint_produces_prepared_request() -> None:
-    ep = Endpoint.post("/v2/workspaces/{workspace}/items", WorkspacePath, FakeRequest, FakeResponse)
+    ep = post("/v2/workspaces/{workspace}/items", WorkspacePath, FakeRequest, FakeResponse)
     payload = FakeRequest(name="alice")
     prepared = ep.request(payload, workspace="default")
 
@@ -45,7 +45,7 @@ def test_post_endpoint_produces_prepared_request() -> None:
 
 
 def test_get_endpoint_no_body() -> None:
-    ep = Endpoint.get("/v2/workspaces/{workspace}/items/{name}", WorkspaceItemPath, FakeResponse)
+    ep = get("/v2/workspaces/{workspace}/items/{name}", WorkspaceItemPath, FakeResponse)
     prepared = ep.request(workspace="default", name="item-1")
 
     assert prepared.path == "/v2/workspaces/default/items/item-1"
@@ -55,7 +55,7 @@ def test_get_endpoint_no_body() -> None:
 
 
 def test_delete_endpoint() -> None:
-    ep = Endpoint.delete("/v2/workspaces/{workspace}/items/{name}", WorkspaceItemPath)
+    ep = delete("/v2/workspaces/{workspace}/items/{name}", WorkspaceItemPath)
     prepared = ep.request(workspace="default", name="item-1")
 
     assert prepared.path == "/v2/workspaces/default/items/item-1"
@@ -64,7 +64,7 @@ def test_delete_endpoint() -> None:
 
 
 def test_patch_endpoint() -> None:
-    ep = Endpoint.patch("/items/{id}", IdPath, FakeRequest, FakeResponse)
+    ep = patch("/items/{id}", IdPath, FakeRequest, FakeResponse)
     prepared = ep.request(FakeRequest(name="updated"), id="42")
 
     assert prepared.path == "/items/42"
@@ -73,7 +73,7 @@ def test_patch_endpoint() -> None:
 
 
 def test_endpoint_repr() -> None:
-    ep = Endpoint.post("/items/{id}", IdPath, FakeRequest, FakeResponse)
+    ep = post("/items/{id}", IdPath, FakeRequest, FakeResponse)
     r = repr(ep)
     assert "/items" in r
     assert "FakeRequest" in r

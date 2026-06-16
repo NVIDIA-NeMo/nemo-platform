@@ -10,7 +10,7 @@ endpoint carries the type linkage, not the models themselves.
 Usage::
 
     from pydantic import BaseModel
-    from nemo_platform_plugin.client.endpoint import Endpoint
+    from nemo_platform_plugin.client.endpoint import get, post
 
     class CreateUserRequest(BaseModel):
         name: str
@@ -22,15 +22,15 @@ Usage::
     class WorkspacePath(TypedDict):
         workspace: str
 
-    CREATE_USER = Endpoint.post(
+    CreateUserEndpoint = post(
         "/v2/workspaces/{workspace}/users",
-        path_type=WorkspacePath,
-        request_type=CreateUserRequest,
-        response_type=UserResponse,
+        WorkspacePath,
+        CreateUserRequest,
+        UserResponse,
     )
 
     # Client usage — full type inference on both response and path params:
-    resp = client.send(CREATE_USER(CreateUserRequest(name="alice"), workspace="default"))
+    resp = client.send(CreateUserEndpoint.request(CreateUserRequest(name="alice"), workspace="default"))
     resp.body  # UserResponse
 """
 
@@ -42,15 +42,32 @@ from typing import Generic, TypeVar, Unpack
 from pydantic import BaseModel
 
 PathT = TypeVar("PathT")
-RequestT = TypeVar("RequestT", bound=BaseModel | None)
-ResponseT = TypeVar("ResponseT", bound=BaseModel | None)
+RequestT = TypeVar("RequestT", bound=BaseModel)
+ResponseT = TypeVar("ResponseT")  # unbound — BaseModel, None, BinaryStream, Stream[T]
+ModelT = TypeVar("ModelT", bound=BaseModel)
+
+
+class BinaryStream:
+    """Marker type: endpoint returns raw bytes (e.g. file download)."""
+
+
+@dataclass(frozen=True, slots=True)
+class Stream(Generic[ModelT]):
+    """Marker type: endpoint returns a stream of ``ModelT`` objects (SSE/NDJSON).
+
+    Used as ``response_type`` in endpoint definitions::
+
+        ChatEndpoint = post("/chat/{workspace}", WorkspacePath, ChatRequest, Stream[ChatChunk])
+    """
+
+    model_type: type[ModelT]
 
 
 @dataclass(frozen=True, slots=True)
 class PreparedRequest(Generic[ResponseT]):
     """A request ready to be sent — carries the endpoint metadata and payload.
 
-    Created by calling an :class:`Endpoint` with a payload.  The type parameter
+    Created by calling ``request()`` on an endpoint.  The type parameter
     ``ResponseT`` flows through to :meth:`NemoClient.send` so the return type
     is inferred automatically.
     """
@@ -62,38 +79,16 @@ class PreparedRequest(Generic[ResponseT]):
 
 
 @dataclass(frozen=True, slots=True)
-class Endpoint(Generic[PathT, RequestT, ResponseT]):
-    """A typed HTTP endpoint definition.
-
-    Links a path type ``PathT``, request model ``RequestT``, and response model
-    ``ResponseT`` together with the HTTP method and path template.  Calling an
-    endpoint with a payload produces a :class:`PreparedRequest` that can be
-    passed to the client.
-
-    Parameters
-    ----------
-    path:
-        URL path template, e.g. ``"/v2/workspaces/{workspace}/items"``.
-        Path parameters are filled by keyword arguments when calling the endpoint.
-    method:
-        HTTP method (``GET``, ``POST``, ``PATCH``, ``DELETE``).
-    request_type:
-        Pydantic model class for the request body (``None`` for body-less methods).
-    response_type:
-        Pydantic model class for the response body (``None`` for body-less responses).
-    """
+class BodyEndpoint(Generic[PathT, RequestT, ResponseT]):
+    """Endpoint that requires a request body (POST, PATCH, PUT)."""
 
     path: str
     method: str
-    request_type: type[RequestT] | None
+    request_type: type[RequestT]
     response_type: type[ResponseT] | None
 
-    def request(self, payload: RequestT | None = None, **path_params: Unpack[PathT]) -> PreparedRequest[ResponseT]:
-        """Build a :class:`PreparedRequest` from a payload and path parameters.
-
-        Path parameters are substituted into the URL template using
-        ``str.format_map``.
-        """
+    def request(self, payload: RequestT, **path_params: Unpack[PathT]) -> PreparedRequest[ResponseT]:
+        """Build a :class:`PreparedRequest` from a required payload and path parameters."""
         resolved_path = self.path.format_map(path_params) if path_params else self.path
         return PreparedRequest(
             path=resolved_path,
@@ -102,22 +97,45 @@ class Endpoint(Generic[PathT, RequestT, ResponseT]):
             response_type=self.response_type,
         )
 
-    @classmethod
-    def get(cls, path: str, path_type: type[PathT], response_type: type[ResponseT]) -> Endpoint[PathT, None, ResponseT]:
-        """Define a GET endpoint (no request body)."""
-        return Endpoint(path, "GET", None, response_type)
 
-    @classmethod
-    def post(cls, path: str, path_type: type[PathT], request_type: type[RequestT], response_type: type[ResponseT]) -> Endpoint[PathT, RequestT, ResponseT]:
-        """Define a POST endpoint."""
-        return Endpoint(path, "POST", request_type, response_type)
+@dataclass(frozen=True, slots=True)
+class NoBodyEndpoint(Generic[PathT, ResponseT]):
+    """Endpoint with no request body (GET, DELETE)."""
 
-    @classmethod
-    def patch(cls, path: str, path_type: type[PathT], request_type: type[RequestT], response_type: type[ResponseT]) -> Endpoint[PathT, RequestT, ResponseT]:
-        """Define a PATCH endpoint."""
-        return Endpoint(path, "PATCH", request_type, response_type)
+    path: str
+    method: str
+    response_type: type[ResponseT] | None
 
-    @classmethod
-    def delete(cls, path: str, path_type: type[PathT]) -> Endpoint[PathT, None, None]:
-        """Define a DELETE endpoint (no request body, no response body)."""
-        return Endpoint(path, "DELETE", None, None)
+    def request(self, **path_params: Unpack[PathT]) -> PreparedRequest[ResponseT]:
+        """Build a :class:`PreparedRequest` from path parameters only."""
+        resolved_path = self.path.format_map(path_params) if path_params else self.path
+        return PreparedRequest(
+            path=resolved_path,
+            method=self.method,
+            body=None,
+            response_type=self.response_type,
+        )
+
+
+# Union type for use in type hints that accept any endpoint
+Endpoint = BodyEndpoint | NoBodyEndpoint
+
+
+def get(path: str, path_type: type[PathT], response_type: type[ResponseT]) -> NoBodyEndpoint[PathT, ResponseT]:
+    """Define a GET endpoint (no request body)."""
+    return NoBodyEndpoint(path, "GET", response_type)
+
+
+def post(path: str, path_type: type[PathT], request_type: type[RequestT], response_type: type[ResponseT]) -> BodyEndpoint[PathT, RequestT, ResponseT]:
+    """Define a POST endpoint."""
+    return BodyEndpoint(path, "POST", request_type, response_type)
+
+
+def patch(path: str, path_type: type[PathT], request_type: type[RequestT], response_type: type[ResponseT]) -> BodyEndpoint[PathT, RequestT, ResponseT]:
+    """Define a PATCH endpoint."""
+    return BodyEndpoint(path, "PATCH", request_type, response_type)
+
+
+def delete(path: str, path_type: type[PathT]) -> NoBodyEndpoint[PathT, None]:
+    """Define a DELETE endpoint (no request body, no response body)."""
+    return NoBodyEndpoint(path, "DELETE", None)

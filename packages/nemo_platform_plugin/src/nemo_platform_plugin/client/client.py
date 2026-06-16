@@ -4,33 +4,34 @@
 """Typed HTTP client for NeMo Platform.
 
 Sends :class:`~.endpoint.PreparedRequest` objects and returns typed
-:class:`~.response.NemoResponse` objects.  Subclass :class:`NemoClient`
-and set ``api_prefix`` to scope requests to a specific API surface.
+responses.  The return type of :meth:`send` is determined by the endpoint's
+``ResponseT``:
 
-Usage::
-
-    from nemo_platform_plugin.client import NemoClient
-
-    class ExampleClient(NemoClient):
-        api_prefix = "/apis/example"
-
-    client = ExampleClient(base_url="http://localhost:8080")
-    resp = client.send(CREATE_ITEM(CreateItemRequest(name="x"), workspace="default"))
-    resp.body  # ItemResponse — fully typed
+- ``BaseModel`` → :class:`~.response.NemoResponse[T]`
+- ``None`` → :class:`~.response.NemoResponse[None]`
+- ``BinaryStream`` → :class:`~.response.NemoBinaryResponse`
+- ``Stream[T]`` → :class:`~.response.NemoStreamResponse[T]`
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TypeVar
+from typing import TypeVar, overload
 
 import httpx
 from pydantic import BaseModel
 
-from nemo_platform_plugin.client.endpoint import PreparedRequest
-from nemo_platform_plugin.client.response import NemoResponse
+from nemo_platform_plugin.client.endpoint import BinaryStream, PreparedRequest, Stream
+from nemo_platform_plugin.client.response import (
+    AsyncNemoBinaryResponse,
+    AsyncNemoStreamResponse,
+    NemoBinaryResponse,
+    NemoResponse,
+    NemoStreamResponse,
+)
 
-ResponseT = TypeVar("ResponseT", bound=BaseModel)
+ResponseT = TypeVar("ResponseT", bound=BaseModel | None)
+ModelT = TypeVar("ModelT", bound=BaseModel)
 
 DEFAULT_TIMEOUT = 60.0
 
@@ -38,14 +39,8 @@ DEFAULT_TIMEOUT = 60.0
 class BaseNemoClient:
     """Shared logic for sync and async NeMo clients.
 
-    Handles URL construction, request serialisation, and response parsing.
+    Handles URL construction and request serialisation.
     Subclasses provide the actual HTTP transport (sync or async).
-
-    Parameters
-    ----------
-    base_url:
-        Base URL of the NeMo Platform instance
-        (e.g. ``"http://localhost:8080"``).
     """
 
     api_prefix: str = ""
@@ -67,18 +62,16 @@ class BaseNemoClient:
             path = path.replace("{workspace}", self._workspace)
         return self._base_url + self.api_prefix + path
 
-    def _prepare_json(self, request: PreparedRequest[ResponseT]) -> dict | None:
+    def _prepare_json(self, request: PreparedRequest) -> dict | None:
         if request.body is not None:
             return request.body.model_dump(mode="json")
         return None
 
-    def _parse_response(self, request: PreparedRequest[ResponseT], raw: httpx.Response) -> NemoResponse[ResponseT]:
-        raw.raise_for_status()
-        body = request.response_type.model_validate(raw.json()) if request.response_type is not None else None
-        return NemoResponse(
-            http_response=raw,
-            body=body,  # type: ignore[arg-type]
-        )
+    def _is_binary(self, request: PreparedRequest) -> bool:
+        return request.response_type is BinaryStream
+
+    def _is_stream(self, request: PreparedRequest) -> bool:
+        return isinstance(request.response_type, type) and issubclass(request.response_type, Stream)
 
 
 class NemoClient(BaseNemoClient):
@@ -86,21 +79,6 @@ class NemoClient(BaseNemoClient):
 
     Subclass and set ``api_prefix`` to the API mount point
     (e.g. ``"/apis/example"``).
-
-    Parameters
-    ----------
-    base_url:
-        Base URL of the NeMo Platform instance
-        (e.g. ``"http://localhost:8080"``).
-    workspace:
-        Default workspace injected into ``{workspace}`` path parameters.
-    default_headers:
-        Additional HTTP headers sent with every request (e.g. auth tokens).
-    timeout:
-        Request timeout in seconds.  Defaults to 60.
-    http_client:
-        Optional pre-configured ``httpx.Client``.  When provided,
-        ``default_headers`` and ``timeout`` are ignored.
     """
 
     def __init__(
@@ -118,40 +96,50 @@ class NemoClient(BaseNemoClient):
             timeout=timeout,
         )
 
-    def send(self, request: PreparedRequest[ResponseT]) -> NemoResponse[ResponseT]:
+    @overload
+    def send(self, request: PreparedRequest[BinaryStream]) -> NemoBinaryResponse: ...
+    @overload
+    def send(self, request: PreparedRequest[Stream[ModelT]]) -> NemoStreamResponse[ModelT]: ...
+    @overload
+    def send(self, request: PreparedRequest[None]) -> NemoResponse[None]: ...
+    @overload
+    def send(self, request: PreparedRequest[ResponseT]) -> NemoResponse[ResponseT]: ...
+
+    def send(self, request: PreparedRequest) -> NemoResponse | NemoBinaryResponse | NemoStreamResponse:
         """Send a prepared request and return a typed response.
 
-        The return type is inferred from the endpoint definition — callers
-        get ``NemoResponse[UserResponse]`` (or whatever ``R`` is) without
-        any casts or annotations.
+        The return type is determined by the endpoint's ``ResponseT``.
+
+        For binary and streaming endpoints, the caller should use the
+        response as a context manager to ensure the connection is closed::
+
+            with client.send(DownloadEndpoint.request(...)) as resp:
+                for chunk in resp:
+                    f.write(chunk)
         """
         url = self._build_url(request.path)
-        raw = self._http.request(
-            request.method,
-            url,
-            json=self._prepare_json(request),
-        )
-        return self._parse_response(request, raw)
+        json_body = self._prepare_json(request)
+
+        if self._is_binary(request) or self._is_stream(request):
+            # Use httpx streaming — the response object owns the connection
+            # and the caller closes it via the context manager.
+            stream_ctx = self._http.stream(request.method, url, json=json_body)
+            raw = stream_ctx.__enter__()
+            raw.raise_for_status()
+            if self._is_binary(request):
+                return NemoBinaryResponse(raw)
+            return NemoStreamResponse(raw, request.response_type.model_type)
+
+        raw = self._http.request(request.method, url, json=json_body)
+        raw.raise_for_status()
+        body = request.response_type.model_validate(raw.json()) if request.response_type is not None else None
+        return NemoResponse(http_response=raw, body=body)  # type: ignore[arg-type]
 
 
 class AsyncNemoClient(BaseNemoClient):
     """Async HTTP client for NeMo Platform APIs.
 
     Async twin of :class:`NemoClient`.
-
-    Parameters
-    ----------
-    base_url:
-        Base URL of the NeMo Platform instance.
-    workspace:
-        Default workspace injected into ``{workspace}`` path parameters.
-    default_headers:
-        Additional HTTP headers sent with every request.
-    timeout:
-        Request timeout in seconds.  Defaults to 60.
-    http_client:
-        Optional pre-configured ``httpx.AsyncClient``.  When provided,
-        ``default_headers`` and ``timeout`` are ignored.
     """
 
     def __init__(
@@ -169,12 +157,29 @@ class AsyncNemoClient(BaseNemoClient):
             timeout=timeout,
         )
 
-    async def send(self, request: PreparedRequest[ResponseT]) -> NemoResponse[ResponseT]:
+    @overload
+    async def send(self, request: PreparedRequest[BinaryStream]) -> AsyncNemoBinaryResponse: ...
+    @overload
+    async def send(self, request: PreparedRequest[Stream[ModelT]]) -> AsyncNemoStreamResponse[ModelT]: ...
+    @overload
+    async def send(self, request: PreparedRequest[None]) -> NemoResponse[None]: ...
+    @overload
+    async def send(self, request: PreparedRequest[ResponseT]) -> NemoResponse[ResponseT]: ...
+
+    async def send(self, request: PreparedRequest) -> NemoResponse | AsyncNemoBinaryResponse | AsyncNemoStreamResponse:
         """Send a prepared request and return a typed response."""
         url = self._build_url(request.path)
-        raw = await self._http.request(
-            request.method,
-            url,
-            json=self._prepare_json(request),
-        )
-        return self._parse_response(request, raw)
+        json_body = self._prepare_json(request)
+
+        if self._is_binary(request) or self._is_stream(request):
+            stream_ctx = self._http.stream(request.method, url, json=json_body)
+            raw = await stream_ctx.__aenter__()
+            raw.raise_for_status()
+            if self._is_binary(request):
+                return AsyncNemoBinaryResponse(raw)
+            return AsyncNemoStreamResponse(raw, request.response_type.model_type)
+
+        raw = await self._http.request(request.method, url, json=json_body)
+        raw.raise_for_status()
+        body = request.response_type.model_validate(raw.json()) if request.response_type is not None else None
+        return NemoResponse(http_response=raw, body=body)  # type: ignore[arg-type]
