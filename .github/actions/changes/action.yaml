@@ -31,6 +31,9 @@ outputs:
   helm:
     description: "'true' if any Helm chart files changed"
     value: ${{ steps.filter.outputs.helm }}
+  k8s-smoke:
+    description: "'true' if Kubernetes smoke test support files changed"
+    value: ${{ steps.filter.outputs.k8s-smoke }}
 
 runs:
   using: "composite"
@@ -72,3 +75,8 @@ runs:
             - '.github/workflows/ci.yaml'
             - '.github/actions/changes/action.yaml'
             - '.pre-commit-config.yaml'
+          k8s-smoke:
+            - 'e2e/k8s/scripts/**'
+            - 'e2e/k8s/values/**'
+            - 'e2e/test_jobs.py'
+            - '.github/actions/free-disk-space/action.yaml'
