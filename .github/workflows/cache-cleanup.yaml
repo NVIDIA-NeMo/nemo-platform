@@ -1,0 +1,16 @@
+name: Cleanup Cache on PR Close
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Delete PR Caches
+        run: |
+          gh cache delete --all --ref refs/pull/${{ github.event.pull_request.number }}/merge
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
