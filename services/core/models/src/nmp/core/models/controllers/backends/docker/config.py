@@ -7,6 +7,7 @@ import os
 from enum import Enum
 from typing import Literal
 
+from nemo_platform_plugin.jobs.image import get_qualified_image
 from pydantic import BaseModel, Field
 
 MODELS_DOCKER_NETWORKING_MODE = os.getenv("MODELS_DOCKER_NETWORKING_MODE", "local")
@@ -132,8 +133,11 @@ class DockerBackendConfig(BaseModel):
     )
 
     huggingface_model_puller: str = Field(
-        default="nvcr.io/nvidia/nemo-microservices/nds-v2-huggingface-cli:25.10",
-        description="HuggingFace model puller image for downloading SFT model weights from Files service",
+        default_factory=lambda: get_qualified_image("nmp-api"),
+        description="Image used to pull model weights. Its entrypoint is overridden to the "
+        "Hugging Face CLI ('hf download ...'), so any image with the 'hf' CLI on PATH works. "
+        "Defaults to the platform's nmp-api image (registry/tag from platform config); override "
+        "to use a different puller image.",
     )
 
     model_puller_timeout: int = Field(

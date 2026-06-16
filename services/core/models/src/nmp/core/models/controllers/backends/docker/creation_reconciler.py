@@ -1262,6 +1262,11 @@ class DockerDeploymentCreationReconciler:
         run_kwargs: dict = {
             "image": puller_image,
             "name": puller_container_name,
+            # The puller image is the platform nmp-api image, whose entrypoint is
+            # `nemo services run`. Override it to the Hugging Face CLI so `command`
+            # (["download", <repo>, "--local-dir", "/model-store", ...]) runs as
+            # `hf download ...`.
+            "entrypoint": ["hf"],
             "command": command,
             "environment": env_vars,
             "user": "1000:1000",
