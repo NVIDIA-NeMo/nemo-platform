@@ -6,7 +6,7 @@ import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { server } from '@studio/mocks/node';
 import { getExperimentDetailRoute } from '@studio/routes/utils';
-import { renderRoute, screen, waitFor } from '@studio/tests/util/render';
+import { renderRoute, screen } from '@studio/tests/util/render';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 
@@ -93,9 +93,7 @@ describe('ExperimentSessionsDataView', () => {
     const [trigger] = await screen.findAllByText('case-1');
     await user.click(trigger);
 
-    await waitFor(() =>
-      expect(screen.getByTestId('trace-detail-route')).toBeInTheDocument()
-    );
+    expect(await screen.findByTestId('trace-detail-route')).toBeInTheDocument();
   });
 
   it('does not navigate when the session has no trace_id', async () => {

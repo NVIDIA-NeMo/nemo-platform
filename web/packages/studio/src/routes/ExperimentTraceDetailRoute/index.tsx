@@ -3,15 +3,15 @@
 
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
-import { BreadcrumbsItemProps } from '@studio/providers/breadcrumbs/useBreadcrumbs';
+import { type BreadcrumbsItemProps } from '@studio/providers/breadcrumbs/useBreadcrumbs';
+import { IntakeTraceDetailContent } from '@studio/routes/IntakeTraceDetailRoute';
 import {
   getExperimentDetailRoute,
   getExperimentGroupDetailRoute,
   getExperimentRoute,
 } from '@studio/routes/utils';
-import { IntakeTraceDetailContent } from '@studio/routes/IntakeTraceDetailRoute';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
-import { type FC } from 'react';
+import { type FC, useMemo } from 'react';
 
 export const ExperimentTraceDetailRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
@@ -21,17 +21,20 @@ export const ExperimentTraceDetailRoute: FC = () => {
     ROUTE_PARAMS.experimentName,
   ]);
 
-  const parentBreadcrumbs: BreadcrumbsItemProps[] = [
-    { slotLabel: 'Experiment Groups', href: getExperimentRoute(workspace) },
-    {
-      slotLabel: experimentGroupName,
-      href: getExperimentGroupDetailRoute(workspace, experimentGroupName),
-    },
-    {
-      slotLabel: experimentName,
-      href: getExperimentDetailRoute(workspace, experimentGroupName, experimentName),
-    },
-  ];
+  const parentBreadcrumbs = useMemo<BreadcrumbsItemProps[]>(
+    () => [
+      { slotLabel: 'Experiment Groups', href: getExperimentRoute(workspace) },
+      {
+        slotLabel: experimentGroupName,
+        href: getExperimentGroupDetailRoute(workspace, experimentGroupName),
+      },
+      {
+        slotLabel: experimentName,
+        href: getExperimentDetailRoute(workspace, experimentGroupName, experimentName),
+      },
+    ],
+    [workspace, experimentGroupName, experimentName]
+  );
 
   return <IntakeTraceDetailContent traceId={traceId} parentBreadcrumbs={parentBreadcrumbs} />;
 };

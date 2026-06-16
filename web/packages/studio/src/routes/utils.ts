@@ -338,7 +338,7 @@ export const getExperimentTraceDetailRoute = (
   experimentGroupName: string,
   experimentName: string,
   traceId: string
-) => {
+): string => {
   return generatePath(ROUTES.workspace.experimentTraceDetail, {
     workspace,
     experimentGroupName: encodeURIComponent(experimentGroupName),

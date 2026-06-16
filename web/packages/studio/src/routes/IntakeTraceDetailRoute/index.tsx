@@ -19,7 +19,10 @@ import { Loading } from '@studio/components/Layouts/Loading';
 import { NotFound } from '@studio/components/Layouts/NotFound';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
-import { BreadcrumbsItemProps, useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
+import {
+  type BreadcrumbsItemProps,
+  useBreadcrumbs,
+} from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { getIntakeSpanRoute, getIntakeTracesRoute } from '@studio/routes/utils';
 import {
   EMPTY_VALUE,

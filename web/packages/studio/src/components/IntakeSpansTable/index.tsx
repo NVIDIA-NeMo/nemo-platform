@@ -136,7 +136,8 @@ export const IntakeSpansTable: FC<IntakeSpansTableProps> = ({
   const handleRowClick =
     onRowClick === null
       ? undefined
-      : (onRowClick ?? ((span: SpanTableRow) => navigate(getIntakeSpanRoute(requestWorkspace, span.span_id))));
+      : (onRowClick ??
+        ((span: SpanTableRow) => navigate(getIntakeSpanRoute(requestWorkspace, span.span_id))));
 
   const dataViewState = useStudioDataViewState({
     defaultSort,

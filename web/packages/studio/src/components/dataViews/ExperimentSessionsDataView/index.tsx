@@ -221,7 +221,12 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
       onRowClick={(row) => {
         if (row.trace_id) {
           navigate(
-            getExperimentTraceDetailRoute(workspace, experimentGroupName, experimentName, row.trace_id)
+            getExperimentTraceDetailRoute(
+              workspace,
+              experimentGroupName,
+              experimentName,
+              row.trace_id
+            )
           );
         }
       }}
