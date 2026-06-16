@@ -211,6 +211,16 @@ def test_list_and_get_history_sessions(
                                 },
                                 {
                                     "type": "tool_use",
+                                    "id": "toolu_job",
+                                    "name": "mcp__nemo_studio__job_progress",
+                                    "input": {
+                                        "job_name": "agent-eval-1",
+                                        "job_type": "agent_evaluation",
+                                        "source": "evaluator",
+                                    },
+                                },
+                                {
+                                    "type": "tool_use",
                                     "id": "toolu_question",
                                     "name": "AskUserQuestion",
                                     "input": {
@@ -306,8 +316,14 @@ def test_list_and_get_history_sessions(
             "first_prompt": "first prompt",
             "message_count": 1,
             "token_count": 30,
-            "tool_call_count": 4,
-            "tool_calls": ["Bash", "Write", "mcp__nemo_studio__studio_link", "AskUserQuestion"],
+            "tool_call_count": 5,
+            "tool_calls": [
+                "Bash",
+                "Write",
+                "mcp__nemo_studio__studio_link",
+                "mcp__nemo_studio__job_progress",
+                "AskUserQuestion",
+            ],
             "chat_artifacts": {
                 "agent": "cat-identifier",
                 "model": "cloud, nvidia/llama-3.3-nemotron-super-49b-v1",
@@ -317,7 +333,21 @@ def test_list_and_get_history_sessions(
                 "selections": [{"label": "Agent", "value": "beach-finder"}],
                 "files": [{"action": "Wrote", "path": "agents/beach-finder.yml"}],
                 "links": [{"label": "Agents", "destination": "agents", "href": "/workspaces/default/agents"}],
-                "tools": ["Bash", "Write", "mcp__nemo_studio__studio_link", "AskUserQuestion"],
+                "jobs": [
+                    {
+                        "name": "agent-eval-1",
+                        "job_type": "agent_evaluation",
+                        "source": "evaluator",
+                        "href": None,
+                    }
+                ],
+                "tools": [
+                    "Bash",
+                    "Write",
+                    "mcp__nemo_studio__studio_link",
+                    "mcp__nemo_studio__job_progress",
+                    "AskUserQuestion",
+                ],
             },
         }
     ]
@@ -351,6 +381,16 @@ def test_list_and_get_history_sessions(
                         "id": "toolu_link",
                         "name": "mcp__nemo_studio__studio_link",
                         "input": {"destination": "agents", "label": "Agents"},
+                    },
+                    {
+                        "type": "tool_use",
+                        "id": "toolu_job",
+                        "name": "mcp__nemo_studio__job_progress",
+                        "input": {
+                            "job_name": "agent-eval-1",
+                            "job_type": "agent_evaluation",
+                            "source": "evaluator",
+                        },
                     },
                     {
                         "type": "tool_use",
@@ -398,7 +438,21 @@ def test_list_and_get_history_sessions(
             "selections": [{"label": "Agent", "value": "beach-finder"}],
             "files": [{"action": "Wrote", "path": "agents/beach-finder.yml"}],
             "links": [{"label": "Agents", "destination": "agents", "href": "/workspaces/default/agents"}],
-            "tools": ["Bash", "Write", "mcp__nemo_studio__studio_link", "AskUserQuestion"],
+            "jobs": [
+                {
+                    "name": "agent-eval-1",
+                    "job_type": "agent_evaluation",
+                    "source": "evaluator",
+                    "href": None,
+                }
+            ],
+            "tools": [
+                "Bash",
+                "Write",
+                "mcp__nemo_studio__studio_link",
+                "mcp__nemo_studio__job_progress",
+                "AskUserQuestion",
+            ],
         },
     }
     assert session_id in coding_agents._initialized_sessions
@@ -1251,6 +1305,9 @@ def test_platform_route_stream_uses_public_mcp_callback(monkeypatch: pytest.Monk
     assert "you MUST call mcp__nemo_studio__select_model" in captured["studio_system_prompt"]
     assert "ask multiple AskUserQuestion questions" in captured["studio_system_prompt"]
     assert "no dedicated Studio picker" in captured["studio_system_prompt"]
+    assert "Prefer NeMo Studio MCP tools and Studio views over CLI commands" in captured["studio_system_prompt"]
+    assert "Do not tell the user to run nemo CLI commands" in captured["studio_system_prompt"]
+    assert "when a Studio view, Studio link, or Studio progress card is available" in captured["studio_system_prompt"]
     assert "Default to trying to include a Studio link in Studio-related responses" in captured["studio_system_prompt"]
     assert "link to the closest list page for the current workspace" in captured["studio_system_prompt"]
     assert "Base Models or available base models use destination='base_models'" in captured["studio_system_prompt"]

@@ -190,7 +190,21 @@ STUDIO_CODING_AGENT_CONTEXT = "\n".join(
             "'health/ready' checks unless the user explicitly asks you to. Assume services are up and "
             "go straight to the actual task."
         ),
-        ("Prefer NeMo Studio MCP tools and the nemo CLI over ad-hoc shell or filesystem commands. "),
+        (
+            "Prefer NeMo Studio MCP tools and Studio views over CLI commands for user-facing "
+            "follow-up actions, navigation, inspection, and status/result review."
+        ),
+        (
+            "Do not tell the user to run nemo CLI commands, shell commands, curl commands, or status "
+            "commands to inspect agents, jobs, evaluations, filesets, models, traces, logs, or results "
+            "when a Studio view, Studio link, or Studio progress card is available for the same purpose."
+        ),
+        (
+            "Use CLI commands only to perform work that has no Studio UI equivalent, when the user "
+            "explicitly asks for CLI/debugging, or when you must gather data that Studio tools cannot "
+            "provide. For user-facing follow-up, prefer mcp__nemo_studio__studio_link and "
+            "mcp__nemo_studio__job_progress."
+        ),
         (
             "When you need to prompt the user for input, use a Studio UI tool instead of writing a "
             "plain-text question whenever a suitable tool exists."

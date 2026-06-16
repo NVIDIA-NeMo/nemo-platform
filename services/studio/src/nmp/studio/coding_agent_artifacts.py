@@ -33,6 +33,15 @@ class ChatLinkArtifactResponse(BaseModel):
     href: str | None = None
 
 
+class ChatJobArtifactResponse(BaseModel):
+    """A Studio job referenced during the chat."""
+
+    name: str
+    job_type: str | None = None
+    source: str | None = None
+    href: str | None = None
+
+
 class ChatArtifactsResponse(BaseModel):
     """Structured chat metadata shown in Studio's artifacts pane."""
 
@@ -44,6 +53,7 @@ class ChatArtifactsResponse(BaseModel):
     selections: list[ChatSelectionArtifactResponse] = Field(default_factory=list)
     files: list[ChatFileArtifactResponse] = Field(default_factory=list)
     links: list[ChatLinkArtifactResponse] = Field(default_factory=list)
+    jobs: list[ChatJobArtifactResponse] = Field(default_factory=list)
     tools: list[str] = Field(default_factory=list)
 
 
@@ -247,6 +257,44 @@ def _append_link_artifact(artifacts: ChatArtifactsResponse, input_value: Any) ->
     artifacts.links.append(artifact)
 
 
+def _upsert_job_artifact(
+    artifacts: ChatArtifactsResponse,
+    name: str,
+    job_type: str | None = None,
+    source: str | None = None,
+    href: str | None = None,
+) -> None:
+    for index, job in enumerate(artifacts.jobs):
+        if job.name != name:
+            continue
+        artifacts.jobs[index] = ChatJobArtifactResponse(
+            name=name,
+            job_type=job_type or job.job_type,
+            source=source or job.source,
+            href=href or job.href,
+        )
+        return
+
+    artifacts.jobs.append(ChatJobArtifactResponse(name=name, job_type=job_type, source=source, href=href))
+
+
+def _append_job_artifact(artifacts: ChatArtifactsResponse, input_value: Any) -> None:
+    if not isinstance(input_value, dict):
+        return
+
+    name = string_value(input_value.get("job_name")) or string_value(input_value.get("name"))
+    if not name:
+        return
+
+    _upsert_job_artifact(
+        artifacts,
+        name=name,
+        job_type=string_value(input_value.get("job_type")) or string_value(input_value.get("type")),
+        source=string_value(input_value.get("source")),
+        href=string_value(input_value.get("href")) or string_value(input_value.get("url")),
+    )
+
+
 def _normalize_spec_line(line: str) -> str:
     normalized = line.strip()
     normalized = re.sub(r"^#{1,6}\s+", "", normalized)
@@ -320,6 +368,17 @@ def record_tool_artifacts(
 
     if tool_name == "studio_link" or tool_name.endswith("__studio_link"):
         _append_link_artifact(artifacts, input_value)
+        if isinstance(input_value, dict):
+            destination = (
+                string_value(input_value.get("destination"))
+                or string_value(input_value.get("page"))
+                or string_value(input_value.get("resource_type"))
+            )
+            if destination == "job":
+                _append_job_artifact(artifacts, input_value)
+
+    if tool_name == "job_progress" or tool_name.endswith("__job_progress"):
+        _append_job_artifact(artifacts, input_value)
 
 
 def record_workspace_artifact(artifacts: ChatArtifactsResponse, content: str) -> None:

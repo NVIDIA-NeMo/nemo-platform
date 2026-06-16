@@ -6,6 +6,7 @@ import { Empty } from '@studio/components/Empty';
 import {
   ArtifactRow,
   FileArtifacts,
+  JobArtifacts,
   LinkArtifacts,
   SelectionArtifacts,
   ToolArtifacts,
@@ -62,6 +63,7 @@ export const ClaudeCodeArtifactsPane = ({
             <ArtifactRow icon={<Boxes size={14} />} label="Workspace" value={artifacts.workspace} />
           </Stack>
           <SelectionArtifacts selections={artifacts.selections} />
+          <JobArtifacts jobs={artifacts.jobs} workspace={artifacts.workspace} />
           <FileArtifacts files={artifacts.files} />
           <LinkArtifacts links={artifacts.links} />
           <ToolArtifacts tools={artifacts.tools} />

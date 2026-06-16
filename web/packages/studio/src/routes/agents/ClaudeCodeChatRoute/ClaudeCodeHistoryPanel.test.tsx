@@ -83,6 +83,36 @@ describe('ClaudeCodeHistoryPanel', () => {
     expect(onSelectSession).toHaveBeenCalledWith('session-1');
   });
 
+  it('renders job artifacts as Studio links', () => {
+    render(
+      <ClaudeCodeHistoryPanel
+        activeSessionId="session-1"
+        artifacts={{
+          workspace: 'default',
+          selections: [],
+          files: [],
+          links: [],
+          jobs: [
+            {
+              name: 'agent-eval-1',
+              job_type: 'agent_evaluation',
+              source: 'evaluator',
+            },
+          ],
+          tools: [],
+        }}
+        onNewChat={vi.fn()}
+        onSelectSession={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('Jobs')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /agent-eval-1/ })).toHaveAttribute(
+      'href',
+      '/workspaces/default/agents/evaluations/agent-eval-1'
+    );
+  });
+
   it('lists Claude Code skills in the skills tab', async () => {
     const user = userEvent.setup();
     render(
