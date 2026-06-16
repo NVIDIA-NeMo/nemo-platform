@@ -70,18 +70,18 @@ Runtime dispatch uses:
 
 ### Near-term
 - [ ] Wire `ExampleClient` into the plugin SDK registration system (`NemoPluginSDKResources` currently expects a `NeMoPlatform`-taking constructor — needs updating or replacing)
-- [ ] Add server-side helpers that derive FastAPI routes from the same endpoint definitions (shared contract)
 - [ ] Consider whether `NemoPluginSDKResources` should be replaced entirely now that clients own their own httpx
 
 ### Streaming & binary
-- [ ] Handle upload (binary request body) — decide on approach
-- [ ] Handle streaming uploads — request body is a stream (e.g. large file upload), not just bytes
+- [x] ~~Handle upload (binary request body)~~ Done — `BinaryBodyEndpoint` + `put_binary()` factory. `request(content)` accepts `bytes | Iterable[bytes] | AsyncIterable[bytes]`.
+- [x] ~~Handle streaming uploads~~ Done — covered by `Iterable[bytes]` / `AsyncIterable[bytes]` in `BinaryContent` type.
 - [ ] Handle pagination — list endpoints return `NemoListResponse[T]` with page/page_size/total; client should support iterating pages or auto-paginating
 
 ### Medium-term
+- [ ] Add server-side helpers that derive FastAPI routes from the same endpoint definitions (shared contract)
 - [ ] Migrate core service clients (Files, Entities, etc.) to use `NemoClient` instead of raw `platform._client`
 - [ ] Eventually replace `NeMoPlatform` with `NemoClient` as the primary SDK entry point
-- [ ] Make the client agnostic to the underlying HTTP library — abstract the transport so we can swap httpx for aiohttp, pyreqwest, etc. without changing endpoint definitions or consumer code
+- [ ] Make the client agnostic to the underlying HTTP library — abstract the transport so we can swap httpx for aiohttp, pyreqwest, etc. without changing endpoint definitions or consumer code. **Direction:** Protocol-based transport abstraction (`SyncTransport`/`AsyncTransport` + `HttpResponse`/`AsyncHttpResponse` protocols). Covers `request()`, `stream()`, `status_code`, `json()`, `iter_bytes()`, `iter_lines()`, `close()` and their async equivalents. Need to decide what to do with `NemoResponse.http_response` (type it as the protocol, `Any`, or remove it). Punting for now — significant scope.
 
 ### Open questions
 - How do we handle auth? Currently `default_headers` is the escape hatch — should there be first-class token/auth support?

@@ -39,7 +39,8 @@ def test_post_endpoint_produces_prepared_request() -> None:
     assert prepared.path_template == "/v2/workspaces/{workspace}/items"
     assert prepared.path_params == {"workspace": "default"}
     assert prepared.method == "POST"
-    assert prepared.body is payload
+    assert prepared.content == payload.model_dump_json().encode()
+    assert prepared.content_type == "application/json"
     assert prepared.response_type is FakeResponse
 
 
@@ -50,7 +51,8 @@ def test_get_endpoint_no_body() -> None:
     assert prepared.path_template == "/v2/workspaces/{workspace}/items/{name}"
     assert prepared.path_params == {"workspace": "default", "name": "item-1"}
     assert prepared.method == "GET"
-    assert prepared.body is None
+    assert prepared.content is None
+    assert prepared.content_type is None
     assert prepared.response_type is FakeResponse
 
 
@@ -60,16 +62,17 @@ def test_delete_endpoint() -> None:
 
     assert prepared.path_params == {"workspace": "default", "name": "item-1"}
     assert prepared.method == "DELETE"
-    assert prepared.body is None
+    assert prepared.content is None
 
 
 def test_patch_endpoint() -> None:
     ep = patch("/items/{id}", IdPath, FakeRequest, FakeResponse)
-    prepared = ep.request(FakeRequest(name="updated"), id="42")
+    payload = FakeRequest(name="updated")
+    prepared = ep.request(payload, id="42")
 
     assert prepared.path_params == {"id": "42"}
     assert prepared.method == "PATCH"
-    assert prepared.body.name == "updated"
+    assert prepared.content == payload.model_dump_json().encode()
 
 
 def test_endpoint_repr() -> None:

@@ -50,12 +50,16 @@ class NemoBinaryResponse:
     Example::
 
         with client.send(DownloadEndpoint.request(...)) as resp:
-            for chunk in resp:
-                f.write(chunk)
+            data = resp.read()       # all bytes at once
+            # or: for chunk in resp  # iterate chunks
     """
 
     def __init__(self, http_response: httpx.Response) -> None:
         self.http_response = http_response
+
+    def read(self) -> bytes:
+        """Read and return the entire response body as bytes."""
+        return self.http_response.read()
 
     def __iter__(self) -> Iterator[bytes]:
         return self.http_response.iter_bytes()
@@ -111,12 +115,16 @@ class AsyncNemoBinaryResponse:
     Example::
 
         async with client.send(DownloadEndpoint.request(...)) as resp:
-            async for chunk in resp:
-                f.write(chunk)
+            data = await resp.read()           # all bytes at once
+            # or: async for chunk in resp      # iterate chunks
     """
 
     def __init__(self, http_response: httpx.Response) -> None:
         self.http_response = http_response
+
+    async def read(self) -> bytes:
+        """Read and return the entire response body as bytes."""
+        return await self.http_response.aread()
 
     async def __aiter__(self) -> AsyncIterator[bytes]:
         async for chunk in self.http_response.aiter_bytes():

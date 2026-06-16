@@ -36,12 +36,16 @@ Usage::
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterable, Iterable
 from dataclasses import dataclass
 from typing import Generic, TypedDict, TypeVar, Unpack
 
 from pydantic import BaseModel
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
+
+# Type alias for binary content accepted by upload endpoints.
+BinaryContent = bytes | Iterable[bytes] | AsyncIterable[bytes]
 
 
 class BinaryStream:
@@ -86,13 +90,14 @@ class PreparedRequest(Generic[ResponseT]):
     path_template: str
     path_params: dict[str, str]
     method: str
-    body: BaseModel | None
+    content: bytes | Iterable[bytes] | AsyncIterable[bytes] | None
+    content_type: str | None
     response_type: type[ResponseT] | None
 
 
 @dataclass(frozen=True, slots=True)
 class BodyEndpoint(Generic[PathT, RequestT, ResponseT]):
-    """Endpoint that requires a request body (POST, PATCH, PUT)."""
+    """Endpoint that requires a JSON request body (POST, PATCH, PUT)."""
 
     path: str
     method: str
@@ -105,7 +110,28 @@ class BodyEndpoint(Generic[PathT, RequestT, ResponseT]):
             path_template=self.path,
             path_params=dict(path_params),
             method=self.method,
-            body=payload,
+            content=payload.model_dump_json().encode(),
+            content_type="application/json",
+            response_type=self.response_type,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class BinaryBodyEndpoint(Generic[PathT, ResponseT]):
+    """Endpoint that requires a binary request body (file upload)."""
+
+    path: str
+    method: str
+    response_type: type[ResponseT] | None
+
+    def request(self, content: BinaryContent, **path_params: Unpack[PathT]) -> PreparedRequest[ResponseT]:
+        """Build a :class:`PreparedRequest` from binary content and path parameters."""
+        return PreparedRequest(
+            path_template=self.path,
+            path_params=dict(path_params),
+            method=self.method,
+            content=content,
+            content_type="application/octet-stream",
             response_type=self.response_type,
         )
 
@@ -124,13 +150,14 @@ class NoBodyEndpoint(Generic[PathT, ResponseT]):
             path_template=self.path,
             path_params=dict(path_params),
             method=self.method,
-            body=None,
+            content=None,
+            content_type=None,
             response_type=self.response_type,
         )
 
 
 # Union type for use in type hints that accept any endpoint
-Endpoint = BodyEndpoint | NoBodyEndpoint
+Endpoint = BodyEndpoint | BinaryBodyEndpoint | NoBodyEndpoint
 
 
 def get(path: str, path_type: type[PathT], response_type: type[ResponseT]) -> NoBodyEndpoint[PathT, ResponseT]:
@@ -139,12 +166,17 @@ def get(path: str, path_type: type[PathT], response_type: type[ResponseT]) -> No
 
 
 def post(path: str, path_type: type[PathT], request_type: type[RequestT], response_type: type[ResponseT]) -> BodyEndpoint[PathT, RequestT, ResponseT]:
-    """Define a POST endpoint."""
+    """Define a POST endpoint with a JSON body."""
     return BodyEndpoint(path, "POST", request_type, response_type)
 
 
+def put_binary(path: str, path_type: type[PathT], response_type: type[ResponseT]) -> BinaryBodyEndpoint[PathT, ResponseT]:
+    """Define a PUT endpoint with a binary body (file upload)."""
+    return BinaryBodyEndpoint(path, "PUT", response_type)
+
+
 def patch(path: str, path_type: type[PathT], request_type: type[RequestT], response_type: type[ResponseT]) -> BodyEndpoint[PathT, RequestT, ResponseT]:
-    """Define a PATCH endpoint."""
+    """Define a PATCH endpoint with a JSON body."""
     return BodyEndpoint(path, "PATCH", request_type, response_type)
 
 

@@ -82,9 +82,9 @@ class BaseNemoClient:
             raise ValueError(f"Missing path parameter {exc} for {request.method} {request.path_template}") from exc
         return self._base_url + self.api_prefix + path
 
-    def _prepare_json(self, request: PreparedRequest) -> dict | None:
-        if request.body is not None:
-            return request.body.model_dump(mode="json")
+    def _request_headers(self, request: PreparedRequest) -> dict[str, str] | None:
+        if request.content_type is not None:
+            return {"Content-Type": request.content_type}
         return None
 
     def _is_binary(self, request: PreparedRequest) -> bool:
@@ -138,23 +138,23 @@ class NemoClient(BaseNemoClient):
                     f.write(chunk)
         """
         url = self._resolve_path(request)
-        json_body = self._prepare_json(request)
+        headers = self._request_headers(request)
 
         if self._is_binary(request):
-            stream_ctx = self._http.stream(request.method, url, json=json_body)
+            stream_ctx = self._http.stream(request.method, url, content=request.content, headers=headers)
             raw = stream_ctx.__enter__()
             raw.raise_for_status()
             return NemoBinaryResponse(raw)
 
         if self._is_stream(request):
             assert request.response_type is not None
-            stream_ctx = self._http.stream(request.method, url, json=json_body)
+            stream_ctx = self._http.stream(request.method, url, content=request.content, headers=headers)
             raw = stream_ctx.__enter__()
             raw.raise_for_status()
             model_type = _get_stream_model_type(request.response_type)
             return NemoStreamResponse(raw, model_type)
 
-        raw = self._http.request(request.method, url, json=json_body)
+        raw = self._http.request(request.method, url, content=request.content, headers=headers)
         raw.raise_for_status()
         body = request.response_type.model_validate(raw.json()) if request.response_type is not None else None
         return NemoResponse(http_response=raw, body=body)
@@ -193,23 +193,23 @@ class AsyncNemoClient(BaseNemoClient):
     async def send(self, request: PreparedRequest) -> NemoResponse | AsyncNemoBinaryResponse | AsyncNemoStreamResponse:
         """Send a prepared request and return a typed response."""
         url = self._resolve_path(request)
-        json_body = self._prepare_json(request)
+        headers = self._request_headers(request)
 
         if self._is_binary(request):
-            stream_ctx = self._http.stream(request.method, url, json=json_body)
+            stream_ctx = self._http.stream(request.method, url, content=request.content, headers=headers)
             raw = await stream_ctx.__aenter__()
             raw.raise_for_status()
             return AsyncNemoBinaryResponse(raw)
 
         if self._is_stream(request):
             assert request.response_type is not None
-            stream_ctx = self._http.stream(request.method, url, json=json_body)
+            stream_ctx = self._http.stream(request.method, url, content=request.content, headers=headers)
             raw = await stream_ctx.__aenter__()
             raw.raise_for_status()
             model_type = _get_stream_model_type(request.response_type)
             return AsyncNemoStreamResponse(raw, model_type)
 
-        raw = await self._http.request(request.method, url, json=json_body)
+        raw = await self._http.request(request.method, url, content=request.content, headers=headers)
         raw.raise_for_status()
         body = request.response_type.model_validate(raw.json()) if request.response_type is not None else None
         return NemoResponse(http_response=raw, body=body)

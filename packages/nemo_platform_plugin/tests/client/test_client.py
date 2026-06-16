@@ -77,7 +77,8 @@ def test_send_post() -> None:
     mock_http.request.assert_called_once_with(
         "POST",
         f"{BASE}/apis/test/v2/items",
-        json={"name": "alice"},
+        content=ItemRequest(name="alice").model_dump_json().encode(),
+        headers={"Content-Type": "application/json"},
     )
 
 
@@ -96,7 +97,8 @@ def test_send_get_with_path_params() -> None:
     mock_http.request.assert_called_once_with(
         "GET",
         f"{BASE}/apis/test/v2/items/alice",
-        json=None,
+        content=None,
+        headers=None,
     )
 
 
@@ -115,7 +117,7 @@ def test_send_delete() -> None:
     assert resp.body is None
 
 
-def test_unwrap_success() -> None:
+def test_data_success() -> None:
     mock_http = MagicMock(spec=httpx.Client)
     mock_http.request.return_value = httpx.Response(
         200,
