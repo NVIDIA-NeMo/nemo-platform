@@ -103,6 +103,31 @@ class TestIGWRouting:
         cfg = yaml.safe_load(result.read_text())
         assert cfg["llms"]["agent"]["model_name"] == "custom-model"
 
+    def test_resolves_default_model_placeholder_from_host_context(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from nemo_agents_plugin import utils as agent_utils
+
+        monkeypatch.setattr(agent_utils, "get_default_model", lambda: "nvidia-nemotron-3-nano-30b-a3b")
+        config = {
+            "llms": {
+                "agent": {
+                    "_type": "openai",
+                    "api_key": "not-used",
+                    "model_name": "${NEMO_DEFAULT_MODEL}",
+                }
+            }
+        }
+        config_path = tmp_path / "agent.yml"
+        with config_path.open("w") as f:
+            yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+        result = _prepare_aut_config_for_runtime(config_path, tmp_path)
+        cfg = yaml.safe_load(result.read_text())
+
+        assert cfg["llms"]["agent"]["model_name"] == "nvidia-nemotron-3-nano-30b-a3b"
+        assert "${NEMO_DEFAULT_MODEL}" not in result.read_text()
+
     def test_custom_workspace(self, aut_config: Path, tmp_path: Path) -> None:
         result = _prepare_aut_config_for_runtime(aut_config, tmp_path, workspace="staging")
         cfg = yaml.safe_load(result.read_text())

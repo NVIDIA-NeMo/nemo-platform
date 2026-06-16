@@ -2,6 +2,23 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
+ * Returns a formatted string with count and properly pluralized text.
+ * @param text - The singular form of the word (e.g., "entry", "file")
+ * @param count - The number to display
+ * @param plural - Optional custom plural form for irregular words (e.g., "entries", "children").
+ *                 If not provided, defaults to appending 's' to the text.
+ * @returns Formatted string like "1 entry" or "3 entries"
+ * @example
+ * getTextWithCount('file', 1)           // "1 file"
+ * getTextWithCount('file', 3)           // "3 files"
+ * getTextWithCount('entry', 2, 'entries') // "2 entries"
+ */
+export const getTextWithCount = (text: string, count: number, plural?: string) => {
+  const pluralForm = plural ?? `${text}s`;
+  return `${count} ${count !== 1 ? pluralForm : text}`;
+};
+
+/**
  * Truncates a long string of text to the length specified by `maxCharacters` by replacing a
  * section of the text with an ellipsis.
  *

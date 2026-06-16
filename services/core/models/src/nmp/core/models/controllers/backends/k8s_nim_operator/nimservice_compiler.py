@@ -362,18 +362,13 @@ def compile_nimservice(
             ContainerSpec(
                 name=_get_k8s_safe_name(resource_name, max_length=63, suffix="-lora-sidecar", name_type="label"),
                 image=Image(
-                    repository=f"{platform_config.image_registry}/nmp-api",
+                    repository=f"{platform_config.image_registry}/{backend_config.lora_sidecar_image_name}",
                     tag=platform_config.image_tag,
                     pullPolicy="IfNotPresent",
                     pullSecrets=image_pull_secrets if image_pull_secrets else None,
                 ),
-                command=[
-                    "nemo",
-                    "services",
-                    "run",
-                    "--sidecars",
-                    "adapters",
-                ],
+                command=backend_config.lora_sidecar_command,
+                args=backend_config.lora_sidecar_args if backend_config.lora_sidecar_args else None,
                 env=sidecar_env_vars,
             )
         ]

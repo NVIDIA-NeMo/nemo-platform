@@ -1,0 +1,5 @@
+# Test that authentication is enabled on the platform.
+
+platformConfig:
+  auth:
+    enabled: true

@@ -23,24 +23,13 @@ import {
   JOB_SOURCE,
   SOURCE_OPTIONS,
 } from '@studio/components/dataViews/JobsDataView/constants';
+import { getJobDetailRoute } from '@studio/components/dataViews/JobsDataView/utils';
 import { ErrorPanel } from '@studio/components/ErrorPanel';
-import {
-  CUSTOMIZER_ENABLED,
-  DATA_DESIGNER_ENABLED,
-  EVALUATOR_ENABLED,
-  SAFE_SYNTHESIZER_ENABLED,
-} from '@studio/constants/environment';
+import { CUSTOMIZER_ENABLED } from '@studio/constants/environment';
 import { LINK_DOCS_JOBS } from '@studio/constants/links';
 import { STATUS_FILTER_OPTIONS } from '@studio/constants/platformJobs';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { iconColorClass } from '@studio/routes/constants';
-import {
-  getDataDesignerJobDetailsRoute,
-  getEvaluationResultDetailsRoute,
-  getSafeSynthesizerJobRoute,
-  getWorkspaceCustomizationJobDetailsRoute,
-  getWorkspaceJobDetailRoute,
-} from '@studio/routes/utils';
 import { keepPreviousData } from '@tanstack/react-query';
 import { ChartBar, Cog, LayoutList, ListChecks, Sliders, Sparkles } from 'lucide-react';
 import { ComponentProps, type ReactNode } from 'react';
@@ -66,34 +55,6 @@ const SOURCE_DISPLAY: Record<string, { label: string; icon: ReactNode }> = {
 };
 
 const STATUS_OPTIONS_WITH_ALL = [{ value: '', label: 'All' }, ...STATUS_FILTER_OPTIONS];
-
-const SOURCE_DETAIL_ROUTE: Record<
-  string,
-  { enabled: boolean; getRoute: (workspace: string, jobName: string) => string }
-> = {
-  [JOB_SOURCE.CUSTOMIZATION]: {
-    enabled: CUSTOMIZER_ENABLED,
-    getRoute: getWorkspaceCustomizationJobDetailsRoute,
-  },
-  [JOB_SOURCE.DATA_DESIGNER]: {
-    enabled: DATA_DESIGNER_ENABLED,
-    getRoute: getDataDesignerJobDetailsRoute,
-  },
-  [JOB_SOURCE.SAFE_SYNTHESIZER]: {
-    enabled: SAFE_SYNTHESIZER_ENABLED,
-    getRoute: getSafeSynthesizerJobRoute,
-  },
-  [JOB_SOURCE.EVALUATOR_METRICS]: {
-    enabled: EVALUATOR_ENABLED,
-    getRoute: getEvaluationResultDetailsRoute,
-  },
-};
-
-const getJobDetailRoute = (job: PlatformJobResponse, workspace: string): string => {
-  const genericRoute = getWorkspaceJobDetailRoute(workspace, job.name);
-  const entry = job.source ? SOURCE_DETAIL_ROUTE[job.source] : undefined;
-  return entry?.enabled ? entry.getRoute(workspace, job.name) : genericRoute;
-};
 
 export const JobsDataView = () => {
   const workspace = useWorkspaceFromPath();

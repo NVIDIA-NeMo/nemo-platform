@@ -31,17 +31,16 @@ describe('getSkillActionSuggestions', () => {
     expect(suggestion?.skillName).toBe('inference');
   });
 
-  it('creates a fallback card for skills without curated templates', () => {
-    const [suggestion] = getSkillActionSuggestions([
-      skill({
-        name: 'custom-plugin-skill',
-        claude_name: 'nemo-custom-plugin-skill',
-        description: 'A plugin-specific workflow.',
-      }),
-    ]);
-
-    expect(suggestion?.title).toBe('Custom Plugin Skill');
-    expect(suggestion?.prompt).toContain('custom-plugin-skill');
+  it('ignores skills without curated templates', () => {
+    expect(
+      getSkillActionSuggestions([
+        skill({
+          name: 'custom-plugin-skill',
+          claude_name: 'nemo-custom-plugin-skill',
+          description: 'A plugin-specific workflow.',
+        }),
+      ])
+    ).toEqual([]);
   });
 
   it('filters curated templates when required feature flags are disabled', () => {

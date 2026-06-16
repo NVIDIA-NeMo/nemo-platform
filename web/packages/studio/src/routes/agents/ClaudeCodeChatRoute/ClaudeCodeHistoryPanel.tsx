@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
-  Badge,
   Banner,
   Button,
   Card,
@@ -174,25 +173,18 @@ const SkillCard = ({ skill }: { skill: ClaudeCodeSkill }) => (
     attributes={{ CardContent: { className: 'min-h-0' } }}
   >
     <Stack gap="density-sm" className="min-w-0">
-      <Flex align="start" justify="between" gap="density-sm" className="min-w-0">
-        <Flex align="start" gap="density-sm" className="min-w-0">
-          <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded bg-surface-sunken text-secondary">
-            <BookOpen size={14} />
-          </span>
-          <Stack gap="density-xxs" className="min-w-0">
-            <Text kind="body/semibold/sm" className="truncate" title={skill.name}>
-              {getSkillDisplayName(skill)}
-            </Text>
-            <Text kind="body/regular/xs" color="secondary" className="truncate">
-              {skill.claude_name}
-            </Text>
-          </Stack>
-        </Flex>
-        {skill.installed ? (
-          <Badge kind="solid" color="green" className="shrink-0">
-            Installed
-          </Badge>
-        ) : null}
+      <Flex align="start" gap="density-sm" className="min-w-0">
+        <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded bg-surface-sunken text-secondary">
+          <BookOpen size={14} />
+        </span>
+        <Stack gap="density-xxs" className="min-w-0">
+          <Text kind="body/semibold/sm" className="truncate" title={skill.name}>
+            {getSkillDisplayName(skill)}
+          </Text>
+          <Text kind="body/regular/xs" color="secondary" className="truncate">
+            {skill.claude_name}
+          </Text>
+        </Stack>
       </Flex>
       <Text kind="body/regular/sm" color="secondary" className="break-words">
         {skill.description || 'No description'}

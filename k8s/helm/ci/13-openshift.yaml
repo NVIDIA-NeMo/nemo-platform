@@ -1,0 +1,31 @@
+# OpenShift-friendly security context for restricted / restricted-v2 SCC.
+# Use with: helm template <release> k8s/helm -f k8s/helm/ci/13-openshift.yaml
+# See k8s/helm/README.md "OpenShift" section.
+
+podSecurityContext:
+  runAsNonRoot: true
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+# Embedded PostgreSQL: run as non-root so postgres pods pass OpenShift SCC
+postgresql:
+  securityContext:
+    runAsUser: 999
+    runAsNonRoot: true
+  podSecurityContext:
+    runAsNonRoot: true
+    fsGroup: 999
+
+# OpenShift Route (route.openshift.io/v1) for API exposure
+# TODO: Add a way to test this via kubeconform or otherwise.
+# Since this isn't in the default kube spec, it won't validate correctly.
+#openshiftRoute:
+#  enabled: true
+#  host: "nmp.example.com"

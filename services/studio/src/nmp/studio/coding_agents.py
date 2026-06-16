@@ -19,6 +19,20 @@ from urllib.parse import urlencode, urlparse
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from nmp.studio import studio_links
+from nmp.studio.coding_agent_mcp_tools import (
+    APPROVAL_TOOL_NAME,
+    CLAUDE_MCP_SERVER_NAME,
+    JOB_PROGRESS_TOOL_NAME,
+    MCP_TOOLS,
+    SELECT_AGENT_TOOL_NAME,
+    SELECT_DATASET_FILE_TOOL_NAME,
+    SELECT_EVAL_CONFIG_TOOL_NAME,
+    SELECT_MODEL_TOOL_NAME,
+    STUDIO_CODING_AGENT_CONTEXT,
+    STUDIO_LINK_TOOL_NAME,
+    allowed_mcp_tools,
+    permission_prompt_tool,
+)
 from nmp.studio.coding_agent_skills import ClaudeSkillResponse, DuplicateSkillError, list_claude_skill_responses
 from pydantic import BaseModel, Field
 from starlette.routing import NoMatchFound
@@ -30,7 +44,6 @@ router = APIRouter(prefix="/v2/coding-agents")
 MCP_ROUTE_NAME = "studio_coding_agent_mcp"
 PUBLIC_MCP_ROUTE_NAME = "studio_coding_agent_public_mcp"
 PUBLIC_MCP_PATH = "/studio/api/coding-agents/mcp/{session_id}"
-CLAUDE_MCP_SERVER_NAME = "nemo_studio"
 
 CLAUDE_PROJECTS_DIR = Path.home() / ".claude" / "projects"
 SERVER_CWD = Path(os.getcwd()).resolve()
@@ -62,6 +75,13 @@ class PermissionDecision(BaseModel):
     updated_input: dict[str, Any] | None = None
 
 
+class AgentInputDecision(BaseModel):
+    """Studio's value for a pending local-agent UI input request."""
+
+    skipped: bool = False
+    value: dict[str, Any] | None = None
+
+
 class HistorySessionResponse(BaseModel):
     """Summary of a Claude session stored on disk."""
 
@@ -84,6 +104,8 @@ class SessionHistoryResponse(BaseModel):
 _initialized_sessions: set[str] = set()
 _session_streams: dict[str, asyncio.Queue[tuple[str, Any]]] = {}
 _pending_permissions: dict[str, tuple[str, asyncio.Future[dict[str, Any]]]] = {}
+_pending_agent_inputs: dict[str, tuple[str, asyncio.Future[dict[str, Any]]]] = {}
+_AGENT_INPUT_RESPONSE_RESERVED_KEYS = frozenset({"message", "status"})
 
 
 @dataclass
@@ -97,25 +119,10 @@ class HistorySummary:
     tool_calls: list[str] = dataclass_field(default_factory=list)
 
 
-_APPROVAL_TOOL = {
-    "name": "approval_prompt",
-    "description": "Ask the human operator whether a tool call should be allowed.",
-    "inputSchema": {
-        "type": "object",
-        "properties": {
-            "tool_name": {"type": "string"},
-            "input": {"type": "object"},
-            "tool_use_id": {"type": "string"},
-        },
-        "required": ["tool_name", "input"],
-    },
-}
-
-
 def _mcp_tools_for_destinations(
     destinations: Mapping[str, studio_links.StudioLinkDestination],
 ) -> list[dict[str, Any]]:
-    return [_APPROVAL_TOOL, studio_links.tool_for_destinations(destinations)]
+    return [*MCP_TOOLS, studio_links.tool_for_destinations(destinations)]
 
 
 def mount_public_mcp_route(app: FastAPI) -> None:
@@ -263,11 +270,16 @@ def _build_studio_system_prompt(
         "If studio_link is unavailable and you must construct a Studio UI link manually, use only a known enabled Studio route and prefer a relative Markdown link that starts with /workspaces/ or /models/.",
         "Evaluation pages use /workspaces/{workspace}/evaluation/... with singular evaluation; never nest evaluation links under /dashboard/evaluations/.",
         "Interactive Studio choice behavior:",
-        "When you need the user to choose from a finite set of agents, deployments, models, jobs, filesets, resources, or next actions, do not ask them to type the choice in plain text.",
-        "Use Claude Code's AskUserQuestion tool so Studio can render the choices as clickable options.",
+        "Studio ships dedicated visual picker tools. When a picker fits, you MUST use it instead of plain text and instead of AskUserQuestion.",
+        "Whenever you need the user to name, pick, confirm, or disambiguate an agent (including choosing among deployed agents), you MUST call mcp__nemo_studio__select_agent to render the agent dropdown. Never ask for an agent in plain text and never use AskUserQuestion for an agent choice.",
+        "Whenever you need the user to choose a model, you MUST call mcp__nemo_studio__select_model. Never use AskUserQuestion or plain text for a model choice.",
+        "Whenever you need a fileset, fileset reference, dataset, or input/source data file (including an anonymizer or evaluation input, or a CSV/Parquet file), you MUST call mcp__nemo_studio__select_dataset_file instead of asking for a fileset reference or '<workspace>/<fileset>#<file>' path in plain text; for an evaluation config file, you MUST call mcp__nemo_studio__select_eval_config.",
+        "Treat 'which agent', 'pick an agent', 'choose a model', 'which fileset', and 'what is your fileset reference' as mandatory tool-use requests for the matching select_* tool, exactly like Studio link requests are mandatory studio_link requests.",
+        "Set the picker title and description to match the current workflow, for example title='Select agent to audit'.",
+        "Only skip a picker when the user already gave the value, the value is already unambiguous from the conversation, or a previous picker call returned skipped or error.",
+        "For finite choices that have no dedicated Studio picker (for example deployments, jobs, or next actions) and for yes/no or multiple-choice clarifications, use Claude Code's AskUserQuestion tool so Studio can render clickable options instead of asking the user to type.",
         "For AskUserQuestion, provide input shaped as {'questions': [{'header': '<short title>', 'question': '<what should the user choose?>', 'options': [{'label': '<option>', 'description': '<short impact/details>'}]}]}.",
         "If you need both a finite choice and free-form text, ask multiple AskUserQuestion questions: first the finite options, then a text question without options.",
-        "For a list of deployed agents, make each option label the agent name and put status/model/tool details in the description.",
         "Required Studio-link behavior:",
         "Default to trying to include a Studio link in Studio-related responses.",
         "When your answer mentions or depends on a Studio resource, page, workflow, or result, first choose the nearest studio_link destination and include that link unless no relevant Studio page exists.",
@@ -278,6 +290,9 @@ def _build_studio_system_prompt(
         "After any successful Studio action, you must include a Studio link in the response even if the user did not ask for one.",
         "Before your final response for any successful create, start, deploy, evaluate, inspect, or modify action, call mcp__nemo_studio__studio_link and include the returned markdown exactly.",
         "Never finish a successful Studio action without a visible Markdown link to the most relevant Studio page.",
+        "Required job-progress behavior:",
+        "Whenever you start, submit, or kick off any platform job and you know its job name, you MUST call mcp__nemo_studio__job_progress with that job name before your final response, once for every job you launch.",
+        "Do not replace the job_progress card with a plain-text job summary or by telling the user to run a status command; call job_progress in addition to any Studio link.",
         "Use the returned markdown from studio_link exactly; do not replace it with localhost, the API host, or the MCP server host.",
         "If the user asks for an agent link and an agent name is known from the conversation, use destination='agent' with that name; otherwise use destination='agents'.",
         "If the user asks for an agent chat or playground link and an agent name is known from the conversation, use destination='agent_chat' with that name; otherwise use destination='agents'.",
@@ -441,13 +456,15 @@ def _extract_assistant_parts(content: Any) -> list[dict[str, Any]]:
             if isinstance(thinking, str) and thinking:
                 parts.append({"type": "thinking", "thinking": thinking})
         elif part_type == "tool_use":
-            parts.append(
-                {
-                    "type": "tool_use",
-                    "name": part.get("name") or "tool",
-                    "input": part.get("input") or {},
-                }
-            )
+            tool_use = {
+                "type": "tool_use",
+                "name": part.get("name") or "tool",
+                "input": part.get("input") or {},
+            }
+            tool_use_id = part.get("id")
+            if isinstance(tool_use_id, str) and tool_use_id:
+                tool_use["id"] = tool_use_id
+            parts.append(tool_use)
     return parts
 
 
@@ -590,8 +607,12 @@ def _build_claude_argv(
         "--verbose",
         "--mcp-config",
         mcp_config,
+        "--allowedTools",
+        ",".join(allowed_mcp_tools(CLAUDE_MCP_SERVER_NAME)),
+        "--append-system-prompt",
+        STUDIO_CODING_AGENT_CONTEXT,
         "--permission-prompt-tool",
-        f"mcp__{CLAUDE_MCP_SERVER_NAME}__approval_prompt",
+        permission_prompt_tool(CLAUDE_MCP_SERVER_NAME),
     ]
     if studio_system_prompt:
         argv.extend(["--append-system-prompt", studio_system_prompt])
@@ -646,6 +667,48 @@ async def _request_permission(session_id: str, args: dict[str, Any]) -> dict[str
             updated = args.get("input") or {}
         return {"behavior": "allow", "updatedInput": updated}
     return {"behavior": "deny", "message": decision.get("reason") or "denied by user"}
+
+
+async def _request_agent_input(session_id: str, kind: str, args: dict[str, Any]) -> dict[str, Any]:
+    queue = _session_streams.get(session_id)
+    if queue is None:
+        return {"status": "error", "message": "no active Studio coding-agent session"}
+
+    request_id = str(uuid.uuid4())
+    loop = asyncio.get_running_loop()
+    future: asyncio.Future[dict[str, Any]] = loop.create_future()
+    _pending_agent_inputs[request_id] = (session_id, future)
+
+    payload = json.dumps(
+        {
+            "request_id": request_id,
+            "kind": kind,
+            "input": args,
+        }
+    )
+    await queue.put(("input_request", payload))
+
+    try:
+        decision = await asyncio.wait_for(future, timeout=300)
+    except asyncio.TimeoutError:
+        return {"status": "error", "message": "input request timed out"}
+    finally:
+        _pending_agent_inputs.pop(request_id, None)
+
+    if decision.get("skipped"):
+        return {"status": "skipped"}
+
+    value = decision.get("value")
+    if isinstance(value, dict):
+        reserved_keys = sorted(_AGENT_INPUT_RESPONSE_RESERVED_KEYS.intersection(value))
+        if reserved_keys:
+            return {
+                "status": "error",
+                "message": f"input value included reserved keys: {', '.join(reserved_keys)}",
+            }
+        return {"status": "submitted", **value}
+
+    return {"status": "error", "message": "input request resolved without a value"}
 
 
 async def _pump_stdout(
@@ -745,6 +808,8 @@ async def _stream_claude(
                 yield _sse(payload)
             elif event_type == "permission_request":
                 yield _sse(payload, event="permission_request")
+            elif event_type == "input_request":
+                yield _sse(payload, event="input_request")
 
         returncode = await proc.wait()
         if stderr_task is not None:
@@ -794,6 +859,20 @@ async def resolve_permission(session_id: str, request_id: str, body: PermissionD
     pending_session_id, future = pending
     if pending_session_id != sid or future.done():
         raise HTTPException(status_code=404, detail="no such pending permission")
+    future.set_result(body.model_dump())
+    return {"ok": True}
+
+
+@router.post("/sessions/{session_id}/inputs/{request_id}")
+async def resolve_agent_input(session_id: str, request_id: str, body: AgentInputDecision) -> dict[str, bool]:
+    """Resolve a pending Claude UI input request."""
+    sid = _validate_session_id(session_id)
+    pending = _pending_agent_inputs.get(request_id)
+    if pending is None:
+        raise HTTPException(status_code=404, detail="no such pending input")
+    pending_session_id, future = pending
+    if pending_session_id != sid or future.done():
+        raise HTTPException(status_code=404, detail="no such pending input")
     future.set_result(body.model_dump())
     return {"ok": True}
 
@@ -850,7 +929,66 @@ async def mcp_endpoint(session_id: str, request: Request) -> Response:
         if not isinstance(args, dict):
             return JSONResponse(status_code=400, content={"detail": "tool arguments must be an object"})
 
-        if name == "approval_prompt":
+        if name == SELECT_AGENT_TOOL_NAME:
+            result = await _request_agent_input(sid, "agent", args)
+            return JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "result": {
+                        "content": [{"type": "text", "text": json.dumps(result)}],
+                    },
+                }
+            )
+
+        if name == SELECT_EVAL_CONFIG_TOOL_NAME:
+            result = await _request_agent_input(sid, "eval_config", args)
+            return JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "result": {
+                        "content": [{"type": "text", "text": json.dumps(result)}],
+                    },
+                }
+            )
+
+        if name == SELECT_DATASET_FILE_TOOL_NAME:
+            result = await _request_agent_input(sid, "dataset_file", args)
+            return JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "result": {
+                        "content": [{"type": "text", "text": json.dumps(result)}],
+                    },
+                }
+            )
+
+        if name == SELECT_MODEL_TOOL_NAME:
+            result = await _request_agent_input(sid, "model", args)
+            return JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "result": {
+                        "content": [{"type": "text", "text": json.dumps(result)}],
+                    },
+                }
+            )
+
+        if name == JOB_PROGRESS_TOOL_NAME:
+            return JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "result": {
+                        "content": [{"type": "text", "text": json.dumps({"status": "rendered"})}],
+                    },
+                }
+            )
+
+        if name == APPROVAL_TOOL_NAME:
             result = await _request_permission(sid, args)
             return JSONResponse(
                 {
@@ -862,7 +1000,7 @@ async def mcp_endpoint(session_id: str, request: Request) -> Response:
                 }
             )
 
-        if name == "studio_link":
+        if name == STUDIO_LINK_TOOL_NAME:
             workspace = _trimmed_string(request.query_params.get("workspace"))
             studio_base_url = _trimmed_string(request.query_params.get("studio_base_url"))
             enabled_destinations = studio_links.enabled_destinations_from_request(request)

@@ -13,6 +13,7 @@ from nemo_platform_ext.cli.commands.api.inference import (
     deployments,
     gateway,
     models,
+    prompts,
     providers,
     virtual_models,
 )
@@ -26,6 +27,7 @@ app.add_typer(deployment_configs.app, name="deployment-configs")
 app.add_typer(deployments.app, name="deployments")
 app.add_typer(gateway.app, name="gateway")
 app.add_typer(models.app, name="models")
+app.add_typer(prompts.app, name="prompts")
 app.add_typer(providers.app, name="providers")
 app.add_typer(virtual_models.app, name="virtual-models")
 

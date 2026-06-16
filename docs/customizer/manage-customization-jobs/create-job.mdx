@@ -3,6 +3,14 @@ title: "Create Job"
 description: ""
 ---
 <a id="ft-create-customization-job"></a>
+
+Customization jobs are submitted to one of two backends. Choose the backend that matches your hardware and training goal, then build that backend's job spec and submit it. For the full per-backend hyperparameter reference, see [Training Configuration](/documentation/customizer-reference/manage-customization-jobs/training-configuration).
+
+| Backend | Best for | Methods |
+|---------|----------|---------|
+| **Automodel** (default) | Production fine-tuning, larger models, multi-GPU scaling | SFT, distillation; LoRA, merged-LoRA, or full-weight |
+| **Unsloth** | Memory-constrained single-GPU LoRA | SFT; LoRA or full-weight, with 4-bit / 8-bit loading |
+
 ## Prerequisites
 
 Before you can create a customization job, make sure that you have:
@@ -10,7 +18,7 @@ Before you can create a customization job, make sure that you have:
 - Obtained the base URL of your NeMo Platform.
 - Created a [FileSet and Model Entity](/documentation/customizer-reference/manage-model-entities/overview) for your base model.
 - [Uploaded a dataset](/documentation/get-started/core-concepts/manage-files) as a FileSet.
-- Determined the [training configuration](/documentation/customizer-reference/manage-jobs/training-configuration) you want to use for the customization job.
+- Determined the [training configuration](/documentation/customizer-reference/manage-customization-jobs/training-configuration) you want to use for the customization job.
 - Verified that the platform has sufficient storage for the job. Full SFT jobs require approximately 3× the base model size in free disk space; LoRA jobs require approximately 1.5×. See [ft-tut-understand-models](/documentation/customizer-reference/tutorials/understanding-models-and-training) for details. If you are also deploying the model from a base checkpoint fileset, plan for ~2.5× model size overall for LoRA.
 - Set the `NMP_BASE_URL` environment variable to your NeMo Platform endpoint.
 
@@ -20,13 +28,14 @@ export NMP_BASE_URL="https://your-nemo-platform-url"
 
 ---
 
-## To Create a Customization Job
+## Submit an Automodel Job
 
-Use the SDK to create a customization job:
+Build an `AutomodelJobInput` spec and submit it to the `automodel` backend. The job runs on the platform's GPU cluster, and `create()` returns a handle you can use to poll its status.
 
 ```python
 import os
 from nemo_platform import NeMoPlatform
+from nemo_automodel_plugin.schema import AutomodelJobInput
 
 # Initialize the client
 client = NeMoPlatform(
@@ -34,32 +43,28 @@ client = NeMoPlatform(
     workspace="default",
 )
 
-# Create a customization job
-job = client.customization.jobs.create(
-    name="my-lora-job",
-    workspace="default",
-    spec={
-        "model": "default/llama-3-2-1b",  # Model Entity (workspace/name format)
-        "dataset": "fileset://default/my-training-dataset",
-        "training": {
-            "type": "sft",
-            "peft": {"type": "lora", "rank": 8, "alpha": 32, "dropout": 0.0},
-            "batch_size": 32,
-            "epochs": 3,
-            "learning_rate": 1e-4,
-            "max_seq_length": 2048,
-        },
-        "output": {
-            "name": "my-custom-model"
-        },  # Optional: auto-generated if not provided
-        "deployment_config": {
-            "lora_enabled": True  # Optional: deploy base model with LoRA support
-        },
+# Build the job spec (SFT + LoRA)
+spec = AutomodelJobInput(
+    model="default/qwen3-1.7b",  # Base Model Entity (workspace/name)
+    dataset={"training": "default/my-training-dataset"},
+    training={
+        "training_type": "sft",
+        "finetuning_type": "lora",
+        "lora": {"rank": 16, "alpha": 32},
+        "max_seq_length": 2048,
     },
+    schedule={"epochs": 3},
+    batch={"global_batch_size": 32, "micro_batch_size": 1},
+    optimizer={"learning_rate": 1e-4},
+    parallelism={"num_gpus_per_node": 1},
+    output={"name": "my-custom-model"},  # Optional: auto-generated if omitted
 )
 
-print(f"Created job: {job.name}")
-print(f"Job status: {job.status}")
+# Submit the job
+job = client.customization.automodel.jobs.create(spec=spec, workspace="default", name="my-lora-job")
+
+print(f"Submitted job: {job.job.name}")
+print(f"Job status: {job.job.status}")
 ```
 
 <Accordion title="Example Response">
@@ -68,91 +73,116 @@ print(f"Job status: {job.status}")
 
 ```json
 {
-  "name": "my-lora-job",
+  "name": "automodel-a1b2c3d4e5f6",
   "workspace": "default",
-  "id": "job-abc123def456",
-  "status": "created",
+  "id": "platform-job-2k8i3i1HqJHHPVB5M6Bk9Z",
+  "status": "queued",
   "spec": {
-    "model": "default/llama-3-2-1b",
-    "dataset": "fileset://default/my-training-dataset",
+    "model": "default/qwen3-1.7b",
+    "dataset": { "training": "default/my-training-dataset" },
     "training": {
-      "type": "sft",
-      "peft": {
-        "type": "lora",
-        "rank": 8,
-        "alpha": 32,
-        "dropout": 0.0
-      },
-      "batch_size": 32,
-      "epochs": 3,
-      "learning_rate": 0.0001,
+      "training_type": "sft",
+      "finetuning_type": "lora",
+      "lora": { "rank": 16, "alpha": 32 },
       "max_seq_length": 2048
     },
+    "schedule": { "epochs": 3 },
+    "batch": { "global_batch_size": 32, "micro_batch_size": 1 },
+    "optimizer": { "learning_rate": 0.0001 },
     "output": {
       "name": "my-custom-model",
       "type": "adapter",
       "fileset": "my-custom-model-a1b2c3d4e5f6"
     }
-  },
-  "created_at": "2026-02-09T10:30:00.000Z",
-  "updated_at": "2026-02-09T10:30:00.000Z"
+  }
 }
 ```
 
 </Accordion>
+
 ---
 
-### Knowledge Distillation Example
+## Submit an Unsloth Job
 
-For knowledge distillation, specify `type: "distillation"` with a `teacher_model` that references a second Model Entity. The `model` field is the student model that is being trained.
+The Unsloth backend runs on a single GPU and supports 4-bit / 8-bit quantized loading. Build a `UnslothJobInput` spec and submit it to the `unsloth` backend. Note that Unsloth uses its own field names (`model.name`, `dataset.path`, `batch.per_device_train_batch_size`).
 
 ```python
-job = client.customization.jobs.create(
-    name="my-kd-job",
+import os
+from nemo_platform import NeMoPlatform
+from nemo_unsloth_plugin.schema import UnslothJobInput
+
+client = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
     workspace="default",
-    spec={
-        "model": "default/llama-3-2-1b-instruct",  # Student model
-        "dataset": "fileset://default/my-training-dataset",
-        "training": {
-            "type": "distillation",
-            "teacher_model": "default/llama-3-2-3b-instruct",  # Teacher model
-            "teacher_precision": "bf16",
-            "distillation_ratio": 0.5,
-            "distillation_temperature": 2.0,
-            "batch_size": 64,
-            "epochs": 2,
-            "learning_rate": 5e-5,
-            "max_seq_length": 2048,
-            "parallelism": {"num_gpus_per_node": 1},
-        },
-    },
 )
+
+spec = UnslothJobInput(
+    model={"name": "default/qwen3-1.7b", "load_in_4bit": True},
+    dataset={"path": "default/my-training-dataset", "apply_chat_template": True},
+    training={"finetuning_type": "lora", "lora": {"rank": 16, "alpha": 16}},
+    schedule={"epochs": 3},
+    batch={"per_device_train_batch_size": 2, "gradient_accumulation_steps": 4},
+    optimizer={"learning_rate": 2e-4},
+    output={"save_method": "lora"},
+)
+
+job = client.customization.unsloth.jobs.create(spec=spec, workspace="default", name="my-unsloth-lora-job")
+
+print(f"Submitted job: {job.job.name}")
+```
+
+---
+
+## Knowledge Distillation (Automodel)
+
+Knowledge distillation is an Automodel feature. Set `training.training_type` to `"distillation"` and provide a `teacher_model` that references a second Model Entity. The `model` field is the student model being trained.
+
+```python
+spec = AutomodelJobInput(
+    model="default/qwen3-1.7b",  # Student model
+    dataset={"training": "default/my-training-dataset"},
+    training={
+        "training_type": "distillation",
+        "finetuning_type": "lora",
+        "teacher_model": "default/qwen3-4b",  # Teacher model
+        "teacher_precision": "bf16",
+        "distillation_ratio": 0.5,
+        "distillation_temperature": 2.0,
+    },
+    schedule={"epochs": 2},
+    batch={"global_batch_size": 64, "micro_batch_size": 1},
+    optimizer={"learning_rate": 5e-5},
+    parallelism={"num_gpus_per_node": 1},
+)
+
+job = client.customization.automodel.jobs.create(spec=spec, workspace="default", name="my-kd-job")
 ```
 
 <Note>
 
-See [Knowledge Distillation constraints](/documentation/customizer-reference/manage-jobs/training-configuration) for requirements on model compatibility, tokenizer, and GPU memory.
+See [Knowledge Distillation constraints](/documentation/customizer-reference/manage-customization-jobs/training-configuration#kd-constraints) for requirements on model compatibility, tokenizer, and GPU memory.
 
 </Note>
+
 ---
 
-## Job Configuration Reference
+## After Submission
 
-The job spec contains the model, dataset, training, output, deployment, and integration settings for the job. For key fields, the complete API schema, and W&B or MLflow integration options, see [Customization Job Reference](/documentation/customizer-reference/manage-jobs/customization-job-reference).
+A submitted job runs on the platform's Jobs service. Manage its lifecycle — polling status, listing, and cancelling — through that service, regardless of which backend you submitted to. See [Get Job Status](/documentation/customizer-reference/manage-customization-jobs/get-job-status), [List Active Jobs](/documentation/customizer-reference/manage-customization-jobs/list-active-jobs), and [Cancel a Job](/documentation/customizer-reference/manage-customization-jobs/cancel-job).
+
+For field-level details of the job spec and W&B or MLflow integration options, see [Customization Job Reference](/documentation/customizer-reference/manage-customization-jobs/customization-job-reference).
 
 ---
 
 ## Training Output
 
-When training completes, the system automatically:
+When training completes, the system automatically uploads the trained artifacts to a new FileSet (`output.fileset`) and creates an output based on the fine-tuning regime:
 
-1. **Uploads artifacts** to a new FileSet (`output.fileset`)
-2. **Creates the output** based on PEFT configuration:
-
-| PEFT Configuration | Output Created |
-|---------------------|----------------|
-| `peft: { type: "lora", ... }` | **Adapter** attached to the parent Model Entity |
-| `peft` omitted | **New Model Entity** with all model weights (complete fine-tuned model) |
+| `training.finetuning_type` | Output Created |
+|----------------------------|----------------|
+| `lora` | **Adapter** attached to the parent Model Entity |
+| `lora_merged` | **New Model Entity** with the adapter merged into the base weights |
+| `all_weights` | **New Model Entity** with all model weights (complete fine-tuned model) |
 
 ### LoRA Adapters
 
@@ -160,7 +190,7 @@ For LoRA jobs, the adapter is added to the parent Model Entity's `adapters` list
 
 ```python
 # After training completes, retrieve the model to see the adapter
-model = client.models.retrieve(workspace="default", name="llama-3-2-1b")
+model = client.models.retrieve(workspace="default", name="qwen3-1.7b")
 
 for adapter in model.adapters or []:
     print(f"Adapter: {adapter.name}")
@@ -168,4 +198,4 @@ for adapter in model.adapters or []:
     print(f" Enabled: {adapter.enabled}")
 ```
 
-Adapters are enabled by default and will automatically be loaded by NIMs serving this model with LoRA support.
+Adapters are enabled by default and are automatically loaded by NIMs serving this model with LoRA support.

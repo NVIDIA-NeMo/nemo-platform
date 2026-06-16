@@ -753,7 +753,7 @@ export const routes: RouteObject[] = [
                       <ModelCompareRoute />
                     </Suspense>
                   ) : null,
-                  errorElement: <ErrorPanel title="Model Compare" />,
+                  errorElement: <ErrorPanel title="Chat" />,
                 },
               ]),
               ...gateMembersRoutes([

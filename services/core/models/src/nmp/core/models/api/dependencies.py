@@ -12,6 +12,7 @@ from nmp.core.models.api.service.model_deployment_config_service import ModelDep
 from nmp.core.models.api.service.model_deployment_service import ModelDeploymentService
 from nmp.core.models.api.service.model_entity_service import ModelEntityService
 from nmp.core.models.api.service.model_provider_service import ModelProviderService
+from nmp.core.models.api.service.prompt_service import PromptService
 
 
 def get_model_entity_service(
@@ -33,6 +34,13 @@ def get_model_provider_service(
 ) -> ModelProviderService:
     """Dependency to get ModelProviderService instance."""
     return ModelProviderService(entity_client)
+
+
+def get_prompt_service(
+    entity_client: EntityClient = Depends(get_entity_client),
+) -> PromptService:
+    """Dependency to get PromptService instance."""
+    return PromptService(entity_client)
 
 
 def get_model_deployment_config_service(

@@ -1,28 +1,38 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Shared constants for the unsloth container job pipeline.
+"""Constants for the unsloth container job pipeline.
 
-These mirror the ``services/automodel`` constants so the unsloth service
-exposes the same path layout to the 4-step container submit pipeline.
+Shared container-path/env constants (including the validation-dataset path) come
+from :mod:`nmp.customization_common.service.constants`; this module only adds the unsloth
+``SERVICE_NAME``.
 """
 
-from nmp.common.jobs.constants import DEFAULT_JOB_STORAGE_PATH
+from nmp.customization_common.service.constants import (
+    DEFAULT_DATASET_OUTPUT_DIR_NAME,
+    DEFAULT_DATASET_PATH,
+    DEFAULT_MODEL_OUTPUT_DIR_NAME,
+    DEFAULT_MODEL_PATH,
+    DEFAULT_OUTPUT_MODEL_DIR_NAME,
+    DEFAULT_OUTPUT_MODEL_PATH,
+    DEFAULT_VALIDATION_DATASET_OUTPUT_DIR_NAME,
+    DEFAULT_VALIDATION_DATASET_PATH,
+    NMP_FILES_URL_ENVVAR,
+    NMP_JOBS_URL_ENVVAR,
+)
+
+__all__ = [
+    "DEFAULT_DATASET_OUTPUT_DIR_NAME",
+    "DEFAULT_DATASET_PATH",
+    "DEFAULT_MODEL_OUTPUT_DIR_NAME",
+    "DEFAULT_MODEL_PATH",
+    "DEFAULT_OUTPUT_MODEL_DIR_NAME",
+    "DEFAULT_OUTPUT_MODEL_PATH",
+    "DEFAULT_VALIDATION_DATASET_OUTPUT_DIR_NAME",
+    "DEFAULT_VALIDATION_DATASET_PATH",
+    "NMP_FILES_URL_ENVVAR",
+    "NMP_JOBS_URL_ENVVAR",
+    "SERVICE_NAME",
+]
 
 SERVICE_NAME = "unsloth"
-
-# Subdirectory names under the job's persistent storage root.
-DEFAULT_MODEL_OUTPUT_DIR_NAME = "model"
-DEFAULT_DATASET_OUTPUT_DIR_NAME = "dataset"
-DEFAULT_VALIDATION_DATASET_OUTPUT_DIR_NAME = "validation_dataset"
-DEFAULT_OUTPUT_MODEL_DIR_NAME = "output_model"
-
-# Absolute paths used by the compiler when wiring step-to-step file sharing
-# inside the platform Jobs runner's mounted storage layout.
-DEFAULT_MODEL_PATH = f"{DEFAULT_JOB_STORAGE_PATH}/{DEFAULT_MODEL_OUTPUT_DIR_NAME}"
-DEFAULT_DATASET_PATH = f"{DEFAULT_JOB_STORAGE_PATH}/{DEFAULT_DATASET_OUTPUT_DIR_NAME}"
-DEFAULT_VALIDATION_DATASET_PATH = f"{DEFAULT_JOB_STORAGE_PATH}/{DEFAULT_VALIDATION_DATASET_OUTPUT_DIR_NAME}"
-DEFAULT_OUTPUT_MODEL_PATH = f"{DEFAULT_JOB_STORAGE_PATH}/{DEFAULT_OUTPUT_MODEL_DIR_NAME}"
-
-NMP_JOBS_URL_ENVVAR = "NMP_JOBS_URL"
-NMP_FILES_URL_ENVVAR = "NMP_FILES_URL"

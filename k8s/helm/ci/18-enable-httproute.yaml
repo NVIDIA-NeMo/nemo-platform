@@ -1,0 +1,9 @@
+# CI validates by running: helm template nemo-platform . -f ci/18-enable-httproute.yaml
+# Tests that enabling Gateway API HTTPRoute renders a valid HTTPRoute (parentRefs required when enabled).
+
+httpRoute:
+  enabled: true
+  parentRefs:
+    - name: ci-gateway
+      namespace: default
+

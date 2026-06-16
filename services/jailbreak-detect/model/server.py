@@ -43,8 +43,27 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="NeMo Jailbreak Detect", version="0.1.0")
 cli_app = typer.Typer(help="NeMo jailbreak-detection model server.")
 
-# Identifier reported by the OpenAI-style /v1/models discovery endpoint.
-MODEL_ID = "nvidia/nemoguard-jailbreak-detect"
+
+def _resolve_model_id() -> str:
+    """Resolve the advertised model id, in precedence order.
+
+    1. ``JAILBREAK_MODEL_ID`` — explicit, correctly-named override (this server is
+       not a NIM, so it gets its own knob).
+    2. ``NIM_SERVED_MODEL_NAME`` — injected by the NeMo Models controller from the
+       deployment config's ``model_spec`` (``{model_namespace}/{model_name}``). Honoring
+       it means discovery auto-matches the base id the controller expects, so the
+       operator declares the identity once in ``model_spec`` and picks the workspace
+       (e.g. ``default``) via ``model_namespace`` — no separate server config needed.
+    3. The upstream default, for standalone/local runs with neither set.
+    """
+    return (
+        os.environ.get("JAILBREAK_MODEL_ID")
+        or os.environ.get("NIM_SERVED_MODEL_NAME")
+        or "nvidia/nemoguard-jailbreak-detect"
+    )
+
+
+MODEL_ID = _resolve_model_id()
 
 # Loaded once at startup and reused across requests.
 _classifier: JailbreakClassifier | None = None
@@ -100,9 +119,10 @@ def health_ready(response: Response) -> dict[str, str]:
 @app.get("/v1/models")
 def list_models() -> dict:
     """OpenAI-style model discovery. Static — this server hosts a single model."""
+    owned_by = MODEL_ID.split("/", 1)[0] if "/" in MODEL_ID else "nvidia"
     return {
         "object": "list",
-        "data": [{"id": MODEL_ID, "object": "model", "owned_by": "nvidia"}],
+        "data": [{"id": MODEL_ID, "object": "model", "owned_by": owned_by}],
     }
 
 

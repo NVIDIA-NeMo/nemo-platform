@@ -10,7 +10,6 @@ from collections import deque
 from pathlib import Path
 from typing import Any, Optional
 
-from nmp.automodel.app.jobs.context import NMPJobContext
 from nmp.automodel.tasks.training.errors.parser import (
     MAX_OUTPUT_LINES,
     parse_error_from_output,
@@ -24,6 +23,7 @@ from nmp.automodel.tasks.training.schemas import (
     TrainingStepConfig,
 )
 from nmp.automodel.tasks.training.utils import generate_torchrun_flags_from_env
+from nmp.customization_common.service.context import NMPJobContext
 
 from .checkpoints import ModelType, find_best_checkpoint, process_checkpoint
 from .config import compile_automodel_config

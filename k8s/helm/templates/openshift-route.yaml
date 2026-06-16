@@ -1,0 +1,28 @@
+{{- if .Values.openshiftRoute.enabled -}}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ include "nemo-platform.name" . }}
+  labels:
+    {{- include "nemo-platform.labels" . | nindent 4 }}
+  {{- with .Values.openshiftRoute.labels }}
+  {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.openshiftRoute.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.openshiftRoute.host }}
+  host: {{ .Values.openshiftRoute.host | quote }}
+  {{- end }}
+  port:
+    targetPort: {{ tpl .Values.openshiftRoute.targetPort $ | int }}
+  to:
+    kind: Service
+    name: {{ tpl .Values.openshiftRoute.service $ }}
+  {{- if .Values.openshiftRoute.tls }}
+  tls:
+    {{- toYaml .Values.openshiftRoute.tls | nindent 4 }}
+  {{- end }}
+{{- end }}

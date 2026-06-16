@@ -1,0 +1,30 @@
+# Test that component-specific security context values override global values
+
+# Global defaults
+podSecurityContext:
+  runAsNonRoot: true
+  fsGroup: 1000
+
+securityContext:
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+
+# Component overrides - these should take precedence over globals
+api:
+  podSecurityContext:
+    fsGroup: 2000  # Override global fsGroup
+    runAsUser: 1001
+  securityContext:
+    readOnlyRootFilesystem: false  # Override global setting
+
+core:
+  api:
+    podSecurityContext:
+      fsGroup: 3000
+    securityContext:
+      runAsUser: 1002
+  controller:
+    podSecurityContext:
+      fsGroup: 4000
+    securityContext:
+      runAsUser: 1003

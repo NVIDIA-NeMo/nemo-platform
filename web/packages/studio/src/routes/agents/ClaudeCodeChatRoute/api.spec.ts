@@ -3,7 +3,9 @@
 
 import { BASE_URL } from '@studio/constants/environment';
 import {
+  getClaudeCodeSessionHistory,
   listClaudeCodeSkills,
+  resolveClaudeCodeInput,
   resolveClaudeCodePermission,
   streamClaudeCodeMessage,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/api';
@@ -32,6 +34,7 @@ describe('Claude Code API helpers', () => {
       signal: new AbortController().signal,
       handlers: {
         onClaudeEvent: vi.fn(),
+        onInputRequest: vi.fn(),
         onPermissionRequest: vi.fn(),
         onDone: vi.fn(),
         onError: vi.fn(),
@@ -78,6 +81,7 @@ describe('Claude Code API helpers', () => {
       signal: new AbortController().signal,
       handlers: {
         onClaudeEvent: vi.fn(),
+        onInputRequest: vi.fn(),
         onPermissionRequest,
         onDone: vi.fn(),
         onError: vi.fn(),
@@ -116,6 +120,7 @@ describe('Claude Code API helpers', () => {
       signal: new AbortController().signal,
       handlers: {
         onClaudeEvent: vi.fn(),
+        onInputRequest: vi.fn(),
         onPermissionRequest,
         onDone: vi.fn(),
         onError,
@@ -152,6 +157,7 @@ describe('Claude Code API helpers', () => {
       signal: new AbortController().signal,
       handlers: {
         onClaudeEvent: vi.fn(),
+        onInputRequest: vi.fn(),
         onPermissionRequest,
         onDone: vi.fn(),
         onError,
@@ -219,5 +225,182 @@ describe('Claude Code API helpers', () => {
         installed: false,
       },
     ]);
+  });
+
+  it('emits structured blocking input requests from SSE events', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          [
+            'event: input_request',
+            'data: {"request_id":"request-1","kind":"agent","input":{"title":"Pick agent"}}',
+            '',
+          ].join('\n'),
+          { status: 200 }
+        )
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const onInputRequest = vi.fn();
+
+    await streamClaudeCodeMessage({
+      sessionId: 'session-1',
+      message: 'pick agent',
+      signal: new AbortController().signal,
+      handlers: {
+        onClaudeEvent: vi.fn(),
+        onInputRequest,
+        onPermissionRequest: vi.fn(),
+        onDone: vi.fn(),
+        onError: vi.fn(),
+      },
+    });
+
+    expect(onInputRequest).toHaveBeenCalledWith({
+      requestId: 'request-1',
+      kind: 'agent',
+      input: { title: 'Pick agent' },
+    });
+  });
+
+  it('emits structured dataset file input requests from SSE events', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          [
+            'event: input_request',
+            'data: {"request_id":"request-1","kind":"dataset_file","input":{"title":"Pick dataset"}}',
+            '',
+          ].join('\n'),
+          { status: 200 }
+        )
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const onInputRequest = vi.fn();
+
+    await streamClaudeCodeMessage({
+      sessionId: 'session-1',
+      message: 'pick dataset',
+      signal: new AbortController().signal,
+      handlers: {
+        onClaudeEvent: vi.fn(),
+        onInputRequest,
+        onPermissionRequest: vi.fn(),
+        onDone: vi.fn(),
+        onError: vi.fn(),
+      },
+    });
+
+    expect(onInputRequest).toHaveBeenCalledWith({
+      requestId: 'request-1',
+      kind: 'dataset_file',
+      input: { title: 'Pick dataset' },
+    });
+  });
+
+  it('emits structured model input requests from SSE events', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          [
+            'event: input_request',
+            'data: {"request_id":"request-1","kind":"model","input":{"title":"Pick model"}}',
+            '',
+          ].join('\n'),
+          { status: 200 }
+        )
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const onInputRequest = vi.fn();
+
+    await streamClaudeCodeMessage({
+      sessionId: 'session-1',
+      message: 'pick model',
+      signal: new AbortController().signal,
+      handlers: {
+        onClaudeEvent: vi.fn(),
+        onInputRequest,
+        onPermissionRequest: vi.fn(),
+        onDone: vi.fn(),
+        onError: vi.fn(),
+      },
+    });
+
+    expect(onInputRequest).toHaveBeenCalledWith({
+      requestId: 'request-1',
+      kind: 'model',
+      input: { title: 'Pick model' },
+    });
+  });
+
+  it('posts blocking input decisions using the backend input shape', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await resolveClaudeCodeInput({
+      sessionId: 'session-1',
+      requestId: 'request-1',
+      decision: {
+        value: { agent: 'react-agent' },
+      },
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/sessions/session-1/inputs/request-1'),
+      expect.objectContaining({
+        body: JSON.stringify({
+          skipped: undefined,
+          value: { agent: 'react-agent' },
+        }),
+        method: 'POST',
+      })
+    );
+  });
+
+  it('preserves tool use ids from session history', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          session_id: 'session-1',
+          items: [
+            {
+              kind: 'assistant',
+              parts: [
+                {
+                  type: 'tool_use',
+                  id: 'toolu_job',
+                  name: 'job_progress',
+                  input: { job_name: 'studio-job-1' },
+                },
+              ],
+            },
+          ],
+        }),
+        { status: 200 }
+      )
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(getClaudeCodeSessionHistory('session-1')).resolves.toEqual({
+      session_id: 'session-1',
+      items: [
+        {
+          kind: 'assistant',
+          parts: [
+            {
+              type: 'tool_use',
+              id: 'toolu_job',
+              name: 'job_progress',
+              input: { job_name: 'studio-job-1' },
+            },
+          ],
+        },
+      ],
+    });
   });
 });
