@@ -12,7 +12,7 @@ param types and filtered to tests that work without Docker.
 import uuid
 
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform import NeMoPlatform, NotFoundError
 from nmp.testing.e2e import wait_for_job_logs, wait_for_platform_job
 
 JOB_SOURCE = "e2e-test-jobs"
@@ -255,8 +255,8 @@ def test_job_using_secret_environment_variable(sdk: NeMoPlatform, workspace: str
 
         sdk.secrets.delete(workspace=workspace, name=secret_name)
         secret_deleted = True
-        secret_names = [listed_secret.name for listed_secret in sdk.secrets.list(workspace=workspace).data]
-        assert secret_name not in secret_names, "Secret should not appear in list after deletion"
+        with pytest.raises(NotFoundError):
+            sdk.secrets.retrieve(secret_name, workspace=workspace)
     finally:
         if not secret_deleted:
             try:
