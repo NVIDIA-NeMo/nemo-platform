@@ -170,6 +170,8 @@ jobs:
       KUBE_GATEWAY_NAME: nmp-e2e-gateway
       KUBE_NAMESPACE: nemo-platform
       NAMESPACE: nemo-platform
+      CORE_STORAGE_BINDER_ENABLED: "false"
+      NMP_E2E_CLUSTER_URL: ""
       NMP_E2E_INTERNAL_HOST: nemo-platform-api:8080
       NMP_E2E_REGISTRY: ${{ needs.build-cpu-images.outputs.image_registry }}
       NMP_E2E_TAG: ${{ needs.build-cpu-images.outputs.image_tag }}
@@ -239,6 +241,7 @@ jobs:
         shell: bash
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          NGC_API_KEY: not-used-for-ghcr-cpu-smoke
         run: bash "${K8S_E2E_SCRIPTS}/setup_local_kind_cpu.sh"
 
       - name: Set default kubectl namespace
@@ -274,7 +277,16 @@ jobs:
 
       - name: Install NeMo Platform
         shell: bash
-        run: HELM_VALUES="${K8S_E2E_VALUES}/kind.yaml" "${K8S_E2E_SCRIPTS}/install_nmp_e2e.sh"
+        run: |
+          if ! HELM_VALUES="${K8S_E2E_VALUES}/kind.yaml" "${K8S_E2E_SCRIPTS}/install_nmp_e2e.sh"; then
+            echo "--- helm list -A ---"
+            helm list -A || true
+            echo "--- helm status ${NAMESPACE}/nemo-platform ---"
+            helm status -n "${NAMESPACE}" nemo-platform || true
+            echo "--- kubectl get all -n ${NAMESPACE} ---"
+            kubectl get all -n "${NAMESPACE}" || true
+            exit 1
+          fi
 
       - name: Wait for API
         shell: bash
