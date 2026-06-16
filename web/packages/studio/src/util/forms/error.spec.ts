@@ -7,7 +7,7 @@ import { FieldErrors } from 'react-hook-form';
 
 // Mock the websiteLogger
 vi.mock('@studio/util/logger', () => ({
-  websiteLogger: {
+  logger: {
     error: vi.fn(),
   },
 }));

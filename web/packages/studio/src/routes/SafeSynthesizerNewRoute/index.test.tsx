@@ -128,7 +128,7 @@ describe('SafeSynthesizerNewRoute', () => {
         OTEL_SERVICE_NAME: 'test-service',
       }));
       vi.doMock('@studio/util/logger', () => ({
-        websiteLogger: { debug: vi.fn(), error: vi.fn(), info: vi.fn(), warn: vi.fn() },
+        logger: { debug: vi.fn(), error: vi.fn(), info: vi.fn(), warn: vi.fn() },
       }));
 
       const module = await import('./index');
@@ -142,7 +142,7 @@ describe('SafeSynthesizerNewRoute', () => {
         OTEL_SERVICE_NAME: 'test-service',
       }));
       vi.doMock('@studio/util/logger', () => ({
-        websiteLogger: { debug: vi.fn(), error: vi.fn(), info: vi.fn(), warn: vi.fn() },
+        logger: { debug: vi.fn(), error: vi.fn(), info: vi.fn(), warn: vi.fn() },
       }));
 
       const module = await import('./index');
