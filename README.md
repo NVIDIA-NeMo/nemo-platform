@@ -7,7 +7,7 @@
 [![CI](https://img.shields.io/badge/CI-passing-brightgreen?style=flat-square&logo=githubactions&logoColor=white)](https://github.com/NVIDIA-NeMo/nemo-platform/actions/workflows/ci.yaml)
 [![License](https://img.shields.io/badge/license-Apache_2.0-D22128?style=flat-square)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11--3.14-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
-[![Docs](https://img.shields.io/badge/docs-nvidia--nemo.github.io-76B900?style=flat-square&logo=readthedocs&logoColor=white)](https://nvidia-nemo.github.io/nemo-platform/)
+[![Docs](https://img.shields.io/static/v1?label=docs&message=docs.nvidia.com%2Fnemo-platform&color=76B900&style=flat-square&logo=readthedocs&logoColor=white)](https://docs.nvidia.com/nemo-platform)
 
 Make the agents you ship faster, more accurate, and safer.
 
@@ -164,7 +164,7 @@ The demo agent uses `${NEMO_DEFAULT_MODEL}` for both execution and the judge LLM
 
 ## Documentation
 
-Full documentation: [NeMo Platform docs](https://nvidia-nemo.github.io/nemo-platform/).
+Full documentation: [NeMo Platform docs](https://docs.nvidia.com/nemo-platform)
 
 - [Setup](docs/get-started/setup.md): installation, providers, SDK.
 - [CLI reference](docs/cli/index.md): all commands.

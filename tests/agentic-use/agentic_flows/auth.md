@@ -69,7 +69,4 @@ The Auth service provides workspace management and authorization capabilities. W
 
 ## Documentation References
 
-- [Workspaces Concepts](https://docs.nvidia.com/nemo-platform/latest/get-started/concepts/workspaces.html)
-- [Auth Overview](https://docs.nvidia.com/nemo-platform/latest/auth/index.html)
-- [Auth Concepts](https://docs.nvidia.com/nemo-platform/latest/auth/concepts.html)
-- [Managing Access](https://docs.nvidia.com/nemo-platform/latest/auth/managing-access.html)
+- [Workspaces Concepts](https://docs.nvidia.com/nemo/microservices/latest/get-started/concepts/workspaces.html)

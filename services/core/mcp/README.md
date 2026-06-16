@@ -186,4 +186,4 @@ async def my_tool(param: str) -> dict[str, Any]:
 
 - [MCP Specification](https://modelcontextprotocol.io/specification/2025-11-25)
 - [FastMCP Documentation](https://gofastmcp.com/)
-- [NeMo Platform Docs](https://nvidia-nemo.github.io/nemo-platform/main/)
+- [NeMo Platform Docs](https://docs.nvidia.com/nemo-platform)
