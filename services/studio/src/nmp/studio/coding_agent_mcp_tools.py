@@ -190,9 +190,7 @@ STUDIO_CODING_AGENT_CONTEXT = "\n".join(
             "'health/ready' checks unless the user explicitly asks you to. Assume services are up and "
             "go straight to the actual task."
         ),
-        (
-            "Prefer NeMo Studio MCP tools and the nemo CLI over ad-hoc shell or filesystem commands. "
-        ),
+        ("Prefer NeMo Studio MCP tools and the nemo CLI over ad-hoc shell or filesystem commands. "),
         (
             "When you need to prompt the user for input, use a Studio UI tool instead of writing a "
             "plain-text question whenever a suitable tool exists."
