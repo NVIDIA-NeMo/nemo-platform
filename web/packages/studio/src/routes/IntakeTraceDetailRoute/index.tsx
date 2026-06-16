@@ -19,7 +19,7 @@ import { Loading } from '@studio/components/Layouts/Loading';
 import { NotFound } from '@studio/components/Layouts/NotFound';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
-import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
+import { BreadcrumbsItemProps, useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { getIntakeSpanRoute, getIntakeTracesRoute } from '@studio/routes/utils';
 import {
   EMPTY_VALUE,
@@ -50,11 +50,16 @@ export const IntakeTraceDetailRoute: FC = () => {
   return <IntakeTraceDetailContent traceId={traceId} />;
 };
 
-interface IntakeTraceDetailContentProps {
+export interface IntakeTraceDetailContentProps {
   traceId: string;
+  /** Leading breadcrumb items. Defaults to the Intake root when omitted. */
+  parentBreadcrumbs?: BreadcrumbsItemProps[];
 }
 
-const IntakeTraceDetailContent: FC<IntakeTraceDetailContentProps> = ({ traceId }) => {
+export const IntakeTraceDetailContent: FC<IntakeTraceDetailContentProps> = ({
+  traceId,
+  parentBreadcrumbs,
+}) => {
   const workspace = useWorkspaceFromPath();
 
   const {
@@ -69,16 +74,11 @@ const IntakeTraceDetailContent: FC<IntakeTraceDetailContentProps> = ({ traceId }
   const traceBreadcrumbLabel = trace ? getTraceDisplayName(trace) : traceId;
 
   useEffect(() => {
-    setBreadcrumbs([
-      {
-        slotLabel: 'Intake',
-        href: getIntakeTracesRoute(workspace),
-      },
-      {
-        slotLabel: `Trace ${traceBreadcrumbLabel}`,
-      },
-    ]);
-  }, [setBreadcrumbs, traceBreadcrumbLabel, workspace]);
+    const parent = parentBreadcrumbs ?? [
+      { slotLabel: 'Intake', href: getIntakeTracesRoute(workspace) },
+    ];
+    setBreadcrumbs([...parent, { slotLabel: `Trace ${traceBreadcrumbLabel}` }]);
+  }, [setBreadcrumbs, traceBreadcrumbLabel, workspace, parentBreadcrumbs]);
 
   if (error?.response?.status === 404) {
     return (
