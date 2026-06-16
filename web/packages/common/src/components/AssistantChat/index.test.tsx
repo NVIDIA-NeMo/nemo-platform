@@ -254,6 +254,88 @@ describe('AssistantChat', () => {
     expect(screen.getByRole('button', { name: /Edit message/i })).toBeInTheDocument();
   });
 
+  it('offers an enabled add-image affordance when image attachments are enabled', () => {
+    renderAssistantChat(
+      <AssistantChat model="test-model" workspace="default" enableImageAttachments />
+    );
+
+    const addImageButton = screen.getByRole('button', { name: /Add image/i });
+    expect(addImageButton).toBeInTheDocument();
+    expect(addImageButton).toBeEnabled();
+  });
+
+  it('hides the add-image affordance when image attachments are disabled', () => {
+    renderAssistantChat(
+      <AssistantChat model="test-model" workspace="default" enableImageAttachments={false} />
+    );
+
+    expect(screen.queryByRole('button', { name: /Add image/i })).not.toBeInTheDocument();
+  });
+
+  it('disables the add-image affordance when the chat is disabled', () => {
+    renderAssistantChat(
+      <AssistantChat model="test-model" workspace="default" enableImageAttachments disabled />
+    );
+
+    expect(screen.getByRole('button', { name: /Add image/i })).toBeDisabled();
+  });
+
+  it('renders image content parts in a user message', () => {
+    const imageUrl = 'data:image/png;base64,AAAA';
+    renderAssistantChat(
+      <AssistantChat
+        model="test-model"
+        initialMessages={[
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'Look at this' },
+              { type: 'image', image: imageUrl },
+            ],
+          },
+        ]}
+      />
+    );
+
+    expect(screen.getByText('Look at this')).toBeInTheDocument();
+    const image = screen.getByRole('img', { name: /Attached image/i });
+    expect(image).toHaveAttribute('src', imageUrl);
+  });
+
+  it('seeds the edit composer with the original image attachment', async () => {
+    const imageUrl = 'data:image/png;base64,AAAA';
+    renderAssistantChat(
+      <AssistantChat
+        model="test-model"
+        workspace="default"
+        enableImageAttachments
+        initialMessages={[
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'Look at this' },
+              { type: 'image', image: imageUrl },
+            ],
+          },
+          {
+            role: 'assistant',
+            content: [{ type: 'text', text: 'Nice picture' }],
+            status: { type: 'complete', reason: 'stop' },
+          },
+        ]}
+      />
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /Edit message/i }));
+
+    const editComposer = screen.getByTestId('assistant-chat-edit-composer');
+    expect(within(editComposer).getByRole('textbox', { name: /Edit message/i })).toHaveValue(
+      'Look at this'
+    );
+    expect(within(editComposer).getByRole('img')).toHaveAttribute('src', imageUrl);
+    expect(within(editComposer).getByRole('button', { name: /Remove/i })).toBeInTheDocument();
+  });
+
   it('renders composer override content in place of the prompt input', () => {
     renderAssistantChat(
       <AssistantChat

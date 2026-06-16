@@ -35,6 +35,7 @@ export const AssistantChat: FC<AssistantChatProps> = ({
   slotComposerStart,
   emptyState,
   composerOverride,
+  enableImageAttachments = true,
 }) => {
   const { handleReset, runtime } = useAssistantChatRuntime({
     model,
@@ -50,6 +51,7 @@ export const AssistantChat: FC<AssistantChatProps> = ({
     onEmptyChange,
     broadcast,
     stopCount,
+    enableImageAttachments,
   });
 
   const composerPlaceholder = useMemo(
@@ -70,6 +72,7 @@ export const AssistantChat: FC<AssistantChatProps> = ({
           slotComposerStart={slotComposerStart}
           emptyState={emptyState}
           composerOverride={composerOverride}
+          enableImageAttachments={enableImageAttachments}
         />
       </div>
     </AssistantRuntimeProvider>

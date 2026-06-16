@@ -66,7 +66,8 @@ Related documentation:
 
 ## Supported
 
-- Text-only user prompts with Enter-to-send and Shift+Enter newlines.
+- Text user prompts with Enter-to-send and Shift+Enter newlines.
+- Image attachments (pick or paste) forwarded as OpenAI multimodal content, enabled by the `enableImageAttachments` prop.
 - Streaming assistant responses through `useChatCompletion` with `model`, `workspace`, or explicit `baseURL`.
 - Optional `PromptData` support for system prompt, temperature, and max tokens.
 - Optional OpenAI-compatible tool definitions on the completion request.
@@ -75,9 +76,18 @@ Related documentation:
 - Basic assistant-ui runtime hooks for future copy, branch, and thread-list features.
 - Storybook MSW mocks for normal streaming, indexed example responses, and a hanging stream used to validate Stop behavior.
 
+## File Layout
+
+- `index.tsx` — `AssistantChat` entry point; instantiates the runtime and renders the thread.
+- `useAssistantChatRuntime.ts` — assistant-ui `ExternalStoreRuntime`, message conversion, and edit/reload/cancel/reset handlers.
+- `AssistantChatThread.tsx` — thread viewport layout that wires message renderers and the composer together.
+- `AssistantChatMessages.tsx` — assistant/user/system message renderers and message actions.
+- `AssistantComposer.tsx` — the prompt composer, send/stop/reset controls, and image-attachment chips.
+- `types.ts` — shared prop and config types. `messageUtils.ts` / `completionUtils.ts` — message and completion helpers.
+
 ## Not Yet Supported
 
-- File attachments and multimodal message parts.
+- Non-image file attachments (documents, audio).
 - Persisted multi-thread history or server-backed thread management.
 - Feedback/intake submission parity with the existing `Chat` component.
 - Custom tool call result UIs.
