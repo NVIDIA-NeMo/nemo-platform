@@ -7,7 +7,7 @@ from typing import TypedDict
 
 from pydantic import BaseModel
 
-from nemo_platform_plugin.client.endpoint import PreparedRequest, delete, get, patch, post
+from nemo_platform_plugin.client.endpoint import BasePath, PreparedRequest, delete, get, patch, post
 
 
 class FakeRequest(BaseModel):
@@ -19,16 +19,16 @@ class FakeResponse(BaseModel):
     name: str
 
 
-class WorkspacePath(TypedDict):
+class WorkspacePath(BasePath):
     workspace: str
 
 
-class WorkspaceItemPath(TypedDict):
+class WorkspaceItemPath(BasePath):
     workspace: str
     name: str
 
 
-class IdPath(TypedDict):
+class IdPath(BasePath):
     id: str
 
 

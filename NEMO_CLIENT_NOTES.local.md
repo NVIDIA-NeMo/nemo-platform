@@ -114,11 +114,16 @@ To support streaming, `ResponseT` must be widened from `bound=BaseModel | None` 
 - [ ] Widen `ResponseT` bound to support the marker types
 - [ ] Add `Endpoint.get_binary()` / `Endpoint.put_binary()` classmethods (or just use the existing ones with `BinaryStream` as response_type)
 - [ ] Handle upload (binary request body) — decide on approach
+- [ ] Handle streaming uploads — request body is a stream (e.g. large file upload), not just bytes
 - [ ] Handle pagination — list endpoints return `NemoListResponse[T]` with page/page_size/total; client should support iterating pages or auto-paginating
 
 ### Medium-term
 - [ ] Migrate core service clients (Files, Entities, etc.) to use `NemoClient` instead of raw `platform._client`
 - [ ] Eventually replace `NeMoPlatform` with `NemoClient` as the primary SDK entry point
+
+### Type safety gaps to fix
+- [x] ~~`PathT` is unbound~~ Fixed — `PathT` is now `bound=BasePath` where `BasePath(TypedDict)` is an empty base. All path types must inherit from `BasePath`.
+- [x] ~~Workspace default vs typed path params conflict~~ Fixed — path TypedDicts use `NotRequired[str]` for `workspace`, making it optional at the call site. The client fills it in via `_build_url` if omitted. Required params like `name` stay required.
 
 ### Open questions
 - How do we handle auth? Currently `default_headers` is the escape hatch — should there be first-class token/auth support?

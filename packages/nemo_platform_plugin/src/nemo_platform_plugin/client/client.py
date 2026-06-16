@@ -16,7 +16,7 @@ responses.  The return type of :meth:`send` is determined by the endpoint's
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TypeVar, overload
+from typing import TypeVar, get_args, get_origin, overload
 
 import httpx
 from pydantic import BaseModel
@@ -34,6 +34,14 @@ ResponseT = TypeVar("ResponseT", bound=BaseModel | None)
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 DEFAULT_TIMEOUT = 60.0
+
+
+def _get_stream_model_type(response_type: type) -> type[BaseModel]:
+    """Extract the ModelT from a Stream[ModelT] generic alias."""
+    args = get_args(response_type)
+    if not args:
+        raise TypeError(f"Stream response type must be parameterized, got {response_type}")
+    return args[0]
 
 
 class BaseNemoClient:
@@ -71,7 +79,7 @@ class BaseNemoClient:
         return request.response_type is BinaryStream
 
     def _is_stream(self, request: PreparedRequest) -> bool:
-        return isinstance(request.response_type, type) and issubclass(request.response_type, Stream)
+        return get_origin(request.response_type) is Stream
 
 
 class NemoClient(BaseNemoClient):
@@ -120,20 +128,24 @@ class NemoClient(BaseNemoClient):
         url = self._build_url(request.path)
         json_body = self._prepare_json(request)
 
-        if self._is_binary(request) or self._is_stream(request):
-            # Use httpx streaming — the response object owns the connection
-            # and the caller closes it via the context manager.
+        if self._is_binary(request):
             stream_ctx = self._http.stream(request.method, url, json=json_body)
             raw = stream_ctx.__enter__()
             raw.raise_for_status()
-            if self._is_binary(request):
-                return NemoBinaryResponse(raw)
-            return NemoStreamResponse(raw, request.response_type.model_type)
+            return NemoBinaryResponse(raw)
+
+        if self._is_stream(request):
+            assert request.response_type is not None
+            stream_ctx = self._http.stream(request.method, url, json=json_body)
+            raw = stream_ctx.__enter__()
+            raw.raise_for_status()
+            model_type = _get_stream_model_type(request.response_type)
+            return NemoStreamResponse(raw, model_type)
 
         raw = self._http.request(request.method, url, json=json_body)
         raw.raise_for_status()
         body = request.response_type.model_validate(raw.json()) if request.response_type is not None else None
-        return NemoResponse(http_response=raw, body=body)  # type: ignore[arg-type]
+        return NemoResponse(http_response=raw, body=body)
 
 
 class AsyncNemoClient(BaseNemoClient):
@@ -171,15 +183,21 @@ class AsyncNemoClient(BaseNemoClient):
         url = self._build_url(request.path)
         json_body = self._prepare_json(request)
 
-        if self._is_binary(request) or self._is_stream(request):
+        if self._is_binary(request):
             stream_ctx = self._http.stream(request.method, url, json=json_body)
             raw = await stream_ctx.__aenter__()
             raw.raise_for_status()
-            if self._is_binary(request):
-                return AsyncNemoBinaryResponse(raw)
-            return AsyncNemoStreamResponse(raw, request.response_type.model_type)
+            return AsyncNemoBinaryResponse(raw)
+
+        if self._is_stream(request):
+            assert request.response_type is not None
+            stream_ctx = self._http.stream(request.method, url, json=json_body)
+            raw = await stream_ctx.__aenter__()
+            raw.raise_for_status()
+            model_type = _get_stream_model_type(request.response_type)
+            return AsyncNemoStreamResponse(raw, model_type)
 
         raw = await self._http.request(request.method, url, json=json_body)
         raw.raise_for_status()
         body = request.response_type.model_validate(raw.json()) if request.response_type is not None else None
-        return NemoResponse(http_response=raw, body=body)  # type: ignore[arg-type]
+        return NemoResponse(http_response=raw, body=body)

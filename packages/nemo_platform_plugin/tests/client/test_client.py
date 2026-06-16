@@ -7,12 +7,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
-from typing import TypedDict
+from typing import NotRequired
 
 from pydantic import BaseModel
 
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
-from nemo_platform_plugin.client.endpoint import delete, get, post
+from nemo_platform_plugin.client.endpoint import BasePath, delete, get, post
 from nemo_platform_plugin.client.response import NemoResponse
 
 BASE = "http://test:8000"
@@ -27,16 +27,16 @@ class ItemResponse(BaseModel):
     name: str
 
 
-class EmptyPath(TypedDict):
+class EmptyPath(BasePath):
     pass
 
 
-class NamePath(TypedDict):
+class NamePath(BasePath):
     name: str
 
 
-class WorkspacePath(TypedDict):
-    workspace: str
+class WorkspacePath(BasePath):
+    workspace: NotRequired[str]
 
 
 CREATE_ITEM = post("/v2/items", EmptyPath, ItemRequest, ItemResponse)

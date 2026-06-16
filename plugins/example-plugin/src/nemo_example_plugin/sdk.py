@@ -38,7 +38,7 @@ class ExampleClient(NemoClient):
 
     def hello(self, name: str) -> str:
         resp = self.send(HelloEndpoint.request(name=name))
-        return resp.body.message
+        return resp.data().message
 
     # ------------------------------------------------------------------
     # Items CRUD
@@ -80,7 +80,7 @@ class AsyncExampleClient(AsyncNemoClient):
 
     async def hello(self, name: str) -> str:
         resp = await self.send(HelloEndpoint.request(name=name))
-        return resp.body.message
+        return resp.data().message
 
     # ------------------------------------------------------------------
     # Items CRUD

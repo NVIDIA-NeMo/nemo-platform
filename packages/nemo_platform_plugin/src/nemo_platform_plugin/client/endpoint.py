@@ -37,13 +37,10 @@ Usage::
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Generic, TypeVar, Unpack
+from typing import Generic, TypedDict, TypeVar, Unpack
 
 from pydantic import BaseModel
 
-PathT = TypeVar("PathT")
-RequestT = TypeVar("RequestT", bound=BaseModel)
-ResponseT = TypeVar("ResponseT")  # unbound — BaseModel, None, BinaryStream, Stream[T]
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
@@ -51,7 +48,6 @@ class BinaryStream:
     """Marker type: endpoint returns raw bytes (e.g. file download)."""
 
 
-@dataclass(frozen=True, slots=True)
 class Stream(Generic[ModelT]):
     """Marker type: endpoint returns a stream of ``ModelT`` objects (SSE/NDJSON).
 
@@ -60,7 +56,18 @@ class Stream(Generic[ModelT]):
         ChatEndpoint = post("/chat/{workspace}", WorkspacePath, ChatRequest, Stream[ChatChunk])
     """
 
-    model_type: type[ModelT]
+
+class BasePath(TypedDict):
+    """Base class for all path parameter types.
+
+    All path TypedDicts must inherit from this so that ``PathT`` is
+    properly constrained.
+    """
+
+
+PathT = TypeVar("PathT", bound=BasePath)
+RequestT = TypeVar("RequestT", bound=BaseModel)
+ResponseT = TypeVar("ResponseT", bound=BaseModel | BinaryStream | Stream | None)
 
 
 @dataclass(frozen=True, slots=True)

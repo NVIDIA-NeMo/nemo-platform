@@ -12,7 +12,7 @@ the HTTP layer.
 
 from __future__ import annotations
 
-from typing import TypedDict
+from typing import NotRequired
 
 from nemo_example_plugin.entities import ExampleItem
 from nemo_example_plugin.types.payloads import (
@@ -21,22 +21,22 @@ from nemo_example_plugin.types.payloads import (
     HelloResponse,
     UpdateExampleItemRequest,
 )
-from nemo_platform_plugin.client.endpoint import delete, get, patch, post
+from nemo_platform_plugin.client.endpoint import BasePath, delete, get, patch, post
 
 
 # -- Path parameter types --------------------------------------------------
 
 
-class NamePath(TypedDict):
+class NamePath(BasePath):
     name: str
 
 
-class WorkspacePath(TypedDict):
-    workspace: str
+class WorkspacePath(BasePath):
+    workspace: NotRequired[str]
 
 
-class WorkspaceItemPath(TypedDict):
-    workspace: str
+class WorkspaceItemPath(BasePath):
+    workspace: NotRequired[str]
     name: str
 
 
