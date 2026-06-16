@@ -73,7 +73,7 @@ class _WidgetJob(NemoJob):
         entity_client,
         job_name,
         async_sdk,
-        kind=None,
+        kind="container",
         profile=None,
         options=None,
     ):
@@ -116,7 +116,7 @@ class _WithInputJob(NemoJob):
         entity_client,
         job_name,
         async_sdk,
-        kind=None,
+        kind="container",
         profile=None,
         options=None,
     ):

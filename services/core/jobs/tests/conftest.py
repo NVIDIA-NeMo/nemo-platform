@@ -487,7 +487,7 @@ def hello_world_job_config(
     entity_client: EntityClient,
     job_name: str | None,
     sdk,
-    kind: str | None = None,
+    kind: str = "container",
     profile: str | None = None,
 ) -> FactoryPlatformJobSpec:
     return FactoryPlatformJobSpec(

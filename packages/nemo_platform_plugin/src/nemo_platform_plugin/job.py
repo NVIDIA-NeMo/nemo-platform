@@ -273,7 +273,7 @@ class NemoJob(_NamedPlugin):
         entity_client: object,
         job_name: str | None,
         async_sdk: AsyncNeMoPlatform,
-        kind: str | None = None,
+        kind: str = "container",
         profile: str | None = None,
         options: dict | None = None,
     ) -> object:
@@ -302,8 +302,7 @@ class NemoJob(_NamedPlugin):
                 :meth:`to_spec`: this runs in the API process so only
                 the async client is offered.
             kind: Resolved executor payload shape — ``"container"`` or
-                ``"subprocess"``. ``None`` when no profile was specified
-                (compilers should default to ``"container"``).
+                ``"subprocess"``. Defaults to ``"container"``.
             profile: The submitter-selected execution profile name
                 (e.g. ``"subprocess"``, ``"default"``). ``None`` when
                 no profile was specified.

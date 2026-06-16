@@ -42,7 +42,7 @@ class _Spec(BaseModel):
     foo: str = "bar"
 
 
-def _fake_compiler(workspace, original_spec, transformed_spec, entity_client, job_name, sdk, kind=None, profile=None):
+def _fake_compiler(workspace, original_spec, transformed_spec, entity_client, job_name, sdk, kind="container", profile=None):
     return {"steps": []}
 
 

@@ -24,7 +24,7 @@ def compile_hello_world_job(
     entity_client: EntityClient,
     job_name: str | None,
     sdk: AsyncNeMoPlatform,
-    kind: str | None = None,
+    kind: str = "container",
     profile: str | None = None,
 ) -> PlatformJobSpec:
     """Compile a hello world job config into a platform job spec.

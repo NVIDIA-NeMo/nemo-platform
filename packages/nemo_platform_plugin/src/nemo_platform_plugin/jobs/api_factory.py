@@ -651,7 +651,7 @@ async def _compile_platform_spec(
     """
     from nemo_platform_plugin.jobs.profiles import resolve_profile_kind
 
-    kind: str | None = None
+    kind: str = "container"
     if profile is not None:
         try:
             kind = await resolve_profile_kind(sdk, default_provider, profile)

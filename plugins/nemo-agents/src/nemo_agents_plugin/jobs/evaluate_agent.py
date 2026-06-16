@@ -158,7 +158,7 @@ class EvaluateAgentJob(NemoJob):
         entity_client: object,
         job_name: str | None,
         async_sdk: object,
-        kind: str | None = None,
+        kind: str = "container",
         profile: str | None = None,
         options: dict | None = None,
     ) -> PlatformJobSpec:

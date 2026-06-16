@@ -276,7 +276,7 @@ def _adapt_compile(
         entity_client: Any,
         job_name: str | None,
         sdk: Any,
-        kind: str | None = None,
+        kind: str = "container",
         profile: str | None = None,
     ) -> Any:
         del original_spec  # NemoJob.compile only needs the canonical (transformed) spec

@@ -108,7 +108,7 @@ async def job_config_compiler(
     entity_client: EntityClient,
     job_name: str | None,
     sdk: AsyncNeMoPlatform,
-    kind: str | None = None,
+    kind: str = "container",
     profile: str | None = None,
 ) -> PlatformJobSpec:
     """Compile Safe Synthesizer job config into a platform job."""

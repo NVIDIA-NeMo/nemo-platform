@@ -67,16 +67,13 @@ class CreateJob(NemoJob):
         entity_client: object,
         job_name: str | None,
         async_sdk: object,
-        kind: str | None = None,
+        kind: str = "container",
         profile: str | None = None,
         options: dict | None = None,
     ) -> PlatformJobSpec:
         resolved_profile = profile or "default"
 
-        # Use the kind parameter directly; default to container when not provided.
-        resolved_kind = kind or "container"
-
-        if resolved_kind == "subprocess":
+        if kind == "subprocess":
             executor = SubprocessExecutionProviderSpec(
                 kind="subprocess",
                 provider="cpu",
