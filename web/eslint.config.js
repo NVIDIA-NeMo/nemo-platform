@@ -16,7 +16,6 @@ import noOnlyTestsPlugin from 'eslint-plugin-no-only-tests';
 import testingLibrary from 'eslint-plugin-testing-library';
 import vitest from '@vitest/eslint-plugin';
 import tseslint from 'typescript-eslint';
-import testNamingPlugin from './eslint-plugins/test-naming.js';
 
 const pathPrefix = '';
 
@@ -179,10 +178,9 @@ export default [
     plugins: {
       vitest,
       ...testingLibrary.configs['flat/react'].plugins,
-      'test-naming': testNamingPlugin,
     },
     rules: {
-      'test-naming/no-spec-suffix': 'error',
+      'vitest/consistent-test-filename': ['error', { pattern: '.*\\.test\\.[jt]sx?$' }],
       ...testingLibrary.configs['flat/react'].rules,
       'vitest/consistent-test-it': ['error', { fn: 'it' }],
       'testing-library/no-debugging-utils': 'error',
