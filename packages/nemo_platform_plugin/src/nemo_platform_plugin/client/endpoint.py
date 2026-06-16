@@ -77,9 +77,14 @@ class PreparedRequest(Generic[ResponseT]):
     Created by calling ``request()`` on an endpoint.  The type parameter
     ``ResponseT`` flows through to :meth:`NemoClient.send` so the return type
     is inferred automatically.
+
+    Path interpolation is deferred to the client's ``send()`` method, which
+    merges client-level defaults (e.g. workspace) with the explicit path
+    params before formatting.
     """
 
-    path: str
+    path_template: str
+    path_params: dict[str, str]
     method: str
     body: BaseModel | None
     response_type: type[ResponseT] | None
@@ -96,9 +101,9 @@ class BodyEndpoint(Generic[PathT, RequestT, ResponseT]):
 
     def request(self, payload: RequestT, **path_params: Unpack[PathT]) -> PreparedRequest[ResponseT]:
         """Build a :class:`PreparedRequest` from a required payload and path parameters."""
-        resolved_path = self.path.format_map(path_params) if path_params else self.path
         return PreparedRequest(
-            path=resolved_path,
+            path_template=self.path,
+            path_params=dict(path_params),
             method=self.method,
             body=payload,
             response_type=self.response_type,
@@ -115,9 +120,9 @@ class NoBodyEndpoint(Generic[PathT, ResponseT]):
 
     def request(self, **path_params: Unpack[PathT]) -> PreparedRequest[ResponseT]:
         """Build a :class:`PreparedRequest` from path parameters only."""
-        resolved_path = self.path.format_map(path_params) if path_params else self.path
         return PreparedRequest(
-            path=resolved_path,
+            path_template=self.path,
+            path_params=dict(path_params),
             method=self.method,
             body=None,
             response_type=self.response_type,

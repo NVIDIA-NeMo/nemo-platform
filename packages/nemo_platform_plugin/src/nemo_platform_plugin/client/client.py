@@ -65,9 +65,21 @@ class BaseNemoClient:
     def workspace(self) -> str | None:
         return self._workspace
 
-    def _build_url(self, path: str) -> str:
-        if self._workspace and "{workspace}" in path:
-            path = path.replace("{workspace}", self._workspace)
+    def _resolve_path(self, request: PreparedRequest) -> str:
+        """Resolve path template with client defaults and explicit params.
+
+        Client-level defaults (e.g. workspace) are merged under explicit
+        params — explicit always wins.  Raises ``ValueError`` if any
+        placeholders remain unresolved.
+        """
+        params: dict[str, str] = {}
+        if self._workspace:
+            params["workspace"] = self._workspace
+        params.update(request.path_params)
+        try:
+            path = request.path_template.format_map(params)
+        except KeyError as exc:
+            raise ValueError(f"Missing path parameter {exc} for {request.method} {request.path_template}") from exc
         return self._base_url + self.api_prefix + path
 
     def _prepare_json(self, request: PreparedRequest) -> dict | None:
@@ -125,7 +137,7 @@ class NemoClient(BaseNemoClient):
                 for chunk in resp:
                     f.write(chunk)
         """
-        url = self._build_url(request.path)
+        url = self._resolve_path(request)
         json_body = self._prepare_json(request)
 
         if self._is_binary(request):
@@ -180,7 +192,7 @@ class AsyncNemoClient(BaseNemoClient):
 
     async def send(self, request: PreparedRequest) -> NemoResponse | AsyncNemoBinaryResponse | AsyncNemoStreamResponse:
         """Send a prepared request and return a typed response."""
-        url = self._build_url(request.path)
+        url = self._resolve_path(request)
         json_body = self._prepare_json(request)
 
         if self._is_binary(request):
