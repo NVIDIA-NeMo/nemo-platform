@@ -54,9 +54,32 @@ def compute_default_eval_steps(
     return max(1, effective_steps - 1)
 
 
+def build_model_load_kwargs(spec: UnslothJobOutput, resolved_model: str) -> dict[str, Any]:
+    """Assemble ``FastLanguageModel.from_pretrained`` kwargs (sans torch dtype).
+
+    Kept torch-free so it can be unit-tested without the heavy ML stack; the
+    ``dtype`` literal → torch dtype mapping stays in :func:`train_sft`.
+
+    For ``finetuning_type='all_weights'`` we pass ``full_finetuning=True``.
+    Unsloth only routes through ``FastModel.from_pretrained`` (which marks every
+    parameter trainable and sets up the optimizer/precision state for full FT)
+    when this flag is set. Without it — even with 4-/8-bit disabled — Unsloth
+    takes its default LoRA-optimized load path and warns that full finetuning
+    was not requested, leaving the all-weights run mis-configured.
+    """
+    return {
+        "model_name": resolved_model,
+        "max_seq_length": spec.model.max_seq_length,
+        "load_in_4bit": spec.model.load_in_4bit,
+        "load_in_8bit": spec.model.load_in_8bit,
+        "full_finetuning": spec.training.finetuning_type == "all_weights",
+        "trust_remote_code": spec.model.trust_remote_code,
+    }
+
+
 def train_sft(
-    spec: "UnslothJobOutput",
-    ctx: "JobContext",
+    spec: UnslothJobOutput,
+    ctx: JobContext,
     *,
     model_path: str | None = None,
     dataset_path: str | None = None,
@@ -130,13 +153,7 @@ def train_sft(
 
     # ── Model loading ──────────────────────────────────────────────────
     resolved_model = model_path or spec.model.name
-    model_kwargs: dict[str, Any] = {
-        "model_name": resolved_model,
-        "max_seq_length": spec.model.max_seq_length,
-        "load_in_4bit": spec.model.load_in_4bit,
-        "load_in_8bit": spec.model.load_in_8bit,
-        "trust_remote_code": spec.model.trust_remote_code,
-    }
+    model_kwargs = build_model_load_kwargs(spec, resolved_model)
     # Unsloth's `dtype` kwarg accepts `None` (auto) or a torch dtype. Map
     # the JSON-friendly literal to a torch dtype lazily.
     if spec.model.dtype != "auto":
@@ -175,9 +192,11 @@ def train_sft(
             use_gradient_checkpointing=gc_value,
             max_seq_length=spec.model.max_seq_length,
         )
-    # All-weights FT: leave `model` as-is. `from_pretrained` already returned the
-    # un-wrapped HF model since `load_in_4bit`/`load_in_8bit` were both
-    # rejected by the spec validator for `finetuning_type='all_weights'`.
+    # All-weights FT: leave `model` as-is. `build_model_load_kwargs` passed
+    # `full_finetuning=True`, so `from_pretrained` routed through Unsloth's
+    # `FastModel.from_pretrained` and returned an un-wrapped HF model with every
+    # parameter trainable (4-/8-bit were already rejected by the spec validator
+    # for `finetuning_type='all_weights'`).
 
     # ── Dataset ────────────────────────────────────────────────────────
     resolved_train_path = dataset_path or spec.dataset.path
@@ -402,7 +421,7 @@ def _load_training_dataset(
     return raw.map(_render)
 
 
-def _save_model(model: Any, tokenizer: Any, output_dir: Any, spec: "UnslothJobOutput") -> Any:
+def _save_model(model: Any, tokenizer: Any, output_dir: Any, spec: UnslothJobOutput) -> Any:
     """Dispatch on save_method; returns the path actually written to.
 
     Unsloth's recipes use three methods:
