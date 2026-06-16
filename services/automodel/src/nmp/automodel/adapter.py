@@ -35,6 +35,7 @@ def _build_peft(training: dict[str, Any]) -> LoRAParams | None:
     return LoRAParams(
         rank=lora.get("rank", 16),
         alpha=lora.get("alpha", 32),
+        dropout=lora.get("dropout", 0.0),
         merge=ft == "lora_merged" or lora.get("merge", False),
         target_modules=lora.get("target_modules"),
     )
@@ -50,7 +51,10 @@ def _build_training_block(spec: dict[str, Any]) -> SFTTraining | DistillationTra
     common: dict[str, Any] = {
         "peft": _build_peft(training),
         "learning_rate": optimizer.get("learning_rate", 1e-4),
+        "min_learning_rate": optimizer.get("min_learning_rate"),
         "weight_decay": optimizer.get("weight_decay", 0.01),
+        "adam_beta1": optimizer.get("adam_beta1", 0.9),
+        "adam_beta2": optimizer.get("adam_beta2", 0.999),
         "warmup_steps": optimizer.get("warmup_steps", 0),
         "epochs": schedule.get("epochs", 1),
         "max_steps": schedule.get("max_steps"),
@@ -59,6 +63,7 @@ def _build_training_block(spec: dict[str, Any]) -> SFTTraining | DistillationTra
         "micro_batch_size": batch.get("micro_batch_size", 1),
         "sequence_packing": batch.get("sequence_packing", False),
         "max_seq_length": training.get("max_seq_length", 2048),
+        "precision": training.get("precision"),
         "seed": schedule.get("seed"),
         "parallelism": ParallelismParams(
             num_nodes=parallelism.get("num_nodes", 1),
@@ -67,6 +72,7 @@ def _build_training_block(spec: dict[str, Any]) -> SFTTraining | DistillationTra
             pipeline_parallel_size=parallelism.get("pipeline_parallel_size", 1),
             context_parallel_size=parallelism.get("context_parallel_size", 1),
             expert_parallel_size=parallelism.get("expert_parallel_size"),
+            sequence_parallel=parallelism.get("sequence_parallel", False),
         ),
         "execution_profile": training.get("execution_profile"),
     }

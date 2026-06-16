@@ -115,10 +115,12 @@ Full template:
     "lora": {
       "rank": 16,
       "alpha": 32,
+      "dropout": 0.0,
       "merge": false,
       "target_modules": null
     },
     "max_seq_length": 2048,
+    "precision": null,
     "execution_profile": null
   },
   "schedule": {
@@ -134,7 +136,10 @@ Full template:
   },
   "optimizer": {
     "learning_rate": 5e-5,
+    "min_learning_rate": null,
     "weight_decay": 0.01,
+    "adam_beta1": 0.9,
+    "adam_beta2": 0.999,
     "warmup_steps": 0
   },
   "parallelism": {
@@ -143,7 +148,8 @@ Full template:
     "tensor_parallel_size": 1,
     "pipeline_parallel_size": 1,
     "context_parallel_size": 1,
-    "expert_parallel_size": null
+    "expert_parallel_size": null,
+    "sequence_parallel": false
   },
   "output": { "name": "<output-name>", "description": null },
   "integrations": null
@@ -162,9 +168,11 @@ Full template:
 | `finetuning_type` | `lora` | `all_weights` (full fine-tune), `lora_merged` (merge adapter into base) |
 | `lora.rank` | `16` | Higher → more capacity, more VRAM. Typical training range 8–32; **cap at 32** if the adapter will be served with default NIM / vLLM (rank > 32 may not load) |
 | `lora.alpha` | `32` | Scaling; common rule of thumb **alpha ≈ 2× rank** |
+| `lora.dropout` | `0.0` | LoRA dropout (0.0–1.0) for regularization |
 | `lora.merge` | `false` | If true with `lora_merged`, output is full weights not adapter |
 | `lora.target_modules` | `null` | e.g. `["q_proj","v_proj"]`; null = platform default targets |
 | `max_seq_length` | `2048` | Truncate/pack to this length; lower if OOM |
+| `precision` | `null` | `bf16` \| `fp16` \| `fp32` \| `fp8`; null auto-detects from the checkpoint |
 | `teacher_model` | — | **Model entity ref** (not HF id). Required for distillation; see below |
 | `distillation_ratio` | `0.5` | KD blend (0–1) |
 | `distillation_temperature` | `1.0` | KD temperature |
@@ -203,10 +211,11 @@ Example: 1 node, 2 GPUs, TP=1 → DP=2 → GBS must be a multiple of `2 × micro
 | Field | Default | Notes |
 |-------|---------|-------|
 | `learning_rate` | `5e-6` (schema) | Skill uses **5e-5** for small LoRA SFT; see tuning below |
+| `min_learning_rate` | `null` | Floor for the cosine LR decay; null lets it decay toward 0 |
 | `weight_decay` | `0.01` | L2-style regularization |
+| `adam_beta1` | `0.9` | Adam optimizer beta1 |
+| `adam_beta2` | `0.999` | Adam optimizer beta2 |
 | `warmup_steps` | `0` | Linear warmup; try ~10% of total steps for long runs |
-
-`adam_beta1` / `adam_beta2` are **not** in the simplified submit schema (fixed in compiler adapter). Use contract JSONs only if your platform version adds them.
 
 ### `parallelism`
 
@@ -218,6 +227,7 @@ Example: 1 node, 2 GPUs, TP=1 → DP=2 → GBS must be a multiple of `2 × micro
 | `pipeline_parallel_size` | `1` | Pipeline stages |
 | `context_parallel_size` | `1` | Long-context sharding |
 | `expert_parallel_size` | `null` | MoE only; must divide `data_parallel_size × context_parallel_size` |
+| `sequence_parallel` | `false` | Shard activations along the sequence dim (pairs with tensor parallelism) |
 
 **MoE:** If `expert_parallel_size > 1` and multiple GPUs, `tensor_parallel_size` must be **1**.
 
