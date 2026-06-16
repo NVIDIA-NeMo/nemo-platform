@@ -18,13 +18,14 @@ import type {
   ExperimentResponse,
   ListExperimentsSort,
 } from '@nemo/sdk/generated/platform/schema';
-import { Text, Tooltip } from '@nvidia/foundations-react-core';
+import { Button, Text, Tooltip } from '@nvidia/foundations-react-core';
 import { Empty } from '@studio/components/dataViews/ExperimentGroupDataView/Empty';
+import { usePinnedExperiments } from '@studio/components/dataViews/ExperimentGroupDataView/usePinnedExperiments';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getExperimentDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
 import { keepPreviousData } from '@tanstack/react-query';
-import { Columns3 } from 'lucide-react';
+import { Columns3, Pin } from 'lucide-react';
 import { type ComponentProps, type FC, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -64,7 +65,11 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
     defaultSort: { id: 'created_at', desc: true },
     // created_by isn't returned by the API and updated_at isn't shown; both are filter-only.
     columnVisibility: { created_by: false, updated_at: false },
+    // Keep the pin toggle reachable while horizontally scrolling this wide table.
+    columnPinning: { left: ['pin'] },
   });
+
+  const { pinnedSet, togglePin } = usePinnedExperiments(workspace, experimentGroupName);
 
   const page = dataViewState.pagination.state.pageIndex + 1;
   const pageSize = dataViewState.pagination.state.pageSize;
@@ -106,6 +111,17 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
     [experimentsData]
   );
 
+  // Float pinned experiments to the top of the current page. The list is server-sorted and
+  // server-paginated (dataMode="manual"), so the rendered order follows this array directly:
+  // pinned rows first, then the rest, each preserving the server's sort order (stable partition).
+  const orderedData = useMemo<ExperimentRow[]>(() => {
+    if (pinnedSet.size === 0) return tableData;
+    return [
+      ...tableData.filter((row) => pinnedSet.has(row.id)),
+      ...tableData.filter((row) => !pinnedSet.has(row.id)),
+    ];
+  }, [tableData, pinnedSet]);
+
   // One score column per evaluator: the union of evaluator names across the loaded rows,
   // sorted for a deterministic column order across renders and page changes.
   const evaluatorNames = useMemo(
@@ -128,7 +144,37 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
   const makeColumns = useCallback<
     ComponentProps<typeof DataViewRoot<ExperimentRow>>['makeColumns']
   >(
-    ({ accessor }) => [
+    ({ accessor, display }) => [
+      display({
+        id: 'pin',
+        header: () => <span className="sr-only">Pinned</span>,
+        enableSorting: false,
+        enableHiding: false,
+        enableResizing: false,
+        size: 48,
+        minSize: 48,
+        maxSize: 48,
+        meta: { alignment: 'center', _isPrebuiltColumn: true, _isSizeInitialized: true },
+        cell: ({ row }) => {
+          const { id } = row.original;
+          const isPinned = pinnedSet.has(id);
+          return (
+            <Button
+              kind="tertiary"
+              color="neutral"
+              size="small"
+              aria-label={isPinned ? 'Unpin experiment' : 'Pin experiment'}
+              aria-pressed={isPinned}
+              onClick={() => togglePin(id)}
+            >
+              <Pin
+                className={isPinned ? 'text-brand' : 'text-secondary'}
+                {...(isPinned ? { fill: 'currentColor' } : {})}
+              />
+            </Button>
+          );
+        },
+      }),
       accessor('name', {
         header: 'Name',
         enableSorting: true,
@@ -282,7 +328,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
         },
       }),
     ],
-    [evaluatorNames, metadataKeys]
+    [evaluatorNames, pinnedSet, togglePin, metadataKeys]
   );
 
   if (groupError) {
@@ -317,7 +363,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
       }
       attributes={{
         DataViewRoot: {
-          data: tableData,
+          data: orderedData,
           totalCount,
           requestStatus: isGroupLoading || (isLoading && !experimentsData) ? 'loading' : undefined,
         },
