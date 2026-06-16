@@ -103,6 +103,10 @@ variable "BUILD_ARCH" {
   default = ""
 }
 
+variable "HF_TOKEN" {
+  default = ""
+}
+
 variable "CUDA_VERSION" {
   default = "12.8.1"
 }
@@ -197,6 +201,16 @@ function "maybe_registry_cache_to" {
 function "image_output" {
   params = []
   result = ["type=image,compression=zstd,force-compression=true"]
+}
+
+function "maybe_hf_token_secret" {
+  params = []
+  result = notequal(HF_TOKEN, "") ? [
+    {
+      type = "env"
+      id   = "HF_TOKEN"
+    }
+  ] : []
 }
 
 function "maybe_registry_cache_from" {
@@ -458,6 +472,7 @@ target "nmp-api-docker" {
   cache-from = maybe_registry_cache_from("nmp-api")
   tags       = sha_and_maybe_latest_tags("nmp-api")
   output     = image_output()
+  secret     = maybe_hf_token_secret()
   platforms  = get_platforms()
 }
 

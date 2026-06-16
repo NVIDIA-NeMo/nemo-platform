@@ -197,11 +197,15 @@ jobs:
       - name: Build CPU images
         if: env.PUBLISH_IMAGES != 'true'
         shell: bash
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: make docker-load TARGET=docker-cpu
 
       - name: Build and publish CPU images
         if: env.PUBLISH_IMAGES == 'true'
         shell: bash
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: make docker-push TARGET=docker-cpu
 
   kind-cpu-smoke:
