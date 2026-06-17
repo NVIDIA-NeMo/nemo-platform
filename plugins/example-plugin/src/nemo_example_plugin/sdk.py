@@ -19,7 +19,7 @@ from nemo_example_plugin.types.endpoints import (
     UpdateItemEndpoint,
 )
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform_plugin.client.adapter import async_from_platform, from_platform
+from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.sdk import NemoPluginSDKResources
 
@@ -52,11 +52,11 @@ class AsyncExampleClient(_ExampleEndpoints, AsyncNemoClient):
 
 
 def _make_sync_resource(platform: NeMoPlatform) -> ExampleClient:
-    return from_platform(platform, ExampleClient)
+    return client_from_platform(platform, ExampleClient)
 
 
 def _make_async_resource(platform: AsyncNeMoPlatform) -> AsyncExampleClient:
-    return async_from_platform(platform, AsyncExampleClient)
+    return client_from_platform(platform, AsyncExampleClient)
 
 
 example_sdk_resources = NemoPluginSDKResources(
