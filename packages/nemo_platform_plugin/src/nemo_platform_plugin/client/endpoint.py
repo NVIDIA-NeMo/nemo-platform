@@ -3,7 +3,7 @@
 
 """Typed endpoint definitions and factory functions.
 
-Endpoints are also descriptors: when assigned as class attributes on a
+Endpoints are descriptors: when assigned as class attributes on a
 :class:`NemoClient` or :class:`AsyncNemoClient` subclass, accessing them
 returns a bound callable that sends the request and returns the typed response.
 
@@ -25,149 +25,90 @@ from __future__ import annotations
 from collections.abc import AsyncIterable, Iterable
 from typing import Generic, Unpack, overload
 
-from nemo_platform_plugin.client.bound import (
-    AsyncBoundBinaryBodyCall,
-    AsyncBoundBodyCall,
-    AsyncBoundNoBodyCall,
-    SyncBoundBinaryBodyCall,
-    SyncBoundBodyCall,
-    SyncBoundNoBodyCall,
-)
+from pydantic import BaseModel
+
+from nemo_platform_plugin.client.bound import AsyncBoundCall, SyncBoundCall
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.types import (
     BinaryContent,
+    BodyRequestT,
     PathT,
     PreparedRequest,
     RequestT,
     ResponseT,
 )
 
-# ---------------------------------------------------------------------------
-# Endpoint types — descriptors that dispatch sync/async
-# ---------------------------------------------------------------------------
 
+class Endpoint(Generic[PathT, RequestT, ResponseT]):
+    """A typed HTTP endpoint definition.
 
-class BodyEndpoint(Generic[PathT, RequestT, ResponseT]):
-    """Endpoint that requires a JSON request body (POST, PATCH, PUT)."""
+    Links a path type ``PathT``, request type ``RequestT``, and response type
+    ``ResponseT`` together with the HTTP method and path template.
 
-    def __init__(
-        self, path: str, method: str, request_type: type[RequestT], response_type: type[ResponseT] | None
-    ) -> None:
+    Also a descriptor: when assigned as a class attribute on a
+    :class:`NemoClient` or :class:`AsyncNemoClient` subclass, accessing it
+    returns a :class:`SyncBoundCall` or :class:`AsyncBoundCall`.
+    """
+
+    def __init__(self, path: str, method: str, request_type: type[RequestT] | None, response_type: type[ResponseT] | None) -> None:
         self.path = path
         self.method = method
         self.request_type = request_type
         self.response_type = response_type
 
-    def request(self, payload: RequestT, **path_params: Unpack[PathT]) -> PreparedRequest[ResponseT]:
-        """Build a :class:`PreparedRequest` from a required payload and path parameters."""
-        return PreparedRequest(
-            path_template=self.path,
-            path_params=dict(path_params),
-            method=self.method,
-            content=payload.model_dump_json().encode(),
-            content_type="application/json",
-            response_type=self.response_type,
-        )
+    # -- request() overloads: body / binary / no-body ----------------------
 
     @overload
-    def __get__(
-        self, obj: NemoClient, objtype: type | None = None
-    ) -> SyncBoundBodyCall[PathT, RequestT, ResponseT]: ...
+    def request(self: Endpoint[PathT, BodyRequestT, ResponseT], payload: BodyRequestT, **path_params: Unpack[PathT]) -> PreparedRequest[ResponseT]: ...
     @overload
-    def __get__(
-        self, obj: AsyncNemoClient, objtype: type | None = None
-    ) -> AsyncBoundBodyCall[PathT, RequestT, ResponseT]: ...
+    def request(self: Endpoint[PathT, BinaryContent, ResponseT], content: bytes | Iterable[bytes] | AsyncIterable[bytes], **path_params: Unpack[PathT]) -> PreparedRequest[ResponseT]: ...
+    @overload
+    def request(self: Endpoint[PathT, None, ResponseT], **path_params: Unpack[PathT]) -> PreparedRequest[ResponseT]: ...
 
-    def __get__(
-        self, obj: NemoClient | AsyncNemoClient | None, objtype: type | None = None
-    ) -> SyncBoundBodyCall[PathT, RequestT, ResponseT] | AsyncBoundBodyCall[PathT, RequestT, ResponseT]:
-        assert obj is not None
-        if isinstance(obj, AsyncNemoClient):
-            return AsyncBoundBodyCall(obj, self)
-        return SyncBoundBodyCall(obj, self)
+    def request(self, *args: object, **path_params: object) -> PreparedRequest:
+        """Build a :class:`PreparedRequest` from payload/content and path parameters."""
+        params = {k: str(v) for k, v in path_params.items()}
+        content: bytes | Iterable[bytes] | AsyncIterable[bytes] | None
+        content_type: str | None
 
-    def __repr__(self) -> str:
-        return f"BodyEndpoint({self.method} {self.path}, {self.request_type.__name__} -> {self.response_type.__name__ if self.response_type else 'None'})"
+        if self.request_type is None:
+            content = None
+            content_type = None
+        elif self.request_type is BinaryContent:
+            content = args[0]  # type: ignore[assignment]
+            content_type = "application/octet-stream"
+        else:
+            payload = args[0]
+            assert isinstance(payload, BaseModel)
+            content = payload.model_dump_json().encode()
+            content_type = "application/json"
 
-
-class BinaryBodyEndpoint(Generic[PathT, ResponseT]):
-    """Endpoint that requires a binary request body (file upload)."""
-
-    def __init__(self, path: str, method: str, response_type: type[ResponseT] | None) -> None:
-        self.path = path
-        self.method = method
-        self.response_type = response_type
-
-    def request(
-        self, content: bytes | Iterable[bytes] | AsyncIterable[bytes], **path_params: Unpack[PathT]
-    ) -> PreparedRequest[ResponseT]:
-        """Build a :class:`PreparedRequest` from binary content and path parameters."""
         return PreparedRequest(
             path_template=self.path,
-            path_params=dict(path_params),
+            path_params=params,
             method=self.method,
             content=content,
-            content_type="application/octet-stream",
+            content_type=content_type,
             response_type=self.response_type,
         )
 
-    @overload
-    def __get__(self, obj: NemoClient, objtype: type | None = None) -> SyncBoundBinaryBodyCall[PathT, ResponseT]: ...
-    @overload
-    def __get__(
-        self, obj: AsyncNemoClient, objtype: type | None = None
-    ) -> AsyncBoundBinaryBodyCall[PathT, ResponseT]: ...
+    # -- Descriptor: sync vs async -----------------------------------------
 
-    def __get__(
-        self, obj: NemoClient | AsyncNemoClient | None, objtype: type | None = None
-    ) -> SyncBoundBinaryBodyCall[PathT, ResponseT] | AsyncBoundBinaryBodyCall[PathT, ResponseT]:
+    @overload
+    def __get__(self, obj: NemoClient, objtype: type | None = None) -> SyncBoundCall[PathT, RequestT, ResponseT]: ...
+    @overload
+    def __get__(self, obj: AsyncNemoClient, objtype: type | None = None) -> AsyncBoundCall[PathT, RequestT, ResponseT]: ...
+
+    def __get__(self, obj: NemoClient | AsyncNemoClient | None, objtype: type | None = None) -> SyncBoundCall[PathT, RequestT, ResponseT] | AsyncBoundCall[PathT, RequestT, ResponseT]:
         assert obj is not None
         if isinstance(obj, AsyncNemoClient):
-            return AsyncBoundBinaryBodyCall(obj, self)
-        return SyncBoundBinaryBodyCall(obj, self)
+            return AsyncBoundCall(obj, self.request)
+        return SyncBoundCall(obj, self.request)
 
     def __repr__(self) -> str:
-        return f"BinaryBodyEndpoint({self.method} {self.path} -> {self.response_type.__name__ if self.response_type else 'None'})"
-
-
-class NoBodyEndpoint(Generic[PathT, ResponseT]):
-    """Endpoint with no request body (GET, DELETE)."""
-
-    def __init__(self, path: str, method: str, response_type: type[ResponseT] | None) -> None:
-        self.path = path
-        self.method = method
-        self.response_type = response_type
-
-    def request(self, **path_params: Unpack[PathT]) -> PreparedRequest[ResponseT]:
-        """Build a :class:`PreparedRequest` from path parameters only."""
-        return PreparedRequest(
-            path_template=self.path,
-            path_params=dict(path_params),
-            method=self.method,
-            content=None,
-            content_type=None,
-            response_type=self.response_type,
-        )
-
-    @overload
-    def __get__(self, obj: NemoClient, objtype: type | None = None) -> SyncBoundNoBodyCall[PathT, ResponseT]: ...
-    @overload
-    def __get__(self, obj: AsyncNemoClient, objtype: type | None = None) -> AsyncBoundNoBodyCall[PathT, ResponseT]: ...
-
-    def __get__(
-        self, obj: NemoClient | AsyncNemoClient | None, objtype: type | None = None
-    ) -> SyncBoundNoBodyCall[PathT, ResponseT] | AsyncBoundNoBodyCall[PathT, ResponseT]:
-        assert obj is not None
-        if isinstance(obj, AsyncNemoClient):
-            return AsyncBoundNoBodyCall(obj, self)
-        return SyncBoundNoBodyCall(obj, self)
-
-    def __repr__(self) -> str:
-        return f"NoBodyEndpoint({self.method} {self.path} -> {self.response_type.__name__ if self.response_type else 'None'})"
-
-
-# Union type for use in type hints that accept any endpoint
-Endpoint = BodyEndpoint | BinaryBodyEndpoint | NoBodyEndpoint
+        req = self.request_type.__name__ if self.request_type else "None"
+        resp = self.response_type.__name__ if self.response_type else "None"
+        return f"Endpoint({self.method} {self.path}, {req} -> {resp})"
 
 
 # ---------------------------------------------------------------------------
@@ -175,77 +116,26 @@ Endpoint = BodyEndpoint | BinaryBodyEndpoint | NoBodyEndpoint
 # ---------------------------------------------------------------------------
 
 
-def get(path: str, path_type: type[PathT], response_type: type[ResponseT]) -> NoBodyEndpoint[PathT, ResponseT]:
+def get(path: str, path_type: type[PathT], response_type: type[ResponseT]) -> Endpoint[PathT, None, ResponseT]:
     """Define a GET endpoint (no request body)."""
-    return NoBodyEndpoint(path, "GET", response_type)
+    return Endpoint(path, "GET", None, response_type)
 
 
-@overload
-def post(
-    path: str, path_type: type[PathT], request_type: type[BinaryContent], response_type: type[ResponseT]
-) -> BinaryBodyEndpoint[PathT, ResponseT]: ...
-@overload
-def post(
-    path: str, path_type: type[PathT], request_type: type[RequestT], response_type: type[ResponseT]
-) -> BodyEndpoint[PathT, RequestT, ResponseT]: ...
+def post(path: str, path_type: type[PathT], request_type: type[RequestT], response_type: type[ResponseT]) -> Endpoint[PathT, RequestT, ResponseT]:
+    """Define a POST endpoint."""
+    return Endpoint(path, "POST", request_type, response_type)
 
 
-def post(
-    path: str,
-    path_type: type[PathT],
-    request_type: type[RequestT] | type[BinaryContent],
-    response_type: type[ResponseT] | None = None,
-) -> BodyEndpoint | BinaryBodyEndpoint:
-    """Define a POST endpoint. Pass ``BinaryContent`` as ``request_type`` for binary uploads."""
-    if request_type is BinaryContent:
-        return BinaryBodyEndpoint(path, "POST", response_type)
-    return BodyEndpoint(path, "POST", request_type, response_type)
+def put(path: str, path_type: type[PathT], request_type: type[RequestT], response_type: type[ResponseT]) -> Endpoint[PathT, RequestT, ResponseT]:
+    """Define a PUT endpoint."""
+    return Endpoint(path, "PUT", request_type, response_type)
 
 
-@overload
-def put(
-    path: str, path_type: type[PathT], request_type: type[BinaryContent], response_type: type[ResponseT]
-) -> BinaryBodyEndpoint[PathT, ResponseT]: ...
-@overload
-def put(
-    path: str, path_type: type[PathT], request_type: type[RequestT], response_type: type[ResponseT]
-) -> BodyEndpoint[PathT, RequestT, ResponseT]: ...
+def patch(path: str, path_type: type[PathT], request_type: type[RequestT], response_type: type[ResponseT]) -> Endpoint[PathT, RequestT, ResponseT]:
+    """Define a PATCH endpoint."""
+    return Endpoint(path, "PATCH", request_type, response_type)
 
 
-def put(
-    path: str,
-    path_type: type[PathT],
-    request_type: type[RequestT] | type[BinaryContent],
-    response_type: type[ResponseT] | None = None,
-) -> BodyEndpoint | BinaryBodyEndpoint:
-    """Define a PUT endpoint. Pass ``BinaryContent`` as ``request_type`` for binary uploads."""
-    if request_type is BinaryContent:
-        return BinaryBodyEndpoint(path, "PUT", response_type)
-    return BodyEndpoint(path, "PUT", request_type, response_type)
-
-
-@overload
-def patch(
-    path: str, path_type: type[PathT], request_type: type[BinaryContent], response_type: type[ResponseT]
-) -> BinaryBodyEndpoint[PathT, ResponseT]: ...
-@overload
-def patch(
-    path: str, path_type: type[PathT], request_type: type[RequestT], response_type: type[ResponseT]
-) -> BodyEndpoint[PathT, RequestT, ResponseT]: ...
-
-
-def patch(
-    path: str,
-    path_type: type[PathT],
-    request_type: type[RequestT] | type[BinaryContent],
-    response_type: type[ResponseT] | None = None,
-) -> BodyEndpoint | BinaryBodyEndpoint:
-    """Define a PATCH endpoint. Pass ``BinaryContent`` as ``request_type`` for binary uploads."""
-    if request_type is BinaryContent:
-        return BinaryBodyEndpoint(path, "PATCH", response_type)
-    return BodyEndpoint(path, "PATCH", request_type, response_type)
-
-
-def delete(path: str, path_type: type[PathT]) -> NoBodyEndpoint[PathT, None]:
+def delete(path: str, path_type: type[PathT]) -> Endpoint[PathT, None, None]:
     """Define a DELETE endpoint (no request body, no response body)."""
-    return NoBodyEndpoint(path, "DELETE", None)
+    return Endpoint(path, "DELETE", None, None)

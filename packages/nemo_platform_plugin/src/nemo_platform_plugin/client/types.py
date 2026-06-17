@@ -4,20 +4,20 @@
 """Shared types for the NeMo client infrastructure.
 
 This module contains marker types, TypeVars, and data classes that are
-used by both ``endpoint.py`` and ``client.py``, extracted here to avoid
-circular imports.
+used across the client package.
 """
 
 from __future__ import annotations
 
 from collections.abc import AsyncIterable, Iterable
 from dataclasses import dataclass
-from typing import Generic, Protocol, TypedDict, TypeVar, Unpack
+from typing import Generic, TypedDict, TypeVar
 
 from pydantic import BaseModel
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 ResponseT_JSON = TypeVar("ResponseT_JSON", bound=BaseModel | None)
+BodyRequestT = TypeVar("BodyRequestT", bound=BaseModel)
 
 
 class BinaryContent:
@@ -49,38 +49,8 @@ class BasePath(TypedDict):
 
 
 PathT = TypeVar("PathT", bound=BasePath)
-RequestT = TypeVar("RequestT", bound=BaseModel)
+RequestT = TypeVar("RequestT")
 ResponseT = TypeVar("ResponseT", bound=BaseModel | BinaryContent | Stream | None)
-
-
-# ---------------------------------------------------------------------------
-# Protocols — what bound callables need from endpoints
-# ---------------------------------------------------------------------------
-
-
-class BodyRequestable(Protocol[PathT, RequestT, ResponseT]):
-    """Protocol for endpoints that accept a JSON payload."""
-
-    def request(self, payload: RequestT, **path_params: Unpack[PathT]) -> PreparedRequest[ResponseT]: ...
-
-
-class BinaryBodyRequestable(Protocol[PathT, ResponseT]):
-    """Protocol for endpoints that accept binary content."""
-
-    def request(
-        self, content: bytes | Iterable[bytes] | AsyncIterable[bytes], **path_params: Unpack[PathT]
-    ) -> PreparedRequest[ResponseT]: ...
-
-
-class NoBodyRequestable(Protocol[PathT, ResponseT]):
-    """Protocol for endpoints with no request body."""
-
-    def request(self, **path_params: Unpack[PathT]) -> PreparedRequest[ResponseT]: ...
-
-
-# ---------------------------------------------------------------------------
-# PreparedRequest
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
