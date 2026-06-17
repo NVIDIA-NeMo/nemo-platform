@@ -12,8 +12,6 @@ the HTTP layer.
 
 from __future__ import annotations
 
-from typing import NotRequired
-
 from nemo_example_plugin.entities import ExampleItem
 from nemo_example_plugin.types.payloads import (
     CreateExampleItemRequest,
@@ -22,21 +20,16 @@ from nemo_example_plugin.types.payloads import (
     UpdateExampleItemRequest,
 )
 from nemo_platform_plugin.client.endpoint import delete, get, patch, post
-from nemo_platform_plugin.client.types import BasePath
+from nemo_platform_plugin.client.types import PathParams, WorkspaceParams
 
 # -- Path parameter types --------------------------------------------------
 
 
-class NamePath(BasePath):
+class NamePath(PathParams):
     name: str
 
 
-class WorkspacePath(BasePath):
-    workspace: NotRequired[str]
-
-
-class WorkspaceItemPath(BasePath):
-    workspace: NotRequired[str]
+class WorkspaceItemPath(WorkspaceParams):
     name: str
 
 
@@ -48,13 +41,13 @@ HelloEndpoint = get("/apis/example/hello/{name}", path_type=NamePath, response_t
 
 CreateItemEndpoint = post(
     "/apis/example/v2/workspaces/{workspace}/items",
-    path_type=WorkspacePath,
+    path_type=WorkspaceParams,
     request_type=CreateExampleItemRequest,
     response_type=ExampleItem,
 )
 
 ListItemsEndpoint = get(
-    "/apis/example/v2/workspaces/{workspace}/items", path_type=WorkspacePath, response_type=ExampleItemPage
+    "/apis/example/v2/workspaces/{workspace}/items", path_type=WorkspaceParams, response_type=ExampleItemPage
 )
 
 GetItemEndpoint = get(

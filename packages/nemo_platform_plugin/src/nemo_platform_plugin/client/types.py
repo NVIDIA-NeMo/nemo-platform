@@ -11,12 +11,11 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterable, Iterable
 from dataclasses import dataclass
-from typing import Generic, TypedDict, TypeVar
+from typing import Generic, NotRequired, TypedDict, TypeVar
 
 from pydantic import BaseModel
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
-ResponseT_JSON = TypeVar("ResponseT_JSON", bound=BaseModel | None)
 BodyRequestT = TypeVar("BodyRequestT", bound=BaseModel)
 
 
@@ -40,7 +39,7 @@ class Stream(Generic[ModelT]):
     """
 
 
-class BasePath(TypedDict):
+class PathParams(TypedDict):
     """Base class for all path parameter types.
 
     All path TypedDicts must inherit from this so that ``PathT`` is
@@ -48,8 +47,14 @@ class BasePath(TypedDict):
     """
 
 
-PathT = TypeVar("PathT", bound=BasePath)
-RequestT = TypeVar("RequestT")
+class WorkspaceParams(PathParams):
+    """Path params with an optional workspace (filled by client default)."""
+
+    workspace: NotRequired[str]
+
+
+PathT = TypeVar("PathT", bound=PathParams)
+RequestT = TypeVar("RequestT", bound=BaseModel | BinaryContent | None)
 ResponseT = TypeVar("ResponseT", bound=BaseModel | BinaryContent | Stream | None)
 
 

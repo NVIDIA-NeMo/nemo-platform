@@ -11,7 +11,7 @@ import pytest
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.endpoint import delete, get, post
 from nemo_platform_plugin.client.response import NemoResponse
-from nemo_platform_plugin.client.types import BasePath
+from nemo_platform_plugin.client.types import PathParams
 from pydantic import BaseModel
 
 BASE = "http://test:8000"
@@ -26,15 +26,15 @@ class ItemResponse(BaseModel):
     name: str
 
 
-class EmptyPath(BasePath):
+class EmptyPath(PathParams):
     pass
 
 
-class NamePath(BasePath):
+class NamePath(PathParams):
     name: str
 
 
-class WorkspacePath(BasePath):
+class WorkspacePath(PathParams):
     workspace: NotRequired[str]
 
 

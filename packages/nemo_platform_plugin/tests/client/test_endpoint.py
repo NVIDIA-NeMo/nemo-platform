@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from nemo_platform_plugin.client.endpoint import delete, get, patch, post
-from nemo_platform_plugin.client.types import BasePath, PreparedRequest
+from nemo_platform_plugin.client.types import PathParams, PreparedRequest
 from pydantic import BaseModel
 
 
@@ -17,16 +17,16 @@ class FakeResponse(BaseModel):
     name: str
 
 
-class WorkspacePath(BasePath):
+class WorkspacePath(PathParams):
     workspace: str
 
 
-class WorkspaceItemPath(BasePath):
+class WorkspaceItemPath(PathParams):
     workspace: str
     name: str
 
 
-class IdPath(BasePath):
+class IdPath(PathParams):
     id: str
 
 
