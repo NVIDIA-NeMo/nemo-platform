@@ -30,7 +30,9 @@ RUN sh /app/script/install_duckdb_extensions.sh
 # Download embedding model used by `nemoguardrails` library.
 # Uses snapshot_download directly to avoid importing onnxruntime, which crashes under QEMU (ARM64 cross-compilation).
 # Stored in /tmp/fastembed_cache (fastembed's default cache location) and copied to the runtime image below.
-RUN uv run --no-sync python -c 'import os, tempfile; from huggingface_hub import snapshot_download; snapshot_download(repo_id="qdrant/all-MiniLM-L6-v2-onnx", cache_dir=os.path.join(tempfile.gettempdir(), "fastembed_cache"))'
+RUN --mount=type=secret,id=HF_TOKEN,required=false \
+    if [ -s /run/secrets/HF_TOKEN ]; then export HF_TOKEN="$(cat /run/secrets/HF_TOKEN)"; fi; \
+    uv run --no-sync python -c 'import os, tempfile; from huggingface_hub import snapshot_download; snapshot_download(repo_id="qdrant/all-MiniLM-L6-v2-onnx", cache_dir=os.path.join(tempfile.gettempdir(), "fastembed_cache"))'
 
 FROM ${NMP_PYTHON_BASE} AS runtime
 ARG USERNAME=nvs

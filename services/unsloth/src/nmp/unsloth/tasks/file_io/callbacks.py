@@ -20,22 +20,22 @@ logger = logging.getLogger(__name__)
 
 
 def get_percentage(current: int, total: int) -> int:
-    """Get integer percentage 0-100.
+    """Get integer percentage 0-100, clamped to the valid range.
 
-    Raises:
-        ValueError: If current > total or either value is negative.
+    Progress accounting must never abort the underlying transfer. Inputs
+    can fall outside ``[0, total]`` for benign reasons — most commonly when
+    the pre-transfer file listing under-counts a source that contains nested
+    directories, so the live ``current`` count exceeds ``total`` by the
+    number of nested files. Clamp rather than raise so a cosmetic progress
+    number can't fail a multi-GB download.
     """
-    if current > total:
-        raise ValueError(
-            f"Unexpected value of the current and total values: current={current} cannot be greater than total={total}",
-        )
-    if total < 0:
-        raise ValueError(f"Unexpected negative value of the total value: total={total}, current={current}")
-    if current < 0:
-        raise ValueError(f"Unexpected negative value of the current value: current={current}, total={total}")
-
-    if total == 0:
+    if total <= 0:
         return 0
+    if current > total or current < 0:
+        # Benign (see docstring) but worth a breadcrumb now that we no longer
+        # raise — the old hard error is what previously surfaced count drift.
+        logger.debug("get_percentage clamping out-of-range progress: current=%s total=%s", current, total)
+    current = max(0, min(current, total))
     return int((current / total) * 100)
 
 
