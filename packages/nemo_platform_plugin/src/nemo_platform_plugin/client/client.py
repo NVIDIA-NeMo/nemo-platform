@@ -19,9 +19,6 @@ from collections.abc import Mapping
 from typing import TypeVar, get_args, get_origin, overload
 
 import httpx
-from pydantic import BaseModel
-
-from nemo_platform_plugin.client.types import BinaryContent, PreparedRequest, Stream
 from nemo_platform_plugin.client.response import (
     AsyncNemoBinaryResponse,
     AsyncNemoStreamResponse,
@@ -29,6 +26,8 @@ from nemo_platform_plugin.client.response import (
     NemoResponse,
     NemoStreamResponse,
 )
+from nemo_platform_plugin.client.types import BinaryContent, PreparedRequest, Stream
+from pydantic import BaseModel
 
 ResponseT = TypeVar("ResponseT", bound=BaseModel | None)
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -140,17 +139,13 @@ class NemoClient(BaseNemoClient):
 
         if self._is_binary(request):
             stream_ctx = self._http.stream(request.method, url, content=request.content, headers=headers)
-            raw = stream_ctx.__enter__()
-            raw.raise_for_status()
-            return NemoBinaryResponse(raw)
+            return NemoBinaryResponse(stream_ctx)
 
         if self._is_stream(request):
             assert request.response_type is not None
             stream_ctx = self._http.stream(request.method, url, content=request.content, headers=headers)
-            raw = stream_ctx.__enter__()
-            raw.raise_for_status()
             model_type = _get_stream_model_type(request.response_type)
-            return NemoStreamResponse(raw, model_type)
+            return NemoStreamResponse(stream_ctx, model_type)
 
         raw = self._http.request(request.method, url, content=request.content, headers=headers)
         raw.raise_for_status()
@@ -195,17 +190,13 @@ class AsyncNemoClient(BaseNemoClient):
 
         if self._is_binary(request):
             stream_ctx = self._http.stream(request.method, url, content=request.content, headers=headers)
-            raw = await stream_ctx.__aenter__()
-            raw.raise_for_status()
-            return AsyncNemoBinaryResponse(raw)
+            return AsyncNemoBinaryResponse(stream_ctx)
 
         if self._is_stream(request):
             assert request.response_type is not None
             stream_ctx = self._http.stream(request.method, url, content=request.content, headers=headers)
-            raw = await stream_ctx.__aenter__()
-            raw.raise_for_status()
             model_type = _get_stream_model_type(request.response_type)
-            return AsyncNemoStreamResponse(raw, model_type)
+            return AsyncNemoStreamResponse(stream_ctx, model_type)
 
         raw = await self._http.request(request.method, url, content=request.content, headers=headers)
         raw.raise_for_status()

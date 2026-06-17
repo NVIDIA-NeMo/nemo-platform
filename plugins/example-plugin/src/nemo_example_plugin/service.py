@@ -39,6 +39,7 @@ from nemo_example_plugin.schema import ExampleItemFilter
 from nemo_example_plugin.types.payloads import (
     CreateExampleItemRequest,
     ExampleItemPage,
+    HelloResponse,
     UpdateExampleItemRequest,
 )
 from nemo_platform_plugin.api.filters import make_filter_obj_dep
@@ -50,8 +51,6 @@ from nemo_platform_plugin.entity_client import (
 from nemo_platform_plugin.functions.routes import add_function_routes
 from nemo_platform_plugin.schema import PaginationData
 from nemo_platform_plugin.service import NemoService, RouterSpec
-
-from nemo_example_plugin.types.payloads import HelloResponse
 
 logger = logging.getLogger(__name__)
 

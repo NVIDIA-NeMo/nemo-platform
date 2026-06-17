@@ -3,10 +3,9 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
-
 from nemo_platform_plugin.client.endpoint import delete, get, patch, post
 from nemo_platform_plugin.client.types import BasePath, PreparedRequest
+from pydantic import BaseModel
 
 
 class FakeRequest(BaseModel):
@@ -32,7 +31,12 @@ class IdPath(BasePath):
 
 
 def test_post_endpoint_produces_prepared_request() -> None:
-    ep = post("/v2/workspaces/{workspace}/items", path_type=WorkspacePath, request_type=FakeRequest, response_type=FakeResponse)
+    ep = post(
+        "/v2/workspaces/{workspace}/items",
+        path_type=WorkspacePath,
+        request_type=FakeRequest,
+        response_type=FakeResponse,
+    )
     payload = FakeRequest(name="alice")
     prepared = ep.request(payload, workspace="default")
 

@@ -24,7 +24,6 @@ from nemo_example_plugin.types.payloads import (
 from nemo_platform_plugin.client.endpoint import delete, get, patch, post
 from nemo_platform_plugin.client.types import BasePath
 
-
 # -- Path parameter types --------------------------------------------------
 
 
@@ -47,12 +46,26 @@ HelloEndpoint = get("/apis/example/hello/{name}", path_type=NamePath, response_t
 
 # -- Items CRUD ------------------------------------------------------------
 
-CreateItemEndpoint = post("/apis/example/v2/workspaces/{workspace}/items", path_type=WorkspacePath, request_type=CreateExampleItemRequest, response_type=ExampleItem)
+CreateItemEndpoint = post(
+    "/apis/example/v2/workspaces/{workspace}/items",
+    path_type=WorkspacePath,
+    request_type=CreateExampleItemRequest,
+    response_type=ExampleItem,
+)
 
-ListItemsEndpoint = get("/apis/example/v2/workspaces/{workspace}/items", path_type=WorkspacePath, response_type=ExampleItemPage)
+ListItemsEndpoint = get(
+    "/apis/example/v2/workspaces/{workspace}/items", path_type=WorkspacePath, response_type=ExampleItemPage
+)
 
-GetItemEndpoint = get("/apis/example/v2/workspaces/{workspace}/items/{name}", path_type=WorkspaceItemPath, response_type=ExampleItem)
+GetItemEndpoint = get(
+    "/apis/example/v2/workspaces/{workspace}/items/{name}", path_type=WorkspaceItemPath, response_type=ExampleItem
+)
 
-UpdateItemEndpoint = patch("/apis/example/v2/workspaces/{workspace}/items/{name}", path_type=WorkspaceItemPath, request_type=UpdateExampleItemRequest, response_type=ExampleItem)
+UpdateItemEndpoint = patch(
+    "/apis/example/v2/workspaces/{workspace}/items/{name}",
+    path_type=WorkspaceItemPath,
+    request_type=UpdateExampleItemRequest,
+    response_type=ExampleItem,
+)
 
 DeleteItemEndpoint = delete("/apis/example/v2/workspaces/{workspace}/items/{name}", path_type=WorkspaceItemPath)

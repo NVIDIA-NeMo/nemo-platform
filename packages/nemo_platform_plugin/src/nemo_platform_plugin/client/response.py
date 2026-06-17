@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Iterator
+from contextlib import AbstractAsyncContextManager, AbstractContextManager
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
@@ -47,15 +48,21 @@ class NemoResponse(Generic[ResponseT]):
 class NemoBinaryResponse:
     """Sync response for binary download endpoints.
 
-    Example::
+    Use as a context manager::
 
         with client.send(DownloadEndpoint.request(...)) as resp:
             data = resp.read()       # all bytes at once
             # or: for chunk in resp  # iterate chunks
     """
 
-    def __init__(self, http_response: httpx.Response) -> None:
-        self.http_response = http_response
+    def __init__(self, stream_ctx: AbstractContextManager[httpx.Response]) -> None:
+        self._stream_ctx = stream_ctx
+        self._response: httpx.Response | None = None
+
+    @property
+    def http_response(self) -> httpx.Response:
+        assert self._response is not None, "Must enter context manager before accessing response"
+        return self._response
 
     def read(self) -> bytes:
         """Read and return the entire response body as bytes."""
@@ -64,29 +71,34 @@ class NemoBinaryResponse:
     def __iter__(self) -> Iterator[bytes]:
         return self.http_response.iter_bytes()
 
-    def close(self) -> None:
-        self.http_response.close()
-
     def __enter__(self) -> NemoBinaryResponse:
+        self._response = self._stream_ctx.__enter__()
+        self._response.raise_for_status()
         return self
 
     def __exit__(self, *args: object) -> None:
-        self.close()
+        self._stream_ctx.__exit__(*args)
 
 
 class NemoStreamResponse(Generic[ModelT]):
     """Sync response for SSE/NDJSON streaming endpoints.
 
-    Example::
+    Use as a context manager::
 
         with client.send(ChatEndpoint.request(...)) as resp:
             for chunk in resp:
                 print(chunk.text)
     """
 
-    def __init__(self, http_response: httpx.Response, model_type: type[ModelT]) -> None:
-        self.http_response = http_response
+    def __init__(self, stream_ctx: AbstractContextManager[httpx.Response], model_type: type[ModelT]) -> None:
+        self._stream_ctx = stream_ctx
         self._model_type = model_type
+        self._response: httpx.Response | None = None
+
+    @property
+    def http_response(self) -> httpx.Response:
+        assert self._response is not None, "Must enter context manager before accessing response"
+        return self._response
 
     def __iter__(self) -> Iterator[ModelT]:
         for line in self.http_response.iter_lines():
@@ -94,14 +106,13 @@ class NemoStreamResponse(Generic[ModelT]):
             if line:
                 yield self._model_type.model_validate_json(line)
 
-    def close(self) -> None:
-        self.http_response.close()
-
     def __enter__(self) -> NemoStreamResponse[ModelT]:
+        self._response = self._stream_ctx.__enter__()
+        self._response.raise_for_status()
         return self
 
     def __exit__(self, *args: object) -> None:
-        self.close()
+        self._stream_ctx.__exit__(*args)
 
 
 # ---------------------------------------------------------------------------
@@ -112,15 +123,21 @@ class NemoStreamResponse(Generic[ModelT]):
 class AsyncNemoBinaryResponse:
     """Async response for binary download endpoints.
 
-    Example::
+    Use as an async context manager::
 
         async with client.send(DownloadEndpoint.request(...)) as resp:
             data = await resp.read()           # all bytes at once
             # or: async for chunk in resp      # iterate chunks
     """
 
-    def __init__(self, http_response: httpx.Response) -> None:
-        self.http_response = http_response
+    def __init__(self, stream_ctx: AbstractAsyncContextManager[httpx.Response]) -> None:
+        self._stream_ctx = stream_ctx
+        self._response: httpx.Response | None = None
+
+    @property
+    def http_response(self) -> httpx.Response:
+        assert self._response is not None, "Must enter async context manager before accessing response"
+        return self._response
 
     async def read(self) -> bytes:
         """Read and return the entire response body as bytes."""
@@ -130,29 +147,34 @@ class AsyncNemoBinaryResponse:
         async for chunk in self.http_response.aiter_bytes():
             yield chunk
 
-    async def close(self) -> None:
-        await self.http_response.aclose()
-
     async def __aenter__(self) -> AsyncNemoBinaryResponse:
+        self._response = await self._stream_ctx.__aenter__()
+        self._response.raise_for_status()
         return self
 
     async def __aexit__(self, *args: object) -> None:
-        await self.close()
+        await self._stream_ctx.__aexit__(*args)
 
 
 class AsyncNemoStreamResponse(Generic[ModelT]):
     """Async response for SSE/NDJSON streaming endpoints.
 
-    Example::
+    Use as an async context manager::
 
         async with client.send(ChatEndpoint.request(...)) as resp:
             async for chunk in resp:
                 print(chunk.text)
     """
 
-    def __init__(self, http_response: httpx.Response, model_type: type[ModelT]) -> None:
-        self.http_response = http_response
+    def __init__(self, stream_ctx: AbstractAsyncContextManager[httpx.Response], model_type: type[ModelT]) -> None:
+        self._stream_ctx = stream_ctx
         self._model_type = model_type
+        self._response: httpx.Response | None = None
+
+    @property
+    def http_response(self) -> httpx.Response:
+        assert self._response is not None, "Must enter async context manager before accessing response"
+        return self._response
 
     async def __aiter__(self) -> AsyncIterator[ModelT]:
         async for line in self.http_response.aiter_lines():
@@ -160,14 +182,13 @@ class AsyncNemoStreamResponse(Generic[ModelT]):
             if line:
                 yield self._model_type.model_validate_json(line)
 
-    async def close(self) -> None:
-        await self.http_response.aclose()
-
     async def __aenter__(self) -> AsyncNemoStreamResponse[ModelT]:
+        self._response = await self._stream_ctx.__aenter__()
+        self._response.raise_for_status()
         return self
 
     async def __aexit__(self, *args: object) -> None:
-        await self.close()
+        await self._stream_ctx.__aexit__(*args)
 
 
 # ---------------------------------------------------------------------------

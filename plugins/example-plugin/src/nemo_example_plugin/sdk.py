@@ -23,8 +23,8 @@ from nemo_platform_plugin.client.adapter import async_from_platform, from_platfo
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.sdk import NemoPluginSDKResources
 
-
 # -- Endpoint assignments (defined once) -----------------------------------
+
 
 class _ExampleEndpoints:
     hello = HelloEndpoint
@@ -36,6 +36,7 @@ class _ExampleEndpoints:
 
 
 # -- Client classes: mixin + client + resource marker ----------------------
+
 
 class ExampleClient(_ExampleEndpoints, NemoClient):
     """Sync client for the example plugin API."""

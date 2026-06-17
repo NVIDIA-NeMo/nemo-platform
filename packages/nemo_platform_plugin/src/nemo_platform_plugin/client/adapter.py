@@ -23,7 +23,6 @@ from __future__ import annotations
 from typing import TypeVar
 
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 
 SyncT = TypeVar("SyncT", bound=NemoClient)
@@ -35,7 +34,8 @@ def from_platform(platform: NeMoPlatform, client_cls: type[SyncT]) -> SyncT:
     return client_cls(
         base_url=str(platform.base_url).rstrip("/"),
         workspace=platform.workspace,
-        http_client=platform._client,    )
+        http_client=platform._client,
+    )
 
 
 def async_from_platform(platform: AsyncNeMoPlatform, client_cls: type[AsyncT]) -> AsyncT:
@@ -43,4 +43,5 @@ def async_from_platform(platform: AsyncNeMoPlatform, client_cls: type[AsyncT]) -
     return client_cls(
         base_url=str(platform.base_url).rstrip("/"),
         workspace=platform.workspace,
-        http_client=platform._client,    )
+        http_client=platform._client,
+    )

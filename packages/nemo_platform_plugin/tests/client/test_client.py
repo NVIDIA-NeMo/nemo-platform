@@ -3,18 +3,16 @@
 
 from __future__ import annotations
 
+from typing import NotRequired
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
-from typing import NotRequired
-
-from pydantic import BaseModel
-
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.endpoint import delete, get, post
-from nemo_platform_plugin.client.types import BasePath
 from nemo_platform_plugin.client.response import NemoResponse
+from nemo_platform_plugin.client.types import BasePath
+from pydantic import BaseModel
 
 BASE = "http://test:8000"
 

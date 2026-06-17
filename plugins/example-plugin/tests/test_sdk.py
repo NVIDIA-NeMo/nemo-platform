@@ -99,7 +99,9 @@ def test_sync_get_item() -> None:
 
 def test_sync_list_items() -> None:
     client, mock_http = _sync_client()
-    mock_http.request.return_value = _resp(200, {"data": [ITEM_PAYLOAD], "pagination": None, "sort": None, "filter": None})
+    mock_http.request.return_value = _resp(
+        200, {"data": [ITEM_PAYLOAD], "pagination": None, "sort": None, "filter": None}
+    )
 
     resp = client.list_items(workspace=WS)
     page = resp.data()
