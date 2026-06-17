@@ -92,6 +92,13 @@ export const SimpleFilesTable = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [files, allowedExtensions, invalidFileMode]);
 
+  const disabledFilesMessage =
+    invalidFileMode === 'disable' &&
+    allowedExtensions.size > 0 &&
+    visibleFiles.some((file) => !isFileAllowed(file))
+      ? `Only ${acceptableFileTypes.join(', ')} files can be selected. Upload a supported file or choose a different fileset.`
+      : null;
+
   const rows = useMemo<TableRowDefinition[]>(
     () =>
       visibleFiles.map((uploadFile) => {
@@ -156,6 +163,14 @@ export const SimpleFilesTable = () => {
           />
         </RadioGroupRoot>
       )}
+      {disabledFilesMessage ? (
+        <Flex gap="density-sm" align="center">
+          <CircleAlert className="text-feedback-warning shrink-0" />
+          <Text kind="label/regular/sm" className="text-feedback-warning">
+            {disabledFilesMessage}
+          </Text>
+        </Flex>
+      ) : null}
       {errors.file && (
         <Flex gap="density-md" align="center">
           <CircleAlert className="text-feedback-danger" />
