@@ -11,8 +11,8 @@ Usage::
 
     from nemo_platform_plugin.client.adapter import from_platform, async_from_platform
 
-    class ExampleClient(NemoClient):
-        api_prefix = "/apis/example"
+    class ExampleClient(_ExampleEndpoints, NemoClient):
+        pass
 
     def make_example_client(platform: NeMoPlatform) -> ExampleClient:
         return from_platform(platform, ExampleClient)

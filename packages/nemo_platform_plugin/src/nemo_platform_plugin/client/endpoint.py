@@ -1,11 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Typed endpoint definitions that link request models to response models.
-
-Endpoint objects are the single source of truth for the HTTP contract between
-client and server.  Request and response models stay plain Pydantic — the
-endpoint carries the type linkage, not the models themselves.
+"""Typed endpoint definitions and factory functions.
 
 Endpoints are also descriptors: when assigned as class attributes on a
 :class:`NemoClient` or :class:`AsyncNemoClient` subclass, accessing them
@@ -29,219 +25,23 @@ from __future__ import annotations
 from collections.abc import AsyncIterable, Iterable
 from typing import Generic, Unpack, overload
 
-from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
-from nemo_platform_plugin.client.response import (
-    AsyncNemoBinaryResponse,
-    AsyncNemoStreamResponse,
-    NemoBinaryResponse,
-    NemoResponse,
-    NemoStreamResponse,
+from nemo_platform_plugin.client.bound import (
+    AsyncBoundBinaryBodyCall,
+    AsyncBoundBodyCall,
+    AsyncBoundNoBodyCall,
+    SyncBoundBinaryBodyCall,
+    SyncBoundBodyCall,
+    SyncBoundNoBodyCall,
 )
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.types import (
     BinaryContent,
-    ModelT,
     PathT,
     PreparedRequest,
     RequestT,
     ResponseT,
-    ResponseT_JSON,
     Stream,
 )
-
-# ---------------------------------------------------------------------------
-# Sync bound callables
-# ---------------------------------------------------------------------------
-
-
-class SyncBoundBodyCall(Generic[PathT, RequestT, ResponseT]):
-    """Sync callable returned when a :class:`BodyEndpoint` is accessed on a :class:`NemoClient`."""
-
-    def __init__(self, client: NemoClient, endpoint: BodyEndpoint[PathT, RequestT, ResponseT]) -> None:
-        self._client = client
-        self._endpoint = endpoint
-
-    @overload
-    def __call__(
-        self: SyncBoundBodyCall[PathT, RequestT, BinaryContent], payload: RequestT, **kw: Unpack[PathT]
-    ) -> NemoBinaryResponse: ...
-    @overload
-    def __call__(
-        self: SyncBoundBodyCall[PathT, RequestT, Stream[ModelT]], payload: RequestT, **kw: Unpack[PathT]
-    ) -> NemoStreamResponse[ModelT]: ...
-    @overload
-    def __call__(
-        self: SyncBoundBodyCall[PathT, RequestT, None], payload: RequestT, **kw: Unpack[PathT]
-    ) -> NemoResponse[None]: ...
-    @overload
-    def __call__(
-        self: SyncBoundBodyCall[PathT, RequestT, ResponseT_JSON], payload: RequestT, **kw: Unpack[PathT]
-    ) -> NemoResponse[ResponseT_JSON]: ...
-
-    def __call__(
-        self, payload: RequestT, **kw: Unpack[PathT]
-    ) -> NemoResponse | NemoBinaryResponse | NemoStreamResponse:
-        return self._client.send(self._endpoint.request(payload, **kw))
-
-
-class SyncBoundBinaryBodyCall(Generic[PathT, ResponseT]):
-    """Sync callable returned when a :class:`BinaryBodyEndpoint` is accessed on a :class:`NemoClient`."""
-
-    def __init__(self, client: NemoClient, endpoint: BinaryBodyEndpoint[PathT, ResponseT]) -> None:
-        self._client = client
-        self._endpoint = endpoint
-
-    @overload
-    def __call__(
-        self: SyncBoundBinaryBodyCall[PathT, BinaryContent],
-        content: bytes | Iterable[bytes] | AsyncIterable[bytes],
-        **kw: Unpack[PathT],
-    ) -> NemoBinaryResponse: ...
-    @overload
-    def __call__(
-        self: SyncBoundBinaryBodyCall[PathT, Stream[ModelT]],
-        content: bytes | Iterable[bytes] | AsyncIterable[bytes],
-        **kw: Unpack[PathT],
-    ) -> NemoStreamResponse[ModelT]: ...
-    @overload
-    def __call__(
-        self: SyncBoundBinaryBodyCall[PathT, None],
-        content: bytes | Iterable[bytes] | AsyncIterable[bytes],
-        **kw: Unpack[PathT],
-    ) -> NemoResponse[None]: ...
-    @overload
-    def __call__(
-        self: SyncBoundBinaryBodyCall[PathT, ResponseT_JSON],
-        content: bytes | Iterable[bytes] | AsyncIterable[bytes],
-        **kw: Unpack[PathT],
-    ) -> NemoResponse[ResponseT_JSON]: ...
-
-    def __call__(
-        self, content: bytes | Iterable[bytes] | AsyncIterable[bytes], **kw: Unpack[PathT]
-    ) -> NemoResponse | NemoBinaryResponse | NemoStreamResponse:
-        return self._client.send(self._endpoint.request(content, **kw))
-
-
-class SyncBoundNoBodyCall(Generic[PathT, ResponseT]):
-    """Sync callable returned when a :class:`NoBodyEndpoint` is accessed on a :class:`NemoClient`."""
-
-    def __init__(self, client: NemoClient, endpoint: NoBodyEndpoint[PathT, ResponseT]) -> None:
-        self._client = client
-        self._endpoint = endpoint
-
-    @overload
-    def __call__(self: SyncBoundNoBodyCall[PathT, BinaryContent], **kw: Unpack[PathT]) -> NemoBinaryResponse: ...
-    @overload
-    def __call__(
-        self: SyncBoundNoBodyCall[PathT, Stream[ModelT]], **kw: Unpack[PathT]
-    ) -> NemoStreamResponse[ModelT]: ...
-    @overload
-    def __call__(self: SyncBoundNoBodyCall[PathT, None], **kw: Unpack[PathT]) -> NemoResponse[None]: ...
-    @overload
-    def __call__(
-        self: SyncBoundNoBodyCall[PathT, ResponseT_JSON], **kw: Unpack[PathT]
-    ) -> NemoResponse[ResponseT_JSON]: ...
-
-    def __call__(self, **kw: Unpack[PathT]) -> NemoResponse | NemoBinaryResponse | NemoStreamResponse:
-        return self._client.send(self._endpoint.request(**kw))
-
-
-# ---------------------------------------------------------------------------
-# Async bound callables
-# ---------------------------------------------------------------------------
-
-
-class AsyncBoundBodyCall(Generic[PathT, RequestT, ResponseT]):
-    """Async callable returned when a :class:`BodyEndpoint` is accessed on an :class:`AsyncNemoClient`."""
-
-    def __init__(self, client: AsyncNemoClient, endpoint: BodyEndpoint[PathT, RequestT, ResponseT]) -> None:
-        self._client = client
-        self._endpoint = endpoint
-
-    @overload
-    async def __call__(
-        self: AsyncBoundBodyCall[PathT, RequestT, BinaryContent], payload: RequestT, **kw: Unpack[PathT]
-    ) -> AsyncNemoBinaryResponse: ...
-    @overload
-    async def __call__(
-        self: AsyncBoundBodyCall[PathT, RequestT, Stream[ModelT]], payload: RequestT, **kw: Unpack[PathT]
-    ) -> AsyncNemoStreamResponse[ModelT]: ...
-    @overload
-    async def __call__(
-        self: AsyncBoundBodyCall[PathT, RequestT, None], payload: RequestT, **kw: Unpack[PathT]
-    ) -> NemoResponse[None]: ...
-    @overload
-    async def __call__(
-        self: AsyncBoundBodyCall[PathT, RequestT, ResponseT_JSON], payload: RequestT, **kw: Unpack[PathT]
-    ) -> NemoResponse[ResponseT_JSON]: ...
-
-    async def __call__(
-        self, payload: RequestT, **kw: Unpack[PathT]
-    ) -> NemoResponse | AsyncNemoBinaryResponse | AsyncNemoStreamResponse:
-        return await self._client.send(self._endpoint.request(payload, **kw))
-
-
-class AsyncBoundBinaryBodyCall(Generic[PathT, ResponseT]):
-    """Async callable returned when a :class:`BinaryBodyEndpoint` is accessed on an :class:`AsyncNemoClient`."""
-
-    def __init__(self, client: AsyncNemoClient, endpoint: BinaryBodyEndpoint[PathT, ResponseT]) -> None:
-        self._client = client
-        self._endpoint = endpoint
-
-    @overload
-    async def __call__(
-        self: AsyncBoundBinaryBodyCall[PathT, BinaryContent],
-        content: bytes | Iterable[bytes] | AsyncIterable[bytes],
-        **kw: Unpack[PathT],
-    ) -> AsyncNemoBinaryResponse: ...
-    @overload
-    async def __call__(
-        self: AsyncBoundBinaryBodyCall[PathT, Stream[ModelT]],
-        content: bytes | Iterable[bytes] | AsyncIterable[bytes],
-        **kw: Unpack[PathT],
-    ) -> AsyncNemoStreamResponse[ModelT]: ...
-    @overload
-    async def __call__(
-        self: AsyncBoundBinaryBodyCall[PathT, None],
-        content: bytes | Iterable[bytes] | AsyncIterable[bytes],
-        **kw: Unpack[PathT],
-    ) -> NemoResponse[None]: ...
-    @overload
-    async def __call__(
-        self: AsyncBoundBinaryBodyCall[PathT, ResponseT_JSON],
-        content: bytes | Iterable[bytes] | AsyncIterable[bytes],
-        **kw: Unpack[PathT],
-    ) -> NemoResponse[ResponseT_JSON]: ...
-
-    async def __call__(
-        self, content: bytes | Iterable[bytes] | AsyncIterable[bytes], **kw: Unpack[PathT]
-    ) -> NemoResponse | AsyncNemoBinaryResponse | AsyncNemoStreamResponse:
-        return await self._client.send(self._endpoint.request(content, **kw))
-
-
-class AsyncBoundNoBodyCall(Generic[PathT, ResponseT]):
-    """Async callable returned when a :class:`NoBodyEndpoint` is accessed on an :class:`AsyncNemoClient`."""
-
-    def __init__(self, client: AsyncNemoClient, endpoint: NoBodyEndpoint[PathT, ResponseT]) -> None:
-        self._client = client
-        self._endpoint = endpoint
-
-    @overload
-    async def __call__(
-        self: AsyncBoundNoBodyCall[PathT, BinaryContent], **kw: Unpack[PathT]
-    ) -> AsyncNemoBinaryResponse: ...
-    @overload
-    async def __call__(
-        self: AsyncBoundNoBodyCall[PathT, Stream[ModelT]], **kw: Unpack[PathT]
-    ) -> AsyncNemoStreamResponse[ModelT]: ...
-    @overload
-    async def __call__(self: AsyncBoundNoBodyCall[PathT, None], **kw: Unpack[PathT]) -> NemoResponse[None]: ...
-    @overload
-    async def __call__(
-        self: AsyncBoundNoBodyCall[PathT, ResponseT_JSON], **kw: Unpack[PathT]
-    ) -> NemoResponse[ResponseT_JSON]: ...
-
-    async def __call__(self, **kw: Unpack[PathT]) -> NemoResponse | AsyncNemoBinaryResponse | AsyncNemoStreamResponse:
-        return await self._client.send(self._endpoint.request(**kw))
 
 
 # ---------------------------------------------------------------------------

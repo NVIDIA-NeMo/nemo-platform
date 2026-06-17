@@ -4,7 +4,7 @@
 """SDK resources for the example plugin.
 
 Endpoints are defined once in a mixin, then sync/async client classes
-inherit the mixin + the appropriate client base + resource marker.
+inherit the mixin + the appropriate client base.
 The descriptor protocol on each endpoint returns the right bound callable.
 """
 
@@ -35,7 +35,7 @@ class _ExampleEndpoints:
     delete_item = DeleteItemEndpoint
 
 
-# -- Client classes: mixin + client + resource marker ----------------------
+# -- Client classes: mixin + client base -----------------------------------
 
 
 class ExampleClient(_ExampleEndpoints, NemoClient):

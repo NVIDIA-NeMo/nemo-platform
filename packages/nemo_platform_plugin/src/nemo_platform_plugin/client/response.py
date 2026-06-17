@@ -8,6 +8,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Iterator
 from contextlib import AbstractAsyncContextManager, AbstractContextManager
 from dataclasses import dataclass
+from types import TracebackType
 from typing import Generic, TypeVar
 
 import httpx
@@ -76,8 +77,8 @@ class NemoBinaryResponse:
         self._response.raise_for_status()
         return self
 
-    def __exit__(self, *args: object) -> None:
-        self._stream_ctx.__exit__(*args)
+    def __exit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: TracebackType | None) -> None:
+        self._stream_ctx.__exit__(exc_type, exc_val, exc_tb)
 
 
 class NemoStreamResponse(Generic[ModelT]):
@@ -111,8 +112,8 @@ class NemoStreamResponse(Generic[ModelT]):
         self._response.raise_for_status()
         return self
 
-    def __exit__(self, *args: object) -> None:
-        self._stream_ctx.__exit__(*args)
+    def __exit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: TracebackType | None) -> None:
+        self._stream_ctx.__exit__(exc_type, exc_val, exc_tb)
 
 
 # ---------------------------------------------------------------------------
@@ -152,8 +153,8 @@ class AsyncNemoBinaryResponse:
         self._response.raise_for_status()
         return self
 
-    async def __aexit__(self, *args: object) -> None:
-        await self._stream_ctx.__aexit__(*args)
+    async def __aexit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: TracebackType | None) -> None:
+        await self._stream_ctx.__aexit__(exc_type, exc_val, exc_tb)
 
 
 class AsyncNemoStreamResponse(Generic[ModelT]):
@@ -187,8 +188,8 @@ class AsyncNemoStreamResponse(Generic[ModelT]):
         self._response.raise_for_status()
         return self
 
-    async def __aexit__(self, *args: object) -> None:
-        await self._stream_ctx.__aexit__(*args)
+    async def __aexit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: TracebackType | None) -> None:
+        await self._stream_ctx.__aexit__(exc_type, exc_val, exc_tb)
 
 
 # ---------------------------------------------------------------------------

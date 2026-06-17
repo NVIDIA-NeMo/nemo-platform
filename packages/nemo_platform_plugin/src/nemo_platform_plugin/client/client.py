@@ -92,11 +92,7 @@ class BaseNemoClient:
 
 
 class NemoClient(BaseNemoClient):
-    """Sync HTTP client for NeMo Platform APIs.
-
-    Subclass and set ``api_prefix`` to the API mount point
-    (e.g. ``"/apis/example"``).
-    """
+    """Sync HTTP client for NeMo Platform APIs."""
 
     def __init__(
         self,

@@ -5,83 +5,91 @@ Tracking file for the typed HTTP client work in `nemo_platform_plugin/client/`.
 ## What we built
 
 A typed endpoint/client system where:
-- **`BodyEndpoint[PathT, RequestT, ResponseT]`** / **`NoBodyEndpoint[PathT, ResponseT]`** — frozen dataclasses linking a URL template to typed path params, request body (if any), and response body. `BodyEndpoint.request(payload, **path_params)` requires payload; `NoBodyEndpoint.request(**path_params)` has no payload parameter. `Endpoint` is a union alias of both. Constructed via standalone factory functions `get()`, `post()`, `patch()`, `delete()`.
-- **`PreparedRequest[ResponseT]`** — frozen dataclass produced by calling `.request()` on an endpoint. Carries the path template, path params dict, method, body, and response type. Path interpolation is deferred to `send()`.
-- **`NemoResponse[ResponseT]`** — frozen dataclass wrapping the full `httpx.Response` and a parsed Pydantic body. `.data()` for the common "give me the body or raise" case.
-- **`NemoBinaryResponse`** / **`AsyncNemoBinaryResponse`** — streaming binary response. Context manager, iterable over byte chunks.
-- **`NemoStreamResponse[ModelT]`** / **`AsyncNemoStreamResponse[ModelT]`** — streaming NDJSON response. Context manager, iterable over parsed Pydantic models.
-- **`BinaryStream`** — marker type for endpoints that return raw bytes.
-- **`Stream[ModelT]`** — marker type for endpoints that return a stream of typed JSON objects.
-- **`BasePath(TypedDict)`** — base class for all path TypedDicts. `PathT` is `bound=BasePath`.
-- **`BaseNemoClient`** — shared logic: path resolution (merging client defaults + explicit params + format_map), JSON serialization, stream/binary detection.
-- **`NemoClient` / `AsyncNemoClient`** — sync/async subclasses that own an httpx client and implement overloaded `send()`.
-- **Path params are typed via `TypedDict` + `Unpack`** — the type checker enforces correct kwargs at the call site.
-- **Workspace** can be set on the client and auto-injected into `{workspace}` in paths. Path TypedDicts use `NotRequired[str]` for workspace so it's optional at the call site. Explicit per-call values override the client default.
-- **Path interpolation happens in `_resolve_path()` at `send()` time** — client defaults are merged with explicit params, then `format_map` runs. Missing params raise `ValueError` with a clear message.
-- **Endpoint naming convention** — PascalCase (e.g. `CreateItemEndpoint`), not UPPER_SNAKE.
+- **`BodyEndpoint[PathT, RequestT, ResponseT]`** / **`BinaryBodyEndpoint[PathT, ResponseT]`** / **`NoBodyEndpoint[PathT, ResponseT]`** — endpoint classes that are also descriptors. When assigned as class attributes on a `NemoClient`/`AsyncNemoClient` subclass, accessing them returns sync/async bound callables with the right `__call__` signature.
+- **`PreparedRequest[ResponseT]`** — frozen dataclass carrying path template, path params, content, content type, and response type. Path interpolation is deferred to `send()`.
+- **`NemoResponse[ResponseT]`** — frozen dataclass wrapping `httpx.Response` and parsed body. `.data()` for unwrap-or-raise.
+- **`NemoBinaryResponse`** / **`AsyncNemoBinaryResponse`** — streaming binary responses. Context managers with `read()` and `__iter__`/`__aiter__`.
+- **`NemoStreamResponse[ModelT]`** / **`AsyncNemoStreamResponse[ModelT]`** — streaming NDJSON responses. Context managers with model-parsing iteration.
+- **`BinaryContent`** — marker type for binary request/response (unified, used in both positions).
+- **`Stream[ModelT]`** — marker type for NDJSON streaming responses.
+- **`BasePath(TypedDict)`** — base for all path TypedDicts. `PathT` is `bound=BasePath`.
+- **`BaseNemoClient`** — shared logic: path resolution (merging client defaults + explicit params + `format_map` with `ValueError` on missing params), stream/binary detection.
+- **`NemoClient` / `AsyncNemoClient`** — sync/async subclasses with overloaded `send()` that dispatches return type based on `ResponseT`.
+- **Descriptor pattern** — endpoints have `__get__` overloaded on `NemoClient` vs `AsyncNemoClient`. Returns `SyncBound*Call` or `AsyncBound*Call`. No metaclass, no plugin — just the standard descriptor protocol.
+- **Endpoint mixin pattern** — define endpoints once in a mixin class, then sync/async client classes inherit the mixin + client base.
+- **Adapter** — `from_platform()` / `async_from_platform()` bridge `NeMoPlatform` to `NemoClient` for backward compatibility with `NemoPluginSDKResources`.
+- **Path params typed via `TypedDict` + `Unpack`** with `NotRequired[str]` for workspace (client default fills it in).
 
 ## File layout
 
 ```
 packages/nemo_platform_plugin/src/nemo_platform_plugin/client/
-├── endpoint.py     # BasePath, BinaryStream, Stream, PreparedRequest, BodyEndpoint, NoBodyEndpoint, get/post/patch/delete
+├── types.py        # BasePath, BinaryContent, Stream, PreparedRequest, TypeVars
+├── endpoint.py     # BodyEndpoint, BinaryBodyEndpoint, NoBodyEndpoint, bound callables, factory functions
 ├── client.py       # BaseNemoClient, NemoClient, AsyncNemoClient
-└── response.py     # NemoResponse, NemoBinaryResponse, AsyncNemoBinaryResponse, NemoStreamResponse, AsyncNemoStreamResponse, NemoHTTPError
+├── response.py     # NemoResponse, NemoBinaryResponse, AsyncNemoBinaryResponse, NemoStreamResponse, AsyncNemoStreamResponse, NemoHTTPError
+└── adapter.py      # from_platform(), async_from_platform()
 
 plugins/example-plugin/src/nemo_example_plugin/
 ├── types/
 │   ├── payloads.py   # Plain Pydantic request/response models
 │   └── endpoints.py  # Endpoint definitions + path TypedDicts
 ├── schema.py         # Server-side filters only
-└── sdk.py            # ExampleClient(NemoClient), AsyncExampleClient(AsyncNemoClient)
+└── sdk.py            # _ExampleEndpoints mixin, ExampleClient, AsyncExampleClient, NemoPluginSDKResources registration
 ```
 
 ## Key type decisions
 
 - `RequestT` bound is `BaseModel` — payload is required on `BodyEndpoint`, absent on `NoBodyEndpoint`.
-- `ResponseT` bound is `BaseModel | BinaryStream | Stream | None` — covers all four response kinds.
-- `PathT` bound is `BasePath` — enforces that path types are TypedDict subclasses.
-- Generic order is `[PathT, RequestT, ResponseT]` — path first since it's always present.
-- Factory functions instead of classmethods — `ty` can't infer class-level TypeVars from classmethod/staticmethod args ([astral-sh/ty#541](https://github.com/astral-sh/ty/issues/541)). Standalone functions infer correctly. Repro in `ty_classmethod_repro.py`.
-- `path_type` is always required on factory functions.
+- `ResponseT` bound is `BaseModel | BinaryContent | Stream | None` — covers all four response kinds.
+- `PathT` bound is `BasePath` — enforces TypedDict subclasses.
+- Generic order is `[PathT, RequestT, ResponseT]` for body endpoints, `[PathT, ResponseT]` for no-body.
+- Factory functions (`get`, `post`, `put`, `patch`, `delete`) instead of classmethods — `ty` can't infer class-level TypeVars from classmethods ([astral-sh/ty#541](https://github.com/astral-sh/ty/issues/541)). See [astral-sh/ty#541](https://github.com/astral-sh/ty/issues/541).
+- Shared types in `types.py` to break circular import between `endpoint.py` and `client.py`.
+- Streaming responses own the httpx stream context manager — `send()` passes it through, caller enters/exits via `with`/`async with`.
+- Content-based request model: `PreparedRequest` carries `content: bytes | Iterable[bytes] | AsyncIterable[bytes] | None` and `content_type: str | None`. JSON endpoints serialize at `request()` time. Binary endpoints pass through. `send()` always sends `content` — no branching on body type.
 
 ## Overloaded `send()` dispatch
 
-The `send()` method is overloaded based on `ResponseT`:
-
-| `ResponseT` | `send()` returns (sync) | `send()` returns (async) |
+| `ResponseT` | `NemoClient.send()` returns | `AsyncNemoClient.send()` returns |
 |---|---|---|
 | `BaseModel` subclass | `NemoResponse[T]` | `NemoResponse[T]` |
 | `None` | `NemoResponse[None]` | `NemoResponse[None]` |
-| `BinaryStream` | `NemoBinaryResponse` | `AsyncNemoBinaryResponse` |
+| `BinaryContent` | `NemoBinaryResponse` | `AsyncNemoBinaryResponse` |
 | `Stream[T]` | `NemoStreamResponse[T]` | `AsyncNemoStreamResponse[T]` |
 
-Runtime dispatch uses:
-- `_is_binary()` — checks `response_type is BinaryStream`
-- `_is_stream()` — checks `get_origin(response_type) is Stream`, extracts `ModelT` via `get_args()`
-- Binary/stream responses use httpx's `stream()` context manager for lazy iteration
-- Binary/stream response objects are context managers — caller uses `with`/`async with` to close the connection
+Runtime dispatch: `_is_binary()` checks `response_type is BinaryContent`, `_is_stream()` uses `get_origin(response_type) is Stream` + `get_args()` for `ModelT`.
 
-## Known `ty` limitation
+## Descriptor-based resource pattern
 
-`ty` cannot infer class-level TypeVars from classmethod/staticmethod arguments on generic classes ([astral-sh/ty#541](https://github.com/astral-sh/ty/issues/541)). Standalone factory functions work correctly. This is why we use `get()`, `post()`, etc. instead of `Endpoint.get()`, `Endpoint.post()`.
+Endpoints have `__get__` overloaded on `NemoClient` vs `AsyncNemoClient`:
+- Accessed on `NemoClient` → returns `SyncBound*Call` (sync `__call__`)
+- Accessed on `AsyncNemoClient` → returns `AsyncBound*Call` (async `__call__`)
+
+Usage:
+```python
+class _ExampleEndpoints:
+    create = CreateItemEndpoint
+    get_item = GetItemEndpoint
+
+class ExampleClient(_ExampleEndpoints, NemoClient):
+    pass
+
+class AsyncExampleClient(_ExampleEndpoints, AsyncNemoClient):
+    pass
+```
 
 ## TODOs
 
 ### Near-term
-- [x] ~~Wire `ExampleClient` into the plugin SDK registration system~~ Done — adapter in `nemo_platform_plugin/client/adapter.py` bridges `NeMoPlatform` → `NemoClient` via `from_platform()` / `async_from_platform()`. Example plugin's `example_sdk_resources` uses the adapter.
 - [ ] Consider whether `NemoPluginSDKResources` should be replaced entirely now that clients own their own httpx
-
-### Streaming & binary
-- [x] ~~Handle upload (binary request body)~~ Done — `BinaryBodyEndpoint` via `BinaryContent` marker in `request_type`. `request(content)` accepts `bytes | Iterable[bytes] | AsyncIterable[bytes]`.
-- [x] ~~Handle streaming uploads~~ Done — covered by `Iterable[bytes]` / `AsyncIterable[bytes]` accepted by `BinaryBodyEndpoint.request()`.
 - [ ] Handle pagination — list endpoints return `NemoListResponse[T]` with page/page_size/total; client should support iterating pages or auto-paginating
 
 ### Medium-term
 - [ ] Add server-side helpers that derive FastAPI routes from the same endpoint definitions (shared contract)
 - [ ] Migrate core service clients (Files, Entities, etc.) to use `NemoClient` instead of raw `platform._client`
 - [ ] Eventually replace `NeMoPlatform` with `NemoClient` as the primary SDK entry point
-- [ ] Make the client agnostic to the underlying HTTP library — abstract the transport so we can swap httpx for aiohttp, pyreqwest, etc. without changing endpoint definitions or consumer code. **Direction:** Protocol-based transport abstraction (`SyncTransport`/`AsyncTransport` + `HttpResponse`/`AsyncHttpResponse` protocols). Covers `request()`, `stream()`, `status_code`, `json()`, `iter_bytes()`, `iter_lines()`, `close()` and their async equivalents. Need to decide what to do with `NemoResponse.http_response` (type it as the protocol, `Any`, or remove it). Punting for now — significant scope.
+- [ ] Make the client agnostic to the underlying HTTP library — abstract the transport so we can swap httpx for aiohttp, pyreqwest, etc. Punting for now — significant scope.
 
 ### Open questions
 - How do we handle auth? Currently `default_headers` is the escape hatch — should there be first-class token/auth support?
