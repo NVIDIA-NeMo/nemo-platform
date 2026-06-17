@@ -29,7 +29,8 @@ from __future__ import annotations
 import logging
 from typing import ClassVar
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import Response
 from nemo_example_plugin.config import ExampleConfig
 from nemo_example_plugin.core import say_hello
 from nemo_example_plugin.entities import ExampleItem
@@ -109,6 +110,11 @@ class ExampleService(NemoService):
                 description="Streaming NDJSON NemoFunction example.",
                 prefix="/v2/workspaces/{workspace}",
             ),
+            RouterSpec(
+                _build_binary_router(),
+                tag="Example Binary",
+                description="Binary upload/download endpoints for testing.",
+            ),
         ]
 
 
@@ -138,6 +144,35 @@ def _build_hello_router() -> APIRouter:
         else:
             message = say_hello(name)
         return HelloResponse(message=message)
+
+    return router
+
+
+# ---------------------------------------------------------------------------
+# Binary upload/download router
+# ---------------------------------------------------------------------------
+
+
+def _build_binary_router() -> APIRouter:
+    """Simple binary endpoints for testing the typed client's binary support."""
+    router = APIRouter()
+
+    # In-memory store for uploaded bytes (keyed by name)
+    _store: dict[str, bytes] = {}
+
+    @router.put("/blob/{name}", status_code=200)
+    async def upload_blob(name: str, request: Request) -> dict:
+        """Accept raw binary and store it. Returns byte count."""
+        data = await request.body()
+        _store[name] = data
+        return {"name": name, "size": len(data)}
+
+    @router.get("/blob/{name}", response_class=Response)
+    async def download_blob(name: str) -> Response:
+        """Return stored binary content."""
+        if name not in _store:
+            raise HTTPException(status_code=404, detail=f"Blob '{name}' not found")
+        return Response(content=_store[name], media_type="application/octet-stream")
 
     return router
 

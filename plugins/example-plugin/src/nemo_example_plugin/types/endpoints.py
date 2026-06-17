@@ -14,13 +14,16 @@ from __future__ import annotations
 
 from nemo_example_plugin.entities import ExampleItem
 from nemo_example_plugin.types.payloads import (
+    BlobUploadResponse,
+    CountRequest,
     CreateExampleItemRequest,
     ExampleItemPage,
     HelloResponse,
+    Tick,
     UpdateExampleItemRequest,
 )
-from nemo_platform_plugin.client.endpoint import delete, get, patch, post
-from nemo_platform_plugin.client.types import PathParams, WorkspaceParams
+from nemo_platform_plugin.client.endpoint import delete, get, patch, post, put
+from nemo_platform_plugin.client.types import BinaryContent, PathParams, Stream, WorkspaceParams
 
 # -- Path parameter types --------------------------------------------------
 
@@ -62,3 +65,27 @@ UpdateItemEndpoint = patch(
 )
 
 DeleteItemEndpoint = delete("/apis/example/v2/workspaces/{workspace}/items/{name}", path_type=WorkspaceItemPath)
+
+# -- Functions -------------------------------------------------------------
+
+CountEndpoint = post(
+    "/apis/example/v2/workspaces/{workspace}/count",
+    path_type=WorkspaceParams,
+    request_type=CountRequest,
+    response_type=Stream[Tick],
+)
+
+# -- Binary ----------------------------------------------------------------
+
+UploadBlobEndpoint = put(
+    "/apis/example/blob/{name}",
+    path_type=NamePath,
+    request_type=BinaryContent,
+    response_type=BlobUploadResponse,
+)
+
+DownloadBlobEndpoint = get(
+    "/apis/example/blob/{name}",
+    path_type=NamePath,
+    response_type=BinaryContent,
+)

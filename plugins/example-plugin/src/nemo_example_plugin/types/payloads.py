@@ -41,6 +41,39 @@ class CreateExampleItemRequest(BaseModel):
     tags: list[str] = Field(default_factory=list, description="Searchable tags.")
 
 
+class GreetRequest(BaseModel):
+    """Request body for the greet function."""
+
+    name: str = Field(default="world", description="Name to greet.")
+
+
+class GreetResponse(BaseModel):
+    """Response from the greet function."""
+
+    message: str
+    workspace: str
+
+
+class CountRequest(BaseModel):
+    """Request body for the streaming count function."""
+
+    upto: int = Field(default=3, description="How many tick frames to emit.")
+
+
+class Tick(BaseModel):
+    """A frame from the count stream (tick or done)."""
+
+    kind: str
+    n: int | None = None
+
+
+class BlobUploadResponse(BaseModel):
+    """Response from uploading a binary blob."""
+
+    name: str
+    size: int
+
+
 class UpdateExampleItemRequest(BaseModel):
     """Request body for ``PATCH /v2/workspaces/{workspace}/items/{name}``.
 

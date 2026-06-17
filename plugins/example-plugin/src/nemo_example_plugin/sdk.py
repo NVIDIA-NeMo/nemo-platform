@@ -11,12 +11,15 @@ The descriptor protocol on each endpoint returns the right bound callable.
 from __future__ import annotations
 
 from nemo_example_plugin.types.endpoints import (
+    CountEndpoint,
     CreateItemEndpoint,
     DeleteItemEndpoint,
+    DownloadBlobEndpoint,
     GetItemEndpoint,
     HelloEndpoint,
     ListItemsEndpoint,
     UpdateItemEndpoint,
+    UploadBlobEndpoint,
 )
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
@@ -33,6 +36,9 @@ class _ExampleEndpoints:
     get_item = GetItemEndpoint
     update_item = UpdateItemEndpoint
     delete_item = DeleteItemEndpoint
+    count = CountEndpoint
+    upload_blob = UploadBlobEndpoint
+    download_blob = DownloadBlobEndpoint
 
 
 # -- Client classes: mixin + client base -----------------------------------
