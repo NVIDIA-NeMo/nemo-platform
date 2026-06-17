@@ -25,8 +25,6 @@ from __future__ import annotations
 from collections.abc import AsyncIterable, Iterable
 from typing import Generic, Unpack, overload
 
-from pydantic import BaseModel
-
 from nemo_platform_plugin.client.bound import AsyncBoundCall, SyncBoundCall
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.types import (
@@ -37,6 +35,7 @@ from nemo_platform_plugin.client.types import (
     RequestT,
     ResponseT,
 )
+from pydantic import BaseModel
 
 
 class Endpoint(Generic[PathT, RequestT, ResponseT]):
@@ -50,7 +49,9 @@ class Endpoint(Generic[PathT, RequestT, ResponseT]):
     returns a :class:`SyncBoundCall` or :class:`AsyncBoundCall`.
     """
 
-    def __init__(self, path: str, method: str, request_type: type[RequestT] | None, response_type: type[ResponseT] | None) -> None:
+    def __init__(
+        self, path: str, method: str, request_type: type[RequestT] | None, response_type: type[ResponseT] | None
+    ) -> None:
         self.path = path
         self.method = method
         self.request_type = request_type
@@ -59,9 +60,15 @@ class Endpoint(Generic[PathT, RequestT, ResponseT]):
     # -- request() overloads: body / binary / no-body ----------------------
 
     @overload
-    def request(self: Endpoint[PathT, BodyRequestT, ResponseT], payload: BodyRequestT, **path_params: Unpack[PathT]) -> PreparedRequest[ResponseT]: ...
+    def request(
+        self: Endpoint[PathT, BodyRequestT, ResponseT], payload: BodyRequestT, **path_params: Unpack[PathT]
+    ) -> PreparedRequest[ResponseT]: ...
     @overload
-    def request(self: Endpoint[PathT, BinaryContent, ResponseT], content: bytes | Iterable[bytes] | AsyncIterable[bytes], **path_params: Unpack[PathT]) -> PreparedRequest[ResponseT]: ...
+    def request(
+        self: Endpoint[PathT, BinaryContent, ResponseT],
+        content: bytes | Iterable[bytes] | AsyncIterable[bytes],
+        **path_params: Unpack[PathT],
+    ) -> PreparedRequest[ResponseT]: ...
     @overload
     def request(self: Endpoint[PathT, None, ResponseT], **path_params: Unpack[PathT]) -> PreparedRequest[ResponseT]: ...
 
@@ -97,9 +104,13 @@ class Endpoint(Generic[PathT, RequestT, ResponseT]):
     @overload
     def __get__(self, obj: NemoClient, objtype: type | None = None) -> SyncBoundCall[PathT, RequestT, ResponseT]: ...
     @overload
-    def __get__(self, obj: AsyncNemoClient, objtype: type | None = None) -> AsyncBoundCall[PathT, RequestT, ResponseT]: ...
+    def __get__(
+        self, obj: AsyncNemoClient, objtype: type | None = None
+    ) -> AsyncBoundCall[PathT, RequestT, ResponseT]: ...
 
-    def __get__(self, obj: NemoClient | AsyncNemoClient | None, objtype: type | None = None) -> SyncBoundCall[PathT, RequestT, ResponseT] | AsyncBoundCall[PathT, RequestT, ResponseT]:
+    def __get__(
+        self, obj: NemoClient | AsyncNemoClient | None, objtype: type | None = None
+    ) -> SyncBoundCall[PathT, RequestT, ResponseT] | AsyncBoundCall[PathT, RequestT, ResponseT]:
         assert obj is not None
         if isinstance(obj, AsyncNemoClient):
             return AsyncBoundCall(obj, self.request)
@@ -121,17 +132,23 @@ def get(path: str, path_type: type[PathT], response_type: type[ResponseT]) -> En
     return Endpoint(path, "GET", None, response_type)
 
 
-def post(path: str, path_type: type[PathT], request_type: type[RequestT], response_type: type[ResponseT]) -> Endpoint[PathT, RequestT, ResponseT]:
+def post(
+    path: str, path_type: type[PathT], request_type: type[RequestT], response_type: type[ResponseT]
+) -> Endpoint[PathT, RequestT, ResponseT]:
     """Define a POST endpoint."""
     return Endpoint(path, "POST", request_type, response_type)
 
 
-def put(path: str, path_type: type[PathT], request_type: type[RequestT], response_type: type[ResponseT]) -> Endpoint[PathT, RequestT, ResponseT]:
+def put(
+    path: str, path_type: type[PathT], request_type: type[RequestT], response_type: type[ResponseT]
+) -> Endpoint[PathT, RequestT, ResponseT]:
     """Define a PUT endpoint."""
     return Endpoint(path, "PUT", request_type, response_type)
 
 
-def patch(path: str, path_type: type[PathT], request_type: type[RequestT], response_type: type[ResponseT]) -> Endpoint[PathT, RequestT, ResponseT]:
+def patch(
+    path: str, path_type: type[PathT], request_type: type[RequestT], response_type: type[ResponseT]
+) -> Endpoint[PathT, RequestT, ResponseT]:
     """Define a PATCH endpoint."""
     return Endpoint(path, "PATCH", request_type, response_type)
 

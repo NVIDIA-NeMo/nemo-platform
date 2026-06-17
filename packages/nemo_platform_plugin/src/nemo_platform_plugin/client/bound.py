@@ -62,33 +62,32 @@ class SyncBoundCall(Generic[PathT, RequestT, ResponseT]):
     @overload
     def __call__(
         self: SyncBoundCall[PathT, BinaryContent, BinaryContent],
-        content: bytes | Iterable[bytes] | AsyncIterable[bytes], **kw: Unpack[PathT],
+        content: bytes | Iterable[bytes] | AsyncIterable[bytes],
+        **kw: Unpack[PathT],
     ) -> NemoBinaryResponse: ...
     @overload
     def __call__(
         self: SyncBoundCall[PathT, BinaryContent, Stream[ModelT]],
-        content: bytes | Iterable[bytes] | AsyncIterable[bytes], **kw: Unpack[PathT],
+        content: bytes | Iterable[bytes] | AsyncIterable[bytes],
+        **kw: Unpack[PathT],
     ) -> NemoStreamResponse[ModelT]: ...
     @overload
     def __call__(
         self: SyncBoundCall[PathT, BinaryContent, ResponseT],
-        content: bytes | Iterable[bytes] | AsyncIterable[bytes], **kw: Unpack[PathT],
+        content: bytes | Iterable[bytes] | AsyncIterable[bytes],
+        **kw: Unpack[PathT],
     ) -> NemoResponse[ResponseT]: ...
 
     # -- No body (RequestT is None) × response variants --
 
     @overload
-    def __call__(
-        self: SyncBoundCall[PathT, None, BinaryContent], **kw: Unpack[PathT]
-    ) -> NemoBinaryResponse: ...
+    def __call__(self: SyncBoundCall[PathT, None, BinaryContent], **kw: Unpack[PathT]) -> NemoBinaryResponse: ...
     @overload
     def __call__(
         self: SyncBoundCall[PathT, None, Stream[ModelT]], **kw: Unpack[PathT]
     ) -> NemoStreamResponse[ModelT]: ...
     @overload
-    def __call__(
-        self: SyncBoundCall[PathT, None, ResponseT], **kw: Unpack[PathT]
-    ) -> NemoResponse[ResponseT]: ...
+    def __call__(self: SyncBoundCall[PathT, None, ResponseT], **kw: Unpack[PathT]) -> NemoResponse[ResponseT]: ...
 
     def __call__(self, *args: object, **kw: object) -> NemoResponse | NemoBinaryResponse | NemoStreamResponse:
         return self._client.send(self._request_fn(*args, **kw))
@@ -121,17 +120,20 @@ class AsyncBoundCall(Generic[PathT, RequestT, ResponseT]):
     @overload
     async def __call__(
         self: AsyncBoundCall[PathT, BinaryContent, BinaryContent],
-        content: bytes | Iterable[bytes] | AsyncIterable[bytes], **kw: Unpack[PathT],
+        content: bytes | Iterable[bytes] | AsyncIterable[bytes],
+        **kw: Unpack[PathT],
     ) -> AsyncNemoBinaryResponse: ...
     @overload
     async def __call__(
         self: AsyncBoundCall[PathT, BinaryContent, Stream[ModelT]],
-        content: bytes | Iterable[bytes] | AsyncIterable[bytes], **kw: Unpack[PathT],
+        content: bytes | Iterable[bytes] | AsyncIterable[bytes],
+        **kw: Unpack[PathT],
     ) -> AsyncNemoStreamResponse[ModelT]: ...
     @overload
     async def __call__(
         self: AsyncBoundCall[PathT, BinaryContent, ResponseT],
-        content: bytes | Iterable[bytes] | AsyncIterable[bytes], **kw: Unpack[PathT],
+        content: bytes | Iterable[bytes] | AsyncIterable[bytes],
+        **kw: Unpack[PathT],
     ) -> NemoResponse[ResponseT]: ...
 
     # -- No body (RequestT is None) × response variants --
@@ -149,5 +151,7 @@ class AsyncBoundCall(Generic[PathT, RequestT, ResponseT]):
         self: AsyncBoundCall[PathT, None, ResponseT], **kw: Unpack[PathT]
     ) -> NemoResponse[ResponseT]: ...
 
-    async def __call__(self, *args: object, **kw: object) -> NemoResponse | AsyncNemoBinaryResponse | AsyncNemoStreamResponse:
+    async def __call__(
+        self, *args: object, **kw: object
+    ) -> NemoResponse | AsyncNemoBinaryResponse | AsyncNemoStreamResponse:
         return await self._client.send(self._request_fn(*args, **kw))
