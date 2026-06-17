@@ -32,7 +32,7 @@ def test_database_display_formats_non_sqlite_driver() -> None:
     assert _database_display("postgresql+asyncpg://user:pass@localhost:5432/nemo") == "postgresql"
 
 
-def test_database_display_logs_parse_failures(caplog) -> None:
+def test_database_display_logs_parse_failures(caplog: pytest.LogCaptureFixture) -> None:
     with caplog.at_level(logging.DEBUG, logger="nmp.platform_runner.run"):
         assert _database_display("postgresql://localhost:not-a-port/nemo") == "postgresql"
 
