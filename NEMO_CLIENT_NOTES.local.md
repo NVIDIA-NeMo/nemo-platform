@@ -69,12 +69,12 @@ Runtime dispatch uses:
 ## TODOs
 
 ### Near-term
-- [ ] Wire `ExampleClient` into the plugin SDK registration system (`NemoPluginSDKResources` currently expects a `NeMoPlatform`-taking constructor — needs updating or replacing)
+- [x] ~~Wire `ExampleClient` into the plugin SDK registration system~~ Done — adapter in `nemo_platform_plugin/client/adapter.py` bridges `NeMoPlatform` → `NemoClient` via `from_platform()` / `async_from_platform()`. Example plugin's `example_sdk_resources` uses the adapter.
 - [ ] Consider whether `NemoPluginSDKResources` should be replaced entirely now that clients own their own httpx
 
 ### Streaming & binary
-- [x] ~~Handle upload (binary request body)~~ Done — `BinaryBodyEndpoint` + `put_binary()` factory. `request(content)` accepts `bytes | Iterable[bytes] | AsyncIterable[bytes]`.
-- [x] ~~Handle streaming uploads~~ Done — covered by `Iterable[bytes]` / `AsyncIterable[bytes]` in `BinaryContent` type.
+- [x] ~~Handle upload (binary request body)~~ Done — `BinaryBodyEndpoint` via `BinaryContent` marker in `request_type`. `request(content)` accepts `bytes | Iterable[bytes] | AsyncIterable[bytes]`.
+- [x] ~~Handle streaming uploads~~ Done — covered by `Iterable[bytes]` / `AsyncIterable[bytes]` accepted by `BinaryBodyEndpoint.request()`.
 - [ ] Handle pagination — list endpoints return `NemoListResponse[T]` with page/page_size/total; client should support iterating pages or auto-paginating
 
 ### Medium-term

@@ -6,6 +6,10 @@
 Uses :class:`~nemo_platform_plugin.client.client.NemoClient` with typed
 :class:`~nemo_platform_plugin.client.endpoint.Endpoint` definitions so that
 every ``send()`` call has full type inference on the response.
+
+Registered via ``NemoPluginSDKResources`` for backward compatibility with
+the ``NeMoPlatform`` plugin system — the adapter bridges the old platform
+instance to the new typed client.
 """
 
 from __future__ import annotations
@@ -24,7 +28,10 @@ from nemo_example_plugin.types.payloads import (
     ExampleItemPage,
     UpdateExampleItemRequest,
 )
+from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.adapter import async_from_platform, from_platform
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+from nemo_platform_plugin.sdk import NemoPluginSDKResources
 
 
 class ExampleClient(NemoClient):
@@ -109,3 +116,22 @@ class AsyncExampleClient(AsyncNemoClient):
 
     async def delete_item(self, workspace: str, name: str) -> None:
         await self.send(DeleteItemEndpoint.request(workspace=workspace, name=name))
+
+
+# ---------------------------------------------------------------------------
+# Plugin SDK registration — bridges NeMoPlatform to the new typed client
+# ---------------------------------------------------------------------------
+
+
+def _make_sync_resource(platform: NeMoPlatform) -> ExampleClient:
+    return from_platform(platform, ExampleClient)
+
+
+def _make_async_resource(platform: AsyncNeMoPlatform) -> AsyncExampleClient:
+    return async_from_platform(platform, AsyncExampleClient)
+
+
+example_sdk_resources = NemoPluginSDKResources(
+    sync_resource=_make_sync_resource,
+    async_resource=_make_async_resource,
+)
