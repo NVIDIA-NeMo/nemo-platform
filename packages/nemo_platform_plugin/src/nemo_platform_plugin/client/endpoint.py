@@ -40,9 +40,7 @@ from nemo_platform_plugin.client.types import (
     PreparedRequest,
     RequestT,
     ResponseT,
-    Stream,
 )
-
 
 # ---------------------------------------------------------------------------
 # Endpoint types — descriptors that dispatch sync/async

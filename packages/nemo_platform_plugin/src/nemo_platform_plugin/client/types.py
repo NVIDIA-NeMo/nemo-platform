@@ -67,7 +67,9 @@ class BodyRequestable(Protocol[PathT, RequestT, ResponseT]):
 class BinaryBodyRequestable(Protocol[PathT, ResponseT]):
     """Protocol for endpoints that accept binary content."""
 
-    def request(self, content: bytes | Iterable[bytes] | AsyncIterable[bytes], **path_params: Unpack[PathT]) -> PreparedRequest[ResponseT]: ...
+    def request(
+        self, content: bytes | Iterable[bytes] | AsyncIterable[bytes], **path_params: Unpack[PathT]
+    ) -> PreparedRequest[ResponseT]: ...
 
 
 class NoBodyRequestable(Protocol[PathT, ResponseT]):
