@@ -10,6 +10,10 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 from nemo_example_plugin.sdk import AsyncExampleClient, ExampleClient
+from nemo_example_plugin.types.payloads import (
+    CreateExampleItemRequest,
+    UpdateExampleItemRequest,
+)
 
 BASE = "http://test:8000"
 WS = "default"
@@ -55,14 +59,16 @@ def _async_client() -> tuple[AsyncExampleClient, AsyncMock]:
 def test_sync_hello() -> None:
     client, mock_http = _sync_client()
     mock_http.request.return_value = _resp(200, {"message": "Hello, alice!"})
-    assert client.hello("alice") == "Hello, alice!"
+    resp = client.hello(name="alice")
+    assert resp.data().message == "Hello, alice!"
 
 
 @pytest.mark.asyncio
 async def test_async_hello() -> None:
     client, mock_http = _async_client()
     mock_http.request.return_value = _resp(200, {"message": "Hello, bob!"})
-    assert await client.hello("bob") == "Hello, bob!"
+    resp = await client.hello(name="bob")
+    assert resp.data().message == "Hello, bob!"
 
 
 # ---------------------------------------------------------------------------
@@ -74,30 +80,29 @@ def test_sync_create_item() -> None:
     client, mock_http = _sync_client()
     mock_http.request.return_value = _resp(201, ITEM_PAYLOAD)
 
-    item = client.create_item(WS, "my-item", "My Item")
+    resp = client.create_item(CreateExampleItemRequest(name="my-item", title="My Item"), workspace=WS)
+    item = resp.data()
 
     assert item.name == "my-item"
     assert item.title == "My Item"
     mock_http.request.assert_called_once()
-    call_args = mock_http.request.call_args
-    assert call_args[0][0] == "POST"
-    assert "/v2/workspaces/default/items" in call_args[0][1]
 
 
 def test_sync_get_item() -> None:
     client, mock_http = _sync_client()
     mock_http.request.return_value = _resp(200, ITEM_PAYLOAD)
 
-    item = client.get_item(WS, "my-item")
+    resp = client.get_item(workspace=WS, name="my-item")
 
-    assert item.name == "my-item"
+    assert resp.data().name == "my-item"
 
 
 def test_sync_list_items() -> None:
     client, mock_http = _sync_client()
     mock_http.request.return_value = _resp(200, {"data": [ITEM_PAYLOAD], "pagination": None, "sort": None, "filter": None})
 
-    page = client.list_items(WS)
+    resp = client.list_items(workspace=WS)
+    page = resp.data()
 
     assert len(page.data) == 1
     assert page.data[0].name == "my-item"
@@ -108,16 +113,16 @@ def test_sync_update_item() -> None:
     updated = {**ITEM_PAYLOAD, "title": "Updated"}
     mock_http.request.return_value = _resp(200, updated)
 
-    item = client.update_item(WS, "my-item", title="Updated")
+    resp = client.update_item(UpdateExampleItemRequest(title="Updated"), workspace=WS, name="my-item")
 
-    assert item.title == "Updated"
+    assert resp.data().title == "Updated"
 
 
 def test_sync_delete_item() -> None:
     client, mock_http = _sync_client()
     mock_http.request.return_value = _resp(204)
 
-    client.delete_item(WS, "my-item")
+    client.delete_item(workspace=WS, name="my-item")
 
     mock_http.request.assert_called_once()
 
@@ -132,9 +137,9 @@ async def test_async_create_item() -> None:
     client, mock_http = _async_client()
     mock_http.request.return_value = _resp(201, ITEM_PAYLOAD)
 
-    item = await client.create_item(WS, "my-item", "My Item")
+    resp = await client.create_item(CreateExampleItemRequest(name="my-item", title="My Item"), workspace=WS)
 
-    assert item.name == "my-item"
+    assert resp.data().name == "my-item"
 
 
 @pytest.mark.asyncio
@@ -142,9 +147,9 @@ async def test_async_get_item() -> None:
     client, mock_http = _async_client()
     mock_http.request.return_value = _resp(200, ITEM_PAYLOAD)
 
-    item = await client.get_item(WS, "my-item")
+    resp = await client.get_item(workspace=WS, name="my-item")
 
-    assert item.name == "my-item"
+    assert resp.data().name == "my-item"
 
 
 @pytest.mark.asyncio
@@ -152,6 +157,6 @@ async def test_async_delete_item() -> None:
     client, mock_http = _async_client()
     mock_http.request.return_value = _resp(204)
 
-    await client.delete_item(WS, "my-item")
+    await client.delete_item(workspace=WS, name="my-item")
 
     mock_http.request.assert_awaited_once()

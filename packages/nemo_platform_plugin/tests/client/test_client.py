@@ -12,7 +12,8 @@ from typing import NotRequired
 from pydantic import BaseModel
 
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
-from nemo_platform_plugin.client.endpoint import BasePath, delete, get, post
+from nemo_platform_plugin.client.endpoint import delete, get, post
+from nemo_platform_plugin.client.types import BasePath
 from nemo_platform_plugin.client.response import NemoResponse
 
 BASE = "http://test:8000"
@@ -39,18 +40,18 @@ class WorkspacePath(BasePath):
     workspace: NotRequired[str]
 
 
-CREATE_ITEM = post("/v2/items", path_type=EmptyPath, request_type=ItemRequest, response_type=ItemResponse)
-GET_ITEM = get("/v2/items/{name}", path_type=NamePath, response_type=ItemResponse)
-DELETE_ITEM = delete("/v2/items/{name}", path_type=NamePath)
-GET_WS_ITEM = get("/v2/workspaces/{workspace}/items", path_type=WorkspacePath, response_type=ItemResponse)
+CREATE_ITEM = post("/apis/test/v2/items", path_type=EmptyPath, request_type=ItemRequest, response_type=ItemResponse)
+GET_ITEM = get("/apis/test/v2/items/{name}", path_type=NamePath, response_type=ItemResponse)
+DELETE_ITEM = delete("/apis/test/v2/items/{name}", path_type=NamePath)
+GET_WS_ITEM = get("/apis/test/v2/workspaces/{workspace}/items", path_type=WorkspacePath, response_type=ItemResponse)
 
 
 class StubClient(NemoClient):
-    api_prefix = "/apis/test"
+    pass
 
 
 class AsyncStubClient(AsyncNemoClient):
-    api_prefix = "/apis/test"
+    pass
 
 
 # ---------------------------------------------------------------------------

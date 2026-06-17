@@ -3,18 +3,13 @@
 
 """SDK resources for the example plugin.
 
-Uses :class:`~nemo_platform_plugin.client.client.NemoClient` with typed
-:class:`~nemo_platform_plugin.client.endpoint.Endpoint` definitions so that
-every ``send()`` call has full type inference on the response.
-
-Registered via ``NemoPluginSDKResources`` for backward compatibility with
-the ``NeMoPlatform`` plugin system — the adapter bridges the old platform
-instance to the new typed client.
+Endpoints are defined once in a mixin, then sync/async client classes
+inherit the mixin + the appropriate client base + resource marker.
+The descriptor protocol on each endpoint returns the right bound callable.
 """
 
 from __future__ import annotations
 
-from nemo_example_plugin.entities import ExampleItem
 from nemo_example_plugin.types.endpoints import (
     CreateItemEndpoint,
     DeleteItemEndpoint,
@@ -23,99 +18,31 @@ from nemo_example_plugin.types.endpoints import (
     ListItemsEndpoint,
     UpdateItemEndpoint,
 )
-from nemo_example_plugin.types.payloads import (
-    CreateExampleItemRequest,
-    ExampleItemPage,
-    UpdateExampleItemRequest,
-)
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.client.adapter import async_from_platform, from_platform
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.sdk import NemoPluginSDKResources
 
 
-class ExampleClient(NemoClient):
+# -- Endpoint assignments (defined once) -----------------------------------
+
+class _ExampleEndpoints:
+    hello = HelloEndpoint
+    create_item = CreateItemEndpoint
+    list_items = ListItemsEndpoint
+    get_item = GetItemEndpoint
+    update_item = UpdateItemEndpoint
+    delete_item = DeleteItemEndpoint
+
+
+# -- Client classes: mixin + client + resource marker ----------------------
+
+class ExampleClient(_ExampleEndpoints, NemoClient):
     """Sync client for the example plugin API."""
 
-    api_prefix = "/apis/example"
 
-    # ------------------------------------------------------------------
-    # Hello
-    # ------------------------------------------------------------------
-
-    def hello(self, name: str) -> str:
-        resp = self.send(HelloEndpoint.request(name=name))
-        return resp.data().message
-
-    # ------------------------------------------------------------------
-    # Items CRUD
-    # ------------------------------------------------------------------
-
-    def create_item(self, workspace: str, name: str, title: str, body: str = "", tags: list[str] | None = None) -> ExampleItem:
-        req = CreateExampleItemRequest(name=name, title=title, body=body, tags=tags or [])
-        return self.send(CreateItemEndpoint.request(req, workspace=workspace)).data()
-
-    def list_items(self, workspace: str) -> ExampleItemPage:
-        return self.send(ListItemsEndpoint.request(workspace=workspace)).data()
-
-    def get_item(self, workspace: str, name: str) -> ExampleItem:
-        return self.send(GetItemEndpoint.request(workspace=workspace, name=name)).data()
-
-    def update_item(
-        self,
-        workspace: str,
-        name: str,
-        title: str | None = None,
-        body: str | None = None,
-        tags: list[str] | None = None,
-    ) -> ExampleItem:
-        req = UpdateExampleItemRequest(title=title, body=body, tags=tags)
-        return self.send(UpdateItemEndpoint.request(req, workspace=workspace, name=name)).data()
-
-    def delete_item(self, workspace: str, name: str) -> None:
-        self.send(DeleteItemEndpoint.request(workspace=workspace, name=name))
-
-
-class AsyncExampleClient(AsyncNemoClient):
+class AsyncExampleClient(_ExampleEndpoints, AsyncNemoClient):
     """Async client for the example plugin API."""
-
-    api_prefix = "/apis/example"
-
-    # ------------------------------------------------------------------
-    # Hello
-    # ------------------------------------------------------------------
-
-    async def hello(self, name: str) -> str:
-        resp = await self.send(HelloEndpoint.request(name=name))
-        return resp.data().message
-
-    # ------------------------------------------------------------------
-    # Items CRUD
-    # ------------------------------------------------------------------
-
-    async def create_item(self, workspace: str, name: str, title: str, body: str = "", tags: list[str] | None = None) -> ExampleItem:
-        req = CreateExampleItemRequest(name=name, title=title, body=body, tags=tags or [])
-        return (await self.send(CreateItemEndpoint.request(req, workspace=workspace))).data()
-
-    async def list_items(self, workspace: str) -> ExampleItemPage:
-        return (await self.send(ListItemsEndpoint.request(workspace=workspace))).data()
-
-    async def get_item(self, workspace: str, name: str) -> ExampleItem:
-        return (await self.send(GetItemEndpoint.request(workspace=workspace, name=name))).data()
-
-    async def update_item(
-        self,
-        workspace: str,
-        name: str,
-        title: str | None = None,
-        body: str | None = None,
-        tags: list[str] | None = None,
-    ) -> ExampleItem:
-        req = UpdateExampleItemRequest(title=title, body=body, tags=tags)
-        return (await self.send(UpdateItemEndpoint.request(req, workspace=workspace, name=name))).data()
-
-    async def delete_item(self, workspace: str, name: str) -> None:
-        await self.send(DeleteItemEndpoint.request(workspace=workspace, name=name))
 
 
 # ---------------------------------------------------------------------------

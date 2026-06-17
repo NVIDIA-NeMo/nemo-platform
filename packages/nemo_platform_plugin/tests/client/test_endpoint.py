@@ -5,7 +5,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from nemo_platform_plugin.client.endpoint import BasePath, PreparedRequest, delete, get, patch, post
+from nemo_platform_plugin.client.endpoint import delete, get, patch, post
+from nemo_platform_plugin.client.types import BasePath, PreparedRequest
 
 
 class FakeRequest(BaseModel):

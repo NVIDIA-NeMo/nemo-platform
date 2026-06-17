@@ -21,7 +21,7 @@ from typing import TypeVar, get_args, get_origin, overload
 import httpx
 from pydantic import BaseModel
 
-from nemo_platform_plugin.client.endpoint import BinaryContent, PreparedRequest, Stream
+from nemo_platform_plugin.client.types import BinaryContent, PreparedRequest, Stream
 from nemo_platform_plugin.client.response import (
     AsyncNemoBinaryResponse,
     AsyncNemoStreamResponse,
@@ -51,8 +51,6 @@ class BaseNemoClient:
     Subclasses provide the actual HTTP transport (sync or async).
     """
 
-    api_prefix: str = ""
-
     def __init__(self, *, base_url: str, workspace: str | None = None) -> None:
         self._base_url = base_url.rstrip("/")
         self._workspace = workspace
@@ -80,7 +78,7 @@ class BaseNemoClient:
             path = request.path_template.format_map(params)
         except KeyError as exc:
             raise ValueError(f"Missing path parameter {exc} for {request.method} {request.path_template}") from exc
-        return self._base_url + self.api_prefix + path
+        return self._base_url + path
 
     def _request_headers(self, request: PreparedRequest) -> dict[str, str] | None:
         if request.content_type is not None:
