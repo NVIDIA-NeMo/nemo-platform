@@ -876,6 +876,55 @@ class TestEagerVllmAdapterLoad:
 
         assert not stale_dir.exists()
 
+    def test_step_keeps_removed_adapter_dir_when_vllm_server_error(self, controller, tmp_path):
+        """A 5xx from vLLM means the unload was NOT confirmed (the adapter may still be
+        loaded), so the directory is kept and retried next cycle rather than deleted —
+        deleting it would orphan the adapter in vLLM until a restart."""
+        controller.vllm_endpoint = "http://localhost:49152"
+        stale_dir = tmp_path / "default--gone-adapter"
+        stale_dir.mkdir()
+        (stale_dir / ADAPTER_META_FILENAME).write_text(json.dumps({"fileset": "default/fs", "updated_at": None}))
+
+        adapter = _make_adapter("kept-adapter", "default/fs", updated_at=None, workspace="default")
+        self._model_entity(controller, adapter)
+        controller._sdk.models.list.return_value = []  # no prompt-tuned models
+
+        def _responses(route, payload):
+            if route == "/v1/unload_lora_adapter":
+                return 503, "Internal Server Error"
+            return 200, ""
+
+        with patch.object(controller, "_vllm_api_call", side_effect=_responses):
+            controller.step()
+
+        # Server error: unload unconfirmed -> dir preserved for retry.
+        assert stale_dir.exists()
+
+    @pytest.mark.parametrize(
+        "endpoint,api_result,expected",
+        [
+            ("", None, True),  # NIM: no endpoint -> unload by directory removal
+            ("http://localhost:49152", (200, ""), True),  # confirmed unload
+            ("http://localhost:49152", (404, "not loaded"), True),  # answered: not loaded
+            ("http://localhost:49152", (400, "bad request"), True),  # answered (client error)
+            ("http://localhost:49152", (500, "boom"), False),  # server error -> retry
+            ("http://localhost:49152", (503, "unavailable"), False),  # server error -> retry
+            ("http://localhost:49152", urllib.error.URLError("refused"), False),  # unreachable -> retry
+        ],
+    )
+    def test_unload_return_contract(self, controller, endpoint, api_result, expected):
+        """`_unload_vllm_adapter` returns "safe to delete the dir": True for NIM and
+        any vLLM response < 500 (including 4xx "not loaded"); False for 5xx and
+        transport errors so GC keeps the dir and retries."""
+        controller.vllm_endpoint = endpoint
+        if api_result is None:
+            assert controller._unload_vllm_adapter("default--x") is expected
+            return
+        side_effect = api_result if isinstance(api_result, Exception) else None
+        return_value = None if isinstance(api_result, Exception) else api_result
+        with patch.object(controller, "_vllm_api_call", side_effect=side_effect, return_value=return_value):
+            assert controller._unload_vllm_adapter("default--x") is expected
+
 
 class TestResolveAdapterWorkspaceFallback:
     """Tests for the temporary ``Adapter.workspace`` SDK-schema gap.

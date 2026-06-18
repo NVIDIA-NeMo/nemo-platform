@@ -334,24 +334,37 @@ class AdaptersController(Controller):
 
         Returns ``True`` when it is safe to drop the adapter's on-disk directory:
         either there is no vLLM endpoint (NIM, which unloads purely by directory
-        removal) or vLLM answered (after which the adapter is no longer loaded,
-        regardless of HTTP status — e.g. a 4xx "not loaded"). Returns ``False``
-        only when vLLM was unreachable, so the GC caller keeps the directory and
-        retries the unload next cycle instead of deleting the only state that
-        drives reconciliation and leaving the adapter served until a vLLM restart.
+        removal) or vLLM *confirmed* the unload — a 2xx, or a non-server-error
+        response such as 404 "not loaded" (the adapter is not loaded either way).
+        Returns ``False`` when vLLM was unreachable **or** returned a 5xx server
+        error: the unload was not confirmed and the adapter may still be loaded,
+        so the GC caller keeps the directory (the only state driving
+        reconciliation) and retries next cycle instead of orphaning a
+        still-loaded adapter in vLLM until it restarts.
         """
         if not self.vllm_endpoint:
             return True
         try:
             status, body = self._vllm_api_call("/v1/unload_lora_adapter", {"lora_name": lora_name})
-            if status == 200:
-                logger.info(f"Unloaded LoRA adapter {lora_name!r} from vLLM")
-            else:
-                logger.debug(f"vLLM unload_lora_adapter for {lora_name!r} (status={status}): {body[:200]}")
-            return True
         except (urllib.error.URLError, OSError) as e:
             logger.debug(f"vLLM unload_lora_adapter for {lora_name!r} skipped (vLLM unreachable): {e}")
             return False
+        if status == 200:
+            logger.info(f"Unloaded LoRA adapter {lora_name!r} from vLLM")
+            return True
+        if status >= 500:
+            # Server-side error: the unload was not confirmed and the adapter may
+            # still be loaded. Keep the directory and retry next cycle rather than
+            # deleting it and orphaning the adapter in vLLM until a restart.
+            logger.warning(
+                f"vLLM unload_lora_adapter for {lora_name!r} returned server error "
+                f"(status={status}), will retry: {body[:200]}"
+            )
+            return False
+        # Non-2xx, non-5xx (e.g. 404 "not loaded"): vLLM answered and the adapter
+        # is not loaded, so it is safe to drop the directory.
+        logger.debug(f"vLLM unload_lora_adapter for {lora_name!r} (status={status}): {body[:200]}")
+        return True
 
     def _ensure_vllm_adapter_loaded(self, lora_name: str, adapter_dir: str, reload: bool) -> None:
         """Eagerly (re)register a downloaded adapter with vLLM.
