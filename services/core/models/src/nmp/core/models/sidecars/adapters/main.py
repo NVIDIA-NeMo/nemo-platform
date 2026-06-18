@@ -118,11 +118,19 @@ class AdaptersController(Controller):
             self._update_prompt_tuned_models(dirs_to_keep)
 
             for name in set(os.listdir(self.nim_peft_source)) - dirs_to_keep:
+                # Staging temp dirs (".{dir}.tmp") were never loaded into vLLM;
+                # just reap them.
+                if name.startswith("."):
+                    shutil.rmtree(f"{self.nim_peft_source}/{name}")
+                    continue
                 # Unload from vLLM before deleting on disk so a removed/disabled
-                # adapter stops being served (no-op for NIM and for staging dirs).
-                if not name.startswith("."):
-                    self._unload_vllm_adapter(name)
-                shutil.rmtree(f"{self.nim_peft_source}/{name}")
+                # adapter stops being served (no-op for NIM). Only delete the
+                # directory once the unload is confirmed (or vLLM has no endpoint):
+                # if vLLM is currently unreachable, keep the dir so the unload is
+                # retried next cycle rather than orphaning a still-loaded adapter
+                # in vLLM until it restarts (the dir is the only state driving GC).
+                if self._unload_vllm_adapter(name):
+                    shutil.rmtree(f"{self.nim_peft_source}/{name}")
 
         except Exception:
             logger.exception(f"Failed to fetch {self.workspace}/{self.model_name}'s model_entity")
@@ -210,7 +218,7 @@ class AdaptersController(Controller):
 
         return False
 
-    def _download_adapter(self, adapter_dir: str, adapter: Adapter, adapter_workspace: str) -> None:
+    def _download_adapter(self, adapter_dir: str, adapter: Adapter, adapter_workspace: str) -> bool:
         """Download adapter fileset atomically using a temp directory + rename.
 
         Downloads into a sibling temp directory inside nim_peft_source, then
@@ -231,6 +239,13 @@ class AdaptersController(Controller):
         means it lives in the adapter's workspace. Using the base model's workspace
         instead would silently mis-route fileset fetches whenever the adapter and
         base model live in different workspaces.
+
+        Returns ``True`` if the adapter was (re)published into ``adapter_dir``;
+        ``False`` if the download produced no files (e.g. an empty fileset), in
+        which case ``adapter_dir`` is left untouched (a new adapter has no
+        directory; an existing one keeps its previous weights). Raises on
+        unexpected errors after cleaning up the staging directory. Callers use
+        the result to decide whether to (re)register the adapter with vLLM.
         """
         parts = adapter.fileset.split("/", 1)
         if len(parts) == 1:
@@ -258,8 +273,10 @@ class AdaptersController(Controller):
                 if os.path.isdir(adapter_dir):
                     shutil.rmtree(adapter_dir)
                 os.rename(temp_dir, adapter_dir)
+                return True
             else:
                 shutil.rmtree(temp_dir, ignore_errors=True)
+                return False
         except Exception:
             shutil.rmtree(temp_dir, ignore_errors=True)
             raise
@@ -318,18 +335,29 @@ class AdaptersController(Controller):
                 f"vLLM load_lora_adapter failed for {lora_name!r} (status={status}): {body[:300]}"
             )
 
-    def _unload_vllm_adapter(self, lora_name: str) -> None:
-        """Best-effort ``POST /v1/unload_lora_adapter``; never raises."""
+    def _unload_vllm_adapter(self, lora_name: str) -> bool:
+        """Best-effort ``POST /v1/unload_lora_adapter``; never raises.
+
+        Returns ``True`` when it is safe to drop the adapter's on-disk directory:
+        either there is no vLLM endpoint (NIM, which unloads purely by directory
+        removal) or vLLM answered (after which the adapter is no longer loaded,
+        regardless of HTTP status — e.g. a 4xx "not loaded"). Returns ``False``
+        only when vLLM was unreachable, so the GC caller keeps the directory and
+        retries the unload next cycle instead of deleting the only state that
+        drives reconciliation and leaving the adapter served until a vLLM restart.
+        """
         if not self.vllm_endpoint:
-            return
+            return True
         try:
             status, body = self._vllm_api_call("/v1/unload_lora_adapter", {"lora_name": lora_name})
             if status == 200:
                 logger.info(f"Unloaded LoRA adapter {lora_name!r} from vLLM")
             else:
                 logger.debug(f"vLLM unload_lora_adapter for {lora_name!r} (status={status}): {body[:200]}")
+            return True
         except (urllib.error.URLError, OSError) as e:
             logger.debug(f"vLLM unload_lora_adapter for {lora_name!r} skipped (vLLM unreachable): {e}")
+            return False
 
     def _ensure_vllm_adapter_loaded(self, lora_name: str, adapter_dir: str, reload: bool) -> None:
         """Eagerly (re)register a downloaded adapter with vLLM.
@@ -383,16 +411,22 @@ class AdaptersController(Controller):
             adapter_dir = f"{self.nim_peft_source}/{dir_name}"
             dir_existed = os.path.isdir(adapter_dir)
             needs_download = not dir_existed or self._adapter_changed(adapter_dir, adapter)
+            published = False
             if needs_download:
-                self._download_adapter(adapter_dir, adapter, adapter_workspace)
+                published = self._download_adapter(adapter_dir, adapter, adapter_workspace)
             # Eagerly register with vLLM so the adapter is advertised in /v1/models
-            # without waiting for a first inference request (no-op for NIM). Only
-            # unload first when replacing weights of an adapter we already had on
-            # disk; a brand-new adapter has nothing to unload, and an unchanged one
-            # is (idempotently) reloaded so it survives a vLLM restart.
-            self._ensure_vllm_adapter_loaded(
-                dir_name, adapter_dir, reload=(needs_download and dir_existed)
-            )
+            # without waiting for a first inference request (no-op for NIM). Gate on
+            # the adapter actually being on disk: a brand-new adapter whose download
+            # failed (e.g. empty fileset) has no directory to load, and a changed
+            # adapter whose re-download failed keeps its previous weights, which must
+            # not be unloaded. Only unload first when we just re-published over an
+            # adapter we already had on disk (``published and dir_existed``); a new
+            # adapter has nothing to unload, and an unchanged or download-failed one
+            # is (idempotently) reloaded so it survives a vLLM restart without flapping.
+            if os.path.isdir(adapter_dir):
+                self._ensure_vllm_adapter_loaded(
+                    dir_name, adapter_dir, reload=(published and dir_existed)
+                )
 
 
 def get_health_status() -> dict:

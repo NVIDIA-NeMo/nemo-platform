@@ -762,6 +762,46 @@ class TestEagerVllmAdapterLoad:
 
         api.assert_not_called()
 
+    def test_failed_new_download_does_not_load_into_vllm(self, controller, tmp_path):
+        """An empty fileset leaves no directory for a brand-new adapter, so the
+        sidecar must not POST a non-existent ``lora_path`` to vLLM every cycle."""
+        controller.vllm_endpoint = "http://localhost:49152"
+        adapter = _make_adapter("my-adapter", "default/empty-fs", updated_at=None, workspace="default")
+        self._model_entity(controller, adapter)
+        # Empty fileset -> download_fileset returns False -> nothing published.
+        controller._sdk.files.list.return_value.data = []
+
+        with patch.object(controller, "_vllm_api_call", return_value=(200, "")) as api:
+            controller._update_lora_adapters(set())
+
+        assert not (tmp_path / "default--my-adapter").exists()
+        api.assert_not_called()
+
+    def test_failed_redownload_keeps_existing_adapter_without_flap(self, controller, tmp_path):
+        """A changed adapter whose re-download yields an empty fileset keeps its
+        previous on-disk weights and must NOT be unloaded — unloading would briefly
+        drop it from /v1/models on every refresh cycle. It is only idempotently
+        (re)loaded from the surviving directory."""
+        controller.vllm_endpoint = "http://localhost:49152"
+        dir_name = "default--my-adapter"
+        adapter_dir = tmp_path / dir_name
+        adapter_dir.mkdir()
+        with open(adapter_dir / ADAPTER_META_FILENAME, "w") as f:
+            json.dump({"fileset": "default/old-fs", "updated_at": None}, f)
+
+        ts = datetime(2026, 3, 1, tzinfo=timezone.utc)
+        adapter = _make_adapter("my-adapter", "default/new-fs", updated_at=ts)
+        self._model_entity(controller, adapter)
+        # Re-download fails (empty fileset); the old directory must remain.
+        controller._sdk.files.list.return_value.data = []
+
+        with patch.object(controller, "_vllm_api_call", return_value=(200, "")) as api:
+            controller._update_lora_adapters(set())
+
+        assert adapter_dir.is_dir()
+        routes = [c.args[0] for c in api.call_args_list]
+        assert routes == ["/v1/load_lora_adapter"]
+
     def test_load_tolerates_already_loaded(self, controller):
         controller.vllm_endpoint = "http://localhost:49152"
         with patch.object(
@@ -793,6 +833,50 @@ class TestEagerVllmAdapterLoad:
         assert not stale_dir.exists()
         unload_calls = [c for c in api.call_args_list if c.args[0] == "/v1/unload_lora_adapter"]
         assert any(c.args[1]["lora_name"] == "default--gone-adapter" for c in unload_calls)
+
+    def test_step_keeps_removed_adapter_dir_when_vllm_unreachable(self, controller, tmp_path):
+        """If vLLM is unreachable during GC, the removed adapter's directory is kept so
+        the unload is retried next cycle, instead of deleting the only state that drives
+        reconciliation and leaving the adapter served until a vLLM restart."""
+        controller.vllm_endpoint = "http://localhost:49152"
+        stale_dir = tmp_path / "default--gone-adapter"
+        stale_dir.mkdir()
+        (stale_dir / ADAPTER_META_FILENAME).write_text(json.dumps({"fileset": "default/fs", "updated_at": None}))
+
+        adapter = _make_adapter("kept-adapter", "default/fs", updated_at=None, workspace="default")
+        self._model_entity(controller, adapter)
+        controller._sdk.models.list.return_value = []  # no prompt-tuned models
+
+        # vLLM unreachable: both the kept adapter's load and the stale one's unload
+        # hit a transport error.
+        with patch.object(controller, "_vllm_api_call", side_effect=urllib.error.URLError("refused")):
+            controller.step()
+
+        # Stale dir preserved so the unload is retried on a later cycle.
+        assert stale_dir.exists()
+
+    def test_step_deletes_removed_adapter_dir_when_vllm_answers_non_200(self, controller, tmp_path):
+        """A reachable vLLM that returns a non-200 (e.g. the adapter was already not
+        loaded) still means the adapter is gone from vLLM, so the directory is reaped
+        rather than lingering forever."""
+        controller.vllm_endpoint = "http://localhost:49152"
+        stale_dir = tmp_path / "default--gone-adapter"
+        stale_dir.mkdir()
+        (stale_dir / ADAPTER_META_FILENAME).write_text(json.dumps({"fileset": "default/fs", "updated_at": None}))
+
+        adapter = _make_adapter("kept-adapter", "default/fs", updated_at=None, workspace="default")
+        self._model_entity(controller, adapter)
+        controller._sdk.models.list.return_value = []  # no prompt-tuned models
+
+        def _responses(route, payload):
+            if route == "/v1/unload_lora_adapter":
+                return 404, "LoRA adapter not found"
+            return 200, ""
+
+        with patch.object(controller, "_vllm_api_call", side_effect=_responses):
+            controller.step()
+
+        assert not stale_dir.exists()
 
 
 class TestResolveAdapterWorkspaceFallback:
