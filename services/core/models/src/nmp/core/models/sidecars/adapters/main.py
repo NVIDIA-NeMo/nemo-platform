@@ -308,9 +308,7 @@ class AdaptersController(Controller):
         """
         url = f"{self.vllm_endpoint}{route}"
         data = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(
-            url, data=data, headers={"Content-Type": "application/json"}, method="POST"
-        )
+        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"}, method="POST")
         try:
             with urllib.request.urlopen(req, timeout=self.vllm_request_timeout) as resp:
                 return resp.status, resp.read().decode("utf-8", "replace")
@@ -323,17 +321,13 @@ class AdaptersController(Controller):
         Tolerates the "already loaded" response so this is safe to call every
         reconcile cycle. Raises on transport errors (handled by the caller).
         """
-        status, body = self._vllm_api_call(
-            "/v1/load_lora_adapter", {"lora_name": lora_name, "lora_path": adapter_dir}
-        )
+        status, body = self._vllm_api_call("/v1/load_lora_adapter", {"lora_name": lora_name, "lora_path": adapter_dir})
         if status == 200:
             logger.info(f"Loaded LoRA adapter {lora_name!r} into vLLM from {adapter_dir}")
         elif status == 400 and "already" in body.lower():
             logger.debug(f"LoRA adapter {lora_name!r} already loaded in vLLM")
         else:
-            logger.warning(
-                f"vLLM load_lora_adapter failed for {lora_name!r} (status={status}): {body[:300]}"
-            )
+            logger.warning(f"vLLM load_lora_adapter failed for {lora_name!r} (status={status}): {body[:300]}")
 
     def _unload_vllm_adapter(self, lora_name: str) -> bool:
         """Best-effort ``POST /v1/unload_lora_adapter``; never raises.
@@ -424,9 +418,7 @@ class AdaptersController(Controller):
             # adapter has nothing to unload, and an unchanged or download-failed one
             # is (idempotently) reloaded so it survives a vLLM restart without flapping.
             if os.path.isdir(adapter_dir):
-                self._ensure_vllm_adapter_loaded(
-                    dir_name, adapter_dir, reload=(published and dir_existed)
-                )
+                self._ensure_vllm_adapter_loaded(dir_name, adapter_dir, reload=(published and dir_existed))
 
 
 def get_health_status() -> dict:

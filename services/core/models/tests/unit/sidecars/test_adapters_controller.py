@@ -804,9 +804,7 @@ class TestEagerVllmAdapterLoad:
 
     def test_load_tolerates_already_loaded(self, controller):
         controller.vllm_endpoint = "http://localhost:49152"
-        with patch.object(
-            controller, "_vllm_api_call", return_value=(400, "LoRA adapter x has already been loaded")
-        ):
+        with patch.object(controller, "_vllm_api_call", return_value=(400, "LoRA adapter x has already been loaded")):
             # Must not raise.
             controller._load_vllm_adapter("x", "/scratch/loras/x")
 
