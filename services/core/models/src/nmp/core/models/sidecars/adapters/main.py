@@ -10,6 +10,8 @@ import os
 import shutil
 import signal
 import threading
+import urllib.error
+import urllib.request
 
 from nemo_platform import NeMoPlatform, NotFoundError
 from nemo_platform.types.models import ModelEntity
@@ -64,6 +66,15 @@ class AdaptersController(Controller):
         # which scans the directory and does not require this equality.
         self.base_model_name_override = os.getenv("VLLM_LORA_BASE_MODEL_OVERRIDE", "")
 
+        # vLLM-only: base URL of the sibling vLLM server (e.g. http://localhost:49152).
+        # When set, the sidecar eagerly (un)loads adapters through vLLM's runtime LoRA
+        # API so they are advertised in ``/v1/models`` immediately, instead of relying
+        # on the filesystem resolver to lazily load them on the first inference request
+        # (which leaves the adapter invisible to model-provider discovery). Unset for
+        # NIM, which scans ``NIM_PEFT_SOURCE`` itself.
+        self.vllm_endpoint = os.getenv("VLLM_ENDPOINT", "").rstrip("/")
+        self.vllm_request_timeout = float(os.getenv("VLLM_LORA_LOAD_TIMEOUT", "120"))
+
         self._stop_signal = stop_signal
 
         self._loop = asyncio.new_event_loop()
@@ -107,6 +118,10 @@ class AdaptersController(Controller):
             self._update_prompt_tuned_models(dirs_to_keep)
 
             for name in set(os.listdir(self.nim_peft_source)) - dirs_to_keep:
+                # Unload from vLLM before deleting on disk so a removed/disabled
+                # adapter stops being served (no-op for NIM and for staging dirs).
+                if not name.startswith("."):
+                    self._unload_vllm_adapter(name)
                 shutil.rmtree(f"{self.nim_peft_source}/{name}")
 
         except Exception:
@@ -267,6 +282,75 @@ class AdaptersController(Controller):
         """
         return getattr(adapter, "workspace", None) or base_model_workspace
 
+    def _vllm_api_call(self, route: str, payload: dict) -> tuple[int, str]:
+        """POST ``payload`` to the local vLLM server at ``route``.
+
+        Returns ``(status_code, body)``. HTTP error responses (4xx/5xx) are
+        returned, not raised. Transport-level failures (vLLM not yet reachable)
+        raise ``urllib.error.URLError``/``OSError`` so callers can retry next cycle.
+        """
+        url = f"{self.vllm_endpoint}{route}"
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            url, data=data, headers={"Content-Type": "application/json"}, method="POST"
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self.vllm_request_timeout) as resp:
+                return resp.status, resp.read().decode("utf-8", "replace")
+        except urllib.error.HTTPError as e:
+            return e.code, e.read().decode("utf-8", "replace")
+
+    def _load_vllm_adapter(self, lora_name: str, adapter_dir: str) -> None:
+        """Register an adapter with vLLM via ``POST /v1/load_lora_adapter``.
+
+        Tolerates the "already loaded" response so this is safe to call every
+        reconcile cycle. Raises on transport errors (handled by the caller).
+        """
+        status, body = self._vllm_api_call(
+            "/v1/load_lora_adapter", {"lora_name": lora_name, "lora_path": adapter_dir}
+        )
+        if status == 200:
+            logger.info(f"Loaded LoRA adapter {lora_name!r} into vLLM from {adapter_dir}")
+        elif status == 400 and "already" in body.lower():
+            logger.debug(f"LoRA adapter {lora_name!r} already loaded in vLLM")
+        else:
+            logger.warning(
+                f"vLLM load_lora_adapter failed for {lora_name!r} (status={status}): {body[:300]}"
+            )
+
+    def _unload_vllm_adapter(self, lora_name: str) -> None:
+        """Best-effort ``POST /v1/unload_lora_adapter``; never raises."""
+        if not self.vllm_endpoint:
+            return
+        try:
+            status, body = self._vllm_api_call("/v1/unload_lora_adapter", {"lora_name": lora_name})
+            if status == 200:
+                logger.info(f"Unloaded LoRA adapter {lora_name!r} from vLLM")
+            else:
+                logger.debug(f"vLLM unload_lora_adapter for {lora_name!r} (status={status}): {body[:200]}")
+        except (urllib.error.URLError, OSError) as e:
+            logger.debug(f"vLLM unload_lora_adapter for {lora_name!r} skipped (vLLM unreachable): {e}")
+
+    def _ensure_vllm_adapter_loaded(self, lora_name: str, adapter_dir: str, reload: bool) -> None:
+        """Eagerly (re)register a downloaded adapter with vLLM.
+
+        No-op for NIM (``vllm_endpoint`` unset), which discovers adapters by
+        scanning ``NIM_PEFT_SOURCE``. For vLLM, this makes the adapter appear in
+        ``/v1/models`` without requiring a first inference request, so the
+        model-provider reconciler can discover and surface it through the gateway.
+        """
+        if not self.vllm_endpoint:
+            return
+        try:
+            if reload:
+                # Adapter dir was (re)written; drop any stale copy so vLLM loads
+                # the new weights rather than keeping the previous version.
+                self._unload_vllm_adapter(lora_name)
+            self._load_vllm_adapter(lora_name, adapter_dir)
+        except (urllib.error.URLError, OSError) as e:
+            # vLLM may still be initializing; retried on the next reconcile cycle.
+            logger.warning(f"Could not reach vLLM to load adapter {lora_name!r}, will retry: {e}")
+
     def _update_lora_adapters(self, dirs_to_keep: set[str]):
         """Materialize each enabled LoRA adapter into ``{nim_peft_source}/{adapter_ws}--{adapter_name}/``.
 
@@ -297,8 +381,18 @@ class AdaptersController(Controller):
             dir_name = f"{adapter_workspace}--{adapter.name}"
             dirs_to_keep.add(dir_name)
             adapter_dir = f"{self.nim_peft_source}/{dir_name}"
-            if not os.path.isdir(adapter_dir) or self._adapter_changed(adapter_dir, adapter):
+            dir_existed = os.path.isdir(adapter_dir)
+            needs_download = not dir_existed or self._adapter_changed(adapter_dir, adapter)
+            if needs_download:
                 self._download_adapter(adapter_dir, adapter, adapter_workspace)
+            # Eagerly register with vLLM so the adapter is advertised in /v1/models
+            # without waiting for a first inference request (no-op for NIM). Only
+            # unload first when replacing weights of an adapter we already had on
+            # disk; a brand-new adapter has nothing to unload, and an unchanged one
+            # is (idempotently) reloaded so it survives a vLLM restart.
+            self._ensure_vllm_adapter_loaded(
+                dir_name, adapter_dir, reload=(needs_download and dir_existed)
+            )
 
 
 def get_health_status() -> dict:
@@ -370,4 +464,12 @@ def run(parent_stop_signal: threading.Event | None = None):
 
 
 if __name__ == "__main__":
+    # Configure root logging so the controller's INFO progress (adapter
+    # download/load, GC) is visible in `docker logs`. Without this only
+    # WARNING+ reaches stderr via logging's last-resort handler, which made
+    # the sidecar look idle during normal operation.
+    logging.basicConfig(
+        level=os.getenv("LOG_LEVEL", "INFO").upper(),
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
     run()
