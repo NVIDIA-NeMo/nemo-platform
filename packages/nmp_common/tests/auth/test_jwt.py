@@ -257,6 +257,7 @@ class TestJWTValidator:
             {
                 "sub": "user123",
                 "iat": now - 7200,
+                "nbf": now - 7200,
                 "exp": now - 3600,
             },
             key="",
@@ -285,6 +286,7 @@ class TestJWTValidator:
                 "groups": ["admin"],
                 "scope": "openid profile",
                 "iat": now,
+                "nbf": now,
                 "exp": now + 3600,
             },
             key="",
@@ -298,6 +300,58 @@ class TestJWTValidator:
         assert result.email == "user@example.com"
         assert result.groups == ["admin"]
         assert result.scopes == ["openid", "profile"]
+
+    @pytest.mark.asyncio
+    async def test_validate_unsigned_token_future_iat_when_allowed(self):
+        """Unsigned JWTs with future iat claims return None."""
+        config = AuthConfig(
+            enabled=True,
+            allow_unsigned_jwt=True,
+            policy_decision_point_base_url="http://localhost:8181",
+            oidc=OIDCConfig(enabled=False),
+        )
+        validator = JWTValidator(config)
+        now = int(time.time())
+        token = jwt.encode(
+            {
+                "sub": "user123",
+                "iat": now + 3600,
+                "nbf": now,
+                "exp": now + 7200,
+            },
+            key="",
+            algorithm="none",
+        )
+
+        result = await validator.validate_token(token)
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_validate_unsigned_token_future_nbf_when_allowed(self):
+        """Unsigned JWTs with future nbf claims return None."""
+        config = AuthConfig(
+            enabled=True,
+            allow_unsigned_jwt=True,
+            policy_decision_point_base_url="http://localhost:8181",
+            oidc=OIDCConfig(enabled=False),
+        )
+        validator = JWTValidator(config)
+        now = int(time.time())
+        token = jwt.encode(
+            {
+                "sub": "user123",
+                "iat": now,
+                "nbf": now + 3600,
+                "exp": now + 7200,
+            },
+            key="",
+            algorithm="none",
+        )
+
+        result = await validator.validate_token(token)
+
+        assert result is None
 
     @pytest.mark.asyncio
     async def test_validate_token_success(self, jwt_validator):
