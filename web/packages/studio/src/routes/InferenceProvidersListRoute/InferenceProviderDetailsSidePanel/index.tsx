@@ -44,6 +44,7 @@ export const InferenceProviderDetailsSidePanel: FC<InferenceProviderDetailsSideP
   provider,
 }) => {
   const models = useMemo(() => (provider ? servedModelLabels(provider) : []), [provider]);
+  const sortedModels = useMemo(() => [...models].sort(), [models]);
   const statusMessage = provider?.status_message?.trim();
 
   const statusMessageContent = isStatusMessageError(provider.status) ? (
@@ -120,7 +121,7 @@ export const InferenceProviderDetailsSidePanel: FC<InferenceProviderDetailsSideP
           <KVPair
             attributes={{ value: { className: 'whitespace-pre-wrap' } }}
             label="Served models"
-            value={models.length > 0 ? models.sort().join('\n') : '—'}
+            value={sortedModels.length > 0 ? sortedModels.join('\n') : '—'}
           />
         </Stack>
       </Stack>

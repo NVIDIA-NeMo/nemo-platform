@@ -144,22 +144,16 @@ export const CustomModelsDataView: FC<CustomModelsDataViewProps> = ({
     expansion: true,
   });
 
-  const filterQuery = useMemo(
-    () =>
-      buildCustomModelsFilter({
-        name: dataViewState.debouncedSearchBar || undefined,
-        base_model: dataViewState.debouncedColumnFilters.find((f) => f.id === 'base_model')
-          ?.value as string | undefined,
-        finetuning_type: dataViewState.debouncedColumnFilters.find(
-          (f) => f.id === 'finetuning_type'
-        )?.value as FinetuningType | undefined,
-        created_at: dataViewState.debouncedColumnFilters.find((f) => f.id === 'created_at')
-          ?.value as DatetimeFilter | undefined,
-        updated_at: dataViewState.debouncedColumnFilters.find((f) => f.id === 'updated_at')
-          ?.value as DatetimeFilter | undefined,
-      }),
-    [dataViewState.debouncedSearchBar, dataViewState.debouncedColumnFilters]
-  );
+  const filterQuery = useMemo(() => {
+    const filterMap = new Map(dataViewState.debouncedColumnFilters.map((f) => [f.id, f.value]));
+    return buildCustomModelsFilter({
+      name: dataViewState.debouncedSearchBar || undefined,
+      base_model: filterMap.get('base_model') as string | undefined,
+      finetuning_type: filterMap.get('finetuning_type') as FinetuningType | undefined,
+      created_at: filterMap.get('created_at') as DatetimeFilter | undefined,
+      updated_at: filterMap.get('updated_at') as DatetimeFilter | undefined,
+    });
+  }, [dataViewState.debouncedSearchBar, dataViewState.debouncedColumnFilters]);
 
   const {
     data: modelsResponse,
@@ -200,6 +194,16 @@ export const CustomModelsDataView: FC<CustomModelsDataViewProps> = ({
           }))
         : undefined,
     }));
+  }, [modelsResponse?.data]);
+
+  const adapterMap = useMemo(() => {
+    const map = new Map<string, Map<string, Adapter>>();
+    for (const model of modelsResponse?.data ?? []) {
+      if (model.adapters?.length) {
+        map.set(model.id, new Map(model.adapters.map((a) => [a.name, a])));
+      }
+    }
+    return map;
   }, [modelsResponse?.data]);
 
   const resetFilters = useCallback(() => {
@@ -338,7 +342,7 @@ export const CustomModelsDataView: FC<CustomModelsDataViewProps> = ({
             {
               children: 'Model details',
               onSelect: () => {
-                const adapter = parentModel.adapters?.find((a) => a.name === row.name);
+                const adapter = adapterMap.get(parentModel.id)?.get(row.name);
                 onRowClick?.(parentModel, 'model-details', adapter);
               },
             },
@@ -404,7 +408,7 @@ export const CustomModelsDataView: FC<CustomModelsDataViewProps> = ({
         )}
         onRowClick={(row: ModelTableRow) => {
           if (row._parentModel) {
-            const adapter = row._parentModel.adapters?.find((a) => a.name === row.name);
+            const adapter = adapterMap.get(row._parentModel.id)?.get(row.name);
             onRowClick?.(row._parentModel, 'model-details', adapter);
           } else {
             onRowClick?.(row, 'model-details');
