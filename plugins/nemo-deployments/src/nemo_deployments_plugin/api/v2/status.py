@@ -32,7 +32,6 @@ async def update_deployment_status(
 
     deployment.status = body.status
     deployment.status_message = body.status_message
-    deployment.endpoints = body.endpoints
     deployment.exit_code = body.exit_code
     deployment.error_details = body.error_details
 

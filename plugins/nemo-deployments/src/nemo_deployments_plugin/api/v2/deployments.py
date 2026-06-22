@@ -41,24 +41,38 @@ def _parse_status_in(status_in: str | None) -> list[DeploymentStatus]:
     return cast(list[DeploymentStatus], values)
 
 
+def _parse_deployment_config_ref(ref: str, default_workspace: str) -> tuple[str, str]:
+    """Return (config_workspace, config_name) from a bare name or workspace/name ref."""
+    if "/" in ref:
+        config_workspace, config_name = ref.split("/", 1)
+        if not config_workspace or not config_name:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid deployment_config ref '{ref}'; expected 'name' or 'workspace/name'.",
+            )
+        return config_workspace, config_name
+    return default_workspace, ref
+
+
 @router.post("/deployments", response_model=Deployment, status_code=201, tags=["Deployments"])
 async def create_deployment(
     workspace: str,
     body: CreateDeploymentRequest,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
 ) -> Deployment:
+    config_workspace, config_name = _parse_deployment_config_ref(body.deployment_config, workspace)
     try:
-        await entity_client.get(DeploymentConfig, name=body.deployment_config_name, workspace=workspace)
+        await entity_client.get(DeploymentConfig, name=config_name, workspace=config_workspace)
     except NemoEntityNotFoundError as exc:
         raise HTTPException(
             status_code=404,
-            detail=(f"DeploymentConfig '{body.deployment_config_name}' not found in workspace '{workspace}'."),
+            detail=(f"DeploymentConfig '{config_name}' not found in workspace '{config_workspace}'."),
         ) from exc
 
     deployment = Deployment(
         name=body.name,
         workspace=workspace,
-        deployment_config_name=body.deployment_config_name,
+        deployment_config=config_name,
         desired_state=body.desired_state,
         executor=body.executor,
         status="PENDING",

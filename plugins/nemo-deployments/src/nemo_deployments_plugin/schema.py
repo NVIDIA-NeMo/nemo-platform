@@ -17,7 +17,6 @@ from nemo_deployments_plugin.entities import (
     DeploymentStatus,
     DesiredState,
     DriftRecoveryPolicy,
-    Endpoint,
     Prerequisite,
     RestartPolicy,
     Volume,
@@ -45,7 +44,9 @@ class CreateDeploymentConfigRequest(BaseModel):
 
 class CreateDeploymentRequest(BaseModel):
     name: str
-    deployment_config_name: str
+    deployment_config: str = Field(
+        description="DeploymentConfig name in this workspace, or workspace/name for cross-workspace refs.",
+    )
     desired_state: DesiredState = "READY"
     executor: str | None = None
 
@@ -60,7 +61,6 @@ class CreateVolumeRequest(BaseModel):
 class UpdateDeploymentStatusRequest(BaseModel):
     status: DeploymentStatus
     status_message: str = ""
-    endpoints: list[Endpoint] = Field(default_factory=list)
     exit_code: int | None = None
     error_details: dict[str, Any] | None = None
 
@@ -76,7 +76,7 @@ class DeploymentConfigFilter(NemoFilter):
 
 
 class DeploymentFilter(NemoFilter):
-    deployment_config_name: str | None = None
+    deployment_config: str | None = None
     desired_state: DesiredState | None = None
     executor: str | None = None
     status: DeploymentStatus | None = None

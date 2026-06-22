@@ -10,7 +10,7 @@ from pydantic import ValidationError
 
 
 def test_deployment_defaults_to_pending() -> None:
-    dep = Deployment(name="d1", workspace="default", deployment_config_name="cfg")
+    dep = Deployment(name="d1", workspace="default", deployment_config="cfg")
     assert dep.status == "PENDING"
     assert dep.desired_state == "READY"
 
@@ -45,7 +45,7 @@ def test_invalid_deployment_status_rejected() -> None:
             {
                 "name": "d1",
                 "workspace": "default",
-                "deployment_config_name": "cfg",
+                "deployment_config": "cfg",
                 "status": "not-a-status",
             }
         )

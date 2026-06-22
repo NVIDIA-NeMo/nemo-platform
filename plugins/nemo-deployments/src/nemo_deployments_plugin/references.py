@@ -24,7 +24,7 @@ async def deployment_names_using_config(
             workspace=workspace,
             page=page,
             page_size=100,
-            filter_obj={"deployment_config_name": config_name},
+            filter_obj={"deployment_config": config_name},
         )
         names.extend(dep.name for dep in result.data)
         if result.pagination is None or page >= result.pagination.total_pages:

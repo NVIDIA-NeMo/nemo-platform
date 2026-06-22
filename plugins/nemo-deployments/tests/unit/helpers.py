@@ -25,7 +25,7 @@ def make_deployment_config(name: str = "cfg1", workspace: str = "default") -> De
 
 
 def make_deployment(name: str = "dep1", workspace: str = "default") -> Deployment:
-    dep = Deployment(name=name, workspace=workspace, deployment_config_name="cfg1", status="PENDING")
+    dep = Deployment(name=name, workspace=workspace, deployment_config="cfg1", status="PENDING")
     dep._id = f"id-{name}"
     dep._created_at = NOW
     return dep

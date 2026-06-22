@@ -215,7 +215,7 @@ class DeploymentConfig(NemoEntity, entity_type=ENTITY_TYPE_DEPLOYMENT_CONFIG):
 class Deployment(NemoEntity, entity_type=ENTITY_TYPE_DEPLOYMENT):
     """Desired and observed deployment state."""
 
-    deployment_config_name: str = Field(description="Name of the DeploymentConfig entity.")
+    deployment_config: str = Field(description="Name of the DeploymentConfig entity.")
     desired_state: DesiredState = Field(default="READY")
     executor: str | None = Field(
         default=None,
