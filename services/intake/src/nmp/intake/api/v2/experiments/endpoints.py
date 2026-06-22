@@ -59,7 +59,7 @@ router = APIRouter(dependencies=[Depends(require_workspace_access)])
 GROUPS_TAG = "Experiment Groups"
 EXPERIMENTS_TAG = "Experiments"
 
-SortField = Literal["-created_at", "created_at", "-updated_at", "updated_at", "-name", "name"]
+ExperimentGroupSortField = Literal["-created_at", "created_at", "-updated_at", "updated_at", "-name", "name"]
 ExperimentSortField = Literal[
     "-created_at",
     "created_at",
@@ -144,7 +144,9 @@ async def list_experiment_groups(
     parsed: ExperimentGroupFilterDep,
     page: int = Query(default=1, ge=1, description="Page number."),
     page_size: int = Query(default=100, ge=1, le=1000, description="Page size."),
-    sort: SortField = Query(default="-created_at", description="Sort field; prefix with '-' for descending."),
+    sort: ExperimentGroupSortField = Query(
+        default="-created_at", description="Sort field; prefix with '-' for descending."
+    ),
 ) -> Page[ExperimentGroupResponse]:
     validate_list_query_params(request)
     _apply_is_deleted_filter(parsed)
