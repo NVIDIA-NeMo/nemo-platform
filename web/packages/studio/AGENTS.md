@@ -28,3 +28,29 @@
   - `@studio/` → `packages/studio/src/`
   - `@e2e-tests/` → `packages/studio/e2e-tests/`
 - Other local packages are imported via pnpm workspaces
+
+### KUI v1 Select: always wrap items in SelectListbox
+
+In KUI v1, `SelectContent` is a transparent popover host — it has no background.
+Background, border, and shadow come from `SelectListbox` → `MenuRoot` internally.
+
+**Required pattern:**
+
+```tsx
+<SelectContent>
+  <SelectListbox>
+    <SelectItem value="a">A</SelectItem>
+  </SelectListbox>
+</SelectContent>
+```
+
+Wrong — transparent dropdown:
+
+```tsx
+<SelectContent>
+  <SelectItem value="a">A</SelectItem> {/* no SelectListbox = no background */}
+</SelectContent>
+```
+
+Exception: call sites that fill SelectContent with custom children containing their
+own background (e.g. a sticky Block with bg-surface) are fine as-is.
