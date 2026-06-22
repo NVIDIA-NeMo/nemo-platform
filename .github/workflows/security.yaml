@@ -66,6 +66,7 @@ jobs:
         with:
             languages: ${{matrix.language}}
             config-file: ./.github/codeql/codeql-config.yml
+            dependency-caching: false
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2

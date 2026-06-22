@@ -425,6 +425,65 @@ workflow:
         assert trajectory["session_id"] == "session-1"
         assert len(trajectory["steps"]) == 2
 
+    def test_nat_trace_export_assembles_legacy_sse_delta_stream(self) -> None:
+        events = [
+            {"value": " The"},
+            {"value": " task"},
+            {"value": " is"},
+            {"value": " complete."},
+        ]
+
+        assert nat_trace_export._assemble_legacy_stream(events) == "The task is complete."
+
+    def test_nat_trace_export_assembles_legacy_sse_cumulative_stream(self) -> None:
+        events = [
+            {"value": "partial answer"},
+            {"value": "complete final answer"},
+        ]
+
+        assert nat_trace_export._assemble_legacy_stream(events) == "complete final answer"
+
+    def test_invoke_aut_fallback_parses_legacy_sse_stream(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        requested_urls: list[str] = []
+
+        def fake_read_http_response(url: str, _payload: bytes, _timeout: int) -> str:
+            requested_urls.append(url)
+            if url.endswith("/generate/atif"):
+                raise nat_trace_export.urllib.error.HTTPError(url, 404, "not found", hdrs={}, fp=None)
+            assert url.endswith("/generate/full?filter_steps=none")
+            return "\n\n".join(
+                [
+                    'data: {"value": " The"}',
+                    'data: {"value": " task"}',
+                    'data: {"value": " is"}',
+                    'data: {"value": " complete."}',
+                ]
+            )
+
+        monkeypatch.setattr(nat_trace_export, "_read_http_response", fake_read_http_response)
+
+        rc = nat_trace_export._invoke_aut("http://aut.example", "Finish the task.", tmp_path, timeout=10)
+
+        assert rc == 0
+        assert requested_urls == [
+            "http://aut.example/generate/atif",
+            "http://aut.example/generate/full?filter_steps=none",
+        ]
+        assert json.loads((tmp_path / "final_message.json").read_text(encoding="utf-8")) == {
+            "result": "The task is complete."
+        }
+        assert (tmp_path / "final_message.txt").read_text(encoding="utf-8") == "The task is complete.\n"
+        assert json.loads((tmp_path / "legacy_stream_events.json").read_text(encoding="utf-8")) == [
+            {"value": " The"},
+            {"value": " task"},
+            {"value": " is"},
+            {"value": " complete."},
+        ]
+
     def test_build_aut_agent_cmd_keeps_diagnostics_best_effort(self) -> None:
         cmd = _build_aut_agent_cmd("/tmp/instruction.md")
         script = cmd[2]

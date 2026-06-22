@@ -5,12 +5,13 @@ import { AgentsTable } from '@studio/components/dataViews/AgentsDataView';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { server } from '@studio/mocks/node';
-import { getAgentsListRoute } from '@studio/routes/utils';
+import { getAgentsListRoute, getModelCompareRoute } from '@studio/routes/utils';
 import { XL_SELECTOR_TIMEOUT } from '@studio/tests/util/constants';
 import { renderRoute, screen, waitFor } from '@studio/tests/util/render';
 import { within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
+import { useLocation } from 'react-router-dom';
 
 const WORKSPACE = 'default';
 
@@ -30,6 +31,11 @@ const renderTable = (onAgentRowClick = vi.fn(), history = getAgentsListRoute(WOR
       },
     ],
   });
+
+const LocationProbe = () => {
+  const location = useLocation();
+  return <div data-testid="model-compare-location">{`${location.pathname}${location.search}`}</div>;
+};
 
 describe('CombinedAgentsTable', () => {
   describe('columns', () => {
@@ -133,7 +139,7 @@ describe('CombinedAgentsTable', () => {
   });
 
   describe('row actions', () => {
-    it('shows Deploy and Delete actions for agent rows', async () => {
+    it('shows Deploy, Test models, Clone, and Delete actions for agent rows', async () => {
       const user = userEvent.setup();
       renderTable();
 
@@ -143,9 +149,63 @@ describe('CombinedAgentsTable', () => {
       await user.click(menuButtons[0]);
 
       const deployItems = await screen.findAllByRole('menuitem', { name: 'Deploy' });
+      const testModelItems = screen.getAllByRole('menuitem', { name: 'Test models' });
+      const cloneItems = screen.getAllByRole('menuitem', { name: 'Clone' });
       const deleteItems = screen.getAllByRole('menuitem', { name: 'Delete' });
       expect(deployItems.length).toBeGreaterThan(0);
+      expect(testModelItems.length).toBeGreaterThan(0);
+      expect(cloneItems.length).toBeGreaterThan(0);
       expect(deleteItems.length).toBeGreaterThan(0);
+    });
+
+    it('opens Playground with the row model selected when Test models is selected', async () => {
+      const user = userEvent.setup();
+      renderRoute(undefined, {
+        history: getAgentsListRoute(WORKSPACE),
+        routes: [
+          {
+            path: ROUTES.workspace.agentsList,
+            element: <AgentsTable />,
+          },
+          {
+            path: ROUTES.workspace.modelCompare,
+            element: <LocationProbe />,
+          },
+        ],
+      });
+
+      await screen.findByText(MOCK_AGENTS[0].name);
+
+      await user.click(screen.getAllByRole('button', { name: /actions/i })[0]);
+      await user.click((await screen.findAllByRole('menuitem', { name: 'Test models' }))[0]);
+
+      expect(await screen.findByTestId('model-compare-location')).toHaveTextContent(
+        `${getModelCompareRoute(WORKSPACE)}?model=${encodeURIComponent(
+          `${WORKSPACE}/meta-llama-3-1-70b-instruct`
+        )}`
+      );
+    });
+
+    it('hides Test models when Playground is disabled', async () => {
+      const user = userEvent.setup();
+      renderRoute(undefined, {
+        history: getAgentsListRoute(WORKSPACE),
+        routes: [
+          {
+            path: ROUTES.workspace.agentsList,
+            element: <AgentsTable canTestModels={false} />,
+          },
+        ],
+      });
+
+      await screen.findByText(MOCK_AGENTS[0].name);
+
+      await user.click(screen.getAllByRole('button', { name: /actions/i })[0]);
+
+      expect((await screen.findAllByRole('menuitem', { name: 'Deploy' })).length).toBeGreaterThan(
+        0
+      );
+      expect(screen.queryByRole('menuitem', { name: 'Test models' })).not.toBeInTheDocument();
     });
 
     it('calls onCloneAgent with the row when Clone is selected', async () => {

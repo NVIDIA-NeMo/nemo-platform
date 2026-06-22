@@ -35,6 +35,7 @@ class LoRAParams(BaseModel):
 
     rank: int = Field(default=16, gt=0)
     alpha: int = Field(default=32, gt=0)
+    dropout: float = Field(default=0.0, ge=0.0, le=1.0, description="LoRA dropout probability for regularization.")
     merge: bool = False
     target_modules: list[str] | None = None
 
@@ -54,6 +55,10 @@ class TrainingSpec(BaseModel):
     finetuning_type: Literal["lora", "all_weights", "lora_merged"] = "lora"
     lora: LoRAParams | None = None
     max_seq_length: int = Field(default=2048, gt=0)
+    precision: Literal["bf16", "fp16", "fp32", "fp8"] | None = Field(
+        default=None,
+        description="Model precision for training. Auto-detected from the checkpoint when unset.",
+    )
     execution_profile: str | None = Field(default=None, min_length=1)
     teacher_model: str | None = None
     distillation_ratio: float = Field(default=0.5, ge=0.0, le=1.0)
@@ -91,7 +96,12 @@ class OptimizerSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     learning_rate: float = Field(default=5e-6, gt=0.0)
+    min_learning_rate: float | None = Field(
+        default=None, ge=0.0, description="Minimum learning rate for the cosine decay schedule."
+    )
     weight_decay: float = Field(default=0.01, ge=0.0)
+    adam_beta1: float = Field(default=0.9, ge=0.0, lt=1.0, description="Adam optimizer beta1.")
+    adam_beta2: float = Field(default=0.999, ge=0.0, lt=1.0, description="Adam optimizer beta2.")
     warmup_steps: int = Field(default=0, ge=0)
 
 
@@ -104,6 +114,7 @@ class ParallelismSpec(BaseModel):
     pipeline_parallel_size: int = Field(default=1, gt=0)
     context_parallel_size: int = Field(default=1, gt=0)
     expert_parallel_size: int | None = Field(default=None, gt=0)
+    sequence_parallel: bool = Field(default=False, description="Enable sequence parallelism.")
 
 
 class OutputRequest(BaseModel):

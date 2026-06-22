@@ -21,7 +21,6 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 const mockNavigate = vi.fn();
 const mockEnvironment = vi.hoisted(() => ({
   customizerEnabled: false,
-  evaluatorEnabled: true,
 }));
 
 vi.mock('@studio/constants/environment', async (importOriginal) => {
@@ -30,9 +29,6 @@ vi.mock('@studio/constants/environment', async (importOriginal) => {
     ...actual,
     get CUSTOMIZER_ENABLED() {
       return mockEnvironment.customizerEnabled;
-    },
-    get EVALUATOR_ENABLED() {
-      return mockEnvironment.evaluatorEnabled;
     },
   };
 });
@@ -173,11 +169,15 @@ vi.mock('@studio/components/sidePanels/ModelPanels/ModelPanel', () => ({
     open,
     defaultTab,
     model,
+    overviewProps,
     onOpenChange,
   }: {
     open?: boolean;
     defaultTab?: string;
     model?: ModelEntity;
+    overviewProps?: {
+      slotActions?: React.ReactNode;
+    };
     onOpenChange?: (open: boolean) => void;
   }) => (
     <div
@@ -187,9 +187,12 @@ vi.mock('@studio/components/sidePanels/ModelPanels/ModelPanel', () => ({
       data-model-name={model?.name ?? ''}
     >
       {open && (
-        <button type="button" onClick={() => onOpenChange?.(false)}>
-          Close panel
-        </button>
+        <>
+          {overviewProps?.slotActions}
+          <button type="button" onClick={() => onOpenChange?.(false)}>
+            Close panel
+          </button>
+        </>
       )}
     </div>
   ),
@@ -275,6 +278,19 @@ describe('WorkspaceBaseModelsRoute deep linking', () => {
     });
     expect(panel).toHaveAttribute('data-model-name', 'my-model');
     expect(panel).toHaveAttribute('data-default-tab', 'model-details');
+  });
+
+  it('does not render the dead evaluate action in the base model drawer', async () => {
+    render(
+      <TestWrapper initialEntry="/workspaces/ws1/base-models/my-model">
+        <WorkspaceBaseModelsRoute />
+      </TestWrapper>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('model-panel')).toHaveAttribute('data-open', 'true');
+    });
+    expect(screen.queryByRole('button', { name: 'Evaluate this Model' })).not.toBeInTheDocument();
   });
 
   it('does not open model panel when path has no model segment (list view)', async () => {

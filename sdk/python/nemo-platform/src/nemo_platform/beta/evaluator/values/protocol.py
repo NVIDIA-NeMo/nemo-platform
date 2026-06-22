@@ -10,6 +10,8 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel, StringConstraints, field_serializer, field_validator
 
+from nemo_platform.beta.evaluator.values.evidence import CandidateEvidence
+
 MetricTypeName = Annotated[str, StringConstraints(min_length=1)]
 
 
@@ -30,6 +32,10 @@ class CandidateOutput(BaseModel):
     output_text: str | None = None
     response: Any | None = None
     trajectory: Any | None = None
+    evidence: CandidateEvidence | None = Field(
+        default=None,
+        description="Named evidence captured for the candidate (final state, traces, logs, ...) for agent eval.",
+    )
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     def as_sample(self) -> dict[str, Any]:
@@ -41,6 +47,8 @@ class CandidateOutput(BaseModel):
             sample["response"] = self.response
         if self.trajectory is not None:
             sample["trajectory"] = self.trajectory
+        if self.evidence is not None:
+            sample["evidence"] = self.evidence
         return sample
 
 
