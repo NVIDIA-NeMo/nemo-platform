@@ -18,6 +18,7 @@ HELM_VALUES="${HELM_VALUES:-${HELM_VALUES_FILE:-${REPO_ROOT}/e2e/k8s/values/defa
 HELM_EXTRA_ARGS="${HELM_EXTRA_ARGS:-}"
 NMP_E2E_REGISTRY="${NMP_E2E_REGISTRY:-}"
 NMP_E2E_TAG="${NMP_E2E_TAG:-}"
+NMP_E2E_PULL_POLICY="${NMP_E2E_PULL_POLICY:-}"
 REQUIRE_NMP_E2E_IMAGES="${REQUIRE_NMP_E2E_IMAGES:-false}"
 POSTGRES_IMAGE="${POSTGRES_IMAGE:-docker.io/library/postgres}"
 BUSYBOX_IMAGE="${BUSYBOX_IMAGE:-docker.io/library/busybox}"
@@ -228,6 +229,13 @@ if [ -n "${NMP_E2E_TAG}" ]; then
         --set api.image.tag="${NMP_E2E_TAG}"
         --set core.image.tag="${NMP_E2E_TAG}"
         --set-string platformConfig.platform.image_tag="${NMP_E2E_TAG}"
+    )
+fi
+
+if [ -n "${NMP_E2E_PULL_POLICY}" ]; then
+    HELM_ARGS+=(
+        --set api.image.pullPolicy="${NMP_E2E_PULL_POLICY}"
+        --set core.image.pullPolicy="${NMP_E2E_PULL_POLICY}"
     )
 fi
 
