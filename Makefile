@@ -33,6 +33,8 @@ DOCKER_BAKE_FILE ?= docker-bake.hcl
 DOCKER_TARGET ?= $(if $(TARGET),$(TARGET),docker-cpu)
 DOCKER_PLATFORMS ?= $(BUILD_ARCH)
 DOCKER_PLATFORM_SET = $(if $(DOCKER_PLATFORMS),--set "*.platform=$(DOCKER_PLATFORMS)",)
+DOCKER_BAKE_ALLOW_FS_READ ?=
+DOCKER_BAKE_ALLOW_FS_READ_FLAG = $(if $(DOCKER_BAKE_ALLOW_FS_READ), --allow=fs.read=$(DOCKER_BAKE_ALLOW_FS_READ),)
 
 .PHONY: docker-list-targets
 docker-list-targets: ## List Docker bake targets
@@ -44,15 +46,15 @@ docker-print: ## Print Docker bake graph for TARGET, default docker-cpu
 
 .PHONY: docker-build
 docker-build: ## Build Docker bake TARGET without pushing, default docker-cpu
-	docker buildx bake -f $(DOCKER_BAKE_FILE) $(DOCKER_TARGET)
+	docker buildx bake$(DOCKER_BAKE_ALLOW_FS_READ_FLAG) -f $(DOCKER_BAKE_FILE) $(DOCKER_TARGET)
 
 .PHONY: docker-load
 docker-load: ## Build and load single-platform Docker bake TARGET, default docker-cpu
-	docker buildx bake -f $(DOCKER_BAKE_FILE) $(DOCKER_TARGET) $(DOCKER_PLATFORM_SET) --load
+	docker buildx bake$(DOCKER_BAKE_ALLOW_FS_READ_FLAG) -f $(DOCKER_BAKE_FILE) $(DOCKER_TARGET) $(DOCKER_PLATFORM_SET) --load
 
 .PHONY: docker-push
 docker-push: ## Build and push Docker bake TARGET, default docker-cpu
-	docker buildx bake -f $(DOCKER_BAKE_FILE) $(DOCKER_TARGET) --push
+	docker buildx bake$(DOCKER_BAKE_ALLOW_FS_READ_FLAG) -f $(DOCKER_BAKE_FILE) $(DOCKER_TARGET) --push
 
 .PHONY: refresh-openapi
 refresh-openapi:  ## Generate the OpenAPI specification

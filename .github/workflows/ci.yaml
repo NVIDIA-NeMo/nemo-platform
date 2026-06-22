@@ -176,6 +176,7 @@ jobs:
             printf 'CI_COMMIT_SHA=%s\n' "$source_sha"
             printf 'FASTEMBED_CACHE_CONTEXT=%s\n' "$fastembed_cache_dir"
             printf 'FASTEMBED_CACHE_DIR=%s\n' "$fastembed_cache_dir"
+            printf 'DOCKER_BAKE_ALLOW_FS_READ=%s\n' "$fastembed_cache_dir"
             printf 'FASTEMBED_MODEL_REPO=%s\n' "qdrant/all-MiniLM-L6-v2-onnx"
             printf 'FASTEMBED_MODEL_REVISION=%s\n' "main"
             printf 'PUBLISH_IMAGES=%s\n' "$publish_images"
