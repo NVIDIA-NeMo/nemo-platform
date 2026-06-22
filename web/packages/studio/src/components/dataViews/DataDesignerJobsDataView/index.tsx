@@ -17,6 +17,7 @@ import { getSortParam } from '@nemo/common/src/utils/query';
 import {
   getDataDesignerListCreateJobsQueryKey,
   useDataDesignerCancelCreateJob,
+  useDataDesignerDeleteCreateJob,
   useDataDesignerListCreateJobs,
 } from '@nemo/sdk/generated/data-designer/api';
 import type {
@@ -25,7 +26,7 @@ import type {
   CreateJobsSortField as DataDesignerJobsSortField,
 } from '@nemo/sdk/generated/data-designer/schema';
 import { Banner, Button, Text } from '@nvidia/foundations-react-core';
-import { DeleteJobModal } from '@studio/components/dataViews/DataDesignerJobsDataView/DeleteJobModal';
+import { BulkDeleteModal } from '@studio/components/BulkDeleteModal';
 import { QuickActionsMenuRoot } from '@studio/components/QuickActionsMenu/QuickActionsMenuRoot';
 import { STATUS_FILTER_OPTIONS } from '@studio/constants/platformJobs';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
@@ -49,6 +50,30 @@ export const DataDesignerJobsDataView: FC = () => {
 
   const [deleteJobs, setDeleteJobs] = useState<DataDesignerJob[]>([]);
   const [cancelError, setCancelError] = useState<string | undefined>(undefined);
+
+  const deleteJobMutation = useDataDesignerDeleteCreateJob({
+    mutation: {
+      onSuccess: () =>
+        queryClient.resetQueries({
+          queryKey: getDataDesignerListCreateJobsQueryKey(workspace),
+        }),
+    },
+  });
+
+  const handleDeleteJobs = async (jobsToDelete: DataDesignerJob[]) => {
+    const valid = jobsToDelete.filter((job) => job.workspace && job.name);
+    await Promise.all(
+      valid.map(async (job) => {
+        try {
+          await deleteJobMutation.mutateAsync({ workspace: job.workspace!, name: job.name });
+        } catch (error) {
+          throw new Error(
+            `Failed to delete job "${job.name}": ${error instanceof Error ? error.message : 'Unknown error'}`
+          );
+        }
+      })
+    );
+  };
 
   const cancelJobMutation = useDataDesignerCancelCreateJob({
     mutation: {
@@ -261,15 +286,16 @@ export const DataDesignerJobsDataView: FC = () => {
         }}
       />
 
-      {deleteJobs.length > 0 && (
-        <DeleteJobModal
-          jobs={deleteJobs}
-          onClose={() => {
-            setDeleteJobs([]);
-            dataViewState.rowSelection.set({});
-          }}
-        />
-      )}
+      <BulkDeleteModal
+        items={deleteJobs}
+        open={deleteJobs.length > 0}
+        onDelete={handleDeleteJobs}
+        title={(count) => `Delete ${count} Data Designer Job${count !== 1 ? 's' : ''}`}
+        onClose={() => {
+          setDeleteJobs([]);
+          dataViewState.rowSelection.set({});
+        }}
+      />
     </>
   );
 };

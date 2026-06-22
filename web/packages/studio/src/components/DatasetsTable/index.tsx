@@ -5,23 +5,25 @@ import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataV
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { getEntityReference } from '@nemo/common/src/namedEntity';
+import { useFilesDeleteFileset } from '@nemo/sdk/generated/platform/api';
 import { Button } from '@nvidia/foundations-react-core';
+import { useMutateMany } from '@studio/api/common/useMutateMany';
 import { DatasetCreateModal } from '@studio/components/DatasetCreateModal';
 import { DatasetCreateModalMode } from '@studio/components/DatasetCreateModal/constants';
 import { makeDatasetsTableColumns } from '@studio/components/DatasetsTable/columns';
-import { type DatasetsTableProps } from '@studio/components/DatasetsTable/types';
+import { type DatasetWithId, type DatasetsTableProps } from '@studio/components/DatasetsTable/types';
 import { useDatasetsTable } from '@studio/components/DatasetsTable/useDatasetsTable';
 import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { DocumentationButton } from '@studio/components/DocumentationButton';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { NewDatasetButton } from '@studio/components/NewDatasetButton';
 import { NewModelFilesetButton } from '@studio/components/NewModelFilesetButton';
+import { BulkDeleteModal } from '@studio/components/BulkDeleteModal';
 import { FILESET_DETAILS_ENABLED } from '@studio/constants/environment';
 import { LINK_DOCS_DATASETS } from '@studio/constants/links';
-import { DatasetBulkDeleteModal } from '@studio/routes/FilesetListRoute/DatasetBulkDeleteModal';
 import { getNewFilesetRoute } from '@studio/routes/utils';
 import { X, Database, Trash } from 'lucide-react';
-import { type FC } from 'react';
+import { type FC, useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 export type { DatasetsTableProps } from '@studio/components/DatasetsTable/types';
@@ -72,6 +74,25 @@ export const DatasetsTable: FC<DatasetsTableProps> = ({
     purposeFilter,
   });
 
+  const { mutateAsync: deleteDataset } = useFilesDeleteFileset();
+  const { mutateAsync: deleteDatasets } = useMutateMany(deleteDataset);
+  const [bulkDeleteDatasets, setBulkDeleteDatasets] = useState<DatasetWithId[]>([]);
+
+  const handleBulkDelete = async (items: DatasetWithId[]) => {
+    const valid = items.filter(
+      (d): d is DatasetWithId & { workspace: string; name: string } => !!d.workspace && !!d.name
+    );
+    await deleteDatasets(valid.map((d) => ({ workspace: d.workspace, name: d.name })));
+  };
+
+  const handleBulkDeleteClose = useCallback(() => {
+    const wasOpen = bulkDeleteDatasets.length > 0;
+    setBulkDeleteDatasets([]);
+    if (wasOpen) {
+      handleBulkDeleteSuccess();
+    }
+  }, [bulkDeleteDatasets.length, handleBulkDeleteSuccess]);
+
   // Column definitions
   const makeColumns = makeDatasetsTableColumns({
     enableSelection,
@@ -115,16 +136,14 @@ export const DatasetsTable: FC<DatasetsTableProps> = ({
         renderBulkActions={
           enableBulkDelete
             ? ({ selectedRows }) => (
-                <DatasetBulkDeleteModal
-                  selectedDatasets={selectedRows}
-                  onConfirmSuccess={handleBulkDeleteSuccess}
-                  slotTrigger={
-                    <Button kind="tertiary">
-                      <Trash />
-                      Delete
-                    </Button>
-                  }
-                />
+                <Button
+                  kind="tertiary"
+                  aria-label="Delete selected datasets"
+                  onClick={() => setBulkDeleteDatasets(selectedRows)}
+                >
+                  <Trash />
+                  Delete
+                </Button>
               )
             : undefined
         }
@@ -174,6 +193,14 @@ export const DatasetsTable: FC<DatasetsTableProps> = ({
               ),
           },
         }}
+      />
+
+      <BulkDeleteModal
+        items={bulkDeleteDatasets}
+        open={bulkDeleteDatasets.length > 0}
+        onDelete={handleBulkDelete}
+        title={(count) => `Delete ${count} Dataset${count !== 1 ? 's' : ''}`}
+        onClose={handleBulkDeleteClose}
       />
 
       {modalOpen === 'delete' && modalDataset && (
