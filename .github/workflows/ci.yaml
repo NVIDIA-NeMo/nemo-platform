@@ -533,31 +533,93 @@ jobs:
       - name: Install Helm
         uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
       - name: Install chart-verifier
+        id: install-chart-verifier
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
           mkdir -p "${RUNNER_TEMP}/chart-verifier"
           chart_verifier_archive="chart-verifier-${CHART_VERIFIER_VERSION}.tgz"
-          curl -fsSL \
-            -o "${RUNNER_TEMP}/chart-verifier.tar.gz" \
-            "https://github.com/redhat-certification/chart-verifier/releases/download/${CHART_VERIFIER_VERSION}/${chart_verifier_archive}"
-          chart_verifier_sha256="$(
-            curl -fsSL "https://api.github.com/repos/redhat-certification/chart-verifier/releases/tags/${CHART_VERIFIER_VERSION}" \
-              | python3 -c 'import json, sys; target = sys.argv[1]; digests = [asset.get("digest", "") for asset in json.load(sys.stdin).get("assets", []) if asset.get("name") == target]; digest = digests[0] if digests else ""; print(digest.removeprefix("sha256:")) if digest.startswith("sha256:") else sys.exit(1)' "${chart_verifier_archive}"
-          )"
+          chart_verifier_archive_path="${RUNNER_TEMP}/chart-verifier.tar.gz"
+          release_metadata_path="${RUNNER_TEMP}/chart-verifier-release.json"
+          release_url="https://github.com/redhat-certification/chart-verifier/releases/download/${CHART_VERIFIER_VERSION}/${chart_verifier_archive}"
+          release_api_url="https://api.github.com/repos/redhat-certification/chart-verifier/releases/tags/${CHART_VERIFIER_VERSION}"
+
+          curl_args=(
+            --fail
+            --show-error
+            --silent
+            --location
+            --retry 5
+            --retry-delay 2
+            --retry-all-errors
+          )
+          github_api_args=(
+            "${curl_args[@]}"
+            --header "Accept: application/vnd.github+json"
+            --header "X-GitHub-Api-Version: 2022-11-28"
+          )
+          if [ -n "${GITHUB_TOKEN:-}" ]; then
+            github_api_args+=(--header "Authorization: Bearer ${GITHUB_TOKEN}")
+          fi
+
+          if ! curl "${curl_args[@]}" -o "${chart_verifier_archive_path}" "${release_url}"; then
+            echo "::warning::Unable to download chart-verifier ${CHART_VERIFIER_VERSION}; skipping chart verifier."
+            echo "installed=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          if ! curl "${github_api_args[@]}" -o "${release_metadata_path}" "${release_api_url}"; then
+            echo "::warning::Unable to fetch chart-verifier release metadata; skipping chart verifier."
+            echo "installed=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          if ! chart_verifier_sha256="$(
+            python3 - "${release_metadata_path}" "${chart_verifier_archive}" <<'PY'
+          import json
+          import sys
+
+          metadata_path = sys.argv[1]
+          target = sys.argv[2]
+
+          with open(metadata_path, encoding="utf-8") as metadata_file:
+              release = json.load(metadata_file)
+
+          for asset in release.get("assets", []):
+              if asset.get("name") != target:
+                  continue
+              digest = asset.get("digest", "")
+              if digest.startswith("sha256:"):
+                  print(digest.removeprefix("sha256:"))
+                  sys.exit(0)
+
+          print(f"sha256 digest not found for release asset {target}", file=sys.stderr)
+          sys.exit(1)
+          PY
+          )"; then
+            echo "::warning::Unable to read chart-verifier release digest; skipping chart verifier."
+            echo "installed=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
           printf '%s  %s\n' "${chart_verifier_sha256}" "${RUNNER_TEMP}/chart-verifier.tar.gz" \
             | sha256sum -c -
           tar -xzf "${RUNNER_TEMP}/chart-verifier.tar.gz" -C "${RUNNER_TEMP}/chart-verifier" chart-verifier
           chmod +x "${RUNNER_TEMP}/chart-verifier/chart-verifier"
           echo "${RUNNER_TEMP}/chart-verifier" >> "${GITHUB_PATH}"
+          echo "installed=true" >> "${GITHUB_OUTPUT}"
       - name: Prepare Helm dependencies
+        if: steps.install-chart-verifier.outputs.installed == 'true'
         shell: bash
         run: |
           helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
           helm repo update
           helm dep update "${HELM_FOLDER}"
       - name: Run chart verifier
+        if: steps.install-chart-verifier.outputs.installed == 'true'
         shell: bash
         run: |
           set -euo pipefail
