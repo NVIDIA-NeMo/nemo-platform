@@ -12,6 +12,10 @@ gates deployment create on mounted volumes reaching `BOUND`, and writes status v
 entity client (including endpoints and status history). Orphan substrate cleanup runs on
 a configurable interval and is skipped when the deployment list is unhealthy.
 
+The controller exposes `is_healthy`, which is `False` when either the deployment-list or
+volume-list query fails. Internally these are tracked separately so operators can tell
+which list query failed without losing that signal behind a single boolean.
+
 Per-config drift backoff overrides live on `DeploymentConfig.driftRecovery`; unset fields
 fall back to `DeploymentsConfig.controller`.
 

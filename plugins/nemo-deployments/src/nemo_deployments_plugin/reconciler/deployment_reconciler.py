@@ -162,6 +162,8 @@ class DeploymentReconciler:
             )
             logger.info("Created deployment %s: %s", dep_id, status_update.status)
             await self._project_status(deployment, status_update)
+        except NemoEntityConflictError:
+            raise
         except Exception as exc:
             logger.exception("Failed to create deployment %s", dep_id)
             await self._project_failure(deployment, f"Failed to create deployment: {exc}")
@@ -251,6 +253,8 @@ class DeploymentReconciler:
             )
             status_update = status_update.model_copy(update={"status_message": message})
             await self._project_status(deployment, status_update)
+        except NemoEntityConflictError:
+            raise
         except Exception as exc:
             logger.exception("Drift recovery failed for %s", dep_id)
             await self._project_status(
@@ -300,7 +304,10 @@ class DeploymentReconciler:
         await self._save(deployment)
 
     async def _save(self, deployment: Deployment) -> None:
-        await self._entities.update(deployment)
+        try:
+            await self._entities.update(deployment)
+        except NemoEntityConflictError:
+            raise
 
 
 def _prerequisite_failed(

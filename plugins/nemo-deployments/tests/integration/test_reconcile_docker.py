@@ -10,8 +10,12 @@ Until then, these tests are skipped — unit tests with MockDeploymentBackend pr
 from __future__ import annotations
 
 import pytest
+from nemo_deployments_plugin.backends.registry import BACKEND_CLASSES
 
-pytestmark = pytest.mark.skip(reason="Requires DockerDeploymentBackend (AIRCORE-756)")
+pytestmark = pytest.mark.skipif(
+    "docker" not in BACKEND_CLASSES,
+    reason="Requires DockerDeploymentBackend (AIRCORE-756)",
+)
 
 
 @pytest.mark.asyncio

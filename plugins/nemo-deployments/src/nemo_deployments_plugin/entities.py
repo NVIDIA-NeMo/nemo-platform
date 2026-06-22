@@ -181,14 +181,17 @@ class DriftRecoveryPolicy(BaseModel):
     action: DriftRecoveryAction = "recreate"
     max_attempts: int | None = Field(
         default=None,
+        ge=0,
         description="Override controller drift_recovery_max_attempts when set.",
     )
     base_delay_seconds: int | None = Field(
         default=None,
+        ge=0,
         description="Override controller drift_recovery_base_delay_seconds when set.",
     )
     max_delay_seconds: int | None = Field(
         default=None,
+        ge=0,
         description="Override controller drift_recovery_max_delay_seconds when set.",
     )
 
