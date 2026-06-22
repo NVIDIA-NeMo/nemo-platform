@@ -64,16 +64,11 @@ def prepare_runtime_aiperf_config(
 ) -> dict[str, Any]:
     """Materialize the AIPerf config this run will use.
 
-    Reads the checked-in ``template_path`` config, overrides its
-    ``output_base_dir`` to point inside the current run's directory, optionally
-    overrides ``base_config.model`` (so the same template can target multiple
-    VirtualModels in one harness invocation), and writes the result to
-    ``runtime_config_path``. AIPerf is later invoked with
-    ``--config-file <runtime_config_path>`` so every artifact lands under a
-    separate per-run directory.
-
-    Returns the parsed config dict so callers can log fields (sweep params,
-    benchmark_duration) without re-reading the file.
+    Reads ``template_path``, overrides ``output_base_dir`` (so AIPerf
+    artifacts nest under this run) and optionally ``base_config.model``
+    (so one template can target multiple VirtualModels), and writes the
+    result to ``runtime_config_path``. Returns the parsed config so
+    callers can log sweep params without re-reading the file.
     """
     if not template_path.is_file():
         raise FileNotFoundError(f"AIPerf template not found: {template_path}")

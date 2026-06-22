@@ -3,19 +3,13 @@
 
 """Post-run analyzer for the nemo-guardrails IGW benchmark.
 
-Reads the ``profile_export_aiperf.csv`` files produced by both benchmark
-variants in a single run directory and prints a side-by-side latency table:
-``with``, ``without``, and the ``Δ`` per concurrency level.
+Reads ``profile_export_aiperf.csv`` files from both variants in one run dir
+and prints a with-vs-without latency comparison. The delta isolates
+middleware overhead since the only difference between variants is whether
+middleware is attached to the targeted VirtualModel.
 
-The delta is what answers the question "how much latency does the guardrails
-middleware add", since the only thing that differs between the two variants
-is whether the middleware is attached to the targeted VirtualModel.
-
-Used two ways:
-
-* Standalone:
-  ``python -m nemo_guardrails_plugin.benchmarks.analyze <run-dir>``
-* Auto-invoked from ``run.py`` at the end of a sweep that ran both variants.
+Used both as a script (``python -m ... <run-dir>``) and auto-invoked from
+``run.py`` after a multi-variant sweep.
 """
 
 from __future__ import annotations
@@ -27,19 +21,25 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-# Variant identifiers are duplicated from `constants.py` (rather than imported)
-# so this module has zero intra-repo imports and can run on bare `python3` in
-# CI without the full `uv`/`make bootstrap-python` setup. Keep these in sync
-# with `constants.VARIANT_WITH_GUARDRAILS` / `VARIANT_WITHOUT_GUARDRAILS`.
+# Duplicated from `constants.py` so this module stays import-free and can
+# run on bare `python3` in CI without bootstrapping the uv workspace.
 VARIANT_WITH_GUARDRAILS = "with-guardrails"
 VARIANT_WITHOUT_GUARDRAILS = "without-guardrails"
 
 log = logging.getLogger(__name__)
 
-# Metric we read from `profile_export_aiperf.csv`. AIPerf reports a number of
-# metrics; this one is end-to-end request wall time including the shim hop,
-# IGW, middleware, and any mock-NIM round-trips.
 _LATENCY_METRIC = "Request Latency (ms)"
+
+# Mock-LLM time per request, subtracted to isolate platform overhead. Mirrors
+# `E2E_LATENCY_MEAN_SECONDS` in configs/mock_llm/*.env and the 2 CS calls
+# (input + output rails) of `content_safety_local`. Update in lock-step.
+_APP_MOCK_LATENCY_MS = 4000.0
+_CONTENT_SAFETY_MOCK_LATENCY_MS = 500.0
+_CONTENT_SAFETY_CALLS_PER_GUARDED_REQUEST = 2
+_MOCK_TIME_PER_REQUEST_WITHOUT_GUARDRAILS_MS = _APP_MOCK_LATENCY_MS
+_MOCK_TIME_PER_REQUEST_WITH_GUARDRAILS_MS = (
+    _APP_MOCK_LATENCY_MS + _CONTENT_SAFETY_CALLS_PER_GUARDED_REQUEST * _CONTENT_SAFETY_MOCK_LATENCY_MS
+)
 
 
 @dataclass(frozen=True)
@@ -78,11 +78,9 @@ class ComparisonRow:
 def load_variant_results(variant_output_dir: Path) -> dict[int, LatencyRow]:
     """Load per-concurrency latency stats for one variant.
 
-    Walks the same ``<batch>/<timestamp>/concurrency<N>/`` layout that
-    ``collect_sweep_results`` produces. Missing files are logged and skipped
-    rather than raising, so a partial run still produces a useful table.
-
-    Returns a mapping of ``concurrency_level -> LatencyRow``.
+    Walks the ``<batch>/<timestamp>/concurrency<N>/`` layout produced by
+    ``collect_sweep_results``. Missing CSVs are skipped, not raised, so
+    partial runs still produce a table.
     """
     if not variant_output_dir.is_dir():
         return {}
@@ -105,11 +103,10 @@ def compare(
     latency_by_concurrency_with_guardrails: dict[int, LatencyRow],
     latency_by_concurrency_without_guardrails: dict[int, LatencyRow],
 ) -> list[ComparisonRow]:
-    """Build per-concurrency comparison rows, ordered by concurrency.
+    """Build per-concurrency comparison rows, sorted by concurrency.
 
-    Only concurrencies present in *both* variants are included; an asymmetry
-    means one variant failed for that level and the comparison is undefined.
-    Asymmetric levels are logged at WARNING so silent drops are visible.
+    Only levels present in both variants are compared; asymmetric levels are
+    logged at WARNING and excluded.
     """
     concurrencies_with_guardrails = set(latency_by_concurrency_with_guardrails)
     concurrencies_without_guardrails = set(latency_by_concurrency_without_guardrails)
@@ -161,8 +158,60 @@ def format_table(rows: list[ComparisonRow]) -> str:
     return "\n".join(lines)
 
 
+def format_platform_overhead_table(rows: list[ComparisonRow]) -> str:
+    """Render a table with mock-LLM time subtracted from p50/p90/avg.
+
+    Isolates NMP + IGW + shim + middleware overhead from the much larger
+    mock sleeps. The Δ columns are the middleware's own cost over the bare
+    path.
+    """
+    if not rows:
+        return "No comparable sweep results found (need both variants to share concurrency levels)."
+
+    header = ("conc", "with p50", "w/o p50", "Δ p50", "with p90", "w/o p90", "Δ p90", "with avg", "w/o avg", "Δ avg")
+    fmt = "{:>4}  {:>9}  {:>9}  {:>9}  {:>9}  {:>9}  {:>9}  {:>9}  {:>9}  {:>9}"
+    header_line = fmt.format(*header)
+    lines = [header_line, "-" * len(header_line)]
+
+    for r in rows:
+        with_p50 = r.with_guardrails.p50 - _MOCK_TIME_PER_REQUEST_WITH_GUARDRAILS_MS
+        without_p50 = r.without_guardrails.p50 - _MOCK_TIME_PER_REQUEST_WITHOUT_GUARDRAILS_MS
+        with_p90 = r.with_guardrails.p90 - _MOCK_TIME_PER_REQUEST_WITH_GUARDRAILS_MS
+        without_p90 = r.without_guardrails.p90 - _MOCK_TIME_PER_REQUEST_WITHOUT_GUARDRAILS_MS
+        with_avg = r.with_guardrails.avg - _MOCK_TIME_PER_REQUEST_WITH_GUARDRAILS_MS
+        without_avg = r.without_guardrails.avg - _MOCK_TIME_PER_REQUEST_WITHOUT_GUARDRAILS_MS
+        lines.append(
+            fmt.format(
+                r.concurrency,
+                f"{with_p50:+.0f}",
+                f"{without_p50:+.0f}",
+                f"{with_p50 - without_p50:+.0f}",
+                f"{with_p90:+.0f}",
+                f"{without_p90:+.0f}",
+                f"{with_p90 - without_p90:+.0f}",
+                f"{with_avg:+.0f}",
+                f"{without_avg:+.0f}",
+                f"{with_avg - without_avg:+.0f}",
+            )
+        )
+    lines.append("")
+    lines.append(
+        "All values in milliseconds, with mock-LLM time subtracted "
+        f"(with-guardrails: {_MOCK_TIME_PER_REQUEST_WITH_GUARDRAILS_MS:.0f} ms = 1× app + "
+        f"{_CONTENT_SAFETY_CALLS_PER_GUARDED_REQUEST}× content-safety; "
+        f"without-guardrails: {_MOCK_TIME_PER_REQUEST_WITHOUT_GUARDRAILS_MS:.0f} ms = 1× app)."
+    )
+    lines.append("'Δ' columns are the middleware's own overhead over the bare NMP+IGW path.")
+    return "\n".join(lines)
+
+
 def analyze_run(run_dir: Path) -> str:
-    """Top-level: read both variants from one run dir and return a printable table."""
+    """Read both variants from one run dir and return a printable report.
+
+    Output is the raw comparison table followed by a platform-overhead table
+    (mock time subtracted). Falls back to a single-variant table if only one
+    variant has results.
+    """
     aiperf_dir = run_dir / "aiperf_results"
     latency_by_concurrency_with_guardrails = load_variant_results(aiperf_dir / VARIANT_WITH_GUARDRAILS)
     latency_by_concurrency_without_guardrails = load_variant_results(aiperf_dir / VARIANT_WITHOUT_GUARDRAILS)
@@ -170,14 +219,12 @@ def analyze_run(run_dir: Path) -> str:
     if not latency_by_concurrency_with_guardrails and not latency_by_concurrency_without_guardrails:
         return f"No AIPerf results found under {aiperf_dir}"
     if not latency_by_concurrency_with_guardrails or not latency_by_concurrency_without_guardrails:
-        # Single-variant run: dump whichever side is present without trying
-        # to compute deltas.
         if latency_by_concurrency_with_guardrails:
             return _format_single_variant(VARIANT_WITH_GUARDRAILS, latency_by_concurrency_with_guardrails)
         return _format_single_variant(VARIANT_WITHOUT_GUARDRAILS, latency_by_concurrency_without_guardrails)
 
     rows = compare(latency_by_concurrency_with_guardrails, latency_by_concurrency_without_guardrails)
-    return format_table(rows)
+    return f"{format_table(rows)}\n\n{format_platform_overhead_table(rows)}"
 
 
 def _format_single_variant(variant: str, latency_by_concurrency: dict[int, LatencyRow]) -> str:
@@ -198,11 +245,7 @@ def _format_single_variant(variant: str, latency_by_concurrency: dict[int, Laten
 
 
 def _parse_concurrency_from_label(label: str) -> int | None:
-    """Extract the integer N from a sweep label like ``concurrency16``.
-
-    Returns ``None`` for labels that don't match the expected pattern so
-    unrelated subdirectories (logs, etc.) are skipped silently.
-    """
+    """Extract N from a sweep label like ``concurrency16``; ``None`` otherwise."""
     if not label.startswith("concurrency"):
         return None
     try:
@@ -212,12 +255,7 @@ def _parse_concurrency_from_label(label: str) -> int | None:
 
 
 def _read_latency_row(csv_path: Path, concurrency: int) -> LatencyRow | None:
-    """Pull the ``Request Latency (ms)`` line out of an AIPerf CSV.
-
-    AIPerf writes a header row followed by one ``Metric,avg,min,max,sum,p1,...``
-    row per metric, then a blank line and a second small block. We only care
-    about the first block.
-    """
+    """Pull the ``Request Latency (ms)`` row from an AIPerf CSV's first block."""
     if not csv_path.is_file():
         log.debug("Missing CSV at %s; skipping", csv_path)
         return None

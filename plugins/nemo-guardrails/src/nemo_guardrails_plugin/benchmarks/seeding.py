@@ -53,9 +53,7 @@ class SeededResources:
     cs_model_entity: str
     guardrail_config_name: str
     vm_name: str
-    # Sibling VM with no middleware attached, used as the control variant by
-    # the benchmark harness. Same default_model_entity and models list as the
-    # guardrails VM so the only difference is middleware attachment.
+    # Control VM with no middleware; otherwise identical to the guardrails VM.
     no_guardrails_vm_name: str
 
     @property
@@ -180,10 +178,8 @@ def seed_benchmark(
     )
     _dump_model(generated_dir / "virtual_model.json", vm)
 
-    # Control VirtualModel: identical to the guardrails VM except no
-    # middleware. The harness uses this to measure NMP+IGW latency without
-    # the guardrails middleware so the with-vs-without delta isolates
-    # middleware overhead.
+    # Control VM: identical to the guardrails VM but no middleware, so the
+    # with-vs-without delta isolates middleware overhead.
     log.info("Creating control VirtualModel %s/%s", WORKSPACE, NO_GUARDRAILS_VM_NAME)
     no_guardrails_vm = client.inference.virtual_models.create(
         workspace=WORKSPACE,

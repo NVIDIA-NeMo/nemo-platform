@@ -98,10 +98,8 @@ def _validate_nemoguardrails_repo(nemoguardrails_repo_root: Path) -> None:
 def _validate_in_repo_mock_configs(paths: RunPaths) -> None:
     """Fail fast if the in-repo mock LLM env files are missing.
 
-    These configure the upstream mock server but live in this repo (under
-    `plugins/nemo-guardrails/benchmarks/configs/mock_llm/`) so the harness can
-    tune mock behavior without forking the upstream checkout. A missing file
-    here is almost certainly a checkout problem on the NMP side.
+    These live in this repo (not upstream) so we control mock behavior
+    independently of the NeMo-Guardrails checkout.
     """
     missing = [p for p in (paths.mock_app_env, paths.mock_content_safety_env) if not p.is_file()]
     if missing:
@@ -140,9 +138,7 @@ def _build_mock_nim_processes(paths: RunPaths, workers: int) -> list[SupervisedP
             health_timeout_seconds=_MOCK_HEALTH_TIMEOUT_SECONDS,
         )
 
-    # Both env files are sourced from this repo (see
-    # plugins/nemo-guardrails/benchmarks/configs/mock_llm/) so mock behavior is
-    # versioned alongside the benchmark and independent of the upstream checkout.
+    # Env files come from this repo, rather than the upstream library.
     return [
         spec(
             "mock-app-llm",
@@ -370,12 +366,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=(*ALL_VARIANTS, "all"),
         default="all",
         help=(
-            "Which sweep to run: 'with-guardrails' targets the VirtualModel with "
-            "middleware attached; 'without-guardrails' targets a control VM with "
-            "no middleware; 'all' (default) runs them sequentially against the "
-            "same NMP so the with-vs-without delta isolates middleware overhead. "
-            "In CI, run two parallel jobs with --variant=with-guardrails and "
-            "--variant=without-guardrails against isolated NMP instances."
+            "Which sweep to run. 'all' (default) runs both variants sequentially "
+            "against the same NMP; the with-vs-without delta isolates middleware "
+            "overhead. In CI, run the two variants as parallel jobs against "
+            "separate NMP instances."
         ),
     )
     parser.add_argument("--verbose", "-v", action="store_true")
@@ -457,11 +451,8 @@ def main(argv: list[str] | None = None) -> int:
         log.info("Waiting for VirtualModel %s to be ready...", seeded.vm_ref)
         _smoke_test(client, seeded)
 
-        # Run each requested benchmark variant sequentially against the same
-        # NMP. The bootstrap (mocks, NMP, shim) is shared so the only thing
-        # that differs between variants is which VirtualModel AIPerf targets,
-        # which is exactly what makes the with-vs-without delta interpretable
-        # as middleware overhead.
+        # Variants run sequentially against the same NMP; only the targeted
+        # VirtualModel differs, so the delta isolates middleware overhead.
         outcomes: list[BenchmarkOutcome] = []
         for variant in variants:
             outcomes.append(
@@ -479,13 +470,10 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _maybe_print_analysis(run_dir: Path, outcomes: list[BenchmarkOutcome]) -> None:
-    """Print the with-vs-without comparison table when it's meaningful.
+    """Print the analyzer's comparison table when at least one variant has results.
 
-    Only invoked when at least one variant produced results, since the
-    analyzer can also dump a single-variant table for partial runs. The call
-    is wrapped in a broad try/except: the analyzer is pure post-processing
-    over already-written artifacts, so a bug here must not change the
-    harness's exit code or hide a real benchmark failure.
+    Wrapped in a broad try/except: the analyzer is post-processing only and
+    must not change the harness's exit code or hide a real benchmark failure.
     """
     if not any(o.sweep_results for o in outcomes):
         return

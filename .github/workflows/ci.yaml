@@ -1278,20 +1278,15 @@ jobs:
           path: web/packages/studio/playwright-report/
 
   benchmark-guardrails:
-    # Run the two benchmark variants as parallel matrix jobs, each with its
-    # own NMP instance. This isolates them from each other (no shared mocks,
-    # no cross-talk on :8080) and roughly halves wall-clock vs. the previous
-    # single-job sequential layout. The `benchmark-guardrails-analyze` job
-    # below merges both artifacts and prints the with-vs-without comparison.
+    # Parallel matrix jobs (one NMP per variant) so the two sweeps don't
+    # share mocks or contend on :8080. `benchmark-guardrails-analyze` merges
+    # the artifacts and prints the comparison.
     name: Guardrails plugin benchmark (${{ matrix.variant }})
-    # TODO(jgulabrai): gate back to `workflow_dispatch` once we're done
-    # collecting baseline samples and the harness is stable enough that we
-    # don't need it firing on every PR push.
+    # TODO(jgulabrai): gate back to `workflow_dispatch` once we have a CI baseline.
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
-      # Don't cancel the other variant if one fails; the partial artifact
-      # is still useful for diagnosing what went wrong.
+      # Keep the partial artifact if one variant fails.
       fail-fast: false
       matrix:
         variant: [with-guardrails, without-guardrails]
@@ -1336,18 +1331,14 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          # Per-variant artifact name; GHA disallows two artifacts with the
-          # same name in one workflow run.
+          # Ensure we use a unique artifact name per benchmark vaiant.
           name: benchmark-guardrails-results-${{ matrix.variant }}
           retention-days: 30
           path: |
             nemo-platform/plugins/nemo-guardrails/benchmarks/artifacts/runs/
 
   benchmark-guardrails-analyze:
-    # Joins the two parallel matrix jobs above, downloads both artifacts into
-    # one merged `runs/<id>/` tree, and prints the with-vs-without
-    # comparison table. No regression gate yet: this exists to produce
-    # CI-collected numbers we can use to seed a baseline file later.
+    # Merge both variant artifacts and print the comparison table.
     name: Guardrails benchmark analysis
     needs: [benchmark-guardrails]
     if: ${{ !cancelled() }}
@@ -1374,15 +1365,8 @@ jobs:
           path: nemo-platform/plugins/nemo-guardrails/benchmarks/artifacts/runs/
       - name: Print benchmark comparison
         working-directory: nemo-platform
-        # `analyze.py` is intentionally stdlib-only and import-free w.r.t. the
-        # rest of the plugin, so we run it on the runner's stock python3
-        # rather than spinning up the full `uv` workspace (which costs ~3
-        # minutes per CI run for ~50ms of CSV parsing).
-        #
-        # Both matrix jobs above use the same `--run-id`, so there should be
-        # exactly one merged run directory under `runs/`. The `find | sort`
-        # pipeline is defensive in case that ever stops being true.
-        # NOTE: `find -printf` is GNU-only (works on ubuntu-latest, not macOS).
+        # `analyze.py` doesn't rely on NMP or AIPerf, so we skip the uv bootstrap
+        # step and run it with the runner's `python3` CLI directly.
         run: |
           RUN_DIR=$(find plugins/nemo-guardrails/benchmarks/artifacts/runs -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' | sort -nr | head -1 | cut -d' ' -f2-)
           echo "Analyzing run directory: $RUN_DIR"
@@ -1391,8 +1375,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          # Single merged artifact so collecting baseline samples is a matter
-          # of downloading one thing per workflow run rather than two.
+          # Single artifact so baseline collection is one download per run.
           name: benchmark-guardrails-results-merged
           retention-days: 30
           path: |
