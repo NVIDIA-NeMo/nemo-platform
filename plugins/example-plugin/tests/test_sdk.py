@@ -157,7 +157,9 @@ async def test_async_get_item() -> None:
 @pytest.mark.asyncio
 async def test_async_list_items() -> None:
     client, mock_http = _async_client()
-    mock_http.request.return_value = _resp(200, {"data": [ITEM_PAYLOAD], "pagination": None, "sort": None, "filter": None})
+    mock_http.request.return_value = _resp(
+        200, {"data": [ITEM_PAYLOAD], "pagination": None, "sort": None, "filter": None}
+    )
 
     resp = await client.list_items(workspace=WS)
     page = resp.data()
