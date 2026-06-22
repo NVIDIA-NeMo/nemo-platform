@@ -7,7 +7,7 @@ from typing import Any
 
 from nemo_platform.beta.evaluator.metrics.protocol import CandidateOutput, DatasetRow, MetricInput
 
-_CANDIDATE_SAMPLE_FIELDS = frozenset({"output_text", "response", "trajectory"})
+_CANDIDATE_SAMPLE_FIELDS = frozenset({"output_text", "response", "trajectory", "evidence"})
 
 
 def build_offline_sample(row: dict[str, Any]) -> dict[str, Any]:
@@ -37,6 +37,7 @@ def build_metric_input(row: dict[str, Any], sample: dict[str, Any], index: int |
             output_text=output_text if isinstance(output_text, str) else None,
             response=sample.get("response"),
             trajectory=sample.get("trajectory"),
+            evidence=sample.get("evidence"),
             metadata=metadata,
         ),
     )

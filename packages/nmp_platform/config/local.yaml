@@ -71,17 +71,20 @@ jobs:
         ttl_seconds_before_active: 60
         ttl_seconds_active: 3600
         ttl_seconds_after_finished: 300
-    # Uncomment for using customizer
-    # - provider: cpu
-    #   profile: gpu
-    #   backend: docker
-    #   config:
-    #     launcher_tool_path: ./services/core/jobs/jobs-launcher/jobs-launcher
-    # - provider: gpu
-    #   profile: gpu
-    #   backend: docker
-    #   config:
-    #     launcher_tool_path: ./services/core/jobs/jobs-launcher/jobs-launcher
+    # Customizer (automodel / unsloth) GPU jobs. The unsloth backend stamps the
+    # profile name "gpu" onto all 4 steps, so both cpu/gpu and gpu/gpu must
+    # exist. `profile` is a name, not a resource claim — `provider` governs
+    # CPU vs GPU, so provider: cpu + profile: gpu is correct (not a mismatch).
+    - provider: cpu
+      profile: gpu
+      backend: docker
+      config:
+        launcher_tool_path: ./services/core/jobs/jobs-launcher/jobs-launcher
+    - provider: gpu
+      profile: gpu
+      backend: docker
+      config:
+        launcher_tool_path: ./services/core/jobs/jobs-launcher/jobs-launcher
 
   # Local path to the jobs-launcher binary used by the Docker job backend
   executor_defaults:
@@ -118,6 +121,12 @@ models:
     backends:
       docker:
         enabled: true
+        # LoRA adapter-download sidecar for deployments with lora_enabled. The
+        # docker backend has no separate args field (unlike k8s) and keeps the
+        # image ENTRYPOINT — nmp-automodel-tasks is `/opt/venv/bin/python`, so
+        # the module goes in lora_sidecar_command (runs `python -m <module>`).
+        lora_sidecar_image_name: nmp-automodel-tasks
+        lora_sidecar_command: ["-m", "nmp.core.models.sidecars.adapters.main"]
 
 # Inference gateway configuration - uses default values
 inference_gateway: {}

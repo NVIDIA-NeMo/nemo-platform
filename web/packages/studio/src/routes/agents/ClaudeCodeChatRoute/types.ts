@@ -39,6 +39,36 @@ export interface ClaudeCodeChatRouteState {
   initialPrompt?: string;
 }
 
+export interface ClaudeCodeChatSelectionArtifact {
+  label: string;
+  value: string;
+}
+
+export interface ClaudeCodeChatFileArtifact {
+  action: string;
+  path: string;
+}
+
+export interface ClaudeCodeChatLinkArtifact {
+  label: string;
+  destination?: string;
+  href?: string;
+}
+
+export type ClaudeCodeChatModelSource = 'coding_agent' | 'selection' | 'spec';
+
+export interface ClaudeCodeChatArtifacts {
+  agent?: string;
+  model?: string;
+  model_source?: ClaudeCodeChatModelSource;
+  coding_agent_model?: string;
+  workspace?: string;
+  selections: ClaudeCodeChatSelectionArtifact[];
+  files: ClaudeCodeChatFileArtifact[];
+  links: ClaudeCodeChatLinkArtifact[];
+  tools: string[];
+}
+
 export interface ClaudeCodeHistorySession {
   session_id: string;
   mtime: number;
@@ -47,6 +77,7 @@ export interface ClaudeCodeHistorySession {
   token_count: number;
   tool_call_count: number;
   tool_calls: string[];
+  chat_artifacts: ClaudeCodeChatArtifacts;
 }
 
 export interface ClaudeCodeSkill {
@@ -92,4 +123,5 @@ export type ClaudeCodeSessionHistoryItem =
 export interface ClaudeCodeSessionHistory {
   session_id: string;
   items: ClaudeCodeSessionHistoryItem[];
+  chat_artifacts: ClaudeCodeChatArtifacts;
 }

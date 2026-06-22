@@ -5,6 +5,7 @@ import json
 from unittest.mock import patch
 
 import pytest
+from fastapi.testclient import TestClient
 from nmp.common.config import Configuration, PlatformConfig
 from nmp.common.sdk_factory import (
     get_async_platform_sdk,
@@ -154,6 +155,16 @@ def test_get_task_sdk_without_principal(monkeypatch: pytest.MonkeyPatch):
     assert sdk.default_headers["X-NMP-Principal-Id"] == "service:customizer"
     assert sdk.default_headers["X-NMP-Internal"] == "true"
     assert "X-NMP-Principal-On-Behalf-Of" not in sdk.default_headers
+
+
+def test_get_task_sdk_uses_explicit_sync_http_client(monkeypatch: pytest.MonkeyPatch):
+    """get_task_sdk should use an explicitly provided sync HTTP client."""
+    monkeypatch.delenv("NMP_PRINCIPAL", raising=False)
+    client = TestClient(lambda scope, receive, send: None)
+
+    sdk = get_task_sdk(as_service="customizer", http_client=client)
+
+    assert sdk._client is client
 
 
 def test_get_request_scoped_sdk_merges_otel_and_auth_headers():

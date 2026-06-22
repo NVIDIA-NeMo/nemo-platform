@@ -15,6 +15,7 @@ from nemo_platform.types.inference.model_deployment import ModelDeployment
 from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig
 from nemo_platform.types.models.model_entity import ModelEntity
 from nmp.common.secrets.encryption import get_base64_encoded_random_bytes
+from nmp.core.files.app.backends.base import FileInfo
 from nmp.core.files.app.backends.huggingface import HuggingfaceStorageImpl
 from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate, ServiceBackend
 from nmp.core.models.controllers.backends.registry import BackendRegistry
@@ -49,8 +50,12 @@ def no_hf_network(monkeypatch):
     async def _resolve_passthrough(self):
         return self.config
 
+    async def _list_files_stub(_self: HuggingfaceStorageImpl, _path: str | None = None) -> list[FileInfo]:
+        return [FileInfo(path="config.json", size=2)]
+
     monkeypatch.setattr(HuggingfaceStorageImpl, "validate_storage", _validate_noop)
     monkeypatch.setattr(HuggingfaceStorageImpl, "resolve_config", _resolve_passthrough)
+    monkeypatch.setattr(HuggingfaceStorageImpl, "list_files", _list_files_stub)
 
 
 # =============================================================================

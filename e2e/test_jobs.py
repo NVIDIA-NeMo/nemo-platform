@@ -12,7 +12,7 @@ param types and filtered to tests that work without Docker.
 import uuid
 
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform import NeMoPlatform, NotFoundError
 from nmp.testing.e2e import wait_for_job_logs, wait_for_platform_job
 
 JOB_SOURCE = "e2e-test-jobs"
@@ -217,39 +217,52 @@ def test_job_using_secret_environment_variable(sdk: NeMoPlatform, workspace: str
     secret = sdk.secrets.create(workspace=workspace, name=secret_name, value=secret_value)
     assert secret.name is not None, "Failed to create platform secret"
 
-    job = sdk.jobs.create(
-        workspace=workspace,
-        source=JOB_SOURCE,
-        spec={"test": "value"},
-        platform_spec={
-            "steps": [
-                {
-                    "name": "secret-envvar-step",
-                    "executor": {
-                        "provider": "cpu",
-                        "container": {
-                            "command": ["sh", "-c", 'echo "Secret value is: $SECRET_ENV_VAR"'],
+    secret_deleted = False
+    try:
+        job = sdk.jobs.create(
+            workspace=workspace,
+            source=JOB_SOURCE,
+            spec={"test": "value"},
+            platform_spec={
+                "steps": [
+                    {
+                        "name": "secret-envvar-step",
+                        "executor": {
+                            "provider": "cpu",
+                            "container": {
+                                "command": ["sh", "-c", 'echo "Secret value is: $SECRET_ENV_VAR"'],
+                            },
                         },
+                        "environment": [
+                            {
+                                "name": "SECRET_ENV_VAR",
+                                "from_secret": {"name": secret.name},
+                            },
+                        ],
                     },
-                    "environment": [
-                        {
-                            "name": "SECRET_ENV_VAR",
-                            "from_secret": {"name": secret.name},
-                        },
-                    ],
-                },
-            ],
-        },
-    )
+                ],
+            },
+        )
 
-    completed_job = wait_for_platform_job(sdk, job.name, workspace)
-    assert completed_job.status == "completed", _job_diagnostic_message(
-        sdk, completed_job, workspace, f"Job failed with status: {completed_job.status}"
-    )
+        completed_job = wait_for_platform_job(sdk, job.name, workspace)
+        assert completed_job.status == "completed", _job_diagnostic_message(
+            sdk, completed_job, workspace, f"Job failed with status: {completed_job.status}"
+        )
 
-    step_logs = wait_for_job_logs(sdk, job.name, workspace, min_log_count=1, timeout=120)
-    all_messages = " ".join(log.message for log in step_logs.data)
-    assert secret_value in all_messages, "Step logs do not show secret environment variable was used"
+        step_logs = wait_for_job_logs(sdk, job.name, workspace, min_log_count=1, timeout=120)
+        all_messages = " ".join(log.message for log in step_logs.data)
+        assert secret_value in all_messages, "Step logs do not show secret environment variable was used"
+
+        sdk.secrets.delete(workspace=workspace, name=secret_name)
+        secret_deleted = True
+        with pytest.raises(NotFoundError):
+            sdk.secrets.retrieve(secret_name, workspace=workspace)
+    finally:
+        if not secret_deleted:
+            try:
+                sdk.secrets.delete(workspace=workspace, name=secret_name)
+            except Exception:
+                pass
 
 
 def test_job_with_expected_failure(sdk: NeMoPlatform, workspace: str):

@@ -10,9 +10,15 @@ The platform secrets service reads `NMP_SECRETS_DEFAULT_ENCRYPTION_KEY` from the
 API env Secret. The value must be base64-encoded and decode to at least 32 bytes.
 
 Set `secrets.defaultEncryptionKey.value` to provide your own key. When that value
-is empty and `envFromSecret` is not set, the chart runs a pre-install hook that
-creates `<fullname>-api-env` with a per-install random key. The hook is
-install-only and refuses to patch or rotate an existing Secret.
+is empty and neither `envFromSecret` nor
+`secrets.defaultEncryptionKey.existingSecret.name` is set, the chart runs a
+pre-install hook that creates `<fullname>-api-env` with a per-install random key.
+The hook is install-only and refuses to patch or rotate an existing Secret.
+
+Set `secrets.defaultEncryptionKey.existingSecret.name` to use an existing Secret
+for only the secrets service encryption key. After Kubernetes decodes the Secret
+data, the value loaded from `secrets.defaultEncryptionKey.existingSecret.key`
+must be a base64-encoded key that decodes to at least 32 bytes.
 
 Set `envFromSecret` to use a fully user-managed API env Secret. In that mode the
 chart does not create or generate the API env Secret.
@@ -293,7 +299,10 @@ secrets will not decrypt with a new key.
 | rbac | object | `{"k8sNimOperatorEnabled":true,"volcanoEnabled":true}` | RBAC configuration settings for optional dependencies |
 | rbac.k8sNimOperatorEnabled | bool | `true` | Specifies whether to enable the core Controller to have RBAC permissions to k8s-nim-operator's NIMService for scheduling NIMs. |
 | rbac.volcanoEnabled | bool | `true` | Specifies whether to enable the core Controller to have RBAC permissions to Volcano for scheduling distributed jobs. |
-| secrets | object | `{"defaultEncryptionKey":{"generated":{"activeDeadlineSeconds":120,"affinity":{},"backoffLimit":3,"enabled":true,"image":{"pullPolicy":"IfNotPresent","repository":"docker.io/library/python","tag":"3.12-slim"},"nodeSelector":{},"podSecurityContext":{},"resources":{},"securityContext":{},"serviceAccount":{"annotations":{},"create":true,"name":""},"tolerations":[],"ttlSecondsAfterFinished":300},"value":""}}` | Secrets service configuration. |
+| secrets | object | `{"defaultEncryptionKey":{"existingSecret":{"key":"NMP_SECRETS_DEFAULT_ENCRYPTION_KEY","name":""},"generated":{"activeDeadlineSeconds":120,"affinity":{},"backoffLimit":3,"enabled":true,"image":{"pullPolicy":"IfNotPresent","repository":"docker.io/library/python","tag":"3.12-slim"},"nodeSelector":{},"podSecurityContext":{},"resources":{},"securityContext":{},"serviceAccount":{"annotations":{},"create":true,"name":""},"tolerations":[],"ttlSecondsAfterFinished":300},"value":""}}` | Secrets service configuration. |
+| secrets.defaultEncryptionKey.existingSecret | object | `{"key":"NMP_SECRETS_DEFAULT_ENCRYPTION_KEY","name":""}` | Existing Kubernetes Secret containing the key for encrypting platform secrets. If name is set, the chart does not create or generate the default api-env Secret. |
+| secrets.defaultEncryptionKey.existingSecret.key | string | `"NMP_SECRETS_DEFAULT_ENCRYPTION_KEY"` | Key in the existing Secret. After Kubernetes decodes the Secret data, the loaded value must be the base64-encoded NMP_SECRETS_DEFAULT_ENCRYPTION_KEY string. |
+| secrets.defaultEncryptionKey.existingSecret.name | string | `""` | Name of an existing Kubernetes Secret containing the encryption key. |
 | secrets.defaultEncryptionKey.generated | object | `{"activeDeadlineSeconds":120,"affinity":{},"backoffLimit":3,"enabled":true,"image":{"pullPolicy":"IfNotPresent","repository":"docker.io/library/python","tag":"3.12-slim"},"nodeSelector":{},"podSecurityContext":{},"resources":{},"securityContext":{},"serviceAccount":{"annotations":{},"create":true,"name":""},"tolerations":[],"ttlSecondsAfterFinished":300}` | Generated key configuration used only when value and envFromSecret are empty. The generated key is not rotated or recreated on upgrade. |
 | secrets.defaultEncryptionKey.generated.activeDeadlineSeconds | int | `120` | Maximum seconds for the key generation hook to run. |
 | secrets.defaultEncryptionKey.generated.affinity | object | `{}` | Affinity for the key generation hook. |

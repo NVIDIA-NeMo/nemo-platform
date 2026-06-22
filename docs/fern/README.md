@@ -8,7 +8,7 @@ This directory holds the Fern **configuration** for the NeMo Platform documentat
 | --- | --- |
 | Fern dashboard | https://dashboard.buildwithfern.com (NVIDIA org) |
 | Contributor/agent guide | [`../AGENTS.md`](../AGENTS.md) |
-| Make targets | `make docs`, `docs-check`, `docs-broken-links`, `docs-fix-links`, `docs-preview` (repo root) |
+| Make targets | `make docs`, `make docs-watch`, `docs-check`, `docs-broken-links`, `docs-fix-links`, `docs-preview` (repo root) |
 | CI workflows | [`../../.github/workflows/`](../../.github/workflows/) (`fern-docs-*.yaml`) |
 | Publish workflow | [`../../.github/workflows/publish-fern-docs.yaml`](../../.github/workflows/publish-fern-docs.yaml) |
 
@@ -21,7 +21,10 @@ make docs-deps     # one-time: install docs/fern tooling (needed for MDX validat
 make docs-login    # one-time per machine: Fern CLI auth for the nvidia org
 make docs-check    # validate: fern check + MDX validation + gated-link check (what CI runs)
 make docs          # start local preview (prints a localhost URL)
+make docs-watch    # start local preview plus a repo-level watcher for docs/** changes
 ```
+
+Use `make docs` when you are only editing `docs/fern/` config. Use `make docs-watch` when you are editing page content elsewhere under `docs/`, since it restarts the Fern dev server when repo-level docs files change outside `docs/fern/`.
 
 `package.json` shells out to `npx -y fern-api@latest` for the Fern CLI itself, but `make docs-deps` (`npm ci`) is required once because the MDX validator (`@mdx-js/mdx`) is a local dependency.
 

@@ -40,10 +40,10 @@ import { BaseModelCard } from '@studio/components/BaseModelCard';
 import { CustomizeModelButton } from '@studio/components/dataViews/CustomModelsDataView/CustomizeModelButton';
 import { ModelPanel, ModelPanelTab } from '@studio/components/sidePanels/ModelPanels/ModelPanel';
 import { VirtualizedCardGrid } from '@studio/components/VirtualizedCardGrid';
-import { CUSTOMIZER_ENABLED, EVALUATOR_ENABLED } from '@studio/constants/environment';
+import { CUSTOMIZER_ENABLED } from '@studio/constants/environment';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
-import { getEvaluationResultsRoute, getWorkspaceBaseModelsRoute } from '@studio/routes/utils';
+import { getWorkspaceBaseModelsRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
 import { useEffect, useMemo, useRef, useState, type ComponentProps, type FC } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -300,16 +300,6 @@ export const WorkspaceBaseModelsRoute: FC = () => {
             <Flex gap="density-md" align="center">
               {CUSTOMIZER_ENABLED && selectedModel && (
                 <CustomizeModelButton model={selectedModel} workspace={workspace} />
-              )}
-              {EVALUATOR_ENABLED && (
-                <Button
-                  kind="secondary"
-                  size="small"
-                  onClick={() => navigate(getEvaluationResultsRoute(workspace))}
-                  className="flex-1"
-                >
-                  Evaluate this Model
-                </Button>
               )}
             </Flex>
           ),
