@@ -77,6 +77,12 @@ body {
   }
 }
 
+/* hack fix: sticky table header separator — box-shadow is the only reliable way to
+   paint a bottom border that stays with a position:sticky thead across browsers */
+.sticky-table-header {
+  box-shadow: 0 2px 0 var(--border-color-base);
+}
+
 /* hack fix: KUI ships Checkbox and RadioGroupItem without a pointer cursor */
 .nv-checkbox-input,
 .nv-radio-group-item {

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { ScrollTable } from '@nemo/common/src/components/ScrollTable';
 import { useUploadModalContext } from '@nemo/common/src/components/UploadModal/Context/useUploadModalContext';
 import { useInlinePickerSlot } from '@nemo/common/src/components/UploadModal/InlinePickerSlot';
 import { UploadFile } from '@nemo/common/src/components/UploadModal/types';
@@ -10,13 +9,17 @@ import {
   Button,
   Checkbox,
   Text,
-  TableColumnDefinition,
-  TableRowDefinition,
   Flex,
   Stack,
   RadioGroupRoot,
   RadioGroupItem,
   RadioGroupInput,
+  TableBody,
+  TableDataCell,
+  TableHead,
+  TableHeaderCell,
+  TableRoot,
+  TableRow,
 } from '@nvidia/foundations-react-core';
 import { CircleAlert } from 'lucide-react';
 import { useCallback, useMemo, useRef } from 'react';
@@ -76,12 +79,6 @@ export const SimpleFilesTable = () => {
     }
   };
 
-  const columns: TableColumnDefinition[] = [
-    { children: '' },
-    { children: 'Name' },
-    { children: 'Size' },
-  ];
-
   // ``invalidFileMode`` controls how files whose extension isn't in
   // ``acceptableFileTypes`` are rendered. ``'hide'`` filters them out so the
   // user only sees pickable files; ``'disable'`` keeps them visible but
@@ -100,7 +97,7 @@ export const SimpleFilesTable = () => {
       ? `Only ${acceptableFileTypes.join(', ')} files can be selected. Upload a supported file or choose a different fileset.`
       : null;
 
-  const rows = useMemo<TableRowDefinition[]>(
+  const fileRows = useMemo(
     () =>
       visibleFiles.map((uploadFile) => {
         // In ``'disable'`` mode, mismatched-extension rows render but their
@@ -109,59 +106,63 @@ export const SimpleFilesTable = () => {
         const isDisabled = invalidFileMode === 'disable' && !isFileAllowed(uploadFile);
         const name = uploadFile.type === 'existing' ? uploadFile.file.path : uploadFile.file.name;
         const size = uploadFile.type === 'existing' ? uploadFile.file.size : uploadFile.file.size;
-        return {
-          id: uploadFile.id,
-          cells: [
-            {
-              children: allowMultipleFileSelection ? (
-                <Checkbox
-                  name={name}
-                  attributes={{ CheckboxInput: { 'aria-label': name } }}
-                  checked={selectedFiles.some((file) => file.id === uploadFile.id)}
-                  onCheckedChange={() => toggleFileSelection(uploadFile)}
-                  disabled={isDisabled}
-                />
-              ) : (
-                <RadioGroupItem aria-label={name}>
-                  <RadioGroupInput value={uploadFile.id} disabled={isDisabled} />
-                </RadioGroupItem>
-              ),
-            },
-            { children: name },
-            { children: formatFileSize(size) },
-          ],
-        };
+        return { id: uploadFile.id, name, size, isDisabled, uploadFile };
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [visibleFiles, selectedFiles, toggleFileSelection, allowMultipleFileSelection, invalidFileMode]
+    [visibleFiles, invalidFileMode, allowedExtensions]
+  );
+
+  const table = (
+    <div className="overflow-y-auto max-h-[45dvh] border border-base rounded-md">
+      <TableRoot layout="auto" align="left" className="w-full bg-inherit">
+        <TableHead className="sticky top-0 z-[1] bg-surface-overlay border-b-0 sticky-table-header">
+          <TableRow className="border-b-0">
+            <TableHeaderCell />
+            <TableHeaderCell>Name</TableHeaderCell>
+            <TableHeaderCell>Size</TableHeaderCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {fileRows.map(({ id, name, size, isDisabled, uploadFile }) => (
+            <TableRow key={id}>
+              <TableDataCell>
+                {allowMultipleFileSelection ? (
+                  <Checkbox
+                    name={name}
+                    attributes={{ CheckboxInput: { 'aria-label': name } }}
+                    checked={selectedFiles.some((f) => f.id === id)}
+                    onCheckedChange={() => toggleFileSelection(uploadFile)}
+                    disabled={isDisabled}
+                  />
+                ) : (
+                  <RadioGroupItem aria-label={name}>
+                    <RadioGroupInput value={id} disabled={isDisabled} />
+                  </RadioGroupItem>
+                )}
+              </TableDataCell>
+              <TableDataCell>{name}</TableDataCell>
+              <TableDataCell>{formatFileSize(size)}</TableDataCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </TableRoot>
+    </div>
   );
 
   return (
     <Stack className="min-h-0 flex-1 w-full" gap="density-md">
       {allowMultipleFileSelection ? (
-        <ScrollTable
-          pagination={false}
-          columns={columns}
-          rows={rows}
-          allowHorizontalScroll
-          className="pb-0 w-full"
-        />
+        table
       ) : (
         // ``RadioGroupRoot`` defaults to its content's natural width — force
-        // ``w-full`` so the inner ScrollTable fills the modal's width.
+        // ``w-full`` so the inner table fills the modal's width.
         <RadioGroupRoot
           name="simple-files-table"
           value={selectedFiles[0]?.id ?? ''}
           onValueChange={handleSingleSelect}
           className="w-full"
         >
-          <ScrollTable
-            pagination={false}
-            columns={columns}
-            rows={rows}
-            allowHorizontalScroll
-            className="pb-0 w-full"
-          />
+          {table}
         </RadioGroupRoot>
       )}
       {disabledFilesMessage ? (
