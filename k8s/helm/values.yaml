@@ -410,10 +410,6 @@ ingress:
           pathType: Exact
           service: '{{ include "nemo-platform.ingressBackendService" . }}'
           port: '{{ include "nemo-platform.ingressBackendPort" . }}'
-        - path: /health
-          pathType: Prefix
-          service: '{{ include "nemo-platform.ingressBackendService" . }}'
-          port: '{{ include "nemo-platform.ingressBackendPort" . }}'
         - path: /apis
           pathType: Prefix
           service: '{{ include "nemo-platform.ingressBackendService" . }}'
