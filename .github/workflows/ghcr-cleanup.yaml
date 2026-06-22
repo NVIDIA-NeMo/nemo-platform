@@ -1,8 +1,6 @@
 name: Cleanup GHCR CI Images
 
 on:
-  pull_request:
-    branches: [main]
   schedule:
     - cron: "43 4 * * *"
   workflow_dispatch:
@@ -25,31 +23,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  dry-run-pr:
-    name: Dry run stale GHCR CI image cleanup
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: read
-    env:
-      DRY_RUN: "true"
-      STALE_HOURS: "24"
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          persist-credentials: false
-
-      - name: Dry run stale package version deletion
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: bash .github/scripts/cleanup-ghcr-ci-images.sh
-
   cleanup:
     name: Delete stale GHCR CI image versions
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
