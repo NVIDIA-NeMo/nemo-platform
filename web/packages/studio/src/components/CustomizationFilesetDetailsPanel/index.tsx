@@ -36,7 +36,9 @@ type Row = {
 export const CustomizationFilesetDetailsPanel = ({ filesetUri }: Props) => {
   const toast = useToast();
   const { name, workspace } = parseFilesetUri(filesetUri ?? '');
-  const { data, isLoading } = useGetDataset(workspace, name);
+  const { data, isLoading } = useGetDataset(workspace, name, {
+    query: { enabled: Boolean(workspace && name) },
+  });
   const [openJsonEditorSidePanel, setOpenJsonEditorSidePanel] = useState(false);
   const [jsonEditorContent, setJsonEditorContent] = useState<Row | undefined>(undefined);
   const dataViewState = DataView.useDataViewState({
