@@ -47,7 +47,7 @@ import { DEFAULT_INFERENCE_PARAMS_FORM_VALUES } from '@studio/hooks/evaluation/u
 import { QUERY_PARAMETERS } from '@studio/routes/constants';
 import { getEvaluationResultDetailsRoute } from '@studio/routes/utils';
 import { buildModelPayload } from '@studio/util/evaluations';
-import { websiteLogger } from '@studio/util/logger';
+import { logger } from '@studio/util/logger';
 import { Plus } from 'lucide-react';
 import { type FC, useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -302,7 +302,7 @@ export const MetricRunSidePanel: FC<MetricRunSidePanelProps> = ({
       navigate(getEvaluationResultDetailsRoute(workspace, job.name));
     } catch (error) {
       const message = getErrorMessage(error as Error, 'Failed to create metric evaluation job');
-      websiteLogger.error(`MetricRunSidePanel: ${message}`);
+      logger.error(`MetricRunSidePanel: ${message}`);
       toast.error(message);
     }
   };
@@ -332,7 +332,7 @@ export const MetricRunSidePanel: FC<MetricRunSidePanelProps> = ({
             color="brand"
             disabled={isPending}
             onClick={form.handleSubmit(handleSubmit, (errors) => {
-              websiteLogger.error(`Form validation errors: ${JSON.stringify(errors)}`);
+              logger.error(`Form validation errors: ${JSON.stringify(errors)}`);
               toast.error('Please fix the errors in the form before submitting.');
             })}
           >

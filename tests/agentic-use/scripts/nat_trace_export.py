@@ -674,10 +674,77 @@ def _iter_sse_data(text: str) -> Sequence[str]:
 
 
 def _decode_json_event(raw_event: str) -> JsonValue:
+    if raw_event == "[DONE]":
+        return ""
     try:
         return json.loads(raw_event)
     except json.JSONDecodeError:
         return raw_event
+
+
+def _string_values_are_cumulative(values: Sequence[str]) -> bool:
+    previous = ""
+    for value in values:
+        if not value:
+            continue
+        if previous and value.startswith(previous):
+            previous = value
+            continue
+        if previous:
+            return False
+        previous = value
+    return bool(previous)
+
+
+def _string_values_look_delta(values: Sequence[str]) -> bool:
+    if _string_values_are_cumulative(values):
+        return False
+
+    saw_delta = False
+    for value in values:
+        if not value:
+            continue
+        if value[:1].isspace() or value[-1:].isspace():
+            saw_delta = True
+    return saw_delta
+
+
+def _assemble_legacy_stream(events: Sequence[JsonValue]) -> JsonValue:
+    value_chunks: list[str] = []
+    last_value: JsonValue = ""
+    final_result: JsonValue = ""
+
+    for event in events:
+        if event in ("", None):
+            continue
+        if not isinstance(event, dict):
+            final_result = event
+            continue
+        if "code" in event and event.get("code") == "workflow_error":
+            raise RuntimeError(str(event))
+
+        value = event.get("value")
+        if value is None:
+            if _extract_text(event):
+                final_result = event
+            continue
+        last_value = value
+        if isinstance(value, str):
+            value_chunks.append(value)
+        else:
+            final_result = value
+
+    if value_chunks:
+        if len(value_chunks) == 1:
+            return value_chunks[0].strip()
+        if _string_values_look_delta(value_chunks):
+            return "".join(value_chunks).strip()
+        return value_chunks[-1].strip()
+    if last_value not in ("", None):
+        return last_value
+    if isinstance(final_result, str):
+        return final_result.strip()
+    return final_result
 
 
 def _assemble_atif_stream(events: Sequence[JsonValue]) -> tuple[JsonObject | None, JsonValue]:
@@ -757,9 +824,13 @@ def _invoke_aut(endpoint: str, instruction: str, output_dir: Path, timeout: int)
             response_text = _read_http_response(fallback_url, payload, timeout)
             print(response_text)
             try:
-                _write_final_message(output_dir, json.loads(response_text))
+                parsed_response = json.loads(response_text)
             except json.JSONDecodeError:
-                _write_final_message(output_dir, response_text.strip())
+                events = [_decode_json_event(raw_event) for raw_event in _iter_sse_data(response_text)]
+                _write_json(output_dir / "legacy_stream_events.json", events)
+                _write_final_message(output_dir, _assemble_legacy_stream(events))
+            else:
+                _write_final_message(output_dir, _assemble_legacy_stream([parsed_response]))
             return 0
         except urllib.error.HTTPError as err:
             last_error = err

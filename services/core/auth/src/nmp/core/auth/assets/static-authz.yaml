@@ -945,6 +945,19 @@ authz:
         scopes:
         - intake:write
         - platform:write
+    /apis/intake/v2/workspaces/{workspace}/experiments/{name}/pin:
+      delete:
+        permissions:
+        - intake.experiments.update
+        scopes:
+        - intake:write
+        - platform:write
+      post:
+        permissions:
+        - intake.experiments.update
+        scopes:
+        - intake:write
+        - platform:write
     /apis/intake/v2/workspaces/{workspace}/experiments/{name}/sessions:
       get:
         permissions:

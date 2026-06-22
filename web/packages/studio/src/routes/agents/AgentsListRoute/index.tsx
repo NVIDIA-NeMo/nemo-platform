@@ -13,6 +13,7 @@ import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { CreateDeploymentModal } from '@studio/routes/agents/AgentDeploymentsListRoute/CreateDeploymentModal';
+import { CloneAgentModal } from '@studio/routes/agents/AgentsListRoute/CloneAgentModal';
 import { CreateExampleAgentModal } from '@studio/routes/agents/AgentsListRoute/CreateExampleAgentModal';
 import { getAgentDetailRoute, getAgentsListRoute } from '@studio/routes/utils';
 import { type FC, useState } from 'react';
@@ -26,6 +27,7 @@ export const AgentsListRoute: FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [createDeploymentAgent, setCreateDeploymentAgent] = useState<string | null>(null);
   const [isCreateExampleOpen, setCreateExampleOpen] = useState(false);
+  const [cloneSource, setCloneSource] = useState<AgentTableRow | null>(null);
   const [loadedAgents, setLoadedAgents] = useState<Agent[]>([]);
   const { [ROUTE_PARAMS.agentName]: agentNameParam } = useParams<{ agentName?: string }>();
   const tabFromUrl: AgentPanelTab =
@@ -61,6 +63,7 @@ export const AgentsListRoute: FC = () => {
         <AgentsTable
           onAgentRowClick={handleOpenPanel}
           onCreateDeployment={(agentName) => setCreateDeploymentAgent(agentName)}
+          onCloneAgent={setCloneSource}
           onAgentsLoaded={setLoadedAgents}
         />
       </Stack>
@@ -69,6 +72,12 @@ export const AgentsListRoute: FC = () => {
         onClose={() => setCreateExampleOpen(false)}
         workspace={workspace}
         existingAgents={loadedAgents}
+      />
+      <CloneAgentModal
+        open={cloneSource !== null}
+        onClose={() => setCloneSource(null)}
+        workspace={workspace}
+        sourceAgent={cloneSource}
       />
       <CreateDeploymentModal
         open={createDeploymentAgent !== null}

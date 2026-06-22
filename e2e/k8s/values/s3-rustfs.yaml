@@ -1,0 +1,11 @@
+platformConfig:
+  files:
+    default_storage_config:
+      type: s3
+      bucket: e2e-k8s-test
+      endpoint_url: http://rustfs-svc:9000
+      use_sdk_auth: True
+
+env:
+  AWS_ACCESS_KEY_ID: "rustfsadmin"
+  AWS_SECRET_ACCESS_KEY: "rustfsadmin"

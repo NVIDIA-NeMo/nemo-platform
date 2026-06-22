@@ -50,6 +50,12 @@ class ExperimentFilterParam(TypedDict, total=False):
     Omit (or false) to see only live experiments.
     """
 
+    is_pinned: bool
+    """When true, returns only pinned experiments.
+
+    When false, returns only unpinned experiments. Omit to return both.
+    """
+
     name: str
     """Filter experiments by name."""
 

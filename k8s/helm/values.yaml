@@ -6,7 +6,7 @@
 nameOverride: ""
 fullnameOverride: ""
 
-# -- Your NVIDIA GPU Cloud (NGC) API key authenticates and enables pulling images from the NGC container registry. The existing secret overrides this key if you provide one to the `existingSecret` key.
+# -- Your NVIDIA GPU Cloud (NGC) API key authenticates API calls to NGC services, such as model downloads. The existing secret overrides this key if you provide one to the `existingSecret` key.
 ngcAPIKey: YOUR-NGC-API-KEY
 
 # -- Environment variables that will be applied to every deployment pod. Uses a simple key value map structure like MY_ENV_VAR: the-key and works with valueFrom as well.
@@ -21,6 +21,12 @@ secrets:
   defaultEncryptionKey:
     # -- Optional base64-encoded key for encrypting platform secrets. The decoded key must be at least 32 bytes. If empty and envFromSecret is not set, a pre-install hook generates a per-install key.
     value: ""
+    # -- Existing Kubernetes Secret containing the key for encrypting platform secrets. If name is set, the chart does not create or generate the default api-env Secret.
+    existingSecret:
+      # -- Name of an existing Kubernetes Secret containing the encryption key.
+      name: ""
+      # -- Key in the existing Secret. After Kubernetes decodes the Secret data, the loaded value must be the base64-encoded NMP_SECRETS_DEFAULT_ENCRYPTION_KEY string.
+      key: NMP_SECRETS_DEFAULT_ENCRYPTION_KEY
     # -- Generated key configuration used only when value and envFromSecret are empty. The generated key is not rotated or recreated on upgrade.
     generated:
       enabled: true
@@ -60,11 +66,8 @@ secrets:
 # -- You can use an existing Kubernetes secret for communicating with the NGC API for downloading models. The chart uses the `ngcAPIKey` value to generate the secret if you set this to an empty string.
 existingSecret: ngc-api
 
-# -- You can specify an existing Kubernetes image pull secret for pulling images from the NGC container registry. The chart uses the `ngcAPIKey` value to generate the secret if you set this to an empty string.
-existingImagePullSecret: nvcrimagepullsecret
-
-# -- List of additional image pull secrets to use for pulling container images. Can be used when multiple image pull secrets are required in your environment.
-additionalImagePullSecrets: {}
+# -- Existing Kubernetes image pull secrets to use for pulling container images from private registries or mirrors.
+imagePullSecrets: []
 
 # -- RBAC configuration settings for optional dependencies
 rbac:
@@ -275,8 +278,7 @@ basePlatformConfig: |
     # Image configuration for launching containers via the platform
     image_registry: nvcr.io/nvidia/nemo-platform
     image_tag: {{ .Chart.AppVersion | quote }}
-    image_pull_secrets:
-      {{ include "nemo-common.imagepullsecrets" . | nindent 8 }}
+    image_pull_secrets: {{ default (list) .Values.imagePullSecrets | toJson }}
 
   studio:
     # -- platform_base_url is the base URL used to access the platform.
@@ -368,6 +370,19 @@ basePlatformConfig: |
 
   # -- customizer is the configuration specific to the Customizer service
   customizer: {}
+
+  # -- automodel is the configuration specific to Automodel customization jobs
+  automodel:
+    default_training_execution_profile: default
+
+  # -- unsloth is the configuration specific to Unsloth customization jobs
+  unsloth:
+    default_training_execution_profile: default
+
+  # -- safe_synthesizer is the configuration specific to the Safe Synthesizer service
+  safe_synthesizer:
+    job_mode: container
+    container_image: safe-synthesizer-tasks
 
   # -- evaluator is the configuration specific to the Evaluator service
   evaluator: {}

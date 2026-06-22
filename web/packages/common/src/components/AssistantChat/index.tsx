@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { AssistantRuntimeProvider } from '@assistant-ui/react';
+import { modelSupportsImageAttachments } from '@nemo/common/src/components/AssistantChat/messageUtils';
 import cn from 'classnames';
 import { type FC, useMemo } from 'react';
 
@@ -35,7 +36,12 @@ export const AssistantChat: FC<AssistantChatProps> = ({
   slotComposerStart,
   emptyState,
   composerOverride,
+  enableImageAttachments = true,
 }) => {
+  // Gate image attachments on both the caller's opt-in and a naive model
+  // capability check, so a text-only model never offers an image affordance.
+  const imageAttachmentsEnabled = enableImageAttachments && modelSupportsImageAttachments(model);
+
   const { handleReset, runtime } = useAssistantChatRuntime({
     model,
     workspace,
@@ -50,6 +56,7 @@ export const AssistantChat: FC<AssistantChatProps> = ({
     onEmptyChange,
     broadcast,
     stopCount,
+    enableImageAttachments: imageAttachmentsEnabled,
   });
 
   const composerPlaceholder = useMemo(
@@ -70,6 +77,7 @@ export const AssistantChat: FC<AssistantChatProps> = ({
           slotComposerStart={slotComposerStart}
           emptyState={emptyState}
           composerOverride={composerOverride}
+          enableImageAttachments={imageAttachmentsEnabled}
         />
       </div>
     </AssistantRuntimeProvider>

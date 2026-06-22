@@ -3,6 +3,7 @@
 
 import type { ExcludedChatCompletionMessageParam } from '@nemo/common/src/types/chat';
 import { Row } from '@studio/util/files';
+import { logger } from '@studio/util/logger';
 import Handlebars from 'handlebars';
 
 export const extractUserMessage = (props: { row: Row; template?: string }): string => {
@@ -20,7 +21,7 @@ export const extractUserMessage = (props: { row: Row; template?: string }): stri
       const compiled = Handlebars.compile(template);
       return compiled(row);
     } catch (err) {
-      console.error('Failed to compile template', err);
+      logger.error('Failed to compile template', err);
       return '';
     }
   }

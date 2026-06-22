@@ -5,6 +5,7 @@ import {
   type AppendMessage,
   type MessageStatus,
   type ThreadMessageLike,
+  SimpleImageAttachmentAdapter,
   useExternalStoreRuntime,
 } from '@assistant-ui/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -15,11 +16,13 @@ import {
   appendMessageToThreadMessage,
   createTextMessage,
   getEditedMessageIndex,
-  getMessageText,
   getOpenAIMessages,
+  getUserMessageContent,
 } from './messageUtils';
 import type { AssistantChatProps } from './types';
 import { useChatCompletion } from '../../hooks/useChatCompletion';
+
+const imageAttachmentAdapter = new SimpleImageAttachmentAdapter();
 
 type UseAssistantChatRuntimeOptions = Pick<
   AssistantChatProps,
@@ -36,6 +39,7 @@ type UseAssistantChatRuntimeOptions = Pick<
   | 'promptData'
   | 'tools'
   | 'workspace'
+  | 'enableImageAttachments'
 >;
 
 export const useAssistantChatRuntime = ({
@@ -52,6 +56,7 @@ export const useAssistantChatRuntime = ({
   onEmptyChange,
   broadcast,
   stopCount,
+  enableImageAttachments = true,
 }: UseAssistantChatRuntimeOptions) => {
   const [messages, setMessages] = useState<readonly ThreadMessageLike[]>(initialMessages);
   const [isRunning, setIsRunning] = useState(false);
@@ -216,13 +221,10 @@ export const useAssistantChatRuntime = ({
 
   const handleNewMessage = useCallback(
     async (message: AppendMessage) => {
-      const text = getMessageText(message).trim();
-      if (!text) return;
+      const content = getUserMessageContent(message);
+      if (content.length === 0) return;
 
-      const userMessage = appendMessageToThreadMessage({
-        ...message,
-        content: [{ type: 'text', text }],
-      });
+      const userMessage = appendMessageToThreadMessage({ ...message, content });
       const nextMessages = [...messagesRef.current, userMessage];
       setThreadMessages(nextMessages);
       await runCompletion(nextMessages);
@@ -248,15 +250,12 @@ export const useAssistantChatRuntime = ({
       const sourceIndex = getEditedMessageIndex(messagesRef.current, message);
       const previousMessages =
         sourceIndex === -1 ? messagesRef.current : messagesRef.current.slice(0, sourceIndex);
-      const text = getMessageText(message).trim();
-      if (!text) return;
+      const content = getUserMessageContent(message);
+      if (content.length === 0) return;
 
       const nextMessages = [
         ...previousMessages,
-        appendMessageToThreadMessage({
-          ...message,
-          content: [{ type: 'text', text }],
-        }),
+        appendMessageToThreadMessage({ ...message, content }),
       ];
       setThreadMessages(nextMessages);
       await runCompletion(nextMessages);
@@ -340,6 +339,7 @@ export const useAssistantChatRuntime = ({
     onReload: async () => handleReload(),
     onCancel: handleCancel,
     convertMessage: (message) => message,
+    adapters: enableImageAttachments ? { attachments: imageAttachmentAdapter } : undefined,
     unstable_capabilities: {
       copy: true,
     },

@@ -34,6 +34,7 @@ import {
 import { useFileValidation } from '@studio/hooks/evaluation/useFileValidation';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getDatasetDisplayNameFromFilesUrl } from '@studio/util/files';
+import { logger } from '@studio/util/logger';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus, CircleCheck, CircleHelp, File as FileIcon } from 'lucide-react';
 import { FC, useState, useCallback, useEffect, useMemo } from 'react';
@@ -406,7 +407,7 @@ export const InputFile: FC<InputFileProps> = ({
           updateFormFromFile(validationResult, undefined);
         }
       } catch (error) {
-        console.error('Failed to validate selected file:', error);
+        logger.error('Failed to validate selected file', error);
         // Create error validation result
         const errorResult: FileValidationResult = {
           isValid: false,

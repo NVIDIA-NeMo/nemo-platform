@@ -1,7 +1,7 @@
 {{- $apiServiceName := include "nmp-api.api-servicename" . -}}
 {{- $apiServicePort := .Values.api.service.port -}}
 {{- $apiEnvSecretName := include "nemo-platform.apiEnvSecretName" . -}}
-{{- $defaultEncryptionKeyName := include "nemo-platform.defaultEncryptionKeyEnvName" . -}}
+{{- $defaultEncryptionKeySecretKey := include "nemo-platform.defaultEncryptionKeySecretKey" . -}}
 {{- $namespace := .Release.Namespace -}}
 ================================================================================
 🚀 NVIDIA NeMo Microservices Platform
@@ -72,10 +72,10 @@ Successfully installed {{ .Chart.Name }}-{{ .Chart.Version }}, named {{ .Release
   Documentation: https://docs.nvidia.com/nemo-platform
 
   Back up the {{ $apiEnvSecretName }} Secret. If it is lost, existing encrypted
-  platform secrets become unrecoverable. To print {{ $defaultEncryptionKeyName }}
-  for secure backup:
+  platform secrets become unrecoverable. To print the stored Secret data value
+  for key {{ $defaultEncryptionKeySecretKey }} for secure backup:
 
-    kubectl get secret -n {{ $namespace }} {{ $apiEnvSecretName }} -o go-template='{{ "{{" }} index .data {{ $defaultEncryptionKeyName | quote }} | base64decode {{ "}}" }}{{ "{{" }} "\n" {{ "}}" }}'
+    kubectl get secret -n {{ $namespace }} {{ $apiEnvSecretName }} -o go-template='{{ "{{" }} index .data {{ $defaultEncryptionKeySecretKey | quote }} {{ "}}" }}{{ "{{" }} "\n" {{ "}}" }}'
 
 {{- if .Values.postgresql.enabled }}
 

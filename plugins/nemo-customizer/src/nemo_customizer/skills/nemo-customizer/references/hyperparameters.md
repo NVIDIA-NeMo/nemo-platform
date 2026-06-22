@@ -115,10 +115,12 @@ Full template:
     "lora": {
       "rank": 16,
       "alpha": 32,
+      "dropout": 0.0,
       "merge": false,
       "target_modules": null
     },
     "max_seq_length": 2048,
+    "precision": null,
     "execution_profile": null
   },
   "schedule": {
@@ -134,7 +136,10 @@ Full template:
   },
   "optimizer": {
     "learning_rate": 5e-5,
+    "min_learning_rate": null,
     "weight_decay": 0.01,
+    "adam_beta1": 0.9,
+    "adam_beta2": 0.999,
     "warmup_steps": 0
   },
   "parallelism": {
@@ -143,7 +148,8 @@ Full template:
     "tensor_parallel_size": 1,
     "pipeline_parallel_size": 1,
     "context_parallel_size": 1,
-    "expert_parallel_size": null
+    "expert_parallel_size": null,
+    "sequence_parallel": false
   },
   "output": { "name": "<output-name>", "description": null },
   "integrations": null
@@ -162,9 +168,11 @@ Full template:
 | `finetuning_type` | `lora` | `all_weights` (full fine-tune), `lora_merged` (merge adapter into base) |
 | `lora.rank` | `16` | Higher → more capacity, more VRAM. Typical training range 8–32; **cap at 32** if the adapter will be served with default NIM / vLLM (rank > 32 may not load) |
 | `lora.alpha` | `32` | Scaling; common rule of thumb **alpha ≈ 2× rank** |
+| `lora.dropout` | `0.0` | LoRA dropout (0.0–1.0) for regularization |
 | `lora.merge` | `false` | If true with `lora_merged`, output is full weights not adapter |
 | `lora.target_modules` | `null` | e.g. `["q_proj","v_proj"]`; null = platform default targets |
 | `max_seq_length` | `2048` | Truncate/pack to this length; lower if OOM |
+| `precision` | `null` | `bf16` \| `fp16` \| `fp32` \| `fp8`; null auto-detects from the checkpoint |
 | `teacher_model` | — | **Model entity ref** (not HF id). Required for distillation; see below |
 | `distillation_ratio` | `0.5` | KD blend (0–1) |
 | `distillation_temperature` | `1.0` | KD temperature |
@@ -203,10 +211,11 @@ Example: 1 node, 2 GPUs, TP=1 → DP=2 → GBS must be a multiple of `2 × micro
 | Field | Default | Notes |
 |-------|---------|-------|
 | `learning_rate` | `5e-6` (schema) | Skill uses **5e-5** for small LoRA SFT; see tuning below |
+| `min_learning_rate` | `null` | Floor for the cosine LR decay; null lets it decay toward 0 |
 | `weight_decay` | `0.01` | L2-style regularization |
+| `adam_beta1` | `0.9` | Adam optimizer beta1 |
+| `adam_beta2` | `0.999` | Adam optimizer beta2 |
 | `warmup_steps` | `0` | Linear warmup; try ~10% of total steps for long runs |
-
-`adam_beta1` / `adam_beta2` are **not** in the simplified submit schema (fixed in compiler adapter). Use contract JSONs only if your platform version adds them.
 
 ### `parallelism`
 
@@ -218,6 +227,7 @@ Example: 1 node, 2 GPUs, TP=1 → DP=2 → GBS must be a multiple of `2 × micro
 | `pipeline_parallel_size` | `1` | Pipeline stages |
 | `context_parallel_size` | `1` | Long-context sharding |
 | `expert_parallel_size` | `null` | MoE only; must divide `data_parallel_size × context_parallel_size` |
+| `sequence_parallel` | `false` | Shard activations along the sequence dim (pairs with tensor parallelism) |
 
 **MoE:** If `expert_parallel_size > 1` and multiple GPUs, `tensor_parallel_size` must be **1**.
 
@@ -462,9 +472,12 @@ Full template (every section, defaults inline):
 | `load_in_4bit` | `true` | bitsandbytes 4-bit. Mutex with `load_in_8bit`. Default for Unsloth's headline path; required to fit larger models on small GPUs. |
 | `load_in_8bit` | `false` | bitsandbytes 8-bit. Mutex with `load_in_4bit`. |
 | `dtype` | `"auto"` | One of `"auto"`, `"bfloat16"`, `"float16"`, `"float32"`. |
-| `trust_remote_code` | `false` | HF `trust_remote_code` flag for custom model code. |
+| `trust_remote_code` | `false` | HF `trust_remote_code` flag for custom model code (required by some hybrid Mamba/MoE models, e.g. Nemotron-H). |
+| `device_map` | `null` | Placement for `FastLanguageModel.from_pretrained`. `null` pins the whole model to the single visible GPU (`{"": 0}`) — the right default for this single-GPU backend. Leave unset unless experimenting; `"auto"`/`"balanced"`/`"sequential"` can spill layers to CPU on unified-memory hosts (GB10 / DGX Spark) and abort 4-bit loads. |
 
 **Mutex:** `load_in_4bit` xor `load_in_8bit`. Both quantization flags are also **incompatible with `training.finetuning_type: "all_weights"`** — full SFT must use a non-quantized base.
+
+> **Hybrid Mamba/MoE models (e.g. NVIDIA Nemotron-H `*-A3B`):** load in **16-bit** (`load_in_4bit: false`, `load_in_8bit: false`) — Unsloth's supported path for these. The 4-bit (bitsandbytes) path can hit a dtype mismatch inside the model's MoE expert accumulation. Keep `device_map` unset (single-GPU default) and set `trust_remote_code: true`.
 
 ### `dataset`
 

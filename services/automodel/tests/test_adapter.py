@@ -20,6 +20,58 @@ def test_adapter_sft() -> None:
     assert spec.dataset == "default/train"
 
 
+def test_adapter_plumbs_previously_dropped_fields() -> None:
+    """CLI/SDK fields the adapter used to drop must now reach the v2 SFTTraining."""
+    spec = automodel_spec_to_compiler_output(
+        {
+            "model": "meta/llama",
+            "dataset": {"training": "default/train"},
+            "training": {
+                "training_type": "sft",
+                "finetuning_type": "lora",
+                "precision": "bf16",
+                "lora": {"rank": 8, "alpha": 16, "dropout": 0.1},
+            },
+            "optimizer": {
+                "learning_rate": 2e-4,
+                "min_learning_rate": 1e-5,
+                "adam_beta1": 0.8,
+                "adam_beta2": 0.95,
+            },
+            "parallelism": {"num_gpus_per_node": 2, "tensor_parallel_size": 2, "sequence_parallel": True},
+            "output": {"name": "out", "type": "adapter", "fileset": "out-fs"},
+        },
+    )
+    assert isinstance(spec.training, SFTTraining)
+    assert spec.training.precision is not None and spec.training.precision.value == "bf16"
+    assert spec.training.min_learning_rate == 1e-5
+    assert spec.training.adam_beta1 == 0.8
+    assert spec.training.adam_beta2 == 0.95
+    assert spec.training.parallelism.sequence_parallel is True
+    assert spec.training.peft is not None
+    assert spec.training.peft.dropout == 0.1
+
+
+def test_adapter_new_fields_default_when_omitted() -> None:
+    """Omitting the new fields keeps the v2 SFTTraining defaults."""
+    spec = automodel_spec_to_compiler_output(
+        {
+            "model": "meta/llama",
+            "dataset": {"training": "default/train"},
+            "training": {"training_type": "sft", "finetuning_type": "lora"},
+            "output": {"name": "out", "type": "adapter", "fileset": "out-fs"},
+        },
+    )
+    assert isinstance(spec.training, SFTTraining)
+    assert spec.training.precision is None
+    assert spec.training.min_learning_rate is None
+    assert spec.training.adam_beta1 == 0.9
+    assert spec.training.adam_beta2 == 0.999
+    assert spec.training.parallelism.sequence_parallel is False
+    assert spec.training.peft is not None
+    assert spec.training.peft.dropout == 0.0
+
+
 def test_adapter_distillation() -> None:
     spec = automodel_spec_to_compiler_output(
         {

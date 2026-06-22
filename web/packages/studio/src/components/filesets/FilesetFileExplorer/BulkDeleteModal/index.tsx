@@ -5,6 +5,7 @@ import { Button, Flex, Modal } from '@nvidia/foundations-react-core';
 import { useDatasetFilesDelete } from '@studio/api/datasets/useDatasetFilesDelete';
 import { extractFilePathsFromDirectory } from '@studio/components/filesets/FilesetFileExplorer/BulkDeleteModal/utils';
 import { FileSystemNode } from '@studio/components/FilesTable/utils';
+import { logger } from '@studio/util/logger';
 import { Trash } from 'lucide-react';
 import { FC, ReactNode, useState } from 'react';
 
@@ -56,7 +57,7 @@ export const BulkDeleteModal: FC<BulkDeleteModalProps> = ({
       setOpen(false);
     } catch (error) {
       // Error handling is managed by the mutation hooks
-      console.error('Failed to delete items:', error);
+      logger.error('Failed to delete items', error);
     }
   };
 

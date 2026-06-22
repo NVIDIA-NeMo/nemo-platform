@@ -4,6 +4,7 @@
 
 """Discover GPU nodes, run one NCCL worker pod per node, then delete workers."""
 
+import json
 import os
 import sys
 import time
@@ -45,6 +46,26 @@ def _env(name, default=None):
             return default
         raise RuntimeError(f"missing env {name}")
     return v
+
+
+def _image_pull_secret_names():
+    raw = os.environ.get("IMAGE_PULL_SECRETS", "[]")
+    if not raw:
+        return []
+    try:
+        names = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("IMAGE_PULL_SECRETS must be a JSON list of secret names") from exc
+    if not isinstance(names, list):
+        raise RuntimeError("IMAGE_PULL_SECRETS must be a JSON list of secret names")
+
+    result = []
+    for name in names:
+        if not isinstance(name, str):
+            raise RuntimeError("IMAGE_PULL_SECRETS must be a JSON list of secret names")
+        if name:
+            result.append(name)
+    return result
 
 
 def _node_ready(node):
@@ -286,7 +307,7 @@ def config_test(iteration: int, print_logs: bool):
     master_port = _env("MASTER_PORT", "29500")
     timeout_s = int(_env("WAIT_TIMEOUT_SECONDS", "900"))
 
-    image_pull_secret = os.environ.get("IMAGE_PULL_SECRET", "")
+    image_pull_secret_names = _image_pull_secret_names()
     release_name = os.environ.get("RELEASE_NAME", "")
 
     gpu_req = _env("WORKER_GPU_REQUEST", "1")
@@ -415,9 +436,7 @@ def config_test(iteration: int, print_logs: bool):
     # can resolve on the leader pod but fail on other nodes (NodeLocal DNS / split views).
     leader_ip = None
 
-    image_pull_secrets = []
-    if image_pull_secret:
-        image_pull_secrets.append(V1LocalObjectReference(name=image_pull_secret))
+    image_pull_secrets = [V1LocalObjectReference(name=name) for name in image_pull_secret_names]
 
     def _make_worker_pod(rank, hostname, leader_addr_from_field_ref):
         name = worker_pod_name(rank)

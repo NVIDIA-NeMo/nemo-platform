@@ -10,10 +10,10 @@ Learn how to run NeMo Safe Synthesizer jobs through hands-on tutorials to genera
 
 Before starting any tutorial, ensure you have:
 
-- [NeMo Safe Synthesizer deployed](/documentation/synthesize-safe-data) using Docker Compose or Helm
-- Python environment with `nemo-platform` SDK installed:
+- [NeMo Safe Synthesizer running](/documentation/synthesize-safe-data)
+- Python environment with the PyPI `nemo-platform` wrapper package installed. The `all` extra is defined by the wrapper package, not by the generated SDK package under `sdk/python/nemo-platform/pyproject.toml`. If you are working from a source checkout, run `make bootstrap` from the repository root instead.
  ```bash
- pip install nemo-platform[all]
+ pip install "nemo-platform[all]"
  ```
 - Jupyter environment for running tutorial notebooks
 

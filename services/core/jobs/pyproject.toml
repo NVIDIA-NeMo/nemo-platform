@@ -60,3 +60,12 @@ dev = [
 [tool.pytest.ini_options]
 # testpaths = ["tests"]  # Commented to prevent namespace collision with root pytest
 asyncio_mode = "auto"
+markers = [
+    "integration: Service integration tests - test individual service interfaces and interactions (uses ASGI, mocks external services via SDK)",
+    "e2e: End-to-end tests - test complete customer workflows on deployed infrastructure (Helm/Docker Compose)",
+    "regression: Regression tests - test individual functional microservices for baseline functionality",
+    "canary: Canary tests - test deployed integration environments like top of tree",
+    "slow: Tests that take a long time to run",
+    "skip_in_ci: Tests that should be skipped in CI environment",
+    "unit: Unit tests - test single classes/functions with no infrastructure dependencies",
+]

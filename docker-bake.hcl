@@ -103,6 +103,10 @@ variable "BUILD_ARCH" {
   default = ""
 }
 
+variable "FASTEMBED_CACHE_CONTEXT" {
+  default = "docker/fastembed-cache-empty"
+}
+
 variable "CUDA_VERSION" {
   default = "12.8.1"
 }
@@ -449,6 +453,7 @@ target "nmp-api-docker" {
     nmp-jobs-launcher         = "target:nmp-jobs-launcher"
     nmp-studio-ui             = "target:nmp-studio-ui"
     policy-wasm-artifacts     = "target:root-policy-wasm-artifacts"
+    fastembed-cache           = FASTEMBED_CACHE_CONTEXT
   }
   args = {
     NMP_PLATFORM_VERSION = notequal(BAKE_TAG, "") ? BAKE_TAG : "dev"
@@ -781,7 +786,9 @@ target "nmp-unsloth-training" {
   dockerfile = "docker/Dockerfile.nmp-unsloth-training"
   target     = "runtime"
   contexts = {
-    platform-workspace = "target:unsloth-platform-workspace"
+    platform-workspace        = "target:unsloth-platform-workspace"
+    causal-conv1d-wheel-image = causal_conv1d_wheel_context()
+    mamba-ssm-wheel-image     = mamba_ssm_wheel_context()
   }
   cache-to   = maybe_registry_cache_to("nmp-unsloth-training")
   cache-from = maybe_registry_cache_from("nmp-unsloth-training")

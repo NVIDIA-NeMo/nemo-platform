@@ -224,7 +224,7 @@ def main(
     """
     Command-line interface for NeMo Platform.
 
-    :books: Documentation: https://nvidia-nemo.github.io/nemo-platform/main/
+    :books: Documentation: https://docs.nvidia.com/nemo-platform
 
     [green]Getting started:[/]
     - Browse documentation with [cyan]`nemo docs --list`[/]

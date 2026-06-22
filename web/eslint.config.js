@@ -157,6 +157,7 @@ export default [
       ...hooksPlugin.configs.recommended.rules,
       ...baseRules,
       'import/no-default-export': 'error',
+      'no-console': 'error',
       'no-restricted-imports': [
         'warn',
         {
@@ -172,10 +173,21 @@ export default [
     },
     languageOptions: baseLanguageOptions,
   },
-  // Handles tests
+  // Enforce *.test.* filename convention across all test trees (src/, e2e-tests/, orval/, etc.)
+  {
+    files: [`${pathPrefix}**/*.{test,spec}.{js,jsx,ts,tsx}`],
+    plugins: { vitest },
+    rules: {
+      'vitest/consistent-test-filename': ['error', { pattern: '.*\\.test\\.[jt]sx?$' }],
+    },
+  },
+  // Vitest + Testing Library rules — scoped to src/ only (e2e tests use Playwright's test(), not it())
   {
     files: [`${pathPrefix}**/src/**/*.{test,spec}.{js,jsx,ts,tsx}`],
-    plugins: { vitest, ...testingLibrary.configs['flat/react'].plugins },
+    plugins: {
+      vitest,
+      ...testingLibrary.configs['flat/react'].plugins,
+    },
     rules: {
       ...testingLibrary.configs['flat/react'].rules,
       'vitest/consistent-test-it': ['error', { fn: 'it' }],

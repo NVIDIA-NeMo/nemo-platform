@@ -3,6 +3,7 @@
 
 import { DEFAULT_WORKSPACE } from '@nemo/common/src/models/constants';
 import { filesDownloadFile } from '@nemo/sdk/generated/platform/api';
+import { toError } from '@studio/util/logger';
 import axios from 'axios';
 
 export interface LargeFileWorkerMessage {
@@ -45,6 +46,6 @@ self.onmessage = async function (e: MessageEvent<LargeFileWorkerMessage>) {
     const arrayBuffer = await response.arrayBuffer();
     self.postMessage({ done: true, arrayBuffer }, { transfer: [arrayBuffer] });
   } catch (error) {
-    self.postMessage({ done: true, error: String(error) });
+    self.postMessage({ done: true, error: toError(error).message });
   }
 };

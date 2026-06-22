@@ -5,6 +5,7 @@ import type { ToolCallMessagePartComponent } from '@assistant-ui/react';
 import { Text } from '@nvidia/foundations-react-core';
 import { JobProgressToolCall } from '@studio/routes/agents/ClaudeCodeChatRoute/JobProgressToolCall';
 import {
+  CLAUDE_CODE_COLLAPSED_THINKING_TOOL_NAME,
   CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME,
   isClaudeCodeJobProgressToolName,
   isClaudeCodeSubtleToolCallName,
@@ -205,6 +206,13 @@ const getEditStats = (args: Record<string, unknown>): { additions: number; delet
 
 const isToolArgsRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const splitCollapsedThinkingParagraphs = (text: string): readonly string[] =>
+  text
+    .trim()
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
 
 const getAskUserQuestionSummary = (args: ClaudeCodeToolArgs): string | undefined => {
   const questions = args.questions;
@@ -550,6 +558,39 @@ const SubtleToolCallRow = ({ actions, isRunning = false }: SubtleToolCallRowProp
   </Text>
 );
 
+const CollapsedThinkingToolCall = ({ text }: { readonly text: string }) => {
+  const paragraphs = splitCollapsedThinkingParagraphs(text);
+  if (!paragraphs.length) return null;
+
+  return (
+    <Text asChild kind="body/regular/sm">
+      <details
+        className="group/thinking my-density-xs max-w-full text-gray-500 dark:text-gray-400"
+        data-testid="claude-code-collapsed-thinking"
+      >
+        <summary className="inline-flex cursor-pointer list-none items-center gap-density-xs marker:hidden">
+          <ChevronRight
+            aria-hidden
+            className="size-3 shrink-0 transition-transform group-open/thinking:rotate-90"
+          />
+          <ClipboardList aria-hidden className="size-3.5 shrink-0" />
+          <span>Earlier thinking</span>
+        </summary>
+        <div
+          className="mt-density-xs space-y-density-xs border-l border-base pl-density-md text-secondary"
+          data-testid="claude-code-collapsed-thinking-content"
+        >
+          {paragraphs.map((paragraph, index) => (
+            <p key={`${paragraph.slice(0, 24)}-${index}`} className="whitespace-pre-wrap">
+              {paragraph}
+            </p>
+          ))}
+        </div>
+      </details>
+    </Text>
+  );
+};
+
 interface FileChangeToolCallCardProps {
   readonly isRunning?: boolean;
   readonly summary: {
@@ -617,13 +658,23 @@ const FileChangeToolCallCard = ({ isRunning = false, summary }: FileChangeToolCa
   );
 };
 
-export const ClaudeCodeToolCallPart: ToolCallMessagePartComponent<ClaudeCodeToolArgs, unknown> = ({
+interface ClaudeCodeToolCallPartContentProps {
+  readonly args: ClaudeCodeToolArgs;
+  readonly argsText: string;
+  readonly isRunning?: boolean;
+  readonly toolName: string;
+}
+
+const ClaudeCodeToolCallPartContent = ({
   args,
   argsText,
-  status,
   toolName,
-}) => {
-  const isRunning = status.type === 'running';
+  isRunning = false,
+}: ClaudeCodeToolCallPartContentProps) => {
+  if (toolName === CLAUDE_CODE_COLLAPSED_THINKING_TOOL_NAME) {
+    const text = getStringArg(args, ['text']);
+    return text ? <CollapsedThinkingToolCall text={text} /> : null;
+  }
 
   if (isClaudeCodeJobProgressToolName(toolName)) {
     return <JobProgressToolCall args={args} />;
@@ -682,3 +733,17 @@ export const ClaudeCodeToolCallPart: ToolCallMessagePartComponent<ClaudeCodeTool
     />
   );
 };
+
+export const ClaudeCodeToolCallPart: ToolCallMessagePartComponent<ClaudeCodeToolArgs, unknown> = ({
+  args,
+  argsText,
+  status,
+  toolName,
+}) => (
+  <ClaudeCodeToolCallPartContent
+    args={args}
+    argsText={argsText}
+    isRunning={status.type === 'running'}
+    toolName={toolName}
+  />
+);

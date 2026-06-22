@@ -60,13 +60,15 @@ By default, NeMo Safe Synthesizer uses **record-level** differential privacy, wh
 
 ## Setup
 
-Install the NeMo Platform SDK with Safe Synthesizer support:
+Install the PyPI `nemo-platform` wrapper package with Safe Synthesizer support. The `all` extra is defined by the wrapper package, not by the generated SDK package under `sdk/python/nemo-platform/pyproject.toml`. If you are working from a source checkout, run `make bootstrap` from the repository root instead, then install the tutorial-only packages (`kagglehub matplotlib`) in that environment.
+
+For a PyPI install:
 
 ```shell
 if command -v uv &> /dev/null; then
- uv pip install nemo-platform[all] kagglehub matplotlib
+ uv pip install "nemo-platform[all]" kagglehub matplotlib
 else
- pip install nemo-platform[all] kagglehub matplotlib
+ pip install "nemo-platform[all]" kagglehub matplotlib
 fi
 ```
 

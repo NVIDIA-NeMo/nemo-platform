@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 import secrets
 import time
+from datetime import datetime, timezone
 from typing import Annotated, Literal, TypeVar
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -58,7 +59,17 @@ router = APIRouter(dependencies=[Depends(require_workspace_access)])
 GROUPS_TAG = "Experiment Groups"
 EXPERIMENTS_TAG = "Experiments"
 
-SortField = Literal["-created_at", "created_at", "-updated_at", "updated_at", "-name", "name"]
+ExperimentGroupSortField = Literal["-created_at", "created_at", "-updated_at", "updated_at", "-name", "name"]
+ExperimentSortField = Literal[
+    "-created_at",
+    "created_at",
+    "-updated_at",
+    "updated_at",
+    "-name",
+    "name",
+    "-pinned_at",
+    "pinned_at",
+]
 EntityT = TypeVar("EntityT", Experiment, ExperimentGroup)
 
 EntityClientDep = Annotated[EntityClient, Depends(get_entity_client)]
@@ -133,7 +144,9 @@ async def list_experiment_groups(
     parsed: ExperimentGroupFilterDep,
     page: int = Query(default=1, ge=1, description="Page number."),
     page_size: int = Query(default=100, ge=1, le=1000, description="Page size."),
-    sort: SortField = Query(default="-created_at", description="Sort field; prefix with '-' for descending."),
+    sort: ExperimentGroupSortField = Query(
+        default="-created_at", description="Sort field; prefix with '-' for descending."
+    ),
 ) -> Page[ExperimentGroupResponse]:
     validate_list_query_params(request)
     _apply_is_deleted_filter(parsed)
@@ -326,7 +339,8 @@ async def create_experiment(
         filter_description=(
             "Filter experiments by name, experiment_group_id, "
             "dataset_name, dataset_version, created_by, created_at, or updated_at. "
-            "Pass is_deleted=true to return only soft-deleted experiments; omit to see only live ones."
+            "Pass is_deleted=true to return only soft-deleted experiments; omit to see only live ones. "
+            "Pass is_pinned=true (or false) to filter by pinned state; omit to return both."
         ),
     ),
 )
@@ -338,10 +352,11 @@ async def list_experiments(
     parsed: ExperimentFilterDep,
     page: int = Query(default=1, ge=1, description="Page number."),
     page_size: int = Query(default=100, ge=1, le=1000, description="Page size."),
-    sort: SortField = Query(default="-created_at", description="Sort field; prefix with '-' for descending."),
+    sort: ExperimentSortField = Query(default="-created_at", description="Sort field; prefix with '-' for descending."),
 ) -> Page[ExperimentResponse]:
     validate_list_query_params(request)
     _apply_is_deleted_filter(parsed)
+    _apply_is_pinned_filter(parsed)
     result = await entity_client.list(
         Experiment,
         workspace=workspace,
@@ -459,6 +474,66 @@ async def delete_experiment(
     )
     _reject_if_deleted(entity, workspace=workspace, name=name, label="Experiment")
     await _soft_delete(entity_client, entity)
+
+
+@router.post(
+    "/v2/workspaces/{workspace}/experiments/{name}/pin",
+    response_model=ExperimentResponse,
+    tags=[EXPERIMENTS_TAG],
+    responses={404: {"description": "Experiment not found"}},
+)
+async def pin_experiment(
+    workspace: str,
+    name: str,
+    entity_client: EntityClientDep,
+    rollup_repository: ExperimentRollupRepositoryDep,
+) -> ExperimentResponse:
+    """Pin an experiment to the top of the list (workspace-shared).
+
+    Re-pinning an already-pinned experiment refreshes ``pinned_at`` to the current timestamp,
+    which is intentional (most-recently-pinned sorts first).
+    """
+    entity = await _get_or_404(
+        entity_client,
+        Experiment,
+        workspace=workspace,
+        name=name,
+        label="Experiment",
+    )
+    _reject_if_deleted(entity, workspace=workspace, name=name, label="Experiment")
+    entity.pinned_at = datetime.now(timezone.utc)
+    updated = await entity_client.update(entity)
+    response = ExperimentResponse.from_entity(updated)
+    await _hydrate_rollups(workspace=workspace, responses=[response], rollup_repository=rollup_repository)
+    return response
+
+
+@router.delete(
+    "/v2/workspaces/{workspace}/experiments/{name}/pin",
+    response_model=ExperimentResponse,
+    tags=[EXPERIMENTS_TAG],
+    responses={404: {"description": "Experiment not found"}},
+)
+async def unpin_experiment(
+    workspace: str,
+    name: str,
+    entity_client: EntityClientDep,
+    rollup_repository: ExperimentRollupRepositoryDep,
+) -> ExperimentResponse:
+    """Unpin an experiment. Idempotent: unpinning an already-unpinned experiment is a no-op."""
+    entity = await _get_or_404(
+        entity_client,
+        Experiment,
+        workspace=workspace,
+        name=name,
+        label="Experiment",
+    )
+    _reject_if_deleted(entity, workspace=workspace, name=name, label="Experiment")
+    entity.pinned_at = None
+    updated = await entity_client.update(entity)
+    response = ExperimentResponse.from_entity(updated)
+    await _hydrate_rollups(workspace=workspace, responses=[response], rollup_repository=rollup_repository)
+    return response
 
 
 @router.get(
@@ -734,6 +809,31 @@ def _apply_is_deleted_filter(parsed: ParsedFilter) -> None:
             ],
         ),
     )
+
+
+def _apply_is_pinned_filter(parsed: ParsedFilter) -> None:
+    """Translate the user-facing ``is_pinned`` boolean into a clause on ``data.pinned_at``.
+
+    The entity stores ``pinned_at: datetime | None``; "pinned" maps to "not null".
+
+    - ``filter[is_pinned]=true``  → ``data.pinned_at IS NOT NULL`` (only pinned rows).
+    - ``filter[is_pinned]=false`` → ``data.pinned_at IS NULL`` (only unpinned rows).
+    - Omitted                     → no filter clause; both pinned and unpinned are returned.
+    """
+    raw_value = parsed.remove("is_pinned")
+    if isinstance(raw_value, bool):
+        want_pinned: bool | None = raw_value
+    elif isinstance(raw_value, str):
+        want_pinned = raw_value.strip().lower() in ("true", "1", "yes")
+    else:
+        want_pinned = None
+    if want_pinned is None:
+        return
+    null_clause = ComparisonOperation(operator=FilterOperator.EQ, field="data.pinned_at", value=None)
+    if want_pinned:
+        parsed.and_with(LogicalOperation(operator=FilterOperator.NOT, operations=[null_clause]))
+    else:
+        parsed.and_with(null_clause)
 
 
 async def _hydrate_rollups(
