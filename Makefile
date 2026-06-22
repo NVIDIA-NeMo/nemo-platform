@@ -29,7 +29,6 @@ help:
 	@echo "Makefile commands:"
 	@grep -E '^[a-zA-Z_-][a-zA-Z0-9_/-]*:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 
-
 DOCKER_BAKE_FILE ?= docker-bake.hcl
 DOCKER_TARGET ?= $(if $(TARGET),$(TARGET),docker-cpu)
 DOCKER_PLATFORMS ?= $(BUILD_ARCH)
