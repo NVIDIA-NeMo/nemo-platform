@@ -355,12 +355,11 @@ async def list_experiments(
     validate_list_query_params(request)
     _apply_is_deleted_filter(parsed)
     _apply_is_pinned_filter(parsed)
-    entity_sort = sort.replace("pinned_at", "data.pinned_at") if "pinned_at" in sort else sort
     result = await entity_client.list(
         Experiment,
         workspace=workspace,
         filter_operation=parsed.operation,
-        sort=entity_sort,
+        sort=sort,
         page=page,
         page_size=page_size,
     )
