@@ -1384,7 +1384,7 @@ jobs:
         # is defensive in case that ever stops being true (e.g. an artifact
         # ever leaks in from a previous workflow attempt).
         run: |
-          RUN_DIR=$(ls -td plugins/nemo-guardrails/benchmarks/artifacts/runs/*/ | head -1)
+          RUN_DIR=$(find plugins/nemo-guardrails/benchmarks/artifacts/runs -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' | sort -nr | head -1 | cut -d' ' -f2-)
           echo "Analyzing run directory: $RUN_DIR"
           uv run --frozen --package nemo-guardrails-plugin --extra bench \
             python -m nemo_guardrails_plugin.benchmarks.analyze "$RUN_DIR"

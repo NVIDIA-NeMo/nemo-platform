@@ -243,10 +243,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "run_dir",
         type=Path,
-        help=(
-            "Path to a run directory under "
-            "`plugins/nemo-guardrails/benchmarks/artifacts/runs/<timestamp>/`."
-        ),
+        help=("Path to a run directory under `plugins/nemo-guardrails/benchmarks/artifacts/runs/<timestamp>/`."),
     )
     parser.add_argument(
         "--log-level",
