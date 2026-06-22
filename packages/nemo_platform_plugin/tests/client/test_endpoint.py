@@ -86,3 +86,37 @@ def test_endpoint_repr() -> None:
     assert "/items" in r
     assert "FakeRequest" in r
     assert "FakeResponse" in r
+
+
+def test_get_with_query_params() -> None:
+    ep = get("/v2/workspaces/{workspace}/items", path_type=WorkspacePath, response_type=FakeResponse)
+    prepared = ep.request(workspace="default", query_params={"page": 1, "page_size": 10})
+
+    assert prepared.path_params == {"workspace": "default"}
+    assert prepared.query_params == {"page": 1, "page_size": 10}
+    assert prepared.method == "GET"
+
+
+def test_query_params_default_none() -> None:
+    ep = get("/v2/items", path_type=WorkspacePath, response_type=FakeResponse)
+    prepared = ep.request(workspace="default")
+
+    assert prepared.query_params is None
+
+
+def test_post_with_query_params() -> None:
+    ep = post("/v2/items", path_type=WorkspacePath, request_type=FakeRequest, response_type=FakeResponse)
+    payload = FakeRequest(name="alice")
+    prepared = ep.request(payload, workspace="default", query_params={"dry_run": True})
+
+    assert prepared.query_params == {"dry_run": True}
+    assert prepared.content == payload.model_dump_json().encode()
+
+
+def test_delete_with_response_type() -> None:
+    ep = delete("/v2/items/{id}", path_type=IdPath, response_type=FakeResponse)
+    prepared = ep.request(id="42")
+
+    assert prepared.method == "DELETE"
+    assert prepared.response_type is FakeResponse
+    assert prepared.content is None

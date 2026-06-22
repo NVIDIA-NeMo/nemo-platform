@@ -29,13 +29,14 @@ from nemo_platform_plugin.client.types import (
     ModelT,
     PathT,
     PreparedRequest,
+    QueryParamsT,
     RequestT,
     ResponseT,
     Stream,
 )
 
 
-class SyncBoundCall(Generic[PathT, RequestT, ResponseT]):
+class SyncBoundCall(Generic[PathT, RequestT, ResponseT, QueryParamsT]):
     """Sync callable returned when an :class:`Endpoint` is accessed on a :class:`NemoClient`."""
 
     def __init__(self, client: NemoClient, request_fn: Callable[..., PreparedRequest[ResponseT]]) -> None:
@@ -46,54 +47,85 @@ class SyncBoundCall(Generic[PathT, RequestT, ResponseT]):
 
     @overload
     def __call__(
-        self: SyncBoundCall[PathT, BodyRequestT, BinaryContent], payload: BodyRequestT, **kw: Unpack[PathT]
+        self: SyncBoundCall[PathT, BodyRequestT, BinaryContent, QueryParamsT],
+        payload: BodyRequestT,
+        *,
+        query_params: QueryParamsT | None = None,
+        **kw: Unpack[PathT],
     ) -> NemoBinaryResponse: ...
     @overload
     def __call__(
-        self: SyncBoundCall[PathT, BodyRequestT, Stream[ModelT]], payload: BodyRequestT, **kw: Unpack[PathT]
+        self: SyncBoundCall[PathT, BodyRequestT, Stream[ModelT], QueryParamsT],
+        payload: BodyRequestT,
+        *,
+        query_params: QueryParamsT | None = None,
+        **kw: Unpack[PathT],
     ) -> NemoStreamResponse[ModelT]: ...
     @overload
     def __call__(
-        self: SyncBoundCall[PathT, BodyRequestT, ResponseT], payload: BodyRequestT, **kw: Unpack[PathT]
+        self: SyncBoundCall[PathT, BodyRequestT, ResponseT, QueryParamsT],
+        payload: BodyRequestT,
+        *,
+        query_params: QueryParamsT | None = None,
+        **kw: Unpack[PathT],
     ) -> NemoResponse[ResponseT]: ...
 
     # -- Binary (RequestT is BinaryContent) × response variants --
 
     @overload
     def __call__(
-        self: SyncBoundCall[PathT, BinaryContent, BinaryContent],
+        self: SyncBoundCall[PathT, BinaryContent, BinaryContent, QueryParamsT],
         content: bytes | Iterable[bytes] | AsyncIterable[bytes],
+        *,
+        query_params: QueryParamsT | None = None,
         **kw: Unpack[PathT],
     ) -> NemoBinaryResponse: ...
     @overload
     def __call__(
-        self: SyncBoundCall[PathT, BinaryContent, Stream[ModelT]],
+        self: SyncBoundCall[PathT, BinaryContent, Stream[ModelT], QueryParamsT],
         content: bytes | Iterable[bytes] | AsyncIterable[bytes],
+        *,
+        query_params: QueryParamsT | None = None,
         **kw: Unpack[PathT],
     ) -> NemoStreamResponse[ModelT]: ...
     @overload
     def __call__(
-        self: SyncBoundCall[PathT, BinaryContent, ResponseT],
+        self: SyncBoundCall[PathT, BinaryContent, ResponseT, QueryParamsT],
         content: bytes | Iterable[bytes] | AsyncIterable[bytes],
+        *,
+        query_params: QueryParamsT | None = None,
         **kw: Unpack[PathT],
     ) -> NemoResponse[ResponseT]: ...
 
     # -- No body (RequestT is None) × response variants --
 
     @overload
-    def __call__(self: SyncBoundCall[PathT, None, BinaryContent], **kw: Unpack[PathT]) -> NemoBinaryResponse: ...
+    def __call__(
+        self: SyncBoundCall[PathT, None, BinaryContent, QueryParamsT],
+        *,
+        query_params: QueryParamsT | None = None,
+        **kw: Unpack[PathT],
+    ) -> NemoBinaryResponse: ...
     @overload
     def __call__(
-        self: SyncBoundCall[PathT, None, Stream[ModelT]], **kw: Unpack[PathT]
+        self: SyncBoundCall[PathT, None, Stream[ModelT], QueryParamsT],
+        *,
+        query_params: QueryParamsT | None = None,
+        **kw: Unpack[PathT],
     ) -> NemoStreamResponse[ModelT]: ...
     @overload
-    def __call__(self: SyncBoundCall[PathT, None, ResponseT], **kw: Unpack[PathT]) -> NemoResponse[ResponseT]: ...
+    def __call__(
+        self: SyncBoundCall[PathT, None, ResponseT, QueryParamsT],
+        *,
+        query_params: QueryParamsT | None = None,
+        **kw: Unpack[PathT],
+    ) -> NemoResponse[ResponseT]: ...
 
     def __call__(self, *args: object, **kw: object) -> NemoResponse | NemoBinaryResponse | NemoStreamResponse:
         return self._client.send(self._request_fn(*args, **kw))
 
 
-class AsyncBoundCall(Generic[PathT, RequestT, ResponseT]):
+class AsyncBoundCall(Generic[PathT, RequestT, ResponseT, QueryParamsT]):
     """Async callable returned when an :class:`Endpoint` is accessed on an :class:`AsyncNemoClient`."""
 
     def __init__(self, client: AsyncNemoClient, request_fn: Callable[..., PreparedRequest[ResponseT]]) -> None:
@@ -104,35 +136,53 @@ class AsyncBoundCall(Generic[PathT, RequestT, ResponseT]):
 
     @overload
     async def __call__(
-        self: AsyncBoundCall[PathT, BodyRequestT, BinaryContent], payload: BodyRequestT, **kw: Unpack[PathT]
+        self: AsyncBoundCall[PathT, BodyRequestT, BinaryContent, QueryParamsT],
+        payload: BodyRequestT,
+        *,
+        query_params: QueryParamsT | None = None,
+        **kw: Unpack[PathT],
     ) -> AsyncNemoBinaryResponse: ...
     @overload
     async def __call__(
-        self: AsyncBoundCall[PathT, BodyRequestT, Stream[ModelT]], payload: BodyRequestT, **kw: Unpack[PathT]
+        self: AsyncBoundCall[PathT, BodyRequestT, Stream[ModelT], QueryParamsT],
+        payload: BodyRequestT,
+        *,
+        query_params: QueryParamsT | None = None,
+        **kw: Unpack[PathT],
     ) -> AsyncNemoStreamResponse[ModelT]: ...
     @overload
     async def __call__(
-        self: AsyncBoundCall[PathT, BodyRequestT, ResponseT], payload: BodyRequestT, **kw: Unpack[PathT]
+        self: AsyncBoundCall[PathT, BodyRequestT, ResponseT, QueryParamsT],
+        payload: BodyRequestT,
+        *,
+        query_params: QueryParamsT | None = None,
+        **kw: Unpack[PathT],
     ) -> NemoResponse[ResponseT]: ...
 
     # -- Binary (RequestT is BinaryContent) × response variants --
 
     @overload
     async def __call__(
-        self: AsyncBoundCall[PathT, BinaryContent, BinaryContent],
+        self: AsyncBoundCall[PathT, BinaryContent, BinaryContent, QueryParamsT],
         content: bytes | Iterable[bytes] | AsyncIterable[bytes],
+        *,
+        query_params: QueryParamsT | None = None,
         **kw: Unpack[PathT],
     ) -> AsyncNemoBinaryResponse: ...
     @overload
     async def __call__(
-        self: AsyncBoundCall[PathT, BinaryContent, Stream[ModelT]],
+        self: AsyncBoundCall[PathT, BinaryContent, Stream[ModelT], QueryParamsT],
         content: bytes | Iterable[bytes] | AsyncIterable[bytes],
+        *,
+        query_params: QueryParamsT | None = None,
         **kw: Unpack[PathT],
     ) -> AsyncNemoStreamResponse[ModelT]: ...
     @overload
     async def __call__(
-        self: AsyncBoundCall[PathT, BinaryContent, ResponseT],
+        self: AsyncBoundCall[PathT, BinaryContent, ResponseT, QueryParamsT],
         content: bytes | Iterable[bytes] | AsyncIterable[bytes],
+        *,
+        query_params: QueryParamsT | None = None,
         **kw: Unpack[PathT],
     ) -> NemoResponse[ResponseT]: ...
 
@@ -140,15 +190,24 @@ class AsyncBoundCall(Generic[PathT, RequestT, ResponseT]):
 
     @overload
     async def __call__(
-        self: AsyncBoundCall[PathT, None, BinaryContent], **kw: Unpack[PathT]
+        self: AsyncBoundCall[PathT, None, BinaryContent, QueryParamsT],
+        *,
+        query_params: QueryParamsT | None = None,
+        **kw: Unpack[PathT],
     ) -> AsyncNemoBinaryResponse: ...
     @overload
     async def __call__(
-        self: AsyncBoundCall[PathT, None, Stream[ModelT]], **kw: Unpack[PathT]
+        self: AsyncBoundCall[PathT, None, Stream[ModelT], QueryParamsT],
+        *,
+        query_params: QueryParamsT | None = None,
+        **kw: Unpack[PathT],
     ) -> AsyncNemoStreamResponse[ModelT]: ...
     @overload
     async def __call__(
-        self: AsyncBoundCall[PathT, None, ResponseT], **kw: Unpack[PathT]
+        self: AsyncBoundCall[PathT, None, ResponseT, QueryParamsT],
+        *,
+        query_params: QueryParamsT | None = None,
+        **kw: Unpack[PathT],
     ) -> NemoResponse[ResponseT]: ...
 
     async def __call__(
