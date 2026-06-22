@@ -1,0 +1,1560 @@
+openapi: 3.1.0
+info:
+  title: deployments (plugin)
+  version: 0.1.3
+paths:
+  /apis/deployments/v2/workspaces/{workspace}/deployment-configs:
+    post:
+      tags:
+      - Deployment Configs
+      summary: Create Deployment Config
+      operationId: create_deployment_config_apis_deployments_v2_workspaces__workspace__deployment_configs_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDeploymentConfigRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentConfig'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Deployment Configs
+      summary: List Deployment Configs
+      operationId: list_deployment_configs_apis_deployments_v2_workspaces__workspace__deployment_configs_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Page Size
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+          default: -created_at
+          title: Sort
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NemoListResponse_DeploymentConfig_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/deployments/v2/workspaces/{workspace}/deployment-configs/{name}:
+    get:
+      tags:
+      - Deployment Configs
+      summary: Get Deployment Config
+      operationId: get_deployment_config_apis_deployments_v2_workspaces__workspace__deployment_configs__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentConfig'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Deployment Configs
+      summary: Delete Deployment Config
+      operationId: delete_deployment_config_apis_deployments_v2_workspaces__workspace__deployment_configs__name__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/deployments/v2/workspaces/{workspace}/deployments:
+    post:
+      tags:
+      - Deployments
+      summary: Create Deployment
+      operationId: create_deployment_apis_deployments_v2_workspaces__workspace__deployments_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDeploymentRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Deployment'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Deployments
+      summary: List Deployments
+      operationId: list_deployments_apis_deployments_v2_workspaces__workspace__deployments_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Page Size
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+          default: -created_at
+          title: Sort
+      - name: status_in
+        in: query
+        required: false
+        schema:
+          description: Comma-separated deployment statuses for bulk reconciler queries.
+          title: Status In
+          type: string
+        description: Comma-separated deployment statuses for bulk reconciler queries.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NemoListResponse_Deployment_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/deployments/v2/workspaces/{workspace}/deployments/{name}:
+    get:
+      tags:
+      - Deployments
+      summary: Get Deployment
+      operationId: get_deployment_apis_deployments_v2_workspaces__workspace__deployments__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Deployment'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Deployments
+      summary: Delete Deployment
+      operationId: delete_deployment_apis_deployments_v2_workspaces__workspace__deployments__name__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/deployments/v2/workspaces/{workspace}/deployments/{name}/status:
+    put:
+      tags:
+      - Deployment Status
+      summary: Update Deployment Status
+      operationId: update_deployment_status_apis_deployments_v2_workspaces__workspace__deployments__name__status_put
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateDeploymentStatusRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Deployment'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/deployments/v2/workspaces/{workspace}/volumes:
+    post:
+      tags:
+      - Volumes
+      summary: Create Volume
+      operationId: create_volume_apis_deployments_v2_workspaces__workspace__volumes_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateVolumeRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Volume'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Volumes
+      summary: List Volumes
+      operationId: list_volumes_apis_deployments_v2_workspaces__workspace__volumes_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Page Size
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+          default: -created_at
+          title: Sort
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NemoListResponse_Volume_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/deployments/v2/workspaces/{workspace}/volumes/{name}:
+    get:
+      tags:
+      - Volumes
+      summary: Get Volume
+      operationId: get_volume_apis_deployments_v2_workspaces__workspace__volumes__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Volume'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Volumes
+      summary: Delete Volume
+      operationId: delete_volume_apis_deployments_v2_workspaces__workspace__volumes__name__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/deployments/v2/workspaces/{workspace}/volumes/{name}/status:
+    put:
+      tags:
+      - Volume Status
+      summary: Update Volume Status
+      operationId: update_volume_status_apis_deployments_v2_workspaces__workspace__volumes__name__status_put
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateVolumeStatusRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Volume'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    Affinity:
+      properties:
+        nodeAffinity:
+          title: Nodeaffinity
+          additionalProperties: true
+          type: object
+        podAffinity:
+          title: Podaffinity
+          additionalProperties: true
+          type: object
+        podAntiAffinity:
+          title: Podantiaffinity
+          additionalProperties: true
+          type: object
+      type: object
+      title: Affinity
+    ConfigFile:
+      properties:
+        path:
+          type: string
+          title: Path
+        content:
+          type: string
+          title: Content
+        mode:
+          type: integer
+          title: Mode
+          default: 420
+      type: object
+      required:
+      - path
+      - content
+      title: ConfigFile
+    ContainerInput:
+      properties:
+        name:
+          type: string
+          title: Name
+        image:
+          type: string
+          title: Image
+        command:
+          items:
+            type: string
+          type: array
+          title: Command
+        args:
+          items:
+            type: string
+          type: array
+          title: Args
+        env:
+          items:
+            $ref: '#/components/schemas/EnvVar'
+          type: array
+          title: Env
+        ports:
+          items:
+            $ref: '#/components/schemas/ContainerPort'
+          type: array
+          title: Ports
+        resources:
+          $ref: '#/components/schemas/ResourceRequirements'
+        volumeMounts:
+          items:
+            $ref: '#/components/schemas/VolumeMount'
+          type: array
+          title: Volumemounts
+        livenessProbe:
+          $ref: '#/components/schemas/Probe'
+        readinessProbe:
+          $ref: '#/components/schemas/Probe'
+      type: object
+      required:
+      - name
+      - image
+      title: ContainerInput
+    ContainerOutput:
+      properties:
+        name:
+          type: string
+          title: Name
+        image:
+          type: string
+          title: Image
+        command:
+          items:
+            type: string
+          type: array
+          title: Command
+        args:
+          items:
+            type: string
+          type: array
+          title: Args
+        env:
+          items:
+            $ref: '#/components/schemas/EnvVar'
+          type: array
+          title: Env
+        ports:
+          items:
+            $ref: '#/components/schemas/ContainerPort'
+          type: array
+          title: Ports
+        resources:
+          $ref: '#/components/schemas/ResourceRequirements'
+        volumeMounts:
+          items:
+            $ref: '#/components/schemas/VolumeMount'
+          type: array
+          title: Volumemounts
+        livenessProbe:
+          $ref: '#/components/schemas/Probe'
+        readinessProbe:
+          $ref: '#/components/schemas/Probe'
+      type: object
+      required:
+      - name
+      - image
+      title: ContainerOutput
+    ContainerPort:
+      properties:
+        name:
+          title: Name
+          type: string
+        containerPort:
+          type: integer
+          title: Containerport
+        protocol:
+          type: string
+          enum:
+          - TCP
+          - UDP
+          title: Protocol
+          default: TCP
+      type: object
+      required:
+      - containerPort
+      title: ContainerPort
+    CreateDeploymentConfigRequest:
+      properties:
+        name:
+          type: string
+          title: Name
+        containers:
+          items:
+            $ref: '#/components/schemas/ContainerInput'
+          type: array
+          title: Containers
+        init_containers:
+          items:
+            $ref: '#/components/schemas/ContainerInput'
+          type: array
+          title: Init Containers
+        volume_mounts:
+          items:
+            $ref: '#/components/schemas/VolumeMount'
+          type: array
+          title: Volume Mounts
+        config_files:
+          items:
+            $ref: '#/components/schemas/ConfigFile'
+          type: array
+          title: Config Files
+        restart_policy:
+          type: string
+          enum:
+          - Always
+          - OnFailure
+          - Never
+          title: Restart Policy
+          default: Always
+        backoff_limit:
+          type: integer
+          title: Backoff Limit
+          default: 6
+        prerequisites:
+          items:
+            $ref: '#/components/schemas/Prerequisite'
+          type: array
+          title: Prerequisites
+        drift_recovery:
+          $ref: '#/components/schemas/DriftRecoveryPolicy'
+        labels:
+          additionalProperties:
+            type: string
+          type: object
+          title: Labels
+        backend_config:
+          $ref: '#/components/schemas/DeploymentBackendConfigInput'
+      type: object
+      required:
+      - name
+      title: CreateDeploymentConfigRequest
+    CreateDeploymentRequest:
+      properties:
+        name:
+          type: string
+          title: Name
+        deployment_config:
+          type: string
+          title: Deployment Config
+          description: DeploymentConfig name in this workspace, or workspace/name
+            for cross-workspace refs.
+        desired_state:
+          type: string
+          enum:
+          - READY
+          - STOPPED
+          title: Desired State
+          default: READY
+        executor:
+          title: Executor
+          type: string
+      type: object
+      required:
+      - name
+      - deployment_config
+      title: CreateDeploymentRequest
+    CreateVolumeRequest:
+      properties:
+        name:
+          type: string
+          title: Name
+        size:
+          type: string
+          title: Size
+          default: 1Gi
+        access_modes:
+          items:
+            type: string
+            enum:
+            - ReadWriteOnce
+            - ReadOnlyMany
+            - ReadWriteMany
+          type: array
+          title: Access Modes
+        backend_config:
+          $ref: '#/components/schemas/VolumeBackendConfig'
+      type: object
+      required:
+      - name
+      title: CreateVolumeRequest
+    Deployment:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: Entity name within the workspace
+          default: ''
+        workspace:
+          type: string
+          pattern: ^[\w\-\+.@:]+$
+          title: Workspace
+          description: Workspace identifier
+        project:
+          title: Project
+          description: The name of the project associated with this entity.
+          type: string
+        deployment_config:
+          type: string
+          title: Deployment Config
+          description: Name of the DeploymentConfig entity.
+        desired_state:
+          type: string
+          enum:
+          - READY
+          - STOPPED
+          title: Desired State
+          default: READY
+        executor:
+          title: Executor
+          description: Named executor registry entry; falls back to plugin default_executor.
+          type: string
+        status:
+          type: string
+          enum:
+          - PENDING
+          - STARTING
+          - READY
+          - SUCCEEDED
+          - FAILED
+          - LOST
+          - DELETING
+          title: Status
+          default: PENDING
+        status_message:
+          type: string
+          title: Status Message
+          default: ''
+        endpoints:
+          items:
+            $ref: '#/components/schemas/Endpoint'
+          type: array
+          title: Endpoints
+        exit_code:
+          title: Exit Code
+          type: integer
+        error_details:
+          title: Error Details
+          additionalProperties: true
+          type: object
+        status_history:
+          items:
+            $ref: '#/components/schemas/StatusEvent'
+          type: array
+          title: Status History
+        id:
+          type: string
+          title: Id
+          readOnly: true
+        created_at:
+          title: Created At
+          readOnly: true
+          type: string
+          format: date-time
+        created_by:
+          title: Created By
+          readOnly: true
+          nullable: true
+          type: string
+        updated_at:
+          title: Updated At
+          readOnly: true
+          type: string
+          format: date-time
+        updated_by:
+          title: Updated By
+          readOnly: true
+          nullable: true
+          type: string
+        entity_id:
+          type: string
+          title: Entity Id
+          description: Alias for id for backwards compatibility.
+          readOnly: true
+        parent:
+          title: Parent
+          description: Parent entity ID for nested entities.
+          readOnly: true
+          type: string
+      type: object
+      required:
+      - workspace
+      - deployment_config
+      - id
+      - created_at
+      - created_by
+      - updated_at
+      - updated_by
+      - entity_id
+      - parent
+      title: Deployment
+      description: Desired and observed deployment state.
+    DeploymentBackendConfigInput:
+      properties:
+        docker:
+          $ref: '#/components/schemas/DockerDeploymentConfig'
+        k8s:
+          $ref: '#/components/schemas/K8sDeploymentConfig'
+      type: object
+      title: DeploymentBackendConfigInput
+    DeploymentBackendConfigOutput:
+      properties:
+        docker:
+          $ref: '#/components/schemas/DockerDeploymentConfig'
+        k8s:
+          $ref: '#/components/schemas/K8sDeploymentConfig'
+      type: object
+      title: DeploymentBackendConfigOutput
+    DeploymentConfig:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: Entity name within the workspace
+          default: ''
+        workspace:
+          type: string
+          pattern: ^[\w\-\+.@:]+$
+          title: Workspace
+          description: Workspace identifier
+        project:
+          title: Project
+          description: The name of the project associated with this entity.
+          type: string
+        containers:
+          items:
+            $ref: '#/components/schemas/ContainerOutput'
+          type: array
+          title: Containers
+        initContainers:
+          items:
+            $ref: '#/components/schemas/ContainerOutput'
+          type: array
+          title: Initcontainers
+        volumeMounts:
+          items:
+            $ref: '#/components/schemas/VolumeMount'
+          type: array
+          title: Volumemounts
+        configFiles:
+          items:
+            $ref: '#/components/schemas/ConfigFile'
+          type: array
+          title: Configfiles
+        restartPolicy:
+          type: string
+          enum:
+          - Always
+          - OnFailure
+          - Never
+          title: Restartpolicy
+          default: Always
+        backoffLimit:
+          type: integer
+          title: Backofflimit
+          default: 6
+        prerequisites:
+          items:
+            $ref: '#/components/schemas/Prerequisite'
+          type: array
+          title: Prerequisites
+        driftRecovery:
+          $ref: '#/components/schemas/DriftRecoveryPolicy'
+        labels:
+          additionalProperties:
+            type: string
+          type: object
+          title: Labels
+        backendConfig:
+          $ref: '#/components/schemas/DeploymentBackendConfigOutput'
+        id:
+          type: string
+          title: Id
+          readOnly: true
+        created_at:
+          title: Created At
+          readOnly: true
+          type: string
+          format: date-time
+        created_by:
+          title: Created By
+          readOnly: true
+          nullable: true
+          type: string
+        updated_at:
+          title: Updated At
+          readOnly: true
+          type: string
+          format: date-time
+        updated_by:
+          title: Updated By
+          readOnly: true
+          nullable: true
+          type: string
+        entity_id:
+          type: string
+          title: Entity Id
+          description: Alias for id for backwards compatibility.
+          readOnly: true
+        parent:
+          title: Parent
+          description: Parent entity ID for nested entities.
+          readOnly: true
+          type: string
+      type: object
+      required:
+      - workspace
+      - id
+      - created_at
+      - created_by
+      - updated_at
+      - updated_by
+      - entity_id
+      - parent
+      title: DeploymentConfig
+      description: Immutable PodSpec-shaped deployment template.
+    DockerDeploymentConfig:
+      properties:
+        port_range_start:
+          type: integer
+          title: Port Range Start
+          default: 9000
+        port_range_end:
+          type: integer
+          title: Port Range End
+          default: 9100
+        network:
+          title: Network
+          type: string
+      type: object
+      title: DockerDeploymentConfig
+    DockerVolumeConfig:
+      properties:
+        driver:
+          type: string
+          title: Driver
+          default: local
+        mount_point:
+          title: Mount Point
+          type: string
+      type: object
+      title: DockerVolumeConfig
+    DriftRecoveryPolicy:
+      properties:
+        action:
+          type: string
+          enum:
+          - recreate
+          - ignore
+          title: Action
+          default: recreate
+      type: object
+      title: DriftRecoveryPolicy
+    Endpoint:
+      properties:
+        name:
+          type: string
+          title: Name
+        url:
+          type: string
+          title: Url
+        protocol:
+          type: string
+          enum:
+          - http
+          - https
+          - grpc
+          - tcp
+          title: Protocol
+          default: http
+      type: object
+      required:
+      - name
+      - url
+      title: Endpoint
+    EnvVar:
+      properties:
+        name:
+          type: string
+          title: Name
+        value:
+          title: Value
+          type: string
+        valueFrom:
+          title: Valuefrom
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - name
+      title: EnvVar
+    ExecAction:
+      properties:
+        command:
+          items:
+            type: string
+          type: array
+          title: Command
+      type: object
+      title: ExecAction
+    HTTPGetAction:
+      properties:
+        path:
+          type: string
+          title: Path
+          default: /
+        port:
+          anyOf:
+          - type: integer
+          - type: string
+          title: Port
+          default: 8080
+        scheme:
+          type: string
+          enum:
+          - HTTP
+          - HTTPS
+          title: Scheme
+          default: HTTP
+      type: object
+      title: HTTPGetAction
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    K8sDeploymentConfig:
+      properties:
+        namespace:
+          title: Namespace
+          type: string
+        serviceAccount:
+          title: Serviceaccount
+          type: string
+        tolerations:
+          items:
+            $ref: '#/components/schemas/Toleration'
+          type: array
+          title: Tolerations
+        affinity:
+          $ref: '#/components/schemas/Affinity'
+        securityContext:
+          $ref: '#/components/schemas/PodSecurityContext'
+      type: object
+      title: K8sDeploymentConfig
+    K8sVolumeConfig:
+      properties:
+        storageClass:
+          title: Storageclass
+          type: string
+        namespace:
+          title: Namespace
+          type: string
+      type: object
+      title: K8sVolumeConfig
+    NemoListResponse_DeploymentConfig_:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/DeploymentConfig'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: "Pagination metadata \u2014 page, page_size, total_results,\
+            \ etc."
+        sort:
+          title: Sort
+          description: Sort field applied to this result set (e.g. '-created_at').
+          type: string
+        filter:
+          title: Filter
+          description: Filter criteria echoed back from the request.
+      type: object
+      required:
+      - data
+      title: NemoListResponse_DeploymentConfig_
+    NemoListResponse_Deployment_:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/Deployment'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: "Pagination metadata \u2014 page, page_size, total_results,\
+            \ etc."
+        sort:
+          title: Sort
+          description: Sort field applied to this result set (e.g. '-created_at').
+          type: string
+        filter:
+          title: Filter
+          description: Filter criteria echoed back from the request.
+      type: object
+      required:
+      - data
+      title: NemoListResponse_Deployment_
+    NemoListResponse_Volume_:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/Volume'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: "Pagination metadata \u2014 page, page_size, total_results,\
+            \ etc."
+        sort:
+          title: Sort
+          description: Sort field applied to this result set (e.g. '-created_at').
+          type: string
+        filter:
+          title: Filter
+          description: Filter criteria echoed back from the request.
+      type: object
+      required:
+      - data
+      title: NemoListResponse_Volume_
+    PaginationData:
+      properties:
+        page:
+          type: integer
+          title: Page
+          description: The current page number.
+        page_size:
+          type: integer
+          title: Page Size
+          description: The page size used for the query.
+        current_page_size:
+          type: integer
+          title: Current Page Size
+          description: The size for the current page.
+        total_pages:
+          type: integer
+          title: Total Pages
+          description: The total number of pages.
+        total_results:
+          type: integer
+          title: Total Results
+          description: The total number of results.
+      type: object
+      required:
+      - page
+      - page_size
+      - current_page_size
+      - total_pages
+      - total_results
+      title: PaginationData
+    PodSecurityContext:
+      properties:
+        runAsUser:
+          title: Runasuser
+          type: integer
+        runAsGroup:
+          title: Runasgroup
+          type: integer
+        fsGroup:
+          title: Fsgroup
+          type: integer
+      type: object
+      title: PodSecurityContext
+    Prerequisite:
+      properties:
+        deployment_name:
+          type: string
+          title: Deployment Name
+          description: Name of another DeploymentConfig in the same workspace that
+            must reach a ready terminal state before this config's deployment may
+            start.
+      type: object
+      required:
+      - deployment_name
+      title: Prerequisite
+    Probe:
+      properties:
+        exec:
+          $ref: '#/components/schemas/ExecAction'
+        httpGet:
+          $ref: '#/components/schemas/HTTPGetAction'
+        tcpSocket:
+          $ref: '#/components/schemas/TCPSocketAction'
+        initialDelaySeconds:
+          type: integer
+          title: Initialdelayseconds
+          default: 0
+        periodSeconds:
+          type: integer
+          title: Periodseconds
+          default: 10
+        timeoutSeconds:
+          type: integer
+          title: Timeoutseconds
+          default: 1
+        failureThreshold:
+          type: integer
+          title: Failurethreshold
+          default: 3
+      type: object
+      title: Probe
+    ResourceRequirements:
+      properties:
+        limits:
+          additionalProperties:
+            type: string
+          type: object
+          title: Limits
+        requests:
+          additionalProperties:
+            type: string
+          type: object
+          title: Requests
+      type: object
+      title: ResourceRequirements
+    StatusEvent:
+      properties:
+        status:
+          type: string
+          enum:
+          - PENDING
+          - STARTING
+          - READY
+          - SUCCEEDED
+          - FAILED
+          - LOST
+          - DELETING
+          title: Status
+        message:
+          type: string
+          title: Message
+          default: ''
+        timestamp:
+          type: string
+          title: Timestamp
+          default: ''
+      type: object
+      required:
+      - status
+      title: StatusEvent
+    TCPSocketAction:
+      properties:
+        port:
+          anyOf:
+          - type: integer
+          - type: string
+          title: Port
+      type: object
+      required:
+      - port
+      title: TCPSocketAction
+    Toleration:
+      properties:
+        key:
+          title: Key
+          type: string
+        operator:
+          type: string
+          enum:
+          - Equal
+          - Exists
+          title: Operator
+          default: Equal
+        value:
+          title: Value
+          type: string
+        effect:
+          title: Effect
+          type: string
+          enum:
+          - NoSchedule
+          - PreferNoSchedule
+          - NoExecute
+        tolerationSeconds:
+          title: Tolerationseconds
+          type: integer
+      type: object
+      title: Toleration
+    UpdateDeploymentStatusRequest:
+      properties:
+        status:
+          type: string
+          enum:
+          - PENDING
+          - STARTING
+          - READY
+          - SUCCEEDED
+          - FAILED
+          - LOST
+          - DELETING
+          title: Status
+        status_message:
+          type: string
+          title: Status Message
+          default: ''
+        exit_code:
+          title: Exit Code
+          type: integer
+        error_details:
+          title: Error Details
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - status
+      title: UpdateDeploymentStatusRequest
+    UpdateVolumeStatusRequest:
+      properties:
+        status:
+          type: string
+          enum:
+          - PENDING
+          - BOUND
+          - RELEASED
+          - FAILED
+          title: Status
+        status_message:
+          type: string
+          title: Status Message
+          default: ''
+        error_details:
+          title: Error Details
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - status
+      title: UpdateVolumeStatusRequest
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+          additionalProperties: true
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+    Volume:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: Entity name within the workspace
+          default: ''
+        workspace:
+          type: string
+          pattern: ^[\w\-\+.@:]+$
+          title: Workspace
+          description: Workspace identifier
+        project:
+          title: Project
+          description: The name of the project associated with this entity.
+          type: string
+        size:
+          type: string
+          title: Size
+          description: Requested storage size (Kubernetes quantity).
+          default: 1Gi
+        access_modes:
+          items:
+            type: string
+            enum:
+            - ReadWriteOnce
+            - ReadOnlyMany
+            - ReadWriteMany
+          type: array
+          title: Access Modes
+        backendConfig:
+          $ref: '#/components/schemas/VolumeBackendConfig'
+        status:
+          type: string
+          enum:
+          - PENDING
+          - BOUND
+          - RELEASED
+          - FAILED
+          title: Status
+          default: PENDING
+        status_message:
+          type: string
+          title: Status Message
+          default: ''
+        error_details:
+          title: Error Details
+          additionalProperties: true
+          type: object
+        id:
+          type: string
+          title: Id
+          readOnly: true
+        created_at:
+          title: Created At
+          readOnly: true
+          type: string
+          format: date-time
+        created_by:
+          title: Created By
+          readOnly: true
+          nullable: true
+          type: string
+        updated_at:
+          title: Updated At
+          readOnly: true
+          type: string
+          format: date-time
+        updated_by:
+          title: Updated By
+          readOnly: true
+          nullable: true
+          type: string
+        entity_id:
+          type: string
+          title: Entity Id
+          description: Alias for id for backwards compatibility.
+          readOnly: true
+        parent:
+          title: Parent
+          description: Parent entity ID for nested entities.
+          readOnly: true
+          type: string
+      type: object
+      required:
+      - workspace
+      - id
+      - created_at
+      - created_by
+      - updated_at
+      - updated_by
+      - entity_id
+      - parent
+      title: Volume
+      description: Persistent volume request and observed state.
+    VolumeBackendConfig:
+      properties:
+        docker:
+          $ref: '#/components/schemas/DockerVolumeConfig'
+        k8s:
+          $ref: '#/components/schemas/K8sVolumeConfig'
+      type: object
+      title: VolumeBackendConfig
+    VolumeMount:
+      properties:
+        name:
+          type: string
+          title: Name
+        mountPath:
+          type: string
+          title: Mountpath
+        readOnly:
+          type: boolean
+          title: Readonly
+          default: false
+        subPath:
+          title: Subpath
+          type: string
+      type: object
+      required:
+      - name
+      - mountPath
+      title: VolumeMount
