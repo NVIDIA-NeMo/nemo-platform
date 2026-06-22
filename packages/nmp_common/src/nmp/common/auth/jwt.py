@@ -159,6 +159,9 @@ class JWTValidator:
                     algorithms=["none"],
                     options={
                         "verify_signature": False,
+                        "verify_exp": True,
+                        "verify_iat": True,
+                        "verify_nbf": True,
                         "verify_aud": False,
                         "verify_iss": False,
                         "require": ["sub"],
