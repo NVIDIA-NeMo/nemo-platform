@@ -46,13 +46,6 @@ ingress:
     nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
     nginx.ingress.kubernetes.io/proxy-connect-timeout: "600"
     nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
-  hosts:
-    - name: ""
-      paths:
-        - path: /
-          pathType: Prefix
-          service: '{{ include "nemo-platform.ingressBackendService" . }}'
-          port: '{{ include "nemo-platform.ingressBackendPort" . }}'
 
 platformConfig:
   inference_gateway:
