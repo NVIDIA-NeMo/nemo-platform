@@ -1159,7 +1159,15 @@ jobs:
   coverage-comment:
     name: Post coverage comment
     needs: [python-unit-test, python-integration-test]
-    if: always() && github.event_name == 'pull_request'
+    if: >
+      always() &&
+      github.event_name == 'pull_request' &&
+      (
+        needs.python-unit-test.result == 'success' ||
+        needs.python-unit-test.result == 'failure' ||
+        needs.python-integration-test.result == 'success' ||
+        needs.python-integration-test.result == 'failure'
+      )
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
