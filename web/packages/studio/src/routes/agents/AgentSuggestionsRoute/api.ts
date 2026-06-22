@@ -35,6 +35,7 @@ import {
   serializeSuggestions,
   suggestionIdentity,
 } from '@studio/routes/agents/AgentSuggestionsRoute/utils';
+import { toError } from '@studio/util/logger';
 
 export const TELEMETRY_FILESET = 'nemo-agent-telemetry';
 export const OPTIMIZER_FILESET = 'nemo-agent-optimizer';
@@ -450,9 +451,7 @@ export const applySuggestion = async (
     try {
       safePath = validateApplySpec(step, ctx);
     } catch (err) {
-      throw new Error(
-        `Step ${i + 1}/${steps.length}: ${err instanceof Error ? err.message : String(err)}`
-      );
+      throw new Error(`Step ${i + 1}/${steps.length}: ${toError(err).message}`);
     }
     const response = await customFetch<{ name?: string } | undefined>({
       url: safePath,

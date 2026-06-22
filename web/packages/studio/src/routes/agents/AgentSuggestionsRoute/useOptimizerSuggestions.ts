@@ -37,6 +37,7 @@ import {
   suggestionIdentity,
 } from '@studio/routes/agents/AgentSuggestionsRoute/utils';
 import { getAgentEvaluationDetailRoute } from '@studio/routes/utils';
+import { toError } from '@studio/util/logger';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -243,7 +244,7 @@ export const useOptimizerSuggestions = (workspace: string) => {
       setRunState({
         phase: 'failed',
         step: '',
-        error: err instanceof Error ? err : new Error(String(err)),
+        error: toError(err),
       });
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
@@ -387,7 +388,7 @@ export const useOptimizerSuggestions = (workspace: string) => {
         }
       } catch (err) {
         if (isCanceledError(err)) return;
-        const message = err instanceof Error ? err.message : String(err);
+        const message = toError(err).message;
         setApplyErrors((prev) => new Map(prev).set(key, message));
       } finally {
         applyControllersRef.current.delete(controller);

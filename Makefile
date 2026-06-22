@@ -110,6 +110,10 @@ docs-deps: ## Install the Fern docs tooling (docs/fern node deps)
 docs: ## Start the Fern docs dev server (local preview, prints a localhost URL)
 	cd docs/fern && npm run dev
 
+.PHONY: docs-watch
+docs-watch: ## Start Fern docs dev plus a repo-level watcher for docs/** changes
+	cd docs/fern && npm run watch
+
 .PHONY: docs-check
 docs-check: ## Validate the Fern docs (fern check + validate-mdx + gated-link check)
 	cd docs/fern && npm run check

@@ -301,6 +301,63 @@ describe('SimpleFilesTable', () => {
       // Existing files show path
       expect(screen.getByText('dataset/file1.jsonl')).toBeInTheDocument();
     });
+
+    it('explains why unsupported files are disabled', () => {
+      const files: UploadFile[] = [
+        {
+          id: 'config',
+          type: 'existing',
+          file: {
+            path: 'eval/config.yaml',
+            file_ref: 'ref-config',
+            size: 100,
+            file_url: 'https://example.com/config.yaml',
+          },
+        },
+        {
+          id: 'notes',
+          type: 'existing',
+          file: {
+            path: 'eval/notes.txt',
+            file_ref: 'ref-notes',
+            size: 100,
+            file_url: 'https://example.com/notes.txt',
+          },
+        },
+      ];
+
+      render(<SimpleFilesTable />, {
+        wrapper: createWrapper({
+          files,
+          acceptableFileTypes: ['.yml', '.yaml'],
+          invalidFileMode: 'disable',
+        }),
+      });
+
+      expect(screen.getByRole('radio', { name: 'eval/config.yaml' })).not.toBeDisabled();
+      expect(screen.getByRole('radio', { name: 'eval/notes.txt' })).toBeDisabled();
+      expect(
+        screen.getByText(
+          'Only .yml, .yaml files can be selected. Upload a supported file or choose a different fileset.'
+        )
+      ).toBeInTheDocument();
+    });
+
+    it('does not show disabled-file guidance when all visible files are selectable', () => {
+      render(<SimpleFilesTable />, {
+        wrapper: createWrapper({
+          files: mockExistingFiles,
+          acceptableFileTypes: ['.jsonl'],
+          invalidFileMode: 'disable',
+        }),
+      });
+
+      expect(
+        screen.queryByText(/Upload a supported file or choose a different fileset/)
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: 'dataset/file1.jsonl' })).not.toBeDisabled();
+      expect(screen.getByRole('radio', { name: 'dataset/file2.jsonl' })).not.toBeDisabled();
+    });
   });
 
   describe('upload more files', () => {

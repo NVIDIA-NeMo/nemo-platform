@@ -3,8 +3,10 @@
 
 """Unit tests for authorization middleware."""
 
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import jwt
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -218,6 +220,37 @@ class TestBearerTokenAuth:
 
             assert response.status_code == 401
             assert "Invalid or expired token" in response.json()["detail"]
+
+    def test_bearer_token_expired_unsigned_jwt_returns_401(self):
+        """Expired unsigned JWTs are rejected when allow_unsigned_jwt is true."""
+        config = AuthConfig(
+            enabled=True,
+            allow_unsigned_jwt=True,
+            policy_decision_point_base_url="http://localhost:8181",
+            oidc=OIDCConfig(enabled=False),
+        )
+        app = create_test_app(config)
+        client = TestClient(app, raise_server_exceptions=False)
+        now = int(time.time())
+        token = jwt.encode(
+            {
+                "sub": "admin@example.com",
+                "iat": now - 7200,
+                "exp": now - 3600,
+            },
+            key="",
+            algorithm="none",
+        )
+
+        with patch("nmp.common.auth.client.AuthClient.authorize_request") as mock_authorize:
+            response = client.get(
+                "/test",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert response.status_code == 401
+        assert "Invalid or expired token" in response.json()["detail"]
+        mock_authorize.assert_not_called()
 
     def test_bearer_token_not_validated_when_auth_disabled(self):
         """Auth disabled allows requests even when local unsigned-JWT support is enabled."""

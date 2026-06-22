@@ -37,7 +37,7 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://nvidia-nemo.github.io/nemo-platform/main/"
+Homepage = "https://docs.nvidia.com/nemo-platform"
 
 [dependency-groups]
 dev = [

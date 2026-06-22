@@ -11,6 +11,7 @@ import type {
   SnapshotShape,
   SuggestionApplySpec,
 } from '@studio/routes/agents/AgentSuggestionsRoute/types';
+import { logger } from '@studio/util/logger';
 
 /** Fileset name for an agent's eval bundle. */
 export const evalFilesetForAgent = (agentName: string): string => `${agentName}-eval`;
@@ -78,7 +79,7 @@ export const parseSuggestions = (text: string): OptimizationSuggestion[] => {
     try {
       results.push(JSON.parse(line) as OptimizationSuggestion);
     } catch {
-      console.warn('parseSuggestions: skipping malformed line', line);
+      logger.warn(`parseSuggestions: skipping malformed line: ${line}`);
     }
   }
   return results;

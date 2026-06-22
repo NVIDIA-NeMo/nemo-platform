@@ -10,6 +10,7 @@ import type { AgentDeployment } from '@nemo/sdk/generated/agents/schema';
 import type { PlatformJobLog } from '@nemo/sdk/generated/platform/schema';
 import { Block, Select, Stack, Text } from '@nvidia/foundations-react-core';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
+import { logger } from '@studio/util/logger';
 import { streamSse } from '@studio/util/sseStream';
 import { type FC, useEffect, useMemo, useState } from 'react';
 import { useAuth } from 'react-oidc-context';
@@ -135,7 +136,7 @@ const LogsForDeployment: FC<LogsForDeploymentProps> = ({ workspace, deploymentNa
         }
       },
       onError: (err) => {
-        console.warn(`Log stream interrupted for deployment ${deploymentName}; retrying.`, err);
+        logger.warn(`Log stream interrupted for deployment ${deploymentName}; retrying`, err);
       },
     });
     return () => controller.abort();

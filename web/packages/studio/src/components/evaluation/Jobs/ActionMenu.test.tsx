@@ -216,10 +216,7 @@ describe('ActionMenu', () => {
       const confirmButton = await screen.findByRole('button', { name: 'Delete' });
       await user.click(confirmButton);
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        'Failed to delete evaluation job:',
-        expect.any(Error)
-      );
+      expect(consoleSpy).toHaveBeenCalledWith('Failed to delete evaluation job', expect.any(Error));
       expect(mockOnJobDeleted).not.toHaveBeenCalled();
 
       consoleSpy.mockRestore();

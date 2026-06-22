@@ -37,6 +37,7 @@ import {
   HUGGING_FACE_DEPLOYMENT_SOURCE_VALUE,
   huggingFaceSourceFilesetName,
 } from '@studio/routes/DeploymentsListRoute/huggingFaceDeploymentArtifacts';
+import { logger } from '@studio/util/logger';
 import { type QueryClient, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 
@@ -214,7 +215,7 @@ export function useDeleteDeploymentAndConfig(workspace: string) {
 
       void deleteRelatedResourcesAfterDeploymentReleased(workspace, deployment)
         .catch((error: unknown) => {
-          console.error('Failed to delete deployment related resources:', error);
+          logger.error('Failed to delete deployment related resources', error);
           toast.error('Failed to delete related deployment resources. Please try again later.');
         })
         .finally(() => {

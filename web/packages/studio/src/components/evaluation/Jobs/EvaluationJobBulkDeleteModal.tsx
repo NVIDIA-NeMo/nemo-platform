@@ -6,6 +6,7 @@ import { useEvaluatorDeleteEvaluateJob } from '@nemo/sdk/generated/evaluator/api
 import { Button, Flex, Modal } from '@nvidia/foundations-react-core';
 import { useMutateMany } from '@studio/api/common/useMutateMany';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
+import { logger } from '@studio/util/logger';
 import { Trash } from 'lucide-react';
 import { FC, useState } from 'react';
 
@@ -38,7 +39,7 @@ export const EvaluationJobBulkDeleteModal: FC<EvaluationJobBulkDeleteModalProps>
       onConfirmSuccess();
       setOpen(false);
     } catch (error) {
-      console.error('Failed to delete evaluation jobs:', error);
+      logger.error('Failed to delete evaluation jobs', error);
       toast.error('Failed to delete evaluation jobs. Please try again.');
     }
   };

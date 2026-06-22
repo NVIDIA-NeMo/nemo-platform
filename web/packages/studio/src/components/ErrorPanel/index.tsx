@@ -4,7 +4,7 @@
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { Flex, PageHeader, Panel, Stack, Text } from '@nvidia/foundations-react-core';
 import { getErrorMessage } from '@studio/api/common/utils';
-import { websiteLogger } from '@studio/util/logger';
+import { logger } from '@studio/util/logger';
 import { FileX } from 'lucide-react';
 import { ComponentProps, FC, ReactNode, useEffect } from 'react';
 import { useRouteError, isRouteErrorResponse } from 'react-router-dom';
@@ -83,7 +83,7 @@ export const ErrorPanel: FC<ErrorPanelProps> = ({ title, errorMessage, attribute
   useEffect(() => {
     if (error) {
       const logMessage = JSON.stringify(errorMessage, null, 2);
-      websiteLogger.error(logMessage);
+      logger.error(logMessage);
     }
   }, [error, errorMessage, title]);
 

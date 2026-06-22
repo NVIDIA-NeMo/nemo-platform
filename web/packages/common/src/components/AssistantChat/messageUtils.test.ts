@@ -1,15 +1,20 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { ThreadMessageLike } from '@assistant-ui/react';
-
-import { getOpenAIMessages } from './messageUtils';
+import type { AppendMessage, ThreadMessageLike } from '@assistant-ui/react';
+import {
+  getOpenAIMessages,
+  getUserMessageContent,
+  modelSupportsImageAttachments,
+} from '@nemo/common/src/components/AssistantChat/messageUtils';
 
 const createMessage = (role: ThreadMessageLike['role'], text: string): ThreadMessageLike => ({
   id: `${role}-${text}`,
   role,
   content: [{ type: 'text', text }],
 });
+
+const DATA_URL = 'data:image/png;base64,AAAA';
 
 describe('getOpenAIMessages', () => {
   it('filters empty content for all OpenAI message roles', () => {
@@ -33,5 +38,83 @@ describe('getOpenAIMessages', () => {
       { role: 'system', content: 'Replacement system prompt' },
       { role: 'user', content: 'Hello' },
     ]);
+  });
+
+  it('forwards user images as OpenAI multimodal content alongside the text', () => {
+    const messages: ThreadMessageLike[] = [
+      {
+        id: 'user-with-image',
+        role: 'user',
+        content: [
+          { type: 'text', text: 'What is in this image?' },
+          { type: 'image', image: DATA_URL },
+        ],
+      },
+    ];
+
+    expect(getOpenAIMessages(messages)).toEqual([
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'What is in this image?' },
+          { type: 'image_url', image_url: { url: DATA_URL } },
+        ],
+      },
+    ]);
+  });
+
+  it('sends an image-only user message without a text part', () => {
+    const messages: ThreadMessageLike[] = [
+      { id: 'image-only', role: 'user', content: [{ type: 'image', image: DATA_URL }] },
+    ];
+
+    expect(getOpenAIMessages(messages)).toEqual([
+      { role: 'user', content: [{ type: 'image_url', image_url: { url: DATA_URL } }] },
+    ]);
+  });
+});
+
+describe('getUserMessageContent', () => {
+  it('combines composed text with image parts from attachments', () => {
+    const message = {
+      role: 'user',
+      content: [{ type: 'text', text: '  Describe this  ' }],
+      attachments: [
+        {
+          id: 'a1',
+          type: 'image',
+          name: 'pic.png',
+          status: { type: 'complete' },
+          content: [{ type: 'image', image: DATA_URL }],
+        },
+      ],
+    } as unknown as AppendMessage;
+
+    expect(getUserMessageContent(message)).toEqual([
+      { type: 'text', text: 'Describe this' },
+      { type: 'image', image: DATA_URL },
+    ]);
+  });
+
+  it('returns an empty array when there is neither text nor an attachment', () => {
+    const message = {
+      role: 'user',
+      content: [{ type: 'text', text: '   ' }],
+    } as unknown as AppendMessage;
+
+    expect(getUserMessageContent(message)).toEqual([]);
+  });
+});
+
+describe('modelSupportsImageAttachments', () => {
+  it('matches the vision substring case-insensitively', () => {
+    expect(modelSupportsImageAttachments('meta/llama-3.2-11b-vision-instruct')).toBe(true);
+    expect(modelSupportsImageAttachments('Some-Vision-Model')).toBe(true);
+  });
+
+  it('rejects models without the vision substring or with no name', () => {
+    expect(modelSupportsImageAttachments('meta/llama-3.1-8b-instruct')).toBe(false);
+    expect(modelSupportsImageAttachments('')).toBe(false);
+    expect(modelSupportsImageAttachments(undefined)).toBe(false);
   });
 });

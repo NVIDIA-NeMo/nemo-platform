@@ -37,6 +37,9 @@ dependencies = [
 dev = ["nemo-evaluator-plugin", "nemo-platform-sdk"]
 
 [project.optional-dependencies]
+agent-runtimes = [
+  "openai-agents[docker]>=0.17.3,<0.18",
+]
 engine = []
 nemo-platform = [
   "nemo-platform-sdk",

@@ -7,6 +7,7 @@ import type { EntityIdentifier } from '@studio/api/common/types';
 import { getDatasetFileContentQueryKey } from '@studio/api/datasets/invalidateDatasetCaches';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { isBinaryExtension } from '@studio/util/binaryFile';
+import { logger } from '@studio/util/logger';
 import { queryOptions, useQuery, UseQueryOptions, useSuspenseQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { parquetRead } from 'hyparquet';
@@ -87,7 +88,7 @@ export const datasetFileContentQueryOptions = ({
           });
           return data;
         } catch (err) {
-          console.error(err);
+          logger.error('Invalid response while downloading parquet file', err);
           throw new Error('Invalid response while downloading parquet file');
         }
       } else {

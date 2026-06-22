@@ -8,6 +8,7 @@
     "fix:gated-links": "node scripts/delink-gated.mjs --fix",
     "broken-links": "npx -y fern-api@latest docs broken-links",
     "dev": "npx -y fern-api@latest docs dev",
+    "watch": "node scripts/docs-watch.mjs",
     "generate": "npx -y fern-api@latest generate --docs",
     "preview": "npx -y fern-api@latest generate --docs --preview"
   },

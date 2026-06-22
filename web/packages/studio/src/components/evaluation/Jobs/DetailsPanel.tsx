@@ -24,6 +24,7 @@ import { Banner, Button, Flex, Modal, Panel, Stack, Text } from '@nvidia/foundat
 import { ButtonLaunchEvaluation } from '@studio/components/evaluation/ButtonLaunchEvaluation';
 import { StatusLogsContent } from '@studio/components/evaluation/Jobs/StatusLogsContent';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
+import { logger } from '@studio/util/logger';
 import { useQueryClient } from '@tanstack/react-query';
 import { ChartBar, LayoutList, CircleX } from 'lucide-react';
 import { useState } from 'react';
@@ -59,7 +60,7 @@ export const DetailsPanel = ({ evaluationJob, error }: DetailsPanelProps) => {
 
       setCancelModalOpen(false);
     } catch (error) {
-      console.error('Failed to cancel job:', error);
+      logger.error('Failed to cancel job', error);
       toast.error('Failed to cancel job. Please try again.');
     }
   };
