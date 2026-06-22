@@ -34,7 +34,7 @@ export const MetricDisplay: FC<MetricDisplayProps> = ({ metricName, metricConfig
         <KVPair
           label="Check Pattern"
           value={
-            params.check
+            params.check != null
               ? Array.isArray(params.check)
                 ? params.check.join(',')
                 : String(params.check)
@@ -47,9 +47,9 @@ export const MetricDisplay: FC<MetricDisplayProps> = ({ metricName, metricConfig
         <>
           <KVPair
             label="References"
-            value={params.references ? <Pre>{String(params.references)}</Pre> : undefined}
+            value={params.references != null ? <Pre>{String(params.references)}</Pre> : undefined}
           />
-          {params.candidate && (
+          {params.candidate != null && (
             <KVPair label="Candidate" value={<Pre>{String(params.candidate)}</Pre>} />
           )}
         </>
@@ -59,9 +59,11 @@ export const MetricDisplay: FC<MetricDisplayProps> = ({ metricName, metricConfig
         <>
           <KVPair
             label="Ground Truth Reference"
-            value={params.ground_truth ? <Pre>{String(params.ground_truth)}</Pre> : undefined}
+            value={
+              params.ground_truth != null ? <Pre>{String(params.ground_truth)}</Pre> : undefined
+            }
           />
-          {params.prediction && (
+          {params.prediction != null && (
             <KVPair label="Prediction" value={<Pre>{String(params.prediction)}</Pre>} />
           )}
         </>
@@ -71,9 +73,11 @@ export const MetricDisplay: FC<MetricDisplayProps> = ({ metricName, metricConfig
         <>
           <KVPair
             label="Ground Truth Reference"
-            value={params.ground_truth ? <Pre>{String(params.ground_truth)}</Pre> : undefined}
+            value={
+              params.ground_truth != null ? <Pre>{String(params.ground_truth)}</Pre> : undefined
+            }
           />
-          {params.prediction && (
+          {params.prediction != null && (
             <KVPair label="Prediction" value={<Pre>{String(params.prediction)}</Pre>} />
           )}
         </>
@@ -83,9 +87,11 @@ export const MetricDisplay: FC<MetricDisplayProps> = ({ metricName, metricConfig
         <>
           <KVPair
             label="Ground Truth Reference"
-            value={params.ground_truth ? <Pre>{String(params.ground_truth)}</Pre> : undefined}
+            value={
+              params.ground_truth != null ? <Pre>{String(params.ground_truth)}</Pre> : undefined
+            }
           />
-          {params.prediction && (
+          {params.prediction != null && (
             <KVPair label="Prediction" value={<Pre>{String(params.prediction)}</Pre>} />
           )}
         </>
