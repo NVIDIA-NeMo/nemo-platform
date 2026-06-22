@@ -124,6 +124,30 @@ def test_auth_logout_writes_to_selected_context(oauth_config_file: Path, monkeyp
     assert mock_write.call_args.kwargs["context_name"] == "foo"
 
 
+def test_auth_logout_clears_selected_context_credentials(
+    oauth_config_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("nemo_platform_ext.cli.commands.auth.discover_nmp_config", _discover_auth_enabled)
+
+    result = runner.invoke(app, ["--context", "foo", "auth", "logout"])
+
+    assert_exit_code(result, 0)
+    assert "Logged out successfully" in result.output
+
+    with open(oauth_config_file) as f:
+        data = yaml.safe_load(f)
+
+    default_user = next(user for user in data["users"] if user["name"] == "default")
+    foo_user = next(user for user in data["users"] if user["name"] == "foo")
+
+    assert default_user["type"] == "oauth"
+    assert default_user["token"] == "default-token"
+    assert default_user["refresh_token"] == "default-refresh"
+    assert foo_user["type"] == "no-auth"
+    assert "token" not in foo_user
+    assert "refresh_token" not in foo_user
+
+
 # ---------------------------------------------------------------------------
 # refresh
 # ---------------------------------------------------------------------------

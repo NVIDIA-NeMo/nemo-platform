@@ -450,7 +450,7 @@ def login(
         if oidc_config.device_authorization_endpoint is None:
             raise AuthError("This cluster does not support device flow authentication.")
         client_id = cast(str, oidc_config.client_id)
-        device_authorization_endpoint = cast(str, oidc_config.device_authorization_endpoint)
+        device_authorization_endpoint = oidc_config.device_authorization_endpoint
         try:
             token_response = asyncio.run(
                 authenticate_with_device_flow(
@@ -468,9 +468,12 @@ def login(
 
     claims = decode_jwt_claims(token)
     user_email = claims.get("upn") or claims.get("email") or claims.get("preferred_username")
-    granted_scopes = claims.get("scp") or claims.get("scope") or ""
-    if isinstance(granted_scopes, str):
-        granted_scopes = granted_scopes.split()
+    raw_granted_scopes = claims.get("scp") or claims.get("scope")
+    granted_scopes: list[str] = []
+    if isinstance(raw_granted_scopes, str):
+        granted_scopes = raw_granted_scopes.split()
+    elif isinstance(raw_granted_scopes, list):
+        granted_scopes = [scope for scope in raw_granted_scopes if isinstance(scope, str)]
 
     validate_requested_scopes_granted(effective_scope, granted_scopes, scope_prefix)
 
@@ -522,10 +525,7 @@ def logout(ctx: typer.Context) -> None:
         console.print("[yellow]Authentication is disabled on this cluster — nothing to log out from.[/]")
         return
 
-    logout_params = cast(
-        ConfigParams,
-        {"access_token": None, "refresh_token": None},
-    )
+    logout_params: ConfigParams = {"access_token": None, "refresh_token": None}
     Config.write(logout_params, context_name=context.context_name)
     console.print("[green]Logged out successfully.[/]")
 
