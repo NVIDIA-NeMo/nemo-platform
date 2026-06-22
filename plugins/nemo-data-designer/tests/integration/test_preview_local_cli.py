@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 from data_designer.cli.utils.sample_records_pager import PAGER_FILENAME
 from data_designer.config.analysis.dataset_profiler import DatasetProfilerResults
+from data_designer_nemo.seed import LOCAL_DATAFRAME_SEED_ERROR_MESSAGE
 
 pytestmark = pytest.mark.integration
 
@@ -113,7 +114,7 @@ def load_config_builder() -> dd.DataDesignerConfigBuilder:
     # errors into ``ValueError`` so Pydantic wraps them properly; this test
     # asserts the resulting user-visible message.
     assert result.exit_code != 0
-    assert "Dataframe seed sources (seed_type=df) are not supported on the NeMo Platform" in result.output
+    assert LOCAL_DATAFRAME_SEED_ERROR_MESSAGE in result.output
     assert "Field required" not in result.output
     assert "No such file" not in result.output
 
@@ -152,8 +153,7 @@ def load_config_builder() -> dd.DataDesignerConfigBuilder:
     # ``CreateRenderer.on_error`` runs the message through Rich, which line-wraps
     # to the terminal width, so we assert on fragments rather than the full
     # ``"Dataframe seed sources (seed_type=df) are not supported..."`` substring.
-    assert "Dataframe seed sources" in result.output
-    assert "seed_type=df" in result.output
+    assert LOCAL_DATAFRAME_SEED_ERROR_MESSAGE in result.output.replace("\n", "")
     assert "Field required" not in result.output
 
 

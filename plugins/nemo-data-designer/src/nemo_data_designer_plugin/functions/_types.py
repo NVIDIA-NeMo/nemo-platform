@@ -8,9 +8,7 @@ from typing import Annotated, Any, Literal, TypeAlias
 import data_designer.config as dd
 from data_designer.config.analysis.dataset_profiler import DatasetProfilerResults
 from data_designer.config.dataset_metadata import DatasetMetadata
-from data_designer_nemo.unsupported_features import (
-    validate_seed_source_for_execution_context,
-)
+from data_designer_nemo.seed import validate_seed_source_for_execution_context
 from nemo_platform_plugin.functions.frames import Done, Error, Heartbeat
 from pydantic import BaseModel, Field, ValidationInfo, model_validator
 

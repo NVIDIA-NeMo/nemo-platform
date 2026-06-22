@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import logging
+import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
+from pathlib import Path
 
 import data_designer.config as dd
 import nemo_data_designer_plugin.testing.utils as u
@@ -102,6 +104,87 @@ def test_fileset_file_seed_dataset_plugin() -> None:
 
     assert preview_results.dataset is not None
     assert set(preview_results.dataset["full_name"].values) == u.FULL_NAMES
+
+
+def test_directory_seed_dataset_fileset_root() -> None:
+    builder = dd.DataDesignerConfigBuilder(model_configs=[u.make_model_config()])
+    builder.with_seed_dataset(dd.DirectorySeedSource(path=f"{u.WORKSPACE_NAME}/{u.FILESET_NAME}"))
+    builder.add_column(
+        column_config=dd.ExpressionColumnConfig(
+            name="expr",
+            expr="{{ source_kind }} :: {{ relative_path }}",
+        )
+    )
+
+    with (
+        u.make_mock_client_context() as client_context,
+        u.setup_mock_file(client_context),
+    ):
+        dd_client = u.make_dd_client(client_context)
+        preview_results = dd_client.preview(builder, num_records=3)
+
+    assert preview_results.dataset is not None
+    assert set(preview_results.dataset["expr"].values) == {f"directory_file :: {u.FILE_PATH}"}
+
+
+def test_directory_seed_dataset_fileset_subdir() -> None:
+    subdir = "some/subdir"
+
+    builder = dd.DataDesignerConfigBuilder(model_configs=[u.make_model_config()])
+    builder.with_seed_dataset(dd.DirectorySeedSource(path=f"{u.WORKSPACE_NAME}/{u.FILESET_NAME}#{subdir}"))
+    builder.add_column(
+        column_config=dd.ExpressionColumnConfig(
+            name="expr",
+            expr="{{ source_kind }} :: {{ relative_path }}",
+        )
+    )
+
+    with (
+        u.make_mock_client_context() as client_context,
+        u.setup_mock_file(client_context, remote_path=f"{subdir}/{u.FILE_PATH}"),
+    ):
+        dd_client = u.make_dd_client(client_context)
+        preview_results = dd_client.preview(builder, num_records=3)
+
+    assert preview_results.dataset is not None
+    assert set(preview_results.dataset["expr"].values) == {f"directory_file :: {u.FILE_PATH}"}
+
+
+def test_file_contents_seed_dataset() -> None:
+    subdir = "some/subdir"
+
+    builder = dd.DataDesignerConfigBuilder(model_configs=[u.make_model_config()])
+    builder.with_seed_dataset(dd.FileContentsSeedSource(path=f"{u.WORKSPACE_NAME}/{u.FILESET_NAME}#{subdir}"))
+    builder.add_column(
+        column_config=dd.ExpressionColumnConfig(
+            name="expr",
+            expr="{{ file_name }} :: {{ content }}",
+        )
+    )
+
+    with (
+        u.make_mock_client_context() as client_context,
+        tempfile.TemporaryDirectory() as tmpdir,
+    ):
+        client_context.sdk.files.filesets.create(name=u.FILESET_NAME, workspace=u.WORKSPACE_NAME)
+        for filename in ["abc.txt", "xyz.txt"]:
+            filepath = Path(tmpdir) / filename
+            filepath.write_text(f"This is {filename}")
+        client_context.sdk.files.upload(
+            fileset=u.FILESET_NAME,
+            workspace=u.WORKSPACE_NAME,
+            local_path=tmpdir,
+            remote_path=subdir,
+        )
+
+        dd_client = u.make_dd_client(client_context)
+        preview_results = dd_client.preview(builder, num_records=3)
+
+    assert preview_results.dataset is not None
+    assert set(preview_results.dataset["expr"].values) == {
+        "abc.txt :: This is abc.txt",
+        "xyz.txt :: This is xyz.txt",
+    }
 
 
 def test_nemotron_personas_dataset() -> None:

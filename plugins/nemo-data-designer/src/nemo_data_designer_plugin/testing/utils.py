@@ -152,6 +152,12 @@ def make_mock_client_context(workspace: str = WORKSPACE_NAME) -> Generator[Clien
                 "data_designer_nemo.person_reader.async_to_sync_sdk",
                 return_value=client_context.sdk,
             ),
+            # "data_designer_nemo.fileset_filesystem_provider.async_to_sync_sdk"
+            # does *not* need to be patched here because that sync SDK instance is only used to
+            # set the fsspec asynchronous mode; the actual async client is still used for I/O.
+            # TODO: to remove the need for all these patches and even the async_to_sync_sdk function,
+            # modify the FilesetFileSystem constructor to allow passing `asynchronous: bool` explicitly
+            # instead of that being coupled to the type of `client` passed in.
         ):
             yield client_context
 
@@ -183,7 +189,10 @@ def setup_mock_secret(client_context: ClientContext) -> Generator[None]:
 
 
 @contextmanager
-def setup_mock_file(client_context: ClientContext) -> Generator[None]:
+def setup_mock_file(
+    client_context: ClientContext,
+    remote_path: str | None = None,
+) -> Generator[None]:
     files = client_from_platform(client_context.sdk, FilesClient)
     files.create_fileset(
         body=CreateFilesetRequest(name=FILESET_NAME),
@@ -195,7 +204,7 @@ def setup_mock_file(client_context: ClientContext) -> Generator[None]:
             fileset=FILESET_NAME,
             workspace=client_context.sdk.workspace or WORKSPACE_NAME,
             local_path=tmpfile.name,
-            remote_path=FILE_PATH,
+            remote_path=remote_path or FILE_PATH,
         )
     yield
 
@@ -443,7 +452,7 @@ async def task_context(
                     # downstream Data Designer routes (e.g. ``GET /jobs/create/{name}``,
                     # which deserializes the stored spec back through the schema) succeed.
                     spec=step_config if isinstance(step_config, dict) else step_config.model_dump(),
-                    platform_spec=job_config_dict,
+                    platform_spec=job_config_dict,  # ty:ignore[invalid-argument-type]
                 ),
             ).data()
             job_ctx = JobContext(

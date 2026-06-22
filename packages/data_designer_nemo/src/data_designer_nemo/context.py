@@ -22,6 +22,10 @@ from data_designer.engine.secret_resolver import (
 )
 from data_designer_nemo.errors import NDDError
 from data_designer_nemo.fileset_file_seed_reader import FilesetFileSeedReader
+from data_designer_nemo.fileset_filesystem_provider import (
+    FilesetFileSystemProvider,
+    HybridFileSystemProvider,
+)
 from data_designer_nemo.model_provider import (
     make_local_first_model_provider_registry,
     make_model_provider_registry,
@@ -32,10 +36,7 @@ from data_designer_nemo.person_sampling import ensure_nemotron_personas_filesets
 from data_designer_nemo.sdk_translation import sync_to_async_sdk
 from data_designer_nemo.secret_resolver import NMPSecretResolver
 from data_designer_nemo.seed import validate_seed
-from data_designer_nemo.unsupported_features import (
-    validate_no_tool_configs,
-    validate_seed_config_for_execution_context,
-)
+from data_designer_nemo.tool_configs import validate_no_tool_configs
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 
 
@@ -63,6 +64,7 @@ class LocalDataDesignerContext:
     def __init__(self, sdk: AsyncNeMoPlatform | NeMoPlatform, workspace: str):
         self._sdk = sdk
         self._workspace = workspace
+        self._validated_filesystem_roots: set[str] = set()
 
     def get_secret_resolver(self) -> SecretResolver:
         return CompositeResolver(
@@ -74,20 +76,31 @@ class LocalDataDesignerContext:
         )
 
     async def validate(self, config: dd.DataDesignerConfig) -> list[NDDError]:
+        async_sdk = self._async_sdk()
         errors: list[NDDError] = []
+
         try:
-            validate_seed_config_for_execution_context(config, is_local=True)
+            if validated_root := await validate_seed(config, self._workspace, async_sdk, is_local=True):
+                self._validated_filesystem_roots.add(validated_root)
         except NDDError as e:
             errors.append(e)
+
         return errors
 
     def get_seed_readers(self) -> list[SeedReader]:
+        # Directory- and FileContents-style seeds may reference either a local
+        # directory or a NeMo Platform fileset in local mode. The engine only
+        # accepts one provider per reader, so we inject a hybrid provider that
+        # resolves each seed path against local disk first, then a fileset.
+        fs_provider = HybridFileSystemProvider(
+            self._sdk, workspace=self._workspace, validated_roots=self._validated_filesystem_roots
+        )
         return [
             HuggingFaceSeedReader(),
             LocalFileSeedReader(),
             DataFrameSeedReader(),
-            DirectorySeedReader(),
-            FileContentsSeedReader(),
+            DirectorySeedReader(fs_provider=fs_provider),
+            FileContentsSeedReader(fs_provider=fs_provider),
             AgentRolloutSeedReader(),
             FilesetFileSeedReader(self._sdk),
         ]
@@ -109,42 +122,54 @@ class LocalDataDesignerContext:
 
         return [make_noop_provider()]
 
+    def _async_sdk(self) -> AsyncNeMoPlatform:
+        if isinstance(self._sdk, NeMoPlatform):
+            return sync_to_async_sdk(self._sdk)
+        return self._sdk
+
 
 class RemoteDataDesignerContext:
     def __init__(self, sdk: AsyncNeMoPlatform | NeMoPlatform, workspace: str):
         self._sdk = sdk
         self._workspace = workspace
+        self._validated_filesystem_roots: set[str] = set()
 
     def get_secret_resolver(self) -> SecretResolver:
         return NMPSecretResolver(self._sdk, self._workspace)
 
     async def validate(self, config: dd.DataDesignerConfig) -> list[NDDError]:
-        sdk = self._async_sdk()
+        async_sdk = self._async_sdk()
         errors: list[NDDError] = []
 
         try:
             validate_no_tool_configs(config)
         except NDDError as e:
             errors.append(e)
+
         try:
-            validate_seed_config_for_execution_context(config, is_local=False)
+            if validated_root := await validate_seed(config, self._workspace, async_sdk, is_local=False):
+                self._validated_filesystem_roots.add(validated_root)
         except NDDError as e:
             errors.append(e)
+
         try:
-            await validate_seed(config, self._workspace, sdk)
-        except NDDError as e:
-            errors.append(e)
-        try:
-            await ensure_nemotron_personas_filesets(config, sdk)
+            await ensure_nemotron_personas_filesets(config, async_sdk)
         except NDDError as e:
             errors.append(e)
 
         return errors
 
     def get_seed_readers(self) -> list[SeedReader]:
+        provider = FilesetFileSystemProvider(
+            self._sdk,
+            workspace=self._workspace,
+            validated_roots=self._validated_filesystem_roots,
+        )
         return [
             HuggingFaceSeedReader(),
             FilesetFileSeedReader(self._sdk),
+            DirectorySeedReader(fs_provider=provider),
+            FileContentsSeedReader(fs_provider=provider),
         ]
 
     def get_person_reader(self) -> PersonReader | None:

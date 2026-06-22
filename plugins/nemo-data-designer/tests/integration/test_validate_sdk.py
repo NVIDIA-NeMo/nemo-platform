@@ -171,7 +171,7 @@ async def test_sdk_validate_method_aggregates_df_seed_with_other_remote_errors()
     assert any("Tool configs" in m for m in messages)
     # Remote rejects everything outside the {hf, nmp} whitelist; the message
     # mentions both supported types rather than calling out "df" specifically.
-    assert any("seed_type=hf" in m and "seed_type=nmp" in m for m in messages)
+    assert any("seed sources" in m and "Files service" in m for m in messages)
 
 
 async def test_sdk_validate_method_rejects_df_seed_for_local() -> None:

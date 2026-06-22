@@ -4,7 +4,7 @@
 from typing import Any
 
 import data_designer.config as dd
-from data_designer_nemo.unsupported_features import validate_seed_source_for_execution_context
+from data_designer_nemo.seed import validate_seed_source_for_execution_context
 from pydantic import BaseModel, ValidationInfo, model_validator
 
 
