@@ -26,6 +26,7 @@ from .datetime_filter import DatetimeFilter as DatetimeFilter
 from .delete_response import DeleteResponse as DeleteResponse
 from .finetuning_type import FinetuningType as FinetuningType
 from .pagination_data import PaginationData as PaginationData
+from .fileset_metadata import FilesetMetadata as FilesetMetadata
 from .inference_params import InferenceParams as InferenceParams
 from .platform_job_log import PlatformJobLog as PlatformJobLog
 from .tool_call_config import ToolCallConfig as ToolCallConfig

@@ -66,6 +66,12 @@ class ExperimentResponse(BaseModel):
     model_names: Optional[List[str]] = None
     """Distinct model names observed across ingested sessions for this experiment."""
 
+    pinned_at: Optional[datetime] = None
+    """Timestamp at which the experiment was pinned, or null if unpinned.
+
+    Managed via POST/DELETE /experiments/{name}/pin.
+    """
+
     run_count: Optional[int] = None
     """
     Number of distinct ingested experiment sessions; one session is treated as one

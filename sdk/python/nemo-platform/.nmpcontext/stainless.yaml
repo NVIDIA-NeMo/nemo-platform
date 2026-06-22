@@ -81,86 +81,86 @@ client_settings:
 # `pagination` defines [pagination schemes] which provides a template to match
 # endpoints and generate next-page and auto-pagination helpers in the SDKs.
 pagination:
-  - name: default_pagination
-    type: page_number
-    request:
-      page:
-        type: integer
-        x-stainless-pagination-property:
-          purpose: page_number_param
-      page_size:
-        type: integer
-    response:
-      data:
-        type: array
-        x-stainless-pagination-property:
-          purpose: items
-        items:
-          type: object
-          additionalProperties: true
-      pagination:
+- name: default_pagination
+  type: page_number
+  request:
+    page:
+      type: integer
+      x-stainless-pagination-property:
+        purpose: page_number_param
+    page_size:
+      type: integer
+  response:
+    data:
+      type: array
+      x-stainless-pagination-property:
+        purpose: items
+      items:
         type: object
-        properties:
-          page:
-            type: integer
-            title: Page
-            description: The current page number.
-            x-stainless-pagination-property:
-              purpose: current_page_number_field
-          page_size:
-            type: integer
-            title: Page Size
-            description: The page size used for the query.
-          current_page_size:
-            type: integer
-            title: Current Page Size
-            description: The size for the current page.
-          total_pages:
-            type: integer
-            title: Total Pages
-            description: The total number of pages.
-            x-stainless-pagination-property:
-              purpose: total_page_count_field
-          total_results:
-            type: integer
-            title: Total Results
-            description: The total number of results.
-        required:
-          - page
-          - page_size
-          - total_pages
-          - total_results
-          - current_page_size
-  - name: logs_pagination
-    type: cursor
-    request:
-      limit:
-        type: integer
-      page_cursor:
-        type: string
-        x-stainless-pagination-property:
-          purpose: next_cursor_param
-    response:
-      data:
-        type: array
-        x-stainless-pagination-property:
-          purpose: items
-        items:
-          type: object
-          additionalProperties: true
-      next_page:
-        type: string
-        x-stainless-pagination-property:
-          purpose: next_cursor_field
+        additionalProperties: true
+    pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+          title: Page
+          description: The current page number.
+          x-stainless-pagination-property:
+            purpose: current_page_number_field
+        page_size:
+          type: integer
+          title: Page Size
+          description: The page size used for the query.
+        current_page_size:
+          type: integer
+          title: Current Page Size
+          description: The size for the current page.
+        total_pages:
+          type: integer
+          title: Total Pages
+          description: The total number of pages.
+          x-stainless-pagination-property:
+            purpose: total_page_count_field
+        total_results:
+          type: integer
+          title: Total Results
+          description: The total number of results.
+      required:
+      - page
+      - page_size
+      - total_pages
+      - total_results
+      - current_page_size
+- name: logs_pagination
+  type: cursor
+  request:
+    limit:
+      type: integer
+    page_cursor:
+      type: string
+      x-stainless-pagination-property:
+        purpose: next_cursor_param
+  response:
+    data:
+      type: array
+      x-stainless-pagination-property:
+        purpose: items
+      items:
+        type: object
+        additionalProperties: true
+    next_page:
+      type: string
+      x-stainless-pagination-property:
+        purpose: next_cursor_field
 
 streaming:
   on_event:
-    - data_starts_with: "[DONE]"
-      handle: done
-    - event_type: error
-      handle: error
-    - event_type:
-      handle: yield
+  - data_starts_with: "[DONE]"
+    handle: done
+  - event_type: error
+    handle: error
+  - event_type:
+    handle: yield
 
 readme:
   example_requests:
@@ -919,6 +919,8 @@ resources:
       retrieve: get /apis/intake/v2/workspaces/{workspace}/experiments/{name}
       update: put /apis/intake/v2/workspaces/{workspace}/experiments/{name}
       delete: delete /apis/intake/v2/workspaces/{workspace}/experiments/{name}
+      pin: post /apis/intake/v2/workspaces/{workspace}/experiments/{name}/pin
+      unpin: delete /apis/intake/v2/workspaces/{workspace}/experiments/{name}/pin
     subresources:
       sessions:
         models:

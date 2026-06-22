@@ -61,22 +61,22 @@ class CSVFormatter(LicenseFormatter):
     - Good for sorting/filtering
 
     Example:
-        name,license,compatible
-        requests,APACHE-2.0,true
-        numpy,BSD-3-CLAUSE,true
+        Package,License,License URL
+        requests,APACHE-2.0,https://github.com/psf/requests/blob/main/LICENSE
+        numpy,BSD-3-CLAUSE,https://github.com/numpy/numpy/blob/main/LICENSE.txt
     """
 
     def format(self, packages: list[dict[str, str]]) -> str:
         output = StringIO()
-        writer = csv.DictWriter(output, fieldnames=["name", "license", "compatible"])
+        writer = csv.DictWriter(output, fieldnames=["Package", "License", "License URL"])
         writer.writeheader()
 
         for pkg in packages:
             writer.writerow(
                 {
-                    "name": pkg["name"],
-                    "license": pkg["license"],
-                    "compatible": pkg["license"] not in ["UNKNOWN", "NON-STANDARD"],
+                    "Package": pkg["name"],
+                    "License": pkg["license"],
+                    "License URL": pkg.get("license_url", ""),
                 }
             )
 
