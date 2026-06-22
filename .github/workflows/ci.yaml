@@ -1284,7 +1284,9 @@ jobs:
     # single-job sequential layout. The `benchmark-guardrails-analyze` job
     # below merges both artifacts and prints the with-vs-without comparison.
     name: Guardrails plugin benchmark (${{ matrix.variant }})
-    if: github.event_name == 'workflow_dispatch'
+    # TODO(jgulabrai): gate back to `workflow_dispatch` once we're done
+    # collecting baseline samples and the harness is stable enough that we
+    # don't need it firing on every PR push.
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -1348,7 +1350,7 @@ jobs:
     # CI-collected numbers we can use to seed a baseline file later.
     name: Guardrails benchmark analysis
     needs: [benchmark-guardrails]
-    if: github.event_name == 'workflow_dispatch' && !cancelled()
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -1357,37 +1359,34 @@ jobs:
         with:
           path: nemo-platform
       - name: Download with-guardrails artifact
+        # If a variant failed entirely it may have uploaded no artifact;
+        # the analyzer handles the single-variant case so don't fail here.
+        continue-on-error: true
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: benchmark-guardrails-results-with-guardrails
           path: nemo-platform/plugins/nemo-guardrails/benchmarks/artifacts/runs/
       - name: Download without-guardrails artifact
+        continue-on-error: true
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: benchmark-guardrails-results-without-guardrails
           path: nemo-platform/plugins/nemo-guardrails/benchmarks/artifacts/runs/
-      - name: Install uv
-        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
-        with:
-          working-directory: nemo-platform
-          python-version: "3.11"
-          enable-cache: true
-      - name: Bootstrap Python environment
-        working-directory: nemo-platform
-        run: make bootstrap-python
-        env:
-          PYTORCH_DEPS: cpu
       - name: Print benchmark comparison
         working-directory: nemo-platform
+        # `analyze.py` is intentionally stdlib-only and import-free w.r.t. the
+        # rest of the plugin, so we run it on the runner's stock python3
+        # rather than spinning up the full `uv` workspace (which costs ~3
+        # minutes per CI run for ~50ms of CSV parsing).
+        #
         # Both matrix jobs above use the same `--run-id`, so there should be
-        # exactly one merged run directory under `runs/`. `ls -td ... | head -1`
-        # is defensive in case that ever stops being true (e.g. an artifact
-        # ever leaks in from a previous workflow attempt).
+        # exactly one merged run directory under `runs/`. The `find | sort`
+        # pipeline is defensive in case that ever stops being true.
+        # NOTE: `find -printf` is GNU-only (works on ubuntu-latest, not macOS).
         run: |
           RUN_DIR=$(find plugins/nemo-guardrails/benchmarks/artifacts/runs -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' | sort -nr | head -1 | cut -d' ' -f2-)
           echo "Analyzing run directory: $RUN_DIR"
-          uv run --frozen --package nemo-guardrails-plugin --extra bench \
-            python -m nemo_guardrails_plugin.benchmarks.analyze "$RUN_DIR"
+          python3 plugins/nemo-guardrails/src/nemo_guardrails_plugin/benchmarks/analyze.py "$RUN_DIR"
       - name: Upload merged benchmark artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
