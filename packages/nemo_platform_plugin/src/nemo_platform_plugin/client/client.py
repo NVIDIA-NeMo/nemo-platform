@@ -144,8 +144,9 @@ class NemoClient(BaseNemoClient):
             return NemoStreamResponse(stream_ctx, model_type)
 
         raw = self._http.request(request.method, url, content=request.content, headers=headers)
-        raw.raise_for_status()
-        body = request.response_type.model_validate(raw.json()) if request.response_type is not None else None
+        body = None
+        if raw.is_success and request.response_type is not None:
+            body = request.response_type.model_validate(raw.json())
         return NemoResponse(http_response=raw, body=body)
 
 
@@ -195,6 +196,7 @@ class AsyncNemoClient(BaseNemoClient):
             return AsyncNemoStreamResponse(stream_ctx, model_type)
 
         raw = await self._http.request(request.method, url, content=request.content, headers=headers)
-        raw.raise_for_status()
-        body = request.response_type.model_validate(raw.json()) if request.response_type is not None else None
+        body = None
+        if raw.is_success and request.response_type is not None:
+            body = request.response_type.model_validate(raw.json())
         return NemoResponse(http_response=raw, body=body)

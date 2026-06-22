@@ -155,6 +155,29 @@ async def test_async_get_item() -> None:
 
 
 @pytest.mark.asyncio
+async def test_async_list_items() -> None:
+    client, mock_http = _async_client()
+    mock_http.request.return_value = _resp(200, {"data": [ITEM_PAYLOAD], "pagination": None, "sort": None, "filter": None})
+
+    resp = await client.list_items(workspace=WS)
+    page = resp.data()
+
+    assert len(page.data) == 1
+    assert page.data[0].name == "my-item"
+
+
+@pytest.mark.asyncio
+async def test_async_update_item() -> None:
+    client, mock_http = _async_client()
+    updated = {**ITEM_PAYLOAD, "title": "Updated"}
+    mock_http.request.return_value = _resp(200, updated)
+
+    resp = await client.update_item(UpdateExampleItemRequest(title="Updated"), workspace=WS, name="my-item")
+
+    assert resp.data().title == "Updated"
+
+
+@pytest.mark.asyncio
 async def test_async_delete_item() -> None:
     client, mock_http = _async_client()
     mock_http.request.return_value = _resp(204)
