@@ -38,7 +38,7 @@ class NemoResponse(Generic[ResponseT]):
     def data(self) -> ResponseT:
         """Return the body if the status is 2xx, otherwise raise."""
         if not (200 <= self.http_response.status_code < 300):
-            raise NemoHTTPError(self.http_response, self.body)
+            raise NemoHTTPError(self.http_response)
         return self.body
 
 
@@ -207,9 +207,28 @@ class AsyncNemoStreamResponse(Generic[ModelT]):
 
 
 class NemoHTTPError(Exception):
-    """Raised by :meth:`NemoResponse.data` on non-2xx responses."""
+    """Raised by :meth:`NemoResponse.data` on non-2xx responses.
 
-    def __init__(self, http_response: httpx.Response, body: object) -> None:
+    Attributes:
+        http_response: The raw httpx response.
+        status_code: The HTTP status code.
+        detail: A human-readable error message extracted from the response
+            body (``{"detail": "..."}`` convention used by FastAPI / NeMo
+            Platform), or the raw response text as a fallback.
+    """
+
+    def __init__(self, http_response: httpx.Response) -> None:
         self.http_response = http_response
-        self.body = body
-        super().__init__(f"HTTP {http_response.status_code}")
+        self.status_code = http_response.status_code
+        self.detail = self._extract_detail(http_response)
+        super().__init__(f"HTTP {self.status_code}: {self.detail}")
+
+    @staticmethod
+    def _extract_detail(resp: httpx.Response) -> str:
+        try:
+            body = resp.json()
+            if isinstance(body, dict) and isinstance(body.get("detail"), str):
+                return body["detail"]
+        except Exception:
+            pass
+        return resp.text

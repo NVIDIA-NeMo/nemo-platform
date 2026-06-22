@@ -90,6 +90,13 @@ class BaseNemoClient:
     def _is_stream(self, request: PreparedRequest) -> bool:
         return get_origin(request.response_type) is Stream
 
+    def _resolve_query_params(self, request: PreparedRequest) -> dict[str, str | int | bool] | None:
+        """Filter out None values from query params for httpx."""
+        if request.query_params is None:
+            return None
+        filtered = {k: v for k, v in request.query_params.items() if v is not None}
+        return filtered or None
+
 
 class NemoClient(BaseNemoClient):
     """Sync HTTP client for NeMo Platform APIs."""
@@ -132,18 +139,23 @@ class NemoClient(BaseNemoClient):
         """
         url = self._resolve_path(request)
         headers = self._request_headers(request)
+        params = self._resolve_query_params(request)
 
         if self._is_binary(request):
-            stream_ctx = self._http.stream(request.method, url, content=request.content, headers=headers)
+            stream_ctx = self._http.stream(
+                request.method, url, content=request.content, headers=headers, params=params
+            )
             return NemoBinaryResponse(stream_ctx)
 
         if self._is_stream(request):
             assert request.response_type is not None
-            stream_ctx = self._http.stream(request.method, url, content=request.content, headers=headers)
+            stream_ctx = self._http.stream(
+                request.method, url, content=request.content, headers=headers, params=params
+            )
             model_type = _get_stream_model_type(request.response_type)
             return NemoStreamResponse(stream_ctx, model_type)
 
-        raw = self._http.request(request.method, url, content=request.content, headers=headers)
+        raw = self._http.request(request.method, url, content=request.content, headers=headers, params=params)
         body = None
         if raw.is_success and request.response_type is not None:
             body = request.response_type.model_validate(raw.json())
@@ -184,18 +196,23 @@ class AsyncNemoClient(BaseNemoClient):
         """Send a prepared request and return a typed response."""
         url = self._resolve_path(request)
         headers = self._request_headers(request)
+        params = self._resolve_query_params(request)
 
         if self._is_binary(request):
-            stream_ctx = self._http.stream(request.method, url, content=request.content, headers=headers)
+            stream_ctx = self._http.stream(
+                request.method, url, content=request.content, headers=headers, params=params
+            )
             return AsyncNemoBinaryResponse(stream_ctx)
 
         if self._is_stream(request):
             assert request.response_type is not None
-            stream_ctx = self._http.stream(request.method, url, content=request.content, headers=headers)
+            stream_ctx = self._http.stream(
+                request.method, url, content=request.content, headers=headers, params=params
+            )
             model_type = _get_stream_model_type(request.response_type)
             return AsyncNemoStreamResponse(stream_ctx, model_type)
 
-        raw = await self._http.request(request.method, url, content=request.content, headers=headers)
+        raw = await self._http.request(request.method, url, content=request.content, headers=headers, params=params)
         body = None
         if raw.is_success and request.response_type is not None:
             body = request.response_type.model_validate(raw.json())

@@ -57,6 +57,11 @@ PathT = TypeVar("PathT", bound=PathParams)
 RequestT = TypeVar("RequestT", bound=BaseModel | BinaryContent | None)
 ResponseT = TypeVar("ResponseT", bound=BaseModel | BinaryContent | Stream | None)
 
+# Query params: when a query_params_type is specified on the endpoint factory,
+# callers get type-checked query params.  When omitted, any dict is accepted.
+UntypedQueryParams = dict[str, str | int | bool | None]
+QueryParamsT = TypeVar("QueryParamsT")
+
 
 @dataclass(frozen=True, slots=True)
 class PreparedRequest(Generic[ResponseT]):
@@ -73,3 +78,4 @@ class PreparedRequest(Generic[ResponseT]):
     content: bytes | Iterable[bytes] | AsyncIterable[bytes] | None
     content_type: str | None
     response_type: type[ResponseT] | None
+    query_params: dict[str, str | int | bool | None] | None = None
