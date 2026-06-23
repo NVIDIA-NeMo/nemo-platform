@@ -6,6 +6,7 @@ import { filesListFilesetFiles } from '@nemo/sdk/generated/platform/api';
 import { useDatasetFilesUpload } from '@studio/api/datasets/useDatasetFilesUpload';
 import { useDownloadFileAsArrayBuffer } from '@studio/components/filesets/hooks/useDownloadFileAsArrayBuffer';
 import { FileSystemFile } from '@studio/components/FilesTable/utils';
+import { logger } from '@studio/util/logger';
 import { useCallback, useState } from 'react';
 
 export interface UseBulkDuplicateOptions {
@@ -150,7 +151,7 @@ export function useBulkDuplicate(options: UseBulkDuplicateOptions): UseBulkDupli
           return false;
         }
       } catch (err) {
-        console.error('Bulk duplicate failed', err);
+        logger.error('Bulk duplicate failed', err);
         toast.dismissToast(toastId);
         toast.error(files.length === 1 ? 'Failed to duplicate file' : 'Failed to duplicate files');
         return false;

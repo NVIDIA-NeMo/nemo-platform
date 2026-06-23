@@ -3719,6 +3719,8 @@ paths:
           - updated_at
           - -name
           - name
+          - -pinned_at
+          - pinned_at
           type: string
           description: Sort field; prefix with '-' for descending.
           default: -created_at
@@ -3733,7 +3735,8 @@ paths:
           $ref: '#/components/schemas/ExperimentFilter'
         description: Filter experiments by name, experiment_group_id, dataset_name,
           dataset_version, created_by, created_at, or updated_at. Pass is_deleted=true
-          to return only soft-deleted experiments; omit to see only live ones.
+          to return only soft-deleted experiments; omit to see only live ones. Pass
+          is_pinned=true (or false) to filter by pinned state; omit to return both.
       responses:
         '200':
           description: Successful Response
@@ -3843,6 +3846,82 @@ paths:
       responses:
         '204':
           description: Successful Response
+        '404':
+          description: Experiment not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/experiments/{name}/pin:
+    post:
+      tags:
+      - Experiments
+      summary: Pin Experiment
+      description: 'Pin an experiment to the top of the list (workspace-shared).
+
+
+        Re-pinning an already-pinned experiment refreshes ``pinned_at`` to the current
+        timestamp,
+
+        which is intentional (most-recently-pinned sorts first).'
+      operationId: pin_experiment_apis_intake_v2_workspaces__workspace__experiments__name__pin_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExperimentResponse'
+        '404':
+          description: Experiment not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Experiments
+      summary: Unpin Experiment
+      description: 'Unpin an experiment. Idempotent: unpinning an already-unpinned
+        experiment is a no-op.'
+      operationId: unpin_experiment_apis_intake_v2_workspaces__workspace__experiments__name__pin_delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExperimentResponse'
         '404':
           description: Experiment not found
         '422':
@@ -10234,6 +10313,11 @@ components:
             false) to see only live experiments.
           title: Is Deleted
           type: boolean
+        is_pinned:
+          description: When true, returns only pinned experiments. When false, returns
+            only unpinned experiments. Omit to return both.
+          title: Is Pinned
+          type: boolean
       title: ExperimentFilter
       type: object
     ExperimentGroupFilter:
@@ -10414,6 +10498,13 @@ components:
           format: date-time
         updated_at:
           title: Updated At
+          type: string
+          format: date-time
+        pinned_at:
+          title: Pinned At
+          description: Timestamp at which the experiment was pinned, or null if unpinned.
+            Managed via POST/DELETE /experiments/{name}/pin.
+          nullable: true
           type: string
           format: date-time
         evaluator_names:

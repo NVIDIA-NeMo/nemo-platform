@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Block, Flex, Text } from '@nvidia/foundations-react-core';
+import { logger } from '@studio/util/logger';
 import { FC, useCallback, ReactNode } from 'react';
 import { useDropzone, FileRejection } from 'react-dropzone';
 
@@ -27,14 +28,14 @@ export const DatasetFileDropzone: FC<DatasetFileDropzoneProps> = ({
           onUpload(acceptedFiles);
         }
       } catch (error) {
-        console.error('Error handling accepted files:', error);
+        logger.error('Error handling accepted files', error);
       }
     },
     [onUpload]
   );
 
   const handleDropRejected = useCallback((fileRejections: FileRejection[]) => {
-    console.error('Files rejected:', fileRejections);
+    logger.error(`Files rejected: ${JSON.stringify(fileRejections)}`);
   }, []);
 
   const {

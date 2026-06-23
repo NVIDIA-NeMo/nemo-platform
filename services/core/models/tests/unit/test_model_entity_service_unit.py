@@ -14,11 +14,11 @@ from nemo_platform.filesets import ListFilesResponse
 from nemo_platform.types.files import (
     Fileset,
     FilesetFile,
-    FilesetMetadata,
     HuggingfaceStorageConfig,
     LocalStorageConfig,
     NGCStorageConfig,
 )
+from nemo_platform.types.shared import FilesetMetadata
 from nmp.common.api.common import Page, PaginationData
 from nmp.common.api.filter import ComparisonOperation, FilterOperator, LogicalOperation
 from nmp.common.api.parsed_filter import ParsedFilter

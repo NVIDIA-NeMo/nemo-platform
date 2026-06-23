@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+"""FastAPI dependencies for the deployments plugin API."""
+
+from __future__ import annotations
+
+from fastapi import HTTPException, Request
+from nemo_platform_plugin.entity_client import get_entity_client
+
+__all__ = ["get_entity_client", "require_service_principal"]
+
+_PRINCIPAL_ID_HEADER = "X-NMP-Principal-Id"
+
+
+def require_service_principal(request: Request) -> None:
+    """Restrict controller-only status writes to service principals."""
+    principal_id = request.headers.get(_PRINCIPAL_ID_HEADER, "")
+    if not principal_id.startswith("service:"):
+        raise HTTPException(
+            status_code=403,
+            detail="Status updates require a service principal.",
+        )

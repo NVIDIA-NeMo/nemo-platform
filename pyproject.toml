@@ -173,6 +173,7 @@ enabled-plugins = [
   "nemo-safe-synthesizer-plugin",
   "nemo-switchyard",
   "nemo-agents-plugin",
+  "nemo-deployments-plugin",
   "nemo-customizer-plugin",
   "nemo-automodel-plugin",
   "nemo-unsloth-plugin",
@@ -364,6 +365,7 @@ nemo-auditor-plugin = { workspace = true }
 nemo-safe-synthesizer-plugin = { workspace = true }
 nemo-switchyard = { workspace = true }
 nemo-agents-plugin = { workspace = true }
+nemo-deployments-plugin = { workspace = true }
 nemo-agents-example-calculator = { workspace = true }
 nemo-customizer-plugin = { workspace = true }
 nemo-automodel-plugin = { workspace = true }
@@ -417,6 +419,7 @@ members = [
   "plugins/nemo-safe-synthesizer",
   "plugins/nemo-switchyard",
   "plugins/nemo-agents",
+  "plugins/nemo-deployments",
   "plugins/nemo-agents/examples/calculator-agent",
   "plugins/nemo-customizer",
   "plugins/nemo-automodel",

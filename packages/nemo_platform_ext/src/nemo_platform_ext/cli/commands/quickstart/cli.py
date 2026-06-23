@@ -91,7 +91,7 @@ def _check_ready_endpoint(port: int, timeout: float = 2.0) -> bool:
     import httpx
 
     try:
-        response = httpx.get(f"http://localhost:{port}/health/ready", timeout=timeout)
+        response = httpx.get(f"http://localhost:{port}/status", timeout=timeout)
         return response.status_code == 200
     except Exception:
         return False

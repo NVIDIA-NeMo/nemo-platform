@@ -169,8 +169,8 @@ class ConfigParams(TypedDict, total=False):
     base_url: str
 
     # OAuth fields (for OAuthUser)
-    access_token: str
-    refresh_token: str
+    access_token: str | None
+    refresh_token: str | None
 
     workspace: str
     default_model: str
@@ -257,6 +257,8 @@ class ConfigFile(BaseModel):
 
         # Find existing or create user
         user: User = next((u for u in self.users if u.name == user_name), None)  # type: ignore[assignment]
+        access_token_provided = "access_token" in params
+        refresh_token_provided = "refresh_token" in params
         access_token = params.get("access_token")
         refresh_token = params.get("refresh_token")
 
@@ -271,25 +273,28 @@ class ConfigFile(BaseModel):
             else:
                 user = NoAuthUser(name=user_name)
             self.users.append(user)
-        elif access_token:
-            # Replace existing user with OAuthUser
+        elif access_token_provided:
+            # Replace existing user with OAuthUser, or clear auth when the
+            # caller explicitly passes access_token=None.
             idx = next(i for i, u in enumerate(self.users) if u.name == user_name)
-            user = OAuthUser(
-                name=user_name,
-                token=SecretStr(access_token),
-                refresh_token=SecretStr(refresh_token) if refresh_token else None,
-            )
+            if access_token:
+                user = OAuthUser(
+                    name=user_name,
+                    token=SecretStr(access_token),
+                    refresh_token=SecretStr(refresh_token) if refresh_token else None,
+                )
+            else:
+                user = NoAuthUser(name=user_name)
             self.users[idx] = user
-        elif isinstance(user, OAuthUser) and refresh_token:
-            # Update existing OAuthUser with new refresh token info
+        elif isinstance(user, OAuthUser) and refresh_token_provided:
+            # Allow callers to explicitly clear or rotate just the refresh token.
             idx = next(i for i, u in enumerate(self.users) if u.name == user_name)
             user = OAuthUser(
                 name=user_name,
                 token=user.token,
-                refresh_token=SecretStr(refresh_token) if refresh_token else user.refresh_token,
+                refresh_token=SecretStr(refresh_token) if refresh_token else None,
             )
             self.users[idx] = user
-
         # Find existing or create context
         context = existing_context
         if context is None:

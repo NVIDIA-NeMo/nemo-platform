@@ -6,7 +6,7 @@ import {
   createClaudeCodeToolCallPart,
   groupConsecutiveClaudeCodeSubtleToolCalls,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
-import { websiteLogger } from '@studio/util/logger';
+import { logger } from '@studio/util/logger';
 
 interface ServerSentEvent {
   event?: string;
@@ -121,9 +121,7 @@ export const parseJsonObject = (value: string): unknown => {
   try {
     return JSON.parse(value) as unknown;
   } catch (error) {
-    websiteLogger.error(
-      `Failed to parse Claude Code stream JSON: ${error instanceof Error ? error.message : String(error)}`
-    );
+    logger.error('Failed to parse Claude Code stream JSON', error);
     return undefined;
   }
 };

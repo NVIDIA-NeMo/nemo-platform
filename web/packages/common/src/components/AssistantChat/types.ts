@@ -1,18 +1,54 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { ThreadMessageLike } from '@assistant-ui/react';
+import type {
+  ThreadMessageLike,
+  ThreadPrimitive,
+  ToolCallMessagePartComponent,
+} from '@assistant-ui/react';
+import type { MessageContentProps } from '@nemo/common/src/components/Chat/MessageContent';
 import type { PromptData } from '@nemo/sdk/generated/platform/schema';
 import type { ChatCompletionTool } from 'openai/resources/index.mjs';
-import type { ReactNode } from 'react';
-
-import type { AssistantChatThreadAttributes } from './AssistantChatThread';
+import type { ComponentProps, ReactNode } from 'react';
 
 export const ComposerMode = {
   PER_PANEL: 'per-panel',
   BROADCAST_ALL: 'broadcast-all',
 } as const;
 export type ComposerMode = (typeof ComposerMode)[keyof typeof ComposerMode];
+
+export interface AssistantChatThreadAttributes {
+  ThreadViewport?: ComponentProps<typeof ThreadPrimitive.Viewport>;
+}
+
+export type AssistantChatMessageContentProps = Pick<MessageContentProps, 'markdownLinkComponent'>;
+
+export interface MessageRenderProps {
+  messageContentProps?: AssistantChatMessageContentProps;
+  toolCallPartComponent?: ToolCallMessagePartComponent;
+}
+
+export interface AssistantChatThreadProps {
+  disabled?: boolean;
+  placeholder: string;
+  onReset: () => void;
+  showRunningIndicator?: boolean;
+  attributes?: AssistantChatThreadAttributes;
+  composerMode?: ComposerMode;
+  slotComposerStart?: ReactNode;
+  emptyState?: {
+    slotHeading?: string;
+    slotSubheading?: string;
+  };
+  contentClassName?: string;
+  composerContainerClassName?: string;
+  hideAssistantMessageActions?: boolean;
+  toolCallPartComponent?: ToolCallMessagePartComponent;
+  viewportClassName?: string;
+  composerOverride?: ReactNode;
+  messageContentProps?: AssistantChatMessageContentProps;
+  enableImageAttachments?: boolean;
+}
 
 export interface AssistantChatProps {
   /**
@@ -95,6 +131,10 @@ export interface AssistantChatProps {
     slotSubheading?: string;
   };
   composerOverride?: ReactNode;
+  /**
+   * @default true
+   */
+  enableImageAttachments?: boolean;
 }
 
 export interface BroadcastSignal {

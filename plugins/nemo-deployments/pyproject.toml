@@ -1,0 +1,36 @@
+[project]
+name = "nemo-deployments-plugin"
+version = "0.1.0"
+description = "NeMo Deployments Plugin — substrate-agnostic deployment lifecycle on the NeMo Platform."
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "fastapi>=0.115",
+    "nemo-platform",
+    "nemo-platform-plugin",
+    "pydantic>=2.10.6",
+]
+
+[project.entry-points."nemo.services"]
+deployments = "nemo_deployments_plugin.service:DeploymentsService"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nemo_deployments_plugin"]
+
+[tool.uv.sources]
+nemo-platform = { workspace = true }
+nemo-platform-plugin = { workspace = true }
+
+[dependency-groups]
+dev = ["pytest>=8.3.4", "pytest-asyncio>=0.25.3", "httpx>=0.27", "fastapi>=0.115"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+pythonpath = ["src", "tests/unit"]
+
+[tool.nemo.openapi]

@@ -13,7 +13,7 @@ Usage::
 
 When ``NMP_BASE_URL`` is set the harness skips service startup/shutdown and
 connects to the given URL.  Otherwise it spawns ``nemo services run`` as a
-child process on a free port, polls ``/health/ready`` until ready, and
+child process on a free port, polls ``/status`` until ready, and
 terminates the process after the session.
 """
 
@@ -162,11 +162,11 @@ def _find_free_port() -> int:
 
 
 def _wait_for_healthy(url: str, timeout: float = _HEALTH_TIMEOUT) -> bool:
-    """Poll /health/ready until it returns 200 or timeout expires."""
+    """Poll /status until it returns 200 or timeout expires."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
-            resp = httpx.get(f"{url}/health/ready", timeout=2.0)
+            resp = httpx.get(f"{url}/status", timeout=2.0)
             if resp.status_code == 200:
                 return True
         except httpx.RequestError:

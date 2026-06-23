@@ -125,6 +125,10 @@ describe('SafeSynthesizerNewRoute', () => {
     it('should be defined and not null when SAFE_SYNTHESIZER_ENABLED is true', async () => {
       vi.doMock('@studio/constants/environment', () => ({
         SAFE_SYNTHESIZER_ENABLED: true,
+        OTEL_SERVICE_NAME: 'test-service',
+      }));
+      vi.doMock('@studio/util/logger', () => ({
+        logger: { debug: vi.fn(), error: vi.fn(), info: vi.fn(), warn: vi.fn() },
       }));
 
       const module = await import('./index');
@@ -135,6 +139,10 @@ describe('SafeSynthesizerNewRoute', () => {
     it('should return null when SAFE_SYNTHESIZER_ENABLED is false', async () => {
       vi.doMock('@studio/constants/environment', () => ({
         SAFE_SYNTHESIZER_ENABLED: false,
+        OTEL_SERVICE_NAME: 'test-service',
+      }));
+      vi.doMock('@studio/util/logger', () => ({
+        logger: { debug: vi.fn(), error: vi.fn(), info: vi.fn(), warn: vi.fn() },
       }));
 
       const module = await import('./index');
@@ -785,15 +793,21 @@ describe('SafeSynthesizerNewRoute', () => {
 
   describe('Form validation errors', () => {
     it('should have form validation error handling configured', async () => {
+      // Remove any lingering vi.doMock for the logger (left by Feature flag tests) so
+      // the component gets the real logger and we can assert via console.error.
+      vi.doUnmock('@studio/util/logger');
       vi.doMock('@studio/constants/environment', () => ({
         SAFE_SYNTHESIZER_ENABLED: true,
+        OTEL_SERVICE_NAME: 'test-service',
       }));
 
       vi.resetModules();
       const { SafeSynthesizerNewRoute } = await import('./index');
       if (!SafeSynthesizerNewRoute) return;
 
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      // Spy on console.error to suppress vitest-fail-on-console and assert the call.
+      // The real logger delegates to console.error, so we verify via the console spy.
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       const user = userEvent.setup();
 
       render(
@@ -813,29 +827,24 @@ describe('SafeSynthesizerNewRoute', () => {
         ).toBeInTheDocument();
       });
 
-      // Verify console.error was called with validation errors
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        'Form validation errors:',
-        expect.objectContaining({
-          spec: expect.objectContaining({
-            data_source: expect.any(Object),
-          }),
-        })
-      );
+      // Verify logger.error was called with validation errors (real logger calls console.error)
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Form validation errors:'));
 
-      consoleErrorSpy.mockRestore();
+      consoleSpy.mockRestore();
     });
   });
 
   describe('Form reset behavior', () => {
     beforeEach(() => {
       // Suppress expected console.error from error handling and validation code paths
-      suppressConsoleError('Form validation errors:', 'Failed to create job:');
+      suppressConsoleError('Form validation errors:', 'Failed to create job');
     });
 
     it('should clear error message when form is resubmitted', async () => {
       vi.doMock('@studio/constants/environment', () => ({
         SAFE_SYNTHESIZER_ENABLED: true,
+        OTEL_SERVICE_NAME: 'test-service',
+        VERSION_SHA: 'test-sha',
       }));
 
       let onErrorCallback: ((error: AxiosError) => void) | undefined;

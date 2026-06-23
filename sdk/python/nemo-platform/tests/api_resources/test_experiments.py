@@ -265,6 +265,7 @@ class TestExperiments:
                 "dataset_version": "dataset_version",
                 "experiment_group_id": "experiment_group_id",
                 "is_deleted": True,
+                "is_pinned": True,
                 "name": "name",
                 "updated_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
@@ -359,6 +360,110 @@ class TestExperiments:
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
             client.experiments.with_raw_response.delete(
+                name="",
+                workspace="workspace",
+            )
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_method_pin(self, client: NeMoPlatform) -> None:
+        experiment = client.experiments.pin(
+            name="name",
+            workspace="workspace",
+        )
+        assert_matches_type(ExperimentResponse, experiment, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_raw_response_pin(self, client: NeMoPlatform) -> None:
+        response = client.experiments.with_raw_response.pin(
+            name="name",
+            workspace="workspace",
+        )
+
+        assert response.is_closed is True
+        assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+        experiment = response.parse()
+        assert_matches_type(ExperimentResponse, experiment, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_streaming_response_pin(self, client: NeMoPlatform) -> None:
+        with client.experiments.with_streaming_response.pin(
+            name="name",
+            workspace="workspace",
+        ) as response:
+            assert not response.is_closed
+            assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+
+            experiment = response.parse()
+            assert_matches_type(ExperimentResponse, experiment, path=["response"])
+
+        assert cast(Any, response.is_closed) is True
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_path_params_pin(self, client: NeMoPlatform) -> None:
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
+            client.experiments.with_raw_response.pin(
+                name="name",
+                workspace="",
+            )
+
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
+            client.experiments.with_raw_response.pin(
+                name="",
+                workspace="workspace",
+            )
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_method_unpin(self, client: NeMoPlatform) -> None:
+        experiment = client.experiments.unpin(
+            name="name",
+            workspace="workspace",
+        )
+        assert_matches_type(ExperimentResponse, experiment, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_raw_response_unpin(self, client: NeMoPlatform) -> None:
+        response = client.experiments.with_raw_response.unpin(
+            name="name",
+            workspace="workspace",
+        )
+
+        assert response.is_closed is True
+        assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+        experiment = response.parse()
+        assert_matches_type(ExperimentResponse, experiment, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_streaming_response_unpin(self, client: NeMoPlatform) -> None:
+        with client.experiments.with_streaming_response.unpin(
+            name="name",
+            workspace="workspace",
+        ) as response:
+            assert not response.is_closed
+            assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+
+            experiment = response.parse()
+            assert_matches_type(ExperimentResponse, experiment, path=["response"])
+
+        assert cast(Any, response.is_closed) is True
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_path_params_unpin(self, client: NeMoPlatform) -> None:
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
+            client.experiments.with_raw_response.unpin(
+                name="name",
+                workspace="",
+            )
+
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
+            client.experiments.with_raw_response.unpin(
                 name="",
                 workspace="workspace",
             )
@@ -598,6 +703,7 @@ class TestAsyncExperiments:
                 "dataset_version": "dataset_version",
                 "experiment_group_id": "experiment_group_id",
                 "is_deleted": True,
+                "is_pinned": True,
                 "name": "name",
                 "updated_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
@@ -692,6 +798,110 @@ class TestAsyncExperiments:
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
             await async_client.experiments.with_raw_response.delete(
+                name="",
+                workspace="workspace",
+            )
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_method_pin(self, async_client: AsyncNeMoPlatform) -> None:
+        experiment = await async_client.experiments.pin(
+            name="name",
+            workspace="workspace",
+        )
+        assert_matches_type(ExperimentResponse, experiment, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_raw_response_pin(self, async_client: AsyncNeMoPlatform) -> None:
+        response = await async_client.experiments.with_raw_response.pin(
+            name="name",
+            workspace="workspace",
+        )
+
+        assert response.is_closed is True
+        assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+        experiment = await response.parse()
+        assert_matches_type(ExperimentResponse, experiment, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_streaming_response_pin(self, async_client: AsyncNeMoPlatform) -> None:
+        async with async_client.experiments.with_streaming_response.pin(
+            name="name",
+            workspace="workspace",
+        ) as response:
+            assert not response.is_closed
+            assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+
+            experiment = await response.parse()
+            assert_matches_type(ExperimentResponse, experiment, path=["response"])
+
+        assert cast(Any, response.is_closed) is True
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_path_params_pin(self, async_client: AsyncNeMoPlatform) -> None:
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
+            await async_client.experiments.with_raw_response.pin(
+                name="name",
+                workspace="",
+            )
+
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
+            await async_client.experiments.with_raw_response.pin(
+                name="",
+                workspace="workspace",
+            )
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_method_unpin(self, async_client: AsyncNeMoPlatform) -> None:
+        experiment = await async_client.experiments.unpin(
+            name="name",
+            workspace="workspace",
+        )
+        assert_matches_type(ExperimentResponse, experiment, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_raw_response_unpin(self, async_client: AsyncNeMoPlatform) -> None:
+        response = await async_client.experiments.with_raw_response.unpin(
+            name="name",
+            workspace="workspace",
+        )
+
+        assert response.is_closed is True
+        assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+        experiment = await response.parse()
+        assert_matches_type(ExperimentResponse, experiment, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_streaming_response_unpin(self, async_client: AsyncNeMoPlatform) -> None:
+        async with async_client.experiments.with_streaming_response.unpin(
+            name="name",
+            workspace="workspace",
+        ) as response:
+            assert not response.is_closed
+            assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+
+            experiment = await response.parse()
+            assert_matches_type(ExperimentResponse, experiment, path=["response"])
+
+        assert cast(Any, response.is_closed) is True
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_path_params_unpin(self, async_client: AsyncNeMoPlatform) -> None:
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
+            await async_client.experiments.with_raw_response.unpin(
+                name="name",
+                workspace="",
+            )
+
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
+            await async_client.experiments.with_raw_response.unpin(
                 name="",
                 workspace="workspace",
             )

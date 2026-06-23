@@ -314,10 +314,7 @@ describe('ActionMenu', () => {
       await user.click(confirmDeleteButton);
 
       await waitFor(() => {
-        expect(consoleErrorSpy).toHaveBeenCalledWith(
-          'Failed to delete dataset:',
-          expect.any(Error)
-        );
+        expect(consoleErrorSpy).toHaveBeenCalledWith('Failed to delete dataset', expect.any(Error));
       });
 
       expect(mockOnDatasetDeleted).not.toHaveBeenCalled();

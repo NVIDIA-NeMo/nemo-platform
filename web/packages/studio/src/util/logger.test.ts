@@ -32,7 +32,7 @@ vi.mock('@studio/constants/environment', async (importOriginal) => {
 });
 
 import { SeverityNumber } from '@opentelemetry/api-logs';
-import { handleGenericError, logVersion, websiteLogger } from '@studio/util/logger';
+import { handleGenericError, logVersion, logger } from '@studio/util/logger';
 
 describe('WebsiteLogger', () => {
   beforeEach(() => {
@@ -42,7 +42,7 @@ describe('WebsiteLogger', () => {
   it('should log debug messages to console.debug and otel', () => {
     const spy = vi.spyOn(console, 'debug').mockImplementation(() => {});
     // eslint-disable-next-line testing-library/no-debugging-utils
-    websiteLogger.debug('debug msg');
+    logger.debug('debug msg');
     expect(spy).toHaveBeenCalledWith('debug msg');
     expect(mockEmit).toHaveBeenCalledWith({
       severityNumber: SeverityNumber.DEBUG,
@@ -53,7 +53,7 @@ describe('WebsiteLogger', () => {
 
   it('should log info messages to console.info and otel', () => {
     const spy = vi.spyOn(console, 'info').mockImplementation(() => {});
-    websiteLogger.info('info msg');
+    logger.info('info msg');
     expect(spy).toHaveBeenCalledWith('info msg');
     expect(mockEmit).toHaveBeenCalledWith({
       severityNumber: SeverityNumber.INFO,
@@ -64,7 +64,7 @@ describe('WebsiteLogger', () => {
 
   it('should log warn messages to console.warn and otel', () => {
     const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    websiteLogger.warn('warn msg');
+    logger.warn('warn msg');
     expect(spy).toHaveBeenCalledWith('warn msg');
     expect(mockEmit).toHaveBeenCalledWith({
       severityNumber: SeverityNumber.WARN,
@@ -75,7 +75,7 @@ describe('WebsiteLogger', () => {
 
   it('should log error messages to console.error and otel', () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    websiteLogger.error('error msg');
+    logger.error('error msg');
     expect(spy).toHaveBeenCalledWith('error msg');
     expect(mockEmit).toHaveBeenCalledWith({
       severityNumber: SeverityNumber.ERROR,
@@ -90,11 +90,11 @@ describe('handleGenericError', () => {
     mockEmit.mockClear();
   });
 
-  it('should stringify Error objects before logging', () => {
+  it('should log error message with original error as cause', () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const error = new Error('test error');
     handleGenericError(error);
-    expect(spy).toHaveBeenCalledWith(JSON.stringify(error));
+    expect(spy).toHaveBeenCalledWith('test error', error);
     spy.mockRestore();
   });
 

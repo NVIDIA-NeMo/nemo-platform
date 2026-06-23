@@ -2,18 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { handleFormErrorsGeneric } from '@studio/util/forms/error';
-import { websiteLogger } from '@studio/util/logger';
+import { logger } from '@studio/util/logger';
 import { FieldErrors } from 'react-hook-form';
 
 // Mock the websiteLogger
 vi.mock('@studio/util/logger', () => ({
-  websiteLogger: {
+  logger: {
     error: vi.fn(),
   },
 }));
 
 describe('handleFormErrorsGeneric', () => {
-  const mockWebsiteLogger = websiteLogger as unknown as { error: ReturnType<typeof vi.fn> };
+  const mockWebsiteLogger = logger as unknown as { error: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     vi.clearAllMocks();

@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import click
 from nemo_platform_sdk_tools.cli import app
 from typer.testing import CliRunner
 
@@ -24,6 +25,13 @@ def test_license_help_is_registered() -> None:
     assert result.exit_code == 0
     assert "generate" in result.output
     assert "find-missing" in result.output
+
+
+def test_license_generate_help_includes_output_option() -> None:
+    result = runner.invoke(app, ["license", "generate", "--help"])
+
+    assert result.exit_code == 0
+    assert "--output" in click.unstyle(result.output)
 
 
 def test_representative_sdk_help_is_registered() -> None:
