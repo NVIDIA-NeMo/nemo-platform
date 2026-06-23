@@ -50,6 +50,9 @@ export const STALE_SUGGESTION_MS = 7 * 24 * 60 * 60 * 1000;
 export const SAMPLE_EVAL_CONFIG_PATH = 'react-eval.yml';
 export const SAMPLE_EVAL_DATA_PATH = 'react-eval-data.json';
 
+export const EVAL_CONFIG_FILESET_HELP_TEXT =
+  'A valid evaluation config is a NAT evaluation YAML file with a .yml or .yaml extension. Upload one to a fileset, then select that file here.';
+
 export const SAMPLE_EVAL_YAML = `# react-eval.yml — bundled sample seeded by the optimizer apply flow.
 #
 # Evaluates against the deployed agent endpoint. The judge LLM scores answers

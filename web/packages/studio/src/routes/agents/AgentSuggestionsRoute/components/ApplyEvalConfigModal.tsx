@@ -6,6 +6,7 @@ import { ControlledDatasetFileSelect } from '@nemo/common/src/components/Dataset
 import { parseFilesetLocation } from '@nemo/common/src/components/DatasetFileSelect/parseFilesetLocation';
 import { FormModal, type FormModalProps } from '@nemo/common/src/components/FormModal';
 import { Block, RadioGroup, Stack, Text } from '@nvidia/foundations-react-core';
+import { EVAL_CONFIG_FILESET_HELP_TEXT } from '@studio/routes/agents/AgentSuggestionsRoute/constants';
 import type { EvalConfigChoice } from '@studio/routes/agents/AgentSuggestionsRoute/types';
 import { type FC, useEffect } from 'react';
 import { useForm, useWatch, type SubmitHandler } from 'react-hook-form';
@@ -124,23 +125,28 @@ export const ApplyEvalConfigModal: FC<ApplyEvalConfigModalProps> = ({
           />
         </Block>
         {mode === MODE_FILESET ? (
-          <ControlledDatasetFileSelect
-            useControllerProps={{
-              control,
-              name: 'datasetFile',
-              rules: { required: 'Pick an eval YAML inside an existing fileset' },
-            }}
-            acceptedFileTypes={['.yml', '.yaml']}
-            invalidFileMode="disable"
-            setError={(error) => setError('datasetFile', error)}
-            clearError={() => clearErrors('datasetFile')}
-            workspace={workspace}
-            inline
-            autoCommit
-            formFieldProps={{
-              slotError: errors.datasetFile?.message,
-            }}
-          />
+          <Stack gap="density-md">
+            <Text kind="body/regular/sm" color="secondary">
+              {EVAL_CONFIG_FILESET_HELP_TEXT}
+            </Text>
+            <ControlledDatasetFileSelect
+              useControllerProps={{
+                control,
+                name: 'datasetFile',
+                rules: { required: 'Pick an eval YAML inside an existing fileset' },
+              }}
+              acceptedFileTypes={['.yml', '.yaml']}
+              invalidFileMode="disable"
+              setError={(error) => setError('datasetFile', error)}
+              clearError={() => clearErrors('datasetFile')}
+              workspace={workspace}
+              inline
+              autoCommit
+              formFieldProps={{
+                slotError: errors.datasetFile?.message,
+              }}
+            />
+          </Stack>
         ) : null}
       </Stack>
     </FormModal>
