@@ -695,7 +695,8 @@ components:
           description: Pickle protocol used.
         blob:
           type: string
-          format: base64url
+          contentEncoding: base64
+          contentMediaType: application/octet-stream
           title: Blob
           description: Base64-encoded cloudpickled metric object.
         digest:
