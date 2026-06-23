@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from docker.errors import NotFound
+from docker_availability import skip_without_docker
 from nemo_deployments_plugin.backends.docker.backend import DockerDeploymentBackend
 from nemo_deployments_plugin.backends.docker.labels import container_name, docker_volume_name
 from nemo_deployments_plugin.backends.registry import BACKEND_CLASSES, ExecutorRegistry
@@ -30,20 +31,14 @@ from nemo_deployments_plugin.entities import (
 from nemo_deployments_plugin.reconciler.deployment_reconciler import DeploymentReconciler
 from nemo_deployments_plugin.reconciler.volume_reconciler import VolumeReconciler
 
-try:
-    import docker
-
-    docker.from_env().ping()
-    DOCKER_AVAILABLE = True
-except Exception:
-    DOCKER_AVAILABLE = False
+import docker
 
 pytestmark = [
     pytest.mark.skipif(
         "docker" not in BACKEND_CLASSES,
         reason="Requires DockerDeploymentBackend (AIRCORE-756)",
     ),
-    pytest.mark.skipif(not DOCKER_AVAILABLE, reason="Docker daemon not available"),
+    skip_without_docker,
 ]
 
 
@@ -125,7 +120,11 @@ async def test_puller_server_prerequisite_chain(docker_registry: ExecutorRegistr
         ("itest", "server-cfg"): server_cfg,
     }
 
-    async def get_side_effect(entity_type, name, workspace=None):
+    async def get_side_effect(
+        entity_type: type,
+        name: str,
+        workspace: str | None = None,
+    ) -> Volume | Deployment | DeploymentConfig:
         ws = workspace or "itest"
         if entity_type is Volume:
             return volume
@@ -151,6 +150,11 @@ async def test_puller_server_prerequisite_chain(docker_registry: ExecutorRegistr
     deployment_reconciler.set_config_cache(config_cache)
 
     volumes_by_name = {("itest", "weights"): volume}
+    by_name = {("itest", "puller"): puller_dep, ("itest", "server"): server_dep}
+    by_config = {
+        ("itest", "puller-cfg"): puller_dep,
+        ("itest", "server-cfg"): server_dep,
+    }
 
     try:
         await volume_reconciler.reconcile_one(volume)
@@ -158,11 +162,6 @@ async def test_puller_server_prerequisite_chain(docker_registry: ExecutorRegistr
         volumes_by_name[("itest", "weights")] = volume
 
         for _ in range(40):
-            by_name = {("itest", "puller"): puller_dep, ("itest", "server"): server_dep}
-            by_config = {
-                ("itest", "puller-cfg"): puller_dep,
-                ("itest", "server-cfg"): server_dep,
-            }
             await deployment_reconciler.reconcile_one(
                 puller_dep,
                 deployments_by_config=by_config,
@@ -175,11 +174,6 @@ async def test_puller_server_prerequisite_chain(docker_registry: ExecutorRegistr
         assert puller_dep.status == "SUCCEEDED"
 
         for _ in range(10):
-            by_name = {("itest", "puller"): puller_dep, ("itest", "server"): server_dep}
-            by_config = {
-                ("itest", "puller-cfg"): puller_dep,
-                ("itest", "server-cfg"): server_dep,
-            }
             await deployment_reconciler.reconcile_one(
                 server_dep,
                 deployments_by_config=by_config,
@@ -191,15 +185,16 @@ async def test_puller_server_prerequisite_chain(docker_registry: ExecutorRegistr
             await asyncio.sleep(0.5)
         assert server_dep.status in ("READY", "STARTING")
     finally:
+        client = docker.from_env()
         await backend.delete_deployment("itest", "puller")
         await backend.delete_deployment("itest", "server")
         await backend.delete_volume("itest", "weights")
         for c_name in (container_name("itest", "puller"), container_name("itest", "server")):
             try:
-                backend._client.containers.get(c_name).remove(force=True)
+                client.containers.get(c_name).remove(force=True)
             except NotFound:
                 pass
         try:
-            backend._client.volumes.get(docker_volume_name("itest", "weights")).remove(force=True)
+            client.volumes.get(docker_volume_name("itest", "weights")).remove(force=True)
         except NotFound:
             pass

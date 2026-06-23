@@ -10,8 +10,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from docker.errors import NotFound
+from docker_availability import skip_without_docker
 from nemo_deployments_plugin.backends.docker.backend import DockerDeploymentBackend
-from nemo_deployments_plugin.backends.docker.labels import container_name, docker_volume_name
+from nemo_deployments_plugin.backends.docker.labels import container_name
 from nemo_deployments_plugin.backends.registry import BACKEND_CLASSES
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
 from nemo_deployments_plugin.entities import (
@@ -23,17 +24,11 @@ from nemo_deployments_plugin.entities import (
     DockerDeploymentConfig,
 )
 
-try:
-    import docker
-
-    docker.from_env().ping()
-    _DOCKER_AVAILABLE = True
-except Exception:
-    _DOCKER_AVAILABLE = False
+import docker
 
 pytestmark = [
     pytest.mark.skipif("docker" not in BACKEND_CLASSES, reason="Docker backend not registered"),
-    pytest.mark.skipif(not _DOCKER_AVAILABLE, reason="Docker daemon not available"),
+    skip_without_docker,
 ]
 
 
@@ -101,6 +96,7 @@ async def test_never_deployment_succeeds(docker_backend: DockerDeploymentBackend
     config = _never_config()
     docker_backend._entities.get.return_value = config  # type: ignore[attr-defined]
     c_name = container_name("itest", "echo-job")
+    client = docker.from_env()
 
     try:
         created = await docker_backend.create_deployment(
@@ -123,7 +119,7 @@ async def test_never_deployment_succeeds(docker_backend: DockerDeploymentBackend
     finally:
         await docker_backend.delete_deployment("itest", "echo-job")
         try:
-            docker_backend._client.containers.get(c_name).remove(force=True)
+            client.containers.get(c_name).remove(force=True)
         except NotFound:
             pass
 
@@ -140,6 +136,7 @@ async def test_lost_detection_for_always(docker_backend: DockerDeploymentBackend
 
     docker_backend._entities.get.side_effect = get_side_effect  # type: ignore[attr-defined]
     c_name = container_name("itest", "lost-srv")
+    client = docker.from_env()
 
     try:
         created = await docker_backend.create_deployment(
@@ -151,7 +148,7 @@ async def test_lost_detection_for_always(docker_backend: DockerDeploymentBackend
         )
         assert created.status == "STARTING"
 
-        container = docker_backend._client.containers.get(c_name)
+        container = client.containers.get(c_name)
         container.remove(force=True)
 
         status = await docker_backend.read_status(workspace="itest", name="lost-srv")
@@ -159,6 +156,6 @@ async def test_lost_detection_for_always(docker_backend: DockerDeploymentBackend
     finally:
         await docker_backend.delete_deployment("itest", "lost-srv")
         try:
-            docker_backend._client.volumes.remove(docker_volume_name("itest", "data"))
-        except Exception:
+            client.containers.get(c_name).remove(force=True)
+        except NotFound:
             pass

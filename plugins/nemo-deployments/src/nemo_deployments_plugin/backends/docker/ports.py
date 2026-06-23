@@ -9,13 +9,12 @@ import asyncio
 import logging
 import os
 import socket
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from nemo_deployments_plugin.backends.docker.labels import managed_by_filter
 from nemo_deployments_plugin.entities import DockerDeploymentConfig
 
-if TYPE_CHECKING:
-    import docker
+import docker
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +52,12 @@ def collect_used_host_ports(containers: list[Any]) -> set[int]:
     return used
 
 
-async def find_available_port(client: docker.DockerClient, docker_cfg: DockerDeploymentConfig) -> int | None:
+async def find_available_port(
+    client: docker.DockerClient,
+    docker_cfg: DockerDeploymentConfig,
+    *,
+    exclude_ports: set[int] | None = None,
+) -> int | None:
     try:
         containers = await asyncio.to_thread(
             client.containers.list,
@@ -65,6 +69,8 @@ async def find_available_port(client: docker.DockerClient, docker_cfg: DockerDep
         return None
 
     used_ports = collect_used_host_ports(containers)
+    if exclude_ports:
+        used_ports = used_ports | exclude_ports
     for port in range(docker_cfg.port_range_start, docker_cfg.port_range_end + 1):
         if port not in used_ports and is_port_free(port):
             return port

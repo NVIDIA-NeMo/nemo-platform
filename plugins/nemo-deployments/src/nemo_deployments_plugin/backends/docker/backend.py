@@ -32,9 +32,11 @@ from nemo_deployments_plugin.backends.docker.containers import (
 )
 from nemo_deployments_plugin.backends.docker.gpu import GPUAllocationError, get_shared_gpu_pool
 from nemo_deployments_plugin.backends.docker.labels import (
+    BACKOFF_LIMIT_LABEL,
     CONFIG_NAME_LABEL,
     DEPLOYMENT_NAME_LABEL,
     DEPLOYMENT_WORKSPACE_LABEL,
+    MANAGED_BY_KEY,
     RESTART_POLICY_LABEL,
     container_name,
     deployment_identity_labels,
@@ -147,7 +149,11 @@ class DockerDeploymentBackend(DeploymentBackend):
 
         host_ports: dict[int, int] = {}
         for port_spec in container_spec.ports:
-            host_port = await find_available_port(self._client, docker_cfg)
+            host_port = await find_available_port(
+                self._client,
+                docker_cfg,
+                exclude_ports=set(host_ports.values()),
+            )
             if host_port is None:
                 if gpu_ids:
                     self._gpu_pool.release_gpu(dep_key)  # type: ignore[union-attr]
@@ -289,7 +295,7 @@ class DockerDeploymentBackend(DeploymentBackend):
                 )
             if restart_policy == "OnFailure":
                 restart_count = int(container.attrs.get("RestartCount", 0))
-                backoff_limit = int(labels.get("nmp.nvidia.com/backoff-limit", "6"))
+                backoff_limit = int(labels.get(BACKOFF_LIMIT_LABEL, "6"))
                 if restart_count < backoff_limit:
                     return BackendStatusUpdate(
                         status="STARTING",
@@ -350,7 +356,7 @@ class DockerDeploymentBackend(DeploymentBackend):
         seen: set[str] = set()
         for container in containers:
             container_labels = container.labels or {}
-            if container_labels.get("managed-by") != MANAGED_BY_LABEL:
+            if container_labels.get(MANAGED_BY_KEY) != MANAGED_BY_LABEL:
                 continue
             ws = container_labels.get(DEPLOYMENT_WORKSPACE_LABEL)
             dep_name = container_labels.get(DEPLOYMENT_NAME_LABEL)
@@ -417,7 +423,7 @@ class DockerDeploymentBackend(DeploymentBackend):
             labels.get(DEPLOYMENT_WORKSPACE_LABEL) == workspace
             and labels.get(DEPLOYMENT_NAME_LABEL) == name
             and labels.get(CONFIG_NAME_LABEL) == config_name
-            and labels.get("managed-by") == MANAGED_BY_LABEL
+            and labels.get(MANAGED_BY_KEY) == MANAGED_BY_LABEL
         )
 
     async def _resolve_restart_policy(self, workspace: str, name: str) -> RestartPolicy:

@@ -26,10 +26,14 @@ def format_duration(seconds: float) -> str:
 
 
 def map_exited_status(exit_code: int, restart_policy: RestartPolicy) -> DeploymentStatus:
+    """Map a stopped container's exit code to a terminal deployment status.
+
+    Restart-policy-specific retry handling happens in the backend before this
+    helper is called for non-zero exits.
+    """
+    del restart_policy
     if exit_code in SUCCESSFUL_EXIT_CODES:
         return "SUCCEEDED"
-    if restart_policy == "Always":
-        return "FAILED"
     return "FAILED"
 
 

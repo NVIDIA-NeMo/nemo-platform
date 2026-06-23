@@ -8,9 +8,10 @@ from __future__ import annotations
 from typing import Any
 
 from nemo_deployments_plugin.entities import Container, DeploymentConfig
+from nemo_deployments_plugin.types import RestartPolicy
 
 
-def sample_config(*, restart_policy: str = "Always") -> DeploymentConfig:
+def sample_config(*, restart_policy: RestartPolicy = "Always") -> DeploymentConfig:
     return DeploymentConfig(
         name="cfg1",
         workspace="default",
@@ -22,7 +23,7 @@ def sample_config(*, restart_policy: str = "Always") -> DeploymentConfig:
                 args=["hello"],
             )
         ],
-        restart_policy=restart_policy,  # type: ignore[arg-type]
+        restart_policy=restart_policy,
     )
 
 

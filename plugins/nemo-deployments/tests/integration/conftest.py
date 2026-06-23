@@ -5,14 +5,6 @@
 
 from __future__ import annotations
 
-import pytest
+from docker_availability import DOCKER_AVAILABLE, skip_without_docker
 
-try:
-    import docker
-
-    docker.from_env().ping()
-    DOCKER_AVAILABLE = True
-except Exception:
-    DOCKER_AVAILABLE = False
-
-skip_without_docker = pytest.mark.skipif(not DOCKER_AVAILABLE, reason="Docker daemon not available")
+__all__ = ["DOCKER_AVAILABLE", "skip_without_docker"]

@@ -7,13 +7,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from nemo_deployments_plugin.backends.base import VolumeStatusUpdate
 from nemo_deployments_plugin.backends.docker.labels import docker_volume_name, volume_identity_labels
 
-if TYPE_CHECKING:
-    import docker
+import docker
 
 logger = logging.getLogger(__name__)
 
