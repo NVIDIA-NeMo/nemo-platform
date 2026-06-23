@@ -3,11 +3,8 @@
 
 """Typed endpoint definitions for the example plugin.
 
-These are the single source of truth for the HTTP contract.  Both the SDK
-client and (eventually) server route registration can be derived from them.
-
-Request and response models are plain Pydantic — they have no knowledge of
-the HTTP layer.
+These are the single source of truth for the HTTP contract.  Each endpoint
+declares its call signature and response type as a decorated function stub.
 """
 
 from __future__ import annotations
@@ -25,31 +22,20 @@ from nemo_example_plugin.types.payloads import (
     UpdateExampleItemRequest,
 )
 from nemo_platform_plugin.client.endpoint import delete, get, patch, post, put
-from nemo_platform_plugin.client.types import BinaryContent, PathParams, Stream, WorkspaceParams
-
-# -- Path parameter types --------------------------------------------------
-
-
-class NamePath(PathParams):
-    name: str
-
-
-class WorkspaceItemPath(WorkspaceParams):
-    name: str
-
+from nemo_platform_plugin.client.types import BinaryContent, Stream
 
 # -- Hello -----------------------------------------------------------------
 
-HelloEndpoint = get("/apis/example/hello/{name}", path_type=NamePath, response_type=HelloResponse)
+
+@get("/apis/example/hello/{name}")
+def HelloEndpoint(*, name: str) -> HelloResponse: ...
+
 
 # -- Items CRUD ------------------------------------------------------------
 
-CreateItemEndpoint = post(
-    "/apis/example/v2/workspaces/{workspace}/items",
-    path_type=WorkspaceParams,
-    request_type=CreateExampleItemRequest,
-    response_type=ExampleItem,
-)
+
+@post("/apis/example/v2/workspaces/{workspace}/items")
+def CreateItemEndpoint(body: CreateExampleItemRequest, *, workspace: str) -> ExampleItem: ...
 
 
 class ListItemsQueryParams(TypedDict, total=False):
@@ -57,46 +43,35 @@ class ListItemsQueryParams(TypedDict, total=False):
     page_size: NotRequired[int]
 
 
-ListItemsEndpoint = get(
-    "/apis/example/v2/workspaces/{workspace}/items",
-    path_type=WorkspaceParams,
-    response_type=ExampleItemPage,
-    query_params_type=ListItemsQueryParams,
-)
+@get("/apis/example/v2/workspaces/{workspace}/items")
+def ListItemsEndpoint(*, workspace: str, query_params: ListItemsQueryParams | None = None) -> ExampleItemPage: ...
 
-GetItemEndpoint = get(
-    "/apis/example/v2/workspaces/{workspace}/items/{name}", path_type=WorkspaceItemPath, response_type=ExampleItem
-)
 
-UpdateItemEndpoint = patch(
-    "/apis/example/v2/workspaces/{workspace}/items/{name}",
-    path_type=WorkspaceItemPath,
-    request_type=UpdateExampleItemRequest,
-    response_type=ExampleItem,
-)
+@get("/apis/example/v2/workspaces/{workspace}/items/{name}")
+def GetItemEndpoint(*, workspace: str, name: str) -> ExampleItem: ...
 
-DeleteItemEndpoint = delete("/apis/example/v2/workspaces/{workspace}/items/{name}", path_type=WorkspaceItemPath)
+
+@patch("/apis/example/v2/workspaces/{workspace}/items/{name}")
+def UpdateItemEndpoint(body: UpdateExampleItemRequest, *, workspace: str, name: str) -> ExampleItem: ...
+
+
+@delete("/apis/example/v2/workspaces/{workspace}/items/{name}")
+def DeleteItemEndpoint(*, workspace: str, name: str) -> None: ...
+
 
 # -- Functions -------------------------------------------------------------
 
-CountEndpoint = post(
-    "/apis/example/v2/workspaces/{workspace}/count",
-    path_type=WorkspaceParams,
-    request_type=CountRequest,
-    response_type=Stream[Tick],
-)
+
+@post("/apis/example/v2/workspaces/{workspace}/count")
+def CountEndpoint(body: CountRequest, *, workspace: str) -> Stream[Tick]: ...
+
 
 # -- Binary ----------------------------------------------------------------
 
-UploadBlobEndpoint = put(
-    "/apis/example/blob/{name}",
-    path_type=NamePath,
-    request_type=BinaryContent,
-    response_type=BlobUploadResponse,
-)
 
-DownloadBlobEndpoint = get(
-    "/apis/example/blob/{name}",
-    path_type=NamePath,
-    response_type=BinaryContent,
-)
+@put("/apis/example/blob/{name}")
+def UploadBlobEndpoint(content: bytes, *, name: str) -> BlobUploadResponse: ...
+
+
+@get("/apis/example/blob/{name}")
+def DownloadBlobEndpoint(*, name: str) -> BinaryContent: ...

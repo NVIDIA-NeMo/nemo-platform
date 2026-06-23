@@ -26,10 +26,10 @@ from nemo_platform_plugin.client.response import (
     NemoResponse,
     NemoStreamResponse,
 )
-from nemo_platform_plugin.client.types import BinaryContent, PreparedRequest, Stream
+from nemo_platform_plugin.client.endpoint import Endpoint
+from nemo_platform_plugin.client.types import P, BinaryContent, PreparedRequest, ResponseT, Stream
 from pydantic import BaseModel
 
-ResponseT = TypeVar("ResponseT", bound=BaseModel | None)
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 DEFAULT_TIMEOUT = 60.0
@@ -161,6 +161,17 @@ class NemoClient(BaseNemoClient):
             body = request.response_type.model_validate(raw.json())
         return NemoResponse(http_response=raw, body=body)
 
+    def call(
+        self, endpoint: Endpoint[P, ResponseT], *args: P.args, **kwargs: P.kwargs
+    ) -> NemoResponse[ResponseT]:
+        """Prepare and send a request in one step.
+
+        The call signature matches the endpoint's declared parameters::
+
+            item = client.call(CreateItemEndpoint, body, workspace="default").data()
+        """
+        return self.send(endpoint.prepare_request(*args, **kwargs))  # type: ignore[return-value]
+
 
 class AsyncNemoClient(BaseNemoClient):
     """Async HTTP client for NeMo Platform APIs.
@@ -217,3 +228,9 @@ class AsyncNemoClient(BaseNemoClient):
         if raw.is_success and request.response_type is not None:
             body = request.response_type.model_validate(raw.json())
         return NemoResponse(http_response=raw, body=body)
+
+    async def call(
+        self, endpoint: Endpoint[P, ResponseT], *args: P.args, **kwargs: P.kwargs
+    ) -> NemoResponse[ResponseT]:
+        """Prepare and send a request in one step (async)."""
+        return await self.send(endpoint.prepare_request(*args, **kwargs))  # type: ignore[return-value]

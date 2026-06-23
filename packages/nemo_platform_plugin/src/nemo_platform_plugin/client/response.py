@@ -15,7 +15,7 @@ import httpx
 from nemo_platform_plugin.client.types import BinaryContent, Stream
 from pydantic import BaseModel
 
-ResponseT = TypeVar("ResponseT", bound=BaseModel | BinaryContent | Stream | None)
+ResponseT = TypeVar("ResponseT")
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 

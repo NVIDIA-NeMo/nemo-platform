@@ -3,8 +3,10 @@
 
 from __future__ import annotations
 
+from typing import NotRequired, TypedDict
+
 from nemo_platform_plugin.client.endpoint import delete, get, patch, post
-from nemo_platform_plugin.client.types import PathParams, PreparedRequest
+from nemo_platform_plugin.client.types import PreparedRequest
 from pydantic import BaseModel
 
 
@@ -17,28 +19,34 @@ class FakeResponse(BaseModel):
     name: str
 
 
-class WorkspacePath(PathParams):
-    workspace: str
+@post("/v2/workspaces/{workspace}/items")
+def PostEndpoint(body: FakeRequest, *, workspace: str) -> FakeResponse: ...
 
 
-class WorkspaceItemPath(PathParams):
-    workspace: str
-    name: str
+@get("/v2/workspaces/{workspace}/items/{name}")
+def GetEndpoint(*, workspace: str, name: str) -> FakeResponse: ...
 
 
-class IdPath(PathParams):
-    id: str
+@delete("/v2/workspaces/{workspace}/items/{name}")
+def DeleteEndpoint(*, workspace: str, name: str) -> None: ...
+
+
+@patch("/items/{id}")
+def PatchEndpoint(body: FakeRequest, *, id: str) -> FakeResponse: ...
+
+
+class ListQueryParams(TypedDict, total=False):
+    page: NotRequired[int]
+    page_size: NotRequired[int]
+
+
+@get("/v2/workspaces/{workspace}/items")
+def ListEndpoint(*, workspace: str, query_params: ListQueryParams | None = None) -> FakeResponse: ...
 
 
 def test_post_endpoint_produces_prepared_request() -> None:
-    ep = post(
-        "/v2/workspaces/{workspace}/items",
-        path_type=WorkspacePath,
-        request_type=FakeRequest,
-        response_type=FakeResponse,
-    )
     payload = FakeRequest(name="alice")
-    prepared = ep.prepare_request(payload, workspace="default")
+    prepared = PostEndpoint.prepare_request(payload, workspace="default")
 
     assert isinstance(prepared, PreparedRequest)
     assert prepared.path_template == "/v2/workspaces/{workspace}/items"
@@ -50,8 +58,7 @@ def test_post_endpoint_produces_prepared_request() -> None:
 
 
 def test_get_endpoint_no_body() -> None:
-    ep = get("/v2/workspaces/{workspace}/items/{name}", path_type=WorkspaceItemPath, response_type=FakeResponse)
-    prepared = ep.prepare_request(workspace="default", name="item-1")
+    prepared = GetEndpoint.prepare_request(workspace="default", name="item-1")
 
     assert prepared.path_template == "/v2/workspaces/{workspace}/items/{name}"
     assert prepared.path_params == {"workspace": "default", "name": "item-1"}
@@ -62,8 +69,7 @@ def test_get_endpoint_no_body() -> None:
 
 
 def test_delete_endpoint() -> None:
-    ep = delete("/v2/workspaces/{workspace}/items/{name}", path_type=WorkspaceItemPath)
-    prepared = ep.prepare_request(workspace="default", name="item-1")
+    prepared = DeleteEndpoint.prepare_request(workspace="default", name="item-1")
 
     assert prepared.path_params == {"workspace": "default", "name": "item-1"}
     assert prepared.method == "DELETE"
@@ -71,9 +77,8 @@ def test_delete_endpoint() -> None:
 
 
 def test_patch_endpoint() -> None:
-    ep = patch("/items/{id}", path_type=IdPath, request_type=FakeRequest, response_type=FakeResponse)
     payload = FakeRequest(name="updated")
-    prepared = ep.prepare_request(payload, id="42")
+    prepared = PatchEndpoint.prepare_request(payload, id="42")
 
     assert prepared.path_params == {"id": "42"}
     assert prepared.method == "PATCH"
@@ -81,16 +86,13 @@ def test_patch_endpoint() -> None:
 
 
 def test_endpoint_repr() -> None:
-    ep = post("/items/{id}", path_type=IdPath, request_type=FakeRequest, response_type=FakeResponse)
-    r = repr(ep)
-    assert "/items" in r
-    assert "FakeRequest" in r
+    r = repr(PostEndpoint)
+    assert "/v2/workspaces" in r
     assert "FakeResponse" in r
 
 
 def test_get_with_query_params() -> None:
-    ep = get("/v2/workspaces/{workspace}/items", path_type=WorkspacePath, response_type=FakeResponse)
-    prepared = ep.prepare_request(workspace="default", query_params={"page": 1, "page_size": 10})
+    prepared = ListEndpoint.prepare_request(workspace="default", query_params={"page": 1, "page_size": 10})
 
     assert prepared.path_params == {"workspace": "default"}
     assert prepared.query_params == {"page": 1, "page_size": 10}
@@ -98,24 +100,27 @@ def test_get_with_query_params() -> None:
 
 
 def test_query_params_default_none() -> None:
-    ep = get("/v2/items", path_type=WorkspacePath, response_type=FakeResponse)
-    prepared = ep.prepare_request(workspace="default")
+    prepared = ListEndpoint.prepare_request(workspace="default")
 
     assert prepared.query_params is None
 
 
 def test_post_with_query_params() -> None:
-    ep = post("/v2/items", path_type=WorkspacePath, request_type=FakeRequest, response_type=FakeResponse)
+    @post("/v2/items/{workspace}")
+    def PostWithQuery(body: FakeRequest, *, workspace: str, query_params: dict | None = None) -> FakeResponse: ...
+
     payload = FakeRequest(name="alice")
-    prepared = ep.prepare_request(payload, workspace="default", query_params={"dry_run": True})
+    prepared = PostWithQuery.prepare_request(payload, workspace="default", query_params={"dry_run": True})
 
     assert prepared.query_params == {"dry_run": True}
     assert prepared.content == payload.model_dump_json().encode()
 
 
 def test_delete_with_response_type() -> None:
-    ep = delete("/v2/items/{id}", path_type=IdPath, response_type=FakeResponse)
-    prepared = ep.prepare_request(id="42")
+    @delete("/v2/items/{id}")
+    def DeleteWithResp(*, id: str) -> FakeResponse: ...
+
+    prepared = DeleteWithResp.prepare_request(id="42")
 
     assert prepared.method == "DELETE"
     assert prepared.response_type is FakeResponse

@@ -11,21 +11,22 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterable, Iterable
 from dataclasses import dataclass
-from typing import Generic, NotRequired, TypedDict, TypeVar
+from typing import Generic, ParamSpec, TypeVar
 
 from pydantic import BaseModel
 
+P = ParamSpec("P")
 ModelT = TypeVar("ModelT", bound=BaseModel)
+ResponseT = TypeVar("ResponseT")
 
 
 class BinaryContent:
     """Marker type: endpoint sends or receives raw bytes.
 
-    Use as ``request_type`` for binary uploads or ``response_type`` for
-    binary downloads::
+    Use ``content`` parameter for binary uploads::
 
-        UploadEndpoint = put("/files/{path}", path_type=FilePath, request_type=BinaryContent, response_type=FileResponse)
-        DownloadEndpoint = get("/files/{path}", path_type=FilePath, response_type=BinaryContent)
+        @put("/files/{path}", response_type=FileResponse)
+        def UploadEndpoint(content: bytes, *, path: str) -> None: ...
     """
 
 
@@ -34,32 +35,9 @@ class Stream(Generic[ModelT]):
 
     Used as ``response_type`` in endpoint definitions::
 
-        ChatEndpoint = post("/chat/{workspace}", path_type=WorkspacePath, request_type=ChatRequest, response_type=Stream[ChatChunk])
+        @post("/chat/{workspace}", response_type=Stream[ChatChunk])
+        def ChatEndpoint(body: ChatRequest, *, workspace: str) -> None: ...
     """
-
-
-class PathParams(TypedDict):
-    """Base class for all path parameter types.
-
-    All path TypedDicts must inherit from this so that ``PathT`` is
-    properly constrained.
-    """
-
-
-class WorkspaceParams(PathParams):
-    """Path params with an optional workspace (filled by client default)."""
-
-    workspace: NotRequired[str]
-
-
-PathT = TypeVar("PathT", bound=PathParams)
-RequestT = TypeVar("RequestT", bound=BaseModel | BinaryContent | None)
-ResponseT = TypeVar("ResponseT", bound=BaseModel | BinaryContent | Stream | None)
-
-# Query params: when a query_params_type is specified on the endpoint factory,
-# callers get type-checked query params.  When omitted, any dict is accepted.
-UntypedQueryParams = dict[str, str | int | bool | None]
-QueryParamsT = TypeVar("QueryParamsT")
 
 
 @dataclass(frozen=True, slots=True)

@@ -67,7 +67,7 @@ def _async_client() -> tuple[AsyncNemoClient, AsyncMock]:
 def test_sync_hello() -> None:
     client, mock_http = _sync_client()
     mock_http.request.return_value = _resp(200, {"message": "Hello, alice!"})
-    resp = client.send(HelloEndpoint.prepare_request(name="alice"))
+    resp = client.call(HelloEndpoint, name="alice")
     assert resp.data().message == "Hello, alice!"
 
 
@@ -75,7 +75,7 @@ def test_sync_hello() -> None:
 async def test_async_hello() -> None:
     client, mock_http = _async_client()
     mock_http.request.return_value = _resp(200, {"message": "Hello, bob!"})
-    resp = await client.send(HelloEndpoint.prepare_request(name="bob"))
+    resp = await client.call(HelloEndpoint, name="bob")
     assert resp.data().message == "Hello, bob!"
 
 
@@ -88,9 +88,7 @@ def test_sync_create_item() -> None:
     client, mock_http = _sync_client()
     mock_http.request.return_value = _resp(201, ITEM_PAYLOAD)
 
-    resp = client.send(
-        CreateItemEndpoint.prepare_request(CreateExampleItemRequest(name="my-item", title="My Item"), workspace=WS)
-    )
+    resp = client.call(CreateItemEndpoint, CreateExampleItemRequest(name="my-item", title="My Item"), workspace=WS)
     item = resp.data()
 
     assert item.name == "my-item"
@@ -102,7 +100,7 @@ def test_sync_get_item() -> None:
     client, mock_http = _sync_client()
     mock_http.request.return_value = _resp(200, ITEM_PAYLOAD)
 
-    resp = client.send(GetItemEndpoint.prepare_request(workspace=WS, name="my-item"))
+    resp = client.call(GetItemEndpoint, workspace=WS, name="my-item")
 
     assert resp.data().name == "my-item"
 
@@ -113,7 +111,7 @@ def test_sync_list_items() -> None:
         200, {"data": [ITEM_PAYLOAD], "pagination": None, "sort": None, "filter": None}
     )
 
-    resp = client.send(ListItemsEndpoint.prepare_request(workspace=WS))
+    resp = client.call(ListItemsEndpoint, workspace=WS)
     page = resp.data()
 
     assert len(page.data) == 1
@@ -126,7 +124,7 @@ def test_sync_list_items_with_query_params() -> None:
         200, {"data": [ITEM_PAYLOAD], "pagination": None, "sort": None, "filter": None}
     )
 
-    resp = client.send(ListItemsEndpoint.prepare_request(workspace=WS, query_params={"page": 2, "page_size": 5}))
+    resp = client.call(ListItemsEndpoint, workspace=WS, query_params={"page": 2, "page_size": 5})
     page = resp.data()
 
     assert len(page.data) == 1
@@ -139,9 +137,7 @@ def test_sync_update_item() -> None:
     updated = {**ITEM_PAYLOAD, "title": "Updated"}
     mock_http.request.return_value = _resp(200, updated)
 
-    resp = client.send(
-        UpdateItemEndpoint.prepare_request(UpdateExampleItemRequest(title="Updated"), workspace=WS, name="my-item")
-    )
+    resp = client.call(UpdateItemEndpoint, UpdateExampleItemRequest(title="Updated"), workspace=WS, name="my-item")
 
     assert resp.data().title == "Updated"
 
@@ -150,7 +146,7 @@ def test_sync_delete_item() -> None:
     client, mock_http = _sync_client()
     mock_http.request.return_value = _resp(204)
 
-    client.send(DeleteItemEndpoint.prepare_request(workspace=WS, name="my-item"))
+    client.call(DeleteItemEndpoint, workspace=WS, name="my-item")
 
     mock_http.request.assert_called_once()
 
@@ -165,8 +161,8 @@ async def test_async_create_item() -> None:
     client, mock_http = _async_client()
     mock_http.request.return_value = _resp(201, ITEM_PAYLOAD)
 
-    resp = await client.send(
-        CreateItemEndpoint.prepare_request(CreateExampleItemRequest(name="my-item", title="My Item"), workspace=WS)
+    resp = await client.call(
+        CreateItemEndpoint, CreateExampleItemRequest(name="my-item", title="My Item"), workspace=WS
     )
 
     assert resp.data().name == "my-item"
@@ -177,7 +173,7 @@ async def test_async_get_item() -> None:
     client, mock_http = _async_client()
     mock_http.request.return_value = _resp(200, ITEM_PAYLOAD)
 
-    resp = await client.send(GetItemEndpoint.prepare_request(workspace=WS, name="my-item"))
+    resp = await client.call(GetItemEndpoint, workspace=WS, name="my-item")
 
     assert resp.data().name == "my-item"
 
@@ -189,7 +185,7 @@ async def test_async_list_items() -> None:
         200, {"data": [ITEM_PAYLOAD], "pagination": None, "sort": None, "filter": None}
     )
 
-    resp = await client.send(ListItemsEndpoint.prepare_request(workspace=WS))
+    resp = await client.call(ListItemsEndpoint, workspace=WS)
     page = resp.data()
 
     assert len(page.data) == 1
@@ -202,8 +198,8 @@ async def test_async_update_item() -> None:
     updated = {**ITEM_PAYLOAD, "title": "Updated"}
     mock_http.request.return_value = _resp(200, updated)
 
-    resp = await client.send(
-        UpdateItemEndpoint.prepare_request(UpdateExampleItemRequest(title="Updated"), workspace=WS, name="my-item")
+    resp = await client.call(
+        UpdateItemEndpoint, UpdateExampleItemRequest(title="Updated"), workspace=WS, name="my-item"
     )
 
     assert resp.data().title == "Updated"
@@ -214,6 +210,6 @@ async def test_async_delete_item() -> None:
     client, mock_http = _async_client()
     mock_http.request.return_value = _resp(204)
 
-    await client.send(DeleteItemEndpoint.prepare_request(workspace=WS, name="my-item"))
+    await client.call(DeleteItemEndpoint, workspace=WS, name="my-item")
 
     mock_http.request.assert_awaited_once()

@@ -1,250 +1,158 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Typed endpoint definitions and factory functions.
+"""Typed endpoint definitions using ParamSpec-based decorators.
 
-Define endpoints as module-level constants using the factory functions,
-then use them with ``prepare_request`` + ``client.send``::
+Endpoints are declared as decorated function signatures. The function's
+return type annotation becomes the response type, and its parameters
+become the call signature for ``client.call()``::
 
-    CreateItemEndpoint = post("/items", path_type=WorkspacePath, request_type=CreateItemRequest, response_type=ItemResponse)
-    GetItemEndpoint = get("/items/{name}", path_type=WorkspaceItemPath, response_type=ItemResponse)
+    @post("/apis/example/v2/workspaces/{workspace}/items")
+    def CreateItemEndpoint(body: CreateItemRequest, *, workspace: str) -> Item: ...
+
+    @get("/apis/example/hello/{name}")
+    def HelloEndpoint(*, name: str) -> HelloResponse: ...
 
     client = NemoClient(base_url="http://localhost:8080")
-    item = client.send(CreateItemEndpoint.prepare_request(body, workspace="default")).data()
-    item = client.send(GetItemEndpoint.prepare_request(workspace="default", name="x")).data()
+    item = client.call(CreateItemEndpoint, CreateItemRequest(name="x"), workspace="default").data()
+    hello = client.call(HelloEndpoint, name="alice").data()
+
+The lower-level ``prepare_request`` + ``send`` API is also available::
+
+    req = CreateItemEndpoint.prepare_request(CreateItemRequest(name="x"), workspace="default")
+    resp = client.send(req)
+
+Parameter conventions:
+- ``body`` — JSON request body (Pydantic model, serialized automatically)
+- ``content`` — binary request body (raw bytes)
+- ``query_params`` — query parameters (dict or TypedDict)
+- All other keyword parameters — path parameters (matched to ``{placeholders}`` in the path template)
 """
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterable, Iterable
-from typing import Generic, Unpack, overload
+import inspect
+import string
+from collections.abc import AsyncIterable, Callable, Iterable
+from typing import Generic, get_type_hints
 
 from nemo_platform_plugin.client.types import (
-    BinaryContent,
-    PathT,
+    P,
     PreparedRequest,
-    QueryParamsT,
-    RequestT,
     ResponseT,
-    UntypedQueryParams,
 )
 from pydantic import BaseModel
 
 
-class Endpoint(Generic[PathT, RequestT, ResponseT, QueryParamsT]):
+class Endpoint(Generic[P, ResponseT]):
     """A typed HTTP endpoint definition.
 
-    Links a path type ``PathT``, request type ``RequestT``, response type
-    ``ResponseT``, and optional query params type ``QueryParamsT`` together
-    with the HTTP method and path template.
+    Captures the HTTP method, path template, response type, and the
+    call signature (via ``ParamSpec``) from the decorated function.
+
+    Use ``prepare_request()`` to build a :class:`PreparedRequest`, or
+    pass this endpoint to ``NemoClient.call()`` for a one-step call.
     """
 
     def __init__(
-        self, path: str, method: str, request_type: type[RequestT] | None, response_type: type[ResponseT] | None
+        self,
+        method: str,
+        path: str,
+        fn: Callable[P, ResponseT],
     ) -> None:
-        self.path = path
         self.method = method
-        self.request_type = request_type
-        self.response_type = response_type
+        self.path = path
+        self._sig = inspect.signature(fn)
+        self._path_params = {field_name for _, field_name, _, _ in string.Formatter().parse(path) if field_name}
 
-    # -- prepare_request() overloads: body / binary / no-body ---------------
+        hints = get_type_hints(fn)
+        ret = hints.get("return")
+        self.response_type: type[ResponseT] | None = ret if ret is not None and ret is not type(None) else None
 
-    @overload
-    def prepare_request(
-        self: Endpoint[PathT, RequestT, ResponseT, QueryParamsT],
-        body: RequestT,
-        *,
-        query_params: QueryParamsT | None = None,
-        **path_params: Unpack[PathT],
-    ) -> PreparedRequest[ResponseT]: ...
-    @overload
-    def prepare_request(
-        self: Endpoint[PathT, BinaryContent, ResponseT, QueryParamsT],
-        content: bytes | Iterable[bytes] | AsyncIterable[bytes],
-        *,
-        query_params: QueryParamsT | None = None,
-        **path_params: Unpack[PathT],
-    ) -> PreparedRequest[ResponseT]: ...
-    @overload
-    def prepare_request(
-        self: Endpoint[PathT, None, ResponseT, QueryParamsT],
-        *,
-        query_params: QueryParamsT | None = None,
-        **path_params: Unpack[PathT],
-    ) -> PreparedRequest[ResponseT]: ...
+    def prepare_request(self, *args: P.args, **kwargs: P.kwargs) -> PreparedRequest[ResponseT]:
+        """Build a :class:`PreparedRequest` by binding the call arguments."""
+        bound = self._sig.bind(*args, **kwargs)
+        bound.apply_defaults()
 
-    def prepare_request(self, *args: object, query_params: object = None, **path_params: object) -> PreparedRequest:
-        """Build a :class:`PreparedRequest` from body/content and path parameters."""
-        params = {k: str(v) for k, v in path_params.items()}
-        raw_content: bytes | Iterable[bytes] | AsyncIterable[bytes] | None
-        content_type: str | None
+        path_params: dict[str, str] = {}
+        query_params: dict[str, str | int | bool | None] | None = None
+        content: bytes | Iterable[bytes] | AsyncIterable[bytes] | None = None
+        content_type: str | None = None
 
-        if self.request_type is None:
-            raw_content = None
-            content_type = None
-        elif self.request_type is BinaryContent:
-            raw_content = args[0]  # type: ignore[assignment]
-            content_type = "application/octet-stream"
-        else:
-            body = args[0]
-            assert isinstance(body, BaseModel)
-            raw_content = body.model_dump_json().encode()
-            content_type = "application/json"
-
-        resolved_query: dict[str, str | int | bool | None] | None = None
-        if query_params is not None:
-            resolved_query = dict(query_params)  # type: ignore[arg-type]
+        for name, value in bound.arguments.items():
+            if name in self._path_params:
+                path_params[name] = str(value)
+            elif name == "body":
+                assert isinstance(value, BaseModel)
+                content = value.model_dump_json().encode()
+                content_type = "application/json"
+            elif name == "content":
+                content = value
+                content_type = "application/octet-stream"
+            elif name == "query_params":
+                if value is not None:
+                    query_params = dict(value)
 
         return PreparedRequest(
             path_template=self.path,
-            path_params=params,
+            path_params=path_params,
             method=self.method,
-            content=raw_content,
+            content=content,
             content_type=content_type,
             response_type=self.response_type,
-            query_params=resolved_query,
+            query_params=query_params,
         )
 
     def __repr__(self) -> str:
-        req = self.request_type.__name__ if self.request_type else "None"
         resp = self.response_type.__name__ if self.response_type else "None"
-        return f"Endpoint({self.method} {self.path}, {req} -> {resp})"
+        return f"Endpoint({self.method} {self.path} -> {resp})"
 
 
 # ---------------------------------------------------------------------------
-# Factory functions
+# Decorator factories
 # ---------------------------------------------------------------------------
 
 
-@overload
-def get(
-    path: str,
-    path_type: type[PathT],
-    response_type: type[ResponseT],
-) -> Endpoint[PathT, None, ResponseT, UntypedQueryParams]: ...
-
-
-@overload
-def get(
-    path: str,
-    path_type: type[PathT],
-    response_type: type[ResponseT],
-    query_params_type: type[QueryParamsT],
-) -> Endpoint[PathT, None, ResponseT, QueryParamsT]: ...
-
-
-def get(
-    path: str,
-    path_type: type[PathT],
-    response_type: type[ResponseT],
-    query_params_type: type[QueryParamsT] | None = None,
-) -> Endpoint[PathT, None, ResponseT, QueryParamsT] | Endpoint[PathT, None, ResponseT, UntypedQueryParams]:
+def get(path: str) -> Callable[[Callable[P, ResponseT]], Endpoint[P, ResponseT]]:
     """Define a GET endpoint (no request body)."""
-    return Endpoint(path, "GET", None, response_type)
+
+    def decorator(fn: Callable[P, ResponseT]) -> Endpoint[P, ResponseT]:
+        return Endpoint(method="GET", path=path, fn=fn)
+
+    return decorator
 
 
-@overload
-def post(
-    path: str,
-    path_type: type[PathT],
-    request_type: type[RequestT],
-    response_type: type[ResponseT],
-) -> Endpoint[PathT, RequestT, ResponseT, UntypedQueryParams]: ...
-
-
-@overload
-def post(
-    path: str,
-    path_type: type[PathT],
-    request_type: type[RequestT],
-    response_type: type[ResponseT],
-    query_params_type: type[QueryParamsT],
-) -> Endpoint[PathT, RequestT, ResponseT, QueryParamsT]: ...
-
-
-def post(
-    path: str,
-    path_type: type[PathT],
-    request_type: type[RequestT],
-    response_type: type[ResponseT],
-    query_params_type: type[QueryParamsT] | None = None,
-) -> Endpoint[PathT, RequestT, ResponseT, QueryParamsT] | Endpoint[PathT, RequestT, ResponseT, UntypedQueryParams]:
+def post(path: str) -> Callable[[Callable[P, ResponseT]], Endpoint[P, ResponseT]]:
     """Define a POST endpoint."""
-    return Endpoint(path, "POST", request_type, response_type)
+
+    def decorator(fn: Callable[P, ResponseT]) -> Endpoint[P, ResponseT]:
+        return Endpoint(method="POST", path=path, fn=fn)
+
+    return decorator
 
 
-@overload
-def put(
-    path: str,
-    path_type: type[PathT],
-    request_type: type[RequestT],
-    response_type: type[ResponseT],
-) -> Endpoint[PathT, RequestT, ResponseT, UntypedQueryParams]: ...
-
-
-@overload
-def put(
-    path: str,
-    path_type: type[PathT],
-    request_type: type[RequestT],
-    response_type: type[ResponseT],
-    query_params_type: type[QueryParamsT],
-) -> Endpoint[PathT, RequestT, ResponseT, QueryParamsT]: ...
-
-
-def put(
-    path: str,
-    path_type: type[PathT],
-    request_type: type[RequestT],
-    response_type: type[ResponseT],
-    query_params_type: type[QueryParamsT] | None = None,
-) -> Endpoint[PathT, RequestT, ResponseT, QueryParamsT] | Endpoint[PathT, RequestT, ResponseT, UntypedQueryParams]:
+def put(path: str) -> Callable[[Callable[P, ResponseT]], Endpoint[P, ResponseT]]:
     """Define a PUT endpoint."""
-    return Endpoint(path, "PUT", request_type, response_type)
+
+    def decorator(fn: Callable[P, ResponseT]) -> Endpoint[P, ResponseT]:
+        return Endpoint(method="PUT", path=path, fn=fn)
+
+    return decorator
 
 
-@overload
-def patch(
-    path: str,
-    path_type: type[PathT],
-    request_type: type[RequestT],
-    response_type: type[ResponseT],
-) -> Endpoint[PathT, RequestT, ResponseT, UntypedQueryParams]: ...
-
-
-@overload
-def patch(
-    path: str,
-    path_type: type[PathT],
-    request_type: type[RequestT],
-    response_type: type[ResponseT],
-    query_params_type: type[QueryParamsT],
-) -> Endpoint[PathT, RequestT, ResponseT, QueryParamsT]: ...
-
-
-def patch(
-    path: str,
-    path_type: type[PathT],
-    request_type: type[RequestT],
-    response_type: type[ResponseT],
-    query_params_type: type[QueryParamsT] | None = None,
-) -> Endpoint[PathT, RequestT, ResponseT, QueryParamsT] | Endpoint[PathT, RequestT, ResponseT, UntypedQueryParams]:
+def patch(path: str) -> Callable[[Callable[P, ResponseT]], Endpoint[P, ResponseT]]:
     """Define a PATCH endpoint."""
-    return Endpoint(path, "PATCH", request_type, response_type)
+
+    def decorator(fn: Callable[P, ResponseT]) -> Endpoint[P, ResponseT]:
+        return Endpoint(method="PATCH", path=path, fn=fn)
+
+    return decorator
 
 
-@overload
-def delete(path: str, path_type: type[PathT]) -> Endpoint[PathT, None, None, UntypedQueryParams]: ...
-
-
-@overload
-def delete(
-    path: str, path_type: type[PathT], response_type: type[ResponseT]
-) -> Endpoint[PathT, None, ResponseT, UntypedQueryParams]: ...
-
-
-def delete(
-    path: str, path_type: type[PathT], response_type: type[ResponseT] | None = None
-) -> Endpoint[PathT, None, ResponseT, UntypedQueryParams] | Endpoint[PathT, None, None, UntypedQueryParams]:
+def delete(path: str) -> Callable[[Callable[P, ResponseT]], Endpoint[P, ResponseT]]:
     """Define a DELETE endpoint (no request body, optional response body)."""
-    return Endpoint(path, "DELETE", None, response_type)
+
+    def decorator(fn: Callable[P, ResponseT]) -> Endpoint[P, ResponseT]:
+        return Endpoint(method="DELETE", path=path, fn=fn)
+
+    return decorator
