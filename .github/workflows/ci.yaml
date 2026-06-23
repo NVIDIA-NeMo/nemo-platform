@@ -568,13 +568,13 @@ jobs:
           if ! curl "${curl_args[@]}" -o "${chart_verifier_archive_path}" "${release_url}"; then
             echo "::warning::Unable to download chart-verifier ${CHART_VERIFIER_VERSION}; skipping chart verifier."
             echo "installed=false" >> "${GITHUB_OUTPUT}"
-            exit 0
+            exit 1
           fi
 
           if ! curl "${github_api_args[@]}" -o "${release_metadata_path}" "${release_api_url}"; then
             echo "::warning::Unable to fetch chart-verifier release metadata; skipping chart verifier."
             echo "installed=false" >> "${GITHUB_OUTPUT}"
-            exit 0
+            exit 1
           fi
 
           if ! chart_verifier_sha256="$(
@@ -602,7 +602,7 @@ jobs:
           )"; then
             echo "::warning::Unable to read chart-verifier release digest; skipping chart verifier."
             echo "installed=false" >> "${GITHUB_OUTPUT}"
-            exit 0
+            exit 1
           fi
 
           printf '%s  %s\n' "${chart_verifier_sha256}" "${RUNNER_TEMP}/chart-verifier.tar.gz" \
