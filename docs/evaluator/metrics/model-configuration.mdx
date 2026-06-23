@@ -204,15 +204,16 @@ result = evaluator.run(metric=metric, dataset=dataset, target=model)
 
 ### `ModelRef` (supported by `evaluator.submit(...)`)
 
-Durable remote `evaluator.submit(...)` jobs additionally accept a `ModelRef` target. A `ModelRef` names a platform model entity (`workspace/model-name`) and is resolved by the evaluator backend when the job runs, so you do not have to resolve the endpoint yourself. Use this for platform-managed model routing:
+Durable remote `evaluator.submit(...)` jobs additionally accept a `ModelRef` target. A `ModelRef` names a platform model entity (`workspace/model-name`) and is resolved by the evaluator backend when the job runs, so you do not have to resolve the endpoint yourself. Use this for platform-managed model routing. A `ModelRef` target generates outputs online, so it requires an online run config (`RunConfigOnlineModel`):
 
 ```python
-from nemo_evaluator_sdk import ModelRef
+from nemo_evaluator_sdk import ModelRef, RunConfigOnlineModel
 from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 
 job = evaluator.submit(
     metric=metric,
     dataset=dataset,
+    config=RunConfigOnlineModel(),
     target=ModelRef(root="default/my-model"),
     metric_bundle_packager=CloudpickleMetricBundlePackager(),
 )

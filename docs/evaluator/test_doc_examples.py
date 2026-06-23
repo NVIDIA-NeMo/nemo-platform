@@ -74,7 +74,7 @@ def _evaluator() -> Evaluator:
     return client.evaluator
 
 
-def test_submit_exposes_metric_bundle_packager_but_run_does_not() -> None:
+def test_packager_param_is_submit_only() -> None:
     """``submit`` takes ``metric_bundle_packager``; ``run`` (local, in-process) does not."""
     from nemo_evaluator.sdk import Evaluator
 
