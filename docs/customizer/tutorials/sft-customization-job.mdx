@@ -547,47 +547,6 @@ deployment_config = client.inference.deployment_configs.create(
 
 **Single-Node Constraint:** Model deployments are limited to a single node. The maximum `gpu` value depends on the total GPUs available on a single node in your cluster. Multi-node deployments are not supported.
 
----
-
-#### GPU Parallelism
-
-By default, NIM uses all GPUs for tensor parallelism (TP). You can customize this behavior using the `NIM_TENSOR_PARALLEL_SIZE` and `NIM_PIPELINE_PARALLEL_SIZE` environment variables.
-
-| Strategy | Description | Best For |
-|----------|-------------|----------|
-| **Tensor Parallel (TP)** | Splits model layers across GPUs | Lowest latency |
-| **Pipeline Parallel (PP)** | Splits model depth across GPUs | Highest throughput |
-
-**Formula:** `gpu` = `NIM_TENSOR_PARALLEL_SIZE` × `NIM_PIPELINE_PARALLEL_SIZE`
-
----
-
-#### Example Configurations
-
-**Default (TP=8, PP=1) — Lowest Latency**
-```
-"gpu": 8
-# NIM automatically sets NIM_TENSOR_PARALLEL_SIZE=8
-```
-
-**Balanced (TP=4, PP=2)**
-```
-"gpu": 8,
-"additional_envs": {
-    "NIM_TENSOR_PARALLEL_SIZE": "4",
-    "NIM_PIPELINE_PARALLEL_SIZE": "2"
-}
-```
-
-**Throughput Optimized (TP=2, PP=4)**
-```
-"gpu": 8,
-"additional_envs": {
-    "NIM_TENSOR_PARALLEL_SIZE": "2",
-    "NIM_PIPELINE_PARALLEL_SIZE": "4"
-}
-```
-
 ### Track Deployment Status
 
 ```python
