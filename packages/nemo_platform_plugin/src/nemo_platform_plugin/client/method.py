@@ -46,17 +46,13 @@ class EndpointMethod(Generic[P, ResponseT]):
         self._endpoint_fn = endpoint_fn
 
     @overload
-    def __get__(
-        self, obj: NemoClient, objtype: type | None = None
-    ) -> Callable[P, NemoResponse[ResponseT]]: ...
+    def __get__(self, obj: NemoClient, objtype: type | None = None) -> Callable[P, NemoResponse[ResponseT]]: ...
     @overload
     def __get__(
         self, obj: AsyncNemoClient, objtype: type | None = None
     ) -> Callable[P, Coroutine[Any, Any, NemoResponse[ResponseT]]]: ...
 
-    def __get__(
-        self, obj: NemoClient | AsyncNemoClient | None, objtype: type | None = None
-    ) -> object:
+    def __get__(self, obj: NemoClient | AsyncNemoClient | None, objtype: type | None = None) -> object:
         assert obj is not None
         if isinstance(obj, AsyncNemoClient):
 
