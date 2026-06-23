@@ -113,9 +113,15 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
     [tableData]
   );
 
-  // One column per metadata key: the union across loaded rows, sorted for stable ordering.
+  // One column per metadata key: keys are lowercased so case variants (e.g. "status"
+  // and "Status") collapse into one column rather than producing duplicate headers.
   const metadataKeys = useMemo(
-    () => [...new Set(tableData.flatMap((e) => Object.keys(e.metadata ?? {})))].sort(),
+    () =>
+      [
+        ...new Set(
+          tableData.flatMap((e) => Object.keys(e.metadata ?? {}).map((k) => k.toLowerCase()))
+        ),
+      ].sort(),
     [tableData]
   );
 
@@ -188,7 +194,12 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
         cell: ({ getValue }) => <Text>{getValue<string>() || '-'}</Text>,
       }),
       ...metadataKeys.map((key) =>
-        accessor((original) => original.metadata?.[key], {
+        accessor((original) => {
+          const meta = original.metadata ?? {};
+          // Match the first key that lowercases to this column's key.
+          const match = Object.keys(meta).find((k) => k.toLowerCase() === key);
+          return match ? meta[match] : undefined;
+        }, {
           id: `metadata-${key}`,
           header: snakeCaseToTitleCase(key),
           enableSorting: false,
