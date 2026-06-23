@@ -40,6 +40,7 @@ from nmp.intake.spans.api.dependencies import require_workspace_access, validate
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 from nmp.intake.spans.domain import SpanStatus
 from nmp.intake.spans.experiment_rollup_repository import (
+    METRICS_VERSION,
     ExperimentRollup,
     ExperimentRollupRepository,
     ScoreRollup,
@@ -368,11 +369,13 @@ async def list_experiments(
     )
     responses = [ExperimentResponse.from_entity(e) for e in result.data]
     # Prefer the denormalized metrics written by the refresh worker; fall back to a live
-    # ClickHouse hydrate only for experiments not yet refreshed (e.g. before the first cycle).
+    # ClickHouse hydrate for experiments not yet refreshed, written by a different metrics
+    # version, or whose blob can't be decoded.
     needs_live_hydrate = []
     for entity, response in zip(result.data, responses):
-        if entity.metrics:
-            _apply_rollup(response, metrics_to_rollup(response.name, entity.metrics))
+        rollup = _cached_rollup(response.name, entity.metrics)
+        if rollup is not None:
+            _apply_rollup(response, rollup)
         else:
             needs_live_hydrate.append(response)
     await _hydrate_rollups(workspace=workspace, responses=needs_live_hydrate, rollup_repository=rollup_repository)
@@ -843,6 +846,21 @@ def _apply_is_pinned_filter(parsed: ParsedFilter) -> None:
         parsed.and_with(LogicalOperation(operator=FilterOperator.NOT, operations=[null_clause]))
     else:
         parsed.and_with(null_clause)
+
+
+def _cached_rollup(name: str, metrics: dict | None) -> ExperimentRollup | None:
+    """Decode a denormalized metrics blob into a rollup, or ``None`` to fall back to live hydrate.
+
+    Falls back when the blob is absent, was written by a different ``METRICS_VERSION``, or can't be
+    decoded — so a single stale/corrupt row never fails the whole list response.
+    """
+    if not metrics or metrics.get("version") != METRICS_VERSION:
+        return None
+    try:
+        return metrics_to_rollup(name, metrics)
+    except Exception:
+        logger.warning("Discarding unreadable cached metrics for experiment %s; using live hydrate", name)
+        return None
 
 
 async def _hydrate_rollups(

@@ -146,6 +146,18 @@ async def test_update_conflict_requeues() -> None:
 
 
 @pytest.mark.asyncio
+async def test_stop_flushes_pending_without_loss() -> None:
+    entity_client = _FakeEntityClient()
+    refresher = _refresher(_FakeRollupRepo(), entity_client)
+    refresher.mark_dirty(workspace="default", experiment_id="exp-a")
+    refresher.start()
+    # stop() signals the loop to exit and lets it run a final drain — no mid-flush cancellation.
+    await refresher.stop()
+    assert {entity.name for entity in entity_client.updated} == {"exp-a"}
+    assert refresher.pending() == set()
+
+
+@pytest.mark.asyncio
 async def test_rollup_query_failure_requeues() -> None:
     repo = _FakeRollupRepo(error=RuntimeError("clickhouse down"))
     refresher = _refresher(repo, _FakeEntityClient())

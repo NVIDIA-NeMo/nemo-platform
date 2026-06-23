@@ -55,24 +55,24 @@ class ExperimentRollupRefresher:
             self._task = asyncio.create_task(self._run())
 
     async def stop(self) -> None:
+        # Signal the loop to exit and let it finish any in-flight flush — we never cancel mid-flush, so a
+        # detached batch can't be dropped before it's written. Then a final drain covers the cases the loop
+        # can't (it saw the stop flag before its first flush, or items were enqueued during the last flush).
         self._stopping.set()
         if self._task is not None:
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
+            await self._task
             self._task = None
-        # Best-effort final drain so an in-flight burst isn't lost on shutdown.
         await self.flush()
 
     async def _run(self) -> None:
         while not self._stopping.is_set():
             try:
-                await asyncio.sleep(self._interval_seconds)
+                # Interruptible sleep: wakes early when stop() sets the event so shutdown is prompt.
+                await asyncio.wait_for(self._stopping.wait(), timeout=self._interval_seconds)
+            except asyncio.TimeoutError:
+                pass  # interval elapsed; time for a periodic flush
+            try:
                 await self.flush()
-            except asyncio.CancelledError:
-                raise
             except Exception:
                 logger.exception("Experiment rollup refresh cycle failed")
 
