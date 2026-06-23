@@ -24,7 +24,7 @@ import { LocationDisplay } from '@studio/tests/util/LocationDisplay';
 import { mockUseParams } from '@studio/tests/util/mockUseParams';
 import { screen } from '@studio/tests/util/render';
 import { TestProviders } from '@studio/tests/util/TestProviders';
-import { render, within, waitFor } from '@testing-library/react';
+import { render, within, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
@@ -108,13 +108,9 @@ describe('Creating a new customization', () => {
       await user.click(datasetSelect);
       const datasetOption = await screen.findByRole('option', { name: dataset.name! });
       await user.click(datasetOption);
-
-      // Wait for file list to appear and full per-file validation to complete.
-      // 'File Validation' only renders after useCustomizationDatasetValidation
-      // finishes (isPending → false), which happens after file discovery resolves.
-      // By that point the useEffect in NewCustomizationForm has already set
-      // trainingFileExists = true, so the form is valid when we click submit.
       await screen.findByText('training/training_file.jsonl');
+      // File Validation renders after discovery + per-file checks finish; by then
+      // NewCustomizationForm has set trainingFileExists = true via useEffect.
       await screen.findByText('File Validation');
 
       // Set output model name
@@ -122,9 +118,8 @@ describe('Creating a new customization', () => {
       await user.clear(outputModelInput);
       await user.type(outputModelInput, 'test-customization-model');
 
-      // Submit form
-      const formSubmitButton = await screen.findByRole('button', { name: 'Start Fine-Tuning' });
-      await user.click(formSubmitButton);
+      const form = screen.getByRole('form');
+      fireEvent.submit(form);
 
       // Assert the correct request was made
       await waitFor(() => {
@@ -144,6 +139,33 @@ describe('Creating a new customization', () => {
       expect(location).toEqual(
         getWorkspaceCustomizationJobDetailsRoute(workspace1.workspace, customizationJob1.name!)
       );
+    });
+  });
+
+  describe('Form validation', () => {
+    it('does not submit the customization job when required fields are missing', async () => {
+      let customizationCreateRequestBody: CustomizationJobRequest | undefined;
+      server.use(
+        http.post<never, CustomizationJobRequest, CustomizationJob>(
+          `${PLATFORM_BASE_URL}/apis/customization/v2/workspaces/${workspace1.workspace}/jobs`,
+          async ({ request }) => {
+            customizationCreateRequestBody = await request.json();
+            return HttpResponse.json(customizationJob1);
+          }
+        )
+      );
+
+      renderRoute();
+
+      await screen.findByText('Fine-tune a Model');
+      fireEvent.submit(screen.getByRole('form'));
+
+      const validationBanner = await screen.findByText(
+        /Please fix the following errors:.*Please select a model.*Please select a dataset/i
+      );
+      expect(validationBanner).toBeInTheDocument();
+      expect(customizationCreateRequestBody).toBeUndefined();
+      expect(screen.queryByTestId(LOCATION_DISPLAY_TEST_ID)).not.toBeInTheDocument();
     });
   });
 
