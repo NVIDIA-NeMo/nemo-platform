@@ -37,3 +37,29 @@ After writing the `.ts` module, register it in `fern/components/NotebookViewer.t
   colabUrl="https://colab.research.google.com/github/NVIDIA-NeMo/nemo-platform/blob/main/docs/customizer/tutorials/sft-customization-job.ipynb"
 />
 ```
+
+## `ipynb-to-mdx.py`
+
+Converts Jupyter notebooks to **inline Fern MDX** using `nemo_nb` (`NotebookConverter`,
+same engine as `nemo-nb to-sphinx-md`). Post-processes for Fern frontmatter, a Google
+Colab banner, and canonical `/documentation/...` internal links.
+
+### Run
+
+From the repo root:
+
+```bash
+uv run python docs/fern/scripts/ipynb-to-mdx.py --all-customizer-tutorials
+```
+
+Or a single notebook:
+
+```bash
+uv run python docs/fern/scripts/ipynb-to-mdx.py \
+  docs/customizer/tutorials/sft-customization-job.ipynb \
+  -o docs/customizer/tutorials/sft-customization-job.mdx \
+  --title "Full SFT Customization"
+```
+
+Re-run whenever the source `.ipynb` changes. DPO is intentionally excluded from
+`--all-customizer-tutorials` (still uses `<NotebookViewer />`).
