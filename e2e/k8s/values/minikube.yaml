@@ -1,23 +1,7 @@
 # Minikube values for local development
 # This is a standalone values file - use it in place of ./default.yaml
 #
-# Usage (local build):
-#   helm upgrade -i nemo-platform k8s/helm -f e2e/k8s/values/minikube.yaml \
-#     --set api.image.repository=docker.io/my-registry/nmp-api \
-#     --set api.image.tag=local --set api.image.pullPolicy=Never \
-#     --set core.image.repository=docker.io/my-registry/nmp-api \
-#     --set core.image.tag=local --set core.image.pullPolicy=Never \
-#     --set platformConfig.platform.image_registry=docker.io/my-registry \
-#     --set platformConfig.platform.image_tag=local
-#
-# Usage (GHCR):
-#   helm upgrade -i nemo-platform k8s/helm -f e2e/k8s/values/minikube.yaml \
-#     --set api.image.repository=ghcr.io/nvidia-nemo/platform/nmp-api \
-#     --set api.image.tag=latest \
-#     --set core.image.repository=ghcr.io/nvidia-nemo/platform/nmp-api \
-#     --set core.image.tag=latest \
-#     --set platformConfig.platform.image_registry=ghcr.io/nvidia-nemo/platform \
-#     --set platformConfig.platform.image_tag=latest
+# Usage: helm upgrade -i nemo-platform k8s/helm -f e2e/k8s/values/minikube.yaml
 
 # Enable NIM operator for local GPU testing
 k8s-nim-operator:

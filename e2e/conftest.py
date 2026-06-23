@@ -13,7 +13,7 @@ Usage::
 
 When ``NMP_BASE_URL`` is set the harness skips service startup/shutdown and
 connects to the given URL.  Otherwise it spawns ``nemo services run`` as a
-child process on a free port, polls ``/health/ready`` until ready, and
+child process on a free port, polls ``/status`` until ready, and
 terminates the process after the session.
 """
 
