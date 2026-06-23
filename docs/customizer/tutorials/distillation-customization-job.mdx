@@ -377,6 +377,7 @@ def wait_for_job(job_name: str):
 
 
 teacher_status = wait_for_job(TEACHER_JOB_NAME)
+assert teacher_status.status == "completed"
 ```
 
 ---
@@ -388,8 +389,6 @@ teacher_status = wait_for_job(TEACHER_JOB_NAME)
 Before distillation, deploy the base student model (1B Instruct, without any fine-tuning) to establish a baseline ROUGE score. After distillation, we compare the distilled student against this baseline to measure improvement.
 
 ```python
-from nemo_platform.types.inference import NIMDeploymentParam
-
 baseline_suffix = uuid.uuid4().hex[:4]
 BASELINE_DEPLOYMENT_CONFIG = f"baseline-student-cfg-{baseline_suffix}"
 BASELINE_DEPLOYMENT_NAME = f"baseline-student-{baseline_suffix}"
@@ -397,14 +396,16 @@ BASELINE_DEPLOYMENT_NAME = f"baseline-student-{baseline_suffix}"
 baseline_deployment_config = client.inference.deployment_configs.create(
     workspace="default",
     name=BASELINE_DEPLOYMENT_CONFIG,
-    nim_deployment=NIMDeploymentParam(
-        image_name="nvcr.io/nim/nvidia/llm-nim",
-        image_tag="1.15.5",
-        gpu=1,
-        model_name=student_model.name,
-        model_namespace="default",
-        additional_envs={"NIM_MODEL_PROFILE": "vllm"}
-    ),
+    engine="vllm",
+    model_spec={
+        "model_namespace": "default",
+        "model_name": student_model.name,
+    },
+    executor_config={
+        "gpu": 1,
+        "image_name": "vllm/vllm-openai",
+        "image_tag": "v0.22.1",
+    },
 )
 
 baseline_deployment = client.inference.deployments.create(
@@ -414,6 +415,7 @@ baseline_deployment = client.inference.deployments.create(
 )
 
 print(f"Baseline student deployment: {baseline_deployment.name}")
+
 ```
 
 ```python
@@ -441,7 +443,8 @@ def wait_for_deployment(deployment_name: str, timeout_minutes: int = 30):
         time.sleep(15)
 
 
-wait_for_deployment(BASELINE_DEPLOYMENT_NAME)
+dep_status = wait_for_deployment(BASELINE_DEPLOYMENT_NAME)
+assert dep_status.status == "READY"
 ```
 
 ### 7. Generate Baseline Predictions on Test Set
@@ -568,6 +571,7 @@ print(f"Output student model: {DISTILLED_STUDENT_NAME}")
 
 ```python
 kd_status = wait_for_job(KD_JOB_NAME)
+assert kd_status.status == "completed"
 ```
 
 ---
@@ -586,14 +590,16 @@ STUDENT_DEPLOYMENT_NAME = f"kd-student-deploy-{deploy_suffix_2}"
 student_deployment_config = client.inference.deployment_configs.create(
     workspace="default",
     name=STUDENT_DEPLOYMENT_CONFIG,
-    nim_deployment=NIMDeploymentParam(
-        image_name="nvcr.io/nim/nvidia/llm-nim",
-        image_tag="1.15.5",
-        gpu=1,
-        model_name=DISTILLED_STUDENT_NAME,
-        model_namespace="default",
-        additional_envs={"NIM_MODEL_PROFILE": "vllm"},
-    ),
+    engine="vllm",
+    model_spec={
+        "model_namespace": "default",
+        "model_name": DISTILLED_STUDENT_NAME,
+    },
+    executor_config={
+        "gpu": 1,
+        "image_name": "vllm/vllm-openai",
+        "image_tag": "v0.22.1",
+    },
 )
 
 student_deployment = client.inference.deployments.create(
@@ -603,6 +609,7 @@ student_deployment = client.inference.deployments.create(
 )
 
 print(f"Student deployment: {student_deployment.name}")
+
 ```
 
 ```python
@@ -705,7 +712,7 @@ KD loads both models, so OOM is more likely than with SFT:
 - Teacher and student must use the same tokenizer. Use models from the same family (e.g., Llama 3.2 1B Instruct + Llama 3.2 3B Instruct)
 
 **Deployment fails:**
-- Verify output model exists: `client.models.retrieve(name=OUTPUT_NAME, workspace="default")`
+- Verify output model exists: `client.models.retrieve(name=DISTILLED_STUDENT_NAME, workspace="default")`
 - Check deployment logs: `client.inference.deployments.get_logs(name=deployment.name, workspace="default")`
 - The distilled model has the same size as the student, so GPU requirements match the student model
 

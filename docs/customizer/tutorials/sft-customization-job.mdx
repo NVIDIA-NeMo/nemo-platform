@@ -443,12 +443,15 @@ while True:
     else:
         print("Training step not started yet or progress info not available")
 
-    # Exit loop when job is completed (or failed/cancelled)
+    # Exit loop when job reaches a terminal status
     if status.status in ("completed", "failed", "cancelled", "error"):
         print(f"\nJob finished with status: {status.status}")
         break
 
     time.sleep(10)
+
+if status.status != "completed":
+    raise RuntimeError(f"Training job finished with status: {status.status}")
 ```
 
 **Interpreting SFT Training Metrics:**
@@ -477,8 +480,6 @@ print(model_entity.model_dump_json(indent=2))
 ```
 
 ```python
-from nemo_platform.types.inference import NIMDeploymentParam
-
 # Create deployment config
 deploy_suffix = uuid.uuid4().hex[:4]
 DEPLOYMENT_CONFIG_NAME = f"sft-model-deployment-cfg-{deploy_suffix}"
@@ -487,14 +488,16 @@ DEPLOYMENT_NAME = f"sft-model-deployment-{deploy_suffix}"
 deployment_config = client.inference.deployment_configs.create(
     workspace="default",
     name=DEPLOYMENT_CONFIG_NAME,
-    nim_deployment=NIMDeploymentParam(
-        image_name="nvcr.io/nim/nvidia/llm-nim",
-        image_tag="1.15.5",
-        gpu=1,
-        model_name=OUTPUT_NAME,  # ModelEntity name from training,
-        model_namespace="default",  # Workspace where ModelEntity lives
-        additional_envs={"NIM_MODEL_PROFILE": "vllm"}
-    ),
+    engine="vllm",
+    model_spec={
+        "model_namespace": "default",
+        "model_name": OUTPUT_NAME,
+    },
+    executor_config={
+        "gpu": 1,
+        "image_name": "vllm/vllm-openai",
+        "image_tag": "v0.22.1",
+    },
 )
 
 # Deploy model using deployment_config created above
@@ -513,31 +516,32 @@ deployment_status = client.inference.deployments.retrieve(
 
 print(f"Deployment name: {deployment.name}")
 print(f"Deployment status: {deployment_status.status}")
+
 ```
 
 The deployment service automatically:
 - Downloads model weights from the Files service
 - Provisions storage (PVC) for the weights
-- Configures and starts the NIM container
+- Configures and starts the vLLM container
 
 **Multi-GPU Deployment:**
 
-For larger models requiring multiple GPUs, configure parallelism with environment variables:
+For larger models requiring multiple GPUs, increase `gpu` in `executor_config`. vLLM computes tensor parallelism from the GPU count and model architecture:
 
 ```python
 deployment_config = client.inference.deployment_configs.create(
     workspace="default",
     name="sft-model-config-multigpu",
-    
-    nim_deployment={
-        "image_name": "nvcr.io/nim/nvidia/llm-nim",
-        "image_tag": "1.13.1",
-        "gpu": 2,  # Total GPUs
-        "additional_envs": {
-            "NIM_TENSOR_PARALLEL_SIZE": "2",  # Tensor parallelism
-            "NIM_PIPELINE_PARALLEL_SIZE": "1"  # Pipeline parallelism
-        }
-    }
+    engine="vllm",
+    model_spec={
+        "model_namespace": "default",
+        "model_name": OUTPUT_NAME,
+    },
+    executor_config={
+        "gpu": 2,
+        "image_name": "vllm/vllm-openai",
+        "image_tag": "v0.22.1",
+    },
 )
 ```
 
@@ -697,9 +701,9 @@ For detailed information on all available hyperparameters, recommended values, a
 **Job fails during model download:**
 - Verify authentication secrets are configured (refer to [Managing Secrets](/documentation/get-started/core-concepts/manage-secrets))
 - For gated HuggingFace models (Llama, Gemma), accept the license on the model page
-- Check the `model_uri` format is correct (`fileset://`)
+- Check model and dataset references use the `workspace/name` format (for example, `default/llama-3-2-1b-base`, `default/sft-dataset`)
 - Ensure you have accepted the model's terms of service on HuggingFace
-- Check job status: `client.jobs.get_status(name=job.name, workspace="default")`
+- Check job status: `client.jobs.get_status(name=job.job.name, workspace="default")`
 
 **Job fails with OOM (Out of Memory) error:**
 1. **First try:** Reduce `micro_batch_size` from 2 to 1
@@ -730,7 +734,7 @@ For detailed information on all available hyperparameters, recommended values, a
 - Verify output model exists: `client.models.retrieve(name=OUTPUT_NAME, workspace="default")`
 - Check deployment logs: `client.inference.deployments.get_logs(name=deployment.name, workspace="default")`
 - Ensure sufficient GPU resources available for model size
-- Verify NIM image tag `1.13.1` is compatible with your model
+- Verify vLLM image tag `v0.22.1` is compatible with your model
 
 
 ## Next Steps

@@ -331,8 +331,6 @@ assert status.status == "completed"
 With the base model entity and LoRA adapter from training, create a NIM deployment with `lora_enabled=True` so the adapter is served alongside the base weights. Check the model entity and deployment status.
 
 ```python
-from nemo_platform.types.inference import NIMDeploymentParam
-
 deploy_suffix = uuid.uuid4().hex[:4]
 DEPLOYMENT_CONFIG_NAME = f"lora-deploy-cfg-{deploy_suffix}"
 deployment_name = f"lora-deploy-{deploy_suffix}"
@@ -340,15 +338,18 @@ deployment_name = f"lora-deploy-{deploy_suffix}"
 deployment_config = client.inference.deployment_configs.create(
     workspace="default",
     name=DEPLOYMENT_CONFIG_NAME,
-    nim_deployment=NIMDeploymentParam(
-        image_name="nvcr.io/nim/nvidia/llm-nim",
-        image_tag="1.15.5",
-        gpu=1,
-        model_name=MODEL_NAME,
-        model_namespace="default",
-        lora_enabled=True,
-        additional_envs={"NIM_MODEL_PROFILE": "vllm-lora"},
-    ),
+    engine="vllm",
+    model_spec={
+        "model_namespace": "default",
+        "model_name": MODEL_NAME,
+        "lora_enabled": True,
+    },
+    executor_config={
+        "gpu": 1,
+        "image_name": "vllm/vllm-openai",
+        "image_tag": "v0.22.1",
+        "additional_args": ["--max-lora-rank", "32"],
+    },
 )
 
 deployment = client.inference.deployments.create(

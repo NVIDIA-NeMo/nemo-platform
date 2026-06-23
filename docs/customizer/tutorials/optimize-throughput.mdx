@@ -579,17 +579,19 @@ def wait_for_job(
                     step = cast(int, td["step"]) if "step" in td else None
                     max_steps = cast(int, td["max_steps"]) if "max_steps" in td else None
                     training_phase = cast(str, td["phase"]) if "phase" in td else None
-                    val_loss = float(td[val_loss_key]) if val_loss_key in td else None
-                    train_loss = float(td[train_loss_key]) if train_loss_key in td else None
+                    raw_val_loss = td.get(val_loss_key)
+                    val_loss = float(raw_val_loss) if raw_val_loss is not None else None
+                    raw_train_loss = td.get(train_loss_key)
+                    train_loss = float(raw_train_loss) if raw_train_loss is not None else None
                     break
                 break
 
-        # Fall back to top-level status_details
-        if status.status_details:
-            if val_loss is None and val_loss_key in status.status_details:
-                val_loss = float(status.status_details[val_loss_key])
-            if train_loss is None and train_loss_key in status.status_details:
-                train_loss = float(status.status_details[train_loss_key])
+        if val_loss is None:
+            raw_val_loss = (status.status_details or {}).get(val_loss_key)
+            val_loss = float(raw_val_loss) if raw_val_loss is not None else None
+        if train_loss is None:
+            raw_train_loss = (status.status_details or {}).get(train_loss_key)
+            train_loss = float(raw_train_loss) if raw_train_loss is not None else None
 
         # -- Collect GPU snapshot --
         vram_pcts, util_pcts = _get_gpu_snapshot()
@@ -679,7 +681,11 @@ job_with_sequence_packing_status = wait_for_job(
     timeout=TIMEOUT_SECONDS,
 )
 
-print(f"Validation loss: {job_with_sequence_packing_status.status_details['val_loss']:.2f}")
+packed_val_loss = (job_with_sequence_packing_status.status_details or {}).get("val_loss")
+if packed_val_loss is not None:
+    print(f"Validation loss: {float(packed_val_loss):.2f}")
+else:
+    print("Validation loss: not reported in job status")
 
 ```
 
@@ -732,7 +738,11 @@ job_without_sequence_packing_status = wait_for_job(
     timeout=TIMEOUT_SECONDS
 )
 
-print(f"Validation loss: {job_without_sequence_packing_status.status_details['val_loss']:.2f}")
+no_pack_val_loss = (job_without_sequence_packing_status.status_details or {}).get("val_loss")
+if no_pack_val_loss is not None:
+    print(f"Validation loss: {float(no_pack_val_loss):.2f}")
+else:
+    print("Validation loss: not reported in job status")
 ```
 
 ### 9. Compare Results
@@ -772,8 +782,8 @@ time_to_complete_without_sequence_packing = get_elapsed_time(step_without_sequen
 results_df = pd.DataFrame({
     "Seq Packing Enabled": [True, False],
     "Val Loss": [
-        job_with_sequence_packing_status.status_details['val_loss'],
-        job_without_sequence_packing_status.status_details['val_loss']
+        (job_with_sequence_packing_status.status_details or {}).get("val_loss"),
+        (job_without_sequence_packing_status.status_details or {}).get("val_loss"),
     ],
     "Training Step Time, sec": [
         time_to_complete_with_sequence_packing,
