@@ -18,7 +18,7 @@ export const ExpandableCell: FC<{
     <div className="group relative flex h-full flex-col">
       <button
         onClick={() => onExpand({ title, content })}
-        className="absolute right-1 top-1 z-10 cursor-pointer rounded bg-surface-base/80 p-1 opacity-0 hover:bg-surface-sunken group-hover:opacity-100"
+        className="absolute right-1 top-1 z-10 cursor-pointer rounded bg-surface-base/80 p-1 opacity-0 hover:bg-surface-sunken group-hover:opacity-100 focus-visible:opacity-100"
         aria-label="Expand cell"
       >
         <Maximize2 size={12} />
