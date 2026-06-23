@@ -25,23 +25,28 @@ class ItemResponse(BaseModel):
 
 
 @post("/apis/test/v2/items")
-def CREATE_ITEM(body: ItemRequest) -> ItemResponse: ...
+def CREATE_ITEM(body: ItemRequest) -> ItemResponse:
+    raise NotImplementedError
 
 
 @get("/apis/test/v2/items/{name}")
-def GET_ITEM(*, name: str) -> ItemResponse: ...
+def GET_ITEM(*, name: str) -> ItemResponse:
+    raise NotImplementedError
 
 
 @delete("/apis/test/v2/items/{name}")
-def DELETE_ITEM(*, name: str) -> None: ...
+def DELETE_ITEM(*, name: str) -> None:
+    raise NotImplementedError
 
 
 @get("/apis/test/v2/workspaces/{workspace}/items")
-def GET_WS_ITEM(*, workspace: str) -> ItemResponse: ...
+def GET_WS_ITEM(*, workspace: str | None = None) -> ItemResponse:
+    raise NotImplementedError
 
 
 @get("/apis/test/v2/items")
-def GET_ITEMS_WITH_PARAMS(*, query_params: dict | None = None) -> ItemResponse: ...
+def GET_ITEMS_WITH_PARAMS(*, query_params: dict | None = None) -> ItemResponse:
+    raise NotImplementedError
 
 
 # ---------------------------------------------------------------------------
@@ -58,7 +63,7 @@ def test_send_post() -> None:
     )
 
     client = NemoClient(base_url=BASE, http_client=mock_http)
-    resp = client.send(CREATE_ITEM.prepare_request(ItemRequest(name="alice")))
+    resp = client.send(CREATE_ITEM(ItemRequest(name="alice")))
 
     assert isinstance(resp, NemoResponse)
     assert resp.http_response.status_code == 201
@@ -83,7 +88,7 @@ def test_send_get_with_path_params() -> None:
     )
 
     client = NemoClient(base_url=BASE, http_client=mock_http)
-    resp = client.send(GET_ITEM.prepare_request(name="alice"))
+    resp = client.send(GET_ITEM(name="alice"))
 
     assert resp.body.name == "alice"
     mock_http.request.assert_called_once_with(
@@ -104,7 +109,7 @@ def test_send_delete() -> None:
     )
 
     client = NemoClient(base_url=BASE, http_client=mock_http)
-    resp = client.send(DELETE_ITEM.prepare_request(name="alice"))
+    resp = client.send(DELETE_ITEM(name="alice"))
 
     assert resp.http_response.status_code == 204
     assert resp.body is None
@@ -119,7 +124,7 @@ def test_data_success() -> None:
     )
 
     client = NemoClient(base_url=BASE, http_client=mock_http)
-    item = client.send(GET_ITEM.prepare_request(name="alice")).data()
+    item = client.send(GET_ITEM(name="alice")).data()
 
     assert item.name == "alice"
 
@@ -133,7 +138,7 @@ def test_base_url_trailing_slash_stripped() -> None:
     )
 
     client = NemoClient(base_url=BASE + "/", http_client=mock_http)
-    client.send(GET_ITEM.prepare_request(name="x"))
+    client.send(GET_ITEM(name="x"))
 
     url_called = mock_http.request.call_args[0][1]
     assert not url_called.startswith(BASE + "//")
@@ -154,7 +159,7 @@ async def test_async_send_post() -> None:
     )
 
     client = AsyncNemoClient(base_url=BASE, http_client=mock_http)
-    resp = await client.send(CREATE_ITEM.prepare_request(ItemRequest(name="alice")))
+    resp = await client.send(CREATE_ITEM(ItemRequest(name="alice")))
 
     assert resp.http_response.status_code == 201
     assert resp.body.name == "alice"
@@ -170,7 +175,7 @@ async def test_async_send_get() -> None:
     )
 
     client = AsyncNemoClient(base_url=BASE, http_client=mock_http)
-    resp = await client.send(GET_ITEM.prepare_request(name="alice"))
+    resp = await client.send(GET_ITEM(name="alice"))
 
     assert resp.body.name == "alice"
 
@@ -180,7 +185,7 @@ async def test_async_send_get() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_workspace_default_fills_path() -> None:
+def test_workspace_explicit_in_request() -> None:
     mock_http = MagicMock(spec=httpx.Client)
     mock_http.request.return_value = httpx.Response(
         200,
@@ -189,7 +194,23 @@ def test_workspace_default_fills_path() -> None:
     )
 
     client = NemoClient(base_url=BASE, workspace="default", http_client=mock_http)
-    client.send(GET_WS_ITEM.prepare_request(workspace="default"))
+    client.send(GET_WS_ITEM(workspace="default"))
+
+    url_called = mock_http.request.call_args[0][1]
+    assert "/workspaces/default/" in url_called
+
+
+def test_workspace_default_fills_omitted_path_param() -> None:
+    mock_http = MagicMock(spec=httpx.Client)
+    mock_http.request.return_value = httpx.Response(
+        200,
+        request=httpx.Request("GET", f"{BASE}/apis/test/v2/workspaces/default/items"),
+        json={"id": 1, "name": "alice"},
+    )
+
+    client = NemoClient(base_url=BASE, workspace="default", http_client=mock_http)
+    # workspace omitted — client default fills it
+    client.send(GET_WS_ITEM())
 
     url_called = mock_http.request.call_args[0][1]
     assert "/workspaces/default/" in url_called
@@ -204,7 +225,7 @@ def test_workspace_explicit_overrides_default() -> None:
     )
 
     client = NemoClient(base_url=BASE, workspace="default", http_client=mock_http)
-    client.send(GET_WS_ITEM.prepare_request(workspace="other"))
+    client.send(GET_WS_ITEM(workspace="other"))
 
     url_called = mock_http.request.call_args[0][1]
     assert "/workspaces/other/" in url_called
@@ -224,7 +245,7 @@ def test_query_params_passed_to_httpx() -> None:
     )
 
     client = NemoClient(base_url=BASE, http_client=mock_http)
-    client.send(GET_ITEMS_WITH_PARAMS.prepare_request(query_params={"page": 2, "page_size": 10}))
+    client.send(GET_ITEMS_WITH_PARAMS(query_params={"page": 2, "page_size": 10}))
 
     mock_http.request.assert_called_once_with(
         "GET",
@@ -244,7 +265,7 @@ def test_query_params_none_values_filtered() -> None:
     )
 
     client = NemoClient(base_url=BASE, http_client=mock_http)
-    client.send(GET_ITEMS_WITH_PARAMS.prepare_request(query_params={"page_cursor": None, "page_size": 10}))
+    client.send(GET_ITEMS_WITH_PARAMS(query_params={"page_cursor": None, "page_size": 10}))
 
     mock_http.request.assert_called_once_with(
         "GET",
@@ -264,7 +285,7 @@ def test_query_params_all_none_becomes_none() -> None:
     )
 
     client = NemoClient(base_url=BASE, http_client=mock_http)
-    client.send(GET_ITEMS_WITH_PARAMS.prepare_request(query_params={"page_cursor": None}))
+    client.send(GET_ITEMS_WITH_PARAMS(query_params={"page_cursor": None}))
 
     mock_http.request.assert_called_once_with(
         "GET",
@@ -289,7 +310,7 @@ def test_error_response_extracts_detail() -> None:
     )
 
     client = NemoClient(base_url=BASE, http_client=mock_http)
-    resp = client.send(CREATE_ITEM.prepare_request(ItemRequest(name="")))
+    resp = client.send(CREATE_ITEM(ItemRequest(name="")))
 
     with pytest.raises(NemoHTTPError) as exc_info:
         resp.data()
@@ -309,7 +330,7 @@ def test_error_response_fallback_to_text() -> None:
     )
 
     client = NemoClient(base_url=BASE, http_client=mock_http)
-    resp = client.send(GET_ITEM.prepare_request(name="x"))
+    resp = client.send(GET_ITEM(name="x"))
 
     with pytest.raises(NemoHTTPError) as exc_info:
         resp.data()
@@ -328,41 +349,9 @@ def test_error_response_body_is_none() -> None:
     )
 
     client = NemoClient(base_url=BASE, http_client=mock_http)
-    resp = client.send(GET_ITEM.prepare_request(name="missing"))
+    resp = client.send(GET_ITEM(name="missing"))
 
     assert resp.body is None
     assert resp.http_response.status_code == 404
 
 
-# ---------------------------------------------------------------------------
-# client.call() convenience
-# ---------------------------------------------------------------------------
-
-
-def test_call_posts_and_returns_typed_response() -> None:
-    mock_http = MagicMock(spec=httpx.Client)
-    mock_http.request.return_value = httpx.Response(
-        201,
-        request=httpx.Request("POST", f"{BASE}/apis/test/v2/items"),
-        json={"id": 1, "name": "alice"},
-    )
-
-    client = NemoClient(base_url=BASE, http_client=mock_http)
-    resp = client.call(CREATE_ITEM, ItemRequest(name="alice"))
-
-    assert resp.data().name == "alice"
-
-
-@pytest.mark.asyncio
-async def test_async_call() -> None:
-    mock_http = AsyncMock(spec=httpx.AsyncClient)
-    mock_http.request.return_value = httpx.Response(
-        200,
-        request=httpx.Request("GET", f"{BASE}/apis/test/v2/items/alice"),
-        json={"id": 1, "name": "alice"},
-    )
-
-    client = AsyncNemoClient(base_url=BASE, http_client=mock_http)
-    resp = await client.call(GET_ITEM, name="alice")
-
-    assert resp.data().name == "alice"

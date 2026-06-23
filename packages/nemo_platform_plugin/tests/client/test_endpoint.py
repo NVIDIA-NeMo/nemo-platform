@@ -20,19 +20,23 @@ class FakeResponse(BaseModel):
 
 
 @post("/v2/workspaces/{workspace}/items")
-def PostEndpoint(body: FakeRequest, *, workspace: str) -> FakeResponse: ...
+def PostEndpoint(body: FakeRequest, *, workspace: str) -> FakeResponse:
+    raise NotImplementedError
 
 
 @get("/v2/workspaces/{workspace}/items/{name}")
-def GetEndpoint(*, workspace: str, name: str) -> FakeResponse: ...
+def GetEndpoint(*, workspace: str, name: str) -> FakeResponse:
+    raise NotImplementedError
 
 
 @delete("/v2/workspaces/{workspace}/items/{name}")
-def DeleteEndpoint(*, workspace: str, name: str) -> None: ...
+def DeleteEndpoint(*, workspace: str, name: str) -> None:
+    raise NotImplementedError
 
 
 @patch("/items/{id}")
-def PatchEndpoint(body: FakeRequest, *, id: str) -> FakeResponse: ...
+def PatchEndpoint(body: FakeRequest, *, id: str) -> FakeResponse:
+    raise NotImplementedError
 
 
 class ListQueryParams(TypedDict, total=False):
@@ -41,12 +45,13 @@ class ListQueryParams(TypedDict, total=False):
 
 
 @get("/v2/workspaces/{workspace}/items")
-def ListEndpoint(*, workspace: str, query_params: ListQueryParams | None = None) -> FakeResponse: ...
+def ListEndpoint(*, workspace: str, query_params: ListQueryParams | None = None) -> FakeResponse:
+    raise NotImplementedError
 
 
 def test_post_endpoint_produces_prepared_request() -> None:
     body = FakeRequest(name="alice")
-    prepared = PostEndpoint.prepare_request(body, workspace="default")
+    prepared = PostEndpoint(body, workspace="default")
 
     assert isinstance(prepared, PreparedRequest)
     assert prepared.path_template == "/v2/workspaces/{workspace}/items"
@@ -58,7 +63,7 @@ def test_post_endpoint_produces_prepared_request() -> None:
 
 
 def test_get_endpoint_no_body() -> None:
-    prepared = GetEndpoint.prepare_request(workspace="default", name="item-1")
+    prepared = GetEndpoint(workspace="default", name="item-1")
 
     assert prepared.path_template == "/v2/workspaces/{workspace}/items/{name}"
     assert prepared.path_params == {"workspace": "default", "name": "item-1"}
@@ -69,7 +74,7 @@ def test_get_endpoint_no_body() -> None:
 
 
 def test_delete_endpoint() -> None:
-    prepared = DeleteEndpoint.prepare_request(workspace="default", name="item-1")
+    prepared = DeleteEndpoint(workspace="default", name="item-1")
 
     assert prepared.path_params == {"workspace": "default", "name": "item-1"}
     assert prepared.method == "DELETE"
@@ -78,21 +83,15 @@ def test_delete_endpoint() -> None:
 
 def test_patch_endpoint() -> None:
     body = FakeRequest(name="updated")
-    prepared = PatchEndpoint.prepare_request(body, id="42")
+    prepared = PatchEndpoint(body, id="42")
 
     assert prepared.path_params == {"id": "42"}
     assert prepared.method == "PATCH"
     assert prepared.content == body.model_dump_json().encode()
 
 
-def test_endpoint_repr() -> None:
-    r = repr(PostEndpoint)
-    assert "/v2/workspaces" in r
-    assert "FakeResponse" in r
-
-
 def test_get_with_query_params() -> None:
-    prepared = ListEndpoint.prepare_request(workspace="default", query_params={"page": 1, "page_size": 10})
+    prepared = ListEndpoint(workspace="default", query_params={"page": 1, "page_size": 10})
 
     assert prepared.path_params == {"workspace": "default"}
     assert prepared.query_params == {"page": 1, "page_size": 10}
@@ -100,17 +99,18 @@ def test_get_with_query_params() -> None:
 
 
 def test_query_params_default_none() -> None:
-    prepared = ListEndpoint.prepare_request(workspace="default")
+    prepared = ListEndpoint(workspace="default")
 
     assert prepared.query_params is None
 
 
 def test_post_with_query_params() -> None:
     @post("/v2/items/{workspace}")
-    def PostWithQuery(body: FakeRequest, *, workspace: str, query_params: dict | None = None) -> FakeResponse: ...
+    def PostWithQuery(body: FakeRequest, *, workspace: str, query_params: dict | None = None) -> FakeResponse:
+        raise NotImplementedError
 
     body = FakeRequest(name="alice")
-    prepared = PostWithQuery.prepare_request(body, workspace="default", query_params={"dry_run": True})
+    prepared = PostWithQuery(body, workspace="default", query_params={"dry_run": True})
 
     assert prepared.query_params == {"dry_run": True}
     assert prepared.content == body.model_dump_json().encode()
@@ -118,9 +118,10 @@ def test_post_with_query_params() -> None:
 
 def test_delete_with_response_type() -> None:
     @delete("/v2/items/{id}")
-    def DeleteWithResp(*, id: str) -> FakeResponse: ...
+    def DeleteWithResp(*, id: str) -> FakeResponse:
+        raise NotImplementedError
 
-    prepared = DeleteWithResp.prepare_request(id="42")
+    prepared = DeleteWithResp(id="42")
 
     assert prepared.method == "DELETE"
     assert prepared.response_type is FakeResponse

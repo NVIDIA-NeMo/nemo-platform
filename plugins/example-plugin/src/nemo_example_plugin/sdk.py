@@ -3,9 +3,9 @@
 
 """SDK resources for the example plugin.
 
-Endpoints are defined in ``types.endpoints``.  The plugin SDK registration
-bridges ``NeMoPlatform`` to a plain ``NemoClient`` / ``AsyncNemoClient``
-via the adapter.
+Endpoints are defined in ``types.endpoints.ExampleEndpoints``.  The plugin
+SDK registration bridges ``NeMoPlatform`` to a plain ``NemoClient`` /
+``AsyncNemoClient`` via the adapter.
 """
 
 from __future__ import annotations

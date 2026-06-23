@@ -9,14 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
-from nemo_example_plugin.types.endpoints import (
-    CreateItemEndpoint,
-    DeleteItemEndpoint,
-    GetItemEndpoint,
-    HelloEndpoint,
-    ListItemsEndpoint,
-    UpdateItemEndpoint,
-)
+from nemo_example_plugin.types.endpoints import ExampleEndpoints
 from nemo_example_plugin.types.payloads import (
     CreateExampleItemRequest,
     UpdateExampleItemRequest,
@@ -47,15 +40,20 @@ def _resp(status: int, payload=None) -> httpx.Response:
     return httpx.Response(status, **kwargs)
 
 
+@pytest.fixture
+def endpoints() -> ExampleEndpoints:
+    return ExampleEndpoints()
+
+
 def _sync_client() -> tuple[NemoClient, MagicMock]:
     mock_http = MagicMock(spec=httpx.Client)
-    client = NemoClient(base_url=BASE, http_client=mock_http)
+    client = NemoClient(base_url=BASE, workspace=WS, http_client=mock_http)
     return client, mock_http
 
 
 def _async_client() -> tuple[AsyncNemoClient, AsyncMock]:
     mock_http = AsyncMock(spec=httpx.AsyncClient)
-    client = AsyncNemoClient(base_url=BASE, http_client=mock_http)
+    client = AsyncNemoClient(base_url=BASE, workspace=WS, http_client=mock_http)
     return client, mock_http
 
 
@@ -64,18 +62,18 @@ def _async_client() -> tuple[AsyncNemoClient, AsyncMock]:
 # ---------------------------------------------------------------------------
 
 
-def test_sync_hello() -> None:
+def test_sync_hello(endpoints: ExampleEndpoints) -> None:
     client, mock_http = _sync_client()
     mock_http.request.return_value = _resp(200, {"message": "Hello, alice!"})
-    resp = client.call(HelloEndpoint, name="alice")
+    resp = client.send(endpoints.hello(name="alice"))
     assert resp.data().message == "Hello, alice!"
 
 
 @pytest.mark.asyncio
-async def test_async_hello() -> None:
+async def test_async_hello(endpoints: ExampleEndpoints) -> None:
     client, mock_http = _async_client()
     mock_http.request.return_value = _resp(200, {"message": "Hello, bob!"})
-    resp = await client.call(HelloEndpoint, name="bob")
+    resp = await client.send(endpoints.hello(name="bob"))
     assert resp.data().message == "Hello, bob!"
 
 
@@ -84,11 +82,11 @@ async def test_async_hello() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_sync_create_item() -> None:
+def test_sync_create_item(endpoints: ExampleEndpoints) -> None:
     client, mock_http = _sync_client()
     mock_http.request.return_value = _resp(201, ITEM_PAYLOAD)
 
-    resp = client.call(CreateItemEndpoint, CreateExampleItemRequest(name="my-item", title="My Item"), workspace=WS)
+    resp = client.send(endpoints.create_item(body=CreateExampleItemRequest(name="my-item", title="My Item")))
     item = resp.data()
 
     assert item.name == "my-item"
@@ -96,35 +94,48 @@ def test_sync_create_item() -> None:
     mock_http.request.assert_called_once()
 
 
-def test_sync_get_item() -> None:
+def test_sync_create_item_explicit_workspace(endpoints: ExampleEndpoints) -> None:
+    client, mock_http = _sync_client()
+    mock_http.request.return_value = _resp(201, ITEM_PAYLOAD)
+
+    resp = client.send(
+        endpoints.create_item(workspace="other", body=CreateExampleItemRequest(name="my-item", title="My Item"))
+    )
+
+    assert resp.data().name == "my-item"
+    url_called = mock_http.request.call_args[0][1]
+    assert "/workspaces/other/" in url_called
+
+
+def test_sync_get_item(endpoints: ExampleEndpoints) -> None:
     client, mock_http = _sync_client()
     mock_http.request.return_value = _resp(200, ITEM_PAYLOAD)
 
-    resp = client.call(GetItemEndpoint, workspace=WS, name="my-item")
+    resp = client.send(endpoints.get_item(name="my-item"))
 
     assert resp.data().name == "my-item"
 
 
-def test_sync_list_items() -> None:
+def test_sync_list_items(endpoints: ExampleEndpoints) -> None:
     client, mock_http = _sync_client()
     mock_http.request.return_value = _resp(
         200, {"data": [ITEM_PAYLOAD], "pagination": None, "sort": None, "filter": None}
     )
 
-    resp = client.call(ListItemsEndpoint, workspace=WS)
+    resp = client.send(endpoints.list_items())
     page = resp.data()
 
     assert len(page.data) == 1
     assert page.data[0].name == "my-item"
 
 
-def test_sync_list_items_with_query_params() -> None:
+def test_sync_list_items_with_query_params(endpoints: ExampleEndpoints) -> None:
     client, mock_http = _sync_client()
     mock_http.request.return_value = _resp(
         200, {"data": [ITEM_PAYLOAD], "pagination": None, "sort": None, "filter": None}
     )
 
-    resp = client.call(ListItemsEndpoint, workspace=WS, query_params={"page": 2, "page_size": 5})
+    resp = client.send(endpoints.list_items(query_params={"page": 2, "page_size": 5}))
     page = resp.data()
 
     assert len(page.data) == 1
@@ -132,21 +143,21 @@ def test_sync_list_items_with_query_params() -> None:
     assert kwargs["params"] == {"page": 2, "page_size": 5}
 
 
-def test_sync_update_item() -> None:
+def test_sync_update_item(endpoints: ExampleEndpoints) -> None:
     client, mock_http = _sync_client()
     updated = {**ITEM_PAYLOAD, "title": "Updated"}
     mock_http.request.return_value = _resp(200, updated)
 
-    resp = client.call(UpdateItemEndpoint, UpdateExampleItemRequest(title="Updated"), workspace=WS, name="my-item")
+    resp = client.send(endpoints.update_item(name="my-item", body=UpdateExampleItemRequest(title="Updated")))
 
     assert resp.data().title == "Updated"
 
 
-def test_sync_delete_item() -> None:
+def test_sync_delete_item(endpoints: ExampleEndpoints) -> None:
     client, mock_http = _sync_client()
     mock_http.request.return_value = _resp(204)
 
-    client.call(DeleteItemEndpoint, workspace=WS, name="my-item")
+    client.send(endpoints.delete_item(name="my-item"))
 
     mock_http.request.assert_called_once()
 
@@ -157,35 +168,35 @@ def test_sync_delete_item() -> None:
 
 
 @pytest.mark.asyncio
-async def test_async_create_item() -> None:
+async def test_async_create_item(endpoints: ExampleEndpoints) -> None:
     client, mock_http = _async_client()
     mock_http.request.return_value = _resp(201, ITEM_PAYLOAD)
 
-    resp = await client.call(
-        CreateItemEndpoint, CreateExampleItemRequest(name="my-item", title="My Item"), workspace=WS
+    resp = await client.send(
+        endpoints.create_item(body=CreateExampleItemRequest(name="my-item", title="My Item"))
     )
 
     assert resp.data().name == "my-item"
 
 
 @pytest.mark.asyncio
-async def test_async_get_item() -> None:
+async def test_async_get_item(endpoints: ExampleEndpoints) -> None:
     client, mock_http = _async_client()
     mock_http.request.return_value = _resp(200, ITEM_PAYLOAD)
 
-    resp = await client.call(GetItemEndpoint, workspace=WS, name="my-item")
+    resp = await client.send(endpoints.get_item(name="my-item"))
 
     assert resp.data().name == "my-item"
 
 
 @pytest.mark.asyncio
-async def test_async_list_items() -> None:
+async def test_async_list_items(endpoints: ExampleEndpoints) -> None:
     client, mock_http = _async_client()
     mock_http.request.return_value = _resp(
         200, {"data": [ITEM_PAYLOAD], "pagination": None, "sort": None, "filter": None}
     )
 
-    resp = await client.call(ListItemsEndpoint, workspace=WS)
+    resp = await client.send(endpoints.list_items())
     page = resp.data()
 
     assert len(page.data) == 1
@@ -193,23 +204,23 @@ async def test_async_list_items() -> None:
 
 
 @pytest.mark.asyncio
-async def test_async_update_item() -> None:
+async def test_async_update_item(endpoints: ExampleEndpoints) -> None:
     client, mock_http = _async_client()
     updated = {**ITEM_PAYLOAD, "title": "Updated"}
     mock_http.request.return_value = _resp(200, updated)
 
-    resp = await client.call(
-        UpdateItemEndpoint, UpdateExampleItemRequest(title="Updated"), workspace=WS, name="my-item"
+    resp = await client.send(
+        endpoints.update_item(name="my-item", body=UpdateExampleItemRequest(title="Updated"))
     )
 
     assert resp.data().title == "Updated"
 
 
 @pytest.mark.asyncio
-async def test_async_delete_item() -> None:
+async def test_async_delete_item(endpoints: ExampleEndpoints) -> None:
     client, mock_http = _async_client()
     mock_http.request.return_value = _resp(204)
 
-    await client.call(DeleteItemEndpoint, workspace=WS, name="my-item")
+    await client.send(endpoints.delete_item(name="my-item"))
 
     mock_http.request.assert_awaited_once()

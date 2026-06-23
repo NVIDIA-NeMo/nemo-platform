@@ -3,24 +3,22 @@
 
 """Typed endpoint definitions using ParamSpec-based decorators.
 
-Endpoints are declared as decorated function signatures. The function's
-return type annotation becomes the response type, and its parameters
-become the call signature for ``client.call()``::
+Endpoints are declared as decorated methods on a class. The decorator
+replaces each method with a callable that builds a :class:`PreparedRequest`,
+preserving the original call signature for autocomplete and type checking::
 
-    @post("/apis/example/v2/workspaces/{workspace}/items")
-    def CreateItemEndpoint(body: CreateItemRequest, *, workspace: str) -> Item: ...
+    class ExampleEndpoints:
+        @post("/apis/example/v2/workspaces/{workspace}/items")
+        def create_item(self, body: CreateItemRequest, *, workspace: str) -> Item:
+            raise NotImplementedError
 
-    @get("/apis/example/hello/{name}")
-    def HelloEndpoint(*, name: str) -> HelloResponse: ...
+        @get("/apis/example/hello/{name}")
+        def hello(self, *, name: str) -> HelloResponse:
+            raise NotImplementedError
 
-    client = NemoClient(base_url="http://localhost:8080")
-    item = client.call(CreateItemEndpoint, CreateItemRequest(name="x"), workspace="default").data()
-    hello = client.call(HelloEndpoint, name="alice").data()
-
-The lower-level ``prepare_request`` + ``send`` API is also available::
-
-    req = CreateItemEndpoint.prepare_request(CreateItemRequest(name="x"), workspace="default")
-    resp = client.send(req)
+    endpoints = ExampleEndpoints()
+    req = endpoints.create_item(workspace="default", body=CreateItemRequest(name="x"))
+    resp = client.send(req)  # NemoResponse[Item]
 
 Parameter conventions:
 - ``body`` — JSON request body (Pydantic model, serialized automatically)
@@ -31,10 +29,11 @@ Parameter conventions:
 
 from __future__ import annotations
 
+import functools
 import inspect
 import string
 from collections.abc import AsyncIterable, Callable, Iterable
-from typing import Generic, get_type_hints
+from typing import get_type_hints
 
 from nemo_platform_plugin.client.types import (
     P,
@@ -44,68 +43,72 @@ from nemo_platform_plugin.client.types import (
 from pydantic import BaseModel
 
 
-class Endpoint(Generic[P, ResponseT]):
-    """A typed HTTP endpoint definition.
+def _build_prepared_request(
+    method: str,
+    path: str,
+    sig: inspect.Signature,
+    path_param_names: set[str],
+    response_type: type | None,
+    args: tuple,
+    kwargs: dict,
+) -> PreparedRequest:
+    """Build a PreparedRequest by binding call arguments to the endpoint signature.
 
-    Captures the HTTP method, path template, response type, and the
-    call signature (via ``ParamSpec``) from the decorated function.
-
-    Use ``prepare_request()`` to build a :class:`PreparedRequest`, or
-    pass this endpoint to ``NemoClient.call()`` for a one-step call.
+    Uses ``bind_partial`` so that path parameters with client-level defaults
+    (e.g. ``workspace``) can be omitted by the caller.
     """
+    bound = sig.bind_partial(*args, **kwargs)
+    bound.apply_defaults()
 
-    def __init__(
-        self,
-        method: str,
-        path: str,
-        fn: Callable[P, ResponseT],
-    ) -> None:
-        self.method = method
-        self.path = path
-        self._sig = inspect.signature(fn)
-        self._path_params = {field_name for _, field_name, _, _ in string.Formatter().parse(path) if field_name}
+    path_params: dict[str, str] = {}
+    query_params: dict[str, str | int | bool | None] | None = None
+    content: bytes | Iterable[bytes] | AsyncIterable[bytes] | None = None
+    content_type: str | None = None
 
-        hints = get_type_hints(fn)
-        ret = hints.get("return")
-        self.response_type: type[ResponseT] | None = ret if ret is not None and ret is not type(None) else None
-
-    def prepare_request(self, *args: P.args, **kwargs: P.kwargs) -> PreparedRequest[ResponseT]:
-        """Build a :class:`PreparedRequest` by binding the call arguments."""
-        bound = self._sig.bind(*args, **kwargs)
-        bound.apply_defaults()
-
-        path_params: dict[str, str] = {}
-        query_params: dict[str, str | int | bool | None] | None = None
-        content: bytes | Iterable[bytes] | AsyncIterable[bytes] | None = None
-        content_type: str | None = None
-
-        for name, value in bound.arguments.items():
-            if name in self._path_params:
+    for name, value in bound.arguments.items():
+        if name == "self":
+            continue
+        if name in path_param_names:
+            if value is not None:
                 path_params[name] = str(value)
-            elif name == "body":
-                assert isinstance(value, BaseModel)
-                content = value.model_dump_json().encode()
-                content_type = "application/json"
-            elif name == "content":
-                content = value
-                content_type = "application/octet-stream"
-            elif name == "query_params":
-                if value is not None:
-                    query_params = dict(value)
+        elif name == "body":
+            if not isinstance(value, BaseModel):
+                raise TypeError(f"body must be a BaseModel instance, got {type(value).__name__}")
+            content = value.model_dump_json().encode()
+            content_type = "application/json"
+        elif name == "content":
+            content = value
+            content_type = "application/octet-stream"
+        elif name == "query_params":
+            if value is not None:
+                query_params = dict(value)
 
-        return PreparedRequest(
-            path_template=self.path,
-            path_params=path_params,
-            method=self.method,
-            content=content,
-            content_type=content_type,
-            response_type=self.response_type,
-            query_params=query_params,
-        )
+    return PreparedRequest(
+        path_template=path,
+        path_params=path_params,
+        method=method,
+        content=content,
+        content_type=content_type,
+        response_type=response_type,
+        query_params=query_params,
+    )
 
-    def __repr__(self) -> str:
-        resp = self.response_type.__name__ if self.response_type else "None"
-        return f"Endpoint({self.method} {self.path} -> {resp})"
+
+def _make_endpoint(
+    http_method: str, path: str, fn: Callable[P, ResponseT]
+) -> Callable[P, PreparedRequest[ResponseT]]:
+    """Create a callable that builds PreparedRequests from the function's signature."""
+    sig = inspect.signature(fn)
+    path_param_names = {field_name for _, field_name, _, _ in string.Formatter().parse(path) if field_name}
+    hints = get_type_hints(fn)
+    ret = hints.get("return")
+    response_type = ret if ret is not None and ret is not type(None) else None
+
+    @functools.wraps(fn)
+    def prepare(*args: P.args, **kwargs: P.kwargs) -> PreparedRequest[ResponseT]:
+        return _build_prepared_request(http_method, path, sig, path_param_names, response_type, args, kwargs)
+
+    return prepare
 
 
 # ---------------------------------------------------------------------------
@@ -113,46 +116,46 @@ class Endpoint(Generic[P, ResponseT]):
 # ---------------------------------------------------------------------------
 
 
-def get(path: str) -> Callable[[Callable[P, ResponseT]], Endpoint[P, ResponseT]]:
+def get(path: str) -> Callable[[Callable[P, ResponseT]], Callable[P, PreparedRequest[ResponseT]]]:
     """Define a GET endpoint (no request body)."""
 
-    def decorator(fn: Callable[P, ResponseT]) -> Endpoint[P, ResponseT]:
-        return Endpoint(method="GET", path=path, fn=fn)
+    def decorator(fn: Callable[P, ResponseT]) -> Callable[P, PreparedRequest[ResponseT]]:
+        return _make_endpoint("GET", path, fn)
 
     return decorator
 
 
-def post(path: str) -> Callable[[Callable[P, ResponseT]], Endpoint[P, ResponseT]]:
+def post(path: str) -> Callable[[Callable[P, ResponseT]], Callable[P, PreparedRequest[ResponseT]]]:
     """Define a POST endpoint."""
 
-    def decorator(fn: Callable[P, ResponseT]) -> Endpoint[P, ResponseT]:
-        return Endpoint(method="POST", path=path, fn=fn)
+    def decorator(fn: Callable[P, ResponseT]) -> Callable[P, PreparedRequest[ResponseT]]:
+        return _make_endpoint("POST", path, fn)
 
     return decorator
 
 
-def put(path: str) -> Callable[[Callable[P, ResponseT]], Endpoint[P, ResponseT]]:
+def put(path: str) -> Callable[[Callable[P, ResponseT]], Callable[P, PreparedRequest[ResponseT]]]:
     """Define a PUT endpoint."""
 
-    def decorator(fn: Callable[P, ResponseT]) -> Endpoint[P, ResponseT]:
-        return Endpoint(method="PUT", path=path, fn=fn)
+    def decorator(fn: Callable[P, ResponseT]) -> Callable[P, PreparedRequest[ResponseT]]:
+        return _make_endpoint("PUT", path, fn)
 
     return decorator
 
 
-def patch(path: str) -> Callable[[Callable[P, ResponseT]], Endpoint[P, ResponseT]]:
+def patch(path: str) -> Callable[[Callable[P, ResponseT]], Callable[P, PreparedRequest[ResponseT]]]:
     """Define a PATCH endpoint."""
 
-    def decorator(fn: Callable[P, ResponseT]) -> Endpoint[P, ResponseT]:
-        return Endpoint(method="PATCH", path=path, fn=fn)
+    def decorator(fn: Callable[P, ResponseT]) -> Callable[P, PreparedRequest[ResponseT]]:
+        return _make_endpoint("PATCH", path, fn)
 
     return decorator
 
 
-def delete(path: str) -> Callable[[Callable[P, ResponseT]], Endpoint[P, ResponseT]]:
+def delete(path: str) -> Callable[[Callable[P, ResponseT]], Callable[P, PreparedRequest[ResponseT]]]:
     """Define a DELETE endpoint (no request body, optional response body)."""
 
-    def decorator(fn: Callable[P, ResponseT]) -> Endpoint[P, ResponseT]:
-        return Endpoint(method="DELETE", path=path, fn=fn)
+    def decorator(fn: Callable[P, ResponseT]) -> Callable[P, PreparedRequest[ResponseT]]:
+        return _make_endpoint("DELETE", path, fn)
 
     return decorator

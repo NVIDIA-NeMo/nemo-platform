@@ -26,8 +26,7 @@ from nemo_platform_plugin.client.response import (
     NemoResponse,
     NemoStreamResponse,
 )
-from nemo_platform_plugin.client.endpoint import Endpoint
-from nemo_platform_plugin.client.types import P, BinaryContent, PreparedRequest, ResponseT, Stream
+from nemo_platform_plugin.client.types import BinaryContent, PreparedRequest, ResponseT, Stream
 from pydantic import BaseModel
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -133,7 +132,7 @@ class NemoClient(BaseNemoClient):
         For binary and streaming endpoints, the caller should use the
         response as a context manager to ensure the connection is closed::
 
-            with client.send(DownloadEndpoint.prepare_request(...)) as resp:
+            with client.send(endpoints.download_blob(name="file.csv")) as resp:
                 for chunk in resp:
                     f.write(chunk)
         """
@@ -160,17 +159,6 @@ class NemoClient(BaseNemoClient):
         if raw.is_success and request.response_type is not None:
             body = request.response_type.model_validate(raw.json())
         return NemoResponse(http_response=raw, body=body)
-
-    def call(
-        self, endpoint: Endpoint[P, ResponseT], *args: P.args, **kwargs: P.kwargs
-    ) -> NemoResponse[ResponseT]:
-        """Prepare and send a request in one step.
-
-        The call signature matches the endpoint's declared parameters::
-
-            item = client.call(CreateItemEndpoint, body, workspace="default").data()
-        """
-        return self.send(endpoint.prepare_request(*args, **kwargs))  # type: ignore[return-value]
 
 
 class AsyncNemoClient(BaseNemoClient):
@@ -228,9 +216,3 @@ class AsyncNemoClient(BaseNemoClient):
         if raw.is_success and request.response_type is not None:
             body = request.response_type.model_validate(raw.json())
         return NemoResponse(http_response=raw, body=body)
-
-    async def call(
-        self, endpoint: Endpoint[P, ResponseT], *args: P.args, **kwargs: P.kwargs
-    ) -> NemoResponse[ResponseT]:
-        """Prepare and send a request in one step (async)."""
-        return await self.send(endpoint.prepare_request(*args, **kwargs))  # type: ignore[return-value]

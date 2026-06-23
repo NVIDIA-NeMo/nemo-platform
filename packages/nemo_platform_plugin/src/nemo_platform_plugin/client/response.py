@@ -25,7 +25,7 @@ class NemoResponse(Generic[ResponseT]):
 
     Example::
 
-        resp = client.send(GetUserEndpoint.prepare_request(workspace="default"))
+        resp = client.send(endpoints.get_user(workspace="default"))
         resp.body             # UserResponse
         resp.http_response    # full httpx.Response
 
@@ -52,7 +52,7 @@ class NemoBinaryResponse:
 
     Use as a context manager::
 
-        with client.send(DownloadEndpoint.prepare_request(...)) as resp:
+        with client.send(endpoints.download(...)) as resp:
             data = resp.read()       # all bytes at once
             # or: for chunk in resp  # iterate chunks
     """
@@ -89,7 +89,7 @@ class NemoStreamResponse(Generic[ModelT]):
 
     Use as a context manager::
 
-        with client.send(ChatEndpoint.prepare_request(...)) as resp:
+        with client.send(ChatEndpoint(...)) as resp:
             for chunk in resp:
                 print(chunk.text)
     """
@@ -131,7 +131,7 @@ class AsyncNemoBinaryResponse:
 
     Use as an async context manager::
 
-        async with client.send(DownloadEndpoint.prepare_request(...)) as resp:
+        async with client.send(endpoints.download(...)) as resp:
             data = await resp.read()           # all bytes at once
             # or: async for chunk in resp      # iterate chunks
     """
@@ -169,7 +169,7 @@ class AsyncNemoStreamResponse(Generic[ModelT]):
 
     Use as an async context manager::
 
-        async with client.send(ChatEndpoint.prepare_request(...)) as resp:
+        async with client.send(ChatEndpoint(...)) as resp:
             async for chunk in resp:
                 print(chunk.text)
     """
