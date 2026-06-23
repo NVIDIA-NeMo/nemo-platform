@@ -21,14 +21,14 @@ Learn how to use the NeMo Platform Customizer to create a [LoRA](nemo-ms-about-c
 
 Before starting this tutorial, ensure you have:
 
-1. **Completed the [Quickstart](../../get-started/quickstart.md)** to install and deploy NeMo Platform locally
+1. **Completed the [Quickstart](/documentation/get-started)** to install and deploy NeMo Platform locally
 2. **Installed the Python SDK** (PyPI wrapper: `pip install "nemo-platform[all]"`; source checkout: run `make bootstrap` from the repository root)
 
 ## Quick Start
 
 ### 1. Initialize SDK
 
-The SDK needs to know your NeMo Platform server URL. By default, `http://localhost:8080` is used in accordance with the [Quickstart](../../get-started/quickstart.md) guide. If NeMo Platform is running at a custom location, you can override the URL by setting the `NMP_BASE_URL` environment variable:
+The SDK needs to know your NeMo Platform server URL. By default, `http://localhost:8080` is used in accordance with the [Quickstart](/documentation/get-started) guide. If NeMo Platform is running at a custom location, you can override the URL by setting the `NMP_BASE_URL` environment variable:
 
 ```sh
 export NMP_BASE_URL=<YOUR_NMP_BASE_URL>
@@ -165,7 +165,7 @@ If you plan to use NGC or HuggingFace models, you will need to configure authent
 - **NGC models** (`ngc://` URIs): Requires NGC API key
 - **HuggingFace models** (`hf://` URIs): Requires HF token for gated/private models
 
-Configure these as secrets in your platform. Refer to [Managing Secrets](../../get-started/concepts/manage-secrets.md) for detailed instructions.
+Configure these as secrets in your platform. Refer to [Managing Secrets](/documentation/get-started/core-concepts/manage-secrets) for detailed instructions.
 
 Get your credentials to access base models:
 - [NGC API Key](https://ngc.nvidia.com/) (Setup → Generate API Key)

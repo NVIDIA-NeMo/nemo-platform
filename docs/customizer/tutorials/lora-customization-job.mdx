@@ -9,7 +9,7 @@ description: ""
 
 Learn how to use the NeMo Platform to create a LoRA (Low-Rank Adaptation) customization job using a custom dataset. In this tutorial we use LoRA to fine-tune a **question-answering model** from the SQuAD dataset.
 
-LoRA is a parameter-efficient fine-tuning method that requires fewer computational resources than full fine-tuning. If you need full model fine-tuning instead, see the [Full SFT Customization Job](./sft-customization-job) tutorial.
+LoRA is a parameter-efficient fine-tuning method that requires fewer computational resources than full fine-tuning. If you need full model fine-tuning instead, see the [Full SFT Customization Job](/documentation/customizer-reference/tutorials/sft-customization-job) tutorial.
 
 **Time to complete:** approximately 45 minutes. Job duration increases with model size and dataset size.
 
@@ -17,7 +17,7 @@ LoRA is a parameter-efficient fine-tuning method that requires fewer computation
 
 Before starting this tutorial, ensure you have:
 
-1. **Completed the [Quickstart](../../get-started/quickstart.md)** to install and deploy NeMo Platform locally
+1. **Completed the [Quickstart](/documentation/get-started)** to install and deploy NeMo Platform locally
 2. **Installed the Python SDK** (PyPI wrapper: `pip install "nemo-platform[all]"`; source checkout: run `make bootstrap` from the repository root)
 3. **Installed the `datasets` package** for loading SQuAD: `pip install datasets`
 4. **At least one GPU with CUDA 12.8+**
@@ -408,6 +408,6 @@ You have started a LoRA customization job, monitored it to completion, and evalu
 
 ## Next Steps
 
-- [Monitor training metrics](fine-tune-metrics) in detail
-- [Evaluate your fine-tuned model](../../evaluator/index) using the Evaluator service
-- Try [Full SFT](./sft-customization-job) or [DPO](./dpo-customization-job) for other customization options
+- [Monitor training metrics](/documentation/customizer-reference/tutorials/metrics) in detail
+- [Evaluate your fine-tuned model](/documentation/evaluate-models) using the Evaluator service
+- Try [Full SFT](/documentation/customizer-reference/tutorials/sft-customization-job) or [DPO](/documentation/customizer-reference/tutorials/dpo-customization-job) for other customization options

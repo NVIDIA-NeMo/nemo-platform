@@ -53,13 +53,13 @@ This tutorial follows a complete distillation pipeline:
 - Deployment latency or cost is a constraint
 - The teacher and student share the same vocabulary (e.g., both are Llama models)
 
-**When to choose SFT instead:** Refer to the [Full SFT tutorial](./sft-customization-job) when you want to train a model directly on labeled data without a teacher.
+**When to choose SFT instead:** Refer to the [Full SFT tutorial](/documentation/customizer-reference/tutorials/sft-customization-job) when you want to train a model directly on labeled data without a teacher.
 
 ## Prerequisites
 
 Before starting this tutorial, ensure you have:
 
-1. **Completed the [Quickstart](../../get-started/quickstart.md)** to install and deploy NeMo Platform locally
+1. **Completed the [Quickstart](/documentation/get-started)** to install and deploy NeMo Platform locally
 2. **Installed the Python SDK** (PyPI wrapper: `pip install "nemo-platform[all]"`; source checkout: run `make bootstrap` from the repository root)
 3. **Installed evaluation dependencies:**
 
@@ -71,7 +71,7 @@ pip install evaluate rouge_score datasets
 
 ### 1. Initialize SDK
 
-The SDK needs to know your NeMo Platform server URL. By default, `http://localhost:8080` is used in accordance with the [Quickstart](../../get-started/quickstart.md) guide. If NeMo Platform is running at a custom location, you can override the URL by setting the `NMP_BASE_URL` environment variable:
+The SDK needs to know your NeMo Platform server URL. By default, `http://localhost:8080` is used in accordance with the [Quickstart](/documentation/get-started) guide. If NeMo Platform is running at a custom location, you can override the URL by setting the `NMP_BASE_URL` environment variable:
 
 ```sh
 export NMP_BASE_URL=<YOUR_NMP_BASE_URL>
@@ -667,14 +667,14 @@ for i in range(min(3, len(contexts))):
 
 ## Hyperparameters
 
-For detailed information on all available hyperparameters, recommended values, and tuning guidance, refer to the [Hyperparameter Reference](../manage-customization-jobs/hyperparameters.md).
+For detailed information on all available hyperparameters, recommended values, and tuning guidance, refer to the [Hyperparameter Reference](/documentation/customizer-reference/manage-customization-jobs/training-configuration).
 
 ---
 
 ## Troubleshooting
 
 **Job fails during model download:**
-- Verify authentication secrets are configured (refer to [Managing Secrets](../../get-started/concepts/manage-secrets.md))
+- Verify authentication secrets are configured (refer to [Managing Secrets](/documentation/get-started/core-concepts/manage-secrets))
 - For gated HuggingFace models (Llama, Gemma), accept the license on the model page
 - Check both `model` (student) and `teacher_model` URNs are correct
 - Ensure both model entities exist: `client.models.retrieve(name=..., workspace="default")`
@@ -706,7 +706,7 @@ KD loads both models, so OOM is more likely than with SFT:
 
 ## Next Steps
 
-- [Monitor training metrics](fine-tune-metrics) in detail
-- [Evaluate your fine-tuned model](../../evaluator/index) using the Evaluator service
-- Learn about [LoRA customization](./lora-customization-job) for resource-efficient fine-tuning
-- Learn about [Full SFT](./sft-customization-job) for direct supervised fine-tuning
+- [Monitor training metrics](/documentation/customizer-reference/tutorials/metrics) in detail
+- [Evaluate your fine-tuned model](/documentation/evaluate-models) using the Evaluator service
+- Learn about [LoRA customization](/documentation/customizer-reference/tutorials/lora-customization-job) for resource-efficient fine-tuning
+- Learn about [Full SFT](/documentation/customizer-reference/tutorials/sft-customization-job) for direct supervised fine-tuning
