@@ -49,7 +49,6 @@
 {"name": "datasets", "license": "APACHE-2.0", "compatible": true}
 {"name": "diff-cover", "license": "APACHE-2.0", "compatible": true}
 {"name": "dill", "license": "BSD-3-CLAUSE", "compatible": true}
-{"name": "diskcache", "license": "APACHE-2.0", "compatible": true}
 {"name": "distro", "license": "APACHE-2.0", "compatible": true}
 {"name": "dnspython", "license": "ISC", "compatible": true}
 {"name": "docker", "license": "APACHE-2.0", "compatible": true}
