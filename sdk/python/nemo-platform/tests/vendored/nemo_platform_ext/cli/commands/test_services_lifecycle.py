@@ -413,10 +413,10 @@ desc_path = os.path.join(inst_dir, "instance.json")
 with open(desc_path, "w") as f:
     json.dump(desc, f, indent=2)
 
-# HTTP server for /health/ready
+# HTTP server for /status
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path == "/health/ready":
+        if self.path == "/status":
             self.send_response(200)
             self.end_headers()
             self.wfile.write(b"ok")
