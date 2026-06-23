@@ -67,10 +67,10 @@ def test_experiment_response_hydrates_clickhouse_rollups(client: TestClient) -> 
     experiment = fetched.json()
 
     assert experiment["run_count"] == 4
-    assert experiment["evaluator_names"] == ["harbor.verifier"]
+    assert experiment["evaluator_names"] == ["reward"]
     assert experiment["model_names"] == ["provider/sample-model"]
 
-    score = experiment["aggregate_scores"]["harbor.verifier"]
+    score = experiment["aggregate_scores"]["reward"]
     assert score["sum"] == pytest.approx(3.0)
     assert score["mean"] == pytest.approx(0.75)
     assert score["median"] == pytest.approx(0.8)
@@ -100,7 +100,7 @@ def test_experiment_response_hydrates_clickhouse_rollups(client: TestClient) -> 
     listed = client.get(EXPERIMENTS)
     assert listed.status_code == 200, listed.text
     listed_experiment = next(item for item in listed.json()["data"] if item["name"] == experiment_id)
-    assert listed_experiment["aggregate_scores"]["harbor.verifier"]["mean"] == pytest.approx(0.75)
+    assert listed_experiment["aggregate_scores"]["reward"]["mean"] == pytest.approx(0.75)
 
 
 def test_atif_ingest_rejects_deleted_experiment(client: TestClient) -> None:
@@ -193,7 +193,7 @@ def test_deprecated_evaluation_context_hydrates_experiment_rollups(client: TestC
     assert fetched.status_code == 200, fetched.text
     experiment = fetched.json()
     assert experiment["run_count"] == 1
-    assert experiment["aggregate_scores"]["harbor.verifier"]["mean"] == pytest.approx(1.0)
+    assert experiment["aggregate_scores"]["reward"]["mean"] == pytest.approx(1.0)
 
 
 def _atif_body(
