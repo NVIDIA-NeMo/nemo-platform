@@ -18,6 +18,7 @@ from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate
 from nmp.core.models.controllers.backends.common import deployment_elapsed_seconds, format_duration
 from nmp.core.models.controllers.backends.k8s_nim_operator import K8sNimOperatorServiceBackend
 from nmp.core.models.controllers.backends.k8s_nim_operator.config import K8sNimOperatorConfig
+from nmp.core.models.controllers.backends.k8s_nim_operator.reconcilers.resource_deleter import ResourceDeleter
 from nmp.core.models.controllers.backends.k8s_nim_operator.reconcilers.status_projector import StatusProjector
 from nmp.core.models.controllers.context import ModelContext
 from pydantic import ValidationError
@@ -652,6 +653,42 @@ async def test_delete_forbidden_cr_does_not_block_vllm_cleanup(k8s_backend, samp
     assert "forbidden" in result.status_message.lower()
     k8s_backend._apps_v1.delete_namespaced_deployment.assert_called_once()
     k8s_backend._core_v1.delete_namespaced_persistent_volume_claim.assert_called_once()
+
+
+def test_delete_one_404_is_success():
+    """A typed 404 (object absent) is treated as success -> returns None."""
+    deleter = ResourceDeleter(k8s_namespace="default")
+    delete_fn = MagicMock(side_effect=k8s_client.exceptions.ApiException(status=404))
+    assert deleter.delete_one(delete_fn, "PVC", "obj") is None
+
+
+def test_delete_one_dynamic_notfound_is_success():
+    """A dynamic NotFoundError is treated as success -> returns None."""
+    deleter = ResourceDeleter(k8s_namespace="default")
+    delete_fn = MagicMock(side_effect=k8s_dynamic_exceptions.NotFoundError(MagicMock(status=404)))
+    assert deleter.delete_one(delete_fn, "PVC", "obj") is None
+
+
+def test_delete_one_forbidden_is_classified_not_raised():
+    """A 403 is classified and returned as an error string, not raised."""
+    deleter = ResourceDeleter(k8s_namespace="default")
+    delete_fn = MagicMock(side_effect=k8s_client.exceptions.ApiException(status=403))
+    err = deleter.delete_one(delete_fn, "PVC", "obj")
+    assert err is not None
+    assert "forbidden" in err.lower()
+
+
+def test_delete_one_unexpected_exception_is_classified_not_raised():
+    """A non-API/transport error must be classified and returned, never raised.
+
+    Guards the aggregation contract: the caller's per-resource delete loop must
+    continue (and surface the failure) rather than abort cleanup partway.
+    """
+    deleter = ResourceDeleter(k8s_namespace="default")
+    delete_fn = MagicMock(side_effect=ConnectionError("connection reset"))
+    err = deleter.delete_one(delete_fn, "Deployment", "obj")
+    assert err is not None
+    assert "error deleting Deployment obj" in err
 
 
 def test_k8s_backend_initialization(mock_nmp_sdk, mock_k8s_config):

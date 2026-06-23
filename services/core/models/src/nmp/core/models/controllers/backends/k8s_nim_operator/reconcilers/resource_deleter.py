@@ -42,7 +42,11 @@ class ResourceDeleter:
                 logger.debug(f"{kind} {obj_name} not found, already deleted")
                 return None
             return self._classify_delete_error(e, kind, obj_name)
-        except k8s_dynamic_exceptions.ForbiddenError as e:
+        except Exception as e:
+            # Any other failure (forbidden, connection/transport error, dynamic API
+            # error, ...) must be classified and returned -- never raised -- so the
+            # caller's per-resource delete loop continues and aggregates failures
+            # rather than aborting cleanup partway and risking a false DELETED.
             return self._classify_delete_error(e, kind, obj_name)
 
     @staticmethod
