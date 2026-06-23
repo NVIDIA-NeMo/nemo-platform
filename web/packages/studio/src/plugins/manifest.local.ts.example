@@ -1,0 +1,14 @@
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+/**
+ * Optional local-only plugins (gitignored), merged on top of the example package.
+ *
+ * Copy to `manifest.local.ts`. Example plugins for this PR are registered from
+ * `@nemo/studio-plugins-example` via `@nemo/studio-plugins-external` — leave this empty unless
+ * you add private plugins under `plugins/local/`.
+ */
+
+import type { StudioPlugin } from '@studio/plugins/types';
+
+export const LOCAL_STUDIO_PLUGINS: readonly StudioPlugin[] = [];

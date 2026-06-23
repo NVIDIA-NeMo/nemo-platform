@@ -21,6 +21,7 @@ import type {
 import { Text, Tooltip } from '@nvidia/foundations-react-core';
 import { Empty } from '@studio/components/dataViews/ExperimentGroupDataView/Empty';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
+import { PluginSlot } from '@studio/plugins/PluginSlot';
 import { getExperimentDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
 import { keepPreviousData } from '@tanstack/react-query';
@@ -246,6 +247,30 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
       searchField="name"
       onRowClick={(row) =>
         navigate(getExperimentDetailRoute(workspace, experimentGroupName, row.name))
+      }
+      slotBeforeToolbar={
+        <PluginSlot
+          slot="experiments.group.beforeSearch"
+          context={{
+            workspace,
+            experimentGroupName,
+            experimentGroupId,
+            totalCount,
+            experiments: tableData,
+          }}
+        />
+      }
+      slotAfterToolbar={
+        <PluginSlot
+          slot="experiments.group.afterSearch"
+          context={{
+            workspace,
+            experimentGroupName,
+            experimentGroupId,
+            totalCount,
+            experiments: tableData,
+          }}
+        />
       }
       toolbarSlotEnd={
         <EditColumnsMenu

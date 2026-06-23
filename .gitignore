@@ -8,6 +8,15 @@ tmp
 .agents/skills/nemo-*/
 .cursor/rules/nemo-*/
 CLAUDE.local.md
+# Local intake query plugins (user/org-owned). See
+# services/intake/src/nmp/intake/query_plugins/custom/README.md.
+services/intake/src/nmp/intake/query_plugins/custom/*.py
+!services/intake/src/nmp/intake/query_plugins/custom/*.example.py
+# Local Studio plugins (user/org-owned). See
+# web/packages/studio/src/plugins/local/README.md.
+web/packages/studio/src/plugins/local/**
+!web/packages/studio/src/plugins/local/README.md
+web/packages/studio/src/plugins/manifest.local.ts
 **/worktrees/
 **/.nat-worktrees/
 **/.claude/settings.local.json

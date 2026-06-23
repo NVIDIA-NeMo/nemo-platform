@@ -19,6 +19,8 @@ import { Loading } from '@studio/components/Layouts/Loading';
 import { NotFound } from '@studio/components/Layouts/NotFound';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
+import { PluginViewHost } from '@studio/plugins/PluginViewHost';
+import type { ViewContextMap } from '@studio/plugins/types';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { getIntakeSpanRoute, getIntakeTracesRoute } from '@studio/routes/utils';
 import {
@@ -40,6 +42,7 @@ type TraceRouteParams = Record<typeof ROUTE_PARAMS.traceId, string | undefined>;
 
 export const IntakeTraceDetailRoute: FC = () => {
   const { [ROUTE_PARAMS.traceId]: traceId } = useParams<TraceRouteParams>();
+  const workspace = useWorkspaceFromPath();
 
   if (!traceId) {
     return (
@@ -47,16 +50,20 @@ export const IntakeTraceDetailRoute: FC = () => {
     );
   }
 
-  return <IntakeTraceDetailContent traceId={traceId} />;
+  return (
+    <PluginViewHost
+      viewId="intake.trace.detail"
+      context={{ workspace, traceId }}
+      fallback={DefaultIntakeTraceDetailView}
+    />
+  );
 };
 
-interface IntakeTraceDetailContentProps {
-  traceId: string;
-}
-
-const IntakeTraceDetailContent: FC<IntakeTraceDetailContentProps> = ({ traceId }) => {
-  const workspace = useWorkspaceFromPath();
-
+/** First-party trace detail view; used as the fallback when no plugin override is active. */
+export const DefaultIntakeTraceDetailView: FC<ViewContextMap['intake.trace.detail']> = ({
+  workspace,
+  traceId,
+}) => {
   const {
     data: trace,
     error,
@@ -123,7 +130,7 @@ const IntakeTraceDetailContent: FC<IntakeTraceDetailContentProps> = ({ traceId }
 
   return (
     <AccessibleTitle title={`Trace ${title}`}>
-      <Stack gap="density-2xl" padding="density-2xl" className="h-full overflow-auto">
+      <Stack gap="density-2xl" padding="density-2xl">
         <PageHeader
           className="p-0"
           slotHeading={`Trace ${title}`}

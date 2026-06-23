@@ -25,5 +25,6 @@ You are now in **Studio development mode**. Read the Studio project instructions
 | API SDK | `web/packages/sdk/` |
 | Storybook | `web/packages/storybook/` |
 | Dev tools | `web/packages/sandbox/` |
-| Backend APIs | `services/` (read-only context) |
 | OpenAPI spec | `openapi/openapi.yaml` (read-only context) |
+| Studio plugins | `web/packages/studio/docs/plugins.md` — run, register, extend UI + query plugins |
+| Backend APIs | `services/` (read-only context) |

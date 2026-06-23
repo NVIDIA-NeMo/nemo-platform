@@ -9,7 +9,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import license, { type Dependency, type Person } from 'rollup-plugin-license';
 import { visualizer } from 'rollup-plugin-visualizer';
-import { loadEnv } from 'vite';
+import { loadEnv, type Plugin } from 'vite';
 import mkcert from 'vite-plugin-mkcert';
 import svgr from 'vite-plugin-svgr';
 // vite does not know about vitest -- vitest config extends vite config
@@ -32,8 +32,60 @@ interface LicenseReportDependency {
 }
 
 const isCI = Boolean(process.env.CI);
+const isVitest = Boolean(process.env.VITEST);
 const isProd = process.env.NODE_ENV === 'production';
 const configDir = path.dirname(fileURLToPath(import.meta.url));
+const pluginsDir = path.resolve(configDir, 'src/plugins');
+const examplePluginsDir = path.resolve(configDir, '../studio-plugins-example/src');
+const examplePluginsManifestPath = path.resolve(examplePluginsDir, 'manifest.ts');
+const localManifestPath = path.resolve(pluginsDir, 'manifest.local.ts');
+const localManifestStubPath = path.resolve(pluginsDir, 'manifest.local.stub.ts');
+const externalStubPath = path.resolve(pluginsDir, 'external.stub.ts');
+
+const resolveExamplePluginImport = (source: string): string | null => {
+  if (!source.startsWith('@nemo/studio-plugins-example/')) {
+    return null;
+  }
+  const subpath = source.slice('@nemo/studio-plugins-example/'.length);
+  const base = path.resolve(examplePluginsDir, subpath);
+  const candidates = [
+    `${base}.ts`,
+    `${base}.tsx`,
+    path.join(base, 'index.ts'),
+    path.join(base, 'index.tsx'),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+      return candidate;
+    }
+  }
+  return null;
+};
+
+/** Resolve local/org plugin manifests before tsconfig paths (which always point at stubs). */
+const studioPluginManifestAlias = (): Plugin => ({
+  name: 'studio-plugin-manifest-alias',
+  enforce: 'pre',
+  resolveId(source) {
+    if (source === '@studio/plugins/manifest.local') {
+      return fs.existsSync(localManifestPath) ? localManifestPath : localManifestStubPath;
+    }
+    if (source === '@nemo/studio-plugins-external') {
+      const externalEntry = process.env.NEMO_STUDIO_PLUGINS_ENTRY?.trim();
+      if (externalEntry) {
+        return externalEntry;
+      }
+      if (isVitest) {
+        return externalStubPath;
+      }
+      return fs.existsSync(examplePluginsManifestPath)
+        ? examplePluginsManifestPath
+        : externalStubPath;
+    }
+    return resolveExamplePluginImport(source);
+  },
+});
+
 const commonPackageDir = path.resolve(configDir, '../common');
 const licenseFileNames = [
   'LICENSE',
@@ -150,6 +202,7 @@ export default defineConfig(({ mode }) => {
 
   // Skip mkcert in tests/CI: it fetches GitHub API for releases and hits rate limits (403) in CI.
   const plugins = [
+    studioPluginManifestAlias(),
     react(),
     ...(process.env.VITEST || mode.includes('test') ? [] : [mkcert()]),
     svgr(),

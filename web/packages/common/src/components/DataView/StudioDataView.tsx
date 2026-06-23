@@ -75,6 +75,17 @@ interface Props<DataType> {
    */
   toolbarSlotEnd?: ReactNode;
   /**
+   * Rendered above the toolbar (search/filters), at the top of the view. A generic insertion
+   * point kept plugin-agnostic here; Studio call sites use it to mount a plugin slot above the
+   * search and filters.
+   */
+  slotBeforeToolbar?: ReactNode;
+  /**
+   * Rendered between the toolbar (search/filters) and the table content. A generic insertion
+   * point kept plugin-agnostic here; Studio call sites use it to mount a plugin slot above the table.
+   */
+  slotAfterToolbar?: ReactNode;
+  /**
    * Ref attached to the scrollable container that wraps custom `children`.
    * Pass this to a virtualizer so it can observe the scroll position.
    */
@@ -104,6 +115,8 @@ export const StudioDataView = <DataType,>({
   scrollContainerRef,
   searchField,
   toolbarSlotEnd,
+  slotBeforeToolbar,
+  slotAfterToolbar,
 }: Props<DataType>) => {
   const [showFilters, setShowFilters] = useState(false);
   const toggleFilters = useMemo(() => () => setShowFilters((prev) => !prev), []);
@@ -159,6 +172,7 @@ export const StudioDataView = <DataType,>({
       className={`studio-data-view-root ${attributes?.DataViewRoot?.className ?? ''}`}
     >
       <Stack className="relative flex-1 min-h-0 min-w-0 overflow-y-hidden" gap="density-xl">
+        {slotBeforeToolbar}
         <StudioDataViewToolbar<DataType>
           searchField={searchField}
           showFilters={showFilters}
@@ -167,6 +181,7 @@ export const StudioDataView = <DataType,>({
           searchBarProps={attributes?.DataViewSearchBar}
           slotEnd={toolbarSlotEnd}
         />
+        {slotAfterToolbar}
         <Flex className="min-h-0 h-full">
           {children ? (
             <Block ref={scrollContainerRef} className="flex-1 min-w-0 min-h-[300px] overflow-auto">

@@ -1,0 +1,23 @@
+{
+  "name": "@nemo/studio-plugins-example",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Example Studio UI plugins for the plugin-system prototype PR (temporary; move to org package later).",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nemo/common": "workspace:*",
+    "@nemo/sdk": "workspace:*",
+    "@tanstack/react-query": "catalog:",
+    "@nvidia/foundations-react-core": "catalog:",
+    "lucide-react": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-router-dom": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
+}

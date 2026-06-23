@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+"""Example local query-plugin manifest.
+
+Copy to ``registry_local.py`` (gitignored) and edit ``QUERY_PLUGINS`` to register your modules
+from this directory.
+"""
+
+from __future__ import annotations
+
+from nmp.intake.query_plugins.base import QueryPlugin
+from nmp.intake.query_plugins.custom.experiment_error_spans import ExperimentErrorSpansQueryPlugin
+from nmp.intake.query_plugins.custom.experiment_error_summary import ExperimentErrorSummaryQueryPlugin
+
+QUERY_PLUGINS: list[QueryPlugin] = [
+    ExperimentErrorSummaryQueryPlugin(),
+    ExperimentErrorSpansQueryPlugin(),
+]

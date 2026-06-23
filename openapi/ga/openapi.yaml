@@ -4015,6 +4015,115 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/query-plugins:
+    get:
+      tags:
+      - Query Plugins
+      summary: List Query Plugins
+      description: List the query-plugin ids deployed in this service (additive; not
+        experiment rollups).
+      operationId: list_query_plugins_apis_intake_v2_workspaces__workspace__query_plugins_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryPluginManifest'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/query-plugins/experiment-error-spans:
+    get:
+      tags:
+      - Query Plugins
+      summary: Get Experiment Error Spans
+      description: 'The individual error spans in one experiment, newest first (drill-down
+        for the summary).
+
+
+        Companion to ``experiment-error-summary``: same whole-experiment scope, but
+        returns the spans
+
+        behind the per-type counts rather than the aggregate.'
+      operationId: get_experiment_error_spans_apis_intake_v2_workspaces__workspace__query_plugins_experiment_error_spans_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: experiment_id
+        in: query
+        required: true
+        schema:
+          type: string
+          description: Experiment name to list error spans for.
+          title: Experiment Id
+        description: Experiment name to list error spans for.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExperimentErrorSpans'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/query-plugins/experiment-error-summary:
+    get:
+      tags:
+      - Query Plugins
+      summary: Get Experiment Error Summary
+      description: 'Error spans in one experiment grouped by ``exception.type`` with
+        occurrence counts.
+
+
+        Aggregates across the whole experiment, not just a page of test-case sessions.'
+      operationId: get_experiment_error_summary_apis_intake_v2_workspaces__workspace__query_plugins_experiment_error_summary_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: experiment_id
+        in: query
+        required: true
+        schema:
+          type: string
+          description: Experiment name to summarize error spans for.
+          title: Experiment Id
+        description: Experiment name to summarize error spans for.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExperimentErrorSummary'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /apis/intake/v2/workspaces/{workspace}/spans:
     get:
       tags:
@@ -9648,6 +9757,54 @@ components:
       - data
       title: EntityUpdate
       description: Schema for updating an entity.
+    ErrorSpan:
+      properties:
+        span_id:
+          type: string
+          title: Span Id
+        trace_id:
+          type: string
+          title: Trace Id
+        session_id:
+          title: Session Id
+          type: string
+        name:
+          title: Name
+          type: string
+        error_type:
+          type: string
+          title: Error Type
+          default: (unspecified)
+        error_message:
+          title: Error Message
+          type: string
+        status:
+          title: Status
+          type: string
+        start_time:
+          title: Start Time
+          type: string
+          format: date-time
+      type: object
+      required:
+      - span_id
+      - trace_id
+      title: ErrorSpan
+      description: A single error span, flattened for the experiment error report
+        table.
+    ErrorTypeCount:
+      properties:
+        error_type:
+          type: string
+          title: Error Type
+        count:
+          type: integer
+          title: Count
+      type: object
+      required:
+      - error_type
+      - count
+      title: ErrorTypeCount
     EvaluationContext:
       properties:
         evaluation_id:
@@ -9919,6 +10076,35 @@ components:
       - experiment_id
       title: ExperimentContext
       description: Experiment context accepted by ingest endpoints.
+    ExperimentErrorSpans:
+      properties:
+        total:
+          type: integer
+          title: Total
+          default: 0
+        spans:
+          items:
+            $ref: '#/components/schemas/ErrorSpan'
+          type: array
+          title: Spans
+      type: object
+      title: ExperimentErrorSpans
+      description: Error spans across an experiment, newest first, capped at ``ERROR_SPANS_LIMIT``.
+    ExperimentErrorSummary:
+      properties:
+        total_error_spans:
+          type: integer
+          title: Total Error Spans
+          default: 0
+        rows:
+          items:
+            $ref: '#/components/schemas/ErrorTypeCount'
+          type: array
+          title: Rows
+      type: object
+      title: ExperimentErrorSummary
+      description: Error spans across an experiment grouped by error type, highest
+        count first.
     ExperimentFilter:
       additionalProperties: false
       description: Filter for listing Experiments.
@@ -15292,6 +15478,26 @@ components:
       type: object
       title: PromptData
       description: Configuration for prompt engineering.
+    QueryPluginInfo:
+      properties:
+        id:
+          type: string
+          title: Id
+      type: object
+      required:
+      - id
+      title: QueryPluginInfo
+    QueryPluginManifest:
+      properties:
+        query_plugins:
+          items:
+            $ref: '#/components/schemas/QueryPluginInfo'
+          type: array
+          title: Query Plugins
+      type: object
+      title: QueryPluginManifest
+      description: Deployed query-plugin ids, used by Studio's ``consumesQueryPlugins``
+        availability check.
     RailStatus:
       properties:
         status:

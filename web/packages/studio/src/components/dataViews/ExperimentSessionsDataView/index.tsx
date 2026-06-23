@@ -19,6 +19,7 @@ import type {
 import { Text, Tooltip } from '@nvidia/foundations-react-core';
 import { Empty } from '@studio/components/dataViews/ExperimentSessionsDataView/Empty';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
+import { PluginSlot } from '@studio/plugins/PluginSlot';
 import { tooltipClassName } from '@studio/styles/common';
 import { keepPreviousData } from '@tanstack/react-query';
 import { Columns3 } from 'lucide-react';
@@ -215,6 +216,30 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
       dataViewState={dataViewState}
       makeColumns={makeColumns}
       searchField="test_case_id"
+      slotBeforeToolbar={
+        <PluginSlot
+          slot="experiments.detail.beforeSearch"
+          context={{
+            workspace,
+            experimentGroupName,
+            experimentName,
+            totalCount,
+            testCases: visibleTableData,
+          }}
+        />
+      }
+      slotAfterToolbar={
+        <PluginSlot
+          slot="experiments.detail.afterSearch"
+          context={{
+            workspace,
+            experimentGroupName,
+            experimentName,
+            totalCount,
+            testCases: visibleTableData,
+          }}
+        />
+      }
       toolbarSlotEnd={
         <EditColumnsMenu
           kind="secondary"
