@@ -15,7 +15,7 @@ from nemo_example_plugin.types.payloads import (
     CreateExampleItemRequest,
     UpdateExampleItemRequest,
 )
-from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+from nemo_platform_plugin.client.client import NemoClient
 
 BASE = "http://test:8000"
 WS = "default"
