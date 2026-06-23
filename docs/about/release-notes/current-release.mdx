@@ -5,7 +5,7 @@ description: ""
 NeMo Platform v0.2.0 is the OSS 0.2 release line for local quickstart,
 Docker-backed testing, SDK validation, and plugin-based platform workflows.
 This release expands the first public release with fine-tuning, local model
-deployment, Safe Synthesizer, Auditor, and access-control work.
+deployment, synthetic data generation, model auditing, and access-control work.
 
 ## Release status
 
@@ -16,18 +16,18 @@ deployment, Safe Synthesizer, Auditor, and access-control work.
 
 ## Highlights
 
-- **Customizer fine-tuning.** Customizer is now part of the plugin-based
-  platform architecture, with Docker-backed job execution, Unsloth plugin
-  work, vLLM adapter support, and updated documentation.
+- **Fine-tuning.** Customizer is now part of the plugin-based platform
+  architecture, with Docker-backed job execution, Unsloth and NeMo Automodel
+  support, vLLM adapter support, and updated documentation.
 - **Docker-backed local runtime.** The platform 0.2 scope includes Docker
   execution paths for the platform, customization jobs, and local model
   deployment testing.
 - **Model deployment.** vLLM and NIM deployment flows are covered by the 0.2
   model-deployment workstream, including vLLM deployment in Docker.
-- **Safe Synthesizer.** Safe Synthesizer moves into the platform as a local
-  plugin for privacy-preserving synthetic data generation.
-- **Auditor.** The local garak-backed Auditor plugin has documentation and
-  validation work for QA.
+- **Synthetic data generation.** Safe Synthesizer moves into the platform as a
+  local plugin for privacy-preserving synthetic data generation.
+- **Model auditing.** The local garak-backed Auditor plugin has documentation
+  and validation work for QA.
 - **Access control.** Auth and authorization work continues with plugin
   authorization support and end-to-end auth wiring in QA.
 - **Platform quality.** The 0.2 line includes fixes for seven tracked
@@ -48,7 +48,7 @@ deployment, Safe Synthesizer, Auditor, and access-control work.
 
 - Customizer migration to the plugin architecture.
 - Docker-backed Customizer jobs.
-- Unsloth plugin work.
+- Unsloth and NeMo Automodel support.
 - vLLM adapter support and end-to-end vLLM testing.
 - Documentation updates for the 0.2 Customizer flow.
 
@@ -81,8 +81,6 @@ deployment, Safe Synthesizer, Auditor, and access-control work.
 ### Evaluation
 
 - Evaluator SDK and plugin enhancement work is tracked in the 0.2 line.
-- The Skill Evaluation MVP is descoped from v0.2.0 and is not part of this
-  release.
 
 ## Install
 
