@@ -113,6 +113,12 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
     [tableData]
   );
 
+  // One column per metadata key: the union across loaded rows, sorted for stable ordering.
+  const metadataKeys = useMemo(
+    () => [...new Set(tableData.flatMap((e) => Object.keys(e.metadata ?? {})))].sort(),
+    [tableData]
+  );
+
   const makeColumns = useCallback<
     ComponentProps<typeof DataViewRoot<ExperimentRow>>['makeColumns']
   >(
@@ -181,6 +187,29 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
         enableSorting: false,
         cell: ({ getValue }) => <Text>{getValue<string>() || '-'}</Text>,
       }),
+      ...metadataKeys.map((key) =>
+        accessor((original) => original.metadata?.[key], {
+          id: `metadata-${key}`,
+          header: snakeCaseToTitleCase(key),
+          enableSorting: false,
+          cell: ({ getValue }) => {
+            const raw = getValue<unknown>();
+            if (raw == null) return <Text>-</Text>;
+            const str =
+              typeof raw === 'object' ? JSON.stringify(raw) : String(raw);
+            if (str.length <= 50) return <Text>{str}</Text>;
+            return (
+              <Tooltip
+                slotContent={<Text kind="body/regular/sm">{str}</Text>}
+                className={tooltipClassName}
+                side="bottom"
+              >
+                <Text className="cursor-default">{str.slice(0, 50)}…</Text>
+              </Tooltip>
+            );
+          },
+        })
+      ),
       ...evaluatorNames.map((name, index) =>
         accessor((original) => original.aggregate_scores?.[name]?.mean, {
           id: `score-${index}`,
@@ -239,7 +268,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
         },
       }),
     ],
-    [evaluatorNames]
+    [evaluatorNames, metadataKeys]
   );
 
   if (groupError) {
