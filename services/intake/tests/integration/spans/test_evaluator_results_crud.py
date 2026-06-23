@@ -95,3 +95,37 @@ def test_create_evaluator_result_rejects_non_binary_boolean_value(client: TestCl
 def test_get_evaluator_result_returns_404_when_missing(client: TestClient):
     response = client.get(f"{EVAL_BASE}/eval-does-not-exist")
     assert response.status_code == 404, response.text
+
+
+def test_create_evaluator_result_is_idempotent_for_identical_writes(client: TestClient):
+    body = _make_numeric_body()
+
+    first = client.post(EVAL_BASE, json=body)
+    assert first.status_code == 201, first.text
+    second = client.post(EVAL_BASE, json=body)
+    assert second.status_code == 201, second.text
+
+    # An identical re-POST hashes to the same deterministic id...
+    assert first.json()["evaluator_result_id"] == second.json()["evaluator_result_id"]
+
+    # ...and dedupes on read rather than creating a permanent duplicate row.
+    listed = client.get(EVAL_BASE, params={"page_size": 50})
+    assert listed.status_code == 200, listed.text
+    assert listed.json()["pagination"]["total_results"] == 1
+
+
+def test_re_post_same_target_with_different_value_upserts_latest(client: TestClient):
+    first = client.post(EVAL_BASE, json=_make_numeric_body(value=0.85))
+    assert first.status_code == 201, first.text
+    second = client.post(EVAL_BASE, json=_make_numeric_body(value=0.42))
+    assert second.status_code == 201, second.text
+
+    # Same target (workspace, session, span, name) -> same id; a re-score upserts, not appends.
+    assert first.json()["evaluator_result_id"] == second.json()["evaluator_result_id"]
+
+    listed = client.get(EVAL_BASE, params={"page_size": 50})
+    assert listed.status_code == 200, listed.text
+    page = listed.json()
+    assert page["pagination"]["total_results"] == 1
+    # Latest write wins.
+    assert page["data"][0]["value"] == 0.42

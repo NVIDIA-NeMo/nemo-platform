@@ -5,7 +5,7 @@ import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { entitiesCreateWorkspace, entitiesGetWorkspace } from '@nemo/sdk/generated/platform/api';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { useAuthProfile } from '@studio/providers/auth';
-import { websiteLogger } from '@studio/util/logger';
+import { logger } from '@studio/util/logger';
 import { isAxiosError } from 'axios';
 import { FC, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -37,7 +37,7 @@ export const AuthSuccessRoute: FC = () => {
         await createWorkspaceIfNotExists(workspace, name);
       } catch (error) {
         toast.error(`Failed to create workspace ${workspace}: ${error}`);
-        websiteLogger.error(`Failed to create workspace ${workspace}: ${error}`);
+        logger.error(`Failed to create workspace ${workspace}: ${error}`);
       }
 
       if (profile.state?.path) {

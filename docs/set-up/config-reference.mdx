@@ -430,8 +430,8 @@ Consolidated configuration for the Models service.
 
 ```yaml
 models:
-  # HuggingFace model puller image for weights in data store or huggingface | default: 'nvcr.io/nvidia/nemo-microservices/nds-v2-huggingface-cli:25.10'
-  huggingface_model_puller: nvcr.io/nvidia/nemo-microservices/nds-v2-huggingface-cli:25.10
+  # Image used to pull model weights. Its entrypoint is overridden to the Hugging Face CLI ('hf download ...'), so any image with the 'hf' CLI on PATH works. Defaults to the platform's nmp-api image (registry/tag from platform config); override to use a different puller image.
+  huggingface_model_puller: my-registry/nmp-api:local
   # Controller service configuration
   controller:
     # Interval in seconds for the Models Controller to run its control loop | default: 5
@@ -469,8 +469,8 @@ models:
         models_docker_port_range_start: 49152
         # End of port range for port forwarding (inclusive). Defaults to 500-port range within IANA dynamic/ephemeral range. | default: 49652
         models_docker_port_range_end: 49652
-        # HuggingFace model puller image for downloading SFT model weights from Files service | default: 'nvcr.io/nvidia/nemo-microservices/nds-v2-huggingface-cli:25.10'
-        huggingface_model_puller: nvcr.io/nvidia/nemo-microservices/nds-v2-huggingface-cli:25.10
+        # Image used to pull model weights. Its entrypoint is overridden to the Hugging Face CLI ('hf download ...'), so any image with the 'hf' CLI on PATH works. Defaults to the platform's nmp-api image (registry/tag from platform config); override to use a different puller image.
+        huggingface_model_puller: my-registry/nmp-api:local
         # Timeout in seconds for the model puller container to complete (default: 30 minutes) | default: 1800
         model_puller_timeout: 1800
         # Per-file HTTP download timeout in seconds for the model puller (HF_HUB_DOWNLOAD_TIMEOUT). Increase if large model files fail with IncompleteRead/ChunkedEncodingError (default: 2 hours). | default: 7200

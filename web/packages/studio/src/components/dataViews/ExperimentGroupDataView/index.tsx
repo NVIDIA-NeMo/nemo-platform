@@ -121,6 +121,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
         header: 'Name',
         enableSorting: true,
         enableHiding: false,
+        meta: { title: false },
         size: 300,
         cell: ({ row }) => {
           const { name, summary } = row.original;

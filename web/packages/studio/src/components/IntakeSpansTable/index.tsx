@@ -109,6 +109,8 @@ export interface IntakeSpansTableProps {
   emptyMessage?: string;
   emptyStateActions?: ReactNode;
   noResultsActions?: ReactNode;
+  /** Override span row click. `null` disables interaction entirely (no cursor-pointer). */
+  onRowClick?: ((span: SpanTableRow) => void) | null;
 }
 
 export const IntakeSpansTable: FC<IntakeSpansTableProps> = ({
@@ -124,12 +126,18 @@ export const IntakeSpansTable: FC<IntakeSpansTableProps> = ({
   emptyMessage = 'Spans will appear here after trace data is ingested.',
   emptyStateActions,
   noResultsActions,
+  onRowClick,
 }) => {
   const navigate = useNavigate();
   const routeWorkspace = useWorkspaceFromPathIfExists();
   const workspace = workspaceProp ?? routeWorkspace;
   const hasWorkspace = Boolean(workspace);
   const requestWorkspace = workspace ?? '';
+  const handleRowClick =
+    onRowClick === null
+      ? undefined
+      : (onRowClick ??
+        ((span: SpanTableRow) => navigate(getIntakeSpanRoute(requestWorkspace, span.span_id))));
 
   const dataViewState = useStudioDataViewState({
     defaultSort,
@@ -304,7 +312,7 @@ export const IntakeSpansTable: FC<IntakeSpansTableProps> = ({
       dataViewState={dataViewState}
       makeColumns={makeColumns}
       filterTogglePortalTargetId={filterTogglePortalTargetId}
-      onRowClick={(span) => navigate(getIntakeSpanRoute(requestWorkspace, span.span_id))}
+      onRowClick={handleRowClick}
       attributes={{
         DataViewRoot: {
           data: tableData,

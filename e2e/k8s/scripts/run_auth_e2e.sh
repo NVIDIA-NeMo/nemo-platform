@@ -43,8 +43,8 @@ wait_for_url() {
 echo "Using minikube profile: ${MINIKUBE_PROFILE}"
 echo "Using base URL: ${BASE_URL}"
 
-if ! wait_for_url "${BASE_URL}/health/ready"; then
-    echo "Platform did not become ready at ${BASE_URL}/health/ready" >&2
+if ! wait_for_url "${BASE_URL}/status"; then
+    echo "Platform did not become ready at ${BASE_URL}/status" >&2
     exit 1
 fi
 

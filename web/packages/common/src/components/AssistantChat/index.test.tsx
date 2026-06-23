@@ -254,6 +254,101 @@ describe('AssistantChat', () => {
     expect(screen.getByRole('button', { name: /Edit message/i })).toBeInTheDocument();
   });
 
+  it('offers an enabled add-image affordance for a vision model when enabled', () => {
+    renderAssistantChat(
+      <AssistantChat model="test-vision-model" workspace="default" enableImageAttachments />
+    );
+
+    const addImageButton = screen.getByRole('button', { name: /Add image/i });
+    expect(addImageButton).toBeInTheDocument();
+    expect(addImageButton).toBeEnabled();
+  });
+
+  it('hides the add-image affordance when image attachments are disabled', () => {
+    renderAssistantChat(
+      <AssistantChat model="test-vision-model" workspace="default" enableImageAttachments={false} />
+    );
+
+    expect(screen.queryByRole('button', { name: /Add image/i })).not.toBeInTheDocument();
+  });
+
+  it('hides the add-image affordance for a non-vision model even when enabled', () => {
+    renderAssistantChat(
+      <AssistantChat model="test-model" workspace="default" enableImageAttachments />
+    );
+
+    expect(screen.queryByRole('button', { name: /Add image/i })).not.toBeInTheDocument();
+  });
+
+  it('disables the add-image affordance when the chat is disabled', () => {
+    renderAssistantChat(
+      <AssistantChat
+        model="test-vision-model"
+        workspace="default"
+        enableImageAttachments
+        disabled
+      />
+    );
+
+    expect(screen.getByRole('button', { name: /Add image/i })).toBeDisabled();
+  });
+
+  it('renders image content parts in a user message', () => {
+    const imageUrl = 'data:image/png;base64,AAAA';
+    renderAssistantChat(
+      <AssistantChat
+        model="test-model"
+        initialMessages={[
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'Look at this' },
+              { type: 'image', image: imageUrl },
+            ],
+          },
+        ]}
+      />
+    );
+
+    expect(screen.getByText('Look at this')).toBeInTheDocument();
+    const image = screen.getByRole('img', { name: /Attached image/i });
+    expect(image).toHaveAttribute('src', imageUrl);
+  });
+
+  it('seeds the edit composer with the original image attachment', async () => {
+    const imageUrl = 'data:image/png;base64,AAAA';
+    renderAssistantChat(
+      <AssistantChat
+        model="test-vision-model"
+        workspace="default"
+        enableImageAttachments
+        initialMessages={[
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'Look at this' },
+              { type: 'image', image: imageUrl },
+            ],
+          },
+          {
+            role: 'assistant',
+            content: [{ type: 'text', text: 'Nice picture' }],
+            status: { type: 'complete', reason: 'stop' },
+          },
+        ]}
+      />
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /Edit message/i }));
+
+    const editComposer = screen.getByTestId('assistant-chat-edit-composer');
+    expect(within(editComposer).getByRole('textbox', { name: /Edit message/i })).toHaveValue(
+      'Look at this'
+    );
+    expect(within(editComposer).getByRole('img')).toHaveAttribute('src', imageUrl);
+    expect(within(editComposer).getByRole('button', { name: /Remove/i })).toBeInTheDocument();
+  });
+
   it('renders composer override content in place of the prompt input', () => {
     renderAssistantChat(
       <AssistantChat
@@ -270,28 +365,26 @@ describe('AssistantChat', () => {
   it(
     'edits a user message and re-runs inference with the edited prompt',
     async () => {
+      const user = userEvent.setup({ delay: null });
       mocks.createChatCompletion
         .mockResolvedValueOnce(createCompletion('Original response.'))
         .mockResolvedValueOnce(createCompletion('Edited response.'));
 
       renderAssistantChat(<AssistantChat model="test-model" workspace="default" />);
 
-      await userEvent.type(
-        screen.getByRole('textbox', { name: /Task prompt/i }),
-        'Original prompt'
-      );
-      await userEvent.click(screen.getByRole('button', { name: /Submit/i }));
+      await user.type(screen.getByRole('textbox', { name: /Task prompt/i }), 'Original prompt');
+      await user.click(screen.getByRole('button', { name: /Submit/i }));
 
       expect(await screen.findByText('Original response.')).toBeInTheDocument();
 
-      await userEvent.click(screen.getByRole('button', { name: /Edit message/i }));
+      await user.click(screen.getByRole('button', { name: /Edit message/i }));
       const editInput = screen.getByRole('textbox', { name: /Edit message/i });
       expect(editInput).toHaveValue('Original prompt');
       expect(editInput.tagName).toBe('TEXTAREA');
 
-      await userEvent.clear(editInput);
-      await userEvent.type(editInput, 'Edited prompt');
-      await userEvent.click(screen.getByRole('button', { name: /Save edit/i }));
+      await user.clear(editInput);
+      await user.type(editInput, 'Edited prompt');
+      await user.click(screen.getByRole('button', { name: /Save edit/i }));
 
       expect(await screen.findByText('Edited response.')).toBeInTheDocument();
       expect(screen.getByText('Edited prompt')).toBeInTheDocument();
@@ -363,6 +456,7 @@ describe('AssistantChat', () => {
   it(
     'aborts a pending completion request when stop is clicked',
     async () => {
+      const user = userEvent.setup({ delay: null });
       let requestSignal: AbortSignal | undefined;
       const abortError = new Error('aborted');
       abortError.name = 'AbortError';
@@ -377,16 +471,14 @@ describe('AssistantChat', () => {
 
       renderAssistantChat(<AssistantChat model="test-model" workspace="default" />);
 
-      await userEvent.type(
-        screen.getByRole('textbox', { name: /Task prompt/i }),
-        'Hang before stream'
-      );
-      await userEvent.click(screen.getByRole('button', { name: /Submit/i }));
+      await user.type(screen.getByRole('textbox', { name: /Task prompt/i }), 'Hang before stream');
+      await user.click(screen.getByRole('button', { name: /Submit/i }));
 
       await waitFor(() => expect(requestSignal).toBeDefined());
       expect(requestSignal?.aborted).toBe(false);
 
-      await userEvent.click(screen.getByRole('button', { name: /Stop/i }));
+      // Wait for isRunning to be reflected in the DOM before clicking Stop.
+      await user.click(await screen.findByRole('button', { name: /Stop/i }));
 
       await waitFor(() => expect(requestSignal?.aborted).toBe(true));
       await waitFor(() =>

@@ -1098,6 +1098,13 @@ class DockerDeploymentCreationReconciler:
                     # base_model_name_or_path equals vLLM's --model value (the local
                     # model path). Tell the sidecar to rewrite each adapter to match.
                     sidecar_envs["VLLM_LORA_BASE_MODEL_OVERRIDE"] = vllm_compiler.MODEL_STORE_PATH
+                    # Endpoint the sidecar uses to eagerly (un)load adapters via vLLM's
+                    # runtime LoRA API. Without this the filesystem resolver only loads an
+                    # adapter on the first request that names it, so it never appears in
+                    # /v1/models and model-provider discovery never surfaces it. Reuse the
+                    # same host URL the controller uses to reach the deployment, which is
+                    # reachable from the sidecar across the supported networking modes.
+                    sidecar_envs["VLLM_ENDPOINT"] = self.get_host_url(container_name, host_port)
                     if state.model_entity is not None:
                         sidecar_envs["NMP_MODEL_ENTITY_WORKSPACE"] = state.model_entity.workspace
                         sidecar_envs["NMP_MODEL_ENTITY_NAME"] = state.model_entity.name
@@ -1255,6 +1262,11 @@ class DockerDeploymentCreationReconciler:
         run_kwargs: dict = {
             "image": puller_image,
             "name": puller_container_name,
+            # The puller image is the platform nmp-api image, whose entrypoint is
+            # `nemo services run`. Override it to the Hugging Face CLI so `command`
+            # (["download", <repo>, "--local-dir", "/model-store", ...]) runs as
+            # `hf download ...`.
+            "entrypoint": ["hf"],
             "command": command,
             "environment": env_vars,
             "user": "1000:1000",
@@ -1345,6 +1357,11 @@ class DockerDeploymentCreationReconciler:
             run_kwargs: dict = {
                 "image": puller_image,
                 "name": container_name,
+                # The puller image is the platform nmp-api image, whose entrypoint
+                # is `nemo services run`. Override it to the Hugging Face CLI so
+                # `command` (["download", <fileset>, "--local-dir", ...]) runs as
+                # `hf download ...`.
+                "entrypoint": ["hf"],
                 "command": command,
                 "environment": env_vars,
                 "user": "1000:1000",

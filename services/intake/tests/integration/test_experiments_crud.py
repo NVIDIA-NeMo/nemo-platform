@@ -376,3 +376,89 @@ def test_update_or_delete_deleted_experiment_returns_404(client: TestClient) -> 
     )
     delete_response = client.delete(f"{EXPERIMENTS}/exp-once")
     assert delete_response.status_code == 404
+
+
+def test_pin_and_unpin_experiment(client: TestClient) -> None:
+    group = _create_group(client)
+    client.post(EXPERIMENTS, json=_experiment_body(name="exp-pin", experiment_group_id=group["id"]))
+
+    # New experiments start unpinned.
+    fetched = client.get(f"{EXPERIMENTS}/exp-pin")
+    assert fetched.status_code == 200
+    assert fetched.json()["pinned_at"] is None
+
+    # Pin sets pinned_at to a timestamp.
+    pinned = client.post(f"{EXPERIMENTS}/exp-pin/pin")
+    assert pinned.status_code == 200, pinned.text
+    first_pinned_at = pinned.json()["pinned_at"]
+    assert first_pinned_at is not None
+
+    # Re-pinning refreshes pinned_at (most-recently-pinned-first ordering).
+    re_pinned = client.post(f"{EXPERIMENTS}/exp-pin/pin")
+    assert re_pinned.status_code == 200, re_pinned.text
+    assert re_pinned.json()["pinned_at"] >= first_pinned_at
+
+    # Unpin clears pinned_at.
+    unpinned = client.delete(f"{EXPERIMENTS}/exp-pin/pin")
+    assert unpinned.status_code == 200, unpinned.text
+    assert unpinned.json()["pinned_at"] is None
+
+    # Unpin on an already-unpinned experiment is a no-op.
+    again = client.delete(f"{EXPERIMENTS}/exp-pin/pin")
+    assert again.status_code == 200, again.text
+    assert again.json()["pinned_at"] is None
+
+
+def test_pin_unknown_experiment_returns_404(client: TestClient) -> None:
+    assert client.post(f"{EXPERIMENTS}/missing/pin").status_code == 404
+    assert client.delete(f"{EXPERIMENTS}/missing/pin").status_code == 404
+
+
+def test_pin_rejects_deleted_experiment(client: TestClient) -> None:
+    group = _create_group(client)
+    client.post(EXPERIMENTS, json=_experiment_body(name="exp-soft", experiment_group_id=group["id"]))
+    assert client.delete(f"{EXPERIMENTS}/exp-soft").status_code == 204
+    assert client.post(f"{EXPERIMENTS}/exp-soft/pin").status_code == 404
+
+
+def test_filter_by_is_pinned(client: TestClient) -> None:
+    group = _create_group(client)
+    client.post(EXPERIMENTS, json=_experiment_body(name="exp-pinned-a", experiment_group_id=group["id"]))
+    client.post(EXPERIMENTS, json=_experiment_body(name="exp-pinned-b", experiment_group_id=group["id"]))
+    client.post(EXPERIMENTS, json=_experiment_body(name="exp-not-pinned", experiment_group_id=group["id"]))
+    client.post(f"{EXPERIMENTS}/exp-pinned-a/pin")
+    client.post(f"{EXPERIMENTS}/exp-pinned-b/pin")
+
+    only_pinned = client.get(EXPERIMENTS, params={"filter[is_pinned]": "true"})
+    assert only_pinned.status_code == 200, only_pinned.text
+    pinned_names = {e["name"] for e in only_pinned.json()["data"]}
+    assert pinned_names == {"exp-pinned-a", "exp-pinned-b"}
+
+    only_unpinned = client.get(EXPERIMENTS, params={"filter[is_pinned]": "false"})
+    assert only_unpinned.status_code == 200, only_unpinned.text
+    unpinned_names = {e["name"] for e in only_unpinned.json()["data"]}
+    assert "exp-not-pinned" in unpinned_names
+    assert "exp-pinned-a" not in unpinned_names
+    assert "exp-pinned-b" not in unpinned_names
+
+    no_filter = client.get(EXPERIMENTS)
+    all_names = {e["name"] for e in no_filter.json()["data"]}
+    assert {"exp-pinned-a", "exp-pinned-b", "exp-not-pinned"} <= all_names
+
+
+def test_sort_by_pinned_at_most_recent_first(client: TestClient) -> None:
+    group = _create_group(client)
+    client.post(EXPERIMENTS, json=_experiment_body(name="exp-old-pin", experiment_group_id=group["id"]))
+    client.post(EXPERIMENTS, json=_experiment_body(name="exp-new-pin", experiment_group_id=group["id"]))
+    client.post(f"{EXPERIMENTS}/exp-old-pin/pin")
+    client.post(f"{EXPERIMENTS}/exp-new-pin/pin")
+
+    pinned_desc = client.get(EXPERIMENTS, params={"filter[is_pinned]": "true", "sort": "-pinned_at"})
+    assert pinned_desc.status_code == 200, pinned_desc.text
+    names_desc = [e["name"] for e in pinned_desc.json()["data"]]
+    assert names_desc.index("exp-new-pin") < names_desc.index("exp-old-pin")
+
+    pinned_asc = client.get(EXPERIMENTS, params={"filter[is_pinned]": "true", "sort": "pinned_at"})
+    assert pinned_asc.status_code == 200, pinned_asc.text
+    names_asc = [e["name"] for e in pinned_asc.json()["data"]]
+    assert names_asc.index("exp-old-pin") < names_asc.index("exp-new-pin")

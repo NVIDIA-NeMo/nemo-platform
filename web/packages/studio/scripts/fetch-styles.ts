@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+/* eslint-disable no-console -- CLI script */
 /**
  * Fetches base-external.css + components.css from the Kaizen UI Foundations CDN
  * for the version of @nvidia/foundations-react-core pinned in pnpm-workspace.yaml,

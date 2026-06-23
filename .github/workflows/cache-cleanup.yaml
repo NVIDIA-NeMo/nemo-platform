@@ -1,0 +1,47 @@
+name: Cleanup GitHub Actions Caches
+
+on:
+  pull_request:
+    types: [closed]
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  cleanup-pr:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Delete PR Caches
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh cache delete --repo "${GITHUB_REPOSITORY}" --all --succeed-on-no-caches --ref refs/pull/${{ github.event.pull_request.number }}/merge
+
+  cleanup-merge-queue:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Delete stale merge queue caches
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cutoff="$(date -u -d '4 days ago' '+%Y-%m-%dT%H:%M:%SZ')"
+          echo "Deleting merge queue caches last accessed before ${cutoff}"
+
+          gh api --paginate 'repos/{owner}/{repo}/actions/caches?per_page=100' \
+            --jq '.actions_caches[] | select(.ref | startswith("refs/heads/gh-readonly-queue/")) | select(.last_accessed_at != null and .last_accessed_at < "'"${cutoff}"'") | .id' \
+            | while read -r cache_id; do
+                if [ -n "${cache_id}" ]; then
+                  echo "Deleting cache ${cache_id}"
+                  gh api -X DELETE "repos/{owner}/{repo}/actions/caches/${cache_id}" >/dev/null
+                fi
+              done

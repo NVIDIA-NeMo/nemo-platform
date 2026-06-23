@@ -10,6 +10,7 @@ views. Rollups are derived from ClickHouse at read time.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, ClassVar
 
 from nmp.common.entities.client import EntityBase
@@ -67,5 +68,14 @@ class Experiment(EntityBase):
             "Soft-delete flag. DELETE flips this to true; on delete the entity is also renamed "
             "(`<name>-deleted-<utc-iso>`) so the original name is free for reuse. Deleted experiments "
             "are hidden from list/get and rejected by ATIF ingest unless `filter[is_deleted]=true`."
+        ),
+    )
+
+    pinned_at: datetime | None = Field(
+        default=None,
+        description=(
+            "Timestamp at which the experiment was pinned to the top of the list, or null if unpinned. "
+            "Managed via POST/DELETE /experiments/{name}/pin (not via the create or update body). "
+            "Pin state is workspace-shared: every user with workspace access sees the same pinned set."
         ),
     )

@@ -389,18 +389,24 @@ def extract_plugin_openapi_spec(plugin: PluginConfig) -> tuple[str, bool, str]:
 
 
 def extract_plugin_specs_with_process_pool(plugins: List[PluginConfig]) -> None:
-    """Extract OpenAPI specs for plugins via ProcessPool — mirrors the services path."""
+    """Extract OpenAPI specs for plugins via isolated subprocesses.
+
+    Each plugin gets a fresh ProcessPoolExecutor(max_workers=1) so a worker never
+    processes two plugins in one process. That matters on Linux (fork): discovering
+    services for plugin A imports route modules for plugin B, which registers
+    query-param filter schemas at import time; plugin B's extraction then calls
+    clear_query_param_schemas() and openapi() without re-importing those routes,
+    leaving dangling ``#/components/schemas/*Filter`` refs (e.g. MetricFilter).
+    """
     print_green(f"=== Generating OpenAPI specs for {len(plugins)} plugin(s) using process pool ===")
 
     if not plugins:
         return
 
-    with ProcessPoolExecutor() as executor:
-        future_to_plugin = {executor.submit(extract_plugin_openapi_spec, p): p for p in plugins}
-
-        failed_plugins = []
-        for future in as_completed(future_to_plugin):
-            plugin = future_to_plugin[future]
+    failed_plugins = []
+    for plugin in plugins:
+        with ProcessPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(extract_plugin_openapi_spec, plugin)
             try:
                 name, success, error = future.result()
                 if success:
@@ -412,13 +418,13 @@ def extract_plugin_specs_with_process_pool(plugins: List[PluginConfig]) -> None:
                 failed_plugins.append((plugin.dir, str(e)))
                 print_red(f"Exception in {plugin.dir}: {str(e)}")
 
-        if failed_plugins:
-            print_red(f"\n{len(failed_plugins)} plugins failed:")
-            for name, error in failed_plugins:
-                print_red(f"  - {name}: {error}")
-            raise RuntimeError(f"{len(failed_plugins)} plugins failed to generate OpenAPI specs")
+    if failed_plugins:
+        print_red(f"\n{len(failed_plugins)} plugins failed:")
+        for name, error in failed_plugins:
+            print_red(f"  - {name}: {error}")
+        raise RuntimeError(f"{len(failed_plugins)} plugins failed to generate OpenAPI specs")
 
-        print_green(f"All {len(plugins)} plugin(s) completed successfully!")
+    print_green(f"All {len(plugins)} plugin(s) completed successfully!")
 
 
 def apply_schema_fixes(spec_files: List[str], apply_reorder: bool = True) -> None:

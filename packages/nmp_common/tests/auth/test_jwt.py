@@ -243,6 +243,117 @@ class TestJWTValidator:
                 await jwt_validator.validate_token("unsigned.token.value")
 
     @pytest.mark.asyncio
+    async def test_validate_unsigned_token_expired_when_allowed(self):
+        """Unsigned JWTs with expired exp claims return None."""
+        config = AuthConfig(
+            enabled=True,
+            allow_unsigned_jwt=True,
+            policy_decision_point_base_url="http://localhost:8181",
+            oidc=OIDCConfig(enabled=False),
+        )
+        validator = JWTValidator(config)
+        now = int(time.time())
+        token = jwt.encode(
+            {
+                "sub": "user123",
+                "iat": now - 7200,
+                "nbf": now - 7200,
+                "exp": now - 3600,
+            },
+            key="",
+            algorithm="none",
+        )
+
+        result = await validator.validate_token(token)
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_validate_unsigned_token_success_when_allowed(self):
+        """Unsigned JWTs with valid exp claims are accepted when allowed."""
+        config = AuthConfig(
+            enabled=True,
+            allow_unsigned_jwt=True,
+            policy_decision_point_base_url="http://localhost:8181",
+            oidc=OIDCConfig(enabled=False),
+        )
+        validator = JWTValidator(config)
+        now = int(time.time())
+        token = jwt.encode(
+            {
+                "sub": "user123",
+                "email": "user@example.com",
+                "groups": ["admin"],
+                "scope": "openid profile",
+                "iat": now,
+                "nbf": now,
+                "exp": now + 3600,
+            },
+            key="",
+            algorithm="none",
+        )
+
+        result = await validator.validate_token(token)
+
+        assert result is not None
+        assert result.subject == "user123"
+        assert result.email == "user@example.com"
+        assert result.groups == ["admin"]
+        assert result.scopes == ["openid", "profile"]
+
+    @pytest.mark.asyncio
+    async def test_validate_unsigned_token_future_iat_when_allowed(self):
+        """Unsigned JWTs with future iat claims return None."""
+        config = AuthConfig(
+            enabled=True,
+            allow_unsigned_jwt=True,
+            policy_decision_point_base_url="http://localhost:8181",
+            oidc=OIDCConfig(enabled=False),
+        )
+        validator = JWTValidator(config)
+        now = int(time.time())
+        token = jwt.encode(
+            {
+                "sub": "user123",
+                "iat": now + 3600,
+                "nbf": now,
+                "exp": now + 7200,
+            },
+            key="",
+            algorithm="none",
+        )
+
+        result = await validator.validate_token(token)
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_validate_unsigned_token_future_nbf_when_allowed(self):
+        """Unsigned JWTs with future nbf claims return None."""
+        config = AuthConfig(
+            enabled=True,
+            allow_unsigned_jwt=True,
+            policy_decision_point_base_url="http://localhost:8181",
+            oidc=OIDCConfig(enabled=False),
+        )
+        validator = JWTValidator(config)
+        now = int(time.time())
+        token = jwt.encode(
+            {
+                "sub": "user123",
+                "iat": now,
+                "nbf": now + 3600,
+                "exp": now + 7200,
+            },
+            key="",
+            algorithm="none",
+        )
+
+        result = await validator.validate_token(token)
+
+        assert result is None
+
+    @pytest.mark.asyncio
     async def test_validate_token_success(self, jwt_validator):
         """Test successful token validation."""
         valid_claims = {

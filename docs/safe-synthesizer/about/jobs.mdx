@@ -96,7 +96,7 @@ Track job progress through:
 
 - **Status checks**: Poll job state
 - **Logs**: View real-time execution logs
-- **Events**: Subscribe to job state changes when supported by the deployment
+- **Events**: Subscribe to job state changes when supported by the service
 
 ### Retrieving Results
 
@@ -194,55 +194,6 @@ for log in job.fetch_logs():
     print(log.message.strip())
 ```
 
-### Docker Compose Deployments
-
-When running NeMo Safe Synthesizer using Docker Compose, view container logs directly:
-
-```bash
-# View safe-synthesizer service logs
-docker logs -f synthesis-test-20260114-051514-safe-synthesizer
-
-# View logs with timestamps
-docker logs -f --timestamps synthesis-test-20260114-051514-safe-synthesizer
-
-# View last 100 lines
-docker logs --tail 100 synthesis-test-20260114-051514-safe-synthesizer
-```
-
-To check the health status of containers:
-
-```bash
-docker ps
-```
-
-### Kubernetes Deployments
-
-For Kubernetes deployments, use `kubectl` to access logs:
-
-```bash
-# List pods in your namespace
-kubectl get pods -n <namespace>
-
-# View logs for the safe-synthesizer pod
-kubectl logs -f <pod-name> -n <namespace>
-
-# View logs for a specific container in the pod
-kubectl logs -f <pod-name> -c <container-name> -n <namespace>
-
-# View previous container logs (if container restarted)
-kubectl logs --previous <pod-name> -n <namespace>
-```
-
-To check pod status and events:
-
-```bash
-# Describe pod for detailed status and events
-kubectl describe pod <pod-name> -n <namespace>
-
-# Check events in the namespace
-kubectl get events -n <namespace> --sort-by='.lastTimestamp'
-```
-
 ### Common Issues and Solutions
 
 #### Job Stuck in "Pending" State
@@ -257,9 +208,9 @@ kubectl get events -n <namespace> --sort-by='.lastTimestamp'
 
 **Solutions:**
 
-- Check available GPU resources in your cluster
+- Check available GPU resources for the job
 - Verify resource quotas and limits
-- Review pod events for scheduling failures
+- Review job logs for scheduling failures
 
 #### Out of Memory (OOM) Errors
 
