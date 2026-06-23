@@ -14,7 +14,9 @@ import {
   MODEL_COMPARE_ENABLED,
   SAFE_SYNTHESIZER_ENABLED,
 } from '@studio/constants/environment';
+import { featureFlags } from '@studio/constants/featureFlags';
 import { ROUTES } from '@studio/constants/routes';
+import { collectPluginRoutes } from '@studio/plugins/registry';
 import { INTAKE_FILTER_ACTION_TARGET_ID } from '@studio/routes/IntakeLayout';
 import { PageLayout } from '@studio/routes/PageLayout';
 import { RootLayout } from '@studio/routes/RootLayout';
@@ -571,6 +573,10 @@ export const routes: RouteObject[] = [
                   element: <ExperimentDetailRoute />,
                   errorElement: <ErrorPanel title="Experiment" />,
                 },
+                // Plugin-contributed pages (e.g. the experiment error report) merge in behind the
+                // plugin flag. When the flag is off or no plugin declares routes, this adds nothing
+                // and the router matches exactly as before.
+                ...(featureFlags.experimentPlugins ? collectPluginRoutes() : []),
               ]),
               ...gateCustomizationRoutes([
                 {

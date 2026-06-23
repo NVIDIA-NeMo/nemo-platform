@@ -18,6 +18,9 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "paths": {
+      "@studio/plugins/manifest.local": ["./src/plugins/manifest.local.stub.ts"],
+      "@nemo/studio-plugins-external": ["../studio-plugins-example/src/manifest.ts"],
+      "@nemo/studio-plugins-example/*": ["../studio-plugins-example/src/*"],
       "@studio/*": ["./src/*"],
       "@e2e-tests/*": ["./e2e-tests/*"],
       "@screenshots/*": ["./screenshots/*"],

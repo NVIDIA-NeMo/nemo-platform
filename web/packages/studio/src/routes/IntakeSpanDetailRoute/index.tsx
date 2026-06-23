@@ -163,7 +163,7 @@ const IntakeSpanDetailContent: FC<IntakeSpanDetailContentProps> = ({ spanId }) =
 
   return (
     <AccessibleTitle title={`Span ${title}`}>
-      <Stack gap="density-2xl" padding="density-2xl" className="h-full overflow-auto">
+      <Stack gap="density-2xl" padding="density-2xl">
         <PageHeader className="p-0" slotHeading={title} />
         <Grid className="grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,420px)] gap-density-2xl">
           <Panel

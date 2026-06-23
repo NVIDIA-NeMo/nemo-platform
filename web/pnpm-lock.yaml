@@ -842,6 +842,37 @@ importers:
         specifier: ^1.0.4
         version: 1.0.4
 
+  packages/studio-plugins-example:
+    dependencies:
+      '@nemo/common':
+        specifier: workspace:*
+        version: link:../common
+      '@nemo/sdk':
+        specifier: workspace:*
+        version: link:../sdk
+      '@nvidia/foundations-react-core':
+        specifier: 'catalog:'
+        version: 1.0.0(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@tanstack/react-query':
+        specifier: 'catalog:'
+        version: 5.90.21(react@19.2.5)
+      lucide-react:
+        specifier: 'catalog:'
+        version: 0.577.0(react@19.2.5)
+      react:
+        specifier: ^19.2.5
+        version: 19.2.5
+      react-dom:
+        specifier: ^19.2.5
+        version: 19.2.5(react@19.2.5)
+      react-router-dom:
+        specifier: 'catalog:'
+        version: 6.30.3(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+    devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.2
+
   packages/testing:
     devDependencies:
       '@testing-library/dom':

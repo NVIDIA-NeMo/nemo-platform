@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "paths": {
+      "@nemo/studio-plugins-example/*": ["./src/*"],
+      "@studio/*": ["../studio/src/*"],
+      "@nemo/common/*": ["../common/*"],
+      "@nemo/sdk/*": ["../sdk/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
+}

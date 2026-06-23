@@ -1,0 +1,84 @@
+/* SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. */
+/* SPDX-License-Identifier: Apache-2.0 */
+
+/*
+ * Scoped styling for IntakeAccordion, which composes the KUI Accordion
+ * primitives (AccordionRoot/Item/Trigger/Content). The base KUI accordion is a
+ * generic disclosure list; the intake trace/span views need the denser,
+ * row-oriented look from the Studio Experiments design: a trigger laid out as
+ * [chevron] [label + badge] ............ [right-aligned metrics + actions].
+ *
+ * Like StudioDataView.css, this file lives outside Tailwind's @layer utilities,
+ * so its scoped rules win the cascade over KUI's layered classes without
+ * needing !important. All selectors are scoped under `.intake-accordion`.
+ */
+
+/* ─── Trigger layout ─────────────────────────────────────────────────────── */
+
+/* KUI wraps the trigger children in `.nv-accordion-label-text`. Make it the
+   flex track that holds the label group (grows) and the end group (right). */
+.intake-accordion .nv-accordion-label-text {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: center;
+  gap: var(--spacing-density-lg);
+}
+
+.intake-accordion-label {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: center;
+  gap: var(--spacing-density-sm);
+}
+
+.intake-accordion-end {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--spacing-density-lg);
+}
+
+.intake-accordion .nv-accordion-trigger {
+  cursor: pointer;
+}
+
+/* Body insets live here (single source of truth) — slot content should not add
+   its own padding. KUI's default content padding is heavier than the dense
+   intake layout wants, so neutralize it and let each variant set a tight inset. */
+.intake-accordion-content {
+  padding: 0;
+}
+
+/* ─── Row variant: span list ─────────────────────────────────────────────── */
+
+.intake-accordion--row .intake-accordion-item {
+  border-bottom: 1px solid var(--border-color-base);
+}
+
+.intake-accordion--row .intake-accordion-item:last-child {
+  border-bottom: 0;
+}
+
+.intake-accordion--row .nv-accordion-trigger {
+  padding: var(--spacing-density-md) var(--spacing-density-lg);
+}
+
+.intake-accordion--row .nv-accordion-trigger:hover {
+  background-color: var(--background-color-interaction-hover);
+}
+
+.intake-accordion--row .intake-accordion-content {
+  padding: 0 var(--spacing-density-lg) var(--spacing-density-md);
+}
+
+/* ─── Section variant: nested metadata sections ──────────────────────────── */
+
+.intake-accordion--section .nv-accordion-trigger {
+  padding: var(--spacing-density-sm) 0;
+}
+
+.intake-accordion--section .intake-accordion-content {
+  padding-bottom: var(--spacing-density-sm);
+}
