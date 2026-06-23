@@ -28,14 +28,16 @@ from nemo_platform_plugin.client.types import BinaryContent, Stream
 
 
 @get("/apis/example/hello/{name}")
-def HelloEndpoint(*, name: str) -> HelloResponse: ...
+def HelloEndpoint(*, name: str) -> HelloResponse:
+    raise NotImplementedError
 
 
 # -- Items CRUD ------------------------------------------------------------
 
 
 @post("/apis/example/v2/workspaces/{workspace}/items")
-def CreateItemEndpoint(body: CreateExampleItemRequest, *, workspace: str) -> ExampleItem: ...
+def CreateItemEndpoint(body: CreateExampleItemRequest, *, workspace: str) -> ExampleItem:
+    raise NotImplementedError
 
 
 class ListItemsQueryParams(TypedDict, total=False):
@@ -44,34 +46,41 @@ class ListItemsQueryParams(TypedDict, total=False):
 
 
 @get("/apis/example/v2/workspaces/{workspace}/items")
-def ListItemsEndpoint(*, workspace: str, query_params: ListItemsQueryParams | None = None) -> ExampleItemPage: ...
+def ListItemsEndpoint(*, workspace: str, query_params: ListItemsQueryParams | None = None) -> ExampleItemPage:
+    raise NotImplementedError
 
 
 @get("/apis/example/v2/workspaces/{workspace}/items/{name}")
-def GetItemEndpoint(*, workspace: str, name: str) -> ExampleItem: ...
+def GetItemEndpoint(*, workspace: str, name: str) -> ExampleItem:
+    raise NotImplementedError
 
 
 @patch("/apis/example/v2/workspaces/{workspace}/items/{name}")
-def UpdateItemEndpoint(body: UpdateExampleItemRequest, *, workspace: str, name: str) -> ExampleItem: ...
+def UpdateItemEndpoint(body: UpdateExampleItemRequest, *, workspace: str, name: str) -> ExampleItem:
+    raise NotImplementedError
 
 
 @delete("/apis/example/v2/workspaces/{workspace}/items/{name}")
-def DeleteItemEndpoint(*, workspace: str, name: str) -> None: ...
+def DeleteItemEndpoint(*, workspace: str, name: str) -> None:
+    raise NotImplementedError
 
 
 # -- Functions -------------------------------------------------------------
 
 
 @post("/apis/example/v2/workspaces/{workspace}/count")
-def CountEndpoint(body: CountRequest, *, workspace: str) -> Stream[Tick]: ...
+def CountEndpoint(body: CountRequest, *, workspace: str) -> Stream[Tick]:
+    raise NotImplementedError
 
 
 # -- Binary ----------------------------------------------------------------
 
 
 @put("/apis/example/blob/{name}")
-def UploadBlobEndpoint(content: bytes, *, name: str) -> BlobUploadResponse: ...
+def UploadBlobEndpoint(content: bytes, *, name: str) -> BlobUploadResponse:
+    raise NotImplementedError
 
 
 @get("/apis/example/blob/{name}")
-def DownloadBlobEndpoint(*, name: str) -> BinaryContent: ...
+def DownloadBlobEndpoint(*, name: str) -> BinaryContent:
+    raise NotImplementedError
