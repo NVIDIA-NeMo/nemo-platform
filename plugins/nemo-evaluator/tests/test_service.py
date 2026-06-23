@@ -10,6 +10,20 @@ from fastapi.testclient import TestClient
 from nemo_evaluator.service import EvaluatorPluginService
 
 
+def _route_paths(app: FastAPI) -> set[str]:
+    """Collect all route paths, compatible with FastAPI 0.138+ _IncludedRouter."""
+    paths: set[str] = set()
+    queue = list(app.routes)
+    while queue:
+        route = queue.pop()
+        if hasattr(route, "path"):
+            paths.add(route.path)
+        fn = getattr(route, "effective_candidates", None)
+        if callable(fn):
+            queue.extend(fn())  # type: ignore[arg-type]
+    return paths
+
+
 def test_service_health_route_mounts_with_valid_prefix() -> None:
     app = FastAPI()
     service = EvaluatorPluginService()
@@ -33,6 +47,6 @@ def test_service_mounts_evaluator_job_collection_at_sdk_route() -> None:
     for spec in service.get_routers():
         app.include_router(spec.router, prefix=spec.prefix)
 
-    route_paths = {route.path for route in app.routes if hasattr(route, "path")}
+    route_paths = _route_paths(app)
 
     assert "/v2/workspaces/{workspace}/evaluate/jobs" in route_paths
