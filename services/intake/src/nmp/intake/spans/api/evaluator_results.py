@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from nmp.common.api.common import Page
@@ -32,6 +31,7 @@ from nmp.intake.spans.api.query_filters import (
 from nmp.intake.spans.domain import EvaluatorResult as DomainEvaluatorResult
 from nmp.intake.spans.domain import EvaluatorResultListFilter
 from nmp.intake.spans.service import EvaluatorResultNotFoundError
+from nmp.intake.spans.storage import stable_id
 
 router = APIRouter(dependencies=[Depends(require_workspace_access)])
 API_TAG = "Evaluator Results"
@@ -51,8 +51,18 @@ async def create_evaluator_result(
     auth_client: AuthClient = Depends(get_auth_client),
 ) -> EvaluatorResult:
     now = datetime.now(timezone.utc)
+    # Identity-derived id: one result per (workspace, session, span, evaluator name). Re-POSTing
+    # the same target hashes to the same id, so ReplacingMergeTree upserts (latest write wins)
+    # rather than accumulating duplicate or stale rows.
+    evaluator_result_id = stable_id(
+        workspace,
+        body.session_id,
+        body.span_id,
+        body.name,
+        prefix="eval",
+    )
     domain_result = DomainEvaluatorResult(
-        evaluator_result_id=f"eval-{uuid4().hex}",
+        evaluator_result_id=evaluator_result_id,
         span_id=body.span_id,
         session_id=body.session_id,
         workspace=workspace,
