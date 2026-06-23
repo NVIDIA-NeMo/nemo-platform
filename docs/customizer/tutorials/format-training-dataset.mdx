@@ -218,10 +218,10 @@ For illustrative purposes only, we show an example entry as multi-line JSON.
 </Accordion>
 ##### Shared Tools
 
-When your dataset uses the same set of tools across all examples, you can streamline your configuration by omitting the `tools` field from individual dataset entries. Instead, specify these tools once in the `dataset_parameters` section during job creation.
+When your dataset uses the same set of tools across all examples, include the shared tool definitions in **each training row** (Automodel jobs do not accept a separate `dataset_parameters` block). See the [Tool Calling tutorial](../../example-applications/tool-calling.ipynb) for a full workflow.
 
 ```python
-import os
+from nemo_automodel_plugin.schema import AutomodelJobInput
 from nemo_platform import NeMoPlatform
 
 client = NeMoPlatform(
@@ -229,44 +229,23 @@ client = NeMoPlatform(
     workspace="default",
 )
 
-# Create a customization job with shared tools
-job = client.customization.jobs.create(
-    name="my-tool-calling-job",
-    workspace="default",
-    spec={
-        "model": "default/llama-3-2-1b",
-        "dataset": "fileset://default/my-tool-dataset",
-        "dataset_parameters": {
-            "tools": [
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "fibonacci",
-                        "description": "Calculates the nth Fibonacci number.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "n": {
-                                    "description": "The position of the Fibonacci number.",
-                                    "type": "integer",
-                                }
-                            },
-                        },
-                    },
-                }
-            ]
-        },
-        "training": {
-            "type": "sft",
-            "peft": {"type": "lora", "rank": 8, "alpha": 32},
-            "epochs": 10,
-            "batch_size": 16,
-            "learning_rate": 1e-4,
-        },
-    },
+# Create an Automodel job (include tools in each JSONL training example)
+spec = AutomodelJobInput(
+    model="default/llama-3-2-1b",
+    dataset={"training": "default/my-tool-dataset"},
+    training={"training_type": "sft", "finetuning_type": "lora", "lora": {"rank": 8, "alpha": 32}},
+    schedule={"epochs": 10},
+    batch={"global_batch_size": 16, "micro_batch_size": 1},
+    optimizer={"learning_rate": 1e-4},
 )
 
-print(f"Created job: {job.name}")
+job = client.customization.automodel.jobs.create(
+    name="my-tool-calling-job",
+    workspace="default",
+    spec=spec,
+)
+
+print(f"Submitted job: {job.job.name}")
 ```
 
 ### Find Chat Models

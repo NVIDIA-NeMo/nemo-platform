@@ -120,20 +120,20 @@ print(f"Parameters: {model.spec.base_num_parameters:,}")
 **3. Create a Customization Job**
 
 ```python
-job = client.customization.jobs.create(
+from nemo_automodel_plugin.schema import AutomodelJobInput
+
+spec = AutomodelJobInput(
+    model="default/llama-3-2-1b",
+    dataset={"training": "default/email-training-data"},
+    training={"training_type": "sft", "finetuning_type": "lora", "lora": {"rank": 8, "alpha": 32}},
+    schedule={"epochs": 3},
+    batch={"global_batch_size": 32, "micro_batch_size": 1},
+)
+
+job = client.customization.automodel.jobs.create(
     workspace="default",
     name="my-email-assistant-lora",
-    spec={
-        "model": "default/llama-3-2-1b",
-        "dataset": "fileset://default/email-training-data",
-        "training": {
-            "type": "sft",
-            "peft": {"type": "lora", "rank": 8, "alpha": 32},
-            "epochs": 3,
-            "batch_size": 32,
-        },
-        "deployment_config": {"lora_enabled": True},
-    },
+    spec=spec,
 )
 ```
 
@@ -446,15 +446,19 @@ models = client.models.list(workspace="default")
 # Get a specific Model Entity with adapters
 model = client.models.retrieve(workspace="default", name="llama-3-2-1b")
 
-# Create a customization job
-job = client.customization.jobs.create(
+# Create an Automodel training job
+from nemo_automodel_plugin.schema import AutomodelJobInput
+
+spec = AutomodelJobInput(
+    model="default/llama-3-2-1b",
+    dataset={"training": "default/my-dataset"},
+    training={"training_type": "sft", "finetuning_type": "lora"},
+)
+
+job = client.customization.automodel.jobs.create(
     workspace="default",
     name="my-job",
-    spec={
-        "model": "default/llama-3-2-1b",
-        "dataset": "fileset://default/my-dataset",
-        "training": {"type": "sft", "peft": {"type": "lora"}},
-    },
+    spec=spec,
 )
 
 # Add an adapter to a model
