@@ -53,6 +53,27 @@ The wizard walks through each stage:
 
 Each stage is idempotent — you can re-run `nemo setup` at any time to add more providers or update your configuration.
 
+### Auth and OIDC source installs
+
+`nemo setup` and `nemo services run` do not create authorization role bindings by themselves. If you enable auth in source config with `auth.enabled: true` and set `auth.admin_email`, run the platform seed task so the bootstrap IAM bindings exist.
+
+For local single-process source runs, enable startup seeding before starting services:
+
+```bash
+export NMP_SEED_ON_STARTUP=true
+nemo services run
+```
+
+You can set `platform.seed_on_startup: true` in platform config instead. If services are already running, wait for readiness and run the seed task manually from the repository root:
+
+```bash
+# Set NMP_BASE_URL first if services are not on http://localhost:8080.
+curl -sf http://localhost:8080/health/ready
+uv run python -m nmp.platform_seed
+```
+
+`uv run nemo-platform run task --task nmp.platform_seed` is equivalent. The seed task is idempotent. It creates the **PlatformAdmin** binding in the `system` workspace for `auth.admin_email`, the wildcard **Editor** binding for the default workspace, and the wildcard **Viewer** binding for the `system` workspace. Without this step, OIDC login can succeed but admin operations may still return `403 Forbidden` because the RBAC bindings are missing.
+
 When setup completes, try chatting with the model you selected. Use the model name shown at the end of setup (or find it with `nemo models list`):
 
 ```bash
