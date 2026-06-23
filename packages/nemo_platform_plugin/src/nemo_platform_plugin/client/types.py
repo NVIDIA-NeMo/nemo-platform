@@ -25,18 +25,18 @@ class BinaryContent:
 
     Use ``content`` parameter for binary uploads::
 
-        @put("/files/{path}", response_type=FileResponse)
-        def UploadEndpoint(content: bytes, *, path: str) -> None: ...
+        @put("/files/{path}")
+        def UploadEndpoint(content: bytes, *, path: str) -> FileResponse: ...
     """
 
 
 class Stream(Generic[ModelT]):
     """Marker type: endpoint returns a stream of ``ModelT`` objects (SSE/NDJSON).
 
-    Used as ``response_type`` in endpoint definitions::
+    Used as return type in endpoint definitions::
 
-        @post("/chat/{workspace}", response_type=Stream[ChatChunk])
-        def ChatEndpoint(body: ChatRequest, *, workspace: str) -> None: ...
+        @post("/chat/{workspace}")
+        def ChatEndpoint(body: ChatRequest, *, workspace: str) -> Stream[ChatChunk]: ...
     """
 
 

@@ -45,14 +45,14 @@ def ListEndpoint(*, workspace: str, query_params: ListQueryParams | None = None)
 
 
 def test_post_endpoint_produces_prepared_request() -> None:
-    payload = FakeRequest(name="alice")
-    prepared = PostEndpoint.prepare_request(payload, workspace="default")
+    body = FakeRequest(name="alice")
+    prepared = PostEndpoint.prepare_request(body, workspace="default")
 
     assert isinstance(prepared, PreparedRequest)
     assert prepared.path_template == "/v2/workspaces/{workspace}/items"
     assert prepared.path_params == {"workspace": "default"}
     assert prepared.method == "POST"
-    assert prepared.content == payload.model_dump_json().encode()
+    assert prepared.content == body.model_dump_json().encode()
     assert prepared.content_type == "application/json"
     assert prepared.response_type is FakeResponse
 
@@ -77,12 +77,12 @@ def test_delete_endpoint() -> None:
 
 
 def test_patch_endpoint() -> None:
-    payload = FakeRequest(name="updated")
-    prepared = PatchEndpoint.prepare_request(payload, id="42")
+    body = FakeRequest(name="updated")
+    prepared = PatchEndpoint.prepare_request(body, id="42")
 
     assert prepared.path_params == {"id": "42"}
     assert prepared.method == "PATCH"
-    assert prepared.content == payload.model_dump_json().encode()
+    assert prepared.content == body.model_dump_json().encode()
 
 
 def test_endpoint_repr() -> None:
@@ -109,11 +109,11 @@ def test_post_with_query_params() -> None:
     @post("/v2/items/{workspace}")
     def PostWithQuery(body: FakeRequest, *, workspace: str, query_params: dict | None = None) -> FakeResponse: ...
 
-    payload = FakeRequest(name="alice")
-    prepared = PostWithQuery.prepare_request(payload, workspace="default", query_params={"dry_run": True})
+    body = FakeRequest(name="alice")
+    prepared = PostWithQuery.prepare_request(body, workspace="default", query_params={"dry_run": True})
 
     assert prepared.query_params == {"dry_run": True}
-    assert prepared.content == payload.model_dump_json().encode()
+    assert prepared.content == body.model_dump_json().encode()
 
 
 def test_delete_with_response_type() -> None:
