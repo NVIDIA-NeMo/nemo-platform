@@ -3383,6 +3383,17 @@ async def test_plugin_puller_success(docker_backend, sample_deployment, mock_doc
     assert error is None
     assert plugin_path == "/model-store/tool_call_plugin/my_plugin.py"
 
+    # The plugin puller runs against the nmp-api image (entrypoint `nemo services
+    # run`), so the download command must run via the `hf` entrypoint override.
+    plugin_puller_calls = [
+        c
+        for c in mock_docker_client.containers.run.call_args_list
+        if c.kwargs.get("labels", {}).get("nmp.nvidia.com/container-type") == "plugin-puller"
+    ]
+    assert len(plugin_puller_calls) == 1
+    assert plugin_puller_calls[0].kwargs["entrypoint"] == ["hf"]
+    assert plugin_puller_calls[0].kwargs["command"][0] == "download"
+
 
 @pytest.mark.asyncio
 async def test_plugin_puller_no_py_files(docker_backend, sample_deployment, mock_docker_client):
