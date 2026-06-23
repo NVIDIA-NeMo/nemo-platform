@@ -113,6 +113,18 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
     [tableData]
   );
 
+  // One column per metadata key: keys are lowercased so case variants (e.g. "status"
+  // and "Status") collapse into one column rather than producing duplicate headers.
+  const metadataKeys = useMemo(
+    () =>
+      [
+        ...new Set(
+          tableData.flatMap((e) => Object.keys(e.metadata ?? {}).map((k) => k.toLowerCase()))
+        ),
+      ].sort(),
+    [tableData]
+  );
+
   const makeColumns = useCallback<
     ComponentProps<typeof DataViewRoot<ExperimentRow>>['makeColumns']
   >(
@@ -182,6 +194,36 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
         enableSorting: false,
         cell: ({ getValue }) => <Text>{getValue<string>() || '-'}</Text>,
       }),
+      ...metadataKeys.map((key) =>
+        accessor(
+          (original) => {
+            const meta = original.metadata ?? {};
+            // Match the first key that lowercases to this column's key.
+            const match = Object.keys(meta).find((k) => k.toLowerCase() === key);
+            return match ? meta[match] : undefined;
+          },
+          {
+            id: `metadata-${key}`,
+            header: snakeCaseToTitleCase(key),
+            enableSorting: false,
+            cell: ({ getValue }) => {
+              const raw = getValue<unknown>();
+              if (raw == null) return <Text>-</Text>;
+              const str = typeof raw === 'object' ? JSON.stringify(raw) : String(raw);
+              if (str.length <= 50) return <Text>{str}</Text>;
+              return (
+                <Tooltip
+                  slotContent={<Text kind="body/regular/sm">{str}</Text>}
+                  className={tooltipClassName}
+                  side="bottom"
+                >
+                  <Text className="cursor-default">{str.slice(0, 50)}…</Text>
+                </Tooltip>
+              );
+            },
+          }
+        )
+      ),
       ...evaluatorNames.map((name, index) =>
         accessor((original) => original.aggregate_scores?.[name]?.mean, {
           id: `score-${index}`,
@@ -240,7 +282,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
         },
       }),
     ],
-    [evaluatorNames]
+    [evaluatorNames, metadataKeys]
   );
 
   if (groupError) {
