@@ -9,6 +9,7 @@ is a decorated function that declares its call signature and response type.
 
 from __future__ import annotations
 
+from abc import abstractmethod
 from typing import NotRequired, TypedDict
 
 from nemo_example_plugin.entities import ExampleItem
@@ -31,45 +32,47 @@ class ListItemsQueryParams(TypedDict, total=False):
 
 
 @get("/apis/example/hello/{name}")
-def hello(*, name: str) -> HelloResponse:
-    raise NotImplementedError
+@abstractmethod
+def hello(*, name: str) -> HelloResponse: ...
 
 
 @post("/apis/example/v2/workspaces/{workspace}/items")
-def create_item(*, workspace: str | None = None, body: CreateExampleItemRequest) -> ExampleItem:
-    raise NotImplementedError
+@abstractmethod
+def create_item(*, workspace: str | None = None, body: CreateExampleItemRequest) -> ExampleItem: ...
 
 
 @get("/apis/example/v2/workspaces/{workspace}/items")
-def list_items(*, workspace: str | None = None, query_params: ListItemsQueryParams | None = None) -> ExampleItemPage:
-    raise NotImplementedError
+@abstractmethod
+def list_items(
+    *, workspace: str | None = None, query_params: ListItemsQueryParams | None = None
+) -> ExampleItemPage: ...
 
 
 @get("/apis/example/v2/workspaces/{workspace}/items/{name}")
-def get_item(*, workspace: str | None = None, name: str) -> ExampleItem:
-    raise NotImplementedError
+@abstractmethod
+def get_item(*, workspace: str | None = None, name: str) -> ExampleItem: ...
 
 
 @patch("/apis/example/v2/workspaces/{workspace}/items/{name}")
-def update_item(*, workspace: str | None = None, name: str, body: UpdateExampleItemRequest) -> ExampleItem:
-    raise NotImplementedError
+@abstractmethod
+def update_item(*, workspace: str | None = None, name: str, body: UpdateExampleItemRequest) -> ExampleItem: ...
 
 
 @delete("/apis/example/v2/workspaces/{workspace}/items/{name}")
-def delete_item(*, workspace: str | None = None, name: str) -> None:
-    raise NotImplementedError
+@abstractmethod
+def delete_item(*, workspace: str | None = None, name: str) -> None: ...
 
 
 @post("/apis/example/v2/workspaces/{workspace}/count")
-def count(*, workspace: str | None = None, body: CountRequest) -> Stream[Tick]:
-    raise NotImplementedError
+@abstractmethod
+def count(*, workspace: str | None = None, body: CountRequest) -> Stream[Tick]: ...
 
 
 @put("/apis/example/blob/{name}")
-def upload_blob(*, name: str, content: bytes) -> BlobUploadResponse:
-    raise NotImplementedError
+@abstractmethod
+def upload_blob(*, name: str, content: bytes) -> BlobUploadResponse: ...
 
 
 @get("/apis/example/blob/{name}")
-def download_blob(*, name: str) -> BinaryContent:
-    raise NotImplementedError
+@abstractmethod
+def download_blob(*, name: str) -> BinaryContent: ...
