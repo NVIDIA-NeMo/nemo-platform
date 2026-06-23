@@ -422,6 +422,8 @@ jobs:
   schedule_interval_seconds: 5
   # Register the subprocess/default execution profile. When unset, defaults to true for docker/none runtimes and false for kubernetes.
   enable_subprocess_executor:
+  # Include raw job log lines in controller diagnostics snapshots. Disabled by default because job logs may contain secrets or PII. Enable only for local debugging or test environments. | default: False
+  include_job_logs_in_diagnostics: false
 ```
 
 ### `models`

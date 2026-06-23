@@ -37,6 +37,13 @@ class JobsServiceConfig(create_service_config_class("jobs")):  # type: ignore
             "docker/none runtimes and false for kubernetes."
         ),
     )
+    include_job_logs_in_diagnostics: bool = Field(
+        default=False,
+        description=(
+            "Include raw job log lines in controller diagnostics snapshots. Disabled by default because "
+            "job logs may contain secrets or PII. Enable only for local debugging or test environments."
+        ),
+    )
 
     def resolved_enable_subprocess_executor(self) -> bool:
         """Whether host subprocess execution is registered for default profiles."""

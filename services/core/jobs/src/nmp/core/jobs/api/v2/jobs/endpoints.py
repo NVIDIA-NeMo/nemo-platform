@@ -651,7 +651,7 @@ async def list_job_step_tasks(
         if not step_entity:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job step not found")
 
-        return PlatformJobListTaskResponse(data=await dispatcher.list_tasks(step_entity.id))
+        return PlatformJobListTaskResponse(data=await dispatcher.list_tasks(step_entity.id, workspace=workspace))
 
 
 @router.put(
