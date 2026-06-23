@@ -81,7 +81,7 @@ export async function parseUploadedFile(
   } else if (detection?.schemaType === InputFileSchemaType.CHAT_COMPLETION) {
     promptKey = detection.detectedMessages.user?.selector ?? null;
   }
-  if (!promptKey) {
+  if (!promptKey && firstRow && typeof firstRow === 'object') {
     const candidates = ['prompt', 'question', 'input', 'text'];
     promptKey = candidates.find((k) => typeof firstRow[k] === 'string') ?? null;
   }
