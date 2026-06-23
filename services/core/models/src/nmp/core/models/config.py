@@ -4,6 +4,7 @@
 import logging
 from typing import Any, Literal
 
+from nemo_platform_plugin.jobs.image import get_qualified_image
 from nmp.common.config import Runtime, create_service_config_class, get_platform_config, get_service_config
 from nmp.core.models.controllers.backends.registry import (
     BackendConfig,
@@ -434,8 +435,11 @@ class ModelsConfig(create_service_config_class("models")):  # type: ignore
     """
 
     huggingface_model_puller: str = Field(
-        default="nvcr.io/nvidia/nemo-microservices/nds-v2-huggingface-cli:25.10",
-        description="HuggingFace model puller image for weights in data store or huggingface",
+        default_factory=lambda: get_qualified_image("nmp-api"),
+        description="Image used to pull model weights. Its entrypoint is overridden to the "
+        "Hugging Face CLI ('hf download ...'), so any image with the 'hf' CLI on PATH works. "
+        "Defaults to the platform's nmp-api image (registry/tag from platform config); override "
+        "to use a different puller image.",
     )
     controller: ControllerConfig = Field(
         default_factory=ControllerConfig, description="Controller service configuration"

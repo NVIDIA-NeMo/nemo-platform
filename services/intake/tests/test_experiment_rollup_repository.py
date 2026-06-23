@@ -44,7 +44,7 @@ async def test_experiment_rollups_anchor_on_root_session_membership():
                 ["experiment_id", "run_count"],
             ),
             _QueryResult(
-                [("exp-a", "harbor.verifier", 3.0, 0.75, 0.8, 1.0, 1.0, 1.0, 4)],
+                [("exp-a", "reward", 3.0, 0.75, 0.8, 1.0, 1.0, 1.0, 4)],
                 ["experiment_id", "evaluator_name", "sum", "mean", "median", "p90", "p95", "p99", "count"],
             ),
             _QueryResult(
@@ -99,17 +99,17 @@ async def test_experiment_rollups_anchor_on_root_session_membership():
 
     rollup = rollups["exp-a"]
     assert rollup.run_count == 3
-    assert rollup.evaluator_names == ["harbor.verifier"]
+    assert rollup.evaluator_names == ["reward"]
     assert rollup.model_names == ["model-a", "model-b"]
     assert rollup.agent_names == ["agent-a"]
     assert rollup.agent_versions == ["1.0.0", "1.0.1"]
-    assert rollup.evaluator_scores["harbor.verifier"].sum == 3.0
-    assert rollup.evaluator_scores["harbor.verifier"].mean == 0.75
-    assert rollup.evaluator_scores["harbor.verifier"].median == 0.8
-    assert rollup.evaluator_scores["harbor.verifier"].p90 == 1.0
-    assert rollup.evaluator_scores["harbor.verifier"].p95 == 1.0
-    assert rollup.evaluator_scores["harbor.verifier"].p99 == 1.0
-    assert rollup.evaluator_scores["harbor.verifier"].count == 4
+    assert rollup.evaluator_scores["reward"].sum == 3.0
+    assert rollup.evaluator_scores["reward"].mean == 0.75
+    assert rollup.evaluator_scores["reward"].median == 0.8
+    assert rollup.evaluator_scores["reward"].p90 == 1.0
+    assert rollup.evaluator_scores["reward"].p95 == 1.0
+    assert rollup.evaluator_scores["reward"].p99 == 1.0
+    assert rollup.evaluator_scores["reward"].count == 4
     assert rollup.cost_usd is not None
     assert rollup.cost_usd.sum == 0.65
     assert rollup.cost_usd.mean == 0.1625

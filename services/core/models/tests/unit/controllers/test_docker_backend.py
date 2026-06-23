@@ -621,6 +621,9 @@ async def test_docker_backend_create_sft_model_success(
     ]
     assert len(puller_calls) == 1
     assert puller_calls[0][1]["command"][0] == "download"
+    # Entrypoint overridden to the HF CLI (puller image is nmp-api, whose
+    # entrypoint is `nemo services run`); command runs as `hf download ...`.
+    assert puller_calls[0][1]["entrypoint"] == ["hf"]
 
     # Verify NIM and sidecar containers were created with managed-by label
     assert mock_docker_client.containers.create.call_count == 2
@@ -3379,6 +3382,17 @@ async def test_plugin_puller_success(docker_backend, sample_deployment, mock_doc
 
     assert error is None
     assert plugin_path == "/model-store/tool_call_plugin/my_plugin.py"
+
+    # The plugin puller runs against the nmp-api image (entrypoint `nemo services
+    # run`), so the download command must run via the `hf` entrypoint override.
+    plugin_puller_calls = [
+        c
+        for c in mock_docker_client.containers.run.call_args_list
+        if c.kwargs.get("labels", {}).get("nmp.nvidia.com/container-type") == "plugin-puller"
+    ]
+    assert len(plugin_puller_calls) == 1
+    assert plugin_puller_calls[0].kwargs["entrypoint"] == ["hf"]
+    assert plugin_puller_calls[0].kwargs["command"][0] == "download"
 
 
 @pytest.mark.asyncio
