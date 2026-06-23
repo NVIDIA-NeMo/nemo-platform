@@ -6,7 +6,7 @@ import { DEPLOYMENTS_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { gateDeploymentsRoutes } from '@studio/routes/utils';
 import { lazy } from 'react';
-import { RouteObject } from 'react-router-dom';
+import type { RouteObject } from 'react-router-dom';
 
 const DeploymentsListRoute =
   DEPLOYMENTS_ENABLED &&

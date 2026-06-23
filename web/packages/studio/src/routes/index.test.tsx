@@ -3,7 +3,7 @@
 
 import { flagDefinitions } from '@studio/constants/featureFlags/featureFlags';
 import { ROUTE_PARAMS, ROUTES } from '@studio/constants/routes';
-import { RouteObject } from 'react-router-dom';
+import type { RouteObject } from 'react-router-dom';
 
 /** Placeholder workspace segment matching React Router param patterns in ROUTES. */
 const WORKSPACE_ROUTE_PLACEHOLDER = `:${ROUTE_PARAMS.workspace}`;

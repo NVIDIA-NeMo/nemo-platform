@@ -6,7 +6,7 @@ import { GUARDRAILS_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { gateGuardrailsRoutes } from '@studio/routes/utils';
 import { lazy } from 'react';
-import { RouteObject } from 'react-router-dom';
+import type { RouteObject } from 'react-router-dom';
 
 const GuardrailsRoute =
   GUARDRAILS_ENABLED &&

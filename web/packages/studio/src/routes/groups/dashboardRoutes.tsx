@@ -6,7 +6,7 @@ import { CODING_AGENT_STUDIO_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { gateCodingAgentStudioRoutes, gateDashboardRoutes } from '@studio/routes/utils';
 import { lazy } from 'react';
-import { RouteObject } from 'react-router-dom';
+import type { RouteObject } from 'react-router-dom';
 
 const DashboardLandingRoute = lazy(() =>
   import('@studio/routes/DashboardLandingRoute').then((module) => ({

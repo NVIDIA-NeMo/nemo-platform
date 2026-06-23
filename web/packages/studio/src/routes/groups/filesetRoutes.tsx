@@ -5,7 +5,7 @@ import { ErrorPanel } from '@studio/components/ErrorPanel';
 import { ROUTES } from '@studio/constants/routes';
 import { gateDatasetsRoutes, gateFilesetDetailsRoutes } from '@studio/routes/utils';
 import { lazy } from 'react';
-import { RouteObject } from 'react-router-dom';
+import type { RouteObject } from 'react-router-dom';
 
 const FilesetNewRoute = lazy(() =>
   import('@studio/routes/FilesetNewRoute').then((module) => ({ default: module.FilesetNewRoute }))
