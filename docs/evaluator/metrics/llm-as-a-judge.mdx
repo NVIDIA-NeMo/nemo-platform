@@ -298,6 +298,7 @@ For production workloads, submit the same metric and dataset as a durable platfo
 
 ```python
 from nemo_evaluator_sdk import RunConfig, JSONScoreParser, Model, RubricScore, LLMJudgeMetric
+from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 
 metric = LLMJudgeMetric(
     model=Model(
@@ -346,6 +347,7 @@ job = evaluator.submit(
         {"input": "What is 2 + 2?", "output": "4"},
     ],
     config=RunConfig(parallelism=8, limit_samples=100),
+    metric_bundle_packager=CloudpickleMetricBundlePackager(),
 )
 print("Submitted job:", job.name)
 

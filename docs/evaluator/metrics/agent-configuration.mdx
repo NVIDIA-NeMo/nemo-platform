@@ -164,6 +164,7 @@ from nemo_evaluator_sdk import Agent, RunConfigOnline
 
 
 from nemo_evaluator_sdk import ExactMatchMetric
+from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 metric = ExactMatchMetric(reference="{{item.expected_answer}}")
 agent = Agent(
     url="https://my-nat-agent.example.com",
@@ -184,6 +185,7 @@ job = evaluator.submit(
             {"role": "user", "content": "{{item.question}}"},
         ],
     },
+    metric_bundle_packager=CloudpickleMetricBundlePackager(),
 )
 job.wait_until_done()
 result = job.get_result()

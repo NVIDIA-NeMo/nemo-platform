@@ -155,6 +155,7 @@ For production workloads, submit the same metric and dataset as a durable platfo
 
 ```python
 from nemo_evaluator_sdk import RunConfig, JSONScoreParser, RemoteScore, RemoteMetric
+from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 
 metric = RemoteMetric(
     url="https://my-evaluation-server.test/evaluate",
@@ -182,6 +183,7 @@ job = evaluator.submit(
         {"reference": "2", "output": "2"},
     ],
     config=RunConfig(parallelism=8),
+    metric_bundle_packager=CloudpickleMetricBundlePackager(),
 )
 print("Submitted job:", job.name)
 
@@ -197,6 +199,7 @@ for score in result.aggregate_scores.scores:
 
 ```python
 from nemo_evaluator_sdk import RunConfig, NemoAgentToolkitRemoteMetric
+from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 
 metric = NemoAgentToolkitRemoteMetric(
     url="http://localhost:8001/evaluate_item",
@@ -220,6 +223,7 @@ job = evaluator.submit(
         }
     ],
     config=RunConfig(parallelism=4),
+    metric_bundle_packager=CloudpickleMetricBundlePackager(),
 )
 job.wait_until_done()
 result = job.get_result()

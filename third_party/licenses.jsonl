@@ -74,8 +74,6 @@
 {"name": "flatbuffers", "license": "APACHE-2.0", "compatible": true}
 {"name": "frozenlist", "license": "APACHE-2.0", "compatible": true}
 {"name": "fsspec", "license": "BSD-3-CLAUSE", "compatible": true}
-{"name": "gitdb", "license": "BSD-3-CLAUSE", "compatible": true}
-{"name": "gitpython", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "googleapis-common-protos", "license": "APACHE-2.0", "compatible": true}
 {"name": "greenlet", "license": "MIT", "compatible": true}
 {"name": "grpcio", "license": "APACHE-2.0", "compatible": true}
@@ -266,7 +264,6 @@
 {"name": "simpleeval", "license": "MIT", "compatible": true}
 {"name": "six", "license": "MIT", "compatible": true}
 {"name": "smart-open", "license": "MIT", "compatible": true}
-{"name": "smmap", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "sniffio", "license": "APACHE-2.0", "compatible": true}
 {"name": "soupsieve", "license": "MIT", "compatible": true}
 {"name": "sqlalchemy", "license": "MIT", "compatible": true}

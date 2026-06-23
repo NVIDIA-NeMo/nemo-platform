@@ -42,7 +42,7 @@ if TYPE_CHECKING:
     from langchain_core.callbacks import BaseCallbackHandler
 
     from ragas import EvaluationDataset
-    from ragas.llms import LangchainLLMWrapper
+    from ragas.llms.base import LangchainLLMWrapper
 
 # RAGAS configuration constants
 RAGAS_MAX_WAIT = 600  # 10 minutes in seconds

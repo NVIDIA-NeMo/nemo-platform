@@ -7,13 +7,27 @@ from fastapi import FastAPI
 from nemo_automodel_plugin.contributor import AutomodelContributor
 
 
+def _route_paths(app: FastAPI) -> set[str]:
+    """Collect all route paths, compatible with FastAPI 0.138+ _IncludedRouter."""
+    paths: set[str] = set()
+    queue = list(app.routes)
+    while queue:
+        route = queue.pop()
+        if hasattr(route, "path"):
+            paths.add(route.path)
+        fn = getattr(route, "effective_candidates", None)
+        if callable(fn):
+            queue.extend(fn())  # type: ignore[arg-type]
+    return paths
+
+
 def test_contributor_mounts_job_collection() -> None:
     contributor = AutomodelContributor()
     app = FastAPI()
     for spec in contributor.get_routers():
         app.include_router(spec.router, prefix=spec.prefix)
 
-    paths = {route.path for route in app.routes if hasattr(route, "path")}
+    paths = _route_paths(app)
     assert "/v2/workspaces/{workspace}/automodel/healthz" in paths
     assert "/v2/workspaces/{workspace}/automodel/jobs" in paths
 

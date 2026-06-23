@@ -29,7 +29,7 @@ classifiers = [
 # for container builds. This allows --only-group to work correctly.
 dependencies = [
   "base58>=2.1.1",
-  "fastapi[standard]==0.129",
+  "fastapi[standard]==0.138.0",
   "uvicorn[standard]>=0.12.0",
   "sacrebleu",
   "jinja2==3.1.6",
@@ -38,7 +38,7 @@ dependencies = [
   "pyyaml>=6.0.2",
   "pydantic>=2.10.6",
   "mypy-extensions==1.0.0",
-  "tornado>=6.5.5",             # pinned for CVE GHSA-7cx3-6m66-7c5m (>=6.5.0) + GHSA-qjxf-f2mg-c6mc (<=6.5.4, fixed in 6.5.5)
+  "tornado>=6.5.7",             # pinned for CVE GHSA-7cx3-6m66-7c5m (>=6.5.0) + GHSA-qjxf-f2mg-c6mc (<=6.5.4, fixed in 6.5.5)
   "tomlkit>=0.13.3",
   "nmp-guardrails",
   "nmp-hello-world",
@@ -77,7 +77,7 @@ dev = [
   "pytest-rerunfailures>=14.0",
   "pytest-timeout>=2.3.1",
   "pytest>=9.0.3",
-  "fastapi[standard]==0.129",
+  "fastapi[standard]==0.138.0",
   "papermill>=2.6.0",
   "notebook>=7.5.6",
   "aiohttp>=3.13.4",
@@ -266,9 +266,11 @@ constraint-dependencies = [
   "filelock>=3.20.3",
   "jupyter-server>=2.18.0",
   "jupyterlab>=4.5.7",
-  "langchain-core>=1.3.3",
-  "langchain-openai>=1.1.14",
-  "langgraph>=1.0.10",
+  "langchain-community>=0.3.31,<0.4", # 0.4.x removes the vertexai import path used by ragas 0.4.3
+  "langchain-core>=1.4.8",
+  "langchain-nvidia-ai-endpoints>=1.4.1",
+  "langchain-openai>=1.3.3",
+  "langgraph>=1.2.6",
   "langsmith==0.8.2",         # osv-scanner UNKNOWN for 0.8.9+; PyPI metadata is MIT
   "json-repair==0.58.7",      # osv-scanner UNKNOWN for 0.60.1+; PyPI metadata is MIT
   "litellm>=1.83.10",
@@ -283,6 +285,7 @@ constraint-dependencies = [
   "regex>=2025.10.22",
   "safetensors>=0.8.0rc0",    # explicit prerelease so uv allows the rc
   "sqlfluff==4.1.0",
+  "starlette>=1.3.1",
   "urllib3>=2.7.0",
   "uv>=0.9.14,<0.10.0",
 ]
@@ -297,8 +300,8 @@ override-dependencies = [
   "ray; sys_platform == 'never'",    # ray has an unfixed critical CVE, as for why we're removing it this way see https://github.com/astral-sh/uv/issues/9174
   "fschat; sys_platform == 'never'", # fschat is unmaintained with unfixed High/Medium CVEs; transitive via garak but never imported
   "botocore>=1.40.46,<1.40.62",      # ngcsdk requires botocore>=1.37; upper bound required by aiobotocore 2.25.1 (aioboto3 15.5.0)
-  "langchain>=1.0.0",
-  "langchain-core>=1.3.3",           # LangChain Core CVEs through GHSA-qh6h-p6c9-ff54 and CVE-2026-44843
+  "langchain>=1.3.11",
+  "langchain-core>=1.4.8",           # LangChain Core CVEs through GHSA-qh6h-p6c9-ff54 and CVE-2026-44843
   "nltk>=3.9.4",                     # NLTK CVEs with available patches; remaining NLTK alerts have no upstream fix
   "Pillow>=12.2.0",                  # Pillow CVEs through CVE-2026-48624; override: fastembed (via nemoguardrails) pins Pillow<12
   # todo(dn-v2): unpin these. this was originally causing tests to fail.
@@ -318,7 +321,7 @@ override-dependencies = [
   "fastmcp>=3.2.0",           # GHSA-vv7q-7jx5-f767 (Critical) + GHSA-rww4-4w9c-7733 (High); overrides vendored sdk/python/nemo-platform <3 constraint
   "wandb>=0.25.1",            # CVE-2026-33186
   "click>=8.2.0",             # Below CVEs are based on constraints that garak has
-  "langchain-openai>=1.1.14",
+  "langchain-openai>=1.3.3",
   "litellm>=1.83.10",         # CVE-2026-42208 (Critical SQL injection), CVE-2026-40217, and 5 other High CVEs
   "python-dotenv>=1.2.2",
   "openai>=2.26.0",
