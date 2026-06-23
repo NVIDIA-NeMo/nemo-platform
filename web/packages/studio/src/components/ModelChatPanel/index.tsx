@@ -4,7 +4,7 @@
 import type { ModelWorkspaceGroup } from '@nemo/common/src/api/models/useModels';
 import { ModelSelectV2, type ModelSelection } from '@nemo/common/src/components/ModelSelectV2';
 import { getPartsFromReference } from '@nemo/common/src/namedEntity';
-import { Text } from '@nvidia/foundations-react-core';
+import { Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import { DEFAULT_INFERENCE_PARAMS, type InferenceParams } from '@studio/components/chat/params';
 import { ParamsPopover } from '@studio/components/chat/ParamsPopover';
 import { ModelChat } from '@studio/components/ModelChat';
@@ -108,7 +108,7 @@ export const ModelChatPanel: FC<ModelChatPanelProps> = ({
         </div>
       )}
       {/* Model picker + inference params — shared across single and compare modes. */}
-      <div className="flex shrink-0 items-center gap-2 border-b border-base px-3 py-2">
+      <Flex className="shrink-0 items-center gap-2 border-b border-base px-3 py-2">
         <div className="flex-1">
           <ModelSelectV2
             value={selectedModel}
@@ -121,10 +121,10 @@ export const ModelChatPanel: FC<ModelChatPanelProps> = ({
           />
         </div>
         <ParamsPopover value={inferenceParams} onChange={setInferenceParams} />
-      </div>
+      </Flex>
 
       {/* Chat surface */}
-      <div className="flex min-h-0 flex-1 flex-col px-3 pb-1">
+      <Stack className="min-h-0 flex-1 px-3 pb-1">
         <ModelChat
           // Remount (clears messages + metrics) when the selected model changes.
           key={panel.modelURN ?? 'none'}
@@ -144,7 +144,7 @@ export const ModelChatPanel: FC<ModelChatPanelProps> = ({
           }
           onEmptyChange={onEmptyChange ? (empty) => onEmptyChange(panel.id, empty) : undefined}
         />
-      </div>
+      </Stack>
     </div>
   );
 };

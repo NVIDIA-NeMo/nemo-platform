@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { withOperators } from '@nemo/common/src/api/filterOperators';
 import { dateTimeFilter } from '@nemo/common/src/components/DataView/dateTimeFilter';
 import * as DataView from '@nemo/common/src/components/DataView/internal';
 import {
@@ -19,6 +20,7 @@ import {
   FilesetPurpose,
   StorageConfigType,
   type FilesetOutput as Dataset,
+  type FilesListFilesetsParams,
   type GenericSortField,
   type HuggingfaceStorageConfig,
   type LocalStorageConfig,
@@ -196,6 +198,11 @@ export const DatasetsTable: FC<DatasetsTableProps> = ({
         : undefined,
       filter: {
         ...(enableFilters ? dataViewState.apiFilter.filter : undefined),
+        ...(enableFilters && dataViewState.apiFilter.searchText
+          ? withOperators<FilesListFilesetsParams['filter']>({
+              name: { $like: dataViewState.apiFilter.searchText },
+            })
+          : {}),
         ...(purposeFilter !== undefined ? { purpose: purposeFilter } : {}),
       },
     },

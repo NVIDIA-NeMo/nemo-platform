@@ -326,8 +326,7 @@ describe('Model Creation Error Handling', () => {
     expect(screen.getByRole('dialog', { name: 'Save Model' })).toBeInTheDocument();
   });
 
-  // TODO: Unskip when test is no longer flaky
-  it.skip('should display error message for string errors', async () => {
+  it('should display error message for string errors', async () => {
     suppressConsoleError('A model with this name already exists');
 
     // Mock API to return 409 conflict with simple string detail
@@ -345,14 +344,15 @@ describe('Model Creation Error Handling', () => {
     await attemptModelSave('duplicate-model');
 
     // Wait for error toast to appear in the DOM
-    await screen.findByText('A model with this name already exists');
+    await screen.findByText('A model with this name already exists', undefined, {
+      timeout: LG_SELECTOR_TIMEOUT,
+    });
 
-    // Modal should still be open
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    // Modal should still be open (not navigated away)
+    expect(screen.getByRole('dialog', { name: 'Save Model' })).toBeInTheDocument();
   });
 
-  // TODO: Unskip when test is no longer flaky
-  it.skip('should fall back to generic error message for unknown error formats', async () => {
+  it('should fall back to generic error message for unknown error formats', async () => {
     // 500 with no `detail`: getErrorMessage uses status + statusText (see api/common/utils).
     server.use(
       http.post(`${PLATFORM_BASE_URL}/apis/models/v2/workspaces/:workspace/models`, async () => {
@@ -365,15 +365,13 @@ describe('Model Creation Error Handling', () => {
 
     await attemptModelSave('err');
 
-    // Assert on MockToastProvider output (data-testid) instead of document-wide findByText
-    // so we are not racing ambiguous copy or toast animation timing.
-    await waitFor(
-      () => {
-        expect(screen.getByTestId('mock-toast-error')).toHaveTextContent(/Internal Server Error/i);
-      },
-      { timeout: XL_SELECTOR_TIMEOUT }
-    );
+    // Use findByTestId (async with built-in retry) rather than getByTestId inside waitFor
+    // to avoid noise from a synchronous throw being treated as a hard failure on first check.
+    const toastEl = await screen.findByTestId('mock-toast-error', undefined, {
+      timeout: XL_SELECTOR_TIMEOUT,
+    });
+    expect(toastEl).toHaveTextContent(/Internal Server Error/i);
 
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Save Model' })).toBeInTheDocument();
   });
 });
