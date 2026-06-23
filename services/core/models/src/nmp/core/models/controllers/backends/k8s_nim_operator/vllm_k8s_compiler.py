@@ -55,10 +55,6 @@ DEPLOYMENT_NAME_LABEL = "nmp.nvidia.com/deployment-name"
 # and ':' and is therefore not a valid label value.
 MODEL_SOURCE_ANNOTATION = "nmp.nvidia.com/model-source"
 
-# Records the resolved readiness-probe path so status reads can recover it.
-# ANNOTATION, not a label: the value (e.g. "/health") contains '/'.
-HEALTH_PATH_ANNOTATION = "nmp.nvidia.com/health-path"
-
 # In-pod paths.
 MODEL_STORE_PATH = "/model-store"
 SCRATCH_PATH = "/scratch"
@@ -328,9 +324,6 @@ def compile_deployment(
     }
     if extra_labels:
         pod_labels.update(extra_labels)
-    # health path is recorded as an annotation, not a label: the value (e.g.
-    # "/health") contains '/', which is invalid in a k8s label value.
-    health_annotations = {HEALTH_PATH_ANNOTATION: health_path}
 
     env_list = [k8s_client.V1EnvVar(name=k, value=str(v)) for k, v in (env or {}).items()]
     period = 10
@@ -387,13 +380,12 @@ def compile_deployment(
             name=resource_name,
             namespace=namespace,
             labels=common_labels(workspace, name, engine),
-            annotations=dict(health_annotations),
         ),
         spec=k8s_client.V1DeploymentSpec(
             replicas=1,
             selector=k8s_client.V1LabelSelector(match_labels=selector_labels),
             template=k8s_client.V1PodTemplateSpec(
-                metadata=k8s_client.V1ObjectMeta(labels=pod_labels, annotations=dict(health_annotations)),
+                metadata=k8s_client.V1ObjectMeta(labels=pod_labels),
                 spec=pod_spec,
             ),
         ),

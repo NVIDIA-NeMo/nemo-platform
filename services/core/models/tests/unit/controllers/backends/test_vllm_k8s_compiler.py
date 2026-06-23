@@ -186,10 +186,6 @@ def test_compile_deployment_basic():
     assert vols["model-store"].persistent_volume_claim.claim_name == "md-default-qwen-pvc"
     assert vols["dshm"].empty_dir.medium == "Memory"
 
-    # health-path stamped as an annotation (its value contains '/', invalid for labels).
-    assert dep.spec.template.metadata.annotations[c.HEALTH_PATH_ANNOTATION] == "/health"
-    assert dep.metadata.annotations[c.HEALTH_PATH_ANNOTATION] == "/health"
-
 
 def test_compile_deployment_cpu_only_no_gpu():
     dep = c.compile_deployment(
