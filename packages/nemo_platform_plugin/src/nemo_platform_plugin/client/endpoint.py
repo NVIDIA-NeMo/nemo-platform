@@ -47,7 +47,7 @@ class Endpoint(Generic[PathT, RequestT, ResponseT, QueryParamsT]):
         self.request_type = request_type
         self.response_type = response_type
 
-    # -- request() overloads: body / binary / no-body ----------------------
+    # -- prepare_request() overloads: body / binary / no-body ---------------
 
     @overload
     def prepare_request(
@@ -74,7 +74,7 @@ class Endpoint(Generic[PathT, RequestT, ResponseT, QueryParamsT]):
     ) -> PreparedRequest[ResponseT]: ...
 
     def prepare_request(self, *args: object, query_params: object = None, **path_params: object) -> PreparedRequest:
-        """Build a :class:`PreparedRequest` from payload/content and path parameters."""
+        """Build a :class:`PreparedRequest` from body/content and path parameters."""
         params = {k: str(v) for k, v in path_params.items()}
         raw_content: bytes | Iterable[bytes] | AsyncIterable[bytes] | None
         content_type: str | None

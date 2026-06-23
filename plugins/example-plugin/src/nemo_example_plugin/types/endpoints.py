@@ -51,6 +51,7 @@ CreateItemEndpoint = post(
     response_type=ExampleItem,
 )
 
+
 class ListItemsQueryParams(TypedDict, total=False):
     page: NotRequired[int]
     page_size: NotRequired[int]

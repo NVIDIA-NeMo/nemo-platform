@@ -133,7 +133,7 @@ class NemoClient(BaseNemoClient):
         For binary and streaming endpoints, the caller should use the
         response as a context manager to ensure the connection is closed::
 
-            with client.send(DownloadEndpoint.request(...)) as resp:
+            with client.send(DownloadEndpoint.prepare_request(...)) as resp:
                 for chunk in resp:
                     f.write(chunk)
         """

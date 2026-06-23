@@ -11,11 +11,8 @@ Usage::
 
     from nemo_platform_plugin.client.adapter import client_from_platform
 
-    class ExampleClient(_ExampleEndpoints, NemoClient):
-        pass
-
-    def make_example_client(platform: NeMoPlatform) -> ExampleClient:
-        return client_from_platform(platform, ExampleClient)
+    def make_sync_resource(platform: NeMoPlatform) -> NemoClient:
+        return client_from_platform(platform, NemoClient)
 """
 
 from __future__ import annotations
