@@ -55,5 +55,4 @@ uv run python docs/fern/scripts/ipynb-to-mdx.py \
   --title "Full SFT Customization"
 ```
 
-Re-run whenever the source `.ipynb` changes. DPO is intentionally excluded from
-`--all-customizer-tutorials` (still uses `<NotebookViewer />`).
+Re-run whenever the source `.ipynb` changes.

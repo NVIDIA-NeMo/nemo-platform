@@ -56,10 +56,6 @@ _LINK_REWRITES: list[tuple[re.Pattern[str], str]] = [
         "](/documentation/customizer-reference/tutorials/distillation-customization-job)",
     ),
     (
-        re.compile(r"\]\(\./dpo-customization-job(?:\.ipynb)?\)"),
-        "](/documentation/customizer-reference/tutorials/dpo-customization-job)",
-    ),
-    (
         re.compile(r"\]\(\./embedding-customization-job(?:\.ipynb)?\)"),
         "](/documentation/customizer-reference/tutorials/embedding-customization-job)",
     ),
