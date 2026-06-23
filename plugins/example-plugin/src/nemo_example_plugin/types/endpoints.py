@@ -4,8 +4,7 @@
 """Typed endpoint definitions for the example plugin.
 
 These are the single source of truth for the HTTP contract.  Each endpoint
-declares its call signature and response type as a decorated method on the
-endpoint collection class.
+is a decorated function that declares its call signature and response type.
 """
 
 from __future__ import annotations
@@ -31,43 +30,46 @@ class ListItemsQueryParams(TypedDict, total=False):
     page_size: NotRequired[int]
 
 
-class ExampleEndpoints:
-    """Endpoint collection for the example plugin API."""
+@get("/apis/example/hello/{name}")
+def hello(*, name: str) -> HelloResponse:
+    raise NotImplementedError
 
-    @get("/apis/example/hello/{name}")
-    def hello(self, *, name: str) -> HelloResponse:
-        raise NotImplementedError
 
-    @post("/apis/example/v2/workspaces/{workspace}/items")
-    def create_item(self, *, workspace: str | None = None, body: CreateExampleItemRequest) -> ExampleItem:
-        raise NotImplementedError
+@post("/apis/example/v2/workspaces/{workspace}/items")
+def create_item(*, workspace: str | None = None, body: CreateExampleItemRequest) -> ExampleItem:
+    raise NotImplementedError
 
-    @get("/apis/example/v2/workspaces/{workspace}/items")
-    def list_items(
-        self, *, workspace: str | None = None, query_params: ListItemsQueryParams | None = None
-    ) -> ExampleItemPage:
-        raise NotImplementedError
 
-    @get("/apis/example/v2/workspaces/{workspace}/items/{name}")
-    def get_item(self, *, workspace: str | None = None, name: str) -> ExampleItem:
-        raise NotImplementedError
+@get("/apis/example/v2/workspaces/{workspace}/items")
+def list_items(*, workspace: str | None = None, query_params: ListItemsQueryParams | None = None) -> ExampleItemPage:
+    raise NotImplementedError
 
-    @patch("/apis/example/v2/workspaces/{workspace}/items/{name}")
-    def update_item(self, *, workspace: str | None = None, name: str, body: UpdateExampleItemRequest) -> ExampleItem:
-        raise NotImplementedError
 
-    @delete("/apis/example/v2/workspaces/{workspace}/items/{name}")
-    def delete_item(self, *, workspace: str | None = None, name: str) -> None:
-        raise NotImplementedError
+@get("/apis/example/v2/workspaces/{workspace}/items/{name}")
+def get_item(*, workspace: str | None = None, name: str) -> ExampleItem:
+    raise NotImplementedError
 
-    @post("/apis/example/v2/workspaces/{workspace}/count")
-    def count(self, *, workspace: str | None = None, body: CountRequest) -> Stream[Tick]:
-        raise NotImplementedError
 
-    @put("/apis/example/blob/{name}")
-    def upload_blob(self, *, name: str, content: bytes) -> BlobUploadResponse:
-        raise NotImplementedError
+@patch("/apis/example/v2/workspaces/{workspace}/items/{name}")
+def update_item(*, workspace: str | None = None, name: str, body: UpdateExampleItemRequest) -> ExampleItem:
+    raise NotImplementedError
 
-    @get("/apis/example/blob/{name}")
-    def download_blob(self, *, name: str) -> BinaryContent:
-        raise NotImplementedError
+
+@delete("/apis/example/v2/workspaces/{workspace}/items/{name}")
+def delete_item(*, workspace: str | None = None, name: str) -> None:
+    raise NotImplementedError
+
+
+@post("/apis/example/v2/workspaces/{workspace}/count")
+def count(*, workspace: str | None = None, body: CountRequest) -> Stream[Tick]:
+    raise NotImplementedError
+
+
+@put("/apis/example/blob/{name}")
+def upload_blob(*, name: str, content: bytes) -> BlobUploadResponse:
+    raise NotImplementedError
+
+
+@get("/apis/example/blob/{name}")
+def download_blob(*, name: str) -> BinaryContent:
+    raise NotImplementedError

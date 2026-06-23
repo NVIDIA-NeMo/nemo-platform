@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 from nemo_example_plugin.sdk import AsyncExampleClient, ExampleClient
-from nemo_example_plugin.types.endpoints import ExampleEndpoints
+from nemo_example_plugin.types import endpoints
 from nemo_example_plugin.types.payloads import (
     CreateExampleItemRequest,
     UpdateExampleItemRequest,
@@ -161,8 +161,7 @@ def test_sync_delete_item() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_send_with_endpoint_collection() -> None:
-    endpoints = ExampleEndpoints()
+def test_send_with_endpoint_function() -> None:
     mock_http = MagicMock(spec=httpx.Client)
     mock_http.request.return_value = _resp(200, {"message": "Hello, alice!"})
     client = NemoClient(base_url=BASE, workspace=WS, http_client=mock_http)
