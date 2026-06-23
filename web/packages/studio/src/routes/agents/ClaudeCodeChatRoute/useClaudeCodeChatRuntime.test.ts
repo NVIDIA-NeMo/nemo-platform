@@ -31,6 +31,8 @@ vi.mock('@studio/routes/agents/ClaudeCodeChatRoute/useCustomAssistantChatRuntime
     appendUserMessage: mocks.appendUserMessage,
     handleReset: vi.fn(),
     isRunning: false,
+    messages: [],
+    replaceMessages: vi.fn(),
     runtime: {},
     submitPrompt: async (prompt: string) => {
       await onRun({
@@ -94,6 +96,29 @@ describe('useClaudeCodeChatRuntime', () => {
     );
     expect(result.current.artifacts.model).toBeUndefined();
     expect(result.current.artifacts.model_source).toBeUndefined();
+  });
+
+  it('passes Studio route context to streamed messages', async () => {
+    mocks.createClaudeCodeSession.mockResolvedValue('session-1');
+    mocks.streamClaudeCodeMessage.mockResolvedValue(undefined);
+
+    const { result } = renderUseClaudeCodeChatRuntime({
+      studioPathname: '/workspaces/default/jobs?status=running',
+      workspace: 'default',
+    });
+
+    await act(async () => {
+      await result.current.submitPrompt('Show running jobs');
+    });
+
+    expect(mocks.streamClaudeCodeMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'Show running jobs',
+        sessionId: 'session-1',
+        studioPathname: '/workspaces/default/jobs?status=running',
+        workspace: 'default',
+      })
+    );
   });
 
   it('syncs artifacts when historical session metadata arrives after mount', async () => {

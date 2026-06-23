@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ROUTES } from '@studio/constants/routes';
+import { getClaudeCodeActiveSessionStorageKey } from '@studio/routes/agents/ClaudeCodeChatRoute/activeSessionStorage';
 import { DashboardLandingRoute } from '@studio/routes/DashboardLandingRoute';
 import { mockFeatureFlags } from '@studio/tests/util/mockFeatureFlags';
 import { TestProviders } from '@studio/tests/util/TestProviders';
@@ -59,6 +60,7 @@ const renderRoute = () => {
 
 describe('DashboardLandingRoute', () => {
   beforeEach(() => {
+    localStorage.clear();
     vi.clearAllMocks();
     mockFeatureFlags({
       agentsEnabled: true,
@@ -330,6 +332,17 @@ describe('DashboardLandingRoute', () => {
     expect(await screen.findByTestId(CHAT_ROUTE_TEST_ID)).toHaveTextContent(
       `${generatePath(ROUTES.workspace.claudeCodeChat, { workspace })}|Check repo`
     );
+  });
+
+  it('clears the active Claude Code session before starting from the landing composer', async () => {
+    const user = userEvent.setup();
+    localStorage.setItem(getClaudeCodeActiveSessionStorageKey(workspace), 'session-existing');
+    renderRoute();
+
+    await user.type(await screen.findByRole('textbox', { name: 'Message Claude' }), 'Check repo');
+    await user.click(screen.getByRole('button', { name: 'Send message' }));
+
+    expect(localStorage.getItem(getClaudeCodeActiveSessionStorageKey(workspace))).toBeNull();
   });
 
   it('submits the landing composer when Enter is pressed', async () => {
