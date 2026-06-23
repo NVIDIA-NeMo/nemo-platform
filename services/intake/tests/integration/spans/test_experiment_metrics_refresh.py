@@ -10,7 +10,7 @@ queues experiments for it.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from fastapi.testclient import TestClient
 
@@ -28,7 +28,8 @@ def _ensure_group(client: TestClient, name: str = "metrics-refresh-group") -> st
 
 
 def _service(client: TestClient) -> Any:
-    state = client.app.state
+    # client.app is a FastAPI app at runtime but typed as a bare ASGI callable.
+    state = cast(Any, client.app).state
     return getattr(state, "intake_service", None) or getattr(state, "service", None)
 
 
