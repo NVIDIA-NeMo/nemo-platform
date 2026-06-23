@@ -224,9 +224,9 @@ across the two variants.
   (in ms) per concurrency level. Edit by hand when a real change shifts
   the numbers.
 
-Worked example: at c=16 the override is 300 ms, so a run with observed
-delta_p50 = 1689 (diff +299 from baseline 1390) passes; observed
-delta_p50 = 1691 (diff +301) fails.
+Worked example: at c=16 the override is 200 ms, so a run with observed
+delta_p50 = 1689 (diff +199 from baseline 1390) passes; observed
+delta_p50 = 1691 (diff +201) fails.
 
 Notes on the current values:
 
