@@ -17,10 +17,42 @@ from io import StringIO
 from pathlib import Path
 from typing import Any
 
+from hatchling.plugin import hookimpl
+from hatchling.version.source.plugin.interface import VersionSourceInterface
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
+from uv_dynamic_versioning import schemas
+from uv_dynamic_versioning.main import get_version
 
 _GLOB_CHARS = set("*?[")
+DEFAULT_DYNAMIC_VERSION = "0.0.0"
+DEFAULT_DYNAMIC_VERSIONING_CONFIG: dict[str, Any] = {
+    "fallback-version": DEFAULT_DYNAMIC_VERSION,
+    "vcs": "git",
+    "style": "pep440",
+    "pattern": "default-unprefixed",
+}
+
+
+class NmpDynamicVersionSource(VersionSourceInterface):
+    PLUGIN_NAME = "nmp-dynamic-versioning"
+
+    def get_version_data(self) -> dict[str, str]:
+        config = nmp_dynamic_versioning_config(self.config)
+        version, _ = get_version(config)
+        return {"version": version}
+
+
+def nmp_dynamic_versioning_config(overrides: dict[str, Any] | None = None) -> schemas.UvDynamicVersioning:
+    config = DEFAULT_DYNAMIC_VERSIONING_CONFIG.copy()
+    if overrides:
+        config.update({key: value for key, value in overrides.items() if key != "source"})
+    return schemas.UvDynamicVersioning.from_dict(config)
+
+
+@hookimpl
+def hatch_register_version_source() -> type[NmpDynamicVersionSource]:
+    return NmpDynamicVersionSource
 
 
 def read_bundle_force_include(root: str) -> dict[str, str]:

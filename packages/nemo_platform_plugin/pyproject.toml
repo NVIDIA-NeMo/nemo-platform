@@ -63,15 +63,15 @@ nemo-platform-sdk = [
 
 [tool.uv.sources]
 nemo-platform-sdk = { workspace = true }
+nmp-build-tools = { workspace = true }
+
 
 [build-system]
 requires = ["hatchling", "nmp-build-tools"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
-source = "regex"
-path = "../nmp_common/src/nmp/common/version.py"
-pattern = '^platform_sdk_version = "(?P<version>[^"]+)"'
+source = "nmp-dynamic-versioning"
 
 [tool.hatch.build.targets.wheel.hooks.custom]
 path = "hatch_build.py"

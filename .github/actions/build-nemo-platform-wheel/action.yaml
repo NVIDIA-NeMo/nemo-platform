@@ -1,11 +1,11 @@
 name: Build nemo-platform wheel
 description: >
   Set up the build toolchain (uv, plus node/pnpm when building nemo-platform
-  so the hatch hook can compile Studio assets), stamp the SDK version, and
+  so the hatch hook can compile Studio assets), resolve the SDK version, and
   run `uv build --wheel --package <pkg>`. The build itself — including
   Studio asset compilation and wheel content force-includes — lives in the
   package's hatch_build.py; this action only handles environment setup,
-  the pre-build version stamp, and capturing the produced wheel.
+  the pre-build version override, and capturing the produced wheel.
 
   Both ci.yaml's wheel-test job and release-bundle.yaml's build-sdks matrix
   call this action so the test wheel and the published wheel come out of
@@ -78,14 +78,12 @@ runs:
         version-file: ${{ inputs.source-root }}/pyproject.toml
         cache-dependency-glob: ${{ inputs.source-root }}/uv.lock
 
-    # Stamp early, before pnpm/node setup, so bad cadence/label/timestamp
+    # Resolve early, before pnpm/node setup, so bad cadence/label/timestamp
     # inputs fail fast instead of after spending ~20s on tool setup. The
-    # version is written into packages/nmp_common/.../version.py and the
-    # generated _version.py before `uv build` runs (hatchling reads
-    # version.py via its regex source but does not write it). The
-    # --print-version flag emits just the resolved version on stdout;
-    # the human banner goes to stderr.
-    - name: Stamp SDK version
+    # resolved version is passed to uv-dynamic-versioning through its supported
+    # bypass environment variable. The --print-version flag emits just the
+    # resolved version on stdout; the human banner goes to stderr.
+    - name: Resolve SDK version
       id: stamp
       shell: bash
       env:
@@ -176,6 +174,7 @@ runs:
         SOURCE_ROOT: ${{ inputs.source-root }}
         OUT_DIR: ${{ inputs.out-dir }}
         PACKAGE: ${{ inputs.package }}
+        UV_DYNAMIC_VERSIONING_BYPASS: ${{ steps.stamp.outputs.wheel-version }}
       run: |
         set -euo pipefail
         if [[ "${OUT_DIR}" != /* ]]; then

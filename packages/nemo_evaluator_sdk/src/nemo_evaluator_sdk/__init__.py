@@ -70,7 +70,7 @@ from nemo_evaluator_sdk.values import (
 try:
     version = _package_version("nemo-evaluator-sdk")
 except PackageNotFoundError:
-    version = "0.0.1"
+    version = "0.0.0"
 
 __all__ = [
     "BLEUMetric",

@@ -1,6 +1,5 @@
 [project]
 name = "nemoplatform"
-version = "0.1.0"
 description = "NeMo Platform"
 readme = "README.md"
 requires-python = ">=3.11,<3.15"
@@ -65,6 +64,7 @@ dependencies = [
   "nmp-platform-runner",
   "requests>=2.33.1",
 ]
+version = "0.0.0"
 
 [dependency-groups]
 dev = [
@@ -237,9 +237,9 @@ generate-config-docs = "script.generate_config_docs:main"
 prerelease = "if-necessary-or-explicit"
 index-strategy = "unsafe-best-match"
 required-version = ">=0.9.14,<0.10.0"
+cache-keys = [{ file = "pyproject.toml" }]
 # Keep uv's implicit dev default and also install enabled plugins on bare `uv sync`.
 default-groups = ["dev", "enabled-plugins"]
-cache-keys = [{ file = "pyproject.toml" }]
 # this section is used to constrain the uv lockfile generation to specific environments
 # which is very useful for debugging resolution issues and constraining the overall
 # complexity of the locking step
@@ -434,6 +434,7 @@ members = [
 ]
 
 
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -448,6 +449,7 @@ packages = ["packages/nmp_platform/", "script/"]
 #     "tests/integration",
 #     "packages/nmp_common/tests",
 # ]
+
 
 [tool.coverage.run]
 # Measure branch coverage in addition to statement coverage

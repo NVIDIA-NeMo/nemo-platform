@@ -1,7 +1,6 @@
 [project]
 name = "nemo-platform-ext"
 description = "A package that contains modules that extend the Stainless' generated nemo-platform SDK. This includes high-level interfaces, CLI, quickstart functionality."
-version = "0.1.0"
 license = "Apache-2.0"
 authors = [{name = "NVIDIA Corporation"}]
 dependencies = [
@@ -35,6 +34,7 @@ classifiers = [
   "Topic :: Software Development :: Libraries :: Python Modules",
   "License :: OSI Approved :: Apache Software License"
 ]
+version = "0.0.0"
 
 [project.urls]
 Homepage = "https://docs.nvidia.com/nemo-platform"
@@ -64,6 +64,7 @@ platform = "nemo_platform_ext.skills:skills_dir"
 nmp-testing = { workspace = true }
 nemo-platform-sdk = { workspace = true }
 
+
 [build-system]
 requires = ["hatchling==1.26.3"]
 build-backend = "hatchling.build"
@@ -78,6 +79,7 @@ packages = ["src/nemo_platform_ext"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "../../docs" = "nemo_platform_ext/cli/docs"
+
 
 [tool.vendor-package]
 package = "nemo_platform_ext"
