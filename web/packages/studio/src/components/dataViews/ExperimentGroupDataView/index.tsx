@@ -12,24 +12,22 @@ import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
 import { getSortParamWithWhitelist } from '@nemo/common/src/utils/query';
-import { useGetExperimentGroup, useListExperiments } from '@nemo/sdk/generated/platform/api';
-import type {
-  ExperimentFilter,
-  ExperimentResponse,
-  ListExperimentsSort,
-} from '@nemo/sdk/generated/platform/schema';
+import { useGetExperimentGroup } from '@nemo/sdk/generated/platform/api';
+import type { ExperimentFilter } from '@nemo/sdk/generated/platform/schema';
 import { Button, Text, Tooltip } from '@nvidia/foundations-react-core';
 import { Empty } from '@studio/components/dataViews/ExperimentGroupDataView/Empty';
-import { usePinnedExperiments } from '@studio/components/dataViews/ExperimentGroupDataView/usePinnedExperiments';
+import {
+  type ExperimentRow,
+  useExperimentGroupExperiments,
+} from '@studio/components/dataViews/ExperimentGroupDataView/useExperimentGroupExperiments';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getExperimentDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
-import { keepPreviousData } from '@tanstack/react-query';
 import { Columns3, Pin } from 'lucide-react';
 import { type ComponentProps, type FC, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-export type ExperimentRow = ExperimentResponse & { id: string };
+export type { ExperimentRow };
 
 const SORTABLE_FIELDS = ['name', 'created_at'] as const;
 const DEFAULT_SORT = '-created_at';
@@ -69,8 +67,6 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
     columnPinning: { left: ['pin'] },
   });
 
-  const { pinnedSet, togglePin } = usePinnedExperiments(workspace, experimentGroupName);
-
   const page = dataViewState.pagination.state.pageIndex + 1;
   const pageSize = dataViewState.pagination.state.pageSize;
   const sortParam = getSortParamWithWhitelist(
@@ -80,53 +76,26 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
   );
 
   const {
-    data: experimentsResponse,
-    isLoading,
+    rows: orderedData,
+    togglePin,
+    totalCount,
     error,
-  } = useListExperiments(
+    isLoading,
+  } = useExperimentGroupExperiments({
     workspace,
-    {
-      page,
-      page_size: pageSize,
-      sort: sortParam as ListExperimentsSort,
-      // User filters merge under the group scope, which always wins so it can't be overridden.
-      filter: {
-        ...dataViewState.apiFilter.filter,
-        ...(dataViewState.searchBar.state && { name: { $like: dataViewState.searchBar.state } }),
-        experiment_group_id: experimentGroupId,
-      } as ExperimentFilter,
-    },
-    { query: { placeholderData: keepPreviousData, enabled: !!experimentGroupId } }
-  );
-
-  const experimentsData = experimentsResponse?.data;
-  const totalCount = experimentsResponse?.pagination?.total_results ?? experimentsData?.length ?? 0;
-
-  const tableData = useMemo<ExperimentRow[]>(
-    () =>
-      (experimentsData ?? []).map((experiment) => ({
-        ...experiment,
-        id: experiment.id ?? experiment.name ?? '',
-      })),
-    [experimentsData]
-  );
-
-  // Float pinned experiments to the top of the current page. The list is server-sorted and
-  // server-paginated (dataMode="manual"), so the rendered order follows this array directly:
-  // pinned rows first, then the rest, each preserving the server's sort order (stable partition).
-  const orderedData = useMemo<ExperimentRow[]>(() => {
-    if (pinnedSet.size === 0) return tableData;
-    return [
-      ...tableData.filter((row) => pinnedSet.has(row.id)),
-      ...tableData.filter((row) => !pinnedSet.has(row.id)),
-    ];
-  }, [tableData, pinnedSet]);
+    experimentGroupId,
+    filter: dataViewState.apiFilter.filter,
+    search: dataViewState.debouncedSearchBar,
+    page,
+    pageSize,
+    sort: sortParam,
+  });
 
   // One score column per evaluator: the union of evaluator names across the loaded rows,
   // sorted for a deterministic column order across renders and page changes.
   const evaluatorNames = useMemo(
-    () => [...new Set(tableData.flatMap((e) => Object.keys(e.aggregate_scores ?? {})))].sort(),
-    [tableData]
+    () => [...new Set(orderedData.flatMap((e) => Object.keys(e.aggregate_scores ?? {})))].sort(),
+    [orderedData]
   );
 
   // One column per metadata key: keys are lowercased so case variants (e.g. "status"
@@ -156,8 +125,8 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
         maxSize: 48,
         meta: { alignment: 'center', _isPrebuiltColumn: true, _isSizeInitialized: true },
         cell: ({ row }) => {
-          const { id } = row.original;
-          const isPinned = pinnedSet.has(id);
+          const { pinned_at } = row.original;
+          const isPinned = pinned_at != null;
           return (
             <Button
               kind="tertiary"
@@ -165,7 +134,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
               size="small"
               aria-label={isPinned ? 'Unpin experiment' : 'Pin experiment'}
               aria-pressed={isPinned}
-              onClick={() => togglePin(id)}
+              onClick={() => togglePin(row.original)}
             >
               <Pin
                 className={isPinned ? 'text-brand' : 'text-secondary'}
@@ -328,7 +297,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
         },
       }),
     ],
-    [evaluatorNames, pinnedSet, togglePin, metadataKeys]
+    [evaluatorNames, togglePin, metadataKeys]
   );
 
   if (groupError) {
@@ -365,7 +334,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
         DataViewRoot: {
           data: orderedData,
           totalCount,
-          requestStatus: isGroupLoading || (isLoading && !experimentsData) ? 'loading' : undefined,
+          requestStatus: isGroupLoading || isLoading ? 'loading' : undefined,
         },
         DataViewTableContent: {
           renderEmptyState: ({ hasFiltersApplied, hasSearchApplied }) =>
