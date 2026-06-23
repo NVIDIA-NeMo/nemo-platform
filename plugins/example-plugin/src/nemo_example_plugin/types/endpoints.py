@@ -22,6 +22,8 @@ from nemo_example_plugin.types.payloads import (
     Tick,
     UpdateExampleItemRequest,
 )
+from typing import NotRequired, TypedDict
+
 from nemo_platform_plugin.client.endpoint import delete, get, patch, post, put
 from nemo_platform_plugin.client.types import BinaryContent, PathParams, Stream, WorkspaceParams
 
@@ -49,8 +51,16 @@ CreateItemEndpoint = post(
     response_type=ExampleItem,
 )
 
+class ListItemsQueryParams(TypedDict, total=False):
+    page: NotRequired[int]
+    page_size: NotRequired[int]
+
+
 ListItemsEndpoint = get(
-    "/apis/example/v2/workspaces/{workspace}/items", path_type=WorkspaceParams, response_type=ExampleItemPage
+    "/apis/example/v2/workspaces/{workspace}/items",
+    path_type=WorkspaceParams,
+    response_type=ExampleItemPage,
+    query_params_type=ListItemsQueryParams,
 )
 
 GetItemEndpoint = get(

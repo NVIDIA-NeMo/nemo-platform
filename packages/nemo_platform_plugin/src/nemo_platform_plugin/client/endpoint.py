@@ -65,7 +65,7 @@ class Endpoint(Generic[PathT, RequestT, ResponseT, QueryParamsT]):
     @overload
     def request(
         self: Endpoint[PathT, BodyRequestT, ResponseT, QueryParamsT],
-        payload: BodyRequestT,
+        body: BodyRequestT,
         *,
         query_params: QueryParamsT | None = None,
         **path_params: Unpack[PathT],
@@ -99,9 +99,9 @@ class Endpoint(Generic[PathT, RequestT, ResponseT, QueryParamsT]):
             content = args[0]  # type: ignore[assignment]
             content_type = "application/octet-stream"
         else:
-            payload = args[0]
-            assert isinstance(payload, BaseModel)
-            content = payload.model_dump_json().encode()
+            body = args[0]
+            assert isinstance(body, BaseModel)
+            content = body.model_dump_json().encode()
             content_type = "application/json"
 
         resolved_query: dict[str, str | int | bool | None] | None = None

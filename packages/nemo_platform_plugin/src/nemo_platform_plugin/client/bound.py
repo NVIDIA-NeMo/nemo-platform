@@ -48,7 +48,7 @@ class SyncBoundCall(Generic[PathT, RequestT, ResponseT, QueryParamsT]):
     @overload
     def __call__(
         self: SyncBoundCall[PathT, BodyRequestT, BinaryContent, QueryParamsT],
-        payload: BodyRequestT,
+        body: BodyRequestT,
         *,
         query_params: QueryParamsT | None = None,
         **kw: Unpack[PathT],
@@ -56,7 +56,7 @@ class SyncBoundCall(Generic[PathT, RequestT, ResponseT, QueryParamsT]):
     @overload
     def __call__(
         self: SyncBoundCall[PathT, BodyRequestT, Stream[ModelT], QueryParamsT],
-        payload: BodyRequestT,
+        body: BodyRequestT,
         *,
         query_params: QueryParamsT | None = None,
         **kw: Unpack[PathT],
@@ -64,7 +64,7 @@ class SyncBoundCall(Generic[PathT, RequestT, ResponseT, QueryParamsT]):
     @overload
     def __call__(
         self: SyncBoundCall[PathT, BodyRequestT, ResponseT, QueryParamsT],
-        payload: BodyRequestT,
+        body: BodyRequestT,
         *,
         query_params: QueryParamsT | None = None,
         **kw: Unpack[PathT],
@@ -137,7 +137,7 @@ class AsyncBoundCall(Generic[PathT, RequestT, ResponseT, QueryParamsT]):
     @overload
     async def __call__(
         self: AsyncBoundCall[PathT, BodyRequestT, BinaryContent, QueryParamsT],
-        payload: BodyRequestT,
+        body: BodyRequestT,
         *,
         query_params: QueryParamsT | None = None,
         **kw: Unpack[PathT],
@@ -145,7 +145,7 @@ class AsyncBoundCall(Generic[PathT, RequestT, ResponseT, QueryParamsT]):
     @overload
     async def __call__(
         self: AsyncBoundCall[PathT, BodyRequestT, Stream[ModelT], QueryParamsT],
-        payload: BodyRequestT,
+        body: BodyRequestT,
         *,
         query_params: QueryParamsT | None = None,
         **kw: Unpack[PathT],
@@ -153,7 +153,7 @@ class AsyncBoundCall(Generic[PathT, RequestT, ResponseT, QueryParamsT]):
     @overload
     async def __call__(
         self: AsyncBoundCall[PathT, BodyRequestT, ResponseT, QueryParamsT],
-        payload: BodyRequestT,
+        body: BodyRequestT,
         *,
         query_params: QueryParamsT | None = None,
         **kw: Unpack[PathT],
