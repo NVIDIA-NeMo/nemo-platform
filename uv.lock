@@ -7416,6 +7416,7 @@ name = "nmp-platform-seed"
 version = "0.0.1"
 source = { editable = "services/platform-seed" }
 dependencies = [
+    { name = "nemo-auditor-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-auth", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-common", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-guardrails", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -7430,6 +7431,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "nemo-auditor-plugin", editable = "plugins/nemo-auditor" },
     { name = "nmp-auth", editable = "services/core/auth" },
     { name = "nmp-common", editable = "packages/nmp_common" },
     { name = "nmp-guardrails", editable = "services/guardrails" },
