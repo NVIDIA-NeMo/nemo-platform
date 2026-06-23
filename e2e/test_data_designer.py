@@ -12,8 +12,10 @@ from data_designer_nemo.nemotron_personas import WORKSPACE, get_resource_name_fo
 from nemo_data_designer_plugin.sdk.errors import DataDesignerJobError
 from nemo_platform import NeMoPlatform, NotFoundError
 from nemo_platform.types.inference import ModelProvider
-from nmp.testing import MockProviderResponse, NemoRun, add_mock_provider
+from nmp.testing import MockProviderResponse, add_mock_provider, assert_exit_0, run_nemo_local
 from nmp.testing.pytest_outcomes import pytest_skip
+
+pytestmark = [pytest.mark.e2e_config("e2e/configs/local-subprocess.yaml")]
 
 PROVIDER_NAME = "test-provider"
 
@@ -168,7 +170,7 @@ def test_fileset_seed_data(sdk: NeMoPlatform, workspace: str) -> None:
 
 
 @pytest.fixture
-def nemotron_personas_locale(nemo_run: NemoRun, sdk: NeMoPlatform, workspace: str, ngc_secret: str) -> Generator[str]:
+def nemotron_personas_locale(_services: str, sdk: NeMoPlatform, workspace: str, ngc_secret: str) -> Generator[str]:
     """Invokes the CLI to create a Fileset for Nemotron Personas data.
 
     This test does call out to NGC and downloads personas data. Use the smallest locale available
@@ -184,7 +186,7 @@ def nemotron_personas_locale(nemo_run: NemoRun, sdk: NeMoPlatform, workspace: st
     with suppress(NotFoundError):
         sdk.files.filesets.delete(fileset_name, workspace=WORKSPACE)
 
-    nemo_run(
+    result = run_nemo_local(
         "data-designer",
         "personas",
         "make-fileset",
@@ -192,7 +194,10 @@ def nemotron_personas_locale(nemo_run: NemoRun, sdk: NeMoPlatform, workspace: st
         locale,
         "--api-key-secret",
         f"{workspace}/{ngc_secret}",
+        base_url=_services,
+        workspace=workspace,
     )
+    assert_exit_0(result, "Failed to create Nemotron Personas fileset via CLI")
 
     yield locale
 

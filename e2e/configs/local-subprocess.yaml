@@ -1,0 +1,68 @@
+# Local E2E config for hosts without Docker.
+#
+# This keeps the explicit subprocess/default jobs profile required by
+# translate_cpu_container_steps_to_subprocess(), while avoiding the default
+# docker job backends that are derived from platform.runtime: "docker".
+
+platform:
+  runtime: "none"
+  base_url: "http://0.0.0.0:8080"
+
+service: {}
+
+auth:
+  enabled: false
+  allow_unsigned_jwt: true
+  policy_decision_point_provider: embedded
+  policy_decision_point_base_url: "http://localhost:8080"
+  policy_data_refresh_interval: 2
+  bundle_cache_seconds: 15
+  admin_email: "admin@example.com"
+
+entities: {}
+
+jobs:
+  # Local E2E-only debugging aid. This may leak secrets or PII from job output,
+  # so it must remain disabled in non-test configs.
+  include_job_logs_in_diagnostics: true
+  executors:
+    - provider: subprocess
+      profile: default
+      backend: subprocess
+      config:
+        working_directory: .tmp/e2e/subprocess-jobs
+        cleanup_completed_jobs_immediately: false
+        ttl_seconds_before_active: 60
+        ttl_seconds_active: 3600
+        ttl_seconds_after_finished: 300
+  executor_defaults:
+    subprocess:
+      working_directory: .tmp/e2e/subprocess-jobs
+      cleanup_completed_jobs_immediately: false
+      ttl_seconds_before_active: 60
+      ttl_seconds_active: 3600
+      ttl_seconds_after_finished: 300
+
+evaluator:
+  recreate_existing_system_entities: true
+
+safe_synthesizer: {}
+
+models:
+  controller:
+    interval_seconds: 5
+    model_deployment_garbage_collection_ttl_seconds: 30
+
+inference_gateway: {}
+
+secrets:
+  allow_key_creation: true
+
+files:
+  default_storage_config:
+    type: local
+    path: .tmp/e2e/files
+
+studio:
+  static_files_path: web/packages/studio/dist
+  sandbox_enabled: true
