@@ -419,6 +419,189 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/evaluator/v2/workspaces/{workspace}/metrics:
+    get:
+      tags:
+      - Evaluator Plugin Metrics Routes
+      summary: List Metrics By Workspace
+      description: List stored metrics for a specific workspace.
+      operationId: list_metrics_apis_evaluator_v2_workspaces__workspace__metrics_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          description: Page size.
+          default: 100
+          title: Page Size
+        description: Page size.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/MetricSort'
+          description: The field to sort by. To sort in decreasing order, use `-`
+            in front of the field name.
+          default: created_at
+        description: The field to sort by. To sort in decreasing order, use `-` in
+          front of the field name.
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/MetricFilter'
+        description: Filter metrics by workspace, name, metric_type, description,
+          created_at, and updated_at.
+      responses:
+        '200':
+          description: Return stored metrics for a workspace
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/evaluator/v2/workspaces/{workspace}/metrics/{name}:
+    post:
+      tags:
+      - Evaluator Plugin Metrics Routes
+      summary: Create Metric
+      description: Store a new metric, addressed by workspace/name.
+      operationId: create_metric_apis_evaluator_v2_workspaces__workspace__metrics__name__post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 255
+          pattern: ^[\w\-\.]+$
+          title: Name
+      - name: project
+        in: query
+        required: false
+        schema:
+          description: Optional project to associate with the metric.
+          title: Project
+          type: string
+        description: Optional project to associate with the metric.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MetricInline'
+      responses:
+        '201':
+          description: Store a new metric
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Metric'
+        '409':
+          description: Metric already exists
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Evaluator Plugin Metrics Routes
+      summary: Get Metric
+      description: Get a stored metric by workspace and name.
+      operationId: get_metric_apis_evaluator_v2_workspaces__workspace__metrics__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Return stored metric details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Metric'
+        '404':
+          description: Metric not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Evaluator Plugin Metrics Routes
+      summary: Delete Metric
+      description: Delete a stored metric by workspace and name.
+      operationId: delete_metric_apis_evaluator_v2_workspaces__workspace__metrics__name__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '204':
+          description: Delete a stored metric
+        '404':
+          description: Metric not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     Agent:
@@ -491,6 +674,54 @@ components:
       - value_json_schema
       title: BundledMetricOutputSpec
       description: JSON-safe projection of a runtime metric output spec.
+    CloudpickleMetricPayload:
+      properties:
+        kind:
+          type: string
+          const: cloudpickle
+          title: Kind
+          description: Payload format discriminator.
+        python_version:
+          type: string
+          title: Python Version
+          description: Python version the metric was pickled with (must match at execution).
+        cloudpickle_version:
+          type: string
+          title: Cloudpickle Version
+          description: cloudpickle version used to serialize the metric.
+        pickle_protocol:
+          type: integer
+          title: Pickle Protocol
+          description: Pickle protocol used.
+        blob:
+          type: string
+          format: base64url
+          title: Blob
+          description: Base64-encoded cloudpickled metric object.
+        digest:
+          title: Digest
+          description: SHA-256 digest of the payload bytes. Informational; recomputed
+            server-side.
+          type: string
+      additionalProperties: false
+      type: object
+      required:
+      - kind
+      - python_version
+      - cloudpickle_version
+      - pickle_protocol
+      - blob
+      title: CloudpickleMetricPayload
+      description: 'Wire schema for a cloudpickle-serialized metric payload.
+
+
+        Mirrors the runtime ``CloudpickleMetricPayload`` so the API contract is
+
+        explicit in the OpenAPI spec. The runtime bundle model serializes payloads
+
+        polymorphically (typed as an abstract base), which renders as an opaque
+
+        object in the spec; this concrete DTO documents the actual fields.'
     DatetimeFilter:
       additionalProperties: false
       properties:
@@ -508,13 +739,6 @@ components:
       type: object
     EvaluateInputSpec:
       properties:
-        metrics:
-          items:
-            $ref: '#/components/schemas/MetricBundleInput'
-          type: array
-          minItems: 1
-          title: Metrics
-          description: Bundled metric entities to evaluate.
         dataset:
           anyOf:
           - items:
@@ -551,11 +775,21 @@ components:
           - $ref: '#/components/schemas/FieldMapping'
           description: Optional mapping from canonical evaluator fields to dataset
             columns.
+        metrics:
+          items:
+            anyOf:
+            - $ref: '#/components/schemas/MetricInline'
+            - $ref: '#/components/schemas/MetricRef'
+          type: array
+          minItems: 1
+          title: Metrics
+          description: Metrics to evaluate, given as inline metrics and/or references
+            to stored metrics.
       additionalProperties: false
       type: object
       required:
-      - metrics
       - dataset
+      - metrics
       title: EvaluateInputSpec
       description: Submitter-facing SDK evaluation input for the evaluator plugin
         job.
@@ -699,13 +933,6 @@ components:
       title: EvaluateJobsSortField
     EvaluateSpec:
       properties:
-        metrics:
-          items:
-            $ref: '#/components/schemas/MetricBundleOutput'
-          type: array
-          minItems: 1
-          title: Metrics
-          description: Bundled metric entities to evaluate.
         dataset:
           anyOf:
           - items:
@@ -742,13 +969,21 @@ components:
           - $ref: '#/components/schemas/FieldMapping'
           description: Optional mapping from canonical evaluator fields to dataset
             columns.
+        metrics:
+          items:
+            $ref: '#/components/schemas/MetricInline'
+          type: array
+          minItems: 1
+          title: Metrics
+          description: Inline metrics with all references resolved.
       additionalProperties: false
       type: object
       required:
-      - metrics
       - dataset
+      - metrics
       title: EvaluateSpec
-      description: Canonical SDK evaluation spec with platform model references resolved.
+      description: Canonical SDK evaluation spec with platform model and metric references
+        resolved.
     FieldMapping:
       properties:
         input:
@@ -882,7 +1117,124 @@ components:
       description: Parameters for model inference. Extra fields can be supplied for
         additional options applied to the inference request directly. Fields not supported
         by the model may cause inference errors during evaluation.
-    MetricBundleInput:
+    Metric:
+      properties:
+        id:
+          type: string
+          title: Id
+          description: Unique identifier for the stored metric.
+        name:
+          type: string
+          title: Name
+          description: Name of the metric, unique within its workspace.
+        workspace:
+          type: string
+          title: Workspace
+          description: Workspace the metric belongs to.
+        project:
+          title: Project
+          description: The project associated with this metric.
+          type: string
+        metric_type:
+          type: string
+          title: Metric Type
+          description: Runtime metric type name.
+        description:
+          title: Description
+          description: Description captured from the metric's metadata.
+          type: string
+        labels:
+          additionalProperties:
+            type: string
+          type: object
+          title: Labels
+          description: Labels captured from the metric's metadata.
+        outputs:
+          items:
+            $ref: '#/components/schemas/BundledMetricOutputSpec'
+          type: array
+          title: Outputs
+          description: The metric's output contracts.
+        secrets:
+          additionalProperties:
+            $ref: '#/components/schemas/SecretRef'
+          type: object
+          title: Secrets
+          description: Secret references required to execute the metric.
+        payload_kind:
+          type: string
+          title: Payload Kind
+          description: Payload discriminator of the stored bundle.
+        payload_digest:
+          type: string
+          title: Payload Digest
+          description: Digest of the stored payload.
+        bundle_ref:
+          type: string
+          title: Bundle Ref
+          description: Files reference to the canonical serialized bundle.
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+          description: Timestamp the metric was created.
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+          description: Timestamp the metric was last updated.
+      type: object
+      required:
+      - id
+      - name
+      - workspace
+      - metric_type
+      - outputs
+      - secrets
+      - payload_kind
+      - payload_digest
+      - bundle_ref
+      - created_at
+      - updated_at
+      title: Metric
+      description: 'API representation of a stored metric.
+
+
+        The canonical executable bundle lives in the Files service; the fields here
+
+        are the queryable projection plus the reference and digest needed to load
+        it.'
+    MetricFilter:
+      additionalProperties: false
+      description: Filter for metric queries.
+      properties:
+        workspace:
+          description: Filter by workspace.
+          title: Workspace
+          type: string
+        name:
+          description: Filter by name.
+          title: Name
+          type: string
+        metric_type:
+          description: Filter by metric type.
+          title: Metric Type
+          type: string
+        description:
+          description: Filter by description.
+          title: Description
+          type: string
+        created_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Filter by creation date.
+        updated_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Filter by update date.
+      title: MetricFilter
+      type: object
+    MetricInline:
       properties:
         bundle_kind:
           type: string
@@ -898,74 +1250,44 @@ components:
           type: string
           minLength: 1
           title: Metric Type
+          description: Runtime metric type name.
         metadata:
-          $ref: '#/components/schemas/MetricMetadata'
+          allOf:
+          - $ref: '#/components/schemas/MetricMetadata'
+          description: User-facing metric metadata.
         outputs:
           items:
             $ref: '#/components/schemas/BundledMetricOutputSpec'
           type: array
           minItems: 1
           title: Outputs
+          description: The metric's output contracts.
         secrets:
           additionalProperties:
             $ref: '#/components/schemas/SecretRef'
           type: object
           title: Secrets
+          description: Secret references required to execute the metric.
         payload:
-          $ref: '#/components/schemas/MetricBundlePayload'
+          oneOf:
+          - $ref: '#/components/schemas/CloudpickleMetricPayload'
+          title: Payload
+          description: Format-specific serialized metric.
+          discriminator:
+            propertyName: kind
+            mapping:
+              cloudpickle: '#/components/schemas/CloudpickleMetricPayload'
       additionalProperties: false
       type: object
       required:
       - metric_type
       - outputs
       - payload
-      title: MetricBundleInput
-      description: Standalone executable metric bundle entity used by backend execution.
-    MetricBundleOutput:
-      properties:
-        bundle_kind:
-          type: string
-          const: metric-bundle
-          title: Bundle Kind
-          default: metric-bundle
-        bundle_format_version:
-          type: string
-          const: v1
-          title: Bundle Format Version
-          default: v1
-        metric_type:
-          type: string
-          minLength: 1
-          title: Metric Type
-        metadata:
-          $ref: '#/components/schemas/MetricMetadata'
-        outputs:
-          items:
-            $ref: '#/components/schemas/BundledMetricOutputSpec'
-          type: array
-          minItems: 1
-          title: Outputs
-        secrets:
-          additionalProperties:
-            $ref: '#/components/schemas/SecretRef'
-          type: object
-          title: Secrets
-        payload:
-          additionalProperties: true
-          type: object
-      additionalProperties: false
-      type: object
-      required:
-      - metric_type
-      - outputs
-      - payload
-      title: MetricBundleOutput
-      description: Standalone executable metric bundle entity used by backend execution.
-    MetricBundlePayload:
-      properties: {}
-      type: object
-      title: MetricBundlePayload
-      description: Base class for concrete Pydantic metric bundle payloads.
+      title: MetricInline
+      description: "An executable metric submitted to the platform.\n\nCarries the\
+        \ bundled metric \u2014 type, metadata, output contracts, secret\nreferences,\
+        \ and a format-specific payload \u2014 used both as the create-request\nbody\
+        \ and as an inline metric in an evaluation job."
     MetricMetadata:
       properties:
         description:
@@ -980,6 +1302,47 @@ components:
       type: object
       title: MetricMetadata
       description: User-facing metadata captured with a bundled metric.
+    MetricRef:
+      type: string
+      pattern: ^[\w\-.]+(/[\w\-.]+)?$
+      title: MetricRef
+      description: 'Reference to a persisted metric (format: ``workspace/name`` or
+        ``name``).'
+    MetricSort:
+      type: string
+      enum:
+      - name
+      - -name
+      - created_at
+      - -created_at
+      - updated_at
+      - -updated_at
+      title: MetricSort
+      description: Sort fields for metric queries.
+    MetricsPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/Metric'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: MetricsPage
     Model:
       properties:
         url:

@@ -41,19 +41,32 @@ NeMo Platform provides four predefined roles, each designed for a specific user 
 
 Each role includes all permissions of the roles below it:
 
-```text
-PlatformAdmin
- ▲
- Admin (+manage_members, +change_visibility)
- ▲
- Editor (+create, +update, +delete, +cancel)
- ▲
- Viewer (list, read, inference)
+```mermaid
+flowchart BT
+    Viewer["Viewer
++list
++read
++inference"]
+    Editor["Editor
++create
++update
++delete
++cancel"]
+    Admin["Admin
++manage members
++change visibility"]
+    PlatformAdmin["PlatformAdmin
+all workspaces
+all operations"]
+
+    Viewer --> Editor
+    Editor --> Admin
+    Admin --> PlatformAdmin
 ```
 
 ## Permission Matrix
 
-Rows are operations; columns are roles. A checkmark indicates the role has permission.
+Rows are operations; columns are roles. Read the hierarchy above first: each role inherits everything below it, and the tables call out the points where additional privileges appear.
 
 ### Workspace Operations
 

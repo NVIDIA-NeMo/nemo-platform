@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /* eslint-disable no-console */
-import { AnyValue, Logger, logs, SeverityNumber } from '@opentelemetry/api-logs';
+import { Logger, logs, SeverityNumber } from '@opentelemetry/api-logs';
 import { OTEL_SERVICE_NAME, VERSION_SHA } from '@studio/constants/environment';
 
 const otelLogger: Logger = logs.getLogger(OTEL_SERVICE_NAME);
@@ -23,50 +23,63 @@ const otelLogger: Logger = logs.getLogger(OTEL_SERVICE_NAME);
  * ```
  */
 class WebsiteLogger {
-  private log(level: SeverityNumber, message: AnyValue) {
-    if (level === SeverityNumber.ERROR) {
-      console.error(message);
-    } else if (level === SeverityNumber.WARN) {
-      console.warn(message);
-    } else if (level === SeverityNumber.INFO) {
-      console.info(message);
-    } else if (level === SeverityNumber.DEBUG) {
-      console.debug(message);
+  private log(level: SeverityNumber, message: string, cause?: unknown) {
+    const logArgs: [string, ...unknown[]] = cause !== undefined ? [message, cause] : [message];
+    if (level === SeverityNumber.ERROR) console.error(...logArgs);
+    else if (level === SeverityNumber.WARN) console.warn(...logArgs);
+    else if (level === SeverityNumber.INFO) console.info(...logArgs);
+    else if (level === SeverityNumber.DEBUG) console.debug(...logArgs);
+
+    const attributes: Record<string, string> = {};
+    if (cause instanceof Error) {
+      if (cause.message) attributes['error.message'] = cause.message;
+      if (cause.stack) attributes['error.stack'] = cause.stack;
+    } else if (cause !== undefined) {
+      attributes['error'] = String(cause);
     }
+
     otelLogger.emit({
       severityNumber: level,
       body: message,
+      ...(Object.keys(attributes).length > 0 && { attributes }),
     });
   }
 
-  debug(message: AnyValue) {
-    this.log(SeverityNumber.DEBUG, message);
+  debug(message: string, cause?: unknown) {
+    this.log(SeverityNumber.DEBUG, message, cause);
   }
 
-  error(message: AnyValue) {
-    this.log(SeverityNumber.ERROR, message);
+  error(message: string, cause?: unknown) {
+    this.log(SeverityNumber.ERROR, message, cause);
   }
 
-  info(message: AnyValue) {
-    this.log(SeverityNumber.INFO, message);
+  info(message: string, cause?: unknown) {
+    this.log(SeverityNumber.INFO, message, cause);
   }
 
-  warn(message: AnyValue) {
-    this.log(SeverityNumber.WARN, message);
+  warn(message: string, cause?: unknown) {
+    this.log(SeverityNumber.WARN, message, cause);
   }
 }
 
 // Global instance of our logger that should be used by individual modules, in-place of `console.log`.
-export const websiteLogger = new WebsiteLogger();
+export const logger = new WebsiteLogger();
+
+/**
+ * Converts a unknown error to an Error object.
+ */
+export function toError(err: unknown): Error {
+  return err instanceof Error ? err : new Error(String(err));
+}
 
 /**
  * Handles a generic error by logging it to the website logger.
  */
 export const handleGenericError = (error: Error | string) => {
   if (error instanceof Error) {
-    websiteLogger.error(JSON.stringify(error));
+    logger.error(error.message, error);
   } else {
-    websiteLogger.error(error);
+    logger.error(error);
   }
 };
 
@@ -75,6 +88,6 @@ export const handleGenericError = (error: Error | string) => {
  */
 export const logVersion = async () => {
   if (VERSION_SHA) {
-    websiteLogger.info(`Version: ${VERSION_SHA}`);
+    logger.info(`Version: ${VERSION_SHA}`);
   }
 };

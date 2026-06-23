@@ -13,11 +13,7 @@ import type { VariableDef } from '@nemo/common/src/components/form/VariableTextA
 import { ModelSelectV2 } from '@nemo/common/src/components/ModelSelectV2';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { useEvaluatorCreateEvaluateJob } from '@nemo/sdk/generated/evaluator/api';
-import type {
-  EvaluateJobRequest,
-  MetricBundleInput,
-  Model,
-} from '@nemo/sdk/generated/evaluator/schema';
+import type { EvaluateJobRequest, MetricInline, Model } from '@nemo/sdk/generated/evaluator/schema';
 import {
   Button,
   Flex,
@@ -47,7 +43,7 @@ import { DEFAULT_INFERENCE_PARAMS_FORM_VALUES } from '@studio/hooks/evaluation/u
 import { QUERY_PARAMETERS } from '@studio/routes/constants';
 import { getEvaluationResultDetailsRoute } from '@studio/routes/utils';
 import { buildModelPayload } from '@studio/util/evaluations';
-import { websiteLogger } from '@studio/util/logger';
+import { logger } from '@studio/util/logger';
 import { Plus } from 'lucide-react';
 import { type FC, useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -282,7 +278,7 @@ export const MetricRunSidePanel: FC<MetricRunSidePanelProps> = ({
         formData.jobType === 'online'
           ? {
               spec: {
-                metrics: [metric as unknown as MetricBundleInput],
+                metrics: [metric as unknown as MetricInline],
                 dataset: formData.dataset,
                 target,
                 prompt_template: promptTemplatePayload ?? undefined,
@@ -291,7 +287,7 @@ export const MetricRunSidePanel: FC<MetricRunSidePanelProps> = ({
             }
           : {
               spec: {
-                metrics: [metric as unknown as MetricBundleInput],
+                metrics: [metric as unknown as MetricInline],
                 dataset: formData.dataset,
               },
             };
@@ -302,7 +298,7 @@ export const MetricRunSidePanel: FC<MetricRunSidePanelProps> = ({
       navigate(getEvaluationResultDetailsRoute(workspace, job.name));
     } catch (error) {
       const message = getErrorMessage(error as Error, 'Failed to create metric evaluation job');
-      websiteLogger.error(`MetricRunSidePanel: ${message}`);
+      logger.error(`MetricRunSidePanel: ${message}`);
       toast.error(message);
     }
   };
@@ -332,7 +328,7 @@ export const MetricRunSidePanel: FC<MetricRunSidePanelProps> = ({
             color="brand"
             disabled={isPending}
             onClick={form.handleSubmit(handleSubmit, (errors) => {
-              websiteLogger.error(`Form validation errors: ${JSON.stringify(errors)}`);
+              logger.error(`Form validation errors: ${JSON.stringify(errors)}`);
               toast.error('Please fix the errors in the form before submitting.');
             })}
           >

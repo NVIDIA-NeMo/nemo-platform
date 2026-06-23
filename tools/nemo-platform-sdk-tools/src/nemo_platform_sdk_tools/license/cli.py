@@ -12,6 +12,7 @@ This module provides typer commands for:
 
 import logging
 import os
+from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -60,6 +61,18 @@ def generate(
             help="Output format: jsonl (default), table, json, csv, markdown, text",
         ),
     ] = "jsonl",
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            "-o",
+            help=(
+                "Optional path for the formatted license report. "
+                "When omitted, the path is built from LICENSE_DIR and LICENSE_NAME "
+                "(default: third_party/licenses.jsonl)."
+            ),
+        ),
+    ] = None,
 ):
     """
     Generate license report for the main project.
@@ -85,12 +98,14 @@ def generate(
         ws_root = get_workspace_root()
         logger.info(f"Workspace root: {ws_root}")
 
-        generate_all_licenses(ws_root, parallel=not sequential, format_type=output_format)
+        output_path = output.resolve() if output is not None else None
+
+        generate_all_licenses(ws_root, parallel=not sequential, format_type=output_format, output_file=output_path)
 
         # Get the actual output paths from the generator
         from nemo_platform_sdk_tools.license.generator import get_projects
 
-        projects = get_projects(ws_root)
+        projects = get_projects(ws_root, output_file=output_path)
 
         print_color("✓ License generation complete!")
         print_color("\nOutput files:")

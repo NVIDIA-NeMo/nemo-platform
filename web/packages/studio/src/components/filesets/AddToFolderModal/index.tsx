@@ -28,6 +28,7 @@ import { FileSystemNode } from '@studio/components/FilesTable/utils';
 import { useDatasetNavigator } from '@studio/hooks/useDatasetNavigator';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getFilesetDetailsRoute } from '@studio/routes/utils';
+import { logger } from '@studio/util/logger';
 import { FolderOpen, Info } from 'lucide-react';
 import { type FC, useMemo } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
@@ -178,7 +179,7 @@ export const AddToFolderModal: FC<AddToFolderModalProps> = ({
 
   const navigateToParentFolder = () => {
     if (!routeWorkspace) {
-      console.warn('AddToFolderModal: Cannot navigate - workspace context not available');
+      logger.warn('AddToFolderModal: Cannot navigate - workspace context not available');
       return;
     }
 

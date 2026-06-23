@@ -6,6 +6,7 @@ import { triggerDownload } from '@nemo/common/src/utils/file';
 import { useDownloadFileAsArrayBuffer } from '@studio/components/filesets/hooks/useDownloadFileAsArrayBuffer';
 import { FileSystemFile } from '@studio/components/FilesTable/utils';
 import { getFileNameFromPath } from '@studio/util/files';
+import { logger } from '@studio/util/logger';
 import { useCallback, useState } from 'react';
 
 export interface UseBulkDownloadOptions {
@@ -70,7 +71,7 @@ export function useBulkDownload(options: UseBulkDownloadOptions): UseBulkDownloa
           );
         }
       } catch (err) {
-        console.error('Bulk download failed', err);
+        logger.error('Bulk download failed', err);
         toast.dismissToast(toastId);
         toast.error(files.length === 1 ? 'Failed to download file' : 'Failed to download files');
       } finally {

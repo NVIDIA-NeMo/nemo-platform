@@ -33,11 +33,16 @@ Workspaces can have different access levels based on role bindings:
 
 Each principal can have different roles in different workspaces:
 
-```text
-alice@company.com:
- - Admin in workspace "team-ml"
- - Editor in workspace "shared-datasets"
- - Viewer in workspace "prod-models"
+```mermaid
+flowchart TB
+    Alice["alice@company.com"]
+    TeamML["team-ml<br/>Admin"]
+    Shared["shared-datasets<br/>Editor"]
+    Prod["prod-models<br/>Viewer"]
+
+    Alice --> TeamML
+    Alice --> Shared
+    Alice --> Prod
 ```
 
 ### Wildcard Principal
@@ -46,10 +51,14 @@ The special principal `*` (asterisk) represents **all authenticated users**. Gra
 
 This is the mechanism for creating shared workspaces:
 
-```text
-Workspace: "shared-datasets"
-├── Role Binding: principal="*", role="Viewer" # Everyone can read
-└── Role Binding: principal="alice@company.com", role="Admin" # Alice manages
+```mermaid
+flowchart TB
+    Workspace["Workspace: shared-datasets"]
+    Everyone["Role Binding<br/>principal=*<br/>role=Viewer"]
+    AliceAdmin["Role Binding<br/>principal=alice@company.com<br/>role=Admin"]
+
+    Workspace --> Everyone
+    Workspace --> AliceAdmin
 ```
 
 When both a wildcard binding and an explicit binding exist for a user, the highest role wins.
@@ -60,14 +69,16 @@ When both a wildcard binding and an explicit binding exist for a user, the highe
 
 The predefined roles form a hierarchy — each role includes all permissions of the roles below it:
 
-```text
-PlatformAdmin (all operations across all workspaces)
- ▲
- Admin (+ manage members, change visibility)
- ▲
- Editor (+ create, update, delete resources)
- ▲
- Viewer (list, read, run inference)
+```mermaid
+flowchart BT
+    Viewer["Viewer<br/>list, read, run inference"]
+    Editor["Editor<br/>create, update, delete resources"]
+    Admin["Admin<br/>manage members, change visibility"]
+    PlatformAdmin["PlatformAdmin<br/>all operations across all workspaces"]
+
+    Viewer --> Editor
+    Editor --> Admin
+    Admin --> PlatformAdmin
 ```
 
 Custom roles can be defined at deployment time with arbitrary permission sets — they do not need to follow this hierarchy. For the complete permission matrix, see [Roles & Permissions](/documentation/access-control/authorization/roles-and-permissions).
@@ -118,19 +129,16 @@ A role binding contains:
 - **Workspace**: The workspace where access is granted (e.g., `team-ml`)
 - **Role**: The role being assigned (e.g., `Editor`)
 
-```text
-Workspace: "team-ml-research"
-├── Role Binding 1
-│ ├── Principal: "alice@company.com"
-│ └── Role: "Admin"
-│
-├── Role Binding 2
-│ ├── Principal: "bob@company.com"
-│ └── Role: "Editor"
-│
-└── Role Binding 3
- ├── Principal: "charlie@company.com"
- └── Role: "Viewer"
+```mermaid
+flowchart TB
+    WorkspaceRB["Workspace: team-ml-research"]
+    RB1["Role Binding 1<br/>alice@company.com<br/>Admin"]
+    RB2["Role Binding 2<br/>bob@company.com<br/>Editor"]
+    RB3["Role Binding 3<br/>charlie@company.com<br/>Viewer"]
+
+    WorkspaceRB --> RB1
+    WorkspaceRB --> RB2
+    WorkspaceRB --> RB3
 ```
 
 ## Automatic Role Assignment

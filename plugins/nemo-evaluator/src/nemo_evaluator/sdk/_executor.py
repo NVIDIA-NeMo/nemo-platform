@@ -10,6 +10,7 @@ from collections.abc import Sequence
 from typing import Any, TypeAlias, cast
 
 import httpx
+from nemo_evaluator.api.schemas import MetricInline
 from nemo_evaluator.filesets import FilesetRef
 from nemo_evaluator.jobs.evaluate import EvaluateInputSpec, EvaluateJob, EvaluateSpec, TargetSpec
 from nemo_evaluator.resolvers import PlatformModelResolver
@@ -119,8 +120,10 @@ def _build_evaluate_spec(
 ) -> EvaluateInputSpec:
     """Build the evaluator plugin input spec shared by local and remote execution."""
     effective_packager = _require_metric_bundle_packager(metric_bundle_packager)
+    runtime_bundles = bundle_metrics_for_spec(metrics, metric_bundle_packager=effective_packager)
     spec = {
-        "metrics": bundle_metrics_for_spec(metrics, metric_bundle_packager=effective_packager),
+        # Carry inline metrics as the wire DTO (matches EvaluateInputSpec.metrics).
+        "metrics": [MetricInline.model_validate_json(bundle.model_dump_json()) for bundle in runtime_bundles],
         "dataset": _dataset_config(dataset, params),
         "params": params.model_dump(mode="json"),
     }

@@ -23,6 +23,60 @@ navigation:
         path: ../../get-started/concepts/projects.mdx
       - page: Workspaces
         path: ../../get-started/concepts/workspaces.mdx
+  - section: Access Control
+    slug: access-control
+    path: ../../auth/index.mdx
+    contents:
+    - page: Overview
+      path: ../../auth/index.mdx
+    - page: Concepts
+      path: ../../auth/concepts.mdx
+    - section: Authentication
+      slug: authentication
+      path: ../../auth/authentication/index.mdx
+      contents:
+      - page: OIDC Setup
+        path: ../../auth/authentication/oidc.mdx
+      - page: Using Authentication
+        path: ../../auth/authentication/using-authentication.mdx
+      - section: Providers
+        slug: providers
+        path: ../../auth/authentication/providers/index.mdx
+        contents:
+        - page: Azure AD (Entra ID)
+          path: ../../auth/authentication/providers/azure-ad.mdx
+        - page: Generic OIDC
+          path: ../../auth/authentication/providers/generic.mdx
+    - section: Authorization
+      slug: authorization
+      path: ../../auth/authorization/index.mdx
+      contents:
+      - page: API Scopes
+        path: ../../auth/authorization/api-scopes.mdx
+      - page: Managing Access
+        path: ../../auth/authorization/managing-access.mdx
+      - page: Permissions Reference
+        path: ../../auth/authorization/permissions-reference.mdx
+      - page: Policy Engine
+        path: ../../auth/authorization/policy-engine.mdx
+      - page: Roles and Permissions
+        path: ../../auth/authorization/roles-and-permissions.mdx
+    - section: Deployment
+      slug: deployment
+      path: ../../auth/deployment/configuration.mdx
+      contents:
+      - page: Configuration
+        path: ../../auth/deployment/configuration.mdx
+      - page: Credential Propagation
+        path: ../../auth/deployment/credential-propagation.mdx
+      - page: Gateway Integration
+        path: ../../auth/deployment/gateway.mdx
+      - page: Production Hardening
+        path: ../../auth/deployment/hardening.mdx
+    - page: Security Model
+      path: ../../auth/security-model.mdx
+    - page: Troubleshooting
+      path: ../../auth/troubleshooting.mdx
   - section: Studio
     path: ../../studio/index.mdx
     contents:

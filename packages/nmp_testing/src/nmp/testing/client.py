@@ -384,9 +384,9 @@ def create_test_client(
             app.state.access_log = access_log_instance
 
         # Configure module-level http client as FALLBACK for direct callers of
-        # get_async_platform_sdk() that don't use DependencyProvider. The primary injection
-        # path is through DependencyProvider (see below). This module-level variable will
-        # be removed once all direct callers are migrated.
+        # get_async_platform_sdk()/get_platform_sdk() that don't use DependencyProvider.
+        # The primary injection path is through DependencyProvider (see below). These
+        # module-level variables will be removed once all direct callers are migrated.
         # See architecture/docs/http-client-injection.md for details.
         sdk_factory_module._test_http_client = async_http_client
         stack.callback(lambda: setattr(sdk_factory_module, "_test_http_client", None))

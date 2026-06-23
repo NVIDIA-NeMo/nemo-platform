@@ -19,10 +19,12 @@ import type {
 import { Text, Tooltip } from '@nvidia/foundations-react-core';
 import { Empty } from '@studio/components/dataViews/ExperimentSessionsDataView/Empty';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
+import { getExperimentTraceDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
 import { keepPreviousData } from '@tanstack/react-query';
 import { Columns3 } from 'lucide-react';
 import { type ComponentProps, type FC, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 type SessionRow = ExperimentSessionResponse & { _rowId: string };
 
@@ -41,6 +43,7 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
   experimentGroupName,
 }) => {
   const workspace = useWorkspaceFromPath();
+  const navigate = useNavigate();
   const dataViewState = useStudioDataViewState<ExperimentSessionFilter>({ columnVisibility: {} });
   const { data: experiment } = useGetExperiment(workspace, experimentName);
 
@@ -215,6 +218,18 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
       dataViewState={dataViewState}
       makeColumns={makeColumns}
       searchField="test_case_id"
+      onRowClick={(row) => {
+        if (row.trace_id) {
+          navigate(
+            getExperimentTraceDetailRoute(
+              workspace,
+              experimentGroupName,
+              experimentName,
+              row.trace_id
+            )
+          );
+        }
+      }}
       toolbarSlotEnd={
         <EditColumnsMenu
           kind="secondary"

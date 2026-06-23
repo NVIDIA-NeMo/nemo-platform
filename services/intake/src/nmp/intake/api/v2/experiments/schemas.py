@@ -100,6 +100,14 @@ class ExperimentResponse(BaseModel):
     summary: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    pinned_at: datetime | None = Field(
+        default=None,
+        description=(
+            "Timestamp at which the experiment was pinned, or null if unpinned. "
+            "Managed via POST/DELETE /experiments/{name}/pin."
+        ),
+        json_schema_extra={"nullable": True},
+    )
 
     evaluator_names: list[str] = Field(default_factory=list)
     model_names: list[str] = Field(
@@ -140,6 +148,7 @@ class ExperimentResponse(BaseModel):
             summary=entity.summary,
             created_at=entity.created_at,
             updated_at=entity.updated_at,
+            pinned_at=entity.pinned_at,
         )
 
 
@@ -172,6 +181,13 @@ class ExperimentFilter(Filter):
     is_deleted: bool | None = Field(
         default=None,
         description=("When true, returns only soft-deleted experiments. Omit (or false) to see only live experiments."),
+    )
+    is_pinned: bool | None = Field(
+        default=None,
+        description=(
+            "When true, returns only pinned experiments. When false, returns only unpinned experiments. "
+            "Omit to return both."
+        ),
     )
 
 

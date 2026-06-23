@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-Apache_2.0-D22128?style=flat-square)](https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11--3.14-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
-[![Docs](https://img.shields.io/badge/docs-nvidia--nemo.github.io-76B900?style=flat-square&logo=readthedocs&logoColor=white)](https://nvidia-nemo.github.io/nemo-platform/)
+[![Docs](https://img.shields.io/static/v1?label=docs&message=docs.nvidia.com%2Fnemo-platform&color=76B900&style=flat-square&logo=readthedocs&logoColor=white)](https://docs.nvidia.com/nemo-platform)
 
 Build NeMo Platform plugins in Python.
 
@@ -109,7 +109,7 @@ That's a complete plugin. Adding a CLI command, a job, a controller, typed confi
 - **This package source:** https://github.com/NVIDIA-NeMo/nemo-platform/tree/main/packages/nemo_platform_plugin
 - **NeMo Platform on PyPI:** https://pypi.org/project/nemo-platform/
 - **NeMo Platform on GitHub:** https://github.com/NVIDIA-NeMo/nemo-platform
-- **NeMo Platform docs:** https://nvidia-nemo.github.io/nemo-platform/
+- **NeMo Platform docs:** https://docs.nvidia.com/nemo-platform/
 - **Issue tracker:** https://github.com/NVIDIA-NeMo/nemo-platform/issues
 
 ## License

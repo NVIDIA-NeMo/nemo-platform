@@ -587,6 +587,61 @@ class TestConfigWrite:
         assert isinstance(user, OAuthUser)
         assert user.token.get_secret_value() == "test-token-123"
 
+    def test_write_with_access_token_none_clears_oauth_user(self, tmp_path: Path):
+        """Test that write() clears OAuth credentials when access_token is explicitly None."""
+        config_path = tmp_path / "config.yaml"
+        Config.write(
+            {
+                "base_url": "http://test.example.com",
+                "access_token": "test-token-123",
+                "refresh_token": "test-refresh-123",
+            },
+            context_name="default",
+            config_path=config_path,
+        )
+
+        config = Config.write(
+            {"access_token": None, "refresh_token": None},
+            context_name="default",
+            config_path=config_path,
+        )
+
+        user = config.get_config_file().users[0]
+        assert isinstance(user, NoAuthUser)
+
+        with open(config_path) as f:
+            data = yaml.safe_load(f)
+
+        stored_user = data["users"][0]
+        assert stored_user["type"] == "no-auth"
+        assert "token" not in stored_user
+        assert "refresh_token" not in stored_user
+
+    def test_write_without_access_token_preserves_oauth_user(self, tmp_path: Path):
+        """Test that unrelated config writes preserve existing OAuth credentials."""
+        config_path = tmp_path / "config.yaml"
+        Config.write(
+            {
+                "base_url": "http://test.example.com",
+                "access_token": "test-token-123",
+                "refresh_token": "test-refresh-123",
+            },
+            context_name="default",
+            config_path=config_path,
+        )
+
+        config = Config.write(
+            {"workspace": "updated-workspace"},
+            context_name="default",
+            config_path=config_path,
+        )
+
+        user = config.get_config_file().users[0]
+        assert isinstance(user, OAuthUser)
+        assert user.token.get_secret_value() == "test-token-123"
+        assert user.refresh_token is not None
+        assert user.refresh_token.get_secret_value() == "test-refresh-123"
+
     def test_write_without_access_token_creates_noauth_user(self, tmp_path: Path):
         """Test that write() creates NoAuthUser when no access_token provided."""
         config_path = tmp_path / "config.yaml"

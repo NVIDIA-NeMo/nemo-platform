@@ -198,7 +198,7 @@ describe('EvaluationJobBulkDeleteModal', () => {
 
       await waitFor(() => {
         expect(consoleSpy).toHaveBeenCalledWith(
-          'Failed to delete evaluation jobs:',
+          'Failed to delete evaluation jobs',
           expect.any(Error)
         );
       });

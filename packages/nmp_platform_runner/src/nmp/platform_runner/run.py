@@ -35,6 +35,23 @@ def _startup_phase(name: str, t0: float) -> None:
     logger.info("[STARTUP] %s: %dms", name, elapsed_ms)
 
 
+def _database_display(db_url: str) -> str:
+    """Format a SQLAlchemy database URL for the startup banner."""
+    try:
+        from sqlalchemy.engine import make_url
+
+        parsed = make_url(db_url)
+    except Exception:
+        logger.debug("Failed to parse database URL for startup banner", exc_info=True)
+        db_type = db_url.split("://")[0].split("+")[0] if "://" in db_url else "unknown"
+        return db_type
+
+    db_type = parsed.drivername.split("+", 1)[0]
+    if db_type == "sqlite":
+        return f"{db_type} ({parsed.database or ''})"
+    return db_type
+
+
 def run_controllers_in_threads(
     controller_run_funcs: dict[str, Callable],
     stop_signal: threading.Event,
@@ -243,12 +260,7 @@ def _display_banner(
 
     entities_config = get_service_config(EntitiesConfig)
     db_url = entities_config.database_config.sqlalchemy_database_url()
-    db_type = db_url.split("://")[0].split("+")[0] if "://" in db_url else "unknown"
-    if db_type == "sqlite":
-        db_path = db_url.replace("sqlite://", "").replace("sqlite+aiosqlite://", "")
-        db_display = f"{db_type} ({db_path})"
-    else:
-        db_display = db_type
+    db_display = _database_display(db_url)
 
     auth_config = get_auth_config()
     auth_status = "enabled" if auth_config.enabled else "disabled"
