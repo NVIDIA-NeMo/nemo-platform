@@ -229,8 +229,7 @@ export function useDatasetSchemaEditor({
     } finally {
       setIsInferring(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- workspace/datasetName captured inside downloadFileHead's own useCallback
-  }, [supportedExistingFiles, downloadFileHead]);
+  }, [supportedExistingFiles, downloadFileHead, workspace, datasetName]);
 
   const { mutateAsync: updateMetadata, isPending: isSaving } = useFilesUpdateFilesetMetadata();
   const queryClient = useQueryClient();

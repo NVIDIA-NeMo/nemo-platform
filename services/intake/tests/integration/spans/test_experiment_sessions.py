@@ -89,7 +89,7 @@ def test_list_experiment_sessions_returns_joined_session_rows(client: TestClient
     assert case_a["input_tokens"] == 100
     assert case_a["output_tokens"] == 10
     assert case_a["cost_total_usd"] == pytest.approx(0.05)
-    assert case_a["evaluator_scores"] == {"harbor.verifier": pytest.approx(1.0)}
+    assert case_a["evaluator_scores"] == {"reward": pytest.approx(1.0)}
     assert case_a["status"] in {"success", "unknown"}
 
     paged = client.get(f"{EXPERIMENTS}/{experiment_name}/sessions", params={"page": 2, "page_size": 1})
@@ -98,7 +98,7 @@ def test_list_experiment_sessions_returns_joined_session_rows(client: TestClient
     assert paged_body["pagination"]["total_results"] == 3
     assert len(paged_body["data"]) == 1
     assert paged_body["data"][0]["test_case_id"] == "case-b"
-    assert paged_body["data"][0]["evaluator_scores"] == {"harbor.verifier": pytest.approx(0.5)}
+    assert paged_body["data"][0]["evaluator_scores"] == {"reward": pytest.approx(0.5)}
 
 
 def test_list_experiment_sessions_filter_by_test_case(client: TestClient) -> None:
