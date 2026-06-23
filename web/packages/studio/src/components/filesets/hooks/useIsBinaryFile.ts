@@ -10,36 +10,103 @@ import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 
 /**
+ * Extensions that are unambiguously text. The backend HEAD endpoint returns
+ * `application/octet-stream` for all files, so Content-Type-based detection
+ * fails for these. This allowlist short-circuits the HEAD request.
+ */
+const KNOWN_TEXT_EXTENSIONS = new Set([
+  // Data
+  'json',
+  'jsonl',
+  'csv',
+  'tsv',
+  // Code
+  'py',
+  'js',
+  'jsx',
+  'ts',
+  'tsx',
+  'java',
+  'c',
+  'cpp',
+  'h',
+  'go',
+  'rs',
+  'rb',
+  'php',
+  'swift',
+  'kt',
+  'scala',
+  'r',
+  'm',
+  'sh',
+  'bash',
+  'zsh',
+  'fish',
+  // Markup / Config
+  'html',
+  'htm',
+  'xml',
+  'yaml',
+  'yml',
+  'toml',
+  'ini',
+  'cfg',
+  'conf',
+  'jsonc',
+  'env',
+  // Text
+  'txt',
+  'md',
+  'rst',
+  'log',
+  'diff',
+  'patch',
+  // Other
+  'sql',
+  'graphql',
+  'proto',
+  'dockerfile',
+  'makefile',
+]);
+
+function isKnownTextExtension(path: string): boolean {
+  const ext = path.split('.').at(-1)?.toLowerCase();
+  return ext !== undefined && KNOWN_TEXT_EXTENSIONS.has(ext);
+}
+
+/**
  * Determine whether a fileset file should be treated as binary (no text preview).
  *
- * Strategy (three tiers):
- *   1. Extension in `BINARY_FILE_EXTENSIONS` → binary immediately, no network.
- *   2. Extension not in blocklist → HEAD request; `Content-Type` header decides.
+ * Strategy (four tiers):
+ *   1. Extension in `KNOWN_TEXT_EXTENSIONS` → text immediately, no network.
+ *   2. Extension in `BINARY_FILE_EXTENSIONS` → binary immediately, no network.
+ *   3. Extension not in either list → HEAD request; `Content-Type` decides.
  *      - `text/*` or known text application types → not binary.
  *      - Everything else → binary.
- *   3. HEAD fails / no Content-Type → assume text (fail-open for preview).
+ *   4. HEAD fails / no Content-Type → assume text (fail-open for preview).
  *
  * Returns `{ isBinary, isLoading }`. `isLoading` is true only during the HEAD
- * request (tier-2 path); tier-1 resolves synchronously.
+ * request (tier-3 path); tiers 1-2 resolve synchronously.
  */
 export function useIsBinaryFile(
   workspace: string,
   filesetName: string,
   filePath: string | undefined
 ): { isBinary: boolean; isLoading: boolean } {
+  const knownText = filePath !== undefined && isKnownTextExtension(filePath);
   const blocklisted = filePath !== undefined && isBinaryExtension(filePath);
 
   const { data: headBinary, isPending } = useQuery({
     queryKey: ['file-content-type', workspace, filesetName, filePath],
     queryFn: async (): Promise<boolean> => {
-      if (!filePath) return false;
       try {
         // axios.head() is auth-aware via the interceptor registered when
         // '@nemo/sdk/generated/fetchers/platform' is imported above.
         const [fileUrl] = getFilesDownloadFileQueryKey(
           encodeURIComponent(workspace),
           encodeURIComponent(filesetName),
-          encodeURIComponent(filePath)
+          encodeURIComponent(filePath!)
         );
         const res = await axios.head(fileUrl);
         const ct = String(res.headers['content-type'] ?? '');
@@ -48,13 +115,14 @@ export function useIsBinaryFile(
         return false; // fail-open: assume text
       }
     },
-    enabled: !!filePath && !blocklisted,
+    enabled: !!filePath && !knownText && !blocklisted,
     staleTime: Infinity,
     retry: false,
   });
 
-  if (blocklisted) return { isBinary: true, isLoading: false };
   if (!filePath) return { isBinary: false, isLoading: false };
+  if (knownText) return { isBinary: false, isLoading: false };
+  if (blocklisted) return { isBinary: true, isLoading: false };
   return { isBinary: headBinary ?? false, isLoading: isPending };
 }
 
