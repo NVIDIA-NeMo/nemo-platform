@@ -72,7 +72,7 @@ export const ChatPlaygroundContent: FC<ChatPlaygroundContentProps> = ({
               ? `${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/${workspace}/deployments/${chatDeployment.name}/-/v1`
               : undefined
           }
-          disabled={noHealthyDeployments}
+          disabled={isDeploymentsLoading || noHealthyDeployments || !chatDeployment}
         />
       </Block>
     </div>
