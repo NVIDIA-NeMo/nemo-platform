@@ -353,3 +353,60 @@ def test_error_response_body_is_none() -> None:
 
     assert resp.body is None
     assert resp.http_response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Per-request headers
+# ---------------------------------------------------------------------------
+
+
+def test_extra_headers_merged_into_request() -> None:
+    mock_http = MagicMock(spec=httpx.Client)
+    mock_http.request.return_value = httpx.Response(
+        200,
+        request=httpx.Request("GET", f"{BASE}/apis/test/v2/items/alice"),
+        json={"id": 1, "name": "alice"},
+    )
+
+    client = NemoClient(base_url=BASE, http_client=mock_http)
+    client.send(GET_ITEM(name="alice"), headers={"Accept": "application/octet-stream"})
+
+    _, kwargs = mock_http.request.call_args
+    assert kwargs["headers"]["Accept"] == "application/octet-stream"
+
+
+def test_extra_headers_dont_override_content_type() -> None:
+    mock_http = MagicMock(spec=httpx.Client)
+    mock_http.request.return_value = httpx.Response(
+        201,
+        request=httpx.Request("POST", f"{BASE}/apis/test/v2/items"),
+        json={"id": 1, "name": "alice"},
+    )
+
+    client = NemoClient(base_url=BASE, http_client=mock_http)
+    client.send(CREATE_ITEM(ItemRequest(name="alice")), headers={"X-Custom": "value"})
+
+    _, kwargs = mock_http.request.call_args
+    assert kwargs["headers"]["Content-Type"] == "application/json"
+    assert kwargs["headers"]["X-Custom"] == "value"
+
+
+# ---------------------------------------------------------------------------
+# Response carries request
+# ---------------------------------------------------------------------------
+
+
+def test_response_carries_prepared_request() -> None:
+    mock_http = MagicMock(spec=httpx.Client)
+    mock_http.request.return_value = httpx.Response(
+        200,
+        request=httpx.Request("GET", f"{BASE}/apis/test/v2/items/alice"),
+        json={"id": 1, "name": "alice"},
+    )
+
+    client = NemoClient(base_url=BASE, http_client=mock_http)
+    resp = client.send(GET_ITEM(name="alice"))
+
+    assert resp.request is not None
+    assert resp.request.method == "GET"
+    assert resp.request.path_params == {"name": "alice"}

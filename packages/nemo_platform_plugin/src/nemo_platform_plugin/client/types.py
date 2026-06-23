@@ -10,7 +10,7 @@ used across the client package.
 from __future__ import annotations
 
 from collections.abc import AsyncIterable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Generic, ParamSpec, TypeVar
 
 from pydantic import BaseModel
@@ -56,3 +56,9 @@ class PreparedRequest(Generic[ResponseT]):
     content_type: str | None
     response_type: type[ResponseT] | None
     query_params: dict[str, str | int | bool | None] | None = None
+    extra_headers: dict[str, str] | None = None
+
+    def with_headers(self, headers: dict[str, str]) -> PreparedRequest[ResponseT]:
+        """Return a new PreparedRequest with additional headers merged in."""
+        merged = {**(self.extra_headers or {}), **headers}
+        return replace(self, extra_headers=merged)

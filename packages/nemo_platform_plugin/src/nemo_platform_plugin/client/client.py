@@ -79,9 +79,12 @@ class BaseNemoClient:
         return self._base_url + path
 
     def _request_headers(self, request: PreparedRequest) -> dict[str, str] | None:
+        headers: dict[str, str] = {}
         if request.content_type is not None:
-            return {"Content-Type": request.content_type}
-        return None
+            headers["Content-Type"] = request.content_type
+        if request.extra_headers:
+            headers.update(request.extra_headers)
+        return headers or None
 
     def _is_binary(self, request: PreparedRequest) -> bool:
         return request.response_type is BinaryContent
@@ -116,45 +119,66 @@ class NemoClient(BaseNemoClient):
         )
 
     @overload
-    def send(self, request: PreparedRequest[BinaryContent]) -> NemoBinaryResponse: ...
+    def send(
+        self, request: PreparedRequest[BinaryContent], *, headers: dict[str, str] | None = None
+    ) -> NemoBinaryResponse: ...
     @overload
-    def send(self, request: PreparedRequest[Stream[ModelT]]) -> NemoStreamResponse[ModelT]: ...
+    def send(
+        self, request: PreparedRequest[Stream[ModelT]], *, headers: dict[str, str] | None = None
+    ) -> NemoStreamResponse[ModelT]: ...
     @overload
-    def send(self, request: PreparedRequest[None]) -> NemoResponse[None]: ...
+    def send(
+        self, request: PreparedRequest[None], *, headers: dict[str, str] | None = None
+    ) -> NemoResponse[None]: ...
     @overload
-    def send(self, request: PreparedRequest[ResponseT]) -> NemoResponse[ResponseT]: ...
+    def send(
+        self, request: PreparedRequest[ResponseT], *, headers: dict[str, str] | None = None
+    ) -> NemoResponse[ResponseT]: ...
 
-    def send(self, request: PreparedRequest) -> NemoResponse | NemoBinaryResponse | NemoStreamResponse:
+    def send(
+        self, request: PreparedRequest, *, headers: dict[str, str] | None = None
+    ) -> NemoResponse | NemoBinaryResponse | NemoStreamResponse:
         """Send a prepared request and return a typed response.
 
-        The return type is determined by the endpoint's ``ResponseT``.
+        Args:
+            request: The prepared request to send.
+            headers: Optional per-request headers merged on top of client
+                defaults and content-type headers.
 
         For binary and streaming endpoints, the caller should use the
         response as a context manager to ensure the connection is closed::
 
-            with client.send(endpoints.download_blob(name="file.csv")) as resp:
+            with client.send(endpoints.download(name="file.csv")) as resp:
                 for chunk in resp:
                     f.write(chunk)
         """
+        if headers:
+            request = request.with_headers(headers)
         url = self._resolve_path(request)
-        headers = self._request_headers(request)
+        req_headers = self._request_headers(request)
         params = self._resolve_query_params(request)
 
         if self._is_binary(request):
-            stream_ctx = self._http.stream(request.method, url, content=request.content, headers=headers, params=params)
-            return NemoBinaryResponse(stream_ctx)
+            stream_ctx = self._http.stream(
+                request.method, url, content=request.content, headers=req_headers, params=params
+            )
+            return NemoBinaryResponse(stream_ctx, request)
 
         if self._is_stream(request):
             assert request.response_type is not None
-            stream_ctx = self._http.stream(request.method, url, content=request.content, headers=headers, params=params)
+            stream_ctx = self._http.stream(
+                request.method, url, content=request.content, headers=req_headers, params=params
+            )
             model_type = _get_stream_model_type(request.response_type)
-            return NemoStreamResponse(stream_ctx, model_type)
+            return NemoStreamResponse(stream_ctx, model_type, request)
 
-        raw = self._http.request(request.method, url, content=request.content, headers=headers, params=params)
+        raw = self._http.request(
+            request.method, url, content=request.content, headers=req_headers, params=params
+        )
         body = None
         if raw.is_success and request.response_type is not None:
             body = request.response_type.model_validate(raw.json())
-        return NemoResponse(http_response=raw, body=body)
+        return NemoResponse(http_response=raw, body=body, request=request)
 
 
 class AsyncNemoClient(BaseNemoClient):
@@ -179,32 +203,50 @@ class AsyncNemoClient(BaseNemoClient):
         )
 
     @overload
-    async def send(self, request: PreparedRequest[BinaryContent]) -> AsyncNemoBinaryResponse: ...
+    async def send(
+        self, request: PreparedRequest[BinaryContent], *, headers: dict[str, str] | None = None
+    ) -> AsyncNemoBinaryResponse: ...
     @overload
-    async def send(self, request: PreparedRequest[Stream[ModelT]]) -> AsyncNemoStreamResponse[ModelT]: ...
+    async def send(
+        self, request: PreparedRequest[Stream[ModelT]], *, headers: dict[str, str] | None = None
+    ) -> AsyncNemoStreamResponse[ModelT]: ...
     @overload
-    async def send(self, request: PreparedRequest[None]) -> NemoResponse[None]: ...
+    async def send(
+        self, request: PreparedRequest[None], *, headers: dict[str, str] | None = None
+    ) -> NemoResponse[None]: ...
     @overload
-    async def send(self, request: PreparedRequest[ResponseT]) -> NemoResponse[ResponseT]: ...
+    async def send(
+        self, request: PreparedRequest[ResponseT], *, headers: dict[str, str] | None = None
+    ) -> NemoResponse[ResponseT]: ...
 
-    async def send(self, request: PreparedRequest) -> NemoResponse | AsyncNemoBinaryResponse | AsyncNemoStreamResponse:
+    async def send(
+        self, request: PreparedRequest, *, headers: dict[str, str] | None = None
+    ) -> NemoResponse | AsyncNemoBinaryResponse | AsyncNemoStreamResponse:
         """Send a prepared request and return a typed response."""
+        if headers:
+            request = request.with_headers(headers)
         url = self._resolve_path(request)
-        headers = self._request_headers(request)
+        req_headers = self._request_headers(request)
         params = self._resolve_query_params(request)
 
         if self._is_binary(request):
-            stream_ctx = self._http.stream(request.method, url, content=request.content, headers=headers, params=params)
-            return AsyncNemoBinaryResponse(stream_ctx)
+            stream_ctx = self._http.stream(
+                request.method, url, content=request.content, headers=req_headers, params=params
+            )
+            return AsyncNemoBinaryResponse(stream_ctx, request)
 
         if self._is_stream(request):
             assert request.response_type is not None
-            stream_ctx = self._http.stream(request.method, url, content=request.content, headers=headers, params=params)
+            stream_ctx = self._http.stream(
+                request.method, url, content=request.content, headers=req_headers, params=params
+            )
             model_type = _get_stream_model_type(request.response_type)
-            return AsyncNemoStreamResponse(stream_ctx, model_type)
+            return AsyncNemoStreamResponse(stream_ctx, model_type, request)
 
-        raw = await self._http.request(request.method, url, content=request.content, headers=headers, params=params)
+        raw = await self._http.request(
+            request.method, url, content=request.content, headers=req_headers, params=params
+        )
         body = None
         if raw.is_success and request.response_type is not None:
             body = request.response_type.model_validate(raw.json())
-        return NemoResponse(http_response=raw, body=body)
+        return NemoResponse(http_response=raw, body=body, request=request)

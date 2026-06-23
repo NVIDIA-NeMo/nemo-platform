@@ -12,6 +12,7 @@ from types import TracebackType
 from typing import Generic, TypeVar
 
 import httpx
+from nemo_platform_plugin.client.types import PreparedRequest
 from pydantic import BaseModel
 
 ResponseT = TypeVar("ResponseT")
@@ -33,6 +34,7 @@ class NemoResponse(Generic[ResponseT]):
 
     http_response: httpx.Response
     body: ResponseT
+    request: PreparedRequest
 
     def data(self) -> ResponseT:
         """Return the body if the status is 2xx, otherwise raise."""
@@ -56,9 +58,12 @@ class NemoBinaryResponse:
             # or: for chunk in resp  # iterate chunks
     """
 
-    def __init__(self, stream_ctx: AbstractContextManager[httpx.Response]) -> None:
+    def __init__(
+        self, stream_ctx: AbstractContextManager[httpx.Response], request: PreparedRequest
+    ) -> None:
         self._stream_ctx = stream_ctx
         self._response: httpx.Response | None = None
+        self.request = request
 
     @property
     def http_response(self) -> httpx.Response:
@@ -93,10 +98,16 @@ class NemoStreamResponse(Generic[ModelT]):
                 print(chunk.text)
     """
 
-    def __init__(self, stream_ctx: AbstractContextManager[httpx.Response], model_type: type[ModelT]) -> None:
+    def __init__(
+        self,
+        stream_ctx: AbstractContextManager[httpx.Response],
+        model_type: type[ModelT],
+        request: PreparedRequest,
+    ) -> None:
         self._stream_ctx = stream_ctx
         self._model_type = model_type
         self._response: httpx.Response | None = None
+        self.request = request
 
     @property
     def http_response(self) -> httpx.Response:
@@ -135,9 +146,12 @@ class AsyncNemoBinaryResponse:
             # or: async for chunk in resp      # iterate chunks
     """
 
-    def __init__(self, stream_ctx: AbstractAsyncContextManager[httpx.Response]) -> None:
+    def __init__(
+        self, stream_ctx: AbstractAsyncContextManager[httpx.Response], request: PreparedRequest
+    ) -> None:
         self._stream_ctx = stream_ctx
         self._response: httpx.Response | None = None
+        self.request = request
 
     @property
     def http_response(self) -> httpx.Response:
@@ -173,10 +187,16 @@ class AsyncNemoStreamResponse(Generic[ModelT]):
                 print(chunk.text)
     """
 
-    def __init__(self, stream_ctx: AbstractAsyncContextManager[httpx.Response], model_type: type[ModelT]) -> None:
+    def __init__(
+        self,
+        stream_ctx: AbstractAsyncContextManager[httpx.Response],
+        model_type: type[ModelT],
+        request: PreparedRequest,
+    ) -> None:
         self._stream_ctx = stream_ctx
         self._model_type = model_type
         self._response: httpx.Response | None = None
+        self.request = request
 
     @property
     def http_response(self) -> httpx.Response:
