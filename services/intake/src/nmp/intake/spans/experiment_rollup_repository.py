@@ -69,9 +69,15 @@ def _score_from_dict(data: dict[str, Any] | None) -> ScoreRollup | None:
     )
 
 
+# Bump when the stored metrics shape or how an aggregate is computed changes, so readers can tell
+# blobs written by an older rollup version apart (and recompute/fall back rather than trust stale shapes).
+METRICS_VERSION = 1
+
+
 def rollup_to_metrics(rollup: ExperimentRollup, *, refreshed_at: str) -> dict[str, Any]:
     """Serialize a rollup into the JSON-safe dict stored on ``Experiment.metrics``."""
     return {
+        "version": METRICS_VERSION,
         "run_count": rollup.run_count,
         "model_names": rollup.model_names,
         "agent_names": rollup.agent_names,

@@ -103,6 +103,7 @@ async def test_flush_writes_denormalized_metrics() -> None:
     assert {entity.name for entity in entity_client.updated} == {"exp-a", "exp-b"}
     written = entity_client.updated[0].metrics
     assert written is not None
+    assert written["version"] == 1
     assert written["run_count"] == 3
     assert written["evaluators"]["reward"]["mean"] == pytest.approx(0.667)
     assert written["cost_usd"]["mean"] == pytest.approx(0.2)
