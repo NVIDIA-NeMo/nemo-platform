@@ -15,9 +15,12 @@ benchmark modules with `PYTHONPATH` pointed at that checkout.
 plugins/nemo-guardrails/benchmarks/
   configs/
     nmp_igw_guardrails_sweep_concurrency.yaml   # AIPerf sweep template
+    mock_llm/                                   # in-repo mock LLM env files
+  results/                                      # historical baseline notes
   artifacts/                                    # per-run outputs (gitignored)
 plugins/nemo-guardrails/src/nemo_guardrails_plugin/benchmarks/
   run.py             # entrypoint: `python -m nemo_guardrails_plugin.benchmarks.run`
+  analyze.py         # post-run analysis; checks latencies against baseline values
   paths.py           # filesystem layout
   constants.py       # workspace / VM / provider names
   processes.py       # subprocess supervision (process groups + ExitStack)
@@ -181,15 +184,76 @@ plugins/nemo-guardrails/benchmarks/artifacts/runs/<timestamp>/
 
 ## CI
 
-A `benchmark-guardrails` job in `.github/workflows/ci.yaml` checks out both
-this repo and `NVIDIA/NeMo-Guardrails`, runs `make bootstrap-python` and
-`make benchmark-guardrails`, and uploads the per-run artifacts directory
-(`logs/`, `generated/`, `aiperf_results/`) on success or failure.
+Two jobs in `.github/workflows/ci.yaml`:
 
-Pass/fail is driven by the harness's exit code, which is non-zero if `aiperf`
-itself exits non-zero or any sweep returns a non-zero exit code. No latency
-thresholds are enforced — those can be layered on later by a separate
-analyzer that reads the per-sweep CSVs.
+- `benchmark-guardrails` — matrix of two parallel jobs, one per variant
+  (`with-guardrails`, `without-guardrails`), each on its own NMP instance.
+  Uploads per-variant artifacts (`logs/`, `generated/`, `aiperf_results/`).
+- `benchmark-guardrails-analyze` — joins the two matrix jobs, downloads both
+  artifacts, prints a side-by-side comparison via
+  `nemo_guardrails_plugin.benchmarks.analyze`, and runs the baseline check
+  (see below). Fails the build on a latency regression beyond tolerance. The
+  analyzer is stdlib-only by design, so this job runs on the runner's stock
+  `python3` without bootstrapping the uv workspace.
+
+### Baseline and gating
+
+CI compares the run's delta_p50 (with-guardrails minus without-guardrails
+p50, in ms) against a checked-in baseline. The baseline lives as
+module-level constants in:
+
+```text
+plugins/nemo-guardrails/src/nemo_guardrails_plugin/benchmarks/analyze.py
+```
+
+Why only delta_p50 (and not absolute with-guardrails p50)? delta_p50
+isolates the middleware's contribution — shared CI runner noise cancels
+across the two variants.
+
+#### Baseline constants
+
+- `CONCURRENCIES_TO_VALIDATE: list[int]` — concurrency levels to gate on.
+  Other levels still appear in the analyzer's output tables, but pass/fail
+  is decided only by these.
+- `DEFAULT_DELTA_P50_TOLERANCE_MS: int` — default tolerance (in ms) applied
+  to every validated concurrency. A check fails when
+  `|observed - baseline| > tolerance`.
+- `DELTA_P50_TOLERANCE_OVERRIDES_MS: dict[int, int]` — per-concurrency
+  tolerance overrides (in ms). Levels without an override fall back to the
+  default.
+- `DELTA_P50_BASELINE_BY_CONCURRENCY: dict[int, int]` — expected delta_p50
+  (in ms) per concurrency level. Edit by hand when a real change shifts
+  the numbers.
+
+Worked example: at c=16 the override is 300 ms, so a run with observed
+delta_p50 = 1689 (diff +299 from baseline 1390) passes; observed
+delta_p50 = 1691 (diff +301) fails.
+
+Notes on the current values:
+
+- c=16 and c=32 use wider tolerances than the default because their
+  absolute delta_p50 is larger. Over time, we can tighten these values
+  if latencies in CI produce less variance.
+- Any change to mock-LLM latencies, the guardrails config, or the runner
+  class invalidates the current baseline values. The benchmark should be
+  re-run in CI several tiems to establish updated baseline values.
+
+#### Running the analyzer locally
+
+```bash
+python3 plugins/nemo-guardrails/src/nemo_guardrails_plugin/benchmarks/analyze.py \
+    plugins/nemo-guardrails/benchmarks/artifacts/runs/<run-id>
+```
+
+Local runs print both tables and the baseline-check table.
+CI passes `--strict` to make any out-of-tolerance check fail the job.
+
+#### Updating the baseline
+
+When a real change shifts the numbers (ex. a deliberate middleware change,
+a mock-LLM config change, or a runner-class change), edit the constants at
+the top of `analyze.py` by hand and reference the PR / CI run that
+justifies it in the commit.
 
 ## Cleanup
 

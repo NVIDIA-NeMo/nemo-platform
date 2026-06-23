@@ -1370,7 +1370,7 @@ jobs:
         run: |
           RUN_DIR=$(find plugins/nemo-guardrails/benchmarks/artifacts/runs -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' | sort -nr | head -1 | cut -d' ' -f2-)
           echo "Analyzing run directory: $RUN_DIR"
-          python3 plugins/nemo-guardrails/src/nemo_guardrails_plugin/benchmarks/analyze.py "$RUN_DIR"
+          python3 plugins/nemo-guardrails/src/nemo_guardrails_plugin/benchmarks/analyze.py "$RUN_DIR" --strict
       - name: Upload merged benchmark artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

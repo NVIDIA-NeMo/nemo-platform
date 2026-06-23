@@ -26,6 +26,36 @@ from pathlib import Path
 VARIANT_WITH_GUARDRAILS = "with-guardrails"
 VARIANT_WITHOUT_GUARDRAILS = "without-guardrails"
 
+# --- CI baseline gate ---------------------------------------------------------
+# For each concurrency level we list:
+#   - The expected p50 latency delta between requests with guardrails vs.
+#     without guardrails.
+#   - The allowed plus/minus tolerance in CI. Benchmark jobs whose p50
+#     latency exceeds this tolerance will fail.
+
+# Concurrency levels we check in CI.
+CONCURRENCIES_TO_VALIDATE: list[int] = [1, 2, 4, 8, 16, 32]
+
+# Tolerance (ms) used for every concurrency level unless overridden below.
+DEFAULT_DELTA_P50_TOLERANCE_MS: int = 150
+
+# Looser tolerance (ms) for higher concurrencies. With more requests in
+# flight at once, they contend for shared resources (the IGW event loop,
+# the mock-LLM workers, the CI runner's CPU), so we see more variance in
+# latency values.
+DELTA_P50_TOLERANCE_OVERRIDES_MS: dict[int, int] = {16: 200, 32: 300}
+
+# Estimated expected delta_p50 (ms) at each concurrency level, based on
+# a few sample runs in CI.
+DELTA_P50_BASELINE_BY_CONCURRENCY: dict[int, int] = {
+    1: 1070,
+    2: 1110,
+    4: 1190,
+    8: 1230,
+    16: 1390,
+    32: 2430,
+}
+
 log = logging.getLogger(__name__)
 
 _LATENCY_METRIC = "Request Latency (ms)"
@@ -134,7 +164,18 @@ def format_table(rows: list[ComparisonRow]) -> str:
     if not rows:
         return "No comparable sweep results found (need both variants to share concurrency levels)."
 
-    header = ("conc", "with p50", "w/o p50", "Δ p50", "with p90", "w/o p90", "Δ p90", "with avg", "w/o avg", "Δ avg")
+    header = (
+        "conc",
+        "with p50",
+        "w/o p50",
+        "delta p50",
+        "with p90",
+        "w/o p90",
+        "delta p90",
+        "with avg",
+        "w/o avg",
+        "delta avg",
+    )
     fmt = "{:>4}  {:>9}  {:>9}  {:>9}  {:>9}  {:>9}  {:>9}  {:>9}  {:>9}  {:>9}"
     header_line = fmt.format(*header)
     lines = [header_line, "-" * len(header_line)]
@@ -154,7 +195,7 @@ def format_table(rows: list[ComparisonRow]) -> str:
             )
         )
     lines.append("")
-    lines.append("All values in milliseconds. 'Δ' = with-guardrails minus without-guardrails.")
+    lines.append("All values in milliseconds. 'delta' columns = with-guardrails minus without-guardrails.")
     return "\n".join(lines)
 
 
@@ -162,13 +203,24 @@ def format_platform_overhead_table(rows: list[ComparisonRow]) -> str:
     """Render a table with mock-LLM time subtracted from p50/p90/avg.
 
     Isolates NMP + IGW + shim + middleware overhead from the much larger
-    mock sleeps. The Δ columns are the middleware's own cost over the bare
-    path.
+    mock sleeps. The delta columns are the middleware's own cost over the
+    bare path.
     """
     if not rows:
         return "No comparable sweep results found (need both variants to share concurrency levels)."
 
-    header = ("conc", "with p50", "w/o p50", "Δ p50", "with p90", "w/o p90", "Δ p90", "with avg", "w/o avg", "Δ avg")
+    header = (
+        "conc",
+        "with p50",
+        "w/o p50",
+        "delta p50",
+        "with p90",
+        "w/o p90",
+        "delta p90",
+        "with avg",
+        "w/o avg",
+        "delta avg",
+    )
     fmt = "{:>4}  {:>9}  {:>9}  {:>9}  {:>9}  {:>9}  {:>9}  {:>9}  {:>9}  {:>9}"
     header_line = fmt.format(*header)
     lines = [header_line, "-" * len(header_line)]
@@ -201,7 +253,7 @@ def format_platform_overhead_table(rows: list[ComparisonRow]) -> str:
         f"{_CONTENT_SAFETY_CALLS_PER_GUARDED_REQUEST}× content-safety; "
         f"without-guardrails: {_MOCK_TIME_PER_REQUEST_WITHOUT_GUARDRAILS_MS:.0f} ms = 1× app)."
     )
-    lines.append("'Δ' columns are the middleware's own overhead over the bare NMP+IGW path.")
+    lines.append("'delta' columns are the middleware's own overhead over the bare NMP+IGW path.")
     return "\n".join(lines)
 
 
@@ -225,6 +277,100 @@ def analyze_run(run_dir: Path) -> str:
 
     rows = compare(latency_by_concurrency_with_guardrails, latency_by_concurrency_without_guardrails)
     return f"{format_table(rows)}\n\n{format_platform_overhead_table(rows)}"
+
+
+def _load_comparison_rows(run_dir: Path) -> list[ComparisonRow]:
+    """Reload comparison rows from a run dir; returns ``[]`` if either variant is absent."""
+    aiperf_dir = run_dir / "aiperf_results"
+    with_guardrails = load_variant_results(aiperf_dir / VARIANT_WITH_GUARDRAILS)
+    without_guardrails = load_variant_results(aiperf_dir / VARIANT_WITHOUT_GUARDRAILS)
+    if not with_guardrails or not without_guardrails:
+        return []
+    return compare(with_guardrails, without_guardrails)
+
+
+@dataclass(frozen=True)
+class LatencyReport:
+    """Latency results for a single concurrency level, rendered as one row of the report.
+
+    Each instance represents a single concurrency level from the benchmark
+    run: what we measured (observed_ms), what we expected from the
+    baseline (baseline_ms), and how much they're allowed to differ
+    (tolerance_ms).
+    The check passes when |observed_ms - baseline_ms| <= tolerance_ms.
+    """
+
+    concurrency: int
+    metric: str
+    baseline_ms: float
+    observed_ms: float
+    tolerance_ms: float
+
+    @property
+    def diff_ms(self) -> float:
+        return self.observed_ms - self.baseline_ms
+
+    @property
+    def passed(self) -> bool:
+        return abs(self.diff_ms) <= self.tolerance_ms
+
+
+def check_against_baseline(rows: list[ComparisonRow]) -> tuple[str, int]:
+    """Compare the delta_p50 for each concurrency level against the baseline latencies.
+
+    Returns ``(report_text, failed_count)``. Concurrencies missing from
+    either the run or the baseline are skipped with a note.
+    """
+    rows_by_concurrency = {r.concurrency: r for r in rows}
+
+    latency_reports: list[LatencyReport] = []
+    skipped_concurrencies: list[int] = []
+
+    for concurrency in sorted(CONCURRENCIES_TO_VALIDATE):
+        if concurrency not in rows_by_concurrency or concurrency not in DELTA_P50_BASELINE_BY_CONCURRENCY:
+            skipped_concurrencies.append(concurrency)
+            continue
+        latency_reports.append(
+            LatencyReport(
+                concurrency=concurrency,
+                metric="delta_p50",
+                baseline_ms=float(DELTA_P50_BASELINE_BY_CONCURRENCY[concurrency]),
+                observed_ms=rows_by_concurrency[concurrency].delta_p50,
+                tolerance_ms=float(DELTA_P50_TOLERANCE_OVERRIDES_MS.get(concurrency, DEFAULT_DELTA_P50_TOLERANCE_MS)),
+            )
+        )
+
+    fmt = "{:>9}  {:>4}  {:>10}  {:>10}  {:>9}  {:>11}  {:>6}"
+    header_line = fmt.format("metric", "conc", "baseline", "observed", "diff", "tolerance", "status")
+    lines = [
+        "Check vs baseline (see DELTA_P50_BASELINE_BY_CONCURRENCY in analyze.py):",
+        header_line,
+        "-" * len(header_line),
+    ]
+    failed_count = 0
+    for report in latency_reports:
+        status = "PASS" if report.passed else "FAIL"
+        if not report.passed:
+            failed_count += 1
+        lines.append(
+            fmt.format(
+                report.metric,
+                report.concurrency,
+                f"{report.baseline_ms:.0f}",
+                f"{report.observed_ms:.0f}",
+                f"{report.diff_ms:+.0f}",
+                f"±{report.tolerance_ms:.0f}ms",
+                status,
+            )
+        )
+    if skipped_concurrencies:
+        lines.append("")
+        lines.append(f"Skipped (missing from results or baseline): {skipped_concurrencies}")
+    if failed_count:
+        lines.append("")
+        lines.append(f"FAIL: {failed_count} of {len(latency_reports)} check(s) exceeded tolerance.")
+
+    return "\n".join(lines), failed_count
 
 
 def _format_single_variant(variant: str, latency_by_concurrency: dict[int, LatencyRow]) -> str:
@@ -300,7 +446,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "run_dir",
         type=Path,
-        help=("Path to a run directory under `plugins/nemo-guardrails/benchmarks/artifacts/runs/<timestamp>/`."),
+        help="Path to a run directory under `plugins/nemo-guardrails/benchmarks/artifacts/runs/<timestamp>/`.",
+    )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Exit non-zero when any baseline check exceeds tolerance. CI sets this; local runs default off so you can iterate without the gate failing.",
     )
     parser.add_argument(
         "--log-level",
@@ -317,7 +468,16 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     print(analyze_run(run_dir))
-    return 0
+
+    rows = _load_comparison_rows(run_dir)
+    if not rows:
+        print("Skipping baseline check: no comparable rows from this run.", file=sys.stderr)
+        return 0 if not args.strict else 2
+
+    report, failed_count = check_against_baseline(rows)
+    print()
+    print(report)
+    return 1 if (args.strict and failed_count) else 0
 
 
 if __name__ == "__main__":
