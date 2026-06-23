@@ -41,11 +41,6 @@ async def transform_input_to_output(
         await check_dataset_access(sdk, input_spec.dataset.validation, workspace)
 
     is_embedding = bool(model_entity.spec and getattr(model_entity.spec, "is_embedding_model", False))
-    if is_embedding:
-        raise ValueError(
-            "Embedding-model SFT is not supported in Automodel v1. "
-            "Use a causal LM checkpoint or wait for a future release."
-        )
 
     output_type = _infer_output_type(input_spec, is_embedding)
 

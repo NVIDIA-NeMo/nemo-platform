@@ -36,7 +36,7 @@ Each customization job tracks two key metrics:
 
 ### Using the API
 
-Get job status and training metrics using the Customization Service:
+Get job status and training metrics through the platform Jobs service:
 
 ```python
 import os
@@ -49,14 +49,14 @@ client = NeMoPlatform(
 
 # Get job status with metrics
 job_name = "my-sft-job"
-status = client.customization.jobs.get_status(name=job_name, workspace="default")
+status = client.jobs.get_status(name=job_name, workspace="default")
 
 print(f"Job: {status.name}")
 print(f"Status: {status.status}")
 
 # Check training step progress
 for step in status.steps or []:
-    if step.name == "customization-training-job":
+    if step.name == "training":
         for task in step.tasks or []:
             details = task.status_details or {}
             print(f"Training Phase: {details.get('phase')}")

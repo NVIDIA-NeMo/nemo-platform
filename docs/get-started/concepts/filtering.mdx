@@ -180,5 +180,8 @@ metrics = client.evaluation.metrics.list(
 ### Filtering by status
 
 ```python
-jobs = client.customization.jobs.list(filter={"status": "completed"})
+jobs = client.jobs.list(
+    workspace="default",
+    filter={"source": "automodel", "status": "completed"},
+)
 ```
