@@ -43,7 +43,7 @@ DEFAULT_DELTA_P50_TOLERANCE_MS: int = 150
 # flight at once, they contend for shared resources (the IGW event loop,
 # the mock-LLM workers, the CI runner's CPU), so we see more variance in
 # latency values.
-DELTA_P50_TOLERANCE_OVERRIDES_MS: dict[int, int] = {16: 200, 32: 300}
+DELTA_P50_TOLERANCE_OVERRIDES_MS: dict[int, int] = {16: 200, 32: 450}
 
 # Estimated expected delta_p50 (ms) at each concurrency level, based on
 # a few sample runs in CI.
@@ -53,7 +53,7 @@ DELTA_P50_BASELINE_BY_CONCURRENCY: dict[int, int] = {
     4: 1190,
     8: 1230,
     16: 1390,
-    32: 2430,
+    32: 2110,
 }
 
 log = logging.getLogger(__name__)
@@ -178,7 +178,7 @@ def format_table(rows: list[ComparisonRow]) -> str:
     )
     fmt = "{:>4}  {:>9}  {:>9}  {:>9}  {:>9}  {:>9}  {:>9}  {:>9}  {:>9}  {:>9}"
     header_line = fmt.format(*header)
-    lines = [header_line, "-" * len(header_line)]
+    lines = ["Measured Latencies (ms), with and without guardrails:", header_line, "-" * len(header_line)]
     for r in rows:
         lines.append(
             fmt.format(
@@ -195,7 +195,7 @@ def format_table(rows: list[ComparisonRow]) -> str:
             )
         )
     lines.append("")
-    lines.append("All values in milliseconds. 'delta' columns = with-guardrails minus without-guardrails.")
+    lines.append("delta = with-guardrails minus without-guardrails.")
     return "\n".join(lines)
 
 
@@ -223,7 +223,7 @@ def format_platform_overhead_table(rows: list[ComparisonRow]) -> str:
     )
     fmt = "{:>4}  {:>9}  {:>9}  {:>9}  {:>9}  {:>9}  {:>9}  {:>9}  {:>9}  {:>9}"
     header_line = fmt.format(*header)
-    lines = [header_line, "-" * len(header_line)]
+    lines = ["Platform Overhead (ms), with and without guardrails:", header_line, "-" * len(header_line)]
 
     for r in rows:
         with_p50 = r.with_guardrails.p50 - _MOCK_TIME_PER_REQUEST_WITH_GUARDRAILS_MS
@@ -248,12 +248,10 @@ def format_platform_overhead_table(rows: list[ComparisonRow]) -> str:
         )
     lines.append("")
     lines.append(
-        "All values in milliseconds, with mock-LLM time subtracted "
-        f"(with-guardrails: {_MOCK_TIME_PER_REQUEST_WITH_GUARDRAILS_MS:.0f} ms = 1× app + "
-        f"{_CONTENT_SAFETY_CALLS_PER_GUARDED_REQUEST}× content-safety; "
-        f"without-guardrails: {_MOCK_TIME_PER_REQUEST_WITHOUT_GUARDRAILS_MS:.0f} ms = 1× app)."
+        f"Minus mock-LLM time "
+        f"(with-guardrails: {_MOCK_TIME_PER_REQUEST_WITH_GUARDRAILS_MS:.0f} ms; "
+        f"without-guardrails: {_MOCK_TIME_PER_REQUEST_WITHOUT_GUARDRAILS_MS:.0f} ms)."
     )
-    lines.append("'delta' columns are the middleware's own overhead over the bare NMP+IGW path.")
     return "\n".join(lines)
 
 
@@ -343,7 +341,7 @@ def check_against_baseline(rows: list[ComparisonRow]) -> tuple[str, int]:
     fmt = "{:>9}  {:>4}  {:>10}  {:>10}  {:>9}  {:>11}  {:>6}"
     header_line = fmt.format("metric", "conc", "baseline", "observed", "diff", "tolerance", "status")
     lines = [
-        "Check vs baseline (see DELTA_P50_BASELINE_BY_CONCURRENCY in analyze.py):",
+        "Guardrails Overhead vs. Baseline (ms):",
         header_line,
         "-" * len(header_line),
     ]

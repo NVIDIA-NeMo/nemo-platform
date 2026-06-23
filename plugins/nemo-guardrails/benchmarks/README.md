@@ -16,7 +16,6 @@ plugins/nemo-guardrails/benchmarks/
   configs/
     nmp_igw_guardrails_sweep_concurrency.yaml   # AIPerf sweep template
     mock_llm/                                   # in-repo mock LLM env files
-  results/                                      # historical baseline notes
   artifacts/                                    # per-run outputs (gitignored)
 plugins/nemo-guardrails/src/nemo_guardrails_plugin/benchmarks/
   run.py             # entrypoint: `python -m nemo_guardrails_plugin.benchmarks.run`
@@ -186,10 +185,10 @@ plugins/nemo-guardrails/benchmarks/artifacts/runs/<timestamp>/
 
 Two jobs in `.github/workflows/ci.yaml`:
 
-- `benchmark-guardrails` — matrix of two parallel jobs, one per variant
+- `guardrails-benchmark` — matrix of two parallel jobs, one per variant
   (`with-guardrails`, `without-guardrails`), each on its own NMP instance.
   Uploads per-variant artifacts (`logs/`, `generated/`, `aiperf_results/`).
-- `benchmark-guardrails-analyze` — joins the two matrix jobs, downloads both
+- `guardrails-benchmark-analyze` — joins the two matrix jobs, downloads both
   artifacts, prints a side-by-side comparison via
   `nemo_guardrails_plugin.benchmarks.analyze`, and runs the baseline check
   (see below). Fails the build on a latency regression beyond tolerance. The
