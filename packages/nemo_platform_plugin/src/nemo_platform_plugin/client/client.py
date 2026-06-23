@@ -141,16 +141,12 @@ class NemoClient(BaseNemoClient):
         params = self._resolve_query_params(request)
 
         if self._is_binary(request):
-            stream_ctx = self._http.stream(
-                request.method, url, content=request.content, headers=headers, params=params
-            )
+            stream_ctx = self._http.stream(request.method, url, content=request.content, headers=headers, params=params)
             return NemoBinaryResponse(stream_ctx)
 
         if self._is_stream(request):
             assert request.response_type is not None
-            stream_ctx = self._http.stream(
-                request.method, url, content=request.content, headers=headers, params=params
-            )
+            stream_ctx = self._http.stream(request.method, url, content=request.content, headers=headers, params=params)
             model_type = _get_stream_model_type(request.response_type)
             return NemoStreamResponse(stream_ctx, model_type)
 
@@ -198,16 +194,12 @@ class AsyncNemoClient(BaseNemoClient):
         params = self._resolve_query_params(request)
 
         if self._is_binary(request):
-            stream_ctx = self._http.stream(
-                request.method, url, content=request.content, headers=headers, params=params
-            )
+            stream_ctx = self._http.stream(request.method, url, content=request.content, headers=headers, params=params)
             return AsyncNemoBinaryResponse(stream_ctx)
 
         if self._is_stream(request):
             assert request.response_type is not None
-            stream_ctx = self._http.stream(
-                request.method, url, content=request.content, headers=headers, params=params
-            )
+            stream_ctx = self._http.stream(request.method, url, content=request.content, headers=headers, params=params)
             model_type = _get_stream_model_type(request.response_type)
             return AsyncNemoStreamResponse(stream_ctx, model_type)
 

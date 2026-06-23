@@ -353,5 +353,3 @@ def test_error_response_body_is_none() -> None:
 
     assert resp.body is None
     assert resp.http_response.status_code == 404
-
-

@@ -12,7 +12,6 @@ from types import TracebackType
 from typing import Generic, TypeVar
 
 import httpx
-from nemo_platform_plugin.client.types import BinaryContent, Stream
 from pydantic import BaseModel
 
 ResponseT = TypeVar("ResponseT")

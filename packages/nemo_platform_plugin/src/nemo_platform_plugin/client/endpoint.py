@@ -94,9 +94,7 @@ def _build_prepared_request(
     )
 
 
-def _make_endpoint(
-    http_method: str, path: str, fn: Callable[P, ResponseT]
-) -> Callable[P, PreparedRequest[ResponseT]]:
+def _make_endpoint(http_method: str, path: str, fn: Callable[P, ResponseT]) -> Callable[P, PreparedRequest[ResponseT]]:
     """Create a callable that builds PreparedRequests from the function's signature."""
     sig = inspect.signature(fn)
     path_param_names = {field_name for _, field_name, _, _ in string.Formatter().parse(path) if field_name}

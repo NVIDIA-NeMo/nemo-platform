@@ -53,9 +53,7 @@ class ExampleEndpoints:
         raise NotImplementedError
 
     @patch("/apis/example/v2/workspaces/{workspace}/items/{name}")
-    def update_item(
-        self, *, workspace: str | None = None, name: str, body: UpdateExampleItemRequest
-    ) -> ExampleItem:
+    def update_item(self, *, workspace: str | None = None, name: str, body: UpdateExampleItemRequest) -> ExampleItem:
         raise NotImplementedError
 
     @delete("/apis/example/v2/workspaces/{workspace}/items/{name}")

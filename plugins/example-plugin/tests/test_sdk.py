@@ -172,9 +172,7 @@ async def test_async_create_item(endpoints: ExampleEndpoints) -> None:
     client, mock_http = _async_client()
     mock_http.request.return_value = _resp(201, ITEM_PAYLOAD)
 
-    resp = await client.send(
-        endpoints.create_item(body=CreateExampleItemRequest(name="my-item", title="My Item"))
-    )
+    resp = await client.send(endpoints.create_item(body=CreateExampleItemRequest(name="my-item", title="My Item")))
 
     assert resp.data().name == "my-item"
 
@@ -209,9 +207,7 @@ async def test_async_update_item(endpoints: ExampleEndpoints) -> None:
     updated = {**ITEM_PAYLOAD, "title": "Updated"}
     mock_http.request.return_value = _resp(200, updated)
 
-    resp = await client.send(
-        endpoints.update_item(name="my-item", body=UpdateExampleItemRequest(title="Updated"))
-    )
+    resp = await client.send(endpoints.update_item(name="my-item", body=UpdateExampleItemRequest(title="Updated")))
 
     assert resp.data().title == "Updated"
 
