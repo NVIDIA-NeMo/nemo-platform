@@ -68,10 +68,7 @@ const UploadModalContent: FC<UploadModalProps> = ({
   return (
     <ModalRoot id={modalId} open={open} onOpenChange={handleUserClose} {...attributes?.ModalRoot}>
       <ModalDialog>
-        <ModalContent
-          className={`w-[560px] overflow-hidden ${className || ''}`}
-          {...attributes?.ModalContent}
-        >
+        <ModalContent className={`w-[560px] ${className || ''}`} {...attributes?.ModalContent}>
           <ModalHeading {...attributes?.ModalHeading}>{title}</ModalHeading>
           <ModalMain {...attributes?.ModalMain}>
             <UploadPickerBody
