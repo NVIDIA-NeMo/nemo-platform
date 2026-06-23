@@ -18,12 +18,14 @@ from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate
 from nmp.core.models.controllers.backends.common import deployment_elapsed_seconds, format_duration
 from nmp.core.models.controllers.backends.k8s_nim_operator import K8sNimOperatorServiceBackend
 from nmp.core.models.controllers.backends.k8s_nim_operator.config import K8sNimOperatorConfig
-from nmp.core.models.controllers.backends.k8s_nim_operator.reconcilers.base import BaseReconciler
+from nmp.core.models.controllers.backends.k8s_nim_operator.reconcilers.status_projector import StatusProjector
+from nmp.core.models.controllers.context import ModelContext
 from pydantic import ValidationError
 
 _K8S_BACKEND_MODULE = "nmp.core.models.controllers.backends.k8s_nim_operator.backend"
-_RECON_BASE_MODULE = "nmp.core.models.controllers.backends.k8s_nim_operator.reconcilers.base"
 _RECON_K8S_MODULE = "nmp.core.models.controllers.backends.k8s_nim_operator.reconcilers.k8s"
+_RECON_STATUS_MODULE = "nmp.core.models.controllers.backends.k8s_nim_operator.reconcilers.status_projector"
+_RECON_NIM_MODULE = "nmp.core.models.controllers.backends.k8s_nim_operator.reconcilers.nim_operator"
 
 
 # ---------------------------------------------------------------------------
@@ -107,8 +109,8 @@ def _mock_pod_backend(k8s_backend, pod=None, *, pod_logs=""):
     mock_core_v1.read_namespaced_pod_log.return_value = pod_logs
 
     with (
-        patch(f"{_RECON_BASE_MODULE}.k8s_client.AppsV1Api", return_value=mock_apps_v1),
-        patch(f"{_RECON_BASE_MODULE}.k8s_client.CoreV1Api", return_value=mock_core_v1),
+        patch(f"{_RECON_STATUS_MODULE}.k8s_client.AppsV1Api", return_value=mock_apps_v1),
+        patch(f"{_RECON_STATUS_MODULE}.k8s_client.CoreV1Api", return_value=mock_core_v1),
     ):
         yield mock_apps_v1, mock_core_v1
 
@@ -209,6 +211,8 @@ def _sync_reconcilers(backend):
     """
     nim = backend._nim_reconciler
     k8s = backend._k8s_reconciler
+    status = getattr(backend, "_status_projector", None)
+    deleter = getattr(backend, "_resource_deleter", None)
     namespace = backend._k8s_namespace
     config = backend._backend_config
     client = backend._k8s_client
@@ -216,7 +220,6 @@ def _sync_reconcilers(backend):
     if nim is not None:
         nim._k8s_namespace = namespace
         nim._backend_config = config
-        nim._k8s_client = client
         if backend._dynamic_client is not None:
             nim._dynamic_client = backend._dynamic_client
     if k8s is not None:
@@ -229,35 +232,18 @@ def _sync_reconcilers(backend):
             k8s._apps_v1 = backend._apps_v1
         if getattr(backend, "_batch_v1", None) is not None:
             k8s._batch_v1 = backend._batch_v1
+    if status is not None:
+        status._k8s_namespace = namespace
+        status._backend_config = config
+        status._k8s_client = client
+    if deleter is not None:
+        deleter._k8s_namespace = namespace
     return backend
 
 
-class _StatusHelperReconciler(BaseReconciler):
-    """Minimal concrete BaseReconciler for unit-testing the shared status helpers.
-
-    The shared pod-status / log / crash-loop helpers live on ``BaseReconciler``;
-    these tests exercise them directly without needing a full engine reconciler.
-    """
-
-    async def create(self, resolved):  # pragma: no cover - not exercised
-        raise NotImplementedError
-
-    async def update(self, resolved):  # pragma: no cover - not exercised
-        raise NotImplementedError
-
-    async def get_status(self, resolved):  # pragma: no cover - not exercised
-        raise NotImplementedError
-
-    async def delete(self, workspace, name):  # pragma: no cover - not exercised
-        raise NotImplementedError
-
-    async def list_managed_deployment_names(self):  # pragma: no cover - not exercised
-        raise NotImplementedError
-
-
 def _status_helper_reconciler(*, namespace="default", backend_config=None, k8s_client_=None):
-    """Build a BaseReconciler exposing the shared status helpers for direct tests."""
-    return _StatusHelperReconciler(
+    """Build a StatusProjector exposing the shared status helpers for direct tests."""
+    return StatusProjector(
         k8s_client_=k8s_client_ if k8s_client_ is not None else MagicMock(),
         backend_config=backend_config if backend_config is not None else K8sNimOperatorConfig(),
         k8s_namespace=namespace,
@@ -312,7 +298,9 @@ async def test_k8s_backend_create_model_deployment(k8s_backend, sample_deploymen
         mock_compile.return_value = mock_nimservice
 
         _sync_reconcilers(k8s_backend)
-        status_update = await k8s_backend.create_model_deployment(sample_deployment, sample_config)
+        status_update = await k8s_backend.create_model_deployment(
+            ModelContext(model_deployment=sample_deployment, model_deployment_config=sample_config)
+        )
 
         # Verify compile_nimservice was called
         mock_compile.assert_called_once()
@@ -348,7 +336,9 @@ async def test_k8s_backend_update_model_deployment(k8s_backend, sample_deploymen
         mock_compile.return_value = mock_nimservice
 
         _sync_reconcilers(k8s_backend)
-        status_update = await k8s_backend.update_model_deployment(sample_deployment, sample_config)
+        status_update = await k8s_backend.update_model_deployment(
+            ModelContext(model_deployment=sample_deployment, model_deployment_config=sample_config)
+        )
 
         # Verify compile_nimservice was called
         mock_compile.assert_called_once()
@@ -370,7 +360,9 @@ async def test_k8s_backend_get_model_deployment_status(k8s_backend, sample_deplo
     k8s_backend._dynamic_client.resources.get.return_value = _make_nimservice_mock("Ready")
 
     _sync_reconcilers(k8s_backend)
-    status_update = await k8s_backend.get_model_deployment_status(sample_deployment, _nim_config())
+    status_update = await k8s_backend.get_model_deployment_status(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=_nim_config())
+    )
 
     assert status_update is not None
     assert status_update.status == "READY"
@@ -390,7 +382,9 @@ async def test_k8s_backend_get_status_without_config_is_unknown(k8s_backend, sam
     k8s_backend._backend_config = K8sNimOperatorConfig()
     _sync_reconcilers(k8s_backend)
 
-    status_update = await k8s_backend.get_model_deployment_status(sample_deployment, None)
+    status_update = await k8s_backend.get_model_deployment_status(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=None)
+    )
 
     assert status_update.status == "UNKNOWN"
     # No reconciler/cluster lookups happen without a config.
@@ -409,7 +403,9 @@ async def test_k8s_backend_get_status_nimservice_not_found(k8s_backend, sample_d
     k8s_backend._dynamic_client.resources.get.return_value = mock_resource
 
     _sync_reconcilers(k8s_backend)
-    status_update = await k8s_backend.get_model_deployment_status(sample_deployment, _nim_config())
+    status_update = await k8s_backend.get_model_deployment_status(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=_nim_config())
+    )
 
     assert status_update is not None
     assert status_update.status == "LOST"
@@ -427,14 +423,16 @@ async def test_k8s_backend_get_status_nimservice_not_ready(k8s_backend, sample_d
     k8s_backend._dynamic_client.resources.get.return_value = _make_nimservice_mock("NotReady")
 
     with patch.object(
-        k8s_backend._nim_reconciler,
-        "_get_pod_status_from_deployment",
+        k8s_backend._status_projector,
+        "pod_status_from_deployment",
         return_value=DeploymentStatusUpdate(
             status="PENDING", status_message="Waiting for NIMService to become ready", host_url=None
         ),
     ):
         _sync_reconcilers(k8s_backend)
-        status_update = await k8s_backend.get_model_deployment_status(sample_deployment, _nim_config())
+        status_update = await k8s_backend.get_model_deployment_status(
+            ModelContext(model_deployment=sample_deployment, model_deployment_config=_nim_config())
+        )
 
         assert status_update is not None
         assert status_update.status == "PENDING"
@@ -457,7 +455,9 @@ async def test_k8s_backend_get_status_nimservice_crash_loop_backoff(k8s_backend,
 
     with _mock_pod_backend(k8s_backend, pod=pod, pod_logs="ERROR: model failed to load"):
         _sync_reconcilers(k8s_backend)
-        status_update = await k8s_backend.get_model_deployment_status(sample_deployment, _nim_config())
+        status_update = await k8s_backend.get_model_deployment_status(
+            ModelContext(model_deployment=sample_deployment, model_deployment_config=_nim_config())
+        )
 
         assert status_update is not None
         assert status_update.status == "ERROR"
@@ -483,7 +483,9 @@ async def test_k8s_backend_get_status_nimservice_pod_restarts_below_threshold(k8
 
     with _mock_pod_backend(k8s_backend, pod=pod):
         _sync_reconcilers(k8s_backend)
-        status_update = await k8s_backend.get_model_deployment_status(sample_deployment, _nim_config())
+        status_update = await k8s_backend.get_model_deployment_status(
+            ModelContext(model_deployment=sample_deployment, model_deployment_config=_nim_config())
+        )
 
         assert status_update is not None
         assert status_update.status == "PENDING"
@@ -505,7 +507,9 @@ async def test_k8s_backend_get_status_nimservice_pod_running_after_restarts(k8s_
 
     with _mock_pod_backend(k8s_backend, pod=pod):
         _sync_reconcilers(k8s_backend)
-        status_update = await k8s_backend.get_model_deployment_status(sample_deployment, _nim_config())
+        status_update = await k8s_backend.get_model_deployment_status(
+            ModelContext(model_deployment=sample_deployment, model_deployment_config=_nim_config())
+        )
 
         assert status_update is not None
         assert status_update.status == "PENDING"
@@ -708,7 +712,9 @@ async def test_k8s_backend_create_when_nimservice_already_exists(k8s_backend, sa
         mock_compile.return_value = mock_nimservice
 
         _sync_reconcilers(k8s_backend)
-        status_update = await k8s_backend.create_model_deployment(sample_deployment, sample_config)
+        status_update = await k8s_backend.create_model_deployment(
+            ModelContext(model_deployment=sample_deployment, model_deployment_config=sample_config)
+        )
 
         # Verify status update returned PENDING (not ERROR)
         assert status_update is not None
@@ -802,7 +808,11 @@ async def test_create_model_deployment_with_sft_model(k8s_backend, sample_deploy
 
             _sync_reconcilers(k8s_backend)
             status_update = await k8s_backend.create_model_deployment(
-                sample_deployment, sample_config, sft_model_entity
+                ModelContext(
+                    model_deployment=sample_deployment,
+                    model_deployment_config=sample_config,
+                    model_entity=sft_model_entity,
+                )
             )
 
             # Verify NIMCache was created
@@ -901,7 +911,11 @@ async def test_create_model_deployment_with_files_service_model_triggers_nimcach
 
             _sync_reconcilers(k8s_backend)
             status_update = await k8s_backend.create_model_deployment(
-                sample_deployment, sample_config, files_service_model_entity
+                ModelContext(
+                    model_deployment=sample_deployment,
+                    model_deployment_config=sample_config,
+                    model_entity=files_service_model_entity,
+                )
             )
 
             # Verify NIMCache was created for FILES_SERVICE
@@ -967,7 +981,11 @@ async def test_create_model_deployment_without_sft_model(k8s_backend, sample_dep
 
         _sync_reconcilers(k8s_backend)
         status_update = await k8s_backend.create_model_deployment(
-            sample_deployment, sample_config, non_sft_model_entity
+            ModelContext(
+                model_deployment=sample_deployment,
+                model_deployment_config=sample_config,
+                model_entity=non_sft_model_entity,
+            )
         )
 
         # Verify compile_nimservice was called with nimcache_name=None
@@ -1057,7 +1075,11 @@ async def test_create_model_deployment_with_sft_model_and_revision(k8s_backend, 
 
             _sync_reconcilers(k8s_backend)
             status_update = await k8s_backend.create_model_deployment(
-                sample_deployment, sample_config, sft_model_entity
+                ModelContext(
+                    model_deployment=sample_deployment,
+                    model_deployment_config=sample_config,
+                    model_entity=sft_model_entity,
+                )
             )
 
             # Verify NIMCache was created
@@ -1158,7 +1180,11 @@ async def test_create_model_deployment_nimcache_uses_fileset_not_entity_name(
 
             _sync_reconcilers(k8s_backend)
             status_update = await k8s_backend.create_model_deployment(
-                sample_deployment, sample_config, mismatched_model_entity
+                ModelContext(
+                    model_deployment=sample_deployment,
+                    model_deployment_config=sample_config,
+                    model_entity=mismatched_model_entity,
+                )
             )
 
             mock_nimcache_resource.create.assert_called_once()
@@ -1225,22 +1251,22 @@ class TestFormatDuration:
 
 
 class TestWithRestartInfo:
-    """Tests for BaseReconciler._with_restart_info."""
+    """Tests for StatusProjector._with_restart_info."""
 
     def test_no_restarts(self):
-        assert BaseReconciler._with_restart_info("some status", 0) == "some status"
+        assert StatusProjector._with_restart_info("some status", 0) == "some status"
 
     def test_with_restarts(self):
-        assert BaseReconciler._with_restart_info("some status", 3) == "some status, restarts: 3"
+        assert StatusProjector._with_restart_info("some status", 3) == "some status, restarts: 3"
 
 
 class TestGetPodRestartCount:
-    """Tests for BaseReconciler._get_pod_restart_count."""
+    """Tests for StatusProjector._get_pod_restart_count."""
 
     def test_no_container_statuses(self):
         pod = MagicMock()
         pod.status.container_statuses = None
-        assert BaseReconciler._get_pod_restart_count(pod) == 0
+        assert StatusProjector._get_pod_restart_count(pod) == 0
 
     def test_multiple_containers_returns_max(self):
         pod = MagicMock()
@@ -1249,7 +1275,7 @@ class TestGetPodRestartCount:
         cs2 = MagicMock()
         cs2.restart_count = 7
         pod.status.container_statuses = [cs1, cs2]
-        assert BaseReconciler._get_pod_restart_count(pod) == 7
+        assert StatusProjector._get_pod_restart_count(pod) == 7
 
 
 class TestDeploymentElapsedSeconds:
@@ -1297,12 +1323,14 @@ class TestPendingTimeoutStatusTransition:
         backend._dynamic_client.resources.get.return_value = _make_nimservice_mock("NotReady")
 
         with patch.object(
-            backend._nim_reconciler,
-            "_get_pod_status_from_deployment",
+            backend._status_projector,
+            "pod_status_from_deployment",
             return_value=DeploymentStatusUpdate(status="PENDING", status_message="Waiting", host_url=None),
         ):
             _sync_reconcilers(backend)
-            result = await backend.get_model_deployment_status(sample_deployment, _nim_config())
+            result = await backend.get_model_deployment_status(
+                ModelContext(model_deployment=sample_deployment, model_deployment_config=_nim_config())
+            )
             assert result.status == "PENDING"
             # No elapsed/timeout in message (stable message to avoid new history entry every poll)
 
@@ -1316,13 +1344,15 @@ class TestPendingTimeoutStatusTransition:
         backend._dynamic_client.resources.get.return_value = _make_nimservice_mock("NotReady")
 
         with patch.object(
-            backend._nim_reconciler,
-            "_get_pod_status_from_deployment",
+            backend._status_projector,
+            "pod_status_from_deployment",
             return_value=DeploymentStatusUpdate(status="PENDING", status_message="Waiting", host_url=None),
         ):
             with _mock_pod_backend(backend, pod_logs="timeout error log"):
                 _sync_reconcilers(backend)
-                result = await backend.get_model_deployment_status(sample_deployment, _nim_config())
+                result = await backend.get_model_deployment_status(
+                    ModelContext(model_deployment=sample_deployment, model_deployment_config=_nim_config())
+                )
                 assert result.status == "ERROR"
                 assert "timed out" in result.status_message
                 assert "kubectl logs" in result.status_message
@@ -1338,7 +1368,9 @@ class TestPendingTimeoutStatusTransition:
         backend._dynamic_client.resources.get.return_value = _make_nimservice_mock("Ready")
 
         _sync_reconcilers(backend)
-        result = await backend.get_model_deployment_status(sample_deployment, _nim_config())
+        result = await backend.get_model_deployment_status(
+            ModelContext(model_deployment=sample_deployment, model_deployment_config=_nim_config())
+        )
         assert result.status == "READY"
 
     @pytest.mark.asyncio
@@ -1354,7 +1386,9 @@ class TestPendingTimeoutStatusTransition:
         backend._dynamic_client.resources.get.return_value = _make_nimservice_mock(nim_state)
 
         _sync_reconcilers(backend)
-        result = await backend.get_model_deployment_status(sample_deployment, _nim_config())
+        result = await backend.get_model_deployment_status(
+            ModelContext(model_deployment=sample_deployment, model_deployment_config=_nim_config())
+        )
         assert result.status != "PENDING"
 
     @pytest.mark.asyncio
@@ -1368,13 +1402,15 @@ class TestPendingTimeoutStatusTransition:
         backend._dynamic_client.resources.get.return_value = _make_nimservice_mock("NotReady")
 
         with patch.object(
-            backend._nim_reconciler,
-            "_get_pod_status_from_deployment",
+            backend._status_projector,
+            "pod_status_from_deployment",
             return_value=DeploymentStatusUpdate(status="PENDING", status_message="Waiting", host_url=None),
         ):
             with _mock_pod_backend(backend):
                 _sync_reconcilers(backend)
-                result = await backend.get_model_deployment_status(sample_deployment, _nim_config())
+                result = await backend.get_model_deployment_status(
+                    ModelContext(model_deployment=sample_deployment, model_deployment_config=_nim_config())
+                )
                 assert result.status == "ERROR"
                 assert result.error_details["reason"] == "pending_timeout"
 
@@ -1399,17 +1435,17 @@ class TestCrashLoopDetection:
         pod.metadata.name = "pod-1"
         pod.status.phase = "Pending"
         pod.status.container_statuses = None
-        assert backend._check_crash_loop(pod, "res-1") is None
+        assert backend.check_crash_loop(pod, "res-1") is None
 
     def test_below_threshold_no_error(self, backend):
         pod = _make_pod(restart_count=4, waiting_reason="CrashLoopBackOff")
-        assert backend._check_crash_loop(pod, "res-1") is None
+        assert backend.check_crash_loop(pod, "res-1") is None
 
     def test_at_threshold_with_waiting_returns_error(self, backend):
         pod = _make_pod(restart_count=5, waiting_reason="CrashLoopBackOff")
 
         with _mock_pod_backend(backend, pod_logs="crash log"):
-            result = backend._check_crash_loop(pod, "res-1")
+            result = backend.check_crash_loop(pod, "res-1")
             assert result is not None
             assert result.status == "ERROR"
             assert result.error_details["reason"] == "crash_loop"
@@ -1418,7 +1454,7 @@ class TestCrashLoopDetection:
 
     def test_above_threshold_without_waiting_returns_none(self, backend):
         pod = _make_pod(restart_count=10)  # running, not waiting
-        result = backend._check_crash_loop(pod, "res-1")
+        result = backend.check_crash_loop(pod, "res-1")
         assert result is None
 
     @pytest.mark.parametrize("max_restarts", [1, 3, 10])
@@ -1426,20 +1462,20 @@ class TestCrashLoopDetection:
         backend._backend_config = K8sNimOperatorConfig(pending_timeout_seconds=7200, max_restart_count=max_restarts)
         pod = _make_pod(restart_count=max_restarts, waiting_reason="CrashLoopBackOff")
         with _mock_pod_backend(backend, pod_logs=""):
-            result = backend._check_crash_loop(pod, "res-1")
+            result = backend.check_crash_loop(pod, "res-1")
             assert result is not None
             assert result.status == "ERROR"
 
     def test_crash_loop_error_includes_kubectl_command(self, backend):
         pod = _make_pod(name="my-pod-xyz", restart_count=5, waiting_reason="CrashLoopBackOff")
         with _mock_pod_backend(backend, pod_logs="some logs"):
-            result = backend._check_crash_loop(pod, "res-1")
+            result = backend.check_crash_loop(pod, "res-1")
             assert "kubectl logs -n test-ns my-pod-xyz" in result.status_message
 
     def test_crash_loop_error_includes_pod_logs_in_details(self, backend):
         pod = _make_pod(restart_count=5, waiting_reason="CrashLoopBackOff")
         with _mock_pod_backend(backend, pod_logs="RuntimeError: CUDA OOM"):
-            result = backend._check_crash_loop(pod, "res-1")
+            result = backend.check_crash_loop(pod, "res-1")
             assert result.error_details["error_stack"] == "RuntimeError: CUDA OOM"
 
 
@@ -1460,7 +1496,7 @@ class TestPendingTimeoutErrorMessage:
 
     def test_error_message_with_pod_name(self, backend):
         with _mock_pod_backend(backend, pod_logs="error log tail"):
-            result = backend._build_pending_timeout_error("my-resource", 150.0, "my-pod-123")
+            result = backend.build_pending_timeout_error("my-resource", 150.0, "my-pod-123")
             assert result.status == "ERROR"
             assert "timed out" in result.status_message
             assert "kubectl logs -n my-ns my-pod-123" in result.status_message
@@ -1469,18 +1505,18 @@ class TestPendingTimeoutErrorMessage:
             assert result.error_details["reason"] == "pending_timeout"
 
     def test_error_message_without_pod_name(self, backend):
-        result = backend._build_pending_timeout_error("my-resource", 150.0, None)
+        result = backend.build_pending_timeout_error("my-resource", 150.0, None)
         assert "kubectl logs -n my-ns deployment/my-resource" in result.status_message
         assert "pod_name" not in result.error_details
 
     def test_error_details_contain_timing(self, backend):
-        result = backend._build_pending_timeout_error("res", 200.0, None)
+        result = backend.build_pending_timeout_error("res", 200.0, None)
         assert result.error_details["elapsed_seconds"] == 200
         assert result.error_details["timeout_seconds"] == 120
 
     def test_crash_loop_error_message(self, backend):
         with _mock_pod_backend(backend, pod_logs="segfault"):
-            result = backend._build_crash_loop_error("res", "pod-abc", 7)
+            result = backend.build_crash_loop_error("res", "pod-abc", 7)
             assert result.status == "ERROR"
             assert "crash loop" in result.status_message
             assert "7 container restarts" in result.status_message
@@ -1514,13 +1550,15 @@ class TestControllerRestartResilience:
         backend._dynamic_client.resources.get.return_value = _make_nimservice_mock("NotReady")
 
         with patch.object(
-            backend._nim_reconciler,
-            "_get_pod_status_from_deployment",
+            backend._status_projector,
+            "pod_status_from_deployment",
             return_value=DeploymentStatusUpdate(status="PENDING", status_message="Waiting", host_url=None),
         ):
             with _mock_pod_backend(backend):
                 _sync_reconcilers(backend)
-                result = await backend.get_model_deployment_status(sample_deployment, _nim_config())
+                result = await backend.get_model_deployment_status(
+                    ModelContext(model_deployment=sample_deployment, model_deployment_config=_nim_config())
+                )
                 assert result.status == "ERROR"
                 assert result.error_details["reason"] == "pending_timeout"
 
@@ -1536,12 +1574,14 @@ class TestControllerRestartResilience:
         backend._dynamic_client.resources.get.return_value = _make_nimservice_mock("NotReady")
 
         with patch.object(
-            backend._nim_reconciler,
-            "_get_pod_status_from_deployment",
+            backend._status_projector,
+            "pod_status_from_deployment",
             return_value=DeploymentStatusUpdate(status="PENDING", status_message="Waiting", host_url=None),
         ):
             _sync_reconcilers(backend)
-            result = await backend.get_model_deployment_status(sample_deployment, _nim_config())
+            result = await backend.get_model_deployment_status(
+                ModelContext(model_deployment=sample_deployment, model_deployment_config=_nim_config())
+            )
             assert result.status == "PENDING"
             # No elapsed/timeout in message (stable message to avoid new history entry every poll)
 
@@ -1560,20 +1600,20 @@ class TestFetchPodLogs:
 
     def test_returns_logs_normally(self, backend):
         with _mock_pod_backend(backend, pod_logs="log line 1\nlog line 2"):
-            result = backend._fetch_pod_logs("pod-1")
+            result = backend.fetch_pod_logs("pod-1")
             assert result == "log line 1\nlog line 2"
 
     def test_truncates_long_logs(self, backend):
         long_logs = "x" * 3000
         with _mock_pod_backend(backend, pod_logs=long_logs):
-            result = backend._fetch_pod_logs("pod-1")
+            result = backend.fetch_pod_logs("pod-1")
             assert len(result) == 2048
 
     def test_returns_empty_on_exception(self, backend):
         mock_core_v1 = MagicMock()
         mock_core_v1.read_namespaced_pod_log.side_effect = Exception("API error")
-        with patch(f"{_RECON_BASE_MODULE}.k8s_client.CoreV1Api", return_value=mock_core_v1):
-            result = backend._fetch_pod_logs("pod-1")
+        with patch(f"{_RECON_STATUS_MODULE}.k8s_client.CoreV1Api", return_value=mock_core_v1):
+            result = backend.fetch_pod_logs("pod-1")
             assert result == ""
 
 
@@ -1601,12 +1641,14 @@ class TestAugmentedPendingMessages:
         backend._dynamic_client.resources.get.return_value = _make_nimservice_mock("NotReady")
 
         with patch.object(
-            backend._nim_reconciler,
-            "_get_pod_status_from_deployment",
+            backend._status_projector,
+            "pod_status_from_deployment",
             return_value=DeploymentStatusUpdate(status="PENDING", status_message="Waiting", host_url=None),
         ):
             _sync_reconcilers(backend)
-            result = await backend.get_model_deployment_status(sample_deployment, _nim_config())
+            result = await backend.get_model_deployment_status(
+                ModelContext(model_deployment=sample_deployment, model_deployment_config=_nim_config())
+            )
             assert result.status == "PENDING"
             # No elapsed/timeout appended (stable message to avoid new history entry every poll)
             assert result.status_message == "Waiting"
@@ -1621,7 +1663,9 @@ class TestAugmentedPendingMessages:
 
         with _mock_pod_backend(backend, pod=pod):
             _sync_reconcilers(backend)
-            result = await backend.get_model_deployment_status(sample_deployment, _nim_config())
+            result = await backend.get_model_deployment_status(
+                ModelContext(model_deployment=sample_deployment, model_deployment_config=_nim_config())
+            )
             assert result.status == "PENDING"
             assert "restarts: 3" in result.status_message
 
@@ -1635,7 +1679,9 @@ class TestAugmentedPendingMessages:
 
         with _mock_pod_backend(backend, pod=pod):
             _sync_reconcilers(backend)
-            result = await backend.get_model_deployment_status(sample_deployment, _nim_config())
+            result = await backend.get_model_deployment_status(
+                ModelContext(model_deployment=sample_deployment, model_deployment_config=_nim_config())
+            )
             assert result.status == "PENDING"
             assert "restarts" not in result.status_message
 
@@ -1655,7 +1701,7 @@ class TestFindPodName:
     def test_returns_pod_name(self, backend):
         pod = _make_pod(name="found-pod-xyz")
         with _mock_pod_backend(backend, pod=pod) as (mock_apps_v1, _):
-            result = backend._find_pod_name("resource-1")
+            result = backend.find_pod_name("resource-1")
             assert result == "found-pod-xyz"
 
     def test_returns_none_when_no_pods(self, backend):
@@ -1669,18 +1715,18 @@ class TestFindPodName:
         mock_core_v1.list_namespaced_pod.return_value = pods_list
 
         with (
-            patch(f"{_RECON_BASE_MODULE}.k8s_client.AppsV1Api", return_value=mock_apps_v1),
-            patch(f"{_RECON_BASE_MODULE}.k8s_client.CoreV1Api", return_value=mock_core_v1),
+            patch(f"{_RECON_STATUS_MODULE}.k8s_client.AppsV1Api", return_value=mock_apps_v1),
+            patch(f"{_RECON_STATUS_MODULE}.k8s_client.CoreV1Api", return_value=mock_core_v1),
         ):
-            result = backend._find_pod_name("resource-1")
+            result = backend.find_pod_name("resource-1")
             assert result is None
 
     def test_returns_none_on_api_exception(self, backend):
         mock_apps_v1 = MagicMock()
         mock_apps_v1.read_namespaced_deployment.side_effect = k8s_client.exceptions.ApiException(status=404)
 
-        with patch(f"{_RECON_BASE_MODULE}.k8s_client.AppsV1Api", return_value=mock_apps_v1):
-            result = backend._find_pod_name("resource-1")
+        with patch(f"{_RECON_STATUS_MODULE}.k8s_client.AppsV1Api", return_value=mock_apps_v1):
+            result = backend.find_pod_name("resource-1")
             assert result is None
 
 
@@ -1707,7 +1753,9 @@ class TestCrashLoopPrecedence:
 
         with _mock_pod_backend(backend, pod=pod, pod_logs="crash"):
             _sync_reconcilers(backend)
-            result = await backend.get_model_deployment_status(sample_deployment, _nim_config())
+            result = await backend.get_model_deployment_status(
+                ModelContext(model_deployment=sample_deployment, model_deployment_config=_nim_config())
+            )
             assert result.status == "ERROR"
             assert result.error_details["reason"] == "crash_loop"
 
@@ -1733,7 +1781,9 @@ class TestNIMServiceFailedState:
         backend._dynamic_client.resources.get.return_value = mock_resource
 
         _sync_reconcilers(backend)
-        result = await backend.get_model_deployment_status(sample_deployment, _nim_config())
+        result = await backend.get_model_deployment_status(
+            ModelContext(model_deployment=sample_deployment, model_deployment_config=_nim_config())
+        )
         assert result.status == "ERROR"
         assert "NIMService failed" in result.status_message
 
@@ -1760,7 +1810,9 @@ class TestLostState:
         backend._dynamic_client.resources.get.return_value = mock_resource
 
         _sync_reconcilers(backend)
-        result = await backend.get_model_deployment_status(sample_deployment, _nim_config())
+        result = await backend.get_model_deployment_status(
+            ModelContext(model_deployment=sample_deployment, model_deployment_config=_nim_config())
+        )
         assert result.status == "LOST"
 
 
@@ -1886,7 +1938,9 @@ async def test_vllm_create_emits_pvc_and_job_only(k8s_backend, sample_deployment
 
     with patch.object(backend, "_resolve_model_source", return_value=("default", "qwen", None)):
         _sync_reconcilers(backend)
-        result = await backend.create_model_deployment(sample_deployment, config, None)
+        result = await backend.create_model_deployment(
+            ModelContext(model_deployment=sample_deployment, model_deployment_config=config, model_entity=None)
+        )
 
     assert result.status == "PENDING"
     backend._core_v1.create_namespaced_persistent_volume_claim.assert_called_once()
@@ -1907,7 +1961,9 @@ async def test_generic_engine_rejected_on_k8s(k8s_backend, sample_deployment):
     config = _vllm_config()
     config.engine = "generic"
     _sync_reconcilers(backend)
-    result = await backend.create_model_deployment(sample_deployment, config, None)
+    result = await backend.create_model_deployment(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=config, model_entity=None)
+    )
     assert result.status == "ERROR"
     assert "generic" in result.status_message.lower()
 
@@ -1925,7 +1981,9 @@ async def test_vllm_status_job_running_is_pending(k8s_backend, sample_deployment
     backend._apps_v1.read_namespaced_deployment.side_effect = _api_exception(404)
 
     _sync_reconcilers(backend)
-    result = await backend.get_model_deployment_status(sample_deployment, config, None)
+    result = await backend.get_model_deployment_status(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=config)
+    )
     assert result.status == "PENDING"
     assert "weights" in result.status_message.lower()
     backend._apps_v1.create_namespaced_deployment.assert_not_called()
@@ -1945,7 +2003,9 @@ async def test_vllm_status_job_failed_is_error(k8s_backend, sample_deployment):
     backend._apps_v1.read_namespaced_deployment.side_effect = _api_exception(404)
 
     _sync_reconcilers(backend)
-    result = await backend.get_model_deployment_status(sample_deployment, config, None)
+    result = await backend.get_model_deployment_status(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=config)
+    )
     assert result.status == "ERROR"
     assert result.error_details["reason"] == "weight_pull_failed"
 
@@ -1970,7 +2030,9 @@ async def test_vllm_status_job_complete_creates_deployment(k8s_backend, sample_d
     backend._apps_v1.create_namespaced_deployment.return_value = created_dep
 
     _sync_reconcilers(backend)
-    result = await backend.get_model_deployment_status(sample_deployment, config, None)
+    result = await backend.get_model_deployment_status(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=config)
+    )
 
     assert result.status == "PENDING"
     # Puller Job deleted (release RWO volume) before the Deployment is created.
@@ -1997,7 +2059,9 @@ async def test_vllm_status_p3_waits_for_puller_pod_to_release_volume(k8s_backend
     backend._core_v1.list_namespaced_pod.return_value = MagicMock(items=[MagicMock()])
 
     _sync_reconcilers(backend)
-    result = await backend.get_model_deployment_status(sample_deployment, config, None)
+    result = await backend.get_model_deployment_status(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=config)
+    )
 
     assert result.status == "PENDING"
     backend._batch_v1.delete_namespaced_job.assert_called_once()
@@ -2029,7 +2093,9 @@ async def test_vllm_status_job_complete_with_lora_wires_sidecar(k8s_backend, sam
     platform_cfg.to_shared_envvars.return_value = {"NMP_SHARED": "1"}
     with patch(f"{_RECON_K8S_MODULE}.get_platform_config", return_value=platform_cfg):
         _sync_reconcilers(backend)
-        result = await backend.get_model_deployment_status(sample_deployment, config, None)
+        result = await backend.get_model_deployment_status(
+            ModelContext(model_deployment=sample_deployment, model_deployment_config=config)
+        )
 
     assert result.status == "PENDING"
     dep_obj = backend._apps_v1.create_namespaced_deployment.call_args.kwargs["body"]
@@ -2059,7 +2125,9 @@ async def test_vllm_status_job_absent_pvc_present_resumes_p3_not_lost(k8s_backen
     backend._apps_v1.create_namespaced_deployment.return_value = created_dep
 
     _sync_reconcilers(backend)
-    result = await backend.get_model_deployment_status(sample_deployment, config, None)
+    result = await backend.get_model_deployment_status(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=config)
+    )
 
     assert result.status == "PENDING"
     assert result.status != "LOST"
@@ -2077,7 +2145,9 @@ async def test_vllm_status_job_and_pvc_absent_is_lost(k8s_backend, sample_deploy
     backend._core_v1.read_namespaced_persistent_volume_claim.side_effect = _api_exception(404)
 
     _sync_reconcilers(backend)
-    result = await backend.get_model_deployment_status(sample_deployment, config, None)
+    result = await backend.get_model_deployment_status(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=config)
+    )
     assert result.status == "LOST"
 
 
@@ -2097,7 +2167,9 @@ async def test_vllm_status_deployment_ready_is_ready(k8s_backend, sample_deploym
     backend._apps_v1.read_namespaced_deployment.return_value = dep
 
     _sync_reconcilers(backend)
-    result = await backend.get_model_deployment_status(sample_deployment, config, None)
+    result = await backend.get_model_deployment_status(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=config)
+    )
     assert result.status == "READY"
     assert result.host_url is not None
 
@@ -2116,7 +2188,9 @@ async def test_vllm_update_unchanged_source_does_not_repull(k8s_backend, sample_
     with patch.object(backend, "_resolve_model_source", return_value=("default", "qwen", None)):
         with patch.object(backend._k8s_reconciler, "_delete_vllm_resources") as mock_delete:
             _sync_reconcilers(backend)
-            result = await backend.update_model_deployment(sample_deployment, config, None)
+            result = await backend.update_model_deployment(
+                ModelContext(model_deployment=sample_deployment, model_deployment_config=config, model_entity=None)
+            )
 
     mock_delete.assert_not_called()
     backend._batch_v1.create_namespaced_job.assert_not_called()
@@ -2137,7 +2211,9 @@ async def test_vllm_update_changed_source_repulls(k8s_backend, sample_deployment
     with patch.object(backend, "_resolve_model_source", return_value=("default", "qwen", "v2")):
         with patch.object(backend._k8s_reconciler, "_delete_vllm_resources") as mock_delete:
             _sync_reconcilers(backend)
-            result = await backend.update_model_deployment(sample_deployment, config, None)
+            result = await backend.update_model_deployment(
+                ModelContext(model_deployment=sample_deployment, model_deployment_config=config, model_entity=None)
+            )
 
     mock_delete.assert_called_once()
     # Re-pull: a new PVC + Job are created.

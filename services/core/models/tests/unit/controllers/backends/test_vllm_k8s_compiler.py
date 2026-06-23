@@ -84,7 +84,7 @@ def test_compile_puller_job_basic():
         name="qwen",
         engine="vllm",
         image="hf-cli:25.10",
-        args=["download", "default/qwen", "--local-dir", "/model-store"],
+        container_args=["download", "default/qwen", "--local-dir", "/model-store"],
         env={"HF_ENDPOINT": "http://files/apis/files/v2/hf", "HF_TOKEN": "service:models"},
         gpu=2,
         namespace="nemo",
@@ -124,7 +124,7 @@ def test_compile_puller_job_cpu_only_no_gpu_request():
         name="n",
         engine="vllm",
         image="hf-cli",
-        args=["download", "w/n", "--local-dir", "/model-store"],
+        container_args=["download", "w/n", "--local-dir", "/model-store"],
         gpu=0,
     )
     assert job.spec.template.spec.containers[0].resources is None
@@ -137,7 +137,7 @@ def test_compile_puller_job_no_image_pull_secret():
         name="n",
         engine="vllm",
         image="hf-cli",
-        args=["download"],
+        container_args=["download"],
     )
     assert job.spec.template.spec.image_pull_secrets is None
 

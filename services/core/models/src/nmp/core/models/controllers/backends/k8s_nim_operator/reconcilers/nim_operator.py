@@ -11,14 +11,19 @@ the operator reports ``NotReady``).
 
 Inputs arrive pre-resolved on a :class:`ResolvedDeployment` (the ServiceBackend
 does the SDK / entity-shaping work); this reconciler talks only to Kubernetes.
+Shared status projection and delete semantics are composed in via
+:class:`StatusProjector` and :class:`ResourceDeleter`.
 """
 
 from logging import getLogger
 
-from kubernetes import client as k8s_client
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic import exceptions as k8s_dynamic_exceptions
-from nmp.core.models.app import ModelWeightsType
+from nmp.core.models.app import (
+    ModelWeightsType,
+    get_deployment_resource_name,
+    get_nimcache_resource_name,
+)
 from nmp.core.models.app.constants import MODEL_MANAGED_BY_LABEL, MODEL_MANAGED_BY_MODELS_CONTROLLER
 from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate
 from nmp.core.models.controllers.backends.k8s_nim_operator.config import K8sNimOperatorConfig
@@ -27,9 +32,11 @@ from nmp.core.models.controllers.backends.k8s_nim_operator.nimservice_compiler i
     compile_nimservice,
 )
 from nmp.core.models.controllers.backends.k8s_nim_operator.reconcilers.base import (
-    BaseReconciler,
+    Reconciler,
     ResolvedDeployment,
 )
+from nmp.core.models.controllers.backends.k8s_nim_operator.reconcilers.resource_deleter import ResourceDeleter
+from nmp.core.models.controllers.backends.k8s_nim_operator.reconcilers.status_projector import StatusProjector
 
 logger = getLogger(__name__)
 
@@ -47,26 +54,29 @@ NIMSERVICE_DEPLOYMENT_WORKSPACE_LABEL = "nmp.nvidia.com/deployment-workspace"
 NIMSERVICE_DEPLOYMENT_NAME_LABEL = "nmp.nvidia.com/deployment-name"
 
 
-class NimOperatorReconciler(BaseReconciler):
+class NimOperatorReconciler(Reconciler):
     """Reconciles a deployment by emitting NIMService / NIMCache CRs.
 
-    Holds its own dynamic client (NIM CRDs are accessed via API discovery). Status
-    is projected from the operator-reported ``NIMService.status``; when the
-    operator reports ``NotReady`` it drills into the operator-created Deployment's
-    pods using the shared :class:`BaseReconciler` helpers.
+    Holds its own dynamic client (NIM CRDs are accessed via API discovery) and
+    composes a :class:`StatusProjector` (for the operator-created Deployment's pod
+    status when the operator reports ``NotReady``) and a :class:`ResourceDeleter`.
     """
 
     def __init__(
         self,
-        k8s_client_: k8s_client.ApiClient,
         dynamic_client: DynamicClient,
         backend_config: K8sNimOperatorConfig,
         k8s_namespace: str,
         huggingface_model_puller: str,
+        status: StatusProjector,
+        deleter: ResourceDeleter,
     ) -> None:
-        super().__init__(k8s_client_, backend_config, k8s_namespace)
         self._dynamic_client = dynamic_client
+        self._backend_config = backend_config
+        self._k8s_namespace = k8s_namespace
         self._huggingface_model_puller = huggingface_model_puller
+        self._status = status
+        self._deleter = deleter
 
     # ------------------------------------------------------------------
     # Reconciler interface
@@ -78,67 +88,18 @@ class NimOperatorReconciler(BaseReconciler):
         model_entity = resolved.model_entity
 
         logger.info(
-            f"Creating NIMService: {deployment.workspace}/{deployment.name} (version: {deployment.entity_version})"
+            "Creating NIMService",
+            extra={
+                "workspace": deployment.workspace,
+                "deployment_name": deployment.name,
+                "version": deployment.entity_version,
+            },
         )
 
-        # Check if Files service model (SFT or fileset) and create NIMCache if needed
-        nimcache_name = None
-        if resolved.weights_type == ModelWeightsType.FILES_SERVICE:
-            logger.info(
-                f"Files service model detected for deployment {deployment.workspace}/{deployment.name}, creating NIMCache"
-            )
-
-            view = resolved.view
-            pvc_size = view.disk_size if view.disk_size else self._backend_config.default_pvc_size
-
-            try:
-                model_namespace = resolved.model_namespace
-                model_name = resolved.model_name
-                model_revision = resolved.model_revision
-
-                if not model_namespace or not model_name:
-                    logger.error(
-                        f"Files service model detected but missing model namespace or name in config: "
-                        f"namespace={model_namespace}, name={model_name}"
-                    )
-                    return DeploymentStatusUpdate(
-                        status="ERROR",
-                        status_message="Cannot create NIMCache for Files service model: missing model namespace or name in configuration",
-                        error_details={
-                            "error": "Missing required model namespace or name for Files service model",
-                            "model_namespace": model_namespace,
-                            "model_name": model_name,
-                        },
-                        host_url=None,
-                    )
-
-                nimcache_resource_name = resolved.nimcache_resource_name
-
-                nimcache = compile_nimcache(
-                    backend_config=self._backend_config,
-                    k8s_namespace=self._k8s_namespace,
-                    resource_name=nimcache_resource_name,
-                    model_namespace=model_namespace,
-                    model_name=model_name,
-                    pvc_size=pvc_size,
-                    huggingface_model_puller=self._huggingface_model_puller,
-                    model_revision=model_revision,
-                )
-
-                await self._create_nimcache(nimcache)
-                nimcache_name = nimcache_resource_name
-                logger.info(f"NIMCache created successfully: {nimcache_name}")
-
-            except Exception as e:
-                logger.error(f"Failed to create NIMCache for Files service model: {e}")
-                return DeploymentStatusUpdate(
-                    status="ERROR",
-                    status_message=f"Failed to create NIMCache for Files service model: {str(e)}",
-                    error_details={"error": str(e), "error_type": type(e).__name__},
-                    host_url=None,
-                )
-        else:
-            logger.debug(f"No Files service model detected for deployment {deployment.workspace}/{deployment.name}")
+        # Check if Files service model (SFT or fileset) and create NIMCache if needed.
+        nimcache_name, error = await self._ensure_nimcache(resolved, action="creating")
+        if error is not None:
+            return error
 
         try:
             resource_name = resolved.resource_name
@@ -168,21 +129,28 @@ class NimOperatorReconciler(BaseReconciler):
                     namespace=self._k8s_namespace,
                 )
                 logger.info(
-                    f"Successfully created NIMService {self._k8s_namespace}/{resource_name} "
-                    f"with UID: {created.metadata.uid}"
+                    "Successfully created NIMService",
+                    extra={
+                        "namespace": self._k8s_namespace,
+                        "resource_name": resource_name,
+                        "uid": created.metadata.uid,
+                    },
                 )
             except k8s_dynamic_exceptions.ConflictError:
                 # NIMService already exists, just return PENDING and let status check handle it
-                logger.info(f"NIMService {resource_name} already exists, skipping creation")
+                logger.info("NIMService already exists, skipping creation", extra={"resource_name": resource_name})
 
             return DeploymentStatusUpdate(
                 status="PENDING",
                 status_message="NIMService creation initiated successfully",
-                host_url=self._get_host_url(resource_name),
+                host_url=self._status.host_url(resource_name),
             )
 
         except Exception as e:
-            logger.error(f"Failed to create NIMService for {deployment.workspace}/{deployment.name}: {e}")
+            logger.error(
+                "Failed to create NIMService",
+                extra={"workspace": deployment.workspace, "deployment_name": deployment.name, "error": str(e)},
+            )
             return DeploymentStatusUpdate(
                 status="ERROR",
                 status_message=f"Failed to create deployment {deployment.workspace}/{deployment.name} due to a service backend error",
@@ -196,69 +164,18 @@ class NimOperatorReconciler(BaseReconciler):
         model_entity = resolved.model_entity
 
         logger.info(
-            f"Updating NIMService: {deployment.workspace}/{deployment.name} (version: {deployment.entity_version})"
+            "Updating NIMService",
+            extra={
+                "workspace": deployment.workspace,
+                "deployment_name": deployment.name,
+                "version": deployment.entity_version,
+            },
         )
 
-        # Check if Files service model (SFT or fileset) and create/update NIMCache if needed
-        nimcache_name = None
-        if resolved.weights_type == ModelWeightsType.FILES_SERVICE:
-            logger.info(
-                f"Files service model detected for deployment update {deployment.workspace}/{deployment.name}, creating/updating NIMCache"
-            )
-
-            view = resolved.view
-            pvc_size = view.disk_size if view.disk_size else self._backend_config.default_pvc_size
-
-            try:
-                model_namespace = resolved.model_namespace
-                model_name = resolved.model_name
-                model_revision = resolved.model_revision
-
-                if not model_namespace or not model_name:
-                    logger.error(
-                        f"Files service model detected but missing model namespace or name in config: "
-                        f"namespace={model_namespace}, name={model_name}"
-                    )
-                    return DeploymentStatusUpdate(
-                        status="ERROR",
-                        status_message="Cannot create NIMCache for Files service model: missing model namespace or name in configuration",
-                        error_details={
-                            "error": "Missing required model namespace or name for Files service model",
-                            "model_namespace": model_namespace,
-                            "model_name": model_name,
-                        },
-                        host_url=None,
-                    )
-
-                nimcache_resource_name = resolved.nimcache_resource_name
-
-                nimcache = compile_nimcache(
-                    backend_config=self._backend_config,
-                    k8s_namespace=self._k8s_namespace,
-                    resource_name=nimcache_resource_name,
-                    model_namespace=model_namespace,
-                    model_name=model_name,
-                    pvc_size=pvc_size,
-                    huggingface_model_puller=self._huggingface_model_puller,
-                    model_revision=model_revision,
-                )
-
-                await self._create_nimcache(nimcache)
-                nimcache_name = nimcache_resource_name
-                logger.info(f"NIMCache created/updated successfully: {nimcache_name}")
-
-            except Exception as e:
-                logger.error(f"Failed to create/update NIMCache for Files service model: {e}")
-                return DeploymentStatusUpdate(
-                    status="ERROR",
-                    status_message=f"Failed to create/update NIMCache for Files service model: {str(e)}",
-                    error_details={"error": str(e), "error_type": type(e).__name__},
-                    host_url=None,
-                )
-        else:
-            logger.debug(
-                f"No Files service model detected for deployment update {deployment.workspace}/{deployment.name}"
-            )
+        # Check if Files service model (SFT or fileset) and create/update NIMCache if needed.
+        nimcache_name, error = await self._ensure_nimcache(resolved, action="updating")
+        if error is not None:
+            return error
 
         try:
             resource_name = resolved.resource_name
@@ -289,22 +206,27 @@ class NimOperatorReconciler(BaseReconciler):
             )
 
             logger.info(
-                f"Successfully updated NIMService {self._k8s_namespace}/{resource_name} "
-                f"with UID: {updated.metadata.uid}"
+                "Successfully updated NIMService",
+                extra={"namespace": self._k8s_namespace, "resource_name": resource_name, "uid": updated.metadata.uid},
             )
 
             return DeploymentStatusUpdate(
                 status="PENDING",
                 status_message="NIMService update initiated successfully",
-                host_url=self._get_host_url(resource_name),
+                host_url=self._status.host_url(resource_name),
             )
 
         except k8s_dynamic_exceptions.NotFoundError:
-            logger.warning(f"NIMService {resource_name} not found, treating as create operation")
+            logger.warning(
+                "NIMService not found, treating as create operation", extra={"resource_name": resolved.resource_name}
+            )
             return await self.create(resolved)
 
         except Exception as e:
-            logger.error(f"Failed to update NIMService for {deployment.workspace}/{deployment.name}: {e}")
+            logger.error(
+                "Failed to update NIMService",
+                extra={"workspace": deployment.workspace, "deployment_name": deployment.name, "error": str(e)},
+            )
             return DeploymentStatusUpdate(
                 status="ERROR",
                 status_message=f"Failed to update deployment {deployment.workspace}/{deployment.name} due to a service backend error",
@@ -321,8 +243,6 @@ class NimOperatorReconciler(BaseReconciler):
         Returns an aggregated update; the ServiceBackend combines this with the
         other reconciler's delete result.
         """
-        from nmp.core.models.app import get_deployment_resource_name, get_nimcache_resource_name
-
         nimservice_name = get_deployment_resource_name(workspace, name)
         nimcache_name = get_nimcache_resource_name(workspace, name)
         errors: list[str] = []
@@ -336,7 +256,7 @@ class NimOperatorReconciler(BaseReconciler):
             except Exception as e:
                 errors.append(f"error resolving {kind} API: {e}")
                 continue
-            err = self._delete_one(
+            err = self._deleter.delete_one(
                 lambda name, namespace, _api=cr_api: _api.delete(name=name, namespace=namespace),
                 kind,
                 cr_name,
@@ -379,12 +299,79 @@ class NimOperatorReconciler(BaseReconciler):
             # No RBAC for the NIM CRDs (e.g. a vLLM-only deployment). Not an error.
             logger.debug("No access to NIMServices for orphan reconciliation; skipping NIM path")
         except Exception as e:
-            logger.warning(f"Failed to list NIMServices for orphan reconciliation: {e}")
+            logger.warning("Failed to list NIMServices for orphan reconciliation", extra={"error": str(e)})
         return sorted(seen)
 
     # ------------------------------------------------------------------
-    # NIM-specific helpers (moved verbatim)
+    # NIM-specific helpers
     # ------------------------------------------------------------------
+
+    async def _ensure_nimcache(
+        self, resolved: ResolvedDeployment, action: str
+    ) -> tuple[str | None, DeploymentStatusUpdate | None]:
+        """Create the NIMCache for a Files-service model, if applicable.
+
+        Returns ``(nimcache_name, None)`` on success (``nimcache_name`` is ``None``
+        when the model is not a Files-service model), or ``(None, error_update)``
+        when NIMCache creation should abort the create/update.
+        """
+        deployment = resolved.deployment
+
+        if resolved.weights_type != ModelWeightsType.FILES_SERVICE:
+            logger.debug(
+                "No Files service model detected",
+                extra={"workspace": deployment.workspace, "deployment_name": deployment.name, "action": action},
+            )
+            return None, None
+
+        logger.info(
+            "Files service model detected, creating NIMCache",
+            extra={"workspace": deployment.workspace, "deployment_name": deployment.name, "action": action},
+        )
+
+        model_namespace = resolved.model_namespace
+        model_name = resolved.model_name
+        if not model_namespace or not model_name:
+            logger.error(
+                "Files service model detected but missing model namespace or name in config",
+                extra={"model_namespace": model_namespace, "model_name": model_name},
+            )
+            return None, DeploymentStatusUpdate(
+                status="ERROR",
+                status_message="Cannot create NIMCache for Files service model: missing model namespace or name in configuration",
+                error_details={
+                    "error": "Missing required model namespace or name for Files service model",
+                    "model_namespace": model_namespace,
+                    "model_name": model_name,
+                },
+                host_url=None,
+            )
+
+        view = resolved.view
+        pvc_size = view.disk_size if view.disk_size else self._backend_config.default_pvc_size
+
+        try:
+            nimcache = compile_nimcache(
+                backend_config=self._backend_config,
+                k8s_namespace=self._k8s_namespace,
+                resource_name=resolved.nimcache_resource_name,
+                model_namespace=model_namespace,
+                model_name=model_name,
+                pvc_size=pvc_size,
+                huggingface_model_puller=self._huggingface_model_puller,
+                model_revision=resolved.model_revision,
+            )
+            await self._create_nimcache(nimcache)
+            logger.info("NIMCache created successfully", extra={"resource_name": resolved.nimcache_resource_name})
+            return resolved.nimcache_resource_name, None
+        except Exception as e:
+            logger.error("Failed to create NIMCache for Files service model", extra={"error": str(e)})
+            return None, DeploymentStatusUpdate(
+                status="ERROR",
+                status_message=f"Failed to create NIMCache for Files service model: {str(e)}",
+                error_details={"error": str(e), "error_type": type(e).__name__},
+                host_url=None,
+            )
 
     async def _create_nimcache(self, nimcache) -> None:
         """Create a NIMCache CR in Kubernetes.
@@ -405,13 +392,21 @@ class NimOperatorReconciler(BaseReconciler):
                 namespace=self._k8s_namespace,
             )
             logger.info(
-                f"Successfully created NIMCache {self._k8s_namespace}/{nimcache.metadata['name']} "
-                f"with UID: {created.metadata.uid}"
+                "Successfully created NIMCache",
+                extra={
+                    "namespace": self._k8s_namespace,
+                    "resource_name": nimcache.metadata["name"],
+                    "uid": created.metadata.uid,
+                },
             )
         except k8s_dynamic_exceptions.ConflictError:
-            logger.info(f"NIMCache {nimcache.metadata['name']} already exists, skipping creation")
+            logger.info(
+                "NIMCache already exists, skipping creation", extra={"resource_name": nimcache.metadata["name"]}
+            )
         except Exception as e:
-            logger.error(f"Failed to create NIMCache {nimcache.metadata['name']}: {e}")
+            logger.error(
+                "Failed to create NIMCache", extra={"resource_name": nimcache.metadata["name"], "error": str(e)}
+            )
             raise
 
     def _get_nimservice_status(self, resource_name: str) -> DeploymentStatusUpdate:
@@ -424,8 +419,8 @@ class NimOperatorReconciler(BaseReconciler):
             nimservice = nimservice_api.get(name=resource_name, namespace=self._k8s_namespace)
         except k8s_dynamic_exceptions.NotFoundError:
             logger.warning(
-                f"NIMService {resource_name} not found in cluster for deployment {resource_name}. "
-                f"The resource may have been manually deleted or removed during namespace cleanup."
+                "NIMService not found in cluster; may have been deleted externally",
+                extra={"resource_name": resource_name},
             )
             return DeploymentStatusUpdate(
                 status="LOST",
@@ -433,26 +428,25 @@ class NimOperatorReconciler(BaseReconciler):
                 host_url=None,
             )
 
-        nim_status = nimservice.get("status", {})
-        state = nim_status.get("state", "").lower()
+        # ``status`` / ``status.state`` may be absent or explicitly null while the
+        # operator is still populating them -- coerce to "" so .lower() is safe.
+        nim_status = nimservice.get("status") or {}
+        state = (nim_status.get("state") or "").lower()
 
         match state:
             case "ready":
                 return DeploymentStatusUpdate(
                     status="READY",
                     status_message="",
-                    host_url=self._get_host_url(resource_name),
+                    host_url=self._status.host_url(resource_name),
                 )
             case "notready":
                 conditions = nim_status.get("conditions", [])
-                logger.info(f"NIMService {resource_name} is NotReady. Conditions: {conditions}")
-
-                pod_status_result = self._get_pod_status_from_deployment(resource_name)
-
-                return pod_status_result
+                logger.info("NIMService is NotReady", extra={"resource_name": resource_name, "conditions": conditions})
+                return self._status.pod_status_from_deployment(resource_name)
             case "failed":
                 conditions = nim_status.get("conditions", [])
-                logger.error(f"NIMService {resource_name} has failed. Conditions: {conditions}")
+                logger.error("NIMService has failed", extra={"resource_name": resource_name, "conditions": conditions})
                 return DeploymentStatusUpdate(
                     status="ERROR",
                     status_message=f"NIMService failed: {conditions}",

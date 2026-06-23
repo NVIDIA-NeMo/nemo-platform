@@ -23,7 +23,6 @@ from kubernetes import client as k8s_client
 from kubernetes import config as k8s_config
 from kubernetes.dynamic import DynamicClient
 from nemo_platform.types.inference.model_deployment import ModelDeployment
-from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig
 from nemo_platform.types.models.model_entity import ModelEntity
 from nmp.common.config import get_platform_config
 from nmp.core.models.app import (
@@ -40,11 +39,14 @@ from nmp.core.models.controllers.backends.common import (
 )
 from nmp.core.models.controllers.backends.engine import ENGINE_GENERIC, ENGINE_VLLM, config_engine
 from nmp.core.models.controllers.backends.k8s_nim_operator.config import K8sNimOperatorConfig
-from nmp.core.models.controllers.backends.k8s_nim_operator.reconcilers.base import ResolvedDeployment
+from nmp.core.models.controllers.backends.k8s_nim_operator.reconcilers.base import Reconciler, ResolvedDeployment
 from nmp.core.models.controllers.backends.k8s_nim_operator.reconcilers.k8s import K8sReconciler
 from nmp.core.models.controllers.backends.k8s_nim_operator.reconcilers.nim_operator import (
     NimOperatorReconciler,
 )
+from nmp.core.models.controllers.backends.k8s_nim_operator.reconcilers.resource_deleter import ResourceDeleter
+from nmp.core.models.controllers.backends.k8s_nim_operator.reconcilers.status_projector import StatusProjector
+from nmp.core.models.controllers.context import ModelContext
 
 logger = getLogger(__name__)
 
@@ -62,6 +64,8 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
         self._k8s_namespace: str | None = None
         self._backend_config: K8sNimOperatorConfig | None = None
         self._huggingface_model_puller = huggingface_model_puller
+        self._status_projector: StatusProjector | None = None
+        self._resource_deleter: ResourceDeleter | None = None
         self._nim_reconciler: NimOperatorReconciler | None = None
         self._k8s_reconciler: K8sReconciler | None = None
         super().__init__(nmp_sdk, config)
@@ -88,18 +92,30 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
         self._k8s_namespace = self._get_current_namespace()
         logger.info(f"Models controller will deploy models to namespace: {self._k8s_namespace}")
 
-        self._nim_reconciler = NimOperatorReconciler(
+        # Shared collaborators composed into both reconcilers (and used directly
+        # by the PENDING-timeout policy below).
+        self._status_projector = StatusProjector(
             k8s_client_=self._k8s_client,
+            backend_config=self._backend_config,
+            k8s_namespace=self._k8s_namespace,
+        )
+        self._resource_deleter = ResourceDeleter(k8s_namespace=self._k8s_namespace)
+
+        self._nim_reconciler = NimOperatorReconciler(
             dynamic_client=self._dynamic_client,
             backend_config=self._backend_config,
             k8s_namespace=self._k8s_namespace,
             huggingface_model_puller=self._huggingface_model_puller,
+            status=self._status_projector,
+            deleter=self._resource_deleter,
         )
         self._k8s_reconciler = K8sReconciler(
             k8s_client_=self._k8s_client,
             backend_config=self._backend_config,
             k8s_namespace=self._k8s_namespace,
             huggingface_model_puller=self._huggingface_model_puller,
+            status=self._status_projector,
+            deleter=self._resource_deleter,
         )
 
     def shutdown(self) -> None:
@@ -189,13 +205,11 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
         files_url = platform_config.service_discovery.get("files") or platform_config.base_url
         return urljoin(files_url.rstrip("/") + "/", "apis/files/v2/hf")
 
-    def _resolve(
-        self,
-        deployment: ModelDeployment,
-        config: ModelDeploymentConfig,
-        model_entity: Optional[ModelEntity],
-    ) -> ResolvedDeployment:
+    def _resolve(self, ctx: ModelContext) -> ResolvedDeployment:
         """Resolve everything a reconciler needs from the API object + SDK state."""
+        deployment = ctx.model_deployment
+        config = ctx.model_deployment_config
+        model_entity = ctx.model_entity
         view = deployment_config_view(config)
         model_namespace, model_name, model_revision = self._resolve_model_source(model_entity, view)
         weights_type = get_model_weights_type(
@@ -218,8 +232,14 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
             huggingface_model_puller=self._huggingface_model_puller,
         )
 
-    def _select_reconciler(self, engine: str):
-        """Select the reconciler for an engine, rejecting the unsupported one."""
+    def _select_reconciler(self, engine: str) -> Optional[Reconciler]:
+        """Select the reconciler for an engine.
+
+        Returns the vLLM reconciler for ``vllm``, the NIM-operator reconciler for
+        any other engine (the default), and ``None`` for ``generic`` -- which the
+        callers treat as the "unsupported engine" rejection (see
+        :meth:`_unsupported_engine`).
+        """
         if engine == ENGINE_VLLM:
             return self._k8s_reconciler
         if engine == ENGINE_GENERIC:
@@ -239,41 +259,33 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
     # ServiceBackend interface (resolve + select + delegate)
     # ------------------------------------------------------------------
 
-    async def create_model_deployment(
-        self, deployment: ModelDeployment, config: ModelDeploymentConfig, model_entity: Optional[ModelEntity] = None
-    ) -> DeploymentStatusUpdate:
-        """Create a new model deployment (dispatches on ``config.engine``)."""
-        engine = config_engine(config)
+    async def create_model_deployment(self, ctx: ModelContext) -> DeploymentStatusUpdate:
+        """Create a new model deployment (dispatches on the config's engine)."""
+        engine = config_engine(ctx.model_deployment_config)
         reconciler = self._select_reconciler(engine)
         if reconciler is None:
             return self._unsupported_engine(engine)
-        resolved = self._resolve(deployment, config, model_entity)
+        resolved = self._resolve(ctx)
         return await reconciler.create(resolved)
 
-    async def update_model_deployment(
-        self, deployment: ModelDeployment, config: ModelDeploymentConfig, model_entity: Optional[ModelEntity] = None
-    ) -> DeploymentStatusUpdate:
-        """Update an existing model deployment (dispatches on ``config.engine``)."""
-        engine = config_engine(config)
+    async def update_model_deployment(self, ctx: ModelContext) -> DeploymentStatusUpdate:
+        """Update an existing model deployment (dispatches on the config's engine)."""
+        engine = config_engine(ctx.model_deployment_config)
         reconciler = self._select_reconciler(engine)
         if reconciler is None:
             return self._unsupported_engine(engine)
-        resolved = self._resolve(deployment, config, model_entity)
+        resolved = self._resolve(ctx)
         return await reconciler.update(resolved)
 
-    async def get_model_deployment_status(
-        self,
-        deployment: ModelDeployment,
-        config: Optional[ModelDeploymentConfig] = None,
-        model_entity: Optional[ModelEntity] = None,
-    ) -> DeploymentStatusUpdate:
+    async def get_model_deployment_status(self, ctx: ModelContext) -> DeploymentStatusUpdate:
         """Get the current status of a model deployment.
 
-        The engine is taken from ``config`` (same selection as create/update), so a
-        config is required. When ``config`` is ``None`` (e.g. the controller failed
-        to fetch it this cycle) the backend cannot determine the deployment's state
-        and returns ``UNKNOWN``; the controller retries on the next poll (which
-        normally has a config) and escalates to ERROR after its retry budget.
+        The engine is taken from the config (same selection as create/update), so a
+        config is required. When ``ctx.model_deployment_config`` is ``None`` (e.g.
+        the controller failed to fetch it this cycle) the backend cannot determine
+        the deployment's state and returns ``UNKNOWN``; the controller retries on
+        the next poll (which normally has a config) and escalates to ERROR after
+        its retry budget.
 
         In addition to the reconciler's status, this method enforces the PENDING
         timeout policy: if the deployment has been alive longer than
@@ -281,6 +293,8 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
         diagnostic information. (Crash-loop detection is handled inside the
         reconciler's pod drill-down.)
         """
+        deployment = ctx.model_deployment
+        config = ctx.model_deployment_config
         logger.debug(
             f"Checking deployment status: {deployment.workspace}/{deployment.name} "
             f"(version: {deployment.entity_version})"
@@ -305,15 +319,15 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
                 return self._unsupported_engine(engine)
             # A reconciler MAY advance creation in get_status; it needs the
             # resolved config to compile the serving spec.
-            resolved = self._resolve(deployment, config, model_entity)
+            resolved = self._resolve(ctx)
             result = await reconciler.get_status(resolved)
 
             if result.status == "PENDING":
                 elapsed = deployment_elapsed_seconds(deployment)
 
                 if elapsed >= self._backend_config.pending_timeout_seconds:
-                    pod_name = self._nim_reconciler._find_pod_name(resource_name)
-                    return self._nim_reconciler._build_pending_timeout_error(resource_name, elapsed, pod_name)
+                    pod_name = self._status_projector.find_pod_name(resource_name)
+                    return self._status_projector.build_pending_timeout_error(resource_name, elapsed, pod_name)
 
                 # Use a stable message (no elapsed/timeout) so we don't create a new history entry every poll
 

@@ -31,22 +31,25 @@ from nmp.core.models.controllers.backends import vllm_compiler
 from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate
 from nmp.core.models.controllers.backends.common import DeploymentConfigView
 from nmp.core.models.controllers.backends.engine import ENGINE_VLLM, resolve_health_path
-from nmp.core.models.controllers.backends.k8s_nim_operator import vllm_k8s_compiler as vk8s
+from nmp.core.models.controllers.backends.k8s_nim_operator import vllm_k8s_compiler
 from nmp.core.models.controllers.backends.k8s_nim_operator.config import K8sNimOperatorConfig
 from nmp.core.models.controllers.backends.k8s_nim_operator.reconcilers.base import (
-    BaseReconciler,
+    Reconciler,
     ResolvedDeployment,
 )
+from nmp.core.models.controllers.backends.k8s_nim_operator.reconcilers.resource_deleter import ResourceDeleter
+from nmp.core.models.controllers.backends.k8s_nim_operator.reconcilers.status_projector import StatusProjector
 
 logger = getLogger(__name__)
 
 
-class K8sReconciler(BaseReconciler):
+class K8sReconciler(Reconciler):
     """Reconciles a vLLM deployment by emitting native Kubernetes objects.
 
-    Holds its own typed API clients (CoreV1 / AppsV1 / BatchV1) and drives the
-    staged rollout itself, advancing creation one phase at a time as it is polled
-    via :meth:`get_status`.
+    Holds its own typed API clients (CoreV1 / AppsV1 / BatchV1), composes a
+    :class:`StatusProjector` (serving-pod readiness/diagnostics) and a
+    :class:`ResourceDeleter`, and drives the staged rollout itself, advancing
+    creation one phase at a time as it is polled via :meth:`get_status`.
     """
 
     def __init__(
@@ -55,12 +58,18 @@ class K8sReconciler(BaseReconciler):
         backend_config: K8sNimOperatorConfig,
         k8s_namespace: str,
         huggingface_model_puller: str,
+        status: StatusProjector,
+        deleter: ResourceDeleter,
     ) -> None:
-        super().__init__(k8s_client_, backend_config, k8s_namespace)
+        self._k8s_client = k8s_client_
+        self._backend_config = backend_config
+        self._k8s_namespace = k8s_namespace
         self._core_v1 = k8s_client.CoreV1Api(k8s_client_)
         self._apps_v1 = k8s_client.AppsV1Api(k8s_client_)
         self._batch_v1 = k8s_client.BatchV1Api(k8s_client_)
         self._huggingface_model_puller = huggingface_model_puller
+        self._status = status
+        self._deleter = deleter
 
     # ------------------------------------------------------------------
     # Reconciler interface
@@ -84,7 +93,7 @@ class K8sReconciler(BaseReconciler):
             if resolved.files_hf_url is None:
                 raise ValueError("Cannot create vLLM deployment: Files HF endpoint was not resolved")
 
-            pvc = vk8s.compile_pvc(
+            pvc = vllm_k8s_compiler.compile_pvc(
                 resource_name=resource_name,
                 workspace=deployment.workspace,
                 name=deployment.name,
@@ -95,13 +104,13 @@ class K8sReconciler(BaseReconciler):
                 namespace=self._k8s_namespace,
                 annotations=self._backend_config.default_annotations,
             )
-            job = vk8s.compile_puller_job(
+            job = vllm_k8s_compiler.compile_puller_job(
                 resource_name=resource_name,
                 workspace=deployment.workspace,
                 name=deployment.name,
                 engine=ENGINE_VLLM,
                 image=self._huggingface_model_puller,
-                args=["download", model_repo, "--local-dir", vk8s.MODEL_STORE_PATH],
+                container_args=["download", model_repo, "--local-dir", vllm_k8s_compiler.MODEL_STORE_PATH],
                 env={"HF_ENDPOINT": resolved.files_hf_url, "HF_TOKEN": "service:models"},
                 gpu=view.gpu,
                 namespace=self._k8s_namespace,
@@ -121,7 +130,7 @@ class K8sReconciler(BaseReconciler):
             return DeploymentStatusUpdate(
                 status="PENDING",
                 status_message="Provisioning model weights",
-                host_url=self._get_host_url(resource_name),
+                host_url=self._status.host_url(resource_name),
             )
         except Exception as e:
             logger.error(f"Failed to create vLLM deployment for {deployment.workspace}/{deployment.name}: {e}")
@@ -164,7 +173,7 @@ class K8sReconciler(BaseReconciler):
                 return DeploymentStatusUpdate(
                     status="PENDING",
                     status_message="Update accepted",
-                    host_url=self._get_host_url(resource_name),
+                    host_url=self._status.host_url(resource_name),
                 )
             return await self.create(resolved)
         except Exception as e:
@@ -204,16 +213,17 @@ class K8sReconciler(BaseReconciler):
             return self._project_deployment_readiness(resource_name)
 
         # No Deployment yet: we're still in the pull phase. Consult the puller Job.
-        job_name = vk8s.pull_job_name(resource_name)
+        job_name = vllm_k8s_compiler.pull_job_name(resource_name)
         try:
             job = self._batch_v1.read_namespaced_job(name=job_name, namespace=self._k8s_namespace)
         except k8s_client.exceptions.ApiException as e:
             if e.status != 404:
                 raise
-            # Job absent. This is either (a) the transient P3 window after we
-            # deleted a *succeeded* puller Job to release the RWO volume (the PVC
-            # still exists and holds the weights -> resume P3 by creating the
-            # serving objects), or (b) genuine drift (PVC also gone -> LOST).
+            # Job absent. This is one of:
+            # (a) the transient P3 window after we deleted a *succeeded* puller
+            #     Job to release the RWO volume (the PVC still exists and holds the
+            #     weights -> resume P3 by creating the serving objects); or
+            # (b) genuine drift (PVC also gone -> LOST).
             if self._pvc_exists(resource_name):
                 return self._create_vllm_serving_objects(deployment, resource_name, view, model_entity)
             return DeploymentStatusUpdate(
@@ -225,7 +235,7 @@ class K8sReconciler(BaseReconciler):
         job_status = job.status
         if job_status and job_status.failed and job_status.failed >= 1 and not (job_status.succeeded or 0):
             pod_name = self._find_job_pod_name(job_name)
-            logs = self._fetch_pod_logs(pod_name) if pod_name else ""
+            logs = self._status.fetch_pod_logs(pod_name) if pod_name else ""
             return DeploymentStatusUpdate(
                 status="ERROR",
                 status_message="Model weight download failed.",
@@ -272,8 +282,8 @@ class K8sReconciler(BaseReconciler):
             )
             for dep in deployments.items:
                 labels = (dep.metadata.labels or {}) if dep.metadata else {}
-                workspace = labels.get(vk8s.DEPLOYMENT_WORKSPACE_LABEL)
-                name = labels.get(vk8s.DEPLOYMENT_NAME_LABEL)
+                workspace = labels.get(vllm_k8s_compiler.DEPLOYMENT_WORKSPACE_LABEL)
+                name = labels.get(vllm_k8s_compiler.DEPLOYMENT_NAME_LABEL)
                 if workspace and name:
                     seen.add(f"{workspace}/{name}")
         except Exception as e:
@@ -295,7 +305,7 @@ class K8sReconciler(BaseReconciler):
         name = resolved.model_name
         revision = resolved.model_revision
         if not namespace or not name:
-            raise ValueError(f"Cannot resolve model source for vLLM deployment: namespace={namespace}, name={name}")
+            raise ValueError(f"Cannot resolve model source for vLLM deployment: namespace='{namespace}', name='{name}'")
         model_repo = f"{namespace}/{name}"
         source_tag = f"{model_repo}@{revision}" if revision else model_repo
         return model_repo, source_tag
@@ -321,7 +331,7 @@ class K8sReconciler(BaseReconciler):
             pass
         try:
             job = self._batch_v1.read_namespaced_job(
-                name=vk8s.pull_job_name(resource_name), namespace=self._k8s_namespace
+                name=vllm_k8s_compiler.pull_job_name(resource_name), namespace=self._k8s_namespace
             )
         except Exception:
             return False
@@ -331,7 +341,7 @@ class K8sReconciler(BaseReconciler):
         """True if the model-weights PVC for this deployment exists."""
         try:
             self._core_v1.read_namespaced_persistent_volume_claim(
-                name=vk8s.pvc_name(resource_name), namespace=self._k8s_namespace
+                name=vllm_k8s_compiler.pvc_name(resource_name), namespace=self._k8s_namespace
             )
             return True
         except k8s_client.exceptions.ApiException as e:
@@ -355,9 +365,11 @@ class K8sReconciler(BaseReconciler):
         deployment = self._apps_v1.read_namespaced_deployment(name=resource_name, namespace=self._k8s_namespace)
         ready = (deployment.status.ready_replicas or 0) if deployment.status else 0
         if ready >= 1:
-            return DeploymentStatusUpdate(status="READY", status_message="", host_url=self._get_host_url(resource_name))
+            return DeploymentStatusUpdate(
+                status="READY", status_message="", host_url=self._status.host_url(resource_name)
+            )
         # Not ready yet: reuse the pod-drilldown (crash loop, image pull, events).
-        return self._get_pod_status_from_deployment(resource_name)
+        return self._status.pod_status_from_deployment(resource_name)
 
     def _create_vllm_serving_objects(
         self,
@@ -386,7 +398,7 @@ class K8sReconciler(BaseReconciler):
             return DeploymentStatusUpdate(
                 status="PENDING",
                 status_message="Releasing model weights volume",
-                host_url=self._get_host_url(resource_name),
+                host_url=self._status.host_url(resource_name),
             )
 
         engine = ENGINE_VLLM
@@ -401,7 +413,7 @@ class K8sReconciler(BaseReconciler):
 
         init_containers, sidecar_containers = self._build_lora_containers(deployment, view, model_entity)
 
-        dep_obj = vk8s.compile_deployment(
+        dep_obj = vllm_k8s_compiler.compile_deployment(
             resource_name=resource_name,
             workspace=deployment.workspace,
             name=deployment.name,
@@ -420,7 +432,7 @@ class K8sReconciler(BaseReconciler):
             init_containers=init_containers,
             sidecar_containers=sidecar_containers,
         )
-        svc_obj = vk8s.compile_service(
+        svc_obj = vllm_k8s_compiler.compile_service(
             resource_name=resource_name,
             workspace=deployment.workspace,
             name=deployment.name,
@@ -461,7 +473,7 @@ class K8sReconciler(BaseReconciler):
         should retry on the next poll). Idempotent: a missing Job/pod counts as
         released.
         """
-        job_name = vk8s.pull_job_name(resource_name)
+        job_name = vllm_k8s_compiler.pull_job_name(resource_name)
         try:
             self._batch_v1.delete_namespaced_job(
                 name=job_name,
@@ -501,14 +513,13 @@ class K8sReconciler(BaseReconciler):
 
         lora_dir = vllm_compiler.VLLM_LORA_CACHE_DIR
         platform_config = get_platform_config()
-        image_pull_secrets = [secret.name for secret in platform_config.image_pull_secrets]
         sidecar_image = f"{platform_config.image_registry}/nmp-api:{platform_config.image_tag}"
 
         init_container = k8s_client.V1Container(
             name="lora-cache-init",
             image=f"{self._backend_config.busybox_image}:{self._backend_config.busybox_image_tag}",
             command=["sh", "-c", f"mkdir -p {lora_dir} && chmod -R 777 {lora_dir}"],
-            volume_mounts=[k8s_client.V1VolumeMount(name="scratch", mount_path=vk8s.SCRATCH_PATH)],
+            volume_mounts=[k8s_client.V1VolumeMount(name="scratch", mount_path=vllm_k8s_compiler.SCRATCH_PATH)],
         )
 
         sidecar_env = {
@@ -530,16 +541,16 @@ class K8sReconciler(BaseReconciler):
             command=["nemo", "services", "run", "--sidecars", "adapters"],
             env=[k8s_client.V1EnvVar(name=k, value=str(v)) for k, v in sidecar_env.items()],
             volume_mounts=[
-                k8s_client.V1VolumeMount(name="model-store", mount_path=vk8s.MODEL_STORE_PATH, read_only=True),
-                k8s_client.V1VolumeMount(name="scratch", mount_path=vk8s.SCRATCH_PATH),
+                k8s_client.V1VolumeMount(
+                    name="model-store", mount_path=vllm_k8s_compiler.MODEL_STORE_PATH, read_only=True
+                ),
+                k8s_client.V1VolumeMount(name="scratch", mount_path=vllm_k8s_compiler.SCRATCH_PATH),
             ],
         )
-        # imagePullSecrets are pod-level; the compiler sets them from the puller
-        # secret, but the sidecar image comes from the platform registry. Attach
-        # via the sidecar's own spec is not possible (pod-level only), so rely on
-        # the pod's service account / pull secret. (Platform pull secrets are
-        # applied at the chart level for the models SA.)
-        _ = image_pull_secrets  # documented: pod-level pull secrets handled by SA
+        # NOTE: the sidecar image comes from the platform registry, but
+        # imagePullSecrets are pod-level (not per-container), so we don't set them
+        # on the sidecar here. The pod relies on the models ServiceAccount's pull
+        # secret, which is applied at the chart level.
         return [init_container], [sidecar]
 
     def _set_owner_reference_on_pvc(self, resource_name: str, owner_ref: k8s_client.V1OwnerReference) -> None:
@@ -552,7 +563,7 @@ class K8sReconciler(BaseReconciler):
         patch = {"metadata": {"ownerReferences": [self._k8s_client.sanitize_for_serialization(owner_ref)]}}
         try:
             self._core_v1.patch_namespaced_persistent_volume_claim(
-                name=vk8s.pvc_name(resource_name), namespace=self._k8s_namespace, body=patch
+                name=vllm_k8s_compiler.pvc_name(resource_name), namespace=self._k8s_namespace, body=patch
             )
         except Exception as e:
             logger.warning(f"Failed to set ownerReference on PVC for {resource_name}: {e}")
@@ -573,12 +584,12 @@ class K8sReconciler(BaseReconciler):
         """Read the model-source annotation off the existing puller Job, if any."""
         try:
             job = self._batch_v1.read_namespaced_job(
-                name=vk8s.pull_job_name(resource_name), namespace=self._k8s_namespace
+                name=vllm_k8s_compiler.pull_job_name(resource_name), namespace=self._k8s_namespace
             )
         except k8s_client.exceptions.ApiException:
             return None
         annotations = (job.metadata.annotations or {}) if job.metadata else {}
-        return annotations.get(vk8s.MODEL_SOURCE_ANNOTATION)
+        return annotations.get(vllm_k8s_compiler.MODEL_SOURCE_ANNOTATION)
 
     def _delete_vllm_resources(self, resource_name: str) -> list[str]:
         """Delete the directly-emitted vLLM objects by name (idempotent).
@@ -589,12 +600,12 @@ class K8sReconciler(BaseReconciler):
         deleters = [
             (self._apps_v1.delete_namespaced_deployment, "Deployment", resource_name),
             (self._core_v1.delete_namespaced_service, "Service", resource_name),
-            (self._batch_v1.delete_namespaced_job, "puller Job", vk8s.pull_job_name(resource_name)),
-            (self._core_v1.delete_namespaced_persistent_volume_claim, "PVC", vk8s.pvc_name(resource_name)),
+            (self._batch_v1.delete_namespaced_job, "puller Job", vllm_k8s_compiler.pull_job_name(resource_name)),
+            (self._core_v1.delete_namespaced_persistent_volume_claim, "PVC", vllm_k8s_compiler.pvc_name(resource_name)),
         ]
         errors: list[str] = []
         for delete_fn, kind, obj_name in deleters:
-            err = self._delete_one(delete_fn, kind, obj_name)
+            err = self._deleter.delete_one(delete_fn, kind, obj_name)
             if err:
                 errors.append(err)
         return errors

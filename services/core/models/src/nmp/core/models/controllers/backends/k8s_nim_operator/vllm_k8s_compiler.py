@@ -187,7 +187,7 @@ def compile_puller_job(
     name: str,
     engine: str,
     image: str,
-    args: list[str],
+    container_args: list[str],
     env: Optional[dict[str, str]] = None,
     gpu: int = 0,
     namespace: Optional[str] = None,
@@ -206,8 +206,9 @@ def compile_puller_job(
     --local-dir /model-store [...]`` against ``image`` (the platform nmp-api
     image), mounting the PVC at ``/model-store``. ``command=["hf"]`` overrides the
     image ENTRYPOINT (nmp-api's is ``nemo services run``) to the Hugging Face CLI,
-    and ``args`` (e.g. ``["download", "<repo>", "--local-dir", "/model-store"]``)
-    are the CLI arguments. The puller requests the same ``gpu`` as the server --
+    and ``container_args`` (e.g. ``["download", "<repo>", "--local-dir",
+    "/model-store"]``) are the CLI arguments. The puller requests the same ``gpu``
+    as the server --
     not for compute, but to pin it into GPU topology so the shared RWO PVC binds
     where the server can mount it (correct across any StorageClass
     ``volumeBindingMode``).
@@ -221,7 +222,7 @@ def compile_puller_job(
         name="weight-puller",
         image=image,
         command=["hf"],
-        args=args,
+        args=container_args,
         env=env_list or None,
         resources=_gpu_resources(gpu),
         security_context=k8s_client.V1SecurityContext(

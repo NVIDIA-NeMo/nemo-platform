@@ -18,6 +18,7 @@ from nmp.core.models.controllers.backends.docker.creation_reconciler import (
     CreationStage,
     _compute_multi_gpu_shm_size,
 )
+from nmp.core.models.controllers.context import ModelContext
 from nmp.core.models.schemas import (
     ContainerExecutorConfig,
     Engine,
@@ -86,7 +87,7 @@ async def drive_creation_to_completion(backend: DockerServiceBackend, deployment
             return last_status
     if last_status is not None:
         return last_status
-    return await backend.get_model_deployment_status(deployment)
+    return await backend.get_model_deployment_status(ModelContext(model_deployment=deployment))
 
 
 @pytest.fixture
@@ -350,7 +351,9 @@ async def test_docker_backend_create_model_deployment(
     mock_docker_client.containers.list.return_value = []
 
     # create_model_deployment now starts the image pull and returns PENDING immediately
-    initial_status = await docker_backend.create_model_deployment(sample_deployment, sample_config)
+    initial_status = await docker_backend.create_model_deployment(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=sample_config)
+    )
     assert initial_status.status == "PENDING"
     assert "pulling container image" in initial_status.status_message.lower()
 
@@ -429,7 +432,11 @@ async def _drive_vllm_with_puller(docker_backend, sample_deployment, mock_docker
     mock_docker_client.containers.create.return_value = mock_vllm_container
     mock_docker_client.containers.list.return_value = []
 
-    await docker_backend.create_model_deployment(sample_deployment, config, _vllm_model_entity())
+    await docker_backend.create_model_deployment(
+        ModelContext(
+            model_deployment=sample_deployment, model_deployment_config=config, model_entity=_vllm_model_entity()
+        )
+    )
 
     def get_container_side_effect(name):
         if "puller" in name:
@@ -591,7 +598,11 @@ async def test_docker_backend_create_sft_model_success(
     mock_docker_client.containers.list.return_value = []
 
     # create_model_deployment starts the pipeline; drive it to completion
-    await docker_backend.create_model_deployment(sample_deployment, sample_config, model_entity)
+    await docker_backend.create_model_deployment(
+        ModelContext(
+            model_deployment=sample_deployment, model_deployment_config=sample_config, model_entity=model_entity
+        )
+    )
 
     # Mock puller container for get/reload polling
     mock_puller_container.status = "exited"
@@ -670,7 +681,11 @@ async def test_docker_backend_create_sft_model_puller_fails(
     # Mock containers.list to return empty (no ports in use)
     mock_docker_client.containers.list.return_value = []
 
-    await docker_backend.create_model_deployment(sample_deployment, sample_config, model_entity)
+    await docker_backend.create_model_deployment(
+        ModelContext(
+            model_deployment=sample_deployment, model_deployment_config=sample_config, model_entity=model_entity
+        )
+    )
 
     # Mock get for puller container polling
     def get_container_side_effect(name):
@@ -705,7 +720,7 @@ async def test_docker_backend_get_model_deployment_status_running(
     mock_docker_client.containers.get.return_value = mock_container
     mock_docker_client.containers.get.side_effect = None
 
-    status_update = await docker_backend.get_model_deployment_status(sample_deployment)
+    status_update = await docker_backend.get_model_deployment_status(ModelContext(model_deployment=sample_deployment))
 
     # Verify status update
     assert status_update is not None
@@ -721,7 +736,7 @@ async def test_docker_backend_get_model_deployment_status_not_found(
     """Test getting status when container is not found."""
     mock_docker_client.containers.get.side_effect = NotFound("Container not found")
 
-    status_update = await docker_backend.get_model_deployment_status(sample_deployment)
+    status_update = await docker_backend.get_model_deployment_status(ModelContext(model_deployment=sample_deployment))
 
     # Verify status update
     assert status_update is not None
@@ -1006,7 +1021,9 @@ async def test_docker_backend_create_with_port_forwarding(
     # Mock containers.list to return empty (no ports in use)
     mock_docker_client.containers.list.return_value = []
 
-    await docker_backend_with_dind_mode.create_model_deployment(sample_deployment, sample_config)
+    await docker_backend_with_dind_mode.create_model_deployment(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=sample_config)
+    )
     status_update = await drive_creation_to_completion(docker_backend_with_dind_mode, sample_deployment)
 
     # Verify status update
@@ -1040,7 +1057,9 @@ async def test_docker_backend_get_status_with_port_forwarding(
     mock_docker_client.containers.get.side_effect = None
     mock_docker_client.containers.get.return_value = mock_container
 
-    status_update = await docker_backend_with_dind_mode.get_model_deployment_status(sample_deployment)
+    status_update = await docker_backend_with_dind_mode.get_model_deployment_status(
+        ModelContext(model_deployment=sample_deployment)
+    )
 
     # Verify status and URL uses the port from container bindings
     assert status_update.status == "READY"
@@ -1100,7 +1119,9 @@ async def test_docker_backend_port_exhaustion_error(
 
     mock_docker_client.containers.list.return_value = mock_containers
 
-    await docker_backend_with_dind_mode.create_model_deployment(sample_deployment, sample_config)
+    await docker_backend_with_dind_mode.create_model_deployment(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=sample_config)
+    )
     status_update = await drive_creation_to_completion(docker_backend_with_dind_mode, sample_deployment)
 
     # Should return ERROR status (port exhaustion happens during container creation stage)
@@ -1138,7 +1159,9 @@ async def test_docker_backend_multiple_deployments_unique_ports(
         deployment.name = f"model-{i}"
         deployments.append(deployment)
 
-        await docker_backend_with_dind_mode.create_model_deployment(deployment, sample_config)
+        await docker_backend_with_dind_mode.create_model_deployment(
+            ModelContext(model_deployment=deployment, model_deployment_config=sample_config)
+        )
         status = await drive_creation_to_completion(docker_backend_with_dind_mode, deployment)
 
         # Extract port from host_url (format: http://docker:PORT)
@@ -1272,7 +1295,13 @@ async def test_multi_llm_sft_model_now_runs_puller_old_test_updated(
 
     _setup_puller_mock_for_polling(mock_docker_client, sample_deployment, exit_code=0)
 
-    await docker_backend.create_model_deployment(sample_deployment, multi_llm_config, sft_model_entity)
+    await docker_backend.create_model_deployment(
+        ModelContext(
+            model_deployment=sample_deployment,
+            model_deployment_config=multi_llm_config,
+            model_entity=sft_model_entity,
+        )
+    )
     status_update = await drive_creation_to_completion(docker_backend, sample_deployment)
 
     assert status_update is not None
@@ -1316,7 +1345,13 @@ async def test_model_specific_nim_sft_model_runs_puller(
 
     _setup_puller_mock_for_polling(mock_docker_client, sample_deployment, exit_code=0)
 
-    await docker_backend.create_model_deployment(sample_deployment, model_specific_nim_config, sft_model_entity)
+    await docker_backend.create_model_deployment(
+        ModelContext(
+            model_deployment=sample_deployment,
+            model_deployment_config=model_specific_nim_config,
+            model_entity=sft_model_entity,
+        )
+    )
     status_update = await drive_creation_to_completion(docker_backend, sample_deployment)
 
     assert status_update is not None
@@ -1354,7 +1389,11 @@ async def test_explicit_multi_llm_image_now_runs_puller(
     _setup_puller_mock_for_polling(mock_docker_client, sample_deployment, exit_code=0)
 
     await docker_backend.create_model_deployment(
-        sample_deployment, explicit_multi_llm_config, sft_model_entity_with_artifact
+        ModelContext(
+            model_deployment=sample_deployment,
+            model_deployment_config=explicit_multi_llm_config,
+            model_entity=sft_model_entity_with_artifact,
+        )
     )
     status_update = await drive_creation_to_completion(docker_backend, sample_deployment)
 
@@ -1377,7 +1416,9 @@ async def test_multi_llm_non_sft_model_fails_without_supported_weights_type(
     mock_docker_client.images.get.return_value = MagicMock()
     mock_docker_client.containers.list.return_value = []
 
-    await docker_backend.create_model_deployment(sample_deployment, multi_llm_config, model_entity=None)
+    await docker_backend.create_model_deployment(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=multi_llm_config, model_entity=None)
+    )
     status_update = await drive_creation_to_completion(docker_backend, sample_deployment)
 
     assert status_update is not None
@@ -1466,7 +1507,13 @@ async def test_multi_llm_now_runs_puller(
 
     _setup_puller_mock_for_polling(mock_docker_client, sample_deployment, exit_code=0)
 
-    await docker_backend.create_model_deployment(sample_deployment, multi_llm_config, sft_model_entity_with_artifact)
+    await docker_backend.create_model_deployment(
+        ModelContext(
+            model_deployment=sample_deployment,
+            model_deployment_config=multi_llm_config,
+            model_entity=sft_model_entity_with_artifact,
+        )
+    )
     status_update = await drive_creation_to_completion(docker_backend, sample_deployment)
 
     assert status_update is not None
@@ -1930,7 +1977,9 @@ async def test_docker_backend_create_with_dond_mode_uses_container_name_url(
     # Mock containers.list to return empty (no ports in use)
     mock_docker_client.containers.list.return_value = []
 
-    await docker_backend_with_dond_mode.create_model_deployment(sample_deployment, sample_config)
+    await docker_backend_with_dond_mode.create_model_deployment(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=sample_config)
+    )
     status_update = await drive_creation_to_completion(docker_backend_with_dond_mode, sample_deployment)
 
     # Verify status update
@@ -1962,7 +2011,9 @@ async def test_docker_backend_get_status_with_dond_mode_uses_container_name_url(
     mock_docker_client.containers.get.side_effect = None
     mock_docker_client.containers.get.return_value = mock_container
 
-    status_update = await docker_backend_with_dond_mode.get_model_deployment_status(sample_deployment)
+    status_update = await docker_backend_with_dond_mode.get_model_deployment_status(
+        ModelContext(model_deployment=sample_deployment)
+    )
 
     # Verify status and URL uses container name (DonD mode ignores port bindings)
     assert status_update.status == "READY"
@@ -1985,7 +2036,9 @@ async def test_docker_backend_dond_mode_container_joins_network(
     mock_docker_client.images.get.return_value = MagicMock()
     mock_docker_client.containers.list.return_value = []
 
-    await docker_backend_with_dond_mode.create_model_deployment(sample_deployment, sample_config)
+    await docker_backend_with_dond_mode.create_model_deployment(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=sample_config)
+    )
     await drive_creation_to_completion(docker_backend_with_dond_mode, sample_deployment)
 
     # Verify every container was created with network attached
@@ -2089,7 +2142,9 @@ async def test_docker_backend_allocates_gpu_from_pool(
     # Initially all GPUs available
     assert docker_backend_with_gpu_pool._gpu_pool.get_available_count() == 4
 
-    await docker_backend_with_gpu_pool.create_model_deployment(sample_deployment, sample_config)
+    await docker_backend_with_gpu_pool.create_model_deployment(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=sample_config)
+    )
     await drive_creation_to_completion(docker_backend_with_gpu_pool, sample_deployment)
 
     # One GPU should be allocated
@@ -2113,7 +2168,9 @@ async def test_docker_backend_fails_without_gpu_pool(
     mock_docker_client.images.get.return_value = MagicMock()
     mock_docker_client.containers.list.return_value = []
 
-    await docker_backend_without_gpu_pool.create_model_deployment(sample_deployment, sample_config)
+    await docker_backend_without_gpu_pool.create_model_deployment(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=sample_config)
+    )
     status_update = await drive_creation_to_completion(docker_backend_without_gpu_pool, sample_deployment)
 
     assert status_update.status == "ERROR"
@@ -2138,7 +2195,9 @@ async def test_docker_backend_releases_gpu_on_delete(
     mock_docker_client.containers.list.return_value = []
 
     # Create deployment and drive to completion - allocates GPU
-    await docker_backend_with_gpu_pool.create_model_deployment(sample_deployment, sample_config)
+    await docker_backend_with_gpu_pool.create_model_deployment(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=sample_config)
+    )
     await drive_creation_to_completion(docker_backend_with_gpu_pool, sample_deployment)
     assert docker_backend_with_gpu_pool._gpu_pool.get_available_count() == 3
 
@@ -2177,7 +2236,9 @@ async def test_docker_backend_gpu_allocation_failure(
     assert docker_backend_with_gpu_pool._gpu_pool.get_available_count() == 0
 
     # Try to create deployment - GPU allocation failure happens during container creation stage
-    await docker_backend_with_gpu_pool.create_model_deployment(sample_deployment, sample_config)
+    await docker_backend_with_gpu_pool.create_model_deployment(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=sample_config)
+    )
     status_update = await drive_creation_to_completion(docker_backend_with_gpu_pool, sample_deployment)
 
     assert status_update.status == "ERROR"
@@ -2205,7 +2266,9 @@ async def test_docker_backend_releases_gpu_on_port_allocation_failure(
     assert docker_backend_with_gpu_pool._gpu_pool.get_available_count() == 4
 
     # Try to create deployment - port allocation failure happens during container creation stage
-    await docker_backend_with_gpu_pool.create_model_deployment(sample_deployment, sample_config)
+    await docker_backend_with_gpu_pool.create_model_deployment(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=sample_config)
+    )
     status_update = await drive_creation_to_completion(docker_backend_with_gpu_pool, sample_deployment)
 
     assert status_update.status == "ERROR"
@@ -2237,7 +2300,9 @@ async def test_docker_backend_releases_gpu_on_container_creation_failure(
     assert docker_backend_with_gpu_pool._gpu_pool.get_available_count() == 4
 
     # Try to create deployment - container creation failure happens during CREATING_CONTAINER stage
-    await docker_backend_with_gpu_pool.create_model_deployment(sample_deployment, sample_config)
+    await docker_backend_with_gpu_pool.create_model_deployment(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=sample_config)
+    )
     status_update = await drive_creation_to_completion(docker_backend_with_gpu_pool, sample_deployment)
 
     assert status_update.status == "ERROR"
@@ -2294,7 +2359,9 @@ async def test_docker_backend_multi_gpu_allocation(mock_nmp_sdk, mock_docker_cli
     mock_docker_client.images.get.return_value = MagicMock()
     mock_docker_client.containers.list.return_value = []
 
-    await backend.create_model_deployment(sample_deployment, multi_gpu_config)
+    await backend.create_model_deployment(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=multi_gpu_config)
+    )
     await drive_creation_to_completion(backend, sample_deployment)
 
     # Should have allocated 2 GPUs
@@ -2339,7 +2406,9 @@ async def test_docker_backend_releases_gpu_on_status_check_terminated(
     mock_docker_client.containers.list.return_value = []
 
     # Create deployment and drive to completion - allocates GPU
-    await docker_backend_with_gpu_pool.create_model_deployment(sample_deployment, sample_config)
+    await docker_backend_with_gpu_pool.create_model_deployment(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=sample_config)
+    )
     await drive_creation_to_completion(docker_backend_with_gpu_pool, sample_deployment)
     assert docker_backend_with_gpu_pool._gpu_pool.get_available_count() == 3
 
@@ -2350,7 +2419,9 @@ async def test_docker_backend_releases_gpu_on_status_check_terminated(
     mock_docker_client.containers.get.return_value = mock_container
 
     # Check status - should release GPU when container is terminated
-    status_update = await docker_backend_with_gpu_pool.get_model_deployment_status(sample_deployment)
+    status_update = await docker_backend_with_gpu_pool.get_model_deployment_status(
+        ModelContext(model_deployment=sample_deployment)
+    )
 
     # Verify ERROR status returned
     assert status_update.status == "ERROR"
@@ -2378,7 +2449,9 @@ async def test_docker_backend_releases_gpu_on_status_check_lost(
     mock_docker_client.containers.list.return_value = []
 
     # Create deployment and drive to completion - allocates GPU
-    await docker_backend_with_gpu_pool.create_model_deployment(sample_deployment, sample_config)
+    await docker_backend_with_gpu_pool.create_model_deployment(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=sample_config)
+    )
     await drive_creation_to_completion(docker_backend_with_gpu_pool, sample_deployment)
     assert docker_backend_with_gpu_pool._gpu_pool.get_available_count() == 3
 
@@ -2386,7 +2459,9 @@ async def test_docker_backend_releases_gpu_on_status_check_lost(
     mock_docker_client.containers.get.side_effect = NotFound("Container not found")
 
     # Check status - should release GPU when container is missing
-    status_update = await docker_backend_with_gpu_pool.get_model_deployment_status(sample_deployment)
+    status_update = await docker_backend_with_gpu_pool.get_model_deployment_status(
+        ModelContext(model_deployment=sample_deployment)
+    )
 
     # Verify LOST status returned
     assert status_update.status == "LOST"
@@ -2418,7 +2493,9 @@ async def test_docker_backend_status_check_does_not_release_gpu_when_running(
     docker_backend_with_gpu_pool._backend_config.models_docker_networking_mode = "dond"
 
     # Create deployment and drive to completion - allocates GPU
-    await docker_backend_with_gpu_pool.create_model_deployment(sample_deployment, sample_config)
+    await docker_backend_with_gpu_pool.create_model_deployment(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=sample_config)
+    )
     await drive_creation_to_completion(docker_backend_with_gpu_pool, sample_deployment)
     assert docker_backend_with_gpu_pool._gpu_pool.get_available_count() == 3
 
@@ -2429,7 +2506,9 @@ async def test_docker_backend_status_check_does_not_release_gpu_when_running(
     mock_docker_client.containers.get.return_value = mock_container
 
     # Check status - should NOT release GPU when container is running
-    status_update = await docker_backend_with_gpu_pool.get_model_deployment_status(sample_deployment)
+    status_update = await docker_backend_with_gpu_pool.get_model_deployment_status(
+        ModelContext(model_deployment=sample_deployment)
+    )
 
     # Verify READY status returned
     assert status_update.status == "READY"
@@ -2510,7 +2589,11 @@ async def test_multi_llm_files_service_deployment_succeeds(
     _setup_puller_mock_for_polling(mock_docker_client, deployment, exit_code=0)
 
     # No model entity (matches the bug scenario)
-    await docker_backend.create_model_deployment(deployment, multi_llm_config_with_model_name, model_entity=None)
+    await docker_backend.create_model_deployment(
+        ModelContext(
+            model_deployment=deployment, model_deployment_config=multi_llm_config_with_model_name, model_entity=None
+        )
+    )
     status_update = await drive_creation_to_completion(docker_backend, deployment)
 
     # Should succeed with PENDING status
@@ -2662,7 +2745,9 @@ async def test_multi_llm_huggingface_deployment_succeeds_with_hf_token(
 
     _setup_puller_mock_for_polling(mock_docker_client, deployment, exit_code=0)
 
-    await docker_backend.create_model_deployment(deployment, config, model_entity=None)
+    await docker_backend.create_model_deployment(
+        ModelContext(model_deployment=deployment, model_deployment_config=config, model_entity=None)
+    )
     status_update = await drive_creation_to_completion(docker_backend, deployment)
 
     assert status_update.status == "PENDING", (
@@ -2717,7 +2802,9 @@ async def test_create_releases_stale_gpu_allocation_single(
     mock_docker_client.containers.list.return_value = []
 
     # Create deployment and drive to completion (should release stale allocation first, then reallocate)
-    await docker_backend.create_model_deployment(sample_deployment, sample_config, None)
+    await docker_backend.create_model_deployment(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=sample_config, model_entity=None)
+    )
     status_update = await drive_creation_to_completion(docker_backend, sample_deployment)
 
     assert status_update.status == "PENDING"
@@ -2761,7 +2848,9 @@ async def test_create_releases_stale_gpu_allocation_multi(docker_backend, sample
     mock_docker_client.containers.create.return_value = mock_container
     mock_docker_client.containers.list.return_value = []
 
-    await docker_backend.create_model_deployment(sample_deployment, config, None)
+    await docker_backend.create_model_deployment(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=config, model_entity=None)
+    )
     status_update = await drive_creation_to_completion(docker_backend, sample_deployment)
 
     assert status_update.status == "PENDING"
@@ -2789,7 +2878,9 @@ async def test_create_without_stale_allocation_succeeds(
     mock_docker_client.containers.create.return_value = mock_container
     mock_docker_client.containers.list.return_value = []
 
-    await docker_backend.create_model_deployment(sample_deployment, sample_config, None)
+    await docker_backend.create_model_deployment(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=sample_config, model_entity=None)
+    )
     status_update = await drive_creation_to_completion(docker_backend, sample_deployment)
 
     assert status_update.status == "PENDING"
@@ -3535,7 +3626,9 @@ async def test_create_deployment_with_tool_call_plugin_from_entity(
     mock_docker_client.containers.create.return_value = mock_nim_container
     mock_docker_client.containers.list.return_value = []
 
-    await docker_backend.create_model_deployment(sample_deployment, config, model_entity)
+    await docker_backend.create_model_deployment(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=config, model_entity=model_entity)
+    )
     status_update = await drive_creation_to_completion(docker_backend, sample_deployment)
 
     assert status_update.status == "PENDING"
@@ -3608,7 +3701,7 @@ class TestPendingTimeoutStatusTransition:
 
         with patch.object(docker_backend, "_probe_nim_health", new_callable=AsyncMock) as mock_probe:
             mock_probe.return_value = (False, "connection refused")
-            status = await docker_backend.get_model_deployment_status(sample_deployment)
+            status = await docker_backend.get_model_deployment_status(ModelContext(model_deployment=sample_deployment))
 
         assert status.status == "PENDING"
         assert "still initializing" in status.status_message
@@ -3625,7 +3718,7 @@ class TestPendingTimeoutStatusTransition:
 
         with patch.object(docker_backend, "_probe_nim_health", new_callable=AsyncMock) as mock_probe:
             mock_probe.return_value = (False, "connection refused")
-            status = await docker_backend.get_model_deployment_status(sample_deployment)
+            status = await docker_backend.get_model_deployment_status(ModelContext(model_deployment=sample_deployment))
 
         assert status.status == "ERROR"
         assert "timed out" in status.status_message
@@ -3641,7 +3734,7 @@ class TestPendingTimeoutStatusTransition:
         """A container in 'created' state should return PENDING with timing info."""
         make_mock_container(status="created")
 
-        status = await docker_backend.get_model_deployment_status(sample_deployment)
+        status = await docker_backend.get_model_deployment_status(ModelContext(model_deployment=sample_deployment))
 
         assert status.status == "PENDING"
         assert "starting up" in status.status_message
@@ -3654,7 +3747,7 @@ class TestPendingTimeoutStatusTransition:
         """A container in 'restarting' state should include restart count."""
         make_mock_container(status="restarting", restart_count=3)
 
-        status = await docker_backend.get_model_deployment_status(sample_deployment)
+        status = await docker_backend.get_model_deployment_status(ModelContext(model_deployment=sample_deployment))
 
         assert status.status == "PENDING"
         assert "restart count: 3" in status.status_message
@@ -3669,7 +3762,7 @@ class TestPendingTimeoutStatusTransition:
         docker_backend._backend_config.pending_timeout_seconds = 3600
         sample_deployment.created_at = datetime.now(timezone.utc) - timedelta(hours=2)
 
-        status = await docker_backend.get_model_deployment_status(sample_deployment)
+        status = await docker_backend.get_model_deployment_status(ModelContext(model_deployment=sample_deployment))
 
         assert status.status == "ERROR"
         assert "timed out" in status.status_message
@@ -3682,7 +3775,7 @@ class TestPendingTimeoutStatusTransition:
         """A healthy container should return READY."""
         make_mock_container(status="running")
 
-        status = await docker_backend.get_model_deployment_status(sample_deployment)
+        status = await docker_backend.get_model_deployment_status(ModelContext(model_deployment=sample_deployment))
 
         assert status.status == "READY"
 
@@ -3691,7 +3784,7 @@ class TestPendingTimeoutStatusTransition:
         """A terminated container should return ERROR."""
         make_mock_container(status="exited", logs=b"Error occurred")
 
-        status = await docker_backend.get_model_deployment_status(sample_deployment)
+        status = await docker_backend.get_model_deployment_status(ModelContext(model_deployment=sample_deployment))
 
         assert status.status == "ERROR"
 
@@ -3700,7 +3793,7 @@ class TestPendingTimeoutStatusTransition:
         """A missing container (LOST) should return LOST."""
         mock_docker_client.containers.get.side_effect = NotFound("Container not found")
 
-        status = await docker_backend.get_model_deployment_status(sample_deployment)
+        status = await docker_backend.get_model_deployment_status(ModelContext(model_deployment=sample_deployment))
 
         assert status.status == "LOST"
 
@@ -3719,7 +3812,7 @@ class TestPendingTimeoutErrorMessage:
 
         with patch.object(docker_backend, "_probe_nim_health", new_callable=AsyncMock) as mock_probe:
             mock_probe.return_value = (False, "connection refused")
-            status = await docker_backend.get_model_deployment_status(sample_deployment)
+            status = await docker_backend.get_model_deployment_status(ModelContext(model_deployment=sample_deployment))
 
         assert status.status == "ERROR"
         assert "docker logs md-default-test-deployment" in status.status_message
@@ -3736,7 +3829,7 @@ class TestPendingTimeoutErrorMessage:
 
         with patch.object(docker_backend, "_probe_nim_health", new_callable=AsyncMock) as mock_probe:
             mock_probe.return_value = (False, "")
-            status = await docker_backend.get_model_deployment_status(sample_deployment)
+            status = await docker_backend.get_model_deployment_status(ModelContext(model_deployment=sample_deployment))
 
         assert status.error_details["error_stack"] is not None
         assert "NemotronHForCausalLM" in status.error_details["error_stack"]
@@ -3750,7 +3843,7 @@ class TestPendingTimeoutErrorMessage:
 
         with patch.object(docker_backend, "_probe_nim_health", new_callable=AsyncMock) as mock_probe:
             mock_probe.return_value = (False, "connection refused")
-            status = await docker_backend.get_model_deployment_status(sample_deployment)
+            status = await docker_backend.get_model_deployment_status(ModelContext(model_deployment=sample_deployment))
 
         assert status.status == "PENDING"
         assert "restarts: 3" in status.status_message
@@ -3769,7 +3862,7 @@ class TestCrashLoopDetection:
 
         with patch.object(docker_backend, "_probe_nim_health", new_callable=AsyncMock) as mock_probe:
             mock_probe.return_value = (False, "connection refused")
-            status = await docker_backend.get_model_deployment_status(sample_deployment)
+            status = await docker_backend.get_model_deployment_status(ModelContext(model_deployment=sample_deployment))
 
         assert status.status == "ERROR"
         assert "crash loop" in status.status_message
@@ -3789,7 +3882,7 @@ class TestCrashLoopDetection:
 
         with patch.object(docker_backend, "_probe_nim_health", new_callable=AsyncMock) as mock_probe:
             mock_probe.return_value = (False, "connection refused")
-            status = await docker_backend.get_model_deployment_status(sample_deployment)
+            status = await docker_backend.get_model_deployment_status(ModelContext(model_deployment=sample_deployment))
 
         assert status.status == "PENDING"
         assert "restarts: 3" in status.status_message
@@ -3802,7 +3895,7 @@ class TestCrashLoopDetection:
         make_mock_container(status="restarting", restart_count=7, logs=b"Segfault in model loading")
         docker_backend._backend_config.max_restart_count = 5
 
-        status = await docker_backend.get_model_deployment_status(sample_deployment)
+        status = await docker_backend.get_model_deployment_status(ModelContext(model_deployment=sample_deployment))
 
         assert status.status == "ERROR"
         assert "crash loop" in status.status_message
@@ -3819,7 +3912,7 @@ class TestCrashLoopDetection:
         make_mock_container(status="restarting", restart_count=2)
         docker_backend._backend_config.max_restart_count = 5
 
-        status = await docker_backend.get_model_deployment_status(sample_deployment)
+        status = await docker_backend.get_model_deployment_status(ModelContext(model_deployment=sample_deployment))
 
         assert status.status == "PENDING"
         assert "restart count: 2" in status.status_message
@@ -3836,7 +3929,7 @@ class TestCrashLoopDetection:
 
         with patch.object(docker_backend, "_probe_nim_health", new_callable=AsyncMock) as mock_probe:
             mock_probe.return_value = (False, "connection refused")
-            status = await docker_backend.get_model_deployment_status(sample_deployment)
+            status = await docker_backend.get_model_deployment_status(ModelContext(model_deployment=sample_deployment))
 
         assert status.status == "ERROR"
         assert status.error_details["reason"] == "crash_loop"
@@ -3849,7 +3942,7 @@ class TestCrashLoopDetection:
 
         with patch.object(docker_backend, "_probe_nim_health", new_callable=AsyncMock) as mock_probe:
             mock_probe.return_value = (False, "connection refused")
-            status = await docker_backend.get_model_deployment_status(sample_deployment)
+            status = await docker_backend.get_model_deployment_status(ModelContext(model_deployment=sample_deployment))
 
         assert status.status == "PENDING"
         assert "restarts: 10" in status.status_message
@@ -3862,7 +3955,7 @@ class TestCrashLoopDetection:
         make_mock_container(status="restarting", restart_count=5, logs=b"RuntimeError: CUDA out of memory")
         docker_backend._backend_config.max_restart_count = 5
 
-        status = await docker_backend.get_model_deployment_status(sample_deployment)
+        status = await docker_backend.get_model_deployment_status(ModelContext(model_deployment=sample_deployment))
 
         assert status.status == "ERROR"
         assert "CUDA out of memory" in status.error_details["error_stack"]
@@ -3943,7 +4036,9 @@ class TestSteppedCreation:
         mock_docker_client.images.get.return_value = MagicMock()
         mock_docker_client.containers.list.return_value = []
 
-        status = await docker_backend.create_model_deployment(sample_deployment, sample_config)
+        status = await docker_backend.create_model_deployment(
+            ModelContext(model_deployment=sample_deployment, model_deployment_config=sample_config)
+        )
 
         assert status.status == "PENDING"
         assert "pulling container image" in status.status_message.lower()
@@ -3957,7 +4052,9 @@ class TestSteppedCreation:
         mock_docker_client.images.get.return_value = MagicMock()
         mock_docker_client.containers.list.return_value = []
 
-        await docker_backend.create_model_deployment(sample_deployment, sample_config)
+        await docker_backend.create_model_deployment(
+            ModelContext(model_deployment=sample_deployment, model_deployment_config=sample_config)
+        )
 
         key = docker_backend._get_deployment_key(sample_deployment)
         assert key in docker_backend._reconciler._creation_states
@@ -3973,7 +4070,9 @@ class TestSteppedCreation:
         mock_docker_client.images.get.return_value = MagicMock()
         mock_docker_client.containers.list.return_value = []
 
-        await docker_backend.create_model_deployment(sample_deployment, sample_config)
+        await docker_backend.create_model_deployment(
+            ModelContext(model_deployment=sample_deployment, model_deployment_config=sample_config)
+        )
 
         key = docker_backend._get_deployment_key(sample_deployment)
         assert key in docker_backend._reconciler._creation_states
@@ -3983,7 +4082,7 @@ class TestSteppedCreation:
         if state.task and not state.task.done():
             await state.task
 
-        status = await docker_backend.get_model_deployment_status(sample_deployment)
+        status = await docker_backend.get_model_deployment_status(ModelContext(model_deployment=sample_deployment))
         assert status.status == "PENDING"
 
     @pytest.mark.asyncio
@@ -3995,7 +4094,9 @@ class TestSteppedCreation:
         mock_docker_client.images.pull.side_effect = ImageNotFound("Image not found in registry")
         mock_docker_client.containers.list.return_value = []
 
-        await docker_backend.create_model_deployment(sample_deployment, sample_config)
+        await docker_backend.create_model_deployment(
+            ModelContext(model_deployment=sample_deployment, model_deployment_config=sample_config)
+        )
 
         status = await drive_creation_to_completion(docker_backend, sample_deployment)
 
@@ -4015,7 +4116,9 @@ class TestSteppedCreation:
         mock_docker_client.images.get.return_value = MagicMock()
         mock_docker_client.containers.list.return_value = []
 
-        await docker_backend.create_model_deployment(sample_deployment, sample_config)
+        await docker_backend.create_model_deployment(
+            ModelContext(model_deployment=sample_deployment, model_deployment_config=sample_config)
+        )
         await drive_creation_to_completion(docker_backend, sample_deployment)
 
         key = docker_backend._get_deployment_key(sample_deployment)
@@ -4033,7 +4136,9 @@ class TestSteppedCreation:
         mock_docker_client.volumes.get.side_effect = None
         mock_docker_client.volumes.get.return_value = mock_volume
 
-        await docker_backend.create_model_deployment(sample_deployment, sample_config)
+        await docker_backend.create_model_deployment(
+            ModelContext(model_deployment=sample_deployment, model_deployment_config=sample_config)
+        )
 
         key = docker_backend._get_deployment_key(sample_deployment)
         assert key in docker_backend._reconciler._creation_states
@@ -4051,7 +4156,9 @@ class TestSteppedCreation:
         mock_docker_client.images.get.return_value = MagicMock()
         mock_docker_client.containers.list.return_value = []
 
-        await docker_backend.create_model_deployment(sample_deployment, sample_config)
+        await docker_backend.create_model_deployment(
+            ModelContext(model_deployment=sample_deployment, model_deployment_config=sample_config)
+        )
 
         key = docker_backend._get_deployment_key(sample_deployment)
         assert key in docker_backend._reconciler._creation_states
@@ -4084,7 +4191,11 @@ class TestSteppedCreation:
 
         _setup_puller_mock_for_polling(mock_docker_client, sample_deployment, exit_code=0)
 
-        await docker_backend.create_model_deployment(sample_deployment, sample_config, model_entity)
+        await docker_backend.create_model_deployment(
+            ModelContext(
+                model_deployment=sample_deployment, model_deployment_config=sample_config, model_entity=model_entity
+            )
+        )
 
         key = docker_backend._get_deployment_key(sample_deployment)
         state = docker_backend._reconciler._creation_states[key]
@@ -4117,7 +4228,11 @@ class TestSteppedCreation:
         mock_puller = _setup_puller_mock_for_polling(mock_docker_client, sample_deployment, exit_code=0)
         mock_puller.status = "running"
 
-        await docker_backend.create_model_deployment(sample_deployment, sample_config, model_entity)
+        await docker_backend.create_model_deployment(
+            ModelContext(
+                model_deployment=sample_deployment, model_deployment_config=sample_config, model_entity=model_entity
+            )
+        )
 
         key = docker_backend._get_deployment_key(sample_deployment)
         # Advance through PULLING_NIM_IMAGE and PULLING_PULLER_IMAGE
@@ -4157,7 +4272,9 @@ class TestSteppedCreation:
             deployments.append(d)
 
         for d in deployments:
-            await docker_backend.create_model_deployment(d, sample_config)
+            await docker_backend.create_model_deployment(
+                ModelContext(model_deployment=d, model_deployment_config=sample_config)
+            )
 
         # All three should have creation states
         for d in deployments:
@@ -4189,7 +4306,9 @@ class TestAsyncioToThreadOffloading:
             "nmp.core.models.controllers.backends.docker.creation_reconciler.asyncio.to_thread",
             side_effect=spy_to_thread,
         ):
-            await docker_backend.create_model_deployment(sample_deployment, sample_config)
+            await docker_backend.create_model_deployment(
+                ModelContext(model_deployment=sample_deployment, model_deployment_config=sample_config)
+            )
 
             key = docker_backend._get_deployment_key(sample_deployment)
             state = docker_backend._reconciler._creation_states[key]
@@ -4222,7 +4341,9 @@ class TestAsyncioToThreadOffloading:
             "nmp.core.models.controllers.backends.docker.creation_reconciler.asyncio.to_thread",
             side_effect=spy_to_thread,
         ):
-            await docker_backend.create_model_deployment(sample_deployment, sample_config)
+            await docker_backend.create_model_deployment(
+                ModelContext(model_deployment=sample_deployment, model_deployment_config=sample_config)
+            )
             status = await drive_creation_to_completion(docker_backend, sample_deployment)
 
         assert status.status != "ERROR", f"Creation failed: {status.status_message}"
@@ -4264,7 +4385,11 @@ class TestAsyncioToThreadOffloading:
             "nmp.core.models.controllers.backends.docker.creation_reconciler.asyncio.to_thread",
             side_effect=spy_to_thread,
         ):
-            await docker_backend.create_model_deployment(sample_deployment, sample_config, model_entity)
+            await docker_backend.create_model_deployment(
+                ModelContext(
+                    model_deployment=sample_deployment, model_deployment_config=sample_config, model_entity=model_entity
+                )
+            )
             await drive_creation_to_completion(docker_backend, sample_deployment)
 
         pull_calls = [c for c in to_thread_calls if getattr(c[0], "__name__", "") == "pull_image_if_not_local"]
@@ -4295,7 +4420,9 @@ class TestAsyncioToThreadOffloading:
             "nmp.core.models.controllers.backends.docker.creation_reconciler.asyncio.to_thread",
             side_effect=spy_to_thread,
         ):
-            await docker_backend.create_model_deployment(sample_deployment, sample_config)
+            await docker_backend.create_model_deployment(
+                ModelContext(model_deployment=sample_deployment, model_deployment_config=sample_config)
+            )
             await drive_creation_to_completion(docker_backend, sample_deployment)
 
         container_calls = [c for c in to_thread_calls if getattr(c[0], "__name__", "") == "create_and_start_container"]
@@ -4328,7 +4455,9 @@ class TestAsyncioToThreadOffloading:
             "nmp.core.models.controllers.backends.docker.creation_reconciler.asyncio.to_thread",
             side_effect=spy_to_thread,
         ):
-            await docker_backend.create_model_deployment(sample_deployment, sample_config)
+            await docker_backend.create_model_deployment(
+                ModelContext(model_deployment=sample_deployment, model_deployment_config=sample_config)
+            )
             await drive_creation_to_completion(docker_backend, sample_deployment)
 
         assert any("pull" in name.lower() for name in to_thread_funcs), (
