@@ -76,19 +76,19 @@ class Endpoint(Generic[PathT, RequestT, ResponseT, QueryParamsT]):
     def prepare_request(self, *args: object, query_params: object = None, **path_params: object) -> PreparedRequest:
         """Build a :class:`PreparedRequest` from payload/content and path parameters."""
         params = {k: str(v) for k, v in path_params.items()}
-        content: bytes | Iterable[bytes] | AsyncIterable[bytes] | None
+        raw_content: bytes | Iterable[bytes] | AsyncIterable[bytes] | None
         content_type: str | None
 
         if self.request_type is None:
-            content = None
+            raw_content = None
             content_type = None
         elif self.request_type is BinaryContent:
-            content = args[0]  # type: ignore[assignment]
+            raw_content = args[0]  # type: ignore[assignment]
             content_type = "application/octet-stream"
         else:
             body = args[0]
             assert isinstance(body, BaseModel)
-            content = body.model_dump_json().encode()
+            raw_content = body.model_dump_json().encode()
             content_type = "application/json"
 
         resolved_query: dict[str, str | int | bool | None] | None = None
@@ -99,7 +99,7 @@ class Endpoint(Generic[PathT, RequestT, ResponseT, QueryParamsT]):
             path_template=self.path,
             path_params=params,
             method=self.method,
-            content=content,
+            content=raw_content,
             content_type=content_type,
             response_type=self.response_type,
             query_params=resolved_query,
