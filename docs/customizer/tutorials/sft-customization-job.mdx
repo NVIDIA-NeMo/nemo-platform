@@ -700,26 +700,26 @@ For detailed information on all available hyperparameters, recommended values, a
 
 **Job fails during model download:**
 - Verify authentication secrets are configured (refer to [Managing Secrets](/documentation/get-started/core-concepts/manage-secrets))
-- For gated HuggingFace models (Llama, Gemma), accept the license on the model page
-- Check model and dataset references use the `workspace/name` format (for example, `default/llama-3-2-1b-base`, `default/sft-dataset`)
-- Ensure you have accepted the model's terms of service on HuggingFace
+- For gated HuggingFace models (Llama, Gemma), accept the license on the model page (for example, [meta-llama/Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct))
+- Confirm the model fileset uses `token_secret=hf_secret.name` for gated models
+- Check `AutomodelJobInput` references use the `workspace/name` format: `model=f"default/{MODEL_NAME}"` and `dataset={"training": f"default/{DATASET_NAME}"}` (for example, `default/llama-3-2-1b-base`, `default/sft-dataset`)
+- Verify the model entity points at the fileset: `fileset=f"default/{MODEL_NAME}"`
 - Check job status: `client.jobs.get_status(name=job.job.name, workspace="default")`
 
 **Job fails with OOM (Out of Memory) error:**
-1. **First try:** Reduce `micro_batch_size` from 2 to 1
-2. **Still OOM:** Reduce `batch_size` from 4 to 2
-3. **Still OOM:** Reduce `max_seq_length` from 2048 to 1024 or 512
-4. **Last resort:** Increase GPU count and use `tensor_parallel_size` for model sharding
+1. **First try:** Reduce `global_batch_size` from 64 to 32 or 16 in `batch={...}`
+2. **Still OOM:** Keep `micro_batch_size` at 1 (already the minimum in this tutorial)
+3. **Still OOM:** Reduce `max_seq_length` from 2048 to 1024 or 512 in `training={...}`
+4. **Last resort:** Increase `num_gpus_per_node` and `tensor_parallel_size` in `parallelism={...}`
 
 **Loss curves not decreasing (underfitting):**
-- Increase training duration: `epochs: 5-10` instead of 3
-- Adjust learning rate: Try `1e-5` to `1e-4`
-- Add warmup: Set `warmup_steps` to ~10% of total training steps
+- Increase training duration: raise `epochs` from 2 to 3-5 in `schedule={...}`
+- Adjust learning rate: try `1e-4` or `1e-5` instead of the default `5e-5` in `optimizer={...}`
 - Check data quality: Verify formatting, remove duplicates, ensure diversity
 
 **Training loss decreases but validation loss increases (overfitting):**
-- Reduce epochs: Try `epochs: 1-2` instead of 5+
-- Lower learning rate: Use `2e-5` or `1e-5`
+- Reduce `epochs` from 2 to 1 in `schedule={...}`
+- Lower `learning_rate` from `5e-5` to `2e-5` or `1e-5` in `optimizer={...}`
 - Increase dataset size and diversity
 - Verify train/validation split has no data leakage
 
@@ -727,14 +727,14 @@ For detailed information on all available hyperparameters, recommended values, a
 - Training metrics optimize for loss, not your actual task—evaluate on real use cases
 - Review data quality, format, and diversity—metrics can be misleading with poor data
 - Try a different base model size or architecture
-- Adjust learning rate and batch size
+- Adjust `learning_rate` and `global_batch_size`
 - Compare to baseline: Test base model to ensure fine-tuning improved performance
 
 **Deployment fails:**
 - Verify output model exists: `client.models.retrieve(name=OUTPUT_NAME, workspace="default")`
 - Check deployment logs: `client.inference.deployments.get_logs(name=deployment.name, workspace="default")`
-- Ensure sufficient GPU resources available for model size
-- Verify vLLM image tag `v0.22.1` is compatible with your model
+- Ensure sufficient GPU resources for `executor_config={"gpu": 1, ...}`
+- Verify the deployment config matches this tutorial: `engine="vllm"` with `vllm/vllm-openai:v0.22.1`
 
 
 ## Next Steps

@@ -1,5 +1,5 @@
 ---
-title: "Embedding Model Customization"
+title: "Embedding Customization"
 description: ""
 ---
 
@@ -108,8 +108,6 @@ def cosine_similarity(a, b):
 ```
 
 ```python
-from nemo_platform.types.inference import NIMDeploymentParam
-
 # NGC API key is required to pull NIM images from nvcr.io
 NGC_API_KEY = os.environ.get("NGC_API_KEY")
 if not NGC_API_KEY:
@@ -136,12 +134,13 @@ print("Creating baseline deployment config...")
 baseline_config = client.inference.deployment_configs.create(
     workspace="default",
     name=BASELINE_DEPLOYMENT_CONFIG,
-    nim_deployment=NIMDeploymentParam(
-        image_name=NIM_IMAGE,
-        image_tag=NIM_TAG,
-        gpu=1,
-        image_pull_secret=NGC_SECRET_NAME,
-    )
+    engine="nim",
+    model_spec={},
+    executor_config={
+        "gpu": 1,
+        "image_name": NIM_IMAGE,
+        "image_tag": NIM_TAG,
+    },
 )
 
 print("Deploying base model...")
@@ -407,9 +406,6 @@ print(f"NGC_API_KEY secret: {NGC_SECRET_NAME}")
 
 Create a fileset pointing to the [nvidia/llama-3.2-nv-embedqa-1b-v2](https://huggingface.co/nvidia/llama-3.2-nv-embedqa-1b-v2) embedding model from HuggingFace, then create a Model Entity that references this fileset. Model downloading will take place at training time.
 
----
-*Note*: Either `MODEL_NAME` or `HF_REPO_ID` below must contain the substring embed to indicate that this is an embedding model.
-
 ```python
 import time
 from nemo_platform.types.files import HuggingfaceStorageConfigParam
@@ -608,8 +604,6 @@ print(model_entity.model_dump_json(indent=2))
 ```
 
 ```python
-from nemo_platform.types.inference import NIMDeploymentParam
-
 # Create deployment config for embedding model
 deploy_suffix = uuid.uuid4().hex[:4]
 DEPLOYMENT_CONFIG_NAME = f"embedding-model-deployment-cfg-{deploy_suffix}"
@@ -622,13 +616,16 @@ NIM_TAG = "1.13.0"  # Update if using newer NIM release
 deployment_config = client.inference.deployment_configs.create(
     workspace="default",
     name=DEPLOYMENT_CONFIG_NAME,
-    nim_deployment=NIMDeploymentParam(
-        image_name=NIM_IMAGE,
-        image_tag=NIM_TAG,
-        gpu=1,
-        model_name=OUTPUT_NAME,
-        model_namespace="default",
-    )
+    engine="nim",
+    model_spec={
+        "model_namespace": "default",
+        "model_name": OUTPUT_NAME,
+    },
+    executor_config={
+        "gpu": 1,
+        "image_name": NIM_IMAGE,
+        "image_tag": NIM_TAG,
+    },
 )
 
 # Deploy model

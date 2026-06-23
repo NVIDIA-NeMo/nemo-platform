@@ -508,8 +508,15 @@ Delete the baseline student deployment to free GPU resources for the distillatio
 client.inference.deployments.delete(name=BASELINE_DEPLOYMENT_NAME, workspace="default")
 print(f"Deleted baseline deployment: {BASELINE_DEPLOYMENT_NAME}")
 
-# wait for deployment to be deleted
-time.sleep(60)
+if not client.models.wait_for_status(
+    deployment_name=BASELINE_DEPLOYMENT_NAME,
+    desired_status="DELETED",
+    workspace="default",
+    timeout=600,
+):
+    raise TimeoutError(
+        f"Deployment {BASELINE_DEPLOYMENT_NAME} was not deleted within timeout"
+    )
 
 client.inference.deployment_configs.delete(name=BASELINE_DEPLOYMENT_CONFIG, workspace="default")
 print(f"Deleted baseline deployment config: {BASELINE_DEPLOYMENT_CONFIG}")
@@ -696,7 +703,7 @@ For detailed information on all available hyperparameters, recommended values, a
 KD loads both models, so OOM is more likely than with SFT:
 1. **First try:** Use `teacher_precision="bf16"` to reduce teacher memory
 2. **Still OOM:** Reduce `micro_batch_size` to 1
-3. **Still OOM:** Reduce `batch_size` and `max_seq_length`
+3. **Still OOM:** Reduce `global_batch_size` and `max_seq_length`
 4. **Last resort:** Increase `num_gpus_per_node`
 
 **No chat template / `/chat/completions` fails:**
