@@ -10,7 +10,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Response, status
 from nmp.common.entities.client import EntityClient
 from nmp.common.service.dependencies import get_entity_client
-from nmp.intake.spans.api.dependencies import SpansServiceDep, require_workspace_access
+from nmp.intake.spans.api.dependencies import RollupRefresherDep, SpansServiceDep, require_workspace_access
 from nmp.intake.spans.domain import TraceBatch
 from nmp.intake.spans.ingest.atif_domain import (
     AtifAgent,
@@ -82,10 +82,12 @@ async def ingest_atif(
     body: AtifIngestRequest,
     service: SpansServiceDep,
     entity_client: EntityClientDep,
+    refresher: RollupRefresherDep,
 ) -> Response:
+    context = body.resolved_evaluation_context()
     await validate_experiment_context(
         workspace=workspace,
-        context=body.resolved_evaluation_context(),
+        context=context,
         entity_client=entity_client,
     )
     ingested_at = utc_now()
@@ -102,4 +104,6 @@ async def ingest_atif(
         ingested_at=ingested_at,
     )
     await service.ingest_batch(TraceBatch(spans=spans, evaluator_results=evaluator_results))
+    if refresher is not None and context is not None and context.evaluation_id:
+        refresher.mark_dirty(workspace=workspace, experiment_id=context.evaluation_id)
     return Response(status_code=status.HTTP_201_CREATED)

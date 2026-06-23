@@ -52,3 +52,12 @@ class IntakeConfig(_BaseIntakeConfig):
         ge=1024,
         description="Maximum accepted body size for OTLP ingest requests, in bytes.",
     )
+    rollup_refresh_interval_seconds: float = Field(
+        default=10.0,
+        gt=0,
+        description=(
+            "How often the background worker drains the dirty set and denormalizes ClickHouse rollups "
+            "onto Experiment entities. Bounds how stale a leaderboard's metrics can be after ingest; "
+            "ingest never blocks on it."
+        ),
+    )

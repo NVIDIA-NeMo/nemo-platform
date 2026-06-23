@@ -41,6 +41,65 @@ class ExperimentRollup:
         return sorted(self.evaluator_scores)
 
 
+def _score_to_dict(score: ScoreRollup | None) -> dict[str, Any] | None:
+    if score is None:
+        return None
+    return {
+        "sum": score.sum,
+        "mean": score.mean,
+        "median": score.median,
+        "p90": score.p90,
+        "p95": score.p95,
+        "p99": score.p99,
+        "count": score.count,
+    }
+
+
+def _score_from_dict(data: dict[str, Any] | None) -> ScoreRollup | None:
+    if data is None:
+        return None
+    return ScoreRollup(
+        sum=data.get("sum"),
+        mean=data.get("mean"),
+        median=data.get("median"),
+        p90=data.get("p90"),
+        p95=data.get("p95"),
+        p99=data.get("p99"),
+        count=int(data.get("count", 0)),
+    )
+
+
+def rollup_to_metrics(rollup: ExperimentRollup, *, refreshed_at: str) -> dict[str, Any]:
+    """Serialize a rollup into the JSON-safe dict stored on ``Experiment.metrics``."""
+    return {
+        "run_count": rollup.run_count,
+        "model_names": rollup.model_names,
+        "agent_names": rollup.agent_names,
+        "agent_versions": rollup.agent_versions,
+        "evaluators": {name: _score_to_dict(score) for name, score in rollup.evaluator_scores.items()},
+        "cost_usd": _score_to_dict(rollup.cost_usd),
+        "latency_ms": _score_to_dict(rollup.latency_ms),
+        "refreshed_at": refreshed_at,
+    }
+
+
+def metrics_to_rollup(experiment_id: str, metrics: dict[str, Any]) -> ExperimentRollup:
+    """Reconstruct a rollup from a stored ``Experiment.metrics`` dict (inverse of ``rollup_to_metrics``)."""
+    evaluators = metrics.get("evaluators") or {}
+    return ExperimentRollup(
+        experiment_id=experiment_id,
+        run_count=int(metrics.get("run_count", 0)),
+        model_names=list(metrics.get("model_names") or []),
+        agent_names=list(metrics.get("agent_names") or []),
+        agent_versions=list(metrics.get("agent_versions") or []),
+        evaluator_scores={
+            name: score for name, data in evaluators.items() if (score := _score_from_dict(data)) is not None
+        },
+        cost_usd=_score_from_dict(metrics.get("cost_usd")),
+        latency_ms=_score_from_dict(metrics.get("latency_ms")),
+    )
+
+
 class ExperimentRollupRepository:
     def __init__(self, client: ClickHouseSpanClient) -> None:
         self._client = client

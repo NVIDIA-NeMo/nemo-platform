@@ -79,3 +79,13 @@ class Experiment(EntityBase):
             "Pin state is workspace-shared: every user with workspace access sees the same pinned set."
         ),
     )
+
+    metrics: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "System-managed denormalized rollup summary (run_count, cost_usd, latency_ms, per-evaluator "
+            "scores, refreshed_at) computed from ClickHouse and refreshed by a background worker after "
+            "ingest. Not accepted on the create/update body; written only by the refresh path so it can "
+            "drive entity-store sort/filter without a per-read ClickHouse query."
+        ),
+    )

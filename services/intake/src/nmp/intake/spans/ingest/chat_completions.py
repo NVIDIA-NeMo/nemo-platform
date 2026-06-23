@@ -19,7 +19,7 @@ from typing import Annotated, Any, Self
 from fastapi import APIRouter, Depends, status
 from nmp.common.entities.client import EntityClient
 from nmp.common.service.dependencies import get_entity_client
-from nmp.intake.spans.api.dependencies import SpansServiceDep, require_workspace_access
+from nmp.intake.spans.api.dependencies import RollupRefresherDep, SpansServiceDep, require_workspace_access
 from nmp.intake.spans.domain import IntakeSpan, SpanKind, SpanStatus, TraceBatch
 from nmp.intake.spans.ingest.evaluation_context import (
     ExperimentContextIngestModel,
@@ -152,15 +152,19 @@ async def ingest_chat_completion(
     body: ChatCompletionsIngestRequest,
     service: SpansServiceDep,
     entity_client: EntityClientDep,
+    refresher: RollupRefresherDep,
 ) -> ChatCompletionsIngestResponse:
+    context = body.resolved_evaluation_context()
     await validate_experiment_context(
         workspace=workspace,
-        context=body.resolved_evaluation_context(),
+        context=context,
         entity_client=entity_client,
     )
     ingested_at = utc_now()
     span = _chat_completion_to_span(workspace=workspace, body=body, ingested_at=ingested_at)
     await service.ingest_batch(TraceBatch(spans=[span]))
+    if refresher is not None and context is not None and context.evaluation_id:
+        refresher.mark_dirty(workspace=workspace, experiment_id=context.evaluation_id)
     return ChatCompletionsIngestResponse(
         session_id=span.session_id,
         span_id=span.external_span_id,

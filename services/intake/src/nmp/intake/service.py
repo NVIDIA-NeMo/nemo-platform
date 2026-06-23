@@ -11,6 +11,8 @@ from nmp.intake.api.v2.experiments import endpoints as experiments
 from nmp.intake.config import IntakeConfig
 from nmp.intake.spans.api import annotations, evaluator_results, spans, traces
 from nmp.intake.spans.clickhouse_client import ClickHouseSettings, ClickHouseSpanClient
+from nmp.intake.spans.experiment_rollup_refresher import ExperimentRollupRefresher
+from nmp.intake.spans.experiment_rollup_repository import ExperimentRollupRepository
 from nmp.intake.spans.ingest import atif, chat_completions, otlp
 
 logger = logging.getLogger(__name__)
@@ -26,6 +28,8 @@ class IntakeService(Service[IntakeConfig]):
         super().__init__(name="intake", module_name="nmp.intake")
         # The client is owned by the service lifecycle; it is absent before startup and after shutdown.
         self.clickhouse_client: ClickHouseSpanClient | None = None
+        # Background worker that denormalizes ClickHouse rollups onto Experiment entities.
+        self.rollup_refresher: ExperimentRollupRefresher | None = None
         self._ready = False
 
     @property
@@ -79,12 +83,26 @@ class IntakeService(Service[IntakeConfig]):
                 "clickhouse_database": cfg.clickhouse_config.database,
             },
         )
+        entity_client = self.dependency_provider.get_entity_client(as_service=self.name)
+        if entity_client is not None:
+            self.rollup_refresher = ExperimentRollupRefresher(
+                rollup_repository=ExperimentRollupRepository(self.clickhouse_client),
+                entity_client=entity_client,
+                interval_seconds=cfg.rollup_refresh_interval_seconds,
+            )
+            self.rollup_refresher.start()
+        else:
+            logger.warning("Entity client unavailable; experiment rollup refresher not started")
         self._ready = True
 
     async def on_shutdown(self) -> None:
         """Close the service-owned ClickHouse client."""
 
         self._ready = False
+        # Stop the refresher first (its final flush still needs ClickHouse).
+        if self.rollup_refresher is not None:
+            await self.rollup_refresher.stop()
+            self.rollup_refresher = None
         if self.clickhouse_client is not None:
             await self.clickhouse_client.close()
             self.clickhouse_client = None

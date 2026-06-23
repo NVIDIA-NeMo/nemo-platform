@@ -11,6 +11,7 @@ from nmp.common.service.dependencies import get_sdk_client
 from nmp.intake.spans.annotations_repository import AnnotationsRepository
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient, get_clickhouse_client
 from nmp.intake.spans.evaluator_results_repository import EvaluatorResultsRepository
+from nmp.intake.spans.experiment_rollup_refresher import ExperimentRollupRefresher
 from nmp.intake.spans.service import IntakeSpansService
 from nmp.intake.spans.span_repository import SpanRepository
 from nmp.intake.spans.trace_repository import TraceRepository
@@ -84,3 +85,12 @@ def get_spans_service(
 
 
 SpansServiceDep = Annotated[IntakeSpansService, Depends(get_spans_service)]
+
+
+def get_rollup_refresher(request: Request) -> ExperimentRollupRefresher | None:
+    """Reach the service-owned rollup refresher from the request (absent if startup didn't create one)."""
+    service = getattr(request.app.state, "intake_service", None) or getattr(request.app.state, "service", None)
+    return getattr(service, "rollup_refresher", None) if service is not None else None
+
+
+RollupRefresherDep = Annotated[ExperimentRollupRefresher | None, Depends(get_rollup_refresher)]

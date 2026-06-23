@@ -43,6 +43,7 @@ from nmp.intake.spans.experiment_rollup_repository import (
     ExperimentRollup,
     ExperimentRollupRepository,
     ScoreRollup,
+    metrics_to_rollup,
 )
 from nmp.intake.spans.experiment_session_repository import ExperimentSessionRepository
 from nmp.intake.spans.storage import make_pagination
@@ -366,7 +367,15 @@ async def list_experiments(
         page_size=page_size,
     )
     responses = [ExperimentResponse.from_entity(e) for e in result.data]
-    await _hydrate_rollups(workspace=workspace, responses=responses, rollup_repository=rollup_repository)
+    # Prefer the denormalized metrics written by the refresh worker; fall back to a live
+    # ClickHouse hydrate only for experiments not yet refreshed (e.g. before the first cycle).
+    needs_live_hydrate = []
+    for entity, response in zip(result.data, responses):
+        if entity.metrics:
+            _apply_rollup(response, metrics_to_rollup(response.name, entity.metrics))
+        else:
+            needs_live_hydrate.append(response)
+    await _hydrate_rollups(workspace=workspace, responses=needs_live_hydrate, rollup_repository=rollup_repository)
     return Page(
         data=responses,
         pagination=PaginationData(**result.pagination.model_dump()),
