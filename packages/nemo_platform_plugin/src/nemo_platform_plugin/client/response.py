@@ -58,9 +58,7 @@ class NemoBinaryResponse:
             # or: for chunk in resp  # iterate chunks
     """
 
-    def __init__(
-        self, stream_ctx: AbstractContextManager[httpx.Response], request: PreparedRequest
-    ) -> None:
+    def __init__(self, stream_ctx: AbstractContextManager[httpx.Response], request: PreparedRequest) -> None:
         self._stream_ctx = stream_ctx
         self._response: httpx.Response | None = None
         self.request = request
@@ -146,9 +144,7 @@ class AsyncNemoBinaryResponse:
             # or: async for chunk in resp      # iterate chunks
     """
 
-    def __init__(
-        self, stream_ctx: AbstractAsyncContextManager[httpx.Response], request: PreparedRequest
-    ) -> None:
+    def __init__(self, stream_ctx: AbstractAsyncContextManager[httpx.Response], request: PreparedRequest) -> None:
         self._stream_ctx = stream_ctx
         self._response: httpx.Response | None = None
         self.request = request

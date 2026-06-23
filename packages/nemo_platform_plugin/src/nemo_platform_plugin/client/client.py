@@ -127,9 +127,7 @@ class NemoClient(BaseNemoClient):
         self, request: PreparedRequest[Stream[ModelT]], *, headers: dict[str, str] | None = None
     ) -> NemoStreamResponse[ModelT]: ...
     @overload
-    def send(
-        self, request: PreparedRequest[None], *, headers: dict[str, str] | None = None
-    ) -> NemoResponse[None]: ...
+    def send(self, request: PreparedRequest[None], *, headers: dict[str, str] | None = None) -> NemoResponse[None]: ...
     @overload
     def send(
         self, request: PreparedRequest[ResponseT], *, headers: dict[str, str] | None = None
@@ -172,9 +170,7 @@ class NemoClient(BaseNemoClient):
             model_type = _get_stream_model_type(request.response_type)
             return NemoStreamResponse(stream_ctx, model_type, request)
 
-        raw = self._http.request(
-            request.method, url, content=request.content, headers=req_headers, params=params
-        )
+        raw = self._http.request(request.method, url, content=request.content, headers=req_headers, params=params)
         body = None
         if raw.is_success and request.response_type is not None:
             body = request.response_type.model_validate(raw.json())
@@ -243,9 +239,7 @@ class AsyncNemoClient(BaseNemoClient):
             model_type = _get_stream_model_type(request.response_type)
             return AsyncNemoStreamResponse(stream_ctx, model_type, request)
 
-        raw = await self._http.request(
-            request.method, url, content=request.content, headers=req_headers, params=params
-        )
+        raw = await self._http.request(request.method, url, content=request.content, headers=req_headers, params=params)
         body = None
         if raw.is_success and request.response_type is not None:
             body = request.response_type.model_validate(raw.json())
