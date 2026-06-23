@@ -16,7 +16,6 @@ from typing import Generic, NotRequired, TypedDict, TypeVar
 from pydantic import BaseModel
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
-BodyRequestT = TypeVar("BodyRequestT", bound=BaseModel)
 
 
 class BinaryContent:

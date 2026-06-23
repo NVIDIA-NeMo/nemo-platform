@@ -12,6 +12,8 @@ the HTTP layer.
 
 from __future__ import annotations
 
+from typing import NotRequired, TypedDict
+
 from nemo_example_plugin.entities import ExampleItem
 from nemo_example_plugin.types.payloads import (
     BlobUploadResponse,
@@ -22,8 +24,6 @@ from nemo_example_plugin.types.payloads import (
     Tick,
     UpdateExampleItemRequest,
 )
-from typing import NotRequired, TypedDict
-
 from nemo_platform_plugin.client.endpoint import delete, get, patch, post, put
 from nemo_platform_plugin.client.types import BinaryContent, PathParams, Stream, WorkspaceParams
 

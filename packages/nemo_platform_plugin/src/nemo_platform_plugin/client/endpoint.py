@@ -21,7 +21,6 @@ from typing import Generic, Unpack, overload
 
 from nemo_platform_plugin.client.types import (
     BinaryContent,
-    BodyRequestT,
     PathT,
     PreparedRequest,
     QueryParamsT,
@@ -52,8 +51,8 @@ class Endpoint(Generic[PathT, RequestT, ResponseT, QueryParamsT]):
 
     @overload
     def prepare_request(
-        self: Endpoint[PathT, BodyRequestT, ResponseT, QueryParamsT],
-        body: BodyRequestT,
+        self: Endpoint[PathT, RequestT, ResponseT, QueryParamsT],
+        body: RequestT,
         *,
         query_params: QueryParamsT | None = None,
         **path_params: Unpack[PathT],
