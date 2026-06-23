@@ -31,7 +31,13 @@ evaluator: Evaluator = sdk.evaluator  # this object is an Evaluator resource
 Use `evaluator.run(metric=metric, dataset=dataset)` for a local synchronous evaluation. Use `evaluator.submit(metric=metric, dataset=dataset)` when you need a durable remote job:
 
 ```python
-job = evaluator.submit(metric=metric, dataset=dataset)
+from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
+
+job = evaluator.submit(
+    metric=metric,
+    dataset=dataset,
+    metric_bundle_packager=CloudpickleMetricBundlePackager(),
+)
 job.wait_until_done()
 result = job.get_result()
 ```
@@ -105,6 +111,7 @@ for score in result.aggregate_scores.scores:
 
 ```python
 from nemo_evaluator_sdk import BLEUMetric
+from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 
 metric = BLEUMetric(
     references=["{{item.reference_1}}", "{{item.reference_2}}"],
@@ -126,6 +133,7 @@ job = evaluator.submit(
             "model_output": "Hello world!",
         },
     ],
+    metric_bundle_packager=CloudpickleMetricBundlePackager(),
 )
 job.wait_until_done()
 result = job.get_result()
@@ -198,6 +206,7 @@ for score in result.aggregate_scores.scores:
 
 ```python
 from nemo_evaluator_sdk import ExactMatchMetric
+from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 
 metric = ExactMatchMetric(
     reference="{{item.correct_answer | lower | trim}}",
@@ -211,6 +220,7 @@ job = evaluator.submit(
         {"correct_answer": "London", "model_answer": "london "},
         {"correct_answer": "Berlin", "model_answer": "Munich"},
     ],
+    metric_bundle_packager=CloudpickleMetricBundlePackager(),
 )
 job.wait_until_done()
 result = job.get_result()
@@ -279,6 +289,7 @@ for score in result.aggregate_scores.scores:
 
 ```python
 from nemo_evaluator_sdk import F1Metric
+from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 
 metric = F1Metric(
     reference="{{item.reference}}",
@@ -294,6 +305,7 @@ job = evaluator.submit(
         },
         {"reference": "a red apple", "answer": "red apple"},
     ],
+    metric_bundle_packager=CloudpickleMetricBundlePackager(),
 )
 job.wait_until_done()
 result = job.get_result()
@@ -370,6 +382,7 @@ for score in result.aggregate_scores.scores:
 
 ```python
 from nemo_evaluator_sdk import NumberCheckMetric
+from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 
 metric = NumberCheckMetric(
     operation=">",
@@ -386,6 +399,7 @@ job = evaluator.submit(
         {"predicted": "0.5"},
         {"predicted": "0.1"},
     ],
+    metric_bundle_packager=CloudpickleMetricBundlePackager(),
 )
 job.wait_until_done()
 result = job.get_result()
@@ -457,6 +471,7 @@ for score in result.aggregate_scores.scores:
 
 ```python
 from nemo_evaluator_sdk import ROUGEMetric
+from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 
 metric = ROUGEMetric(
     reference="{{item.reference_summary}}",
@@ -475,6 +490,7 @@ job = evaluator.submit(
             "model_summary": "High winds delayed the launch.",
         },
     ],
+    metric_bundle_packager=CloudpickleMetricBundlePackager(),
 )
 job.wait_until_done()
 result = job.get_result()
@@ -563,6 +579,7 @@ for score in result.aggregate_scores.scores:
 
 ```python
 from nemo_evaluator_sdk import StringCheckMetric
+from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 
 metric = StringCheckMetric(
     operation="startswith",
@@ -578,6 +595,7 @@ job = evaluator.submit(
         {"output": "Answer: Success"},
         {"output": "Error occurred"},
     ],
+    metric_bundle_packager=CloudpickleMetricBundlePackager(),
 )
 job.wait_until_done()
 result = job.get_result()
