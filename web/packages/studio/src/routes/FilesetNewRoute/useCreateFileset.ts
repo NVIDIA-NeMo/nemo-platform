@@ -122,8 +122,8 @@ export function useCreateFileset({
 
       setIsSubmitPending(true);
 
-      // Step 1 (sample only): fetch sample files via lazy query
-      let files: File[];
+      // Step 1 (sample/local only): fetch sample files or read local file selection
+      let files: File[] = [];
       if (activeTab === DATASET_TYPE_SAMPLE) {
         if (!sampleFilesRef.current) {
           toast.error('No sample files could be loaded.');
@@ -142,7 +142,7 @@ export function useCreateFileset({
           return;
         }
         files = result.data;
-      } else {
+      } else if (storageTab === 'local') {
         files = toFileList(getValues('files'));
       }
 
