@@ -66,7 +66,7 @@ def test_send_post() -> None:
     )
 
     client = StubClient(base_url=BASE, http_client=mock_http)
-    resp = client.send(CREATE_ITEM.request(ItemRequest(name="alice")))
+    resp = client.send(CREATE_ITEM.prepare_request(ItemRequest(name="alice")))
 
     assert isinstance(resp, NemoResponse)
     assert resp.http_response.status_code == 201
@@ -91,7 +91,7 @@ def test_send_get_with_path_params() -> None:
     )
 
     client = StubClient(base_url=BASE, http_client=mock_http)
-    resp = client.send(GET_ITEM.request(name="alice"))
+    resp = client.send(GET_ITEM.prepare_request(name="alice"))
 
     assert resp.body.name == "alice"
     mock_http.request.assert_called_once_with(
@@ -112,7 +112,7 @@ def test_send_delete() -> None:
     )
 
     client = StubClient(base_url=BASE, http_client=mock_http)
-    resp = client.send(DELETE_ITEM.request(name="alice"))
+    resp = client.send(DELETE_ITEM.prepare_request(name="alice"))
 
     assert resp.http_response.status_code == 204
     assert resp.body is None
@@ -127,7 +127,7 @@ def test_data_success() -> None:
     )
 
     client = StubClient(base_url=BASE, http_client=mock_http)
-    item = client.send(GET_ITEM.request(name="alice")).data()
+    item = client.send(GET_ITEM.prepare_request(name="alice")).data()
 
     assert item.name == "alice"
 
@@ -141,7 +141,7 @@ def test_base_url_trailing_slash_stripped() -> None:
     )
 
     client = StubClient(base_url=BASE + "/", http_client=mock_http)
-    client.send(GET_ITEM.request(name="x"))
+    client.send(GET_ITEM.prepare_request(name="x"))
 
     url_called = mock_http.request.call_args[0][1]
     assert not url_called.startswith(BASE + "//")
@@ -162,7 +162,7 @@ async def test_async_send_post() -> None:
     )
 
     client = AsyncStubClient(base_url=BASE, http_client=mock_http)
-    resp = await client.send(CREATE_ITEM.request(ItemRequest(name="alice")))
+    resp = await client.send(CREATE_ITEM.prepare_request(ItemRequest(name="alice")))
 
     assert resp.http_response.status_code == 201
     assert resp.body.name == "alice"
@@ -178,7 +178,7 @@ async def test_async_send_get() -> None:
     )
 
     client = AsyncStubClient(base_url=BASE, http_client=mock_http)
-    resp = await client.send(GET_ITEM.request(name="alice"))
+    resp = await client.send(GET_ITEM.prepare_request(name="alice"))
 
     assert resp.body.name == "alice"
 
@@ -197,7 +197,7 @@ def test_workspace_default_fills_path() -> None:
     )
 
     client = StubClient(base_url=BASE, workspace="default", http_client=mock_http)
-    client.send(GET_WS_ITEM.request())
+    client.send(GET_WS_ITEM.prepare_request())
 
     url_called = mock_http.request.call_args[0][1]
     assert "/workspaces/default/" in url_called
@@ -212,7 +212,7 @@ def test_workspace_explicit_overrides_default() -> None:
     )
 
     client = StubClient(base_url=BASE, workspace="default", http_client=mock_http)
-    client.send(GET_WS_ITEM.request(workspace="other"))
+    client.send(GET_WS_ITEM.prepare_request(workspace="other"))
 
     url_called = mock_http.request.call_args[0][1]
     assert "/workspaces/other/" in url_called
@@ -235,7 +235,7 @@ def test_query_params_passed_to_httpx() -> None:
     )
 
     client = StubClient(base_url=BASE, http_client=mock_http)
-    client.send(GET_ITEMS_WITH_PARAMS.request(query_params={"page": 2, "page_size": 10}))
+    client.send(GET_ITEMS_WITH_PARAMS.prepare_request(query_params={"page": 2, "page_size": 10}))
 
     mock_http.request.assert_called_once_with(
         "GET",
@@ -255,7 +255,7 @@ def test_query_params_none_values_filtered() -> None:
     )
 
     client = StubClient(base_url=BASE, http_client=mock_http)
-    client.send(GET_ITEMS_WITH_PARAMS.request(query_params={"page_cursor": None, "page_size": 10}))
+    client.send(GET_ITEMS_WITH_PARAMS.prepare_request(query_params={"page_cursor": None, "page_size": 10}))
 
     mock_http.request.assert_called_once_with(
         "GET",
@@ -275,7 +275,7 @@ def test_query_params_all_none_becomes_none() -> None:
     )
 
     client = StubClient(base_url=BASE, http_client=mock_http)
-    client.send(GET_ITEMS_WITH_PARAMS.request(query_params={"page_cursor": None}))
+    client.send(GET_ITEMS_WITH_PARAMS.prepare_request(query_params={"page_cursor": None}))
 
     mock_http.request.assert_called_once_with(
         "GET",
@@ -300,7 +300,7 @@ def test_error_response_extracts_detail() -> None:
     )
 
     client = StubClient(base_url=BASE, http_client=mock_http)
-    resp = client.send(CREATE_ITEM.request(ItemRequest(name="")))
+    resp = client.send(CREATE_ITEM.prepare_request(ItemRequest(name="")))
 
     with pytest.raises(NemoHTTPError) as exc_info:
         resp.data()
@@ -320,7 +320,7 @@ def test_error_response_fallback_to_text() -> None:
     )
 
     client = StubClient(base_url=BASE, http_client=mock_http)
-    resp = client.send(GET_ITEM.request(name="x"))
+    resp = client.send(GET_ITEM.prepare_request(name="x"))
 
     with pytest.raises(NemoHTTPError) as exc_info:
         resp.data()
@@ -339,7 +339,7 @@ def test_error_response_body_is_none() -> None:
     )
 
     client = StubClient(base_url=BASE, http_client=mock_http)
-    resp = client.send(GET_ITEM.request(name="missing"))
+    resp = client.send(GET_ITEM.prepare_request(name="missing"))
 
     assert resp.body is None
     assert resp.http_response.status_code == 404

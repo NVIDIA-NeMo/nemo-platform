@@ -3,21 +3,15 @@
 
 """Typed endpoint definitions and factory functions.
 
-Endpoints are descriptors: when assigned as class attributes on a
-:class:`NemoClient` or :class:`AsyncNemoClient` subclass, accessing them
-returns a bound callable that sends the request and returns the typed response.
+Define endpoints as module-level constants using the factory functions,
+then use them with ``prepare_request`` + ``client.send``::
 
-Define endpoints once in a mixin, then create sync and async client classes::
+    CreateItemEndpoint = post("/items", path_type=WorkspacePath, request_type=CreateItemRequest, response_type=ItemResponse)
+    GetItemEndpoint = get("/items/{name}", path_type=WorkspaceItemPath, response_type=ItemResponse)
 
-    class _ItemEndpoints:
-        create = post("/items", path_type=WorkspacePath, request_type=CreateItemRequest, response_type=ItemResponse)
-        get_item = get("/items/{name}", path_type=WorkspaceItemPath, response_type=ItemResponse)
-
-    class ItemsClient(_ItemEndpoints, NemoClient):
-        pass
-
-    class AsyncItemsClient(_ItemEndpoints, AsyncNemoClient):
-        pass
+    client = NemoClient(base_url="http://localhost:8080")
+    item = client.send(CreateItemEndpoint.prepare_request(body, workspace="default")).data()
+    item = client.send(GetItemEndpoint.prepare_request(workspace="default", name="x")).data()
 """
 
 from __future__ import annotations
@@ -25,8 +19,6 @@ from __future__ import annotations
 from collections.abc import AsyncIterable, Iterable
 from typing import Generic, Unpack, overload
 
-from nemo_platform_plugin.client.bound import AsyncBoundCall, SyncBoundCall
-from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.types import (
     BinaryContent,
     BodyRequestT,
@@ -46,10 +38,6 @@ class Endpoint(Generic[PathT, RequestT, ResponseT, QueryParamsT]):
     Links a path type ``PathT``, request type ``RequestT``, response type
     ``ResponseT``, and optional query params type ``QueryParamsT`` together
     with the HTTP method and path template.
-
-    Also a descriptor: when assigned as a class attribute on a
-    :class:`NemoClient` or :class:`AsyncNemoClient` subclass, accessing it
-    returns a :class:`SyncBoundCall` or :class:`AsyncBoundCall`.
     """
 
     def __init__(
@@ -63,7 +51,7 @@ class Endpoint(Generic[PathT, RequestT, ResponseT, QueryParamsT]):
     # -- request() overloads: body / binary / no-body ----------------------
 
     @overload
-    def request(
+    def prepare_request(
         self: Endpoint[PathT, BodyRequestT, ResponseT, QueryParamsT],
         body: BodyRequestT,
         *,
@@ -71,7 +59,7 @@ class Endpoint(Generic[PathT, RequestT, ResponseT, QueryParamsT]):
         **path_params: Unpack[PathT],
     ) -> PreparedRequest[ResponseT]: ...
     @overload
-    def request(
+    def prepare_request(
         self: Endpoint[PathT, BinaryContent, ResponseT, QueryParamsT],
         content: bytes | Iterable[bytes] | AsyncIterable[bytes],
         *,
@@ -79,14 +67,14 @@ class Endpoint(Generic[PathT, RequestT, ResponseT, QueryParamsT]):
         **path_params: Unpack[PathT],
     ) -> PreparedRequest[ResponseT]: ...
     @overload
-    def request(
+    def prepare_request(
         self: Endpoint[PathT, None, ResponseT, QueryParamsT],
         *,
         query_params: QueryParamsT | None = None,
         **path_params: Unpack[PathT],
     ) -> PreparedRequest[ResponseT]: ...
 
-    def request(self, *args: object, query_params: object = None, **path_params: object) -> PreparedRequest:
+    def prepare_request(self, *args: object, query_params: object = None, **path_params: object) -> PreparedRequest:
         """Build a :class:`PreparedRequest` from payload/content and path parameters."""
         params = {k: str(v) for k, v in path_params.items()}
         content: bytes | Iterable[bytes] | AsyncIterable[bytes] | None
@@ -117,28 +105,6 @@ class Endpoint(Generic[PathT, RequestT, ResponseT, QueryParamsT]):
             response_type=self.response_type,
             query_params=resolved_query,
         )
-
-    # -- Descriptor: sync vs async -----------------------------------------
-
-    @overload
-    def __get__(
-        self, obj: NemoClient, objtype: type | None = None
-    ) -> SyncBoundCall[PathT, RequestT, ResponseT, QueryParamsT]: ...
-    @overload
-    def __get__(
-        self, obj: AsyncNemoClient, objtype: type | None = None
-    ) -> AsyncBoundCall[PathT, RequestT, ResponseT, QueryParamsT]: ...
-
-    def __get__(
-        self, obj: NemoClient | AsyncNemoClient | None, objtype: type | None = None
-    ) -> (
-        SyncBoundCall[PathT, RequestT, ResponseT, QueryParamsT]
-        | AsyncBoundCall[PathT, RequestT, ResponseT, QueryParamsT]
-    ):
-        assert obj is not None
-        if isinstance(obj, AsyncNemoClient):
-            return AsyncBoundCall(obj, self.request)
-        return SyncBoundCall(obj, self.request)
 
     def __repr__(self) -> str:
         req = self.request_type.__name__ if self.request_type else "None"
