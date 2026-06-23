@@ -286,7 +286,10 @@ class ExperimentsResource(SyncAPIResource):
         filter: ExperimentFilterParam | Omit = omit,
         page: int | Omit = omit,
         page_size: int | Omit = omit,
-        sort: Literal["-created_at", "created_at", "-updated_at", "updated_at", "-name", "name"] | Omit = omit,
+        sort: Literal[
+            "-created_at", "created_at", "-updated_at", "updated_at", "-name", "name", "-pinned_at", "pinned_at"
+        ]
+        | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -300,7 +303,8 @@ class ExperimentsResource(SyncAPIResource):
         Args:
           filter: Filter experiments by name, experiment_group_id, dataset_name, dataset_version,
               created_by, created_at, or updated_at. Pass is_deleted=true to return only
-              soft-deleted experiments; omit to see only live ones.
+              soft-deleted experiments; omit to see only live ones. Pass is_pinned=true (or
+              false) to filter by pinned state; omit to return both.
 
           page: Page number.
 
@@ -378,6 +382,91 @@ class ExperimentsResource(SyncAPIResource):
                 extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
             ),
             cast_to=NoneType,
+        )
+
+    def pin(
+        self,
+        name: str,
+        *,
+        workspace: str | None = None,
+        # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
+        # The extra values given here take precedence over values defined on the client or passed to this method.
+        extra_headers: Headers | None = None,
+        extra_query: Query | None = None,
+        extra_body: Body | None = None,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
+    ) -> ExperimentResponse:
+        """
+        Pin an experiment to the top of the list (workspace-shared).
+
+        Re-pinning an already-pinned experiment refreshes `pinned_at` to the current
+        timestamp, which is intentional (most-recently-pinned sorts first).
+
+        Args:
+          extra_headers: Send extra headers
+
+          extra_query: Add additional query parameters to the request
+
+          extra_body: Add additional JSON properties to the request
+
+          timeout: Override the client-level default timeout for this request, in seconds
+        """
+        if workspace is None:
+            workspace = self._client._get_workspace_path_param()
+        if not workspace:
+            raise ValueError(f"Expected a non-empty value for `workspace` but received {workspace!r}")
+        if not name:
+            raise ValueError(f"Expected a non-empty value for `name` but received {name!r}")
+        return self._post(
+            path_template(
+                "/apis/intake/v2/workspaces/{workspace}/experiments/{name}/pin", workspace=workspace, name=name
+            ),
+            options=make_request_options(
+                extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
+            ),
+            cast_to=ExperimentResponse,
+        )
+
+    def unpin(
+        self,
+        name: str,
+        *,
+        workspace: str | None = None,
+        # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
+        # The extra values given here take precedence over values defined on the client or passed to this method.
+        extra_headers: Headers | None = None,
+        extra_query: Query | None = None,
+        extra_body: Body | None = None,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
+    ) -> ExperimentResponse:
+        """Unpin an experiment.
+
+        Idempotent: unpinning an already-unpinned experiment is a
+        no-op.
+
+        Args:
+          extra_headers: Send extra headers
+
+          extra_query: Add additional query parameters to the request
+
+          extra_body: Add additional JSON properties to the request
+
+          timeout: Override the client-level default timeout for this request, in seconds
+        """
+        if workspace is None:
+            workspace = self._client._get_workspace_path_param()
+        if not workspace:
+            raise ValueError(f"Expected a non-empty value for `workspace` but received {workspace!r}")
+        if not name:
+            raise ValueError(f"Expected a non-empty value for `name` but received {name!r}")
+        return self._delete(
+            path_template(
+                "/apis/intake/v2/workspaces/{workspace}/experiments/{name}/pin", workspace=workspace, name=name
+            ),
+            options=make_request_options(
+                extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
+            ),
+            cast_to=ExperimentResponse,
         )
 
 
@@ -613,7 +702,10 @@ class AsyncExperimentsResource(AsyncAPIResource):
         filter: ExperimentFilterParam | Omit = omit,
         page: int | Omit = omit,
         page_size: int | Omit = omit,
-        sort: Literal["-created_at", "created_at", "-updated_at", "updated_at", "-name", "name"] | Omit = omit,
+        sort: Literal[
+            "-created_at", "created_at", "-updated_at", "updated_at", "-name", "name", "-pinned_at", "pinned_at"
+        ]
+        | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -627,7 +719,8 @@ class AsyncExperimentsResource(AsyncAPIResource):
         Args:
           filter: Filter experiments by name, experiment_group_id, dataset_name, dataset_version,
               created_by, created_at, or updated_at. Pass is_deleted=true to return only
-              soft-deleted experiments; omit to see only live ones.
+              soft-deleted experiments; omit to see only live ones. Pass is_pinned=true (or
+              false) to filter by pinned state; omit to return both.
 
           page: Page number.
 
@@ -707,6 +800,91 @@ class AsyncExperimentsResource(AsyncAPIResource):
             cast_to=NoneType,
         )
 
+    async def pin(
+        self,
+        name: str,
+        *,
+        workspace: str | None = None,
+        # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
+        # The extra values given here take precedence over values defined on the client or passed to this method.
+        extra_headers: Headers | None = None,
+        extra_query: Query | None = None,
+        extra_body: Body | None = None,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
+    ) -> ExperimentResponse:
+        """
+        Pin an experiment to the top of the list (workspace-shared).
+
+        Re-pinning an already-pinned experiment refreshes `pinned_at` to the current
+        timestamp, which is intentional (most-recently-pinned sorts first).
+
+        Args:
+          extra_headers: Send extra headers
+
+          extra_query: Add additional query parameters to the request
+
+          extra_body: Add additional JSON properties to the request
+
+          timeout: Override the client-level default timeout for this request, in seconds
+        """
+        if workspace is None:
+            workspace = self._client._get_workspace_path_param()
+        if not workspace:
+            raise ValueError(f"Expected a non-empty value for `workspace` but received {workspace!r}")
+        if not name:
+            raise ValueError(f"Expected a non-empty value for `name` but received {name!r}")
+        return await self._post(
+            path_template(
+                "/apis/intake/v2/workspaces/{workspace}/experiments/{name}/pin", workspace=workspace, name=name
+            ),
+            options=make_request_options(
+                extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
+            ),
+            cast_to=ExperimentResponse,
+        )
+
+    async def unpin(
+        self,
+        name: str,
+        *,
+        workspace: str | None = None,
+        # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
+        # The extra values given here take precedence over values defined on the client or passed to this method.
+        extra_headers: Headers | None = None,
+        extra_query: Query | None = None,
+        extra_body: Body | None = None,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
+    ) -> ExperimentResponse:
+        """Unpin an experiment.
+
+        Idempotent: unpinning an already-unpinned experiment is a
+        no-op.
+
+        Args:
+          extra_headers: Send extra headers
+
+          extra_query: Add additional query parameters to the request
+
+          extra_body: Add additional JSON properties to the request
+
+          timeout: Override the client-level default timeout for this request, in seconds
+        """
+        if workspace is None:
+            workspace = self._client._get_workspace_path_param()
+        if not workspace:
+            raise ValueError(f"Expected a non-empty value for `workspace` but received {workspace!r}")
+        if not name:
+            raise ValueError(f"Expected a non-empty value for `name` but received {name!r}")
+        return await self._delete(
+            path_template(
+                "/apis/intake/v2/workspaces/{workspace}/experiments/{name}/pin", workspace=workspace, name=name
+            ),
+            options=make_request_options(
+                extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
+            ),
+            cast_to=ExperimentResponse,
+        )
+
 
 class ExperimentsResourceWithRawResponse:
     def __init__(self, experiments: ExperimentsResource) -> None:
@@ -726,6 +904,12 @@ class ExperimentsResourceWithRawResponse:
         )
         self.delete = to_raw_response_wrapper(
             experiments.delete,
+        )
+        self.pin = to_raw_response_wrapper(
+            experiments.pin,
+        )
+        self.unpin = to_raw_response_wrapper(
+            experiments.unpin,
         )
 
     @cached_property
@@ -752,6 +936,12 @@ class AsyncExperimentsResourceWithRawResponse:
         self.delete = async_to_raw_response_wrapper(
             experiments.delete,
         )
+        self.pin = async_to_raw_response_wrapper(
+            experiments.pin,
+        )
+        self.unpin = async_to_raw_response_wrapper(
+            experiments.unpin,
+        )
 
     @cached_property
     def sessions(self) -> AsyncSessionsResourceWithRawResponse:
@@ -777,6 +967,12 @@ class ExperimentsResourceWithStreamingResponse:
         self.delete = to_streamed_response_wrapper(
             experiments.delete,
         )
+        self.pin = to_streamed_response_wrapper(
+            experiments.pin,
+        )
+        self.unpin = to_streamed_response_wrapper(
+            experiments.unpin,
+        )
 
     @cached_property
     def sessions(self) -> SessionsResourceWithStreamingResponse:
@@ -801,6 +997,12 @@ class AsyncExperimentsResourceWithStreamingResponse:
         )
         self.delete = async_to_streamed_response_wrapper(
             experiments.delete,
+        )
+        self.pin = async_to_streamed_response_wrapper(
+            experiments.pin,
+        )
+        self.unpin = async_to_streamed_response_wrapper(
+            experiments.unpin,
         )
 
     @cached_property

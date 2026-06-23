@@ -62,6 +62,8 @@ class SemanticView(BaseModel):
 class AgentEvalTask(BaseModel):
     """Standalone agent-eval task: the unit of work being evaluated."""
 
+    # TODO: Tasks may need to define a set of required_capabilities or something that allow the
+    # runtime to skip trying to complete a task that isn't possible.
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
     id: str = Field(description="Stable task identifier, unique within the supplied task collection.")

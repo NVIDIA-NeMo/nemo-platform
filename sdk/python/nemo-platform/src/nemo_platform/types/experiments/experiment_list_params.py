@@ -31,7 +31,8 @@ class ExperimentListParams(TypedDict, total=False):
     """
     Filter experiments by name, experiment_group_id, dataset_name, dataset_version,
     created_by, created_at, or updated_at. Pass is_deleted=true to return only
-    soft-deleted experiments; omit to see only live ones.
+    soft-deleted experiments; omit to see only live ones. Pass is_pinned=true (or
+    false) to filter by pinned state; omit to return both.
     """
 
     page: int
@@ -40,5 +41,5 @@ class ExperimentListParams(TypedDict, total=False):
     page_size: int
     """Page size."""
 
-    sort: Literal["-created_at", "created_at", "-updated_at", "updated_at", "-name", "name"]
+    sort: Literal["-created_at", "created_at", "-updated_at", "updated_at", "-name", "name", "-pinned_at", "pinned_at"]
     """Sort field; prefix with '-' for descending."""
