@@ -325,12 +325,35 @@ def test_container_artifacts_become_metadata_only_entries(tmp_path: Path):
     }
 
 
-def test_container_only_selection_fails_clearly(tmp_path: Path):
-    with pytest.raises(BundleMetadataError, match="at least one SDK artifact"):
+def test_container_only_selection_is_valid(tmp_path: Path):
+    bundle_dir = tmp_path / "release-bundle"
+    bundle_metadata.write_release_bundle_metadata(
+        sdk_artifacts_dir=tmp_path / "downloaded-artifacts",
+        bundle_dir=bundle_dir,
+        selected_artifacts_json=selected_artifacts(
+            {"type": "container", "id": "nmp-automodel-tasks"},
+            {"type": "container", "id": "nmp-unsloth-training"},
+        ),
+        cadence="release",
+        release_label="1.0.0",
+        release_date_json="null",
+        source_sha="a" * 40,
+    )
+
+    # Container-only bundle: only container entries, no wheels, checksums = manifest only.
+    assert read_manifest(bundle_dir)["artifacts"] == [
+        {"type": "container", "id": "nmp-automodel-tasks", "version": "1.0.0"},
+        {"type": "container", "id": "nmp-unsloth-training", "version": "1.0.0"},
+    ]
+    assert set(parse_checksums(bundle_dir)) == {"release-manifest.json"}
+
+
+def test_empty_selection_fails_clearly(tmp_path: Path):
+    with pytest.raises(BundleMetadataError, match="non-empty list"):
         bundle_metadata.write_release_bundle_metadata(
             sdk_artifacts_dir=tmp_path / "downloaded-artifacts",
             bundle_dir=tmp_path / "release-bundle",
-            selected_artifacts_json=selected_artifacts({"type": "container", "id": "nmp-automodel-tasks"}),
+            selected_artifacts_json="[]",
             cadence="release",
             release_label="1.0.0",
             release_date_json="null",

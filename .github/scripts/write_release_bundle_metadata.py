@@ -29,9 +29,7 @@ class BundleMetadataError(Exception):
 
 def safe_artifact_id(artifact_type: str, artifact_id: str) -> str:
     if not re.fullmatch(r"[A-Za-z0-9._-]+", artifact_id) or artifact_id in {".", ".."}:
-        raise BundleMetadataError(
-            f"selected {artifact_type} id must be a safe single path segment: {artifact_id}"
-        )
+        raise BundleMetadataError(f"selected {artifact_type} id must be a safe single path segment: {artifact_id}")
     return artifact_id
 
 
@@ -77,16 +75,13 @@ def parse_selected_artifact_ids(value: str) -> dict[str, list[str]]:
 
         checked_id = safe_artifact_id(artifact_type, artifact_id)
         if checked_id in seen[artifact_type]:
-            raise BundleMetadataError(
-                f"selected_artifacts_json contains duplicate {artifact_type} id: {checked_id}"
-            )
+            raise BundleMetadataError(f"selected_artifacts_json contains duplicate {artifact_type} id: {checked_id}")
 
         seen[artifact_type].add(checked_id)
         ids_by_type[artifact_type].append(checked_id)
 
-    if not ids_by_type["sdk"]:
-        raise BundleMetadataError("selected_artifacts_json must include at least one SDK artifact")
-
+    # A bundle may be SDK-only, container-only, or mixed; the non-empty-list
+    # check above already guarantees at least one artifact of some type.
     return ids_by_type
 
 

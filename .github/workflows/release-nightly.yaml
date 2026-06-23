@@ -16,12 +16,19 @@ on:
         description: "Release artifact scope."
         required: false
         type: choice
-        default: sdks
+        default: all
         options:
+          - all
           - sdks
+          - containers
           - custom
       sdk_ids:
         description: "Comma-separated SDK IDs for custom releases."
+        required: false
+        type: string
+        default: ""
+      container_ids:
+        description: "Comma-separated container IDs for custom releases."
         required: false
         type: string
         default: ""
@@ -38,8 +45,9 @@ jobs:
     with:
       cadence: nightly
       source_sha: ${{ github.event_name == 'workflow_dispatch' && inputs.source_sha || '' }}
-      release_scope: ${{ github.event_name == 'workflow_dispatch' && inputs.release_scope || 'sdks' }}
+      release_scope: ${{ github.event_name == 'workflow_dispatch' && inputs.release_scope || 'all' }}
       sdk_ids: ${{ github.event_name == 'workflow_dispatch' && inputs.sdk_ids || '' }}
+      container_ids: ${{ github.event_name == 'workflow_dispatch' && inputs.container_ids || '' }}
     secrets:
       CI_DISPATCH_TOKEN: ${{ secrets.CI_DISPATCH_TOKEN }}
       CI_DISPATCH_REPO: ${{ secrets.CI_DISPATCH_REPO }}

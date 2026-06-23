@@ -23,12 +23,17 @@ on:
         type: string
         default: ""
       release_scope:
-        description: "Release artifact scope: sdks or custom."
+        description: "Release artifact scope: all, sdks, containers, or custom."
         required: false
         type: string
-        default: "sdks"
+        default: "all"
       sdk_ids:
         description: "Comma-separated SDK IDs for custom releases."
+        required: false
+        type: string
+        default: ""
+      container_ids:
+        description: "Comma-separated container IDs for custom releases."
         required: false
         type: string
         default: ""
@@ -55,6 +60,7 @@ jobs:
       nightly_timestamp: ${{ steps.resolve-nightly-source.outputs.nightly_timestamp }}
       selected_artifacts_json: ${{ steps.plan-assets.outputs.selected_artifacts_json }}
       sdk_count: ${{ steps.plan-assets.outputs.sdk_count }}
+      container_count: ${{ steps.plan-assets.outputs.container_count }}
       sdk_matrix: ${{ steps.plan-assets.outputs.sdk_matrix }}
       release_tag: ${{ inputs.cadence == 'nightly' && steps.resolve-nightly-source.outputs.release_tag || steps.resolve-release-metadata.outputs.release_tag }}
       release_date_json: ${{ inputs.cadence == 'nightly' && steps.resolve-nightly-source.outputs.release_date_json || steps.resolve-release-metadata.outputs.release_date_json }}
@@ -231,106 +237,120 @@ jobs:
           ref: ${{ inputs.cadence == 'nightly' && steps.resolve-nightly-source.outputs.source_sha || inputs.source_sha }}
           path: source
 
-      # Plan SDK-only V1 artifacts before any release side effects:
-      # sdks selects every catalog SDK; custom selects listed sdk_ids.
+      # Plan release artifacts before any release side effects. release_scope:
+      #   all        -> every catalog SDK + every catalog container (default)
+      #   sdks       -> every catalog SDK, no containers
+      #   containers -> every catalog container, no SDKs
+      #   custom     -> exactly sdk_ids + container_ids (either may be empty)
+      # Container image bits are not built here; container entries are recorded
+      # in the manifest as typed artifacts and Platform-Deploy stages them from
+      # its dev registry by this release's source SHA.
       - name: Plan release assets
         id: plan-assets
         shell: bash
         env:
           RELEASE_SCOPE: ${{ inputs.release_scope }}
           SDK_IDS: ${{ inputs.sdk_ids }}
+          CONTAINER_IDS: ${{ inputs.container_ids }}
         run: |
           set -euo pipefail
 
           catalog="source/release/assets.yaml"
           [[ -f "${catalog}" ]] || { echo "::error::release asset catalog is missing: ${catalog}"; exit 1; }
 
-          sdk_catalog="$(yq -o=json '.sdk' "${catalog}" | jq -c 'if type == "array" then map(.id) else . end')"
-          if ! jq -e 'type == "array" and all(.[]; type == "string" and length > 0)' <<<"${sdk_catalog}" >/dev/null; then
-            echo "::error::release/assets.yaml sdk must contain non-empty string id values"
-            exit 1
-          fi
+          # Read and validate a catalog section ('.sdk' / '.container') into a
+          # JSON id array: non-empty string ids, no duplicates.
+          read_catalog() {
+            local section="$1" kind="$2" ids
+            ids="$(yq -o=json "${section} // []" "${catalog}" | jq -c 'map(.id)')"
+            if ! jq -e 'type == "array" and all(.[]; type == "string" and length > 0)' <<<"${ids}" >/dev/null; then
+              echo "::error::release/assets.yaml ${kind} must contain non-empty string id values"
+              exit 1
+            fi
+            if ! jq -e 'length == (unique | length)' <<<"${ids}" >/dev/null; then
+              echo "::error::release/assets.yaml ${kind} contains duplicate ids"
+              exit 1
+            fi
+            printf '%s' "${ids}"
+          }
 
-          if ! jq -e 'length == (unique | length)' <<<"${sdk_catalog}" >/dev/null; then
-            echo "::error::release/assets.yaml sdk contains duplicate ids"
-            exit 1
-          fi
+          # Parse a comma-separated custom id list and validate it against its
+          # catalog: no empty entries, no duplicates, no unknown ids.
+          parse_custom_ids() {
+            local raw="$1" kind="$2" catalog_json="$3" parsed unknown
+            parsed="$(jq -Rnc --arg value "${raw}" '$value | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0))')"
+            if ! jq -e 'length == (unique | length)' <<<"${parsed}" >/dev/null; then
+              echo "::error::${kind}_ids contains duplicate entries"
+              exit 1
+            fi
+            unknown="$(jq -nc --argjson selected "${parsed}" --argjson catalog "${catalog_json}" '$selected - $catalog')"
+            if [[ "${unknown}" != "[]" ]]; then
+              echo "::error::unknown ${kind} id(s): $(jq -r 'join(", ")' <<<"${unknown}")"
+              exit 1
+            fi
+            printf '%s' "${parsed}"
+          }
+
+          sdk_catalog="$(read_catalog '.sdk' sdk)"
+          container_catalog="$(read_catalog '.container' container)"
 
           case "${RELEASE_SCOPE}" in
-            sdks | custom)
+            all | sdks | containers | custom)
               ;;
             *)
-              echo "::error::Unknown release_scope: ${RELEASE_SCOPE}"
+              echo "::error::Unknown release_scope: ${RELEASE_SCOPE} (expected all, sdks, containers, or custom)"
               exit 1
               ;;
           esac
 
-          if [[ "${RELEASE_SCOPE}" != "custom" && -n "${SDK_IDS}" ]]; then
-            echo "::error::sdk_ids can only be used when release_scope is custom"
+          if [[ "${RELEASE_SCOPE}" != "custom" && ( -n "${SDK_IDS}" || -n "${CONTAINER_IDS}" ) ]]; then
+            echo "::error::sdk_ids/container_ids can only be used when release_scope is custom"
             exit 1
           fi
 
           case "${RELEASE_SCOPE}" in
+            all)
+              selected_sdk_ids="${sdk_catalog}"
+              selected_container_ids="${container_catalog}"
+              ;;
             sdks)
               selected_sdk_ids="${sdk_catalog}"
+              selected_container_ids='[]'
+              ;;
+            containers)
+              selected_sdk_ids='[]'
+              selected_container_ids="${container_catalog}"
               ;;
             custom)
-              if [[ -z "${SDK_IDS}" ]]; then
-                echo "::error::custom release_scope requires sdk_ids"
-                exit 1
-              fi
-              custom_sdk_ids="$(jq -Rnc --arg value "${SDK_IDS}" '$value | split(",") | map(gsub("^\\s+|\\s+$"; ""))')"
-              if jq -e 'any(.[]; length == 0)' <<<"${custom_sdk_ids}" >/dev/null; then
-                echo "::error::sdk_ids contains an empty entry"
-                exit 1
-              fi
-              if ! jq -e 'length == (unique | length)' <<<"${custom_sdk_ids}" >/dev/null; then
-                echo "::error::sdk_ids contains duplicate entries"
-                exit 1
-              fi
-              unknown="$(jq -nc --argjson selected "${custom_sdk_ids}" --argjson catalog "${sdk_catalog}" '$selected - $catalog')"
-              if [[ "${unknown}" != "[]" ]]; then
-                echo "::error::unknown sdk id(s): $(jq -r 'join(", ")' <<<"${unknown}")"
-                exit 1
-              fi
-              selected_sdk_ids="${custom_sdk_ids}"
+              selected_sdk_ids='[]'
+              selected_container_ids='[]'
+              [[ -n "${SDK_IDS}" ]] && selected_sdk_ids="$(parse_custom_ids "${SDK_IDS}" sdk "${sdk_catalog}")"
+              [[ -n "${CONTAINER_IDS}" ]] && selected_container_ids="$(parse_custom_ids "${CONTAINER_IDS}" container "${container_catalog}")"
               ;;
           esac
 
-          if [[ "$(jq 'length' <<<"${selected_sdk_ids}")" == "0" ]]; then
-            echo "::error::release selection must include at least one supported SDK artifact"
-            exit 1
-          fi
-
-          # Containers ride along on every release regardless of release_scope
-          # (scope governs SDK selection only): the container catalog is the
-          # eligibility list, and image bits are not built here. Entries are
-          # recorded in the manifest as typed artifacts; Platform-Deploy stages
-          # the images from its dev registry by this release's source SHA.
-          container_catalog="$(yq -o=json '.container // []' "${catalog}" | jq -c 'map(.id)')"
-          if ! jq -e 'type == "array" and all(.[]; type == "string" and length > 0)' <<<"${container_catalog}" >/dev/null; then
-            echo "::error::release/assets.yaml container must contain non-empty string id values"
-            exit 1
-          fi
-          if ! jq -e 'length == (unique | length)' <<<"${container_catalog}" >/dev/null; then
-            echo "::error::release/assets.yaml container contains duplicate ids"
+          total="$(jq -n --argjson s "${selected_sdk_ids}" --argjson c "${selected_container_ids}" '($s | length) + ($c | length)')"
+          if [[ "${total}" == "0" ]]; then
+            echo "::error::release selection is empty; choose a non-empty release_scope or provide sdk_ids/container_ids"
             exit 1
           fi
 
           sdk_artifacts_json="$(jq -nc --argjson ids "${selected_sdk_ids}" '$ids | map({type: "sdk", id: .})')"
-          container_artifacts_json="$(jq -nc --argjson ids "${container_catalog}" '$ids | map({type: "container", id: .})')"
+          container_artifacts_json="$(jq -nc --argjson ids "${selected_container_ids}" '$ids | map({type: "container", id: .})')"
           selected_artifacts_json="$(jq -nc --argjson sdks "${sdk_artifacts_json}" --argjson containers "${container_artifacts_json}" '$sdks + $containers')"
           sdk_matrix="$(jq -nc --argjson artifacts "${sdk_artifacts_json}" '{include: $artifacts}')"
           sdk_count="$(jq -r 'length' <<<"${selected_sdk_ids}")"
+          container_count="$(jq -r 'length' <<<"${selected_container_ids}")"
 
           {
             printf 'selected_artifacts_json=%s\n' "${selected_artifacts_json}"
             printf 'sdk_count=%s\n' "${sdk_count}"
+            printf 'container_count=%s\n' "${container_count}"
             printf 'sdk_matrix=%s\n' "${sdk_matrix}"
           } >>"${GITHUB_OUTPUT}"
 
-          echo "Planned SDK release artifacts: $(jq -r 'join(", ")' <<<"${selected_sdk_ids}")"
-          echo "Planned container release artifacts: $(jq -r 'join(", ")' <<<"${container_catalog}")"
+          echo "Planned SDK release artifacts: $(jq -r 'if length == 0 then "(none)" else join(", ") end' <<<"${selected_sdk_ids}")"
+          echo "Planned container release artifacts: $(jq -r 'if length == 0 then "(none)" else join(", ") end' <<<"${selected_container_ids}")"
 
   reserve-release-tag:
     name: Reserve release tag
@@ -381,6 +401,8 @@ jobs:
   build-sdks:
     name: Build SDK (${{ matrix.id }})
     needs: [plan-release, reserve-release-tag]
+    # Skip cleanly for container-only releases (sdk_matrix would be empty).
+    if: ${{ needs.plan-release.outputs.sdk_count != '0' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -428,6 +450,9 @@ jobs:
   assemble-release-bundle:
     name: Assemble release bundle
     needs: [plan-release, build-sdks]
+    # build-sdks is skipped for container-only releases; still assemble as long
+    # as planning succeeded and the SDK builds did not fail.
+    if: ${{ !cancelled() && needs.plan-release.result == 'success' && (needs.build-sdks.result == 'success' || needs.build-sdks.result == 'skipped') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -443,7 +468,10 @@ jobs:
       - name: Checkout workflow code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
+      # No SDK wheels exist for container-only releases; skip the download
+      # (the metadata writer handles an empty/absent artifacts dir).
       - name: Download SDK wheels
+        if: ${{ needs.plan-release.outputs.sdk_count != '0' }}
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: release-sdk-*
@@ -524,6 +552,12 @@ jobs:
             notes_range=(--notes-start-tag "${NOTES_START_TAG}")
           fi
 
+          # Wheels are absent for container-only releases; nullglob keeps the
+          # unmatched glob from being passed to gh literally.
+          shopt -s nullglob
+          wheels=(release-bundle/wheels/*.whl)
+          shopt -u nullglob
+
           # Upload each artifact as its own asset. GitHub flattens asset names to basenames; the
           # consumer restores wheels/ from the manifest paths. Re-run model: if a release already
           # exists for this tag the command fails ("a release with the same tag name already
@@ -533,7 +567,7 @@ jobs:
           gh release create "${RELEASE_TAG}" \
             release-bundle/release-manifest.json \
             release-bundle/checksums.txt \
-            release-bundle/wheels/*.whl \
+            "${wheels[@]}" \
             --title "${RELEASE_TAG}" \
             --generate-notes \
             "${notes_range[@]}"

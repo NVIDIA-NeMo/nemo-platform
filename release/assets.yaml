@@ -13,3 +13,8 @@ container:
   - id: nmp-automodel-tasks
   - id: nmp-automodel-training
   - id: nmp-unsloth-training
+  # Core deployable services: the bare minimum the Helm chart and customizer
+  # need for a working platform (built by Platform-Deploy docker.yaml docker-cpu).
+  - id: nmp-api
+  - id: nmp-core
+  - id: nmp-cpu-tasks

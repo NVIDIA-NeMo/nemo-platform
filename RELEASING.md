@@ -92,15 +92,27 @@ Also check:
 ## Container image eligibility
 
 The `container:` list in `release/assets.yaml` declares which container
-images are eligible for release publishing. Containers ride along on every
-release regardless of `release_scope` (scope governs SDK selection only):
-the bundle workflow records them as `container`-typed entries in
-`release-manifest.json`, and Platform-Deploy's `Release Deploy Artifacts`
-workflow stages the images automatically after the SDK publish, reading
-this list from this repository at the release ref. Eligibility is therefore
-version-pinned: re-staging an old tag publishes the container set that was
-declared at that commit. `Release Promote Public` (public NGC) reads the
-same list at the release tag and stays a manual step.
+images are eligible for release publishing. The bundle workflow records the
+selected containers as `container`-typed entries in `release-manifest.json`,
+and Platform-Deploy's `Release Deploy Artifacts` workflow stages those images
+after the SDK publish, reading this list from this repository at the release
+ref. Eligibility is therefore version-pinned: re-staging an old tag publishes
+the container set declared at that commit. `Release Promote Public` (public
+NGC) reads the same list at the release tag and stays a manual step.
+
+`release_scope` controls what a release includes (default `all`):
+
+| Scope | Includes |
+| --- | --- |
+| `all` | every catalog SDK + every catalog container (default) |
+| `sdks` | every catalog SDK, no containers |
+| `containers` | every catalog container, no SDKs |
+| `custom` | exactly the comma-separated `sdk_ids` + `container_ids` (either may be empty) |
+
+`custom` enables single-artifact or arbitrary-subset releases (for example a
+patch release of one container via `release_scope: custom`,
+`container_ids: nmp-automodel-tasks`); `containers` releases the whole
+container set with no SDK wheels.
 
 Adding an image here also requires a catalog metadata entry (overview,
 labels) in Platform-Deploy `release/nemo-assets-config.yaml`. Images are
