@@ -1,0 +1,180 @@
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import {
+  getListExperimentsQueryKey,
+  useListExperiments,
+  usePinExperiment,
+  useUnpinExperiment,
+} from '@nemo/sdk/generated/platform/api';
+import {
+  useExperimentGroupExperiments,
+  type UseExperimentGroupExperimentsParams,
+} from '@studio/components/dataViews/ExperimentGroupDataView/useExperimentGroupExperiments';
+import { renderHook } from '@testing-library/react';
+
+vi.mock('@nemo/common/src/providers/toast/useToast');
+vi.mock('@nemo/sdk/generated/platform/api');
+// useQueryClient needs a provider; the queries themselves are mocked, so a stub client is enough.
+const { invalidateQueries } = vi.hoisted(() => ({ invalidateQueries: vi.fn() }));
+vi.mock('@tanstack/react-query', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@tanstack/react-query')>()),
+  useQueryClient: () => ({ invalidateQueries }),
+}));
+
+const mockUseToast = vi.mocked(useToast);
+const mockUseListExperiments = vi.mocked(useListExperiments);
+const mockUsePinExperiment = vi.mocked(usePinExperiment);
+const mockUseUnpinExperiment = vi.mocked(useUnpinExperiment);
+const mockGetListExperimentsQueryKey = vi.mocked(getListExperimentsQueryKey);
+
+interface Row {
+  id: string;
+  name: string;
+  pinned_at?: string | null;
+}
+
+const pin = (name: string): Row => ({ id: name, name, pinned_at: '2026-01-01T00:00:00Z' });
+const unp = (name: string): Row => ({ id: name, name, pinned_at: null });
+
+// Minimal stand-in for the SDK query result; the hook only reads `data`, `pagination.total_results`,
+// and the loading/fetching/error flags.
+const queryResult = (rows: Row[], total: number) =>
+  ({
+    data: { data: rows, pagination: { total_results: total } },
+    isLoading: false,
+    isFetching: false,
+    error: null,
+  }) as unknown as ReturnType<typeof useListExperiments>;
+
+const mockLists = (
+  pinned: { rows: Row[]; total: number },
+  unpinned: { rows: Row[]; total: number }
+) => {
+  mockUseListExperiments.mockImplementation(((_workspace, params) =>
+    (params?.filter as { is_pinned?: boolean } | undefined)?.is_pinned
+      ? queryResult(pinned.rows, pinned.total)
+      : queryResult(unpinned.rows, unpinned.total)) as typeof useListExperiments);
+};
+
+const baseParams: UseExperimentGroupExperimentsParams = {
+  workspace: 'ws',
+  experimentGroupId: 'grp',
+  filter: undefined,
+  search: '',
+  page: 1,
+  pageSize: 50,
+  sort: '-created_at',
+};
+
+describe('useExperimentGroupExperiments', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUseToast.mockReturnValue({ error: vi.fn() } as unknown as ReturnType<typeof useToast>);
+    mockUsePinExperiment.mockReturnValue({
+      mutate: vi.fn(),
+    } as unknown as ReturnType<typeof usePinExperiment>);
+    mockUseUnpinExperiment.mockReturnValue({
+      mutate: vi.fn(),
+    } as unknown as ReturnType<typeof useUnpinExperiment>);
+  });
+
+  it('paginates over the unpinned set only, so pinned rows do not inflate the page count', () => {
+    // 3 pinned + exactly one page (50) of unpinned. Summing the two (the old behavior) gives 53,
+    // which would make the table render a phantom 2nd page containing only the pinned rows again.
+    mockLists(
+      { rows: [pin('p1'), pin('p2'), pin('p3')], total: 3 },
+      { rows: Array.from({ length: 50 }, (_unused, i) => unp(`u${i}`)), total: 50 }
+    );
+
+    const { result } = renderHook(() => useExperimentGroupExperiments(baseParams));
+
+    expect(result.current.totalCount).toBe(50);
+  });
+
+  it('falls back to the pinned count when nothing is unpinned so a fully-pinned group is not empty', () => {
+    mockLists({ rows: [pin('p1'), pin('p2')], total: 2 }, { rows: [], total: 0 });
+
+    const { result } = renderHook(() => useExperimentGroupExperiments(baseParams));
+
+    expect(result.current.totalCount).toBe(2);
+  });
+
+  it('reports a zero count only when both lists are empty', () => {
+    mockLists({ rows: [], total: 0 }, { rows: [], total: 0 });
+
+    const { result } = renderHook(() => useExperimentGroupExperiments(baseParams));
+
+    expect(result.current.totalCount).toBe(0);
+  });
+
+  it('lists pinned rows first, then unpinned, dropping an unpinned row already shown as pinned', () => {
+    // 'b' appears in both lists (the brief window where the two queries refetch out of step).
+    mockLists({ rows: [pin('a'), pin('b')], total: 2 }, { rows: [unp('b'), unp('c')], total: 2 });
+
+    const { result } = renderHook(() => useExperimentGroupExperiments(baseParams));
+
+    expect(result.current.rows.map((row) => row.name)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('fetches the full pinned set in one page and paginates the unpinned set by the caller page size', () => {
+    mockLists({ rows: [], total: 0 }, { rows: [], total: 0 });
+
+    renderHook(() => useExperimentGroupExperiments({ ...baseParams, page: 2, pageSize: 25 }));
+
+    const calls = mockUseListExperiments.mock.calls;
+    const pinnedParams = calls.find(
+      (call) => (call[1]?.filter as { is_pinned?: boolean } | undefined)?.is_pinned === true
+    )?.[1];
+    const unpinnedParams = calls.find(
+      (call) => (call[1]?.filter as { is_pinned?: boolean } | undefined)?.is_pinned === false
+    )?.[1];
+
+    // Pinned: a single large page (MAX_PINNED_ROWS), pinned-recency order, independent of caller page.
+    expect(pinnedParams).toMatchObject({ page: 1, page_size: 100, sort: '-pinned_at' });
+    // Unpinned: the caller's page/page_size and sort.
+    expect(unpinnedParams).toMatchObject({ page: 2, page_size: 25, sort: '-created_at' });
+  });
+
+  it('stays loading until both queries have loaded, not just the faster one', () => {
+    // Pinned has returned; unpinned is still on its initial load (no data yet).
+    mockUseListExperiments.mockImplementation(((_workspace, params) =>
+      (params?.filter as { is_pinned?: boolean } | undefined)?.is_pinned
+        ? queryResult([pin('p')], 1)
+        : ({
+            data: undefined,
+            isLoading: true,
+            isFetching: true,
+            error: null,
+          } as unknown as ReturnType<typeof useListExperiments>)) as typeof useListExperiments);
+
+    const { result } = renderHook(() => useExperimentGroupExperiments(baseParams));
+
+    expect(result.current.isLoading).toBe(true);
+  });
+
+  it('clears loading once both queries have responded', () => {
+    mockLists({ rows: [pin('p')], total: 1 }, { rows: [unp('u')], total: 1 });
+
+    const { result } = renderHook(() => useExperimentGroupExperiments(baseParams));
+
+    expect(result.current.isLoading).toBe(false);
+  });
+
+  it('scopes pin/unpin invalidation to this group, not the whole workspace', () => {
+    mockLists({ rows: [], total: 0 }, { rows: [], total: 0 });
+
+    renderHook(() => useExperimentGroupExperiments(baseParams));
+    // onSuccess is the group-scoped invalidate the hook wires into both mutations.
+    const onSuccess = mockUsePinExperiment.mock.calls[0]?.[0]?.mutation?.onSuccess as
+      | (() => void)
+      | undefined;
+    onSuccess?.();
+
+    expect(mockGetListExperimentsQueryKey).toHaveBeenCalledWith('ws', {
+      filter: { experiment_group_id: 'grp' },
+    });
+    expect(invalidateQueries).toHaveBeenCalledTimes(1);
+  });
+});
