@@ -37,6 +37,11 @@ on:
         required: false
         type: string
         default: ""
+      send_notifications:
+        description: "Whether downstream release jobs should send notifications."
+        required: false
+        type: boolean
+        default: true
     secrets:
       CI_DISPATCH_TOKEN:
         description: "Token with access to send repository dispatch events to the dispatch repo."
@@ -603,6 +608,7 @@ jobs:
           BUNDLE_ARTIFACT_DIGEST: ${{ needs.assemble-release-bundle.outputs.bundle_artifact_digest }}
           RELEASE_TAG: ${{ needs.assemble-release-bundle.outputs.release_tag }}
           RELEASE_CHECKSUMS_DIGEST: ${{ needs.assemble-release-bundle.outputs.release_checksums_digest }}
+          SEND_NOTIFICATIONS: ${{ inputs.send_notifications }}
         run: |
           set -euo pipefail
 
@@ -625,6 +631,7 @@ jobs:
                 --arg artifact_id "${BUNDLE_ARTIFACT_ID}" \
                 --arg artifact_name "${BUNDLE_ARTIFACT_NAME}" \
                 --arg artifact_digest "${BUNDLE_ARTIFACT_DIGEST}" \
+                --argjson send_notifications "${SEND_NOTIFICATIONS}" \
                 '{
                   source: "artifact",
                   repo: $repo,
@@ -632,7 +639,8 @@ jobs:
                   workflow_run_attempt: $workflow_run_attempt,
                   artifact_id: $artifact_id,
                   artifact_name: $artifact_name,
-                  artifact_digest: $artifact_digest
+                  artifact_digest: $artifact_digest,
+                  send_notifications: $send_notifications
                 }')"
               ;;
             release)
@@ -643,12 +651,14 @@ jobs:
                 --arg workflow_run_id "${BUNDLE_WORKFLOW_RUN_ID}" \
                 --arg tag "${RELEASE_TAG}" \
                 --arg checksums_digest "${RELEASE_CHECKSUMS_DIGEST}" \
+                --argjson send_notifications "${SEND_NOTIFICATIONS}" \
                 '{
                   source: "release",
                   repo: $repo,
                   workflow_run_id: $workflow_run_id,
                   tag: $tag,
-                  checksums_digest: $checksums_digest
+                  checksums_digest: $checksums_digest,
+                  send_notifications: $send_notifications
                 }')"
               ;;
             *)

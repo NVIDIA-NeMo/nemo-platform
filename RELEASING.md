@@ -124,5 +124,4 @@ trigger need a manual image build first.
 
 Nightly builds run automatically at 20:00 PT and publish to `pypi.nvidia.com`. They use the HEAD of `main` and version strings like `0.1.3.dev20260101120000`. No action required from the team.
 
-To trigger a nightly manually: [`release-nightly.yaml`](https://github.com/NVIDIA-NeMo/nemo-platform/actions/workflows/release-nightly.yaml) → **Run workflow** (no inputs required).
-
+To trigger a nightly manually: [`release-nightly.yaml`](https://github.com/NVIDIA-NeMo/nemo-platform/actions/workflows/release-nightly.yaml) → **Run workflow** (no inputs required). Leave `send_notifications` enabled for real reruns; disable it only for quiet smoke/ad-hoc runs.

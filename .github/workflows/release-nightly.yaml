@@ -32,6 +32,11 @@ on:
         required: false
         type: string
         default: ""
+      send_notifications:
+        description: "Send downstream release notifications."
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -48,6 +53,7 @@ jobs:
       release_scope: ${{ github.event_name == 'workflow_dispatch' && inputs.release_scope || 'all' }}
       sdk_ids: ${{ github.event_name == 'workflow_dispatch' && inputs.sdk_ids || '' }}
       container_ids: ${{ github.event_name == 'workflow_dispatch' && inputs.container_ids || '' }}
+      send_notifications: ${{ github.event_name != 'workflow_dispatch' || inputs.send_notifications }}
     secrets:
       CI_DISPATCH_TOKEN: ${{ secrets.CI_DISPATCH_TOKEN }}
       CI_DISPATCH_REPO: ${{ secrets.CI_DISPATCH_REPO }}
