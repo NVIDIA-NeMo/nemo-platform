@@ -335,6 +335,10 @@ async def create_experiment(
     "/v2/workspaces/{workspace}/experiments",
     response_model=Page[ExperimentResponse],
     tags=[EXPERIMENTS_TAG],
+    responses={
+        400: {"description": "Unsupported sort field"},
+        503: {"description": "Telemetry store unavailable for a metric-based sort"},
+    },
     openapi_extra=generate_openapi_extra_params(
         filter_schema=ExperimentFilter,
         filter_description=(
@@ -386,7 +390,16 @@ async def list_experiments(
             "Consider denormalizing rollup metrics for entity-store sorting.",
             _MAX_GROUP_EXPERIMENTS,
         )
-    await _hydrate_rollups(workspace=workspace, responses=responses, rollup_repository=rollup_repository)
+    hydrated = await _hydrate_rollups(workspace=workspace, responses=responses, rollup_repository=rollup_repository)
+    # A metric-backed sort (anything other than an entity column) is meaningless without rollups: if
+    # hydration was skipped (ClickHouse disabled or down) every metric value would be unset and the
+    # result would silently collapse to name order. Reject the request instead of returning a
+    # misleading 200. Entity-column sorts still work and an empty group still hydrates fine.
+    if not hydrated and sort_field not in _ENTITY_SORT_FIELDS:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Cannot sort experiments by '{sort_field}': the telemetry store is unavailable.",
+        )
     ordered = _sort_experiments(responses, field=sort_field, descending=descending)
     start = (page - 1) * page_size
     page_items = ordered[start : start + page_size]
@@ -907,20 +920,30 @@ async def _hydrate_rollups(
     workspace: str,
     responses: list[ExperimentResponse],
     rollup_repository: ExperimentRollupRepository | None,
-) -> None:
-    if rollup_repository is None or not responses:
-        return
+) -> bool:
+    """Enrich responses with ClickHouse rollups in place.
+
+    Returns True when hydration completed (including the no-op empty-list case) and False when it was
+    skipped because the rollup store is unavailable (repository absent or query failed). Callers that
+    rank by a rollup metric use the flag to reject the request rather than silently degrade; callers
+    that only display metrics can ignore it.
+    """
+    if not responses:
+        return True
+    if rollup_repository is None:
+        return False
     try:
         rollups = await rollup_repository.get_rollups(
             workspace=workspace, experiment_ids=[response.name for response in responses]
         )
     except Exception:
         logger.exception("Skipping experiment rollup hydration because ClickHouse is unavailable")
-        return
+        return False
     for response in responses:
         rollup = rollups.get(response.name)
         if rollup is not None:
             _apply_rollup(response, rollup)
+    return True
 
 
 def _apply_rollup(response: ExperimentResponse, rollup: ExperimentRollup) -> None:

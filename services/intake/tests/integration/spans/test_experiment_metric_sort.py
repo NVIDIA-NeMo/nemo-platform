@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -15,7 +16,7 @@ EXPERIMENTS = "/apis/intake/v2/workspaces/default/experiments"
 GROUPS = "/apis/intake/v2/workspaces/default/experiment-groups"
 
 
-def _ensure_group(client: TestClient, name: str = "metric-sort-group") -> str:
+def _ensure_group(client: TestClient, name: str) -> str:
     response = client.post(GROUPS, json={"name": name})
     if response.status_code == 409:
         response = client.get(f"{GROUPS}/{name}")
@@ -57,9 +58,12 @@ def _create_experiment(client: TestClient, group_id: str, name: str) -> None:
 
 
 def test_list_sorts_by_cost_metric_missing_last(client: TestClient) -> None:
-    group_id = _ensure_group(client)
+    # Unique per run so reruns/shared integration state can't collide on group or experiment names.
+    suffix = uuid.uuid4().hex
+    group_id = _ensure_group(client, name=f"metric-sort-group-{suffix}")
     started_at = datetime.now(timezone.utc).replace(microsecond=0)
-    for index, (name, cost) in enumerate([("exp-cheap", 0.10), ("exp-pricey", 0.90), ("exp-mid", 0.50)]):
+    cheap, pricey, mid = f"exp-cheap-{suffix}", f"exp-pricey-{suffix}", f"exp-mid-{suffix}"
+    for index, (name, cost) in enumerate([(cheap, 0.10), (pricey, 0.90), (mid, 0.50)]):
         _create_experiment(client, group_id, name)
         response = client.post(
             ATIF_INGEST,
@@ -67,12 +71,17 @@ def test_list_sorts_by_cost_metric_missing_last(client: TestClient) -> None:
         )
         assert response.status_code == 201, response.text
     # No ingest -> no cost rollup -> must sort last regardless of direction.
-    _create_experiment(client, group_id, "exp-norun")
+    norun = f"exp-norun-{suffix}"
+    _create_experiment(client, group_id, norun)
 
-    listed = client.get(EXPERIMENTS, params={"sort": "-cost_usd.mean", "page_size": 50})
+    # Filter by this group so the assertion only inspects experiments this test created.
+    listed = client.get(
+        EXPERIMENTS,
+        params={"filter[experiment_group_id]": group_id, "sort": "-cost_usd.mean", "page_size": 50},
+    )
     assert listed.status_code == 200, listed.text
     names = [row["name"] for row in listed.json()["data"]]
-    assert names == ["exp-pricey", "exp-mid", "exp-cheap", "exp-norun"]
+    assert names == [pricey, mid, cheap, norun]
 
 
 def test_list_rejects_unknown_sort_field(client: TestClient) -> None:
