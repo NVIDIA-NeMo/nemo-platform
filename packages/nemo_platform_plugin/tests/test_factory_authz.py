@@ -39,13 +39,25 @@ async def _compiler(*args: object, **kwargs: object) -> object:  # never called 
 
 
 def _rules_by_path_method(router: APIRouter) -> dict[tuple[str, str], list]:
-    """Map (path, lower-method) -> attached PathRules for every APIRoute in *router*."""
+    """Map (composed-path, lower-method) -> attached PathRules for every APIRoute in *router*.
+
+    fastapi 0.138.0 makes ``include_router(prefix=...)`` lazy: rebased ``APIRoute``\\ s live
+    behind a ``_IncludedRouter`` proxy rather than in ``.routes``. Descend the proxy via
+    ``effective_route_contexts()`` to read each route's composed path/methods and original
+    endpoint (which still carries the ``@path_rule`` metadata).
+    """
     out: dict[tuple[str, str], list] = {}
     for route in router.routes:
-        if not isinstance(route, APIRoute):
+        contexts = getattr(route, "effective_route_contexts", None)
+        if contexts is None:
+            if isinstance(route, APIRoute):
+                for method in route.methods or set():
+                    out[(route.path, method.lower())] = get_path_rules(route.endpoint)
             continue
-        for method in route.methods or set():
-            out[(route.path, method.lower())] = get_path_rules(route.endpoint)
+        for ctx in contexts():
+            if isinstance(ctx.original_route, APIRoute):
+                for method in ctx.methods or set():
+                    out[(ctx.path, method.lower())] = get_path_rules(ctx.original_route.endpoint)
     return out
 
 

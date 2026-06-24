@@ -25,7 +25,9 @@ including prefix joins and ``{param:path}`` wildcards — exactly as it does at 
 
 from __future__ import annotations
 
+import copy
 import logging
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -41,6 +43,7 @@ from nemo_platform_plugin.authz import (
 )
 from nemo_platform_plugin.authz_format import is_valid_permission_id
 from nemo_platform_plugin.service import NemoService
+from starlette.routing import BaseRoute
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +165,54 @@ def _register_permission(catalog: dict[str, Permission], perm: Permission, warni
     catalog.setdefault(perm.id, perm)
 
 
+def _iter_composed_routes(service: NemoService) -> Iterator[BaseRoute]:
+    """Yield the fully-composed leaf routes of *service*, one ``BaseRoute`` per mounted route.
+
+    This re-creates the runtime mount (``/apis/<name>`` + ``RouterSpec.prefix`` + route path)
+    and flattens it to leaves so the derivation can read each route's final ``.path``,
+    ``.methods``, and (for ``APIRoute``) original ``.endpoint``.
+
+    Lazy-include workaround (fastapi 0.138.0 / starlette 1.3.1): ``include_router(prefix=...)``
+    no longer materializes rebased ``APIRoute`` objects into ``.routes`` — it stores a
+    ``fastapi.routing._IncludedRouter`` proxy, so walking ``.routes`` for ``APIRoute`` finds
+    nothing. We descend each proxy via ``effective_route_contexts()`` (which also recurses
+    through nested includes) and reconstruct the composed leaves:
+
+    - For an ``APIRoute`` we shallow-copy the original and overwrite ``.path``/``.methods`` with
+      the context's composed values. The copy keeps ``isinstance(route, APIRoute)`` true and
+      preserves the original ``.endpoint`` object so ``get_path_rules(route.endpoint)`` still
+      finds the function-attached rules; copying (rather than mutating) avoids corrupting the
+      shared original route.
+    - For non-``APIRoute`` leaves (WebSocketRoute / Mount / plain Route) we yield the context's
+      ``starlette_route``, which already carries the composed path — so the existing
+      fail-closed / warning branches still fire and no route is silently dropped.
+
+    A concrete route appearing directly in ``.routes`` (e.g. a future eager-include path) is
+    yielded as-is, so this keeps working if the proxy behavior changes again.
+    """
+    composed = APIRouter()
+    for spec in service.get_routers():
+        composed.include_router(spec.router, prefix=f"/apis/{service.name}{spec.prefix}")
+
+    for route in composed.routes:
+        contexts = getattr(route, "effective_route_contexts", None)
+        if contexts is None:
+            # Already a concrete leaf (no lazy-include proxy) — pass it through unchanged.
+            yield route
+            continue
+        for ctx in contexts():
+            original = ctx.original_route
+            if isinstance(original, APIRoute):
+                # Rebased APIRoute: copy + composed path/methods, original endpoint preserved.
+                rebased = copy.copy(original)
+                rebased.path = ctx.path
+                rebased.methods = ctx.methods
+                yield rebased
+            else:
+                # WS / Mount / plain Route: the composed-path route is on the context.
+                yield ctx.starlette_route or original
+
+
 def _derive_service_contribution(service: NemoService) -> tuple[AuthzContribution, list[str], list[str]]:
     """Derive one plugin's wire contribution, split into deny-worthy errors and warnings.
 
@@ -180,16 +231,12 @@ def _derive_service_contribution(service: NemoService) -> tuple[AuthzContributio
     warnings: list[str] = []
     catalog: dict[str, Permission] = {}
 
-    # Re-create the runtime mount: /apis/<name> + RouterSpec.prefix + route path.
-    composed = APIRouter()
-    for spec in service.get_routers():
-        composed.include_router(spec.router, prefix=f"/apis/{service.name}{spec.prefix}")
-
-    # Pass 1: walk routes, collapse OR'd rules, and collect referenced permissions.
-    # ``bindings`` holds the tentative allow binding per (path, method); unruled / invalid
-    # routes are recorded as None and become DENY regardless of namespace validity.
+    # Pass 1: walk the fully-composed leaf routes (/apis/<name> + RouterSpec.prefix + route
+    # path), collapse OR'd rules, and collect referenced permissions. ``bindings`` holds the
+    # tentative allow binding per (path, method); unruled / invalid routes are recorded as None
+    # and become DENY regardless of namespace validity.
     bindings: dict[str, dict[str, AuthzEndpointMethod | None]] = {}
-    for route in composed.routes:
+    for route in _iter_composed_routes(service):
         if not isinstance(route, APIRoute):
             # Mount / plain Starlette Route / WebSocket route — not an HTTP API route the PDP
             # binds by (path, method). Never silently skip it (that lets it fall through the

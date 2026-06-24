@@ -22,7 +22,7 @@ from nemo_platform_plugin.authz import (
     perm,
     validate_caller_strings,
 )
-from nemo_platform_plugin.authz_discovery import _method_from_dict
+from nemo_platform_plugin.authz_discovery import _iter_composed_routes, _method_from_dict
 from nemo_platform_plugin.service import NemoService, RouterSpec
 
 _READ = Permission("x.read", "Read x")
@@ -121,7 +121,12 @@ def test_get_path_rules_empty_for_undecorated() -> None:
 
 
 def test_path_rule_survives_router_prefix_rebasing() -> None:
-    """D5: function-attached metadata must survive include_router(prefix=...) rebasing."""
+    """D5: function-attached metadata must survive include_router(prefix=...) rebasing.
+
+    fastapi 0.138.0 makes ``include_router(prefix=...)`` lazy (rebased routes live behind a
+    ``_IncludedRouter`` proxy, not in ``.routes``), so discoverability is asserted via the
+    derivation's composed-route enumeration rather than by scanning raw ``.routes``.
+    """
     router = APIRouter()
     items_read = Permission("items.read", "Read items")
 
@@ -131,16 +136,25 @@ def test_path_rule_survives_router_prefix_rebasing() -> None:
         return {"name": name}
 
     # Two prefix hops, as a real plugin mount does (/apis/<plugin> then workspace prefix).
+    # _iter_composed_routes re-creates the /apis/<name> mount, so the spec supplies only the
+    # inner workspace prefix; the helper prepends /apis/example.
     inner = APIRouter()
     inner.include_router(router, prefix="/v2/workspaces/{workspace}")
-    app_router = APIRouter()
-    app_router.include_router(inner, prefix="/apis/example")
 
-    matching = [r for r in app_router.routes if isinstance(r, APIRoute) and r.path.endswith("/items/{name}")]
+    class _Svc(NemoService):
+        name = "example"
+
+        def get_routers(self) -> list[RouterSpec]:
+            return [RouterSpec(inner)]
+
+    matching = [
+        r for r in _iter_composed_routes(_Svc()) if isinstance(r, APIRoute) and r.path.endswith("/items/{name}")
+    ]
     assert len(matching) == 1
     final_route = matching[0]
     assert final_route.path == "/apis/example/v2/workspaces/{workspace}/items/{name}"
 
+    # Metadata survived the rebase: the rule is still readable off the (identity-preserved) endpoint.
     rules = get_path_rules(final_route.endpoint)
     assert len(rules) == 1
     assert rules[0].callers == [CallerKind.PRINCIPAL]
