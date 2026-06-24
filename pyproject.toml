@@ -299,8 +299,9 @@ override-dependencies = [
   "pydantic[email]>=2.9.2",          # openai-harmony depends on a later pydantic, but that causes the stainless gen to hit an infinite loop
   "ray; sys_platform == 'never'",    # ray has an unfixed critical CVE, as for why we're removing it this way see https://github.com/astral-sh/uv/issues/9174
   "fschat; sys_platform == 'never'", # fschat is unmaintained with unfixed High/Medium CVEs; transitive via garak but never imported
+  "diskcache; sys_platform == 'never'", # unfixed CVE-2025-69872; transitive via ragas but not imported
   "botocore>=1.40.46,<1.40.62",      # ngcsdk requires botocore>=1.37; upper bound required by aiobotocore 2.25.1 (aioboto3 15.5.0)
-  "langchain>=1.3.11",
+  "langchain>=1.3.11",               # LangChain CVEs through CVE-2026-45134 and CVE-2025-68664
   "langchain-core>=1.4.8",           # LangChain Core CVEs through GHSA-qh6h-p6c9-ff54 and CVE-2026-44843
   "nltk>=3.9.4",                     # NLTK CVEs with available patches; remaining NLTK alerts have no upstream fix
   "Pillow>=12.2.0",                  # Pillow CVEs through CVE-2026-48624; override: fastembed (via nemoguardrails) pins Pillow<12

@@ -5008,184 +5008,6 @@
         },
         {
           "package": {
-            "name": "diskcache",
-            "version": "5.6.3",
-            "ecosystem": "PyPI"
-          },
-          "vulnerabilities": [
-            {
-              "modified": "2026-04-24T00:14:19Z",
-              "published": "2026-02-11T21:30:39Z",
-              "schema_version": "1.7.3",
-              "id": "GHSA-w8v5-vhqr-4h9v",
-              "aliases": [
-                "CVE-2025-69872"
-              ],
-              "related": [
-                "CGA-fh44-295v-vhjp"
-              ],
-              "summary": "DiskCache has unsafe pickle deserialization",
-              "details": "DiskCache (python-diskcache) through 5.6.3 uses Python pickle for serialization by default. An attacker with write access to the cache directory can achieve arbitrary code execution when a victim application reads from the cache.",
-              "severity": [
-                {
-                  "type": "CVSS_V4",
-                  "score": "CVSS:4.0/AV:L/AC:L/AT:N/PR:L/UI:A/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N/E:P"
-                }
-              ],
-              "affected": [
-                {
-                  "package": {
-                    "ecosystem": "PyPI",
-                    "name": "diskcache",
-                    "purl": "pkg:pypi/diskcache"
-                  },
-                  "ranges": [
-                    {
-                      "type": "ECOSYSTEM",
-                      "events": [
-                        {
-                          "introduced": "0"
-                        },
-                        {
-                          "last_affected": "5.6.3"
-                        }
-                      ]
-                    }
-                  ],
-                  "versions": [
-                    "0.1.0",
-                    "0.1.2",
-                    "0.1.3",
-                    "0.1.4",
-                    "0.1.5",
-                    "0.1.6",
-                    "0.1.7",
-                    "0.1.8",
-                    "0.2.0",
-                    "0.2.1",
-                    "0.2.10",
-                    "0.2.2",
-                    "0.2.3",
-                    "0.2.4",
-                    "0.2.6",
-                    "0.2.7",
-                    "0.2.8",
-                    "0.2.9",
-                    "0.3.0",
-                    "0.3.1",
-                    "0.4.0",
-                    "0.5.0",
-                    "0.6.0",
-                    "0.7.0",
-                    "0.7.1",
-                    "0.9.0",
-                    "1.0.0",
-                    "1.1.0",
-                    "1.2.0",
-                    "1.3.1",
-                    "1.3.3",
-                    "1.3.4",
-                    "1.3.5",
-                    "1.4.0",
-                    "1.5.0",
-                    "1.5.2",
-                    "1.5.3",
-                    "1.6.0",
-                    "1.6.1",
-                    "1.6.2",
-                    "1.6.3",
-                    "1.6.4",
-                    "1.6.5",
-                    "1.6.6",
-                    "1.6.7",
-                    "1.7.0",
-                    "2.0.2",
-                    "2.1.0",
-                    "2.2.0",
-                    "2.3.0",
-                    "2.3.1",
-                    "2.4.0",
-                    "2.4.1",
-                    "2.5.1",
-                    "2.5.2",
-                    "2.6.0",
-                    "2.6.4",
-                    "2.6.5",
-                    "2.7.0",
-                    "2.8.2",
-                    "2.8.3",
-                    "2.9.0",
-                    "3.0.0",
-                    "3.0.1",
-                    "3.0.3",
-                    "3.0.4",
-                    "3.0.5",
-                    "3.0.6",
-                    "3.1.0",
-                    "3.1.1",
-                    "4.0.0",
-                    "4.1.0",
-                    "5.0.0",
-                    "5.0.1",
-                    "5.0.2",
-                    "5.0.3",
-                    "5.1.0",
-                    "5.2.1",
-                    "5.3.0",
-                    "5.4.0",
-                    "5.5.1",
-                    "5.6.0",
-                    "5.6.1",
-                    "5.6.3"
-                  ],
-                  "database_specific": {
-                    "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/02/GHSA-w8v5-vhqr-4h9v/GHSA-w8v5-vhqr-4h9v.json"
-                  }
-                }
-              ],
-              "references": [
-                {
-                  "type": "ADVISORY",
-                  "url": "https://nvd.nist.gov/vuln/detail/CVE-2025-69872"
-                },
-                {
-                  "type": "WEB",
-                  "url": "https://github.com/EthanKim88/ethan-cve-disclosures/blob/main/CVE-2025-69872-DiskCache-Pickle-Deserialization.md"
-                },
-                {
-                  "type": "PACKAGE",
-                  "url": "https://github.com/grantjenks/python-diskcache"
-                }
-              ],
-              "database_specific": {
-                "cwe_ids": [
-                  "CWE-502"
-                ],
-                "github_reviewed": true,
-                "github_reviewed_at": "2026-02-12T03:09:56Z",
-                "nvd_published_at": "2026-02-11T19:15:50Z",
-                "severity": "MODERATE"
-              }
-            }
-          ],
-          "groups": [
-            {
-              "ids": [
-                "GHSA-w8v5-vhqr-4h9v"
-              ],
-              "aliases": [
-                "CVE-2025-69872",
-                "GHSA-w8v5-vhqr-4h9v"
-              ],
-              "max_severity": "5.2"
-            }
-          ],
-          "licenses": [
-            "Apache-2.0"
-          ]
-        },
-        {
-          "package": {
             "name": "distro",
             "version": "1.9.0",
             "ecosystem": "PyPI"
@@ -6591,12 +6413,15 @@
           },
           "vulnerabilities": [
             {
-              "modified": "2026-06-16T23:45:08Z",
+              "modified": "2026-06-23T18:29:29Z",
               "published": "2026-06-16T23:38:26Z",
               "schema_version": "1.7.5",
               "id": "GHSA-4xpc-pv4p-pm3w",
               "aliases": [
                 "CVE-2026-49468"
+              ],
+              "related": [
+                "CGA-g6cx-6c7p-wp3m"
               ],
               "summary": "LiteLLM: Authentication Bypass via Host Header Injection",
               "details": "### Impact\n\nA Host-header parsing flaw in the LiteLLM proxy could, under specific conditions, allow unauthenticated access to protected management routes.\n\nThe auth layer derived the effective route from `request.url.path` in `litellm/proxy/auth/auth_utils.py::get_request_route()`, which Starlette reconstructs from the `Host` header. A crafted `Host` could therefore make the auth gate evaluate a different route from the one FastAPI dispatched.\n\n**Most deployments are not affected.** The bypass is blocked by any upstream layer that validates or normalizes `Host`, such as:\n\n- a CDN or WAF, such as Cloudflare\n- a reverse proxy with `server_name` allowlists\n- a host-based load balancer\n\n**LiteLLM Cloud customers are not affected.**\n\n### Patches\n\nFixed in **`1.84.0`**. Upgrade to `1.84.0` or later. No configuration change is required.\n\n### Workarounds\n\nIf upgrading is not immediately possible, place the proxy behind an upstream component that validates or normalizes the `Host` header before forwarding (a CDN/WAF, a reverse proxy with explicit `server_name` allowlists, or a cloud load balancer with host-based routing rules), or otherwise restrict network access to the proxy listener.\n\n### References\n\n- Patched release: [`v1.84.0`](https://github.com/BerriAI/litellm/releases/tag/v1.84.0)\n\n**Discovery Credit**: Le The Thang (KCSC) and Kim Ngoc Chung (One Mount Group)",
@@ -10892,7 +10717,7 @@
     },
     {
       "name": "Apache-2.0",
-      "count": 81
+      "count": 80
     },
     {
       "name": "non-standard",
