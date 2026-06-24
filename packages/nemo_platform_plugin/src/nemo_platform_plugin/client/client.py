@@ -19,6 +19,7 @@ from collections.abc import Mapping
 from typing import TypeVar, get_args, get_origin, overload
 
 import httpx
+from nemo_platform_plugin.client.errors import raise_for_status
 from nemo_platform_plugin.client.response import (
     AsyncNemoBinaryResponse,
     AsyncNemoStreamResponse,
@@ -49,9 +50,12 @@ class BaseNemoClient:
     Subclasses provide the actual HTTP transport (sync or async).
     """
 
-    def __init__(self, *, base_url: str, workspace: str | None = None) -> None:
+    def __init__(
+        self, *, base_url: str, workspace: str | None = None, default_headers: Mapping[str, str] | None = None
+    ) -> None:
         self._base_url = base_url.rstrip("/")
         self._workspace = workspace
+        self._default_headers = dict(default_headers) if default_headers else {}
 
     @property
     def base_url(self) -> str:
@@ -65,13 +69,19 @@ class BaseNemoClient:
         """Resolve path template with client defaults and explicit params.
 
         Client-level defaults (e.g. workspace) are merged under explicit
-        params — explicit always wins.  Raises ``ValueError`` if any
+        params — explicit always wins.  Path parameter values are
+        percent-encoded so reserved characters (``#``, ``?``, etc.) in
+        file paths don't break the URL.  Raises ``ValueError`` if any
         placeholders remain unresolved.
         """
+        from urllib.parse import quote
+
         params: dict[str, str] = {}
         if self._workspace:
             params["workspace"] = self._workspace
-        params.update(request.path_params)
+        # Percent-encode values so reserved chars in file paths don't break URLs.
+        # safe="/" preserves path separators within {path} placeholders.
+        params.update({k: quote(v, safe="/") for k, v in request.path_params.items()})
         try:
             path = request.path_template.format_map(params)
         except KeyError as exc:
@@ -80,6 +90,8 @@ class BaseNemoClient:
 
     def _request_headers(self, request: PreparedRequest) -> dict[str, str] | None:
         headers: dict[str, str] = {}
+        if self._default_headers:
+            headers.update(self._default_headers)
         if request.content_type is not None:
             headers["Content-Type"] = request.content_type
         if request.extra_headers:
@@ -93,10 +105,19 @@ class BaseNemoClient:
         return get_origin(request.response_type) is Stream
 
     def _resolve_query_params(self, request: PreparedRequest) -> dict[str, str | int | bool] | None:
-        """Filter out None values from query params for httpx."""
+        """Filter out None values and JSON-serialize dicts/lists in query params."""
         if request.query_params is None:
             return None
-        filtered = {k: v for k, v in request.query_params.items() if v is not None}
+        import json
+
+        filtered = {}
+        for k, v in request.query_params.items():
+            if v is None:
+                continue
+            if isinstance(v, (dict, list)):
+                filtered[k] = json.dumps(v)
+            else:
+                filtered[k] = v
         return filtered or None
 
 
@@ -112,7 +133,7 @@ class NemoClient(BaseNemoClient):
         timeout: float = DEFAULT_TIMEOUT,
         http_client: httpx.Client | None = None,
     ) -> None:
-        super().__init__(base_url=base_url, workspace=workspace)
+        super().__init__(base_url=base_url, workspace=workspace, default_headers=default_headers)
         self._http = http_client or httpx.Client(
             headers=dict(default_headers) if default_headers else None,
             timeout=timeout,
@@ -157,22 +178,31 @@ class NemoClient(BaseNemoClient):
         params = self._resolve_query_params(request)
 
         if self._is_binary(request):
-            stream_ctx = self._http.stream(
-                request.method, url, content=request.content, headers=req_headers, params=params
-            )
-            return NemoBinaryResponse(stream_ctx, request)
+            kwargs = {
+                "method": request.method,
+                "url": url,
+                "content": request.content,
+                "headers": req_headers,
+                "params": params,
+            }
+            return NemoBinaryResponse(self._http, kwargs, request)
 
         if self._is_stream(request):
             assert request.response_type is not None
-            stream_ctx = self._http.stream(
-                request.method, url, content=request.content, headers=req_headers, params=params
-            )
+            kwargs = {
+                "method": request.method,
+                "url": url,
+                "content": request.content,
+                "headers": req_headers,
+                "params": params,
+            }
             model_type = _get_stream_model_type(request.response_type)
-            return NemoStreamResponse(stream_ctx, model_type, request)
+            return NemoStreamResponse(self._http, kwargs, model_type, request)
 
         raw = self._http.request(request.method, url, content=request.content, headers=req_headers, params=params)
+        raise_for_status(raw)
         body = None
-        if raw.is_success and request.response_type is not None:
+        if request.response_type is not None:
             body = request.response_type.model_validate(raw.json())
         return NemoResponse(http_response=raw, body=body, request=request)
 
@@ -192,7 +222,7 @@ class AsyncNemoClient(BaseNemoClient):
         timeout: float = DEFAULT_TIMEOUT,
         http_client: httpx.AsyncClient | None = None,
     ) -> None:
-        super().__init__(base_url=base_url, workspace=workspace)
+        super().__init__(base_url=base_url, workspace=workspace, default_headers=default_headers)
         self._http = http_client or httpx.AsyncClient(
             headers=dict(default_headers) if default_headers else None,
             timeout=timeout,
@@ -226,21 +256,30 @@ class AsyncNemoClient(BaseNemoClient):
         params = self._resolve_query_params(request)
 
         if self._is_binary(request):
-            stream_ctx = self._http.stream(
-                request.method, url, content=request.content, headers=req_headers, params=params
-            )
-            return AsyncNemoBinaryResponse(stream_ctx, request)
+            kwargs = {
+                "method": request.method,
+                "url": url,
+                "content": request.content,
+                "headers": req_headers,
+                "params": params,
+            }
+            return AsyncNemoBinaryResponse(self._http, kwargs, request)
 
         if self._is_stream(request):
             assert request.response_type is not None
-            stream_ctx = self._http.stream(
-                request.method, url, content=request.content, headers=req_headers, params=params
-            )
+            kwargs = {
+                "method": request.method,
+                "url": url,
+                "content": request.content,
+                "headers": req_headers,
+                "params": params,
+            }
             model_type = _get_stream_model_type(request.response_type)
-            return AsyncNemoStreamResponse(stream_ctx, model_type, request)
+            return AsyncNemoStreamResponse(self._http, kwargs, model_type, request)
 
         raw = await self._http.request(request.method, url, content=request.content, headers=req_headers, params=params)
+        raise_for_status(raw)
         body = None
-        if raw.is_success and request.response_type is not None:
+        if request.response_type is not None:
             body = request.response_type.model_validate(raw.json())
         return NemoResponse(http_response=raw, body=body, request=request)

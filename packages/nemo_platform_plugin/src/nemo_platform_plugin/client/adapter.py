@@ -43,5 +43,6 @@ def client_from_platform(
     return client_cls(
         base_url=str(platform.base_url).rstrip("/"),
         workspace=platform.workspace,
+        default_headers=platform._custom_headers,  # type: ignore[arg-type]
         http_client=platform._client,  # type: ignore[arg-type]
     )

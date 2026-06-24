@@ -45,12 +45,17 @@ from nmp.core.files.api.endpoint_helpers import (
 )
 from nmp.core.files.api.v2.filesets.schemas import (
     CreateFilesetRequest,
+    FilesetFileOutput,
     FilesetFilter,
     FilesetOutput,
     FilesetPage,
+    ListFilesetFilesResponse,
     UpdateFilesetRequest,
+    fileset_file_output_from_info,
+    fileset_output_from_entity,
+    list_fileset_files_from_infos,
 )
-from nmp.core.files.app.backends import FileInfo, storage_impl_factory
+from nmp.core.files.app.backends import storage_impl_factory
 from nmp.core.files.app.backends.factory import StorageConfig
 from nmp.core.files.app.cache import CacheStatus, warm_fileset_cache
 from nmp.core.files.app.external_hosts import (
@@ -74,7 +79,6 @@ from nmp.core.files.exceptions import (
     StorageConfigError,
     StorageUnavailableError,
 )
-from pydantic import BaseModel
 from starlette.status import (
     HTTP_200_OK,
     HTTP_400_BAD_REQUEST,
@@ -143,54 +147,6 @@ class FilesContext(BaseContext):
 
     fileset_name: str | None = None
     path: str | None = None
-
-
-class FilesetFileOutput(BaseModel):
-    file_ref: str
-    file_url: str
-    path: str
-    size: int
-    cache_status: CacheStatus | None = None
-
-    @classmethod
-    def from_file_info(
-        cls,
-        workspace: str,
-        name: str,
-        file_info: FileInfo,
-        cache_status: CacheStatus | None = None,
-    ):
-        return cls(
-            file_url=f"/apis/files/v2/workspaces/{workspace}/filesets/{name}/-/{file_info.path}",
-            file_ref=f"{workspace}/{name}#{file_info.path}",
-            path=file_info.path,
-            size=file_info.size,
-            cache_status=cache_status,
-        )
-
-
-class ListFilesetFilesResponse(BaseModel):
-    data: list[FilesetFileOutput]
-
-    @classmethod
-    def from_file_infos(
-        cls,
-        fileset: Fileset,
-        file_infos: list[FileInfo],
-        cache_status_map: dict[str, CacheStatus] | None = None,
-    ):
-        cache_status_map = cache_status_map or {}
-        return cls(
-            data=[
-                FilesetFileOutput.from_file_info(
-                    fileset.workspace,
-                    fileset.name,
-                    fi,
-                    cache_status=cache_status_map.get(fi.path),
-                )
-                for fi in file_infos
-            ]
-        )
 
 
 @router.post(
@@ -317,7 +273,7 @@ async def create_fileset(
             )
             logger.info(f"Started cache warming for fileset {workspace}/{create_request.name}")
 
-        return FilesetOutput.from_entity(created)
+        return fileset_output_from_entity(created)
     except EntityConflictError as exc:
         logger.warning(f"Fileset already exists: {workspace}/{create_request.name}")
         raise HTTPException(
@@ -366,7 +322,7 @@ async def list_filesets(
     )
 
     return FilesetPage(
-        data=[FilesetOutput.from_entity(e) for e in res.data],
+        data=[fileset_output_from_entity(e) for e in res.data],
         pagination=PaginationData.model_validate(res.pagination.model_dump()),
         sort=sort,
     )
@@ -389,7 +345,7 @@ async def retrieve_fileset(
     """
     logger.info(f"GET /filesets/{name} - workspace={workspace}")
     retrieved = await get_fileset(workspace, name, entity_store)
-    return FilesetOutput.from_entity(retrieved)
+    return fileset_output_from_entity(retrieved)
 
 
 @router.delete(
@@ -444,7 +400,7 @@ async def delete_fileset(
     await entity_store.delete(Fileset, fileset.name, workspace=workspace)
 
     # Return the fileset data that was captured before deletion
-    return FilesetOutput.from_entity(fileset)
+    return fileset_output_from_entity(fileset)
 
 
 @router.patch(
@@ -486,7 +442,7 @@ async def update_fileset_metadata(
     fileset = fileset.model_copy(update=diff)
     await entity_store.update(fileset)
 
-    return FilesetOutput.from_entity(fileset)
+    return fileset_output_from_entity(fileset)
 
 
 @router.get(
@@ -542,7 +498,7 @@ async def list_fileset_files(
         # External storage without opt-in: null (didn't check)
         cache_status_map = {}
 
-    return ListFilesetFilesResponse.from_file_infos(fileset, files, cache_status_map)
+    return list_fileset_files_from_infos(fileset, files, cache_status_map)
 
 
 @router.head(
@@ -718,7 +674,7 @@ async def upload_file(
         try:
             async with streaming_file_upload(request, chunk_processor) as upload:
                 file_info = await storage.upload(path, upload, content_length=content_length)
-            return FilesetFileOutput.from_file_info(
+            return fileset_file_output_from_info(
                 workspace=workspace,
                 name=name,
                 file_info=file_info,
@@ -786,4 +742,4 @@ async def delete_file(
             f"File '{path}' not found in fileset '{workspace}/{name}'",
         ) from e
 
-    return FilesetFileOutput.from_file_info(workspace, name, file_info)
+    return fileset_file_output_from_info(workspace, name, file_info)

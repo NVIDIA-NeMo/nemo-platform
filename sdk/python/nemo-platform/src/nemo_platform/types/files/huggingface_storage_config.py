@@ -51,10 +51,6 @@ class HuggingfaceStorageConfig(BaseModel):
     """Branch, tag, or commit SHA. Defaults to 'main'"""
 
     token_secret: Optional[SecretRef] = None
-    """Reference to a secret.
-
-    Format: 'secret_name' (uses request workspace) or 'workspace/secret_name'
-    (explicit workspace).
-    """
+    """Reference to a platform secret by name."""
 
     type: Optional[Literal["huggingface"]] = None

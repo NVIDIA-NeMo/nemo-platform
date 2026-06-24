@@ -4,9 +4,9 @@
 """Cache utilities for downloading files to cache storage."""
 
 import logging
-from enum import StrEnum
 
 import anyio
+from nemo_platform_plugin.files.types import CacheStatus as CacheStatus
 from nmp.core.files.app.backends.base import StorageImpl
 from nmp.core.files.app.file_lock import FileLockManager
 from nmp.core.files.exceptions import NotFoundError
@@ -41,15 +41,6 @@ def reset_background_cache_limiter() -> None:
     """Reset the background cache limiter for testing purposes."""
     global _background_cache_limiter
     _background_cache_limiter = None
-
-
-class CacheStatus(StrEnum):
-    """Cache status for files in external storage backends."""
-
-    CACHED = "cached"
-    CACHING = "caching"
-    NOT_CACHED = "not_cached"
-    NOT_CACHEABLE = "not_cacheable"
 
 
 async def cache_file_directly(

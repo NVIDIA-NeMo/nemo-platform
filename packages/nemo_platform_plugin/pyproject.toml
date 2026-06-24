@@ -20,6 +20,7 @@ classifiers = [
 dependencies = [
     "anthropic>=0.88.0",
     "fastapi>=0.115.4",
+    "jsonschema>=4.0.0",
     "lark>=1.1.0",
     "nemo-platform-sdk",
     "openai>=1.109.1",

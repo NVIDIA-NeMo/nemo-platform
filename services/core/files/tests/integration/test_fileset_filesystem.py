@@ -1938,39 +1938,6 @@ class TestDuckDBIntegration:
         assert list(result["id"]) == list(range(1, 11))
 
 
-class TestSDKResourceImports:
-    """Test that SDK resource imports work correctly after vendoring.
-
-    The vendored filesets module exports FilesetsResource and AsyncFilesetsResource.
-    The *WithRawResponse and *WithStreamingResponse classes are accessible
-    via sdk.files.filesets.with_raw_response and sdk.files.filesets.with_streaming_response.
-    """
-
-    def test_with_raw_response_accessible(self, sdk: NeMoPlatform, fileset: Fileset):
-        """Test that sdk.files.filesets.with_raw_response is accessible and works."""
-        # Access the raw response wrapper - this validates the import works
-        raw_filesets = sdk.files.filesets.with_raw_response
-        assert raw_filesets is not None
-
-        # Make an actual API call with raw response
-        response = raw_filesets.retrieve(fileset.name, workspace=fileset.workspace)
-
-        # Verify we get a raw response wrapper with headers and can parse data
-        assert hasattr(response, "headers")
-        assert response.http_response.status_code == 200
-
-        # Parse the response - this returns the typed object
-        parsed = response.parse()
-        assert parsed.name == fileset.name
-        assert parsed.workspace == fileset.workspace
-
-    def test_with_streaming_response_accessible(self, sdk: NeMoPlatform):
-        """Test that sdk.files.filesets.with_streaming_response is accessible."""
-        # Access the streaming response wrapper - this validates the import works
-        streaming_filesets = sdk.files.filesets.with_streaming_response
-        assert streaming_filesets is not None
-
-
 class TestDirCache:
     """Test directory listing caching behavior.
 

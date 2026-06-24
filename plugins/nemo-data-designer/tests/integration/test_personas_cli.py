@@ -9,7 +9,7 @@ import pytest
 from data_designer_nemo.nemotron_personas import WORKSPACE, get_resource_name_for_locale
 from nemo_data_designer_plugin.cli import personas as personas_module
 from nemo_platform import NeMoPlatform
-from nemo_platform.types.files import NGCStorageConfig
+from nemo_platform_plugin.files.storage_config import NGCStorageConfig
 
 pytestmark = pytest.mark.integration
 

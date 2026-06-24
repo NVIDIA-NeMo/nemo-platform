@@ -28,12 +28,13 @@ from nemo_platform import (
     NeMoPlatform,
     NotFoundError,
 )
-from nemo_platform.types.files.fileset import Fileset, LocalStorageConfig
+from nemo_platform.types.files.fileset import Fileset
 from nmp.core.files.testing.utils import (
     DEFAULT_WORKSPACE_ID,
     HTTPXFileSystem,
     create_fileset,
 )
+from pydantic import ValidationError
 
 
 class TestFilesBasic:
@@ -574,7 +575,7 @@ class TestFilesBasic:
 
     def test_fileset_create_rejects_invalid_dataset_schema_metadata(self, sdk: NeMoPlatform):
         """Test invalid JSON Schema metadata is rejected at fileset create time."""
-        with pytest.raises(APIStatusError, match="definitely-not-a-valid-json-schema-type"):
+        with pytest.raises((APIStatusError, ValidationError), match="definitely-not-a-valid-json-schema-type"):
             with create_fileset(
                 sdk,
                 purpose="dataset",
@@ -619,7 +620,7 @@ class TestFilesBasic:
             )
 
             # Verify storage path exists with files
-            assert isinstance(fileset.storage, LocalStorageConfig)
+            assert fileset.storage.type == "local"
             storage_path = Path(fileset.storage.path)
             assert storage_path.exists()
             assert (storage_path / "file1.txt").exists()
