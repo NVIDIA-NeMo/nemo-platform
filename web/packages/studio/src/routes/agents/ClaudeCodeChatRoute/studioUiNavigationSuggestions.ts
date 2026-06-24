@@ -58,6 +58,8 @@ const STUDIO_UI_DESTINATIONS: readonly StudioUiDestination[] = [
       /\bsafe[-\s]?synthesizer\b/i,
       /\bsynthetic (data|dataset|datasets)\b/i,
       /\bsynthesi[sz]e (data|dataset|datasets)\b/i,
+      /\bgenerate (safety[-\s]?focused|safe|synthetic) (data|dataset|datasets)\b/i,
+      /\bsafety data\b/i,
     ],
   },
   {
@@ -70,6 +72,7 @@ const STUDIO_UI_DESTINATIONS: readonly StudioUiDestination[] = [
       /\bagent (eval|evaluation|evaluations)\b/i,
       /\bevaluat(e|ing|ion)s? (an? )?agent\b/i,
       /\brun (an? )?(eval|evaluation) (for|on) (an? )?agent\b/i,
+      /\b(agent|agents).*\b(eval|evaluation|evaluations) jobs?\b/i,
     ],
   },
   {
@@ -81,7 +84,8 @@ const STUDIO_UI_DESTINATIONS: readonly StudioUiDestination[] = [
     patterns: [
       /\boptimi[sz]e (an? )?agent\b/i,
       /\b(agent|agents).*\b(cheaper|faster|smaller|right[-\s]?size)\b/i,
-      /\bmodel sizing\b/i,
+      /\b(agent|agents).*\bmodel sizing\b/i,
+      /\bmodel sizing (for|on|of) (an? )?agent\b/i,
       /\bsuggestions? for (an? )?agent\b/i,
     ],
   },
@@ -94,7 +98,8 @@ const STUDIO_UI_DESTINATIONS: readonly StudioUiDestination[] = [
     patterns: [
       /\bmonitor (an? )?agent\b/i,
       /\bagent (monitor|telemetry|logs|traces|usage)\b/i,
-      /\btoken usage\b/i,
+      /\b(agent|agents).*\btoken usage\b/i,
+      /\btoken usage (for|on|of) (an? )?agent\b/i,
     ],
   },
   {
@@ -108,6 +113,7 @@ const STUDIO_UI_DESTINATIONS: readonly StudioUiDestination[] = [
       /\bcontent safety\b/i,
       /\bjailbreak\b/i,
       /\bpii (redaction|guard|protection)\b/i,
+      /\bguardrail middleware\b/i,
     ],
   },
   {
@@ -118,9 +124,10 @@ const STUDIO_UI_DESTINATIONS: readonly StudioUiDestination[] = [
     requiredFeatureFlags: ['dataDesignerEnabled'],
     patterns: [
       /\bdata designer\b/i,
-      /\bgenerate (data|dataset|datasets)\b/i,
+      /\bgenerate (synthetic )?(data|dataset|datasets)\b/i,
       /\bcreate (a )?(dataset|datasets)\b/i,
       /\btransform (a )?(dataset|datasets)\b/i,
+      /\bdata generation (workflow|pipeline)\b/i,
     ],
   },
   {
@@ -145,6 +152,8 @@ const STUDIO_UI_DESTINATIONS: readonly StudioUiDestination[] = [
     patterns: [
       /\binference provider\b/i,
       /\bmodel provider\b/i,
+      /\bconfigure inference (for|in) (this )?workspace\b/i,
+      /\bconfigure (a )?ne?mo inference\b/i,
       /\b(add|create|configure|connect|manage|register) (an? )?(provider|inference endpoint)\b/i,
       /\b(connect|configure) (openai|nvidia|nim|build)\b/i,
     ],
@@ -156,9 +165,9 @@ const STUDIO_UI_DESTINATIONS: readonly StudioUiDestination[] = [
     getHref: getSecretsRoute,
     requiredFeatureFlags: ['secretsEnabled'],
     patterns: [
-      /\b(add|create|manage|store|update) (an? )?(secret|secrets)\b/i,
-      /\b(add|create|manage|store|update) (an? )?(api key|credential|credentials|token)\b/i,
-      /\bworkspace secret(s)?\b/i,
+      /\b(add|create|manage|store|update) (an? )?(workspace )?(secret|secrets)\b/i,
+      /\b(add|create|manage|store|update) (an? )?(api key|credential|credentials|token) (secret|secrets|in (the )?workspace|for (this )?workspace)\b/i,
+      /\bworkspace (api key|credential|credentials|token|secret|secrets)\b/i,
     ],
   },
   {
@@ -189,7 +198,8 @@ const STUDIO_UI_DESTINATIONS: readonly StudioUiDestination[] = [
     getHref: getModelCompareRoute,
     requiredFeatureFlags: ['modelCompareEnabled'],
     patterns: [
-      /\bplayground\b/i,
+      /\bmodel playground\b/i,
+      /\bopen (the )?playground (for|with) (a )?model\b/i,
       /\bcompare (models|model responses)\b/i,
       /\bchat with (a )?model\b/i,
     ],
@@ -237,10 +247,12 @@ const STUDIO_UI_DESTINATIONS: readonly StudioUiDestination[] = [
     patterns: [
       /\bmanage agents?\b/i,
       /\bview agents?\b/i,
+      /\b(build|create) (an? )?agent\b(?!\s+(class|component|helper|test|function|module))\b/i,
       /\bcreate example agent\b/i,
       /\bclone (an? )?agent\b/i,
       /\bchat with (an? )?agent\b/i,
       /\bdeploy (an? )?agent\b/i,
+      /\btry (a )?deployed agent\b/i,
     ],
   },
   {
@@ -253,6 +265,10 @@ const STUDIO_UI_DESTINATIONS: readonly StudioUiDestination[] = [
       /\bevaluat(e|ing|ion)s? (a )?model\b/i,
       /\bmodel (eval|evaluation|evaluations)\b/i,
       /\bevaluation results?\b/i,
+      /\b(eval|evaluation) history\b/i,
+      /\bnemo[-\s]?evaluator\b/i,
+      /\bevaluator (jobs?|sdk specs?)\b/i,
+      /\buse (the )?evaluator plugin\b/i,
     ],
   },
   {
@@ -277,7 +293,7 @@ const STUDIO_UI_DESTINATIONS: readonly StudioUiDestination[] = [
     description: 'Studio has a UI for viewing workspace jobs.',
     getHref: getWorkspaceJobsRoute,
     requiredFeatureFlags: ['jobsEnabled'],
-    patterns: [/\bworkspace jobs?\b/i, /\bjob history\b/i],
+    patterns: [/\bworkspace jobs?\b/i, /\bworkspace job history\b/i],
   },
   {
     id: 'annotation',
@@ -285,7 +301,11 @@ const STUDIO_UI_DESTINATIONS: readonly StudioUiDestination[] = [
     description: 'Studio has a UI for inspecting intake traces and annotations.',
     getHref: getIntakeRoute,
     requiredFeatureFlags: ['intakeEnabled'],
-    patterns: [/\bannotation\b/i, /\bintake traces?\b/i, /\btrace review\b/i],
+    patterns: [
+      /\bintake (annotation|annotations|traces?|trace review)\b/i,
+      /\b(annotation|annotations) (for|in|on) (intake|trace|traces)\b/i,
+      /\b(trace|traces).*\b(annotation|annotations|review)\b/i,
+    ],
   },
   {
     id: 'members',
@@ -301,7 +321,10 @@ const STUDIO_UI_DESTINATIONS: readonly StudioUiDestination[] = [
     description: 'Studio has a UI for workspace settings.',
     getHref: getWorkspaceSettingsRoute,
     requiredFeatureFlags: ['settingsEnabled'],
-    patterns: [/\bworkspace settings?\b/i, /\b(open|change|manage|update) settings\b/i],
+    patterns: [
+      /\bworkspace settings?\b/i,
+      /\b(open|change|manage|update) (the )?settings (for|in|of) (this )?workspace\b/i,
+    ],
   },
 ];
 

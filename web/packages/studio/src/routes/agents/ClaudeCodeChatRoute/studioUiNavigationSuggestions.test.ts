@@ -17,6 +17,8 @@ describe('getStudioUiNavigationSuggestion', () => {
       evaluatorEnabled: true,
       guardrailsEnabled: true,
       inferenceProviderEnabled: true,
+      intakeEnabled: true,
+      jobsEnabled: true,
       modelCompareEnabled: true,
       safeSynthesizerEnabled: true,
       secretsEnabled: true,
@@ -43,6 +45,67 @@ describe('getStudioUiNavigationSuggestion', () => {
     });
   });
 
+  it('keeps navigation shortcuts when prompts include Studio product context', () => {
+    const cases = [
+      {
+        prompt: 'Review model sizing for an agent',
+        id: 'agent-optimizations',
+      },
+      {
+        prompt: 'Show agent token usage',
+        id: 'agent-monitor',
+      },
+      {
+        prompt: 'Manage workspace secrets',
+        id: 'secrets',
+      },
+      {
+        prompt: 'Open model playground',
+        id: 'model-playground',
+      },
+      {
+        prompt: 'Show workspace job history',
+        id: 'jobs',
+      },
+      {
+        prompt: 'Review intake annotations',
+        id: 'annotation',
+      },
+      {
+        prompt: 'Open workspace settings',
+        id: 'settings',
+      },
+      {
+        prompt: 'Use the guardrails-plugin skill to debug guardrail middleware',
+        id: 'guardrails',
+      },
+      {
+        prompt: 'Use the inference skill to configure inference in this workspace',
+        id: 'inference-providers',
+      },
+      {
+        prompt: 'Use the nemo-build-agent skill to build an agent',
+        id: 'agents',
+      },
+      {
+        prompt: 'Use the nemo-evaluator skill to review eval history',
+        id: 'evaluations',
+      },
+      {
+        prompt: 'Use the safe-synthesizer skill to generate safety data',
+        id: 'safe-synthesizer-new',
+      },
+      {
+        prompt: 'Create a data generation workflow',
+        id: 'data-designer-new',
+      },
+    ];
+
+    for (const { prompt, id } of cases) {
+      expect(getStudioUiNavigationSuggestion(prompt, workspace)).toMatchObject({ id });
+    }
+  });
+
   it('prefers agent-specific evaluation routes over general model evaluations', () => {
     expect(getStudioUiNavigationSuggestion('Evaluate an agent', workspace)).toMatchObject({
       id: 'agent-evaluations',
@@ -59,11 +122,24 @@ describe('getStudioUiNavigationSuggestion', () => {
   });
 
   it('does not interrupt ordinary coding-agent prompts', () => {
-    expect(getStudioUiNavigationSuggestion('Review the current working tree', workspace)).toBe(
-      undefined
-    );
-    expect(getStudioUiNavigationSuggestion('Fix the settings page component', workspace)).toBe(
-      undefined
-    );
+    const prompts = [
+      'Review the current working tree',
+      'Fix the settings page component',
+      'Update settings page component',
+      'Analyze token usage in this parser',
+      'Add annotation support to the chart',
+      'Open the playground component',
+      'Create token validation helpers',
+      'Tune model sizing calculations in this file',
+      'Review job history component',
+      'Build an agent class for this test helper',
+      'Configure inference in this TypeScript module',
+      'Generate synthetic test data in fixtures',
+      'Review evaluator plugin imports',
+    ];
+
+    for (const prompt of prompts) {
+      expect(getStudioUiNavigationSuggestion(prompt, workspace)).toBe(undefined);
+    }
   });
 });
