@@ -68,6 +68,14 @@ describe('Claude Code API helpers', () => {
             ],
             files: [],
             links: [{ label: 'Agents', destination: 'agents', href: '/workspaces/default/agents' }],
+            jobs: [
+              {
+                name: 'agent-eval-1',
+                job_type: 'agent_evaluation',
+                source: 'evaluator',
+                href: '/workspaces/default/agents/evaluations/agent-eval-1',
+              },
+            ],
             tools: [],
           },
         }),
@@ -84,6 +92,14 @@ describe('Claude Code API helpers', () => {
     ]);
     expect(history.chat_artifacts.links).toEqual([
       { label: 'Agents', destination: 'agents', href: '/workspaces/default/agents' },
+    ]);
+    expect(history.chat_artifacts.jobs).toEqual([
+      {
+        name: 'agent-eval-1',
+        job_type: 'agent_evaluation',
+        source: 'evaluator',
+        href: '/workspaces/default/agents/evaluations/agent-eval-1',
+      },
     ]);
   });
 
@@ -425,6 +441,7 @@ describe('Claude Code API helpers', () => {
         coding_agent_model: undefined,
         files: [],
         links: [],
+        jobs: [{ name: 'studio-job-1' }],
         model: undefined,
         model_source: undefined,
         selections: [],

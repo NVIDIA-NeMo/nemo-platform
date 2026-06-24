@@ -106,6 +106,7 @@ describe('useClaudeCodeChatRuntime', () => {
                 selections: [],
                 files: [],
                 links: [],
+                jobs: [],
                 tools: [],
               }
             : undefined,

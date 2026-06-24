@@ -4,10 +4,12 @@
 import type {
   ClaudeCodeChatArtifacts,
   ClaudeCodeChatFileArtifact,
+  ClaudeCodeChatJobArtifact,
   ClaudeCodeChatLinkArtifact,
   ClaudeCodeChatSelectionArtifact,
   ClaudeCodeSessionHistoryItem,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
+import { getJobProgressDetailRoute } from '@studio/routes/agents/ClaudeCodeChatRoute/utils/jobProgress';
 
 interface ClaudeCodeArtifactQuestion {
   header?: string;
@@ -130,6 +132,7 @@ export const createEmptyClaudeCodeChatArtifacts = (): ClaudeCodeChatArtifacts =>
   selections: [],
   files: [],
   links: [],
+  jobs: [],
   tools: [],
 });
 
@@ -228,6 +231,7 @@ const cloneArtifacts = (artifacts: ClaudeCodeChatArtifacts): ClaudeCodeChatArtif
   selections: [...artifacts.selections],
   files: [...artifacts.files],
   links: [...artifacts.links],
+  jobs: [...artifacts.jobs],
   tools: [...artifacts.tools],
 });
 
@@ -306,6 +310,53 @@ const appendLink = (artifacts: ClaudeCodeChatArtifacts, link: ClaudeCodeChatLink
   artifacts.links.push(link);
 };
 
+const upsertJob = (artifacts: ClaudeCodeChatArtifacts, job: ClaudeCodeChatJobArtifact) => {
+  const existingIndex = artifacts.jobs.findIndex((item) => item.name === job.name);
+  if (existingIndex >= 0) {
+    const existingJob = artifacts.jobs[existingIndex];
+    if (!existingJob) return;
+
+    artifacts.jobs[existingIndex] = {
+      ...existingJob,
+      ...job,
+      job_type: job.job_type ?? existingJob.job_type,
+      source: job.source ?? existingJob.source,
+      href: job.href ?? existingJob.href,
+    };
+    return;
+  }
+  artifacts.jobs.push(job);
+};
+
+const buildJobHref = (
+  jobName: string,
+  input: Record<string, unknown>,
+  workspace: string | undefined
+): string | undefined => {
+  const explicitHref = getString(input.href) ?? getString(input.url);
+  if (explicitHref) return explicitHref;
+  if (!workspace) return undefined;
+
+  return getJobProgressDetailRoute({
+    jobName,
+    jobType: getString(input.job_type) ?? getString(input.type),
+    source: getString(input.source),
+    workspace,
+  });
+};
+
+const recordJobArtifact = (artifacts: ClaudeCodeChatArtifacts, input: Record<string, unknown>) => {
+  const name = getString(input.job_name) ?? getString(input.name);
+  if (!name) return;
+
+  upsertJob(artifacts, {
+    name,
+    job_type: getString(input.job_type) ?? getString(input.type),
+    source: getString(input.source),
+    href: buildJobHref(name, input, artifacts.workspace),
+  });
+};
+
 const normalizeSpecLine = (line: string): string =>
   line
     .trim()
@@ -380,6 +431,11 @@ const recordToolArtifacts = (
     const label = getString(input.label) ?? destination;
     const href = buildStudioLinkHrefFromInput(input, artifacts.workspace);
     if (label) appendLink(artifacts, { label, destination, href });
+    if (destination === 'job') recordJobArtifact(artifacts, input);
+  }
+
+  if ((toolName === 'job_progress' || toolName.endsWith('__job_progress')) && isRecord(input)) {
+    recordJobArtifact(artifacts, input);
   }
 };
 

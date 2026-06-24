@@ -29,7 +29,7 @@ describe('Claude Code utilities', () => {
   it('converts stored transcript items to assistant-ui messages', () => {
     const history: ClaudeCodeSessionHistory = {
       session_id: '2dc6e5a6-acd7-43bf-b128-c9fd5cf6eb9a',
-      chat_artifacts: { selections: [], files: [], links: [], tools: [] },
+      chat_artifacts: { selections: [], files: [], links: [], jobs: [], tools: [] },
       items: [
         { kind: 'user', text: 'check the repo' },
         {
@@ -154,7 +154,7 @@ describe('Claude Code utilities', () => {
   it('combines consecutive tool-only assistant transcript items', () => {
     const history: ClaudeCodeSessionHistory = {
       session_id: 'session-1',
-      chat_artifacts: { selections: [], files: [], links: [], tools: [] },
+      chat_artifacts: { selections: [], files: [], links: [], jobs: [], tools: [] },
       items: [
         { kind: 'user', text: 'map the repo' },
         {
@@ -222,7 +222,7 @@ describe('Claude Code utilities', () => {
   it('keeps stored job progress tool calls visible in history', () => {
     const history: ClaudeCodeSessionHistory = {
       session_id: 'session-1',
-      chat_artifacts: { selections: [], files: [], links: [], tools: [] },
+      chat_artifacts: { selections: [], files: [], links: [], jobs: [], tools: [] },
       items: [
         { kind: 'user', text: 'evaluate my agent' },
         {

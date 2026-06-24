@@ -50,5 +50,6 @@ export const hasArtifacts = (
     artifacts.selections.length ||
     artifacts.files.length ||
     artifacts.links.length ||
+    artifacts.jobs.length ||
     artifacts.tools.length
   );
