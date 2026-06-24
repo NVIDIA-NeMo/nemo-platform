@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 
 from nemo_platform import AsyncNeMoPlatform, NotFoundError, PermissionDeniedError
 from nemo_platform.filesets import FilesetPathError, parse_fileset_ref
+from nemo_platform_plugin.authz import AuthzScope
 from nemo_platform_plugin.entities import EntityClient
 from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
@@ -190,6 +191,7 @@ router = job_route_factory(
     job_type="SafeSynthesizer",
     job_input=SafeSynthesizerJobConfig,
     platform_job_config_compiler=job_config_compiler,
+    authz=AuthzScope("safe-synthesizer"),
     job_result_routes=[
         PlatformJobResultRoute(
             name="summary",

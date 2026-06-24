@@ -41,7 +41,7 @@ from typing import ClassVar
 
 from fastapi import APIRouter
 from nemo_platform_plugin._base import _NamedPlugin
-from nemo_platform_plugin.authz import AuthzContribution
+from nemo_platform_plugin.authz import Permission
 from starlette.requests import Request
 from starlette.responses import Response
 
@@ -116,16 +116,18 @@ class NemoService(_NamedPlugin):
         The default implementation does nothing.
         """
 
-    @classmethod
-    def get_authz_contribution(cls) -> AuthzContribution | None:
-        """Optional authorization policy for routes under ``/apis/<name>/``.
+    def extra_permissions(self) -> list[Permission]:
+        """Permissions this service owns that are *not* attached to a route.
 
-        Override as a **classmethod** on the :class:`NemoService` subclass (``discover_services``
-        loads classes, not instances). Return
-        :class:`~nemo_platform_plugin.authz.AuthzContribution` or register a ``nemo.authz``
-        entry point. Default: no plugin-specific authz.
+        The permission catalog is normally derived entirely from the
+        :func:`~nemo_platform_plugin.authz.path_rule` rules on ``get_routers()``. Override
+        this only for permissions with no 1:1 route — e.g. ones checked in middleware, or
+        declared ahead of the route that will reference them. These are merged into the
+        derived catalog (and its default role grants) alongside the route-derived ones.
+
+        Default: none.
         """
-        return None
+        return []
 
     def get_exception_handlers(self) -> dict[type[Exception], ExceptionHandler]:
         """Return a mapping of exception types to handler functions.

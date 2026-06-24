@@ -124,10 +124,12 @@ def validate_runtime_authorize_scopes(scopes: list[str] | None) -> None:
 
 
 def validate_static_authz_data(data: dict[str, Any]) -> None:
-    """Validate permission and scope string formats in loaded static authorization data.
+    """Validate permission, scope, and caller-kind string formats in loaded static authz data.
 
-    Call after parsing ``static-authz.yaml``. Raises the same exceptions as the granular
-    validators above.
+    Call after parsing ``static-authz.yaml``. Validates ``roles[*].permissions``,
+    ``endpoints[*][*].{permissions,scopes,callers}``. Raises the same exceptions as the granular
+    validators above (and ``ValueError`` for an unknown caller kind) — catching a hand-edited
+    bad value at load/build time rather than letting it fail silently in policy checks.
     """
     authz = data.get("authz")
     if not isinstance(authz, dict):
@@ -164,4 +166,15 @@ def validate_static_authz_data(data: dict[str, Any]) -> None:
                     validate_nmp_scope_strings_for_config(
                         [s for s in sc_list if isinstance(s, str)],
                         context=f"endpoints[{path!r}].{method_name}.scopes",
+                    )
+                callers_list = op.get("callers")
+                if isinstance(callers_list, list):
+                    # Validate caller-kind strings (e.g. hand-edited static-authz.yaml). Local
+                    # import keeps this format module light and avoids importing the authoring
+                    # surface unless callers are actually present.
+                    from nemo_platform_plugin.authz import validate_caller_strings
+
+                    validate_caller_strings(
+                        [c for c in callers_list if isinstance(c, str)],
+                        context=f"endpoints[{path!r}].{method_name}.callers",
                     )

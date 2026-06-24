@@ -33,16 +33,14 @@ Compare to the legacy pattern this replaces::
         generate_job_name=my_name_generator,
     )
 
-Scope note (phase-1, MR 1.1b): ``add_job_routes`` applies
-:func:`stamp_profile` to the compiled ``PlatformJobSpec`` using
-``default_profile``. It does *not* yet thread ``profile`` / ``options``
-body fields through :class:`BaseJobRequest` — those land together with
-the ``BaseJobRequest`` extension in a follow-up MR. The
-submitter-facing CLI flags (``--profile``, ``-o``) from MR 1.3b reach
-``submit_remote``, which POSTs them in the body; the server currently
-silently drops them (Pydantic ``extra="ignore"`` default). The wrapper
-passes ``profile=None`` / ``options=None`` to ``NemoJob.compile``
-until the body shape is extended.
+``add_job_routes`` applies :func:`stamp_profile` to the compiled
+``PlatformJobSpec`` using ``default_profile``. It does *not* yet thread
+submitter-provided ``profile`` / ``options`` body fields through
+:class:`BaseJobRequest`; the wrapper passes ``profile=None`` /
+``options=None`` to ``NemoJob.compile`` until the request body shape is
+extended. (The submitter CLI flags ``--profile`` / ``-o`` reach
+``submit_remote`` and are POSTed in the body, where the server currently
+ignores them via Pydantic's ``extra="ignore"`` default.)
 """
 
 from __future__ import annotations
@@ -51,6 +49,7 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter
 from fastapi.routing import APIRoute
+from nemo_platform_plugin.authz import AuthzScope
 from nemo_platform_plugin.job import job_collection_path_for
 from nemo_platform_plugin.jobs.api_factory import (
     JobRouteOption,
@@ -74,6 +73,7 @@ def add_job_routes(
     job_result_routes: list[PlatformJobResultRoute] | None = None,
     generate_job_name: "Callable[..., str] | None" = None,
     default_profile: str = "default",
+    authz: AuthzScope | None = None,
 ) -> APIRouter:
     """Mount submit/list/get/delete routes for *job_cls* on a fresh router.
 
@@ -101,9 +101,8 @@ def add_job_routes(
             provide a ``name``. Passthrough to the factory.
         default_profile: Profile label stamped onto each step of the
             compiled ``PlatformJobSpec`` when the plugin's ``compile``
-            didn't set one explicitly. Matches the plan's default-profile
-            behavior; submitter-chosen ``--profile`` plumbing lands in a
-            follow-up MR that extends ``BaseJobRequest``.
+            didn't set one explicitly. Submitter-chosen ``--profile``
+            plumbing is not yet wired through ``BaseJobRequest``.
 
     Returns:
         An :class:`APIRouter` with the standard job endpoints mounted.
@@ -139,6 +138,7 @@ def add_job_routes(
         route_options=route_options,
         job_result_routes=job_result_routes,
         generate_job_name=generate_job_name,
+        authz=authz,
     )
     return _rebase_job_collection_routes(router, job_collection_path_for(job_cls))
 
@@ -260,8 +260,8 @@ def _adapt_compile(
     The factory calls ``compiler(workspace, original_spec, transformed_spec,
     entity_client, job_name, sdk)``. :meth:`NemoJob.compile` is an
     ``async classmethod`` that uses kwargs and also accepts
-    ``profile`` / ``options`` — phase 1 MR 1.1b passes ``None`` for
-    both (body-field wiring is a follow-up). After ``compile`` returns,
+    ``profile`` / ``options``; both are passed as ``None`` until the
+    request body shape threads them through. After ``compile`` returns,
     the adapter applies :func:`stamp_profile` with ``default_profile``.
 
     Missing-override errors from the ``NemoJob.compile`` base marker

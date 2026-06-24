@@ -1,0 +1,190 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+"""Authoring API: CallerKind, Permission, PermissionSet, PathRule, @path_rule, callers plumbing."""
+
+from __future__ import annotations
+
+import inspect
+
+import pytest
+from fastapi import APIRouter
+from fastapi.routing import APIRoute
+from nemo_platform_plugin.authz import (
+    AuthzContribution,
+    AuthzEndpointMethod,
+    CallerKind,
+    PathRule,
+    Permission,
+    PermissionSet,
+    get_path_rules,
+    path_rule,
+    perm,
+    validate_caller_strings,
+)
+from nemo_platform_plugin.authz_discovery import _method_from_dict
+from nemo_platform_plugin.service import NemoService, RouterSpec
+
+_READ = Permission("x.read", "Read x")
+
+
+def test_caller_kind_values_and_no_anon() -> None:
+    assert CallerKind.PRINCIPAL == "principal"
+    assert CallerKind.SERVICE_PRINCIPAL == "service_principal"
+    assert {c.value for c in CallerKind} == {"principal", "service_principal"}
+    assert not hasattr(CallerKind, "ANON")
+
+
+def test_permission_is_frozen_and_stringifies_to_id() -> None:
+    permission = Permission(id="agents.deployments.read", description="Read deployments")
+    assert permission.id == "agents.deployments.read"
+    assert str(permission) == "agents.deployments.read"
+    with pytest.raises(Exception):  # frozen dataclass: FrozenInstanceError
+        permission.id = "other"  # type: ignore[misc]
+
+
+def test_permission_set_derives_ids_from_namespace_and_member_name() -> None:
+    class WidgetPerms(PermissionSet, namespace="widget"):
+        CREATE = perm("Create a widget")
+        BULK = perm("Bulk export", suffix="bulk.export")
+
+    assert WidgetPerms.CREATE == Permission("widget.create", "Create a widget")
+    assert WidgetPerms.BULK == Permission("widget.bulk.export", "Bulk export")
+    assert set(WidgetPerms.all()) == {WidgetPerms.CREATE, WidgetPerms.BULK}
+    # A typo'd member doesn't exist — caught at access time, not at the policy layer.
+    assert not hasattr(WidgetPerms, "CRAETE")
+
+
+def test_path_rule_returns_identical_function_and_signature() -> None:
+    async def handler(name: str, count: int = 0) -> dict[str, str]:
+        return {"name": name}
+
+    before = inspect.signature(handler)
+    decorated = path_rule(callers=[CallerKind.PRINCIPAL], permissions=[_READ])(handler)
+
+    # D5: same object, unchanged signature — never wrapped.
+    assert decorated is handler
+    assert inspect.signature(handler) == before
+
+
+def test_path_rule_attaches_rule() -> None:
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[_READ], scopes=["x:read"])
+    async def handler() -> None: ...
+
+    rules = get_path_rules(handler)
+    assert rules == [
+        PathRule(callers=[CallerKind.PRINCIPAL], permissions=[_READ], scopes=["x:read"]),
+    ]
+
+
+def test_path_rule_stacks_as_or() -> None:
+    # Decorators apply bottom-up; both rules end up attached as OR alternatives.
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[_READ])
+    @path_rule(callers=[CallerKind.SERVICE_PRINCIPAL])
+    async def handler() -> None: ...
+
+    rules = get_path_rules(handler)
+    assert len(rules) == 2
+    assert {tuple(r.callers) for r in rules} == {
+        (CallerKind.SERVICE_PRINCIPAL,),
+        (CallerKind.PRINCIPAL,),
+    }
+
+
+def test_path_rule_empty_callers_rejected() -> None:
+    with pytest.raises(ValueError, match="at least one caller"):
+        path_rule(callers=[])
+
+
+def test_path_rule_coerces_and_validates_caller_strings() -> None:
+    # Strings are coerced to CallerKind; unknown values raise.
+    @path_rule(callers=["principal"])  # type: ignore[list-item]
+    async def ok() -> None: ...
+
+    assert get_path_rules(ok)[0].callers == [CallerKind.PRINCIPAL]
+
+    with pytest.raises(ValueError):
+        path_rule(callers=["anon"])  # type: ignore[list-item]
+
+
+def test_path_rule_rejects_bare_string_permission() -> None:
+    """A permission must be a Permission object. A bare string is rejected at decoration so a
+    typo (or a forgotten PermissionSet member) can't silently reach the policy layer."""
+    with pytest.raises(TypeError, match="must be Permission objects"):
+        path_rule(callers=[CallerKind.PRINCIPAL], permissions=["x.read"])  # type: ignore[list-item]
+
+
+def test_get_path_rules_empty_for_undecorated() -> None:
+    async def handler() -> None: ...
+
+    assert get_path_rules(handler) == []
+
+
+def test_path_rule_survives_router_prefix_rebasing() -> None:
+    """D5: function-attached metadata must survive include_router(prefix=...) rebasing."""
+    router = APIRouter()
+    items_read = Permission("items.read", "Read items")
+
+    @router.get("/items/{name}")
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[items_read])
+    async def get_item(name: str) -> dict[str, str]:
+        return {"name": name}
+
+    # Two prefix hops, as a real plugin mount does (/apis/<plugin> then workspace prefix).
+    inner = APIRouter()
+    inner.include_router(router, prefix="/v2/workspaces/{workspace}")
+    app_router = APIRouter()
+    app_router.include_router(inner, prefix="/apis/example")
+
+    matching = [r for r in app_router.routes if isinstance(r, APIRoute) and r.path.endswith("/items/{name}")]
+    assert len(matching) == 1
+    final_route = matching[0]
+    assert final_route.path == "/apis/example/v2/workspaces/{workspace}/items/{name}"
+
+    rules = get_path_rules(final_route.endpoint)
+    assert len(rules) == 1
+    assert rules[0].callers == [CallerKind.PRINCIPAL]
+    assert rules[0].permissions == [items_read]
+
+
+def test_extra_permissions_default_empty() -> None:
+    class _Svc(NemoService):
+        name = "example-svc"
+
+        def get_routers(self) -> list[RouterSpec]:
+            return []
+
+    assert _Svc().extra_permissions() == []
+
+
+def test_authz_endpoint_method_callers_roundtrip() -> None:
+    contrib = AuthzContribution(
+        endpoints={
+            "/apis/x/v2/thing": {
+                "post": AuthzEndpointMethod(
+                    permissions=["x.create"],
+                    scopes=["x:write"],
+                    callers=["service_principal"],
+                ),
+                "get": AuthzEndpointMethod(permissions=["x.read"]),
+            }
+        }
+    )
+    serialized = contrib.to_dict()
+    post = serialized["endpoints"]["/apis/x/v2/thing"]["post"]
+    get = serialized["endpoints"]["/apis/x/v2/thing"]["get"]
+
+    # Present callers serialize; absent callers are omitted (default ⇒ PRINCIPAL).
+    assert post["callers"] == ["service_principal"]
+    assert "callers" not in get
+
+    # Round-trip through the parse chokepoint.
+    assert _method_from_dict(post).callers == ["service_principal"]
+    assert _method_from_dict(get).callers is None
+
+
+def test_validate_caller_strings() -> None:
+    validate_caller_strings(None, context="t")  # absence allowed
+    validate_caller_strings(["principal", "service_principal"], context="t")
+    with pytest.raises(ValueError, match="Invalid caller kind"):
+        validate_caller_strings(["anon"], context="t")

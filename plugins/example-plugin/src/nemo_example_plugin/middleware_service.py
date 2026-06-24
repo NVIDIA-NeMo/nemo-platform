@@ -25,7 +25,10 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from nemo_example_plugin._perms import ExampleMiddlewareConfigPerms
+from nemo_example_plugin.authz import SCOPE
 from nemo_example_plugin.middleware_config import ExampleMiddlewareConfig
+from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.entity_client import (
     NemoEntitiesClient,
     NemoEntityConflictError,
@@ -86,6 +89,11 @@ def build_middleware_config_router() -> APIRouter:
         status_code=status.HTTP_201_CREATED,
         summary="Create ExampleMiddlewareConfig",
     )
+    @path_rule(
+        callers=[CallerKind.PRINCIPAL],
+        permissions=[ExampleMiddlewareConfigPerms.CREATE],
+        scopes=SCOPE.write(),
+    )
     async def create_config(
         workspace: str,
         body: CreateExampleMiddlewareConfigRequest,
@@ -125,6 +133,11 @@ def build_middleware_config_router() -> APIRouter:
         response_model=list[ExampleMiddlewareConfig],
         summary="List ExampleMiddlewareConfigs",
     )
+    @path_rule(
+        callers=[CallerKind.PRINCIPAL],
+        permissions=[ExampleMiddlewareConfigPerms.LIST],
+        scopes=SCOPE.read(),
+    )
     async def list_configs(
         workspace: str,
         page: int = Query(default=1, ge=1),
@@ -151,6 +164,11 @@ def build_middleware_config_router() -> APIRouter:
         response_model=ExampleMiddlewareConfig,
         summary="Get ExampleMiddlewareConfig",
     )
+    @path_rule(
+        callers=[CallerKind.PRINCIPAL],
+        permissions=[ExampleMiddlewareConfigPerms.READ],
+        scopes=SCOPE.read(),
+    )
     async def get_config(
         workspace: str,
         name: str,
@@ -172,6 +190,11 @@ def build_middleware_config_router() -> APIRouter:
         "/middleware-configs/{name}",
         response_model=ExampleMiddlewareConfig,
         summary="Update ExampleMiddlewareConfig",
+    )
+    @path_rule(
+        callers=[CallerKind.PRINCIPAL],
+        permissions=[ExampleMiddlewareConfigPerms.UPDATE],
+        scopes=SCOPE.write(),
     )
     async def update_config(
         workspace: str,
@@ -209,6 +232,11 @@ def build_middleware_config_router() -> APIRouter:
         "/middleware-configs/{name}",
         status_code=status.HTTP_204_NO_CONTENT,
         summary="Delete ExampleMiddlewareConfig",
+    )
+    @path_rule(
+        callers=[CallerKind.PRINCIPAL],
+        permissions=[ExampleMiddlewareConfigPerms.DELETE],
+        scopes=SCOPE.write(),
     )
     async def delete_config(
         workspace: str,

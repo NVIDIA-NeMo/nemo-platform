@@ -1,8 +1,8 @@
 package authz
 
 import data.authz.allow
-import data.authz.has_role
 import data.authz.has_permissions
+import data.authz.has_role
 
 import future.keywords.if
 import future.keywords.in
@@ -177,3 +177,9 @@ extract_workspace_from_path(path) := workspace if {
 	# Extract the workspace ID value
 	workspace := path_parts[i]
 }
+
+# Request-scoped workspace, memoized once per evaluation (see common.endpoint_scan).
+# The function above stays intact for the policy tests; allow rules use this 0-arg rule.
+workspace_scan := w if {
+	w := extract_workspace_from_path(extract_path)
+} else := ""

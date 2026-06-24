@@ -3,7 +3,7 @@
 
 """Configuration for the Auth service (v2)."""
 
-from typing import Optional
+from typing import Literal, Optional
 
 from nmp.common.config import AuthConfig as SharedAuthConfig
 from pydantic import Field
@@ -56,6 +56,24 @@ class AuthServiceConfig(SharedAuthConfig):
     embedded_pdp_memory_limit_mb: int = Field(
         default=32,
         description="Maximum linear memory (MB) the embedded PDP WASM runtime can consume.",
+    )
+
+    # Plugin HTTP authz fail-mode: what to do when a plugin contributes invalid authz
+    # (an unruled route, or a rule referencing an undeclared / out-of-namespace permission).
+    # The offending routes are always emitted as explicit denies; this controls the blast
+    # radius. deny_route: deny only the bad routes. quarantine: deny the whole plugin.
+    # hard_fail: refuse to build the OPA bundle.
+    on_invalid_plugin: Literal["deny_route", "quarantine", "hard_fail"] = Field(
+        default="deny_route",
+        description="Fail-mode for a plugin that contributes invalid HTTP authz.",
+    )
+
+    # When true, a human PlatformAdmin is allowed on plugin routes restricted to
+    # SERVICE_PRINCIPAL callers. Default false (deny). Read by the Rego policy via
+    # data.authz.config.platform_admin_exempt_from_service_only.
+    platform_admin_exempt_from_service_only: bool = Field(
+        default=False,
+        description="Allow a human PlatformAdmin on SERVICE_PRINCIPAL-only plugin routes.",
     )
 
 
