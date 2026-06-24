@@ -6,6 +6,7 @@ import { Button, Flex, Text, TextArea, Tooltip } from '@nvidia/foundations-react
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
+import { writeStoredActiveSessionId } from '@studio/routes/agents/ClaudeCodeChatRoute/activeSessionStorage';
 import {
   CLAUDE_CODE_SKILLS_QUERY_KEY,
   listClaudeCodeSkills,
@@ -153,6 +154,7 @@ export const DashboardLandingRoute: FC = () => {
 
   const handleSubmit = useCallback(
     (prompt: string) => {
+      writeStoredActiveSessionId(workspace, null);
       const state: ClaudeCodeChatRouteState = { initialPrompt: prompt };
       navigate(getClaudeCodeChatRoute(workspace), { state });
     },

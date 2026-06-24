@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 export const SIDE_NAV_OPEN_KEY = 'side-nav-open';
+export const CLAUDE_CODE_ACTIVE_SESSION_KEY_PREFIX = 'claude-code-active-session';
 export const CLAUDE_CODE_HISTORY_OPEN_KEY = 'claude-code-history-open';
 export const CLAUDE_CODE_PANEL_TAB_KEY = 'claude-code-panel-tab';
 export const WORKSPACE_DROPDOWN_RECENT_KEY = 'workspace-dropdown-recent';

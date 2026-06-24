@@ -214,7 +214,15 @@ interface UseClaudeCodeChatRuntimeOptions {
   initialMessages?: readonly ThreadMessageLike[];
   initialSessionId?: string;
   onError?: (error: Error) => void;
+  onSessionIdChange?: (sessionId: string | null) => void;
+  studioPathname?: string;
   workspace?: string;
+}
+
+interface LoadClaudeCodeSessionOptions {
+  artifacts?: ClaudeCodeChatArtifacts;
+  messages: readonly ThreadMessageLike[];
+  sessionId: string;
 }
 
 export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptions) => {
@@ -238,6 +246,8 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
   );
   const initialArtifactsSignature = getArtifactsSignature(options?.initialArtifacts);
   const onError = options?.onError;
+  const onSessionIdChange = options?.onSessionIdChange;
+  const studioPathname = options?.studioPathname;
 
   initialArtifactsRef.current = options?.initialArtifacts;
 
@@ -251,8 +261,9 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
     const nextSessionId = await createClaudeCodeSession();
     sessionIdRef.current = nextSessionId;
     setSessionId(nextSessionId);
+    onSessionIdChange?.(nextSessionId);
     return nextSessionId;
-  }, []);
+  }, [onSessionIdChange]);
 
   const clearPermissionRequest = useCallback((requestId?: string) => {
     if (requestId && permissionRequestRef.current?.requestId !== requestId) return;
@@ -337,6 +348,7 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
     appendUserMessage,
     handleReset: resetThread,
     isRunning,
+    replaceMessages,
     runtime,
     submitPrompt,
   } = useCustomAssistantChatRuntime({
@@ -352,6 +364,7 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
         await streamClaudeCodeMessage({
           sessionId: activeSessionId,
           message: prompt,
+          studioPathname,
           workspace: options?.workspace,
           signal,
           handlers: {
@@ -542,11 +555,29 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
   const handleReset = useCallback(() => {
     sessionIdRef.current = null;
     setSessionId(null);
+    onSessionIdChange?.(null);
     setArtifacts(createWorkspaceArtifacts(undefined, workspace));
     clearPermissionRequest();
     clearInputRequest();
     resetThread();
-  }, [clearInputRequest, clearPermissionRequest, resetThread, workspace]);
+  }, [clearInputRequest, clearPermissionRequest, onSessionIdChange, resetThread, workspace]);
+
+  const loadSession = useCallback(
+    ({
+      artifacts: nextArtifacts,
+      messages,
+      sessionId: nextSessionId,
+    }: LoadClaudeCodeSessionOptions) => {
+      sessionIdRef.current = nextSessionId;
+      setSessionId(nextSessionId);
+      onSessionIdChange?.(nextSessionId);
+      setArtifacts(createWorkspaceArtifacts(nextArtifacts, workspace));
+      clearPermissionRequest();
+      clearInputRequest();
+      replaceMessages(messages);
+    },
+    [clearInputRequest, clearPermissionRequest, onSessionIdChange, replaceMessages, workspace]
+  );
 
   return {
     artifacts,
@@ -557,6 +588,7 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
     inputRequest,
     inputStatus,
     isRunning,
+    loadSession,
     resolveInputRequest,
     resolveDecisionRequest,
     runtime,
@@ -566,3 +598,5 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
     submitPrompt,
   };
 };
+
+export type ClaudeCodeChatRuntime = ReturnType<typeof useClaudeCodeChatRuntime>;

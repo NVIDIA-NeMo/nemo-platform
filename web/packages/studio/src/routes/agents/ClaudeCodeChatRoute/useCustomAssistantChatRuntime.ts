@@ -353,6 +353,15 @@ export const useCustomAssistantChatRuntime = ({
     setThreadMessages([]);
   }, [setThreadMessages]);
 
+  const replaceMessages = useCallback(
+    (nextMessages: readonly ThreadMessageLike[]) => {
+      abortControllerRef.current?.abort();
+      setIsRunning(false);
+      setThreadMessages(nextMessages);
+    },
+    [setThreadMessages]
+  );
+
   const runtime = useExternalStoreRuntime<ThreadMessageLike>({
     messages,
     setMessages: setThreadMessages,
@@ -369,6 +378,8 @@ export const useCustomAssistantChatRuntime = ({
     appendUserMessage,
     handleReset,
     isRunning,
+    messages,
+    replaceMessages,
     runtime,
     submitPrompt,
   };
