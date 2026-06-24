@@ -76,13 +76,11 @@ export const FilesTable: FC<Props> = ({ filesList, datasetFullName, isLoading })
           {
             children:
               file.type === 'file' || file.type === 'directory' ? (
-                <span onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
-                  {file.type === 'file' ? (
-                    <FileQuickActions file={file} datasetId={datasetFullName} />
-                  ) : (
-                    <DirectoryQuickActions directory={file} datasetId={datasetFullName} />
-                  )}
-                </span>
+                file.type === 'file' ? (
+                  <FileQuickActions file={file} datasetId={datasetFullName} />
+                ) : (
+                  <DirectoryQuickActions directory={file} datasetId={datasetFullName} />
+                )
               ) : undefined,
             attributes: {
               TableDataCell: {

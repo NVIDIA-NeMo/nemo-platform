@@ -152,14 +152,12 @@ vi.mock('@nemo/common/src/components/DataView/internal', () => ({
   },
   TableContent: ({
     className,
-    onClick,
-    onKeyDown,
   }: {
     className?: string;
     onClick?: React.MouseEventHandler;
     onKeyDown?: React.KeyboardEventHandler;
   }) => (
-    <table className={className} onClick={onClick} onKeyDown={onKeyDown}>
+    <table className={className}>
       <tbody>
         {mockRenderedRows.map((cells, rowIdx) => (
           <tr key={rowIdx} data-index={rowIdx}>

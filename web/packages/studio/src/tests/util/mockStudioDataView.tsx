@@ -115,7 +115,7 @@ function MockRowActionsCell<DataType>({
         Actions
       </button>
       {open ? (
-        <ul role="menu">
+        <ul>
           {items.map((item, i) => {
             if (item.kind === 'divider') {
               return <li key={i} />;

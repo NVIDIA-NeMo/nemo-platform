@@ -223,9 +223,11 @@ export const ReportTraceModal = ({ open, onClose }: ReportTraceModalProps) => {
             {traces.length > 0 && (
               <Stack gap="density-sm" className="overflow-auto flex-1">
                 {traces.map((trace) => (
-                  <div
+                  <button
+                    type="button"
                     key={trace.id}
-                    className="p-3 bg-surface-raised rounded-md border border-base cursor-pointer"
+                    className="p-3 bg-surface-raised rounded-md border border-base cursor-pointer w-full text-left appearance-none focus:outline-none focus:ring-2 focus:ring-brand"
+                    aria-label={`View details for ${trace.message}`}
                     onClick={() => handleViewDetails(trace)}
                   >
                     <Flex justify="between" align="center">
@@ -257,7 +259,7 @@ export const ReportTraceModal = ({ open, onClose }: ReportTraceModalProps) => {
                         <Copy />
                       </Button>
                     </Flex>
-                  </div>
+                  </button>
                 ))}
               </Stack>
             )}
