@@ -104,10 +104,10 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
     () =>
       [
         ...new Set(
-          tableData.flatMap((e) => Object.keys(e.metadata ?? {}).map((k) => k.toLowerCase()))
+          orderedData.flatMap((e) => Object.keys(e.metadata ?? {}).map((k) => k.toLowerCase()))
         ),
       ].sort(),
-    [tableData]
+    [orderedData]
   );
 
   const makeColumns = useCallback<
