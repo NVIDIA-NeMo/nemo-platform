@@ -5,13 +5,13 @@ description = "Switchyard inference middleware plugin for NeMo Inference Gateway
 requires-python = ">=3.11,<3.15"
 dependencies = [
     "nemo-platform-plugin",
-    "switchyard",
+    "switchyard-vendored",
 ]
 
 [tool.uv.sources]
 # Vendored snapshot of switchyard at commit 9407922 — see vendor/switchyard/README.md.
 # Swap to a git submodule once CI has reliable access to the upstream repo.
-switchyard = { path = "vendor/switchyard", editable = true }
+switchyard-vendored = { path = "vendor/switchyard", editable = true }
 
 [project.entry-points."nemo.inference_middleware"]
 nemo-switchyard = "nemo_switchyard.middleware:SwitchyardMiddleware"
