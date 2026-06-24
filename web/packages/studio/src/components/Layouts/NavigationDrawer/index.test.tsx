@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getLucideIcon } from '@nemo/common/src/tests/lucideIconQueries';
 import { ROUTES } from '@studio/constants/routes';
 import { workspace1 } from '@studio/mocks/entity-store/projects';
 import { PageLayout } from '@studio/routes/PageLayout';
@@ -130,14 +131,12 @@ describe('NavigationDrawer', () => {
 
       // Starts expanded
       expect(accordionTrigger).toHaveAttribute('data-state', 'open');
-      // eslint-disable-next-line testing-library/no-node-access
-      expect(document.querySelector('.lucide-chevron-up')).toBeInTheDocument();
+      expect(getLucideIcon('chevron-up')).toBeInTheDocument();
 
       // Clicking closes it (chevron-down icon visible)
       await user.click(accordionTrigger as HTMLElement);
       expect(accordionTrigger).toHaveAttribute('data-state', 'closed');
-      // eslint-disable-next-line testing-library/no-node-access
-      expect(document.querySelector('.lucide-chevron-down')).toBeInTheDocument();
+      expect(getLucideIcon('chevron-down')).toBeInTheDocument();
     });
   });
 });

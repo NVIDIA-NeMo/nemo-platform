@@ -3,6 +3,14 @@
 
 import { queryHelpers, buildQueries, Matcher, MatcherOptions } from '@testing-library/react';
 
+export {
+  findAllByLucideIcon,
+  findByLucideIcon,
+  getAllByLucideIcon,
+  getByLucideIcon,
+  queryByLucideIcon,
+} from '@nemo/common/src/tests/lucideIconQueries';
+
 // The queryAllByAttribute is a shortcut for attribute-based matchers
 // You can also use document.querySelector or a combination of existing
 // testing library utilities to find matching nodes for your query

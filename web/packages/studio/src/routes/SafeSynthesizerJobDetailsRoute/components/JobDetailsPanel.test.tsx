@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getLucideIcon } from '@nemo/common/src/tests/lucideIconQueries';
 import { formatTimeInSeconds, getDifferenceInMilliseconds } from '@nemo/common/src/utils/date';
 import type { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
 import * as safeSynthesizerApi from '@nemo/sdk/generated/safe-synthesizer/api';
@@ -122,14 +123,6 @@ vi.mock('@studio/providers/toast/useToast', () => ({
   })),
 }));
 
-// Mock brand assets icons
-vi.mock('lucide-react', () => ({
-  Play: () => <svg data-testid="running-icon" />,
-  File: () => <svg data-testid="document-icon" />,
-  Cog: () => <svg data-testid="cog-icon" />,
-  Copy: () => <svg data-testid="copy-doc-icon" />,
-}));
-
 // Test wrapper
 const createWrapper = () => {
   const queryClient = new QueryClient({
@@ -215,7 +208,7 @@ describe('JobDetailsPanel', () => {
       render(<JobDetailsPanel job={job} />, { wrapper: createWrapper() });
 
       expect(screen.getByText('Job Details')).toBeInTheDocument();
-      expect(screen.getByTestId('running-icon')).toBeInTheDocument();
+      expect(getLucideIcon('play')).toBeInTheDocument();
     });
 
     it('should display job status with badge', () => {
@@ -453,8 +446,9 @@ describe('JobDetailsPanel', () => {
       const job = createMockJob();
       render(<JobDetailsPanel job={job} />, { wrapper: createWrapper() });
 
-      expect(screen.getByText('View Job Config')).toBeInTheDocument();
-      expect(screen.getByTestId('cog-icon')).toBeInTheDocument();
+      const configButton = screen.getByRole('button', { name: 'View Job Config' });
+      expect(configButton).toBeInTheDocument();
+      expect(getLucideIcon('cog', configButton)).toBeInTheDocument();
     });
 
     it('should open job config drawer when button is clicked', async () => {
@@ -462,7 +456,7 @@ describe('JobDetailsPanel', () => {
       const user = userEvent.setup();
       render(<JobDetailsPanel job={job} />, { wrapper: createWrapper() });
 
-      const configButton = screen.getByText('View Job Config');
+      const configButton = screen.getByRole('button', { name: 'View Job Config' });
       await user.click(configButton);
 
       await waitFor(() => {
@@ -476,7 +470,7 @@ describe('JobDetailsPanel', () => {
       render(<JobDetailsPanel job={job} />, { wrapper: createWrapper() });
 
       // Open drawer
-      const configButton = screen.getByText('View Job Config');
+      const configButton = screen.getByRole('button', { name: 'View Job Config' });
       await user.click(configButton);
 
       await waitFor(() => {

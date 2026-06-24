@@ -4,6 +4,7 @@
 import { BadgeStatus, badgeStatus } from '@nemo/common/src/components/StatusBadge/badgeStatus';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge/index';
 import * as customQueries from '@nemo/common/src/tests/customQueries';
+import { getLucideIcon } from '@nemo/common/src/tests/lucideIconQueries';
 import { queries, render, screen, within } from '@testing-library/react';
 import { CircleCheck } from 'lucide-react';
 
@@ -47,9 +48,7 @@ describe('StatusBadge component', () => {
     const status: BadgeStatus = 'in_progress';
     render(<StatusBadge status={status} />, { queries: allQueries });
 
-    // Use querySelector with document to find SVG (escape hatch for SVG testing)
-    // eslint-disable-next-line testing-library/no-node-access
-    const icon = document.querySelector('.lucide-refresh-cw');
+    const icon = getLucideIcon('refresh-cw');
     expect(icon).toBeInTheDocument();
     expect(icon).toHaveAttribute('width', '12px');
     expect(icon).toHaveAttribute('height', '12px');
@@ -59,8 +58,7 @@ describe('StatusBadge component', () => {
     // Since all current statuses have icons, we'll verify the icon exists
     render(<StatusBadge status="completed" />);
 
-    // eslint-disable-next-line testing-library/no-node-access
-    const icon = document.querySelector('.lucide-circle-check');
+    const icon = getLucideIcon('circle-check');
     expect(icon).toBeInTheDocument();
   });
 
