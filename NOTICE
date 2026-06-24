@@ -30,6 +30,23 @@ packages/garak_api/
   under Apache-2.0 by the upstream garak project.
 
 --------------------------------------------------------------------------------
+plugins/nemo-switchyard/vendor/switchyard/
+  Switchyard vendored snapshot at commit 9407922
+  Home: https://github.com/NVIDIA-dev/switchyard
+  License: Apache-2.0
+
+  This repository vendors a subset of the upstream Switchyard project for
+  use by the `nemo-switchyard` plugin. The vendored package metadata records
+  this as version `0.1.0+vendored.9407922`.
+
+  Only `switchyard.lib` and `switchyard.telemetry` are included here. The
+  upstream CLI, server, and experimental subpackages are intentionally
+  omitted because NeMo Platform does not depend on them.
+
+  The vendored snapshot retains its own LICENSE and NOTICE files in:
+    plugins/nemo-switchyard/vendor/switchyard/
+
+--------------------------------------------------------------------------------
 services/guardrails/callouts/internal/server/
   callout_server.go and callout_server_test.go
   Copyright 2024 Google LLC
