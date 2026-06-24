@@ -77,7 +77,7 @@ def controller_config() -> ControllerConfig:
     return ControllerConfig(
         interval_seconds=5,
         drift_recovery_max_attempts=3,
-        drift_recovery_base_delay_seconds=1,
+        drift_recovery_initial_delay_seconds=1,
         drift_recovery_max_delay_seconds=10,
     )
 

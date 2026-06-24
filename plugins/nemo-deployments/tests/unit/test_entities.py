@@ -55,11 +55,11 @@ def test_drift_recovery_policy_rejects_negative_overrides() -> None:
     with pytest.raises(ValidationError):
         DriftRecoveryPolicy(max_attempts=-1)
     with pytest.raises(ValidationError):
-        DriftRecoveryPolicy(base_delay_seconds=-1)
+        DriftRecoveryPolicy(initial_delay_seconds=-1)
     with pytest.raises(ValidationError):
         DriftRecoveryPolicy(max_delay_seconds=-1)
 
 
 def test_drift_recovery_policy_rejects_inverted_delays() -> None:
-    with pytest.raises(ValidationError, match="base_delay_seconds"):
-        DriftRecoveryPolicy(base_delay_seconds=60, max_delay_seconds=5)
+    with pytest.raises(ValidationError, match="initial_delay_seconds"):
+        DriftRecoveryPolicy(initial_delay_seconds=60, max_delay_seconds=5)

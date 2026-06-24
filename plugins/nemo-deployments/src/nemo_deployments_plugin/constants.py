@@ -4,7 +4,7 @@
 """Shared constants for the deployments plugin."""
 
 MANAGED_BY_LABEL = "nemo-deployments"
-"""Label value backends use to tag substrate resources for orphan cleanup."""
+"""Label value backends use to tag backend resources for orphan cleanup."""
 
 ENTITY_TYPE_DEPLOYMENT_CONFIG = "deployments_deployment_config"
 ENTITY_TYPE_DEPLOYMENT = "deployments_deployment"

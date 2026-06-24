@@ -1028,9 +1028,9 @@ components:
           description: Override controller drift_recovery_max_attempts when set.
           type: integer
           minimum: 0.0
-        base_delay_seconds:
-          title: Base Delay Seconds
-          description: Override controller drift_recovery_base_delay_seconds when
+        initial_delay_seconds:
+          title: Initial Delay Seconds
+          description: Override controller drift_recovery_initial_delay_seconds when
             set.
           type: integer
           minimum: 0.0

@@ -41,7 +41,7 @@ async def test_controller_reconcile_runs_volumes_then_deployments() -> None:
 
     ctrl._entities = mock_entities
     ctrl._registry = mock_registry
-    ctrl._controller_config = ControllerConfig(orphan_cleanup_every_n_cycles=0)
+    ctrl._controller_config = ControllerConfig(orphan_cleanup_interval_seconds=0)
     ctrl._deployment_reconciler = mock_dep_reconciler
     ctrl._volume_reconciler = mock_vol_reconciler
 
@@ -67,7 +67,7 @@ async def test_controller_swallows_conflict_on_deployment() -> None:
 
     ctrl._entities = mock_entities
     ctrl._registry = _stub_registry()
-    ctrl._controller_config = ControllerConfig(orphan_cleanup_every_n_cycles=0)
+    ctrl._controller_config = ControllerConfig(orphan_cleanup_interval_seconds=0)
     ctrl._deployment_reconciler = mock_dep_reconciler
     ctrl._volume_reconciler = AsyncMock()
 
@@ -126,11 +126,10 @@ async def test_orphan_cleanup_skipped_when_deployments_list_fails(mock_orphans: 
     ctrl._entities.list.side_effect = RuntimeError("list failed")
 
     ctrl._registry = _stub_registry()
-    ctrl._controller_config = ControllerConfig(orphan_cleanup_every_n_cycles=1)
+    ctrl._controller_config = ControllerConfig(orphan_cleanup_interval_seconds=5)
     ctrl._deployment_reconciler = AsyncMock()
     ctrl._deployment_reconciler.set_config_cache = lambda configs: None
     ctrl._volume_reconciler = AsyncMock()
-    ctrl._cycle_count = 0
 
     await ctrl.reconcile()
     mock_orphans.assert_not_awaited()
@@ -156,7 +155,7 @@ async def test_controller_runs_orphan_cleanup_on_interval(mock_orphans: AsyncMoc
 
     ctrl._entities = mock_entities
     ctrl._registry = mock_registry
-    ctrl._controller_config = ControllerConfig(orphan_cleanup_every_n_cycles=2)
+    ctrl._controller_config = ControllerConfig(orphan_cleanup_interval_seconds=10)
     ctrl._deployment_reconciler = mock_dep_reconciler
     ctrl._volume_reconciler = AsyncMock()
 
@@ -180,7 +179,7 @@ async def test_controller_swallows_volume_conflict() -> None:
 
     ctrl._entities = mock_entities
     ctrl._registry = _stub_registry()
-    ctrl._controller_config = ControllerConfig(orphan_cleanup_every_n_cycles=0)
+    ctrl._controller_config = ControllerConfig(orphan_cleanup_interval_seconds=0)
     ctrl._deployment_reconciler = AsyncMock()
     ctrl._deployment_reconciler.set_config_cache = lambda configs: None
     ctrl._volume_reconciler = mock_vol_reconciler
@@ -223,7 +222,7 @@ async def test_controller_fetches_terminal_prerequisite_for_dag() -> None:
 
     ctrl._entities = mock_entities
     ctrl._registry = _stub_registry()
-    ctrl._controller_config = ControllerConfig(orphan_cleanup_every_n_cycles=0)
+    ctrl._controller_config = ControllerConfig(orphan_cleanup_interval_seconds=0)
     ctrl._deployment_reconciler = mock_dep_reconciler
     ctrl._volume_reconciler = AsyncMock()
 
@@ -271,7 +270,7 @@ async def test_controller_fetches_prerequisite_when_deployment_name_differs_from
 
     ctrl._entities = mock_entities
     ctrl._registry = _stub_registry()
-    ctrl._controller_config = ControllerConfig(orphan_cleanup_every_n_cycles=0)
+    ctrl._controller_config = ControllerConfig(orphan_cleanup_interval_seconds=0)
     ctrl._deployment_reconciler = mock_dep_reconciler
     ctrl._volume_reconciler = AsyncMock()
 

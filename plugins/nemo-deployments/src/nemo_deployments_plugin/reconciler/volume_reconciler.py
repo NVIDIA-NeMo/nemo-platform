@@ -16,20 +16,17 @@ logger = logging.getLogger(__name__)
 
 
 class VolumeReconciler:
-    """Reconciles Volume entities with substrate volume resources."""
+    """Reconciles Volume entities with backend volume resources."""
 
     def __init__(self, entities: NemoEntitiesClient, registry: ExecutorRegistry) -> None:
         self._entities = entities
         self._registry = registry
 
-    def resolve_backend(self, volume: Volume) -> DeploymentBackend:
-        return self._registry.resolve(None)
-
     async def reconcile_one(self, volume: Volume) -> None:
         try:
             backend = self._registry.resolve(None)
         except ExecutorNotFoundError as exc:
-            await self._project_status(
+            await self._update_volume_status(
                 volume,
                 VolumeStatusUpdate(status="FAILED", status_message=f"No executor available: {exc}"),
             )
@@ -50,13 +47,13 @@ class VolumeReconciler:
                 access_modes=list(volume.access_modes),
                 backend_config=backend_config,
             )
-            await self._project_status(volume, update)
+            await self._update_volume_status(volume, update)
             logger.info("Volume %s/%s created: %s", volume.workspace, volume.name, update.status)
         except NemoEntityConflictError:
             raise
         except Exception as exc:
             logger.exception("Failed to create volume %s/%s", volume.workspace, volume.name)
-            await self._project_status(
+            await self._update_volume_status(
                 volume,
                 VolumeStatusUpdate(status="FAILED", status_message=f"Failed to create volume: {exc}"),
             )
@@ -64,17 +61,17 @@ class VolumeReconciler:
     async def _reconcile_read(self, volume: Volume, backend: DeploymentBackend) -> None:
         try:
             update = await backend.read_volume_status(workspace=volume.workspace, name=volume.name)
-            await self._project_status(volume, update)
+            await self._update_volume_status(volume, update)
         except NemoEntityConflictError:
             raise
         except Exception as exc:
             logger.exception("Failed to read volume status %s/%s", volume.workspace, volume.name)
-            await self._project_status(
+            await self._update_volume_status(
                 volume,
                 VolumeStatusUpdate(status="FAILED", status_message=f"Failed to read volume status: {exc}"),
             )
 
-    async def _project_status(self, volume: Volume, update: VolumeStatusUpdate) -> None:
+    async def _update_volume_status(self, volume: Volume, update: VolumeStatusUpdate) -> None:
         if (
             volume.status == update.status
             and volume.status_message == update.status_message

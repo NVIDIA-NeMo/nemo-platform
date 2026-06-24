@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 from nemo_deployments_plugin.reconciler.drift_recovery import DriftRecoveryCache, DriftRecoveryLimits, RecoveryAction
 
-LIMITS = DriftRecoveryLimits(max_attempts=3, base_delay_seconds=1, max_delay_seconds=10)
+LIMITS = DriftRecoveryLimits(max_attempts=3, initial_delay_seconds=1, max_delay_seconds=10)
 
 
 def test_should_recover_proceed_when_untracked() -> None:
@@ -28,7 +28,7 @@ def test_should_recover_backoff() -> None:
     cache.add_attempt("ws/dep")
     assert (
         cache.should_recover(
-            "ws/dep", DriftRecoveryLimits(max_attempts=5, base_delay_seconds=60, max_delay_seconds=300)
+            "ws/dep", DriftRecoveryLimits(max_attempts=5, initial_delay_seconds=60, max_delay_seconds=300)
         )
         == RecoveryAction.BACKOFF
     )
@@ -37,7 +37,7 @@ def test_should_recover_backoff() -> None:
 def test_first_backoff_uses_base_delay_not_doubled() -> None:
     cache = DriftRecoveryCache()
     cache.add_attempt("ws/dep")
-    limits = DriftRecoveryLimits(max_attempts=5, base_delay_seconds=10, max_delay_seconds=300)
+    limits = DriftRecoveryLimits(max_attempts=5, initial_delay_seconds=10, max_delay_seconds=300)
     state = cache._states["ws/dep"]
     assert state.attempts == 1
     assert cache.should_recover("ws/dep", limits) == RecoveryAction.BACKOFF

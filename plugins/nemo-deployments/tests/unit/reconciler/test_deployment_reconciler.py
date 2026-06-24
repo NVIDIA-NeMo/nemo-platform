@@ -1,8 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock
 
 import pytest
@@ -161,6 +159,45 @@ async def test_delete_proceeds_when_config_missing(
 
     assert mock_backend.delete_calls == [("default", "dep1")]
     mock_entities.delete.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_delete_retains_deleting_when_backend_delete_fails(
+    deployment_reconciler: DeploymentReconciler,
+    mock_backend: MockDeploymentBackend,
+    mock_entities: AsyncMock,
+) -> None:
+    dep = make_deployment()
+    dep.desired_state = "STOPPED"
+
+    async def failing_delete(workspace: str, name: str) -> BackendStatusUpdate:
+        raise RuntimeError("delete failed")
+
+    mock_backend.delete_deployment = failing_delete  # type: ignore[method-assign]
+
+    await deployment_reconciler.reconcile_one(
+        dep, deployments_by_config={}, deployments_by_name={}, volumes_by_name=NO_VOLUMES
+    )
+
+    assert dep.status == "DELETING"
+    mock_entities.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_delete_clears_drift_recovery_cache(
+    deployment_reconciler: DeploymentReconciler,
+    mock_backend: MockDeploymentBackend,
+    mock_entities: AsyncMock,
+) -> None:
+    dep = make_deployment()
+    dep.desired_state = "STOPPED"
+    deployment_reconciler._drift_cache.add_attempt("default/dep1")
+
+    await deployment_reconciler.reconcile_one(
+        dep, deployments_by_config={}, deployments_by_name={}, volumes_by_name=NO_VOLUMES
+    )
+
+    assert deployment_reconciler._drift_cache.get_attempts("default/dep1") == 0
 
 
 @pytest.mark.asyncio
@@ -348,7 +385,7 @@ async def test_drift_recovery_backoff_skips_recreate(
     dep.status = "LOST"
     cfg = make_deployment_config()
     cfg.restart_policy = "Always"
-    cfg.drift_recovery.base_delay_seconds = 3600
+    cfg.drift_recovery.initial_delay_seconds = 3600
     deployment_reconciler.set_config_cache({("default", "cfg1"): cfg})
     deployment_reconciler._drift_cache.add_attempt("default/dep1")
     mock_backend.read_status_result = BackendStatusUpdate(status="LOST")

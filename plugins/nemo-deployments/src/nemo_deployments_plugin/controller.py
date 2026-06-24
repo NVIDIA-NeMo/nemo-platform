@@ -8,17 +8,21 @@ from __future__ import annotations
 import logging
 from typing import ClassVar
 
-from nemo_deployments_plugin.backends.registry import ExecutorRegistry
+from nemo_deployments_plugin.backends.registry import ExecutorRegistry, ExecutorSpec
 from nemo_deployments_plugin.config import ControllerConfig, DeploymentsConfig
 from nemo_deployments_plugin.entities import Deployment, DeploymentConfig, Volume
 from nemo_deployments_plugin.reconciler.deployment_reconciler import DeploymentReconciler
-from nemo_deployments_plugin.reconciler.listing import get_deployment_for_config_name, list_all_pages
+from nemo_deployments_plugin.reconciler.entity_client import get_deployment_for_config_name, list_all_pages
 from nemo_deployments_plugin.reconciler.orphan_cleanup import reconcile_orphans
+from nemo_deployments_plugin.reconciler.volume_mounts import collect_volume_mount_names
 from nemo_deployments_plugin.reconciler.volume_reconciler import VolumeReconciler
 from nemo_deployments_plugin.types import NON_TERMINAL_DEPLOYMENT_STATUSES, NON_TERMINAL_VOLUME_STATUSES
+from nemo_deployments_plugin.validation import prerequisite_names
+from nemo_platform.resources.entities import AsyncEntitiesResource
 from nemo_platform_plugin.controller import NemoController
-from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError
+from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError, NemoEntityNotFoundError
 from nemo_platform_plugin.filter_ops import ComparisonOperation, FilterOperator
+from nemo_platform_plugin.sdk_provider import get_async_platform_sdk
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +40,7 @@ class DeploymentsController(NemoController):
         self._deployment_reconciler: DeploymentReconciler | None = None
         self._volume_reconciler: VolumeReconciler | None = None
         self._interval_seconds: float = 5.0
-        self._cycle_count: int = 0
+        self._orphan_cleanup_elapsed_seconds: float = 0.0
         self._deployments_list_ok: bool = True
         self._volumes_list_ok: bool = True
 
@@ -61,11 +65,6 @@ class DeploymentsController(NemoController):
         return self._controller_config
 
     async def on_startup(self) -> None:
-        from nemo_deployments_plugin.backends.registry import ExecutorRegistry, ExecutorSpec
-        from nemo_platform.resources.entities import AsyncEntitiesResource
-        from nemo_platform_plugin.entity_client import NemoEntitiesClient
-        from nemo_platform_plugin.sdk_provider import get_async_platform_sdk
-
         config = DeploymentsConfig.get()
         self._controller_config = config.controller
         self._interval_seconds = float(config.controller.interval_seconds)
@@ -95,10 +94,12 @@ class DeploymentsController(NemoController):
         logger.info("DeploymentsController shut down.")
 
     async def reconcile(self) -> None:
-        self._cycle_count += 1
-        assert self._deployment_reconciler is not None
-        assert self._volume_reconciler is not None
-        assert self._registry is not None
+        if self._deployment_reconciler is None:
+            raise RuntimeError("DeploymentsController.reconcile() called before on_startup()")
+        if self._volume_reconciler is None:
+            raise RuntimeError("DeploymentsController.reconcile() called before on_startup()")
+        if self._registry is None:
+            raise RuntimeError("DeploymentsController.reconcile() called before on_startup()")
 
         deployments = await self._list_deployments()
         volumes = await self._list_volumes()
@@ -131,10 +132,16 @@ class DeploymentsController(NemoController):
             except Exception:
                 logger.exception("Error reconciling deployment %s/%s", deployment.workspace, deployment.name)
 
-        orphan_every = self.controller_config.orphan_cleanup_every_n_cycles
-        if orphan_every > 0 and self._cycle_count % orphan_every == 0 and self._deployments_list_ok:
+        self._orphan_cleanup_elapsed_seconds += self._interval_seconds
+        orphan_interval = self.controller_config.orphan_cleanup_interval_seconds
+        if (
+            orphan_interval > 0
+            and self._orphan_cleanup_elapsed_seconds >= orphan_interval
+            and self._deployments_list_ok
+        ):
             known_ids = {f"{d.workspace}/{d.name}" for d in deployments}
             await reconcile_orphans(self._registry.all_backends(), known_ids)
+            self._orphan_cleanup_elapsed_seconds = 0.0
 
     async def list_objects(self) -> list:
         raise NotImplementedError("DeploymentsController uses reconcile() override")
@@ -204,8 +211,6 @@ class DeploymentsController(NemoController):
         configs: dict[tuple[str, str], DeploymentConfig],
         volumes_by_name: dict[tuple[str, str], Volume],
     ) -> None:
-        from nemo_deployments_plugin.reconciler.volume_mounts import collect_volume_mount_names
-
         for (workspace, _config_name), config in configs.items():
             for mount_name in collect_volume_mount_names(config):
                 key = (workspace, mount_name)
@@ -231,8 +236,6 @@ class DeploymentsController(NemoController):
         by_config: dict[tuple[str, str], Deployment],
     ) -> None:
         """Load prerequisite deployments from entity store (including terminal states)."""
-        from nemo_deployments_plugin.validation import prerequisite_names
-
         for (workspace, _config_name), config in configs.items():
             for prereq_config_name in prerequisite_names(config.prerequisites):
                 key_by_config = (workspace, prereq_config_name)
@@ -244,9 +247,14 @@ class DeploymentsController(NemoController):
                         workspace=workspace,
                         config_name=prereq_config_name,
                     )
-                    if dep is None:
-                        raise LookupError(prereq_config_name)
-                except Exception:
+                except NemoEntityNotFoundError:
+                    logger.debug(
+                        "Prerequisite deployment '%s' not yet available in workspace '%s'",
+                        prereq_config_name,
+                        workspace,
+                    )
+                    continue
+                if dep is None:
                     logger.debug(
                         "Prerequisite deployment '%s' not yet available in workspace '%s'",
                         prereq_config_name,

@@ -21,7 +21,7 @@ class RecoveryAction(Enum):
 @dataclass(frozen=True)
 class DriftRecoveryLimits:
     max_attempts: int
-    base_delay_seconds: int
+    initial_delay_seconds: int
     max_delay_seconds: int
 
 
@@ -52,7 +52,7 @@ class DriftRecoveryCache:
             return RecoveryAction.EXHAUSTED
         if state.last_attempt_at:
             backoff_seconds = min(
-                limits.base_delay_seconds * (2 ** max(state.attempts - 1, 0)),
+                limits.initial_delay_seconds * (2 ** max(state.attempts - 1, 0)),
                 limits.max_delay_seconds,
             )
             elapsed = (datetime.now(timezone.utc) - state.last_attempt_at).total_seconds()

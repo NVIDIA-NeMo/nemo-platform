@@ -26,7 +26,7 @@ def deployment_id(deployment: Deployment) -> str:
 
 
 class DeploymentReconciler:
-    """Reconciles Deployment entities with substrate backends."""
+    """Reconciles Deployment entities with backend resources."""
 
     def __init__(
         self,
@@ -48,10 +48,10 @@ class DeploymentReconciler:
         ctrl = self._controller_config
         return DriftRecoveryLimits(
             max_attempts=policy.max_attempts if policy.max_attempts is not None else ctrl.drift_recovery_max_attempts,
-            base_delay_seconds=(
-                policy.base_delay_seconds
-                if policy.base_delay_seconds is not None
-                else ctrl.drift_recovery_base_delay_seconds
+            initial_delay_seconds=(
+                policy.initial_delay_seconds
+                if policy.initial_delay_seconds is not None
+                else ctrl.drift_recovery_initial_delay_seconds
             ),
             max_delay_seconds=(
                 policy.max_delay_seconds
@@ -64,13 +64,15 @@ class DeploymentReconciler:
         return self._registry.resolve(deployment.executor)
 
     async def _resolve_backend_or_fail(self, deployment: Deployment) -> DeploymentBackend | None:
+        """Resolve the deployment executor; mark the deployment FAILED when missing."""
         try:
             return self.resolve_backend(deployment)
         except ExecutorNotFoundError as exc:
-            await self._project_failure(deployment, f"No executor available: {exc}")
+            await self._update_deployment_status_failure(deployment, f"No executor available: {exc}")
             return None
 
     def _try_resolve_backend(self, deployment: Deployment) -> DeploymentBackend | None:
+        """Best-effort executor lookup for delete paths; returns None when missing."""
         try:
             return self.resolve_backend(deployment)
         except ExecutorNotFoundError:
@@ -99,7 +101,9 @@ class DeploymentReconciler:
                 )
                 self._config_cache[config_key] = config
             except NemoEntityNotFoundError:
-                await self._project_failure(deployment, f"DeploymentConfig '{deployment.deployment_config}' not found")
+                await self._update_deployment_status_failure(
+                    deployment, f"DeploymentConfig '{deployment.deployment_config}' not found"
+                )
                 return
 
         if deployment.status == "PENDING":
@@ -111,9 +115,9 @@ class DeploymentReconciler:
             )
             if not prereq.met:
                 if _prerequisite_failed(prereq, deployments_by_config, deployments_by_name, deployment):
-                    await self._project_failure(deployment, prereq.reason)
+                    await self._update_deployment_status_failure(deployment, prereq.reason)
                     return
-                await self._project_pending(deployment, prereq.reason)
+                await self._update_deployment_status_pending(deployment, prereq.reason)
                 return
 
             mount_result = volume_mounts_ready(config, deployment.workspace, volumes_by_name)
@@ -121,9 +125,9 @@ class DeploymentReconciler:
                 if mount_result.blocking_volume and _volume_mount_failed(
                     mount_result, volumes_by_name, deployment.workspace
                 ):
-                    await self._project_failure(deployment, mount_result.reason)
+                    await self._update_deployment_status_failure(deployment, mount_result.reason)
                     return
-                await self._project_pending(deployment, mount_result.reason)
+                await self._update_deployment_status_pending(deployment, mount_result.reason)
                 return
 
         backend = await self._resolve_backend_or_fail(deployment)
@@ -141,7 +145,7 @@ class DeploymentReconciler:
                 return
             if status_update.status in ("READY", "SUCCEEDED"):
                 self._drift_cache.remove(deployment_id(deployment))
-            await self._project_status(deployment, status_update)
+            await self._update_deployment_status(deployment, status_update)
             return
 
     async def _reconcile_create(
@@ -161,19 +165,19 @@ class DeploymentReconciler:
                 backend_config=config.backend_config.model_dump(by_alias=True, exclude_none=True),
             )
             logger.info("Created deployment %s: %s", dep_id, status_update.status)
-            await self._project_status(deployment, status_update)
+            await self._update_deployment_status(deployment, status_update)
         except NemoEntityConflictError:
             raise
         except Exception as exc:
             logger.exception("Failed to create deployment %s", dep_id)
-            await self._project_failure(deployment, f"Failed to create deployment: {exc}")
+            await self._update_deployment_status_failure(deployment, f"Failed to create deployment: {exc}")
 
     async def _reconcile_delete(self, deployment: Deployment) -> None:
         dep_id = deployment_id(deployment)
         self._drift_cache.remove(dep_id)
         backend = self._try_resolve_backend(deployment)
         if deployment.status != "DELETING":
-            await self._project_status(
+            await self._update_deployment_status(
                 deployment,
                 BackendStatusUpdate(status="DELETING", status_message="Stopping deployment"),
             )
@@ -182,7 +186,8 @@ class DeploymentReconciler:
             try:
                 await backend.delete_deployment(deployment.workspace, deployment.name)
             except Exception:
-                logger.warning("Backend delete failed for %s", dep_id, exc_info=True)
+                logger.warning("Backend delete failed for %s — will retry", dep_id, exc_info=True)
+                return
         else:
             logger.warning("No executor for delete of %s — removing entity only", dep_id)
 
@@ -204,14 +209,14 @@ class DeploymentReconciler:
     ) -> None:
         dep_id = deployment_id(deployment)
         if config.drift_recovery.action == "ignore":
-            await self._project_status(
+            await self._update_deployment_status(
                 deployment,
-                BackendStatusUpdate(status="LOST", status_message="Substrate resource lost (drift recovery ignored)"),
+                BackendStatusUpdate(status="LOST", status_message="Backend resource lost (drift recovery ignored)"),
             )
             return
 
         if config.restart_policy != "Always":
-            await self._project_failure(deployment, "Substrate resource lost for non-Always deployment")
+            await self._update_deployment_status_failure(deployment, "Backend resource lost for non-Always deployment")
             return
 
         cache = self._drift_cache
@@ -220,7 +225,7 @@ class DeploymentReconciler:
         match cache.should_recover(dep_id, limits):
             case RecoveryAction.EXHAUSTED:
                 attempts = cache.get_attempts(dep_id)
-                await self._project_failure(
+                await self._update_deployment_status_failure(
                     deployment,
                     f"Drift recovery failed after {attempts} attempts. Manual intervention required.",
                 )
@@ -252,12 +257,12 @@ class DeploymentReconciler:
                 f"(attempt {attempt}/{limits.max_attempts}). {status_update.status_message}"
             )
             status_update = status_update.model_copy(update={"status_message": message})
-            await self._project_status(deployment, status_update)
+            await self._update_deployment_status(deployment, status_update)
         except NemoEntityConflictError:
             raise
         except Exception as exc:
             logger.exception("Drift recovery failed for %s", dep_id)
-            await self._project_status(
+            await self._update_deployment_status(
                 deployment,
                 BackendStatusUpdate(
                     status="LOST",
@@ -265,21 +270,21 @@ class DeploymentReconciler:
                 ),
             )
 
-    async def _project_pending(self, deployment: Deployment, message: str) -> None:
+    async def _update_deployment_status_pending(self, deployment: Deployment, message: str) -> None:
         if deployment.status == "PENDING" and deployment.status_message == message:
             return
-        await self._project_status(
+        await self._update_deployment_status(
             deployment,
             BackendStatusUpdate(status="PENDING", status_message=message),
         )
 
-    async def _project_failure(self, deployment: Deployment, message: str) -> None:
-        await self._project_status(
+    async def _update_deployment_status_failure(self, deployment: Deployment, message: str) -> None:
+        await self._update_deployment_status(
             deployment,
             BackendStatusUpdate(status="FAILED", status_message=message),
         )
 
-    async def _project_status(self, deployment: Deployment, update: BackendStatusUpdate) -> None:
+    async def _update_deployment_status(self, deployment: Deployment, update: BackendStatusUpdate) -> None:
         if (
             deployment.status == update.status
             and deployment.status_message == update.status_message

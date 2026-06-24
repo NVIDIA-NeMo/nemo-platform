@@ -184,10 +184,10 @@ class DriftRecoveryPolicy(BaseModel):
         ge=0,
         description="Override controller drift_recovery_max_attempts when set.",
     )
-    base_delay_seconds: int | None = Field(
+    initial_delay_seconds: int | None = Field(
         default=None,
         ge=0,
-        description="Override controller drift_recovery_base_delay_seconds when set.",
+        description="Override controller drift_recovery_initial_delay_seconds when set.",
     )
     max_delay_seconds: int | None = Field(
         default=None,
@@ -198,11 +198,11 @@ class DriftRecoveryPolicy(BaseModel):
     @model_validator(mode="after")
     def _validate_delays(self) -> DriftRecoveryPolicy:
         if (
-            self.base_delay_seconds is not None
+            self.initial_delay_seconds is not None
             and self.max_delay_seconds is not None
-            and self.base_delay_seconds > self.max_delay_seconds
+            and self.initial_delay_seconds > self.max_delay_seconds
         ):
-            raise ValueError("base_delay_seconds must not exceed max_delay_seconds")
+            raise ValueError("initial_delay_seconds must not exceed max_delay_seconds")
         return self
 
 

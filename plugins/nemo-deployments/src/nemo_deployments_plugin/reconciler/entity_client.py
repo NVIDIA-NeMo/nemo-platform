@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Paginated entity listing for reconcile loops."""
+"""Entity client helpers for paginated listing and prerequisite resolution."""
 
 from __future__ import annotations
 
