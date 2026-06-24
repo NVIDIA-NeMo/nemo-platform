@@ -4,7 +4,7 @@
 """Write release bundle metadata for downloaded SDK wheel artifacts.
 
 Container artifacts are metadata-only manifest entries: the image bits are
-built and staged by Platform-Deploy from its dev registry at the bundle's
+built and staged by the release consumer from its dev registry at the bundle's
 source SHA, so container entries carry no path or checksum.
 """
 
