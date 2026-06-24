@@ -108,9 +108,7 @@ describe('ClaudeCodeTopBarChat', () => {
     await user.click(screen.getByRole('button', { name: 'Open Code Agent chat' }));
     await user.click(await screen.findByRole('button', { name: 'Open in main chat' }));
 
-    await waitFor(() =>
-      expect(screen.getByTestId('pathname').textContent).toContain('code-agent')
-    );
+    await waitFor(() => expect(screen.getByTestId('pathname').textContent).toContain('code-agent'));
   });
 
   it('starts a new compact chat from the popout header', async () => {

@@ -89,7 +89,8 @@ export const ClaudeCodeChatRoute: FC = () => {
     }
   }, [navigate, selectedSessionId, workspace]);
 
-  const isLoadingSelectedSession = selectedSessionId !== undefined && selectedSessionId !== sessionId;
+  const isLoadingSelectedSession =
+    selectedSessionId !== undefined && selectedSessionId !== sessionId;
 
   if (isLoadingSelectedSession && loadStatus === 'loading') {
     return <ClaudeCodeChatLoadingState selectedSessionId={selectedSessionId} />;

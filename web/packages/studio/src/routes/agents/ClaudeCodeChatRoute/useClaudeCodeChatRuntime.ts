@@ -563,7 +563,11 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
   }, [clearInputRequest, clearPermissionRequest, onSessionIdChange, resetThread, workspace]);
 
   const loadSession = useCallback(
-    ({ artifacts: nextArtifacts, messages, sessionId: nextSessionId }: LoadClaudeCodeSessionOptions) => {
+    ({
+      artifacts: nextArtifacts,
+      messages,
+      sessionId: nextSessionId,
+    }: LoadClaudeCodeSessionOptions) => {
       sessionIdRef.current = nextSessionId;
       setSessionId(nextSessionId);
       onSessionIdChange?.(nextSessionId);
