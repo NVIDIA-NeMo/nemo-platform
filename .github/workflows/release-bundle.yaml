@@ -243,8 +243,8 @@ jobs:
       #   containers -> every catalog container, no SDKs
       #   custom     -> exactly sdk_ids + container_ids (either may be empty)
       # Container image bits are not built here; container entries are recorded
-      # in the manifest as typed artifacts and Platform-Deploy stages them from
-      # its dev registry by this release's source SHA.
+      # in the manifest as typed artifacts and the release consumer stages them
+      # from the dev registry by this release's source SHA.
       - name: Plan release assets
         id: plan-assets
         shell: bash
@@ -278,7 +278,11 @@ jobs:
           # catalog: no empty entries, no duplicates, no unknown ids.
           parse_custom_ids() {
             local raw="$1" kind="$2" catalog_json="$3" parsed unknown
-            parsed="$(jq -Rnc --arg value "${raw}" '$value | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0))')"
+            parsed="$(jq -Rnc --arg value "${raw}" '$value | split(",") | map(gsub("^\\s+|\\s+$"; ""))')"
+            if jq -e 'any(.[]; length == 0)' <<<"${parsed}" >/dev/null; then
+              echo "::error::${kind}_ids contains an empty entry"
+              exit 1
+            fi
             if ! jq -e 'length == (unique | length)' <<<"${parsed}" >/dev/null; then
               echo "::error::${kind}_ids contains duplicate entries"
               exit 1

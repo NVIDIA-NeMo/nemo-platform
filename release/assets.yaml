@@ -3,18 +3,11 @@ sdk:
   - id: nemo-platform-plugin
 
 # Container images eligible for release publishing. This list is the single
-# source of truth: Platform-Deploy's Release Deploy Artifacts and Release
-# Promote Public workflows read it from this repository at the release ref.
-# Each id must match an image name pushed to the dev registry tagged by this
-# repository's commit SHA, and should have a catalog metadata entry in
-# Platform-Deploy release/nemo-assets-config.yaml.
+# source of truth: the release-consumer repository reads it at the release ref
+# to decide which images to stage. Each id must match an image name pushed to
+# the dev registry tagged by this repository's commit SHA, and should have a
+# catalog metadata entry on the consumer side.
 container:
-  - id: nmp-automodel-base
   - id: nmp-automodel-tasks
   - id: nmp-automodel-training
   - id: nmp-unsloth-training
-  # Core deployable services: the bare minimum the Helm chart and customizer
-  # need for a working platform (built by Platform-Deploy docker.yaml docker-cpu).
-  - id: nmp-api
-  - id: nmp-core
-  - id: nmp-cpu-tasks
