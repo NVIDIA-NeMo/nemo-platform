@@ -1130,10 +1130,11 @@ class JobDispatcher:
         except EntityNotFoundError:
             return None
 
-    async def list_tasks(self, step_id: str) -> list[PlatformJobTask]:
+    async def list_tasks(self, step_id: str, workspace: str) -> list[PlatformJobTask]:
         """List all platform job tasks for a specific step."""
         response = await self.store.list(
             PlatformJobTask,
+            workspace=workspace,
             filter_obj={"step_id": step_id},
             page_size=1000,
         )

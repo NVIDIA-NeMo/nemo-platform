@@ -6,12 +6,15 @@ import threading
 
 from nemo_platform import APIError, APIStatusError, NeMoPlatform
 from nemo_platform.types.jobs import PlatformJobStepWithContext
+from nemo_platform.types.jobs.platform_job_steps_list_filter_param import PlatformJobStepsListFilterParam
+from nemo_platform.types.shared.platform_job_status import PlatformJobStatus as SDKPlatformJobStatus
 from nmp.common.controller import Controller
 from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.common.observability import scoped_app_ctx, start_span_with_ctx
 from nmp.core.jobs.app.ctx import JobBackendContext, JobContext
 from nmp.core.jobs.controllers.backends import extract_provider_profile
 from nmp.core.jobs.controllers.backends.registry import BackendRegistry
+from nmp.core.jobs.controllers.diagnostics import log_job_diagnostics_if_debug
 from opentelemetry import metrics, trace
 
 tracer = trace.get_tracer(__name__)
@@ -30,6 +33,7 @@ class JobReconciler(Controller):
         self._nmp_sdk = nmp_sdk
         self._stop_signal = stop_signal
         self._is_healthy = False
+        self._logger = logger
 
         self._step_reconciliation_total = meter.create_counter(
             name="nmp.jobs.reconciler.step.reconciliation.total",
@@ -52,7 +56,7 @@ class JobReconciler(Controller):
 
         with tracer.start_as_current_span("jobs_reconciler/fetch_steps_for_reconciliation"):
             try:
-                statuses = [
+                statuses: list[SDKPlatformJobStatus] = [
                     PlatformJobStatus.PENDING.value,
                     PlatformJobStatus.ACTIVE.value,
                     PlatformJobStatus.CANCELLING.value,
@@ -84,6 +88,16 @@ class JobReconciler(Controller):
                     ):
                         job_update = backend.sync(step)
                         logger.info(f"Updating job step status from '{step.status}' to '{job_update.status}'")
+                        if (
+                            job_update.status == PlatformJobStatus.ERROR.value
+                            and step.status != PlatformJobStatus.ERROR
+                        ):
+                            log_job_diagnostics_if_debug(
+                                self._nmp_sdk,
+                                step,
+                                logger=self._logger,
+                                context="step transitioned to error during reconciliation",
+                            )
                         self._nmp_sdk.jobs.steps.update_status(
                             step.name,
                             workspace=step.workspace,
@@ -113,6 +127,12 @@ class JobReconciler(Controller):
                         )
                 except Exception:
                     logger.exception("Unexpected error when reconciling job step")
+                    log_job_diagnostics_if_debug(
+                        self._nmp_sdk,
+                        step,
+                        logger=self._logger,
+                        context="unexpected reconciliation error",
+                    )
                     self._step_reconciliation_errors.add(
                         1,
                         attributes={
@@ -129,16 +149,17 @@ class JobReconciler(Controller):
                 except Exception:
                     logger.exception("Could not complete cleanup steps for backend", exc_info=True)
 
-    def get_steps_for_reconciliation(self, statuses: list[str]) -> list[PlatformJobStepWithContext]:
+    def get_steps_for_reconciliation(self, statuses: list[SDKPlatformJobStatus]) -> list[PlatformJobStepWithContext]:
         """
         Return the list of steps to reconcile.
         """
         # Iterate through all pages to get all steps
         steps = []
+        filter_params: PlatformJobStepsListFilterParam = {"status": statuses}
         for step in self._nmp_sdk.jobs.steps.list(
             name="-",  # Use "-" to indicate all jobs
             workspace="-",  # Cross-workspace query
-            filter={"status": statuses},
+            filter=filter_params,
             sort="updated_at",
         ):
             steps.append(step)
