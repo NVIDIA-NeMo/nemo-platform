@@ -29,7 +29,11 @@ class S3StorageConfigParam(TypedDict, total=False):
     """S3 bucket name"""
 
     access_key_id_secret: SecretRef
-    """Reference to a platform secret by name."""
+    """Reference to a secret.
+
+    Format: 'secret_name' (uses request workspace) or 'workspace/secret_name'
+    (explicit workspace).
+    """
 
     endpoint_url: str
     """Custom endpoint URL for S3-compatible storage (e.g., MinIO, Garage, RustFS).
@@ -57,7 +61,11 @@ class S3StorageConfigParam(TypedDict, total=False):
     """
 
     secret_access_key_secret: SecretRef
-    """Reference to a platform secret by name."""
+    """Reference to a secret.
+
+    Format: 'secret_name' (uses request workspace) or 'workspace/secret_name'
+    (explicit workspace).
+    """
 
     signature_version: Literal["s3v4", "s3"]
     """AWS signature version for request signing.

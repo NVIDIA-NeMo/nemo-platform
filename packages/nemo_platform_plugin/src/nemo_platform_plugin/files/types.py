@@ -56,8 +56,6 @@ class FilesetOutput(BaseModel):
 
 
 class FilesetFileOutput(BaseModel):
-    """Individual file metadata within a fileset."""
-
     file_ref: str
     file_url: str
     path: str

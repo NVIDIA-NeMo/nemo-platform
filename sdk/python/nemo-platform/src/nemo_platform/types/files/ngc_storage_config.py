@@ -26,7 +26,11 @@ __all__ = ["NGCStorageConfig"]
 
 class NGCStorageConfig(BaseModel):
     api_key_secret: SecretRef
-    """Reference to a platform secret by name."""
+    """Reference to a secret.
+
+    Format: 'secret_name' (uses request workspace) or 'workspace/secret_name'
+    (explicit workspace).
+    """
 
     org: str
     """NGC organization name"""

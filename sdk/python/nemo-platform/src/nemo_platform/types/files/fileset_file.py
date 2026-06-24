@@ -24,8 +24,6 @@ __all__ = ["FilesetFile"]
 
 
 class FilesetFile(BaseModel):
-    """Individual file metadata within a fileset."""
-
     file_ref: str
 
     file_url: str

@@ -26,7 +26,11 @@ __all__ = ["NGCStorageConfigParam"]
 
 class NGCStorageConfigParam(TypedDict, total=False):
     api_key_secret: Required[SecretRef]
-    """Reference to a platform secret by name."""
+    """Reference to a secret.
+
+    Format: 'secret_name' (uses request workspace) or 'workspace/secret_name'
+    (explicit workspace).
+    """
 
     org: Required[str]
     """NGC organization name"""

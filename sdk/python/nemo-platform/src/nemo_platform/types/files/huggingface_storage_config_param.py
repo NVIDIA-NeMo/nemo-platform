@@ -51,6 +51,10 @@ class HuggingfaceStorageConfigParam(TypedDict, total=False):
     """Branch, tag, or commit SHA. Defaults to 'main'"""
 
     token_secret: SecretRef
-    """Reference to a platform secret by name."""
+    """Reference to a secret.
+
+    Format: 'secret_name' (uses request workspace) or 'workspace/secret_name'
+    (explicit workspace).
+    """
 
     type: Literal["huggingface"]

@@ -29,7 +29,11 @@ class S3StorageConfig(BaseModel):
     """S3 bucket name"""
 
     access_key_id_secret: Optional[SecretRef] = None
-    """Reference to a platform secret by name."""
+    """Reference to a secret.
+
+    Format: 'secret_name' (uses request workspace) or 'workspace/secret_name'
+    (explicit workspace).
+    """
 
     endpoint_url: Optional[str] = None
     """Custom endpoint URL for S3-compatible storage (e.g., MinIO, Garage, RustFS).
@@ -57,7 +61,11 @@ class S3StorageConfig(BaseModel):
     """
 
     secret_access_key_secret: Optional[SecretRef] = None
-    """Reference to a platform secret by name."""
+    """Reference to a secret.
+
+    Format: 'secret_name' (uses request workspace) or 'workspace/secret_name'
+    (explicit workspace).
+    """
 
     signature_version: Optional[Literal["s3v4", "s3"]] = None
     """AWS signature version for request signing.
