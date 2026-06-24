@@ -11,3 +11,5 @@ container:
   - id: nmp-automodel-tasks
   - id: nmp-automodel-training
   - id: nmp-unsloth-training
+  - id: auditor-tasks
+  - id: safe-synthesizer-tasks
