@@ -1,9 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""The experiments list ranks by a ClickHouse rollup metric (Option A app-merge), end to end."""
-
-from __future__ import annotations
+"""The experiments list sorts by a ClickHouse rollup metric (Option A app-merge), end to end."""
 
 import uuid
 from datetime import datetime, timedelta, timezone

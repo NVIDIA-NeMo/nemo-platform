@@ -3744,6 +3744,8 @@ paths:
                 $ref: '#/components/schemas/ExperimentResponsesPage'
         '400':
           description: Unsupported sort field
+        '413':
+          description: Too many experiments selected to sort in one request
         '503':
           description: Telemetry store unavailable for a metric-based sort
         '422':

@@ -62,13 +62,13 @@ EXPERIMENTS_TAG = "Experiments"
 ExperimentGroupSortField = Literal["-created_at", "created_at", "-updated_at", "updated_at", "-name", "name"]
 
 # The experiments list is sorted in the application layer (compute-on-read) so a single request can
-# rank by a ClickHouse rollup metric, not just entity columns. `sort` is therefore a free string,
+# sort by a ClickHouse rollup metric, not just entity columns. `sort` is therefore a free string,
 # validated against these: an entity column, run_count, or a `<metric>.<stat>` rollup path.
 _ENTITY_SORT_FIELDS = frozenset({"name", "created_at", "updated_at", "pinned_at"})
 _METRIC_STATS = frozenset({"sum", "mean", "median", "p90", "p95", "p99", "count"})
 # Per-group experiment fetch bound for the in-memory merge. Groups are expected to hold at most
-# hundreds; beyond this the tail is not ranked (logged) — the trigger to denormalize metrics into an
-# entity-store-sortable column instead.
+# hundreds; a query that selects more than this is rejected rather than sorted on a partial set — the
+# trigger to denormalize metrics into an entity-store-sortable column instead.
 _MAX_GROUP_EXPERIMENTS = 1000
 
 EntityT = TypeVar("EntityT", Experiment, ExperimentGroup)
@@ -337,6 +337,7 @@ async def create_experiment(
     tags=[EXPERIMENTS_TAG],
     responses={
         400: {"description": "Unsupported sort field"},
+        413: {"description": "Too many experiments selected to sort in one request"},
         503: {"description": "Telemetry store unavailable for a metric-based sort"},
     },
     openapi_extra=generate_openapi_extra_params(
@@ -374,7 +375,7 @@ async def list_experiments(
     _apply_is_deleted_filter(parsed)
     _apply_is_pinned_filter(parsed)
     # Compute-on-read: fetch the whole (entity-filtered) group, hydrate every rollup, then sort and
-    # paginate in memory so a single request can rank by a ClickHouse metric that lives outside the
+    # paginate in memory so a single request can sort by a ClickHouse metric that lives outside the
     # entity store. Bounded to hundreds of experiments per group (see _MAX_GROUP_EXPERIMENTS).
     result = await entity_client.list(
         Experiment,
@@ -384,11 +385,24 @@ async def list_experiments(
         page_size=_MAX_GROUP_EXPERIMENTS,
     )
     responses = [ExperimentResponse.from_entity(e) for e in result.data]
-    if len(responses) >= _MAX_GROUP_EXPERIMENTS:
+    total_selected = result.pagination.total_results
+    if total_selected > _MAX_GROUP_EXPERIMENTS:
+        # The whole filtered set is sorted in memory; anything past the fetch cap can't be sorted, so a
+        # returned page would be silently incomplete. Fail loudly and tell the caller how to scope the
+        # query instead (or denormalize rollup metrics for entity-store sorting once groups grow this big).
         logger.warning(
-            "Experiment list hit the %d-row ranking cap for this filter; the tail is not ranked. "
-            "Consider denormalizing rollup metrics for entity-store sorting.",
+            "Experiment list selected %d experiments, over the %d-row in-memory sort cap; refusing "
+            "to return a partially sorted result.",
+            total_selected,
             _MAX_GROUP_EXPERIMENTS,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=(
+                f"This query selects {total_selected} experiments, exceeding the maximum of "
+                f"{_MAX_GROUP_EXPERIMENTS} that can be sorted in one request. Narrow the result with a "
+                "filter (e.g. experiment_group_id)."
+            ),
         )
     hydrated = await _hydrate_rollups(workspace=workspace, responses=responses, rollup_repository=rollup_repository)
     # A metric-backed sort (anything other than an entity column) is meaningless without rollups: if
@@ -925,7 +939,7 @@ async def _hydrate_rollups(
 
     Returns True when hydration completed (including the no-op empty-list case) and False when it was
     skipped because the rollup store is unavailable (repository absent or query failed). Callers that
-    rank by a rollup metric use the flag to reject the request rather than silently degrade; callers
+    sort by a rollup metric use the flag to reject the request rather than silently degrade; callers
     that only display metrics can ignore it.
     """
     if not responses:
