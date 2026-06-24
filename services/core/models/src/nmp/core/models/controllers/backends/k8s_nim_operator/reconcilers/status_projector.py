@@ -119,7 +119,7 @@ class StatusProjector:
         status_msg = (
             f"Deployment timed out after {format_duration(elapsed)} waiting for NIM "
             f"to pass health checks (timeout: {format_duration(self._backend_config.pending_timeout_seconds)}).\n\n"
-            f"Inspect the NIM pod logs with:\n"
+            f"Inspect the model deployment's pod logs with:\n"
             f"  kubectl logs -n {self._k8s_namespace} {kubectl_target}"
         )
         error_details: Dict[str, Any] = {
@@ -150,7 +150,7 @@ class StatusProjector:
         status_msg = (
             f"Deployment entered crash loop after {restart_count} container restarts "
             f"(max: {self._backend_config.max_restart_count}).\n\n"
-            f"Inspect the NIM pod logs with:\n"
+            f"Inspect the model deployment's pod logs with:\n"
             f"  kubectl logs -n {self._k8s_namespace} {pod_name}"
         )
         return DeploymentStatusUpdate(
