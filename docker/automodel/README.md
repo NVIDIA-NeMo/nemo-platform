@@ -79,6 +79,12 @@ Override registry: `export WHEELS_REGISTRY=...` and `export IMAGE_REGISTRY=...` 
 
 **Base (`nmp-automodel-base`):** NGC PyTorch 26.05, Automodel `uv sync --locked`, pinned `transformers`/`torch`.
 
+**Automodel cherry-picks:** Platform-specific patches under `docker/automodel/cherry-picks/` are applied after `update_pyproject_pytorch.sh` and before `uv sync`. Re-pin or drop patches when upstream `r0.x.y` absorbs the same changes.
+
+| Patch | Purpose |
+|-------|---------|
+| `3d98f6e3.diff` | Drop `decord` + `imageio-ffmpeg` (old bundled ffmpeg); use `torchcodec` for VLM video (`FORCE_QWENVL_VIDEO_READER=torchcodec`) |
+
 **Tasks image:** `uv sync --package nmp-automodel --no-dev --inexact` from the minimal workspace. CPU steps only need platform SDK glue; upgrading ancillary packages here does not affect training.
 
 **Training image:** Do **not** use `uv sync` — it upgrades `transformers` and breaks `PreTrainedModel`. Use **`uv pip install -e`** with **`--overrides no_override_requirements.txt`**, then `uv pip install --no-deps -e /opt/Automodel` to re-pin `nemo_automodel` from the base clone (not PyPI).
