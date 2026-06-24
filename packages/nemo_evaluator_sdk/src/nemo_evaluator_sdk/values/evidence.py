@@ -6,11 +6,60 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import shutil
+import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
+
+
+class FilesystemEntry(BaseModel):
+    """One path that differs between two filesystem snapshots."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    path: str
+    change_type: Literal["added", "modified", "deleted"]
+
+
+class FilesystemDiff(BaseModel):
+    """Set of paths that changed between two filesystem snapshots."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    entries: list[FilesystemEntry] = Field(default_factory=list)
+
+    def changed(
+        self,
+        *,
+        prefix: str | None = None,
+        kinds: set[str] | None = None,
+    ) -> list[FilesystemEntry]:
+        """Return entries optionally filtered by path prefix and change kind."""
+        return [
+            entry
+            for entry in self.entries
+            if (prefix is None or entry.path.startswith(prefix)) and (kinds is None or entry.change_type in kinds)
+        ]
+
+
+class CommandResult(BaseModel):
+    """Outcome of running a verifier command against filesystem evidence."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    exit_code: int
+    stdout: str = ""
+    stderr: str = ""
+    timed_out: bool = False
+
+    @property
+    def ok(self) -> bool:
+        """Whether the command exited 0 without timing out."""
+        return self.exit_code == 0 and not self.timed_out
 
 
 class LocalFilesystemEvidence:
@@ -52,6 +101,84 @@ class LocalFilesystemEvidence:
             return [base.relative_to(self._root).as_posix()]
         iterator = base.rglob("*") if recursive else base.iterdir()
         return sorted(path.relative_to(self._root).as_posix() for path in iterator)
+
+    async def read_bytes(self, relative_path: str | Path) -> bytes:
+        """Read a binary file under the evidence root."""
+        path = self.path(relative_path)
+        return await asyncio.to_thread(path.read_bytes)
+
+    async def list_files(self, pattern: str = "**/*") -> list[str]:
+        """Return relative posix paths of files matching ``pattern`` (files only)."""
+        return await asyncio.to_thread(self._list_sync, pattern)
+
+    def _list_sync(self, pattern: str) -> list[str]:
+        return sorted(path.relative_to(self._root).as_posix() for path in self._root.glob(pattern) if path.is_file())
+
+    async def diff(self, other: LocalFilesystemEvidence) -> FilesystemDiff:
+        """Diff this snapshot (before) against ``other`` (after) by file content hash."""
+        return await asyncio.to_thread(self._diff_sync, other)
+
+    def _diff_sync(self, other: LocalFilesystemEvidence) -> FilesystemDiff:
+        before = self._hashes()
+        after = other._hashes()
+        entries = [FilesystemEntry(path=path, change_type="added") for path in sorted(after.keys() - before.keys())]
+        entries += [FilesystemEntry(path=path, change_type="deleted") for path in sorted(before.keys() - after.keys())]
+        entries += [
+            FilesystemEntry(path=path, change_type="modified")
+            for path in sorted(before.keys() & after.keys())
+            if before[path] != after[path]
+        ]
+        return FilesystemDiff(entries=entries)
+
+    def _hashes(self) -> dict[str, str]:
+        hashes: dict[str, str] = {}
+        for rel in self._list_sync("**/*"):
+            hashes[rel] = hashlib.sha256((self._root / rel).read_bytes()).hexdigest()
+        return hashes
+
+    async def run_verifier(
+        self,
+        command: list[str],
+        *,
+        cwd: str = ".",
+        timeout_s: float | None = None,
+    ) -> CommandResult:
+        """Run ``command`` (no shell) against a throwaway copy of the evidence.
+
+        The evidence is copied to a temp overlay so the command can never mutate
+        stored evidence (pytest caches, build artifacts, ...). ``command`` is a
+        list passed straight to exec — no shell parsing, so no injection surface.
+        """
+        overlay = Path(tempfile.mkdtemp(prefix="evidence-verify-")).resolve()
+        try:
+            workdir = (overlay / cwd).resolve()
+            if workdir != overlay and overlay not in workdir.parents:
+                raise ValueError(f"verifier cwd {cwd!r} resolves outside evidence overlay")
+            await asyncio.to_thread(shutil.copytree, self._root, overlay, dirs_exist_ok=True)
+            return await self._exec(command, workdir, timeout_s)
+        finally:
+            await asyncio.to_thread(shutil.rmtree, overlay, True)
+
+    @staticmethod
+    async def _exec(command: list[str], cwd: Path, timeout_s: float | None) -> CommandResult:
+        process = await asyncio.create_subprocess_exec(
+            *command,
+            cwd=str(cwd),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout_s)
+        except TimeoutError:
+            # wait_for cancels communicate() but leaves the child running; kill it.
+            process.kill()
+            await process.wait()
+            return CommandResult(exit_code=-1, timed_out=True)
+        return CommandResult(
+            exit_code=process.returncode if process.returncode is not None else -1,
+            stdout=stdout.decode(errors="replace"),
+            stderr=stderr.decode(errors="replace"),
+        )
 
 
 class EvidenceDescriptor(BaseModel):

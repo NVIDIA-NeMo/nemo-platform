@@ -130,6 +130,31 @@ class AgentEvalTask(BaseModel):
         return self
 
 
+class AgentEvalTaskset(BaseModel):
+    """Named collection of tasks; ``id``/``name`` sugar around a task list."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(description="Stable taskset identifier.")
+    name: str | None = Field(default=None, description="Human-readable taskset name.")
+    tasks: list[AgentEvalTask] = Field(description="Tasks in this set; task ids must be unique.")
+
+    @field_validator("id")
+    @classmethod
+    def _id_must_not_be_empty(cls, value: str) -> str:
+        if not value:
+            raise ValueError("taskset id must not be empty")
+        return value
+
+    @model_validator(mode="after")
+    def _task_ids_unique(self) -> AgentEvalTaskset:
+        ids = [task.id for task in self.tasks]
+        duplicates = sorted({task_id for task_id in ids if ids.count(task_id) > 1})
+        if duplicates:
+            raise ValueError(f"duplicate taskset task ids: {duplicates}")
+        return self
+
+
 class AgentEvalRunConfig(BaseModel):
     """Configuration for a standalone agent-eval run."""
 

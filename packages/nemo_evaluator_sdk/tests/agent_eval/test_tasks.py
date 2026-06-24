@@ -2,8 +2,24 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import pytest
-from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalTask, SemanticReducer, SemanticView, ViewSignal
+from nemo_evaluator_sdk.agent_eval.tasks import (
+    AgentEvalTask,
+    AgentEvalTaskset,
+    SemanticReducer,
+    SemanticView,
+    ViewSignal,
+)
 from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutputSpec, MetricResult
+
+
+def test_taskset_rejects_duplicate_task_ids() -> None:
+    task = AgentEvalTask(id="dup", intent="i", inputs={})
+    other = AgentEvalTask(id="dup", intent="i", inputs={})
+    AgentEvalTaskset(id="ts", tasks=[task])  # unique ids OK
+    with pytest.raises(ValueError, match="duplicate taskset task ids"):
+        AgentEvalTaskset(id="ts", tasks=[task, other])
+    with pytest.raises(ValueError, match="taskset id must not be empty"):
+        AgentEvalTaskset(id="", tasks=[task])
 
 
 class _Metric:
