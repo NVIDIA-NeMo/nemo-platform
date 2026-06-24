@@ -80,7 +80,7 @@ def test_make_fileset_creates_requested_locale_with_existing_secret(cli_sdk: NeM
 
     fileset = cli_sdk.files.filesets.retrieve(name=get_resource_name_for_locale("en_US"), workspace=WORKSPACE)
     assert isinstance(fileset.storage, NGCStorageConfig)
-    assert fileset.storage.api_key_secret == "system/ngc-api-key"
+    assert fileset.storage.api_key_secret.root == "system/ngc-api-key"
 
 
 def test_make_fileset_creates_secret_from_env_then_fileset(
@@ -107,7 +107,7 @@ def test_make_fileset_creates_secret_from_env_then_fileset(
 
     fileset = cli_sdk.files.filesets.retrieve(name=get_resource_name_for_locale("en_US"), workspace=WORKSPACE)
     assert isinstance(fileset.storage, NGCStorageConfig)
-    assert fileset.storage.api_key_secret == "system/my-ngc-key"
+    assert fileset.storage.api_key_secret.root == "system/my-ngc-key"
 
 
 def test_make_fileset_missing_env_var() -> None:
