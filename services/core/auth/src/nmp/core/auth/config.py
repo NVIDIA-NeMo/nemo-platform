@@ -68,14 +68,6 @@ class AuthServiceConfig(SharedAuthConfig):
         description="Fail-mode for a plugin that contributes invalid HTTP authz.",
     )
 
-    # When true, a human PlatformAdmin is allowed on plugin routes restricted to
-    # SERVICE_PRINCIPAL callers. Default false (deny). Read by the Rego policy via
-    # data.authz.config.platform_admin_exempt_from_service_only.
-    platform_admin_exempt_from_service_only: bool = Field(
-        default=False,
-        description="Allow a human PlatformAdmin on SERVICE_PRINCIPAL-only plugin routes.",
-    )
-
 
 # Backward compatibility alias
 AuthConfig = AuthServiceConfig

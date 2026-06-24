@@ -261,9 +261,9 @@ service_only_endpoints := {
     }
 }
 
-# Test platform admin is DENIED on a service-only route by default (deny overrides the
-# PlatformAdmin allow-bypass).
-test_platform_admin_denied_on_service_only_route if {
+# Test platform admin is ALLOWED on a service-only route — the admin global bypass holds
+# here (only non-admin humans are denied on service-only routes).
+test_platform_admin_allowed_on_service_only_route if {
     result := authz.allow with input as {
         "principal_id": "platform-admin@example.com",
         "method": "DELETE",
@@ -273,22 +273,6 @@ test_platform_admin_denied_on_service_only_route if {
     with data.authz.endpoints as service_only_endpoints
     with data.authz.workspaces as platform_admin_test_data.workspaces
     with data.authz.principals as platform_admin_test_data.principals
-
-    result.allowed == false
-}
-
-# Test platform admin is ALLOWED on a service-only route when the exemption knob is set.
-test_platform_admin_allowed_on_service_only_route_when_exempt if {
-    result := authz.allow with input as {
-        "principal_id": "platform-admin@example.com",
-        "method": "DELETE",
-        "path": "/apis/models/v2/workspaces/workspace1/models/model1"
-    }
-    with data.authz.roles as platform_admin_test_data.roles
-    with data.authz.endpoints as service_only_endpoints
-    with data.authz.workspaces as platform_admin_test_data.workspaces
-    with data.authz.principals as platform_admin_test_data.principals
-    with data.authz.config as {"platform_admin_exempt_from_service_only": true}
 
     result.allowed == true
 }

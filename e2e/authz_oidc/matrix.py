@@ -292,11 +292,11 @@ MATRIX: list[Case] = [
     Case(
         "E4",
         "caller-kind",
-        "PlatformAdmin denied on service-only route (exemption knob default false)",
+        "PlatformAdmin allowed on service-only route (admin global bypass holds)",
         "GET",
         SERVICE_ONLY,
         "admin",
-        {403},
+        {200},
     ),
     Case(
         "E5",
@@ -408,8 +408,7 @@ MATRIX: list[Case] = [
         {403},
     ),
     # ------------------------------------------------------------------ #
-    # G. Knob phase: on_invalid_plugin=quarantine +                       #
-    # platform_admin_exempt_from_service_only=true (restarted platform).  #
+    # G. Knob phase: on_invalid_plugin=quarantine (restarted platform).   #
     # ------------------------------------------------------------------ #
     Case(
         "G1",
@@ -433,36 +432,6 @@ MATRIX: list[Case] = [
     ),
     Case(
         "G3",
-        "knobs",
-        "Exemption knob: PlatformAdmin now allowed on service-only route",
-        "GET",
-        SERVICE_ONLY,
-        "admin",
-        {200},
-        phase="knobs",
-    ),
-    Case(
-        "G4",
-        "knobs",
-        "Exemption knob does NOT extend to plain humans",
-        "GET",
-        SERVICE_ONLY,
-        "nobody",
-        {403},
-        phase="knobs",
-    ),
-    Case(
-        "G5",
-        "knobs",
-        "Service principal still allowed on service-only route (control)",
-        "GET",
-        SERVICE_ONLY,
-        "service",
-        {200},
-        phase="knobs",
-    ),
-    Case(
-        "G6",
         "knobs",
         "Platform sanity under knob phase (admin lists workspaces)",
         "GET",

@@ -7,10 +7,9 @@ import data.authz
 # Data contract: an endpoint method may declare an optional `callers` list of
 # caller-kind strings ("principal", "service_principal"). A route is "service-only"
 # when it lists "service_principal" but NOT "principal". On such routes, human
-# (non-service) callers are denied — overriding the permission/PlatformAdmin allows —
-# unless the platform_admin_exempt_from_service_only config knob is set for a
-# PlatformAdmin caller. Absence of `callers` preserves today's PRINCIPAL-default
-# behavior (no new restriction).
+# (non-service) callers are denied — overriding the permission allows — except a
+# PlatformAdmin, who keeps its global bypass and stays allowed. Absence of `callers`
+# preserves today's PRINCIPAL-default behavior (no new restriction).
 
 caller_kind_test_data := {
 	"roles": {
@@ -97,8 +96,10 @@ test_service_only_route_allows_service_principal if {
 	result.allowed == true
 }
 
-# A human PlatformAdmin is DENIED on a service-only route by default (no exemption knob).
-test_service_only_route_denies_platform_admin_by_default if {
+# A human PlatformAdmin is ALLOWED on a service-only route — its global admin bypass is not
+# clawed back here (only non-admin humans are denied, per
+# test_service_only_route_denies_human_principal above).
+test_service_only_route_allows_platform_admin if {
 	result := authz.allow
 		with input as {
 			"principal_id": "platform-admin@example.com",
@@ -109,42 +110,8 @@ test_service_only_route_denies_platform_admin_by_default if {
 		with data.authz.endpoints as caller_kind_test_data.endpoints
 		with data.authz.workspaces as caller_kind_test_data.workspaces
 		with data.authz.principals as caller_kind_test_data.principals
-
-	result.allowed == false
-}
-
-# With the config knob enabled, the human PlatformAdmin is ALLOWED on a service-only route.
-test_service_only_route_allows_platform_admin_when_exempt if {
-	result := authz.allow
-		with input as {
-			"principal_id": "platform-admin@example.com",
-			"method": "GET",
-			"path": "/apis/jobs/v2/workspaces/ws1/internal-jobs/job-1",
-		}
-		with data.authz.roles as caller_kind_test_data.roles
-		with data.authz.endpoints as caller_kind_test_data.endpoints
-		with data.authz.workspaces as caller_kind_test_data.workspaces
-		with data.authz.principals as caller_kind_test_data.principals
-		with data.authz.config as {"platform_admin_exempt_from_service_only": true}
 
 	result.allowed == true
-}
-
-# The knob does NOT exempt a normal human (non-PlatformAdmin) — still denied.
-test_service_only_route_knob_does_not_exempt_normal_human if {
-	result := authz.allow
-		with input as {
-			"principal_id": "user@example.com",
-			"method": "GET",
-			"path": "/apis/jobs/v2/workspaces/ws1/internal-jobs/job-1",
-		}
-		with data.authz.roles as caller_kind_test_data.roles
-		with data.authz.endpoints as caller_kind_test_data.endpoints
-		with data.authz.workspaces as caller_kind_test_data.workspaces
-		with data.authz.principals as caller_kind_test_data.principals
-		with data.authz.config as {"platform_admin_exempt_from_service_only": true}
-
-	result.allowed == false
 }
 
 # --- Mixed route (callers: ["principal", "service_principal"]) ---

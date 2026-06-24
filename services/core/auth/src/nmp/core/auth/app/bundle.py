@@ -223,12 +223,6 @@ async def _build_authorization_data_internal(entities_client: Optional[EntityCli
     if "principals" not in static_data["authz"]:
         static_data["authz"]["principals"] = {}
 
-    # Surface auth-service config the Rego reads (PlatformAdmin exemption from
-    # SERVICE_PRINCIPAL-only plugin routes — see authz.rego deny_request rules).
-    static_data["authz"].setdefault("config", {})["platform_admin_exempt_from_service_only"] = get_service_config(
-        AuthServiceConfig
-    ).platform_admin_exempt_from_service_only
-
     # Fetch dynamic data from EntityClient if available
     if entities_client:
         # Fetch all role bindings across ALL workspaces with pagination

@@ -13,10 +13,8 @@ whose ``sub`` is ``service:e2e-harness``.
 
 Two platform phases (both lazy, session-scoped):
 
-- ``platform`` — default authz knobs (``on_invalid_plugin=deny_route``,
-  PlatformAdmin not exempt from service-only routes).
-- ``platform_knobs`` — ``on_invalid_plugin=quarantine`` +
-  ``platform_admin_exempt_from_service_only=true``.
+- ``platform`` — default authz knobs (``on_invalid_plugin=deny_route``).
+- ``platform_knobs`` — ``on_invalid_plugin=quarantine``.
 
 Run: ``pytest e2e/authz_oidc -v --run-e2e`` (see README.md).
 """
@@ -284,15 +282,12 @@ def platform(issuer: MiniOIDCIssuer, tmp_path_factory: pytest.TempPathFactory) -
 
 @pytest.fixture(scope="session")
 def platform_knobs(issuer: MiniOIDCIssuer, tmp_path_factory: pytest.TempPathFactory) -> Iterator[Platform]:
-    """Quarantine + PlatformAdmin-exemption knob platform (no extra provisioning)."""
+    """Quarantine-knob platform (no extra provisioning)."""
     gen = _spawn_platform(
         issuer,
         tmp_path_factory,
         "knobs",
-        {
-            "NMP_AUTH_ON_INVALID_PLUGIN": "quarantine",
-            "NMP_AUTH_PLATFORM_ADMIN_EXEMPT_FROM_SERVICE_ONLY": "true",
-        },
+        {"NMP_AUTH_ON_INVALID_PLUGIN": "quarantine"},
     )
     with closing(gen):
         p = next(gen)

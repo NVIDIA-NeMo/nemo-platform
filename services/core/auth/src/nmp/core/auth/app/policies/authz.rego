@@ -332,17 +332,16 @@ service_only_route if {
 	not "principal" in callers
 }
 
-# Deny a human (non-service) caller on a service-only route. This is a deny_request so
-# it overrides the allow rules — including the ServiceSystem "*" wildcard and the
-# PlatformAdmin allow-bypass — otherwise humans would leak onto service-only routes.
-# Service principals (id starts with "service:") are unaffected and stay allowed.
-# A human PlatformAdmin is denied by default, unless explicitly exempted via the
-# platform_admin_exempt_from_service_only config knob.
+# Deny a human (non-service) caller on a service-only route. This is a deny_request so it
+# overrides the allow rules — including the ServiceSystem "*" wildcard — otherwise humans
+# would leak onto service-only routes. Service principals (id starts with "service:") are
+# unaffected and stay allowed. A human PlatformAdmin keeps its global bypass here: an admin
+# retains access to every route, service-only routes included.
 deny_request if {
 	service_only_route
 	principal_id := extract_principal_id
 	not startswith(principal_id, "service:")
-	not platform_admin_exempt
+	not platform_admin_in_system
 }
 
 # Caller-kind enforcement for principal-only routes — the symmetric counterpart of the
@@ -367,16 +366,6 @@ deny_request if {
 	principal_only_route
 	principal_id := extract_principal_id
 	startswith(principal_id, "service:")
-}
-
-# True only when a PlatformAdmin caller is present AND the config knob exempts platform
-# admins from service-only enforcement. Read defensively: an absent config key is treated
-# as false (default deny for human platform admins on service-only routes).
-default platform_admin_exempt := false
-
-platform_admin_exempt if {
-	platform_admin_in_system
-	data.authz.config.platform_admin_exempt_from_service_only == true
 }
 
 # True when any applicable principal has PlatformAdmin in the system workspace (see allow_request).

@@ -163,7 +163,7 @@ def _patch_failmode(monkeypatch, results, on_invalid):
     monkeypatch.setattr(
         bundle,
         "get_service_config",
-        lambda _cls: SimpleNamespace(on_invalid_plugin=on_invalid, platform_admin_exempt_from_service_only=False),
+        lambda _cls: SimpleNamespace(on_invalid_plugin=on_invalid),
     )
     return bundle
 

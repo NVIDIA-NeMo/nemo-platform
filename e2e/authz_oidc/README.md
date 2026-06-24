@@ -49,8 +49,7 @@ Not part of CI: everything is marked `e2e` and skipped without `--run-e2e`.
    rows are untestable). The seeded `*`→Editor@default binding is left alone —
    no matrix row touches the `default` workspace.
 5. **Runs the matrix** (`matrix.py`, ~40 cases), then repeats a small group on
-   a second platform instance with `on_invalid_plugin=quarantine` +
-   `platform_admin_exempt_from_service_only=true`.
+   a second platform instance with `on_invalid_plugin=quarantine`.
 
 ## Matrix coverage
 
@@ -60,9 +59,9 @@ Not part of CI: everything is marked `e2e` and skipped without `--run-e2e`.
 | bindings | no binding → 403; Viewer read-not-write; cross-workspace isolation |
 | no-workspace-get | permission-stamped no-`{workspace}` GET requires the permission in `system`; permissionless sibling stays open |
 | scopes | `auditor:read` token: GET 200 / POST 403; `:write` POST 201; OIDC-only scopes = full power (documented); agents-gateway read/write method split |
-| caller-kind | service principal denied on `callers=[principal]` route (symmetric half); human & PlatformAdmin denied on service-only route; service no-match bypass pinned as documented behavior |
+| caller-kind | service principal denied on `callers=[principal]` route (symmetric half); human denied on service-only route (PlatformAdmin keeps its global bypass); service no-match bypass pinned as documented behavior |
 | fence | unenumerable plugin namespace denied for human/service/PlatformAdmin incl. bare prefix; unruled route denied for everyone while ruled sibling works |
-| knobs | quarantine fences the whole offending plugin; exemption knob admits PlatformAdmin (and only PlatformAdmin) to service-only routes |
+| knobs | quarantine fences the whole offending plugin |
 
 Status-code conventions asserted throughout: **401** only when no identity was
 established (missing/invalid token); **403** for every policy denial of an
