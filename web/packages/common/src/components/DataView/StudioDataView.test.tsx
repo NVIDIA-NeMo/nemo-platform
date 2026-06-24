@@ -153,11 +153,13 @@ vi.mock('@nemo/common/src/components/DataView/internal', () => ({
   TableContent: ({
     className,
     onClick,
+    onKeyDown,
   }: {
     className?: string;
     onClick?: React.MouseEventHandler;
+    onKeyDown?: React.KeyboardEventHandler;
   }) => (
-    <table className={className} onClick={onClick}>
+    <table className={className} onClick={onClick} onKeyDown={onKeyDown}>
       <tbody>
         {mockRenderedRows.map((cells, rowIdx) => (
           <tr key={rowIdx} data-index={rowIdx}>
@@ -168,7 +170,7 @@ vi.mock('@nemo/common/src/components/DataView/internal', () => ({
               <button type="button">Delete {mockFlatRows[rowIdx]?.item.name}</button>
             </td>
             <td>
-              <a href="/details">Link {mockFlatRows[rowIdx]?.item.name}</a>
+              <a href="/details">View {mockFlatRows[rowIdx]?.item.name}</a>
             </td>
             <td>
               <input type="text" defaultValue="edit" aria-label={`edit-${rowIdx}`} />

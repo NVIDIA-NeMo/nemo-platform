@@ -19,7 +19,13 @@ describe('TableEmptyState', () => {
   });
 
   it('renders with custom icon', () => {
-    const customIcon = <div data-testid="custom-icon">🔍</div>;
+    const customIcon = (
+      <div data-testid="custom-icon">
+        <span role="img" aria-label="search icon">
+          🔍
+        </span>
+      </div>
+    );
 
     render(<TableEmptyState header="Test Header" emptyMessage="Test Message" icon={customIcon} />);
 

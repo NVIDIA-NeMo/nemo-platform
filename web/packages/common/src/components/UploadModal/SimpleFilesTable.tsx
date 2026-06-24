@@ -181,14 +181,24 @@ export const SimpleFilesTable = () => {
       )}
       {trailingButton ? (
         <Flex justify="between" align="center">
-          <Button kind="tertiary" asChild>
-            <label htmlFor="upload-more-files">Upload More Files</label>
+          <Button
+            kind="tertiary"
+            onClick={() => {
+              document.getElementById('upload-more-files')?.click();
+            }}
+          >
+            Upload More Files
           </Button>
           {trailingButton}
         </Flex>
       ) : (
-        <Button kind="tertiary" asChild>
-          <label htmlFor="upload-more-files">Upload More Files</label>
+        <Button
+          kind="tertiary"
+          onClick={() => {
+            document.getElementById('upload-more-files')?.click();
+          }}
+        >
+          Upload More Files
         </Button>
       )}
       <input
@@ -198,6 +208,7 @@ export const SimpleFilesTable = () => {
         onChange={handleFileChange}
         accept={acceptableFileTypes.join(',')}
         className="sr-only"
+        aria-label="Upload more files"
       />
     </Stack>
   );

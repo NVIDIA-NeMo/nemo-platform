@@ -64,13 +64,13 @@ export const FileTag: FC<FileTagProps> = ({
           {onClick && <X />}
         </Tag>
       ) : (
-        <div
-          role="button"
+        <button
+          type="button"
           onClick={onNoFileClick}
           className={onNoFileClick ? 'cursor-pointer' : undefined}
         >
           {missingFileNameChip}
-        </div>
+        </button>
       )}
     </Flex>
   );

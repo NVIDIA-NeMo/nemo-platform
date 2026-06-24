@@ -336,12 +336,26 @@ describe('ControlledSearchableSelect', () => {
         {
           value: 'apple',
           label: 'Apple',
-          render: <span data-testid="custom-apple">🍎 Apple</span>,
+          render: (
+            <span data-testid="custom-apple">
+              <span role="img" aria-label="apple">
+                🍎
+              </span>{' '}
+              Apple
+            </span>
+          ),
         },
         {
           value: 'banana',
           label: 'Banana',
-          render: <span data-testid="custom-banana">🍌 Banana</span>,
+          render: (
+            <span data-testid="custom-banana">
+              <span role="img" aria-label="banana">
+                🍌
+              </span>{' '}
+              Banana
+            </span>
+          ),
         },
       ];
 

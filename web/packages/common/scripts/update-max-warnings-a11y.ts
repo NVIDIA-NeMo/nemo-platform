@@ -1,0 +1,46 @@
+#!/usr/bin/env node
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+import { execSync } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+
+const pkgPath = path.resolve(process.cwd(), 'package.json');
+const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as {
+  scripts: Record<string, string>;
+};
+
+// Run ESLint with the a11y config and capture JSON output
+let output: string;
+try {
+  output = execSync(
+    'pnpm exec eslint . --config ../../eslint.config.a11y.js --no-config-lookup --no-inline-config --format json',
+    { encoding: 'utf8' }
+  );
+} catch (e) {
+  output = (e as { stdout: string }).stdout;
+}
+
+const results: Array<{ warningCount: number }> = JSON.parse(output);
+const warningCount: number = results.reduce((sum, file) => sum + file.warningCount, 0);
+
+// Find current max-warnings in lint:a11y script
+const a11yScript: string = pkg.scripts['lint:a11y'];
+if (!a11yScript) {
+  console.error('No lint:a11y script found in package.json');
+  process.exit(1);
+}
+
+const maxWarningsRegex = /--max-warnings (\d+)/;
+const currentMax: number = parseInt(a11yScript.match(maxWarningsRegex)?.[1] || '0', 10);
+
+if (warningCount !== currentMax) {
+  pkg.scripts['lint:a11y'] = a11yScript.replace(maxWarningsRegex, `--max-warnings ${warningCount}`);
+  fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
+  // eslint-disable-next-line no-console
+  console.log(`Updated lint:a11y max-warnings from ${currentMax} to ${warningCount}`);
+} else {
+  // eslint-disable-next-line no-console
+  console.log(`No update needed. Current warnings: ${warningCount}, max-warnings: ${currentMax}`);
+}
