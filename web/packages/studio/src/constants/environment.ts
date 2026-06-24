@@ -47,6 +47,7 @@ export const INTAKE_ENABLED = featureFlags.intakeEnabled !== false;
 export const JOBS_ENABLED = featureFlags.jobsEnabled !== false;
 export const MEMBERS_ENABLED = featureFlags.membersEnabled !== false;
 export const MODEL_COMPARE_ENABLED = featureFlags.modelCompareEnabled !== false;
+export const PROMPTS_ENABLED = featureFlags.promptsEnabled !== false;
 export const SAFE_SYNTHESIZER_ENABLED = featureFlags.safeSynthesizerEnabled !== false;
 export const SECRETS_ENABLED = featureFlags.secretsEnabled !== false;
 export const SETTINGS_ENABLED = featureFlags.settingsEnabled !== false;

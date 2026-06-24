@@ -21,6 +21,7 @@ import {
   JOBS_ENABLED,
   MEMBERS_ENABLED,
   MODEL_COMPARE_ENABLED,
+  PROMPTS_ENABLED,
   SAFE_SYNTHESIZER_ENABLED,
   SECRETS_ENABLED,
   SETTINGS_ENABLED,
@@ -97,6 +98,9 @@ export const gateDeploymentsRoutes = (routes: RouteObject | RouteObject[]) =>
 
 export const gateModelCompareRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(MODEL_COMPARE_ENABLED, routes);
+
+export const gatePromptsRoutes = (routes: RouteObject | RouteObject[]) =>
+  gateRoutes(PROMPTS_ENABLED, routes);
 
 type WorkspacePathParams = {
   workspace: string;
@@ -377,6 +381,10 @@ export const getWorkspaceMembersRoute = (workspace: string) => {
 
 export const getModelCompareRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.modelCompare, { workspace });
+};
+
+export const getWorkspacePromptsRoute = (workspace: string) => {
+  return generatePath(ROUTES.workspace.prompts, { workspace });
 };
 
 export const getFilesetDetailsRoute = (

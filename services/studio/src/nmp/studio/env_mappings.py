@@ -139,6 +139,11 @@ ENV_MAPPINGS: list[EnvMapping] = [
         default="false",
     ),
     EnvMapping(
+        marker="STUDIO_UI_VITE_FF_PROMPTS_ENABLED",
+        config_path="studio.feature_flags.prompts_enabled",
+        default="false",
+    ),
+    EnvMapping(
         marker="STUDIO_UI_VITE_FF_SAFE_SYNTHESIZER_ENABLED",
         config_path="studio.feature_flags.safe_synthesizer_enabled",
         default="false",

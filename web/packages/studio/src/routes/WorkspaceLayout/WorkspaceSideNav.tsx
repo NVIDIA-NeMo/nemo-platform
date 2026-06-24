@@ -3,6 +3,7 @@
 
 import SafeSynthesizerLogo from '@nemo/common/src/svgs/safe_synthesizer_logo.svg?react';
 import { NavigationDrawer } from '@studio/components/Layouts/NavigationDrawer';
+import { DataDesignerIconFc, PromptIconFc } from '@studio/constants/constants';
 import {
   AGENTS_ENABLED,
   BASE_MODELS_ENABLED,
@@ -18,6 +19,7 @@ import {
   INTAKE_ENABLED,
   JOBS_ENABLED,
   MODEL_COMPARE_ENABLED,
+  PROMPTS_ENABLED,
   SAFE_SYNTHESIZER_ENABLED,
   SETTINGS_ENABLED,
 } from '@studio/constants/environment';
@@ -40,6 +42,7 @@ import {
   getWorkspaceFilesetsRoute,
   getWorkspaceDeploymentsRoute,
   getWorkspaceJobsRoute,
+  getWorkspacePromptsRoute,
   getWorkspaceSafeSynthesizerRoute,
   getWorkspaceSettingsRoute,
 } from '@studio/routes/utils';
@@ -49,7 +52,6 @@ import {
   ChartBar,
   Database,
   HatGlasses,
-  LayoutList,
   ListChecks,
   Home,
   ShieldCheck,
@@ -148,7 +150,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
       ? [
           {
             id: 'data-designer',
-            slotIcon: <LayoutList className={iconColorClass} />,
+            slotIcon: <DataDesignerIconFc className={iconColorClass} />,
             slotLabel: 'Data Designer',
             href: getDataDesignerJobListRoute(workspace),
           },
@@ -242,7 +244,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
             },
           ]
         : []),
-      ...(BASE_MODELS_ENABLED || customizerNav.length > 0 || DEPLOYMENTS_ENABLED
+      ...(BASE_MODELS_ENABLED || customizerNav.length > 0 || DEPLOYMENTS_ENABLED || PROMPTS_ENABLED
         ? [
             {
               group: 'Models',
@@ -265,6 +267,16 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
                         slotIcon: <Rocket className={iconColorClass} />,
                         slotLabel: 'Deployments',
                         href: getWorkspaceDeploymentsRoute(workspace),
+                      },
+                    ]
+                  : []),
+                ...(PROMPTS_ENABLED
+                  ? [
+                      {
+                        id: 'prompts',
+                        slotIcon: <PromptIconFc className={iconColorClass} />,
+                        slotLabel: 'Prompts',
+                        href: getWorkspacePromptsRoute(workspace),
                       },
                     ]
                   : []),

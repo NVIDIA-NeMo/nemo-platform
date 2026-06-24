@@ -27,6 +27,7 @@ import type {
 import { Banner, Button, Text } from '@nvidia/foundations-react-core';
 import { DeleteJobModal } from '@studio/components/dataViews/DataDesignerJobsDataView/DeleteJobModal';
 import { QuickActionsMenuRoot } from '@studio/components/QuickActionsMenu/QuickActionsMenuRoot';
+import { DataDesignerIconFc } from '@studio/constants/constants';
 import { STATUS_FILTER_OPTIONS } from '@studio/constants/platformJobs';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getDataDesignerJobDetailsRoute, getNewDataDesignerJobRoute } from '@studio/routes/utils';
@@ -248,6 +249,7 @@ export const DataDesignerJobsDataView: FC = () => {
                 />
               ) : (
                 <TableEmptyState
+                  icon={<DataDesignerIconFc className="size-16" />}
                   header="Data Designer Jobs"
                   emptyMessage="Create and manage data designer jobs to generate or transform datasets."
                   actions={

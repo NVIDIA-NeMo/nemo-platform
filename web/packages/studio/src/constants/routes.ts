@@ -122,6 +122,7 @@ export const ROUTES = {
     modelCompare: `/workspaces/:${P.workspace}/playground`,
     agentOptimizations: `/workspaces/:${P.workspace}/agents/suggestions`,
     agentMonitor: `/workspaces/:${P.workspace}/agents/monitor`,
+    prompts: `/workspaces/:${P.workspace}/prompts`,
   },
   models: {
     index: '/models',

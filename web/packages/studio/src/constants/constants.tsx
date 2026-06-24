@@ -10,6 +10,8 @@
  * its affiliates is strictly prohibited.
  */
 
+import { MessagesSquare, Palette } from 'lucide-react';
+
 export const CHAT_DEFAULT_MAX_TOKENS = 4096;
 export const DEFAULT_LARGE_PAGE_SIZE = 1000;
 export const DATASET_NAME_REGEX = /^[a-zA-Z0-9._-]+$/;
@@ -20,3 +22,6 @@ export const DEFAULT_TOOLS_FILE_NAME = 'tools.json';
 export const EMPTY_FIELD_VALUE = '-';
 export const EMPTY_FIELD_EMDASH_VALUE = '—';
 export const DEFAULT_BUILD_MODEL_NAME = 'nvidia-nvidia-llama-3-3-nemotron-super-49b-v1-5';
+
+export const DataDesignerIconFc = Palette;
+export const PromptIconFc = MessagesSquare;
