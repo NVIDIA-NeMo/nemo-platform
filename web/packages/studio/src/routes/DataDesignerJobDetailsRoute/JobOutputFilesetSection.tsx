@@ -17,7 +17,7 @@ import { useDataDesignerArtifactsFileset } from '@studio/routes/DataDesignerJobD
 import { getFilesetDetailsRoute } from '@studio/routes/utils';
 import { getHumanReadableFileSize } from '@studio/util/files';
 import { useQueryClient } from '@tanstack/react-query';
-import { ComponentProps, FC, useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ComponentProps, type FC } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 type FileRow = FilesetFileOutput & { id: string };
@@ -45,6 +45,8 @@ export const JobOutputFilesetSection: FC = () => {
     listFilesParams,
     files,
     isResultsLoading,
+    isResultsError,
+    resultsError,
     isFilesLoading,
     isFilesError: isListFilesError,
     filesError: listFilesError,
@@ -145,6 +147,20 @@ export const JobOutputFilesetSection: FC = () => {
           <Text kind="body/regular/md" className="text-muted">
             Loading job results…
           </Text>
+        </Stack>
+      </Card>
+    );
+  }
+
+  if (isResultsError) {
+    return (
+      <Card>
+        <Stack gap="4">
+          <Banner kind="inline" status="error" title="Could not load job results">
+            {resultsError instanceof Error
+              ? resultsError.message
+              : 'The job results list could not be loaded.'}
+          </Banner>
         </Stack>
       </Card>
     );

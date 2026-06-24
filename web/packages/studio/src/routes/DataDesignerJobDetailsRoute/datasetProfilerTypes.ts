@@ -133,7 +133,13 @@ export interface DatasetProfilerResults {
 
 const LLM_COLUMN_TYPES = new Set(['llm-text', 'llm-code', 'llm-structured', 'llm-judge']);
 
-export const isLLMColumnStatistics = (stats: ColumnStatistics): stats is LLMTextColumnStatistics =>
+export type LLMColumnStatistics =
+  | LLMTextColumnStatistics
+  | LLMCodeColumnStatistics
+  | LLMStructuredColumnStatistics
+  | LLMJudgedColumnStatistics;
+
+export const isLLMColumnStatistics = (stats: ColumnStatistics): stats is LLMColumnStatistics =>
   LLM_COLUMN_TYPES.has(stats.column_type);
 
 export const isValidationColumnStatistics = (
@@ -149,7 +155,8 @@ export const getPercentComplete = (results: DatasetProfilerResults): number => {
   if (results.target_num_records <= 0) {
     return 0;
   }
-  return (100 * results.num_records) / results.target_num_records;
+  const percent = (100 * results.num_records) / results.target_num_records;
+  return Math.max(0, Math.min(100, percent));
 };
 
 /** `num_unique / num_records` as a percentage, or undefined when unavailable. */

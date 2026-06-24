@@ -15,32 +15,32 @@
 export const BUILDER_CONFIG_FILENAME = 'builder_config.json';
 
 export interface BuilderConfigColumnSummary {
-  name: string;
-  type: string;
-  modelAlias?: string;
+  readonly name: string;
+  readonly type: string;
+  readonly modelAlias?: string;
 }
 
 export interface BuilderConfigModelSummary {
-  alias: string;
-  model: string;
-  provider?: string;
+  readonly alias: string;
+  readonly model: string;
+  readonly provider?: string;
 }
 
 export interface BuilderConfigSeedSummary {
-  type: string;
-  samplingStrategy?: string;
+  readonly type: string;
+  readonly samplingStrategy?: string;
 }
 
 export interface BuilderConfigSummary {
-  columnCount: number;
-  columns: BuilderConfigColumnSummary[];
-  columnTypeBreakdown: Array<{ type: string; count: number }>;
-  models: BuilderConfigModelSummary[];
-  seed?: BuilderConfigSeedSummary;
-  constraintCount: number;
-  profilerCount: number;
-  processorNames: string[];
-  libraryVersion?: string;
+  readonly columnCount: number;
+  readonly columns: BuilderConfigColumnSummary[];
+  readonly columnTypeBreakdown: Array<{ type: string; count: number }>;
+  readonly models: BuilderConfigModelSummary[];
+  readonly seed?: BuilderConfigSeedSummary;
+  readonly constraintCount: number;
+  readonly profilerCount: number;
+  readonly processorNames: string[];
+  readonly libraryVersion?: string;
 }
 
 const asRecord = (value: unknown): Record<string, unknown> | undefined =>

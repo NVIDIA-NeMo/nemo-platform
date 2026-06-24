@@ -11,7 +11,7 @@ import {
   type BuilderConfigSummary,
 } from '@studio/routes/DataDesignerJobDetailsRoute/builderConfig';
 import { useDataDesignerArtifactsFileset } from '@studio/routes/DataDesignerJobDetailsRoute/useDataDesignerArtifactsFileset';
-import { FC, useMemo } from 'react';
+import { useMemo, type FC } from 'react';
 
 export interface DataDesignerConfigPanelProps {
   open: boolean;
@@ -56,9 +56,9 @@ const ConfigSummary: FC<{ summary: BuilderConfigSummary }> = ({ summary }) => (
         <Divider />
         <Stack gap="density-md">
           <Text kind="label/semibold/md">Models</Text>
-          {summary.models.map((model) => (
+          {summary.models.map((model, index) => (
             <KVPair
-              key={model.alias}
+              key={`${model.alias}-${index}`}
               label={model.alias}
               value={model.provider ? `${model.model} (${model.provider})` : model.model}
             />
@@ -72,9 +72,9 @@ const ConfigSummary: FC<{ summary: BuilderConfigSummary }> = ({ summary }) => (
         <Divider />
         <Stack gap="density-md">
           <Text kind="label/semibold/md">Columns</Text>
-          {summary.columns.map((column) => (
+          {summary.columns.map((column, index) => (
             <KVPair
-              key={column.name}
+              key={`${column.name}-${index}`}
               label={column.name}
               value={column.modelAlias ? `${column.type} · ${column.modelAlias}` : column.type}
             />

@@ -22,7 +22,7 @@ import { JobOutputFilesetSection } from '@studio/routes/DataDesignerJobDetailsRo
 import { useDataDesignerJobFromRoute } from '@studio/routes/DataDesignerJobDetailsRoute/useDataDesignerJobFromRoute';
 import { getDataDesignerJobListRoute } from '@studio/routes/utils';
 import { ArrowLeft, FileJson } from 'lucide-react';
-import { FC, useState } from 'react';
+import { useState, type FC } from 'react';
 import { Link } from 'react-router-dom';
 
 export const DataDesignerJobDetailsRoute: FC = () => {

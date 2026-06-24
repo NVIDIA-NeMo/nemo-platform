@@ -18,7 +18,7 @@ import {
 } from '@studio/routes/DataDesignerJobDetailsRoute/datasetProfilerTypes';
 import { useDataDesignerJobAnalysis } from '@studio/routes/DataDesignerJobDetailsRoute/useDataDesignerJobAnalysis';
 import { useDataDesignerJobFromRoute } from '@studio/routes/DataDesignerJobDetailsRoute/useDataDesignerJobFromRoute';
-import { FC } from 'react';
+import type { FC } from 'react';
 
 const ColumnGrid: FC<{ children: React.ReactNode }> = ({ children }) => (
   <Grid cols={{ xs: 1, sm: 2, xl: 3 }} gap="density-lg">
@@ -54,7 +54,7 @@ export const DatasetProfilerSection: FC = () => {
     );
   }
 
-  if (isLoading && !hasAnalysis) {
+  if (isLoading && !analysis) {
     return (
       <ColumnGrid>
         {Array.from({ length: 6 }, (_, i) => (

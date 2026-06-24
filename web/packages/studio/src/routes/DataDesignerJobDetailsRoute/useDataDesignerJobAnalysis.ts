@@ -30,10 +30,14 @@ export const useDataDesignerJobAnalysis = (
   jobName: string,
   { enabled = true }: UseDataDesignerJobAnalysisOptions = {}
 ) => {
-  const { data: resultsResponse, isLoading: isResultsLoading } =
-    useDataDesignerListCreateJobResults(workspace, jobName, {
-      query: { enabled: enabled && Boolean(workspace && jobName) },
-    });
+  const {
+    data: resultsResponse,
+    isLoading: isResultsLoading,
+    isError: isResultsError,
+    error: resultsError,
+  } = useDataDesignerListCreateJobResults(workspace, jobName, {
+    query: { enabled: enabled && Boolean(workspace && jobName) },
+  });
 
   const hasAnalysis = Boolean(
     resultsResponse?.data?.some((result) => result.name === ANALYSIS_RESULT_NAME)
@@ -62,7 +66,7 @@ export const useDataDesignerJobAnalysis = (
     analysis: analysisQuery.data,
     hasAnalysis,
     isLoading: isResultsLoading || (hasAnalysis && analysisQuery.isLoading),
-    isError: analysisQuery.isError,
-    error: analysisQuery.error,
+    isError: isResultsError || analysisQuery.isError,
+    error: resultsError ?? analysisQuery.error,
   };
 };

@@ -23,10 +23,14 @@ export const useDataDesignerArtifactsFileset = () => {
 
   const isTerminal = job?.status != null && PlatformJobTerminalStatuses.includes(job.status);
 
-  const { data: resultsResponse, isLoading: isResultsLoading } =
-    useDataDesignerListCreateJobResults(workspace, jobName, {
-      query: { refetchInterval: isTerminal ? false : 3000 },
-    });
+  const {
+    data: resultsResponse,
+    isLoading: isResultsLoading,
+    isError: isResultsError,
+    error: resultsError,
+  } = useDataDesignerListCreateJobResults(workspace, jobName, {
+    query: { refetchInterval: isTerminal ? false : 3000 },
+  });
 
   const artifactsResult = useMemo(() => {
     const data = resultsResponse?.data;
@@ -83,6 +87,8 @@ export const useDataDesignerArtifactsFileset = () => {
     listFilesParams,
     files,
     isResultsLoading,
+    isResultsError,
+    resultsError,
     isFilesLoading,
     isFilesError,
     filesError,
