@@ -2,62 +2,52 @@
 title: "v0.2.0 - 2026-06-25"
 description: ""
 ---
-NeMo Platform v0.2.0 is the OSS 0.2 release line for local quickstart,
-Docker-backed testing, SDK validation, and plugin-based platform workflows.
-This release expands the first public release with fine-tuning, local model
-deployment, synthetic data generation, model auditing, and access-control work.
-
-## Release status
-
-- Development complete: June 12, 2026
-- QA start: June 15, 2026
-- Target release date: June 25, 2026
-- Version markers: platform API `0.2.0`, SDK `0.2.0`
+NeMo Platform v0.2.0 expands the local-first OSS distribution with plugin
+workflows for fine-tuning, synthetic data generation, and model auditing. It
+also improves Docker-backed local workflows, SDK resources, and NAT-based agent
+container tooling.
 
 ## Highlights
 
-- **Fine-tuning.** Customizer is now part of the plugin-based platform
-  architecture, with Docker-backed job execution, Unsloth and NeMo Automodel
-  support, vLLM adapter support, and updated documentation.
-- **Docker-backed local runtime.** The platform 0.2 scope includes Docker
-  execution paths for the platform, customization jobs, and local model
-  deployment testing.
-- **Model deployment.** vLLM and NIM deployment flows are covered by the 0.2
-  model-deployment workstream, including vLLM deployment in Docker.
-- **Synthetic data generation.** Safe Synthesizer moves into the platform as a
-  local plugin for privacy-preserving synthetic data generation.
-- **Model auditing.** The local garak-backed Auditor plugin has documentation
-  and validation work for QA.
-- **Access control.** Auth and authorization work continues with plugin
-  authorization support and end-to-end auth wiring in QA.
-- **Platform quality.** The 0.2 line includes fixes for seven tracked
-  platform bugs.
+- **Fine-tuning.** Customizer is available through the plugin architecture,
+  with Docker-backed Unsloth jobs, NeMo Automodel configuration support, vLLM
+  adapter support, and updated tutorials.
+- **Local model serving.** vLLM deployment in Docker supports local
+  model-serving workflows for OSS development and testing.
+- **Synthetic data generation.** Safe Synthesizer is available as a local
+  plugin for privacy-preserving synthetic data generation workflows.
+- **Model auditing.** Auditor adds local garak-backed audit configuration,
+  target management, SDK resources, and documentation.
+- **Agent containers.** `nemo agents` includes commands for rendering,
+  building, and publishing agent containers.
+- **Plugin platform.** Platform capabilities can ship as plugins while still
+  using platform APIs, SDK resources, local services, and workspace scoping.
 
 ## What's included
 
 ### Platform and Plugins
 
-- Plugin support for platform capabilities that ship outside the core
+- Plugin packaging for platform capabilities distributed outside the core
   package.
-- Authorization support for plugins.
-- Alignment work between human documentation and coding-agent skill
-  resources.
-- Docker support for running the platform locally.
+- Docker support for source-install local platform workflows.
+- SDK and API support for plugin-provided resources.
+- Source-install auth and OIDC bootstrap guidance for users who enable RBAC
+  locally.
 
 ### Fine-tune Models
 
 - Customizer migration to the plugin architecture.
-- Docker-backed Customizer jobs.
-- Unsloth and NeMo Automodel support.
-- vLLM adapter support and end-to-end vLLM testing.
-- Documentation updates for the 0.2 Customizer flow.
+- Docker-backed Unsloth SFT jobs.
+- NeMo Automodel and Unsloth backend support for fine-tuning workflows.
+- vLLM adapter support for serving trained adapters.
+- Updated Customizer documentation and examples.
 
 ### Models and Inference
 
-- vLLM deployment in Docker.
-- NIM deployment in Docker.
-- Local model-deployment validation for the OSS quickstart and SDK testing
-  paths.
+- vLLM deployment in Docker for local model-serving workflows.
+- Local model-deployment documentation for the OSS quickstart and SDK usage.
+- Continued Inference Gateway support for provider registration, virtual
+  models, and OpenAI-compatible routing.
 
 ### Agents
 
@@ -67,20 +57,17 @@ deployment, synthetic data generation, model auditing, and access-control work.
 
 ### Safe Synthesizer
 
-- Safe Synthesizer is packaged as a platform plugin.
+- Safe Synthesizer packaged as a platform plugin.
 - Local execution support for Safe Synthesizer workflows.
 - Documentation and tutorials for data synthesis, PII replacement,
   evaluation, jobs, host-local development, and differential privacy.
 
 ### Auditor
 
-- Auditor plugin documentation for local garak-backed auditing.
-- Auditor plugin skill fixes.
-- QA handoff for automated tests and validation.
-
-### Evaluation
-
-- Evaluator SDK and plugin enhancement work is tracked in the 0.2 line.
+- Auditor plugin APIs for audit configs and targets.
+- Local garak-backed auditing workflows.
+- SDK resources and documentation for configuring audits and reviewing
+  results.
 
 ## Install
 
@@ -89,8 +76,8 @@ For a fresh local checkout:
 ```bash
 git clone https://github.com/NVIDIA-NeMo/nemo-platform.git
 cd nemo-platform
-git checkout v0.2.0
 make bootstrap
+source .venv/bin/activate
 nemo setup
 ```
 
@@ -105,44 +92,41 @@ From an existing local checkout:
 git fetch --tags
 git checkout v0.2.0
 make bootstrap
+source .venv/bin/activate
 nemo setup
 ```
 
-After setup, restart local services before running CLI, SDK, Studio, or plugin
-smoke tests against the upgraded checkout.
+If the `v0.2.0` tag is not available from GitHub yet, use the fresh checkout
+flow above and return to the release tag after it is published.
+
+After setup, restart local services before using CLI, SDK, Studio, or plugin
+workflows against the upgraded checkout.
 
 ## Compatibility
 
 - Python 3.11-3.14
 - macOS and Linux for the OSS local install path
-- Docker for Docker-backed platform, job, and model-deployment workflows
-- NVIDIA GPU access for local training, model deployment, and GPU-backed
+- Docker for Docker-backed platform, job, and vLLM model-serving workflows
+- NVIDIA GPU access for local training, model serving, and GPU-backed
   synthetic data workflows
 - Node 22.18.0+ for Studio assets
 - Platform API `0.2.0` and `nemo-platform` Python SDK `0.2.0`
 
-## Known constraints
+## Current constraints
 
-- **Release date.** The 0.2 release line is targeted for June 25, 2026. If you
-  are testing before that date, use the release branch or candidate build
-  provided by the release owner.
-- **Customizer ARM64 and automodel Docker support.** Docker-backed Customizer
-  jobs are validated, but ARM64 build support and automodel Docker support are
-  still pending in QA notes.
-- **vLLM Docker validation.** vLLM adapter support and Docker deployment are in
-  the 0.2 scope. Validate the vLLM image, GPU runtime, and host driver stack in
-  your target environment.
-- **Safe Synthesizer local mode.** Safe Synthesizer is part of the 0.2 plugin
-  workstream and was in QA as of June 9, 2026.
-- **Auditor local mode.** Auditor documentation was handed to QA for automated
-  test and validation coverage.
-- **Auth and RBAC.** Auth and plugin authorization work is in QA and should be
-  validated for your deployment mode before relying on it for multi-user
-  access control.
-- **Evaluator Skill Evaluation MVP.** Skill Evaluation MVP was descoped from
-  v0.2.0.
-- **Local-first OSS scope.** v0.2.0 improves Docker-backed local workflows. It
+- **Local-first OSS scope.** v0.2.0 improves local Docker-backed workflows. It
   is not a managed cluster or scale-out enterprise release.
+- **Docker model serving.** v0.2.0 includes vLLM deployment in Docker. Docker
+  deployment for NIM is not included in this release.
+- **Customizer Docker support.** Docker-backed Customizer jobs target GPU
+  Linux environments. ARM64 images and NeMo Automodel Docker execution are not
+  part of this release.
+- **Auth and RBAC.** Source-install auth and OIDC setups require the bootstrap
+  IAM seed step described in [Setup](/documentation/get-started). Validate
+  role bindings for your deployment mode before relying on them for multi-user
+  access control.
+- **Skill Evaluation.** Skill Evaluation workflows are not included in
+  v0.2.0.
 
 ## Links
 
