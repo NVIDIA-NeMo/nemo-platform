@@ -4,7 +4,7 @@ Three images for the **nmp-automodel** customization backend. Published as flat 
 
 | Image | Dockerfile | Role |
 |-------|------------|------|
-| `nmp-automodel-base` | `Dockerfile.nmp-automodel-base` | PyTorch 26.02 + Automodel + `mamba-ssm` / `causal-conv1d` wheels |
+| `nmp-automodel-base` | `Dockerfile.nmp-automodel-base` | PyTorch 26.05 + Automodel + `mamba-ssm` / `causal-conv1d` wheels |
 | `nmp-automodel-tasks` | `Dockerfile.nmp-automodel-tasks` | Platform task glue (`file_io`, `model_entity`, `model_spec`); GPU-capable base |
 | `nmp-automodel-training` | `Dockerfile.nmp-automodel-training` | Training step (`nmp.automodel.tasks.training`) |
 
@@ -77,7 +77,7 @@ Override registry: `export WHEELS_REGISTRY=...` and `export IMAGE_REGISTRY=...` 
 
 ## Tasks / training runtime (platform glue)
 
-**Base (`nmp-automodel-base`):** NGC PyTorch 26.02, Automodel `uv sync --locked`, pinned `transformers`/`torch`.
+**Base (`nmp-automodel-base`):** NGC PyTorch 26.05, Automodel `uv sync --locked`, pinned `transformers`/`torch`.
 
 **Tasks image:** `uv sync --package nmp-automodel --no-dev --inexact` from the minimal workspace. CPU steps only need platform SDK glue; upgrading ancillary packages here does not affect training.
 
