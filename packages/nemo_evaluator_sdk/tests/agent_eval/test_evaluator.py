@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
+from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator, _trial_from_sample
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalSummary
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.tasks import (
@@ -22,6 +22,21 @@ from nemo_evaluator_sdk.enums import AgentFormat, ModelFormat
 from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 from nemo_evaluator_sdk.values import Agent, Model, RunConfigOnline, RunConfigOnlineModel
 from nemo_evaluator_sdk.values.results import AggregateScore
+
+
+def test_trial_from_sample_falls_back_to_reasoning_content() -> None:
+    task = AgentEvalTask(id="task-1", intent="Answer.", inputs={"prompt": "Q?"})
+    target = Model(name="reasoning-model", url="https://example/v1/chat/completions")
+    response = {"choices": [{"message": {"content": None, "reasoning_content": "the reasoned answer"}}]}
+
+    # Empty content falls back to reasoning_content; explicit content wins when present.
+    fallback = _trial_from_sample(task, target, {"output_text": "  ", "response": response})
+    assert fallback.output is not None
+    assert fallback.output.output_text == "the reasoned answer"
+
+    explicit = _trial_from_sample(task, target, {"output_text": "final answer", "response": response})
+    assert explicit.output is not None
+    assert explicit.output.output_text == "final answer"
 
 
 def _score(summary: AgentEvalSummary, name: str) -> AggregateScore:

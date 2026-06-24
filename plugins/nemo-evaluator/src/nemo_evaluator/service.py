@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import ClassVar
 
 from fastapi import APIRouter
+from nemo_evaluator.api.v2 import metrics as metrics_routes
 from nemo_evaluator.core import say_hello
 from nemo_evaluator.jobs.evaluate import EvaluateJob
 from nemo_evaluator.schema import HelloResponse
@@ -21,11 +22,36 @@ from nemo_platform_plugin.jobs.routes import add_job_routes
 from nemo_platform_plugin.service import NemoService, RouterSpec
 
 
+def _authz_for_metrics_collection(api_area: str, permission_prefix: str) -> AuthzContribution:
+    """Authz for the stored-metrics CRUD collection (full path includes PUT)."""
+    base = f"/apis/{api_area}/v2/workspaces/{{workspace}}/metrics"
+    read_scopes = [f"{api_area}:read", "platform:read"]
+    write_scopes = [f"{api_area}:write", "platform:write"]
+    return AuthzContribution(
+        permissions={
+            f"{permission_prefix}.create": f"Create {permission_prefix}",
+            f"{permission_prefix}.list": f"List {permission_prefix}",
+            f"{permission_prefix}.read": f"Read {permission_prefix}",
+            f"{permission_prefix}.delete": f"Delete {permission_prefix}",
+        },
+        endpoints={
+            base: {
+                "get": AuthzEndpointMethod(permissions=[f"{permission_prefix}.list"], scopes=read_scopes),
+            },
+            f"{base}/{{name}}": {
+                "post": AuthzEndpointMethod(permissions=[f"{permission_prefix}.create"], scopes=write_scopes),
+                "get": AuthzEndpointMethod(permissions=[f"{permission_prefix}.read"], scopes=read_scopes),
+                "delete": AuthzEndpointMethod(permissions=[f"{permission_prefix}.delete"], scopes=write_scopes),
+            },
+        },
+    )
+
+
 class EvaluatorPluginService(NemoService):
     """Minimal service surface for evaluator pluginification work."""
 
     name: ClassVar[str] = "evaluator"
-    dependencies: ClassVar[list[str]] = ["nemo-evaluator-sdk"]
+    dependencies: ClassVar[list[str]] = ["nemo-evaluator-sdk", "entities", "files"]
 
     @classmethod
     def get_authz_contribution(cls) -> AuthzContribution:
@@ -44,6 +70,10 @@ class EvaluatorPluginService(NemoService):
                 api_area=cls.name,
                 collection_suffix="/evaluate/jobs",
                 permission_prefix=f"{cls.name}.jobs",
+            ),
+            _authz_for_metrics_collection(
+                api_area=cls.name,
+                permission_prefix=f"{cls.name}.metrics",
             ),
         )
 
@@ -79,6 +109,13 @@ class EvaluatorPluginService(NemoService):
                 router=jobs_router,
                 tag="Evaluator Plugin Jobs Routes",
                 description="Evaluator plugin jobs routes.",
+                prefix="/v2/workspaces/{workspace}",
+            ),
+            RouterSpec(
+                # CRUD /apis/evaluator/v2/workspaces/{workspace}/metrics.
+                router=metrics_routes.router,
+                tag="Evaluator Plugin Metrics Routes",
+                description="Stored metric (metric bundle) CRUD routes.",
                 prefix="/v2/workspaces/{workspace}",
             ),
         ]

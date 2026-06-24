@@ -36,7 +36,7 @@ Each customization job tracks two key metrics:
 
 ### Using the API
 
-Get job status and training metrics using the Customization Service:
+Get job status and training metrics through the platform Jobs service:
 
 ```python
 import os
@@ -49,14 +49,14 @@ client = NeMoPlatform(
 
 # Get job status with metrics
 job_name = "my-sft-job"
-status = client.customization.jobs.get_status(name=job_name, workspace="default")
+status = client.jobs.get_status(name=job_name, workspace="default")
 
 print(f"Job: {status.name}")
 print(f"Status: {status.status}")
 
 # Check training step progress
 for step in status.steps or []:
-    if step.name == "customization-training-job":
+    if step.name == "training":
         for task in step.tasks or []:
             details = task.status_details or {}
             print(f"Training Phase: {details.get('phase')}")
@@ -95,38 +95,33 @@ If your customization job was created with W&B integration enabled (see [Weights
 3. View training and validation loss curves, learning rate schedules, and other metrics under the run's dashboard
 
 ```python
-client = NeMoPlatform(
-    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
-    workspace="default",
-)
+from nemo_automodel_plugin.schema import AutomodelJobInput
 
-# Create a customization job with W&B integration
-job = client.customization.jobs.create(
-    name="my-wandb-job",
-    workspace="default",
-    spec={
-        "model": "default/llama-3-2-1b",
-        "dataset": "fileset://default/my-dataset",
-        "training": {
-            "type": "sft",
-            "peft": {"type": "lora"},
-            "epochs": 3,
-            "batch_size": 16,
-            "learning_rate": 1e-4,
-        },
-        "integrations": {
-            "wandb": {
-                "project": "my-finetuning-project",
-                "entity": "my-team",
-                "tags": ["fine-tuning", "llama"],
-                "api_key_secret": "my-wandb-key",
-            }
-        },
+# Create an Automodel job with W&B integration
+spec = AutomodelJobInput(
+    model="default/llama-3-2-1b",
+    dataset={"training": "default/my-dataset"},
+    training={"training_type": "sft", "finetuning_type": "lora"},
+    schedule={"epochs": 3},
+    batch={"global_batch_size": 16, "micro_batch_size": 1},
+    optimizer={"learning_rate": 1e-4},
+    integrations={
+        "wandb": {
+            "project": "my-finetuning-project",
+            "entity": "my-team",
+            "tags": ["fine-tuning", "llama"],
+            "api_key_secret": "my-wandb-key",
+        }
     },
 )
 
-print(f"Created job: {job.name}")
-print(f"Status: {job.status}")
+job = client.customization.automodel.jobs.create(
+    name="my-wandb-job",
+    workspace="default",
+    spec=spec,
+)
+
+print(f"Submitted job: {job.job.name}")
 ```
 
 The `api_key_secret` field references a stored secret containing your `WANDB_API_KEY`.

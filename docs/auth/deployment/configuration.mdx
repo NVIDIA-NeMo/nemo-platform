@@ -29,13 +29,15 @@ When `auth.enabled` is `false` (the default), all API requests are allowed witho
 
 ### Bootstrap Admin
 
-When authorization is enabled, a platform administrator can be configured. Setting **`admin_email`** gives that identity the **PlatformAdmin** role at platform start. Use it to create the first workspaces and grant roles to other users. After bootstrap, manage access via workspaces and members as described in [Managing Access](/documentation/access-control/authorization/managing-access).
+When authorization is enabled, a platform administrator can be configured. Setting **`admin_email`** tells platform seed which identity should receive the **PlatformAdmin** role. Use it to create the first workspaces and grant roles to other users. After bootstrap, manage access via workspaces and members as described in [Managing Access](/documentation/access-control/authorization/managing-access).
 
 ```yaml
 auth:
  enabled: true
  admin_email: "your-admin@company.com"
 ```
+
+The binding is created by `platform-seed`, not by auth service startup alone. Helm deployments run the platform-seed Job by default. For source installs, set `platform.seed_on_startup: true`, export `NMP_SEED_ON_STARTUP=true` before `nemo services run`, or run `uv run python -m nmp.platform_seed` after services are healthy. If platform seed has not run, `admin_email` users can authenticate but still receive `403 Forbidden` because their PlatformAdmin binding does not exist.
 
 This page covers the auth-specific configuration fields you need to enable and operate authorization. Auth-related values are found under `platformConfig.auth` in the values file.
 

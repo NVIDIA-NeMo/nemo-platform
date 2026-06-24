@@ -365,7 +365,7 @@ def export_onnx(
             tokenizer_path=tokenizer_path,
             pooling="avg",
             normalize=True,
-            opset=17,
+            opset=18,
             export_dtype="fp16",
             verify=True,
         )

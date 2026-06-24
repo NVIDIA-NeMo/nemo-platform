@@ -77,6 +77,15 @@ describe('Claude Code chat artifacts', () => {
               name: 'mcp__nemo_studio__studio_link',
               input: { destination: 'agents', label: 'Agents' },
             },
+            {
+              type: 'tool_use',
+              name: 'mcp__nemo_studio__job_progress',
+              input: {
+                job_name: 'agent-eval-1',
+                job_type: 'agent_evaluation',
+                source: 'evaluator',
+              },
+            },
           ],
         },
       }
@@ -86,7 +95,19 @@ describe('Claude Code chat artifacts', () => {
     expect(artifacts.links).toEqual([
       { label: 'Agents', destination: 'agents', href: '/workspaces/default/agents' },
     ]);
-    expect(artifacts.tools).toEqual(['Write', 'mcp__nemo_studio__studio_link']);
+    expect(artifacts.jobs).toEqual([
+      {
+        name: 'agent-eval-1',
+        job_type: 'agent_evaluation',
+        source: 'evaluator',
+        href: '/workspaces/default/agents/evaluations/agent-eval-1',
+      },
+    ]);
+    expect(artifacts.tools).toEqual([
+      'Write',
+      'mcp__nemo_studio__studio_link',
+      'mcp__nemo_studio__job_progress',
+    ]);
   });
 
   it('does not double encode encoded file paths in studio link artifacts', () => {

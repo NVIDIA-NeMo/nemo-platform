@@ -47,6 +47,7 @@ result = evaluator.run(
 
 ```python
 from nemo_evaluator_sdk import RunConfig, ExactMatchMetric
+from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 
 metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
 
@@ -57,6 +58,7 @@ job = evaluator.submit(
         {"expected": "Berlin", "output": "Munich"},
     ],
     config=RunConfig(parallelism=4),
+    metric_bundle_packager=CloudpickleMetricBundlePackager(),
 )
 job.wait_until_done()
 ```

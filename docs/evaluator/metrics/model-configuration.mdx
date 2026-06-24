@@ -183,7 +183,43 @@ Use plain `RunConfig` for offline evaluations where the dataset already contains
 
 ## Model References
 
-The plugin SDK examples on this page use inline `Model` objects. If your deployment resolves platform model entities into model endpoint details, perform that lookup before constructing the `Model`, then pass the resulting inline model to the metric or request.
+You can supply the evaluation target two ways. Which one is valid depends on whether you run the evaluation locally or submit it as a durable platform job.
+
+### Inline `Model` (required for `evaluator.run(...)`)
+
+`evaluator.run(...)` executes in your local Python process, so it needs the resolved endpoint details inline. Always pass an inline `Model` as the `target` (or as a judge/embeddings field on the metric). If your deployment stores platform model entities, resolve the entity into endpoint details before constructing the `Model`:
+
+```python
+from nemo_evaluator_sdk import Model
+
+model_entity = client.models.retrieve("my-model", workspace="default")
+model = Model(
+    url=client.models.get_model_entity_route_openai_url(model_entity),
+    name="my-model",
+    api_key_secret="NVIDIA_API_KEY",
+)
+
+result = evaluator.run(metric=metric, dataset=dataset, target=model)
+```
+
+### `ModelRef` (supported by `evaluator.submit(...)`)
+
+Durable remote `evaluator.submit(...)` jobs additionally accept a `ModelRef` target. A `ModelRef` names a platform model entity (`workspace/model-name`) and is resolved by the evaluator backend when the job runs, so you do not have to resolve the endpoint yourself. Use this for platform-managed model routing. A `ModelRef` target generates outputs online, so it requires an online run config (`RunConfigOnlineModel`):
+
+```python
+from nemo_evaluator_sdk import ModelRef, RunConfigOnlineModel
+from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
+
+job = evaluator.submit(
+    metric=metric,
+    dataset=dataset,
+    config=RunConfigOnlineModel(),
+    target=ModelRef(root="default/my-model"),
+    metric_bundle_packager=CloudpickleMetricBundlePackager(),
+)
+```
+
+`ModelRef` is **not** valid for `evaluator.run(...)`; the local runtime cannot resolve a platform entity. Pass an inline `Model` for local runs and either a `Model` or a `ModelRef` for remote submits. See the [Define and Run Custom Python Metrics](/documentation/evaluate-models/tutorials/define-and-run-custom-python-metrics) tutorial for an end-to-end `ModelRef` + `FilesetRef` submit example.
 
 <Note>
 

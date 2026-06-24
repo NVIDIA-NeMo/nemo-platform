@@ -1,125 +1,132 @@
 ---
-title: "v0.1.0 — 2026-05-20"
+title: "v0.2.0 - 2026-06-25"
 description: ""
 ---
-First public release of NeMo Platform. This release establishes the
-local-first OSS distribution and the core agent build, optimize, and secure
-flow.
+NeMo Platform v0.2.0 expands the local-first OSS distribution with plugin
+workflows for fine-tuning, synthetic data generation, and model auditing. It
+also improves Docker-backed local workflows, SDK resources, and NAT-based agent
+container tooling.
 
 ## Highlights
 
-- Agent lifecycle managed end-to-end through `nemo agents` (create, deploy,
-  invoke, evaluate, optimize, secure, undeploy).
-- Optimize and secure deployed agents with sibling-candidate validation
-  before promotion.
-- Provider-agnostic Inference Gateway with virtual models and middleware
-  (Switchyard routing, guardrails).
-- Guardrails, vulnerability scanning, and evaluation available out of the
-  box.
-- Local-first install — `make bootstrap` + `nemo setup`, no cluster required
-  for this release. Cluster and scale-out deployment are on the roadmap.
+- **Fine-tuning.** Customizer is available through the plugin architecture,
+  with Docker-backed Unsloth jobs, NeMo Automodel configuration support, vLLM
+  adapter support, and updated tutorials.
+- **Local model serving.** vLLM deployment in Docker supports local
+  model-serving workflows for OSS development and testing.
+- **Synthetic data generation.** Safe Synthesizer is available as a local
+  plugin for privacy-preserving synthetic data generation workflows.
+- **Model auditing.** Auditor adds local garak-backed audit configuration,
+  target management, SDK resources, and documentation.
+- **Agent containers.** `nemo agents` includes commands for rendering,
+  building, and publishing agent containers.
+- **Plugin platform.** Platform capabilities can ship as plugins while still
+  using platform APIs, SDK resources, local services, and workspace scoping.
 
 ## What's included
 
-### Agents
+### Platform and Plugins
 
-- `nemo agents` lifecycle commands (create, deploy, invoke, evaluate,
-  optimize, undeploy, delete).
-- NAT ([NeMo Agent Toolkit](https://docs.nvidia.com/nemo/agent-toolkit/latest/))
-  workflows as the agent format.
-- Sibling-agent candidate flow for applying optimization and security
-  changes without editing a running agent in place.
+- Plugin packaging for platform capabilities distributed outside the core
+  package.
+- Docker support for source-install local platform workflows.
+- SDK and API support for plugin-provided resources.
+- Source-install auth and OIDC bootstrap guidance for users who enable RBAC
+  locally.
+
+### Fine-tune Models
+
+- Customizer migration to the plugin architecture.
+- Docker-backed Unsloth SFT jobs.
+- NeMo Automodel and Unsloth backend support for fine-tuning workflows.
+- vLLM adapter support for serving trained adapters.
+- Updated Customizer documentation and examples.
 
 ### Models and Inference
 
-- Inference Gateway: provider registration, virtual models, entity-name
-  routing.
-- Switchyard middleware: random routing for strong/weak splits, cross-format
-  translation.
-- Supported upstream providers: NVIDIA Build, OpenAI, Anthropic, Google
-  Gemini, Ollama, generic OpenAI-compatible endpoints.
+- vLLM deployment in Docker for local model-serving workflows.
+- Local model-deployment documentation for the OSS quickstart and SDK usage.
+- Continued Inference Gateway support for provider registration, virtual
+  models, and OpenAI-compatible routing.
 
-### Guardrails
+### Agents
 
-- `nemo-guardrails` middleware applied via virtual models.
-- Catalog content-safety, topic-control, and safety-guard models.
+- `nemo agents` container subcommands for rendering, building, and publishing
+  agent containers.
+- Continued NAT-based agent workflow support from the 0.1 line.
 
-### Evaluation
+### Safe Synthesizer
 
-- LLM-as-a-judge, similarity, RAG, and agentic metrics.
-- Agent and model configuration as evaluation targets.
+- Safe Synthesizer packaged as a platform plugin.
+- Local execution support for Safe Synthesizer workflows.
+- Documentation and tutorials for data synthesis, PII replacement,
+  evaluation, jobs, host-local development, and differential privacy.
 
-### Vulnerability Scanning
+### Auditor
 
-- garak-backed audits against models reachable through the Inference Gateway.
-- Audit configs, probes, targets, and JSONL and HTML reports.
-
-### Data
-
-- Data Designer for synthetic dataset generation.
-- Anonymizer for PII handling in datasets.
-
-### Studio
-
-- Workspace browser, agent list, and chat playground for deployed agents and
-  models. The Studio agent build, optimize, and secure flow is in progress
-  and not part of 0.1.0.
-
-### Coding-agent skills
-
-- `nemo skills install --agent <claude|codex|cursor|opencode>` installs
-  platform skills for the supported coding agents.
-- Agent-flow skills: `nemo-setup`, `nemo-explore`, `nemo-spec`,
-  `nemo-build-agent`, `nemo-try-agent`, `agents-optimize`, `agents-secure`,
-  `nemo-status`, `nemo-teardown`.
-
-### CLI and SDK
-
-- `nemo` CLI with auto-generated API commands plus use-case commands like
-  `chat`.
-- `nemo-platform` Python SDK, generated by Stainless from the OpenAPI spec.
+- Auditor plugin APIs for audit configs and targets.
+- Local garak-backed auditing workflows.
+- SDK resources and documentation for configuring audits and reviewing
+  results.
 
 ## Install
+
+For a fresh local checkout:
 
 ```bash
 git clone https://github.com/NVIDIA-NeMo/nemo-platform.git
 cd nemo-platform
 make bootstrap
+source .venv/bin/activate
 nemo setup
 ```
 
 See [Setup](/documentation/get-started) for prerequisites and provider
 configuration.
 
+## Upgrade from v0.1.x
+
+From an existing local checkout:
+
+```bash
+git fetch --tags
+git checkout v0.2.0
+make bootstrap
+source .venv/bin/activate
+nemo setup
+```
+
+If the `v0.2.0` tag is not available from GitHub yet, use the fresh checkout
+flow above and return to the release tag after it is published.
+
+After setup, restart local services before using CLI, SDK, Studio, or plugin
+workflows against the upgraded checkout.
+
 ## Compatibility
 
-- Python 3.11–3.14
-- macOS, Linux
-- 16 GB disk, 8 GB RAM
+- Python 3.11-3.14
+- macOS and Linux for the OSS local install path
+- Docker for Docker-backed platform, job, and vLLM model-serving workflows
+- NVIDIA GPU access for local training, model serving, and GPU-backed
+  synthetic data workflows
 - Node 22.18.0+ for Studio assets
+- Platform API `0.2.0` and `nemo-platform` Python SDK `0.2.0`
 
 ## Current constraints
 
-- **Local-only.** Cluster and scale-out deployment are on the roadmap for
-  enterprise use; 0.1.0 supports a single local install.
-- **Studio agent flow.** Studio ships with chat and workspace browsing
-  today. The agent build, optimize, and security flows in Studio are in
-  progress.
-- **In-place agent edits.** The Agents v2 API has no patch operation.
-  Config changes go through a sibling agent and redeploy.
-- **Bring your own agent.** The platform's deploy and optimize paths target
-  NAT workflows. NAT ships with a thin LangGraph wrapper, so LangGraph
-  agents work first-class today. Agents from other frameworks need a thin
-  wrapper to plug into NAT. Broader framework support is on the roadmap.
-
-## Coming soon
-
-- **Fine-tuning** (Customizer): model fine-tuning workflows on the platform.
-- **Safe Synthesizer:** privacy-preserving synthetic data generation with
-  differential-privacy guarantees.
-- **Studio agent flow:** the build, optimize, and secure paths surfaced in
-  the web UI.
-- **Cluster and scale-out deployment** for enterprise workloads.
+- **Local-first OSS scope.** v0.2.0 improves local Docker-backed workflows. It
+  is not a managed cluster or scale-out enterprise release.
+- **Docker model serving.** v0.2.0 includes vLLM deployment in Docker. Docker
+  deployment for NIM is not included in this release.
+- **Customizer Docker support.** Docker-backed Customizer jobs target GPU
+  Linux environments. ARM64 images and NeMo Automodel Docker execution are not
+  part of this release.
+- **Auth and RBAC.** Source-install auth and OIDC setups require the bootstrap
+  IAM seed step described in [Setup](/documentation/get-started). Validate
+  role bindings for your deployment mode before relying on them for multi-user
+  access control.
+- **Skill Evaluation.** Skill Evaluation workflows are not included in
+  v0.2.0.
 
 ## Links
 

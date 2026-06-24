@@ -218,7 +218,7 @@ def get_job_failure_details(sdk: NeMoPlatform, job_name: str, workspace: str) ->
 def _log_training_progress(status) -> None:
     """Extract and log training progress from the job status steps structure."""
     for job_step in status.steps or []:
-        if job_step.name == "customization-training-job":
+        if job_step.name == "training":
             for task in job_step.tasks or []:
                 task_details = task.status_details or {}
                 step = task_details.get("step")

@@ -92,9 +92,9 @@ def _wait_for_healthy(
     timeout: int = _HEALTH_TIMEOUT_SECONDS,
     poll_interval: float = _HEALTH_POLL_INTERVAL,
 ) -> bool:
-    """Poll the platform health endpoint until it responds or timeout."""
+    """Poll the platform status endpoint until it responds or timeout."""
     effective_host = "localhost" if host in ("0.0.0.0", "::") else host  # noqa: S104
-    url = str(httpx.URL(scheme="http", host=effective_host, port=port, path="/health/ready"))
+    url = str(httpx.URL(scheme="http", host=effective_host, port=port, path="/status"))
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
@@ -335,7 +335,7 @@ def start_services(
 ) -> None:
     """Start platform services in the background.
 
-    Detaches the process, polls /health/ready, then returns.
+    Detaches the process, polls /status, then returns.
 
     Examples:
       nemo services start

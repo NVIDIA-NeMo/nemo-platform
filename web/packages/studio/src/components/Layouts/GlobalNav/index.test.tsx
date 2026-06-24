@@ -1,11 +1,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { ROUTES } from '@studio/constants/routes';
 import { mockUseParams } from '@studio/tests/util/mockUseParams';
 import { SIDE_NAV_OPEN_KEY } from '@studio/util/localStorage';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { generatePath, MemoryRouter } from 'react-router-dom';
 
 vi.mock('@studio/components/Breadcrumbs', () => ({
   Breadcrumbs: () => <div data-testid="breadcrumbs" />,
@@ -17,6 +18,10 @@ vi.mock('@studio/components/UserPopover', () => ({
 
 vi.mock('@studio/routes/PageLayout/ThemeSwitch', () => ({
   ThemeSwitch: () => <div data-testid="theme-switch" />,
+}));
+
+vi.mock('@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeTopBarChat', () => ({
+  ClaudeCodeTopBarChat: () => <div data-testid="code-agent-top-bar-chat" />,
 }));
 
 vi.mock('@studio/constants/environment', async (importOriginal) => {
@@ -57,15 +62,15 @@ const createMatchMediaMock = (initialMatches: boolean) => {
   return { mql, matchMediaFn, fireChange };
 };
 
-const renderGlobalNav = async () => {
+const renderGlobalNav = async (initialPath = '/workspaces/test-workspace/jobs') => {
   const { GlobalNav } = await import('@studio/components/Layouts/GlobalNav/index');
   render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[initialPath]}>
       <GlobalNav sideNav={() => <div data-testid="side-nav">Side Nav Content</div>} />
     </MemoryRouter>
   );
   // Wait for Suspense / lazy components to settle before the test proceeds
-  await screen.findByRole('button', { name: /(Collapse|Expand) sidebar/i });
+  await screen.findAllByRole('button', { name: /(Collapse|Expand) sidebar/i });
 };
 
 describe('GlobalNav', () => {
@@ -170,6 +175,36 @@ describe('GlobalNav', () => {
       );
 
       expect(sideNavSpy).toHaveBeenCalledWith(false);
+    });
+  });
+
+  describe('Code Agent top bar chat', () => {
+    it('mounts outside the dashboard and full Code Agent routes', async () => {
+      createMatchMediaMock(true);
+
+      await renderGlobalNav('/workspaces/test-workspace/jobs');
+
+      expect(screen.getByTestId('code-agent-top-bar-chat')).toBeInTheDocument();
+    });
+
+    it('does not mount on the dashboard route', async () => {
+      createMatchMediaMock(true);
+
+      await renderGlobalNav(
+        generatePath(ROUTES.workspace.dashboard, { workspace: 'test-workspace' })
+      );
+
+      expect(screen.queryByTestId('code-agent-top-bar-chat')).not.toBeInTheDocument();
+    });
+
+    it('does not mount on the full Code Agent route', async () => {
+      createMatchMediaMock(true);
+
+      await renderGlobalNav(
+        generatePath(ROUTES.workspace.claudeCodeChat, { workspace: 'test-workspace' })
+      );
+
+      expect(screen.queryByTestId('code-agent-top-bar-chat')).not.toBeInTheDocument();
     });
   });
 });

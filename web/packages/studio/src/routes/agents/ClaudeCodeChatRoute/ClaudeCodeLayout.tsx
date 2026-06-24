@@ -14,22 +14,27 @@ interface ClaudeCodeLayoutProps {
   activeSessionId?: string;
   artifacts?: ClaudeCodeChatArtifacts;
   children: ReactNode;
+  onNewChat?: () => void;
 }
 
 export const ClaudeCodeLayout: FC<ClaudeCodeLayoutProps> = ({
   activeSessionId,
   artifacts,
   children,
+  onNewChat,
 }) => {
   const workspace = useWorkspaceFromPath();
   const navigate = useNavigate();
 
   const handleNewChat = useCallback(() => {
+    onNewChat?.();
     navigate(getWorkspaceDashboardRoute(workspace));
-  }, [navigate, workspace]);
+  }, [navigate, onNewChat, workspace]);
 
   const handleSelectSession = useCallback(
     (sessionId: string) => {
+      // Navigating to the session URL drives the shared runtime to load it
+      // (which also persists it as the active session via onSessionIdChange).
       navigate(getClaudeCodeChatRouteForSession(workspace, sessionId));
     },
     [navigate, workspace]

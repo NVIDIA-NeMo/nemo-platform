@@ -283,7 +283,7 @@ def _bootstrap_config_if_missing(base_url: str, workspace: str) -> None:
 def _check_platform_reachable(base_url: str, timeout: float = 5.0) -> bool:
     """Return True if the platform health endpoint responds."""
     try:
-        resp = httpx.get(f"{base_url.rstrip('/')}/health/ready", timeout=timeout)
+        resp = httpx.get(f"{base_url.rstrip('/')}/status", timeout=timeout)
         return resp.status_code == 200
     except Exception:
         return False

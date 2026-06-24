@@ -1,13 +1,9 @@
 ---
-title: "@nemo-nb: hide"
+title: "Evaluate Response Quality with LLM-as-a-Judge"
 description: ""
 ---
 
-
-
-
 <a id="evaluate-run-llm-judge-evaluation"></a>
-# Evaluate Response Quality with LLM-as-a-Judge
 
 **LLM-as-a-Judge** is a technique where you use a large language model to evaluate the outputs of another model. Instead of relying solely on automated metrics or manual review, you prompt a capable LLM to score responses based on criteria you define, such as helpfulness, accuracy, or tone.
 
@@ -157,12 +153,12 @@ This tutorial uses `nvidia/nemotron-3-nano-30b-a3b` from NVIDIA Build.
 ```python
 from nemo_evaluator_sdk import RunConfig, LLMJudgeMetric
 from nemo_evaluator_sdk.values import (
-    FilesetRef,
     InferenceParams,
     JSONScoreParser,
     Model,
     RangeScore,
 )
+from nemo_evaluator.sdk import FilesetRef
 
 JUDGE_MODEL_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 JUDGE_MODEL_NAME = "nvidia/nemotron-3-nano-30b-a3b"
@@ -368,6 +364,8 @@ The first response is comprehensive and helpful, while the second is unhelpfully
 Now let's evaluate a larger sample and compare the judge's predictions against human annotations. This tells us how well our judge aligns with human judgment.
 
 ```python
+from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
+
 sample_config = RunConfig(
     parallelism=1,
     limit_samples=5,
@@ -398,6 +396,7 @@ job_v1 = evaluator.submit(
     metric=metric_v1_remote,
     dataset=dataset_ref,
     config=sample_config,
+    metric_bundle_packager=CloudpickleMetricBundlePackager(),
 )
 print(f"Job submitted: {job_v1.name}")
 ```
@@ -511,6 +510,7 @@ job_v2 = evaluator.submit(
     metric=metric_v2_remote,
     dataset=dataset_ref,
     config=sample_config,
+    metric_bundle_packager=CloudpickleMetricBundlePackager(),
 )
 print(f"Job submitted: {job_v2.name}")
 

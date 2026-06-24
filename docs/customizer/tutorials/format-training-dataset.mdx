@@ -2,6 +2,7 @@
 title: "Format Training Dataset"
 description: ""
 ---
+
 <a id="fine-tune-format-training-dataset"></a>
 
 Learn how to format a training dataset to work with the model type you want to train, such as a **chat** or **completion** model.
@@ -40,32 +41,36 @@ Before formatting your dataset, follow these principles to ensure high-quality t
 
 Before uploading your dataset, verify:
 
-✅ **Format:** All entries are valid JSON on a single line (JSONL) 
-✅ **Schema:** Required fields present (`messages`, `prompt`/`completion`, or custom columns) 
-✅ **Encoding:** UTF-8 encoding (not UTF-16 or other encodings) 
-✅ **Completeness:** No empty or null values in required fields 
-✅ **Length:** Examples fit within model's context window (typically 2048-8192 tokens) 
+✅ **Format:** All entries are valid JSON on a single line (JSONL)
+✅ **Schema:** Required fields present (`messages`, `prompt`/`completion`, or custom columns)
+✅ **Encoding:** UTF-8 encoding (not UTF-16 or other encodings)
+✅ **Completeness:** No empty or null values in required fields
+✅ **Length:** Examples fit within model's context window (typically 2048-8192 tokens)
 ✅ **Split:** Training and validation sets are separate and representative
 
 ### Common Dataset Issues
 
 **Overfitting symptoms:**
+
 - Training loss → 0 but validation loss stays high or increases
 - Model memorizes training examples verbatim
 - Poor generalization to new inputs
 
 **Solutions:**
+
 - Increase dataset size and diversity
 - Reduce training epochs (try 1-3 instead of 5+)
 - Add more validation data
 - Use regularization (dropout, lower learning rate)
 
 **Underfitting symptoms:**
+
 - Both training and validation loss remain high
 - Model output quality is poor even on training examples
 - Loss plateaus early in training
 
 **Solutions:**
+
 - Increase training epochs (try 5-10 instead of 3)
 - Increase model size if using small models
 - Check data quality and consistency
@@ -103,10 +108,12 @@ For illustrative purposes only, we show an example entry as multi-line JSON.
     {
       "role": "system",
       "content": "<system message>"
-    }, {
+    },
+    {
       "role": "user",
       "content": "<user message>"
-    }, {
+    },
+    {
       "role": "assistant",
       "content": "<assistant message>"
     }
@@ -135,22 +142,29 @@ For example, if your original system message is `You are a helpful assistant.`, 
 <Tab title="Detailed Thinking Off">
 
 ```json
-{"messages": [
-  {"role": "system", "content": "detailed thinking off"},
-  {"role": "user", "content": "What is 2 + 2?"},
-  {"role": "assistant", "content": "4"}
-]}
+{
+  "messages": [
+    { "role": "system", "content": "detailed thinking off" },
+    { "role": "user", "content": "What is 2 + 2?" },
+    { "role": "assistant", "content": "4" }
+  ]
+}
 ```
 
 </Tab>
 <Tab title="Detailed Thinking On">
 
 ```json
-{"messages": [
-  {"role": "system", "content": "detailed thinking on"},
-  {"role": "user", "content": "What is 2 + 2?"},
-  {"role": "assistant", "content": "<think>To solve 2 + 2, add 2 and 2 together.</think> The answer is 4."}
-]}
+{
+  "messages": [
+    { "role": "system", "content": "detailed thinking on" },
+    { "role": "user", "content": "What is 2 + 2?" },
+    {
+      "role": "assistant",
+      "content": "<think>To solve 2 + 2, add 2 and 2 together.</think> The answer is 4."
+    }
+  ]
+}
 ```
 
 </Tab>
@@ -187,41 +201,46 @@ For illustrative purposes only, we show an example entry as multi-line JSON.
     {
       "role": "assistant",
       "content": "",
-      "tool_calls": [{
-        "type": "function",
-        "function": {
-          "name": "fibonacci",
-          "arguments": {"n": 20}
+      "tool_calls": [
+        {
+          "type": "function",
+          "function": {
+            "name": "fibonacci",
+            "arguments": { "n": 20 }
+          }
         }
-      }]
+      ]
     }
   ],
-  "tools": [{
-    "type": "function",
-    "function": {
-      "name": "fibonacci",
-      "description": "Calculates the nth Fibonacci number.",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "n": {
-            "description": "The position of the Fibonacci number.",
-            "type": "integer"
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "fibonacci",
+        "description": "Calculates the nth Fibonacci number.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "n": {
+              "description": "The position of the Fibonacci number.",
+              "type": "integer"
+            }
           }
         }
       }
     }
-  }]
+  ]
 }
 ```
 
 </Accordion>
 ##### Shared Tools
 
-When your dataset uses the same set of tools across all examples, you can streamline your configuration by omitting the `tools` field from individual dataset entries. Instead, specify these tools once in the `dataset_parameters` section during job creation.
+When your dataset uses the same set of tools across all examples, include the shared tool definitions in **each training row** (Automodel jobs do not accept a separate `dataset_parameters` block). See the [Tool Calling tutorial](/documentation/example-applications/tool-calling) for a full workflow.
 
 ```python
 import os
+from nemo_automodel_plugin.schema import AutomodelJobInput
 from nemo_platform import NeMoPlatform
 
 client = NeMoPlatform(
@@ -229,44 +248,23 @@ client = NeMoPlatform(
     workspace="default",
 )
 
-# Create a customization job with shared tools
-job = client.customization.jobs.create(
-    name="my-tool-calling-job",
-    workspace="default",
-    spec={
-        "model": "default/llama-3-2-1b",
-        "dataset": "fileset://default/my-tool-dataset",
-        "dataset_parameters": {
-            "tools": [
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "fibonacci",
-                        "description": "Calculates the nth Fibonacci number.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "n": {
-                                    "description": "The position of the Fibonacci number.",
-                                    "type": "integer",
-                                }
-                            },
-                        },
-                    },
-                }
-            ]
-        },
-        "training": {
-            "type": "sft",
-            "peft": {"type": "lora", "rank": 8, "alpha": 32},
-            "epochs": 10,
-            "batch_size": 16,
-            "learning_rate": 1e-4,
-        },
-    },
+# Create an Automodel job (include tools in each JSONL training example)
+spec = AutomodelJobInput(
+    model="default/llama-3-2-1b",
+    dataset={"training": "default/my-tool-dataset"},
+    training={"training_type": "sft", "finetuning_type": "lora", "lora": {"rank": 8, "alpha": 32}},
+    schedule={"epochs": 10},
+    batch={"global_batch_size": 16, "micro_batch_size": 1},
+    optimizer={"learning_rate": 1e-4},
 )
 
-print(f"Created job: {job.name}")
+job = client.customization.automodel.jobs.create(
+    name="my-tool-calling-job",
+    workspace="default",
+    spec=spec,
+)
+
+print(f"Submitted job: {job.job.name}")
 ```
 
 ### Find Chat Models
@@ -307,27 +305,30 @@ import os
 from nemo_platform import NeMoPlatform
 
 client = NeMoPlatform(
-    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
-    workspace="default",
+base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+workspace="default",
 )
 
 # Use Inference Gateway with OpenAI-compatible client
+
 oai_client = client.models.get_openai_client(workspace="default")
 
 # Create a chat completion (model format: "workspace/model-entity-name")
+
 response = oai_client.chat.completions.create(
-    model="default/llama-3-2-1b",
-    messages=[
-        {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": "Hello! How are you?"},
-    ],
-    temperature=0.5,
-    top_p=1,
-    max_tokens=1024,
+model="default/llama-3-2-1b",
+messages=[
+{"role": "system", "content": "You are a helpful assistant."},
+{"role": "user", "content": "Hello! How are you?"},
+],
+temperature=0.5,
+top_p=1,
+max_tokens=1024,
 )
 
 print(f"Response: {response.choices[0].message.content}")
-```
+
+````
 
 ## Next Steps
 
@@ -380,4 +381,4 @@ response = oai_client.completions.create(
 )
 
 print(f"Response: {response.choices[0].text}")
-```
+````

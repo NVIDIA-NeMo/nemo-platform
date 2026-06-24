@@ -497,10 +497,10 @@ def trajectory_to_evaluator_results(
 ) -> list[EvaluatorResult]:
     """Extract evaluator_results rows from an ATIF trajectory's verifier_result block.
 
-    Returns one evaluator_result row targeting the EVALUATOR-kind span that
-    ``trajectory_to_spans`` already produced for the verifier. The span preserves
-    the original tree structure; this row makes the score queryable by name and
-    value without parsing the span payload.
+    Emits one row per Harbor reward key (``verifier_result.rewards``), named by that
+    key, targeting the EVALUATOR-kind span that ``trajectory_to_spans`` produced for
+    the verifier. The span preserves the original tree structure; these rows make each
+    score queryable by name and value without parsing the span payload.
     """
 
     extra = trajectory.extra or {}
@@ -510,30 +510,47 @@ def trajectory_to_evaluator_results(
     evaluator_span = next((span for span in spans if span.kind == SpanKind.EVALUATOR), None)
     if evaluator_span is None:
         return []
-    score = _evaluator_score(verifier_result)
-    if score is None:
-        return []
-    data_type, value, string_value = _coerce_evaluator_value(score)
-    return [
-        EvaluatorResult(
-            evaluator_result_id=stable_id(
-                evaluator_span.external_span_id,
-                "harbor.verifier",
-                prefix="eval",
-            ),
-            span_id=evaluator_span.external_span_id,
-            session_id=trajectory.session_id,
-            workspace=workspace,
-            name="harbor.verifier",
-            value=value,
-            string_value=string_value,
-            data_type=data_type,
-            comment=None,
-            created_by="intake:atif_importer",
-            created_at=ingested_at,
-            ingested_at=ingested_at,
+    results: list[EvaluatorResult] = []
+    for name, raw_value in _evaluator_rewards(verifier_result):
+        data_type, value, string_value = _coerce_evaluator_value(raw_value)
+        results.append(
+            EvaluatorResult(
+                # Per-key id: the reward name keeps each criterion's row distinct on the
+                # same span, and an identical re-ingest hashes to the same id (dedupe).
+                evaluator_result_id=stable_id(evaluator_span.external_span_id, name, prefix="eval"),
+                span_id=evaluator_span.external_span_id,
+                session_id=trajectory.session_id,
+                workspace=workspace,
+                name=name,
+                value=value,
+                string_value=string_value,
+                data_type=data_type,
+                comment=None,
+                created_by="intake:atif_importer",
+                created_at=ingested_at,
+                ingested_at=ingested_at,
+            )
         )
-    ]
+    return results
+
+
+def _evaluator_rewards(verifier_result: dict[str, Any]) -> list[tuple[str, bool | int | float | str]]:
+    """Per-reward ``(name, value)`` pairs from a Harbor ``verifier_result``.
+
+    Harbor writes a ``rewards`` dict (``reward.json``) whose keys are the metric
+    identities — one named reward per ``tests/`` subdirectory, or the 1D
+    ``{"reward": <score>}`` convention. Each key becomes its own evaluator_result, so
+    multi-criterion verifiers keep their per-criterion breakdown and keys (incl.
+    namespaced ones like ``v1/correctness``) pass through verbatim. Falls back to a
+    single ``reward`` row when only a bare top-level ``score`` scalar is present.
+    """
+    rewards = verifier_result.get("rewards")
+    if isinstance(rewards, dict):
+        return [(name, value) for name, value in rewards.items() if isinstance(value, (int, float, str))]
+    score = verifier_result.get("score")
+    if isinstance(score, (int, float, str)):
+        return [("reward", score)]
+    return []
 
 
 def _coerce_evaluator_value(

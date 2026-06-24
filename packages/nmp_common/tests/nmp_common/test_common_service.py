@@ -6,8 +6,22 @@
 from typing import List
 
 import pytest
-from fastapi import APIRouter
+from fastapi import APIRouter, FastAPI
 from nmp.common.service import DependencyProvider, RouterConfig, Service
+
+
+def _route_paths(app: FastAPI) -> set[str]:
+    """Collect all route paths, compatible with FastAPI 0.138+ _IncludedRouter."""
+    paths: set[str] = set()
+    queue = list(app.routes)
+    while queue:
+        route = queue.pop()
+        if hasattr(route, "path"):
+            paths.add(route.path)
+        fn = getattr(route, "effective_candidates", None)
+        if callable(fn):
+            queue.extend(fn())  # type: ignore[arg-type]
+    return paths
 
 
 class MockService(Service):
@@ -107,7 +121,7 @@ class TestServiceBase:
         service = MockService()
         app = service.app
 
-        route_paths = [route.path for route in app.routes]
+        route_paths = _route_paths(app)
         assert "/test" in route_paths
 
 

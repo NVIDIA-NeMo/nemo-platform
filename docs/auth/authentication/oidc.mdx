@@ -61,7 +61,19 @@ auth:
  # groups_claim: "groups"
 ```
 
-### Step 3: Configure Scopes (Optional)
+### Step 3: Seed Auth Role Bindings
+
+The `auth.admin_email` setting identifies the bootstrap admin, but the role binding is created by the platform seed task. Docker quickstart runs platform seed automatically, and Helm deployments run the platform-seed Job by default. For source installs, start services with `platform.seed_on_startup: true` or `NMP_SEED_ON_STARTUP=true`; if services are already running, run the seed task manually after services are healthy:
+
+```bash
+# Set NMP_BASE_URL first if services are not on http://localhost:8080.
+curl -sf http://localhost:8080/health/ready
+uv run python -m nmp.platform_seed
+```
+
+The seed task creates the **PlatformAdmin** binding for `auth.admin_email`, plus the default wildcard bindings used for authenticated access. Without this step, OIDC login can succeed while admin operations return `403 Forbidden`.
+
+### Step 4: Configure Scopes (Optional)
 
 This step is only needed if you created custom API scopes in Step 1. If you skip scopes, NeMo Platform still enforces RBAC — scopes add an additional token-level restriction on top. See [API Scopes](/documentation/access-control/authorization/api-scopes).
 
@@ -81,7 +93,7 @@ auth:
  scope_prefix: "api://your-client-id/"
 ```
 
-### Step 4: Verify
+### Step 5: Verify
 
 After deploying the configuration:
 

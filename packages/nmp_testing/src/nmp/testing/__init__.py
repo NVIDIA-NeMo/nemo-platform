@@ -9,7 +9,7 @@ CLI testing:
 - NemoRun / NmpRun: Type alias for a callable that runs the NeMo CLI
 - assert_exit_0: Assert that a CLI invocation succeeded
 - get_repo_root: Return the repository root using git
-- run_nemo_local / run_nmp_local: Run NeMo CLI from repo root without cluster URL injection
+- run_nemo_local / run_nmp_local: Run NeMo CLI from repo root with optional platform URL injection
 
 API testing:
 - create_test_client: Helper for creating FastAPI test clients with in-memory storage

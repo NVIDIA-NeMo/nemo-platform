@@ -57,6 +57,16 @@ body {
   }
 }
 
+/* hack fix: KUI v1 SelectContent uses native popover which resets background to transparent;
+   restore surface styles so all dropdowns render opaque regardless of inner structure. */
+.nv-select-content[popover] {
+  background-color: var(--background-color-surface-raised);
+  border: 1px solid var(--border-color-base);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+
 /* hack fix - Switch component has incorrect outline color */
 .nv-switch-track {
   &[data-state='checked'] {

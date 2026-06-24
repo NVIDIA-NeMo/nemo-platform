@@ -13,11 +13,7 @@ import type { VariableDef } from '@nemo/common/src/components/form/VariableTextA
 import { ModelSelectV2 } from '@nemo/common/src/components/ModelSelectV2';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { useEvaluatorCreateEvaluateJob } from '@nemo/sdk/generated/evaluator/api';
-import type {
-  EvaluateJobRequest,
-  MetricBundleInput,
-  Model,
-} from '@nemo/sdk/generated/evaluator/schema';
+import type { EvaluateJobRequest, MetricInline, Model } from '@nemo/sdk/generated/evaluator/schema';
 import {
   Button,
   Flex,
@@ -282,7 +278,7 @@ export const MetricRunSidePanel: FC<MetricRunSidePanelProps> = ({
         formData.jobType === 'online'
           ? {
               spec: {
-                metrics: [metric as unknown as MetricBundleInput],
+                metrics: [metric as unknown as MetricInline],
                 dataset: formData.dataset,
                 target,
                 prompt_template: promptTemplatePayload ?? undefined,
@@ -291,7 +287,7 @@ export const MetricRunSidePanel: FC<MetricRunSidePanelProps> = ({
             }
           : {
               spec: {
-                metrics: [metric as unknown as MetricBundleInput],
+                metrics: [metric as unknown as MetricInline],
                 dataset: formData.dataset,
               },
             };

@@ -228,6 +228,7 @@ print(result.aggregate_scores)
 ```python
 from nemo_evaluator_sdk import RunConfig
 from nemo_evaluator_sdk.metrics.ragas import ToolCallAccuracyMetric
+from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 metric = ToolCallAccuracyMetric()
 
 job = evaluator.submit(
@@ -250,6 +251,7 @@ job = evaluator.submit(
         }
     ],
     config=RunConfig(parallelism=4),
+    metric_bundle_packager=CloudpickleMetricBundlePackager(),
 )
 job.wait_until_done()
 result = job.get_result()
@@ -428,6 +430,7 @@ print(result.aggregate_scores)
 
 ```python
 from nemo_evaluator_sdk import RunConfig, ToolCallingMetric
+from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 
 metric = ToolCallingMetric(reference="{{item.tool_calls}}")
 
@@ -462,6 +465,7 @@ job = evaluator.submit(
         }
     ],
     config=RunConfig(parallelism=4),
+    metric_bundle_packager=CloudpickleMetricBundlePackager(),
 )
 job.wait_until_done()
 result = job.get_result()
@@ -568,6 +572,7 @@ print(result.aggregate_scores)
 ```python
 from nemo_evaluator_sdk import RunConfig, Model
 from nemo_evaluator_sdk.metrics.ragas import TopicAdherenceMetric
+from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",
@@ -591,6 +596,7 @@ job = evaluator.submit(
         }
     ],
     config=RunConfig(parallelism=4),
+    metric_bundle_packager=CloudpickleMetricBundlePackager(),
 )
 job.wait_until_done()
 result = job.get_result()
@@ -762,6 +768,7 @@ print(result.aggregate_scores)
 ```python
 from nemo_evaluator_sdk import RunConfig, Model
 from nemo_evaluator_sdk.metrics.ragas import AgentGoalAccuracyMetric
+from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",
@@ -791,6 +798,7 @@ job = evaluator.submit(
         }
     ],
     config=RunConfig(parallelism=4),
+    metric_bundle_packager=CloudpickleMetricBundlePackager(),
 )
 job.wait_until_done()
 result = job.get_result()
@@ -917,6 +925,7 @@ print(result.aggregate_scores)
 ```python
 from nemo_evaluator_sdk import RunConfig, Model
 from nemo_evaluator_sdk.metrics.ragas import AgentGoalAccuracyMetric
+from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",
@@ -954,6 +963,7 @@ job = evaluator.submit(
         }
     ],
     config=RunConfig(parallelism=4),
+    metric_bundle_packager=CloudpickleMetricBundlePackager(),
 )
 job.wait_until_done()
 result = job.get_result()
@@ -1013,6 +1023,7 @@ print(result.aggregate_scores)
 ```python
 from nemo_evaluator_sdk import RunConfig, Model
 from nemo_evaluator_sdk.metrics.ragas import AnswerAccuracyMetric
+from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",
@@ -1031,6 +1042,7 @@ job = evaluator.submit(
         }
     ],
     config=RunConfig(parallelism=4),
+    metric_bundle_packager=CloudpickleMetricBundlePackager(),
 )
 job.wait_until_done()
 result = job.get_result()
@@ -1043,6 +1055,7 @@ print(result.aggregate_scores)
 ```python
 from nemo_evaluator_sdk import RunConfigOnlineModel, InferenceParams, Model
 from nemo_evaluator_sdk.metrics.ragas import AnswerAccuracyMetric
+from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",
@@ -1077,6 +1090,7 @@ job = evaluator.submit(
             }
         ]
     },
+    metric_bundle_packager=CloudpickleMetricBundlePackager(),
 )
 
 job.wait_until_done()

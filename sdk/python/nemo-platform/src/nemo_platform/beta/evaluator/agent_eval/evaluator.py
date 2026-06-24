@@ -321,6 +321,11 @@ async def _generate_sample(
 
 def _trial_from_sample(task: AgentEvalTask, target: Model | Agent, sample: dict[str, Any]) -> AgentEvalTrial:
     output_text = sample.get("output_text")
+    if not (isinstance(output_text, str) and output_text.strip()):
+        # Reasoning models that exhaust the token budget can return only
+        # `reasoning_content` with empty `content`. Fall back to that text so the
+        # trial stays scorable instead of being dropped as empty output.
+        output_text = _reasoning_content_fallback(sample.get("response"))
     if "trajectory" in sample:
         trace = EvidenceDescriptor(kind="trace", format="json", data=sample["trajectory"])
     else:
@@ -344,6 +349,22 @@ def _trial_from_sample(task: AgentEvalTask, target: Model | Agent, sample: dict[
             "generated": True,
         },
     )
+
+
+def _reasoning_content_fallback(response: Any) -> str | None:
+    if not isinstance(response, dict):
+        return None
+    choices = response.get("choices")
+    if not isinstance(choices, list):
+        return None
+    for choice in choices:
+        message = choice.get("message") if isinstance(choice, dict) else None
+        if not isinstance(message, dict):
+            continue
+        reasoning = message.get("reasoning_content")
+        if isinstance(reasoning, str) and reasoning.strip():
+            return reasoning
+    return None
 
 
 def _failed_generation_trial(task: AgentEvalTask, target: Model | Agent, exc: Exception) -> AgentEvalTrial:

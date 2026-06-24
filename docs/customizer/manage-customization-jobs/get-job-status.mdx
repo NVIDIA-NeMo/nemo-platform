@@ -9,7 +9,7 @@ Get detailed execution status for a customization job, including step-by-step pr
 
 This endpoint provides granular execution details including:
 
-- **Step-level status**: `model-and-dataset-download` → `customization-training-job` → `model-upload` → `model-entity-creation`
+- **Step-level status**: `model-and-dataset-download` → `training` → `model-upload` → `model-entity-creation`
 - **Training metrics**: `step`, `epoch`, `loss`, `lr` (learning rate), `grad_norm`, `val_loss`
 - **Progress tracking**: `downloaded_files`, `uploaded_bytes`, `progress_pct`
 
@@ -45,7 +45,7 @@ client = NeMoPlatform(
     workspace="default",
 )
 
-# Get job status (use the job name returned by jobs.create)
+# Get job status (use the job name returned at submission)
 job_name = "automodel-a1b2c3d4e5f6"
 status = client.jobs.get_status(name=job_name, workspace="default")
 
@@ -55,13 +55,28 @@ print(f"Status: {status.status}")
 # Check step-level status and training progress
 for step in status.steps or []:
     print(f"  Step '{step.name}': {step.status}")
-    if step.name == "customization-training-job":
+    if step.name == "training":
         for task in step.tasks or []:
             task_details = task.status_details or {}
             current_step = task_details.get("step")
             max_steps = task_details.get("max_steps")
             if current_step and max_steps:
                 print(f"    Progress: {current_step}/{max_steps}")
+```
+
+### CLI
+
+```bash
+nemo jobs get-status automodel-a1b2c3d4e5f6 --workspace default
+```
+
+### REST API
+
+```bash
+curl -X GET \
+  "${NMP_BASE_URL}/apis/jobs/v2/workspaces/default/jobs/automodel-a1b2c3d4e5f6/status" \
+  -H 'Accept: application/json' \
+  | jq
 ```
 
 <Accordion title="Example Response">
@@ -111,7 +126,7 @@ for step in status.steps or []:
      {
        "id": "platform-job-step-9kme8ibxDGES4t9TZvLp4X",
        "error_details": {},
-       "name": "customization-training-job",
+       "name": "training",
        "status": "active",
        "status_details": {
          "message": "Job is running"
@@ -187,7 +202,7 @@ for step in status.steps or []:
      {
        "id": "platform-job-step-9kme8ibxDGES4t9TZvLp4X",
        "error_details": {},
-       "name": "customization-training-job",
+       "name": "training",
        "status": "completed",
        "status_details": {
          "message": "Job completed successfully with exit code 0"

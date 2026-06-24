@@ -145,8 +145,3 @@
   contents:
   - page: Cluster Setup
     path: ../../troubleshooting/cluster-setup.mdx
-- section: Fine-tune Models
-  contents:
-  # DPO is not yet a documented training type; the tutorial stays in the repo but out of nav.
-  - page: DPO Customization Job
-    path: ../../customizer/tutorials/dpo-customization-job.mdx

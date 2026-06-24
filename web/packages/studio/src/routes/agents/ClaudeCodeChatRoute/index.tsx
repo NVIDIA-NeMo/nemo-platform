@@ -1,35 +1,17 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { AssistantRuntimeProvider } from '@assistant-ui/react';
-import { AssistantChatThread } from '@nemo/common/src/components/AssistantChat/AssistantChatThread';
-import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { Banner, Stack, Text } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
-import { type AgentBlockingInputSubmission } from '@studio/components/agents/AgentBlockingInput';
-import { AgentDecisionInput } from '@studio/components/agents/AgentDecisionInput';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
-import {
-  getClaudeCodeSessionHistory,
-  getClaudeCodeSessionHistoryQueryKey,
-} from '@studio/routes/agents/ClaudeCodeChatRoute/api';
-import { BlockingInputComposer } from '@studio/routes/agents/ClaudeCodeChatRoute/BlockingInputComposer';
+import { ClaudeCodeChatThread } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeChatThread';
 import { ClaudeCodeLayout } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeLayout';
-import { ClaudeCodeStudioLink } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeStudioLink';
-import { ClaudeCodeToolCallPart } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeToolCallPart';
-import type {
-  ClaudeCodeChatArtifacts,
-  ClaudeCodeChatRouteState,
-} from '@studio/routes/agents/ClaudeCodeChatRoute/types';
-import { useClaudeCodeChatRuntime } from '@studio/routes/agents/ClaudeCodeChatRoute/useClaudeCodeChatRuntime';
-import {
-  getClaudeCodeHistoryMessages,
-  getSelectedClaudeCodeSessionId,
-} from '@studio/routes/agents/ClaudeCodeChatRoute/util';
+import { useClaudeCodeChatContext } from '@studio/routes/agents/ClaudeCodeChatRoute/context/useClaudeCodeChatContext';
+import type { ClaudeCodeChatRouteState } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
+import { getSelectedClaudeCodeSessionId } from '@studio/routes/agents/ClaudeCodeChatRoute/util';
 import { getClaudeCodeChatRoute, getWorkspaceDashboardRoute } from '@studio/routes/utils';
-import { useQuery } from '@tanstack/react-query';
-import { type FC, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { type FC, useCallback, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 const getInitialPrompt = (state: unknown): string | undefined => {
@@ -41,24 +23,6 @@ const getInitialPrompt = (state: unknown): string | undefined => {
   const trimmedPrompt = initialPrompt.trim();
   return trimmedPrompt || undefined;
 };
-
-interface ClaudeCodeChatSurfaceProps {
-  initialArtifacts?: ClaudeCodeChatArtifacts;
-  initialMessages?: ReturnType<typeof getClaudeCodeHistoryMessages>;
-  initialPrompt?: string;
-  initialSessionId?: string;
-}
-
-const CHAT_VIEWPORT_SCROLLBAR_CLASS = [
-  '[scrollbar-width:thin]',
-  '[scrollbar-color:var(--border-color-interaction-base)_transparent]',
-  '[&::-webkit-scrollbar]:w-2',
-  '[&::-webkit-scrollbar-corner]:bg-transparent',
-  '[&::-webkit-scrollbar-track]:bg-transparent',
-  '[&::-webkit-scrollbar-thumb]:rounded-full',
-  '[&::-webkit-scrollbar-thumb]:bg-[var(--border-color-interaction-base)]',
-  '[&::-webkit-scrollbar-thumb:hover]:bg-[var(--border-color-interaction-strong)]',
-].join(' ');
 
 const ClaudeCodeChatLoadingState = ({ selectedSessionId }: { selectedSessionId?: string }) => (
   <ClaudeCodeLayout activeSessionId={selectedSessionId}>
@@ -84,58 +48,14 @@ const ClaudeCodeChatErrorState = ({ selectedSessionId }: { selectedSessionId?: s
   </ClaudeCodeLayout>
 );
 
-const ClaudeCodeChatSurface: FC<ClaudeCodeChatSurfaceProps> = ({
-  initialArtifacts,
-  initialMessages = [],
-  initialPrompt,
-  initialSessionId,
-}) => {
+export const ClaudeCodeChatRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
   const location = useLocation();
   const navigate = useNavigate();
-  const toast = useToast();
-  const consumedInitialPromptRef = useRef<string | undefined>(undefined);
-  const chatViewportRef = useRef<HTMLDivElement>(null);
-  const {
-    artifacts,
-    decisionChoices,
-    decisionRequest,
-    decisionStatus,
-    handleReset,
-    inputRequest,
-    inputStatus,
-    resolveInputRequest,
-    resolveDecisionRequest,
-    runtime,
-    sessionId,
-    skipInputRequest,
-    skipDecisionRequest,
-    submitPrompt,
-  } = useClaudeCodeChatRuntime({
-    initialArtifacts,
-    initialMessages,
-    initialSessionId,
-    onError: (error) => toast.error(error.message),
-    workspace,
-  });
-  const activeSessionId = initialSessionId ?? sessionId ?? undefined;
-
-  const handleChatReset = useCallback(() => {
-    handleReset();
-    if (initialSessionId) {
-      navigate(getClaudeCodeChatRoute(workspace), { replace: true });
-    }
-  }, [handleReset, initialSessionId, navigate, workspace]);
-
-  const handleInputSubmit = useCallback(
-    async (submission: AgentBlockingInputSubmission) => {
-      await resolveInputRequest({
-        decision: { value: submission.value },
-        displayText: submission.displayText,
-      });
-    },
-    [resolveInputRequest]
-  );
+  const { chat, loadStatus, loadSession, startNewChat } = useClaudeCodeChatContext();
+  const { artifacts, sessionId, submitPrompt } = chat;
+  const selectedSessionId = getSelectedClaudeCodeSessionId(location.search);
+  const initialPrompt = getInitialPrompt(location.state);
 
   useBreadcrumbs({
     items: [
@@ -144,111 +64,55 @@ const ClaudeCodeChatSurface: FC<ClaudeCodeChatSurfaceProps> = ({
     ],
   });
 
+  // Point the shared runtime at the session selected via the URL.
+  useEffect(() => {
+    if (selectedSessionId && selectedSessionId !== sessionId) {
+      loadSession(selectedSessionId);
+    }
+  }, [loadSession, selectedSessionId, sessionId]);
+
+  // Consume a dashboard-provided prompt exactly once: start fresh, fire it, and
+  // clear the navigation state immediately so a refresh does not resubmit.
+  const consumedInitialPromptRef = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (!initialPrompt || consumedInitialPromptRef.current === initialPrompt) return;
 
     consumedInitialPromptRef.current = initialPrompt;
     navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+    startNewChat();
     void submitPrompt(initialPrompt);
-  }, [initialPrompt, location.pathname, location.search, navigate, submitPrompt]);
+  }, [initialPrompt, location.pathname, location.search, navigate, startNewChat, submitPrompt]);
 
-  useLayoutEffect(() => {
-    if (!decisionRequest && !inputRequest) return undefined;
+  const handleChatReset = useCallback(() => {
+    if (selectedSessionId) {
+      navigate(getClaudeCodeChatRoute(workspace), { replace: true });
+    }
+  }, [navigate, selectedSessionId, workspace]);
 
-    const viewport = chatViewportRef.current;
-    if (!viewport) return undefined;
+  const isLoadingSelectedSession =
+    selectedSessionId !== undefined && selectedSessionId !== sessionId;
 
-    const frame = window.requestAnimationFrame(() => {
-      viewport.scrollTop = viewport.scrollHeight;
-    });
-
-    return () => window.cancelAnimationFrame(frame);
-  }, [decisionRequest, inputRequest]);
-
-  return (
-    <ClaudeCodeLayout activeSessionId={activeSessionId} artifacts={artifacts}>
-      <AccessibleTitle title={`Code Agent chat for ${workspace}`}>
-        <Stack className="h-full w-full py-density-lg">
-          <Stack className="min-h-0 w-full flex-1">
-            <AssistantRuntimeProvider runtime={runtime}>
-              <AssistantChatThread
-                contentClassName="mx-auto w-full max-w-180 px-density-2xl"
-                composerContainerClassName="mx-auto w-full max-w-180 px-density-2xl"
-                viewportClassName={CHAT_VIEWPORT_SCROLLBAR_CLASS}
-                hideAssistantMessageActions
-                toolCallPartComponent={ClaudeCodeToolCallPart}
-                attributes={{
-                  ThreadViewport: {
-                    ref: chatViewportRef,
-                  },
-                }}
-                placeholder="Ask Claude Code to work in this workspace"
-                onReset={handleChatReset}
-                showRunningIndicator={!decisionRequest && !inputRequest}
-                messageContentProps={{ markdownLinkComponent: ClaudeCodeStudioLink }}
-                emptyState={{
-                  slotHeading: 'Start a Claude Code session',
-                  slotSubheading: 'Ask Claude Code to work in this workspace.',
-                }}
-                composerOverride={
-                  decisionRequest ? (
-                    <AgentDecisionInput
-                      request={decisionRequest}
-                      choices={decisionChoices}
-                      defaultChoiceId={decisionChoices[0]?.id}
-                      status={decisionStatus}
-                      onSubmit={resolveDecisionRequest}
-                      onSkip={skipDecisionRequest}
-                    />
-                  ) : inputRequest ? (
-                    <BlockingInputComposer
-                      inputRequest={inputRequest}
-                      inputStatus={inputStatus}
-                      workspace={workspace}
-                      onSubmit={handleInputSubmit}
-                      onSkip={skipInputRequest}
-                    />
-                  ) : undefined
-                }
-              />
-            </AssistantRuntimeProvider>
-          </Stack>
-        </Stack>
-      </AccessibleTitle>
-    </ClaudeCodeLayout>
-  );
-};
-
-export const ClaudeCodeChatRoute: FC = () => {
-  const location = useLocation();
-  const selectedSessionId = getSelectedClaudeCodeSessionId(location.search);
-  const initialPrompt = getInitialPrompt(location.state);
-  const sessionHistoryQuery = useQuery({
-    queryKey: getClaudeCodeSessionHistoryQueryKey(selectedSessionId ?? ''),
-    queryFn: () => getClaudeCodeSessionHistory(selectedSessionId ?? ''),
-    enabled: !!selectedSessionId,
-    refetchOnMount: 'always',
-  });
-  const initialMessages = useMemo(
-    () => getClaudeCodeHistoryMessages(sessionHistoryQuery.data),
-    [sessionHistoryQuery.data]
-  );
-
-  if (selectedSessionId && sessionHistoryQuery.isLoading) {
+  if (isLoadingSelectedSession && loadStatus === 'loading') {
     return <ClaudeCodeChatLoadingState selectedSessionId={selectedSessionId} />;
   }
 
-  if (selectedSessionId && sessionHistoryQuery.isError) {
+  if (isLoadingSelectedSession && loadStatus === 'error') {
     return <ClaudeCodeChatErrorState selectedSessionId={selectedSessionId} />;
   }
 
   return (
-    <ClaudeCodeChatSurface
-      key={selectedSessionId ?? 'new'}
-      initialArtifacts={sessionHistoryQuery.data?.chat_artifacts}
-      initialMessages={initialMessages}
-      initialPrompt={selectedSessionId ? undefined : initialPrompt}
-      initialSessionId={selectedSessionId}
-    />
+    <ClaudeCodeLayout
+      activeSessionId={sessionId ?? undefined}
+      artifacts={artifacts}
+      onNewChat={startNewChat}
+    >
+      <AccessibleTitle title={`Code Agent chat for ${workspace}`}>
+        <Stack className="h-full w-full py-density-lg">
+          <Stack className="min-h-0 w-full flex-1">
+            <ClaudeCodeChatThread chat={chat} onReset={handleChatReset} />
+          </Stack>
+        </Stack>
+      </AccessibleTitle>
+    </ClaudeCodeLayout>
   );
 };
