@@ -4,13 +4,17 @@
 import { AssistantRuntimeProvider } from '@assistant-ui/react';
 import { AssistantChatThread } from '@nemo/common/src/components/AssistantChat/AssistantChatThread';
 import { type AgentBlockingInputSubmission } from '@studio/components/agents/AgentBlockingInput';
-import { AgentDecisionInput } from '@studio/components/agents/AgentDecisionInput';
+import {
+  AgentDecisionInput,
+  type AgentDecisionChoice,
+} from '@studio/components/agents/AgentDecisionInput';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { BlockingInputComposer } from '@studio/routes/agents/ClaudeCodeChatRoute/BlockingInputComposer';
 import { ClaudeCodeStudioLink } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeStudioLink';
 import { ClaudeCodeToolCallPart } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeToolCallPart';
 import type { ClaudeCodeChatRuntime } from '@studio/routes/agents/ClaudeCodeChatRoute/useClaudeCodeChatRuntime';
-import { type FC, useCallback, useLayoutEffect, useRef } from 'react';
+import { type FC, useCallback, useLayoutEffect, useMemo, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const CHAT_VIEWPORT_SCROLLBAR_CLASS = [
   '[scrollbar-width:thin]',
@@ -37,6 +41,7 @@ export const ClaudeCodeChatThread: FC<ClaudeCodeChatThreadProps> = ({
   scrollToBottomSignal,
 }) => {
   const workspace = useWorkspaceFromPath();
+  const navigate = useNavigate();
   const chatViewportRef = useRef<HTMLDivElement>(null);
   const {
     decisionChoices,
@@ -47,10 +52,32 @@ export const ClaudeCodeChatThread: FC<ClaudeCodeChatThreadProps> = ({
     inputStatus,
     resolveInputRequest,
     resolveDecisionRequest,
+    resolveStudioNavigationRequest,
     runtime,
     skipInputRequest,
     skipDecisionRequest,
+    studioNavigationRequest,
+    studioNavigationStatus,
   } = chat;
+
+  const studioNavigationChoices = useMemo<readonly AgentDecisionChoice[]>(
+    () =>
+      studioNavigationRequest
+        ? [
+            {
+              id: 'open-ui',
+              label: studioNavigationRequest.suggestion.title,
+              description: 'Use the guided Studio UI for this workflow.',
+            },
+            {
+              id: 'continue-chat',
+              label: 'Continue in chat',
+              description: 'Keep working with Claude Code in this conversation.',
+            },
+          ]
+        : [],
+    [studioNavigationRequest]
+  );
 
   const scrollViewportToBottom = useCallback(() => {
     const viewport = chatViewportRef.current;
@@ -85,10 +112,26 @@ export const ClaudeCodeChatThread: FC<ClaudeCodeChatThreadProps> = ({
     [resolveInputRequest]
   );
 
+  const handleStudioNavigationSubmit = useCallback(
+    (choice: AgentDecisionChoice) => {
+      const request = studioNavigationRequest;
+      if (!request) return;
+
+      if (choice.id === 'open-ui') {
+        resolveStudioNavigationRequest('navigate');
+        navigate(request.suggestion.href);
+        return;
+      }
+
+      resolveStudioNavigationRequest('continue');
+    },
+    [navigate, resolveStudioNavigationRequest, studioNavigationRequest]
+  );
+
   useLayoutEffect(() => {
-    if (!decisionRequest && !inputRequest) return undefined;
+    if (!studioNavigationRequest && !decisionRequest && !inputRequest) return undefined;
     return scrollViewportToBottom();
-  }, [decisionRequest, inputRequest, scrollViewportToBottom]);
+  }, [decisionRequest, inputRequest, scrollViewportToBottom, studioNavigationRequest]);
 
   useLayoutEffect(() => {
     if (scrollToBottomSignal === undefined) return undefined;
@@ -114,14 +157,26 @@ export const ClaudeCodeChatThread: FC<ClaudeCodeChatThreadProps> = ({
         }}
         placeholder="Ask Claude Code to work in this workspace"
         onReset={handleChatReset}
-        showRunningIndicator={!decisionRequest && !inputRequest}
+        showRunningIndicator={!studioNavigationRequest && !decisionRequest && !inputRequest}
         messageContentProps={{ markdownLinkComponent: ClaudeCodeStudioLink }}
         emptyState={{
           slotHeading: 'Start a Claude Code session',
           slotSubheading: 'Ask Claude Code to work in this workspace.',
         }}
         composerOverride={
-          decisionRequest ? (
+          studioNavigationRequest ? (
+            <AgentDecisionInput
+              request={{
+                id: studioNavigationRequest.id,
+                title: 'Studio UI available',
+                description: `${studioNavigationRequest.suggestion.description} Open it now or continue with Claude Code.`,
+              }}
+              choices={studioNavigationChoices}
+              defaultChoiceId="open-ui"
+              status={studioNavigationStatus}
+              onSubmit={handleStudioNavigationSubmit}
+            />
+          ) : decisionRequest ? (
             <AgentDecisionInput
               request={decisionRequest}
               choices={decisionChoices}
