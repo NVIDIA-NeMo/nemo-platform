@@ -35,13 +35,13 @@ export const PanelManagement: FC<PanelManagementProps> = ({ workspace }) => {
   // URL PARAMS & OPEN STATE
   // ==========================================
 
+  // `useParams()` already returns decoded values, and `getFilesetFileRoute()`
+  // encodes them when building the URL — decoding again here is redundant and
+  // throws on valid names containing a literal `%`.
   const {
-    [ROUTE_PARAMS.filesetId]: datasetIdEncoded,
-    [ROUTE_PARAMS.filePathEncoded]: filePathEncoded,
+    [ROUTE_PARAMS.filesetId]: datasetIdFromUrl,
+    [ROUTE_PARAMS.filePathEncoded]: filePathFromUrl,
   } = useParams();
-
-  const datasetIdFromUrl = datasetIdEncoded ? decodeURIComponent(datasetIdEncoded) : undefined;
-  const filePathFromUrl = filePathEncoded ? decodeURIComponent(filePathEncoded) : undefined;
   const currentFolder = getQueryParam(QUERY_PARAMETERS.filesetFolder);
 
   // Mount as soon as the URL references the panel (see component doc).

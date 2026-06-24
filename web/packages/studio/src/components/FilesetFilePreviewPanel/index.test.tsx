@@ -227,6 +227,8 @@ describe('FilesetFilePreviewPanel', () => {
     const folder1Breadcrumb = screen.getByText('folder1');
     fireEvent.click(folder1Breadcrumb);
 
+    // Navigation must not fire synchronously — it waits for the close animation.
+    expect(onFolderClick).not.toHaveBeenCalled();
     await waitFor(() => expect(onFolderClick).toHaveBeenCalledWith('folder1'));
   });
 
@@ -248,6 +250,8 @@ describe('FilesetFilePreviewPanel', () => {
     const folder2Breadcrumb = screen.getByText('folder2');
     fireEvent.click(folder2Breadcrumb);
 
+    // Navigation must not fire synchronously — it waits for the close animation.
+    expect(onFolderClick).not.toHaveBeenCalled();
     await waitFor(() => expect(onFolderClick).toHaveBeenCalledWith('folder1/folder2'));
   });
 
@@ -287,6 +291,8 @@ describe('FilesetFilePreviewPanel', () => {
     const filesetBreadcrumb = screen.getByText('test-dataset');
     fireEvent.click(filesetBreadcrumb);
 
+    // Navigation must not fire synchronously — it waits for the close animation.
+    expect(onFilesetClick).not.toHaveBeenCalled();
     await waitFor(() => expect(onFilesetClick).toHaveBeenCalledTimes(1));
   });
 });
