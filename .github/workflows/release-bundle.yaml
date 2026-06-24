@@ -453,10 +453,13 @@ jobs:
 
   assemble-release-bundle:
     name: Assemble release bundle
-    needs: [plan-release, build-sdks]
-    # build-sdks is skipped for container-only releases; still assemble as long
-    # as planning succeeded and the SDK builds did not fail.
-    if: ${{ !cancelled() && needs.plan-release.result == 'success' && (needs.build-sdks.result == 'success' || needs.build-sdks.result == 'skipped') }}
+    needs: [plan-release, reserve-release-tag, build-sdks]
+    # build-sdks is skipped for container-only releases; still assemble as long as
+    # planning and tag reservation succeeded and the SDK builds did not fail. The
+    # reserve-release-tag gate is required because build-sdks is also skipped when
+    # tag creation fails (its dependency failed), so its result alone would let a
+    # failed tag reservation still build and dispatch the bundle.
+    if: ${{ !cancelled() && needs.plan-release.result == 'success' && needs.reserve-release-tag.result == 'success' && (needs.build-sdks.result == 'success' || needs.build-sdks.result == 'skipped') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
