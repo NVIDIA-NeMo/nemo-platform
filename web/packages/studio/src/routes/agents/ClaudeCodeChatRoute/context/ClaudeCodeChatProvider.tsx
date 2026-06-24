@@ -80,6 +80,13 @@ export const ClaudeCodeChatProvider: FC<ClaudeCodeChatProviderProps> = ({
     [applySession, sessionId, toast]
   );
 
+  // Starting a new chat must cancel any in-flight session load, otherwise a
+  // late history response would rehydrate the previous session over the reset.
+  const startNewChat = useCallback(() => {
+    requestedSessionIdRef.current = null;
+    handleReset();
+  }, [handleReset]);
+
   // Cold start: restore the last active session once on mount so the pop-out
   // (and full chat) reflect it after a hard refresh on any workspace page.
   const hasHydratedRef = useRef(false);
@@ -92,8 +99,8 @@ export const ClaudeCodeChatProvider: FC<ClaudeCodeChatProviderProps> = ({
   }, [loadSession, workspace]);
 
   const value = useMemo(
-    () => ({ chat, loadStatus, loadSession, startNewChat: handleReset }),
-    [chat, handleReset, loadSession, loadStatus]
+    () => ({ chat, loadStatus, loadSession, startNewChat }),
+    [chat, loadSession, loadStatus, startNewChat]
   );
 
   return <ClaudeCodeChatContext.Provider value={value}>{children}</ClaudeCodeChatContext.Provider>;

@@ -39,11 +39,16 @@ vi.mock('@studio/routes/agents/ClaudeCodeChatRoute/useClaudeCodeChatRuntime', ()
 const WORKSPACE = 'default';
 
 const LoadButton = () => {
-  const { loadSession } = useClaudeCodeChatContext();
+  const { loadSession, startNewChat } = useClaudeCodeChatContext();
   return (
-    <button type="button" onClick={() => loadSession('session-2')}>
-      load
-    </button>
+    <>
+      <button type="button" onClick={() => loadSession('session-2')}>
+        load
+      </button>
+      <button type="button" onClick={startNewChat}>
+        new
+      </button>
+    </>
   );
 };
 
@@ -76,6 +81,31 @@ describe('ClaudeCodeChatProvider', () => {
         expect.objectContaining({ sessionId: 'session-2' })
       )
     );
+  });
+
+  it('cancels a pending session load when a new chat is started', async () => {
+    let resolveHistory: ((value: unknown) => void) | undefined;
+    mocks.getClaudeCodeSessionHistory.mockReturnValue(
+      new Promise((resolve) => {
+        resolveHistory = resolve;
+      })
+    );
+
+    renderProvider();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByText('load'));
+    await user.click(screen.getByText('new'));
+
+    // The load resolves after the reset; it must not rehydrate the old session.
+    resolveHistory?.({
+      session_id: 'session-2',
+      items: [],
+      chat_artifacts: { selections: [], files: [], links: [], tools: [] },
+    });
+
+    await waitFor(() => expect(mocks.handleReset).toHaveBeenCalled());
+    expect(mocks.applySession).not.toHaveBeenCalled();
   });
 
   it('hydrates the stored active session on mount', async () => {

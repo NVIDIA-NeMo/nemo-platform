@@ -48,7 +48,9 @@ export const PageLayout = ({ sideNav }: { sideNav?: (collapsed: boolean) => Reac
       className={`min-h-screen relative grid size-full text-primary grid-cols-[auto_minmax(0,1fr)] grid-rows-[auto_1fr] ${gridAreas}`}
     >
       {CODING_AGENT_STUDIO_ENABLED && workspace ? (
-        <ClaudeCodeChatProvider workspace={workspace}>{layout}</ClaudeCodeChatProvider>
+        <ClaudeCodeChatProvider key={workspace} workspace={workspace}>
+          {layout}
+        </ClaudeCodeChatProvider>
       ) : (
         layout
       )}

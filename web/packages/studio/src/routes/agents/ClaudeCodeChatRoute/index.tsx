@@ -100,7 +100,11 @@ export const ClaudeCodeChatRoute: FC = () => {
   }
 
   return (
-    <ClaudeCodeLayout activeSessionId={sessionId ?? undefined} artifacts={artifacts}>
+    <ClaudeCodeLayout
+      activeSessionId={sessionId ?? undefined}
+      artifacts={artifacts}
+      onNewChat={startNewChat}
+    >
       <AccessibleTitle title={`Code Agent chat for ${workspace}`}>
         <Stack className="h-full w-full py-density-lg">
           <Stack className="min-h-0 w-full flex-1">

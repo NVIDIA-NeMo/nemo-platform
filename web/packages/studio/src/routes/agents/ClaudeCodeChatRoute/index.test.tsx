@@ -6,6 +6,7 @@ import { ClaudeCodeChatRoute } from '@studio/routes/agents/ClaudeCodeChatRoute';
 import type { ClaudeCodeChatLoadStatus } from '@studio/routes/agents/ClaudeCodeChatRoute/context/useClaudeCodeChatContext';
 import type { ClaudeCodeChatRouteState } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { generatePath, MemoryRouter, Route, Routes } from 'react-router-dom';
 
@@ -45,11 +46,16 @@ vi.mock('@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeLayout', () => ({
   ClaudeCodeLayout: ({
     activeSessionId,
     children,
+    onNewChat,
   }: {
     activeSessionId?: string;
     children: ReactNode;
+    onNewChat?: () => void;
   }) => (
     <div data-active-session-id={activeSessionId ?? ''} data-testid="chat-layout">
+      <button type="button" onClick={onNewChat}>
+        new chat
+      </button>
       {children}
     </div>
   ),
@@ -102,6 +108,15 @@ describe('ClaudeCodeChatRoute', () => {
     renderClaudeCodeChatRoute({ search: '?session=session-existing' });
 
     expect(screen.getByText('Loading chat...')).toBeInTheDocument();
+  });
+
+  it('resets the shared runtime when New Chat is used from the history panel', async () => {
+    mocks.chat.sessionId = 'session-existing';
+
+    renderClaudeCodeChatRoute({ search: '?session=session-existing' });
+    await userEvent.setup().click(screen.getByRole('button', { name: 'new chat' }));
+
+    expect(mocks.startNewChat).toHaveBeenCalledOnce();
   });
 
   it('renders the chat for the active session once loaded', () => {
