@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from nemo_evaluator.shared.metric_bundles.bundles import (
     BundledMetricOutputSpec,
@@ -40,9 +40,30 @@ class CloudpickleMetricPayload(BaseModel):
     )
 
 
+class InlineMetricPayload(BaseModel):
+    """Wire schema for an inline (config-serialized) metric payload.
+
+    Mirrors the runtime ``InlineMetricPayload``. The metric is stored as its own
+    JSON configuration and reconstructed from the metric type union at execution,
+    so no code is shipped or executed on load. Used for platform-recognized
+    built-in metric types.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["inline"] = Field(description="Payload format discriminator.")
+    metric: dict[str, Any] = Field(
+        description="JSON-serialized built-in metric configuration, discriminated by its own `type`."
+    )
+    digest: str | None = Field(
+        default=None,
+        description="SHA-256 digest of the canonical metric JSON. Informational; recomputed server-side.",
+    )
+
+
 # Discriminated on ``kind`` so additional payload formats can join the union
-# without changing the field type. Cloudpickle is the only kind today.
-MetricPayload = Annotated[CloudpickleMetricPayload, Field(discriminator="kind")]
+# without changing the field type.
+MetricPayload = Annotated[CloudpickleMetricPayload | InlineMetricPayload, Field(discriminator="kind")]
 
 
 class MetricInline(BaseModel):

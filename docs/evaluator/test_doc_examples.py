@@ -10,9 +10,10 @@ The Evaluator docs are written against the ``nemo_evaluator`` plugin SDK
 import paths and call contract that every runnable doc snippet relies on, so the
 docs cannot silently drift from the SDK again.
 
-These checks run fully offline: they exercise import locations and the
-client-side argument validation in ``Evaluator.submit`` / ``AsyncEvaluator.submit``.
-They do not submit jobs and need no running platform or model credentials.
+These checks run fully offline: they exercise import locations and the packager
+contract for ``Evaluator.submit`` — built-in metrics bundle inline and need no
+packager, while custom metrics require an explicit one. They do not submit jobs
+and need no running platform or model credentials.
 
 Run directly:
     uv run python docs/evaluator/test_doc_examples.py
@@ -27,7 +28,24 @@ import inspect
 
 import pytest
 from nemo_evaluator.sdk import Evaluator
+from nemo_evaluator.shared.metric_bundles.bundles import MetricBundlePackagerPolicyError
+from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 from nemo_platform import NeMoPlatform
+
+
+class _CustomMetric:
+    """A metric that is not a built-in type (cannot be reconstructed from config)."""
+
+    type = "custom-score"
+    description = "custom metric"
+    labels: dict[str, str] = {}
+
+    def output_spec(self) -> list[MetricOutputSpec]:
+        return [MetricOutputSpec.continuous_score("score")]
+
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
+        del input
+        return MetricResult(outputs=[MetricOutput(name="score", value=1.0)])
 
 
 def test_filesetref_imports_from_platform_sdk() -> None:
@@ -84,16 +102,35 @@ def test_packager_param_is_submit_only() -> None:
     assert "metric_bundle_packager" not in run_params
 
 
-def test_submit_requires_metric_bundle_packager() -> None:
-    """``submit()`` without a packager raises the documented ValueError, offline."""
+def test_builtin_submit_does_not_require_a_packager() -> None:
+    """Built-in metrics bundle inline, so docs omit the packager on ``submit()``.
+
+    Submitting reaches the executor (which then needs a live service); the point
+    is only that no packager-policy error is raised for a built-in metric.
+    """
     from nemo_evaluator_sdk import ExactMatchMetric
 
     evaluator = _evaluator()
     metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
     dataset = [{"expected": "Paris", "output": "Paris"}]
 
-    with pytest.raises(ValueError, match="metric_bundle_packager is required"):
+    try:
         evaluator.submit(metric=metric, dataset=dataset)
+    except MetricBundlePackagerPolicyError as error:  # pragma: no cover - regression guard
+        pytest.fail(f"built-in submit should not require a packager: {error}")
+    except Exception:
+        # Any other failure (e.g. connection refused with no live service) is fine;
+        # it means the built-in metric was bundled inline and reached execution.
+        pass
+
+
+def test_custom_submit_requires_an_explicit_packager() -> None:
+    """Custom (non-built-in) metrics still require an explicit packager for durable submit."""
+    evaluator = _evaluator()
+    dataset = [{"expected": "Paris", "output": "Paris"}]
+
+    with pytest.raises(MetricBundlePackagerPolicyError, match="CloudpickleMetricBundlePackager"):
+        evaluator.submit(metric=_CustomMetric(), dataset=dataset)
 
 
 def test_run_does_not_require_metric_bundle_packager() -> None:

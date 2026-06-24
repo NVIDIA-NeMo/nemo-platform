@@ -30,6 +30,7 @@ from nemo_evaluator.sdk.types import (
     RunConfigOnlineModel,
 )
 from nemo_evaluator.shared.metric_bundles.bundles import MetricBundlePackager
+from nemo_evaluator.shared.metric_bundles.defaults import resolve_default_metric_bundle_packager
 from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.values import (
     Agent,
@@ -135,11 +136,6 @@ class Evaluator:
         metric_bundle_packager: MetricBundlePackager | None = None,
     ) -> EvaluatorJobResource:
         """Submit a metric job through the evaluator plugin executor."""
-        if metric_bundle_packager is None:
-            raise ValueError(
-                "metric_bundle_packager is required for submit(); "
-                "pass CloudpickleMetricBundlePackager() to enable metric bundling."
-            )
         return self._executor.submit(
             metric=metric,
             dataset=dataset,
@@ -147,7 +143,9 @@ class Evaluator:
             target=target,
             field_mapping=field_mapping,
             prompt_template=prompt_template,
-            metric_bundle_packager=metric_bundle_packager,
+            metric_bundle_packager=resolve_default_metric_bundle_packager(
+                metric, metric_bundle_packager, allow_cloudpickle_fallback=False, action="Submitting"
+            ),
         )
 
     @overload
@@ -365,11 +363,6 @@ class AsyncEvaluator:
         metric_bundle_packager: MetricBundlePackager | None = None,
     ) -> AsyncEvaluatorJobResource:
         """Submit a metric job through the evaluator plugin executor."""
-        if metric_bundle_packager is None:
-            raise ValueError(
-                "metric_bundle_packager is required for submit(); "
-                "pass CloudpickleMetricBundlePackager() to enable metric bundling."
-            )
         return await self._executor.submit(
             metric=metric,
             dataset=dataset,
@@ -377,7 +370,9 @@ class AsyncEvaluator:
             target=target,
             field_mapping=field_mapping,
             prompt_template=prompt_template,
-            metric_bundle_packager=metric_bundle_packager,
+            metric_bundle_packager=resolve_default_metric_bundle_packager(
+                metric, metric_bundle_packager, allow_cloudpickle_fallback=False, action="Submitting"
+            ),
         )
 
 
