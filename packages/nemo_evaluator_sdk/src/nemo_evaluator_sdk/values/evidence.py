@@ -92,7 +92,11 @@ class LocalFilesystemEvidence:
         return await asyncio.to_thread(path.read_text, encoding=encoding)
 
     async def iter_paths(self, relative_path: str | Path = ".", *, recursive: bool = False) -> list[str]:
-        """Return stable relative path names under the evidence root."""
+        """List entries (files *and* directories) rooted at ``relative_path``.
+
+        Use this to walk a subtree or test for (non-)emptiness. For a flat,
+        files-only listing matched by a glob pattern, use :meth:`list_files`.
+        """
         base = self.path(relative_path)
         return await asyncio.to_thread(self._iter_paths_sync, base, recursive)
 
@@ -108,14 +112,23 @@ class LocalFilesystemEvidence:
         return await asyncio.to_thread(path.read_bytes)
 
     async def list_files(self, pattern: str = "**/*") -> list[str]:
-        """Return relative posix paths of files matching ``pattern`` (files only)."""
+        """List relative posix paths of files (not directories) matching ``pattern``.
+
+        Complements :meth:`iter_paths`: this is the flat, glob-filtered,
+        files-only view; ``iter_paths`` walks a subtree and includes directories.
+        """
         return await asyncio.to_thread(self._list_sync, pattern)
 
     def _list_sync(self, pattern: str) -> list[str]:
         return sorted(path.relative_to(self._root).as_posix() for path in self._root.glob(pattern) if path.is_file())
 
     async def diff(self, other: LocalFilesystemEvidence) -> FilesystemDiff:
-        """Diff this snapshot (before) against ``other`` (after) by file content hash."""
+        """Diff this snapshot (before) against ``other`` (after) by file content hash.
+
+        Cost note: this hashes every file in both trees by reading each fully, so
+        it is O(total bytes). Fine for task-sized evidence; revisit (streamed
+        hashing / size+mtime prefilter) if used on large artifact trees.
+        """
         return await asyncio.to_thread(self._diff_sync, other)
 
     def _diff_sync(self, other: LocalFilesystemEvidence) -> FilesystemDiff:
@@ -147,14 +160,22 @@ class LocalFilesystemEvidence:
 
         The evidence is copied to a temp overlay so the command can never mutate
         stored evidence (pytest caches, build artifacts, ...). ``command`` is a
-        list passed straight to exec — no shell parsing, so no injection surface.
+        list passed straight to exec, so there is no shell parsing of it.
+
+        This is NOT a sandbox: the command runs with the host's privileges and
+        full filesystem/network access. ``command`` is supplied by the (trusted)
+        metric author, never by the agent under test. Cost note: the whole tree
+        is copied on every call, so verifying large evidence repeatedly is heavy.
         """
         overlay = Path(tempfile.mkdtemp(prefix="evidence-verify-")).resolve()
         try:
             workdir = (overlay / cwd).resolve()
             if workdir != overlay and overlay not in workdir.parents:
                 raise ValueError(f"verifier cwd {cwd!r} resolves outside evidence overlay")
-            await asyncio.to_thread(shutil.copytree, self._root, overlay, dirs_exist_ok=True)
+            # ignore_dangling_symlinks: broken symlinks in evidence shouldn't abort the copy.
+            await asyncio.to_thread(
+                shutil.copytree, self._root, overlay, dirs_exist_ok=True, ignore_dangling_symlinks=True
+            )
             return await self._exec(command, workdir, timeout_s)
         finally:
             await asyncio.to_thread(shutil.rmtree, overlay, True)
