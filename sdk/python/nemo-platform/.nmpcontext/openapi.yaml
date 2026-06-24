@@ -3742,6 +3742,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ExperimentResponsesPage'
+        '400':
+          description: Unsupported sort field
+        '503':
+          description: Telemetry store unavailable for a metric-based sort
         '422':
           description: Validation Error
           content:
