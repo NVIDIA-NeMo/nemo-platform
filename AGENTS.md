@@ -240,6 +240,7 @@ Ensure all pre-commit hooks pass by running `uv run pre-commit run -a`. A clean 
 ### Bootstrap prerequisites
 
 - **uv version pin:** Root `pyproject.toml` requires `uv>=0.9.14,<0.10.0`. Newer uv releases (e.g. 0.11.x) fail `uv sync` with a version mismatch. Install the pinned range before bootstrapping: `pip install 'uv>=0.9.14,<0.10.0'`.
+- **uv PATH gotcha:** the pip install lands `uv` in `~/.local/bin`, which is on PATH for login shells (`~/.profile`) but not for the default non-login tool shell. `~/.local/bin` has been added to `~/.bashrc` so interactive shells resolve it; if a shell still reports `uv: command not found`, prefix commands with `PATH="$HOME/.local/bin:$PATH"`.
 - **Native build deps:** `make bootstrap-python` builds `annoy` (via `nemoguardrails`). Install system headers once per VM image: `sudo apt-get install -y python3-dev build-essential`.
 - **Python bootstrap:** Run `make bootstrap-python` from repo root (creates `.venv`, runs `uv sync --frozen --all-packages`). See [SETUP.md](SETUP.md) for the full playbook.
 - **Studio (optional):** `make bootstrap-studio` requires Node **22.18.x** and pnpm per `web/package.json` engines. The VM may ship an older Node (e.g. 22.14); API services still run without Studio assets. Upgrade Node then run `make bootstrap-studio` if you need `http://localhost:8080/studio/`.
