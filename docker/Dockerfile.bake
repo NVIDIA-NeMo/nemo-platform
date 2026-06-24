@@ -2,7 +2,7 @@
 # Common Build Targets.  Please use `docker buildx bake` to build.  See `README.md`
 #######
 
-ARG DISTROLESS_BASE=nvcr.io/nvidia/distroless/python:3.11-v4.0.9
+ARG DISTROLESS_BASE=nvcr.io/nvidia/distroless/python:3.11-v4.0.8
 
 #root-uv-binary-base
     FROM ghcr.io/astral-sh/uv:0.9.14 AS root-uv-binary-base

@@ -53,7 +53,7 @@ variable "MAMBA_SSM_WHEEL_CONTEXT" {
 }
 
 variable "DISTROLESS_BASE" {
-  default = "nvcr.io/nvidia/distroless/python:3.11-v4.0.9"
+  default = "nvcr.io/nvidia/distroless/python:3.11-v4.0.8"
 }
 
 variable "DOCKERHUB_MIRROR" {
