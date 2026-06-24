@@ -28,6 +28,7 @@ catalog:
   '@vitejs/plugin-react-swc': ^3.11.0
   '@vitest/coverage-v8': 4.1.9
   '@vitest/eslint-plugin': ^1.6.15
+  'eslint-plugin-jsx-a11y': ^6.10.2
   '@vitest/ui': 4.1.9
   axios: 1.18.0
   classnames: ^2.5.1
