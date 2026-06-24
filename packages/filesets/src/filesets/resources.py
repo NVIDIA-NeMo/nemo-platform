@@ -157,22 +157,16 @@ class FilesetsSubResource:
         custom_fields: dict[str, Any] | None = None,
         cache: bool = False,
     ) -> FilesetOutput:
-        create_kwargs: dict[str, Any] = {"name": name}
-        if description is not None:
-            create_kwargs["description"] = description
-        if project is not None:
-            create_kwargs["project"] = project
-        if purpose is not None:
-            create_kwargs["purpose"] = purpose
-        if metadata is not None:
-            create_kwargs["metadata"] = metadata
-        if storage is not None:
-            create_kwargs["storage"] = storage
-        if custom_fields is not None:
-            create_kwargs["custom_fields"] = custom_fields
-        if cache:
-            create_kwargs["cache"] = cache
-        body = CreateFilesetRequest(**create_kwargs)
+        body = CreateFilesetRequest(
+            name=name,
+            description=description,
+            project=project,
+            purpose=purpose or FilesetPurpose.GENERIC,
+            metadata=metadata or FilesetMetadata(),
+            storage=storage,
+            custom_fields=custom_fields or {},
+            cache=cache,
+        )
         try:
             return self._client.send(endpoints.create_fileset(workspace=workspace, body=body)).data()
         except NemoHTTPError as e:
@@ -195,18 +189,19 @@ class FilesetsSubResource:
         custom_fields: dict[str, Any] | None = None,
         timeout: float | None = None,
     ) -> FilesetOutput:
-        update_kwargs: dict[str, Any] = {}
-        if description is not None:
-            update_kwargs["description"] = description
-        if project is not None:
-            update_kwargs["project"] = project
-        if purpose is not None:
-            update_kwargs["purpose"] = purpose
-        if metadata is not None:
-            update_kwargs["metadata"] = metadata
-        if custom_fields is not None:
-            update_kwargs["custom_fields"] = custom_fields
-        body = UpdateFilesetRequest(**update_kwargs)
+        # Only include explicitly provided fields so exclude_unset works correctly
+        kwargs = {
+            k: v
+            for k, v in dict(
+                description=description,
+                project=project,
+                purpose=purpose,
+                metadata=metadata,
+                custom_fields=custom_fields,
+            ).items()
+            if v is not None
+        }
+        body = UpdateFilesetRequest(**kwargs)
         return self._client.send(endpoints.update_fileset(workspace=workspace, name=name, body=body)).data()
 
     def list(
@@ -218,15 +213,16 @@ class FilesetsSubResource:
         sort: str | None = None,
         filter: str | dict | None = None,
     ) -> FilesetPage:
-        query_params: dict[str, Any] = {}
-        if page is not None:
-            query_params["page"] = page
-        if page_size is not None:
-            query_params["page_size"] = page_size
-        if sort is not None:
-            query_params["sort"] = sort
-        if filter is not None:
-            query_params["filter"] = filter
+        query_params = {
+            k: v
+            for k, v in dict(
+                page=page,
+                page_size=page_size,
+                sort=sort,
+                filter=filter,
+            ).items()
+            if v is not None
+        }
         return self._client.send(endpoints.list_filesets(workspace=workspace, query_params=query_params or None)).data()
 
     def delete(self, name: str, *, workspace: str | None = None) -> FilesetOutput:
@@ -253,22 +249,16 @@ class AsyncFilesetsSubResource:
         custom_fields: dict[str, Any] | None = None,
         cache: bool = False,
     ) -> FilesetOutput:
-        create_kwargs: dict[str, Any] = {"name": name}
-        if description is not None:
-            create_kwargs["description"] = description
-        if project is not None:
-            create_kwargs["project"] = project
-        if purpose is not None:
-            create_kwargs["purpose"] = purpose
-        if metadata is not None:
-            create_kwargs["metadata"] = metadata
-        if storage is not None:
-            create_kwargs["storage"] = storage
-        if custom_fields is not None:
-            create_kwargs["custom_fields"] = custom_fields
-        if cache:
-            create_kwargs["cache"] = cache
-        body = CreateFilesetRequest(**create_kwargs)
+        body = CreateFilesetRequest(
+            name=name,
+            description=description,
+            project=project,
+            purpose=purpose or FilesetPurpose.GENERIC,
+            metadata=metadata or FilesetMetadata(),
+            storage=storage,
+            custom_fields=custom_fields or {},
+            cache=cache,
+        )
         try:
             return (await self._client.send(endpoints.create_fileset(workspace=workspace, body=body))).data()
         except NemoHTTPError as e:
@@ -291,18 +281,18 @@ class AsyncFilesetsSubResource:
         custom_fields: dict[str, Any] | None = None,
         timeout: float | None = None,
     ) -> FilesetOutput:
-        update_kwargs: dict[str, Any] = {}
-        if description is not None:
-            update_kwargs["description"] = description
-        if project is not None:
-            update_kwargs["project"] = project
-        if purpose is not None:
-            update_kwargs["purpose"] = purpose
-        if metadata is not None:
-            update_kwargs["metadata"] = metadata
-        if custom_fields is not None:
-            update_kwargs["custom_fields"] = custom_fields
-        body = UpdateFilesetRequest(**update_kwargs)
+        kwargs = {
+            k: v
+            for k, v in dict(
+                description=description,
+                project=project,
+                purpose=purpose,
+                metadata=metadata,
+                custom_fields=custom_fields,
+            ).items()
+            if v is not None
+        }
+        body = UpdateFilesetRequest(**kwargs)
         return (await self._client.send(endpoints.update_fileset(workspace=workspace, name=name, body=body))).data()
 
     async def list(
@@ -314,15 +304,16 @@ class AsyncFilesetsSubResource:
         sort: str | None = None,
         filter: str | dict | None = None,
     ) -> FilesetPage:
-        query_params: dict[str, Any] = {}
-        if page is not None:
-            query_params["page"] = page
-        if page_size is not None:
-            query_params["page_size"] = page_size
-        if sort is not None:
-            query_params["sort"] = sort
-        if filter is not None:
-            query_params["filter"] = filter
+        query_params = {
+            k: v
+            for k, v in dict(
+                page=page,
+                page_size=page_size,
+                sort=sort,
+                filter=filter,
+            ).items()
+            if v is not None
+        }
         return (
             await self._client.send(endpoints.list_filesets(workspace=workspace, query_params=query_params or None))
         ).data()
