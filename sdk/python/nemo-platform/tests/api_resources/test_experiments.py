@@ -274,7 +274,7 @@ class TestExperiments:
             },
             page=1,
             page_size=1,
-            sort="-created_at",
+            sort="sort",
         )
         assert_matches_type(SyncDefaultPagination[ExperimentResponse], experiment, path=["response"])
 
@@ -712,7 +712,7 @@ class TestAsyncExperiments:
             },
             page=1,
             page_size=1,
-            sort="-created_at",
+            sort="sort",
         )
         assert_matches_type(AsyncDefaultPagination[ExperimentResponse], experiment, path=["response"])
 
