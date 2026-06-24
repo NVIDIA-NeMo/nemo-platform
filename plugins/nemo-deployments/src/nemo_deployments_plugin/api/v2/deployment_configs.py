@@ -8,7 +8,9 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from nemo_deployments_plugin.api.v2._perms import DeploymentConfigPerms
 from nemo_deployments_plugin.api.v2.dependencies import get_entity_client
+from nemo_deployments_plugin.authz import SCOPE
 from nemo_deployments_plugin.entities import DeploymentConfig
 from nemo_deployments_plugin.references import deployment_names_using_config
 from nemo_deployments_plugin.schema import (
@@ -17,6 +19,7 @@ from nemo_deployments_plugin.schema import (
     DeploymentConfigPage,
 )
 from nemo_platform_plugin.api.filters import make_filter_obj_dep
+from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError, NemoEntityNotFoundError
 from nemo_platform_plugin.schema import PaginationData
 
@@ -28,6 +31,7 @@ _config_filter_dep = make_filter_obj_dep(DeploymentConfigFilter)
 
 
 @router.post("/deployment-configs", response_model=DeploymentConfig, status_code=201, tags=["Deployment Configs"])
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[DeploymentConfigPerms.CREATE], scopes=SCOPE.write())
 async def create_deployment_config(
     workspace: str,
     body: CreateDeploymentConfigRequest,
@@ -48,6 +52,7 @@ async def create_deployment_config(
 
 
 @router.get("/deployment-configs", response_model=DeploymentConfigPage, tags=["Deployment Configs"])
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[DeploymentConfigPerms.LIST], scopes=SCOPE.read())
 async def list_deployment_configs(
     workspace: str,
     page: int = Query(default=1, ge=1),
@@ -70,6 +75,7 @@ async def list_deployment_configs(
 
 
 @router.get("/deployment-configs/{name}", response_model=DeploymentConfig, tags=["Deployment Configs"])
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[DeploymentConfigPerms.READ], scopes=SCOPE.read())
 async def get_deployment_config(
     workspace: str,
     name: str,
@@ -85,6 +91,7 @@ async def get_deployment_config(
 
 
 @router.delete("/deployment-configs/{name}", status_code=204, tags=["Deployment Configs"])
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[DeploymentConfigPerms.DELETE], scopes=SCOPE.write())
 async def delete_deployment_config(
     workspace: str,
     name: str,
