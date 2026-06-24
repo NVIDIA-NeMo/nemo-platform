@@ -105,23 +105,23 @@ def test_packager_param_is_submit_only() -> None:
 def test_builtin_submit_does_not_require_a_packager() -> None:
     """Built-in metrics bundle inline, so docs omit the packager on ``submit()``.
 
-    Submitting reaches the executor (which then needs a live service); the point
-    is only that no packager-policy error is raised for a built-in metric.
+    Packager resolution happens before delegating to the executor, so we stub the
+    executor with a sentinel: reaching it (rather than raising a packager-policy
+    error) proves the built-in metric bundled inline with no packager required —
+    without depending on a live service or swallowing unrelated failures.
     """
+    from unittest.mock import patch
+
     from nemo_evaluator_sdk import ExactMatchMetric
 
     evaluator = _evaluator()
     metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
     dataset = [{"expected": "Paris", "output": "Paris"}]
+    sentinel = RuntimeError("reached executor.submit (packaging resolved without a packager)")
 
-    try:
-        evaluator.submit(metric=metric, dataset=dataset)
-    except MetricBundlePackagerPolicyError as error:  # pragma: no cover - regression guard
-        pytest.fail(f"built-in submit should not require a packager: {error}")
-    except Exception:
-        # Any other failure (e.g. connection refused with no live service) is fine;
-        # it means the built-in metric was bundled inline and reached execution.
-        pass
+    with patch.object(evaluator._executor, "submit", side_effect=sentinel):
+        with pytest.raises(RuntimeError, match="reached executor.submit"):
+            evaluator.submit(metric=metric, dataset=dataset)
 
 
 def test_custom_submit_requires_an_explicit_packager() -> None:

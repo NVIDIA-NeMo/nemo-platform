@@ -15,7 +15,7 @@ from nemo_evaluator.shared.metric_bundles.bundles import (
 )
 from nemo_evaluator_sdk.values.common import SecretRef
 from nemo_platform_plugin.schema import DatetimeFilter, Filter
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class CloudpickleMetricPayload(BaseModel):
@@ -59,6 +59,20 @@ class InlineMetricPayload(BaseModel):
         default=None,
         description="SHA-256 digest of the canonical metric JSON. Informational; recomputed server-side.",
     )
+
+    @field_validator("metric")
+    @classmethod
+    def _metric_must_declare_type(cls, value: dict[str, Any]) -> dict[str, Any]:
+        """Reject payloads without a metric ``type`` discriminator at the API boundary.
+
+        The metric body stays an open object (the concrete shape is validated when
+        the bundle is hydrated against the metric type union), but a non-empty
+        ``type`` is required so malformed payloads fail fast rather than at execution.
+        """
+        metric_type = value.get("type")
+        if not isinstance(metric_type, str) or not metric_type:
+            raise ValueError("inline metric payload must include a non-empty 'type'")
+        return value
 
 
 # Discriminated on ``kind`` so additional payload formats can join the union
