@@ -76,5 +76,7 @@ point).
 - `X-NMP-Principal-*` headers remain a trusted identity channel in this
   deployment shape; the harness never sends them, but does not prove they are
   stripped (that's an ingress concern, out of authz scope).
-- `hard_fail` mode aborts bundle build (auth service degraded) — its
-  observable is process health, not a per-request status; not asserted here.
+- `hard_fail` (the default `on_invalid_plugin` mode) aborts bundle build (auth
+  service degraded) — its observable is process health, not a per-request status;
+  not asserted here. Both harness phases pin a softer mode (`deny_route` /
+  `quarantine`) so the platform stays up with the deliberately-broken fixtures.

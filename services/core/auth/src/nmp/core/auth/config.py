@@ -61,10 +61,13 @@ class AuthServiceConfig(SharedAuthConfig):
     # Plugin HTTP authz fail-mode: what to do when a plugin contributes invalid authz
     # (an unruled route, or a rule referencing an undeclared / out-of-namespace permission).
     # The offending routes are always emitted as explicit denies; this controls the blast
-    # radius. deny_route: deny only the bad routes. quarantine: deny the whole plugin.
-    # hard_fail: refuse to build the OPA bundle.
+    # radius. hard_fail: refuse to build the OPA bundle (default — fail closed at the platform
+    # level, matching the 743 spec's "a missing path rule is a validation error"). quarantine:
+    # deny the whole offending plugin but keep the platform up. deny_route: deny only the bad
+    # routes. A deployment that loads dynamically-discovered or third-party plugins CI never
+    # vetted can downgrade to quarantine/deny_route so one bad plugin can't wedge the platform.
     on_invalid_plugin: Literal["deny_route", "quarantine", "hard_fail"] = Field(
-        default="deny_route",
+        default="hard_fail",
         description="Fail-mode for a plugin that contributes invalid HTTP authz.",
     )
 

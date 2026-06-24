@@ -13,7 +13,9 @@ whose ``sub`` is ``service:e2e-harness``.
 
 Two platform phases (both lazy, session-scoped):
 
-- ``platform`` — default authz knobs (``on_invalid_plugin=deny_route``).
+- ``platform`` — ``on_invalid_plugin=deny_route``. The harness deliberately loads
+  broken/unruled fixture plugins, so it pins per-route fencing rather than inheriting
+  the strict ``hard_fail`` default, which would abort the bundle and wedge the platform.
 - ``platform_knobs`` — ``on_invalid_plugin=quarantine``.
 
 Run: ``pytest e2e/authz_oidc -v --run-e2e`` (see README.md).
@@ -272,8 +274,14 @@ def _provision(platform: Platform) -> None:
 
 @pytest.fixture(scope="session")
 def platform(issuer: MiniOIDCIssuer, tmp_path_factory: pytest.TempPathFactory) -> Iterator[Platform]:
-    """Default-knob platform, fully provisioned."""
-    gen = _spawn_platform(issuer, tmp_path_factory, "default", {})
+    """deny_route-knob platform, fully provisioned.
+
+    Pins ``deny_route`` explicitly: the harness installs broken/unruled fixture
+    plugins on purpose, so it opts out of the strict ``hard_fail`` default (which
+    would abort bundle generation and leave the platform degraded) to exercise
+    per-route fencing on a running platform.
+    """
+    gen = _spawn_platform(issuer, tmp_path_factory, "default", {"NMP_AUTH_ON_INVALID_PLUGIN": "deny_route"})
     with closing(gen):
         p = next(gen)
         _provision(p)
