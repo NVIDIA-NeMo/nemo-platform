@@ -18,7 +18,7 @@ from fsspec.callbacks import DEFAULT_CALLBACK, Callback
 from fsspec.spec import AbstractBufferedFile
 from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.files import endpoints
-from nemo_platform_plugin.files.types import FilesetFileOutput
+from nemo_platform_plugin.files.types import FilesetFileOutput, ListFilesQueryParams
 
 T = TypeVar("T")
 
@@ -611,7 +611,7 @@ class FilesetFileSystem(AsyncFileSystem):
                 pass
 
         # Fetch from backend and populate cache for all directory levels
-        query_params = {"path": prefix} if prefix else None
+        query_params: ListFilesQueryParams | None = {"path": prefix} if prefix else None
         response = await self._client.send(
             endpoints.list_files(workspace=workspace, name=fileset, query_params=query_params),
         )
@@ -734,7 +734,7 @@ class FilesetFileSystem(AsyncFileSystem):
         """
         workspace, fileset, prefix = parse_fileset_ref(path, workspace_fallback=self._workspace)
         prefix = prefix.rstrip("/")
-        query_params = {"path": prefix} if prefix else None
+        query_params: ListFilesQueryParams | None = {"path": prefix} if prefix else None
         response = await self._client.send(
             endpoints.list_files(workspace=workspace, name=fileset, query_params=query_params),
         )
