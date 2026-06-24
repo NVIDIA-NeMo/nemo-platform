@@ -346,6 +346,13 @@ class FilesResource:
         return FilesetsSubResource(self._client)
 
     @cached_property
+    def otlp(self):
+        """Access OTLP log operations (delegated to Stainless SDK resource)."""
+        from nemo_platform.resources.files.otlp.otlp import OtlpResource
+
+        return OtlpResource(self._raw_client)
+
+    @cached_property
     def fsspec(self) -> FilesetFileSystem:
         """Access the underlying fsspec filesystem."""
         # FilesetFileSystem._client_from_sdk handles NeMoPlatform → AsyncNemoClient
@@ -858,6 +865,7 @@ class AsyncFilesResource:
     """
 
     def __init__(self, client) -> None:
+        self._raw_client = client
         if isinstance(client, AsyncNemoClient):
             self._client = client
         else:
@@ -869,6 +877,13 @@ class AsyncFilesResource:
     def filesets(self) -> AsyncFilesetsSubResource:
         """Access fileset CRUD operations (create, retrieve, update, list, delete)."""
         return AsyncFilesetsSubResource(self._client)
+
+    @cached_property
+    def otlp(self):
+        """Access OTLP log operations (delegated to Stainless SDK resource)."""
+        from nemo_platform.resources.files.otlp.otlp import AsyncOtlpResource
+
+        return AsyncOtlpResource(self._raw_client)
 
     @cached_property
     def fsspec(self) -> FilesetFileSystem:
