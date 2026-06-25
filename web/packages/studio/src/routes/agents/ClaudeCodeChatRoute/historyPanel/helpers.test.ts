@@ -38,10 +38,10 @@ describe('getHistorySessionTitle', () => {
       getHistorySessionTitle(
         makeSession({
           first_prompt:
-            "In our coding agent interface in Studio (which I already have running) we currently have a chat history panel. The chats in this panel have very long wordy names - we're pulling them from our coding agent directly. Is it possible for us to give them concise relevant names to improve chat discovery?",
+            'On the evaluations dashboard, reviewers scan through dozens of saved runs every morning. The run cards include full agent notes and take up too much room. Is it possible for us to show compact outcome labels for faster triage?',
         })
       )
-    ).toBe('Give concise relevant names to improve chat discovery');
+    ).toBe('Show compact outcome labels for faster triage');
   });
 
   it('keeps direct prompts readable', () => {
