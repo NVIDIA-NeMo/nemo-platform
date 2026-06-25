@@ -21,9 +21,7 @@ export default [
       'jsx-a11y': jsxA11yPlugin,
     },
     rules: {
-      // Enable every non-deprecated jsx-a11y rule as a warning. Deprecated rules
-      // (e.g. accessible-emoji, no-onchange) are excluded — jsx-a11y no longer
-      // maintains them and they produce false positives.
+      // All non-deprecated jsx-a11y rules as warnings.
       ...Object.fromEntries(
         Object.entries(jsxA11yPlugin.rules)
           .filter(([, rule]) => !rule.meta?.deprecated)

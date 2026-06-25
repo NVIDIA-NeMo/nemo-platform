@@ -158,9 +158,7 @@ vi.mock('@nemo/common/src/components/DataView/internal', () => ({
     className?: string;
     onClick?: React.MouseEventHandler;
   }) => (
-    // Attach the delegation handler via a ref callback rather than a JSX onClick
-    // prop, so jsx-a11y doesn't flag this test-only non-interactive <table>.
-    // Production attaches the handler to the real TableContent component.
+    // ref (not JSX onClick) so jsx-a11y doesn't flag the test-only <table>
     <table
       className={className}
       ref={(el) => {

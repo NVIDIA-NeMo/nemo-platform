@@ -83,7 +83,6 @@ describe('StatusBadge component', () => {
       expect(badge).toBeInTheDocument();
       expect(badge).toHaveTextContent(expectedBadge.label);
 
-      // Icon is a decorative svg (aria-hidden), so query the lucide class directly
       // eslint-disable-next-line testing-library/no-node-access
       const icon = document.querySelector('.lucide');
       expect(icon).toBeInTheDocument();
