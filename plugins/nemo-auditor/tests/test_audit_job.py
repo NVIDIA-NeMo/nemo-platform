@@ -468,6 +468,35 @@ class TestRewriteOptionsUris:
         with pytest.raises(RuntimeError, match="requires a connected platform SDK"):
             _rewrite_options_uris(options, None)
 
+    def test_raises_when_both_sdk_and_async_sdk_are_none(self) -> None:
+        options = {
+            "nim": {
+                "nmp_uri_spec": {
+                    "inference_gateway": {"workspace": "default", "provider": "build"},
+                }
+            }
+        }
+        with pytest.raises(RuntimeError, match="requires a connected platform SDK"):
+            _rewrite_options_uris(options, None, async_sdk=None)
+
+    def test_resolves_nmp_uri_spec_via_async_sdk(self) -> None:
+        options = {
+            "nim": {
+                "max_tokens": 32,
+                "nmp_uri_spec": {
+                    "inference_gateway": {"workspace": "default", "provider": "nvidia-inference-api"},
+                },
+            }
+        }
+        async_sdk = MagicMock()
+        async_sdk.inference.providers.retrieve = AsyncMock(return_value=MagicMock())
+        async_sdk.models.get_provider_route_openai_url.return_value = "https://igw-async.example/v1"
+
+        _rewrite_options_uris(options, sdk=None, async_sdk=async_sdk)
+
+        assert options == {"nim": {"max_tokens": 32, "uri": "https://igw-async.example/v1"}}
+        async_sdk.inference.providers.retrieve.assert_called_once_with(workspace="default", name="nvidia-inference-api")
+
     def test_wraps_sdk_lookup_failure_in_runtimeerror(self) -> None:
         sdk = MagicMock()
         sdk.inference.providers.retrieve.side_effect = LookupError("no such provider")
@@ -532,6 +561,35 @@ class TestAuditJobIGW:
 
         on_disk = json.loads((ctx.storage.ephemeral / "target_options.json").read_text())
         assert on_disk == {"nim": {"max_tokens": 100}}
+
+    def test_run_resolves_nmp_uri_spec_via_async_sdk(self, tmp_path: Path, fake_garak_python: Path) -> None:
+        """async_sdk path: nmp_uri_spec is rewritten when sdk=None but async_sdk is provided."""
+        ctx = _make_ctx(tmp_path)
+        target = _make_target(
+            options={
+                "nim": {
+                    "max_tokens": 32,
+                    "nmp_uri_spec": {
+                        "inference_gateway": {"workspace": "default", "provider": "nvidia-inference-api"},
+                    },
+                }
+            }
+        )
+        spec = _make_spec_dict(target=target)
+
+        async_sdk = MagicMock()
+        async_sdk.inference.providers.retrieve = AsyncMock(return_value=MagicMock())
+        async_sdk.models.get_provider_route_openai_url.return_value = "https://igw-async.example/v1"
+
+        with patch("nemo_auditor.jobs.audit.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+            AuditJob().run(spec, ctx=ctx, sdk=None, async_sdk=async_sdk)
+
+        opts_path = ctx.storage.ephemeral / "target_options.json"
+        assert opts_path.exists()
+        on_disk = json.loads(opts_path.read_text())
+        assert on_disk == {"nim": {"max_tokens": 32, "uri": "https://igw-async.example/v1"}}
+        assert "nmp_uri_spec" in target.options["nim"]  # original spec untouched
 
 
 # ---------------------------------------------------------------------------
