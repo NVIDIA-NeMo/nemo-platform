@@ -4,8 +4,12 @@
 import { formatInteger, formatMaybe } from '@studio/util/intakeTelemetry';
 import type { ReactNode } from 'react';
 
-/** True for non-empty scalars and non-empty objects/arrays. */
-export const isMeaningfulValue = (value: unknown): value is string | number | boolean => {
+/**
+ * True for non-empty scalars and non-empty objects/arrays. Returns a plain
+ * boolean rather than a type predicate, since it also accepts objects/arrays —
+ * a `value is string | number | boolean` guard would wrongly narrow those away.
+ */
+export const isMeaningfulValue = (value: unknown): boolean => {
   if (value === null || value === undefined || value === '') {
     return false;
   }

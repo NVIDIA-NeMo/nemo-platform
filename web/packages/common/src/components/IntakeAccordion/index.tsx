@@ -26,7 +26,7 @@ export interface IntakeAccordionItem {
   disabled?: boolean;
 }
 
-export interface IntakeAccordionProps {
+interface IntakeAccordionProps {
   items: IntakeAccordionItem[];
   /**
    * `row` (default) renders a dense, bordered list — used for the span
@@ -89,13 +89,16 @@ export const IntakeAccordion: FC<IntakeAccordionProps> = ({
         }
       >
         <AccordionTrigger chevronPosition="start" disabled={item.disabled}>
-          <span className="flex flex-1 items-center gap-[var(--spacing-density-sm)] min-w-0">
+          {/* Wrappers are `div`s, not `span`s: callers pass arbitrary ReactNode
+              (including block-level content such as `Flex`), which is invalid DOM
+              nested inside an inline `span`. */}
+          <div className="flex flex-1 items-center gap-[var(--spacing-density-sm)] min-w-0">
             {item.slotLabel}
-          </span>
+          </div>
           {item.slotEnd ? (
-            <span className="flex shrink-0 items-center gap-[var(--spacing-density-lg)]">
+            <div className="flex shrink-0 items-center gap-[var(--spacing-density-lg)]">
               {item.slotEnd}
-            </span>
+            </div>
           ) : null}
         </AccordionTrigger>
         <AccordionContent>{item.slotContent}</AccordionContent>

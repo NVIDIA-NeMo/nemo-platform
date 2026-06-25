@@ -12,36 +12,11 @@ import {
   type TemplateField,
 } from '@studio/components/IntakeDetail/SpanTemplates/templateFields';
 import type { SpanTemplateContentProps } from '@studio/components/IntakeDetail/SpanTemplates/types';
+import { formatKeyLabel } from '@studio/util/strings';
 import type { FC } from 'react';
 
 const formatBoolean = (value: boolean | undefined): string | undefined =>
   value === undefined ? undefined : value ? 'Yes' : 'No';
-
-// Friendly labels for common sampling/runtime parameters; any other key emitted
-// in `llm.invocation_parameters` is humanized from its raw name.
-const PARAM_LABELS: Record<string, string> = {
-  temperature: 'Temperature',
-  top_p: 'Top P',
-  top_k: 'Top K',
-  max_tokens: 'Max Tokens',
-  max_completion_tokens: 'Max Completion Tokens',
-  frequency_penalty: 'Frequency Penalty',
-  presence_penalty: 'Presence Penalty',
-  repetition_penalty: 'Repetition Penalty',
-  stop: 'Stop',
-  seed: 'Seed',
-  n: 'N',
-  response_format: 'Response Format',
-  tool_choice: 'Tool Choice',
-};
-
-const humanizeParam = (key: string): string =>
-  PARAM_LABELS[key] ??
-  key
-    .split(/[._]/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
 
 const formatParamValue = (value: unknown): string | undefined => {
   if (value === null || value === undefined || value === '') return undefined;
@@ -105,7 +80,7 @@ export const LlmSpanContent: FC<SpanTemplateContentProps> = ({ span }) => {
     { label: 'Provider', value: span.provider ?? undefined },
     { label: 'Prompt ID', value: span.prompt_id ?? undefined },
     ...Object.entries(params).map(([key, value]) => ({
-      label: humanizeParam(key),
+      label: formatKeyLabel(key),
       value: formatParamValue(value),
     })),
     { label: 'Streaming', value: formatBoolean(streaming) },

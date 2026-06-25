@@ -51,9 +51,9 @@ const humanizeFieldLabel = (key: string): string =>
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
 
-export type TraceKeyValueEntry = KeyValueEntry;
+type TraceKeyValueEntry = KeyValueEntry;
 
-export type TraceHighlightMetric = HighlightMetric;
+type TraceHighlightMetric = HighlightMetric;
 
 /**
  * Trace fields surfaced in the header (the metrics card + its leading status/

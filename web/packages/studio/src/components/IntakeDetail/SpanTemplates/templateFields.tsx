@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { KeyValueGrid } from '@nemo/common/src/components/KeyValueGrid';
 import {
   formatAbsoluteTimestamp,
   parseISOWithUTCFallback,
@@ -8,7 +9,6 @@ import {
 import type { Span } from '@nemo/sdk/generated/platform/schema';
 import { Stack, Text } from '@nvidia/foundations-react-core';
 import { IntakeTelemetryStatusBadge } from '@studio/components/IntakeDetail/IntakeComponents/IntakeTelemetryStatusBadge';
-import { KeyValueGrid } from '@studio/components/IntakeDetail/IntakeComponents/KeyValueGrid';
 import type { RankedDocument } from '@studio/components/IntakeDetail/SpanTemplates/rawAttributes';
 import { EMPTY_VALUE } from '@studio/util/intakeTelemetry';
 import { type FC, type ReactNode, useState } from 'react';
@@ -18,12 +18,19 @@ export interface TemplateField {
   value: ReactNode;
 }
 
-const pad2 = (value: number): string => String(value).padStart(2, '0');
-
 /** Compact "MM/DD HH:MM" (24h) form of a timestamp. */
 const formatCompactTimestamp = (iso: string): string => {
   const date = parseISOWithUTCFallback(iso);
-  return `${pad2(date.getMonth() + 1)}/${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+  // Mirror formatAbsoluteTimestamp's Intl.DateTimeFormat('en-US') usage so the
+  // compact and full forms stay consistent.
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  });
+  return formatter.format(date).replace(',', '');
 };
 
 /** Compact timestamp that swaps to the full, absolute timestamp when clicked. */
@@ -42,28 +49,35 @@ const TimestampToggle: FC<{ iso: string }> = ({ iso }) => {
 };
 
 /**
- * Status and timing fields shown at the start of every template's top-level
- * values section, mirroring the Metadata section so reviewers see them up
- * front. Ended is omitted while a span is still running.
+ * Status field shown first in every template's top-level values section,
+ * mirroring the row-header status badge.
  */
-const commonSpanFields = (span: Span): TemplateField[] => [
-  { label: 'Status', value: <IntakeTelemetryStatusBadge status={span.status} /> },
+const statusField = (span: Span): TemplateField => ({
+  label: 'Status',
+  value: <IntakeTelemetryStatusBadge status={span.status} />,
+});
+
+/**
+ * Timing fields shown last in every template's top-level values section, after
+ * the kind-specific fields. Ended is omitted while a span is still running.
+ */
+const timingFields = (span: Span): TemplateField[] => [
   { label: 'Started', value: <TimestampToggle iso={span.started_at} /> },
   { label: 'Ended', value: span.ended_at ? <TimestampToggle iso={span.ended_at} /> : undefined },
 ];
 
 /**
- * Shared key/value header used at the top of every span kind template. The
- * common status/timing fields lead, followed by the kind-specific `fields`.
- * Fields flow into as many equal columns as fit (auto-fit, min column width),
- * so the same component reads consistently across kinds.
+ * Shared key/value header used at the top of every span kind template. Status
+ * leads, the kind-specific `fields` follow, and the timing fields trail at the
+ * end. Fields flow into as many equal columns as fit (auto-fit, min column
+ * width), so the same component reads consistently across kinds.
  */
 export const TemplateKeyValues: FC<{ span: Span; fields: TemplateField[] }> = ({
   span,
   fields,
 }) => (
   <KeyValueGrid
-    items={[...commonSpanFields(span), ...fields].map((field) => ({
+    items={[statusField(span), ...fields, ...timingFields(span)].map((field) => ({
       key: field.label,
       label: field.label,
       value: field.value,

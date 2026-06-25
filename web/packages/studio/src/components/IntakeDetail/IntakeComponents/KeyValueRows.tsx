@@ -20,7 +20,9 @@ export const KeyValueRows: FC<{ entries: readonly KeyValueEntry[] }> = ({ entrie
           <Text kind="label/regular/sm" className="w-[180px] shrink-0 text-secondary">
             {entry.label}
           </Text>
-          <div className="min-w-0 break-all text-left">{entry.value}</div>
+          <div className={`min-w-0 text-left ${entry.wrapValue ? 'break-all text-wrap' : ''}`}>
+            {entry.value}
+          </div>
         </div>
       ))}
     </Stack>

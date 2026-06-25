@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { Badge } from '@nvidia/foundations-react-core';
 import {
   asBoolean,
   asList,
@@ -30,7 +31,12 @@ export const GuardrailSpanContent: FC<SpanTemplateContentProps> = ({ span }) => 
   const fields: TemplateField[] = [
     {
       label: 'Decision',
-      value: blocked === undefined ? undefined : blocked ? 'Blocked' : 'Allowed',
+      value:
+        blocked === undefined ? undefined : (
+          <Badge color={blocked ? 'red' : 'green'} kind="solid">
+            {blocked ? 'Blocked' : 'Allowed'}
+          </Badge>
+        ),
     },
     { label: 'Stage', value: stage },
     { label: 'Confidence', value: confidence?.toFixed(2) },

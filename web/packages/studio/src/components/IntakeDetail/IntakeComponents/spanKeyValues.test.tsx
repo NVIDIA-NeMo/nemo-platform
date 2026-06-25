@@ -113,7 +113,7 @@ describe('spanKeyValues', () => {
     expect(entries.find((entry) => entry.id === 'input_tokens')?.value).toBe('1,240');
   });
 
-  it('includes status and kind in span summary instead of the removed metrics card', () => {
+  it('includes kind in span summary but omits status/timing rendered in the template view', () => {
     const span = mockSpanById('span-llm-001');
     expect(span).toBeDefined();
 
@@ -121,7 +121,11 @@ describe('spanKeyValues', () => {
       (entry) => entry.label
     );
 
-    expect(labels).toEqual(expect.arrayContaining(['Status', 'Kind']));
-    expect(labels).not.toEqual(expect.arrayContaining(['Model', 'Provider', 'Total Cost']));
+    expect(labels).toEqual(expect.arrayContaining(['Kind']));
+    // Status, Started, and Ended lead every template's key/value header, so the
+    // Metadata section omits them to avoid duplication.
+    expect(labels).not.toEqual(
+      expect.arrayContaining(['Status', 'Started', 'Ended', 'Model', 'Provider', 'Total Cost'])
+    );
   });
 });

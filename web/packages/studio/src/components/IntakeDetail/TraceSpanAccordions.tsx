@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
-import { IntakeAccordion } from '@nemo/common/src/components/IntakeAccordion';
 import {
   getGetTraceQueryKey,
   getListSpansQueryKey,
@@ -15,312 +14,28 @@ import {
   SpanStatus,
   type Trace,
 } from '@nemo/sdk/generated/platform/schema';
-import {
-  Badge,
-  Button,
-  Flex,
-  SegmentedControl,
-  Spinner,
-  Stack,
-  Text,
-  Tooltip,
-} from '@nvidia/foundations-react-core';
+import { Button, Flex, SegmentedControl, Spinner, Stack, Text } from '@nvidia/foundations-react-core';
 import { getErrorMessage } from '@studio/api/common/utils';
 import { IntakeErrorBanner } from '@studio/components/IntakeDetail/IntakeComponents/IntakeErrorBanner';
-import { IntakeTelemetryStatusBadge } from '@studio/components/IntakeDetail/IntakeComponents/IntakeTelemetryStatusBadge';
-import { SpanFeedbackControls } from '@studio/components/IntakeDetail/IntakeComponents/SpanFeedbackControls';
-import { getSpanTemplate } from '@studio/components/IntakeDetail/SpanTemplates/registry';
-import { TraceSpanTree } from '@studio/components/IntakeDetail/TraceDetailSpanTree';
-import { TraceSpanAccordionContent } from '@studio/components/IntakeDetail/TraceSpanAccordionContent';
-import { SpanKindBadge } from '@studio/components/SpanKindBadge';
+import { SpanListView } from '@studio/components/IntakeDetail/TraceSpanListView';
+import {
+  type NoteRequest,
+  noteFocusNonce,
+  spanAccordionId,
+} from '@studio/components/IntakeDetail/traceSpanShared';
+import { SpanTreeView } from '@studio/components/IntakeDetail/TraceSpanTreeView';
 import {
   buildSpanHierarchyRows,
   buildSpanTree,
-  formatCost,
-  formatDurationMs,
-  formatInteger,
-  getSpanDisplayName,
-  getSpanDurationMs,
   getSpansDurationMs,
-  getSpanSubject,
-  type SpanTableRow,
-  type SpanTreeNode,
 } from '@studio/util/intakeTelemetry';
 import { useQueryClient } from '@tanstack/react-query';
 import { ChevronsDownUp, ChevronsUpDown } from 'lucide-react';
-import { type FC, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const TRACE_SPANS_PAGE_SIZE = 1000;
-const HIERARCHY_SPACER_LIMIT = 12;
 
 type ViewMode = 'tree' | 'list';
-
-/** A pending "add note" request: which span to focus, plus a nonce that bumps on
- * every click so the same span can be re-targeted. */
-type NoteRequest = { spanId: string; nonce: number } | null;
-
-/** The focus nonce for a span, or undefined when it isn't the current target. */
-const noteFocusNonce = (request: NoteRequest, spanId: string): number | undefined =>
-  request?.spanId === spanId ? request.nonce : undefined;
-
-/** DOM id for a span's accordion item, used to scroll it into view. */
-const spanAccordionId = (spanId: string): string => `intake-span-${spanId}`;
-
-// ── Shared row header (the span name/kind/subject + trailing metrics) ────────
-
-const SpanTriggerLabel: FC<{ span: SpanTableRow; showHierarchy?: boolean }> = ({
-  span,
-  showHierarchy = true,
-}) => {
-  const depth = span.hierarchyDepth;
-  const hierarchyLabel =
-    !showHierarchy || span.hierarchyStatus === undefined
-      ? undefined
-      : span.hierarchyStatus === 'parent_outside_page'
-        ? 'Parent outside page'
-        : 'Unresolved hierarchy';
-
-  return (
-    <>
-      {showHierarchy &&
-        Array.from({ length: Math.min(depth, HIERARCHY_SPACER_LIMIT) }).map((_, index) => (
-          <span
-            key={`${span.span_id}-hierarchy-spacer-${index}`}
-            aria-hidden
-            className="w-[18px] shrink-0"
-          />
-        ))}
-      {showHierarchy && depth > 0 && (
-        <span aria-hidden className="relative h-5 w-5 shrink-0">
-          <span className="absolute left-0 top-1/2 w-full border-t border-base" />
-          <span className="absolute left-0 top-0 h-1/2 border-l border-base" />
-        </span>
-      )}
-      <Text kind="body/semibold/sm" className="shrink-0 truncate font-mono">
-        {getSpanTemplate(span.kind).headerTitle?.(span) ?? getSpanDisplayName(span)}
-      </Text>
-      <SpanKindBadge kind={span.kind} />
-      <Text kind="body/regular/sm" className="min-w-0 flex-1 truncate text-secondary">
-        {getSpanSubject(span)}
-      </Text>
-      {hierarchyLabel && (
-        <Text kind="body/regular/xs" className="shrink-0 text-secondary">
-          {hierarchyLabel}
-        </Text>
-      )}
-    </>
-  );
-};
-
-// Compact unit-suffixed metric (e.g. "9tk", "3.50s"); the key name is the tooltip.
-const SpanTriggerMetaValue: FC<{ label: string; value: string }> = ({ label, value }) => (
-  <Tooltip slotContent={label} side="top">
-    <Text
-      kind="body/regular/xs"
-      className="font-mono tabular-nums text-secondary whitespace-nowrap"
-    >
-      {value}
-    </Text>
-  </Tooltip>
-);
-
-/** Right-aligned token/cost/duration metrics; key names surface as tooltips. */
-const SpanTriggerMeta: FC<{ span: SpanTableRow }> = ({ span }) => {
-  // A template may surface a kind-specific metric (e.g. an evaluator score or
-  // guardrail decision) alongside the latency.
-  const headerBadge = getSpanTemplate(span.kind).headerBadge?.(span);
-
-  return (
-    <>
-      {span.status && span.status !== 'success' && (
-        <IntakeTelemetryStatusBadge status={span.status} />
-      )}
-      <Flex align="center" gap="density-xl">
-        {span.total_tokens !== null && span.total_tokens !== undefined && (
-          <SpanTriggerMetaValue
-            label="Total Tokens"
-            value={`${formatInteger(span.total_tokens)}tk`}
-          />
-        )}
-        {span.cost_total_usd !== null && span.cost_total_usd !== undefined && (
-          <SpanTriggerMetaValue label="Total Cost" value={formatCost(span.cost_total_usd)} />
-        )}
-        {headerBadge !== undefined && (
-          <Badge color={headerBadge.color ?? 'gray'} kind="solid">
-            {headerBadge.text}
-          </Badge>
-        )}
-        <SpanTriggerMetaValue
-          label="Duration"
-          value={formatDurationMs(getSpanDurationMs(span)).replace(/\s+/g, '')}
-        />
-      </Flex>
-    </>
-  );
-};
-
-// ── List view: every span as a collapsible accordion row (no tree) ───────────
-
-interface SpanListViewProps {
-  spanRows: SpanTableRow[];
-  workspace: string;
-  openSpanIds: string[];
-  onValueChange: (next: string[]) => void;
-  banner: ReactNode;
-  feedbackBySpan: Map<string, FeedbackAnnotationInputValue>;
-  annotationCountBySpan: Map<string, number>;
-  noteRequest: NoteRequest;
-  onAddNote: (spanId: string) => void;
-}
-
-const SpanListView: FC<SpanListViewProps> = ({
-  spanRows,
-  workspace,
-  openSpanIds,
-  onValueChange,
-  banner,
-  feedbackBySpan,
-  annotationCountBySpan,
-  noteRequest,
-  onAddNote,
-}) => (
-  <Stack gap="density-lg" className="min-w-0">
-    {banner}
-    <div className="min-w-0 overflow-hidden rounded-lg bg-surface-raised">
-      <IntakeAccordion
-        variant="row"
-        value={openSpanIds}
-        onValueChange={onValueChange}
-        items={spanRows.map((span) => ({
-          value: span.span_id,
-          id: spanAccordionId(span.span_id),
-          slotLabel: <SpanTriggerLabel span={span} />,
-          slotEnd: (
-            <>
-              <SpanTriggerMeta span={span} />
-              <SpanFeedbackControls
-                workspace={workspace}
-                spanId={span.span_id}
-                sessionId={span.session_id}
-                activeFeedback={feedbackBySpan.get(span.span_id)}
-                annotationCount={annotationCountBySpan.get(span.span_id)}
-                onAddNote={() => onAddNote(span.span_id)}
-              />
-            </>
-          ),
-          slotContent: openSpanIds.includes(span.span_id) ? (
-            <TraceSpanAccordionContent
-              workspace={workspace}
-              spanId={span.span_id}
-              summarySpan={span}
-              annotationCount={annotationCountBySpan.get(span.span_id)}
-              focusNoteNonce={noteFocusNonce(noteRequest, span.span_id)}
-            />
-          ) : null,
-        }))}
-      />
-    </div>
-  </Stack>
-);
-
-// ── Tree view: trajectory tree on the left, the selected span on the right ───
-
-interface SpanTreeViewProps {
-  spanTree: SpanTreeNode[];
-  selectedSpan: SpanTableRow | undefined;
-  workspace: string;
-  sessionDurationMs?: number;
-  sessionErrored: boolean;
-  activeSpanId: string | null;
-  onSelectSpan: (spanId: string) => void;
-  onSelectSession: () => void;
-  banner: ReactNode;
-  expandToken: number;
-  collapseToken: number;
-  activeFeedback?: FeedbackAnnotationInputValue;
-  annotationCount?: number;
-  focusNoteNonce?: number;
-  onAddNote: () => void;
-}
-
-const SpanTreeView: FC<SpanTreeViewProps> = ({
-  spanTree,
-  selectedSpan,
-  workspace,
-  sessionDurationMs,
-  sessionErrored,
-  activeSpanId,
-  onSelectSpan,
-  onSelectSession,
-  banner,
-  expandToken,
-  collapseToken,
-  activeFeedback,
-  annotationCount,
-  focusNoteNonce,
-  onAddNote,
-}) => (
-  <Flex align="start" gap="density-md" className="min-w-0">
-    <nav
-      aria-label="Trace trajectory"
-      className="sticky top-density-lg hidden max-h-[calc(100vh-6rem)] w-[18rem] shrink-0 self-start overflow-y-auto rounded-lg bg-surface-raised p-density-xs lg:block"
-    >
-      <TraceSpanTree
-        nodes={spanTree}
-        sessionDurationMs={sessionDurationMs}
-        sessionErrored={sessionErrored}
-        activeSpanId={activeSpanId ?? selectedSpan?.span_id ?? null}
-        onSelectSpan={onSelectSpan}
-        onSelectSession={onSelectSession}
-      />
-    </nav>
-    <Stack gap="density-lg" className="min-w-0 flex-1">
-      {banner}
-      <div className="min-w-0 overflow-hidden rounded-lg bg-surface-raised">
-        {selectedSpan ? (
-          <>
-            <Flex
-              align="center"
-              gap="density-lg"
-              className="border-b border-base px-density-lg py-density-md min-w-0"
-            >
-              <span className="flex min-w-0 flex-1 items-center gap-density-sm">
-                {/* No indentation: the selected span stands alone, not in a tree row. */}
-                <SpanTriggerLabel span={selectedSpan} showHierarchy={false} />
-              </span>
-              <span className="flex shrink-0 items-center gap-density-lg">
-                <SpanTriggerMeta span={selectedSpan} />
-                <SpanFeedbackControls
-                  workspace={workspace}
-                  spanId={selectedSpan.span_id}
-                  sessionId={selectedSpan.session_id}
-                  activeFeedback={activeFeedback}
-                  annotationCount={annotationCount}
-                  onAddNote={onAddNote}
-                />
-              </span>
-            </Flex>
-            <div className="p-density-lg">
-              <TraceSpanAccordionContent
-                workspace={workspace}
-                spanId={selectedSpan.span_id}
-                summarySpan={selectedSpan}
-                expandToken={expandToken}
-                collapseToken={collapseToken}
-                annotationCount={annotationCount}
-                focusNoteNonce={focusNoteNonce}
-              />
-            </div>
-          </>
-        ) : (
-          <Text kind="body/regular/sm" className="text-secondary p-density-lg">
-            Select a span from the tree to view its details.
-          </Text>
-        )}
-      </div>
-    </Stack>
-  </Flex>
-);
 
 // ── Explorer: toolbar (Tree/List + expand/collapse) over the chosen view ─────
 

@@ -14,12 +14,11 @@ export const SpanPayloadBlock: FC<{ value: string | null | undefined; emptyMessa
   value,
   emptyMessage,
 }) => {
-  const content = value?.trim();
-
-  if (content) {
+  // Trim only to decide emptiness; render the original payload unchanged.
+  if (value && value.trim()) {
     return (
       <CodeSnippet
-        value={content}
+        value={value}
         language="markdown"
         kind="block"
         attributes={{

@@ -1,11 +1,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { FeedbackAnnotationInputValue } from '@nemo/sdk/generated/platform/schema';
 import { Badge, Button, Divider, Flex, Tooltip } from '@nvidia/foundations-react-core';
 import { useSpanAnnotationActions } from '@studio/components/IntakeDetail/IntakeComponents/useSpanAnnotationActions';
 import { NotebookPen, ThumbsDown, ThumbsUp } from 'lucide-react';
-import { type FC, type MouseEvent } from 'react';
+import { type FC, type MouseEvent, useEffect } from 'react';
 
 interface SpanFeedbackControlsProps {
   workspace: string;
@@ -34,7 +35,20 @@ export const SpanFeedbackControls: FC<SpanFeedbackControlsProps> = ({
   annotationCount,
   onAddNote,
 }) => {
-  const { submitFeedback, isMutating } = useSpanAnnotationActions(workspace, spanId, sessionId);
+  const { submitFeedback, isMutating, error, clearError } = useSpanAnnotationActions(
+    workspace,
+    spanId,
+    sessionId
+  );
+  const toast = useToast();
+
+  // Surface a failed feedback mutation; clear it so the same error doesn't re-toast.
+  useEffect(() => {
+    if (error) {
+      toast.error(error);
+      clearError();
+    }
+  }, [error, toast, clearError]);
 
   const positive = activeFeedback === FeedbackAnnotationInputValue.positive;
   const negative = activeFeedback === FeedbackAnnotationInputValue.negative;
@@ -52,9 +66,11 @@ export const SpanFeedbackControls: FC<SpanFeedbackControlsProps> = ({
           controls. */}
       <Divider orientation="vertical" className="mr-density-xs h-4 self-center" />
       {annotationCount !== undefined && annotationCount > 0 && (
-        <Badge color="gray" kind="solid">
-          {annotationCount}
-        </Badge>
+        <Tooltip slotContent="Number of annotations" side="top">
+          <Badge color="gray" kind="solid" aria-label={`${annotationCount} annotations`}>
+            {annotationCount}
+          </Badge>
+        </Tooltip>
       )}
       <Tooltip slotContent="Positive feedback" side="top">
         <Button

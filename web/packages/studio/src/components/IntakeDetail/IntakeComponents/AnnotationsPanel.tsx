@@ -3,6 +3,7 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { formatAbsoluteTimestamp } from '@nemo/common/src/components/RelativeTime/util';
+import { DEFAULT_PAGE_SIZE } from '@nemo/common/src/constants/api';
 import { useListAnnotations } from '@nemo/sdk/generated/platform/api';
 import {
   AnnotationSortField,
@@ -26,8 +27,9 @@ import { type FC, useEffect, useMemo, useRef } from 'react';
 import { type SubmitHandler, useForm } from 'react-hook-form';
 import { z } from 'zod';
 
+// A note is optional — no minimum length is enforced.
 const noteSchema = z.object({
-  text: z.string().trim().min(1, 'Note is required.'),
+  text: z.string().trim(),
 });
 
 type NoteFormValues = z.infer<typeof noteSchema>;
@@ -116,7 +118,7 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
   const listParams = useMemo(
     () => ({
       page: 1,
-      page_size: 100,
+      page_size: DEFAULT_PAGE_SIZE,
       sort: AnnotationSortField['-created_at'],
       filter: {
         span_id: spanId,
@@ -165,6 +167,49 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
 
   return (
     <Stack gap="density-xl" className="min-w-0">
+      <Stack gap="density-md" className="min-w-0">
+        {isLoading ? (
+          <Text kind="body/regular/sm" className="text-secondary">
+            Loading annotations...
+          </Text>
+        ) : annotations.length === 0 ? (
+          <Text kind="body/regular/sm" className="text-secondary">
+            No annotations yet.
+          </Text>
+        ) : (
+          annotations.map((annotation) => (
+            <Flex
+              key={annotation.annotation_id}
+              role="article"
+              aria-label={`${formatAnnotationTitle(annotation)} annotation`}
+              align="start"
+              gap="density-md"
+              className="min-w-0"
+            >
+              {/* Fixed-width date column so every annotation body starts on one
+                  line; date and delete stay pinned to the top while a note wraps. */}
+              <Text
+                kind="body/regular/xs"
+                className="w-[13rem] shrink-0 whitespace-nowrap pt-density-xxs text-secondary"
+              >
+                {formatAbsoluteTimestamp(annotation.created_at)}
+              </Text>
+              <div className="min-w-0 flex-1">{renderAnnotationBody(annotation)}</div>
+              <Button
+                size="small"
+                kind="tertiary"
+                aria-label="Delete annotation"
+                disabled={isMutating}
+                onClick={() => void deleteAnnotation(annotation.annotation_id)}
+                className="shrink-0"
+              >
+                <Trash2 />
+              </Button>
+            </Flex>
+          ))
+        )}
+      </Stack>
+
       <Flex gap="density-lg" align="start" wrap="wrap" className="min-w-0">
         <form
           className="min-w-0 flex-1"
@@ -235,49 +280,6 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
           {mutationError ?? getAnnotationErrorMessage(listError, 'Failed to load annotations.')}
         </Text>
       )}
-
-      <Stack gap="density-md" className="min-w-0">
-        {isLoading ? (
-          <Text kind="body/regular/sm" className="text-secondary">
-            Loading annotations...
-          </Text>
-        ) : annotations.length === 0 ? (
-          <Text kind="body/regular/sm" className="text-secondary">
-            No annotations yet.
-          </Text>
-        ) : (
-          annotations.map((annotation) => (
-            <Flex
-              key={annotation.annotation_id}
-              role="article"
-              aria-label={`${formatAnnotationTitle(annotation)} annotation`}
-              align="start"
-              gap="density-md"
-              className="min-w-0"
-            >
-              {/* Fixed-width date column so every annotation body starts on one
-                  line; date and delete stay pinned to the top while a note wraps. */}
-              <Text
-                kind="body/regular/xs"
-                className="w-[13rem] shrink-0 whitespace-nowrap pt-density-xxs text-secondary"
-              >
-                {formatAbsoluteTimestamp(annotation.created_at)}
-              </Text>
-              <div className="min-w-0 flex-1">{renderAnnotationBody(annotation)}</div>
-              <Button
-                size="small"
-                kind="tertiary"
-                aria-label="Delete annotation"
-                disabled={isMutating}
-                onClick={() => void deleteAnnotation(annotation.annotation_id)}
-                className="shrink-0"
-              >
-                <Trash2 />
-              </Button>
-            </Flex>
-          ))
-        )}
-      </Stack>
     </Stack>
   );
 };

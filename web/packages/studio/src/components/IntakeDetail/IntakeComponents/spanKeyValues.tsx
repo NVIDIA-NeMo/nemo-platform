@@ -406,15 +406,12 @@ const collectRawAttributeEntries = (span: Span): KeyValueEntry[] => {
 
 /**
  * Span fields already surfaced elsewhere in the detail view, so Metadata omits
- * them: `duration` (always in the row-header/trigger metrics), `status` when the
- * row-header status badge shows it (non-success), and the error fields when the
- * error banner shows them.
+ * them: `status`, `started_at`, and `ended_at` lead every span template's
+ * key/value header (see `commonSpanFields`), `duration` is always in the
+ * row-header/trigger metrics, and the error fields appear in the error banner.
  */
 const renderedElsewhereSpanKeys = (span: Span): ReadonlySet<string> => {
-  const keys = new Set<string>(['duration']);
-  if (span.status !== 'success') {
-    keys.add('status');
-  }
+  const keys = new Set<string>(['status', 'started_at', 'ended_at', 'duration']);
   if (span.status === 'error') {
     keys.add('error_type');
     keys.add('error_message');

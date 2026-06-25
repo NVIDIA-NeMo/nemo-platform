@@ -3,10 +3,12 @@
 
 import {
   getListAnnotationsQueryKey,
+  listAnnotations,
   useCreateAnnotation,
   useDeleteAnnotation,
 } from '@nemo/sdk/generated/platform/api';
 import {
+  AnnotationKind,
   FeedbackAnnotationInputKind,
   type FeedbackAnnotationInputValue,
   NoteAnnotationInputKind,
@@ -15,7 +17,7 @@ import { getErrorMessage } from '@studio/api/common/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';
 
-export interface SpanAnnotationActions {
+interface SpanAnnotationActions {
   /** Create (or replace) the span's feedback sentiment. */
   submitFeedback: (value: FeedbackAnnotationInputValue) => Promise<boolean>;
   /** Add a free-text note to the span. */
@@ -57,6 +59,22 @@ export const useSpanAnnotationActions = (
     async (value: FeedbackAnnotationInputValue): Promise<boolean> => {
       setError(undefined);
       try {
+        // Feedback is single-valued per span, but the API always inserts a new
+        // row with a fresh id. Remove any existing feedback first so
+        // re-submitting replaces the sentiment instead of stacking duplicate
+        // rows (which would also inflate the annotation count).
+        const existing = await listAnnotations(workspace, {
+          page: 1,
+          page_size: 100,
+          filter: { span_id: spanId, kind: AnnotationKind.feedback },
+        });
+        await Promise.all(
+          existing.data
+            .filter((annotation) => annotation.kind === AnnotationKind.feedback)
+            .map((annotation) =>
+              deleteMutation.mutateAsync({ workspace, annotationId: annotation.annotation_id })
+            )
+        );
         await createAnnotation.mutateAsync({
           workspace,
           data: {
@@ -73,7 +91,7 @@ export const useSpanAnnotationActions = (
         return false;
       }
     },
-    [createAnnotation, workspace, sessionId, spanId, refresh]
+    [createAnnotation, deleteMutation, workspace, sessionId, spanId, refresh]
   );
 
   const submitNote = useCallback(

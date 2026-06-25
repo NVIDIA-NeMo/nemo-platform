@@ -5,11 +5,11 @@ import {
   IntakeAccordion,
   type IntakeAccordionItem,
 } from '@nemo/common/src/components/IntakeAccordion';
+import { KeyValueGrid } from '@nemo/common/src/components/KeyValueGrid';
 import { SpanStatus, type Span } from '@nemo/sdk/generated/platform/schema';
 import { Badge, Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import { AnnotationsPanel } from '@studio/components/IntakeDetail/IntakeComponents/AnnotationsPanel';
 import { IntakeErrorBanner } from '@studio/components/IntakeDetail/IntakeComponents/IntakeErrorBanner';
-import { KeyValueGrid } from '@studio/components/IntakeDetail/IntakeComponents/KeyValueGrid';
 import { KeyValueRows } from '@studio/components/IntakeDetail/IntakeComponents/KeyValueRows';
 import type { KeyValueEntry } from '@studio/components/IntakeDetail/IntakeComponents/keyValueTypes';
 import { RawJsonDebug } from '@studio/components/IntakeDetail/IntakeComponents/RawJsonDebug';
@@ -155,29 +155,52 @@ export const SpanMetadataAccordions: FC<SpanMetadataAccordionsProps> = ({
     [span]
   );
 
+  const template = useMemo(() => getSpanTemplate(span.kind), [span.kind]);
+
+  // Kind-specific accordion sections (e.g. retriever query/documents). They sit
+  // just below Annotations in the group and open by default. Built from the full
+  // span, so they re-derive whenever the span changes.
+  const customItems = useMemo<IntakeAccordionItem[]>(
+    () => template.customSections?.(span) ?? [],
+    [template, span]
+  );
+  const customValues = useMemo(() => customItems.map((item) => item.value), [customItems]);
+
   // Section layout is purely a function of the kind, so memoize it there: the
   // derived arrays keep stable identities across renders, which the re-seed and
   // token effects below depend on to avoid firing on every render.
-  const { KindBody, accordionSectionIds, allValues, defaultOpenValues } = useMemo(() => {
-    const template = getSpanTemplate(span.kind);
-    const templateIds = template.sections.filter((id): id is GenericSectionId => id !== 'kind');
-    // Annotations lead the accordions (just below the kind "key details" body) so
-    // reviewers can read and leave feedback before digging into payloads.
-    const sectionIds = [
-      ...templateIds.filter((id) => id === 'annotations'),
-      ...templateIds.filter((id) => id !== 'annotations'),
-    ];
-    const openSet: ReadonlySet<SpanSectionId> = template.defaultOpen
-      ? new Set(template.defaultOpen)
-      : DEFAULT_OPEN;
-    return {
-      // The kind body renders above the accordion; the accordion shows the rest.
-      KindBody: template.sections.includes('kind') ? template.Content : undefined,
-      accordionSectionIds: sectionIds,
-      allValues: sectionIds.map((id) => SECTIONS[id].value),
-      defaultOpenValues: sectionIds.filter((id) => openSet.has(id)).map((id) => SECTIONS[id].value),
-    };
-  }, [span.kind]);
+  const { KindBody, accordionSectionIds, sectionAllValues, sectionDefaultOpenValues } =
+    useMemo(() => {
+      const templateIds = template.sections.filter((id): id is GenericSectionId => id !== 'kind');
+      // Annotations lead the accordions (just below the kind "key details" body) so
+      // reviewers can read and leave feedback before digging into payloads.
+      const sectionIds = [
+        ...templateIds.filter((id) => id === 'annotations'),
+        ...templateIds.filter((id) => id !== 'annotations'),
+      ];
+      const openSet: ReadonlySet<SpanSectionId> = template.defaultOpen
+        ? new Set(template.defaultOpen)
+        : DEFAULT_OPEN;
+      return {
+        // The kind body renders above the accordion; the accordion shows the rest.
+        KindBody: template.sections.includes('kind') ? template.Content : undefined,
+        accordionSectionIds: sectionIds,
+        sectionAllValues: sectionIds.map((id) => SECTIONS[id].value),
+        sectionDefaultOpenValues: sectionIds
+          .filter((id) => openSet.has(id))
+          .map((id) => SECTIONS[id].value),
+      };
+    }, [template]);
+
+  // Custom sections expand by default and join the full expand/collapse set.
+  const allValues = useMemo(
+    () => [...sectionAllValues, ...customValues],
+    [sectionAllValues, customValues]
+  );
+  const defaultOpenValues = useMemo(
+    () => [...sectionDefaultOpenValues, ...customValues],
+    [sectionDefaultOpenValues, customValues]
+  );
 
   const context: SpanSectionContext = {
     span,
@@ -186,12 +209,20 @@ export const SpanMetadataAccordions: FC<SpanMetadataAccordionsProps> = ({
     usageEntries,
     focusNoteNonce,
   };
-  const items: IntakeAccordionItem[] = accordionSectionIds.map((id) => {
+  const genericItems: IntakeAccordionItem[] = accordionSectionIds.map((id) => {
     const { value, label, Body } = SECTIONS[id];
     const slotLabel =
       id === 'annotations' ? annotationsSectionLabel(label, annotationCount) : sectionLabel(label);
     return { value, slotLabel, slotContent: <Body {...context} /> };
   });
+  // Annotations leads, then the kind's custom sections, then the remaining
+  // generic sections (e.g. Metadata).
+  const leadingAnnotations = accordionSectionIds[0] === 'annotations' ? 1 : 0;
+  const items: IntakeAccordionItem[] = [
+    ...genericItems.slice(0, leadingAnnotations),
+    ...customItems,
+    ...genericItems.slice(leadingAnnotations),
+  ];
 
   // Controlled so the toolbar's expand/collapse can drive every section at once
   // while individual rows stay independently toggleable. Re-seeds when the span

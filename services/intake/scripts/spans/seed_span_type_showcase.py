@@ -710,6 +710,20 @@ SCENARIOS = (
     seed_unknown_trace,
 )
 
+# Root-trace session ids each scenario emits — one per SCENARIOS entry. `_verify`
+# checks these are all ingested so a silent ingest failure can't pass as success.
+EXPECTED_SHOWCASE_SESSIONS = frozenset(
+    {
+        "showcase-agent-research",
+        "showcase-single-llm",
+        "showcase-error",
+        "showcase-cancelled",
+        "showcase-eval-run",
+        "showcase-code-eval",
+        "showcase-unknown",
+    }
+)
+
 
 # ---------------------------------------------------------------------------
 # Entry point
@@ -766,10 +780,25 @@ def _post_annotations(
     client: httpx.Client, base_url: str, workspace: str, annotations: list[dict[str, Any]]
 ) -> None:
     url = f"{base_url}/apis/intake/v2/workspaces/{workspace}/annotations"
+    # The server assigns a fresh ann-{uuid} per POST, so re-running would stack
+    # duplicate feedback/labels/notes. Clear existing annotations on the showcase
+    # sessions first to keep reruns idempotent.
+    sessions = {body["session_id"] for body in annotations if body.get("session_id")}
+    deleted = 0
+    for session_id in sorted(sessions):
+        existing = client.get(url, params={"filter[session_id]": session_id, "page_size": 1000})
+        existing.raise_for_status()
+        for annotation in existing.json().get("data", []):
+            annotation_id = annotation.get("annotation_id")
+            if annotation_id is None:
+                continue
+            response = client.delete(f"{url}/{annotation_id}")
+            response.raise_for_status()
+            deleted += 1
     for body in annotations:
         response = client.post(url, json=body)
         response.raise_for_status()
-    print(f"posted {len(annotations)} annotations")
+    print(f"posted {len(annotations)} annotations (cleared {deleted} existing)")
 
 
 def _preflight(base_url: str, workspace: str) -> None:
@@ -802,6 +831,12 @@ def _verify(base_url: str, workspace: str) -> None:
     response.raise_for_status()
     sessions = {trace.get("session_id") for trace in response.json().get("data", [])}
     showcase = sorted(s for s in sessions if isinstance(s, str) and s.startswith("showcase-"))
+    missing = sorted(EXPECTED_SHOWCASE_SESSIONS - sessions)
+    if missing:
+        raise SystemExit(
+            "Verification failed: expected showcase trace session(s) not ingested: "
+            f"{', '.join(missing)}. Visible showcase session(s): {', '.join(showcase) or '(none)'}"
+        )
     print(f"verified {len(showcase)} showcase trace session(s) visible: {', '.join(showcase)}")
 
 

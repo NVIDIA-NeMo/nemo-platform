@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { CodeSnippet, Stack } from '@nvidia/foundations-react-core';
+import { Anchor, CodeSnippet, Stack } from '@nvidia/foundations-react-core';
 import { type FC, useMemo, useState } from 'react';
 
 interface RawJsonDebugProps {
@@ -17,20 +17,30 @@ interface RawJsonDebugProps {
  * A debug affordance: a subtle link that toggles a read-only JSON dump of
  * `value`. Collapsed by default so it stays unobtrusive.
  */
-export const RawJsonDebug: FC<RawJsonDebugProps> = ({ value, label = 'raw JSON', className }) => {
+export const RawJsonDebug: FC<RawJsonDebugProps> = ({ value, label = 'Raw JSON', className }) => {
   const [open, setOpen] = useState(false);
-  const json = useMemo(() => JSON.stringify(value, null, 2), [value]);
+  const json = useMemo(() => {
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      // Circular references or BigInt make JSON.stringify throw; degrade
+      // gracefully so the surrounding detail view still renders.
+      return '[unserializable value]';
+    }
+  }, [value]);
 
   return (
     <Stack gap="density-md" className={`min-w-0 ${className ?? ''}`}>
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        aria-expanded={open}
-        className="self-start text-xs text-secondary underline-offset-2 hover:text-primary hover:underline"
-      >
-        {open ? `Hide ${label}` : `Show ${label}`}
-      </button>
+      <Anchor asChild>
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          aria-expanded={open}
+          className="self-start text-xs"
+        >
+          {open ? `Hide ${label}` : `${label}`}
+        </button>
+      </Anchor>
       {open ? (
         <CodeSnippet
           value={json}

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { IntakeAccordionItem } from '@nemo/common/src/components/IntakeAccordion';
 import type { Span } from '@nemo/sdk/generated/platform/schema';
 import type { FC } from 'react';
 
@@ -37,9 +38,11 @@ export interface SpanHeaderBadge {
  */
 export interface SpanTemplate {
   /**
-   * The elevated, kind-specific body rendered above the accordion. Omitted by
-   * the generic fallback template (e.g. UNKNOWN), which shows only the shared
-   * sections and therefore has no `'kind'` section.
+   * The elevated, kind-specific body rendered above the accordion. Optional: a
+   * template may omit it (and the `'kind'` section) to show only the shared
+   * sections. The fallback template (e.g. UNKNOWN) still provides one —
+   * `DefaultSpanContent` — to surface the common status/timing values that every
+   * template shows at the top.
    */
   Content?: FC<SpanTemplateContentProps>;
   sections: readonly SpanSectionId[];
@@ -56,6 +59,13 @@ export interface SpanTemplate {
    * template has claimed).
    */
   attributeNamespaces?: readonly string[];
+  /**
+   * Kind-specific accordion sections rendered in the accordion group, after
+   * Annotations (so reviewer feedback leads) and before the remaining generic
+   * sections such as Metadata. Used by retriever/reranker to surface their query
+   * and ranked-document sections. Returned items are open by default.
+   */
+  customSections?: (span: Span) => IntakeAccordionItem[];
   /**
    * Row-header overrides for the trace span list. `headerTitle` replaces the
    * span name (e.g. the evaluator name); `headerBadge` returns text shown as a
