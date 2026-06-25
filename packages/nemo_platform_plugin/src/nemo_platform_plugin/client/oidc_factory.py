@@ -20,7 +20,6 @@ from pathlib import Path
 
 from nemo_platform_plugin.client.oidc import (
     DEFAULT_REFRESH_MARGIN_SECONDS,
-    NMPOIDCConfig,
     OIDCTokenProvider,
     TokenSet,
     _discover_oidc_client_settings,
