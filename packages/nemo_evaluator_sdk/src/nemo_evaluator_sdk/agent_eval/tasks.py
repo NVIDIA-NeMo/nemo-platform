@@ -5,9 +5,10 @@
 
 from __future__ import annotations
 
+import importlib
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, TypeGuard, runtime_checkable
 
 from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.metrics.utils import metric_type_name
@@ -130,29 +131,78 @@ class AgentEvalTask(BaseModel):
         return self
 
 
-class AgentEvalTaskset(BaseModel):
-    """Named collection of tasks; ``id``/``name`` sugar around a task list."""
+class AgentEvalTasksetLoadConfig(BaseModel):
+    """Options passed from callers to a taskset's :meth:`AgentEvalTaskset.load`."""
 
     model_config = ConfigDict(extra="forbid")
 
-    id: str = Field(description="Stable taskset identifier.")
-    name: str | None = Field(default=None, description="Human-readable taskset name.")
-    tasks: list[AgentEvalTask] = Field(description="Tasks in this set; task ids must be unique.")
+    source: str | Path | None = Field(default=None, description="Optional source path/URI the taskset loads from.")
+    limit: int | None = Field(default=None, ge=0, description="Optional cap on the number of tasks to load.")
+    evidence_dir: Path | None = Field(default=None, description="Optional directory holding task evidence inputs.")
 
-    @field_validator("id")
-    @classmethod
-    def _id_must_not_be_empty(cls, value: str) -> str:
-        if not value:
-            raise ValueError("taskset id must not be empty")
-        return value
+
+class AgentEvalTasksetBundle(BaseModel):
+    """SDK-native tasks (and optional metadata) produced by a taskset's ``load()``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tasks: list[AgentEvalTask] = Field(default_factory=list, description="Loaded tasks; at least one is required.")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Free-form taskset metadata for the run.")
 
     @model_validator(mode="after")
-    def _task_ids_unique(self) -> AgentEvalTaskset:
-        ids = [task.id for task in self.tasks]
-        duplicates = sorted({task_id for task_id in ids if ids.count(task_id) > 1})
-        if duplicates:
-            raise ValueError(f"duplicate taskset task ids: {duplicates}")
+    def _require_tasks(self) -> AgentEvalTasksetBundle:
+        if not self.tasks:
+            raise ValueError("taskset bundles require at least one task")
         return self
+
+
+@runtime_checkable
+class AgentEvalTaskset(Protocol):
+    """Experimental protocol for adapting external tasksets into agent-eval.
+
+    A taskset is a named *adapter* that loads SDK-native tasks (optionally from an
+    external source). Per the design, tasksets are resolved upstream into
+    :class:`AgentEvalTask` values via :func:`resolve_agent_eval_taskset`; the
+    evaluator scores those tasks and never consumes a taskset directly.
+    """
+
+    @property
+    def name(self) -> str:
+        """Stable taskset name used in diagnostics, metadata, and user-facing output."""
+        ...
+
+    def load(self, config: AgentEvalTasksetLoadConfig) -> AgentEvalTasksetBundle:
+        """Load this taskset's tasks (and optional metadata) into SDK-native form."""
+        ...
+
+
+def _is_agent_eval_taskset(value: object) -> TypeGuard[AgentEvalTaskset]:
+    return isinstance(getattr(value, "name", None), str) and callable(getattr(value, "load", None))
+
+
+def resolve_agent_eval_taskset(ref: str) -> AgentEvalTaskset:
+    """Resolve a ``module:object`` taskset reference.
+
+    The referenced object may be a taskset instance, a taskset class, or a
+    zero-argument factory returning a taskset instance.
+    """
+    module_name, separator, object_path = ref.partition(":")
+    if not separator or not module_name or not object_path:
+        raise ValueError("taskset references must use module:object syntax")
+
+    resolved: Any = importlib.import_module(module_name)
+    for part in object_path.split("."):
+        resolved = getattr(resolved, part)
+
+    candidate = resolved
+    if isinstance(candidate, type):
+        candidate = candidate()
+    elif not _is_agent_eval_taskset(candidate) and callable(candidate):
+        candidate = candidate()
+
+    if not _is_agent_eval_taskset(candidate):
+        raise TypeError(f"resolved taskset {ref!r} does not implement AgentEvalTaskset")
+    return candidate
 
 
 class AgentEvalRunConfig(BaseModel):

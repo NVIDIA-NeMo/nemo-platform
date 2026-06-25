@@ -1,25 +1,52 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import sys
+import types
+
 import pytest
 from nemo_evaluator_sdk.agent_eval.tasks import (
     AgentEvalTask,
-    AgentEvalTaskset,
+    AgentEvalTasksetBundle,
+    AgentEvalTasksetLoadConfig,
     SemanticReducer,
     SemanticView,
     ViewSignal,
+    resolve_agent_eval_taskset,
 )
 from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutputSpec, MetricResult
 
 
-def test_taskset_rejects_duplicate_task_ids() -> None:
-    task = AgentEvalTask(id="dup", intent="i", inputs={})
-    other = AgentEvalTask(id="dup", intent="i", inputs={})
-    AgentEvalTaskset(id="ts", tasks=[task])  # unique ids OK
-    with pytest.raises(ValueError, match="duplicate taskset task ids"):
-        AgentEvalTaskset(id="ts", tasks=[task, other])
-    with pytest.raises(ValueError, match="taskset id must not be empty"):
-        AgentEvalTaskset(id="", tasks=[task])
+def test_taskset_bundle_requires_at_least_one_task() -> None:
+    task = AgentEvalTask(id="t", intent="i", inputs={})
+    assert AgentEvalTasksetBundle(tasks=[task]).tasks == [task]
+    with pytest.raises(ValueError, match="taskset bundles require at least one task"):
+        AgentEvalTasksetBundle(tasks=[])
+
+
+def test_resolve_agent_eval_taskset(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Bad refs must use module:object syntax.
+    with pytest.raises(ValueError, match="module:object syntax"):
+        resolve_agent_eval_taskset("no_colon")
+
+    # A resolved object that isn't a taskset is rejected.
+    with pytest.raises(TypeError, match="does not implement AgentEvalTaskset"):
+        resolve_agent_eval_taskset("math:pi")
+
+    # Happy path: a class ref is instantiated and must satisfy the protocol.
+    class _FakeTaskset:
+        name = "fake"
+
+        def load(self, config: AgentEvalTasksetLoadConfig) -> AgentEvalTasksetBundle:
+            return AgentEvalTasksetBundle(tasks=[AgentEvalTask(id="t", intent="i", inputs={})])
+
+    module = types.ModuleType("fake_taskset_mod")
+    module.Fake = _FakeTaskset  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "fake_taskset_mod", module)
+
+    taskset = resolve_agent_eval_taskset("fake_taskset_mod:Fake")
+    assert taskset.name == "fake"
+    assert [task.id for task in taskset.load(AgentEvalTasksetLoadConfig()).tasks] == ["t"]
 
 
 class _Metric:
