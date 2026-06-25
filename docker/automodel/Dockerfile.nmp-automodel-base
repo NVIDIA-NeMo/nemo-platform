@@ -114,6 +114,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 # Replace PyPI av/opencv (bundled FFmpeg < 8.1.2) with custom wheels from ffmpeg-vlm-wheel.
 # vlm sync pulls PyPI copies transitively; drop them before installing our manylinux wheels.
+# PyAV 17.x uses cp311-abi3 (stable ABI) — compatible with cp312, not cp312-cp312 tagged.
 RUN --mount=from=ffmpeg-vlm-wheel-src,target=/tmp/ffmpeg-vlm-wheel-src,readonly \
     rm -rf \
     /opt/venv/lib/python*/site-packages/av \
@@ -123,7 +124,7 @@ RUN --mount=from=ffmpeg-vlm-wheel-src,target=/tmp/ffmpeg-vlm-wheel-src,readonly 
     /opt/venv/lib/python*/site-packages/opencv_python_headless.libs \
     /opt/venv/lib/python*/site-packages/opencv_python_headless-*.dist-info && \
     uv pip install --no-cache-dir --no-deps \
-    /tmp/ffmpeg-vlm-wheel-src/wheels/av-*cp312*.whl \
+    /tmp/ffmpeg-vlm-wheel-src/wheels/av-*-abi3-manylinux_2_28_*.whl \
     /tmp/ffmpeg-vlm-wheel-src/wheels/opencv_python_headless-*cp312*.whl
 
 # Published base image (same filesystem as builder).

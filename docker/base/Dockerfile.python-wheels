@@ -351,7 +351,7 @@ RUN mkdir -p /wheels /tmp/wheelhouse && \
     rm -rf /src/opencv-python /tmp/wheelhouse
 
 # The final ffmpeg-vlm-wheel image contains (one arch per platform build):
-#   - av-*-cp312-*.whl
+#   - av-*-cp311-abi3-manylinux_2_28_*.whl  (PyAV stable ABI; works on cp312)
 #   - opencv_python_headless-*-cp312-*.whl
 FROM scratch AS ffmpeg-vlm-wheel
 COPY --from=av-wheel-builder-py312 /wheels /wheels
