@@ -88,7 +88,6 @@ print(result.aggregate_scores)
 
 ```python
 from nemo_evaluator_sdk import ExactMatchMetric
-from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 
 
 metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
@@ -97,11 +96,7 @@ dataset = [
     {"expected": "Berlin", "output": "Munich"},
 ]
 
-job = evaluator.submit(
-    metric=metric,
-    dataset=dataset,
-    metric_bundle_packager=CloudpickleMetricBundlePackager(),
-)
+job = evaluator.submit(metric=metric, dataset=dataset)
 job.wait_until_done()
 result = job.get_result()
 print(result.aggregate_scores)
@@ -143,7 +138,6 @@ evaluator: AsyncEvaluator = client.evaluator
 import asyncio
 
 from nemo_evaluator_sdk import ExactMatchMetric
-from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 
 
 metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
@@ -154,11 +148,7 @@ dataset = [
 
 
 async def main() -> None:
-    job = await evaluator.submit(
-        metric=metric,
-        dataset=dataset,
-        metric_bundle_packager=CloudpickleMetricBundlePackager(),
-    )
+    job = await evaluator.submit(metric=metric, dataset=dataset)
     await job.wait_until_done()
     result = await job.get_result()
     print(result.aggregate_scores)

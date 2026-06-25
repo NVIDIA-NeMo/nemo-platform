@@ -21,7 +21,6 @@ from nemo_evaluator.sdk import Evaluator
 from nemo_platform import NeMoPlatform
 from nemo_evaluator_sdk import RunConfig
 from nemo_evaluator_sdk import ExactMatchMetric
-from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 
 sdk = NeMoPlatform(
     base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
@@ -38,7 +37,6 @@ job = evaluator.submit(
         {"expected": "Berlin", "output": "Munich"},
     ],
     config=RunConfig(parallelism=4),
-    metric_bundle_packager=CloudpickleMetricBundlePackager(),
 )
 print("Submitted job:", job.name)
 

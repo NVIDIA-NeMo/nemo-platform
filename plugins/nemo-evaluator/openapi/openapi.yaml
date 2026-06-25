@@ -1118,6 +1118,40 @@ components:
       description: Parameters for model inference. Extra fields can be supplied for
         additional options applied to the inference request directly. Fields not supported
         by the model may cause inference errors during evaluation.
+    InlineMetricPayload:
+      properties:
+        kind:
+          type: string
+          const: inline
+          title: Kind
+          description: Payload format discriminator.
+        metric:
+          additionalProperties: true
+          type: object
+          title: Metric
+          description: JSON-serialized built-in metric configuration, discriminated
+            by its own `type`.
+        digest:
+          title: Digest
+          description: SHA-256 digest of the canonical metric JSON. Informational;
+            recomputed server-side.
+          type: string
+      additionalProperties: false
+      type: object
+      required:
+      - kind
+      - metric
+      title: InlineMetricPayload
+      description: 'Wire schema for an inline (config-serialized) metric payload.
+
+
+        Mirrors the runtime ``InlineMetricPayload``. The metric is stored as its own
+
+        JSON configuration and reconstructed from the metric type union at execution,
+
+        so no code is shipped or executed on load. Used for platform-recognized
+
+        built-in metric types.'
     Metric:
       properties:
         id:
@@ -1272,12 +1306,14 @@ components:
         payload:
           oneOf:
           - $ref: '#/components/schemas/CloudpickleMetricPayload'
+          - $ref: '#/components/schemas/InlineMetricPayload'
           title: Payload
           description: Format-specific serialized metric.
           discriminator:
             propertyName: kind
             mapping:
               cloudpickle: '#/components/schemas/CloudpickleMetricPayload'
+              inline: '#/components/schemas/InlineMetricPayload'
       additionalProperties: false
       type: object
       required:

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from nemo_evaluator.shared.metric_bundles.bundles import (
     BundledMetricOutputSpec,
@@ -15,7 +15,7 @@ from nemo_evaluator.shared.metric_bundles.bundles import (
 )
 from nemo_evaluator_sdk.values.common import SecretRef
 from nemo_platform_plugin.schema import DatetimeFilter, Filter
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class CloudpickleMetricPayload(BaseModel):
@@ -40,9 +40,44 @@ class CloudpickleMetricPayload(BaseModel):
     )
 
 
+class InlineMetricPayload(BaseModel):
+    """Wire schema for an inline (config-serialized) metric payload.
+
+    Mirrors the runtime ``InlineMetricPayload``. The metric is stored as its own
+    JSON configuration and reconstructed from the metric type union at execution,
+    so no code is shipped or executed on load. Used for platform-recognized
+    built-in metric types.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["inline"] = Field(description="Payload format discriminator.")
+    metric: dict[str, Any] = Field(
+        description="JSON-serialized built-in metric configuration, discriminated by its own `type`."
+    )
+    digest: str | None = Field(
+        default=None,
+        description="SHA-256 digest of the canonical metric JSON. Informational; recomputed server-side.",
+    )
+
+    @field_validator("metric")
+    @classmethod
+    def _metric_must_declare_type(cls, value: dict[str, Any]) -> dict[str, Any]:
+        """Reject payloads without a metric ``type`` discriminator at the API boundary.
+
+        The metric body stays an open object (the concrete shape is validated when
+        the bundle is hydrated against the metric type union), but a non-empty
+        ``type`` is required so malformed payloads fail fast rather than at execution.
+        """
+        metric_type = value.get("type")
+        if not isinstance(metric_type, str) or not metric_type:
+            raise ValueError("inline metric payload must include a non-empty 'type'")
+        return value
+
+
 # Discriminated on ``kind`` so additional payload formats can join the union
-# without changing the field type. Cloudpickle is the only kind today.
-MetricPayload = Annotated[CloudpickleMetricPayload, Field(discriminator="kind")]
+# without changing the field type.
+MetricPayload = Annotated[CloudpickleMetricPayload | InlineMetricPayload, Field(discriminator="kind")]
 
 
 class MetricInline(BaseModel):
