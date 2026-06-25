@@ -64,8 +64,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 RUN --mount=from=causal-conv1d-wheel-src,target=/tmp/causal-conv1d-wheel-src,readonly \
     --mount=from=mamba-ssm-wheel-src,target=/tmp/mamba-ssm-wheel-src,readonly \
     uv pip install --no-cache-dir --no-deps \
-    /tmp/causal-conv1d-wheel-src/wheels/cu13.2/causal_conv1d-1.5.3-cp312-cp312-linux_x86_64.whl \
-    /tmp/mamba-ssm-wheel-src/wheels/cu13.2/mamba_ssm-2.3.0-cp312-cp312-linux_x86_64.whl
+    /tmp/causal-conv1d-wheel-src/wheels/cu13.2/causal_conv1d-*cp312*.whl \
+    /tmp/mamba-ssm-wheel-src/wheels/cu13.2/mamba_ssm-2.3.0-cp312*.whl
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --no-build-isolation --no-deps git+https://github.com/fanshiqing/grouped_gemm@v1.1.4
