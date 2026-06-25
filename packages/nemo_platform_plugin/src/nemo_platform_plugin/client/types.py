@@ -50,8 +50,8 @@ class PaginationStrategy(Protocol):
     """Protocol for pagination strategies.
 
     Pagination strategies control how the client extracts items from a page
-    response, determines the next page identifier, and builds query params
-    to fetch the next page.
+    response, determines the next page identifier, builds query params
+    to fetch the next page, and extracts pagination metadata.
     """
 
     @classmethod
@@ -62,6 +62,9 @@ class PaginationStrategy(Protocol):
 
     @classmethod
     def page_query_params(cls, page: Any) -> dict[str, Any]: ...
+
+    @classmethod
+    def extract_metadata(cls, response_body: dict) -> dict[str, Any]: ...
 
 
 class OffsetPagination:
@@ -82,7 +85,10 @@ class OffsetPagination:
     items_field: ClassVar[str] = "data"
     page_param: ClassVar[str] = "page"
     pagination_field: ClassVar[str] = "pagination"
+    page_field: ClassVar[str] = "page"
+    page_size_field: ClassVar[str] = "page_size"
     total_pages_field: ClassVar[str] = "total_pages"
+    total_results_field: ClassVar[str] = "total_results"
 
     @classmethod
     def extract_items(cls, response_body: dict) -> list[dict]:
@@ -101,6 +107,16 @@ class OffsetPagination:
     @classmethod
     def page_query_params(cls, page: int) -> dict[str, int]:
         return {cls.page_param: page}
+
+    @classmethod
+    def extract_metadata(cls, response_body: dict) -> dict[str, Any]:
+        pagination = response_body.get(cls.pagination_field) or {}
+        return {
+            "page": pagination.get(cls.page_field),
+            "page_size": pagination.get(cls.page_size_field),
+            "total_pages": pagination.get(cls.total_pages_field),
+            "total_results": pagination.get(cls.total_results_field),
+        }
 
 
 StrategyT = TypeVarExt("StrategyT", default=OffsetPagination)

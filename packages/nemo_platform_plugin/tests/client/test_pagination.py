@@ -204,6 +204,21 @@ class TestPaginatedAsync:
         assert items[0].name == "a"
         assert items[1].name == "b"
 
+    @pytest.mark.asyncio
+    async def test_async_data_returns_page_result(self) -> None:
+        """Async data() returns a PageResult with metadata."""
+        mock_http = AsyncMock(spec=httpx.AsyncClient)
+        mock_http.request.return_value = _page_response([{"id": 1, "name": "a"}], page=1, total_pages=3)
+
+        client = AsyncNemoClient(base_url=BASE, workspace="default", http_client=mock_http)
+        resp = await client.send(LIST_ITEMS())
+
+        page = resp.data()
+        assert len(page.items) == 1
+        assert page.page == 1
+        assert page.total_pages == 3
+        assert mock_http.request.call_count == 1
+
 
 # ---------------------------------------------------------------------------
 # Retry on subsequent pages

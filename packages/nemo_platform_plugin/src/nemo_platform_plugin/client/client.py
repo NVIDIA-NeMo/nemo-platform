@@ -26,12 +26,12 @@ from nemo_platform_plugin.client.response import (
     AsyncNemoBinaryResponse,
     AsyncNemoPaginatedResponse,
     AsyncNemoStreamResponse,
+    AsyncPageFetcher,
     NemoBinaryResponse,
     NemoPaginatedResponse,
     NemoResponse,
     NemoStreamResponse,
-    _AsyncPageFetcher,
-    _SyncPageFetcher,
+    SyncPageFetcher,
 )
 from nemo_platform_plugin.client.types import (
     BinaryContent,
@@ -187,7 +187,7 @@ class BaseNemoClient:
                 if body is None and request.response_type is not None:
                     try:
                         body = request.response_type.model_validate(response.http_response.json())
-                    except Exception:
+                    except (ValueError, TypeError):
                         pass
                 return NemoResponse(http_response=response.http_response, body=body, request=request)
 
@@ -346,7 +346,7 @@ class NemoClient(BaseNemoClient):
 
     def _make_page_fetcher(
         self, strategy: type[PaginationStrategy], retry: RetryPolicy | None = None
-    ) -> _SyncPageFetcher:
+    ) -> SyncPageFetcher:
         """Create a page-fetching callback bound to this client and strategy."""
 
         def fetch(request: PreparedRequest, page: int | str) -> httpx.Response:
@@ -502,7 +502,7 @@ class AsyncNemoClient(BaseNemoClient):
 
     def _make_page_fetcher(
         self, strategy: type[PaginationStrategy], retry: RetryPolicy | None = None
-    ) -> _AsyncPageFetcher:
+    ) -> AsyncPageFetcher:
         """Create an async page-fetching callback bound to this client and strategy."""
 
         async def fetch(request: PreparedRequest, page: int | str) -> httpx.Response:

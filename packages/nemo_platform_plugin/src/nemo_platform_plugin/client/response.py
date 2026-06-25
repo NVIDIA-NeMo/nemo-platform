@@ -223,8 +223,8 @@ class AsyncNemoStreamResponse(Generic[ModelT]):
 
 # Type aliases for the page-fetching callbacks used by paginated responses.
 # The page value is int for offset-based or str for cursor-based pagination.
-_SyncPageFetcher = Callable[[PreparedRequest, Any], httpx.Response]
-_AsyncPageFetcher = Callable[[PreparedRequest, Any], Coroutine[Any, Any, httpx.Response]]
+SyncPageFetcher = Callable[[PreparedRequest, Any], httpx.Response]
+AsyncPageFetcher = Callable[[PreparedRequest, Any], Coroutine[Any, Any, httpx.Response]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -269,7 +269,7 @@ class NemoPaginatedResponse(Generic[ModelT]):
         first_http_response: httpx.Response,
         model_type: type[ModelT],
         request: PreparedRequest,
-        fetch_page: _SyncPageFetcher,
+        fetch_page: SyncPageFetcher,
         strategy: type[PaginationStrategy] | None = None,
     ) -> None:
         self._first_response = first_http_response
@@ -292,14 +292,8 @@ class NemoPaginatedResponse(Generic[ModelT]):
     def data(self) -> PageResult[ModelT]:
         """Return the first page as a :class:`PageResult` with metadata."""
         items, body = self._parse_page(self._first_response)
-        pagination = body.get("pagination") or {}
-        return PageResult(
-            items=items,
-            page=pagination.get("page"),
-            page_size=pagination.get("page_size"),
-            total_pages=pagination.get("total_pages"),
-            total_results=pagination.get("total_results"),
-        )
+        metadata = self._strategy.extract_metadata(body)
+        return PageResult(items=items, **metadata)
 
     def __iter__(self) -> Iterator[ModelT]:
         items, body = self._parse_page(self._first_response)
@@ -327,7 +321,7 @@ class AsyncNemoPaginatedResponse(Generic[ModelT]):
         first_http_response: httpx.Response,
         model_type: type[ModelT],
         request: PreparedRequest,
-        fetch_page: _AsyncPageFetcher,
+        fetch_page: AsyncPageFetcher,
         strategy: type[PaginationStrategy] | None = None,
     ) -> None:
         self._first_response = first_http_response
@@ -350,14 +344,8 @@ class AsyncNemoPaginatedResponse(Generic[ModelT]):
     def data(self) -> PageResult[ModelT]:
         """Return the first page as a :class:`PageResult` with metadata."""
         items, body = self._parse_page(self._first_response)
-        pagination = body.get("pagination") or {}
-        return PageResult(
-            items=items,
-            page=pagination.get("page"),
-            page_size=pagination.get("page_size"),
-            total_pages=pagination.get("total_pages"),
-            total_results=pagination.get("total_results"),
-        )
+        metadata = self._strategy.extract_metadata(body)
+        return PageResult(items=items, **metadata)
 
     async def __aiter__(self) -> AsyncIterator[ModelT]:
         items, body = self._parse_page(self._first_response)
