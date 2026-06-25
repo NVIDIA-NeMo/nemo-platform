@@ -9,7 +9,6 @@ from pathlib import Path
 import yaml
 from nat_codex_agent_adapter.register import CodexAgentWorkflowConfig
 
-
 _NEMO_AGENTS_ROOT = Path(__file__).resolve().parents[2]
 
 

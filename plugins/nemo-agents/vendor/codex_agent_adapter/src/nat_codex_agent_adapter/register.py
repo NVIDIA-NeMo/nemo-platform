@@ -22,23 +22,17 @@ import shlex
 import tempfile
 from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import Any
-from typing import Literal
-
-from pydantic import Field
+from typing import Any, Literal
 
 from nat.builder.builder import Builder
 from nat.builder.function_info import FunctionInfo
 from nat.cli.register_workflow import register_function
 from nat.data_models.agent import AgentBaseConfig
-from nat.data_models.api_server import ChatRequest
-from nat.data_models.api_server import ChatRequestOrMessage
-from nat.data_models.api_server import ChatResponse
-from nat.data_models.api_server import ChatResponseChunk
-from nat.data_models.api_server import Usage
+from nat.data_models.api_server import ChatRequest, ChatRequestOrMessage, ChatResponse, ChatResponseChunk, Usage
 from nat.data_models.component_ref import LLMRef
 from nat.experimental.relay_telemetry_bridge import inject_atof_jsonl
 from nat.utils.type_converter import GlobalTypeConverter
+from pydantic import Field
 
 ApprovalPolicy = Literal["never", "on-request", "on-failure", "untrusted"]
 SandboxMode = Literal["read-only", "workspace-write", "danger-full-access"]
@@ -50,26 +44,35 @@ class CodexAgentWorkflowConfig(AgentBaseConfig, name="codex_agent"):
 
     llm_name: LLMRef | None = Field(
         default=None,
-        description=("Optional NAT LLM reference. Codex manages its own model selection through `model`, so this field "
-                     "is accepted for agent config consistency but is not used."))
+        description=(
+            "Optional NAT LLM reference. Codex manages its own model selection through `model`, so this field "
+            "is accepted for agent config consistency but is not used."
+        ),
+    )
     description: str = Field(default="Codex Agent Workflow", description="The description of this function's use.")
 
     command: str = Field(default="codex", description="Codex CLI command or absolute path.")
-    command_args: list[str] = Field(default_factory=list,
-                                    description=("Additional arguments inserted after `command` and before Codex "
-                                                 "non-interactive query arguments. Useful for root-level Codex CLI "
-                                                 "flags."))
+    command_args: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Additional arguments inserted after `command` and before Codex "
+            "non-interactive query arguments. Useful for root-level Codex CLI "
+            "flags."
+        ),
+    )
     working_directory: str = Field(default=".", description="Directory used as the Codex subprocess cwd.")
 
     model: str | None = Field(default=None, description="Optional Codex model name.")
     sandbox_mode: SandboxMode | None = Field(default="read-only", description="Codex sandbox mode.")
-    skip_git_repo_check: bool = Field(default=False,
-                                      description="Skip the Codex working-directory Git repository check.")
+    skip_git_repo_check: bool = Field(
+        default=False, description="Skip the Codex working-directory Git repository check."
+    )
     approval_policy: ApprovalPolicy | None = Field(default="never", description="Codex approval policy.")
     web_search_mode: WebSearchMode | None = Field(default=None, description="Optional web search mode.")
     web_search_enabled: bool | None = Field(default=None, description="Optional legacy web search toggle.")
-    additional_directories: list[str] = Field(default_factory=list,
-                                              description="Additional directories to expose to Codex.")
+    additional_directories: list[str] = Field(
+        default_factory=list, description="Additional directories to expose to Codex."
+    )
 
     max_history: int | None = Field(default=15, ge=1, description="Maximum NAT chat messages to include in prompt.")
     timeout_seconds: float = Field(default=300.0, gt=0, description="Overall Relay/Codex timeout.")
@@ -77,12 +80,18 @@ class CodexAgentWorkflowConfig(AgentBaseConfig, name="codex_agent"):
     relay_command: str = Field(default="nemo-relay", description="NeMo Relay CLI command or absolute path.")
     relay_atof_output_dir: str | None = Field(
         default=None,
-        description=("Optional directory where Relay ATOF JSONL should be persisted. If unset, the adapter uses a "
-                     "temporary directory and removes it after importing telemetry."))
+        description=(
+            "Optional directory where Relay ATOF JSONL should be persisted. If unset, the adapter uses a "
+            "temporary directory and removes it after importing telemetry."
+        ),
+    )
     prefer_chatgpt_auth: bool = Field(
         default=True,
-        description=("Prefer Codex's stored ChatGPT login over OPENAI_API_KEY for Relay runs. This keeps Codex model "
-                     "catalog requests on the ChatGPT Codex backend instead of the public OpenAI models endpoint."))
+        description=(
+            "Prefer Codex's stored ChatGPT login over OPENAI_API_KEY for Relay runs. This keeps Codex model "
+            "catalog requests on the ChatGPT Codex backend instead of the public OpenAI models endpoint."
+        ),
+    )
 
 
 def _clip(text: str, max_chars: int) -> str:
@@ -118,7 +127,7 @@ def _build_prompt(message: ChatRequestOrMessage, config: CodexAgentWorkflowConfi
         return message.input_message or ""
 
     chat_request = GlobalTypeConverter.get().convert(message, to_type=ChatRequest)
-    messages = chat_request.messages[-config.max_history:] if config.max_history else chat_request.messages
+    messages = chat_request.messages[-config.max_history :] if config.max_history else chat_request.messages
 
     if len(messages) == 1 and _role_to_text(messages[0].role) == "user":
         return _nat_message_content_to_text(messages[0].content)
@@ -134,16 +143,18 @@ def _build_prompt(message: ChatRequestOrMessage, config: CodexAgentWorkflowConfi
 def _usage_for(prompt: str, response: str) -> Usage:
     prompt_tokens = len(prompt.split()) if prompt else 0
     completion_tokens = len(response.split()) if response else 0
-    return Usage(prompt_tokens=prompt_tokens,
-                 completion_tokens=completion_tokens,
-                 total_tokens=prompt_tokens + completion_tokens)
+    return Usage(
+        prompt_tokens=prompt_tokens, completion_tokens=completion_tokens, total_tokens=prompt_tokens + completion_tokens
+    )
 
 
 def _as_response(content: str, prompt: str, model: str | None) -> ChatResponse:
-    return ChatResponse.from_string(content,
-                                    model=model or "codex-agent",
-                                    created=datetime.datetime.now(datetime.UTC),
-                                    usage=_usage_for(prompt, content))
+    return ChatResponse.from_string(
+        content,
+        model=model or "codex-agent",
+        created=datetime.datetime.now(datetime.UTC),
+        usage=_usage_for(prompt, content),
+    )
 
 
 def _build_codex_root_args(config: CodexAgentWorkflowConfig) -> list[str]:
@@ -173,31 +184,34 @@ def _build_codex_args(config: CodexAgentWorkflowConfig, prompt: str) -> list[str
 
 def _write_relay_config(config: CodexAgentWorkflowConfig, path: Path) -> None:
     codex_command = shlex.join([config.command, *config.command_args, *_build_codex_root_args(config)])
-    path.write_text("[agents.codex]\n"
-                    f"command = {json.dumps(codex_command)}\n")
+    path.write_text(f"[agents.codex]\ncommand = {json.dumps(codex_command)}\n")
 
 
 def _relay_plugin_config(atof_dir: Path) -> str:
-    return json.dumps({
-        "version":
-            1,
-        "components": [{
-            "kind": "observability",
-            "enabled": True,
-            "config": {
-                "atof": {
+    return json.dumps(
+        {
+            "version": 1,
+            "components": [
+                {
+                    "kind": "observability",
                     "enabled": True,
-                    "output_directory": str(atof_dir),
-                    "filename": "events.jsonl",
-                    "mode": "overwrite",
+                    "config": {
+                        "atof": {
+                            "enabled": True,
+                            "output_directory": str(atof_dir),
+                            "filename": "events.jsonl",
+                            "mode": "overwrite",
+                        }
+                    },
                 }
-            },
-        }],
-    })
+            ],
+        }
+    )
 
 
-def _build_relay_command(config: CodexAgentWorkflowConfig, prompt: str, relay_config_path: Path,
-                         atof_dir: Path) -> list[str]:
+def _build_relay_command(
+    config: CodexAgentWorkflowConfig, prompt: str, relay_config_path: Path, atof_dir: Path
+) -> list[str]:
     return [
         config.relay_command,
         "run",
@@ -229,8 +243,9 @@ async def _run_codex_cli(prompt: str, config: CodexAgentWorkflowConfig) -> str:
     relay_temp_dir = tempfile.TemporaryDirectory(prefix="nat-codex-relay-")
     relay_root = Path(relay_temp_dir.name)
     relay_config_path = relay_root / "config.toml"
-    relay_atof_dir = (Path(config.relay_atof_output_dir).resolve() if config.relay_atof_output_dir else relay_root /
-                      "atof")
+    relay_atof_dir = (
+        Path(config.relay_atof_output_dir).resolve() if config.relay_atof_output_dir else relay_root / "atof"
+    )
     relay_atof_dir.mkdir(parents=True, exist_ok=True)
     _write_relay_config(config, relay_config_path)
     relay_atof_path = relay_atof_dir / "events.jsonl"
@@ -240,16 +255,19 @@ async def _run_codex_cli(prompt: str, config: CodexAgentWorkflowConfig) -> str:
         raise RuntimeError(f"Invalid working_directory {config.working_directory!r}: {cwd} is not a directory.")
 
     try:
-        process = await asyncio.create_subprocess_exec(*command,
-                                                       cwd=str(cwd),
-                                                       env=_build_subprocess_env(config),
-                                                       stdout=asyncio.subprocess.PIPE,
-                                                       stderr=asyncio.subprocess.PIPE)
+        process = await asyncio.create_subprocess_exec(
+            *command,
+            cwd=str(cwd),
+            env=_build_subprocess_env(config),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
     except FileNotFoundError as error:
         relay_temp_dir.cleanup()
         raise RuntimeError(
             f"Could not find Codex relay command: {command[0]}. Install NeMo Relay as `nemo-relay` or set "
-            "`relay_command` in the workflow config.") from error
+            "`relay_command` in the workflow config."
+        ) from error
 
     try:
         stdout_bytes, stderr_bytes = await asyncio.wait_for(process.communicate(), timeout=config.timeout_seconds)
@@ -307,7 +325,8 @@ async def codex_agent(config: CodexAgentWorkflowConfig, _builder: Builder) -> As
     async def _stream_fn(chat_request_or_message: ChatRequestOrMessage) -> AsyncGenerator[ChatResponseChunk]:
         message = GlobalTypeConverter.get().convert(chat_request_or_message, to_type=ChatRequestOrMessage)
         prompt = _build_prompt(message, config)
-        yield ChatResponseChunk.from_string(await _run_codex(prompt=prompt, config=config),
-                                            model=config.model or "codex-agent")
+        yield ChatResponseChunk.from_string(
+            await _run_codex(prompt=prompt, config=config), model=config.model or "codex-agent"
+        )
 
     yield FunctionInfo.create(single_fn=_response_fn, stream_fn=_stream_fn, description=config.description)

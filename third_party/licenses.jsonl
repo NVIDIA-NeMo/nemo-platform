@@ -124,7 +124,6 @@
 {"name": "langchain-oci", "license": "MIT", "compatible": true}
 {"name": "langchain-openai", "license": "MIT", "compatible": true}
 {"name": "langchain-protocol", "license": "MIT", "compatible": true}
-{"name": "langchain-tavily", "license": "MIT", "compatible": true}
 {"name": "langchain-text-splitters", "license": "MIT", "compatible": true}
 {"name": "langgraph", "license": "MIT", "compatible": true}
 {"name": "langgraph-checkpoint", "license": "MIT", "compatible": true}

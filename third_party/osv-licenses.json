@@ -5758,16 +5758,6 @@
         },
         {
           "package": {
-            "name": "langchain-tavily",
-            "version": "0.2.18",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "MIT"
-          ]
-        },
-        {
-          "package": {
             "name": "langchain-text-splitters",
             "version": "1.1.2",
             "ecosystem": "PyPI"
@@ -8023,7 +8013,7 @@
         {
           "package": {
             "name": "nvidia-nat-atif",
-            "version": "1.7.0",
+            "version": "1.8.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -8033,7 +8023,7 @@
         {
           "package": {
             "name": "nvidia-nat-config-optimizer",
-            "version": "1.7.0",
+            "version": "1.8.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -8043,7 +8033,7 @@
         {
           "package": {
             "name": "nvidia-nat-core",
-            "version": "1.7.0",
+            "version": "1.8.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -8053,7 +8043,7 @@
         {
           "package": {
             "name": "nvidia-nat-eval",
-            "version": "1.7.0",
+            "version": "1.8.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -8063,7 +8053,7 @@
         {
           "package": {
             "name": "nvidia-nat-langchain",
-            "version": "1.7.0",
+            "version": "1.8.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -8073,7 +8063,7 @@
         {
           "package": {
             "name": "nvidia-nat-opentelemetry",
-            "version": "1.7.0",
+            "version": "1.8.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -8163,7 +8153,7 @@
         {
           "package": {
             "name": "opentelemetry-api",
-            "version": "1.40.0",
+            "version": "1.43.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -8173,7 +8163,7 @@
         {
           "package": {
             "name": "opentelemetry-distro",
-            "version": "0.61b0",
+            "version": "0.64b0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -8183,7 +8173,7 @@
         {
           "package": {
             "name": "opentelemetry-exporter-otlp",
-            "version": "1.40.0",
+            "version": "1.43.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -8193,7 +8183,7 @@
         {
           "package": {
             "name": "opentelemetry-exporter-otlp-proto-common",
-            "version": "1.40.0",
+            "version": "1.43.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -8203,7 +8193,7 @@
         {
           "package": {
             "name": "opentelemetry-exporter-otlp-proto-grpc",
-            "version": "1.40.0",
+            "version": "1.43.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -8213,7 +8203,7 @@
         {
           "package": {
             "name": "opentelemetry-exporter-otlp-proto-http",
-            "version": "1.40.0",
+            "version": "1.43.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -8223,7 +8213,7 @@
         {
           "package": {
             "name": "opentelemetry-exporter-prometheus",
-            "version": "0.61b0",
+            "version": "0.64b0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -8233,7 +8223,7 @@
         {
           "package": {
             "name": "opentelemetry-instrumentation",
-            "version": "0.61b0",
+            "version": "0.64b0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -8243,7 +8233,7 @@
         {
           "package": {
             "name": "opentelemetry-instrumentation-asgi",
-            "version": "0.61b0",
+            "version": "0.64b0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -8253,7 +8243,7 @@
         {
           "package": {
             "name": "opentelemetry-instrumentation-fastapi",
-            "version": "0.61b0",
+            "version": "0.64b0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -8263,7 +8253,7 @@
         {
           "package": {
             "name": "opentelemetry-instrumentation-httpx",
-            "version": "0.61b0",
+            "version": "0.64b0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -8273,7 +8263,7 @@
         {
           "package": {
             "name": "opentelemetry-instrumentation-requests",
-            "version": "0.61b0",
+            "version": "0.64b0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -8283,7 +8273,7 @@
         {
           "package": {
             "name": "opentelemetry-instrumentation-sqlalchemy",
-            "version": "0.61b0",
+            "version": "0.64b0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -8293,7 +8283,7 @@
         {
           "package": {
             "name": "opentelemetry-instrumentation-system-metrics",
-            "version": "0.61b0",
+            "version": "0.64b0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -8303,7 +8293,7 @@
         {
           "package": {
             "name": "opentelemetry-processor-baggage",
-            "version": "0.61b0",
+            "version": "0.64b0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -8313,7 +8303,7 @@
         {
           "package": {
             "name": "opentelemetry-proto",
-            "version": "1.40.0",
+            "version": "1.43.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -8323,7 +8313,7 @@
         {
           "package": {
             "name": "opentelemetry-sdk",
-            "version": "1.40.0",
+            "version": "1.43.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -8333,7 +8323,7 @@
         {
           "package": {
             "name": "opentelemetry-semantic-conventions",
-            "version": "0.61b0",
+            "version": "0.64b0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -8343,7 +8333,7 @@
         {
           "package": {
             "name": "opentelemetry-util-http",
-            "version": "0.61b0",
+            "version": "0.64b0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -10713,7 +10703,7 @@
   "license_summary": [
     {
       "name": "MIT",
-      "count": 130
+      "count": 129
     },
     {
       "name": "Apache-2.0",
