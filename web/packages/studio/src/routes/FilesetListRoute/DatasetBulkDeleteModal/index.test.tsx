@@ -306,11 +306,11 @@ describe('DatasetBulkDeleteModal', () => {
       });
       await user.click(deleteButton);
 
-      // Check loading state while deletion is still in-flight — button is disabled
-      const deleteButtonDuringLoad = within(screen.getByRole('dialog')).getByRole('button', {
-        name: 'Delete',
-      });
-      await waitFor(() => expect(deleteButtonDuringLoad).toBeDisabled());
+      // Check loading state while deletion is still in-flight — button is disabled.
+      // Reuse the pre-click reference: the LoadingButton appends a spinner with
+      // aria-label="Loading..." which changes the accessible name, so querying by
+      // name "Delete" would fail after the click.
+      await waitFor(() => expect(deleteButton).toBeDisabled());
 
       // Now let the deletions complete
       resolveDelete();
