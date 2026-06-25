@@ -19,7 +19,7 @@ import { useCallback, useMemo, useRef } from 'react';
 
 /** An API response plus the stable `id` the data view needs. */
 export type ExperimentRow = ExperimentResponse & { id: string };
-type ListExperimentsSortParam = NonNullable<ListExperimentsParams['sort']>;
+export type ListExperimentsSortParam = NonNullable<ListExperimentsParams['sort']>;
 
 const toRows = (experiments: ExperimentResponse[] | undefined): ExperimentRow[] =>
   (experiments ?? []).map((experiment) => ({
@@ -41,7 +41,7 @@ export interface UseExperimentGroupExperimentsParams {
   search: string;
   page: number;
   pageSize: number;
-  sort: string;
+  sort: ListExperimentsSortParam;
 }
 
 export interface ExperimentGroupExperiments {
@@ -120,7 +120,7 @@ export function useExperimentGroupExperiments({
     {
       page,
       page_size: pageSize,
-      sort: sort as ListExperimentsSortParam,
+      sort,
       filter: { ...baseFilter, is_pinned: false } as ExperimentFilter,
     },
     listQueryOptions
