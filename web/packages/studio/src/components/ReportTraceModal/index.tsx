@@ -229,9 +229,9 @@ export const ReportTraceModal = ({ open, onClose }: ReportTraceModalProps) => {
                     align="center"
                     className="p-3 bg-surface-raised rounded-md border border-base"
                   >
-                    <button
-                      type="button"
-                      className="flex-1 text-left cursor-pointer appearance-none focus:outline-none focus:ring-2 focus:ring-brand"
+                    <Button
+                      kind="tertiary"
+                      className="h-auto flex-1 justify-start p-0 text-left"
                       aria-label={`View details for ${trace.message}`}
                       onClick={() => handleViewDetails(trace)}
                     >
@@ -252,7 +252,7 @@ export const ReportTraceModal = ({ open, onClose }: ReportTraceModalProps) => {
                           </Text>
                         )}
                       </Stack>
-                    </button>
+                    </Button>
                     <Button kind="tertiary" size="small" onClick={() => handleCopyTrace(trace)}>
                       <Copy />
                     </Button>

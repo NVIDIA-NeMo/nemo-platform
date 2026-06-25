@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Flex, Tag, TagProps } from '@nvidia/foundations-react-core';
+import { Button, Flex, Tag, TagProps } from '@nvidia/foundations-react-core';
 import { CircleCheck, X, RefreshCw, CircleAlert as ErrorIcon } from 'lucide-react';
 import { FC, ReactNode, MouseEventHandler } from 'react';
 
@@ -64,9 +64,9 @@ export const FileTag: FC<FileTagProps> = ({
           {onClick && <X />}
         </Tag>
       ) : onNoFileClick ? (
-        <button type="button" onClick={onNoFileClick} className="cursor-pointer">
+        <Button kind="tertiary" onClick={onNoFileClick} className="h-auto p-0">
           {missingFileNameChip}
-        </button>
+        </Button>
       ) : (
         <div>{missingFileNameChip}</div>
       )}
