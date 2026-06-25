@@ -45,7 +45,7 @@
 {"name": "data-designer", "license": "APACHE-2.0", "compatible": true}
 {"name": "data-designer-config", "license": "APACHE-2.0", "compatible": true}
 {"name": "data-designer-engine", "license": "APACHE-2.0", "compatible": true}
-{"name": "databricks-sdk", "license": "NON-STANDARD", "compatible": false}
+{"name": "databricks-sdk", "license": "APACHE-2.0", "compatible": true}
 {"name": "dataclasses-json", "license": "MIT", "compatible": true}
 {"name": "datasets", "license": "APACHE-2.0", "compatible": true}
 {"name": "diff-cover", "license": "APACHE-2.0", "compatible": true}
@@ -147,7 +147,7 @@
 {"name": "marshmallow", "license": "MIT", "compatible": true}
 {"name": "mcp", "license": "MIT", "compatible": true}
 {"name": "mdurl", "license": "MIT", "compatible": true}
-{"name": "mlflow-skinny", "license": "NON-STANDARD", "compatible": false}
+{"name": "mlflow-skinny", "license": "APACHE-2.0", "compatible": true}
 {"name": "mmh3", "license": "MIT", "compatible": true}
 {"name": "more-itertools", "license": "MIT", "compatible": true}
 {"name": "mpmath", "license": "BSD-3-CLAUSE", "compatible": true}
@@ -276,7 +276,7 @@
 {"name": "sqlalchemy", "license": "MIT", "compatible": true}
 {"name": "sqlfluff", "license": "MIT", "compatible": true}
 {"name": "sqlmodel", "license": "MIT", "compatible": true}
-{"name": "sqlparse", "license": "NON-STANDARD", "compatible": false}
+{"name": "sqlparse", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "sse-starlette", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "starlette", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "streaming-form-data", "license": "MIT", "compatible": true}
