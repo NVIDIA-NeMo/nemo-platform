@@ -63,14 +63,12 @@ export const FileTag: FC<FileTagProps> = ({
           <Flex gap="density-sm">{fileName}</Flex>
           {onClick && <X />}
         </Tag>
-      ) : (
-        <button
-          type="button"
-          onClick={onNoFileClick}
-          className={onNoFileClick ? 'cursor-pointer' : undefined}
-        >
+      ) : onNoFileClick ? (
+        <button type="button" onClick={onNoFileClick} className="cursor-pointer">
           {missingFileNameChip}
         </button>
+      ) : (
+        <div>{missingFileNameChip}</div>
       )}
     </Flex>
   );

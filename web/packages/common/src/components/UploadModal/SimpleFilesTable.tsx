@@ -19,11 +19,12 @@ import {
   RadioGroupInput,
 } from '@nvidia/foundations-react-core';
 import { CircleAlert } from 'lucide-react';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 
 export const SimpleFilesTable = () => {
   const [state, dispatch] = useUploadModalContext();
   const { trailingButton } = useInlinePickerSlot();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const {
     files,
     selectedFiles,
@@ -184,7 +185,7 @@ export const SimpleFilesTable = () => {
           <Button
             kind="tertiary"
             onClick={() => {
-              document.getElementById('upload-more-files')?.click();
+              fileInputRef.current?.click();
             }}
           >
             Upload More Files
@@ -195,14 +196,14 @@ export const SimpleFilesTable = () => {
         <Button
           kind="tertiary"
           onClick={() => {
-            document.getElementById('upload-more-files')?.click();
+            fileInputRef.current?.click();
           }}
         >
           Upload More Files
         </Button>
       )}
       <input
-        id="upload-more-files"
+        ref={fileInputRef}
         type="file"
         multiple
         onChange={handleFileChange}

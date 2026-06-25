@@ -15,11 +15,16 @@ const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as {
 let output: string;
 try {
   output = execSync(
-    'pnpm exec eslint . --config ../../eslint.config.a11y.js --no-config-lookup --no-inline-config --format json',
+    'eslint . --config ../../eslint.config.a11y.js --no-config-lookup --no-inline-config --format json',
     { encoding: 'utf8' }
   );
 } catch (e) {
-  output = (e as { stdout: string }).stdout;
+  const stdout = (e as { stdout: string }).stdout;
+  if (!stdout) {
+    console.error('eslint failed to produce output');
+    process.exit(1);
+  }
+  output = stdout;
 }
 
 const results: Array<{ warningCount: number }> = JSON.parse(output);
