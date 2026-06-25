@@ -45,17 +45,17 @@ export const ExperimentDetailMetrics: FC<ExperimentDetailMetricsProps> = ({ expe
           label="Dataset Name"
           value={
             experiment?.dataset_name ? (
-              <Tooltip
-                slotContent={
-                  experiment.dataset_version ? (
-                    <Text>Version: {experiment.dataset_version}</Text>
-                  ) : undefined
-                }
-                className={tooltipClassName}
-                side="bottom"
-              >
-                <Text className="cursor-default">{experiment.dataset_name}</Text>
-              </Tooltip>
+              experiment.dataset_version ? (
+                <Tooltip
+                  slotContent={`Version: ${experiment.dataset_version}`}
+                  className={tooltipClassName}
+                  side="bottom"
+                >
+                  <span className="cursor-default">{experiment.dataset_name}</span>
+                </Tooltip>
+              ) : (
+                experiment.dataset_name
+              )
             ) : undefined
           }
           loading={isLoading}
