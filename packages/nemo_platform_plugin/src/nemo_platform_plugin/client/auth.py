@@ -447,8 +447,6 @@ class OIDCTokenProvider:
 # OIDC provider factory (used by NemoClient.from_config)
 # ---------------------------------------------------------------------------
 
-_TOKEN_REFRESH_MARGIN_SECONDS = 60
-
 # Guards _TOKEN_PROVIDER_CACHE; acquired only during dict lookup/insert (fast).
 _TOKEN_PROVIDER_CACHE_LOCK = threading.Lock()
 
@@ -608,7 +606,7 @@ def resolve_oidc_provider(
                 token_endpoint=token_endpoint,
                 client_id=client_id,
                 tokens=tokens,
-                refresh_margin_seconds=_TOKEN_REFRESH_MARGIN_SECONDS,
+                refresh_margin_seconds=DEFAULT_REFRESH_MARGIN_SECONDS,
                 refresh_scope=refresh_scope,
                 load_tokens=load_tokens_cb,
                 refresh_lock=refresh_lock,
@@ -621,6 +619,6 @@ def resolve_oidc_provider(
         token_endpoint=token_endpoint,
         client_id=client_id,
         tokens=tokens,
-        refresh_margin_seconds=_TOKEN_REFRESH_MARGIN_SECONDS,
+        refresh_margin_seconds=DEFAULT_REFRESH_MARGIN_SECONDS,
         refresh_scope=refresh_scope,
     )

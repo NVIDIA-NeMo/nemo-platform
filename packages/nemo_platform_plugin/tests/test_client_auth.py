@@ -234,6 +234,29 @@ class TestOIDCTokenProvider:
         with pytest.raises(RuntimeError, match="no refresh token"):
             provider.get_access_token()
 
+    def test_invalid_grant_recovery_with_shared_tokens(self):
+        """On invalid_grant, reload tokens from shared store and retry."""
+        expired_token = _make_jwt(exp=time.time() - 100)
+        fresh_token = _make_jwt(exp=time.time() + 3600)
+
+        from nemo_platform_plugin.client.auth import TokenRefreshError
+
+        provider = OIDCTokenProvider(
+            token_endpoint="https://idp/token",
+            client_id="client",
+            tokens=TokenSet(access_token=expired_token, refresh_token="stale-refresh", expires_at=time.time() - 100),
+            load_tokens=lambda: TokenSet(
+                access_token=fresh_token, refresh_token="fresh-refresh", expires_at=time.time() + 3600
+            ),
+        )
+
+        with patch("nemo_platform_plugin.client.auth.refresh_token_grant") as mock_grant:
+            mock_grant.side_effect = TokenRefreshError(error="invalid_grant", error_description="token revoked")
+            result = provider.get_access_token()
+
+        # Should have recovered by reloading fresh tokens from the shared store
+        assert result == fresh_token
+
 
 # ---------------------------------------------------------------------------
 # Config
@@ -259,6 +282,27 @@ class TestConfig:
         assert ctx.workspace == "ws1"
         assert isinstance(ctx.user, OAuthUser)
         assert ctx.user.token.get_secret_value() == "my-token"
+
+    def test_load_nonexistent_explicit_path_raises(self, tmp_path):
+        missing = tmp_path / "does-not-exist.yaml"
+        with pytest.raises(FileNotFoundError):
+            Config.load(config_path=missing)
+
+    def test_write_then_read_round_trip(self, tmp_path):
+        config_file = tmp_path / "config.yaml"
+        Config.write(
+            {"base_url": "http://localhost:9999", "access_token": "round-trip-token"},
+            context_name="rt",
+            config_path=config_file,
+            set_current_on_create=True,
+        )
+
+        config = Config.load(config_path=config_file)
+        ctx = config.resolve()
+        assert ctx.context_name == "rt"
+        assert str(ctx.cluster.base_url).rstrip("/") == "http://localhost:9999"
+        assert isinstance(ctx.user, OAuthUser)
+        assert ctx.user.token.get_secret_value() == "round-trip-token"
 
     def test_resolve_no_auth_user(self, tmp_path):
         config_data = {
@@ -319,6 +363,11 @@ class TestFromConfig:
         client = NemoClient.from_config(config_path=config_file)
         assert client.base_url == "http://localhost:9090"
         assert client._auth is None
+
+    def test_from_config_nonexistent_path_raises(self, tmp_path):
+        missing = tmp_path / "nope.yaml"
+        with pytest.raises(FileNotFoundError):
+            NemoClient.from_config(config_path=missing)
 
     def test_async_from_config(self, tmp_path):
         config_data = {

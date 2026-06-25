@@ -335,12 +335,8 @@ def _client_from_config(
 
     resolved_path = Path(config_path) if isinstance(config_path, str) else config_path
     config = Config.load(config_path=resolved_path)
-    config_exists = (
-        resolved_path is not None and resolved_path.exists()
-        if resolved_path
-        else (Config.get_default_config_path().exists())
-    )
     actual_config_path = config.get_config_path() or Config.get_default_config_path()
+    config_exists = actual_config_path.exists()
     ctx = config.resolve()
 
     auth: TokenProvider | str | None = None

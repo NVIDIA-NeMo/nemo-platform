@@ -79,24 +79,6 @@ def _read_principal_from_env() -> dict[str, Any] | None:
     return data
 
 
-def _on_behalf_of_headers(principal: dict[str, Any]) -> dict[str, str]:
-    if principal.get("on_behalf_of"):
-        effective_id = principal["on_behalf_of"]
-        effective_email = principal.get("on_behalf_of_email")
-        effective_groups = principal.get("on_behalf_of_groups") or []
-    else:
-        effective_id = principal["id"]
-        effective_email = principal.get("email")
-        effective_groups = principal.get("groups") or []
-
-    headers: dict[str, str] = {"X-NMP-Principal-On-Behalf-Of": effective_id}
-    if effective_email:
-        headers["X-NMP-Principal-On-Behalf-Of-Email"] = effective_email
-    if effective_groups:
-        headers["X-NMP-Principal-On-Behalf-Of-Groups"] = ",".join(effective_groups)
-    return headers
-
-
 class DefaultNemoClientProvider:
     """Env-var-based provider that ships with the plugin package.
 
