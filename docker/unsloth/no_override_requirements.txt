@@ -9,3 +9,6 @@ torchaudio; sys_platform == 'never'
 tokenizers; sys_platform == 'never'
 accelerate; sys_platform == 'never'
 safetensors; sys_platform == 'never'
+
+# Keep W&B's bundled wandb-core binary on a build with patched go-git/go-billy.
+wandb==0.27.2
