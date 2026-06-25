@@ -38,7 +38,12 @@ if (!a11yScript) {
 }
 
 const maxWarningsRegex = /--max-warnings (\d+)/;
-const currentMax: number = parseInt(a11yScript.match(maxWarningsRegex)?.[1] || '0', 10);
+const maxWarningsMatch = a11yScript.match(maxWarningsRegex);
+if (!maxWarningsMatch) {
+  console.error('lint:a11y script is missing --max-warnings <number>');
+  process.exit(1);
+}
+const currentMax: number = parseInt(maxWarningsMatch[1], 10);
 
 if (warningCount !== currentMax) {
   pkg.scripts['lint:a11y'] = a11yScript.replace(maxWarningsRegex, `--max-warnings ${warningCount}`);

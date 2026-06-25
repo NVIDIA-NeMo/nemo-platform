@@ -206,6 +206,7 @@ export const SimpleFilesTable = () => {
         ref={fileInputRef}
         type="file"
         multiple
+        tabIndex={-1}
         onChange={handleFileChange}
         accept={acceptableFileTypes.join(',')}
         className="sr-only"
