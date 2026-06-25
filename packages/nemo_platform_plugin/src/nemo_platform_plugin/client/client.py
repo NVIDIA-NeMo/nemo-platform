@@ -138,6 +138,27 @@ class BaseNemoClient:
         filtered = {k: v for k, v in request.query_params.items() if v is not None}
         return filtered or None
 
+    def _apply_client_options(self, request: PreparedRequest, response: NemoResponse) -> NemoResponse:
+        """Apply blessed client options (e.g. ``exist_ok``) to the response.
+
+        Options are stashed on ``PreparedRequest.client_options`` by the
+        endpoint decorator and applied here after the HTTP call completes.
+        """
+        if not request.client_options:
+            return response
+
+        if request.client_options.get("exist_ok"):
+            if response.http_response.status_code == 409:
+                body = response.body
+                if body is None and request.response_type is not None:
+                    try:
+                        body = request.response_type.model_validate(response.http_response.json())
+                    except Exception:
+                        pass
+                return NemoResponse(http_response=response.http_response, body=body, request=request)
+
+        return response
+
 
 class NemoClient(BaseNemoClient):
     """Sync HTTP client for NeMo Platform APIs."""
@@ -269,7 +290,8 @@ class NemoClient(BaseNemoClient):
         body = None
         if raw.is_success and request.response_type is not None:
             body = request.response_type.model_validate(raw.json())
-        return NemoResponse(http_response=raw, body=body, request=request)
+        response = NemoResponse(http_response=raw, body=body, request=request)
+        return self._apply_client_options(request, response)
 
     def _make_page_fetcher(self, strategy: type[PaginationStrategy]) -> _SyncPageFetcher:
         """Create a page-fetching callback bound to this client and strategy."""
@@ -436,7 +458,8 @@ class AsyncNemoClient(BaseNemoClient):
         body = None
         if raw.is_success and request.response_type is not None:
             body = request.response_type.model_validate(raw.json())
-        return NemoResponse(http_response=raw, body=body, request=request)
+        response = NemoResponse(http_response=raw, body=body, request=request)
+        return self._apply_client_options(request, response)
 
     def _make_page_fetcher(self, strategy: type[PaginationStrategy]) -> _AsyncPageFetcher:
         """Create an async page-fetching callback bound to this client and strategy."""

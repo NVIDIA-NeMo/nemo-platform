@@ -172,7 +172,7 @@ class TestPaginatedViaMethod:
         client = TestClient(base_url=BASE, workspace="default", http_client=mock_http)
         resp = client.list_items()
 
-        # Directives are applied but shouldn't break pagination
+        # Client options are applied but shouldn't break pagination
         items = list(resp)
         assert len(items) == 1
         assert items[0].name == "a"

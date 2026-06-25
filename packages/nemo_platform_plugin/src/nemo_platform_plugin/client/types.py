@@ -119,10 +119,6 @@ class Paginated(Generic[ModelT, StrategyT]):
         @get("/apis/example/v2/workspaces/{workspace}/items")
         def list_items(...) -> Paginated[Item]: ...
 
-        # Cursor-based pagination
-        @get("/apis/example/v2/workspaces/{workspace}/logs")
-        def list_logs(...) -> Paginated[LogEntry, CursorPagination]: ...
-
         # Custom strategy
         class MyPagination(OffsetPagination):
             items_field = "results"
@@ -161,8 +157,8 @@ class RetryPolicy:
     Set as a client-level default via the ``retry`` constructor parameter,
     or override per-request via ``send()``'s ``retry`` keyword argument.
 
-    This is an operational concern, not a per-endpoint directive — it does
-    not belong in endpoint signatures.
+    This is an operational concern — it does not belong in endpoint
+    signatures.
 
     Usage::
 
