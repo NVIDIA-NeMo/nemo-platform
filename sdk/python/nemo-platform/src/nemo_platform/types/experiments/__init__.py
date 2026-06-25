@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from .evaluator_aggregate import EvaluatorAggregate as EvaluatorAggregate
 from .experiment_response import ExperimentResponse as ExperimentResponse
+from .number_filter_param import NumberFilterParam as NumberFilterParam
 from .session_list_params import SessionListParams as SessionListParams
 from .experiment_list_params import ExperimentListParams as ExperimentListParams
 from .experiment_filter_param import ExperimentFilterParam as ExperimentFilterParam

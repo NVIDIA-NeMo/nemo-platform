@@ -17,6 +17,7 @@ from nmp.intake.api.v2.experiments.endpoints import (
     _is_metric_field,
     _is_valid_metric_path,
     _matches_metric_predicates,
+    _operation_references_metric,
 )
 from nmp.intake.api.v2.experiments.schemas import EvaluatorAggregate, ExperimentResponse
 
@@ -100,6 +101,25 @@ def test_extract_rejects_non_numeric_value() -> None:
     with pytest.raises(HTTPException) as exc:
         _extract_metric_predicates(_cmp("cost_usd.mean", FilterOperator.GTE, "not-a-number"))
     assert exc.value.status_code == 400
+
+
+def test_extract_flattens_nested_and() -> None:
+    # A metric comparison nested inside a sub-AND is still AND-combined, so it must be accepted.
+    tree = LogicalOperation(
+        operator=FilterOperator.AND,
+        operations=[
+            _cmp("data.name", FilterOperator.EQ, "foo"),
+            LogicalOperation(
+                operator=FilterOperator.AND,
+                operations=[_cmp("cost_usd.mean", FilterOperator.LTE, "0.5")],
+            ),
+        ],
+    )
+    entity_op, predicates = _extract_metric_predicates(tree)
+    assert [p.field for p in predicates] == ["cost_usd.mean"]
+    # The entity predicate survives; the metric one is stripped out for in-app evaluation.
+    assert entity_op is not None
+    assert not _operation_references_metric(entity_op)
 
 
 def test_extract_rejects_metric_under_or() -> None:

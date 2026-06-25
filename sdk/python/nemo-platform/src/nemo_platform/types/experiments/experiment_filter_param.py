@@ -17,8 +17,10 @@
 
 from __future__ import annotations
 
+from typing import Dict
 from typing_extensions import TypedDict
 
+from .number_filter_param import NumberFilterParam
 from ..shared_params.datetime_filter import DatetimeFilter
 
 __all__ = ["ExperimentFilterParam"]
@@ -26,6 +28,9 @@ __all__ = ["ExperimentFilterParam"]
 
 class ExperimentFilterParam(TypedDict, total=False):
     """Filter for listing Experiments."""
+
+    cost_usd: Dict[str, NumberFilterParam]
+    """Filter by a cost_usd rollup stat, e.g. filter[cost_usd.mean][$lte]=0.5."""
 
     created_at: DatetimeFilter
     """
@@ -40,6 +45,12 @@ class ExperimentFilterParam(TypedDict, total=False):
 
     dataset_version: str
     """Filter experiments by dataset version."""
+
+    evaluators: Dict[str, Dict[str, NumberFilterParam]]
+    """Filter by an evaluator rollup stat, e.g.
+
+    filter[evaluators.<name>.mean][$gte]=0.8.
+    """
 
     experiment_group_id: str
     """Filter experiments by owning group id."""
@@ -56,8 +67,14 @@ class ExperimentFilterParam(TypedDict, total=False):
     When false, returns only unpinned experiments. Omit to return both.
     """
 
+    latency_ms: Dict[str, NumberFilterParam]
+    """Filter by a latency_ms rollup stat, e.g. filter[latency_ms.p95][$lte]=1000."""
+
     name: str
     """Filter experiments by name."""
+
+    run_count: NumberFilterParam
+    """Filter by run count, e.g. filter[run_count][$gte]=5."""
 
     updated_at: DatetimeFilter
     """

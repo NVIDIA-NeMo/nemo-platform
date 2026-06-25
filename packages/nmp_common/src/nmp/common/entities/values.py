@@ -307,4 +307,6 @@ class NumberFilter(Filter):
         extra="forbid",
         protected_namespaces=(),
         populate_by_name=True,  # Accept both "gte" and "$gte" as input
+        # Reject an empty predicate ({}) at the schema/contract level — it carries no comparison.
+        json_schema_extra={"minProperties": 1},
     )

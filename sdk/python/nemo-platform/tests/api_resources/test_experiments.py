@@ -256,6 +256,15 @@ class TestExperiments:
         experiment = client.experiments.list(
             workspace="workspace",
             filter={
+                "cost_usd": {
+                    "foo": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    }
+                },
                 "created_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
                     "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
@@ -263,10 +272,37 @@ class TestExperiments:
                 "created_by": "created_by",
                 "dataset_name": "dataset_name",
                 "dataset_version": "dataset_version",
+                "evaluators": {
+                    "foo": {
+                        "foo": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        }
+                    }
+                },
                 "experiment_group_id": "experiment_group_id",
                 "is_deleted": True,
                 "is_pinned": True,
+                "latency_ms": {
+                    "foo": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    }
+                },
                 "name": "name",
+                "run_count": {
+                    "eq": 0,
+                    "gt": 0,
+                    "gte": 0,
+                    "lt": 0,
+                    "lte": 0,
+                },
                 "updated_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
                     "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
@@ -694,6 +730,15 @@ class TestAsyncExperiments:
         experiment = await async_client.experiments.list(
             workspace="workspace",
             filter={
+                "cost_usd": {
+                    "foo": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    }
+                },
                 "created_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
                     "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
@@ -701,10 +746,37 @@ class TestAsyncExperiments:
                 "created_by": "created_by",
                 "dataset_name": "dataset_name",
                 "dataset_version": "dataset_version",
+                "evaluators": {
+                    "foo": {
+                        "foo": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        }
+                    }
+                },
                 "experiment_group_id": "experiment_group_id",
                 "is_deleted": True,
                 "is_pinned": True,
+                "latency_ms": {
+                    "foo": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    }
+                },
                 "name": "name",
+                "run_count": {
+                    "eq": 0,
+                    "gt": 0,
+                    "gte": 0,
+                    "lt": 0,
+                    "lte": 0,
+                },
                 "updated_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
                     "lte": parse_datetime("2019-12-27T18:11:19.117Z"),

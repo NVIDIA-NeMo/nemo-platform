@@ -348,8 +348,8 @@ async def create_experiment(
             "Pass is_deleted=true to return only soft-deleted experiments; omit to see only live ones. "
             "Pass is_pinned=true (or false) to filter by pinned state; omit to return both. "
             "Filter by a rollup metric with numeric range operators ($gte/$lte/$gt/$lt/$eq): "
-            "filter[run_count][gte]=5, filter[cost_usd.mean][lte]=0.5, "
-            "filter[latency_ms.p95][lte]=1000, or filter[evaluators.<name>.mean][gte]=0.8."
+            "filter[run_count][$gte]=5, filter[cost_usd.mean][$lte]=0.5, "
+            "filter[latency_ms.p95][$lte]=1000, or filter[evaluators.<name>.mean][$gte]=0.8."
         ),
     ),
 )
@@ -955,9 +955,7 @@ def _operation_references_metric(operation: FilterOperation | None) -> bool:
 def _validated_metric_predicate(operation: ComparisonOperation) -> _MetricPredicate:
     field = operation.field
     if not _is_valid_metric_path(field):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported metric filter field: {field}"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported metric filter field: {field}")
     if operation.operator not in _NUMERIC_FILTER_OPERATORS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -979,9 +977,10 @@ def _extract_metric_predicates(
     """Split rollup-metric comparisons out of the filter tree.
 
     Returns ``(entity_operation, metric_predicates)``: the entity operation is forwarded to the entity
-    store, the metric predicates are applied in memory after hydration. Metric filters are only
-    supported AND-ed at the top level with entity filters; a metric field under OR/NOT raises 400 (we
-    can't evaluate half a boolean tree in SQL and half in the application layer).
+    store, the metric predicates are applied in memory after hydration. Metric filters must be AND-ed
+    (at any nesting depth) with entity filters; a metric field under OR/NOT raises 400, since we can't
+    evaluate half a boolean tree in SQL and half in the application layer. Nested ANDs are flattened by
+    recursion, so a metric comparison inside a sub-AND is accepted.
     """
     if operation is None:
         return None, []
@@ -1000,15 +999,12 @@ def _extract_metric_predicates(
         entity_ops: list[FilterOperation] = []
         metric_predicates: list[_MetricPredicate] = []
         for child in operation.operations:
-            if isinstance(child, ComparisonOperation) and _is_metric_field(child.field):
-                metric_predicates.append(_validated_metric_predicate(child))
-            elif _operation_references_metric(child):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Metric filters can only be combined with AND, not OR/NOT.",
-                )
-            else:
-                entity_ops.append(child)
+            # Recurse so metric comparisons nested inside sub-ANDs are extracted too (and OR/NOT
+            # children that reference a metric still raise inside this call).
+            child_entity, child_metrics = _extract_metric_predicates(child)
+            if child_entity is not None:
+                entity_ops.append(child_entity)
+            metric_predicates.extend(child_metrics)
         if not entity_ops:
             return None, metric_predicates
         if len(entity_ops) == 1:
