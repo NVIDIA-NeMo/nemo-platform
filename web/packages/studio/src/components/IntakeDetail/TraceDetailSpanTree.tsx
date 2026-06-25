@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import '@studio/components/IntakeDetail/TraceDetailSpanTree.css';
 import { SpanStatus } from '@nemo/sdk/generated/platform/schema';
 import {
   TreeNavBranch,
@@ -36,15 +35,20 @@ interface TraceSpanTreeProps {
   onSelectSession?: () => void;
 }
 
-// Match the kind badge's accent color on the tree icon (see TraceDetailSpanTree.css).
-// Gray kinds (chain, unknown) have no accent and inherit the default icon color.
+// Match the kind badge's accent color on the tree icon. KUI sets the icon color
+// via `.nv-tree-nav-root svg` in Tailwind's `base` layer, so a utility class
+// (the later `utilities` layer) wins without !important. Gray kinds (chain,
+// unknown) have no accent and inherit KUI's default icon color.
 const KIND_ICON_COLOR_CLASS: Record<string, string> = {
-  teal: 'trace-span-tree__icon--teal',
-  purple: 'trace-span-tree__icon--purple',
-  blue: 'trace-span-tree__icon--blue',
-  green: 'trace-span-tree__icon--green',
-  yellow: 'trace-span-tree__icon--yellow',
+  teal: 'text-[color:var(--text-color-accent-teal)]',
+  purple: 'text-[color:var(--text-color-accent-purple)]',
+  blue: 'text-[color:var(--text-color-accent-blue)]',
+  green: 'text-[color:var(--text-color-accent-green)]',
+  yellow: 'text-[color:var(--text-color-accent-yellow)]',
 };
+
+// Tree rows: round the row highlight and add the vertical padding KUI omits.
+const ROW_CLASS = 'rounded-[var(--radius-md)] py-[2px]';
 
 const hierarchyTitle = (node: SpanTreeNode): string | undefined => {
   if (node.hierarchyStatus === 'parent_outside_page') return 'Parent span is outside this page';
@@ -60,17 +64,20 @@ interface SpanTreeLabelProps {
 
 /** Shared label layout: name (truncates) + optional error badge + duration. */
 const SpanTreeLabel: FC<SpanTreeLabelProps> = ({ name, durationMs, errored }) => (
-  <span className="trace-span-tree__label">
-    <span className="trace-span-tree__name">{name}</span>
+  <span className="flex flex-1 items-center gap-2 min-w-0">
+    <span className="flex-1 min-w-0 truncate">{name}</span>
     {errored && (
       <TriangleAlert
         role="img"
         aria-label="Error"
         fill="currentColor"
-        className="trace-span-tree__error-icon"
+        // size-3.5 (14px) + accent-red as utilities, which win over KUI's base-layer svg rule.
+        className="size-3.5 text-[color:var(--text-color-accent-red)]"
       />
     )}
-    <span className="trace-span-tree__duration">{formatDurationMs(durationMs)}</span>
+    <span className="shrink-0 font-mono text-[length:var(--text-12)] tabular-nums text-[color:var(--text-color-secondary)]">
+      {formatDurationMs(durationMs)}
+    </span>
   </span>
 );
 
@@ -106,6 +113,7 @@ const renderSpanNodes = (
               bind selection on the capture phase to keep branches always-open
               yet clickable. */}
           <TreeNavBranchTrigger
+            className={ROW_CLASS}
             slotIcon={icon}
             active={active}
             title={title}
@@ -121,6 +129,7 @@ const renderSpanNodes = (
     return (
       <TreeNavLeaf
         key={span.span_id}
+        className={ROW_CLASS}
         slotIcon={icon}
         active={active}
         title={title}
@@ -144,10 +153,10 @@ export const TraceSpanTree: FC<TraceSpanTreeProps> = ({
   onSelectSpan,
   onSelectSession,
 }) => (
-  <TreeNavRoot aria-label="Trace trajectory" className="trace-span-tree">
+  <TreeNavRoot aria-label="Trace trajectory" className="w-full">
     <TreeNavList>
       <TreeNavLeaf
-        className="trace-span-tree__session"
+        className={ROW_CLASS}
         slotIcon={<Workflow role="img" aria-hidden />}
         title="Reload trace"
         onSelect={onSelectSession}
