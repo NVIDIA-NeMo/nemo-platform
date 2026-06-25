@@ -23,6 +23,16 @@ DesiredState = Literal["READY", "STOPPED"]
 RestartPolicy = Literal["Always", "OnFailure", "Never"]
 AccessMode = Literal["ReadWriteOnce", "ReadOnlyMany", "ReadWriteMany"]
 DriftRecoveryAction = Literal["recreate", "ignore"]
+PrerequisiteCondition = Literal["ready", "succeeded"]
+
+NON_TERMINAL_DEPLOYMENT_STATUSES: tuple[DeploymentStatus, ...] = (
+    "PENDING",
+    "STARTING",
+    "READY",
+    "LOST",
+    "DELETING",
+)
+NON_TERMINAL_VOLUME_STATUSES: tuple[VolumeStatus, ...] = ("PENDING", "BOUND")
 
 
 class Endpoint(BaseModel):

@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import pytest
-from nemo_deployments_plugin.entities import Container, Deployment, DeploymentConfig, Volume
+from nemo_deployments_plugin.entities import Container, Deployment, DeploymentConfig, DriftRecoveryPolicy, Volume
 from nemo_deployments_plugin.validation import PrerequisiteCycleError, detect_prerequisite_cycle
 from pydantic import ValidationError
 
@@ -49,3 +49,17 @@ def test_invalid_deployment_status_rejected() -> None:
                 "status": "not-a-status",
             }
         )
+
+
+def test_drift_recovery_policy_rejects_negative_overrides() -> None:
+    with pytest.raises(ValidationError):
+        DriftRecoveryPolicy(max_attempts=-1)
+    with pytest.raises(ValidationError):
+        DriftRecoveryPolicy(initial_delay_seconds=-1)
+    with pytest.raises(ValidationError):
+        DriftRecoveryPolicy(max_delay_seconds=-1)
+
+
+def test_drift_recovery_policy_rejects_inverted_delays() -> None:
+    with pytest.raises(ValidationError, match="initial_delay_seconds"):
+        DriftRecoveryPolicy(initial_delay_seconds=60, max_delay_seconds=5)

@@ -62,6 +62,13 @@ describe('ClaudeCodeHistoryPanel', () => {
         token_count: 100,
         tool_call_count: 1,
         tool_calls: ['Bash'],
+        chat_artifacts: {
+          selections: [],
+          files: [],
+          links: [],
+          jobs: [],
+          tools: [],
+        },
       },
     ]);
 
