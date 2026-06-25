@@ -14,8 +14,12 @@ const docsRoot = path.resolve(fernDir, "..");
 const reloadTrigger = path.join(fernDir, "docs.yml");
 const reloadDebounceMs = 150;
 const ignoredPrefix = "fern/";
+const openapiInputPrefix = "fern/openapi/";
+const publicOpenapiPath = "fern/openapi/openapi.public.yaml";
+const filterOpenapiScriptPath = "fern/scripts/filter-public-openapi.mjs";
 
 let debounceTimer = null;
+let pendingReloadRequiresOpenapi = false;
 let shuttingDown = false;
 
 function log(message) {
@@ -36,20 +40,40 @@ function clearPendingReload() {
   debounceTimer = null;
 }
 
-function scheduleReload(relativePath) {
+function scheduleReload(relativePath, requiresOpenapiPrepare = false) {
   clearPendingReload();
+  pendingReloadRequiresOpenapi = pendingReloadRequiresOpenapi || requiresOpenapiPrepare;
 
   debounceTimer = setTimeout(() => {
     debounceTimer = null;
-    touchReloadTrigger(relativePath).catch((error) => {
-      log(`failed to trigger reload: ${error.message}`);
-    });
+    const shouldRunOpenapiPrepare = pendingReloadRequiresOpenapi;
+    pendingReloadRequiresOpenapi = false;
+    Promise.resolve()
+      .then(() => {
+        if (shouldRunOpenapiPrepare) {
+          prepareOpenapi();
+        }
+      })
+      .then(() => touchReloadTrigger(relativePath))
+      .catch((error) => {
+        log(`failed to trigger reload: ${error.message}`);
+      });
   }, reloadDebounceMs);
 }
 
-function shouldIgnore(relativePath) {
-  const normalized = path.posix.normalize(relativePath.split(path.sep).join("/"));
-  return normalized.startsWith(ignoredPrefix);
+function normalizeWatchedPath(relativePath) {
+  return path.posix.normalize(relativePath.split(path.sep).join("/"));
+}
+
+function shouldPrepareOpenapi(normalizedPath) {
+  return (
+    normalizedPath === filterOpenapiScriptPath ||
+    (normalizedPath.startsWith(openapiInputPrefix) && normalizedPath !== publicOpenapiPath)
+  );
+}
+
+function shouldIgnore(normalizedPath) {
+  return normalizedPath.startsWith(ignoredPrefix) && !shouldPrepareOpenapi(normalizedPath);
 }
 
 function prepareOpenapi() {
@@ -66,22 +90,26 @@ function prepareOpenapi() {
   }
 }
 
-prepareOpenapi();
+function spawnFernDev() {
+  prepareOpenapi();
+  return spawn("npx", ["-y", "fern-api@latest", "docs", "dev"], {
+    cwd: fernDir,
+    stdio: "inherit",
+  });
+}
 
-const fern = spawn("npx", ["-y", "fern-api@latest", "docs", "dev"], {
-  cwd: fernDir,
-  stdio: "inherit",
-});
+const fern = spawnFernDev();
 
 const watcher = watch(
   docsRoot,
   { recursive: true },
   (_eventType, filename) => {
     const relativePath = filename ? filename.toString() : "";
-    if (shouldIgnore(relativePath)) {
+    const normalizedPath = normalizeWatchedPath(relativePath);
+    if (shouldIgnore(normalizedPath)) {
       return;
     }
-    scheduleReload(relativePath);
+    scheduleReload(relativePath, shouldPrepareOpenapi(normalizedPath));
   },
 );
 
