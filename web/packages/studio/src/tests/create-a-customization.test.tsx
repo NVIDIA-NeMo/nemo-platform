@@ -1,16 +1,16 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { extractDefaults } from '@nemo/common/src/components/form/ZodFormField/utils';
-import { loraSchema } from '@nemo/common/src/components/TrainingParameterSlider/types';
 import { getEntityReference } from '@nemo/common/src/namedEntity';
-import { ModelEntity as CustomizationConfigOutput } from '@nemo/sdk/generated/platform/schema';
-import { CustomizationJob, CustomizationJobRequest } from '@nemo/sdk/vendored/customizer/schema';
-import { NEW_CUSTOMIZATION_FORM_HYP_DEFAULT_VALUES } from '@studio/components/NewCustomizationForm/constants';
+import type { ModelEntitysPage } from '@nemo/sdk/generated/platform/schema';
+import type {
+  CustomizationJob,
+  CustomizationJobRequest,
+} from '@nemo/sdk/vendored/customizer/schema';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { customizationJob1 } from '@studio/mocks/customizer/customization-jobs';
-import { parentModel1, parentModel2 } from '@studio/mocks/customizer/parent-models';
+import { parentModel2 } from '@studio/mocks/customizer/parent-models';
 import { dataset } from '@studio/mocks/datasets';
 import { workspace1 } from '@studio/mocks/entity-store/projects';
 import { server } from '@studio/mocks/node';
@@ -20,15 +20,21 @@ import {
   getNewCustomizationJobRoute,
 } from '@studio/routes/utils';
 import { LOCATION_DISPLAY_TEST_ID } from '@studio/tests/util/constants';
-import { selectAutocompleteOption } from '@studio/tests/util/formUtils';
 import { LocationDisplay } from '@studio/tests/util/LocationDisplay';
 import { mockUseParams } from '@studio/tests/util/mockUseParams';
 import { screen } from '@studio/tests/util/render';
 import { TestProviders } from '@studio/tests/util/TestProviders';
-import { render } from '@testing-library/react';
+import { render, within, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
+
+// Extend the mock parent model with a fileset so ModelSelectionSection shows it
+// (the component filters out models without a fileset)
+const parentModel2WithFileset = {
+  ...parentModel2,
+  fileset: `${parentModel2.workspace}/${parentModel2.name}-fileset`,
+};
 
 const renderRoute = () => {
   const routes = [
@@ -50,18 +56,27 @@ const renderRoute = () => {
   );
 };
 
-// TODO: Unskip when fixed - CustomizationDetails.tsx query is gated on distillation training type
-describe.skip('Creating a new customization', () => {
+describe('Creating a new customization', () => {
   beforeEach(() => {
     mockUseParams({
       workspace: workspace1.workspace,
     });
+
+    // Override the default models handler to return a model with a fileset.
+    // ModelSelectionSection filters to only show models that have a fileset field.
+    server.use(
+      http.get<never, never, ModelEntitysPage>(
+        `${PLATFORM_BASE_URL}/apis/models/v2/workspaces/${workspace1.workspace}/models`,
+        () => HttpResponse.json({ data: [parentModel2WithFileset] })
+      )
+    );
   });
+
   describe('A user can create a customization', () => {
-    const user = userEvent.setup();
     it('by selecting an existing dataset', async () => {
-      // Mock the Customization create endpoint to capture the request body and return a happy result
-      let customizationCreateRequestBody;
+      const user = userEvent.setup();
+
+      let customizationCreateRequestBody: CustomizationJobRequest | undefined;
       server.use(
         http.post<never, CustomizationJobRequest, CustomizationJob>(
           `${PLATFORM_BASE_URL}/apis/customization/v2/workspaces/${workspace1.workspace}/jobs`,
@@ -75,402 +90,106 @@ describe.skip('Creating a new customization', () => {
 
       renderRoute();
 
-      // Select parent model
-      await selectAutocompleteOption({
-        user,
-        autocompleteEl: await screen.findByRole('combobox', {
-          name: 'Select a Customization Target',
-        }),
-        option: parentModel2.name!,
-      });
+      // Select base model — wait for the trigger to be enabled (models API must resolve first)
+      const modelSelectTrigger = await screen.findByTestId('model-select-v2-trigger');
+      await waitFor(() => expect(modelSelectTrigger).not.toBeDisabled());
+      await user.click(modelSelectTrigger);
 
-      // Click the Select Dataset button, opening the dataset selection modal
-      const selectDatasetButton = await screen.findByRole('button', { name: 'Select Dataset' });
-      await user.click(selectDatasetButton);
+      // Find the model dropdown item by name and click it
+      const modelItems = await screen.findAllByTestId('model-dropdown-item');
+      const targetModelItem = modelItems.find(
+        (item) => within(item).queryByText(parentModel2.name!) !== null
+      );
+      expect(targetModelItem).toBeDefined();
+      await user.click(targetModelItem!);
 
-      // Select the first row
-      const selectRowCheckbox = await screen.findByRole('checkbox', {
-        name: `Select dataset ${dataset.name}`,
-      });
-      await user.click(selectRowCheckbox);
+      // Select dataset from the dropdown
+      const datasetSelect = await screen.findByRole('combobox', { name: /dataset/i });
+      await user.click(datasetSelect);
+      const datasetOption = await screen.findByRole('option', { name: dataset.name! });
+      await user.click(datasetOption);
+      await screen.findByText('training/training_file.jsonl');
+      // File Validation renders after discovery + per-file checks finish; by then
+      // NewCustomizationForm has set trainingFileExists = true via useEffect.
+      await screen.findByText('File Validation');
 
-      // Submit the dialog, selecting the dataset
-      const dialogSubmitButton = screen.getByRole('button', { name: 'Add to Customization' });
-      await user.click(dialogSubmitButton);
-
-      // Enter output model name
-      const outputModelInput = await screen.findByRole('textbox', { name: 'Output Model' });
+      // Set output model name
+      const outputModelInput = await screen.findByRole('textbox', { name: 'Output Model Name' });
       await user.clear(outputModelInput);
-      await user.paste('test-customization-model');
+      await user.type(outputModelInput, 'test-customization-model');
 
-      // Submit form
-      const formSubmitButton = await screen.findByRole('button', { name: 'Start Fine-Tuning' });
-      await user.click(formSubmitButton);
+      const form = screen.getByRole('form');
+      fireEvent.submit(form);
 
       // Assert the correct request was made
-      // First training option (index 0) is auto-selected
-      expect(customizationCreateRequestBody).toEqual({
-        spec: {
-          output_model: 'test-customization-model',
-          dataset: getEntityReference(dataset),
-          target: getEntityReference(parentModel2),
-          hyperparameters: {
-            ...NEW_CUSTOMIZATION_FORM_HYP_DEFAULT_VALUES,
-            training_type: 'sft',
-            finetuning_type: 'lora',
-            lora: extractDefaults(loraSchema),
+      await waitFor(() => {
+        expect(customizationCreateRequestBody).toMatchObject({
+          name: 'test-customization-model',
+          spec: {
+            model: getEntityReference(parentModel2),
+            dataset: `fileset://${dataset.workspace}/${dataset.name}`,
+            training: expect.objectContaining({ type: 'sft' }),
+            output: expect.objectContaining({ name: 'test-customization-model' }),
           },
-        },
+        });
       });
 
-      // Assert user was redirected to new customization route
+      // Assert user was redirected to the customization job details route
       const location = (await screen.findByTestId(LOCATION_DISPLAY_TEST_ID)).textContent;
       expect(location).toEqual(
         getWorkspaceCustomizationJobDetailsRoute(workspace1.workspace, customizationJob1.name!)
       );
     });
+  });
 
-    it('by creating a new dataset', async () => {
-      // Mock the Customization create endpoint to capture the request body and return a happy result
-      let customizationCreateRequestBody;
+  describe('Form validation', () => {
+    it('does not submit the customization job when required fields are missing', async () => {
+      let customizationCreateRequestBody: CustomizationJobRequest | undefined;
       server.use(
         http.post<never, CustomizationJobRequest, CustomizationJob>(
           `${PLATFORM_BASE_URL}/apis/customization/v2/workspaces/${workspace1.workspace}/jobs`,
           async ({ request }) => {
             customizationCreateRequestBody = await request.json();
             return HttpResponse.json(customizationJob1);
-          },
-          { once: true }
+          }
         )
       );
 
       renderRoute();
 
-      // Select parent model
-      await selectAutocompleteOption({
-        user,
-        autocompleteEl: await screen.findByRole('combobox', {
-          name: 'Select a Customization Target',
-        }),
-        option: parentModel2.name!,
-      });
+      await screen.findByText('Fine-tune a Model');
+      fireEvent.submit(screen.getByRole('form'));
 
-      // Click the new dataset button, opening a modal
-      const newDatasetButton = await screen.findByRole('button', { name: 'Create Dataset' });
-      await user.click(newDatasetButton);
-
-      // Fill out name and description
-      const nameInput = await screen.findByRole('textbox', { name: 'Name' });
-      await user.clear(nameInput);
-      await user.paste('test-dataset-name');
-
-      const descriptionInput = screen.getByRole('textbox', { name: 'Description' });
-      await user.click(descriptionInput);
-      await user.paste('Test dataset description');
-
-      // Upload training file
-      const trainingFileInput = screen.getByLabelText('Training File(s)');
-      const trainingFile = new File(['test-file-contents'], 'training_file.jsonl', {
-        type: 'application/json',
-      });
-      await user.upload(trainingFileInput, trainingFile);
-
-      // Upload validation file
-      const validationFileInput = screen.getByLabelText('Validation File(s)');
-      const validationFile = new File(['test-file-contents'], 'validation_file.jsonl', {
-        type: 'application/json',
-      });
-      await user.upload(validationFileInput, validationFile);
-
-      // Submit the dialog, creating the dataset and using it
-      const dialogSubmitButton = screen.getByRole('button', { name: 'Add to Customization' });
-      await user.click(dialogSubmitButton);
-
-      expect(await screen.findByText('Successfully created dataset!')).toBeInTheDocument();
-
-      // Enter output model name
-      const outputModelInput = await screen.findByRole('textbox', { name: 'Output Model' });
-      await user.clear(outputModelInput);
-      await user.paste('test-customization-model');
-
-      // Submit form
-      const formSubmitButton = await screen.findByRole('button', { name: 'Start Fine-Tuning' });
-      await user.click(formSubmitButton);
-
-      // Assert the correct request was made
-      expect(customizationCreateRequestBody).toEqual({
-        spec: {
-          output_model: 'test-customization-model',
-          dataset: getEntityReference(dataset),
-          target: getEntityReference(parentModel2),
-          hyperparameters: {
-            ...NEW_CUSTOMIZATION_FORM_HYP_DEFAULT_VALUES,
-            training_type: 'sft',
-            finetuning_type: 'lora',
-            lora: extractDefaults(loraSchema),
-          },
-        },
-      });
-
-      // Assert user was redirected to new customization route
-      const location = (await screen.findByTestId(LOCATION_DISPLAY_TEST_ID)).textContent;
-      expect(location).toEqual(
-        getWorkspaceCustomizationJobDetailsRoute(workspace1.workspace, customizationJob1.name!)
+      const validationBanner = await screen.findByText(
+        /Please fix the following errors:.*Please select a model.*Please select a dataset/i
       );
+      expect(validationBanner).toBeInTheDocument();
+      expect(customizationCreateRequestBody).toBeUndefined();
+      expect(screen.queryByTestId(LOCATION_DISPLAY_TEST_ID)).not.toBeInTheDocument();
     });
   });
 
-  describe('A user cannot create a customization', () => {
-    it('if they have not selected a dataset', async () => {
+  describe('Hyperparameter subsections display correctly based on training type', () => {
+    it('Shows DPO Parameters section when training type is "dpo"', async () => {
       const user = userEvent.setup();
       renderRoute();
 
-      // Select parent model
-      await selectAutocompleteOption({
-        user,
-        autocompleteEl: await screen.findByRole('combobox', {
-          name: 'Select a Pre-built Configuration',
-        }),
-        option: parentModel2.name!,
-      });
+      // Click the DPO radio card to switch training type
+      const dpoRadio = await screen.findByRole('radio', { name: 'DPO' });
+      await user.click(dpoRadio);
 
-      // Training option is automatically selected when model is chosen
-
-      // Submit button is always enabled; validation happens on submit attempt
-      const formSubmitButton = await screen.findByRole('button', { name: 'Start Fine-Tuning' });
-      expect(formSubmitButton).not.toBeDisabled();
-
-      // Do NOT select a dataset - verify the Select Dataset and New Dataset buttons are present
-      const selectDatasetButton = await screen.findByRole('button', { name: 'Select Dataset' });
-      const newDatasetButton = await screen.findByRole('button', { name: 'Create Dataset' });
-      expect(selectDatasetButton).toBeInTheDocument();
-      expect(newDatasetButton).toBeInTheDocument();
-    });
-
-    it('if the selected dataset has no training file', async () => {
-      const user = userEvent.setup();
-      // Mock the files query to return only a validation file (no training file)
-      server.use(
-        http.get(
-          `${PLATFORM_BASE_URL}/v1/hf/api/datasets/${getEntityReference(dataset)}/tree/main`,
-          () => {
-            return HttpResponse.json([
-              {
-                path: 'validation/validation_file.jsonl',
-                type: 'file',
-                size: 100,
-              },
-            ]);
-          }
-        )
-      );
-
-      renderRoute();
-
-      // Select parent model
-      await selectAutocompleteOption({
-        user,
-        autocompleteEl: await screen.findByRole('combobox', {
-          name: 'Select a Pre-built Configuration',
-        }),
-        option: parentModel2.name!,
-      });
-
-      // Training option is automatically selected when model is chosen
-
-      // Click the Select Dataset button, opening the dataset selection modal
-      const selectDatasetButton = await screen.findByRole('button', { name: 'Select Dataset' });
-      await user.click(selectDatasetButton);
-
-      // Select the first row (our mocked dataset with only validation file)
-      const selectRowCheckbox = await screen.findByRole('checkbox', {
-        name: `Select dataset ${dataset.name}`,
-      });
-      await user.click(selectRowCheckbox);
-
-      // Submit the dialog, selecting the dataset
-      const dialogSubmitButton = screen.getByRole('button', { name: 'Add to Customization' });
-      await user.click(dialogSubmitButton);
-
-      // Verify the validation error message appears for missing training file
-      const trainingFileError = await screen.findByText('No Training Data Found');
-      expect(trainingFileError).toBeInTheDocument();
-
-      // Submit button is still enabled, but form validation will prevent actual submission
-      const formSubmitButton = await screen.findByRole('button', { name: 'Start Fine-Tuning' });
-      expect(formSubmitButton).not.toBeDisabled();
-    });
-
-    it('if the selected dataset has no validation file', async () => {
-      const user = userEvent.setup();
-      // Mock the files query to return only a training file (no validation file)
-      server.use(
-        http.get(
-          `${PLATFORM_BASE_URL}/v1/hf/api/datasets/${getEntityReference(dataset)}/tree/main`,
-          () => {
-            return HttpResponse.json([
-              {
-                path: 'training/training_file.jsonl',
-                type: 'file',
-                size: 100,
-              },
-            ]);
-          }
-        )
-      );
-
-      renderRoute();
-
-      // Select parent model
-      await selectAutocompleteOption({
-        user,
-        autocompleteEl: await screen.findByRole('combobox', {
-          name: 'Select a Pre-built Configuration',
-        }),
-        option: parentModel2.name!,
-      });
-
-      // Training option is automatically selected when model is chosen
-
-      // Click the Select Dataset button, opening the dataset selection modal
-      const selectDatasetButton = await screen.findByRole('button', { name: 'Select Dataset' });
-      await user.click(selectDatasetButton);
-
-      // Select the first row (our mocked dataset with only training file)
-      const selectRowCheckbox = await screen.findByRole('checkbox', {
-        name: `Select dataset ${dataset.name}`,
-      });
-      await user.click(selectRowCheckbox);
-
-      // Submit the dialog, selecting the dataset
-      const dialogSubmitButton = screen.getByRole('button', { name: 'Add to Customization' });
-      await user.click(dialogSubmitButton);
-
-      // Verify the validation error message appears for missing validation file
-      const validationFileError = await screen.findByText('No Validation Data Found');
-      expect(validationFileError).toBeInTheDocument();
-
-      // Submit button is still enabled, but form validation will prevent actual submission
-      const formSubmitButton = await screen.findByRole('button', { name: 'Start Fine-Tuning' });
-      expect(formSubmitButton).not.toBeDisabled();
-    });
-  });
-
-  describe('Hyperparameter subsections display correctly based on training options', () => {
-    it('Shows DPO Parameters section when training_type is "dpo"', async () => {
-      const user = userEvent.setup();
-      // Mock a parent model with DPO training type
-      const dpoModel: CustomizationConfigOutput = {
-        ...parentModel1,
-        name: 'dpo-model-config',
-      };
-
-      // Mock the parent models endpoint to return our DPO model
-      server.use(
-        http.get(
-          `${PLATFORM_BASE_URL}/apis/customization/v2/workspaces/${workspace1.workspace}/targets`,
-          () => {
-            return HttpResponse.json({ data: [dpoModel] });
-          }
-        )
-      );
-
-      renderRoute();
-
-      // Select parent model
-      await selectAutocompleteOption({
-        user,
-        autocompleteEl: await screen.findByRole('combobox', {
-          name: 'Select a Pre-built Configuration',
-        }),
-        option: dpoModel.name!,
-      });
-
-      // Expand the hyperparameters accordion
-      const hyperparametersAccordion = await screen.findByText('Hyperparameters (Advanced)');
-      await user.click(hyperparametersAccordion);
-
-      // Verify DPO Parameters section is visible
+      // DPO Parameters section should now be visible
       const dpoParametersHeading = await screen.findByText('DPO Parameters');
       expect(dpoParametersHeading).toBeInTheDocument();
     });
 
-    it('Shows LoRA Parameters section when finetuning_type is "lora"', async () => {
-      const user = userEvent.setup();
-      // Mock a parent model with LoRA finetuning type
-      const loraModel: CustomizationConfigOutput = {
-        ...parentModel1,
-        name: 'lora-model-config',
-      };
-
-      // Mock the parent models endpoint to return our LoRA model
-      server.use(
-        http.get(
-          `${PLATFORM_BASE_URL}/apis/customization/v2/workspaces/${workspace1.workspace}/targets`,
-          () => {
-            return HttpResponse.json({ data: [loraModel] });
-          }
-        )
-      );
-
+    it('Shows LoRA Parameters section when training type is "sft"', async () => {
       renderRoute();
 
-      // Select parent model
-      await selectAutocompleteOption({
-        user,
-        autocompleteEl: await screen.findByRole('combobox', {
-          name: 'Select a Pre-built Configuration',
-        }),
-        option: loraModel.name!,
-      });
-
-      // Expand the hyperparameters accordion
-      const hyperparametersAccordion = await screen.findByText('Hyperparameters (Advanced)');
-      await user.click(hyperparametersAccordion);
-
-      // Verify LoRA Parameters section is visible
-      const loraParametersHeading = await screen.findByText('LoRA Parameters');
-      expect(loraParametersHeading).toBeInTheDocument();
-    });
-
-    it('Shows both SFT and LoRA Parameters sections when both apply', async () => {
-      const user = userEvent.setup();
-      // Mock a parent model with both SFT training type and LoRA finetuning type
-      const sftLoraModel: CustomizationConfigOutput = {
-        ...parentModel1,
-        name: 'sft-lora-model-config',
-      };
-
-      // Mock the parent models endpoint to return our SFT+LoRA model
-      server.use(
-        http.get(
-          `${PLATFORM_BASE_URL}/apis/customization/v2/workspaces/${workspace1.workspace}/targets`,
-          () => {
-            return HttpResponse.json({ data: [sftLoraModel] });
-          }
-        )
-      );
-
-      renderRoute();
-
-      // Select parent model
-      await selectAutocompleteOption({
-        user,
-        autocompleteEl: await screen.findByRole('combobox', {
-          name: 'Select a Pre-built Configuration',
-        }),
-        option: sftLoraModel.name!,
-      });
-
-      // Expand the hyperparameters accordion
-      const hyperparametersAccordion = await screen.findByText('Hyperparameters (Advanced)');
-      await user.click(hyperparametersAccordion);
-
-      // Verify both SFT and LoRA Parameters sections are visible
-      const sftParametersHeading = await screen.findByText('SFT Parameters');
-      const loraParametersHeading = await screen.findByText('LoRA Parameters');
-      expect(sftParametersHeading).toBeInTheDocument();
-      expect(loraParametersHeading).toBeInTheDocument();
+      // SFT with LoRA is the default training configuration — the LoRA rank
+      // selector should be visible without any user interaction
+      const loraRankSelector = await screen.findByTestId('lora-rank');
+      expect(loraRankSelector).toBeInTheDocument();
     });
   });
 });

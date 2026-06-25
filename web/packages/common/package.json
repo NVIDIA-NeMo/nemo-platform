@@ -10,6 +10,7 @@
     "format:fix": "prettier --write './**/*.{js,jsx,ts,tsx}'",
     "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
     "lint:fix": "eslint . --fix --report-unused-disable-directives --max-warnings 0",
+    "lint:a11y": "eslint . --config ../../eslint.config.a11y.js --no-config-lookup --no-inline-config --max-warnings 18",
     "test": "vitest --run",
     "test:ci": "vitest run --coverage",
     "test:watch": "vitest watch",

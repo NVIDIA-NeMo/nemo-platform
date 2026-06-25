@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useClaudeCodeChatRuntime } from '@studio/routes/agents/ClaudeCodeChatRoute/useClaudeCodeChatRuntime';
+import { mockFeatureFlags } from '@studio/tests/util/mockFeatureFlags';
 import { act, renderHook, waitFor } from '@testing-library/react';
 
 const mocks = vi.hoisted(() => ({
   appendUserMessage: vi.fn(),
   createClaudeCodeSession: vi.fn(),
   invalidateQueries: vi.fn(),
+  prepareForUserInput: vi.fn(),
   resolveClaudeCodeInput: vi.fn(),
   resolveClaudeCodePermission: vi.fn(),
   streamClaudeCodeMessage: vi.fn(),
@@ -24,23 +26,31 @@ vi.mock('@studio/routes/agents/ClaudeCodeChatRoute/api', () => ({
 
 vi.mock('@studio/routes/agents/ClaudeCodeChatRoute/useCustomAssistantChatRuntime', () => ({
   useCustomAssistantChatRuntime: ({
+    onBeforeRun,
     onRun,
   }: {
+    onBeforeRun?: (context: unknown) => Promise<'continue' | 'cancel' | void>;
     onRun: (context: unknown) => Promise<unknown>;
   }) => ({
     appendUserMessage: mocks.appendUserMessage,
     handleReset: vi.fn(),
     isRunning: false,
+    messages: [],
+    replaceMessages: vi.fn(),
     runtime: {},
     submitPrompt: async (prompt: string) => {
-      await onRun({
+      const context = {
         prompt,
         signal: new AbortController().signal,
         appendAssistantParts: vi.fn(),
         appendAssistantText: vi.fn(),
-        prepareForUserInput: vi.fn(),
+        prepareForUserInput: mocks.prepareForUserInput,
         isCurrentRun: () => true,
-      });
+      };
+      const beforeRunResult = await onBeforeRun?.(context);
+      if (beforeRunResult !== 'cancel') {
+        await onRun(context);
+      }
       await mocks.submitPrompt(prompt);
     },
   }),
@@ -66,6 +76,10 @@ interface InputRequestTestHandlers {
 describe('useClaudeCodeChatRuntime', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('exposes the latest streamed coding-agent model without promoting it to selected model', async () => {
@@ -96,6 +110,29 @@ describe('useClaudeCodeChatRuntime', () => {
     expect(result.current.artifacts.model_source).toBeUndefined();
   });
 
+  it('passes Studio route context to streamed messages', async () => {
+    mocks.createClaudeCodeSession.mockResolvedValue('session-1');
+    mocks.streamClaudeCodeMessage.mockResolvedValue(undefined);
+
+    const { result } = renderUseClaudeCodeChatRuntime({
+      studioPathname: '/workspaces/default/jobs?status=running',
+      workspace: 'default',
+    });
+
+    await act(async () => {
+      await result.current.submitPrompt('Show running jobs');
+    });
+
+    expect(mocks.streamClaudeCodeMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'Show running jobs',
+        sessionId: 'session-1',
+        studioPathname: '/workspaces/default/jobs?status=running',
+        workspace: 'default',
+      })
+    );
+  });
+
   it('syncs artifacts when historical session metadata arrives after mount', async () => {
     const { rerender, result } = renderHook(
       ({ model }: { model?: string }) =>
@@ -106,6 +143,7 @@ describe('useClaudeCodeChatRuntime', () => {
                 selections: [],
                 files: [],
                 links: [],
+                jobs: [],
                 tools: [],
               }
             : undefined,
@@ -125,6 +163,66 @@ describe('useClaudeCodeChatRuntime', () => {
     rerender({ model: undefined });
 
     await waitFor(() => expect(result.current.artifacts.coding_agent_model).toBeUndefined());
+  });
+
+  it('pauses for a matching Studio UI suggestion before creating a Claude Code session', async () => {
+    let submitPromise!: Promise<void>;
+    mockFeatureFlags({ guardrailsEnabled: true });
+    mocks.createClaudeCodeSession.mockResolvedValue('session-1');
+    mocks.streamClaudeCodeMessage.mockResolvedValue(undefined);
+
+    const { result } = renderUseClaudeCodeChatRuntime({ workspace: 'default' });
+
+    act(() => {
+      submitPromise = result.current.submitPrompt('Add guardrails to an agent');
+    });
+
+    await waitFor(() =>
+      expect(result.current.studioNavigationRequest).toEqual(
+        expect.objectContaining({
+          prompt: 'Add guardrails to an agent',
+          suggestion: expect.objectContaining({
+            id: 'guardrails',
+            href: '/workspaces/default/guardrails',
+          }),
+        })
+      )
+    );
+
+    expect(mocks.prepareForUserInput).toHaveBeenCalled();
+    expect(mocks.createClaudeCodeSession).not.toHaveBeenCalled();
+
+    await act(async () => {
+      result.current.resolveStudioNavigationRequest('continue');
+      await submitPromise;
+    });
+
+    expect(mocks.createClaudeCodeSession).toHaveBeenCalledTimes(1);
+    expect(result.current.studioNavigationRequest).toBeNull();
+  });
+
+  it('does not start Claude Code when the user chooses the Studio UI', async () => {
+    let submitPromise!: Promise<void>;
+    mockFeatureFlags({ guardrailsEnabled: true });
+
+    const { result } = renderUseClaudeCodeChatRuntime({ workspace: 'default' });
+
+    act(() => {
+      submitPromise = result.current.submitPrompt('Add guardrails to an agent');
+    });
+
+    await waitFor(() =>
+      expect(result.current.studioNavigationRequest?.suggestion.id).toBe('guardrails')
+    );
+
+    await act(async () => {
+      result.current.resolveStudioNavigationRequest('navigate');
+      await submitPromise;
+    });
+
+    expect(mocks.createClaudeCodeSession).not.toHaveBeenCalled();
+    expect(mocks.streamClaudeCodeMessage).not.toHaveBeenCalled();
+    expect(result.current.studioNavigationRequest).toBeNull();
   });
 
   it('does not append denial text when permission resolution fails', async () => {
@@ -306,7 +404,7 @@ describe('useClaudeCodeChatRuntime', () => {
     const { result } = renderUseClaudeCodeChatRuntime();
 
     act(() => {
-      submitPromise = result.current.submitPrompt('Evaluate an agent');
+      submitPromise = result.current.submitPrompt('Pick an agent for this workflow');
     });
     await waitFor(() =>
       expect(result.current.inputRequest).toEqual(
@@ -368,7 +466,7 @@ describe('useClaudeCodeChatRuntime', () => {
     const { result } = renderUseClaudeCodeChatRuntime();
 
     act(() => {
-      submitPromise = result.current.submitPrompt('Evaluate an agent');
+      submitPromise = result.current.submitPrompt('Pick an agent for this workflow');
     });
     await waitFor(() =>
       expect(result.current.inputRequest).toEqual(

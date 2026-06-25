@@ -3,12 +3,8 @@
 
 """None service backend."""
 
-from typing import Optional
-
-from nemo_platform.types.inference.model_deployment import ModelDeployment
-from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig
-from nemo_platform.types.models.model_entity import ModelEntity
 from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate, ServiceBackend
+from nmp.core.models.controllers.context import ModelContext
 
 
 class NoneServiceBackend(ServiceBackend):
@@ -22,19 +18,15 @@ class NoneServiceBackend(ServiceBackend):
         """Shutdown None service backend."""
         ...
 
-    async def create_model_deployment(
-        self, deployment: ModelDeployment, config: ModelDeploymentConfig, model_entity: Optional[ModelEntity] = None
-    ) -> DeploymentStatusUpdate:
+    async def create_model_deployment(self, ctx: ModelContext) -> DeploymentStatusUpdate:
         """Create a new model deployment."""
         raise NotImplementedError("NoneServiceBackend does not support deployments")
 
-    async def update_model_deployment(
-        self, deployment: ModelDeployment, config: ModelDeploymentConfig, model_entity: Optional[ModelEntity] = None
-    ) -> DeploymentStatusUpdate:
+    async def update_model_deployment(self, ctx: ModelContext) -> DeploymentStatusUpdate:
         """Update a model deployment."""
         raise NotImplementedError("NoneServiceBackend does not support deployments")
 
-    async def get_model_deployment_status(self, deployment: ModelDeployment) -> DeploymentStatusUpdate:
+    async def get_model_deployment_status(self, ctx: ModelContext) -> DeploymentStatusUpdate:
         """Get the status of a model deployment."""
         return DeploymentStatusUpdate(
             status="UNKNOWN",

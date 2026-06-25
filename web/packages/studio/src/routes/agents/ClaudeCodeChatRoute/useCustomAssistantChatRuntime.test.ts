@@ -8,6 +8,7 @@ import {
   CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
 import {
+  type CustomAssistantBeforeRunContext,
   type CustomAssistantRunContext,
   useCustomAssistantChatRuntime,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/useCustomAssistantChatRuntime';
@@ -43,6 +44,65 @@ const getAssistantContent = (messages: readonly ThreadMessageLike[]) => {
 describe('useCustomAssistantChatRuntime', () => {
   beforeEach(() => {
     mocks.useExternalStoreRuntime.mockClear();
+  });
+
+  it('pauses before running and resumes when the before-run hook continues', async () => {
+    let continueRun!: () => void;
+    const onBeforeRun = vi.fn(async (context: CustomAssistantBeforeRunContext) => {
+      context.prepareForUserInput();
+      await new Promise<void>((resolve) => {
+        continueRun = resolve;
+      });
+      return 'continue' as const;
+    });
+    const onRun = vi.fn(async (context: CustomAssistantRunContext) => {
+      context.appendAssistantText('Continuing in chat.');
+    });
+    const { result } = renderHook(() => useCustomAssistantChatRuntime({ onBeforeRun, onRun }));
+
+    act(() => {
+      void result.current.submitPrompt('Add guardrails');
+    });
+
+    await waitFor(() => {
+      expect(onBeforeRun).toHaveBeenCalledWith(
+        expect.objectContaining({ prompt: 'Add guardrails' })
+      );
+      expect(onRun).not.toHaveBeenCalled();
+      expect(getMockRuntime(result.current.runtime).messages.map(getMessageText)).toEqual([
+        'Add guardrails',
+      ]);
+    });
+
+    await act(async () => {
+      continueRun();
+    });
+
+    await waitFor(() => {
+      expect(onRun).toHaveBeenCalled();
+      expect(getMockRuntime(result.current.runtime).messages.map(getMessageText)).toEqual([
+        'Add guardrails',
+        'Continuing in chat.',
+      ]);
+    });
+  });
+
+  it('does not run when the before-run hook cancels', async () => {
+    const onBeforeRun = vi.fn((context: CustomAssistantBeforeRunContext) => {
+      context.prepareForUserInput();
+      return 'cancel' as const;
+    });
+    const onRun = vi.fn();
+    const { result } = renderHook(() => useCustomAssistantChatRuntime({ onBeforeRun, onRun }));
+
+    await act(async () => {
+      await result.current.submitPrompt('Open guardrails');
+    });
+
+    expect(onRun).not.toHaveBeenCalled();
+    expect(getMockRuntime(result.current.runtime).messages.map(getMessageText)).toEqual([
+      'Open guardrails',
+    ]);
   });
 
   it('shows user interventions between agent messages', async () => {

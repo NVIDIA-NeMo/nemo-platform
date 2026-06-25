@@ -12,10 +12,10 @@ from types import TracebackType
 from typing import Generic, TypeVar
 
 import httpx
-from nemo_platform_plugin.client.types import BinaryContent, Stream
+from nemo_platform_plugin.client.types import PreparedRequest
 from pydantic import BaseModel
 
-ResponseT = TypeVar("ResponseT", bound=BaseModel | BinaryContent | Stream | None)
+ResponseT = TypeVar("ResponseT")
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
@@ -25,7 +25,7 @@ class NemoResponse(Generic[ResponseT]):
 
     Example::
 
-        resp = client.send(GetUserEndpoint.request(workspace="default"))
+        resp = client.send(endpoints.get_user(workspace="default"))
         resp.body             # UserResponse
         resp.http_response    # full httpx.Response
 
@@ -34,11 +34,12 @@ class NemoResponse(Generic[ResponseT]):
 
     http_response: httpx.Response
     body: ResponseT
+    request: PreparedRequest
 
     def data(self) -> ResponseT:
         """Return the body if the status is 2xx, otherwise raise."""
         if not (200 <= self.http_response.status_code < 300):
-            raise NemoHTTPError(self.http_response, self.body)
+            raise NemoHTTPError(self.http_response)
         return self.body
 
 
@@ -52,14 +53,15 @@ class NemoBinaryResponse:
 
     Use as a context manager::
 
-        with client.send(DownloadEndpoint.request(...)) as resp:
+        with client.send(endpoints.download(...)) as resp:
             data = resp.read()       # all bytes at once
             # or: for chunk in resp  # iterate chunks
     """
 
-    def __init__(self, stream_ctx: AbstractContextManager[httpx.Response]) -> None:
+    def __init__(self, stream_ctx: AbstractContextManager[httpx.Response], request: PreparedRequest) -> None:
         self._stream_ctx = stream_ctx
         self._response: httpx.Response | None = None
+        self.request = request
 
     @property
     def http_response(self) -> httpx.Response:
@@ -89,15 +91,21 @@ class NemoStreamResponse(Generic[ModelT]):
 
     Use as a context manager::
 
-        with client.send(ChatEndpoint.request(...)) as resp:
+        with client.send(ChatEndpoint(...)) as resp:
             for chunk in resp:
                 print(chunk.text)
     """
 
-    def __init__(self, stream_ctx: AbstractContextManager[httpx.Response], model_type: type[ModelT]) -> None:
+    def __init__(
+        self,
+        stream_ctx: AbstractContextManager[httpx.Response],
+        model_type: type[ModelT],
+        request: PreparedRequest,
+    ) -> None:
         self._stream_ctx = stream_ctx
         self._model_type = model_type
         self._response: httpx.Response | None = None
+        self.request = request
 
     @property
     def http_response(self) -> httpx.Response:
@@ -131,14 +139,15 @@ class AsyncNemoBinaryResponse:
 
     Use as an async context manager::
 
-        async with client.send(DownloadEndpoint.request(...)) as resp:
+        async with client.send(endpoints.download(...)) as resp:
             data = await resp.read()           # all bytes at once
             # or: async for chunk in resp      # iterate chunks
     """
 
-    def __init__(self, stream_ctx: AbstractAsyncContextManager[httpx.Response]) -> None:
+    def __init__(self, stream_ctx: AbstractAsyncContextManager[httpx.Response], request: PreparedRequest) -> None:
         self._stream_ctx = stream_ctx
         self._response: httpx.Response | None = None
+        self.request = request
 
     @property
     def http_response(self) -> httpx.Response:
@@ -169,15 +178,21 @@ class AsyncNemoStreamResponse(Generic[ModelT]):
 
     Use as an async context manager::
 
-        async with client.send(ChatEndpoint.request(...)) as resp:
+        async with client.send(ChatEndpoint(...)) as resp:
             async for chunk in resp:
                 print(chunk.text)
     """
 
-    def __init__(self, stream_ctx: AbstractAsyncContextManager[httpx.Response], model_type: type[ModelT]) -> None:
+    def __init__(
+        self,
+        stream_ctx: AbstractAsyncContextManager[httpx.Response],
+        model_type: type[ModelT],
+        request: PreparedRequest,
+    ) -> None:
         self._stream_ctx = stream_ctx
         self._model_type = model_type
         self._response: httpx.Response | None = None
+        self.request = request
 
     @property
     def http_response(self) -> httpx.Response:
@@ -207,9 +222,28 @@ class AsyncNemoStreamResponse(Generic[ModelT]):
 
 
 class NemoHTTPError(Exception):
-    """Raised by :meth:`NemoResponse.data` on non-2xx responses."""
+    """Raised by :meth:`NemoResponse.data` on non-2xx responses.
 
-    def __init__(self, http_response: httpx.Response, body: object) -> None:
+    Attributes:
+        http_response: The raw httpx response.
+        status_code: The HTTP status code.
+        detail: A human-readable error message extracted from the response
+            body (``{"detail": "..."}`` convention used by FastAPI / NeMo
+            Platform), or the raw response text as a fallback.
+    """
+
+    def __init__(self, http_response: httpx.Response) -> None:
         self.http_response = http_response
-        self.body = body
-        super().__init__(f"HTTP {http_response.status_code}")
+        self.status_code = http_response.status_code
+        self.detail = self._extract_detail(http_response)
+        super().__init__(f"HTTP {self.status_code}: {self.detail}")
+
+    @staticmethod
+    def _extract_detail(resp: httpx.Response) -> str:
+        try:
+            body = resp.json()
+            if isinstance(body, dict) and isinstance(body.get("detail"), str):
+                return body["detail"]
+        except Exception:
+            pass
+        return resp.text

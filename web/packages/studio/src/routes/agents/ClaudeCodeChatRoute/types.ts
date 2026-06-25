@@ -55,6 +55,13 @@ export interface ClaudeCodeChatLinkArtifact {
   href?: string;
 }
 
+export interface ClaudeCodeChatJobArtifact {
+  name: string;
+  job_type?: string;
+  source?: string;
+  href?: string;
+}
+
 export type ClaudeCodeChatModelSource = 'coding_agent' | 'selection' | 'spec';
 
 export interface ClaudeCodeChatArtifacts {
@@ -66,6 +73,7 @@ export interface ClaudeCodeChatArtifacts {
   selections: ClaudeCodeChatSelectionArtifact[];
   files: ClaudeCodeChatFileArtifact[];
   links: ClaudeCodeChatLinkArtifact[];
+  jobs: ClaudeCodeChatJobArtifact[];
   tools: string[];
 }
 

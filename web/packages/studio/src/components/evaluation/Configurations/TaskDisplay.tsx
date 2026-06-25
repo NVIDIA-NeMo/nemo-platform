@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { KVPair } from '@nemo/common/src/components/KVPair';
 import { Stack, Text } from '@nvidia/foundations-react-core';
-import { ReadOnlyField } from '@studio/components/common/ReadOnlyField';
 import { LLMJudgeDisplay } from '@studio/components/evaluation/Configurations/LLMJudgeDisplay';
 import { MetricDisplay } from '@studio/components/evaluation/Configurations/MetricDisplay';
 import { DatasetFileLink } from '@studio/components/evaluation/DatasetFileLink';
@@ -36,10 +36,10 @@ export const TaskDisplay: FC<{
 
   return (
     <Stack gap="density-xl" className="w-full">
-      <ReadOnlyField label="Task Name" value={taskName} />
-      <ReadOnlyField label="Target Type" value={targetType} />
+      <KVPair label="Task Name" value={taskName} />
+      <KVPair label="Target Type" value={targetType} />
       {filesetInfo && (
-        <ReadOnlyField
+        <KVPair
           label="Input File"
           value={<DatasetFileLink label={filesetInfo.fileDisplayName} url={filesetInfo.linkUrl} />}
         />

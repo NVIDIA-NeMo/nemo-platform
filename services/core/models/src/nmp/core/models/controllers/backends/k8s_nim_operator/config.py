@@ -62,7 +62,13 @@ class K8sNimOperatorConfig(BaseModel):
         ),
     )
 
-    # Security context
+    # Security context for the NIM (operator) path: applied to the NIMService /
+    # NIMCache CRs. NOTE: securityContext uid/gid is engine-specific -- NIM images
+    # expect different values (operator default 1000/2000) than the vLLM image
+    # (2000/0, see default_vllm_*). When NIM is migrated onto the raw-object
+    # compilers (vllm_k8s_compiler), keep passing THESE fields for the NIM path --
+    # do not reuse default_vllm_user_id/_group_id. See the FUTURE note in
+    # vllm_k8s_compiler.py.
     default_user_id: Optional[int] = Field(
         default=None,
         description="Default user ID for NIM containers (security context)",
@@ -70,6 +76,26 @@ class K8sNimOperatorConfig(BaseModel):
     default_group_id: Optional[int] = Field(
         default=None,
         description="Default group ID for NIM containers (security context)",
+    )
+
+    # Security context for the directly-emitted vLLM path (puller Job + server
+    # Deployment). Defaults match the user the upstream vllm/vllm-openai image
+    # ships ("vllm", uid 2000, gid 0): a non-root uid that HAS an /etc/passwd
+    # entry, so torch/inductor's getpass.getuser() (pwd.getpwuid) does not crash.
+    # gid 0 (root group) is the image's group and is the standard
+    # arbitrary-uid-friendly group. The puller writes weights under this uid/gid
+    # so the server can read them.
+    default_vllm_user_id: Optional[int] = Field(
+        default=2000,
+        description="Default user ID for vLLM puller + server pods (security context). "
+        "Defaults to 2000 to match the upstream vLLM image's 'vllm' user, which has an "
+        "/etc/passwd entry (avoids torch getpwuid crashes from an unknown uid).",
+    )
+    default_vllm_group_id: Optional[int] = Field(
+        default=0,
+        description="Default group ID / fsGroup for vLLM puller + server pods. Defaults to 0 "
+        "(root group) to match the upstream vLLM image and keep weights readable across the "
+        "puller and server pods.",
     )
 
     # Files service configuration
@@ -83,8 +109,10 @@ class K8sNimOperatorConfig(BaseModel):
     )
 
     busybox_image: str = Field(
-        default="busybox",
-        description="BusyBox image repository used by plugin init containers.",
+        default="docker.io/library/busybox",
+        description="BusyBox image repository used by plugin init containers. "
+        "Fully qualified (docker.io/library/...) so it resolves on container runtimes "
+        "that enforce fully-qualified image names (short names like 'busybox' fail there).",
     )
 
     busybox_image_tag: str = Field(
@@ -108,6 +136,16 @@ class K8sNimOperatorConfig(BaseModel):
         description="Default NIMService image tag (used if not specified in deployment config)",
     )
 
+    # vLLM image configuration (vLLM engine on k8s; raw-object emission path)
+    default_vllm_image: str = Field(
+        default="vllm/vllm-openai",
+        description="Default vLLM server image repository (used if not specified in deployment config)",
+    )
+    default_vllm_image_tag: str = Field(
+        default="v0.22.1",
+        description="Default vLLM server image tag (used if not specified in deployment config)",
+    )
+
     # NIM runtime configuration
     nim_guided_decoding_backend: str = Field(
         default="outlines",
@@ -118,6 +156,25 @@ class K8sNimOperatorConfig(BaseModel):
     namespace: Optional[str] = Field(
         default=None,
         description="Kubernetes namespace for NIM deployments (defaults to controller's namespace if not set)",
+    )
+
+    # ServiceAccount for directly-emitted workloads (vLLM Deployment pods + weight
+    # puller Job). A single shared models ServiceAccount is used; the platform Helm
+    # chart is responsible for creating it and granting any required RBAC/SCC.
+    # If not set, pods run under the namespace's default ServiceAccount.
+    service_account_name: Optional[str] = Field(
+        default=None,
+        description="ServiceAccount name for directly-emitted vLLM Deployment pods and the weight-puller Job. "
+        "If not set, the namespace default ServiceAccount is used.",
+    )
+
+    # Shared memory (/dev/shm) for directly-emitted vLLM Deployment pods. vLLM uses
+    # /dev/shm for tensor-parallel NCCL communication. If not set, the dshm emptyDir
+    # is mounted with no explicit size limit (uses the node default).
+    default_shared_memory_size_limit: Optional[str] = Field(
+        default=None,
+        description="Shared memory (/dev/shm) size limit for vLLM Deployment pods (e.g. '8Gi'). "
+        "If not set, the emptyDir uses the node default size.",
     )
 
     # Default Kubernetes configuration for all NIM deployments

@@ -15,7 +15,7 @@ import logging
 import secrets
 import time
 from datetime import datetime, timezone
-from typing import Annotated, Literal, TypeVar
+from typing import Annotated, Any, Literal, TypeVar
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from nmp.common.api.common import Page, PaginationData
@@ -60,16 +60,17 @@ GROUPS_TAG = "Experiment Groups"
 EXPERIMENTS_TAG = "Experiments"
 
 ExperimentGroupSortField = Literal["-created_at", "created_at", "-updated_at", "updated_at", "-name", "name"]
-ExperimentSortField = Literal[
-    "-created_at",
-    "created_at",
-    "-updated_at",
-    "updated_at",
-    "-name",
-    "name",
-    "-pinned_at",
-    "pinned_at",
-]
+
+# The experiments list is sorted in the application layer (compute-on-read) so a single request can
+# sort by a ClickHouse rollup metric, not just entity columns. `sort` is therefore a free string,
+# validated against these: an entity column, run_count, or a `<metric>.<stat>` rollup path.
+_ENTITY_SORT_FIELDS = frozenset({"name", "created_at", "updated_at", "pinned_at"})
+_METRIC_STATS = frozenset({"sum", "mean", "median", "p90", "p95", "p99", "count"})
+# Per-group experiment fetch bound for the in-memory merge. Groups are expected to hold at most
+# hundreds; a query that selects more than this is rejected rather than sorted on a partial set — the
+# trigger to denormalize metrics into an entity-store-sortable column instead.
+_MAX_GROUP_EXPERIMENTS = 1000
+
 EntityT = TypeVar("EntityT", Experiment, ExperimentGroup)
 
 EntityClientDep = Annotated[EntityClient, Depends(get_entity_client)]
@@ -334,6 +335,11 @@ async def create_experiment(
     "/v2/workspaces/{workspace}/experiments",
     response_model=Page[ExperimentResponse],
     tags=[EXPERIMENTS_TAG],
+    responses={
+        400: {"description": "Unsupported sort field"},
+        413: {"description": "Too many experiments selected to sort in one request"},
+        503: {"description": "Telemetry store unavailable for a metric-based sort"},
+    },
     openapi_extra=generate_openapi_extra_params(
         filter_schema=ExperimentFilter,
         filter_description=(
@@ -352,24 +358,70 @@ async def list_experiments(
     parsed: ExperimentFilterDep,
     page: int = Query(default=1, ge=1, description="Page number."),
     page_size: int = Query(default=100, ge=1, le=1000, description="Page size."),
-    sort: ExperimentSortField = Query(default="-created_at", description="Sort field; prefix with '-' for descending."),
+    sort: str = Query(
+        default="-created_at",
+        description=(
+            "Field to sort by; prefix with '-' for descending. Sort by an experiment attribute "
+            "(name, created_at, updated_at, pinned_at) or by an aggregate metric: run_count, "
+            "cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>, where <stat> is one of "
+            "mean, median, p90, p95, p99, sum, count."
+        ),
+    ),
 ) -> Page[ExperimentResponse]:
     validate_list_query_params(request)
+    descending = sort.startswith("-")
+    sort_field = sort[1:] if descending else sort
+    _validate_sort_field(sort_field)
     _apply_is_deleted_filter(parsed)
     _apply_is_pinned_filter(parsed)
+    # Compute-on-read: fetch the whole (entity-filtered) group, hydrate every rollup, then sort and
+    # paginate in memory so a single request can sort by a ClickHouse metric that lives outside the
+    # entity store. Bounded to hundreds of experiments per group (see _MAX_GROUP_EXPERIMENTS).
     result = await entity_client.list(
         Experiment,
         workspace=workspace,
         filter_operation=parsed.operation,
-        sort=sort,
-        page=page,
-        page_size=page_size,
+        page=1,
+        page_size=_MAX_GROUP_EXPERIMENTS,
     )
     responses = [ExperimentResponse.from_entity(e) for e in result.data]
-    await _hydrate_rollups(workspace=workspace, responses=responses, rollup_repository=rollup_repository)
+    total_selected = result.pagination.total_results
+    if total_selected > _MAX_GROUP_EXPERIMENTS:
+        # The whole filtered set is sorted in memory; anything past the fetch cap can't be sorted, so a
+        # returned page would be silently incomplete. Fail loudly and tell the caller how to scope the
+        # query instead (or denormalize rollup metrics for entity-store sorting once groups grow this big).
+        logger.warning(
+            "Experiment list selected %d experiments, over the %d-row in-memory sort cap; refusing "
+            "to return a partially sorted result.",
+            total_selected,
+            _MAX_GROUP_EXPERIMENTS,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=(
+                f"This query selects {total_selected} experiments, exceeding the maximum of "
+                f"{_MAX_GROUP_EXPERIMENTS} that can be sorted in one request. Narrow the result with a "
+                "filter (e.g. experiment_group_id)."
+            ),
+        )
+    hydrated = await _hydrate_rollups(workspace=workspace, responses=responses, rollup_repository=rollup_repository)
+    # A metric-backed sort (anything other than an entity column) is meaningless without rollups: if
+    # hydration was skipped (ClickHouse disabled or down) every metric value would be unset and the
+    # result would silently collapse to name order. Reject the request instead of returning a
+    # misleading 200. Entity-column sorts still work and an empty group still hydrates fine.
+    if not hydrated and sort_field not in _ENTITY_SORT_FIELDS:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Cannot sort experiments by '{sort_field}': the telemetry store is unavailable.",
+        )
+    ordered = _sort_experiments(responses, field=sort_field, descending=descending)
+    start = (page - 1) * page_size
+    page_items = ordered[start : start + page_size]
     return Page(
-        data=responses,
-        pagination=PaginationData(**result.pagination.model_dump()),
+        data=page_items,
+        pagination=make_pagination(
+            page=page, page_size=page_size, current_page_size=len(page_items), total_results=len(ordered)
+        ),
         sort=sort,
         filter=parsed.to_response(),
     )
@@ -836,25 +888,76 @@ def _apply_is_pinned_filter(parsed: ParsedFilter) -> None:
         parsed.and_with(null_clause)
 
 
+def _validate_sort_field(field: str) -> None:
+    """Reject a sort field that isn't an entity column or a known rollup-metric path."""
+    if field in _ENTITY_SORT_FIELDS or field == "run_count":
+        return
+    head, _, rest = field.partition(".")
+    if head in ("cost_usd", "latency_ms") and rest in _METRIC_STATS:
+        return
+    if head == "evaluators":
+        # Evaluator names can contain dots (e.g. "harbor.verifier"); the stat is the last segment.
+        name, _, stat = rest.rpartition(".")
+        if name and stat in _METRIC_STATS:
+            return
+    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported sort field: {field}")
+
+
+def _experiment_sort_value(response: ExperimentResponse, field: str) -> Any:
+    """Value for `field` on a hydrated response, or None when the metric is absent (sorts last)."""
+    if field in _ENTITY_SORT_FIELDS:
+        return getattr(response, field)
+    if field == "run_count":
+        return response.run_count
+    head, _, rest = field.partition(".")
+    if head == "cost_usd":
+        return getattr(response.cost_usd, rest, None) if response.cost_usd is not None else None
+    if head == "latency_ms":
+        return getattr(response.latency_ms, rest, None) if response.latency_ms is not None else None
+    name, _, stat = rest.rpartition(".")  # head == "evaluators"
+    score = (response.aggregate_scores or {}).get(name)
+    return getattr(score, stat, None) if score is not None else None
+
+
+def _sort_experiments(responses: list[ExperimentResponse], *, field: str, descending: bool) -> list[ExperimentResponse]:
+    """Sort by an entity column or rollup metric; missing values sort last, ties broken by name."""
+    by_name = sorted(responses, key=lambda r: r.name)  # deterministic tiebreak under the stable sort below
+    valued = [(_experiment_sort_value(r, field), r) for r in by_name]
+    present = [(value, r) for value, r in valued if value is not None]
+    missing = [r for value, r in valued if value is None]
+    present.sort(key=lambda pair: pair[0], reverse=descending)
+    return [r for _, r in present] + missing
+
+
 async def _hydrate_rollups(
     *,
     workspace: str,
     responses: list[ExperimentResponse],
     rollup_repository: ExperimentRollupRepository | None,
-) -> None:
-    if rollup_repository is None or not responses:
-        return
+) -> bool:
+    """Enrich responses with ClickHouse rollups in place.
+
+    Returns True when hydration completed (including the no-op empty-list case) and False when it was
+    skipped because the rollup store is unavailable (repository absent or query failed). Callers that
+    sort by a rollup metric use the flag to reject the request rather than silently degrade; callers
+    that only display metrics can ignore it.
+    """
+    if not responses:
+        return True
+    if rollup_repository is None:
+        return False
     try:
         rollups = await rollup_repository.get_rollups(
             workspace=workspace, experiment_ids=[response.name for response in responses]
         )
     except Exception:
         logger.exception("Skipping experiment rollup hydration because ClickHouse is unavailable")
-        return
+        return False
     for response in responses:
         rollup = rollups.get(response.name)
         if rollup is not None:
             _apply_rollup(response, rollup)
+    return True
 
 
 def _apply_rollup(response: ExperimentResponse, rollup: ExperimentRollup) -> None:

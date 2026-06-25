@@ -9,11 +9,13 @@ import { getStudioInternalLinkTarget } from '@studio/routes/agents/ClaudeCodeCha
 import { getFileLabel } from '@studio/routes/agents/ClaudeCodeChatRoute/historyPanel/helpers';
 import type {
   ClaudeCodeChatFileArtifact,
+  ClaudeCodeChatJobArtifact,
   ClaudeCodeChatLinkArtifact,
   ClaudeCodeChatSelectionArtifact,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
+import { getJobProgressDetailRoute } from '@studio/routes/agents/ClaudeCodeChatRoute/utils/jobProgress';
 import cn from 'classnames';
-import { ArrowRight, Boxes, FileCode2, Link2, Sparkles, Wrench } from 'lucide-react';
+import { ArrowRight, Boxes, Briefcase, FileCode2, Link2, Sparkles, Wrench } from 'lucide-react';
 import { type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
@@ -149,6 +151,60 @@ export const LinkArtifacts = ({ links }: { links: ClaudeCodeChatLinkArtifact[] }
             </Anchor>
           ) : (
             <ArtifactChip key={key}>{label}</ArtifactChip>
+          );
+        })}
+      </Flex>
+    </ArtifactSection>
+  );
+};
+
+const getJobArtifactHref = (
+  job: ClaudeCodeChatJobArtifact,
+  workspace: string | undefined
+): string | undefined => {
+  if (job.href) return job.href;
+  if (!workspace) return undefined;
+
+  return getJobProgressDetailRoute({
+    jobName: job.name,
+    jobType: job.job_type,
+    source: job.source,
+    workspace,
+  });
+};
+
+export const JobArtifacts = ({
+  jobs,
+  workspace: artifactWorkspace,
+}: {
+  jobs: ClaudeCodeChatJobArtifact[];
+  workspace?: string;
+}) => {
+  const currentWorkspace = useWorkspaceFromPathIfExists();
+  const workspace = currentWorkspace ?? artifactWorkspace;
+
+  if (!jobs.length) return null;
+
+  return (
+    <ArtifactSection icon={<Briefcase size={14} />} title="Jobs">
+      <Flex gap="density-xs" className="min-w-0 flex-wrap">
+        {jobs.slice(0, 6).map((job) => {
+          const target = getStudioInternalLinkTarget(
+            getJobArtifactHref(job, workspace),
+            window.location.origin,
+            workspace
+          );
+          const label = cleanClaudeCodeArtifactText(job.name);
+
+          return target ? (
+            <Anchor asChild key={job.name}>
+              <Link className={CLAUDE_CODE_STUDIO_LINK_CLASS} to={target}>
+                <span className="truncate">{label}</span>
+                <ArrowRight aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+              </Link>
+            </Anchor>
+          ) : (
+            <ArtifactChip key={job.name}>{label}</ArtifactChip>
           );
         })}
       </Flex>

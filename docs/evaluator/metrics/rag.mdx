@@ -222,7 +222,11 @@ for score in result.aggregate_scores.scores:
 ```python
 metric = ContextRecallMetric(judge_model=judge_model)
 
-job = evaluator.submit(metric=metric, dataset=offline_rows, config=RunConfig(parallelism=8))
+job = evaluator.submit(
+    metric=metric,
+    dataset=offline_rows,
+    config=RunConfig(parallelism=8),
+)
 job.wait_until_done()
 result = job.get_result()
 ```
@@ -294,7 +298,11 @@ for score in result.aggregate_scores.scores:
 ```python
 metric = ContextPrecisionMetric(judge_model=judge_model)
 
-job = evaluator.submit(metric=metric, dataset=offline_rows, config=RunConfig(parallelism=8))
+job = evaluator.submit(
+    metric=metric,
+    dataset=offline_rows,
+    config=RunConfig(parallelism=8),
+)
 job.wait_until_done()
 result = job.get_result()
 ```

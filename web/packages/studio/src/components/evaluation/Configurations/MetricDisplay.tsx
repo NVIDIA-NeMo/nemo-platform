@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { KVPair } from '@nemo/common/src/components/KVPair';
 import { Stack, Text } from '@nvidia/foundations-react-core';
 import { Pre } from '@studio/components/common/Pre';
-import { ReadOnlyField } from '@studio/components/common/ReadOnlyField';
 import { FC } from 'react';
 
 export interface MetricDisplayProps {
@@ -28,69 +28,71 @@ export const MetricDisplay: FC<MetricDisplayProps> = ({ metricName, metricConfig
   return (
     <Stack gap="density-sm">
       <Text kind="label/bold/md">{metricName}</Text>
-      <ReadOnlyField label="Type" value={metricConfig.type} />
+      <KVPair label="Type" value={metricConfig.type} />
 
       {type === 'string-check' && (
-        <ReadOnlyField
+        <KVPair
           label="Check Pattern"
           value={
-            params.check ? (
-              Array.isArray(params.check) ? (
-                <Pre>{params.check.join(',')}</Pre>
-              ) : (
-                String(params.check)
-              )
-            ) : (
-              '-'
-            )
+            params.check != null
+              ? Array.isArray(params.check)
+                ? params.check.join(',')
+                : String(params.check)
+              : undefined
           }
         />
       )}
 
       {type === 'bleu' && (
         <>
-          <ReadOnlyField
+          <KVPair
             label="References"
-            value={params.references ? <Pre>{String(params.references)}</Pre> : '-'}
+            value={params.references != null ? <Pre>{String(params.references)}</Pre> : undefined}
           />
-          {params.candidate && (
-            <ReadOnlyField label="Candidate" value={<Pre>{String(params.candidate)}</Pre>} />
+          {params.candidate != null && (
+            <KVPair label="Candidate" value={<Pre>{String(params.candidate)}</Pre>} />
           )}
         </>
       )}
 
       {type === 'rouge' && (
         <>
-          <ReadOnlyField
+          <KVPair
             label="Ground Truth Reference"
-            value={params.ground_truth ? <Pre>{String(params.ground_truth)}</Pre> : '-'}
+            value={
+              params.ground_truth != null ? <Pre>{String(params.ground_truth)}</Pre> : undefined
+            }
           />
-          {params.prediction && (
-            <ReadOnlyField label="Prediction" value={<Pre>{String(params.prediction)}</Pre>} />
+          {params.prediction != null && (
+            <KVPair label="Prediction" value={<Pre>{String(params.prediction)}</Pre>} />
           )}
         </>
       )}
 
       {type === 'em' && (
         <>
-          <ReadOnlyField
+          <KVPair
             label="Ground Truth Reference"
-            value={params.ground_truth ? <Pre>{String(params.ground_truth)}</Pre> : '-'}
+            value={
+              params.ground_truth != null ? <Pre>{String(params.ground_truth)}</Pre> : undefined
+            }
           />
-          {params.prediction && (
-            <ReadOnlyField label="Prediction" value={<Pre>{String(params.prediction)}</Pre>} />
+          {params.prediction != null && (
+            <KVPair label="Prediction" value={<Pre>{String(params.prediction)}</Pre>} />
           )}
         </>
       )}
 
       {type === 'f1' && (
         <>
-          <ReadOnlyField
+          <KVPair
             label="Ground Truth Reference"
-            value={params.ground_truth ? <Pre>{String(params.ground_truth)}</Pre> : '-'}
+            value={
+              params.ground_truth != null ? <Pre>{String(params.ground_truth)}</Pre> : undefined
+            }
           />
-          {params.prediction && (
-            <ReadOnlyField label="Prediction" value={<Pre>{String(params.prediction)}</Pre>} />
+          {params.prediction != null && (
+            <KVPair label="Prediction" value={<Pre>{String(params.prediction)}</Pre>} />
           )}
         </>
       )}

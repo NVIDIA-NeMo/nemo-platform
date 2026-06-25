@@ -55,6 +55,9 @@ class ModelEntityFilterParam(TypedDict, total=False):
     description: Description
     """Filter by description."""
 
+    fileset: str
+    """Filter by fileset reference in the form {workspace}/{fileset_name}."""
+
     finetuning_type: Union[FinetuningType, bool]
     """Filter models that have been perviously finetuned."""
 

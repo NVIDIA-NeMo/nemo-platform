@@ -25,6 +25,10 @@ import {
   updateClaudeCodeChatArtifactsFromSelections,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/artifacts';
 import { getAssistantPartsFromClaudeEvent } from '@studio/routes/agents/ClaudeCodeChatRoute/stream';
+import {
+  getStudioUiNavigationSuggestion,
+  type StudioUiNavigationSuggestion,
+} from '@studio/routes/agents/ClaudeCodeChatRoute/studioUiNavigationSuggestions';
 import type {
   ClaudeCodeChatArtifacts,
   ClaudeCodeInputDecision,
@@ -77,6 +81,14 @@ interface AskUserQuestionDecisionState {
 }
 
 type ActiveDecisionState = PermissionDecisionState | AskUserQuestionDecisionState;
+
+export type StudioNavigationDecision = 'continue' | 'navigate' | 'cancel';
+
+export interface StudioNavigationRequest {
+  id: string;
+  prompt: string;
+  suggestion: StudioUiNavigationSuggestion;
+}
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
@@ -214,7 +226,15 @@ interface UseClaudeCodeChatRuntimeOptions {
   initialMessages?: readonly ThreadMessageLike[];
   initialSessionId?: string;
   onError?: (error: Error) => void;
+  onSessionIdChange?: (sessionId: string | null) => void;
+  studioPathname?: string;
   workspace?: string;
+}
+
+interface LoadClaudeCodeSessionOptions {
+  artifacts?: ClaudeCodeChatArtifacts;
+  messages: readonly ThreadMessageLike[];
+  sessionId: string;
 }
 
 export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptions) => {
@@ -229,15 +249,24 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
   const [decisionStatus, setDecisionStatus] = useState<AgentDecisionInputStatus>('pending');
   const [inputRequest, setInputRequest] = useState<ClaudeCodeInputRequest | null>(null);
   const [inputStatus, setInputStatus] = useState<AgentDecisionInputStatus>('pending');
+  const [studioNavigationRequest, setStudioNavigationRequest] =
+    useState<StudioNavigationRequest | null>(null);
+  const [studioNavigationStatus, setStudioNavigationStatus] =
+    useState<AgentDecisionInputStatus>('pending');
   const sessionIdRef = useRef<string | null>(options?.initialSessionId ?? null);
   const permissionRequestRef = useRef<ClaudeCodePermissionRequest | null>(null);
   const inputRequestRef = useRef<ClaudeCodeInputRequest | null>(null);
+  const studioNavigationResolverRef = useRef<((decision: StudioNavigationDecision) => void) | null>(
+    null
+  );
   const activeDecisionRef = useRef<ActiveDecisionState | null>(null);
   const initialArtifactsRef = useRef<ClaudeCodeChatArtifacts | undefined>(
     options?.initialArtifacts
   );
   const initialArtifactsSignature = getArtifactsSignature(options?.initialArtifacts);
   const onError = options?.onError;
+  const onSessionIdChange = options?.onSessionIdChange;
+  const studioPathname = options?.studioPathname;
 
   initialArtifactsRef.current = options?.initialArtifacts;
 
@@ -251,8 +280,9 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
     const nextSessionId = await createClaudeCodeSession();
     sessionIdRef.current = nextSessionId;
     setSessionId(nextSessionId);
+    onSessionIdChange?.(nextSessionId);
     return nextSessionId;
-  }, []);
+  }, [onSessionIdChange]);
 
   const clearPermissionRequest = useCallback((requestId?: string) => {
     if (requestId && permissionRequestRef.current?.requestId !== requestId) return;
@@ -270,6 +300,20 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
     inputRequestRef.current = null;
     setInputRequest(null);
     setInputStatus('pending');
+  }, []);
+
+  const clearStudioNavigationRequest = useCallback(() => {
+    studioNavigationResolverRef.current = null;
+    setStudioNavigationRequest(null);
+    setStudioNavigationStatus('pending');
+  }, []);
+
+  const resolveStudioNavigationRequest = useCallback((decision: StudioNavigationDecision) => {
+    const resolve = studioNavigationResolverRef.current;
+    if (!resolve) return;
+
+    setStudioNavigationStatus('submitting');
+    resolve(decision);
   }, []);
 
   const setAskUserQuestionDecision = useCallback(
@@ -325,26 +369,80 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
   const handleInputRequest = useCallback(
     (request: ClaudeCodeInputRequest) => {
       clearPermissionRequest();
+      clearStudioNavigationRequest();
 
       inputRequestRef.current = request;
       setInputStatus('pending');
       setInputRequest(request);
     },
-    [clearPermissionRequest]
+    [clearPermissionRequest, clearStudioNavigationRequest]
+  );
+
+  const requestStudioNavigationDecision = useCallback(
+    async ({
+      prompt,
+      signal,
+      prepareForUserInput,
+      isCurrentRun,
+    }: {
+      prompt: string;
+      signal: AbortSignal;
+      prepareForUserInput: () => void;
+      isCurrentRun: () => boolean;
+    }): Promise<'continue' | 'cancel'> => {
+      if (!workspace) return 'continue';
+
+      const suggestion = getStudioUiNavigationSuggestion(prompt, workspace);
+      if (!suggestion) return 'continue';
+
+      clearPermissionRequest();
+      clearInputRequest();
+      prepareForUserInput();
+
+      let resolveDecision: (decision: StudioNavigationDecision) => void = () => undefined;
+      const decisionPromise = new Promise<StudioNavigationDecision>((resolve) => {
+        resolveDecision = resolve;
+      });
+      studioNavigationResolverRef.current = resolveDecision;
+      setStudioNavigationStatus('pending');
+      setStudioNavigationRequest({
+        id: `${suggestion.id}:${Date.now()}`,
+        prompt,
+        suggestion,
+      });
+
+      const handleAbort = () => resolveDecision('cancel');
+      signal.addEventListener('abort', handleAbort, { once: true });
+
+      try {
+        const decision = await decisionPromise;
+        if (!isCurrentRun()) return 'cancel';
+        return decision === 'continue' ? 'continue' : 'cancel';
+      } finally {
+        signal.removeEventListener('abort', handleAbort);
+        if (studioNavigationResolverRef.current === resolveDecision) {
+          clearStudioNavigationRequest();
+        }
+      }
+    },
+    [clearInputRequest, clearPermissionRequest, clearStudioNavigationRequest, workspace]
   );
 
   const {
     appendUserMessage,
     handleReset: resetThread,
     isRunning,
+    replaceMessages,
     runtime,
     submitPrompt,
   } = useCustomAssistantChatRuntime({
     initialMessages: options?.initialMessages,
+    onBeforeRun: requestStudioNavigationDecision,
     onError,
     onRun: async ({ prompt, signal, appendAssistantParts, prepareForUserInput, isCurrentRun }) => {
       clearPermissionRequest();
       clearInputRequest();
+      clearStudioNavigationRequest();
       const activeSessionId = await ensureSessionId();
       let doneReceived = false;
 
@@ -352,6 +450,7 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
         await streamClaudeCodeMessage({
           sessionId: activeSessionId,
           message: prompt,
+          studioPathname,
           workspace: options?.workspace,
           signal,
           handlers: {
@@ -542,11 +641,49 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
   const handleReset = useCallback(() => {
     sessionIdRef.current = null;
     setSessionId(null);
+    onSessionIdChange?.(null);
     setArtifacts(createWorkspaceArtifacts(undefined, workspace));
     clearPermissionRequest();
     clearInputRequest();
+    resolveStudioNavigationRequest('cancel');
+    clearStudioNavigationRequest();
     resetThread();
-  }, [clearInputRequest, clearPermissionRequest, resetThread, workspace]);
+  }, [
+    clearInputRequest,
+    clearPermissionRequest,
+    clearStudioNavigationRequest,
+    onSessionIdChange,
+    resetThread,
+    resolveStudioNavigationRequest,
+    workspace,
+  ]);
+
+  const loadSession = useCallback(
+    ({
+      artifacts: nextArtifacts,
+      messages,
+      sessionId: nextSessionId,
+    }: LoadClaudeCodeSessionOptions) => {
+      sessionIdRef.current = nextSessionId;
+      setSessionId(nextSessionId);
+      onSessionIdChange?.(nextSessionId);
+      setArtifacts(createWorkspaceArtifacts(nextArtifacts, workspace));
+      clearPermissionRequest();
+      clearInputRequest();
+      resolveStudioNavigationRequest('cancel');
+      clearStudioNavigationRequest();
+      replaceMessages(messages);
+    },
+    [
+      clearInputRequest,
+      clearPermissionRequest,
+      clearStudioNavigationRequest,
+      onSessionIdChange,
+      replaceMessages,
+      resolveStudioNavigationRequest,
+      workspace,
+    ]
+  );
 
   return {
     artifacts,
@@ -557,12 +694,18 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
     inputRequest,
     inputStatus,
     isRunning,
+    loadSession,
     resolveInputRequest,
     resolveDecisionRequest,
+    resolveStudioNavigationRequest,
     runtime,
     sessionId,
     skipInputRequest,
     skipDecisionRequest,
+    studioNavigationRequest,
+    studioNavigationStatus,
     submitPrompt,
   };
 };
+
+export type ClaudeCodeChatRuntime = ReturnType<typeof useClaudeCodeChatRuntime>;

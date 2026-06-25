@@ -20,12 +20,19 @@ on:
         description: "Release artifact scope."
         required: false
         type: choice
-        default: sdks
+        default: all
         options:
+          - all
           - sdks
+          - containers
           - custom
       sdk_ids:
         description: "Comma-separated SDK IDs for custom releases."
+        required: false
+        type: string
+        default: ""
+      container_ids:
+        description: "Comma-separated container IDs for custom releases."
         required: false
         type: string
         default: ""
@@ -46,6 +53,7 @@ jobs:
       release_date: ${{ inputs.release_date }}
       release_scope: ${{ inputs.release_scope }}
       sdk_ids: ${{ inputs.sdk_ids }}
+      container_ids: ${{ inputs.container_ids }}
     secrets:
       CI_DISPATCH_TOKEN: ${{ secrets.CI_DISPATCH_TOKEN }}
       CI_DISPATCH_REPO: ${{ secrets.CI_DISPATCH_REPO }}

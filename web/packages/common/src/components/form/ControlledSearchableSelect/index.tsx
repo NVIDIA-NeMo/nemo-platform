@@ -9,6 +9,7 @@ import {
   FormField,
   SelectContent,
   SelectItem,
+  SelectListbox,
   SelectProps,
   SelectRoot,
   SelectTrigger,
@@ -241,117 +242,119 @@ export const ControlledSearchableSelect = ({
           status={status || (error ? 'error' : undefined)}
           {...selectProps}
         />
-        <SelectContent className="w-(--radix-popper-anchor-width) bg-surface-raised border border-base rounded-md shadow-md overflow-hidden">
-          <Block className="p-2 w-full sticky top-0 bg-surface z-10">
-            <TextInput
-              ref={searchInputRef}
-              name={`${useControllerProps.name}-search`}
-              className="overflow-hidden"
-              slotStart={<Filter />}
-              placeholder={searchPlaceholder}
-              value={localSearch}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                setLocalSearch(e.target.value);
-              }}
-              attributes={{
-                Input: {
-                  ['data-testid' as never]: `${useControllerProps.name}-search`,
-                },
-              }}
-            />
-          </Block>
-          {/* eslint-disable-next-line no-restricted-syntax */}
-          <Stack className="overflow-auto w-full" style={{ maxHeight }} role="listbox">
-            {isLoading && filteredOptions.length === 0 ? (
-              <Flex align="center" justify="center" className="py-4">
-                <Spinner aria-label="Loading options" size="small" />
-              </Flex>
-            ) : filteredOptions.length > 0 ? (
-              <>
-                {isLoading && (
-                  <Flex align="center" justify="center" className="py-2">
-                    <Spinner aria-label="Refreshing options" size="small" />
-                  </Flex>
-                )}
-                {(() => {
-                  const groupKeys = groupLabels ? Object.keys(groupLabels) : [];
-                  if (groupKeys.length === 0) {
-                    return filteredOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.render ?? option.label}
-                      </SelectItem>
-                    ));
-                  }
-                  const buckets = new Map<string | undefined, SelectItemOption[]>();
-                  for (const option of filteredOptions) {
-                    const key = option.group;
-                    const existing = buckets.get(key);
-                    if (existing) existing.push(option);
-                    else buckets.set(key, [option]);
-                  }
-                  const orderedKeys = [
-                    ...groupKeys.filter((k) => buckets.has(k)),
-                    ...Array.from(buckets.keys()).filter(
-                      (k): k is string | undefined => !k || !groupKeys.includes(k)
-                    ),
-                  ];
-                  return orderedKeys.flatMap((key) => {
-                    const items = buckets.get(key) ?? [];
-                    if (items.length === 0) return [];
-                    const heading = key ? groupLabels?.[key] : undefined;
-                    return [
-                      heading ? (
-                        <Block
-                          key={`__heading-${key}`}
-                          className="px-2 pt-2 pb-1 text-xs uppercase tracking-wide text-subtle"
-                        >
-                          {heading}
-                        </Block>
-                      ) : null,
-                      ...items.map((option) => (
-                        <SelectItem key={`${key ?? ''}:${option.value}`} value={option.value}>
+        <SelectContent className="w-(--radix-popper-anchor-width)">
+          <SelectListbox>
+            <Block className="p-2 w-full sticky top-0 bg-surface z-10">
+              <TextInput
+                ref={searchInputRef}
+                name={`${useControllerProps.name}-search`}
+                className="overflow-hidden"
+                slotStart={<Filter />}
+                placeholder={searchPlaceholder}
+                value={localSearch}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                  setLocalSearch(e.target.value);
+                }}
+                attributes={{
+                  Input: {
+                    ['data-testid' as never]: `${useControllerProps.name}-search`,
+                  },
+                }}
+              />
+            </Block>
+            {/* eslint-disable-next-line no-restricted-syntax */}
+            <Stack className="overflow-auto w-full" style={{ maxHeight }}>
+              {isLoading && filteredOptions.length === 0 ? (
+                <Flex align="center" justify="center" className="py-4">
+                  <Spinner aria-label="Loading options" size="small" />
+                </Flex>
+              ) : filteredOptions.length > 0 ? (
+                <>
+                  {isLoading && (
+                    <Flex align="center" justify="center" className="py-2">
+                      <Spinner aria-label="Refreshing options" size="small" />
+                    </Flex>
+                  )}
+                  {(() => {
+                    const groupKeys = groupLabels ? Object.keys(groupLabels) : [];
+                    if (groupKeys.length === 0) {
+                      return filteredOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
                           {option.render ?? option.label}
                         </SelectItem>
-                      )),
-                    ].filter(Boolean);
-                  });
-                })()}
-                {/* Infinite scroll sentinel; collapsed to 1px when idle with more pages (no empty min-height) */}
-                {showLoadMoreFooter ? (
-                  <Flex
-                    ref={loaderRef}
-                    align="center"
-                    justify="center"
-                    className={
-                      loadingMore || showDoneFooter
-                        ? 'min-h-8 py-2'
-                        : 'h-px min-h-px w-full shrink-0 py-0'
+                      ));
                     }
-                  >
-                    {loadingMore ? <Spinner aria-label="Loading more" size="small" /> : null}
-                    {showDoneFooter ? (
-                      <Text kind="body/regular/sm" className="text-subtle">
-                        {doneLoadingMessage}
-                      </Text>
-                    ) : null}
-                  </Flex>
-                ) : null}
-              </>
-            ) : (
-              <Flex align="center" justify="center" className="py-4">
-                <Text kind="body/regular/sm" className="text-subtle">
-                  {emptyMessage}
-                </Text>
-              </Flex>
-            )}
-          </Stack>
-          {listFooter ? (
-            <Block className="shrink-0 border-t-1 border-t-base p-0 w-full">
-              {listFooter({
-                close: () => setSelectOpen(false),
-              })}
-            </Block>
-          ) : null}
+                    const buckets = new Map<string | undefined, SelectItemOption[]>();
+                    for (const option of filteredOptions) {
+                      const key = option.group;
+                      const existing = buckets.get(key);
+                      if (existing) existing.push(option);
+                      else buckets.set(key, [option]);
+                    }
+                    const orderedKeys = [
+                      ...groupKeys.filter((k) => buckets.has(k)),
+                      ...Array.from(buckets.keys()).filter(
+                        (k): k is string | undefined => !k || !groupKeys.includes(k)
+                      ),
+                    ];
+                    return orderedKeys.flatMap((key) => {
+                      const items = buckets.get(key) ?? [];
+                      if (items.length === 0) return [];
+                      const heading = key ? groupLabels?.[key] : undefined;
+                      return [
+                        heading ? (
+                          <Block
+                            key={`__heading-${key}`}
+                            className="px-2 pt-2 pb-1 text-xs uppercase tracking-wide text-subtle"
+                          >
+                            {heading}
+                          </Block>
+                        ) : null,
+                        ...items.map((option) => (
+                          <SelectItem key={`${key ?? ''}:${option.value}`} value={option.value}>
+                            {option.render ?? option.label}
+                          </SelectItem>
+                        )),
+                      ].filter(Boolean);
+                    });
+                  })()}
+                  {/* Infinite scroll sentinel; collapsed to 1px when idle with more pages (no empty min-height) */}
+                  {showLoadMoreFooter ? (
+                    <Flex
+                      ref={loaderRef}
+                      align="center"
+                      justify="center"
+                      className={
+                        loadingMore || showDoneFooter
+                          ? 'min-h-8 py-2'
+                          : 'h-px min-h-px w-full shrink-0 py-0'
+                      }
+                    >
+                      {loadingMore ? <Spinner aria-label="Loading more" size="small" /> : null}
+                      {showDoneFooter ? (
+                        <Text kind="body/regular/sm" className="text-subtle">
+                          {doneLoadingMessage}
+                        </Text>
+                      ) : null}
+                    </Flex>
+                  ) : null}
+                </>
+              ) : (
+                <Flex align="center" justify="center" className="py-4">
+                  <Text kind="body/regular/sm" className="text-subtle">
+                    {emptyMessage}
+                  </Text>
+                </Flex>
+              )}
+            </Stack>
+            {listFooter ? (
+              <Block className="shrink-0 border-t-1 border-t-base p-0 w-full">
+                {listFooter({
+                  close: () => setSelectOpen(false),
+                })}
+              </Block>
+            ) : null}
+          </SelectListbox>
         </SelectContent>
       </SelectRoot>
     </FormField>

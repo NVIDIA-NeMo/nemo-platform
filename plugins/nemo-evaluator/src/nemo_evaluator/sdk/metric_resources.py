@@ -20,6 +20,7 @@ from nemo_evaluator.shared.metric_bundles.bundles import (
     MetricBundlePackager,
     bundle_metric,
 )
+from nemo_evaluator.shared.metric_bundles.defaults import resolve_default_metric_bundle_packager
 from nemo_evaluator_sdk.metrics.protocol import Metric as RuntimeMetric
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.schema import Page
@@ -32,13 +33,11 @@ def _metric_inline(
     """Package a runtime metric (or accept a pre-built bundle) as the wire DTO."""
     if isinstance(metric, MetricBundle):
         bundle = metric
-    elif metric_bundle_packager is None:
-        raise ValueError(
-            "metric_bundle_packager is required when storing a runtime metric; "
-            "pass CloudpickleMetricBundlePackager(), or pass a pre-built MetricBundle."
-        )
     else:
-        bundle = bundle_metric(metric, metric_bundle_packager)
+        packager = resolve_default_metric_bundle_packager(
+            metric, metric_bundle_packager, allow_cloudpickle_fallback=False, action="Storing"
+        )
+        bundle = bundle_metric(metric, packager)
     # JSON round-trip keeps the base64 payload encoding consistent with the runtime model.
     return MetricInline.model_validate_json(bundle.model_dump_json())
 

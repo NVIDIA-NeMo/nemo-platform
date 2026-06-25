@@ -16,7 +16,7 @@ FROM ${BASE_REGISTRY}/nmp-python-base:${BASE_TAG_PYTHON} AS nmp-python-base
 FROM ${BASE_REGISTRY}/nmp-python-dev-base:${BASE_TAG_PYTHON} AS nmp-python-dev-base
 
 # nmp-python-base-builder: Builds the minimal runtime base from scratch.
-FROM python:3.11.14-slim-bookworm AS nmp-python-base-builder
+FROM python:3.11.15-slim-bookworm AS nmp-python-base-builder
 
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     build-essential \

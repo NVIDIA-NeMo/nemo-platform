@@ -3,7 +3,701 @@ title: "Full SFT Customization"
 description: ""
 ---
 
-<NotebookViewer
-  name="sft-customization-job"
-  colabUrl="https://colab.research.google.com/github/NVIDIA-NeMo/nemo-platform/blob/main/docs/customizer/tutorials/sft-customization-job.ipynb"
-/>
+[Run in Google Colab](https://colab.research.google.com/github/NVIDIA-NeMo/nemo-platform/blob/main/docs/customizer/tutorials/sft-customization-job.ipynb)
+
+# Full SFT Customization
+
+Learn how to fine-tune all model weights using supervised fine-tuning (SFT) to customize LLM behavior for your specific tasks.
+
+## About
+
+Supervised Fine-Tuning (SFT) customizes model behavior, injects new knowledge, and optimizes performance for specific domains and tasks. Full SFT modifies **all model weights** during training, providing maximum customization flexibility.
+
+**What you can achieve with SFT:**
+
+- 🎯 **Specialize for domains:** Fine-tune models on legal texts, medical records, or financial data
+- 💡 **Inject knowledge:** Add new information not present in the base model
+- 📈 **Improve accuracy:** Optimize for specific tasks like sentiment analysis, summarization, or code generation
+
+### SFT vs LoRA: Understanding the Trade-offs
+
+**Full SFT** trains all model parameters (for example, all 70 billion weights in Llama 70B):
+
+- ✅ Maximum model adaptation and knowledge injection
+- ✅ Can fundamentally change model behavior
+- ✅ Best for significant domain shifts or specialized tasks
+- ❌ Requires substantial GPU resources (4-8x more than LoRA)
+- ❌ Produces full model weights (~140GB for Llama 70B)
+- ❌ Longer training time
+
+**LoRA** trains only ~1% of weights by adding thin matrices to existing weights:
+
+- ✅ 75-95% less memory required
+- ✅ Faster training (2-4x speedup)
+- ✅ Produces small adapter files (~100-500MB)
+- ✅ Multiple adapters can share one base model
+- ❌ Limited adaptation capability compared to full fine-tuning
+
+**When to choose Full SFT:**
+
+- Training small models (1B-8B) where resource cost is manageable
+- Need fundamental behavior changes (for example, medical diagnosis, legal reasoning)
+- Injecting substantial new knowledge not in the base model
+
+**When to choose LoRA:** Refer to the [LoRA tutorial](/documentation/customizer-reference/tutorials/lora-customization-job) for most use cases, especially with large models (70B+) or limited GPU resources.
+
+## Prerequisites
+
+Before starting this tutorial, ensure you have:
+
+1. **Completed the [Quickstart](/documentation/get-started)** to install and deploy NeMo Platform locally
+2. **Installed the Python SDK** (PyPI wrapper: `pip install "nemo-platform[all]"`; source checkout: run `make bootstrap` from the repository root)
+
+## Quick Start
+
+### 1. Initialize SDK
+
+The SDK needs to know your NeMo Platform server URL. By default, `http://localhost:8080` is used in accordance with the [Quickstart](/documentation/get-started) guide. If NeMo Platform is running at a custom location, you can override the URL by setting the `NMP_BASE_URL` environment variable:
+
+```sh
+export NMP_BASE_URL=<YOUR_NMP_BASE_URL>
+```
+
+```python
+import json
+import os
+from nemo_platform import NeMoPlatform, ConflictError
+
+NMP_BASE_URL = os.environ.get("NMP_BASE_URL", "http://localhost:8080")
+client = NeMoPlatform(
+    base_url=NMP_BASE_URL,
+    workspace="default"
+)
+```
+
+### 2. Prepare Dataset
+
+Create your data in JSONL format—one JSON object per line. The platform auto-detects your data format. Supported dataset formats are listed below.
+
+**Flexible Data Setup:**
+- **No validation file?** The platform automatically creates a 10% validation split
+- **Multiple files?** Upload to `training/` or `validation/` subdirectories—they will be automatically merged
+- **Format detection:** Your data format is auto-detected at training time
+
+In this tutorial the following dataset directory structure will be used:
+```
+my_dataset
+`-- training.jsonl
+`-- validation.jsonl
+```
+
+#### Simple Prompt/Completion Format
+The simplest format with input prompt and expected completion:
+- **`prompt`**: The input prompt for the model
+- **`completion`**: The expected output response
+
+```json
+{"prompt": "Write an email to confirm our hotel reservation.", "completion": "Dear Hotel Team, I am writing to confirm our reservation for two guests..."}
+```
+
+#### Chat Format (for conversational models)
+For multi-turn conversations, use the messages format:
+- **`messages`**: List of message objects with `role` and `content` fields
+- Roles: `system`, `user`, `assistant`
+
+```json
+{"messages": [{"role": "system", "content": "You are a helpful assistant."}, {"role": "user", "content": "What is AI?"}, {"role": "assistant", "content": "AI is..."}]}
+```
+
+#### Custom Format (specify columns in job)
+You can use custom field names and map them during job creation:
+- Define your own field names
+- Map them to prompt/completion in the job configuration
+
+```json
+{"question": "What is 2+2?", "answer": "4"}
+```
+
+### 3. Create Dataset FileSet and Upload Training Data
+
+Install huggingface datasets package to download public [rajpurkar/squad](https://huggingface.co/datasets/rajpurkar/squad) dataset if it is not installed in your Python environment:
+
+```sh
+pip install datasets
+```
+
+#### Download rajpurkar/squad Dataset
+
+SQuAD (Stanford Question Answering Dataset) is a reading comprehension dataset consisting of questions posed on Wikipedia articles, where the answer is a segment of text from the corresponding passage.
+
+```python
+from pathlib import Path
+from datasets import load_dataset, DatasetDict
+import json
+
+# Load the SQuAD dataset from Hugging Face
+print("Loading dataset rajpurkar/squad")
+raw_dataset = load_dataset("rajpurkar/squad")
+if not isinstance(raw_dataset, DatasetDict):
+    raise ValueError("Dataset does not contain expected splits")
+
+print("Loaded dataset")
+
+# Configuration
+VALIDATION_PROPORTION = 0.05
+SEED = 1234
+
+# For the purpose of this tutorial, we'll use a subset of the dataset
+# The larger the datasets, the better the model will perform but longer the training will take
+training_size = 3000
+validation_size = 300
+DATASET_PATH = Path("sft-dataset").absolute()
+
+# Create directory if it doesn't exist
+os.makedirs(DATASET_PATH, exist_ok=True)
+
+# Get the train split and create a validation split from it
+train_set = raw_dataset.get('train')
+split_dataset = train_set.train_test_split(test_size=VALIDATION_PROPORTION, seed=SEED)
+
+# Select subsets for the tutorial
+train_ds = split_dataset['train'].select(range(min(training_size, len(split_dataset['train']))))
+validation_ds = split_dataset['test'].select(range(min(validation_size, len(split_dataset['test']))))
+
+# Convert SQuAD format to prompt/completion format and save to JSONL
+def convert_squad_to_sft_format(example):
+    """Convert SQuAD format to prompt/completion format for SFT training."""
+    prompt = f"Context: {example['context']} Question: {example['question']} Answer:"
+    completion = example["answers"]["text"][0]  # Take the first answer
+    return {"prompt": prompt, "completion": completion}
+
+# Save training data
+with open(f"{DATASET_PATH}/training.jsonl", "w", encoding="utf-8") as f:
+    for example in train_ds:
+        converted = convert_squad_to_sft_format(example)
+        f.write(json.dumps(converted) + "\n")
+
+# Save validation data
+with open(f"{DATASET_PATH}/validation.jsonl", "w", encoding="utf-8") as f:
+    for example in validation_ds:
+        converted = convert_squad_to_sft_format(example)
+        f.write(json.dumps(converted) + "\n")
+
+print(f"Saved training.jsonl with {len(train_ds)} rows")
+print(f"Saved validation.jsonl with {len(validation_ds)} rows")
+
+# Show a sample from the training data
+print("\nSample from training data:")
+with open(f"{DATASET_PATH}/training.jsonl", 'r') as f:
+    first_line = f.readline()
+    sample = json.loads(first_line)
+    print(f"Prompt: {sample['prompt'][:200]}...")
+    print(f"Completion: {sample['completion']}")
+```
+
+```python
+# Create fileset to store SFT training data
+DATASET_NAME = "sft-dataset"
+
+try:
+    client.files.filesets.create(
+        workspace="default",
+        name=DATASET_NAME,
+        description="SFT training data"
+    )
+    print(f"Created fileset: {DATASET_NAME}")
+except ConflictError:
+    print(f"Fileset '{DATASET_NAME}' already exists, continuing...")
+
+# Upload training data files individually to ensure correct structure
+client.files.upload(
+    local_path=f"{DATASET_PATH}/",  # Trailing slash uploads directory contents to fileset root
+    remote_path="",
+    fileset=DATASET_NAME,
+    workspace="default"
+)
+
+# Validate training data is uploaded correctly
+print("Training data:")
+print(json.dumps([f.model_dump() for f in client.files.list(fileset=DATASET_NAME, workspace="default").data], indent=2))
+```
+
+### 4. Secrets Setup
+
+If you plan to use NGC or HuggingFace models, you will need to configure authentication:
+
+- **NGC models** (`ngc://` URIs): Requires NGC API key
+- **HuggingFace models** (`hf://` URIs): Requires HF token for gated/private models
+
+
+Configure these as secrets in your platform. Refer to [Managing Secrets](/documentation/get-started/core-concepts/manage-secrets) for detailed instructions.
+
+Get your credentials to access base models:
+- [NGC API Key](https://ngc.nvidia.com/) (Setup → Generate API Key)
+- [HuggingFace Token](https://huggingface.co/settings/tokens) (Create token with Read access)
+
+
+---
+
+#### Quick Setup Example
+
+In this tutorial we are going to work with [meta-llama/Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct/tree/main) model from HuggingFace. Ensure that you have sufficient permissions to download the model. If you cannot access the files on the [meta-llama/Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct/tree/main) Hugging Face page, request access
+
+**HuggingFace Authentication:**
+- For gated models (Llama, Gemma), you must provide a HuggingFace token via the `token_secret` parameter
+- Get your token from [HuggingFace Settings](https://huggingface.co/settings/tokens) (requires Read access)
+- Accept the model's terms on the HuggingFace model page before using it. Example: [meta-llama/Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct/tree/main)
+- For public models, you can omit the `token_secret` parameter when creating a fileset for model in the next step
+
+```python
+# Export the HF_TOKEN and NGC_API_KEY environment variables if they are not already set
+HF_TOKEN = os.getenv("HF_TOKEN")
+NGC_API_KEY = os.getenv("NGC_API_KEY")
+
+
+def create_or_get_secret(name: str, value: str | None, label: str):
+    if not value:
+        raise ValueError(f"{label} is not set")
+    try:
+        secret = client.secrets.create(
+            name=name,
+            workspace="default",
+            value=value,
+        )
+        print(f"Created secret: {name}")
+        return secret
+    except ConflictError:
+        print(f"Secret '{name}' already exists, continuing...")
+        return client.secrets.retrieve(name=name, workspace="default")
+
+
+# Create HuggingFace token secret
+hf_secret = create_or_get_secret("hf-token", HF_TOKEN, "HF_TOKEN")
+print("HF_TOKEN secret:")
+print(hf_secret.model_dump_json(indent=2))
+
+# Create NGC API key secret
+# Uncomment the line below if you have NGC API Key and want to finetune NGC models
+# ngc_api_key = create_or_get_secret("ngc-api-key", NGC_API_KEY, "NGC_API_KEY")
+```
+
+### 5. Create Base Model FileSet and Model Entity
+
+Create a fileset pointing to [meta-llama/Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct/tree/main) model in HuggingFace that we will train with SFT. Then create a Model Entity that references this fileset. Model downloading will take place at training time.
+
+Note: for public models, you can omit the `token_secret` parameter when creating a model fileset.
+
+```python
+import time
+
+# Create a fileset pointing to the desired HuggingFace model
+from nemo_platform.types.files import HuggingfaceStorageConfigParam
+
+HF_REPO_ID = "meta-llama/Llama-3.2-1B-Instruct"
+MODEL_NAME = "llama-3-2-1b-base"
+
+# Ensure you have a HuggingFace token secret created
+try:
+    base_model_fs = client.files.filesets.create(
+        workspace="default",
+        name=MODEL_NAME,
+        description="Llama 3.2 1B base model from HuggingFace",
+        storage=HuggingfaceStorageConfigParam(
+            type="huggingface",
+            # repo_id is the full model name from Hugging Face
+            repo_id=HF_REPO_ID,
+            repo_type="model",
+            # we use the secret created in the previous step
+            token_secret=hf_secret.name
+        )
+    )
+    print(f"Created base model fileset: {MODEL_NAME}")
+except ConflictError:
+    print(f"Base model fileset already exists. Skipping creation.")
+    base_model_fs = client.files.filesets.retrieve(
+        workspace="default",
+        name=MODEL_NAME,
+    )
+
+# Create the Model Entity representation.
+try:
+    base_model = client.models.create(
+        workspace="default",
+        name=MODEL_NAME,
+        fileset=f"default/{MODEL_NAME}",
+    )
+    print(f"Created Model Entity: {MODEL_NAME}")
+except ConflictError:
+    print(f"Base model already exists. Updating fileset if different.")
+    base_model = client.models.update(
+        workspace="default",
+        name=MODEL_NAME,
+        fileset=f"default/{MODEL_NAME}",
+    )
+
+print(f"\nBase model fileset: fileset://default/{base_model.name}")
+print("Base model fileset files list:")
+print(json.dumps([f.model_dump() for f in client.files.list(fileset=MODEL_NAME, workspace="default").data], indent=2))
+
+# Wait for ModelSpec to be populated from the checkpoint
+print("\nWaiting for ModelSpec to be populated...")
+SPEC_TIMEOUT_SECONDS = 120
+spec_start = time.time()
+while not base_model.spec:
+    if time.time() - spec_start > SPEC_TIMEOUT_SECONDS:
+        raise TimeoutError(f"ModelSpec not populated within {SPEC_TIMEOUT_SECONDS} seconds")
+    time.sleep(2)
+    base_model = client.models.retrieve(
+        workspace="default",
+        name=MODEL_NAME,
+    )
+
+print(f"ModelSpec populated: {base_model.spec}")
+```
+
+### 6. Create SFT Finetuning Job
+Create a customization job to fine-tune all model weights using the **Automodel** backend and `AutomodelJobInput`.
+
+**GPU Requirements:**
+- 1B models: 1 GPU (24GB+ VRAM)
+- 3B models: 1-2 GPUs  
+- 8B models: 2-4 GPUs
+- 70B models: 8+ GPUs 
+
+Adjust `num_gpus_per_node` based on your model size.
+
+```python
+import uuid
+from nemo_automodel_plugin.schema import AutomodelJobInput
+
+job_suffix = uuid.uuid4().hex[:4]
+
+JOB_NAME = f"my-sft-job-{job_suffix}"
+OUTPUT_NAME = f"sft-model-{job_suffix}"
+
+spec = AutomodelJobInput(
+    model=f"default/{base_model.name}",
+    dataset={"training": f"default/{DATASET_NAME}"},
+    training={
+        "training_type": "sft",
+        "finetuning_type": "all_weights",
+        "max_seq_length": 2048,
+    },
+    schedule={"epochs": 2},
+    batch={"global_batch_size": 64, "micro_batch_size": 1},
+    optimizer={"learning_rate": 5e-5},
+    parallelism={
+        "num_gpus_per_node": 1,
+        "num_nodes": 1,
+        "tensor_parallel_size": 1,
+        "pipeline_parallel_size": 1,
+    },
+    output={"name": OUTPUT_NAME},
+)
+
+job = client.customization.automodel.jobs.create(
+    spec=spec, workspace="default", name=JOB_NAME
+)
+
+print(f"Submitted job: {job.job.name}")
+print(f"Output model: {OUTPUT_NAME}")
+
+```
+
+### 7. Track Training Progress
+
+```python
+import time
+from IPython.display import clear_output
+
+# Poll job status every 10 seconds until completed
+while True:
+    status = client.jobs.get_status(
+        name=job.job.name,
+        workspace="default"
+    )
+
+    clear_output(wait=True)
+    print(f"Job Status: {status.model_dump_json(indent=2)}")
+
+    # Extract training progress from nested steps structure
+    step: int | None = None
+    max_steps: int | None = None
+    training_phase: str | None = None
+
+    for job_step in status.steps or []:
+        if job_step.name == "training":
+            for task in job_step.tasks or []:
+                task_details = task.status_details or {}
+                step = task_details.get("step")
+                max_steps = task_details.get("max_steps")
+                training_phase = task_details.get("phase")
+                break
+            break
+
+    if step is not None and max_steps is not None:
+        progress_pct = (step / max_steps) * 100
+        print(f"Training Progress: Step {step}/{max_steps} ({progress_pct:.1f}%)")
+        if training_phase:
+            print(f"Training Phase: {training_phase}")
+    else:
+        print("Training step not started yet or progress info not available")
+
+    # Exit loop when job reaches a terminal status
+    if status.status in ("completed", "failed", "cancelled", "error"):
+        print(f"\nJob finished with status: {status.status}")
+        break
+
+    time.sleep(10)
+
+if status.status != "completed":
+    raise RuntimeError(f"Training job finished with status: {status.status}")
+```
+
+**Interpreting SFT Training Metrics:**
+
+Monitor the relationship between training and validation loss curves:
+
+| Scenario | Interpretation | Action |
+|----------|----------------|--------|
+| **Both decreasing together** | Model is learning well | Continue training |
+| **Training decreases, validation flat/increasing** | Overfitting | Reduce epochs, add data |
+| **Both flat/not decreasing** | Underfitting | Increase LR, check data |
+| **Sudden spikes** | Training instability | Lower learning rate |
+
+**Note:** Training metrics measure optimization progress, not final model quality. Always evaluate the deployed model on your specific use case.
+
+(ft-deploy-full-weight-model)=
+
+### 8. Deploy Fine-Tuned Model
+
+After training completes, deploy using the Deployment Management Service:
+
+```python
+# Validate model entity exists
+model_entity = client.models.retrieve(workspace='default', name=OUTPUT_NAME)
+print(model_entity.model_dump_json(indent=2))
+```
+
+```python
+# Create deployment config
+deploy_suffix = uuid.uuid4().hex[:4]
+DEPLOYMENT_CONFIG_NAME = f"sft-model-deployment-cfg-{deploy_suffix}"
+DEPLOYMENT_NAME = f"sft-model-deployment-{deploy_suffix}"
+
+deployment_config = client.inference.deployment_configs.create(
+    workspace="default",
+    name=DEPLOYMENT_CONFIG_NAME,
+    engine="vllm",
+    model_spec={
+        "model_namespace": "default",
+        "model_name": OUTPUT_NAME,
+    },
+    executor_config={
+        "gpu": 1,
+        "image_name": "vllm/vllm-openai",
+        "image_tag": "v0.22.1",
+    },
+)
+
+# Deploy model using deployment_config created above
+deployment = client.inference.deployments.create(
+    workspace="default",
+    name=DEPLOYMENT_NAME,
+    config=deployment_config.name
+)
+
+
+# Check deployment status
+deployment_status = client.inference.deployments.retrieve(
+    name=deployment.name,
+    workspace="default"
+)
+
+print(f"Deployment name: {deployment.name}")
+print(f"Deployment status: {deployment_status.status}")
+
+```
+
+The deployment service automatically:
+- Downloads model weights from the Files service
+- Provisions storage (PVC) for the weights
+- Configures and starts the vLLM container
+
+**Multi-GPU Deployment:**
+
+For larger models requiring multiple GPUs, increase `gpu` in `executor_config`. vLLM computes tensor parallelism from the GPU count and model architecture:
+
+```python
+deployment_config = client.inference.deployment_configs.create(
+    workspace="default",
+    name="sft-model-config-multigpu",
+    engine="vllm",
+    model_spec={
+        "model_namespace": "default",
+        "model_name": OUTPUT_NAME,
+    },
+    executor_config={
+        "gpu": 2,
+        "image_name": "vllm/vllm-openai",
+        "image_tag": "v0.22.1",
+    },
+)
+```
+
+**Single-Node Constraint:** Model deployments are limited to a single node. The maximum `gpu` value depends on the total GPUs available on a single node in your cluster. Multi-node deployments are not supported.
+
+### Track Deployment Status
+
+```python
+import time
+from IPython.display import clear_output
+
+# Poll deployment status every 15 seconds until ready
+TIMEOUT_MINUTES = 30
+start_time = time.time()
+timeout_seconds = TIMEOUT_MINUTES * 60
+
+print(f"Monitoring deployment '{deployment.name}'...")
+print(f"Timeout: {TIMEOUT_MINUTES} minutes\n")
+
+while True:
+    deployment_status = client.inference.deployments.retrieve(
+        name=deployment.name,
+        workspace="default"
+    )
+
+    elapsed = time.time() - start_time
+    elapsed_min = int(elapsed // 60)
+    elapsed_sec = int(elapsed % 60)
+
+    clear_output(wait=True)
+    print(f"Deployment: {deployment.name}")
+    print(f"Status: {deployment_status.status}")
+    print(f"Elapsed time: {elapsed_min}m {elapsed_sec}s")
+
+    # Check if deployment is ready
+    if deployment_status.status == "READY":
+        print("\nDeployment is ready!")
+        if not client.models.wait_for_gateway(deployment.name, workspace="default", timeout=60):
+            raise RuntimeError("Inference gateway did not become ready")
+        break
+
+    # Check for failure states
+    if deployment_status.status in ("FAILED", "ERROR", "TERMINATED", "LOST"):
+        raise RuntimeError(f"Deployment failed with status: {deployment_status.status}")
+
+    # Check timeout
+    if elapsed > timeout_seconds:
+        raise TimeoutError(f"Deployment timeout after {TIMEOUT_MINUTES} minutes")
+
+    time.sleep(15)
+```
+
+### 9. Evaluate Your Model
+
+After training, evaluate whether your model meets your requirements:
+
+#### Quick Manual Evaluation
+
+```python
+# Wait for deployment to be ready, then test
+# Test the fine-tuned model with a question answering prompt
+context = "The Apollo 11 mission was the first manned mission to land on the Moon. It was launched on July 16, 1969, and Neil Armstrong became the first person to walk on the lunar surface on July 20, 1969. Buzz Aldrin joined him shortly after, while Michael Collins remained in lunar orbit."
+question = "Who was the first person to walk on the Moon?"
+
+messages = [
+    {"role": "user", "content": f"Based on the following context, answer the question.\n\nContext: {context}\n\nQuestion: {question}"}
+]
+
+response = client.inference.gateway.provider.post(
+    "v1/chat/completions",
+    name=deployment.name,
+    workspace="default",
+    body={
+        "model": f"default/{OUTPUT_NAME}",
+        "messages": messages,
+        "temperature": 0,
+        "max_tokens": 128
+    }
+)
+
+print("=" * 60)
+print("MODEL EVALUATION")
+print("=" * 60)
+print(f"Question: {question}")
+print(f"Expected: Neil Armstrong")
+print(f"Model output: {response['choices'][0]['message']['content']}")
+```
+
+#### Evaluation Best Practices
+
+**Manual Evaluation** (Recommended)
+- Test with real-world examples from your use case
+- Compare responses to base model and expected outputs
+- Verify the model exhibits desired behavior changes
+- Check edge cases and error handling
+
+**What to look for:**
+- ✅ Model follows your desired output format
+- ✅ Applies domain knowledge correctly
+- ✅ Maintains general language capabilities
+- ✅ Avoids unwanted behaviors or biases
+- ❌ Doesn't hallucinate facts not in training data
+- ❌ Doesn't produce repetitive or nonsensical outputs
+
+---
+
+## Hyperparameters
+
+For detailed information on all available hyperparameters, recommended values, and tuning guidance, refer to the [Hyperparameter Reference](/documentation/customizer-reference/manage-customization-jobs/training-configuration).
+
+---
+
+
+## Troubleshooting
+
+**Job fails during model download:**
+- Verify authentication secrets are configured (refer to [Managing Secrets](/documentation/get-started/core-concepts/manage-secrets))
+- For gated HuggingFace models (Llama, Gemma), accept the license on the model page (for example, [meta-llama/Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct))
+- Confirm the model fileset uses `token_secret=hf_secret.name` for gated models
+- Check `AutomodelJobInput` references use the `workspace/name` format: `model=f"default/{MODEL_NAME}"` and `dataset={"training": f"default/{DATASET_NAME}"}` (for example, `default/llama-3-2-1b-base`, `default/sft-dataset`)
+- Verify the model entity points at the fileset: `fileset=f"default/{MODEL_NAME}"`
+- Check job status: `client.jobs.get_status(name=job.job.name, workspace="default")`
+
+**Job fails with OOM (Out of Memory) error:**
+1. **First try:** Reduce `global_batch_size` from 64 to 32 or 16 in `batch={...}`
+2. **Still OOM:** Keep `micro_batch_size` at 1 (already the minimum in this tutorial)
+3. **Still OOM:** Reduce `max_seq_length` from 2048 to 1024 or 512 in `training={...}`
+4. **Last resort:** Increase `num_gpus_per_node` and `tensor_parallel_size` in `parallelism={...}`
+
+**Loss curves not decreasing (underfitting):**
+- Increase training duration: raise `epochs` from 2 to 3-5 in `schedule={...}`
+- Adjust learning rate: try `1e-4` or `1e-5` instead of the default `5e-5` in `optimizer={...}`
+- Check data quality: Verify formatting, remove duplicates, ensure diversity
+
+**Training loss decreases but validation loss increases (overfitting):**
+- Reduce `epochs` from 2 to 1 in `schedule={...}`
+- Lower `learning_rate` from `5e-5` to `2e-5` or `1e-5` in `optimizer={...}`
+- Increase dataset size and diversity
+- Verify train/validation split has no data leakage
+
+**Model output quality is poor despite good training metrics:**
+- Training metrics optimize for loss, not your actual task—evaluate on real use cases
+- Review data quality, format, and diversity—metrics can be misleading with poor data
+- Try a different base model size or architecture
+- Adjust `learning_rate` and `global_batch_size`
+- Compare to baseline: Test base model to ensure fine-tuning improved performance
+
+**Deployment fails:**
+- Verify output model exists: `client.models.retrieve(name=OUTPUT_NAME, workspace="default")`
+- Check deployment logs: `client.inference.deployments.get_logs(name=deployment.name, workspace="default")`
+- Ensure sufficient GPU resources for `executor_config={"gpu": 1, ...}`
+- Verify the deployment config matches this tutorial: `engine="vllm"` with `vllm/vllm-openai:v0.22.1`
+
+
+## Next Steps
+
+- [Monitor training metrics](/documentation/customizer-reference/tutorials/metrics) in detail
+- [Evaluate your fine-tuned model](/documentation/evaluate-models) using the Evaluator service
+- Learn about [LoRA customization](/documentation/customizer-reference/tutorials/lora-customization-job) for resource-efficient fine-tuning

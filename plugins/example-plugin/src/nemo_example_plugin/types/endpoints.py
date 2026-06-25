@@ -3,14 +3,14 @@
 
 """Typed endpoint definitions for the example plugin.
 
-These are the single source of truth for the HTTP contract.  Both the SDK
-client and (eventually) server route registration can be derived from them.
-
-Request and response models are plain Pydantic — they have no knowledge of
-the HTTP layer.
+These are the single source of truth for the HTTP contract.  Each endpoint
+is a decorated function that declares its call signature and response type.
 """
 
 from __future__ import annotations
+
+from abc import abstractmethod
+from typing import NotRequired, TypedDict
 
 from nemo_example_plugin.entities import ExampleItem
 from nemo_example_plugin.types.payloads import (
@@ -23,69 +23,56 @@ from nemo_example_plugin.types.payloads import (
     UpdateExampleItemRequest,
 )
 from nemo_platform_plugin.client.endpoint import delete, get, patch, post, put
-from nemo_platform_plugin.client.types import BinaryContent, PathParams, Stream, WorkspaceParams
-
-# -- Path parameter types --------------------------------------------------
+from nemo_platform_plugin.client.types import BinaryContent, Stream
 
 
-class NamePath(PathParams):
-    name: str
+class ListItemsQueryParams(TypedDict, total=False):
+    page: NotRequired[int]
+    page_size: NotRequired[int]
 
 
-class WorkspaceItemPath(WorkspaceParams):
-    name: str
+@get("/apis/example/hello/{name}")
+@abstractmethod
+def hello(*, name: str) -> HelloResponse: ...
 
 
-# -- Hello -----------------------------------------------------------------
+@post("/apis/example/v2/workspaces/{workspace}/items")
+@abstractmethod
+def create_item(*, workspace: str | None = None, body: CreateExampleItemRequest) -> ExampleItem: ...
 
-HelloEndpoint = get("/apis/example/hello/{name}", path_type=NamePath, response_type=HelloResponse)
 
-# -- Items CRUD ------------------------------------------------------------
+@get("/apis/example/v2/workspaces/{workspace}/items")
+@abstractmethod
+def list_items(
+    *, workspace: str | None = None, query_params: ListItemsQueryParams | None = None
+) -> ExampleItemPage: ...
 
-CreateItemEndpoint = post(
-    "/apis/example/v2/workspaces/{workspace}/items",
-    path_type=WorkspaceParams,
-    request_type=CreateExampleItemRequest,
-    response_type=ExampleItem,
-)
 
-ListItemsEndpoint = get(
-    "/apis/example/v2/workspaces/{workspace}/items", path_type=WorkspaceParams, response_type=ExampleItemPage
-)
+@get("/apis/example/v2/workspaces/{workspace}/items/{name}")
+@abstractmethod
+def get_item(*, workspace: str | None = None, name: str) -> ExampleItem: ...
 
-GetItemEndpoint = get(
-    "/apis/example/v2/workspaces/{workspace}/items/{name}", path_type=WorkspaceItemPath, response_type=ExampleItem
-)
 
-UpdateItemEndpoint = patch(
-    "/apis/example/v2/workspaces/{workspace}/items/{name}",
-    path_type=WorkspaceItemPath,
-    request_type=UpdateExampleItemRequest,
-    response_type=ExampleItem,
-)
+@patch("/apis/example/v2/workspaces/{workspace}/items/{name}")
+@abstractmethod
+def update_item(*, workspace: str | None = None, name: str, body: UpdateExampleItemRequest) -> ExampleItem: ...
 
-DeleteItemEndpoint = delete("/apis/example/v2/workspaces/{workspace}/items/{name}", path_type=WorkspaceItemPath)
 
-# -- Functions -------------------------------------------------------------
+@delete("/apis/example/v2/workspaces/{workspace}/items/{name}")
+@abstractmethod
+def delete_item(*, workspace: str | None = None, name: str) -> None: ...
 
-CountEndpoint = post(
-    "/apis/example/v2/workspaces/{workspace}/count",
-    path_type=WorkspaceParams,
-    request_type=CountRequest,
-    response_type=Stream[Tick],
-)
 
-# -- Binary ----------------------------------------------------------------
+@post("/apis/example/v2/workspaces/{workspace}/count")
+@abstractmethod
+def count(*, workspace: str | None = None, body: CountRequest) -> Stream[Tick]: ...
 
-UploadBlobEndpoint = put(
-    "/apis/example/blob/{name}",
-    path_type=NamePath,
-    request_type=BinaryContent,
-    response_type=BlobUploadResponse,
-)
 
-DownloadBlobEndpoint = get(
-    "/apis/example/blob/{name}",
-    path_type=NamePath,
-    response_type=BinaryContent,
-)
+@put("/apis/example/blob/{name}")
+@abstractmethod
+def upload_blob(*, name: str, content: bytes) -> BlobUploadResponse: ...
+
+
+@get("/apis/example/blob/{name}")
+@abstractmethod
+def download_blob(*, name: str) -> BinaryContent: ...

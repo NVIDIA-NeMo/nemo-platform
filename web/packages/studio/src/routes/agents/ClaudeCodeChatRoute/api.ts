@@ -12,6 +12,7 @@ import type {
   ClaudeCodeAssistantHistoryPart,
   ClaudeCodeChatArtifacts,
   ClaudeCodeChatFileArtifact,
+  ClaudeCodeChatJobArtifact,
   ClaudeCodeChatLinkArtifact,
   ClaudeCodeChatModelSource,
   ClaudeCodeChatSelectionArtifact,
@@ -141,6 +142,18 @@ const parseLinkArtifact = (value: unknown): ClaudeCodeChatLinkArtifact | undefin
   };
 };
 
+const parseJobArtifact = (value: unknown): ClaudeCodeChatJobArtifact | undefined => {
+  if (!isRecord(value)) return undefined;
+  const name = getOptionalArtifactString(value.name);
+  if (!name) return undefined;
+  return {
+    name,
+    job_type: getOptionalArtifactString(value.job_type),
+    source: getOptionalArtifactString(value.source),
+    href: getOptionalString(value.href),
+  };
+};
+
 const parseArray = <T>(value: unknown, parseItem: (item: unknown) => T | undefined): T[] =>
   Array.isArray(value) ? value.map(parseItem).filter((item): item is T => item !== undefined) : [];
 
@@ -162,6 +175,7 @@ const parseChatArtifacts = (value: unknown): ClaudeCodeChatArtifacts => {
     selections: parseArray(value.selections, parseSelectionArtifact),
     files: parseArray(value.files, parseFileArtifact),
     links: parseArray(value.links, parseLinkArtifact),
+    jobs: parseArray(value.jobs, parseJobArtifact),
     tools: getStringArray(value.tools).map(cleanClaudeCodeArtifactText),
   };
 };

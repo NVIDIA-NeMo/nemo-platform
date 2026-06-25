@@ -996,7 +996,7 @@ authz:
     /apis/intake/v2/workspaces/{workspace}/spans/groups:
       get:
         permissions:
-        - intake.spans.list
+        - intake.spans.read
         scopes:
         - intake:read
         - platform:read

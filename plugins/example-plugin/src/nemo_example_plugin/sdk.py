@@ -3,58 +3,38 @@
 
 """SDK resources for the example plugin.
 
-Endpoints are defined once in a mixin, then sync/async client classes
-inherit the mixin + the appropriate client base.
-The descriptor protocol on each endpoint returns the right bound callable.
+Endpoints are defined in ``types.endpoints`` as decorated functions.
+The client classes expose them as direct methods via ``method()`` wrappers.
 """
 
 from __future__ import annotations
 
-from nemo_example_plugin.types.endpoints import (
-    CountEndpoint,
-    CreateItemEndpoint,
-    DeleteItemEndpoint,
-    DownloadBlobEndpoint,
-    GetItemEndpoint,
-    HelloEndpoint,
-    ListItemsEndpoint,
-    UpdateItemEndpoint,
-    UploadBlobEndpoint,
-)
+from nemo_example_plugin.types import endpoints
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+from nemo_platform_plugin.client.method import method
 from nemo_platform_plugin.sdk import NemoPluginSDKResources
 
-# -- Endpoint assignments (defined once) -----------------------------------
+
+class _ExampleMethods:
+    hello = method(endpoints.hello)
+    create_item = method(endpoints.create_item)
+    list_items = method(endpoints.list_items)
+    get_item = method(endpoints.get_item)
+    update_item = method(endpoints.update_item)
+    delete_item = method(endpoints.delete_item)
+    count = method(endpoints.count)
+    upload_blob = method(endpoints.upload_blob)
+    download_blob = method(endpoints.download_blob)
 
 
-class _ExampleEndpoints:
-    hello = HelloEndpoint
-    create_item = CreateItemEndpoint
-    list_items = ListItemsEndpoint
-    get_item = GetItemEndpoint
-    update_item = UpdateItemEndpoint
-    delete_item = DeleteItemEndpoint
-    count = CountEndpoint
-    upload_blob = UploadBlobEndpoint
-    download_blob = DownloadBlobEndpoint
-
-
-# -- Client classes: mixin + client base -----------------------------------
-
-
-class ExampleClient(_ExampleEndpoints, NemoClient):
+class ExampleClient(_ExampleMethods, NemoClient):
     """Sync client for the example plugin API."""
 
 
-class AsyncExampleClient(_ExampleEndpoints, AsyncNemoClient):
+class AsyncExampleClient(_ExampleMethods, AsyncNemoClient):
     """Async client for the example plugin API."""
-
-
-# ---------------------------------------------------------------------------
-# Plugin SDK registration — bridges NeMoPlatform to the new typed client
-# ---------------------------------------------------------------------------
 
 
 def _make_sync_resource(platform: NeMoPlatform) -> ExampleClient:

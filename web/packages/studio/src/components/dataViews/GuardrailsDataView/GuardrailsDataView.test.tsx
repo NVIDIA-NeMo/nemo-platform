@@ -44,7 +44,7 @@ const renderComponent = (
   );
 };
 
-describe.skip('GuardrailsDataView', () => {
+describe('GuardrailsDataView', () => {
   it('renders config names from the API', async () => {
     renderComponent();
     expect(await findPiiFilterRow()).toBeInTheDocument();
@@ -113,7 +113,7 @@ describe.skip('GuardrailsDataView', () => {
 
     const menuButtons = screen.getAllByRole('button', { name: /actions/i });
     await user.click(menuButtons[0]);
-    await user.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+    await user.click((await screen.findAllByRole('menuitem', { name: 'Delete' }))[0]);
     await waitFor(() => {
       expect(onRequestDelete).toHaveBeenCalledWith(expect.objectContaining({ name: 'pii-filter' }));
     });

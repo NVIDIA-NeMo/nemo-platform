@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { KVPair } from '@nemo/common/src/components/KVPair';
 import { Stack, Text } from '@nvidia/foundations-react-core';
 import { Pre } from '@studio/components/common/Pre';
-import { ReadOnlyField } from '@studio/components/common/ReadOnlyField';
 import { FC } from 'react';
 
 const getStr = (params: Record<string, unknown> | undefined, key: string): string | undefined => {
@@ -46,20 +46,20 @@ export const LLMJudgeDisplay: FC<LLMJudgeDisplayProps> = ({ metricName, metricCo
   return (
     <Stack gap="density-2xl">
       <Text kind="label/bold/md">{metricName}</Text>
-      <ReadOnlyField label="Type" value={metricConfig.type} />
+      <KVPair label="Type" value={metricConfig.type} />
 
       <Stack gap="density-2xl">
-        <ReadOnlyField label="Model" value={modelName} />
-        <ReadOnlyField
+        <KVPair label="Model" value={modelName} />
+        <KVPair
           label="System Message"
-          value={systemMessage ? <Pre>{systemMessage}</Pre> : '-'}
+          value={systemMessage ? <Pre>{systemMessage}</Pre> : undefined}
         />
-        <ReadOnlyField label="User Message" value={userMessage ? <Pre>{userMessage}</Pre> : '-'} />
+        <KVPair label="User Message" value={userMessage ? <Pre>{userMessage}</Pre> : undefined} />
       </Stack>
 
       <Stack gap="density-2xl">
-        <ReadOnlyField label="Score Type" value={scoreType || '-'} />
-        <ReadOnlyField label="Parser Pattern" value={parserPattern || '-'} />
+        <KVPair label="Score Type" value={scoreType} />
+        <KVPair label="Parser Pattern" value={parserPattern} />
       </Stack>
     </Stack>
   );

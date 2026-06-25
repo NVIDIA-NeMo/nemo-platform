@@ -16,6 +16,6 @@
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
 __title__ = "nemo_platform"
-__version__ = "0.1.3"
+__version__ = "0.2.0"
 # Injected at release time for non-production builds; None for RC and production releases.
 __image_tag__: str | None = None

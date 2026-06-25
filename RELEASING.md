@@ -89,9 +89,39 @@ Also check:
 
 ---
 
+## Container image eligibility
+
+The `container:` list in `release/assets.yaml` declares which container
+images are eligible for release publishing. The bundle workflow records the
+selected containers as `container`-typed entries in `release-manifest.json`,
+and the release consumer stages those images after the SDK publish, reading
+this list from this repository at the release ref. Eligibility is therefore
+version-pinned: re-staging an old tag publishes the container set declared at
+that commit.
+
+`release_scope` controls what a release includes (default `all`):
+
+| Scope | Includes |
+| --- | --- |
+| `all` | every catalog SDK + every catalog container (default) |
+| `sdks` | every catalog SDK, no containers |
+| `containers` | every catalog container, no SDKs |
+| `custom` | exactly the comma-separated `sdk_ids` + `container_ids` (either may be empty) |
+
+`custom` enables single-artifact or arbitrary-subset releases (for example a
+patch release of one container via `release_scope: custom`,
+`container_ids: nmp-automodel-tasks`); `containers` releases the whole
+container set with no SDK wheels.
+
+Adding an image here also requires a catalog metadata entry on the consumer
+side. Images are built into the dev registry tagged with this repository's
+commit SHA on every merge to main; release SHAs that predate that build
+trigger need a manual image build first.
+
+---
+
 ## Nightly builds
 
 Nightly builds run automatically at 20:00 PT and publish to `pypi.nvidia.com`. They use the HEAD of `main` and version strings like `0.1.3.dev20260101120000`. No action required from the team.
 
-To trigger a nightly manually: [`release-nightly.yaml`](https://github.com/NVIDIA-NeMo/nemo-platform/actions/workflows/release-nightly.yaml) → **Run workflow** (no inputs required).
-
+To trigger a nightly manually: [`release-nightly.yaml`](https://github.com/NVIDIA-NeMo/nemo-platform/actions/workflows/release-nightly.yaml) → **Run workflow** (no inputs required). Leave `send_notifications` enabled for real reruns; disable it only for quiet smoke/ad-hoc runs.

@@ -129,17 +129,25 @@ describe('FilesetListRoute', () => {
     },
   ];
 
-  const mockDatasetsResponse = {
+  const pageEnvelope = (datasets: FilesetOutput[]) => ({
     object: 'list',
-    data: mockDatasets,
+    data: datasets,
     pagination: {
       page: 1,
       page_size: 50,
-      current_page_size: 3,
+      current_page_size: datasets.length,
       total_pages: 1,
-      total_results: 3,
+      total_results: datasets.length,
     },
     sort: '-created_at',
+  });
+
+  const filterDatasetsByName = (datasets: FilesetOutput[], request: Request): FilesetOutput[] => {
+    const nameLike = new URL(request.url).searchParams.get('filter[name][$like]');
+    if (!nameLike) return datasets;
+
+    const term = nameLike.replace(/%/g, '').toLowerCase();
+    return datasets.filter((d) => d.name.toLowerCase().includes(term));
   };
 
   beforeEach(() => {
@@ -148,8 +156,12 @@ describe('FilesetListRoute', () => {
       [ROUTE_PARAMS.workspace]: workspace1.workspace,
     });
     server.use(
-      http.get(`${PLATFORM_BASE_URL}/apis/files/v2/workspaces/:workspace/filesets`, () =>
-        HttpResponse.json(mockDatasetsResponse)
+      http.get(
+        `${PLATFORM_BASE_URL}/apis/files/v2/workspaces/:workspace/filesets`,
+        ({ request }) => {
+          const filtered = filterDatasetsByName(mockDatasets, request);
+          return HttpResponse.json(pageEnvelope(filtered));
+        }
       )
     );
   });
@@ -169,39 +181,19 @@ describe('FilesetListRoute', () => {
   });
 
   describe('Search Functionality', () => {
-    // Note: The V2 fileset API (FilesetFilter) does not support name-based filtering.
-    // Only purpose, storage_type, and created_at filters are available.
-    // These tests are skipped until server-side name search is implemented.
-    it.skip('filters datasets when search query is entered', async () => {
+    it('filters datasets when search query is entered', async () => {
       renderRoute();
 
-      const searchInput = await screen.findByPlaceholderText('Search datasets by name');
+      const searchInput = await screen.findByPlaceholderText('Search filesets...');
 
       await user.click(searchInput);
       await user.paste('searchable');
 
-      // With mocked debounce, results appear immediately
       expect(await screen.findByText('searchable-dataset')).toBeInTheDocument();
-      expect(screen.queryByText('dataset-1')).not.toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.queryByText('dataset-1')).not.toBeInTheDocument();
+      });
       expect(screen.queryByText('dataset-2')).not.toBeInTheDocument();
-    });
-
-    it.skip('clears selected datasets when search query changes', async () => {
-      renderRoute();
-
-      // First select a dataset
-      const checkbox = await screen.findByLabelText('Select dataset dataset-1');
-      await user.click(checkbox);
-
-      // Verify selection worked
-      expect(await screen.findByText('1 row selected')).toBeInTheDocument();
-
-      // Now search, which should clear selection
-      const searchInput = screen.getByPlaceholderText('Search datasets by name');
-      await user.click(searchInput);
-      await user.paste('searchable');
-
-      await waitFor(() => expect(screen.queryByText('1 row selected')).not.toBeInTheDocument());
     });
   });
 

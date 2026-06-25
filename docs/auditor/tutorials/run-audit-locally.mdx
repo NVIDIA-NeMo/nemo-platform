@@ -23,7 +23,7 @@ This tutorial takes approximately **10 minutes** to complete, plus however long 
 
 - Install and start NeMo Platform using the [Setup guide](/documentation/get-started).
 - Install garak in a Python virtual environment so the plugin can shell out to it. By default the plugin invokes `~/.auditor/.venv/bin/python -m garak`. Override the interpreter path with `NEMO_AUDITOR_GARAK_PYTHON` if your install lives elsewhere.
-- Configure at least one Inference Gateway provider — this tutorial uses a `build` provider named `build` that routes to NVIDIA-build models, but any chat-completion-compatible provider works. See [Inference Gateway](/documentation/vulnerability-scanning/targets/inference-gateway) for details on the `nmp_uri_spec` block used below.
+- Configure at least one Inference Gateway provider — this tutorial uses a provider named `nvidia-build` that routes to NVIDIA Build models, but any chat-completion-compatible provider works. See [Inference Gateway](/documentation/vulnerability-scanning/targets/inference-gateway) for details on the `nmp_uri_spec` block used below.
 
 ---
 
@@ -104,7 +104,7 @@ target = auditor.targets.create(
             "nmp_uri_spec": {
                 "inference_gateway": {
                     "workspace": "default",
-                    "provider": "build",
+                    "provider": "nvidia-build",
                 },
             },
         },

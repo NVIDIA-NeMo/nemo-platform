@@ -577,7 +577,7 @@ If you included a WandB API key, you can view your training results at [wandb.ai
 base_model_id = f"{NAMESPACE}/{MODEL_NAME}"
 
 # Option 1: If you still have the job object from creation
-# lora_model_id = job.spec.output.name
+# lora_model_id = OUTPUT_NAME
 
 # Option 2: Construct from job parameters (use this if running in a new session)
 lora_model_id = f"{NAMESPACE}/{MODEL_NAME}-lora@v{MODEL_VERSION}"

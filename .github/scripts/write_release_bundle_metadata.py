@@ -1,7 +1,12 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Write release bundle metadata for downloaded SDK wheel artifacts."""
+"""Write release bundle metadata for downloaded SDK wheel artifacts.
+
+Container artifacts are metadata-only manifest entries: the image bits are
+built and staged by the release consumer from its dev registry at the bundle's
+source SHA, so container entries carry no path or checksum.
+"""
 
 import argparse
 import hashlib
@@ -22,10 +27,10 @@ class BundleMetadataError(Exception):
     """Raised when the release bundle metadata cannot be written safely."""
 
 
-def safe_sdk_id(sdk_id: str) -> str:
-    if not re.fullmatch(r"[A-Za-z0-9._-]+", sdk_id) or sdk_id in {".", ".."}:
-        raise BundleMetadataError(f"selected SDK id must be a safe single path segment: {sdk_id}")
-    return sdk_id
+def safe_artifact_id(artifact_type: str, artifact_id: str) -> str:
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", artifact_id) or artifact_id in {".", ".."}:
+        raise BundleMetadataError(f"selected {artifact_type} id must be a safe single path segment: {artifact_id}")
+    return artifact_id
 
 
 def parse_release_date_json(value: str) -> str | None:
@@ -43,7 +48,8 @@ def artifact_ref(artifact_type: object, artifact_id: object) -> str:
     return f"{artifact_type}:{artifact_id}"
 
 
-def parse_selected_sdk_ids(value: str) -> list[str]:
+def parse_selected_artifact_ids(value: str) -> dict[str, list[str]]:
+    """Parse selected_artifacts_json into ids grouped by artifact type."""
     try:
         parsed = json.loads(value)
     except json.JSONDecodeError as error:
@@ -52,29 +58,31 @@ def parse_selected_sdk_ids(value: str) -> list[str]:
     if not isinstance(parsed, list) or not parsed:
         raise BundleMetadataError("selected_artifacts_json must be a non-empty list")
 
-    sdk_ids: list[str] = []
-    seen: set[str] = set()
+    ids_by_type: dict[str, list[str]] = {"sdk": [], "container": []}
+    seen: dict[str, set[str]] = {artifact_type: set() for artifact_type in ids_by_type}
     for artifact in parsed:
         if not isinstance(artifact, dict):
             raise BundleMetadataError("selected_artifacts_json entries must be objects")
 
         artifact_type = artifact.get("type")
         artifact_id = artifact.get("id")
-        if artifact_type != "sdk":
+        if artifact_type not in ids_by_type:
             raise BundleMetadataError(
-                f"only SDK artifacts are supported in V1 bundles: {artifact_ref(artifact_type, artifact_id)}"
+                f"unsupported artifact type in bundle selection: {artifact_ref(artifact_type, artifact_id)}"
             )
         if not isinstance(artifact_id, str) or not artifact_id:
-            raise BundleMetadataError("selected SDK artifact id must be a non-empty string")
+            raise BundleMetadataError(f"selected {artifact_type} artifact id must be a non-empty string")
 
-        sdk_id = safe_sdk_id(artifact_id)
-        if sdk_id in seen:
-            raise BundleMetadataError(f"selected_artifacts_json contains duplicate SDK id: {sdk_id}")
+        checked_id = safe_artifact_id(artifact_type, artifact_id)
+        if checked_id in seen[artifact_type]:
+            raise BundleMetadataError(f"selected_artifacts_json contains duplicate {artifact_type} id: {checked_id}")
 
-        seen.add(sdk_id)
-        sdk_ids.append(sdk_id)
+        seen[artifact_type].add(checked_id)
+        ids_by_type[artifact_type].append(checked_id)
 
-    return sdk_ids
+    # A bundle may be SDK-only, container-only, or mixed; the non-empty-list
+    # check above already guarantees at least one artifact of some type.
+    return ids_by_type
 
 
 def find_sdk_wheel(sdk_artifacts_dir: Path, sdk_id: str, *, single_sdk_artifact: bool) -> Path:
@@ -167,7 +175,8 @@ def write_release_bundle_metadata(
     if not source_sha:
         raise BundleMetadataError("source_sha is required")
 
-    sdk_ids = parse_selected_sdk_ids(selected_artifacts_json)
+    ids_by_type = parse_selected_artifact_ids(selected_artifacts_json)
+    sdk_ids = ids_by_type["sdk"]
     release_date = parse_release_date_json(release_date_json)
     wheels_dir = prepare_bundle_dir(bundle_dir)
 
@@ -186,6 +195,17 @@ def write_release_bundle_metadata(
                 "id": sdk_id,
                 "version": wheel_version,
                 "path": bundle_relative_path(bundle_dir, wheel_path),
+            }
+        )
+
+    # Container artifacts are metadata-only: the consumer stages the images
+    # from its dev registry by source_sha and tags them with release_label.
+    for container_id in ids_by_type["container"]:
+        artifacts.append(
+            {
+                "type": "container",
+                "id": container_id,
+                "version": release_label,
             }
         )
 

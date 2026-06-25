@@ -280,9 +280,41 @@ async def test_create_or_update_task_finds_existing_task_by_name(
     assert task2.status == PlatformJobStatus.COMPLETED
 
     # Verify only one task exists for this step
-    tasks = await multi_workspace_dispatcher.list_tasks(step.id)
+    tasks = await multi_workspace_dispatcher.list_tasks(step.id, workspace="default")
     task_names = [t.name for t in tasks]
     assert task_names.count(task_name) == 1, f"Should have exactly one task named '{task_name}', found {task_names}"
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_list_tasks_uses_step_workspace_for_non_default_jobs(
+    multi_workspace_dispatcher: JobDispatcher,
+    multi_workspace_store: EntityClient,
+):
+    """Test that list_tasks returns tasks for steps in non-default workspaces.
+
+    This reproduces a bug where list_tasks omitted the workspace and fell back
+    to the entity client's default workspace, so jobs.tasks.list(...) returned
+    an empty task list for jobs outside ``default`` even though the task existed.
+    """
+    custom_workspace = "custom-workspace"
+    job = await multi_workspace_dispatcher.create_job(create_job_request("custom-task-list-job"), custom_workspace)
+    step = await multi_workspace_dispatcher.get_current_job_step_by_name(job.name, "basic", custom_workspace)
+    assert step is not None
+
+    task = await multi_workspace_store.add(
+        PlatformJobTask(
+            name="custom-task",
+            workspace=custom_workspace,
+            step_id=step.id,
+            status=PlatformJobStatus.ERROR,
+        )
+    )
+    assert task.id is not None
+
+    tasks = await multi_workspace_dispatcher.list_tasks(step.id, workspace=custom_workspace)
+
+    assert [listed_task.id for listed_task in tasks] == [task.id]
 
 
 @pytest.mark.asyncio

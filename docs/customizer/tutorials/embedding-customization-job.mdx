@@ -3,7 +3,802 @@ title: "Embedding Model Customization"
 description: ""
 ---
 
-<NotebookViewer
-  name="embedding-customization-job"
-  colabUrl="https://colab.research.google.com/github/NVIDIA-NeMo/nemo-platform/blob/main/docs/customizer/tutorials/embedding-customization-job.ipynb"
-/>
+[Run in Google Colab](https://colab.research.google.com/github/NVIDIA-NeMo/nemo-platform/blob/main/docs/customizer/tutorials/embedding-customization-job.ipynb)
+
+# Embedding Model Customization
+
+Learn how to fine-tune an embedding model to improve retrieval accuracy for your specific domain.
+
+## About
+
+Embedding models convert text into dense vector representations that capture semantic meaning. Fine-tuning these models on your domain data significantly improves retrieval accuracy—in RAG pipelines, this means the LLM receives more relevant context and produces better answers.
+
+**What you will achieve with embedding fine-tuning:**
+
+- 🎯 **Domain specialization:** Adapt general embeddings for legal, medical, scientific, or financial content
+- 📈 **Improved retrieval:** Achieve 6-10% better recall on domain-specific benchmarks
+- 🔍 **Semantic understanding:** Teach the model your domain's vocabulary and relationships
+
+**Recall@5** measures the fraction of relevant documents that appear in the top 5 search results.
+
+**About the baseline:** In retrieval benchmarks like SciDocs, the pretrained model achieves ~0.159 Recall@5. After fine-tuning on scientific paper triplets, you can expect 6-10% improvement (~0.17 Recall@5).
+
+### Dataset Format for Embedding Models
+
+Embedding models require **triplet format** for contrastive learning:
+
+```json
+{"query": "What is machine learning?", "pos_doc": "Machine learning is a subset of AI...", "neg_doc": ["Gardening tips for beginners..."]}
+```
+
+- **`query`**: The search query or question
+- **`pos_doc`**: A document relevant to the query (positive example)
+- **`neg_doc`**: List of hard negatives—documents that share some overlap with the query but are not actually relevant (negative example)
+
+The model learns to maximize similarity between query and positive document while minimizing similarity with negative documents.
+
+## Prerequisites
+
+Before starting this tutorial, ensure you have:
+
+1. **Completed the [Quickstart](/documentation/get-started)** to install and deploy NeMo Platform locally
+2. **Installed the Python SDK** (PyPI wrapper: `pip install "nemo-platform[all]"`; source checkout: run `make bootstrap` from the repository root)
+3. **HuggingFace token** with read access to download the SPECTER dataset (get one at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens))
+4. **NGC API key** to pull NIM container images from nvcr.io (get one at [ngc.nvidia.com](https://ngc.nvidia.com/) → Setup → Generate API Key)
+
+## Quick Start
+
+### 1. Initialize SDK
+
+The SDK needs to know your NeMo Platform server URL. By default, `http://localhost:8080` is used in accordance with the [Quickstart](/documentation/get-started) guide. If NeMo Platform is running at a custom location, you can override the URL by setting the `NMP_BASE_URL` environment variable:
+
+```sh
+export NMP_BASE_URL=<YOUR_NMP_BASE_URL>
+```
+
+```python
+import json
+import os
+from nemo_platform import NeMoPlatform, ConflictError
+
+NMP_BASE_URL = os.environ.get("NMP_BASE_URL", "http://localhost:8080")
+client = NeMoPlatform(
+    base_url=NMP_BASE_URL,
+    workspace="default"
+)
+```
+
+### 2. Establish Baseline Performance
+
+Before fine-tuning, establish baseline performance with the pretrained model. Deploy it, run a test query, and observe where it struggles. Following fine-tuning, compare the results.
+
+**Scenario:** Searching scientific papers by meaning, not keywords.
+
+**Demo setup:**
+- **Query:** "Conditional Random Fields" (CRFs) - a method for sequence labeling in NLP
+- **Trap:** "Random Forests" shares the word "random" but is an unrelated tree-based algorithm
+- **Goal:** The model should distinguish between them.
+
+```python
+# Install required packages for dataset preparation
+%pip install -q datasets huggingface_hub
+```
+
+```python
+import uuid
+import numpy as np
+
+# Demo query and documents for baseline comparison
+DEMO_QUERY = "Conditional Random Fields: Probabilistic Models for Segmenting and Labeling Sequence Data"
+
+DEMO_DOCS = [
+    "Bidirectional LSTM-CRF Models for Sequence Tagging",   # CRF-based paper
+    "An Introduction to Conditional Random Fields",         # CRF tutorial  
+    "Random Forests",                                       # Keyword trap! Unrelated.
+    "Neural Architectures for Named Entity Recognition",    # Related to sequence labeling; may use CRFs
+    "Support Vector Machines for Classification",           # Unrelated ML method
+]
+
+DEMO_LABELS = ["BiLSTM-CRF", "CRF Tutorial", "Random Forest", "NER", "SVM"]
+DEMO_RELEVANT = {0, 1, 3}  # Papers actually relevant to CRFs
+
+def cosine_similarity(a, b):
+    """Calculate cosine similarity between two vectors."""
+    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+```
+
+```python
+# NGC API key is required to pull NIM images from nvcr.io
+NGC_API_KEY = os.environ.get("NGC_API_KEY")
+if not NGC_API_KEY:
+    raise ValueError("NGC_API_KEY environment variable is required. Get one at https://ngc.nvidia.com/ → Setup → Generate API Key")
+
+# Create NGC secret for pulling NIM images
+NGC_SECRET_NAME = "ngc-api-key"
+try:
+    client.secrets.create(name=NGC_SECRET_NAME, workspace="default", value=NGC_API_KEY)
+    print(f"Created secret: {NGC_SECRET_NAME}")
+except ConflictError:
+    print(f"Secret '{NGC_SECRET_NAME}' already exists, continuing...")
+
+# Deploy base model for baseline comparison
+BASE_MODEL_HF = "nvidia/llama-nemotron-embed-1b-v2"
+NIM_IMAGE = "nvcr.io/nim/nvidia/llama-nemotron-embed-1b-v2"
+NIM_TAG = "1.13.0"
+
+baseline_suffix = uuid.uuid4().hex[:4]
+BASELINE_DEPLOYMENT_CONFIG = f"baseline-embedding-cfg-{baseline_suffix}"
+BASELINE_DEPLOYMENT_NAME = f"baseline-embedding-{baseline_suffix}"
+
+print("Creating baseline deployment config...")
+baseline_config = client.inference.deployment_configs.create(
+    workspace="default",
+    name=BASELINE_DEPLOYMENT_CONFIG,
+    engine="nim",
+    model_spec={},
+    executor_config={
+        "gpu": 1,
+        "image_name": NIM_IMAGE,
+        "image_tag": NIM_TAG,
+    },
+)
+
+print("Deploying base model...")
+baseline_deployment = client.inference.deployments.create(
+    workspace="default",
+    name=BASELINE_DEPLOYMENT_NAME,
+    config=baseline_config.name
+)
+print(f"Baseline deployment: {baseline_deployment.name}")
+```
+
+```python
+import time
+from IPython.display import clear_output
+
+# Wait for baseline deployment
+TIMEOUT_MINUTES = 15
+start_time = time.time()
+
+print(f"Waiting for baseline deployment...")
+while True:
+    status = client.inference.deployments.retrieve(
+        name=BASELINE_DEPLOYMENT_NAME,
+        workspace="default"
+    )
+    
+    elapsed = time.time() - start_time
+    elapsed_str = f"{int(elapsed//60)}m {int(elapsed%60)}s"
+    
+    clear_output(wait=True)
+    print(f"Baseline deployment: {status.status} | {elapsed_str}")
+    
+    if status.status == "READY":
+        print("Baseline model ready!")
+        if not client.models.wait_for_gateway(BASELINE_DEPLOYMENT_NAME, workspace="default", timeout=60):
+            raise RuntimeError("Inference gateway did not become ready")
+        break
+    if status.status in ("FAILED", "ERROR", "TERMINATED", "LOST"):
+        raise RuntimeError(f"Baseline deployment failed: {status.status}")
+    if elapsed > TIMEOUT_MINUTES * 60:
+        raise TimeoutError("Baseline deployment timeout")
+    
+    time.sleep(10)
+
+
+```
+
+```python
+# Run baseline ranking with the base model
+BASE_MODEL_ID = "nvidia/llama-nemotron-embed-1b-v2"
+
+# Get query embedding
+query_response = client.inference.gateway.provider.post(
+    "v1/embeddings",
+    name=BASELINE_DEPLOYMENT_NAME,
+    workspace="default",
+    body={
+        "model": BASE_MODEL_ID,
+        "input": [DEMO_QUERY],
+        "input_type": "query"
+    }
+)
+base_query_emb = query_response["data"][0]["embedding"]
+
+# Get document embeddings
+doc_response = client.inference.gateway.provider.post(
+    "v1/embeddings",
+    name=BASELINE_DEPLOYMENT_NAME,
+    workspace="default",
+    body={
+        "model": BASE_MODEL_ID,
+        "input": DEMO_DOCS,
+        "input_type": "passage"
+    }
+)
+base_doc_embs = [d["embedding"] for d in doc_response["data"]]
+
+# Calculate similarities and rank
+scores = [(i, cosine_similarity(base_query_emb, base_doc_embs[i])) for i in range(len(DEMO_DOCS))]
+BASELINE_RANKING = sorted(scores, key=lambda x: -x[1])
+
+# Display baseline results
+print(f"Query: \"{DEMO_QUERY}\"\n")
+print("Base Model Ranking:")
+print("-" * 55)
+for rank, (idx, score) in enumerate(BASELINE_RANKING, 1):
+    marker = " <-- relevant" if idx in DEMO_RELEVANT else ""
+    print(f"  #{rank}  [{score:.3f}]  {DEMO_LABELS[idx]}{marker}")
+```
+
+```python
+# Delete baseline deployment to free GPU for training
+print("Deleting baseline deployment to free GPU...")
+client.inference.deployments.delete(name=BASELINE_DEPLOYMENT_NAME, workspace="default")
+
+# Wait for deployment to be fully deleted before deleting config
+print("Waiting for deployment deletion...")
+while True:
+    try:
+        status = client.inference.deployments.retrieve(name=BASELINE_DEPLOYMENT_NAME, workspace="default")
+        if status.status == "DELETED":
+            break
+        print(f"  Status: {status.status}")
+        time.sleep(5)
+    except Exception:
+        # Deployment no longer exists
+        break
+
+# Now safe to delete the config
+client.inference.deployment_configs.delete(name=BASELINE_DEPLOYMENT_CONFIG, workspace="default")
+print("GPU freed. Proceed to fine-tune and improve these rankings.")
+```
+
+### 3. Prepare Dataset
+
+Use the [SPECTER dataset](https://huggingface.co/datasets/embedding-data/SPECTER) from HuggingFace, a collection of scientific paper triplets where papers that cite each other are considered related.
+
+**Dataset structure:**
+- ~684K scientific paper triplets (this tutorial uses 10%)
+- Each triplet: (query paper, positive/related paper, negative/unrelated paper)
+- Papers that cite each other are marked as "related"
+
+In this tutorial the following dataset directory structure will be used:
+```
+embedding-dataset
+`-- training.jsonl
+`-- validation.jsonl
+```
+
+### 4. Download and Format SPECTER Dataset
+
+The SPECTER dataset requires conversion to the triplet format required for fine-tuning.
+
+```python
+from pathlib import Path
+from datasets import load_dataset
+import json
+
+# HuggingFace token for dataset access
+HF_TOKEN = os.environ.get("HF_TOKEN")
+if not HF_TOKEN:
+    raise ValueError("HF_TOKEN environment variable is required. Get one at https://huggingface.co/settings/tokens")
+os.environ["HF_TOKEN"] = HF_TOKEN
+
+# Configuration
+DATASET_SIZE = 3000        # Number of triplets (increase for better results, max ~684K)
+VALIDATION_SPLIT = 0.05   # 5% held out for validation
+SEED = 42
+DATASET_PATH = Path("embedding-dataset").absolute()
+
+# Create directory
+os.makedirs(DATASET_PATH, exist_ok=True)
+
+# Download SPECTER dataset
+print("Downloading SPECTER dataset...")
+data = load_dataset("embedding-data/SPECTER")["train"].shuffle(seed=SEED).select(range(DATASET_SIZE))
+
+# Split into train/validation
+print("Splitting into train/validation...")
+splits = data.train_test_split(test_size=VALIDATION_SPLIT, seed=SEED)
+train_data = splits["train"]
+validation_data = splits["test"]
+
+# Convert to triplet JSONL format
+print("Saving to JSONL...")
+for name, dataset in [("training", train_data), ("validation", validation_data)]:
+    with open(f"{DATASET_PATH}/{name}.jsonl", "w") as f:
+        for row in dataset:
+            # SPECTER format: row['set'] = [query, positive, negative]
+            triplet = {
+                "query": row["set"][0],
+                "pos_doc": row["set"][1],
+                "neg_doc": [row["set"][2]]  # List of negative documents
+            }
+            f.write(json.dumps(triplet) + "\n")
+
+print(f"\nPrepared {len(train_data):,} training, {len(validation_data):,} validation samples")
+print(f"\nExample triplet:")
+print(f"  Query:    {train_data[0]['set'][0][:100]}...")
+print(f"  Positive: {train_data[0]['set'][1][:100]}...")
+print(f"  Negative: {train_data[0]['set'][2][:100]}...")
+```
+
+### 5. Create Dataset FileSet and Upload Training Data
+
+```python
+# Create fileset to store embedding training data
+DATASET_NAME = "embedding-dataset"
+
+try:
+    client.files.filesets.create(
+        workspace="default",
+        name=DATASET_NAME,
+        description="SPECTER embedding training data (scientific paper triplets)"
+    )
+    print(f"Created fileset: {DATASET_NAME}")
+except ConflictError:
+    print(f"Fileset '{DATASET_NAME}' already exists, continuing...")
+
+# Upload training data files
+client.files.upload(
+    local_path=f"{DATASET_PATH}/",
+    remote_path="",
+    fileset=DATASET_NAME,
+    workspace="default"
+)
+
+# Validate upload
+print("\nUploaded files:")
+print(json.dumps([f.model_dump() for f in client.files.list(fileset=DATASET_NAME, workspace="default").data], indent=2))
+```
+
+### 6. Secrets Setup
+
+Configure authentication for accessing base models:
+
+- **NGC models** (`ngc://` URIs): Requires NGC API key
+- **HuggingFace models** (`hf://` URIs): Requires HF token for gated/private models
+
+Get your credentials:
+- [NGC API Key](https://ngc.nvidia.com/) (Setup → Generate API Key)
+- [HuggingFace Token](https://huggingface.co/settings/tokens) (Create token with Read access)
+
+---
+
+#### Quick Setup Example
+
+This tutorial fine-tunes [nvidia/llama-3.2-nv-embedqa-1b-v2](https://huggingface.co/nvidia/llama-3.2-nv-embedqa-1b-v2), NVIDIA embedding model optimized for question-answering and retrieval tasks.
+
+```python
+# Create secrets for model access
+# Note: NGC_API_KEY secret was already created in the baseline step (Step 2)
+HF_TOKEN = os.getenv("HF_TOKEN")
+
+
+def create_or_get_secret(name: str, value: str | None, label: str):
+    if not value:
+        raise ValueError(f"{label} is not set")
+    try:
+        secret = client.secrets.create(
+            name=name,
+            workspace="default",
+            value=value,
+        )
+        print(f"Created secret: {name}")
+        return secret
+    except ConflictError:
+        print(f"Secret '{name}' already exists, continuing...")
+        return client.secrets.retrieve(name=name, workspace="default")
+
+
+# Create HuggingFace token secret (for downloading model from HF during training)
+hf_secret = create_or_get_secret("hf-token", HF_TOKEN, "HF_TOKEN")
+print(f"HF_TOKEN secret: {hf_secret.name}")
+
+# NGC secret was already created in baseline step (Step 2), or use the platform default
+if "NGC_SECRET_NAME" not in globals():
+    NGC_SECRET_NAME = "ngc-api-key"
+print(f"NGC_API_KEY secret: {NGC_SECRET_NAME}")
+```
+
+### 7. Create Base Model FileSet and Model Entity
+
+Create a fileset pointing to the [nvidia/llama-3.2-nv-embedqa-1b-v2](https://huggingface.co/nvidia/llama-3.2-nv-embedqa-1b-v2) embedding model from HuggingFace, then create a Model Entity that references this fileset. Model downloading will take place at training time.
+
+```python
+import time
+from nemo_platform.types.files import HuggingfaceStorageConfigParam
+
+HF_REPO_ID = "nvidia/llama-nemotron-embed-1b-v2"
+MODEL_NAME = "nv-nemotron-embed-1b-base"
+
+# Ensure you have a HuggingFace token secret created
+try:
+    base_model_fs = client.files.filesets.create(
+        workspace="default",
+        name=MODEL_NAME,
+        description="NVIDIA Llama 3.2 NV EmbedQA 1B v2 embedding model",
+        storage=HuggingfaceStorageConfigParam(
+            type="huggingface",
+            # repo_id is the full model name from Hugging Face
+            repo_id=HF_REPO_ID,
+            repo_type="model",
+            # we use the secret created in the previous step
+            token_secret=hf_secret.name
+        )
+    )
+except ConflictError as e:
+    print(f"Base model fileset already exists. Skipping creation.")
+    base_model_fs = client.files.filesets.retrieve(
+        workspace="default",
+        name=MODEL_NAME,
+    )
+
+# Create Model Entity referencing the FileSet
+try:
+    base_model = client.models.create(
+        workspace="default",
+        name=MODEL_NAME,
+        fileset=f"default/{MODEL_NAME}",
+        trust_remote_code=True,
+    )
+    print(f"Created Model Entity: {MODEL_NAME}")
+except ConflictError:
+    print(f"Base model already exists. Updating fileset if different.")
+    base_model = client.models.update(
+        workspace="default",
+        name=MODEL_NAME,
+        fileset=f"default/{MODEL_NAME}",
+        trust_remote_code=True,
+    )
+
+print(f"\nBase model fileset: fileset://default/{base_model.name}")
+print("\nBase model files:")
+print(json.dumps([f.model_dump() for f in client.files.list(fileset=MODEL_NAME, workspace="default").data], indent=2))
+
+# Wait for ModelSpec to be populated from the checkpoint
+print("\nWaiting for ModelSpec to be populated...")
+SPEC_TIMEOUT_SECONDS = 120
+spec_start = time.time()
+while not base_model.spec:
+    if time.time() - spec_start > SPEC_TIMEOUT_SECONDS:
+        raise TimeoutError(f"ModelSpec not populated within {SPEC_TIMEOUT_SECONDS} seconds")
+    time.sleep(2)
+    base_model = client.models.retrieve(
+        workspace="default",
+        name=MODEL_NAME,
+    )
+
+print(f"ModelSpec populated: {base_model.spec}")
+```
+
+### 8. Create Embedding Fine-tuning Job
+
+Create a customization job to fine-tune the embedding model using contrastive learning on the SPECTER dataset.
+
+Submit to the **Automodel** backend using `AutomodelJobInput` with split `schedule`, `batch`, `optimizer`, and `parallelism` sections. Reference the model entity and dataset fileset by workspace/name (not `fileset://` URIs).
+
+**Key hyperparameters for embedding fine-tuning:**
+- **`training.training_type`**: `sft`
+- **`training.finetuning_type`**: `all_weights` for full fine-tuning, or `lora_merged` for merged LoRA
+- **`optimizer.learning_rate`**: Lower values (1e-6 to 5e-6) work well for embedding models
+- **`batch.global_batch_size`**: Larger batches improve contrastive learning (128-256 recommended)
+
+**NOTE:**
+
+NeMo Platform does not support unmerged LoRA adapters for embedding models because the embedding NIM requires ONNX format, which cannot represent standalone adapters. This notebook uses all-weights fine-tuning. For merged LoRA, set `finetuning_type` to `lora_merged`:
+
+```python
+training={
+    "training_type": "sft",
+    "finetuning_type": "lora_merged",
+    "lora": {"rank": 16, "alpha": 32},
+    "max_seq_length": MAX_SEQ_LENGTH,
+}
+```
+
+```python
+import uuid
+from nemo_automodel_plugin.schema import AutomodelJobInput
+
+job_suffix = uuid.uuid4().hex[:4]
+JOB_NAME = f"embedding-finetune-job-{job_suffix}"
+OUTPUT_NAME = f"nv-embed-finetuned-{job_suffix}"
+
+EPOCHS = 1
+BATCH_SIZE = 128
+LEARNING_RATE = 5e-6
+MAX_SEQ_LENGTH = 512
+
+spec = AutomodelJobInput(
+    model=f"default/{base_model.name}",
+    dataset={"training": f"default/{DATASET_NAME}"},
+    training={
+        "training_type": "sft",
+        "finetuning_type": "all_weights",
+        "max_seq_length": MAX_SEQ_LENGTH,
+    },
+    schedule={"epochs": EPOCHS},
+    batch={"global_batch_size": BATCH_SIZE, "micro_batch_size": 1},
+    optimizer={"learning_rate": LEARNING_RATE},
+    parallelism={"num_gpus_per_node": 1},
+    output={"name": OUTPUT_NAME},
+)
+
+job = client.customization.automodel.jobs.create(
+    spec=spec, workspace="default", name=JOB_NAME
+)
+
+print(f"Submitted job: {job.job.name}")
+print(f"Output model: {OUTPUT_NAME}")
+
+```
+
+### 9. Track Training Progress
+
+```python
+import time
+from IPython.display import clear_output
+
+# Poll job status every 10 seconds until completed
+while True:
+    status = client.jobs.get_status(
+        name=job.job.name,
+        workspace="default"
+    )
+    
+    clear_output(wait=True)
+    print(f"Job Status: {status.model_dump_json(indent=2)}")
+
+    # Extract training progress from nested steps structure
+    step: int | None = None
+    max_steps: int | None = None
+    training_phase: str | None = None
+
+    for job_step in status.steps or []:
+        if job_step.name == "training":
+            for task in job_step.tasks or []:
+                task_details = task.status_details or {}
+                step = task_details.get("step")
+                max_steps = task_details.get("max_steps")
+                training_phase = task_details.get("phase")
+                break
+            break
+
+    if step is not None and max_steps is not None:
+        progress_pct = (step / max_steps) * 100
+        print(f"Training Progress: Step {step}/{max_steps} ({progress_pct:.1f}%)")
+        if training_phase:
+            print(f"Training Phase: {training_phase}")
+    else:
+        print("Training step not started yet or progress info not available")
+    
+    # Exit loop when job is completed (or failed/cancelled)
+    if status.status in ("completed", "failed", "cancelled", "error"):
+        print(f"\nJob finished with status: {status.status}")
+        break
+    
+    time.sleep(10)
+```
+
+**Interpreting Embedding Training Metrics:**
+
+Embedding models use contrastive loss—lower values indicate better separation between similar and dissimilar pairs:
+
+| Scenario | Interpretation | Action |
+|----------|----------------|--------|
+| **Loss steadily decreasing** | Model learning semantic relationships | Continue training |
+| **Loss plateaus early** | May need more data or epochs | Increase dataset/epochs |
+| **Loss spikes** | Training instability | Lower learning rate |
+| **Validation loss increasing** | Overfitting | Reduce epochs, add data |
+
+### 10. Deploy Fine-Tuned Embedding Model
+
+After training completes, deploy the embedding model using the Deployment Management Service:
+
+```python
+# Validate model entity exists
+model_entity = client.models.retrieve(workspace="default", name=OUTPUT_NAME)
+print(model_entity.model_dump_json(indent=2))
+```
+
+```python
+# Create deployment config for embedding model
+deploy_suffix = uuid.uuid4().hex[:4]
+DEPLOYMENT_CONFIG_NAME = f"embedding-model-deployment-cfg-{deploy_suffix}"
+DEPLOYMENT_NAME = f"embedding-model-deployment-{deploy_suffix}"
+
+# Embedding NIM image
+NIM_IMAGE = "nvcr.io/nim/nvidia/llama-nemotron-embed-1b-v2"
+NIM_TAG = "1.13.0"  # Update if using newer NIM release
+
+deployment_config = client.inference.deployment_configs.create(
+    workspace="default",
+    name=DEPLOYMENT_CONFIG_NAME,
+    engine="nim",
+    model_spec={
+        "model_namespace": "default",
+        "model_name": OUTPUT_NAME,
+    },
+    executor_config={
+        "gpu": 1,
+        "image_name": NIM_IMAGE,
+        "image_tag": NIM_TAG,
+    },
+)
+
+# Deploy model
+deployment = client.inference.deployments.create(
+    workspace="default",
+    name=DEPLOYMENT_NAME,
+    config=deployment_config.name
+)
+
+print(f"Deployment name: {deployment.name}")
+print(f"Deployment status: {client.inference.deployments.retrieve(name=deployment.name, workspace='default').status}")
+```
+
+#### Track Deployment Status
+
+```python
+import time
+from IPython.display import clear_output
+
+# Poll deployment status every 15 seconds until ready
+TIMEOUT_MINUTES = 30
+start_time = time.time()
+timeout_seconds = TIMEOUT_MINUTES * 60
+
+print(f"Monitoring deployment '{deployment.name}'...")
+print(f"Timeout: {TIMEOUT_MINUTES} minutes\n")
+
+while True:
+    deployment_status = client.inference.deployments.retrieve(
+        name=deployment.name,
+        workspace="default"
+    )
+    
+    elapsed = time.time() - start_time
+    elapsed_min = int(elapsed // 60)
+    elapsed_sec = int(elapsed % 60)
+    
+    clear_output(wait=True)
+    print(f"Deployment: {deployment.name}")
+    print(f"Status: {deployment_status.status}")
+    print(f"Elapsed time: {elapsed_min}m {elapsed_sec}s")
+    
+    # Check if deployment is ready
+    if deployment_status.status == "READY":
+        print("\nDeployment is ready!")
+        if not client.models.wait_for_gateway(deployment.name, workspace="default", timeout=60):
+            raise RuntimeError("Inference gateway did not become ready")
+        break
+    
+    # Check for failure states
+    if deployment_status.status in ("FAILED", "ERROR", "TERMINATED", "LOST"):
+        raise RuntimeError(f"Deployment failed with status: {deployment_status.status}")
+    
+    # Check timeout
+    if elapsed > timeout_seconds:
+        raise TimeoutError(f"Deployment timeout after {TIMEOUT_MINUTES} minutes")
+    
+    time.sleep(15)
+```
+
+### 11. View the Improvement
+
+Run the same query against the fine-tuned model and compare to the baseline from earlier.
+
+```python
+# Compare: same query, base model vs fine-tuned
+# Using the same DEMO_QUERY and DEMO_DOCS from the baseline test
+MODEL_ID = f"default/{OUTPUT_NAME}"
+
+# Get query embedding from fine-tuned model
+query_response = client.inference.gateway.provider.post(
+    "v1/embeddings",
+    name=deployment.name,
+    workspace="default",
+    body={
+        "model": MODEL_ID,
+        "input": [DEMO_QUERY],
+        "input_type": "query"
+    }
+)
+query_embedding = query_response["data"][0]["embedding"]
+
+# Get document embeddings from fine-tuned model
+doc_response = client.inference.gateway.provider.post(
+    "v1/embeddings",
+    name=deployment.name,
+    workspace="default",
+    body={
+        "model": MODEL_ID,
+        "input": DEMO_DOCS,
+        "input_type": "passage"
+    }
+)
+doc_embeddings = [d["embedding"] for d in doc_response["data"]]
+
+# Calculate similarities and rank
+scores = [(i, cosine_similarity(query_embedding, doc_embeddings[i])) for i in range(len(DEMO_DOCS))]
+FINETUNED_RANKING = sorted(scores, key=lambda x: -x[1])
+
+# Display side-by-side comparison
+print(f"Query: \"{DEMO_QUERY}\"\n")
+print(f"{'Rank':<6} {'Base Model':<30} {'Fine-tuned Model':<30}")
+print("-" * 66)
+
+for rank in range(len(DEMO_DOCS)):
+    b_idx, b_score = BASELINE_RANKING[rank]
+    f_idx, f_score = FINETUNED_RANKING[rank]
+    
+    b_label = f"{DEMO_LABELS[b_idx]} [{b_score:.3f}]" + (" *" if b_idx in DEMO_RELEVANT else "")
+    f_label = f"{DEMO_LABELS[f_idx]} [{f_score:.3f}]" + (" *" if f_idx in DEMO_RELEVANT else "")
+    
+    print(f"#{rank+1:<5} {b_label:<30} {f_label:<30}")
+
+print("\n* = relevant paper")
+print("\nThe fine-tuned model pushes 'Random Forest' down and ranks CRF papers higher.")
+```
+
+### Evaluation Best Practices
+
+**Manual Evaluation** (Recommended)
+- Test with real-world queries from your domain
+- Compare retrieval rankings before and after fine-tuning
+- Check that semantically similar items rank higher than keyword matches
+
+**What to look for:**
+- ✅ Relevant documents consistently rank in top positions
+- ✅ Keyword traps (like "Random Forest" vs "Random Fields") are handled correctly
+- ✅ Domain-specific terminology is understood
+- ❌ Unrelated documents with matching keywords do not rank high
+
+**Benchmark Evaluation**
+
+For systematic evaluation, use the NeMo Evaluator service with retrieval benchmarks like SciDocs, BEIR, or MTEB. Refer to the [Evaluator documentation](/documentation/evaluate-models) for details.
+
+---
+
+## Hyperparameters
+
+For detailed information on all available hyperparameters, recommended values, and tuning guidance, refer to the [Hyperparameter Reference](/documentation/customizer-reference/manage-customization-jobs/training-configuration).
+
+**Embedding-Specific Recommendations:**
+
+| Parameter | Recommended | Notes |
+|-----------|-------------|-------|
+| `learning_rate` | 1e-6 to 5e-6 | Lower than standard SFT |
+| `batch_size` | 128-256 | Larger batches improve contrastive learning |
+| `max_seq_length` | 512 | Typical for embedding models |
+| `epochs` | 1-3 | Start small, increase if needed |
+
+---
+
+## Troubleshooting
+
+**Embeddings do not show improved retrieval:**
+- Verify dataset quality: triplets should have clear positive/negative distinctions
+- Use hard negatives: negatives should share some overlap with the query but not be relevant (easy negatives do not teach the model much)
+- Increase dataset size: 10K+ triplets recommended for meaningful improvement
+- Try more epochs: embedding models often need multiple passes
+- Lower learning rate: embedding models are sensitive to LR
+
+**Training loss not decreasing:**
+- Check triplet format: ensure `neg_doc` is a list even for single negatives
+- Verify hard negative quality: negatives should be challenging but clearly non-relevant
+- Increase batch size: contrastive learning benefits from larger batches
+
+**Deployment fails:**
+- Ensure you use the correct NIM image for embedding models
+- Verify sufficient GPU memory for the model size
+- Check deployment status: `client.inference.deployments.retrieve(name=deployment.name, workspace="default")` and refer to platform logs for debugging
+
+## Next Steps
+
+- [Monitor training metrics](/documentation/customizer-reference/manage-customization-jobs/get-job-status) in detail
+- [Evaluate your model](/documentation/evaluate-models) with retrieval benchmarks
+- Integrate the fine-tuned embedding model into your RAG pipeline
+- Scale up training with the full SPECTER dataset (~684K triplets) for better results

@@ -137,23 +137,23 @@ guardrails-service = [
   "nemoguardrails[tracing]~=0.21.0",
   "dataclasses-json>=0.6.7",
   "openai>=1.61.0",
-  "opentelemetry-distro>=0.41b0",
+  "opentelemetry-distro>=0.64b0",
   "opentelemetry-exporter-otlp>=1.22.0",
-  "opentelemetry-instrumentation-fastapi>=0.48b0",
+  "opentelemetry-instrumentation-fastapi>=0.64b0",
   "pydantic-settings>=2.2.1",
   "python-multipart~=0.0.9",
   "requests>=2.31.0",
   "uvicorn>=0.32.1",
   "httpx>=0.27.2",
   "gunicorn>=23.0.0",
-  "langchain-openai>=1.0.0,<2.0.0",
-  "langchain-nvidia-ai-endpoints>=1.0.0,<2.0.0",
+  "langchain-openai>=1.3.3,<2.0.0",
+  "langchain-nvidia-ai-endpoints>=1.4.1,<2.0.0",
   "nmp-common",
   "yara-python==4.5.1",
   "alembic>=1.10.4,<2.0.0",
   "opentelemetry-sdk>=1.27.0,<2.0.0",
-  "opentelemetry-instrumentation-requests>=0.48b0",
-  "opentelemetry-instrumentation-httpx>=0.48b0",
+  "opentelemetry-instrumentation-requests>=0.64b0",
+  "opentelemetry-instrumentation-httpx>=0.64b0",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
@@ -293,15 +293,19 @@ nemo-evaluator-sdk = [
   "openai>=1.61.0",
   "sacrebleu>=2.5.1",
   "rouge_score==0.1.2",
-  "ragas==0.3.5",
-  "langchain-openai>=1.1.14",
-  "langchain-nvidia-ai-endpoints>=1.0.0,<2.0.0",
+  "ragas==0.4.3",
+  "langchain-openai>=1.3.3",
+  "langchain-nvidia-ai-endpoints>=1.4.1,<2.0.0",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
 nemo-guardrails-plugin = [
   "nemo-platform-plugin",
   "nemoguardrails[tracing]==0.21.0",
+  "langchain>=1.3.11",
+  "langchain-community>=0.3.31,<0.4",
+  "langchain-core>=1.4.8",
+  "langchain-openai>=1.3.3",
   "dataclasses-json>=0.6.7",
 ]
 
@@ -360,7 +364,7 @@ nemo-safe-synthesizer-plugin = [
 # Generated from [tool.bundle-package]; do not edit by hand.
 nemo-switchyard = [
   "nemo-platform-plugin",
-  "switchyard",
+  "switchyard-vendored",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
@@ -378,20 +382,20 @@ nmp-common = [
   "huggingface-hub>=1.0.1,<2.0.0",
   "hvac>=2.3.0",
   "kubernetes>=30.1.0",
-  "prometheus-fastapi-instrumentator>=7.1.0",
-  "opentelemetry-exporter-prometheus>=0.59b0",
-  "opentelemetry-processor-baggage>=0.59b0",
-  "opentelemetry-instrumentation-fastapi>=0.59b0",
-  "opentelemetry-instrumentation-system-metrics>=0.59b0",
-  "opentelemetry-instrumentation-sqlalchemy>=0.59b0",
-  "opentelemetry-instrumentation-httpx>=0.59b0",
+  "prometheus-fastapi-instrumentator>=8.0.2",
+  "opentelemetry-exporter-prometheus>=0.64b0",
+  "opentelemetry-processor-baggage>=0.64b0",
+  "opentelemetry-instrumentation-fastapi>=0.64b0",
+  "opentelemetry-instrumentation-system-metrics>=0.64b0",
+  "opentelemetry-instrumentation-sqlalchemy>=0.64b0",
+  "opentelemetry-instrumentation-httpx>=0.64b0",
   "opentelemetry-exporter-otlp-proto-http>=1.38.0",
   "opentelemetry-exporter-otlp-proto-grpc>=1.38.0",
   "opentelemetry-sdk>=1.38.0",
   "prometheus-client>=0.23.0",
   "structlog>=24.1.0",
   "nvidia-ml-py>=13.0.0",
-  "pyjwt[crypto]>=2.12.0",
+  "pyjwt[crypto]>=2.13.0",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
@@ -399,6 +403,7 @@ platform-seed-service = [
   "nmp-common",
   "nmp-auth",
   "nmp-guardrails",
+  "nemo-auditor-plugin",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
@@ -446,7 +451,7 @@ studio-service = [
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
-switchyard = [
+switchyard-vendored = [
   "openai>=2.34.0,<3.0",
   "anthropic>=0.99.0,<1.0",
   "httpx>=0.28.1,<1.0",
@@ -589,7 +594,7 @@ nemo-evaluator-sdk = { source = "../../packages/nemo_evaluator_sdk/src/nemo_eval
 data-designer-nemo = { source = "../../packages/data_designer_nemo/src/data_designer_nemo", module = "data_designer_nemo" }
 nmp-platform-runner = { source = "../../packages/nmp_platform_runner/src/nmp/platform_runner", module = "nmp/platform_runner", deps_group = "services" }
 garak-api = { source = "../../packages/garak_api/garakapi", module = "garakapi", deps_group = "auditor-service" }
-switchyard = { source = "../../plugins/nemo-switchyard/vendor/switchyard/switchyard", module = "switchyard" }
+switchyard-vendored = { source = "../../plugins/nemo-switchyard/vendor/switchyard/switchyard", module = "switchyard" }
 
 # Default first-party plugins
 nemo-agents-plugin = { source = "../../plugins/nemo-agents/src/nemo_agents_plugin", module = "nemo_agents_plugin", inherit = { "entry-points" = ["nemo.*", "nat.plugins"] } }
