@@ -103,7 +103,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     "pillow>=12.2.0,<13" \
     "pyasn1>=0.6.3,<1" \
     "tornado>=6.5.5,<7" \
-    "urllib3>=2.7.0,<3"
+    "urllib3>=2.7.0,<3" \
+    "mlflow-skinny>=3.11.0,<3.12.0"
 
 # Published base image (same filesystem as builder).
 FROM ${PYTORCH_BASE} AS nmp-automodel-base
