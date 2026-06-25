@@ -6,46 +6,32 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import time
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
 import respx
 import yaml
-
 from nemo_platform_plugin.client.auth import (
-    AsyncTokenProvider,
     OIDCTokenProvider,
     StaticToken,
     TokenProvider,
-    TokenRefreshError,
     TokenSet,
-    decode_jwt_claims,
     generate_unsigned_jwt,
-    refresh_token_grant,
 )
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.config.config import Config
 from nemo_platform_plugin.client.config.models import (
-    ConfigFile,
-    ConfigParams,
-    Cluster,
-    Context,
     NoAuthUser,
     OAuthUser,
-    Preferences,
 )
 from nemo_platform_plugin.client_provider import (
     DefaultNemoClientProvider,
-    NemoClientProvider,
     get_async_nemo_client,
     get_nemo_client,
     set_client_provider,
 )
-
 
 # ---------------------------------------------------------------------------
 # StaticToken
@@ -81,7 +67,9 @@ class TestNemoClientAuth:
 
         from nemo_platform_plugin.client.types import PreparedRequest
 
-        req = PreparedRequest(method="GET", path_template="/test", path_params={}, content=None, content_type=None, response_type=None)
+        req = PreparedRequest(
+            method="GET", path_template="/test", path_params={}, content=None, content_type=None, response_type=None
+        )
         client.send(req)
 
         assert route.called
@@ -104,7 +92,9 @@ class TestNemoClientAuth:
 
         from nemo_platform_plugin.client.types import PreparedRequest
 
-        req = PreparedRequest(method="GET", path_template="/test", path_params={}, content=None, content_type=None, response_type=None)
+        req = PreparedRequest(
+            method="GET", path_template="/test", path_params={}, content=None, content_type=None, response_type=None
+        )
         client.send(req)
         client.send(req)
 
@@ -120,7 +110,9 @@ class TestNemoClientAuth:
 
         from nemo_platform_plugin.client.types import PreparedRequest
 
-        req = PreparedRequest(method="GET", path_template="/test", path_params={}, content=None, content_type=None, response_type=None)
+        req = PreparedRequest(
+            method="GET", path_template="/test", path_params={}, content=None, content_type=None, response_type=None
+        )
         client.send(req)
 
         assert route.called
@@ -146,7 +138,9 @@ class TestAsyncNemoClientAuth:
 
         from nemo_platform_plugin.client.types import PreparedRequest
 
-        req = PreparedRequest(method="GET", path_template="/test", path_params={}, content=None, content_type=None, response_type=None)
+        req = PreparedRequest(
+            method="GET", path_template="/test", path_params={}, content=None, content_type=None, response_type=None
+        )
 
         asyncio.run(client.send(req))
 
@@ -161,7 +155,9 @@ class TestAsyncNemoClientAuth:
 
         from nemo_platform_plugin.client.types import PreparedRequest
 
-        req = PreparedRequest(method="GET", path_template="/test", path_params={}, content=None, content_type=None, response_type=None)
+        req = PreparedRequest(
+            method="GET", path_template="/test", path_params={}, content=None, content_type=None, response_type=None
+        )
 
         asyncio.run(client.send(req))
 
@@ -250,9 +246,7 @@ class TestConfig:
             "current_context": "test",
             "clusters": [{"name": "test-cluster", "base_url": "http://localhost:9090"}],
             "users": [{"name": "test-user", "type": "oauth", "token": "my-token"}],
-            "contexts": [
-                {"name": "test", "cluster": "test-cluster", "user": "test-user", "workspace": "ws1"}
-            ],
+            "contexts": [{"name": "test", "cluster": "test-cluster", "user": "test-user", "workspace": "ws1"}],
         }
         config_file = tmp_path / "config.yaml"
         config_file.write_text(yaml.safe_dump(config_data))
@@ -366,9 +360,7 @@ class TestNemoClientProvider:
         try:
             result = get_nemo_client(as_service="svc")
             assert result is expected_client
-            mock_provider.get_nemo_client.assert_called_once_with(
-                as_service="svc", internal=False, on_behalf_of=None
-            )
+            mock_provider.get_nemo_client.assert_called_once_with(as_service="svc", internal=False, on_behalf_of=None)
         finally:
             set_client_provider(None)
 
