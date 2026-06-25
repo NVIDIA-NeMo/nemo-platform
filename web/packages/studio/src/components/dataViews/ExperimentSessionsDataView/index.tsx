@@ -123,13 +123,13 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
     accessor('input', {
       header: 'Input',
       enableSorting: false,
-      size: 240,
+      size: 400,
       cell: ({ row }) => {
         const value = row.original.input;
         if (!value) return <Text>-</Text>;
         return (
           <Tooltip slotContent={value} className={tooltipClassName} side="bottom">
-            <Text className="cursor-default truncate max-w-[220px] block">{value}</Text>
+            <Text className="cursor-default line-clamp-2">{value}</Text>
           </Tooltip>
         );
       },
