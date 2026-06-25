@@ -281,8 +281,9 @@ class AsyncNemoClient(BaseNemoClient):
         # 3. Provider.get_access_token() is sync — run in a thread to avoid
         #    blocking the event loop during IO (e.g. token refresh HTTP calls).
         if self._auth:
-            if hasattr(self._auth, "get_access_token_async"):
-                token = await self._auth.get_access_token_async()
+            get_async = getattr(self._auth, "get_access_token_async", None)
+            if get_async is not None and callable(get_async):
+                token = await get_async()
             elif inspect.iscoroutinefunction(self._auth.get_access_token):
                 token = await self._auth.get_access_token()
             else:
@@ -334,8 +335,10 @@ def _client_from_config(
 
     resolved_path = Path(config_path) if isinstance(config_path, str) else config_path
     config = Config.load(config_path=resolved_path)
-    config_exists = resolved_path is not None and resolved_path.exists() if resolved_path else (
-        Config.get_default_config_path().exists()
+    config_exists = (
+        resolved_path is not None and resolved_path.exists()
+        if resolved_path
+        else (Config.get_default_config_path().exists())
     )
     actual_config_path = config.get_config_path() or Config.get_default_config_path()
     ctx = config.resolve()
@@ -353,10 +356,10 @@ def _client_from_config(
         )
     elif ctx.user:
         client_config = ctx.user.get_client_config()
-        default_headers = client_config.get("default_headers", {})
-        if isinstance(default_headers, dict):
-            auth_header = default_headers.get("Authorization", "")
-            if isinstance(auth_header, str) and auth_header.startswith("Bearer "):
-                auth = auth_header.removeprefix("Bearer ")
+        raw_headers = client_config.get("default_headers")
+        if isinstance(raw_headers, dict):
+            raw_auth = dict(raw_headers).get("Authorization")
+            if isinstance(raw_auth, str) and raw_auth.startswith("Bearer "):
+                auth = raw_auth.removeprefix("Bearer ")
 
     return cls(base_url=str(ctx.cluster.base_url), workspace=ctx.workspace, auth=auth)

@@ -105,12 +105,14 @@ class Config(BaseModel):
                 )
 
             user.clear()
-            user.update({
-                "name": user_name,
-                "type": "oauth",
-                "token": token,
-                "refresh_token": None,
-            })
+            user.update(
+                {
+                    "name": user_name,
+                    "type": "oauth",
+                    "token": token,
+                    "refresh_token": None,
+                }
+            )
             migrated_count += 1
 
         if migrated_count:
@@ -148,9 +150,9 @@ class Config(BaseModel):
     @classmethod
     def create(cls, config_path: Path, config_file: ConfigFile, overrides: ConfigParams | None = None) -> Self:
         env_values = cls._load_from_env()
-        merged = {**env_values}
+        merged: dict[str, object] = {**env_values}
         if overrides:
-            merged.update(overrides)
+            merged.update(dict(overrides))
 
         config = cls.model_validate(merged)
         config._config_file = config_file
@@ -273,7 +275,7 @@ class Config(BaseModel):
         if not self._config_file.contexts:
             return self._create_default_config()
 
-        context_name = self.current_context or self._config_file.current_context
+        context_name = self.current_context or self._config_file.current_context or DEFAULT_CONTEXT
 
         context = None
         for ctx in self._config_file.contexts:

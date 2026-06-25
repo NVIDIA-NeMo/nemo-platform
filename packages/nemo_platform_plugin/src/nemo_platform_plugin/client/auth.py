@@ -517,9 +517,7 @@ def _build_refresh_lock_path(config_path: Path, context_name: str) -> Path:
     return config_path.with_name(f"{config_path.name}.{safe_context}.oauth-refresh.lock")
 
 
-def _make_refresh_lock(
-    config_path: Path, context_name: str
-) -> Callable[[], AbstractContextManager[None]]:
+def _make_refresh_lock(config_path: Path, context_name: str) -> Callable[[], AbstractContextManager[None]]:
     """Create a cross-process file lock for serializing token refreshes."""
     lock_path = _build_refresh_lock_path(config_path, context_name)
 
