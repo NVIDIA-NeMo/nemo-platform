@@ -10,9 +10,9 @@ Response models are standalone: they translate from the stored entity via
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 
-from nmp.common.entities.values import DatetimeFilter, Filter
+from nmp.common.entities.values import DatetimeFilter, Filter, NumberFilter, map_entity_field
 from nmp.intake.entities.experiments import Experiment, ExperimentGroup
 from nmp.intake.spans.domain import SpanStatus
 from nmp.intake.spans.experiment_session_repository import ExperimentSessionRow
@@ -188,6 +188,25 @@ class ExperimentFilter(Filter):
             "When true, returns only pinned experiments. When false, returns only unpinned experiments. "
             "Omit to return both."
         ),
+    )
+    # Rollup-metric filters. These live in ClickHouse, not the entity store, so they're declared as
+    # self-mapping namespaces (the path is left untranslated) and applied in the application layer
+    # after rollup hydration rather than forwarded to Postgres. Stat sub-paths mirror the sort grammar:
+    # filter[cost_usd.mean][gte]=0.8, filter[evaluators.<name>.mean][lte]=0.5, filter[run_count][gte]=5.
+    run_count: Annotated[NumberFilter | None, map_entity_field("run_count")] = Field(
+        default=None, description="Filter by run count, e.g. filter[run_count][gte]=5."
+    )
+    cost_usd: Annotated[dict[str, NumberFilter] | None, map_entity_field("cost_usd", namespace=True)] = Field(
+        default=None, description="Filter by a cost_usd rollup stat, e.g. filter[cost_usd.mean][lte]=0.5."
+    )
+    latency_ms: Annotated[dict[str, NumberFilter] | None, map_entity_field("latency_ms", namespace=True)] = Field(
+        default=None, description="Filter by a latency_ms rollup stat, e.g. filter[latency_ms.p95][lte]=1000."
+    )
+    evaluators: Annotated[
+        dict[str, dict[str, NumberFilter]] | None, map_entity_field("evaluators", namespace=True)
+    ] = Field(
+        default=None,
+        description="Filter by an evaluator rollup stat, e.g. filter[evaluators.<name>.mean][gte]=0.8.",
     )
 
 
