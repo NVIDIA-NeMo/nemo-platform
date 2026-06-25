@@ -1991,18 +1991,103 @@ async def test_vllm_create_emits_pvc_and_job_only(k8s_backend, sample_deployment
     assert job.spec.template.spec.containers[0].resources.requests["nvidia.com/gpu"] == "2"
 
 
+def _generic_config(*, gpu: int = 0, image="nvcr.io/nim/nvidia/nemoguard-jailbreak-detect", tag="1.10.1"):
+    """A minimal generic ModelDeploymentConfig-like object (no model weights)."""
+    return SimpleNamespace(
+        engine="generic",
+        model_spec=SimpleNamespace(
+            model_type=None,
+            model_namespace=None,
+            model_name=None,
+            model_revision=None,
+            chat_template=None,
+            tool_call_config=None,
+            lora_enabled=False,
+        ),
+        executor_config=SimpleNamespace(
+            gpu=gpu,
+            disk_size="50Gi",
+            image_name=image,
+            image_tag=tag,
+            health_check_path="/v1/health/ready",
+            additional_envs={"FOO": "bar"},
+            additional_args=["--port", "8000"],
+            k8s_nim_operator_config=None,
+            override_config=None,
+        ),
+    )
+
+
 @pytest.mark.asyncio
-async def test_generic_engine_rejected_on_k8s(k8s_backend, sample_deployment):
-    """The generic engine is explicitly unsupported on the k8s backend."""
+async def test_generic_create_emits_deployment_and_service_no_pvc(k8s_backend, sample_deployment):
+    """Generic create emits the Deployment + Service immediately, with no PVC/puller Job."""
     backend = _vllm_backend(k8s_backend)
-    config = _vllm_config()
-    config.engine = "generic"
+    config = _generic_config()
+
+    created_dep = MagicMock()
+    created_dep.metadata.name = backend._get_resource_name(sample_deployment)
+    created_dep.metadata.uid = "dep-uid"
+    backend._apps_v1.create_namespaced_deployment.return_value = created_dep
+
     _sync_reconcilers(backend)
     result = await backend.create_model_deployment(
         ModelContext(model_deployment=sample_deployment, model_deployment_config=config, model_entity=None)
     )
-    assert result.status == "ERROR"
-    assert "generic" in result.status_message.lower()
+
+    assert result.status == "PENDING"
+    backend._apps_v1.create_namespaced_deployment.assert_called_once()
+    backend._core_v1.create_namespaced_service.assert_called_once()
+    # No model weights for generic: no PVC, no puller Job.
+    backend._core_v1.create_namespaced_persistent_volume_claim.assert_not_called()
+    backend._batch_v1.create_namespaced_job.assert_not_called()
+
+    # The container runs the user's image + raw args + env verbatim, with no
+    # model-store volume mounted.
+    dep_obj = backend._apps_v1.create_namespaced_deployment.call_args.kwargs["body"]
+    container = dep_obj.spec.template.spec.containers[0]
+    assert container.image == "nvcr.io/nim/nvidia/nemoguard-jailbreak-detect:1.10.1"
+    assert container.args == ["--port", "8000"]
+    assert {e.name: e.value for e in container.env} == {"FOO": "bar"}
+    volume_names = {v.name for v in dep_obj.spec.template.spec.volumes}
+    assert "model-store" not in volume_names
+    mount_names = {m.name for m in container.volume_mounts}
+    assert "model-store" not in mount_names
+    # Readiness/startup probes use the explicit health_check_path.
+    assert container.readiness_probe.http_get.path == "/v1/health/ready"
+
+
+@pytest.mark.asyncio
+async def test_generic_status_ready_when_deployment_ready(k8s_backend, sample_deployment):
+    """Generic status projects the serving Deployment's readiness directly (no Job/PVC)."""
+    backend = _vllm_backend(k8s_backend)
+    config = _generic_config()
+
+    dep = MagicMock()
+    dep.status.ready_replicas = 1
+    backend._apps_v1.read_namespaced_deployment.return_value = dep
+
+    _sync_reconcilers(backend)
+    result = await backend.get_model_deployment_status(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=config)
+    )
+
+    assert result.status == "READY"
+    # Generic status never consults the puller Job.
+    backend._batch_v1.read_namespaced_job.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_generic_status_lost_when_deployment_missing(k8s_backend, sample_deployment):
+    """Generic status reports LOST when the serving Deployment was deleted externally."""
+    backend = _vllm_backend(k8s_backend)
+    config = _generic_config()
+    backend._apps_v1.read_namespaced_deployment.side_effect = _api_exception(404)
+
+    _sync_reconcilers(backend)
+    result = await backend.get_model_deployment_status(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=config)
+    )
+    assert result.status == "LOST"
 
 
 @pytest.mark.asyncio

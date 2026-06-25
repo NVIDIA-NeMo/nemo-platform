@@ -15,13 +15,39 @@ from nmp.core.models.entities import Model as ModelEntity
 from nmp.core.models.entities import ModelDeployment as ModelDeploymentEntity
 from nmp.core.models.entities import ModelDeploymentConfig as ModelDeploymentConfigEntity
 from nmp.core.models.schemas import (
+    ContainerExecutorConfig,
     CreateModelDeploymentConfigRequest,
+    Engine,
     ModelDeploymentConfig,
     ModelDeploymentStatus,
     UpdateModelDeploymentConfigRequest,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _validate_engine_config(engine: Engine, executor_config: ContainerExecutorConfig) -> None:
+    """Validate engine-specific requirements on the executor config.
+
+    The ``generic`` engine runs an arbitrary container with no inference-engine
+    compiler, so it has no platform-default image and no canonical health
+    endpoint. Both ``image_name`` and ``health_check_path`` must therefore be
+    supplied explicitly; the other engines fall back to their configured
+    defaults when these are unset.
+    """
+    if engine != Engine.GENERIC:
+        return
+    missing: list[str] = []
+    if not (executor_config.image_name and executor_config.image_name.strip()):
+        missing.append("image_name")
+    if not (executor_config.health_check_path and executor_config.health_check_path.strip()):
+        missing.append("health_check_path")
+    if missing:
+        raise ValueError(
+            "The 'generic' engine requires executor_config."
+            + " and executor_config.".join(missing)
+            + " to be set (no platform default exists for a generic container)."
+        )
 
 
 class ReferentialIntegrityError(Exception):
@@ -103,6 +129,8 @@ class ModelDeploymentConfigService:
         existing = await self._get_latest_version(workspace, request.name)
         if existing is not None:
             raise ValueError(f"Deployment config with workspace '{workspace}' and name '{request.name}' already exists")
+
+        _validate_engine_config(request.engine, request.executor_config)
 
         if not request.model_entity_id:
             try:
@@ -254,6 +282,8 @@ class ModelDeploymentConfigService:
         current = await self._get_by_base_name_and_version(workspace, name)
         if not current:
             raise ValueError(f"Deployment config with workspace '{workspace}' and name '{name}' does not exist")
+
+        _validate_engine_config(request.engine, request.executor_config)
 
         new_version = current.entity_version + 1
 

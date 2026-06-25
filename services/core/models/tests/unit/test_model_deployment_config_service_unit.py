@@ -165,6 +165,53 @@ async def test_create_deployment_config_already_exists(
 
 
 @pytest.mark.asyncio
+async def test_create_generic_config_requires_image_and_health_path(deployment_config_service, mock_entity_client):
+    """A generic config missing image_name or health_check_path is rejected at create."""
+    mock_list_result = MagicMock()
+    mock_list_result.data = []
+    mock_entity_client.list.return_value = mock_list_result
+
+    request = CreateModelDeploymentConfigRequest(
+        name="generic-config",
+        engine="generic",
+        model_spec=ModelDeploymentConfigModelSpec(),
+        executor_config=ContainerExecutorConfig(gpu=0),  # no image_name / health_check_path
+    )
+
+    with pytest.raises(ValueError, match="image_name"):
+        await deployment_config_service.create_deployment_config(request, "default")
+    mock_entity_client.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_generic_config_succeeds_when_image_and_health_path_set(
+    deployment_config_service, mock_entity_client, sample_config_entity
+):
+    """A generic config with image_name + health_check_path passes validation."""
+    mock_list_result = MagicMock()
+    mock_list_result.data = []
+    mock_entity_client.list.return_value = mock_list_result
+    mock_entity_client.create.return_value = sample_config_entity
+
+    request = CreateModelDeploymentConfigRequest(
+        name="generic-config",
+        engine="generic",
+        model_spec=ModelDeploymentConfigModelSpec(),
+        executor_config=ContainerExecutorConfig(
+            gpu=0,
+            image_name="nvcr.io/nim/nvidia/nemoguard-jailbreak-detect",
+            image_tag="1.10.1",
+            health_check_path="/v1/health/ready",
+        ),
+        model_entity_id="model-entity-123",
+    )
+
+    result = await deployment_config_service.create_deployment_config(request, "default")
+    assert result is not None
+    mock_entity_client.create.assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_get_deployment_config_found(deployment_config_service, mock_entity_client, sample_config_entity):
     """Test retrieving an existing deployment config."""
     # Arrange - for get_latest_version

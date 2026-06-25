@@ -35,7 +35,7 @@ from nmp.common.sdk_factory import get_sdk_on_behalf_of
 from nmp.core.models.app import ModelWeightsType, get_model_weights_type, is_multi_llm_image, parse_model_name_revision
 from nmp.core.models.app.constants import MODEL_MANAGED_BY_LABEL, MODEL_MANAGED_BY_MODELS_CONTROLLER
 from nmp.core.models.app.utils import _get_k8s_safe_name
-from nmp.core.models.controllers.backends import vllm_compiler
+from nmp.core.models.controllers.backends import generic_compiler, vllm_compiler
 from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate
 from nmp.core.models.controllers.backends.common import deployment_config_view
 from nmp.core.models.controllers.backends.docker.config import (
@@ -44,6 +44,7 @@ from nmp.core.models.controllers.backends.docker.config import (
     DockerBackendConfig,
 )
 from nmp.core.models.controllers.backends.engine import (
+    ENGINE_GENERIC,
     ENGINE_HEALTH_PATHS,
     ENGINE_LABEL,
     ENGINE_NIM,
@@ -492,6 +493,10 @@ class DockerDeploymentCreationReconciler:
                 self._backend_config.default_vllm_image,
                 self._backend_config.default_vllm_image_tag,
             )
+        elif engine == ENGINE_GENERIC:
+            # Generic containers have no platform-default image; image_name is
+            # required (enforced at the API layer and again in the compiler).
+            image_name, image_tag = generic_compiler.resolve_generic_image(view)
         else:
             image_name = view.image_name or self._backend_config.default_nimservice_image
             image_tag = view.image_tag or self._backend_config.default_nimservice_image_tag
@@ -893,11 +898,20 @@ class DockerDeploymentCreationReconciler:
                 ), True
             state.tool_call_plugin_path = plugin_path
 
-        # Compile engine-specific environment variables (and serve args for vLLM).
-        vllm_serve_args: list[str] | None = None
-        if engine == ENGINE_VLLM:
+        # Compile engine-specific environment variables (and serve args for
+        # arg-configured engines: vLLM and generic). NIM is configured purely
+        # via env, so it leaves the container command unset.
+        serve_args: list[str] | None = None
+        if engine == ENGINE_GENERIC:
+            # Generic: run the image with the user's raw env + args verbatim. The
+            # platform synthesizes nothing (no served-model-name, no LoRA, etc.).
+            env_vars = generic_compiler.compile_generic_env_vars(view)
+            generic_args = generic_compiler.compile_generic_args(view)
+            # Only override the image's command when the user supplied args.
+            serve_args = generic_args or None
+        elif engine == ENGINE_VLLM:
             env_vars = vllm_compiler.compile_vllm_env_vars(view)
-            vllm_serve_args = vllm_compiler.compile_vllm_args(view, state.model_entity)
+            serve_args = vllm_compiler.compile_vllm_args(view, state.model_entity)
             if view.lora_enabled:
                 # vLLM's lora_filesystem_resolver validates that
                 # VLLM_LORA_RESOLVER_CACHE_DIR exists at startup, before the adapter
@@ -1021,10 +1035,12 @@ class DockerDeploymentCreationReconciler:
                 "restart_policy": {"Name": "unless-stopped"},
             }
 
-            # vLLM serve args are passed as the container command (appended to the
-            # image's `vllm serve` entrypoint). NIM is configured purely via env.
-            if vllm_serve_args is not None:
-                create_args["command"] = vllm_serve_args
+            # Serve args are passed as the container command (appended to the
+            # image's entrypoint). vLLM uses its compiled `vllm serve` args;
+            # generic uses the user's raw additional_args. NIM is configured
+            # purely via env and leaves the command unset.
+            if serve_args is not None:
+                create_args["command"] = serve_args
 
             if nim_config.gpu > 1:
                 fixed = MODELS_DOCKER_NIM_MULTI_GPU_SHM_SIZE or self._backend_config.nim_multi_gpu_shm_size
@@ -1055,7 +1071,10 @@ class DockerDeploymentCreationReconciler:
             container_id = container.id[:12]
             logger.info("Container %s started successfully (ID: %s)", container_name, container_id)
 
-            if view.lora_enabled:
+            # The generic engine has no LoRA semantics (no engine compiler to
+            # wire the adapter sidecar against), so never attach the sidecar for
+            # it even if lora_enabled was set.
+            if view.lora_enabled and engine != ENGINE_GENERIC:
                 cfg = get_platform_config()
                 image = get_qualified_image(self._backend_config.lora_sidecar_image_name)
                 sidecar_envs = cfg.to_shared_envvars()

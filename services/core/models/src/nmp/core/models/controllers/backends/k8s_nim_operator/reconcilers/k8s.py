@@ -27,10 +27,15 @@ from nemo_platform.types.models.model_entity import ModelEntity
 from nmp.common.config import get_platform_config
 from nmp.core.models.app import get_deployment_resource_name
 from nmp.core.models.app.constants import MODEL_MANAGED_BY_LABEL, MODEL_MANAGED_BY_MODELS_CONTROLLER
-from nmp.core.models.controllers.backends import vllm_compiler
+from nmp.core.models.controllers.backends import generic_compiler, vllm_compiler
 from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate
 from nmp.core.models.controllers.backends.common import DeploymentConfigView
-from nmp.core.models.controllers.backends.engine import ENGINE_VLLM, resolve_health_path
+from nmp.core.models.controllers.backends.engine import (
+    ENGINE_GENERIC,
+    ENGINE_VLLM,
+    config_engine,
+    resolve_health_path,
+)
 from nmp.core.models.controllers.backends.k8s_nim_operator import vllm_k8s_compiler
 from nmp.core.models.controllers.backends.k8s_nim_operator.config import K8sNimOperatorConfig
 from nmp.core.models.controllers.backends.k8s_nim_operator.reconcilers.base import (
@@ -44,12 +49,21 @@ logger = getLogger(__name__)
 
 
 class K8sReconciler(Reconciler):
-    """Reconciles a vLLM deployment by emitting native Kubernetes objects.
+    """Reconciles a deployment by emitting native Kubernetes objects directly.
 
-    Holds its own typed API clients (CoreV1 / AppsV1 / BatchV1), composes a
-    :class:`StatusProjector` (serving-pod readiness/diagnostics) and a
-    :class:`ResourceDeleter`, and drives the staged rollout itself, advancing
-    creation one phase at a time as it is polled via :meth:`get_status`.
+    Handles two engines that share this direct-emission path:
+
+    * ``vllm`` -- a staged rollout (PVC + weight-puller Job -> serving Deployment
+      + Service), advanced one phase at a time as it is polled via
+      :meth:`get_status`.
+    * ``generic`` -- a self-contained container image with no model weights, so
+      it skips the PVC/puller entirely and emits the serving Deployment +
+      Service immediately at create.
+
+    The engine is read from the resolved config (:func:`config_engine`) and
+    branches the create/update/status paths. Holds its own typed API clients
+    (CoreV1 / AppsV1 / BatchV1), composes a :class:`StatusProjector` (serving-pod
+    readiness/diagnostics) and a :class:`ResourceDeleter`.
     """
 
     def __init__(
@@ -76,11 +90,16 @@ class K8sReconciler(Reconciler):
     # ------------------------------------------------------------------
 
     async def create(self, resolved: ResolvedDeployment) -> DeploymentStatusUpdate:
-        """Create phase P0: emit the PVC + weight-puller Job.
+        """Create the deployment's backend resources.
 
-        The Deployment + Service are created later by the status path once the Job
-        completes (controller-side weight-readiness gating).
+        For ``vllm`` this is phase P0: emit the PVC + weight-puller Job (the
+        Deployment + Service are created later by the status path once the Job
+        completes -- controller-side weight-readiness gating). For ``generic``
+        there are no weights to pull, so the serving Deployment + Service are
+        emitted immediately.
         """
+        if config_engine(resolved.config) == ENGINE_GENERIC:
+            return self._create_generic(resolved)
         deployment = resolved.deployment
         logger.info(
             f"Creating vLLM deployment: {deployment.workspace}/{deployment.name} (version: {deployment.entity_version})"
@@ -148,7 +167,12 @@ class K8sReconciler(Reconciler):
         Unchanged-source updates patch the Deployment in place (never delete it),
         so the owned PVC + Job survive. A changed source deletes the Deployment
         (cascading PVC + Job) and drops back to the phased create.
+
+        The ``generic`` engine has no weights, so its update simply re-applies the
+        serving Deployment + Service from the latest config.
         """
+        if config_engine(resolved.config) == ENGINE_GENERIC:
+            return self._update_generic(resolved)
         deployment = resolved.deployment
         logger.info(
             f"Updating vLLM deployment: {deployment.workspace}/{deployment.name} (version: {deployment.entity_version})"
@@ -191,7 +215,12 @@ class K8sReconciler(Reconciler):
         Reads the puller Job + (once created) the Deployment. When the Job has
         completed and the Deployment doesn't exist yet, this advances creation
         (phase P3) by emitting the Deployment + Service.
+
+        The ``generic`` engine has no puller phase: there is always a Deployment
+        once create has run, so status is just its readiness.
         """
+        if config_engine(resolved.config) == ENGINE_GENERIC:
+            return self._get_status_generic(resolved)
         deployment = resolved.deployment
         resource_name = resolved.resource_name
         view = resolved.view
@@ -321,7 +350,7 @@ class K8sReconciler(Reconciler):
 
         def _has_vllm_engine_label(obj) -> bool:
             labels = getattr(getattr(obj, "metadata", None), "labels", None)
-            return isinstance(labels, dict) and labels.get("nmp.nvidia.com/engine") == ENGINE_VLLM
+            return isinstance(labels, dict) and labels.get("nmp.nvidia.com/engine") in (ENGINE_VLLM, ENGINE_GENERIC)
 
         try:
             dep = self._apps_v1.read_namespaced_deployment(name=resource_name, namespace=self._k8s_namespace)
@@ -463,6 +492,149 @@ class K8sReconciler(Reconciler):
         self._set_owner_reference_on_pvc(resource_name, owner_ref)
 
         return DeploymentStatusUpdate(status="PENDING", status_message="Starting vLLM server", host_url=None)
+
+    # ------------------------------------------------------------------
+    # generic-engine helpers (no model weights / no PVC / no puller Job)
+    # ------------------------------------------------------------------
+
+    def _create_generic(self, resolved: ResolvedDeployment) -> DeploymentStatusUpdate:
+        """Create a generic deployment: emit the Deployment + Service immediately.
+
+        There are no model weights to pull, so there is no PVC and no puller Job;
+        the serving objects are created in one shot.
+        """
+        deployment = resolved.deployment
+        logger.info(
+            f"Creating generic deployment: {deployment.workspace}/{deployment.name} "
+            f"(version: {deployment.entity_version})"
+        )
+        try:
+            self._create_generic_serving_objects(deployment, resolved.resource_name, resolved.view)
+            return DeploymentStatusUpdate(
+                status="PENDING",
+                status_message="Starting container",
+                host_url=self._status.host_url(resolved.resource_name),
+            )
+        except Exception as e:
+            logger.error(f"Failed to create generic deployment for {deployment.workspace}/{deployment.name}: {e}")
+            return DeploymentStatusUpdate(
+                status="ERROR",
+                status_message=f"Failed to create deployment {deployment.workspace}/{deployment.name} due to a service backend error",
+                error_details={"error": str(e), "error_type": type(e).__name__},
+                host_url=None,
+            )
+
+    def _update_generic(self, resolved: ResolvedDeployment) -> DeploymentStatusUpdate:
+        """Update a generic deployment by re-applying its serving objects.
+
+        Generic has no weight source, so there is no re-pull decision: if the
+        Deployment exists it is patched in place, otherwise it is (re)created.
+        """
+        deployment = resolved.deployment
+        logger.info(
+            f"Updating generic deployment: {deployment.workspace}/{deployment.name} "
+            f"(version: {deployment.entity_version})"
+        )
+        try:
+            self._create_generic_serving_objects(deployment, resolved.resource_name, resolved.view)
+            return DeploymentStatusUpdate(
+                status="PENDING",
+                status_message="Update accepted",
+                host_url=self._status.host_url(resolved.resource_name),
+            )
+        except Exception as e:
+            logger.error(f"Failed to update generic deployment for {deployment.workspace}/{deployment.name}: {e}")
+            return DeploymentStatusUpdate(
+                status="ERROR",
+                status_message=f"Failed to update deployment {deployment.workspace}/{deployment.name} due to a service backend error",
+                error_details={"error": str(e), "error_type": type(e).__name__},
+                host_url=None,
+            )
+
+    def _get_status_generic(self, resolved: ResolvedDeployment) -> DeploymentStatusUpdate:
+        """Project a generic deployment's status from its serving Deployment.
+
+        The Deployment is created at create time (no staged rollout), so a 404
+        means it was deleted externally -> LOST.
+        """
+        resource_name = resolved.resource_name
+        try:
+            self._apps_v1.read_namespaced_deployment(name=resource_name, namespace=self._k8s_namespace)
+        except k8s_client.exceptions.ApiException as e:
+            if e.status != 404:
+                raise
+            return DeploymentStatusUpdate(
+                status="LOST",
+                status_message="Serving Deployment not found; resources may have been deleted externally.",
+                host_url=None,
+            )
+        return self._project_deployment_readiness(resource_name)
+
+    def _create_generic_serving_objects(
+        self,
+        deployment: ModelDeployment,
+        resource_name: str,
+        view: DeploymentConfigView,
+    ) -> None:
+        """Create (or no-op if present) the generic Deployment + Service.
+
+        Mirrors the vLLM serving-object creation but without any PVC/model-store
+        mount: a generic container runs purely from its image. uid/gid are left
+        unset so the image's own user runs (an arbitrary container should not be
+        forced into vLLM's or NIM's user).
+        """
+        engine = ENGINE_GENERIC
+        health_path = resolve_health_path(engine, view)
+        image_name, image_tag = generic_compiler.resolve_generic_image(view)
+        args = generic_compiler.compile_generic_args(view)
+        env = generic_compiler.compile_generic_env_vars(view)
+
+        startup_grace = self._backend_config.default_startup_probe_grace_period_seconds or 600
+
+        dep_obj = vllm_k8s_compiler.compile_deployment(
+            resource_name=resource_name,
+            workspace=deployment.workspace,
+            name=deployment.name,
+            engine=engine,
+            image=f"{image_name}:{image_tag}",
+            args=args,
+            health_path=health_path,
+            env=env,
+            gpu=view.gpu,
+            namespace=self._k8s_namespace,
+            service_account_name=self._backend_config.service_account_name,
+            user_id=None,
+            group_id=None,
+            shared_memory_size_limit=self._backend_config.default_shared_memory_size_limit,
+            startup_grace_seconds=startup_grace,
+            mount_model_store=False,
+        )
+        svc_obj = vllm_k8s_compiler.compile_service(
+            resource_name=resource_name,
+            workspace=deployment.workspace,
+            name=deployment.name,
+            engine=engine,
+            namespace=self._k8s_namespace,
+        )
+
+        try:
+            created_dep = self._apps_v1.create_namespaced_deployment(namespace=self._k8s_namespace, body=dep_obj)
+            logger.info(f"Created generic Deployment {resource_name} in {self._k8s_namespace}")
+        except k8s_client.exceptions.ApiException as e:
+            if e.status != 409:
+                raise
+            created_dep = self._apps_v1.read_namespaced_deployment(name=resource_name, namespace=self._k8s_namespace)
+
+        owner_ref = k8s_client.V1OwnerReference(
+            api_version="apps/v1",
+            kind="Deployment",
+            name=created_dep.metadata.name,
+            uid=created_dep.metadata.uid,
+            controller=True,
+            block_owner_deletion=True,
+        )
+        svc_obj.metadata.owner_references = [owner_ref]
+        self._create_or_skip(self._core_v1.create_namespaced_service, svc_obj, "Service")
 
     def _delete_puller_job(self, resource_name: str) -> bool:
         """Delete the puller Job and confirm its pod is gone (releases RWO volume).

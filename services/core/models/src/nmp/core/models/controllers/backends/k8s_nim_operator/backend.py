@@ -235,22 +235,21 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
     def _select_reconciler(self, engine: str) -> Optional[Reconciler]:
         """Select the reconciler for an engine.
 
-        Returns the vLLM reconciler for ``vllm``, the NIM-operator reconciler for
-        any other engine (the default), and ``None`` for ``generic`` -- which the
-        callers treat as the "unsupported engine" rejection (see
-        :meth:`_unsupported_engine`).
+        The direct-emission :class:`K8sReconciler` handles both ``vllm`` and
+        ``generic`` (it branches internally on the engine); every other engine
+        defaults to the NIM-operator reconciler. ``None`` is reserved for a
+        genuinely unknown engine, which the callers treat as the "unsupported
+        engine" rejection (see :meth:`_unsupported_engine`).
         """
-        if engine == ENGINE_VLLM:
+        if engine in (ENGINE_VLLM, ENGINE_GENERIC):
             return self._k8s_reconciler
-        if engine == ENGINE_GENERIC:
-            return None
         return self._nim_reconciler
 
     @staticmethod
     def _unsupported_engine(engine: str) -> DeploymentStatusUpdate:
         return DeploymentStatusUpdate(
             status="ERROR",
-            status_message="The 'generic' engine is not yet supported on the k8s backend.",
+            status_message=f"The '{engine}' engine is not supported on the k8s backend.",
             error_details={"error": "unsupported_engine", "engine": engine},
             host_url=None,
         )

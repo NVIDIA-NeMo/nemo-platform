@@ -187,6 +187,34 @@ def test_compile_deployment_basic():
     assert vols["dshm"].empty_dir.medium == "Memory"
 
 
+def test_compile_deployment_no_model_store_for_generic():
+    """mount_model_store=False omits the model-store PVC volume + mount (generic engine)."""
+    dep = c.compile_deployment(
+        resource_name="md-default-jb",
+        workspace="default",
+        name="jb",
+        engine="generic",
+        image="nvcr.io/nim/nvidia/nemoguard-jailbreak-detect:1.10.1",
+        args=["--port", "8000"],
+        health_path="/v1/health/ready",
+        gpu=0,
+        mount_model_store=False,
+    )
+    pod = dep.spec.template.spec
+    ctr = pod.containers[0]
+
+    mount_names = {m.name for m in ctr.volume_mounts}
+    assert "model-store" not in mount_names
+    # scratch + dshm are still present (harmless emptyDirs).
+    assert "scratch" in mount_names
+    assert "dshm" in mount_names
+
+    vol_names = {v.name for v in pod.volumes}
+    assert "model-store" not in vol_names
+    assert "scratch" in vol_names
+    assert "dshm" in vol_names
+
+
 def test_compile_deployment_cpu_only_no_gpu():
     dep = c.compile_deployment(
         resource_name="r",
