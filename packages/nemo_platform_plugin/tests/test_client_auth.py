@@ -306,6 +306,37 @@ class TestConfig:
         assert isinstance(ctx.user, OAuthUser)
         assert ctx.user.token.get_secret_value() == "round-trip-token"
 
+    def test_migrate_legacy_api_key_to_oauth(self, tmp_path):
+        """Legacy api-key users are migrated to oauth on load."""
+        config_data = {
+            "current_context": "test",
+            "clusters": [{"name": "test-cluster", "base_url": "http://localhost:9090"}],
+            "users": [{"name": "test-user", "type": "api-key", "api_key": "my-api-key"}],
+            "contexts": [{"name": "test", "cluster": "test-cluster", "user": "test-user"}],
+        }
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(yaml.safe_dump(config_data))
+
+        config = Config.load(config_path=config_file)
+        ctx = config.resolve()
+        assert isinstance(ctx.user, OAuthUser)
+        assert ctx.user.token.get_secret_value() == "my-api-key"
+
+    def test_migrate_legacy_api_key_empty_becomes_no_auth(self, tmp_path):
+        """Legacy api-key users with empty keys become no-auth."""
+        config_data = {
+            "current_context": "test",
+            "clusters": [{"name": "test-cluster", "base_url": "http://localhost:9090"}],
+            "users": [{"name": "test-user", "type": "api-key", "api_key": ""}],
+            "contexts": [{"name": "test", "cluster": "test-cluster", "user": "test-user"}],
+        }
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(yaml.safe_dump(config_data))
+
+        config = Config.load(config_path=config_file)
+        ctx = config.resolve()
+        assert isinstance(ctx.user, NoAuthUser)
+
     def test_resolve_no_auth_user(self, tmp_path):
         config_data = {
             "current_context": "test",
@@ -365,6 +396,29 @@ class TestFromConfig:
         client = NemoClient.from_config(config_path=config_file)
         assert client.base_url == "http://localhost:9090"
         assert client._auth is None
+
+    def test_from_config_selects_context(self, tmp_path):
+        """from_config(context='staging') uses the staging context, not the default."""
+        config_data = {
+            "current_context": "prod",
+            "clusters": [
+                {"name": "prod-cluster", "base_url": "http://prod:8080"},
+                {"name": "staging-cluster", "base_url": "http://staging:9090"},
+            ],
+            "users": [
+                {"name": "prod-user", "type": "no-auth"},
+                {"name": "staging-user", "type": "no-auth"},
+            ],
+            "contexts": [
+                {"name": "prod", "cluster": "prod-cluster", "user": "prod-user"},
+                {"name": "staging", "cluster": "staging-cluster", "user": "staging-user"},
+            ],
+        }
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(yaml.safe_dump(config_data))
+
+        client = NemoClient.from_config(context="staging", config_path=config_file)
+        assert client.base_url == "http://staging:9090"
 
     def test_from_config_nonexistent_path_raises(self, tmp_path):
         missing = tmp_path / "nope.yaml"
@@ -426,3 +480,39 @@ class TestNemoClientProvider:
             assert result is expected_client
         finally:
             set_client_provider(None)
+
+
+# ---------------------------------------------------------------------------
+# Security: token repr and endpoint validation
+# ---------------------------------------------------------------------------
+
+
+class TestSecurity:
+    def test_token_set_repr_hides_tokens(self):
+        ts = TokenSet(access_token="secret-access", refresh_token="secret-refresh", expires_at=123.0)
+        r = repr(ts)
+        assert "secret-access" not in r
+        assert "secret-refresh" not in r
+        assert "123.0" in r  # expires_at is still visible
+
+    def test_oidc_provider_repr_hides_tokens(self):
+        provider = OIDCTokenProvider(
+            token_endpoint="https://idp/token",
+            client_id="client",
+            tokens=TokenSet(access_token="secret", expires_at=999.0),
+        )
+        r = repr(provider)
+        assert "secret" not in r
+        assert "idp" in r  # non-sensitive fields are visible
+
+    def test_refresh_token_grant_rejects_http_endpoint(self):
+        from nemo_platform_plugin.client.oidc import _validate_token_endpoint
+
+        # HTTPS is fine
+        _validate_token_endpoint("https://idp.example.com/token")
+        # HTTP loopback is fine
+        _validate_token_endpoint("http://localhost:8080/token")
+        _validate_token_endpoint("http://127.0.0.1:8080/token")
+        # HTTP non-loopback is rejected
+        with pytest.raises(ValueError, match="HTTPS"):
+            _validate_token_endpoint("http://evil.example.com/token")

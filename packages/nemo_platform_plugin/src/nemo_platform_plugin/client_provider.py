@@ -127,6 +127,12 @@ class DefaultNemoClientProvider:
                     headers["X-NMP-Principal-Email"] = principal["email"]
                 if principal.get("groups"):
                     headers["X-NMP-Principal-Groups"] = ",".join(principal["groups"])
+                if principal.get("on_behalf_of"):
+                    headers["X-NMP-Principal-On-Behalf-Of"] = principal["on_behalf_of"]
+                    if principal.get("on_behalf_of_email"):
+                        headers["X-NMP-Principal-On-Behalf-Of-Email"] = principal["on_behalf_of_email"]
+                    if principal.get("on_behalf_of_groups"):
+                        headers["X-NMP-Principal-On-Behalf-Of-Groups"] = ",".join(principal["on_behalf_of_groups"])
 
         if on_behalf_of is not None:
             headers["X-NMP-Principal-On-Behalf-Of"] = on_behalf_of

@@ -330,11 +330,14 @@ def _client_from_config(
 ) -> _ClientT:
     """Shared implementation for NemoClient.from_config / AsyncNemoClient.from_config."""
     from nemo_platform_plugin.client.config.config import Config
-    from nemo_platform_plugin.client.config.models import OAuthUser
+    from nemo_platform_plugin.client.config.models import ConfigParams, OAuthUser
     from nemo_platform_plugin.client.oidc_factory import resolve_oidc_provider
 
     resolved_path = Path(config_path) if isinstance(config_path, str) else config_path
-    config = Config.load(config_path=resolved_path)
+    overrides: ConfigParams | None = None
+    if context is not None:
+        overrides = {"current_context": context}
+    config = Config.load(config_path=resolved_path, overrides=overrides)
     actual_config_path = config.get_config_path() or Config.get_default_config_path()
     config_exists = actual_config_path.exists()
     ctx = config.resolve()

@@ -24,6 +24,7 @@ from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -196,6 +197,19 @@ def build_effective_scope(requested_scopes: str, scope_prefix: str | None) -> st
 DEFAULT_REFRESH_MARGIN_SECONDS = 60
 
 
+def _validate_token_endpoint(token_endpoint: str) -> None:
+    """Reject non-HTTPS token endpoints (except loopback for local dev)."""
+    parsed = urlparse(token_endpoint)
+    if parsed.scheme == "https":
+        return
+    if parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1", "::1"}:
+        return
+    raise ValueError(
+        f"OIDC token endpoint must use HTTPS (got {token_endpoint!r}). "
+        "HTTP is only allowed for loopback addresses (localhost, 127.0.0.1, ::1)."
+    )
+
+
 def refresh_token_grant(
     token_endpoint: str,
     client_id: str,
@@ -203,8 +217,9 @@ def refresh_token_grant(
     *,
     scope: str | None = None,
     timeout: float = 30.0,
-) -> dict:
+) -> dict[str, Any]:
     """Execute OAuth refresh_token grant and return token response JSON."""
+    _validate_token_endpoint(token_endpoint)
     data: dict[str, str] = {
         "grant_type": "refresh_token",
         "client_id": client_id,
@@ -238,8 +253,8 @@ def refresh_token_grant(
 class TokenSet:
     """A pair of access + refresh tokens with expiry metadata."""
 
-    access_token: str
-    refresh_token: str | None = None
+    access_token: str = field(repr=False)
+    refresh_token: str | None = field(default=None, repr=False)
     expires_at: float | None = None
 
     @staticmethod
@@ -283,7 +298,7 @@ class OIDCTokenProvider:
 
     token_endpoint: str
     client_id: str
-    tokens: TokenSet = field(default_factory=lambda: TokenSet(access_token=""))
+    tokens: TokenSet = field(default_factory=lambda: TokenSet(access_token=""), repr=False)
     refresh_margin_seconds: float = DEFAULT_REFRESH_MARGIN_SECONDS
     refresh_scope: str | None = None
     load_tokens: Callable[[], TokenSet | None] | None = None

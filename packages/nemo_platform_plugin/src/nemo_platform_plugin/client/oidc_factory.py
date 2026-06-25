@@ -18,6 +18,7 @@ from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
+from nemo_platform_plugin.client.auth import AuthError
 from nemo_platform_plugin.client.oidc import (
     DEFAULT_REFRESH_MARGIN_SECONDS,
     OIDCTokenProvider,
@@ -162,6 +163,12 @@ def resolve_oidc_provider(
     token_endpoint = oidc_config.token_endpoint or ""
     client_id = oidc_config.client_id or ""
     refresh_scope = build_effective_scope(oidc_config.default_scopes, oidc_config.scope_prefix)
+
+    if refresh_token and (not token_endpoint or not client_id):
+        raise AuthError(
+            "OIDC discovery did not return token_endpoint/client_id; "
+            "cannot refresh OAuth tokens. Check cluster auth configuration."
+        )
 
     # Only share the provider (and enable persistence/locking) when reading
     # from an actual config file.  If the caller passed an explicit

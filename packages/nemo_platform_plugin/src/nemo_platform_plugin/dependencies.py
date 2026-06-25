@@ -11,9 +11,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from nemo_platform_plugin.client.client import AsyncNemoClient
+
 if TYPE_CHECKING:
     from nemo_platform import AsyncNeMoPlatform
-    from nemo_platform_plugin.client.client import AsyncNemoClient
     from nemo_platform_plugin.config import PlatformConfig
     from nemo_platform_plugin.entities import EntityClient
 
@@ -52,7 +53,7 @@ def get_sdk_client() -> "AsyncNeMoPlatform":
     )
 
 
-def get_nemo_client() -> "AsyncNemoClient":
+def get_nemo_client() -> AsyncNemoClient:
     """FastAPI dependency for getting an async NemoClient.
 
     This is a placeholder — the actual client is injected via
