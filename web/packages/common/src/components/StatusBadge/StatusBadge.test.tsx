@@ -4,14 +4,13 @@
 import { BadgeStatus, badgeStatus } from '@nemo/common/src/components/StatusBadge/badgeStatus';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge/index';
 import * as customQueries from '@nemo/common/src/tests/customQueries';
-import { queries, render, screen, within } from '@testing-library/react';
+import { queries, render, screen } from '@testing-library/react';
 import { CircleCheck } from 'lucide-react';
 
 const allQueries = {
   ...queries,
   ...customQueries,
 };
-const customScreen = within(document.body, allQueries);
 
 describe('StatusBadge component', () => {
   beforeEach(() => {
@@ -84,8 +83,9 @@ describe('StatusBadge component', () => {
       expect(badge).toBeInTheDocument();
       expect(badge).toHaveTextContent(expectedBadge.label);
 
-      // Check if icon is rendered when icon exists
-      const icon = customScreen.getByRole('img');
+      // Icon is a decorative svg (aria-hidden), so query the lucide class directly
+      // eslint-disable-next-line testing-library/no-node-access
+      const icon = document.querySelector('.lucide');
       expect(icon).toBeInTheDocument();
 
       unmount();
@@ -159,12 +159,14 @@ describe('StatusBadge component', () => {
 
     it('renders icon when config entry has one', () => {
       render(<StatusBadge status="success" statusConfig={STATUS_CONFIG} />);
-      expect(screen.getByRole('img')).toBeInTheDocument();
+      // eslint-disable-next-line testing-library/no-node-access
+      expect(document.querySelector('.lucide-circle-check')).toBeInTheDocument();
     });
 
     it('renders no icon when config entry omits one', () => {
       render(<StatusBadge status="error" statusConfig={STATUS_CONFIG} />);
-      expect(screen.queryByRole('img')).not.toBeInTheDocument();
+      // eslint-disable-next-line testing-library/no-node-access
+      expect(document.querySelector('.lucide')).not.toBeInTheDocument();
     });
 
     it('falls back to provided fallback for unknown status', () => {

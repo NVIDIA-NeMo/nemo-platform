@@ -3,6 +3,7 @@
 
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
 import { render, screen, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 vi.mock('@nvidia/foundations-react-core', () => ({
   Block: ({ children }: React.PropsWithChildren) => <div>{children}</div>,
@@ -152,12 +153,22 @@ vi.mock('@nemo/common/src/components/DataView/internal', () => ({
   },
   TableContent: ({
     className,
+    onClick,
   }: {
     className?: string;
     onClick?: React.MouseEventHandler;
-    onKeyDown?: React.KeyboardEventHandler;
   }) => (
-    <table className={className}>
+    // Attach the delegation handler via a ref callback rather than a JSX onClick
+    // prop, so jsx-a11y doesn't flag this test-only non-interactive <table>.
+    // Production attaches the handler to the real TableContent component.
+    <table
+      className={className}
+      ref={(el) => {
+        if (el) {
+          el.onclick = onClick ? (onClick as unknown as (e: MouseEvent) => void) : null;
+        }
+      }}
+    >
       <tbody>
         {mockRenderedRows.map((cells, rowIdx) => (
           <tr key={rowIdx} data-index={rowIdx}>
@@ -289,7 +300,7 @@ describe('StudioDataView', () => {
       const onRowClick = vi.fn();
       render(<StudioDataView {...defaultProps} onRowClick={onRowClick} />);
 
-      fireEvent.click(screen.getByRole('link', { name: 'Link Bob' }));
+      fireEvent.click(screen.getByRole('link', { name: 'View Bob' }));
 
       expect(onRowClick).not.toHaveBeenCalled();
     });
@@ -337,22 +348,26 @@ describe('StudioDataView', () => {
       expect(targets).toHaveLength(0);
     });
 
-    it('should call onRowClick when Enter is pressed on a keyboard target', () => {
+    it('should call onRowClick when Enter is pressed on a keyboard target', async () => {
+      const user = userEvent.setup();
       const onRowClick = vi.fn();
       render(<StudioDataView {...defaultProps} onRowClick={onRowClick} />);
 
       const targets = screen.getAllByRole('button', { name: 'Open row' });
-      fireEvent.keyDown(targets[0], { key: 'Enter' });
+      targets[0].focus();
+      await user.keyboard('{Enter}');
 
       expect(onRowClick).toHaveBeenCalledWith(testData[0], 0);
     });
 
-    it('should call onRowClick when Space is pressed on a keyboard target', () => {
+    it('should call onRowClick when Space is pressed on a keyboard target', async () => {
+      const user = userEvent.setup();
       const onRowClick = vi.fn();
       render(<StudioDataView {...defaultProps} onRowClick={onRowClick} />);
 
       const targets = screen.getAllByRole('button', { name: 'Open row' });
-      fireEvent.keyDown(targets[1], { key: ' ' });
+      targets[1].focus();
+      await user.keyboard(' ');
 
       expect(onRowClick).toHaveBeenCalledWith(testData[1], 1);
     });
@@ -465,12 +480,14 @@ describe('StudioDataView', () => {
       expect(onRowClick).toHaveBeenCalledWith(dataWithSubRows[0].subRows![0], 0);
     });
 
-    it('should resolve a sub-row correctly on keyboard activation', () => {
+    it('should resolve a sub-row correctly on keyboard activation', async () => {
+      const user = userEvent.setup();
       const onRowClick = vi.fn();
       render(<StudioDataView {...subRowProps} onRowClick={onRowClick} />);
 
       const targets = screen.getAllByRole('button', { name: 'Open row' });
-      fireEvent.keyDown(targets[1], { key: 'Enter' });
+      targets[1].focus();
+      await user.keyboard('{Enter}');
 
       // Same index semantic as click: parent's top-level data position
       expect(onRowClick).toHaveBeenCalledWith(dataWithSubRows[0].subRows![0], 0);
