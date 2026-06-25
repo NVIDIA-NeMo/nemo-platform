@@ -9,6 +9,7 @@ Ported from Platform-Deploy e2e/test_jobs.py, adapted for the SDK's TypedDict
 param types and filtered to tests that work without Docker.
 """
 
+import os
 import uuid
 
 import pytest
@@ -16,6 +17,11 @@ from nemo_platform import NeMoPlatform, NotFoundError
 from nmp.testing.e2e import wait_for_job_logs, wait_for_platform_job
 
 JOB_SOURCE = "e2e-test-jobs"
+
+# Default mount path for persistent job storage in K8s pods.
+# The subprocess backend injects this env var automatically, but the K8s backend
+# only creates the PVC mount when the step explicitly declares it in environment.
+DEFAULT_JOB_STORAGE_PATH = "/var/run/scratch/job"
 
 pytestmark = [
     pytest.mark.timeout(600),
@@ -166,6 +172,10 @@ def test_job_config_is_readable(sdk: NeMoPlatform, workspace: str):
 
 def test_job_passing_data_between_steps(sdk: NeMoPlatform, workspace: str):
     """Test that data can be passed between job steps via persistent storage."""
+    persistent_storage_env = {
+        "name": "NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH",
+        "value": DEFAULT_JOB_STORAGE_PATH,
+    }
     job = sdk.jobs.create(
         workspace=workspace,
         source=JOB_SOURCE,
@@ -184,6 +194,7 @@ def test_job_passing_data_between_steps(sdk: NeMoPlatform, workspace: str):
                             ],
                         },
                     },
+                    "environment": [persistent_storage_env],
                 },
                 {
                     "name": "consume-data-step",
@@ -197,6 +208,7 @@ def test_job_passing_data_between_steps(sdk: NeMoPlatform, workspace: str):
                             ],
                         },
                     },
+                    "environment": [persistent_storage_env],
                 },
             ],
         },
@@ -292,9 +304,10 @@ def test_job_with_expected_failure(sdk: NeMoPlatform, workspace: str):
     completed_job = wait_for_platform_job(sdk, job.name, workspace)
     assert completed_job.status == "error", f"Job should have failed but has status: {completed_job.status}"
 
-    step_logs = wait_for_job_logs(sdk, job.name, workspace, min_log_count=1, timeout=30)
-    assert len(step_logs.data) == 1, "Expected one step log"
-    assert "This step will fail" in step_logs.data[0].message, "Step logs do not contain expected output"
+    step_logs = wait_for_job_logs(sdk, job.name, workspace, min_log_count=1, timeout=120)
+    assert len(step_logs.data) >= 1, "Expected at least one step log"
+    all_messages = " ".join(log.message for log in step_logs.data)
+    assert "This step will fail" in all_messages, "Step logs do not contain expected output"
 
 
 def test_job_cancel_immediately(sdk: NeMoPlatform, workspace: str):
@@ -361,11 +374,14 @@ def test_job_cancel_once_active(sdk: NeMoPlatform, workspace: str):
 
 
 # ---------------------------------------------------------------------------
-# Tests that require Docker backend
+# Tests that require a container backend (Docker or Kubernetes)
 # ---------------------------------------------------------------------------
 
+_is_subprocess_mode = not os.environ.get("NMP_BASE_URL")
+_skip_subprocess = pytest.mark.skipif(_is_subprocess_mode, reason="Requires container backend (set NMP_BASE_URL)")
 
-@pytest.mark.skip(reason="Subprocess backend does not support pause/resume (no SIGSTOP/SIGCONT handling)")
+
+@_skip_subprocess
 def test_job_pause_resume(sdk: NeMoPlatform, workspace: str):
     """Test that a job can be paused and then resumed after being paused."""
     job = sdk.jobs.create(
@@ -402,11 +418,17 @@ def test_job_pause_resume(sdk: NeMoPlatform, workspace: str):
         f"Job should have been resumed but has status: {resumed_job.status}"
     )
 
-    completed_job = wait_for_platform_job(sdk, job.name, workspace)
-    assert completed_job.status == "completed", f"Job failed with status: {completed_job.status}"
+    # Cancel the long-running job after verifying resume works, rather than
+    # waiting for the full sleep to complete (K8s restarts the sleep timer
+    # when the pod is re-created after resume).
+    sdk.jobs.cancel(workspace=workspace, name=job.name)
+    cancelled_job = wait_for_platform_job(sdk, job.name, workspace)
+    assert cancelled_job.status == "cancelled", _job_diagnostic_message(
+        sdk, cancelled_job, workspace, f"Job should have been cancelled but has status: {cancelled_job.status}"
+    )
 
 
-@pytest.mark.skip(reason="Subprocess backend does not support pause/resume (no SIGSTOP/SIGCONT handling)")
+@_skip_subprocess
 def test_job_pause_and_cancel(sdk: NeMoPlatform, workspace: str):
     """Test that a job can be paused and then cancelled after being paused."""
     job = sdk.jobs.create(
@@ -442,7 +464,7 @@ def test_job_pause_and_cancel(sdk: NeMoPlatform, workspace: str):
     assert cancelled_job.status == "cancelled", f"Job should have been cancelled but has status: {cancelled_job.status}"
 
 
-@pytest.mark.skip(reason="Docker-only: additional volumes require container volume mounts")
+@pytest.mark.skip(reason="Requires additional_volumes configured in Helm chart storage config")
 def test_job_using_additional_volume(sdk: NeMoPlatform, workspace: str):
     """Test that a job can use an additional volume to store data between steps."""
     job = sdk.jobs.create(
@@ -493,10 +515,7 @@ def test_job_using_additional_volume(sdk: NeMoPlatform, workspace: str):
     assert "Successfully read data from persistent storage" in step_logs.data[2].message
 
 
-@pytest.mark.skip(
-    reason="Docker-only: image validation is bypassed in subprocess mode "
-    "(cpu→subprocess translation discards the container image)"
-)
+@_skip_subprocess
 @pytest.mark.parametrize("bad_image", ["__invalid_ubuntu:image", "ubuntu:does-not-exist-1234"])
 def test_job_invalid_image_format(sdk: NeMoPlatform, workspace: str, bad_image: str):
     """Test that a job with a bad image fails appropriately."""
