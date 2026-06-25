@@ -17,7 +17,10 @@ from nmp.testing.e2e import wait_for_job_logs, wait_for_platform_job
 
 JOB_SOURCE = "e2e-test-jobs"
 
-pytestmark = [pytest.mark.timeout(600)]
+pytestmark = [
+    pytest.mark.timeout(600),
+    pytest.mark.e2e_config("e2e/configs/local-subprocess.yaml"),
+]
 
 
 def _job_diagnostic_message(sdk: NeMoPlatform, job, workspace: str, prefix: str) -> str:

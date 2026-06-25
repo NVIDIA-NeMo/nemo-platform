@@ -3712,20 +3712,18 @@ paths:
         in: query
         required: false
         schema:
-          enum:
-          - -created_at
-          - created_at
-          - -updated_at
-          - updated_at
-          - -name
-          - name
-          - -pinned_at
-          - pinned_at
           type: string
-          description: Sort field; prefix with '-' for descending.
+          description: 'Field to sort by; prefix with ''-'' for descending. Sort by
+            an experiment attribute (name, created_at, updated_at, pinned_at) or by
+            an aggregate metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or
+            evaluators.<name>.<stat>, where <stat> is one of mean, median, p90, p95,
+            p99, sum, count.'
           default: -created_at
           title: Sort
-        description: Sort field; prefix with '-' for descending.
+        description: 'Field to sort by; prefix with ''-'' for descending. Sort by
+          an experiment attribute (name, created_at, updated_at, pinned_at) or by
+          an aggregate metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>,
+          where <stat> is one of mean, median, p90, p95, p99, sum, count.'
       - in: query
         name: filter
         style: deepObject
@@ -3744,6 +3742,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ExperimentResponsesPage'
+        '400':
+          description: Unsupported sort field
+        '413':
+          description: Too many experiments selected to sort in one request
+        '503':
+          description: Telemetry store unavailable for a metric-based sort
         '422':
           description: Validation Error
           content:

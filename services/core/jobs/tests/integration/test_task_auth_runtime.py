@@ -14,9 +14,7 @@ from __future__ import annotations
 
 import json
 import os
-from contextlib import redirect_stdout
-from io import StringIO
-from types import ModuleType
+from typing import Protocol
 
 import pytest
 from nemo_platform import PermissionDeniedError
@@ -32,24 +30,26 @@ from nmp.testing import (
 )
 
 
-def _secret_access_task_module() -> ModuleType:
-    module = ModuleType("task_auth_runtime_test_module")
+class _SecretAccessTask(Protocol):
+    def run(self, *, http_client) -> str: ...
 
-    def run(*, http_client) -> int:
-        from nmp.common.sdk_factory import get_task_sdk
 
-        workspace = os.environ["NEMO_JOB_WORKSPACE"]
-        secret_name = os.environ["NEMO_TEST_SECRET_NAME"]
+def _secret_access_task_module() -> _SecretAccessTask:
+    class _Task:
+        @staticmethod
+        def run(*, http_client) -> str:
+            from nmp.common.sdk_factory import get_task_sdk
 
-        result = get_task_sdk(as_service="jobs", http_client=http_client).secrets.access(
-            workspace=workspace,
-            name=secret_name,
-        )
-        print(result.value)
-        return 0
+            workspace = os.environ["NEMO_JOB_WORKSPACE"]
+            secret_name = os.environ["NEMO_TEST_SECRET_NAME"]
 
-    module.run = run
-    return module
+            result = get_task_sdk(as_service="jobs", http_client=http_client).secrets.access(
+                workspace=workspace,
+                name=secret_name,
+            )
+            return result.value
+
+    return _Task()
 
 
 class TestTaskRuntimeAuthPropagation:
@@ -76,9 +76,7 @@ class TestTaskRuntimeAuthPropagation:
             )
 
             ctx.access_log.clear()
-            stdout = StringIO()
             with (
-                redirect_stdout(stdout),
                 pytest.MonkeyPatch.context() as monkeypatch,
             ):
                 monkeypatch.setenv("NEMO_JOB_WORKSPACE", workspace)
@@ -93,10 +91,9 @@ class TestTaskRuntimeAuthPropagation:
                         }
                     ),
                 )
-                exit_code = _secret_access_task_module().run(http_client=ctx.test_client)
+                secret = _secret_access_task_module().run(http_client=ctx.test_client)
 
-            assert exit_code == 0
-            assert secret_value in stdout.getvalue()
+            assert secret == secret_value
 
             request = ctx.access_log.assert_has_request(
                 method="GET",

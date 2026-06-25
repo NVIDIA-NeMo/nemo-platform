@@ -19,6 +19,7 @@ from nmp.core.files.app.backends.base import FileInfo
 from nmp.core.files.app.backends.huggingface import HuggingfaceStorageImpl
 from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate, ServiceBackend
 from nmp.core.models.controllers.backends.registry import BackendRegistry
+from nmp.core.models.controllers.context import ModelContext
 from nmp.core.models.controllers.models_controller import ModelsController
 from nmp.core.models.service import ModelsService
 from nmp.core.secrets.config import SecretsServiceConfig
@@ -153,32 +154,27 @@ class MockServiceBackend(ServiceBackend):
         """No-op shutdown for mock backend."""
         pass
 
-    async def create_model_deployment(
-        self,
-        deployment: ModelDeployment,
-        config: ModelDeploymentConfig,
-        model_entity: Optional[ModelEntity] = None,
-    ) -> DeploymentStatusUpdate:
+    async def create_model_deployment(self, ctx: ModelContext) -> DeploymentStatusUpdate:
         """Record call and return configured response."""
-        self.create_calls.append((deployment, config, model_entity))
+        self.create_calls.append((ctx.model_deployment, ctx.model_deployment_config, ctx.model_entity))
         return self.create_response
 
-    async def update_model_deployment(
-        self,
-        deployment: ModelDeployment,
-        config: ModelDeploymentConfig,
-        model_entity: Optional[ModelEntity] = None,
-    ) -> DeploymentStatusUpdate:
+    async def update_model_deployment(self, ctx: ModelContext) -> DeploymentStatusUpdate:
         """Record call and return configured response."""
-        self.update_calls.append((deployment, config, model_entity))
+        self.update_calls.append((ctx.model_deployment, ctx.model_deployment_config, ctx.model_entity))
         return self.create_response  # Update returns same as create
 
-    async def get_model_deployment_status(self, deployment: ModelDeployment) -> DeploymentStatusUpdate:
+    async def get_model_deployment_status(self, ctx: ModelContext) -> DeploymentStatusUpdate:
         """Record call and return configured response.
+
+        Takes the reconcile ``ctx`` (bundling deployment + config + entity) like the
+        real ``ServiceBackend``; records the deployment so existing assertions that
+        inspect ``status_calls`` by ``.name`` keep working.
 
         Uses per-deployment responses from status_responses dict if available,
         otherwise falls back to default_status_response.
         """
+        deployment = ctx.model_deployment
         self.status_calls.append(deployment)
         return self.status_responses.get(deployment.name, self.default_status_response)
 

@@ -40,8 +40,20 @@ export interface CustomAssistantRunResult {
   text?: string;
 }
 
+export type CustomAssistantBeforeRunResult = 'continue' | 'cancel';
+
+export interface CustomAssistantBeforeRunContext {
+  prompt: string;
+  signal: AbortSignal;
+  prepareForUserInput: () => void;
+  isCurrentRun: () => boolean;
+}
+
 interface UseCustomAssistantChatRuntimeOptions {
   initialMessages?: readonly ThreadMessageLike[];
+  onBeforeRun?: (
+    context: CustomAssistantBeforeRunContext
+  ) => Promise<CustomAssistantBeforeRunResult | void> | CustomAssistantBeforeRunResult | void;
   onRun: (context: CustomAssistantRunContext) => Promise<CustomAssistantRunResult | void>;
   onError?: (error: Error) => void;
 }
@@ -107,6 +119,7 @@ const completeClaudeCodeAssistantContent = (
 
 export const useCustomAssistantChatRuntime = ({
   initialMessages = [],
+  onBeforeRun,
   onRun,
   onError,
 }: UseCustomAssistantChatRuntimeOptions) => {
@@ -242,6 +255,18 @@ export const useCustomAssistantChatRuntime = ({
       };
 
       try {
+        const beforeRunResult = await onBeforeRun?.({
+          prompt,
+          signal: runController.signal,
+          prepareForUserInput,
+          isCurrentRun,
+        });
+
+        if (beforeRunResult === 'cancel' || runController.signal.aborted || !isCurrentRun()) {
+          completeActiveAssistantMessage(CANCELLED_STATUS);
+          return;
+        }
+
         const result = await onRun({
           prompt,
           signal: runController.signal,
@@ -287,6 +312,7 @@ export const useCustomAssistantChatRuntime = ({
     },
     [
       completeAssistantMessageContent,
+      onBeforeRun,
       onError,
       onRun,
       setThreadMessages,

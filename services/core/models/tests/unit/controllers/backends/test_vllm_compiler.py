@@ -1,12 +1,12 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for the docker backend vLLM compiler."""
+"""Unit tests for the backend-agnostic vLLM compiler."""
 
 from types import SimpleNamespace
 
+from nmp.core.models.controllers.backends import vllm_compiler
 from nmp.core.models.controllers.backends.common import DeploymentConfigView
-from nmp.core.models.controllers.backends.docker import vllm_compiler
 
 
 def _view(**kwargs) -> DeploymentConfigView:

@@ -35,7 +35,7 @@ target = client.auditor.targets.create(
             "nmp_uri_spec": {
                 "inference_gateway": {
                     "workspace": "default",
-                    "provider": "build",
+                    "provider": "nvidia-build",
                 },
             },
         },
@@ -115,7 +115,7 @@ updated = client.auditor.targets.update(
         "nim": {
             "max_tokens": 2048,
             "nmp_uri_spec": {
-                "inference_gateway": {"workspace": "default", "provider": "build"},
+                "inference_gateway": {"workspace": "default", "provider": "nvidia-build"},
             },
         },
     },

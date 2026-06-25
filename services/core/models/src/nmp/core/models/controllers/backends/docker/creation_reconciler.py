@@ -35,13 +35,26 @@ from nmp.common.sdk_factory import get_sdk_on_behalf_of
 from nmp.core.models.app import ModelWeightsType, get_model_weights_type, is_multi_llm_image, parse_model_name_revision
 from nmp.core.models.app.constants import MODEL_MANAGED_BY_LABEL, MODEL_MANAGED_BY_MODELS_CONTROLLER
 from nmp.core.models.app.utils import _get_k8s_safe_name
+from nmp.core.models.controllers.backends import vllm_compiler
 from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate
-from nmp.core.models.controllers.backends.common import DeploymentConfigView, deployment_config_view
-from nmp.core.models.controllers.backends.docker import vllm_compiler
+from nmp.core.models.controllers.backends.common import deployment_config_view
 from nmp.core.models.controllers.backends.docker.config import (
     MODELS_DOCKER_NIM_MULTI_GPU_SHM_SIZE,
     MODELS_DOCKER_NIM_MULTI_GPU_SHM_SIZE_PER_GPU,
     DockerBackendConfig,
+)
+from nmp.core.models.controllers.backends.engine import (
+    ENGINE_HEALTH_PATHS,
+    ENGINE_LABEL,
+    ENGINE_NIM,
+    ENGINE_VLLM,
+    HEALTH_PATH_LABEL,
+)
+from nmp.core.models.controllers.backends.engine import (
+    config_engine as _config_engine,
+)
+from nmp.core.models.controllers.backends.engine import (
+    resolve_health_path as _resolve_health_path,
 )
 from requests.exceptions import ConnectionError as RequestsConnectionError
 from requests.exceptions import ReadTimeout
@@ -64,44 +77,6 @@ HUGGINGFACE_HUB_URL = "https://huggingface.co"
 
 NGC_IMAGE_REGISTRY = os.getenv("NGC_IMAGE_REGISTRY", "nvcr.io")
 NGC_IMAGE_REGISTRY_USER_NAME = os.getenv("NGC_IMAGE_REGISTRY_USER_NAME", "$oauthtoken")
-
-ENGINE_NIM = "nim"
-ENGINE_VLLM = "vllm"
-ENGINE_GENERIC = "generic"
-
-# Docker label recording the engine, read back at status time to pick the health probe.
-ENGINE_LABEL = "nmp.nvidia.com/engine"
-
-# Docker label recording the resolved readiness-probe path, read back at status
-# time. Stamped at create so status polling doesn't need the deployment config.
-HEALTH_PATH_LABEL = "nmp.nvidia.com/health-path"
-
-# Per-engine readiness probe paths (relative to the container host URL).
-ENGINE_HEALTH_PATHS: dict[str, str] = {
-    ENGINE_NIM: "/v1/health/ready",
-    ENGINE_VLLM: "/health",
-}
-
-
-def _config_engine(config: Any) -> str:
-    """Return the engine discriminant as a lowercase string (defaults to nim)."""
-    engine = getattr(config, "engine", None)
-    if engine is None:
-        return ENGINE_NIM
-    # engine may be an enum or a plain string depending on the SDK model.
-    return str(getattr(engine, "value", engine)).lower()
-
-
-def _resolve_health_path(engine: str, view: DeploymentConfigView) -> str:
-    """Resolve the readiness-probe path for a deployment.
-
-    Precedence: an explicit ``executor_config.health_check_path`` wins; otherwise
-    fall back to the engine's standard endpoint. ``generic`` containers have no
-    engine default, so they fall back to the NIM path unless they set their own.
-    """
-    if getattr(view, "health_check_path", None):
-        return view.health_check_path
-    return ENGINE_HEALTH_PATHS.get(engine, ENGINE_HEALTH_PATHS[ENGINE_NIM])
 
 
 def _should_retry_docker_error(exception: BaseException) -> bool:

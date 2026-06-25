@@ -57,6 +57,7 @@ SUBPROCESS_WORKDIR_STATUS_KEY = "subprocess_work_dir"
 SUBPROCESS_PID_STATUS_KEY = "pid"
 SUBPROCESS_PGID_STATUS_KEY = "pgid"
 SUBPROCESS_PERSISTENT_STORAGE_STATUS_KEY = "subprocess_persistent_storage_path"
+_MISSING_METADATA_PENDING_GRACE_SECONDS = 5
 SUBPROCESS_INHERITED_ENV_ALLOWLIST = frozenset(
     {
         "PATH",
@@ -281,6 +282,24 @@ class SubprocessJobBackend(JobBackend[SubprocessExecutionProvider, SubprocessJob
                     status=PlatformJobStatus.CANCELLED.value,
                     status_details={"message": "Subprocess not found, job cancelled"},
                 )
+            task_fallback = self._get_task_fallback_update(step)
+            if task_fallback is not None:
+                return task_fallback
+            if step.status == PlatformJobStatus.PENDING and not self._pending_step_missing_metadata_is_stale(step):
+                # Stopgap only: the subprocess backend keeps execution metadata in controller
+                # memory, while step/task state is persisted in the jobs database. Those two
+                # sources of truth are not fully synchronized today because subprocess was not
+                # originally designed around durable jobs-backed execution state. That means a
+                # step can already be visible in the database as pending before this backend has
+                # registered local subprocess metadata for it. Keep the step pending briefly
+                # instead of failing it. The real fix is to move subprocess onto properly
+                # serialized, jobs-backed state so reconciliation does not depend on process-local
+                # memory.
+                return JobUpdate(
+                    status=PlatformJobStatus.PENDING.value,
+                    status_details=step.status_details or {"message": "Awaiting subprocess metadata"},
+                    error_details=step.error_details or {},
+                )
             return JobUpdate(
                 status=PlatformJobStatus.ERROR.value,
                 error_details={"message": "Local subprocess metadata not found"},
@@ -324,8 +343,6 @@ class SubprocessJobBackend(JobBackend[SubprocessExecutionProvider, SubprocessJob
                 should_cleanup = self._execution_profile_config.cleanup_completed_jobs_immediately
                 if not should_cleanup and step.updated_at is not None:
                     updated_at = step.updated_at
-                    if isinstance(updated_at, str):
-                        updated_at = datetime.datetime.fromisoformat(updated_at)
                     if updated_at.tzinfo is None:
                         updated_at = updated_at.replace(tzinfo=datetime.timezone.utc)
                     expires_at = updated_at + datetime.timedelta(
@@ -336,6 +353,46 @@ class SubprocessJobBackend(JobBackend[SubprocessExecutionProvider, SubprocessJob
             if should_cleanup:
                 shutil.rmtree(metadata.work_dir, ignore_errors=True)
                 self._process_registry.pop(key)
+
+    def _get_task_fallback_update(self, step: PlatformJobStepWithContext) -> JobUpdate | None:
+        try:
+            tasks = self._nmp_sdk.jobs.tasks.list(
+                name=step.name,
+                job=step.job,
+                workspace=step.workspace,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to fetch tasks for subprocess metadata fallback",
+                extra={"job": step.job, "step": step.name, "workspace": step.workspace},
+            )
+            return None
+
+        if not tasks.data:
+            return None
+
+        latest_task = max(
+            tasks.data,
+            key=lambda task: (
+                task.updated_at or task.created_at or datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)
+            ),
+        )
+        return JobUpdate(
+            status=latest_task.status,
+            status_details=latest_task.status_details,
+            error_details=latest_task.error_details or {},
+        )
+
+    @staticmethod
+    def _pending_step_missing_metadata_is_stale(step: PlatformJobStepWithContext) -> bool:
+        anchor = step.updated_at or step.created_at
+        if anchor is None:
+            return True
+        if anchor.tzinfo is None:
+            anchor = anchor.replace(tzinfo=datetime.timezone.utc)
+        return (anchor + datetime.timedelta(seconds=_MISSING_METADATA_PENDING_GRACE_SECONDS)) < datetime.datetime.now(
+            datetime.timezone.utc
+        )
 
     @staticmethod
     def _cleanup_failed_startup_dirs(work_dir: Path, persistent_dir: Path) -> None:

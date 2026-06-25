@@ -35,7 +35,7 @@ Both `workspace` and `provider` are required. Other keys inside `nmp_uri_spec` a
 
 ## Worked Example
 
-Audit a NIM endpoint registered as the `build` provider in the `default` workspace:
+Audit a NIM endpoint registered as the `nvidia-build` provider in the `default` workspace:
 
 ```python
 target = client.auditor.targets.create(
@@ -49,7 +49,7 @@ target = client.auditor.targets.create(
             "nmp_uri_spec": {
                 "inference_gateway": {
                     "workspace": "default",
-                    "provider": "build",
+                    "provider": "nvidia-build",
                 },
             },
         },
