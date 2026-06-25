@@ -215,72 +215,72 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
 
   return (
     <StudioDataView
-        dataViewState={dataViewState}
-        makeColumns={makeColumns}
-        searchField="test_case_id"
-        onRowClick={(row) => {
-          if (row.trace_id) {
-            navigate(
-              getExperimentTraceDetailRoute(
-                workspace,
-                experimentGroupName,
-                experimentName,
-                row.trace_id
-              )
-            );
-          }
-        }}
-        toolbarSlotEnd={
-          <EditColumnsMenu
-            kind="secondary"
-            showChevron={false}
-            slotContent={<div aria-hidden className="h-0 w-[230px]" />}
-          >
-            <>
-              <Columns3 />
-              <span className="hide-mobile">Columns</span>
-            </>
-          </EditColumnsMenu>
+      dataViewState={dataViewState}
+      makeColumns={makeColumns}
+      searchField="test_case_id"
+      onRowClick={(row) => {
+        if (row.trace_id) {
+          navigate(
+            getExperimentTraceDetailRoute(
+              workspace,
+              experimentGroupName,
+              experimentName,
+              row.trace_id
+            )
+          );
         }
-        attributes={{
-          DataViewRoot: {
-            data: visibleTableData,
-            totalCount,
-            requestStatus: isLoading && !sessionsData ? 'loading' : undefined,
-          },
-          DataViewSearchBar: { placeholder: 'Search case...' },
-          DataViewTableContent: {
-            renderEmptyState: () => {
-              const hasActiveFilters =
-                !!dataViewState.searchBar.state || dataViewState.columnFiltering.state.length > 0;
-              if (hasActiveFilters) {
-                return (
-                  <TableEmptyState
-                    header="No matching test cases"
-                    emptyMessage={
-                      <>
-                        Change your filters and try again, or{' '}
-                        <button
-                          className="text-content-link hover:underline"
-                          onClick={dataViewState.resetFilters}
-                        >
-                          clear filters
-                        </button>
-                        .
-                      </>
-                    }
-                  />
-                );
-              }
+      }}
+      toolbarSlotEnd={
+        <EditColumnsMenu
+          kind="secondary"
+          showChevron={false}
+          slotContent={<div aria-hidden className="h-0 w-[230px]" />}
+        >
+          <>
+            <Columns3 />
+            <span className="hide-mobile">Columns</span>
+          </>
+        </EditColumnsMenu>
+      }
+      attributes={{
+        DataViewRoot: {
+          data: visibleTableData,
+          totalCount,
+          requestStatus: isLoading && !sessionsData ? 'loading' : undefined,
+        },
+        DataViewSearchBar: { placeholder: 'Search case...' },
+        DataViewTableContent: {
+          renderEmptyState: () => {
+            const hasActiveFilters =
+              !!dataViewState.searchBar.state || dataViewState.columnFiltering.state.length > 0;
+            if (hasActiveFilters) {
               return (
-                <Empty
-                  experimentGroupName={experimentGroupName}
-                  datasetName={experiment?.dataset_name ?? '<dataset>'}
+                <TableEmptyState
+                  header="No matching test cases"
+                  emptyMessage={
+                    <>
+                      Change your filters and try again, or{' '}
+                      <button
+                        className="text-content-link hover:underline"
+                        onClick={dataViewState.resetFilters}
+                      >
+                        clear filters
+                      </button>
+                      .
+                    </>
+                  }
                 />
               );
-            },
+            }
+            return (
+              <Empty
+                experimentGroupName={experimentGroupName}
+                datasetName={experiment?.dataset_name ?? '<dataset>'}
+              />
+            );
           },
-        }}
+        },
+      }}
     />
   );
 };
