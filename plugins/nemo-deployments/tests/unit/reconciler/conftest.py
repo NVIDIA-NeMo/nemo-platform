@@ -69,6 +69,7 @@ class MockDeploymentBackend(DeploymentBackend):
         return VolumeStatusUpdate(status="BOUND")
 
     async def delete_volume(self, workspace: str, name: str) -> VolumeStatusUpdate:
+        self.delete_calls.append((workspace, name))
         return VolumeStatusUpdate(status="RELEASED")
 
 

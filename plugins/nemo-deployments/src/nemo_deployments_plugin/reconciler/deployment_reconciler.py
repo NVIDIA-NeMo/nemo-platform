@@ -82,7 +82,6 @@ class DeploymentReconciler:
         self,
         deployment: Deployment,
         *,
-        deployments_by_config: dict[tuple[str, str], Deployment],
         deployments_by_name: dict[tuple[str, str], Deployment],
         volumes_by_name: dict[tuple[str, str], Volume],
     ) -> None:
@@ -109,12 +108,10 @@ class DeploymentReconciler:
         if deployment.status == "PENDING":
             prereq = prerequisites_met(
                 deployment,
-                config,
-                deployments_by_config=deployments_by_config,
                 deployments_by_name=deployments_by_name,
             )
             if not prereq.met:
-                if _prerequisite_failed(prereq, deployments_by_config, deployments_by_name, deployment):
+                if _prerequisite_failed(prereq, deployments_by_name):
                     await self._update_deployment_status_failure(deployment, prereq.reason)
                     return
                 await self._update_deployment_status_pending(deployment, prereq.reason)
@@ -317,16 +314,13 @@ class DeploymentReconciler:
 
 def _prerequisite_failed(
     result: PrerequisiteResult,
-    deployments_by_config: dict[tuple[str, str], Deployment],
     deployments_by_name: dict[tuple[str, str], Deployment],
-    deployment: Deployment,
 ) -> bool:
     if result.blocking_prerequisite is None:
         return "failed" in result.reason.lower()
-    workspace = deployment.workspace
-    target = deployments_by_config.get((workspace, result.blocking_prerequisite))
-    if target is None:
-        target = deployments_by_name.get((workspace, result.blocking_prerequisite))
+    if result.blocking_workspace is None or result.blocking_name is None:
+        return False
+    target = deployments_by_name.get((result.blocking_workspace, result.blocking_name))
     return target is not None and target.status == "FAILED"
 
 

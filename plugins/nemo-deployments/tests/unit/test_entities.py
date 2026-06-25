@@ -33,7 +33,7 @@ def test_volume_default_status_pending() -> None:
 def test_prerequisite_cycle_detected() -> None:
     with pytest.raises(PrerequisiteCycleError):
         detect_prerequisite_cycle(
-            config_name="c",
+            deployment_name="c",
             prerequisites=["a"],
             existing={"a": ["b"], "b": ["c"]},
         )

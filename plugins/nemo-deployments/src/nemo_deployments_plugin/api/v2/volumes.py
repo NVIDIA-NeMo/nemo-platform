@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from nemo_deployments_plugin.api.v2.dependencies import get_entity_client
 from nemo_deployments_plugin.entities import Volume
@@ -15,6 +17,8 @@ from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityCon
 from nemo_platform_plugin.schema import PaginationData
 
 router = APIRouter()
+
+logger = logging.getLogger(__name__)
 
 _volume_filter_dep = make_filter_obj_dep(VolumeFilter)
 
@@ -99,9 +103,20 @@ async def delete_volume(
         )
 
     try:
-        await entity_client.delete(Volume, name=name, workspace=workspace)
+        volume = await entity_client.get(Volume, name=name, workspace=workspace)
     except NemoEntityNotFoundError as exc:
         raise HTTPException(
             status_code=404,
             detail=f"Volume '{name}' not found in workspace '{workspace}'.",
+        ) from exc
+
+    volume.status = "DELETING"
+    try:
+        await entity_client.update(volume)
+    except NemoEntityNotFoundError:
+        logger.info("Volume already deleted before status update")
+    except NemoEntityConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Volume '{name}' is being modified concurrently.",
         ) from exc

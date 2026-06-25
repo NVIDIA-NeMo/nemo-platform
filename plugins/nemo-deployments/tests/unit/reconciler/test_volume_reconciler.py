@@ -41,3 +41,18 @@ async def test_volume_create_failure(
 
     assert vol.status == "FAILED"
     assert "docker unavailable" in vol.status_message
+
+
+@pytest.mark.asyncio
+async def test_deleting_volume_removes_backend_then_entity(
+    volume_reconciler: VolumeReconciler,
+    mock_backend: MockDeploymentBackend,
+    mock_entities: AsyncMock,
+) -> None:
+    vol = make_volume()
+    vol.status = "DELETING"
+
+    await volume_reconciler.reconcile_one(vol)
+
+    assert mock_backend.delete_calls == [("default", "vol1")]
+    mock_entities.delete.assert_awaited_once()

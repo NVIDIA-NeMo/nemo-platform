@@ -209,8 +209,8 @@ class DriftRecoveryPolicy(BaseModel):
 class Prerequisite(BaseModel):
     deployment_name: str = Field(
         description=(
-            "Name of another DeploymentConfig in the same workspace whose corresponding "
-            "Deployment must satisfy condition before this deployment may start."
+            "Name of another Deployment in the same workspace (or workspace/name) that must "
+            "satisfy condition before this deployment may start."
         ),
     )
     condition: PrerequisiteCondition = Field(
@@ -237,7 +237,6 @@ class DeploymentConfig(NemoEntity, entity_type=ENTITY_TYPE_DEPLOYMENT_CONFIG):
     config_files: list[ConfigFile] = Field(default_factory=list, alias="configFiles")
     restart_policy: RestartPolicy = Field(default="Always", alias="restartPolicy")
     backoff_limit: int = Field(default=6, alias="backoffLimit")
-    prerequisites: list[Prerequisite] = Field(default_factory=list)
     drift_recovery: DriftRecoveryPolicy = Field(default_factory=DriftRecoveryPolicy, alias="driftRecovery")
     labels: dict[str, str] = Field(default_factory=dict)
     backend_config: DeploymentBackendConfig = Field(default_factory=DeploymentBackendConfig, alias="backendConfig")
@@ -254,6 +253,7 @@ class Deployment(NemoEntity, entity_type=ENTITY_TYPE_DEPLOYMENT):
         default=None,
         description="Named executor registry entry; falls back to plugin default_executor.",
     )
+    prerequisites: list[Prerequisite] = Field(default_factory=list)
     status: DeploymentStatus = Field(default="PENDING")
     status_message: str = Field(default="")
     endpoints: list[Endpoint] = Field(default_factory=list)
