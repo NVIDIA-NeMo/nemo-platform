@@ -10,6 +10,7 @@ is a decorated function that declares its call signature and response type.
 from __future__ import annotations
 
 from abc import abstractmethod
+from typing import NotRequired, TypedDict
 
 from nemo_example_plugin.entities import ExampleItem
 from nemo_example_plugin.types.payloads import (
@@ -36,9 +37,16 @@ def create_item(
 ) -> ExampleItem: ...
 
 
+class ListItemsQueryParams(TypedDict, total=False):
+    page_size: NotRequired[int]
+    sort: NotRequired[str]
+
+
 @get("/apis/example/v2/workspaces/{workspace}/items")
 @abstractmethod
-def list_items(*, workspace: str | None = None) -> Paginated[ExampleItem]: ...
+def list_items(
+    *, workspace: str | None = None, query_params: ListItemsQueryParams | None = None
+) -> Paginated[ExampleItem]: ...
 
 
 @get("/apis/example/v2/workspaces/{workspace}/items/{name}")

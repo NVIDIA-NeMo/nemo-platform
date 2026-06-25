@@ -148,10 +148,8 @@ class TestPaginatedSync:
         list(resp)  # consume all pages
 
         # Second call should have page=2 in params
-        second_call_params = (
-            mock_http.request.call_args_list[1][1].get("params") or mock_http.request.call_args_list[1][0]
-        )
-        assert second_call_params.get("page") == 2 if isinstance(second_call_params, dict) else True
+        second_call_params = mock_http.request.call_args_list[1][1]["params"]
+        assert second_call_params["page"] == 2
 
 
 # ---------------------------------------------------------------------------

@@ -181,6 +181,14 @@ class RetryPolicy:
     This is an operational concern — it does not belong in endpoint
     signatures.
 
+    .. note::
+
+        The retry loop replays the full request including the body.
+        Callers are responsible for ensuring idempotency when retrying
+        non-safe methods (POST, PATCH).  Consider using an
+        ``Idempotency-Key`` header for create operations that must be
+        safe to retry.
+
     Usage::
 
         # Client-level default
