@@ -12,13 +12,14 @@ import {
 import type {
   ExperimentFilter,
   ExperimentResponse,
-  ListExperimentsSort,
+  ListExperimentsParams,
 } from '@nemo/sdk/generated/platform/schema';
 import { keepPreviousData, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useRef } from 'react';
 
 /** An API response plus the stable `id` the data view needs. */
 export type ExperimentRow = ExperimentResponse & { id: string };
+type ListExperimentsSortParam = NonNullable<ListExperimentsParams['sort']>;
 
 const toRows = (experiments: ExperimentResponse[] | undefined): ExperimentRow[] =>
   (experiments ?? []).map((experiment) => ({
@@ -119,7 +120,7 @@ export function useExperimentGroupExperiments({
     {
       page,
       page_size: pageSize,
-      sort: sort as ListExperimentsSort,
+      sort: sort as ListExperimentsSortParam,
       filter: { ...baseFilter, is_pinned: false } as ExperimentFilter,
     },
     listQueryOptions
