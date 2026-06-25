@@ -223,14 +223,18 @@ export const ReportTraceModal = ({ open, onClose }: ReportTraceModalProps) => {
             {traces.length > 0 && (
               <Stack gap="density-sm" className="overflow-auto flex-1">
                 {traces.map((trace) => (
-                  <button
-                    type="button"
+                  <Flex
                     key={trace.id}
-                    className="p-3 bg-surface-raised rounded-md border border-base cursor-pointer w-full text-left appearance-none focus:outline-none focus:ring-2 focus:ring-brand"
-                    aria-label={`View details for ${trace.message}`}
-                    onClick={() => handleViewDetails(trace)}
+                    justify="between"
+                    align="center"
+                    className="p-3 bg-surface-raised rounded-md border border-base"
                   >
-                    <Flex justify="between" align="center">
+                    <button
+                      type="button"
+                      className="flex-1 text-left cursor-pointer appearance-none focus:outline-none focus:ring-2 focus:ring-brand"
+                      aria-label={`View details for ${trace.message}`}
+                      onClick={() => handleViewDetails(trace)}
+                    >
                       <Stack gap="density-xs">
                         <Flex gap="density-sm" align="center">
                           <Badge color={getSeverityColor(trace.severity)}>
@@ -248,18 +252,11 @@ export const ReportTraceModal = ({ open, onClose }: ReportTraceModalProps) => {
                           </Text>
                         )}
                       </Stack>
-                      <Button
-                        kind="tertiary"
-                        size="small"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleCopyTrace(trace);
-                        }}
-                      >
-                        <Copy />
-                      </Button>
-                    </Flex>
-                  </button>
+                    </button>
+                    <Button kind="tertiary" size="small" onClick={() => handleCopyTrace(trace)}>
+                      <Copy />
+                    </Button>
+                  </Flex>
                 ))}
               </Stack>
             )}
