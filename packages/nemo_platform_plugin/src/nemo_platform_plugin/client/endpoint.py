@@ -65,19 +65,30 @@ def _validate_params(fn: Callable, path_param_names: set[str], client_option_nam
     - ``self``
     - A path placeholder (``{name}`` in the URL template)
     - ``body``, ``content``, or ``query_params``
-    - A blessed client option (e.g. ``exist_ok``)
+    - A blessed client option (e.g. ``exist_ok``) with the correct type
     """
     sig = inspect.signature(fn)
     known = _RESERVED_PARAM_NAMES | path_param_names | client_option_names
     unknown = set(sig.parameters.keys()) - known
+    fn_name = getattr(fn, "__qualname__", getattr(fn, "__name__", repr(fn)))
     if unknown:
-        name = getattr(fn, "__qualname__", getattr(fn, "__name__", repr(fn)))
         blessed = ", ".join(sorted(BLESSED_CLIENT_PARAMS.keys()))
         raise TypeError(
-            f"Endpoint {name} has unrecognised parameters: {unknown}. "
+            f"Endpoint {fn_name} has unrecognised parameters: {unknown}. "
             f"Parameters must be path params {path_param_names}, "
             f"'body', 'content', 'query_params', or a client option ({blessed})."
         )
+
+    # Validate that blessed client option params have the expected type annotation.
+    hints = get_type_hints(fn)
+    for param_name in client_option_names:
+        expected_type = BLESSED_CLIENT_PARAMS[param_name]
+        actual_type = hints.get(param_name)
+        if actual_type is not None and actual_type is not expected_type:
+            raise TypeError(
+                f"Endpoint {fn_name}: client option '{param_name}' must be "
+                f"annotated as '{expected_type.__name__}', got '{actual_type}'."
+            )
 
 
 def _build_prepared_request(

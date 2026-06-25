@@ -13,7 +13,7 @@ from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.endpoint import get
 from nemo_platform_plugin.client.method import method
 from nemo_platform_plugin.client.response import AsyncNemoPaginatedResponse, NemoPaginatedResponse
-from nemo_platform_plugin.client.types import OffsetPagination, Paginated
+from nemo_platform_plugin.client.types import OffsetPagination, Paginated, RetryPolicy
 from pydantic import BaseModel
 
 BASE = "http://test:8000"
@@ -90,18 +90,22 @@ class TestPaginatedSync:
         assert [i.name for i in items] == ["a", "b", "c", "d", "e"]
         assert mock_http.request.call_count == 3
 
-    def test_first_page_method(self) -> None:
-        """first_page() returns items from the already-fetched first page."""
+    def test_data_returns_page_result_with_metadata(self) -> None:
+        """data() returns a PageResult with items and pagination metadata."""
         mock_http = MagicMock(spec=httpx.Client)
         mock_http.request.return_value = _page_response([{"id": 1, "name": "a"}], page=1, total_pages=5)
 
         client = NemoClient(base_url=BASE, workspace="default", http_client=mock_http)
         resp = client.send(LIST_ITEMS())
 
-        first = resp.first_page()
-        assert len(first) == 1
-        assert first[0].name == "a"
-        # No additional requests for first_page()
+        page = resp.data()
+        assert len(page.items) == 1
+        assert page.items[0].name == "a"
+        assert page.page == 1
+        assert page.total_pages == 5
+        assert page.total_results == 10
+        assert page.page_size == 2
+        # No additional requests for data()
         assert mock_http.request.call_count == 1
 
     def test_empty_page(self) -> None:
@@ -199,6 +203,40 @@ class TestPaginatedAsync:
         assert len(items) == 2
         assert items[0].name == "a"
         assert items[1].name == "b"
+
+
+# ---------------------------------------------------------------------------
+# Retry on subsequent pages
+# ---------------------------------------------------------------------------
+
+
+class TestPaginatedRetry:
+    def test_retry_on_subsequent_page_503(self) -> None:
+        """A 503 on page 2 should be retried when a retry policy is configured."""
+        mock_http = MagicMock(spec=httpx.Client)
+        mock_http.request.side_effect = [
+            # Page 1: success
+            _page_response([{"id": 1, "name": "a"}], page=1, total_pages=2),
+            # Page 2: first attempt 503, second attempt success
+            httpx.Response(
+                503,
+                request=httpx.Request("GET", f"{BASE}/apis/test/v2/workspaces/default/items"),
+                json={"detail": "unavailable"},
+            ),
+            _page_response([{"id": 2, "name": "b"}], page=2, total_pages=2),
+        ]
+
+        client = NemoClient(
+            base_url=BASE,
+            workspace="default",
+            http_client=mock_http,
+            retry=RetryPolicy(max_retries=2, backoff_base=0.0),
+        )
+        items = list(client.send(LIST_ITEMS()))
+
+        assert len(items) == 2
+        assert [i.name for i in items] == ["a", "b"]
+        assert mock_http.request.call_count == 3  # page 1 + page 2 fail + page 2 retry
 
 
 # ---------------------------------------------------------------------------
