@@ -125,6 +125,7 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
       header: 'Input',
       enableSorting: false,
       size: 400,
+      meta: { title: false },
       cell: ({ row }) => {
         const value = row.original.input;
         if (!value) return <Text>-</Text>;
