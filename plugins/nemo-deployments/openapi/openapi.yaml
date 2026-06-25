@@ -686,11 +686,6 @@ components:
           type: integer
           title: Backoff Limit
           default: 6
-        prerequisites:
-          items:
-            $ref: '#/components/schemas/Prerequisite'
-          type: array
-          title: Prerequisites
         drift_recovery:
           $ref: '#/components/schemas/DriftRecoveryPolicy'
         labels:
@@ -724,6 +719,11 @@ components:
         executor:
           title: Executor
           type: string
+        prerequisites:
+          items:
+            $ref: '#/components/schemas/Prerequisite'
+          type: array
+          title: Prerequisites
       type: object
       required:
       - name
@@ -784,6 +784,11 @@ components:
           title: Executor
           description: Named executor registry entry; falls back to plugin default_executor.
           type: string
+        prerequisites:
+          items:
+            $ref: '#/components/schemas/Prerequisite'
+          type: array
+          title: Prerequisites
         status:
           type: string
           enum:
@@ -928,11 +933,6 @@ components:
           type: integer
           title: Backofflimit
           default: 6
-        prerequisites:
-          items:
-            $ref: '#/components/schemas/Prerequisite'
-          type: array
-          title: Prerequisites
         driftRecovery:
           $ref: '#/components/schemas/DriftRecoveryPolicy'
         labels:
@@ -1264,9 +1264,8 @@ components:
         deployment_name:
           type: string
           title: Deployment Name
-          description: Name of another DeploymentConfig in the same workspace whose
-            corresponding Deployment must satisfy condition before this deployment
-            may start.
+          description: Name of another Deployment in the same workspace (or workspace/name)
+            that must satisfy condition before this deployment may start.
         condition:
           type: string
           enum:
@@ -1418,6 +1417,7 @@ components:
           enum:
           - PENDING
           - BOUND
+          - DELETING
           - RELEASED
           - FAILED
           title: Status
@@ -1497,6 +1497,7 @@ components:
           enum:
           - PENDING
           - BOUND
+          - DELETING
           - RELEASED
           - FAILED
           title: Status

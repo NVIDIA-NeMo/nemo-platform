@@ -16,6 +16,8 @@ from typing import Generator
 
 import pytest
 from fastapi.testclient import TestClient
+from nemo_platform_ext.auth.helpers import generate_unsigned_jwt
+from nmp.common.config import AuthConfig
 from nmp.testing.client import create_test_client
 
 # Service principal for authenticated requests
@@ -33,12 +35,116 @@ def test_client() -> Generator[TestClient, None, None]:
     Overrides the default test_client with much faster refresh settings
     so propagation tests don't have to wait long.
     """
-    with create_test_client(client_type=TestClient, auth_enabled=True) as client:
+    with create_test_client(
+        client_type=TestClient,
+        auth_enabled=True,
+        service_configs={
+            AuthConfig: AuthConfig(
+                enabled=True,
+                allow_unsigned_jwt=True,
+                policy_decision_point_provider="embedded",
+                policy_decision_point_base_url="http://testserver",
+                propagation_poll_interval_seconds=0.05,
+            )
+        },
+    ) as client:
         yield client
 
 
 class TestRoleBindingPropagation:
     """Tests that verify role bindings propagate to the embedded policy engine."""
+
+    def test_group_role_binding_grants_workspace_access_via_bearer_token(self, test_client: TestClient):
+        """A bearer token group claim can satisfy a group-based role binding."""
+        workspace_id = f"test-ws-{uuid.uuid4().hex[:8]}"
+        group_name = f"group-{uuid.uuid4().hex[:8]}"
+        member_email = f"member-{uuid.uuid4().hex[:8]}@example.com"
+        service_headers = {"X-NMP-Principal-Id": SERVICE_PRINCIPAL}
+        bearer_token = generate_unsigned_jwt(
+            principal_id=f"subject-{uuid.uuid4().hex[:8]}",
+            email=member_email,
+            groups=[group_name],
+        )
+        user_headers = {"Authorization": f"Bearer {bearer_token}"}
+
+        response = test_client.post(
+            WORKSPACES_PATH,
+            json={"name": workspace_id, "description": "Test workspace for group role binding propagation"},
+            headers=service_headers,
+        )
+        assert response.status_code in (200, 201), f"Failed to create workspace: {response.text}"
+
+        try:
+            response = test_client.post(
+                IAM_ROLE_BINDINGS_PATH,
+                json={
+                    "principal": group_name,
+                    "role": "Viewer",
+                    "workspace": workspace_id,
+                },
+                headers=service_headers,
+            )
+            assert response.status_code in (200, 201), f"Failed to create role binding: {response.text}"
+
+            response = test_client.get(f"{WORKSPACES_PATH}/{workspace_id}", headers=user_headers)
+            assert response.status_code == 200, (
+                f"Bearer token group member should be able to read workspace. "
+                f"Got {response.status_code}: {response.text}"
+            )
+
+            response = test_client.put(
+                f"{WORKSPACES_PATH}/{workspace_id}",
+                json={"description": "Updated by viewer group - should fail"},
+                headers=user_headers,
+            )
+            assert response.status_code == 403, (
+                f"Viewer group member should not be able to update workspace: {response.text}"
+            )
+
+        finally:
+            test_client.delete(f"{WORKSPACES_PATH}/{workspace_id}", headers=service_headers)
+
+    def test_group_role_binding_denies_workspace_access_when_group_missing(self, test_client: TestClient):
+        """A bearer token without the bound group claim cannot use a group-based role binding."""
+        workspace_id = f"test-ws-{uuid.uuid4().hex[:8]}"
+        bound_group = f"group-{uuid.uuid4().hex[:8]}"
+        other_group = f"group-{uuid.uuid4().hex[:8]}"
+        member_email = f"member-{uuid.uuid4().hex[:8]}@example.com"
+        service_headers = {"X-NMP-Principal-Id": SERVICE_PRINCIPAL}
+        bearer_token = generate_unsigned_jwt(
+            principal_id=f"subject-{uuid.uuid4().hex[:8]}",
+            email=member_email,
+            groups=[other_group],
+        )
+        user_headers = {"Authorization": f"Bearer {bearer_token}"}
+
+        response = test_client.post(
+            WORKSPACES_PATH,
+            json={"name": workspace_id, "description": "Test workspace for missing group role binding denial"},
+            headers=service_headers,
+        )
+        assert response.status_code in (200, 201), f"Failed to create workspace: {response.text}"
+
+        try:
+            response = test_client.post(
+                IAM_ROLE_BINDINGS_PATH,
+                json={
+                    "principal": bound_group,
+                    "role": "Viewer",
+                    "workspace": workspace_id,
+                },
+                headers=service_headers,
+            )
+            assert response.status_code in (200, 201), f"Failed to create role binding: {response.text}"
+
+            response = test_client.get(f"{WORKSPACES_PATH}/{workspace_id}", headers=user_headers)
+            assert response.status_code == 403, (
+                f"Bearer token without the bound group should be denied workspace access. "
+                f"Got {response.status_code}: {response.text}"
+            )
+
+        finally:
+            test_client.delete(f"{WORKSPACES_PATH}/{workspace_id}", headers=service_headers)
 
     def test_editor_can_access_workspace_after_role_binding(self, test_client: TestClient):
         """Test that a user with Editor role can access a workspace after the binding propagates.

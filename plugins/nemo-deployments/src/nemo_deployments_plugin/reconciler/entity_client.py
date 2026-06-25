@@ -1,16 +1,15 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Entity client helpers for paginated listing and prerequisite resolution."""
+"""Entity client helpers for paginated listing."""
 
 from __future__ import annotations
 
 from typing import TypeVar
 
-from nemo_deployments_plugin.entities import Deployment
 from nemo_platform_plugin.entity import NemoEntity
-from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
-from nemo_platform_plugin.filter_ops import ComparisonOperation, FilterOperator
+from nemo_platform_plugin.entity_client import NemoEntitiesClient
+from nemo_platform_plugin.filter_ops import ComparisonOperation
 
 EntityT = TypeVar("EntityT", bound=NemoEntity)
 
@@ -42,33 +41,3 @@ async def list_all_pages(
             break
         page += 1
     return collected
-
-
-async def get_deployment_for_config_name(
-    entities: NemoEntitiesClient,
-    *,
-    workspace: str,
-    config_name: str,
-) -> Deployment | None:
-    """Resolve a Deployment entity for a DeploymentConfig name (any terminal status)."""
-    deployments = await list_all_pages(
-        entities,
-        Deployment,
-        workspace=workspace,
-        filter_operation=ComparisonOperation(
-            operator=FilterOperator.EQ,
-            field="deployment_config",
-            value=config_name,
-        ),
-    )
-    if deployments:
-        return deployments[0]
-
-    try:
-        dep = await entities.get(Deployment, name=config_name, workspace=workspace)
-    except NemoEntityNotFoundError:
-        return None
-
-    if dep.deployment_config == config_name:
-        return dep
-    return None

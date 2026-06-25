@@ -39,6 +39,8 @@ The framework manages the reconcile loop:
    :meth:`reconcile_one` for each result with per-item error isolation.
 4. On SIGINT/SIGTERM the platform sets a stop signal, waits for the current
    ``reconcile()`` call to complete, then calls ``on_shutdown()``.
+   Controllers that override :meth:`reconcile` may call :meth:`stop_requested`
+   between phases or per-item iterations to exit early during shutdown.
 
 Plugin authors do **not** manage signals or threads — implement cleanup in
 :meth:`on_shutdown` and the framework guarantees it is called after the last
@@ -48,6 +50,7 @@ reconcile cycle completes.
 from __future__ import annotations
 
 import logging
+import threading
 from abc import abstractmethod
 from typing import ClassVar
 
@@ -81,6 +84,15 @@ class NemoController(_NamedPlugin):
 
     name: ClassVar[str]
     dependencies: ClassVar[list[str]] = []
+    _stop_signal: threading.Event | None = None
+
+    def set_stop_signal(self, stop_signal: threading.Event | None) -> None:
+        """Register the platform shutdown signal for cooperative cancellation."""
+        self._stop_signal = stop_signal
+
+    def stop_requested(self) -> bool:
+        """Return True when the platform has requested shutdown."""
+        return self._stop_signal is not None and self._stop_signal.is_set()
 
     async def reconcile(self) -> None:
         """Run one full reconciliation cycle.
@@ -94,6 +106,8 @@ class NemoController(_NamedPlugin):
         :meth:`reconcile_one` with ``raise NotImplementedError``.
         """
         for obj in await self.list_objects():
+            if self.stop_requested():
+                return
             try:
                 await self.reconcile_one(obj)
             except Exception:

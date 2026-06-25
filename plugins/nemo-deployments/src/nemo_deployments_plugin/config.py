@@ -33,6 +33,14 @@ class ControllerConfig(BaseModel):
         ge=0,
         description="Run orphaned backend resource cleanup after this many seconds (0 disables).",
     )
+    terminal_orphan_grace_seconds: int = Field(
+        default=3600,
+        ge=0,
+        description=(
+            "Keep terminal deployment backend resources (SUCCEEDED/FAILED) protected from "
+            "orphan cleanup for this many seconds after the terminal status transition (0 disables)."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_backoff(self) -> ControllerConfig:

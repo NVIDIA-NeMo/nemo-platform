@@ -10,7 +10,7 @@ import logging
 from nemo_deployments_plugin.backends.base import DeploymentBackend, VolumeStatusUpdate
 from nemo_deployments_plugin.backends.registry import ExecutorNotFoundError, ExecutorRegistry
 from nemo_deployments_plugin.entities import Volume
-from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError
+from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError, NemoEntityNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +23,10 @@ class VolumeReconciler:
         self._registry = registry
 
     async def reconcile_one(self, volume: Volume) -> None:
+        if volume.status == "DELETING":
+            await self._reconcile_delete(volume)
+            return
+
         try:
             backend = self._registry.resolve(None)
         except ExecutorNotFoundError as exc:
@@ -36,6 +40,30 @@ class VolumeReconciler:
             await self._reconcile_create(volume, backend)
         elif volume.status == "BOUND":
             await self._reconcile_read(volume, backend)
+
+    async def _reconcile_delete(self, volume: Volume) -> None:
+        volume_id = f"{volume.workspace}/{volume.name}"
+        try:
+            backend = self._registry.resolve(None)
+        except ExecutorNotFoundError:
+            logger.warning("No executor for volume delete of %s — will retry", volume_id, exc_info=True)
+            return
+
+        try:
+            await backend.delete_volume(volume.workspace, volume.name)
+        except Exception:
+            logger.warning("Backend delete failed for volume %s — will retry", volume_id, exc_info=True)
+            return
+
+        try:
+            await self._entities.delete(Volume, name=volume.name, workspace=volume.workspace)
+            logger.info("Deleted volume entity %s", volume_id)
+        except NemoEntityNotFoundError:
+            logger.debug("Volume entity %s already deleted", volume_id)
+        except NemoEntityConflictError:
+            raise
+        except Exception:
+            logger.exception("Failed to delete volume entity %s", volume_id)
 
     async def _reconcile_create(self, volume: Volume, backend: DeploymentBackend) -> None:
         backend_config = volume.backend_config.model_dump(by_alias=True, exclude_none=True)

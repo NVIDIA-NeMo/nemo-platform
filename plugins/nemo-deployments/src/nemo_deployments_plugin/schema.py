@@ -36,7 +36,6 @@ class CreateDeploymentConfigRequest(BaseModel):
     config_files: list[ConfigFile] = Field(default_factory=list)
     restart_policy: RestartPolicy = "Always"
     backoff_limit: int = 6
-    prerequisites: list[Prerequisite] = Field(default_factory=list)
     drift_recovery: DriftRecoveryPolicy | None = None
     labels: dict[str, str] = Field(default_factory=dict)
     backend_config: DeploymentBackendConfig = Field(default_factory=DeploymentBackendConfig)
@@ -49,6 +48,7 @@ class CreateDeploymentRequest(BaseModel):
     )
     desired_state: DesiredState = "READY"
     executor: str | None = None
+    prerequisites: list[Prerequisite] = Field(default_factory=list)
 
 
 class CreateVolumeRequest(BaseModel):

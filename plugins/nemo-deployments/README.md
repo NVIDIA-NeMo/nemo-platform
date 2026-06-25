@@ -19,6 +19,7 @@ which list query failed without losing that signal behind a single boolean.
 Per-config drift backoff overrides live on `DeploymentConfig.driftRecovery`; unset fields
 fall back to `DeploymentsConfig.controller`.
 
-Prerequisites are currently declared on `DeploymentConfig` and resolve to a single
-deployment per config name in a workspace. Multiple deployments sharing one config is
-unsupported until prerequisites move to the `Deployment` entity (follow-up work).
+Prerequisites are declared on each `Deployment` and reference other deployment
+names in the same workspace (bare name or `workspace/name`). The controller loads
+terminal prerequisite deployments from the entity store when they are not in the
+active non-terminal list.

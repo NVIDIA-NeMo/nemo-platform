@@ -17,6 +17,7 @@ and resume; local runs run to completion).
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import json
 import logging
@@ -27,7 +28,7 @@ from typing import Annotated, ClassVar, TypeVar, cast
 
 import yaml
 from nemo_auditor.entities import AuditConfig, AuditTarget
-from nemo_platform import NeMoPlatform
+from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform.resources.entities import AsyncEntitiesResource
 from nemo_platform_plugin.entities import parse_qualified_name
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
@@ -152,7 +153,11 @@ async def _resolve_ref(
         raise RuntimeError(f"{kind} '{ws}/{name}' not found in entity store") from exc
 
 
-def _rewrite_options_uris(options: dict, sdk: NeMoPlatform | None) -> None:
+def _rewrite_options_uris(
+    options: dict,
+    sdk: NeMoPlatform | None,
+    async_sdk: AsyncNeMoPlatform | None = None,
+) -> None:
     """Replace ``nmp_uri_spec`` sentinels in ``options`` with concrete ``uri`` values.
 
     Walks the options tree (BFS over dict values, non-dicts are skipped) and,
@@ -186,13 +191,23 @@ def _rewrite_options_uris(options: dict, sdk: NeMoPlatform | None) -> None:
             )
         if "uri" in node:
             raise ValueError("Cannot specify both 'uri' and 'nmp_uri_spec' in the same options block.")
-        if sdk is None:
+        if sdk is None and async_sdk is None:
             raise RuntimeError(
                 "nmp_uri_spec resolution requires a connected platform SDK; AuditJob.run was invoked without one."
             )
         try:
-            provider = sdk.inference.providers.retrieve(workspace=igw_ref["workspace"], name=igw_ref["provider"])
-            uri = sdk.models.get_provider_route_openai_url(provider)
+            if sdk is not None:
+                provider = sdk.inference.providers.retrieve(workspace=igw_ref["workspace"], name=igw_ref["provider"])
+                uri = sdk.models.get_provider_route_openai_url(provider)
+            else:
+                # async_sdk path: AuditJob.run() executes inside asyncio.to_thread(), so
+                # this worker thread has no running event loop — asyncio.run() is safe.
+                provider = asyncio.run(
+                    async_sdk.inference.providers.retrieve(  # type: ignore[union-attr]
+                        workspace=igw_ref["workspace"], name=igw_ref["provider"]
+                    )
+                )
+                uri = async_sdk.models.get_provider_route_openai_url(provider)  # type: ignore[union-attr]
         except Exception as exc:
             raise RuntimeError(
                 f"Failed to resolve inference gateway provider '{igw_ref['workspace']}/{igw_ref['provider']}': {exc}"
@@ -292,6 +307,7 @@ class AuditJob(NemoJob):
         *,
         ctx: JobContext,
         sdk: NeMoPlatform | None = None,
+        async_sdk: AsyncNeMoPlatform | None = None,
     ) -> dict:
         spec = AuditSpec.model_validate(config)
 
@@ -308,7 +324,7 @@ class AuditJob(NemoJob):
             # Deep-copy before rewriting so the validated AuditTarget on the spec
             # stays pristine; only the on-disk JSON we hand to garak is mutated.
             rewritten_options = copy.deepcopy(spec.target.options)
-            _rewrite_options_uris(rewritten_options, sdk)
+            _rewrite_options_uris(rewritten_options, sdk, async_sdk)
             target_opts_path = work_dir / "target_options.json"
             target_opts_path.write_text(json.dumps(rewritten_options))
 

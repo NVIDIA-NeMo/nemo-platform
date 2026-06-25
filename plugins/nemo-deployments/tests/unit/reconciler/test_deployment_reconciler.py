@@ -25,9 +25,7 @@ async def test_pending_creates_deployment(
     cfg = make_deployment_config()
     deployment_reconciler.set_config_cache({("default", "cfg1"): cfg})
 
-    await deployment_reconciler.reconcile_one(
-        dep, deployments_by_config={}, deployments_by_name={}, volumes_by_name=NO_VOLUMES
-    )
+    await deployment_reconciler.reconcile_one(dep, deployments_by_name={}, volumes_by_name=NO_VOLUMES)
 
     assert len(mock_backend.create_calls) == 1
     assert dep.status == "STARTING"
@@ -42,12 +40,10 @@ async def test_prerequisite_gating_stays_pending(
     dep = make_deployment("server")
     dep.deployment_config = "server"
     cfg = make_deployment_config("server")
-    cfg.prerequisites = [Prerequisite(deployment_name="puller", condition="succeeded")]
+    dep.prerequisites = [Prerequisite(deployment_name="puller", condition="succeeded")]
     deployment_reconciler.set_config_cache({("default", "server"): cfg})
 
-    await deployment_reconciler.reconcile_one(
-        dep, deployments_by_config={}, deployments_by_name={}, volumes_by_name=NO_VOLUMES
-    )
+    await deployment_reconciler.reconcile_one(dep, deployments_by_name={}, volumes_by_name=NO_VOLUMES)
 
     assert dep.status == "PENDING"
     assert "Waiting" in dep.status_message
@@ -65,14 +61,12 @@ async def test_prerequisite_failure_marks_parent_failed(
     server = make_deployment("server")
     server.deployment_config = "server"
     cfg = make_deployment_config("server")
-    cfg.prerequisites = [Prerequisite(deployment_name="puller")]
+    server.prerequisites = [Prerequisite(deployment_name="puller")]
     deployment_reconciler.set_config_cache({("default", "server"): cfg})
     by_name = {("default", "puller"): puller}
-    by_config = {("default", "puller"): puller}
 
     await deployment_reconciler.reconcile_one(
         server,
-        deployments_by_config=by_config,
         deployments_by_name=by_name,
         volumes_by_name=NO_VOLUMES,
     )
@@ -92,9 +86,7 @@ async def test_ready_monitoring(
     deployment_reconciler.set_config_cache({("default", "cfg1"): cfg})
     mock_backend.read_status_result = BackendStatusUpdate(status="READY", status_message="healthy")
 
-    await deployment_reconciler.reconcile_one(
-        dep, deployments_by_config={}, deployments_by_name={}, volumes_by_name=NO_VOLUMES
-    )
+    await deployment_reconciler.reconcile_one(dep, deployments_by_name={}, volumes_by_name=NO_VOLUMES)
 
     assert mock_backend.read_calls == [("default", "dep1")]
     assert dep.status == "READY"
@@ -116,9 +108,7 @@ async def test_on_failure_succeeded_terminal(
         exit_code=0,
     )
 
-    await deployment_reconciler.reconcile_one(
-        dep, deployments_by_config={}, deployments_by_name={}, volumes_by_name=NO_VOLUMES
-    )
+    await deployment_reconciler.reconcile_one(dep, deployments_by_name={}, volumes_by_name=NO_VOLUMES)
 
     assert dep.status == "SUCCEEDED"
     assert dep.exit_code == 0
@@ -135,11 +125,9 @@ async def test_desired_stopped_deletes(
     cfg = make_deployment_config()
     deployment_reconciler.set_config_cache({("default", "cfg1"): cfg})
 
-    await deployment_reconciler.reconcile_one(
-        dep, deployments_by_config={}, deployments_by_name={}, volumes_by_name=NO_VOLUMES
-    )
+    await deployment_reconciler.reconcile_one(dep, deployments_by_name={}, volumes_by_name=NO_VOLUMES)
 
-    assert mock_backend.delete_calls == [("default", "dep1")]
+    assert mock_backend.deployment_delete_calls == [("default", "dep1")]
     mock_entities.delete.assert_awaited_once()
 
 
@@ -153,11 +141,9 @@ async def test_delete_proceeds_when_config_missing(
     dep.desired_state = "STOPPED"
     mock_entities.get.side_effect = NemoEntityNotFoundError("missing")
 
-    await deployment_reconciler.reconcile_one(
-        dep, deployments_by_config={}, deployments_by_name={}, volumes_by_name=NO_VOLUMES
-    )
+    await deployment_reconciler.reconcile_one(dep, deployments_by_name={}, volumes_by_name=NO_VOLUMES)
 
-    assert mock_backend.delete_calls == [("default", "dep1")]
+    assert mock_backend.deployment_delete_calls == [("default", "dep1")]
     mock_entities.delete.assert_awaited_once()
 
 
@@ -175,9 +161,7 @@ async def test_delete_retains_deleting_when_backend_delete_fails(
 
     mock_backend.delete_deployment = failing_delete  # type: ignore[method-assign]
 
-    await deployment_reconciler.reconcile_one(
-        dep, deployments_by_config={}, deployments_by_name={}, volumes_by_name=NO_VOLUMES
-    )
+    await deployment_reconciler.reconcile_one(dep, deployments_by_name={}, volumes_by_name=NO_VOLUMES)
 
     assert dep.status == "DELETING"
     mock_entities.delete.assert_not_awaited()
@@ -193,9 +177,7 @@ async def test_delete_clears_drift_recovery_cache(
     dep.desired_state = "STOPPED"
     deployment_reconciler._drift_cache.add_attempt("default/dep1")
 
-    await deployment_reconciler.reconcile_one(
-        dep, deployments_by_config={}, deployments_by_name={}, volumes_by_name=NO_VOLUMES
-    )
+    await deployment_reconciler.reconcile_one(dep, deployments_by_name={}, volumes_by_name=NO_VOLUMES)
 
     assert deployment_reconciler._drift_cache.get_attempts("default/dep1") == 0
 
@@ -214,9 +196,7 @@ async def test_drift_recovery_recreate(
     mock_backend.create_status = BackendStatusUpdate(status="STARTING", status_message="recreated")
 
     dep.status = "LOST"
-    await deployment_reconciler.reconcile_one(
-        dep, deployments_by_config={}, deployments_by_name={}, volumes_by_name=NO_VOLUMES
-    )
+    await deployment_reconciler.reconcile_one(dep, deployments_by_name={}, volumes_by_name=NO_VOLUMES)
 
     assert len(mock_backend.create_calls) == 1
     assert dep.status == "STARTING"
@@ -239,9 +219,7 @@ async def test_drift_recovery_exhausted(
 
     mock_backend.read_status_result = BackendStatusUpdate(status="LOST")
     dep.status = "LOST"
-    await deployment_reconciler.reconcile_one(
-        dep, deployments_by_config={}, deployments_by_name={}, volumes_by_name=NO_VOLUMES
-    )
+    await deployment_reconciler.reconcile_one(dep, deployments_by_name={}, volumes_by_name=NO_VOLUMES)
 
     assert dep.status == "FAILED"
     assert "Drift recovery failed" in dep.status_message
@@ -260,7 +238,6 @@ async def test_conflict_propagates_from_save(
     with pytest.raises(NemoEntityConflictError):
         await deployment_reconciler.reconcile_one(
             dep,
-            deployments_by_config={},
             deployments_by_name={},
             volumes_by_name=NO_VOLUMES,
         )
@@ -274,9 +251,7 @@ async def test_missing_config_marks_failed(
     dep = make_deployment()
     mock_entities.get.side_effect = NemoEntityNotFoundError("missing")
 
-    await deployment_reconciler.reconcile_one(
-        dep, deployments_by_config={}, deployments_by_name={}, volumes_by_name=NO_VOLUMES
-    )
+    await deployment_reconciler.reconcile_one(dep, deployments_by_name={}, volumes_by_name=NO_VOLUMES)
 
     assert dep.status == "FAILED"
     assert "DeploymentConfig" in dep.status_message
@@ -297,7 +272,6 @@ async def test_executor_not_found_marks_failed(
 
     await reconciler.reconcile_one(
         dep,
-        deployments_by_config={},
         deployments_by_name={},
         volumes_by_name=NO_VOLUMES,
     )
@@ -312,7 +286,7 @@ async def test_orphan_cleanup_deletes_unknown(
 ) -> None:
     mock_backend.managed_names = ["default/orphan", "default/known"]
     await reconcile_orphans([mock_backend], {"default/known"})
-    assert mock_backend.delete_calls == [("default", "orphan")]
+    assert mock_backend.deployment_delete_calls == [("default", "orphan")]
 
 
 @pytest.mark.asyncio
@@ -321,7 +295,7 @@ async def test_orphan_cleanup_skips_invalid_ids(
 ) -> None:
     mock_backend.managed_names = ["default/valid", "/invalid", "ws/", "default/orphan"]
     await reconcile_orphans([mock_backend], {"default/valid"})
-    assert mock_backend.delete_calls == [("default", "orphan")]
+    assert mock_backend.deployment_delete_calls == [("default", "orphan")]
 
 
 @pytest.mark.asyncio
@@ -342,7 +316,6 @@ async def test_on_failure_failed_exit(
 
     await deployment_reconciler.reconcile_one(
         dep,
-        deployments_by_config={},
         deployments_by_name={},
         volumes_by_name=NO_VOLUMES,
     )
@@ -366,7 +339,6 @@ async def test_drift_recovery_ignore(
 
     await deployment_reconciler.reconcile_one(
         dep,
-        deployments_by_config={},
         deployments_by_name={},
         volumes_by_name=NO_VOLUMES,
     )
@@ -392,7 +364,6 @@ async def test_drift_recovery_backoff_skips_recreate(
 
     await deployment_reconciler.reconcile_one(
         dep,
-        deployments_by_config={},
         deployments_by_name={},
         volumes_by_name=NO_VOLUMES,
     )
@@ -417,7 +388,6 @@ async def test_volume_mount_gating(
 
     await deployment_reconciler.reconcile_one(
         dep,
-        deployments_by_config={},
         deployments_by_name={},
         volumes_by_name={("default", "data"): vol},
     )
@@ -438,14 +408,12 @@ async def test_prerequisite_ready_through_reconciler(
     server = make_deployment("server")
     server.deployment_config = "server"
     cfg = make_deployment_config("server")
-    cfg.prerequisites = [Prerequisite(deployment_name="worker", condition="ready")]
+    server.prerequisites = [Prerequisite(deployment_name="worker", condition="ready")]
     deployment_reconciler.set_config_cache({("default", "server"): cfg})
     by_name = {("default", "worker"): worker}
-    by_config = {("default", "worker"): worker}
 
     await deployment_reconciler.reconcile_one(
         server,
-        deployments_by_config=by_config,
         deployments_by_name=by_name,
         volumes_by_name=NO_VOLUMES,
     )
@@ -472,16 +440,12 @@ async def test_drift_recovery_create_failure_stays_lost_and_backoffs(
 
     mock_backend.create_deployment = failing_create  # type: ignore[method-assign]
 
-    await deployment_reconciler.reconcile_one(
-        dep, deployments_by_config={}, deployments_by_name={}, volumes_by_name=NO_VOLUMES
-    )
+    await deployment_reconciler.reconcile_one(dep, deployments_by_name={}, volumes_by_name=NO_VOLUMES)
     assert dep.status == "LOST"
     assert "Will retry" in dep.status_message
     assert len(mock_backend.create_calls) == 1
 
-    await deployment_reconciler.reconcile_one(
-        dep, deployments_by_config={}, deployments_by_name={}, volumes_by_name=NO_VOLUMES
-    )
+    await deployment_reconciler.reconcile_one(dep, deployments_by_name={}, volumes_by_name=NO_VOLUMES)
     assert dep.status == "LOST"
     assert dep.status != "FAILED"
     assert len(mock_backend.create_calls) == 1
@@ -499,14 +463,12 @@ async def test_succeeded_prerequisite_in_index_allows_create(
     server = make_deployment("server")
     server.deployment_config = "server"
     cfg = make_deployment_config("server")
-    cfg.prerequisites = [Prerequisite(deployment_name="puller", condition="succeeded")]
+    server.prerequisites = [Prerequisite(deployment_name="puller", condition="succeeded")]
     deployment_reconciler.set_config_cache({("default", "server"): cfg})
     by_name = {("default", "puller"): puller}
-    by_config = {("default", "puller"): puller}
 
     await deployment_reconciler.reconcile_one(
         server,
-        deployments_by_config=by_config,
         deployments_by_name=by_name,
         volumes_by_name=NO_VOLUMES,
     )
