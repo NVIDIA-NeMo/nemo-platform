@@ -10,25 +10,18 @@ is a decorated function that declares its call signature and response type.
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import NotRequired, TypedDict
 
 from nemo_example_plugin.entities import ExampleItem
 from nemo_example_plugin.types.payloads import (
     BlobUploadResponse,
     CountRequest,
     CreateExampleItemRequest,
-    ExampleItemPage,
     HelloResponse,
     Tick,
     UpdateExampleItemRequest,
 )
 from nemo_platform_plugin.client.endpoint import delete, get, patch, post, put
-from nemo_platform_plugin.client.types import BinaryContent, Stream
-
-
-class ListItemsQueryParams(TypedDict, total=False):
-    page: NotRequired[int]
-    page_size: NotRequired[int]
+from nemo_platform_plugin.client.types import BinaryContent, Paginated, Stream
 
 
 @get("/apis/example/hello/{name}")
@@ -38,14 +31,14 @@ def hello(*, name: str) -> HelloResponse: ...
 
 @post("/apis/example/v2/workspaces/{workspace}/items")
 @abstractmethod
-def create_item(*, workspace: str | None = None, body: CreateExampleItemRequest) -> ExampleItem: ...
+def create_item(
+    *, workspace: str | None = None, body: CreateExampleItemRequest, exist_ok: bool = False
+) -> ExampleItem: ...
 
 
 @get("/apis/example/v2/workspaces/{workspace}/items")
 @abstractmethod
-def list_items(
-    *, workspace: str | None = None, query_params: ListItemsQueryParams | None = None
-) -> ExampleItemPage: ...
+def list_items(*, workspace: str | None = None) -> Paginated[ExampleItem]: ...
 
 
 @get("/apis/example/v2/workspaces/{workspace}/items/{name}")

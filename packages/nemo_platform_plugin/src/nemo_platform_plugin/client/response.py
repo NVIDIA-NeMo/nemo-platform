@@ -5,14 +5,14 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Callable, Coroutine, Iterator
 from contextlib import AbstractAsyncContextManager, AbstractContextManager
 from dataclasses import dataclass
 from types import TracebackType
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 import httpx
-from nemo_platform_plugin.client.types import PreparedRequest
+from nemo_platform_plugin.client.types import PaginationStrategy, PreparedRequest
 from pydantic import BaseModel
 
 ResponseT = TypeVar("ResponseT")
@@ -214,6 +214,138 @@ class AsyncNemoStreamResponse(Generic[ModelT]):
         self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: TracebackType | None
     ) -> None:
         await self._stream_ctx.__aexit__(exc_type, exc_val, exc_tb)
+
+
+# ---------------------------------------------------------------------------
+# Paginated responses
+# ---------------------------------------------------------------------------
+
+
+# Type aliases for the page-fetching callbacks used by paginated responses.
+# The page value is int for offset-based or str for cursor-based pagination.
+_SyncPageFetcher = Callable[[PreparedRequest, Any], httpx.Response]
+_AsyncPageFetcher = Callable[[PreparedRequest, Any], Coroutine[Any, Any, httpx.Response]]
+
+
+class NemoPaginatedResponse(Generic[ModelT]):
+    """Sync iterable over all items across paginated API responses.
+
+    Lazily fetches subsequent pages using the pagination strategy configured
+    on the endpoint's ``Paginated[T, Strategy]`` return type.  Iterating
+    yields individual ``ModelT`` items, not page envelopes::
+
+        resp = client.send(list_items())
+        for item in resp:
+            print(item.name)
+
+    Also supports fetching a single page::
+
+        resp = client.send(list_items())
+        page = resp.first_page()        # list[ModelT] from the first page
+    """
+
+    def __init__(
+        self,
+        first_http_response: httpx.Response,
+        model_type: type[ModelT],
+        request: PreparedRequest,
+        fetch_page: _SyncPageFetcher,
+        strategy: type[PaginationStrategy] | None = None,
+    ) -> None:
+        from nemo_platform_plugin.client.types import OffsetPagination
+
+        self._first_response = first_http_response
+        self._model_type = model_type
+        self.request = request
+        self._fetch_page = fetch_page
+        self._strategy: type[PaginationStrategy] = strategy or OffsetPagination
+
+    @property
+    def http_response(self) -> httpx.Response:
+        return self._first_response
+
+    def _parse_items(self, raw: httpx.Response) -> list[ModelT]:
+        raw.raise_for_status()
+        body = raw.json()
+        raw_items = self._strategy.extract_items(body)
+        return [self._model_type.model_validate(item) for item in raw_items]
+
+    def first_page(self) -> list[ModelT]:
+        """Return items from the first page (already fetched)."""
+        return self._parse_items(self._first_response)
+
+    def __iter__(self) -> Iterator[ModelT]:
+        self._first_response.raise_for_status()
+        body = self._first_response.json()
+
+        raw_items = self._strategy.extract_items(body)
+        yield from (self._model_type.model_validate(item) for item in raw_items)
+
+        next_page = self._strategy.next_page(body, 1)
+        while next_page is not None:
+            raw = self._fetch_page(self.request, next_page)
+            raw.raise_for_status()
+            body = raw.json()
+            raw_items = self._strategy.extract_items(body)
+            yield from (self._model_type.model_validate(item) for item in raw_items)
+            current = next_page
+            next_page = self._strategy.next_page(body, current)
+
+
+class AsyncNemoPaginatedResponse(Generic[ModelT]):
+    """Async iterable over all items across paginated API responses.
+
+    Async twin of :class:`NemoPaginatedResponse`::
+
+        resp = await client.send(list_items())
+        async for item in resp:
+            print(item.name)
+    """
+
+    def __init__(
+        self,
+        first_http_response: httpx.Response,
+        model_type: type[ModelT],
+        request: PreparedRequest,
+        fetch_page: _AsyncPageFetcher,
+        strategy: type[PaginationStrategy] | None = None,
+    ) -> None:
+        from nemo_platform_plugin.client.types import OffsetPagination
+
+        self._first_response = first_http_response
+        self._model_type = model_type
+        self.request = request
+        self._fetch_page = fetch_page
+        self._strategy: type[PaginationStrategy] = strategy or OffsetPagination
+
+    @property
+    def http_response(self) -> httpx.Response:
+        return self._first_response
+
+    def first_page(self) -> list[ModelT]:
+        self._first_response.raise_for_status()
+        body = self._first_response.json()
+        raw_items = self._strategy.extract_items(body)
+        return [self._model_type.model_validate(item) for item in raw_items]
+
+    async def __aiter__(self) -> AsyncIterator[ModelT]:
+        self._first_response.raise_for_status()
+        body = self._first_response.json()
+
+        raw_items = self._strategy.extract_items(body)
+        for item in raw_items:
+            yield self._model_type.model_validate(item)
+
+        next_page = self._strategy.next_page(body, 1)
+        while next_page is not None:
+            raw = await self._fetch_page(self.request, next_page)
+            raw.raise_for_status()
+            body = raw.json()
+            raw_items = self._strategy.extract_items(body)
+            for item in raw_items:
+                yield self._model_type.model_validate(item)
+            current = next_page
+            next_page = self._strategy.next_page(body, current)
 
 
 # ---------------------------------------------------------------------------

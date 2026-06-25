@@ -24,6 +24,7 @@ Parameter conventions:
 - ``body`` — JSON request body (Pydantic model, serialized automatically)
 - ``content`` — binary request body (raw bytes)
 - ``query_params`` — query parameters (dict or TypedDict)
+- Blessed client options (e.g. ``exist_ok``) — client-side behavior (stripped before sending)
 - All other keyword parameters — path parameters (matched to ``{placeholders}`` in the path template)
 """
 
@@ -33,14 +34,52 @@ import functools
 import inspect
 import string
 from collections.abc import AsyncIterable, Callable, Iterable
-from typing import get_type_hints
+from typing import Any, get_type_hints
 
 from nemo_platform_plugin.client.types import (
+    BLESSED_CLIENT_PARAMS,
     P,
     PreparedRequest,
     ResponseT,
 )
 from pydantic import BaseModel
+
+# Parameter names with special handling in _build_prepared_request.
+_RESERVED_PARAM_NAMES = frozenset({"self", "body", "content", "query_params"})
+
+
+def _identify_client_option_params(fn: Callable) -> set[str]:
+    """Return parameter names that are blessed client-side options.
+
+    A parameter is a client option if its name appears in
+    :data:`BLESSED_CLIENT_PARAMS`.
+    """
+    sig = inspect.signature(fn)
+    return set(sig.parameters.keys()) & BLESSED_CLIENT_PARAMS.keys()
+
+
+def _validate_params(
+    fn: Callable, path_param_names: set[str], client_option_names: set[str]
+) -> None:
+    """Raise ``TypeError`` at decoration time if any parameter is unrecognised.
+
+    Every parameter must be one of:
+    - ``self``
+    - A path placeholder (``{name}`` in the URL template)
+    - ``body``, ``content``, or ``query_params``
+    - A blessed client option (e.g. ``exist_ok``)
+    """
+    sig = inspect.signature(fn)
+    known = _RESERVED_PARAM_NAMES | path_param_names | client_option_names
+    unknown = set(sig.parameters.keys()) - known
+    if unknown:
+        name = getattr(fn, "__qualname__", getattr(fn, "__name__", repr(fn)))
+        blessed = ", ".join(sorted(BLESSED_CLIENT_PARAMS.keys()))
+        raise TypeError(
+            f"Endpoint {name} has unrecognised parameters: {unknown}. "
+            f"Parameters must be path params {path_param_names}, "
+            f"'body', 'content', 'query_params', or a client option ({blessed})."
+        )
 
 
 def _build_prepared_request(
@@ -48,6 +87,7 @@ def _build_prepared_request(
     path: str,
     sig: inspect.Signature,
     path_param_names: set[str],
+    client_option_names: set[str],
     response_type: type | None,
     args: tuple,
     kwargs: dict,
@@ -56,6 +96,9 @@ def _build_prepared_request(
 
     Uses ``bind_partial`` so that path parameters with client-level defaults
     (e.g. ``workspace``) can be omitted by the caller.
+
+    Client option parameters (blessed names like ``exist_ok``) are stripped
+    from the HTTP request and stashed in ``PreparedRequest.client_options``.
     """
     bound = sig.bind_partial(*args, **kwargs)
     bound.apply_defaults()
@@ -64,11 +107,16 @@ def _build_prepared_request(
     query_params: dict[str, str | int | bool | None] | None = None
     content: bytes | Iterable[bytes] | AsyncIterable[bytes] | None = None
     content_type: str | None = None
+    client_options: dict[str, Any] | None = None
 
     for name, value in bound.arguments.items():
         if name == "self":
             continue
-        if name in path_param_names:
+        if name in client_option_names:
+            if client_options is None:
+                client_options = {}
+            client_options[name] = value
+        elif name in path_param_names:
             if value is not None:
                 path_params[name] = str(value)
         elif name == "body":
@@ -91,6 +139,7 @@ def _build_prepared_request(
         content_type=content_type,
         response_type=response_type,
         query_params=query_params,
+        client_options=client_options,
     )
 
 
@@ -98,13 +147,18 @@ def _make_endpoint(http_method: str, path: str, fn: Callable[P, ResponseT]) -> C
     """Create a callable that builds PreparedRequests from the function's signature."""
     sig = inspect.signature(fn)
     path_param_names = {field_name for _, field_name, _, _ in string.Formatter().parse(path) if field_name}
+    client_option_names = _identify_client_option_params(fn)
+    _validate_params(fn, path_param_names, client_option_names)
+
     hints = get_type_hints(fn)
     ret = hints.get("return")
     response_type = ret if ret is not None and ret is not type(None) else None
 
     @functools.wraps(fn)
     def prepare(*args: P.args, **kwargs: P.kwargs) -> PreparedRequest[ResponseT]:
-        return _build_prepared_request(http_method, path, sig, path_param_names, response_type, args, kwargs)
+        return _build_prepared_request(
+            http_method, path, sig, path_param_names, client_option_names, response_type, args, kwargs
+        )
 
     return prepare
 

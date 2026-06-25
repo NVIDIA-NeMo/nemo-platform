@@ -17,6 +17,8 @@ Plugin authors define endpoints once in a collection class, then use
     resp = client.hello(name="alice")  # NemoResponse[HelloResponse]
 
 The descriptor dispatches sync vs async based on the client type.
+Client-side options (e.g. ``exist_ok``) declared in the endpoint
+signature are applied after the HTTP call, wrapping the response.
 
 Note: ``ty`` shows ``Unknown |`` on the method types due to unannotated
 class attributes (astral-sh/ty#3254). The types themselves are correct
@@ -30,6 +32,7 @@ from collections.abc import Callable
 from typing import Any, Coroutine, Generic, overload
 
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+from nemo_platform_plugin.client.directives import apply_client_options
 from nemo_platform_plugin.client.response import NemoResponse
 from nemo_platform_plugin.client.types import P, PreparedRequest, ResponseT
 
@@ -40,6 +43,9 @@ class EndpointMethod(Generic[P, ResponseT]):
     When accessed on a :class:`NemoClient`, returns a sync callable.
     When accessed on an :class:`AsyncNemoClient`, returns an async callable.
     Both preserve the endpoint's full ``ParamSpec`` signature.
+
+    Client-side options (blessed parameter names like ``exist_ok``)
+    are automatically applied after the HTTP response is received.
     """
 
     def __init__(self, endpoint_fn: Callable[P, PreparedRequest[ResponseT]]) -> None:
@@ -58,13 +64,17 @@ class EndpointMethod(Generic[P, ResponseT]):
 
             @functools.wraps(self._endpoint_fn)
             async def async_bound(*args: P.args, **kwargs: P.kwargs) -> NemoResponse[ResponseT]:
-                return await obj.send(self._endpoint_fn(*args, **kwargs))
+                request = self._endpoint_fn(*args, **kwargs)
+                response = await obj.send(request)
+                return apply_client_options(request, response)
 
             return async_bound
 
         @functools.wraps(self._endpoint_fn)
         def sync_bound(*args: P.args, **kwargs: P.kwargs) -> NemoResponse[ResponseT]:
-            return obj.send(self._endpoint_fn(*args, **kwargs))  # type: ignore[return-value]
+            request = self._endpoint_fn(*args, **kwargs)
+            response = obj.send(request)  # type: ignore[assignment]
+            return apply_client_options(request, response)
 
         return sync_bound
 
