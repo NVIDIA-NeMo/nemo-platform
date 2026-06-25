@@ -75,12 +75,12 @@ variable "BASE_TAG_PYTHON" {
 
 # Pin for nmp-automodel-base.
 variable "BASE_TAG_AUTOMODEL" {
-  default = "d9e1851f309d3cf5389c0fc0e1049bd3c87593f8"
+  default = "65632527b258367fb8855ef431f596abb8538577"
 }
 
 # The tag for base images if needed
 variable "WHEELS_TAG" {
-  default = "c6fe97bde6a687d506a33edfee36569b8c7252f3"
+  default = "65632527b258367fb8855ef431f596abb8538577"
 }
 
 variable "BAKE_CACHE_SOURCE_BRANCH" {
