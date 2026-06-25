@@ -78,6 +78,7 @@ async def test_puller_server_prerequisite_chain(docker_registry: ExecutorRegistr
         workspace="itest",
         deployment_config="server-cfg",
         status="PENDING",
+        prerequisites=[Prerequisite(deployment_name="puller", condition="succeeded")],
     )
 
     puller_cfg = DeploymentConfig(
@@ -99,7 +100,6 @@ async def test_puller_server_prerequisite_chain(docker_registry: ExecutorRegistr
         name="server-cfg",
         workspace="itest",
         restart_policy="Always",
-        prerequisites=[Prerequisite(deployment_name="puller-cfg", condition="succeeded")],
         containers=[
             Container(
                 name="server",
@@ -151,10 +151,6 @@ async def test_puller_server_prerequisite_chain(docker_registry: ExecutorRegistr
 
     volumes_by_name = {("itest", "weights"): volume}
     by_name = {("itest", "puller"): puller_dep, ("itest", "server"): server_dep}
-    by_config = {
-        ("itest", "puller-cfg"): puller_dep,
-        ("itest", "server-cfg"): server_dep,
-    }
 
     try:
         await volume_reconciler.reconcile_one(volume)
@@ -164,7 +160,6 @@ async def test_puller_server_prerequisite_chain(docker_registry: ExecutorRegistr
         for _ in range(40):
             await deployment_reconciler.reconcile_one(
                 puller_dep,
-                deployments_by_config=by_config,
                 deployments_by_name=by_name,
                 volumes_by_name=volumes_by_name,
             )
@@ -176,7 +171,6 @@ async def test_puller_server_prerequisite_chain(docker_registry: ExecutorRegistr
         for _ in range(10):
             await deployment_reconciler.reconcile_one(
                 server_dep,
-                deployments_by_config=by_config,
                 deployments_by_name=by_name,
                 volumes_by_name=volumes_by_name,
             )
