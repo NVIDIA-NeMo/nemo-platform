@@ -93,6 +93,7 @@
     "@nemo/testing": "workspace:*",
     "@huggingface/hub": "^1.0.0",
     "@nvidia/foundations-tailwind-plugin": "catalog:",
+    "@axe-core/playwright": "^4.12.1",
     "@playwright/test": "^1.57.0",
     "@storybook/react": "catalog:",
     "@tailwindcss/postcss": "catalog:",
