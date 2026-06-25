@@ -26,8 +26,7 @@ async function main() {
   }
   const currentMax: number = parseInt(maxWarningsMatch[1], 10);
 
-  // Lint via the ESLint Node API using the a11y flat config only, with inline
-  // directives ignored (mirrors `--config ... --no-config-lookup --no-inline-config`).
+  // a11y flat config only; inline directives ignored
   const eslint = new ESLint({
     overrideConfigFile: path.resolve(process.cwd(), '../../eslint.config.a11y.js'),
     allowInlineConfig: false,
