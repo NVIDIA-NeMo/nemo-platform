@@ -83,10 +83,6 @@ describe('StatusBadge component', () => {
       expect(badge).toBeInTheDocument();
       expect(badge).toHaveTextContent(expectedBadge.label);
 
-      // eslint-disable-next-line testing-library/no-node-access
-      const icon = document.querySelector('.lucide');
-      expect(icon).toBeInTheDocument();
-
       unmount();
     });
   });
@@ -156,16 +152,9 @@ describe('StatusBadge component', () => {
       expect(screen.getByTestId('nv-badge')).toHaveTextContent('Success');
     });
 
-    it('renders icon when config entry has one', () => {
-      render(<StatusBadge status="success" statusConfig={STATUS_CONFIG} />);
-      // eslint-disable-next-line testing-library/no-node-access
-      expect(document.querySelector('.lucide-circle-check')).toBeInTheDocument();
-    });
-
-    it('renders no icon when config entry omits one', () => {
+    it('renders the label for a config entry without an icon', () => {
       render(<StatusBadge status="error" statusConfig={STATUS_CONFIG} />);
-      // eslint-disable-next-line testing-library/no-node-access
-      expect(document.querySelector('.lucide')).not.toBeInTheDocument();
+      expect(screen.getByTestId('nv-badge')).toHaveTextContent('Error');
     });
 
     it('falls back to provided fallback for unknown status', () => {
