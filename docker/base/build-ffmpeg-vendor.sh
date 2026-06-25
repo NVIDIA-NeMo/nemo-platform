@@ -7,6 +7,11 @@ FFMPEG_VERSION="${FFMPEG_VERSION:-8.1.2}"
 FFMPEG_PREFIX="${FFMPEG_PREFIX:-/ffmpeg_build}"
 JOBS="${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}"
 
+cleanup_work() {
+    cd /
+    rm -rf "${1:?}"
+}
+
 if [[ -f "${FFMPEG_PREFIX}/lib/pkgconfig/libavcodec.pc" ]]; then
     echo "Using cached FFmpeg at ${FFMPEG_PREFIX}"
     pkg-config --modversion libavcodec
@@ -35,7 +40,7 @@ if [[ ! -f "${FFMPEG_PREFIX}/lib/pkgconfig/vpx.pc" ]]; then
     ./configure "${vpx_args[@]}"
     make -j"${JOBS}"
     make install
-    rm -rf "${work}"
+    cleanup_work "${work}"
 fi
 
 # x264 (PyAV build-deps enables --enable-libx264)
@@ -46,7 +51,7 @@ if [[ ! -f "${FFMPEG_PREFIX}/lib/pkgconfig/x264.pc" ]]; then
     ./configure --prefix="${FFMPEG_PREFIX}" --enable-shared --enable-pic
     make -j"${JOBS}"
     make install
-    rm -rf "${work}"
+    cleanup_work "${work}"
 fi
 
 work="$(mktemp -d)"
@@ -77,4 +82,4 @@ echo "/ffmpeg_build/lib/" >> /etc/ld.so.conf.d/ffmpeg-vendor.conf
 ldconfig
 
 "${FFMPEG_PREFIX}/bin/ffmpeg" -version | head -1
-rm -rf "${work}"
+cleanup_work "${work}"

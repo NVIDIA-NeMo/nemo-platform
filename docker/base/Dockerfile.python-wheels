@@ -18,7 +18,7 @@
 #   TORCH_CUDA_ARCH_LIST   - semicolon-separated SM targets (default: "8.0;8.6;9.0")
 #   FFMPEG_VERSION         - FFmpeg for av/opencv wheels   (default: 8.1.2)
 #   PYAV_VERSION           - PyAV git tag                  (default: v17.1.0)
-#   OPENCV_PYTHON_VERSION  - opencv-python git tag         (default: 4.13.0.92)
+#   OPENCV_PYTHON_GIT_TAG   - opencv-python git tag (92 = PyPI 4.13.0.92)
 #######
 
 ARG CUDA_VERSION=12.8.1
@@ -327,7 +327,7 @@ RUN mkdir -p /wheels /tmp/wheelhouse && \
 # =============================================================================
 FROM ffmpeg-vendor-base-py312 AS opencv-headless-wheel-builder-py312
 
-ARG OPENCV_PYTHON_VERSION=4.13.0.92
+ARG OPENCV_PYTHON_GIT_TAG=92
 
 ENV CI_BUILD=1 \
     ENABLE_HEADLESS=1 \
@@ -342,7 +342,7 @@ RUN yum install -y \
 
 RUN mkdir -p /wheels /tmp/wheelhouse && \
     /opt/python/cp312-cp312/bin/pip install -U "pip<26" "numpy>=2.0" auditwheel && \
-    git clone --depth 1 --branch ${OPENCV_PYTHON_VERSION} https://github.com/opencv/opencv-python.git /src/opencv-python && \
+    git clone --depth 1 --branch ${OPENCV_PYTHON_GIT_TAG} https://github.com/opencv/opencv-python.git /src/opencv-python && \
     cd /src/opencv-python && \
     git submodule update --init --recursive opencv && \
     OPENCV_PYTHON_SKIP_GIT_COMMANDS=1 \
