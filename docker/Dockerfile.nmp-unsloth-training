@@ -153,7 +153,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     -e /app/packages/nemo_platform_plugin \
     -e /app/packages/nmp_common \
     -e /app/packages/nmp_customization_common \
-    -e "/app/services/unsloth[integrations]"
+    -e "/app/services/unsloth"
 
 # hf-transfer can pull huggingface-hub 1.x — install then re-pin hub + transformers.
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -205,7 +205,11 @@ RUN rm -rf \
     /usr/local/lib/python3.12/dist-packages/mlflow-*.dist-info \
     /usr/local/lib/python3.12/dist-packages/mlflow_skinny-*.dist-info \
     /usr/local/lib/python3.12/dist-packages/jupyter_server \
-    /usr/local/lib/python3.12/dist-packages/jupyter_server-*.dist-info
+    /usr/local/lib/python3.12/dist-packages/jupyter_server-*.dist-info \
+    /usr/local/cuda/NsightSystems-cli-*  \
+    /usr/local/bin/nsys \
+    /usr/local/cuda/bin/nsys
+
 
 ENTRYPOINT ["/opt/venv/bin/python"]
 CMD ["-m", "nmp.unsloth.tasks.training", "--help"]
