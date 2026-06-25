@@ -40,7 +40,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache --no-deps \
     -e /opt/Automodel
 
-
 ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
 ENTRYPOINT ["/opt/venv/bin/python"]
 CMD ["-m", "nmp.automodel.tasks.training", "--help"]
