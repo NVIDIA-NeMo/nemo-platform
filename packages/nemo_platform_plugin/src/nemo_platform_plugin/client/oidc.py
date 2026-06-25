@@ -261,12 +261,20 @@ class TokenSet:
     def from_access_token(
         access_token: str,
         refresh_token: str | None = None,
+        *,
+        expires_in: int | float | None = None,
     ) -> TokenSet:
-        """Create a TokenSet, extracting expiry from the JWT's ``exp`` claim."""
+        """Create a TokenSet, extracting expiry from the JWT's ``exp`` claim.
+
+        Falls back to ``expires_in`` (seconds from now) for opaque tokens
+        that don't contain a JWT ``exp`` claim.
+        """
         expires_at = None
         claims = decode_jwt_claims(access_token)
         if claims:
             expires_at = claims.get("exp")
+        if expires_at is None and expires_in is not None:
+            expires_at = time.time() + float(expires_in)
         return TokenSet(
             access_token=access_token,
             refresh_token=refresh_token,
@@ -393,15 +401,24 @@ class OIDCTokenProvider:
 
             new_access_token = token_data["access_token"]
             # The IdP may rotate the refresh token.
-            new_refresh_token = token_data.get("refresh_token", self.tokens.refresh_token)
+            old_refresh_token = self.tokens.refresh_token
+            new_refresh_token = token_data.get("refresh_token", old_refresh_token)
+            refresh_token_rotated = new_refresh_token != old_refresh_token
 
-            self.tokens = TokenSet.from_access_token(new_access_token, new_refresh_token)
+            self.tokens = TokenSet.from_access_token(
+                new_access_token, new_refresh_token, expires_in=token_data.get("expires_in")
+            )
             logger.debug("Access token refreshed successfully (expires_at=%s)", self.tokens.expires_at)
 
             if self.on_tokens_refreshed:
                 try:
                     self.on_tokens_refreshed(self.tokens)
                 except Exception:
+                    if refresh_token_rotated:
+                        # The IdP rotated the refresh token but we failed to
+                        # persist it. The old refresh token is now invalid, so
+                        # swallowing this would silently lose the user's session.
+                        raise
                     logger.warning("Failed to persist refreshed tokens", exc_info=True)
 
     def force_refresh(self) -> str:

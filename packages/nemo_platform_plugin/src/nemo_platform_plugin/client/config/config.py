@@ -140,9 +140,7 @@ class Config(BaseModel):
 
         xdg_config_home = os.environ.get("XDG_CONFIG_HOME")
         if xdg_config_home:
-            config_dir = Path(xdg_config_home) / "nmp"
-            if config_dir.exists():
-                return config_dir / "config.yaml"
+            return Path(xdg_config_home) / "nmp" / "config.yaml"
 
         config_dir = Path.home() / ".config" / "nmp"
         return config_dir / "config.yaml"
@@ -206,10 +204,13 @@ class Config(BaseModel):
             context={"include_secrets": True},
         )
 
-        with open(path, "w") as f:
+        # Open with restricted permissions (0600) before writing secrets.
+        # Uses os.open + os.fdopen to set permissions atomically at creation,
+        # avoiding a window where the file is world-readable.
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, stat.S_IRUSR | stat.S_IWUSR)
+        with os.fdopen(fd, "w") as f:
             yaml.safe_dump(config_data, f, default_flow_style=False, sort_keys=False)
 
-        os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)  # 600
         self._config_path = path
 
     @classmethod
@@ -226,7 +227,9 @@ class Config(BaseModel):
 
         if path.exists():
             config = cls.load(config_path=path)
-            context_name = context_name or config.resolve().context_name
+            # Prefer explicit context_name, then params["current_context"],
+            # then the currently active context from the config file.
+            context_name = context_name or params.get("current_context") or config.resolve().context_name
         else:
             config = cls.create(path, ConfigFile())
             context_name = context_name or DEFAULT_CONTEXT
@@ -352,11 +355,11 @@ class Config(BaseModel):
             params["access_token"] = self.access_token.get_secret_value()
         if self.workspace:
             params["workspace"] = self.workspace
-        if self.output_format:
+        if self.output_format is not None:
             params["output_format"] = self.output_format
-        if self.timestamp_format:
+        if self.timestamp_format is not None:
             params["timestamp_format"] = self.timestamp_format
-        if self.truncate:
+        if self.truncate is not None:
             params["truncate"] = self.truncate
 
         context_name = self.current_context or "default"

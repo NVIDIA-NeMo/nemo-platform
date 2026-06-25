@@ -340,6 +340,9 @@ def _client_from_config(
     config = Config.load(config_path=resolved_path, overrides=overrides)
     actual_config_path = config.get_config_path() or Config.get_default_config_path()
     config_exists = actual_config_path.exists()
+    # If the token came from NMP_ACCESS_TOKEN (env override), it's not from
+    # the config file — don't cache or persist provider state for it.
+    explicit_access_token = config.access_token is not None
     ctx = config.resolve()
 
     auth: TokenProvider | str | None = None
@@ -352,6 +355,7 @@ def _client_from_config(
             refresh_token=ctx.user.refresh_token.get_secret_value() if ctx.user.refresh_token else None,
             config_exists=config_exists,
             config_path=actual_config_path,
+            explicit_access_token=explicit_access_token,
         )
     elif ctx.user:
         client_config = ctx.user.get_client_config()
