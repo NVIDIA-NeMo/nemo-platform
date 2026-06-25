@@ -1417,6 +1417,7 @@ components:
           enum:
           - PENDING
           - BOUND
+          - DELETING
           - RELEASED
           - FAILED
           title: Status
@@ -1496,6 +1497,7 @@ components:
           enum:
           - PENDING
           - BOUND
+          - DELETING
           - RELEASED
           - FAILED
           title: Status
