@@ -103,7 +103,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     "pillow>=12.2.0,<13" \
     "pyasn1>=0.6.3,<1" \
     "tornado>=6.5.5,<7" \
-    "urllib3>=2.7.0,<3"
+    "urllib3>=2.7.0,<3" \
+    "mlflow-skinny>=3.11.1,<3.12.0" \
+    "grpcio>=1.81.1,<2" \
+    "wandb==0.27.2"
 
 # Published base image (same filesystem as builder).
 FROM ${PYTORCH_BASE} AS nmp-automodel-base
@@ -112,6 +115,33 @@ COPY --from=nmp-automodel-base-builder /opt/venv /opt/venv
 COPY --from=nmp-automodel-base-builder /opt/Automodel /opt/Automodel
 # Builder pins uv 0.9.14 but does not ship it in the venv layer; PyTorch base may ship 0.10.x.
 COPY --from=ghcr.io/astral-sh/uv:0.9.14 /uv /bin/uv
+
+# Stale copies under NGC system site-packages (verified on nvcr.io/nvidia/pytorch:26.05-py3).
+# CVE scanners read dist-packages even when --system-site-packages resolves imports from /opt/venv.
+# rm -rf (not pip uninstall) avoids corrupted dist-info RECORDs on the NGC base image.
+RUN rm -rf \
+    /usr/local/lib/python3.12/dist-packages/aiohttp \
+    /usr/local/lib/python3.12/dist-packages/aiohttp-*.dist-info \
+    /usr/local/lib/python3.12/dist-packages/black \
+    /usr/local/lib/python3.12/dist-packages/_black* \
+    /usr/local/lib/python3.12/dist-packages/black-*.dist-info \
+    /usr/local/lib/python3.12/dist-packages/blackd \
+    /usr/local/lib/python3.12/dist-packages/tornado \
+    /usr/local/lib/python3.12/dist-packages/tornado-*.dist-info \
+    /usr/local/lib/python3.12/dist-packages/onnx \
+    /usr/local/lib/python3.12/dist-packages/onnx-*.dist-info \
+    /usr/local/lib/python3.12/dist-packages/pyasn1 \
+    /usr/local/lib/python3.12/dist-packages/pyasn1-*.dist-info \
+    /usr/local/lib/python3.12/dist-packages/urllib3 \
+    /usr/local/lib/python3.12/dist-packages/urllib3-*.dist-info \
+    /usr/local/lib/python3.12/dist-packages/grpc \
+    /usr/local/lib/python3.12/dist-packages/grpcio \
+    /usr/local/lib/python3.12/dist-packages/grpcio-*.dist-info \
+    /usr/local/lib/python3.12/dist-packages/wandb \
+    /usr/local/lib/python3.12/dist-packages/wandb-*.dist-info \
+    /usr/local/lib/python3.12/dist-packages/mlflow \
+    /usr/local/lib/python3.12/dist-packages/mlflow-*.dist-info \
+    /usr/local/lib/python3.12/dist-packages/mlflow_skinny-*.dist-info
 
 ENV VIRTUAL_ENV=/opt/venv \
     UV_PROJECT_ENVIRONMENT=/opt/venv \

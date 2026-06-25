@@ -1023,6 +1023,22 @@ components:
           - ignore
           title: Action
           default: recreate
+        max_attempts:
+          title: Max Attempts
+          description: Override controller drift_recovery_max_attempts when set.
+          type: integer
+          minimum: 0.0
+        initial_delay_seconds:
+          title: Initial Delay Seconds
+          description: Override controller drift_recovery_initial_delay_seconds when
+            set.
+          type: integer
+          minimum: 0.0
+        max_delay_seconds:
+          title: Max Delay Seconds
+          description: Override controller drift_recovery_max_delay_seconds when set.
+          type: integer
+          minimum: 0.0
       type: object
       title: DriftRecoveryPolicy
     Endpoint:
@@ -1248,9 +1264,18 @@ components:
         deployment_name:
           type: string
           title: Deployment Name
-          description: Name of another DeploymentConfig in the same workspace that
-            must reach a ready terminal state before this config's deployment may
-            start.
+          description: Name of another DeploymentConfig in the same workspace whose
+            corresponding Deployment must satisfy condition before this deployment
+            may start.
+        condition:
+          type: string
+          enum:
+          - ready
+          - succeeded
+          title: Condition
+          description: 'ready: prerequisite Deployment.status == READY. succeeded:
+            prerequisite Deployment.status == SUCCEEDED with exit_code == 0.'
+          default: succeeded
       type: object
       required:
       - deployment_name
