@@ -9,11 +9,12 @@ import path from 'path';
 async function main() {
   const pkgPath = path.resolve(process.cwd(), 'package.json');
   const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as {
-    scripts: Record<string, string>;
+    scripts?: Record<string, string>;
   };
 
-  const a11yScript: string = pkg.scripts['lint:a11y'];
-  if (!a11yScript) {
+  const scripts = pkg.scripts;
+  const a11yScript = scripts?.['lint:a11y'];
+  if (!scripts || !a11yScript) {
     console.error('No lint:a11y script found in package.json');
     process.exit(1);
   }
@@ -35,10 +36,7 @@ async function main() {
   const warningCount: number = results.reduce((sum, result) => sum + result.warningCount, 0);
 
   if (warningCount !== currentMax) {
-    pkg.scripts['lint:a11y'] = a11yScript.replace(
-      maxWarningsRegex,
-      `--max-warnings ${warningCount}`
-    );
+    scripts['lint:a11y'] = a11yScript.replace(maxWarningsRegex, `--max-warnings ${warningCount}`);
     fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
     // eslint-disable-next-line no-console
     console.log(`Updated lint:a11y max-warnings from ${currentMax} to ${warningCount}`);
