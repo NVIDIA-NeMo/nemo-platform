@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -106,3 +107,73 @@ async def test_run_verifier_uses_overlay_and_reports_outcome(tmp_path: Path) -> 
     # The verifier ran in a throwaway copy, so the stored evidence is untouched.
     await handle.run_verifier(["sh", "-c", "echo cheat > sneaked.txt"])
     assert await handle.list_files("**/*") == ["answer.txt"]
+
+
+@pytest.mark.asyncio
+async def test_escaping_symlinks_are_not_hashed_or_copied(tmp_path: Path) -> None:
+    secret = tmp_path / "secret.txt"
+    secret.write_text("TOPSECRET", encoding="utf-8")
+
+    root = tmp_path / "workspace"
+    root.mkdir()
+    (root / "answer.txt").write_text("42", encoding="utf-8")
+    (root / "leak").symlink_to(secret)  # agent-planted link escaping the evidence root
+    handle = LocalFilesystemEvidence(root)
+
+    # Listing and content hashing ignore the escaping symlink (no host-file read/leak).
+    assert await handle.list_files("**/*") == ["answer.txt"]
+    assert (await handle.diff(LocalFilesystemEvidence(root))).entries == []
+
+    # The verifier overlay never receives the escaping link, so its target can't be read.
+    leaked = await handle.run_verifier(["cat", "leak"])
+    assert not leaked.ok
+
+
+@pytest.mark.asyncio
+async def test_absolute_symlinks_are_not_copied_into_verifier_overlay(tmp_path: Path) -> None:
+    root = tmp_path / "workspace"
+    root.mkdir()
+    (root / "answer.txt").write_text("42", encoding="utf-8")
+    # Absolute link whose target is *inside* the root: passes _within_root, but copytree
+    # symlinks=True would recreate it verbatim and a write through it would hit stored evidence.
+    (root / "writable").symlink_to((root / "answer.txt").resolve())
+    handle = LocalFilesystemEvidence(root)
+
+    await handle.run_verifier(["sh", "-c", "echo pwned > writable"])
+
+    # The write landed in the throwaway overlay, never on the real answer.txt.
+    assert (root / "answer.txt").read_text(encoding="utf-8") == "42"
+
+
+@pytest.mark.asyncio
+async def test_verifier_timeout_kills_the_whole_process_tree(tmp_path: Path) -> None:
+    root = tmp_path / "workspace"
+    root.mkdir()
+    handle = LocalFilesystemEvidence(root)
+
+    # A grandchild backgrounded by the verifier would write the marker after 1s if it
+    # survived; killing the whole process group on timeout stops it first.
+    marker = tmp_path / "survived.txt"
+    result = await handle.run_verifier(["sh", "-c", f"(sleep 1; touch '{marker}') & sleep 5"], timeout_s=0.3)
+    assert result.timed_out
+
+    await asyncio.sleep(1.5)
+    assert not marker.exists()
+
+
+@pytest.mark.asyncio
+async def test_unified_diff_reports_text_patch_and_skips_binary(tmp_path: Path) -> None:
+    before_root = tmp_path / "before"
+    after_root = tmp_path / "after"
+    for root in (before_root, after_root):
+        root.mkdir()
+    (before_root / "f.txt").write_text("a\nb\n", encoding="utf-8")
+    (after_root / "f.txt").write_text("a\nc\n", encoding="utf-8")
+    (before_root / "img.bin").write_bytes(b"\xff\xfe\x00")
+    (after_root / "img.bin").write_bytes(b"\xff\xfe\x01")
+    before, after = LocalFilesystemEvidence(before_root), LocalFilesystemEvidence(after_root)
+
+    patch = await before.unified_diff(after, "f.txt")
+    assert "-b" in patch and "+c" in patch and patch.startswith("--- a/f.txt")
+    assert await before.unified_diff(after, "img.bin") == ""  # binary: no textual patch
+    assert await before.unified_diff(before, "f.txt") == ""  # identical: empty

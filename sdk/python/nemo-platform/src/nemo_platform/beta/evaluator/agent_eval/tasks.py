@@ -5,16 +5,14 @@
 
 from __future__ import annotations
 
-import importlib
 from enum import Enum
-from typing import Any, Protocol, TypeGuard, runtime_checkable
 from pathlib import Path
+from typing import Any, Protocol, runtime_checkable
 
-from pydantic import Field, BaseModel, ConfigDict, field_validator, model_validator, field_serializer
-
-from nemo_platform.beta.evaluator.values import RunConfig, RunConfigOnline, RunConfigOnlineModel
-from nemo_platform.beta.evaluator.metrics.utils import metric_type_name
 from nemo_platform.beta.evaluator.metrics.protocol import Metric
+from nemo_platform.beta.evaluator.metrics.utils import metric_type_name
+from nemo_platform.beta.evaluator.values import RunConfig, RunConfigOnline, RunConfigOnlineModel
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
 
 class SemanticReducer(str, Enum):
@@ -132,39 +130,39 @@ class AgentEvalTask(BaseModel):
         return self
 
 
-class AgentEvalTasksetLoadConfig(BaseModel):
-    """Options passed from callers to a taskset's :meth:`AgentEvalTaskset.load`."""
+class AgentEvalTaskset(BaseModel):
+    """A named set of SDK-native tasks (with optional metadata) to evaluate.
+
+    Produced by an :class:`AgentEvalTasksetLoader`; the evaluator scores
+    ``tasks`` directly and never consumes a loader.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
-    source: str | Path | None = Field(default=None, description="Optional source path/URI the taskset loads from.")
-    limit: int | None = Field(default=None, ge=0, description="Optional cap on the number of tasks to load.")
-    evidence_dir: Path | None = Field(default=None, description="Optional directory holding task evidence inputs.")
-
-
-class AgentEvalTasksetBundle(BaseModel):
-    """SDK-native tasks (and optional metadata) produced by a taskset's ``load()``."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    tasks: list[AgentEvalTask] = Field(default_factory=list, description="Loaded tasks; at least one is required.")
+    tasks: list[AgentEvalTask] = Field(
+        default_factory=list,
+        min_length=1,
+        description="Tasks in this set; at least one is required and task ids must be unique.",
+    )
     metadata: dict[str, Any] = Field(default_factory=dict, description="Free-form taskset metadata for the run.")
 
     @model_validator(mode="after")
-    def _require_tasks(self) -> AgentEvalTasksetBundle:
-        if not self.tasks:
-            raise ValueError("taskset bundles require at least one task")
+    def _task_ids_unique(self) -> AgentEvalTaskset:
+        ids = [task.id for task in self.tasks]
+        duplicates = sorted({task_id for task_id in ids if ids.count(task_id) > 1})
+        if duplicates:
+            raise ValueError(f"duplicate taskset task ids: {duplicates}")
         return self
 
 
 @runtime_checkable
-class AgentEvalTaskset(Protocol):
-    """Experimental protocol for adapting external tasksets into agent-eval.
+class AgentEvalTasksetLoader(Protocol):
+    """Protocol for adapting an external taskset into agent-eval.
 
-    A taskset is a named *adapter* that loads SDK-native tasks (optionally from an
-    external source). Per the design, tasksets are resolved upstream into
-    :class:`AgentEvalTask` values via :func:`resolve_agent_eval_taskset`; the
-    evaluator scores those tasks and never consumes a taskset directly.
+    A loader is a named adapter that loads SDK-native tasks (optionally from an
+    external ``source``). Per the design, loaders are resolved upstream into an
+    :class:`AgentEvalTaskset`; the evaluator scores those tasks and never consumes
+    a loader directly.
     """
 
     @property
@@ -172,38 +170,20 @@ class AgentEvalTaskset(Protocol):
         """Stable taskset name used in diagnostics, metadata, and user-facing output."""
         ...
 
-    def load(self, config: AgentEvalTasksetLoadConfig) -> AgentEvalTasksetBundle:
-        """Load this taskset's tasks (and optional metadata) into SDK-native form."""
+    def load(
+        self,
+        *,
+        source: str | Path | None = None,
+        limit: int | None = None,
+        evidence_dir: Path | None = None,
+    ) -> AgentEvalTaskset:
+        """Load tasks into an :class:`AgentEvalTaskset`.
+
+        ``source`` is an optional path/URI to load from, ``limit`` an optional
+        positive cap on the number of tasks, and ``evidence_dir`` an optional
+        directory holding task evidence inputs.
+        """
         ...
-
-
-def _is_agent_eval_taskset(value: object) -> TypeGuard[AgentEvalTaskset]:
-    return isinstance(getattr(value, "name", None), str) and callable(getattr(value, "load", None))
-
-
-def resolve_agent_eval_taskset(ref: str) -> AgentEvalTaskset:
-    """Resolve a ``module:object`` taskset reference.
-
-    The referenced object may be a taskset instance, a taskset class, or a
-    zero-argument factory returning a taskset instance.
-    """
-    module_name, separator, object_path = ref.partition(":")
-    if not separator or not module_name or not object_path:
-        raise ValueError("taskset references must use module:object syntax")
-
-    resolved: Any = importlib.import_module(module_name)
-    for part in object_path.split("."):
-        resolved = getattr(resolved, part)
-
-    candidate = resolved
-    if isinstance(candidate, type):
-        candidate = candidate()
-    elif not _is_agent_eval_taskset(candidate) and callable(candidate):
-        candidate = candidate()
-
-    if not _is_agent_eval_taskset(candidate):
-        raise TypeError(f"resolved taskset {ref!r} does not implement AgentEvalTaskset")
-    return candidate
 
 
 class AgentEvalRunConfig(BaseModel):
