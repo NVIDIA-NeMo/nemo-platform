@@ -16,14 +16,14 @@ import type {
   ExperimentSessionFilter,
   ExperimentSessionResponse,
 } from '@nemo/sdk/generated/platform/schema';
-import { Text, Tooltip } from '@nvidia/foundations-react-core';
+import { Modal, Text, Tooltip } from '@nvidia/foundations-react-core';
 import { Empty } from '@studio/components/dataViews/ExperimentSessionsDataView/Empty';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getExperimentTraceDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
 import { keepPreviousData } from '@tanstack/react-query';
 import { Columns3 } from 'lucide-react';
-import { type ComponentProps, type FC, useMemo } from 'react';
+import { type ComponentProps, type FC, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 type SessionRow = ExperimentSessionResponse & { _rowId: string };
@@ -44,6 +44,7 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
 }) => {
   const workspace = useWorkspaceFromPath();
   const navigate = useNavigate();
+  const [inputModalValue, setInputModalValue] = useState<string | null>(null);
   const dataViewState = useStudioDataViewState<ExperimentSessionFilter>({ columnVisibility: {} });
   const { data: experiment } = useGetExperiment(workspace, experimentName);
 
@@ -127,9 +128,23 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
       cell: ({ row }) => {
         const value = row.original.input;
         if (!value) return <Text>-</Text>;
+        const isLong = value.length > 400;
+        const tooltipContent = isLong ? (
+          <>
+            {value.slice(0, 400)}…
+            <Text kind="body/regular/sm" className="mt-2 text-center text-secondary block">
+              Click to view full input
+            </Text>
+          </>
+        ) : value;
         return (
-          <Tooltip slotContent={value} className={tooltipClassName} side="bottom">
-            <Text className="cursor-default line-clamp-2">{value}</Text>
+          <Tooltip slotContent={tooltipContent} className={tooltipClassName} side="bottom">
+            <Text
+              className={`cursor-default line-clamp-2 ${isLong ? 'cursor-pointer' : ''}`}
+              onClick={isLong ? (e) => { e.stopPropagation(); setInputModalValue(value); } : undefined}
+            >
+              {value}
+            </Text>
           </Tooltip>
         );
       },
@@ -218,73 +233,82 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
   ];
 
   return (
-    <StudioDataView
-      dataViewState={dataViewState}
-      makeColumns={makeColumns}
-      searchField="test_case_id"
-      onRowClick={(row) => {
-        if (row.trace_id) {
-          navigate(
-            getExperimentTraceDetailRoute(
-              workspace,
-              experimentGroupName,
-              experimentName,
-              row.trace_id
-            )
-          );
+    <>
+      <StudioDataView
+        dataViewState={dataViewState}
+        makeColumns={makeColumns}
+        searchField="test_case_id"
+        onRowClick={(row) => {
+          if (row.trace_id) {
+            navigate(
+              getExperimentTraceDetailRoute(
+                workspace,
+                experimentGroupName,
+                experimentName,
+                row.trace_id
+              )
+            );
+          }
+        }}
+        toolbarSlotEnd={
+          <EditColumnsMenu
+            kind="secondary"
+            showChevron={false}
+            slotContent={<div aria-hidden className="h-0 w-[230px]" />}
+          >
+            <>
+              <Columns3 />
+              <span className="hide-mobile">Columns</span>
+            </>
+          </EditColumnsMenu>
         }
-      }}
-      toolbarSlotEnd={
-        <EditColumnsMenu
-          kind="secondary"
-          showChevron={false}
-          slotContent={<div aria-hidden className="h-0 w-[230px]" />}
-        >
-          <>
-            <Columns3 />
-            <span className="hide-mobile">Columns</span>
-          </>
-        </EditColumnsMenu>
-      }
-      attributes={{
-        DataViewRoot: {
-          data: visibleTableData,
-          totalCount,
-          requestStatus: isLoading && !sessionsData ? 'loading' : undefined,
-        },
-        DataViewSearchBar: { placeholder: 'Search case...' },
-        DataViewTableContent: {
-          renderEmptyState: () => {
-            const hasActiveFilters =
-              !!dataViewState.searchBar.state || dataViewState.columnFiltering.state.length > 0;
-            if (hasActiveFilters) {
+        attributes={{
+          DataViewRoot: {
+            data: visibleTableData,
+            totalCount,
+            requestStatus: isLoading && !sessionsData ? 'loading' : undefined,
+          },
+          DataViewSearchBar: { placeholder: 'Search case...' },
+          DataViewTableContent: {
+            renderEmptyState: () => {
+              const hasActiveFilters =
+                !!dataViewState.searchBar.state || dataViewState.columnFiltering.state.length > 0;
+              if (hasActiveFilters) {
+                return (
+                  <TableEmptyState
+                    header="No matching test cases"
+                    emptyMessage={
+                      <>
+                        Change your filters and try again, or{' '}
+                        <button
+                          className="text-content-link hover:underline"
+                          onClick={dataViewState.resetFilters}
+                        >
+                          clear filters
+                        </button>
+                        .
+                      </>
+                    }
+                  />
+                );
+              }
               return (
-                <TableEmptyState
-                  header="No matching test cases"
-                  emptyMessage={
-                    <>
-                      Change your filters and try again, or{' '}
-                      <button
-                        className="text-content-link hover:underline"
-                        onClick={dataViewState.resetFilters}
-                      >
-                        clear filters
-                      </button>
-                      .
-                    </>
-                  }
+                <Empty
+                  experimentGroupName={experimentGroupName}
+                  datasetName={experiment?.dataset_name ?? '<dataset>'}
                 />
               );
-            }
-            return (
-              <Empty
-                experimentGroupName={experimentGroupName}
-                datasetName={experiment?.dataset_name ?? '<dataset>'}
-              />
-            );
+            },
           },
-        },
-      }}
-    />
+        }}
+      />
+      <Modal
+        open={inputModalValue !== null}
+        onOpenChange={(open) => { if (!open) setInputModalValue(null); }}
+        slotHeading="Full Input"
+      >
+        <Text className="whitespace-pre-wrap font-mono text-sm">{inputModalValue ?? ''}</Text>
+      </Modal>
+    </>
   );
 };
