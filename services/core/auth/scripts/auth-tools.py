@@ -1091,6 +1091,10 @@ AREA_DISPLAY_NAMES = {
     "workspaces": "Workspaces API",
 }
 
+DOCS_EXCLUDED_PERMISSION_AREAS = {
+    "intake",
+}
+
 
 def _perm_role_signature(perm_name: str, role_perms_map: Dict[str, Set[str]], ordered_roles: List[str]) -> tuple:
     """Return a tuple of booleans indicating which roles have this permission."""
@@ -1197,6 +1201,8 @@ def _generate_permissions_reference(auth_config: Dict) -> str:
     area_groups: Dict[str, List[str]] = {}
     for perm_name in sorted(registry.keys()):
         area = perm_name.split(".")[0]
+        if area in DOCS_EXCLUDED_PERMISSION_AREAS:
+            continue
         area_groups.setdefault(area, []).append(perm_name)
 
     ordered_roles = ["Viewer", "Editor", "Admin"]

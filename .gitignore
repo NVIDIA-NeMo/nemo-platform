@@ -143,3 +143,6 @@ docker/logs/*
 # Linting artifact
 python-sdk-lint/
 site/
+
+# Generated Fern-only public API reference spec
+docs/fern/openapi/openapi.public.yaml

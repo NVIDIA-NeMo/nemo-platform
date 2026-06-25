@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { watch } from "node:fs";
 import { utimes } from "node:fs/promises";
 import { constants } from "node:os";
@@ -51,6 +51,22 @@ function shouldIgnore(relativePath) {
   const normalized = path.posix.normalize(relativePath.split(path.sep).join("/"));
   return normalized.startsWith(ignoredPrefix);
 }
+
+function prepareOpenapi() {
+  const result = spawnSync("node", ["scripts/filter-public-openapi.mjs"], {
+    cwd: fernDir,
+    stdio: "inherit",
+  });
+
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    process.exit(result.status ?? 1);
+  }
+}
+
+prepareOpenapi();
 
 const fern = spawn("npx", ["-y", "fern-api@latest", "docs", "dev"], {
   cwd: fernDir,

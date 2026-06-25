@@ -1,16 +1,17 @@
 {
   "private": true,
   "scripts": {
-    "check": "npx -y fern-api@latest check && npm run validate-mdx && npm run check:gated-links",
-    "check:fern": "npx -y fern-api@latest check",
+    "prepare:openapi": "node scripts/filter-public-openapi.mjs",
+    "check": "npm run prepare:openapi && npx -y fern-api@latest check && npm run validate-mdx && npm run check:gated-links",
+    "check:fern": "npm run prepare:openapi && npx -y fern-api@latest check",
     "validate-mdx": "node scripts/validate-mdx.mjs",
     "check:gated-links": "node scripts/delink-gated.mjs",
     "fix:gated-links": "node scripts/delink-gated.mjs --fix",
-    "broken-links": "npx -y fern-api@latest docs broken-links",
-    "dev": "npx -y fern-api@latest docs dev",
+    "broken-links": "npm run prepare:openapi && npx -y fern-api@latest docs broken-links",
+    "dev": "npm run prepare:openapi && npx -y fern-api@latest docs dev",
     "watch": "node scripts/docs-watch.mjs",
-    "generate": "npx -y fern-api@latest generate --docs",
-    "preview": "npx -y fern-api@latest generate --docs --preview"
+    "generate": "npm run prepare:openapi && npx -y fern-api@latest generate --docs",
+    "preview": "npm run prepare:openapi && npx -y fern-api@latest generate --docs --preview"
   },
   "devDependencies": {
     "@mdx-js/mdx": "^3.1.0"
