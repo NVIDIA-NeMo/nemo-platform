@@ -15,9 +15,9 @@ from typing import Any, Protocol, runtime_checkable
 from nemo_automodel.components.checkpoint.checkpointing import Checkpointer
 from nemo_automodel.components.config._arg_parser import parse_args_and_load_config
 from nemo_automodel.components.training.step_scheduler import StepScheduler
-from nemo_automodel.recipes.biencoder.train_biencoder import TrainBiencoderRecipe
 from nemo_automodel.recipes.llm.kd import KnowledgeDistillationRecipeForNextTokenPrediction
 from nemo_automodel.recipes.llm.train_ft import TrainFinetuneRecipeForNextTokenPrediction
+from nemo_automodel.recipes.retrieval.train_bi_encoder import TrainBiEncoderRecipe
 from nmp.automodel.tasks.training.progress import JobsServiceProgressReporter
 from nmp.customization_common.service.context import NMPJobContext
 from nmp.customization_common.training.callbacks import TrainingProgressCallback
@@ -239,7 +239,7 @@ def create_automodel_recipe(cfg: Any) -> AutomodelRecipeWrapper:
     """Create a progress-reporting wrapper for the recipe implied by *cfg*."""
     if _is_biencoder_config(cfg):
         logger.info("Detected biencoder config, using embedding model recipe")
-        base_recipe = TrainBiencoderRecipe(cfg)
+        base_recipe = TrainBiEncoderRecipe(cfg)
     elif _is_kd_config(cfg):
         logger.info("Detected Knowledge Distillation config, using KD recipe")
         base_recipe = KnowledgeDistillationRecipeForNextTokenPrediction(cfg)

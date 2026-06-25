@@ -2,19 +2,14 @@ dist_env:
   backend: nccl
   timeout_minutes: 30
 seed: 1111
+temperature: 0.02
 model:
   pretrained_model_name_or_path: nvidia/llama-nemotron-embed-1b-v2
   torch_dtype: auto
   trust_remote_code: false
-  _target_: nemo_automodel.components.models.biencoder.NeMoAutoModelBiencoder.from_pretrained
-  share_encoder: true
-  add_linear_pooler: false
+  _target_: nemo_automodel._transformers.auto_model.NeMoAutoModelBiEncoder.from_pretrained
   pooling: avg
   l2_normalize: true
-  t: 0.02
-  train_n_passages: 5
-  eval_negative_size: 4
-  do_gradient_checkpointing: false
   use_liger_kernel: true
   use_sdpa_patching: true
 tokenizer:
@@ -57,14 +52,15 @@ dataloader:
   _target_: torchdata.stateful_dataloader.StatefulDataLoader
   dataset:
     _target_: nemo_automodel.components.datasets.llm.retrieval_dataset_inline.make_retrieval_dataset
+    model_type: bi_encoder
     data_dir_list:
     - ./sample-datasets/embedding/training.jsonl
     data_type: train
-    train_n_passages: 5
+    n_passages: 5
     seed: 1111
     do_shuffle: true
   collate_fn:
-    _target_: nemo_automodel.components.datasets.llm.RetrievalBiencoderCollator
+    _target_: nemo_automodel.components.datasets.llm.BiEncoderCollator
     q_max_len: 512
     p_max_len: 512
     query_prefix: 'query:'
@@ -76,15 +72,16 @@ validation_dataloader:
   _target_: torchdata.stateful_dataloader.StatefulDataLoader
   dataset:
     _target_: nemo_automodel.components.datasets.llm.retrieval_dataset_inline.make_retrieval_dataset
+    model_type: bi_encoder
     data_dir_list:
     - ./sample-datasets/embedding/validation.jsonl
     data_type: eval
-    train_n_passages: 5
+    n_passages: 5
     eval_negative_size: 4
     seed: 1111
     do_shuffle: false
   collate_fn:
-    _target_: nemo_automodel.components.datasets.llm.RetrievalBiencoderCollator
+    _target_: nemo_automodel.components.datasets.llm.BiEncoderCollator
     q_max_len: 512
     p_max_len: 512
     query_prefix: 'query:'
