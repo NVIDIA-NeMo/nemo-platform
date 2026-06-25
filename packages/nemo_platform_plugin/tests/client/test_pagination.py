@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, call
+from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
@@ -93,9 +93,7 @@ class TestPaginatedSync:
     def test_first_page_method(self) -> None:
         """first_page() returns items from the already-fetched first page."""
         mock_http = MagicMock(spec=httpx.Client)
-        mock_http.request.return_value = _page_response(
-            [{"id": 1, "name": "a"}], page=1, total_pages=5
-        )
+        mock_http.request.return_value = _page_response([{"id": 1, "name": "a"}], page=1, total_pages=5)
 
         client = NemoClient(base_url=BASE, workspace="default", http_client=mock_http)
         resp = client.send(LIST_ITEMS())
@@ -146,7 +144,9 @@ class TestPaginatedSync:
         list(resp)  # consume all pages
 
         # Second call should have page=2 in params
-        second_call_params = mock_http.request.call_args_list[1][1].get("params") or mock_http.request.call_args_list[1][0]
+        second_call_params = (
+            mock_http.request.call_args_list[1][1].get("params") or mock_http.request.call_args_list[1][0]
+        )
         assert second_call_params.get("page") == 2 if isinstance(second_call_params, dict) else True
 
 
@@ -159,9 +159,7 @@ class TestPaginatedViaMethod:
     def test_method_descriptor_returns_paginated_response(self) -> None:
         """method() wrapping a Paginated endpoint should return NemoPaginatedResponse."""
         mock_http = MagicMock(spec=httpx.Client)
-        mock_http.request.return_value = _page_response(
-            [{"id": 1, "name": "a"}], page=1, total_pages=1
-        )
+        mock_http.request.return_value = _page_response([{"id": 1, "name": "a"}], page=1, total_pages=1)
 
         class _Methods:
             list_items = method(LIST_ITEMS)
@@ -229,7 +227,13 @@ class TestCustomStrategy:
             request=httpx.Request("GET", f"{BASE}/apis/test/v2/workspaces/default/things"),
             json={
                 "results": [{"id": 1, "name": "a"}, {"id": 2, "name": "b"}],
-                "pagination": {"page": 1, "page_size": 10, "current_page_size": 2, "total_pages": 1, "total_results": 2},
+                "pagination": {
+                    "page": 1,
+                    "page_size": 10,
+                    "current_page_size": 2,
+                    "total_pages": 1,
+                    "total_results": 2,
+                },
             },
         )
 
@@ -249,7 +253,13 @@ class TestCustomStrategy:
                 request=httpx.Request("GET", f"{BASE}/apis/test/v2/workspaces/default/things"),
                 json={
                     "results": [{"id": 1, "name": "a"}],
-                    "pagination": {"page": 1, "page_size": 1, "current_page_size": 1, "total_pages": 2, "total_results": 2},
+                    "pagination": {
+                        "page": 1,
+                        "page_size": 1,
+                        "current_page_size": 1,
+                        "total_pages": 2,
+                        "total_results": 2,
+                    },
                 },
             ),
             httpx.Response(
@@ -257,7 +267,13 @@ class TestCustomStrategy:
                 request=httpx.Request("GET", f"{BASE}/apis/test/v2/workspaces/default/things"),
                 json={
                     "results": [{"id": 2, "name": "b"}],
-                    "pagination": {"page": 2, "page_size": 1, "current_page_size": 1, "total_pages": 2, "total_results": 2},
+                    "pagination": {
+                        "page": 2,
+                        "page_size": 1,
+                        "current_page_size": 1,
+                        "total_pages": 2,
+                        "total_results": 2,
+                    },
                 },
             ),
         ]

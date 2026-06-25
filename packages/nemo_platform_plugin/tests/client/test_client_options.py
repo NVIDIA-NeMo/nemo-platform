@@ -295,7 +295,7 @@ class TestRetryPolicy:
             http_client=mock_http,
             retry=RetryPolicy(max_retries=5, backoff_base=0.0),
         )
-        resp = client.send(GET_ITEM(name="alice"), retry=RetryPolicy(max_retries=1, backoff_base=0.0))
+        client.send(GET_ITEM(name="alice"), retry=RetryPolicy(max_retries=1, backoff_base=0.0))
 
         assert mock_http.request.call_count == 2
 

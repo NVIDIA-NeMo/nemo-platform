@@ -302,9 +302,7 @@ class NemoClient(BaseNemoClient):
             existing_params = self._resolve_query_params(request) or {}
             page_params = strategy.page_query_params(page)
             params = {**existing_params, **page_params}
-            return self._http.request(
-                request.method, url, content=request.content, headers=req_headers, params=params
-            )
+            return self._http.request(request.method, url, content=request.content, headers=req_headers, params=params)
 
         return fetch
 
@@ -313,19 +311,20 @@ class NemoClient(BaseNemoClient):
     ) -> NemoResponse | NemoBinaryResponse | NemoStreamResponse | NemoPaginatedResponse:
         """Execute a request with retry logic for transient failures."""
         last_response: NemoResponse | NemoBinaryResponse | NemoStreamResponse | NemoPaginatedResponse | None = None
-        last_exc: Exception | None = None
 
         for attempt in range(policy.max_retries + 1):
             try:
                 response = self._send_once(request)
-            except httpx.TransportError as exc:
-                last_exc = exc
+            except httpx.TransportError:
                 if attempt < policy.max_retries:
                     time.sleep(policy.backoff_base * (2**attempt))
                     continue
                 raise
 
-            if isinstance(response, NemoResponse) and response.http_response.status_code in policy.retryable_status_codes:
+            if (
+                isinstance(response, NemoResponse)
+                and response.http_response.status_code in policy.retryable_status_codes
+            ):
                 last_response = response
                 if attempt < policy.max_retries:
                     time.sleep(policy.backoff_base * (2**attempt))
@@ -482,20 +481,23 @@ class AsyncNemoClient(BaseNemoClient):
         """Execute a request with retry logic for transient failures."""
         import asyncio
 
-        last_response: NemoResponse | AsyncNemoBinaryResponse | AsyncNemoStreamResponse | AsyncNemoPaginatedResponse | None = None
-        last_exc: Exception | None = None
+        last_response: (
+            NemoResponse | AsyncNemoBinaryResponse | AsyncNemoStreamResponse | AsyncNemoPaginatedResponse | None
+        ) = None
 
         for attempt in range(policy.max_retries + 1):
             try:
                 response = await self._send_once(request)
-            except httpx.TransportError as exc:
-                last_exc = exc
+            except httpx.TransportError:
                 if attempt < policy.max_retries:
                     await asyncio.sleep(policy.backoff_base * (2**attempt))
                     continue
                 raise
 
-            if isinstance(response, NemoResponse) and response.http_response.status_code in policy.retryable_status_codes:
+            if (
+                isinstance(response, NemoResponse)
+                and response.http_response.status_code in policy.retryable_status_codes
+            ):
                 last_response = response
                 if attempt < policy.max_retries:
                     await asyncio.sleep(policy.backoff_base * (2**attempt))

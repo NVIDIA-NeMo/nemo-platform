@@ -58,9 +58,7 @@ def _identify_client_option_params(fn: Callable) -> set[str]:
     return set(sig.parameters.keys()) & BLESSED_CLIENT_PARAMS.keys()
 
 
-def _validate_params(
-    fn: Callable, path_param_names: set[str], client_option_names: set[str]
-) -> None:
+def _validate_params(fn: Callable, path_param_names: set[str], client_option_names: set[str]) -> None:
     """Raise ``TypeError`` at decoration time if any parameter is unrecognised.
 
     Every parameter must be one of:
