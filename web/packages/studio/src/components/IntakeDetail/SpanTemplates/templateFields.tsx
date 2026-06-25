@@ -23,13 +23,15 @@ const formatCompactTimestamp = (iso: string): string => {
   const date = parseISOWithUTCFallback(iso);
   // Mirror formatAbsoluteTimestamp's Intl.DateTimeFormat('en-US') usage so the
   // compact and full forms stay consistent.
-  const formatter = new Intl.DateTimeFormat('en-US', {
+  const userLocale = navigator.language;
+  const options: Intl.DateTimeFormatOptions = {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
     hourCycle: 'h23',
-  });
+  };
+  const formatter = new Intl.DateTimeFormat(userLocale, options);
   return formatter.format(date).replace(',', '');
 };
 
