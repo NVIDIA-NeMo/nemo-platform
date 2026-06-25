@@ -218,6 +218,7 @@ export const AdvancedParameters = () => {
             <div className="flex-1">
               <Flex gap="density-sm" direction="row" align="center">
                 <Checkbox
+                  aria-labelledby="auto-sampling-label"
                   checked={useAutomaticSampling}
                   onCheckedChange={async (checked) => {
                     setValue(
@@ -226,11 +227,8 @@ export const AdvancedParameters = () => {
                     );
                     await trigger('spec.config.training.num_input_records_to_sample');
                   }}
-                  attributes={{
-                    CheckboxInput: { id: 'auto-sampling' },
-                  }}
                 />
-                <label htmlFor="auto-sampling">Use Automatic Sampling</label>
+                <span id="auto-sampling-label">Use Automatic Sampling</span>
               </Flex>
             </div>
           </Flex>
@@ -301,6 +299,7 @@ export const AdvancedParameters = () => {
           <div className="flex-1">
             <Flex gap="density-sm" direction="row" align="center">
               <Checkbox
+                aria-labelledby="auto-scaling-label"
                 checked={useAutomaticScaling}
                 onCheckedChange={(checked) => {
                   if (checked) {
@@ -309,11 +308,8 @@ export const AdvancedParameters = () => {
                     setValue('spec.config.training.rope_scaling_factor', 1);
                   }
                 }}
-                attributes={{
-                  CheckboxInput: { id: 'auto-scaling' },
-                }}
               />
-              <label htmlFor="auto-scaling">Use Automatic Scaling</label>
+              <span id="auto-scaling-label">Use Automatic Scaling</span>
             </Flex>
           </div>
         </Flex>
