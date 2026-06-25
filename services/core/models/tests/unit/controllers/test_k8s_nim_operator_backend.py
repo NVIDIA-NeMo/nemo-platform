@@ -37,12 +37,14 @@ _RECON_NIM_MODULE = "nmp.core.models.controllers.backends.k8s_nim_operator.recon
 def _nim_config():
     """A minimal NIM-routing ModelDeploymentConfig-like object.
 
-    ``config_engine`` returns the NIM engine for anything that isn't explicitly
-    ``vllm``/``generic``, so a bare mock routes status/create/update to the NIM
-    reconciler. The NIM status path only reads ``resource_name``, so the resolved
-    model fields are irrelevant here.
+    Engine is explicitly ``nim`` so the backend routes status/create/update to the
+    NIM reconciler (the backend rejects unknown engine strings rather than
+    defaulting them to NIM). The NIM status path only reads ``resource_name``, so
+    the resolved model fields are irrelevant here.
     """
-    return MagicMock()
+    config = MagicMock()
+    config.engine = "nim"
+    return config
 
 
 def _make_nimservice_mock(state: str, conditions: list | None = None):
@@ -272,8 +274,15 @@ def sample_deployment():
 
 @pytest.fixture
 def sample_config():
-    """Create a sample ModelDeploymentConfig for testing."""
-    return MagicMock()
+    """Create a sample ModelDeploymentConfig for testing.
+
+    Engine is explicitly ``nim`` so the backend routes it to the NIM-operator
+    reconciler (the backend now rejects unknown engine strings rather than
+    defaulting them to NIM).
+    """
+    config = MagicMock()
+    config.engine = "nim"
+    return config
 
 
 @pytest.mark.asyncio
@@ -2090,6 +2099,102 @@ async def test_generic_status_lost_when_deployment_missing(k8s_backend, sample_d
     assert result.status == "LOST"
 
 
+def _generic_weighted_config(*, gpu: int = 1):
+    """A generic config that also references a model (fileset-backed weights)."""
+    config = _generic_config(gpu=gpu)
+    config.model_spec.model_namespace = "default"
+    config.model_spec.model_name = "qwen"
+    return config
+
+
+def _fileset_model_entity():
+    """A model entity with a fileset -> resolves to FILES_SERVICE weights."""
+    return SimpleNamespace(
+        workspace="default", name="qwen", spec=None, trust_remote_code=False, fileset="hf://default/qwen"
+    )
+
+
+@pytest.mark.asyncio
+async def test_generic_with_fileset_runs_staged_puller(k8s_backend, sample_deployment):
+    """A generic deployment whose config resolves to a fileset pulls weights (staged)."""
+    backend = _vllm_backend(k8s_backend)
+    config = _generic_weighted_config(gpu=1)
+
+    with patch.object(backend, "_resolve_model_source", return_value=("default", "qwen", None)):
+        _sync_reconcilers(backend)
+        result = await backend.create_model_deployment(
+            ModelContext(
+                model_deployment=sample_deployment,
+                model_deployment_config=config,
+                model_entity=_fileset_model_entity(),
+            )
+        )
+
+    assert result.status == "PENDING"
+    # Weighted generic => staged rollout: PVC + puller Job, no Deployment yet.
+    backend._core_v1.create_namespaced_persistent_volume_claim.assert_called_once()
+    backend._batch_v1.create_namespaced_job.assert_called_once()
+    backend._apps_v1.create_namespaced_deployment.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_generic_with_fileset_p3_mounts_model_store(k8s_backend, sample_deployment):
+    """At P3 the weighted generic serving Deployment mounts the model-store PVC + uses raw args."""
+    backend = _vllm_backend(k8s_backend)
+    config = _generic_weighted_config(gpu=1)
+
+    job = MagicMock()
+    job.status.failed = None
+    job.status.succeeded = 1
+    backend._batch_v1.read_namespaced_job.return_value = job
+    backend._apps_v1.read_namespaced_deployment.side_effect = _api_exception(404)
+    backend._core_v1.list_namespaced_pod.return_value = MagicMock(items=[])
+    created_dep = MagicMock()
+    created_dep.metadata.name = backend._get_resource_name(sample_deployment)
+    created_dep.metadata.uid = "dep-uid"
+    backend._apps_v1.create_namespaced_deployment.return_value = created_dep
+
+    with patch.object(backend, "_resolve_model_source", return_value=("default", "qwen", None)):
+        _sync_reconcilers(backend)
+        result = await backend.get_model_deployment_status(
+            ModelContext(
+                model_deployment=sample_deployment,
+                model_deployment_config=config,
+                model_entity=_fileset_model_entity(),
+            )
+        )
+
+    assert result.status == "PENDING"
+    backend._apps_v1.create_namespaced_deployment.assert_called_once()
+    dep_obj = backend._apps_v1.create_namespaced_deployment.call_args.kwargs["body"]
+    container = dep_obj.spec.template.spec.containers[0]
+    # Weighted: model-store PVC is mounted so the pulled weights are available.
+    volume_names = {v.name for v in dep_obj.spec.template.spec.volumes}
+    assert "model-store" in volume_names
+    # Still a generic container: runs the user's raw args (no vLLM serve synthesis).
+    assert container.args == ["--port", "8000"]
+
+
+@pytest.mark.asyncio
+async def test_generic_update_patches_deployment(k8s_backend, sample_deployment):
+    """Updating a (weightless) generic deployment patches the serving objects in place."""
+    backend = _vllm_backend(k8s_backend)
+    config = _generic_config()
+    # Serving Deployment already exists -> patch, don't recreate.
+    backend._apps_v1.read_namespaced_deployment.return_value = MagicMock()
+
+    _sync_reconcilers(backend)
+    result = await backend.update_model_deployment(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=config, model_entity=None)
+    )
+
+    assert result.status == "PENDING"
+    backend._apps_v1.patch_namespaced_deployment.assert_called_once()
+    backend._core_v1.patch_namespaced_service.assert_called_once()
+    # Patched in place, not recreated.
+    backend._apps_v1.create_namespaced_deployment.assert_not_called()
+
+
 @pytest.mark.asyncio
 async def test_vllm_status_job_running_is_pending(k8s_backend, sample_deployment):
     """While the puller Job is running, status is PENDING."""
@@ -2298,7 +2403,7 @@ async def test_vllm_status_deployment_ready_is_ready(k8s_backend, sample_deploym
 
 @pytest.mark.asyncio
 async def test_vllm_update_unchanged_source_does_not_repull(k8s_backend, sample_deployment):
-    """Unchanged model source: no Job re-create, no resource deletion."""
+    """Unchanged model source: no resource deletion; serving objects patched in place."""
     backend = _vllm_backend(k8s_backend)
     config = _vllm_config()
 
@@ -2306,9 +2411,11 @@ async def test_vllm_update_unchanged_source_does_not_repull(k8s_backend, sample_
     existing_job.metadata.labels = {"nmp.nvidia.com/engine": "vllm"}
     existing_job.metadata.annotations = {"nmp.nvidia.com/model-source": "default/qwen"}
     backend._batch_v1.read_namespaced_job.return_value = existing_job
+    # Serving Deployment already exists -> update patches it in place.
+    backend._apps_v1.read_namespaced_deployment.return_value = MagicMock()
 
     with patch.object(backend, "_resolve_model_source", return_value=("default", "qwen", None)):
-        with patch.object(backend._k8s_reconciler, "_delete_vllm_resources") as mock_delete:
+        with patch.object(backend._k8s_reconciler, "_delete_serving_resources") as mock_delete:
             _sync_reconcilers(backend)
             result = await backend.update_model_deployment(
                 ModelContext(model_deployment=sample_deployment, model_deployment_config=config, model_entity=None)
@@ -2316,6 +2423,8 @@ async def test_vllm_update_unchanged_source_does_not_repull(k8s_backend, sample_
 
     mock_delete.assert_not_called()
     backend._batch_v1.create_namespaced_job.assert_not_called()
+    # Patched, not recreated.
+    backend._apps_v1.patch_namespaced_deployment.assert_called_once()
     assert result.status == "PENDING"
 
 
@@ -2331,7 +2440,7 @@ async def test_vllm_update_changed_source_repulls(k8s_backend, sample_deployment
     backend._batch_v1.read_namespaced_job.return_value = existing_job
 
     with patch.object(backend, "_resolve_model_source", return_value=("default", "qwen", "v2")):
-        with patch.object(backend._k8s_reconciler, "_delete_vllm_resources") as mock_delete:
+        with patch.object(backend._k8s_reconciler, "_delete_serving_resources") as mock_delete:
             _sync_reconcilers(backend)
             result = await backend.update_model_deployment(
                 ModelContext(model_deployment=sample_deployment, model_deployment_config=config, model_entity=None)

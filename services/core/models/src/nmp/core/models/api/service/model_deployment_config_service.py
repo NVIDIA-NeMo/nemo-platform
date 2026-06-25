@@ -34,19 +34,30 @@ def _validate_engine_config(engine: Engine, executor_config: ContainerExecutorCo
     endpoint. Both ``image_name`` and ``health_check_path`` must therefore be
     supplied explicitly; the other engines fall back to their configured
     defaults when these are unset.
+
+    Values are also rejected when they contain surrounding whitespace: an
+    image reference or probe path is used verbatim downstream, where a
+    leading/trailing space would silently produce an invalid value.
     """
     if engine != Engine.GENERIC:
         return
     missing: list[str] = []
-    if not (executor_config.image_name and executor_config.image_name.strip()):
-        missing.append("image_name")
-    if not (executor_config.health_check_path and executor_config.health_check_path.strip()):
-        missing.append("health_check_path")
+    padded: list[str] = []
+    for field in ("image_name", "health_check_path"):
+        value = getattr(executor_config, field)
+        if not (value and value.strip()):
+            missing.append(field)
+        elif value != value.strip():
+            padded.append(field)
     if missing:
         raise ValueError(
             "The 'generic' engine requires executor_config."
             + " and executor_config.".join(missing)
             + " to be set (no platform default exists for a generic container)."
+        )
+    if padded:
+        raise ValueError(
+            "executor_config." + " and executor_config.".join(padded) + " must not have leading or trailing whitespace."
         )
 
 

@@ -30,11 +30,15 @@ def resolve_generic_image(view: DeploymentConfigView) -> tuple[str, str]:
     There is no platform default for a generic image (it is an arbitrary
     user-supplied container), so ``image_name`` is required. ``image_tag``
     defaults to ``latest`` when unset, mirroring Docker/Kubernetes conventions.
+
+    Both values are trimmed: the API layer already rejects whitespace-padded
+    inputs for generic configs, but this stays robust to any other call path.
     """
     if not (view.image_name and view.image_name.strip()):
         raise ValueError("The 'generic' engine requires executor_config.image_name to be set (no platform default).")
-    image_tag = view.image_tag or "latest"
-    return view.image_name, image_tag
+    image_name = view.image_name.strip()
+    image_tag = (view.image_tag or "").strip() or "latest"
+    return image_name, image_tag
 
 
 def compile_generic_args(view: DeploymentConfigView) -> list[str]:

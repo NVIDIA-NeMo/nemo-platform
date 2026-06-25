@@ -503,20 +503,24 @@ class DockerDeploymentCreationReconciler:
         full_image = f"{image_name}:{image_tag}"
         logger.info(f"Using image: {full_image} (engine={engine})")
 
-        # Create volumes for model cache
+        # Create volumes for model cache + scratch. A generic container that pulls
+        # no weights runs raw (no platform volumes mounted -- see container create
+        # below), so skip provisioning them; every other case mounts them.
         volume_name = self.get_volume_name(deployment.workspace, deployment.name)
-        try:
-            await asyncio.to_thread(self.create_volume, volume_name)
-            logger.info(f"Created volume: {volume_name}")
-        except Exception as e:
-            logger.warning(f"Failed to create volume {volume_name} (may already exist): {e}")
-
         scratch_volume_name = volume_name + "-scratch"
-        try:
-            await asyncio.to_thread(self.create_volume, scratch_volume_name)
-            logger.info(f"Created volume: {scratch_volume_name}")
-        except Exception as e:
-            logger.warning(f"Failed to create volume {scratch_volume_name} (may already exist): {e}")
+        provision_volumes = engine != ENGINE_GENERIC or weights_from_files
+        if provision_volumes:
+            try:
+                await asyncio.to_thread(self.create_volume, volume_name)
+                logger.info(f"Created volume: {volume_name}")
+            except Exception as e:
+                logger.warning(f"Failed to create volume {volume_name} (may already exist): {e}")
+
+            try:
+                await asyncio.to_thread(self.create_volume, scratch_volume_name)
+                logger.info(f"Created volume: {scratch_volume_name}")
+            except Exception as e:
+                logger.warning(f"Failed to create volume {scratch_volume_name} (may already exist): {e}")
 
         # Multi-LLM detection only applies to NIM images; vLLM/generic are never multi-LLM.
         is_multi_llm = False
@@ -1015,16 +1019,26 @@ class DockerDeploymentCreationReconciler:
         try:
             logger.info("Creating container %s with image %s...", container_name, full_image)
 
+            # Platform volumes (/model-store, /scratch) hold pulled weights + scratch
+            # space. NIM/vLLM always mount them. A generic container runs the user's
+            # image as-is, so only mount them when the platform actually pulls weights
+            # for it (a fileset-backed model deployment); otherwise the mounts would
+            # shadow the image's own contents at those paths.
+            mount_platform_volumes = engine != ENGINE_GENERIC or self._needs_puller(state)
+            volumes: dict[str, Any] = {}
+            if mount_platform_volumes:
+                volumes = {
+                    state.volume_name: {"bind": "/model-store", "mode": "rw"},
+                    state.scratch_volume_name: {"bind": "/scratch", "mode": "rw"},
+                }
+
             create_args: dict[str, Any] = {
                 "image": full_image,
                 "name": container_name,
                 "environment": env_vars,
                 "detach": True,
                 "device_requests": device_requests,
-                "volumes": {
-                    state.volume_name: {"bind": "/model-store", "mode": "rw"},
-                    state.scratch_volume_name: {"bind": "/scratch", "mode": "rw"},
-                },
+                "volumes": volumes,
                 "labels": {
                     "nmp.nvidia.com/deployment-workspace": deployment.workspace,
                     "nmp.nvidia.com/deployment-name": deployment.name,

@@ -37,7 +37,7 @@ from nmp.core.models.controllers.backends.common import (
     deployment_config_view,
     deployment_elapsed_seconds,
 )
-from nmp.core.models.controllers.backends.engine import ENGINE_GENERIC, ENGINE_VLLM, config_engine
+from nmp.core.models.controllers.backends.engine import ENGINE_GENERIC, ENGINE_NIM, ENGINE_VLLM, config_engine
 from nmp.core.models.controllers.backends.k8s_nim_operator.config import K8sNimOperatorConfig
 from nmp.core.models.controllers.backends.k8s_nim_operator.reconcilers.base import Reconciler, ResolvedDeployment
 from nmp.core.models.controllers.backends.k8s_nim_operator.reconcilers.k8s import K8sReconciler
@@ -235,15 +235,16 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
     def _select_reconciler(self, engine: str) -> Optional[Reconciler]:
         """Select the reconciler for an engine.
 
-        The direct-emission :class:`K8sReconciler` handles both ``vllm`` and
-        ``generic`` (it branches internally on the engine); every other engine
-        defaults to the NIM-operator reconciler. ``None`` is reserved for a
-        genuinely unknown engine, which the callers treat as the "unsupported
-        engine" rejection (see :meth:`_unsupported_engine`).
+        The direct-emission :class:`K8sReconciler` handles ``vllm`` and
+        ``generic``; ``nim`` uses the NIM-operator reconciler. Any other value is
+        unsupported and yields ``None``, which the callers turn into the
+        "unsupported engine" rejection (see :meth:`_unsupported_engine`).
         """
         if engine in (ENGINE_VLLM, ENGINE_GENERIC):
             return self._k8s_reconciler
-        return self._nim_reconciler
+        if engine == ENGINE_NIM:
+            return self._nim_reconciler
+        return None
 
     @staticmethod
     def _unsupported_engine(engine: str) -> DeploymentStatusUpdate:

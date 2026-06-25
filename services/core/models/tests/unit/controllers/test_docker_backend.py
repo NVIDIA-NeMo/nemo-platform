@@ -555,6 +555,8 @@ async def test_docker_backend_create_generic_deployment(docker_backend, sample_d
     # Engine + explicit health-path labels recorded for status-time probe selection.
     assert create_args["labels"]["nmp.nvidia.com/engine"] == "generic"
     assert create_args["labels"]["nmp.nvidia.com/health-path"] == "/v1/health/ready"
+    # Weightless generic runs raw: no platform volumes mounted (they'd shadow the image).
+    assert create_args["volumes"] == {}
 
 
 async def drive_creation_to_completion_after_create(docker_backend, sample_deployment, config, mock_docker_client):
@@ -564,6 +566,40 @@ async def drive_creation_to_completion_after_create(docker_backend, sample_deplo
     )
     mock_docker_client.containers.get.side_effect = NotFound("Container not found")
     return await drive_creation_to_completion(docker_backend, sample_deployment)
+
+
+@pytest.mark.asyncio
+async def test_docker_backend_create_generic_with_fileset_pulls_and_mounts(
+    docker_backend, sample_deployment, mock_docker_client
+):
+    """Engine=generic with a fileset-backed model runs the puller and mounts platform volumes."""
+    config = MagicMock()
+    set_deployment_config(
+        config,
+        engine="generic",
+        gpu=0,
+        image_name="my/custom-server",
+        image_tag="1.0",
+        health_check_path="/healthz",
+        model_namespace="default",
+        model_name="qwen-2-5-1-5b",
+        additional_args=["--model-dir", "/model-store"],
+    )
+
+    status_update = await _drive_vllm_with_puller(docker_backend, sample_deployment, mock_docker_client, config)
+    assert status_update.status == "PENDING"
+
+    # Generic + fileset => the puller ran and the platform volumes are mounted so
+    # the pulled weights are available to the user's container at /model-store.
+    create_args = mock_docker_client.containers.create.call_args_list[0][1]
+    assert create_args["image"] == "my/custom-server:1.0"
+    assert create_args["command"] == ["--model-dir", "/model-store"]
+    assert create_args["volumes"][docker_backend._reconciler.get_volume_name("default", "test-deployment")] == {
+        "bind": "/model-store",
+        "mode": "rw",
+    }
+    assert create_args["labels"]["nmp.nvidia.com/engine"] == "generic"
+    assert create_args["labels"]["nmp.nvidia.com/health-path"] == "/healthz"
 
 
 def test_get_health_path_from_container_vllm(docker_backend):
