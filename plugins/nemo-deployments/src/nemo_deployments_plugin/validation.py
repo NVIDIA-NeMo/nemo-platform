@@ -43,12 +43,15 @@ def detect_prerequisite_cycle(
         dfs(node)
 
 
+def deployment_graph_key(workspace: str, name: str) -> str:
+    """Return a stable graph node id for a deployment in prerequisite cycle detection."""
+    return f"{workspace}/{name}"
+
+
 def normalized_prerequisite_name(ref: str, workspace: str) -> str:
-    """Return a graph node name for prerequisite cycle detection within a workspace."""
+    """Return a graph node name for prerequisite cycle detection."""
     ref_workspace, name = parse_deployment_ref(ref, workspace)
-    if ref_workspace == workspace:
-        return name
-    return f"{ref_workspace}/{name}"
+    return deployment_graph_key(ref_workspace, name)
 
 
 def prerequisite_names(prerequisites: list[Prerequisite], workspace: str) -> list[str]:
@@ -58,5 +61,6 @@ def prerequisite_names(prerequisites: list[Prerequisite], workspace: str) -> lis
 def build_existing_prerequisite_map(deployments: list[Deployment]) -> dict[str, list[str]]:
     graph: dict[str, list[str]] = defaultdict(list)
     for deployment in deployments:
-        graph[deployment.name] = prerequisite_names(deployment.prerequisites, deployment.workspace)
+        key = deployment_graph_key(deployment.workspace, deployment.name)
+        graph[key] = prerequisite_names(deployment.prerequisites, deployment.workspace)
     return dict(graph)

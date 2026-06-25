@@ -46,15 +46,14 @@ class VolumeReconciler:
         try:
             backend = self._registry.resolve(None)
         except ExecutorNotFoundError:
-            logger.warning("No executor for volume delete of %s — removing entity only", volume_id)
-            backend = None
+            logger.warning("No executor for volume delete of %s — will retry", volume_id, exc_info=True)
+            return
 
-        if backend is not None:
-            try:
-                await backend.delete_volume(volume.workspace, volume.name)
-            except Exception:
-                logger.warning("Backend delete failed for volume %s — will retry", volume_id, exc_info=True)
-                return
+        try:
+            await backend.delete_volume(volume.workspace, volume.name)
+        except Exception:
+            logger.warning("Backend delete failed for volume %s — will retry", volume_id, exc_info=True)
+            return
 
         try:
             await self._entities.delete(Volume, name=volume.name, workspace=volume.workspace)

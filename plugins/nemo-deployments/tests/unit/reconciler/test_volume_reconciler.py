@@ -54,5 +54,22 @@ async def test_deleting_volume_removes_backend_then_entity(
 
     await volume_reconciler.reconcile_one(vol)
 
-    assert mock_backend.delete_calls == [("default", "vol1")]
+    assert mock_backend.volume_delete_calls == [("default", "vol1")]
     mock_entities.delete.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_deleting_volume_waits_for_executor(
+    volume_reconciler: VolumeReconciler,
+    mock_entities: AsyncMock,
+) -> None:
+    from nemo_deployments_plugin.backends.registry import ExecutorRegistry
+
+    empty_registry = ExecutorRegistry({}, default_executor=None)
+    reconciler = VolumeReconciler(mock_entities, empty_registry)
+    vol = make_volume()
+    vol.status = "DELETING"
+
+    await reconciler.reconcile_one(vol)
+
+    mock_entities.delete.assert_not_awaited()

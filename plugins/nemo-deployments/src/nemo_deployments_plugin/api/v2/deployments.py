@@ -16,6 +16,7 @@ from nemo_deployments_plugin.schema import CreateDeploymentRequest, DeploymentFi
 from nemo_deployments_plugin.validation import (
     PrerequisiteCycleError,
     build_existing_prerequisite_map,
+    deployment_graph_key,
     detect_prerequisite_cycle,
     prerequisite_names,
 )
@@ -81,7 +82,7 @@ async def create_deployment(
         existing_deployments = await list_all_pages(entity_client, Deployment, workspace=workspace)
         existing_map = build_existing_prerequisite_map(existing_deployments)
         detect_prerequisite_cycle(
-            deployment_name=body.name,
+            deployment_name=deployment_graph_key(workspace, body.name),
             prerequisites=prereq_names,
             existing=existing_map,
         )

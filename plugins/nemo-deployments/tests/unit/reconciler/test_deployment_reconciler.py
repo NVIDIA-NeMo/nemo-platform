@@ -127,7 +127,7 @@ async def test_desired_stopped_deletes(
 
     await deployment_reconciler.reconcile_one(dep, deployments_by_name={}, volumes_by_name=NO_VOLUMES)
 
-    assert mock_backend.delete_calls == [("default", "dep1")]
+    assert mock_backend.deployment_delete_calls == [("default", "dep1")]
     mock_entities.delete.assert_awaited_once()
 
 
@@ -143,7 +143,7 @@ async def test_delete_proceeds_when_config_missing(
 
     await deployment_reconciler.reconcile_one(dep, deployments_by_name={}, volumes_by_name=NO_VOLUMES)
 
-    assert mock_backend.delete_calls == [("default", "dep1")]
+    assert mock_backend.deployment_delete_calls == [("default", "dep1")]
     mock_entities.delete.assert_awaited_once()
 
 
@@ -286,7 +286,7 @@ async def test_orphan_cleanup_deletes_unknown(
 ) -> None:
     mock_backend.managed_names = ["default/orphan", "default/known"]
     await reconcile_orphans([mock_backend], {"default/known"})
-    assert mock_backend.delete_calls == [("default", "orphan")]
+    assert mock_backend.deployment_delete_calls == [("default", "orphan")]
 
 
 @pytest.mark.asyncio
@@ -295,7 +295,7 @@ async def test_orphan_cleanup_skips_invalid_ids(
 ) -> None:
     mock_backend.managed_names = ["default/valid", "/invalid", "ws/", "default/orphan"]
     await reconcile_orphans([mock_backend], {"default/valid"})
-    assert mock_backend.delete_calls == [("default", "orphan")]
+    assert mock_backend.deployment_delete_calls == [("default", "orphan")]
 
 
 @pytest.mark.asyncio

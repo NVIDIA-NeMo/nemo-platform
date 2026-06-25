@@ -153,10 +153,11 @@ class DeploymentsController(NemoController):
             orphan_interval > 0
             and self._orphan_cleanup_elapsed_seconds >= orphan_interval
             and self._deployments_list_ok
-            and self._terminal_deployments_list_ok
             and not self.stop_requested()
         ):
             terminal_deployments = await self._list_terminal_deployments_for_orphan_grace()
+            if not self._terminal_deployments_list_ok:
+                return
             known_ids = _orphan_protected_ids(
                 deployments,
                 terminal_deployments,
@@ -300,6 +301,14 @@ class DeploymentsController(NemoController):
                         "Prerequisite deployment '%s' not yet available in workspace '%s'",
                         name,
                         workspace,
+                    )
+                    continue
+                except Exception:
+                    logger.warning(
+                        "Failed to load prerequisite deployment '%s' in workspace '%s'",
+                        name,
+                        workspace,
+                        exc_info=True,
                     )
                     continue
                 deployments_by_name[key] = dep

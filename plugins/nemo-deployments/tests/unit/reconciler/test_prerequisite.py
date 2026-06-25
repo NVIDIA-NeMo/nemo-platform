@@ -55,6 +55,14 @@ def test_prerequisites_failed_propagation() -> None:
     assert "failed" in result.reason.lower()
 
 
+def test_prerequisites_invalid_ref_stays_unmet() -> None:
+    server = make_deployment("server")
+    server.prerequisites = [Prerequisite(deployment_name="/bad")]
+    result = prerequisites_met(server, deployments_by_name={})
+    assert result.met is False
+    assert "Invalid prerequisite ref" in result.reason
+
+
 def test_prerequisites_resolve_by_deployment_name_not_config() -> None:
     """Prerequisite deployment_name must match the Deployment entity name."""
     puller = make_deployment("puller-run-1")

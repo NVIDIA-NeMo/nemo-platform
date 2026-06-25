@@ -106,6 +106,8 @@ class NemoController(_NamedPlugin):
         :meth:`reconcile_one` with ``raise NotImplementedError``.
         """
         for obj in await self.list_objects():
+            if self.stop_requested():
+                return
             try:
                 await self.reconcile_one(obj)
             except Exception:

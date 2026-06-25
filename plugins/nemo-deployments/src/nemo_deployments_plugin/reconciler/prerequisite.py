@@ -29,16 +29,6 @@ def parse_deployment_ref(ref: str, default_workspace: str) -> tuple[str, str]:
     return default_workspace, ref
 
 
-def _find_prerequisite_deployment(
-    prerequisite: Prerequisite,
-    deployment: Deployment,
-    deployments_by_name: dict[tuple[str, str], Deployment],
-) -> Deployment | None:
-    """Resolve the Deployment entity for a prerequisite deployment name."""
-    workspace, name = parse_deployment_ref(prerequisite.deployment_name, deployment.workspace)
-    return deployments_by_name.get((workspace, name))
-
-
 def _condition_met(prerequisite: Prerequisite, target: Deployment) -> bool:
     if prerequisite.condition == "ready":
         return target.status == "READY"
@@ -55,8 +45,15 @@ def prerequisites_met(
         return PrerequisiteResult(met=True)
 
     for prerequisite in deployment.prerequisites:
-        workspace, name = parse_deployment_ref(prerequisite.deployment_name, deployment.workspace)
-        target = _find_prerequisite_deployment(prerequisite, deployment, deployments_by_name)
+        try:
+            workspace, name = parse_deployment_ref(prerequisite.deployment_name, deployment.workspace)
+        except ValueError:
+            return PrerequisiteResult(
+                met=False,
+                reason=f"Invalid prerequisite ref '{prerequisite.deployment_name}'",
+                blocking_prerequisite=prerequisite.deployment_name,
+            )
+        target = deployments_by_name.get((workspace, name))
         if target is None:
             return PrerequisiteResult(
                 met=False,
