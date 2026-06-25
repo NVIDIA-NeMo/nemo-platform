@@ -16,14 +16,14 @@ import type {
   ExperimentSessionFilter,
   ExperimentSessionResponse,
 } from '@nemo/sdk/generated/platform/schema';
-import { Modal, Text, Tooltip } from '@nvidia/foundations-react-core';
+import { Text, Tooltip } from '@nvidia/foundations-react-core';
 import { Empty } from '@studio/components/dataViews/ExperimentSessionsDataView/Empty';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getExperimentTraceDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
 import { keepPreviousData } from '@tanstack/react-query';
 import { Columns3 } from 'lucide-react';
-import { type ComponentProps, type FC, useMemo, useState } from 'react';
+import { type ComponentProps, type FC, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 type SessionRow = ExperimentSessionResponse & { _rowId: string };
@@ -44,7 +44,6 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
 }) => {
   const workspace = useWorkspaceFromPath();
   const navigate = useNavigate();
-  const [inputModalValue, setInputModalValue] = useState<string | null>(null);
   const dataViewState = useStudioDataViewState<ExperimentSessionFilter>({ columnVisibility: {} });
   const { data: experiment } = useGetExperiment(workspace, experimentName);
 
@@ -125,29 +124,10 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
       header: 'Input',
       enableSorting: false,
       size: 400,
-      meta: { title: false },
       cell: ({ row }) => {
         const value = row.original.input;
         if (!value) return <Text>-</Text>;
-        const isLong = value.length > 400;
-        const tooltipContent = isLong ? (
-          <>
-            {value.slice(0, 400)}…
-            <Text kind="body/regular/sm" className="mt-2 text-center text-secondary block">
-              Click to view full input
-            </Text>
-          </>
-        ) : value;
-        return (
-          <Tooltip slotContent={tooltipContent} className={tooltipClassName} side="bottom">
-            <Text
-              className={`cursor-default line-clamp-2 ${isLong ? 'cursor-pointer' : ''}`}
-              onClick={isLong ? (e) => { e.stopPropagation(); setInputModalValue(value); } : undefined}
-            >
-              {value}
-            </Text>
-          </Tooltip>
-        );
+        return <Text className="cursor-default line-clamp-2">{value}</Text>;
       },
     }),
     accessor('started_at', {
@@ -234,8 +214,7 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
   ];
 
   return (
-    <>
-      <StudioDataView
+    <StudioDataView
         dataViewState={dataViewState}
         makeColumns={makeColumns}
         searchField="test_case_id"
@@ -302,14 +281,6 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
             },
           },
         }}
-      />
-      <Modal
-        open={inputModalValue !== null}
-        onOpenChange={(open) => { if (!open) setInputModalValue(null); }}
-        slotHeading="Full Input"
-      >
-        <Text className="whitespace-pre-wrap font-mono text-sm">{inputModalValue ?? ''}</Text>
-      </Modal>
-    </>
+    />
   );
 };
