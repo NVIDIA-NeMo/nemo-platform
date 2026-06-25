@@ -7,6 +7,7 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 import time
 import uuid
 from collections.abc import Callable, Sequence
@@ -59,26 +60,32 @@ def run_nemo_local(
     need to point the CLI at a specific platform instance.
 
     Pass ``base_url`` and ``workspace`` to inject ``NMP_BASE_URL`` and
-    ``NMP_WORKSPACE`` directly. Pass ``cwd`` to run from a different directory
-    (e.g. a ``tmp_path`` with a fake ``.git`` marker so ``skills install``
-    writes there instead of the real repo root).
+    ``NMP_WORKSPACE`` directly. The CLI gets an empty temporary
+    ``NMP_CONFIG_FILE`` so test calls do not read a developer's local CLI/SDK
+    config. Pass ``cwd`` to run from a different directory (e.g. a ``tmp_path``
+    with a fake ``.git`` marker so ``skills install`` writes there instead of
+    the real repo root).
     """
-    env = os.environ.copy()
-    if base_url is not None:
-        env["NMP_BASE_URL"] = base_url.rstrip("/")
-    if workspace is not None:
-        env["NMP_WORKSPACE"] = workspace
-    if env_extra:
-        env.update(env_extra)
-    cmd = ["uv", "run", "--project", str(get_repo_root()), "--frozen", "nemo", *args]
-    return subprocess.run(
-        cmd,
-        cwd=cwd or get_repo_root(),
-        env=env,
-        timeout=timeout,
-        capture_output=True,
-        text=True,
-    )
+    with tempfile.TemporaryDirectory(prefix="nmp-cli-config-") as config_dir:
+        env = os.environ.copy()
+        config_path = Path(config_dir) / "config.yaml"
+        config_path.write_text("{}\n")
+        env["NMP_CONFIG_FILE"] = str(config_path)
+        if base_url is not None:
+            env["NMP_BASE_URL"] = base_url.rstrip("/")
+        if workspace is not None:
+            env["NMP_WORKSPACE"] = workspace
+        if env_extra:
+            env.update(env_extra)
+        cmd = ["uv", "run", "--project", str(get_repo_root()), "--frozen", "nemo", *args]
+        return subprocess.run(
+            cmd,
+            cwd=cwd or get_repo_root(),
+            env=env,
+            timeout=timeout,
+            capture_output=True,
+            text=True,
+        )
 
 
 @dataclass
