@@ -14,17 +14,19 @@ import pytest
 import respx
 import yaml
 from nemo_platform_plugin.client.auth import (
-    OIDCTokenProvider,
     StaticToken,
     TokenProvider,
-    TokenSet,
-    generate_unsigned_jwt,
 )
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.config.config import Config
 from nemo_platform_plugin.client.config.models import (
     NoAuthUser,
     OAuthUser,
+)
+from nemo_platform_plugin.client.oidc import (
+    OIDCTokenProvider,
+    TokenSet,
+    generate_unsigned_jwt,
 )
 from nemo_platform_plugin.client_provider import (
     DefaultNemoClientProvider,
@@ -198,7 +200,7 @@ class TestOIDCTokenProvider:
             tokens=TokenSet(access_token=expired_token, refresh_token="refresh-me", expires_at=time.time() - 100),
         )
 
-        with patch("nemo_platform_plugin.client.auth.refresh_token_grant") as mock_grant:
+        with patch("nemo_platform_plugin.client.oidc.refresh_token_grant") as mock_grant:
             mock_grant.return_value = {"access_token": new_token}
             result = provider.get_access_token()
 
@@ -217,7 +219,7 @@ class TestOIDCTokenProvider:
             on_tokens_refreshed=lambda ts: persisted.append(ts),
         )
 
-        with patch("nemo_platform_plugin.client.auth.refresh_token_grant") as mock_grant:
+        with patch("nemo_platform_plugin.client.oidc.refresh_token_grant") as mock_grant:
             mock_grant.return_value = {"access_token": new_token, "refresh_token": "new-refresh"}
             provider.get_access_token()
 
@@ -239,7 +241,7 @@ class TestOIDCTokenProvider:
         expired_token = _make_jwt(exp=time.time() - 100)
         fresh_token = _make_jwt(exp=time.time() + 3600)
 
-        from nemo_platform_plugin.client.auth import TokenRefreshError
+        from nemo_platform_plugin.client.oidc import TokenRefreshError
 
         provider = OIDCTokenProvider(
             token_endpoint="https://idp/token",
@@ -250,7 +252,7 @@ class TestOIDCTokenProvider:
             ),
         )
 
-        with patch("nemo_platform_plugin.client.auth.refresh_token_grant") as mock_grant:
+        with patch("nemo_platform_plugin.client.oidc.refresh_token_grant") as mock_grant:
             mock_grant.side_effect = TokenRefreshError(error="invalid_grant", error_description="token revoked")
             result = provider.get_access_token()
 
@@ -337,8 +339,8 @@ class TestFromConfig:
         config_file = tmp_path / "config.yaml"
         config_file.write_text(yaml.safe_dump(config_data))
 
-        with patch("nemo_platform_plugin.client.auth._discover_oidc_client_settings") as mock_discover:
-            from nemo_platform_plugin.client.auth import NMPOIDCConfig
+        with patch("nemo_platform_plugin.client.oidc._discover_oidc_client_settings") as mock_discover:
+            from nemo_platform_plugin.client.oidc import NMPOIDCConfig
 
             mock_discover.return_value = NMPOIDCConfig(
                 auth_enabled=True,

@@ -96,7 +96,7 @@ class Config(BaseModel):
 
             token = raw_value.strip()
             if "@" in token:
-                from nemo_platform_plugin.client.auth import generate_unsigned_jwt
+                from nemo_platform_plugin.client.oidc import generate_unsigned_jwt
 
                 token = generate_unsigned_jwt(
                     principal_id=token,
