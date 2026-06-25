@@ -153,6 +153,7 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
     accessor('latency_ms', {
       header: 'Latency',
       enableSorting: false,
+      meta: { alignment: 'right' },
       cell: ({ row }) => {
         const ms = row.original.latency_ms;
         return <Text>{ms != null ? `${Math.round(ms)} ms` : '-'}</Text>;
@@ -184,6 +185,7 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
         id: 'tokens',
         header: 'Tokens',
         enableSorting: false,
+        meta: { alignment: 'right' },
         cell: ({ row }) => {
           const { input_tokens, output_tokens } = row.original;
           if (input_tokens == null && output_tokens == null) return <Text>-</Text>;
@@ -194,6 +196,7 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
     accessor('cost_total_usd', {
       header: 'Cost',
       enableSorting: false,
+      meta: { alignment: 'right' },
       cell: ({ row }) => {
         const cost = row.original.cost_total_usd;
         return <Text>{cost != null ? `$${cost.toFixed(3)}` : '-'}</Text>;
@@ -205,6 +208,7 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
         header: snakeCaseToTitleCase(name),
         enableSorting: false,
         size: 130,
+        meta: { alignment: 'right' },
         cell: ({ row }) => {
           const value = row.original.evaluator_scores?.[name];
           return <Text>{value != null ? formatScore(value) : '-'}</Text>;
