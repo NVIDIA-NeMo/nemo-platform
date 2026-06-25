@@ -133,6 +133,7 @@ RUN rm -rf \
     /usr/local/lib/python3.12/dist-packages/pyasn1-*.dist-info \
     /usr/local/lib/python3.12/dist-packages/urllib3 \
     /usr/local/lib/python3.12/dist-packages/urllib3-*.dist-info \
+    /usr/local/lib/python3.12/dist-packages/grpc \
     /usr/local/lib/python3.12/dist-packages/grpcio \
     /usr/local/lib/python3.12/dist-packages/grpcio-*.dist-info \
     /usr/local/lib/python3.12/dist-packages/wandb \

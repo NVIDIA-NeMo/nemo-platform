@@ -173,7 +173,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache \
     --overrides /opt/docker/preserve_base_torch.txt \
-    "aiohttp>=3.13.3,<4" \
+    "aiohttp>=3.13.4,<4" \
     "urllib3>=2.7.0,<3" \
     "grpcio>=1.81.1,<2" \
     "mlflow-skinny>=3.11.1,<3.12.0"
@@ -192,6 +192,7 @@ RUN rm -rf \
     /usr/local/lib/python3.12/dist-packages/onnx-*.dist-info \
     /usr/local/lib/python3.12/dist-packages/urllib3 \
     /usr/local/lib/python3.12/dist-packages/urllib3-*.dist-info \
+    /usr/local/lib/python3.12/dist-packages/grpc \
     /usr/local/lib/python3.12/dist-packages/grpcio \
     /usr/local/lib/python3.12/dist-packages/grpcio-*.dist-info \
     /usr/local/lib/python3.12/dist-packages/wandb \
