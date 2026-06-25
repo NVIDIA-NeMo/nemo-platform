@@ -87,7 +87,7 @@ dev = [
   "nmp-testing",
   "mlflow-skinny>=3.11.1,<3.12.0", # Optional dep for fine-tuning (shipped in training images); skinny variant to test API surface without bloating uv.lock
   "nemo-platform-plugin",          # Optional runtime dep; included here for type checking
-  "nvidia-nat-atif>=1.7.0,<1.8",   # ATIF schema models for agentic-use trajectory validation
+  "nvidia-nat-atif>=1.8.0,<1.9",   # ATIF schema models for agentic-use trajectory validation
   "nemo-platform-sdk-tools",       # Include SDK/license tool migration target for testing
   "nmp-build-tools",               # Build hook helpers imported by package-local hatch_build.py files
   "nmp-dev-mcp",                   # Include MCP dev tools

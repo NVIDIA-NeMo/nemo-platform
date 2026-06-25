@@ -3171,21 +3171,6 @@ wheels = [
 ]
 
 [[package]]
-name = "langchain-tavily"
-version = "0.2.18"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "aiohttp", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "langchain", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "langchain-core", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "requests", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/d6/6c/b309ef3062b189a82463dc93553804566e71aa393f9ba8954750793c1a6f/langchain_tavily-0.2.18.tar.gz", hash = "sha256:cd7859ae1a6ce79236580ef67072ff5fc43c7ded94e7eac38ff04209ca85a320", size = 25378, upload-time = "2026-04-16T15:23:24.526Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/71/9c/0c043e4434b1823f0ac194f66036cbb0569275a99dcb890e0891ecd34fb2/langchain_tavily-0.2.18-py3-none-any.whl", hash = "sha256:dccf3ad1c50e2cb2a89bec11727555805c9df8abd42c1f3ad42ccad86e28aa44", size = 30814, upload-time = "2026-04-16T15:23:23.424Z" },
-]
-
-[[package]]
 name = "langchain-text-splitters"
 version = "1.1.2"
 source = { registry = "https://pypi.org/simple" }
@@ -4017,7 +4002,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "nvidia-nat-core", specifier = ">=1.7.0,<1.8" }]
+requires-dist = [{ name = "nvidia-nat-core", specifier = ">=1.8.0,<1.9" }]
 
 [[package]]
 name = "nemo-agents-plugin"
@@ -4066,9 +4051,9 @@ requires-dist = [
     { name = "nemo-agents-example-calculator", editable = "plugins/nemo-agents/examples/calculator-agent" },
     { name = "nemo-platform", editable = "packages/nemo_platform" },
     { name = "nemo-platform-plugin", editable = "packages/nemo_platform_plugin" },
-    { name = "nvidia-nat-config-optimizer", specifier = ">=1.7.0,<1.8" },
-    { name = "nvidia-nat-core", specifier = ">=1.7.0,<1.8" },
-    { name = "nvidia-nat-langchain", specifier = ">=1.7.0,<1.8" },
+    { name = "nvidia-nat-config-optimizer", specifier = ">=1.8.0,<1.9" },
+    { name = "nvidia-nat-core", specifier = ">=1.8.0,<1.9" },
+    { name = "nvidia-nat-langchain", specifier = ">=1.8.0,<1.9" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "pytest-asyncio", marker = "extra == 'test'", specifier = ">=0.23" },
     { name = "python-on-whales", marker = "extra == 'container'", specifier = ">=0.60" },
@@ -5393,19 +5378,19 @@ requires-dist = [
     { name = "nmp-guardrails", marker = "extra == 'services'", editable = "services/guardrails" },
     { name = "nvidia-ml-py", marker = "extra == 'nemo-platform-sdk'", specifier = ">=13.0.0" },
     { name = "nvidia-ml-py", marker = "extra == 'nmp-common'", specifier = ">=13.0.0" },
-    { name = "nvidia-nat-config-optimizer", marker = "extra == 'all'", specifier = ">=1.7.0,<1.8" },
-    { name = "nvidia-nat-config-optimizer", marker = "extra == 'nemo-agents-plugin'", specifier = ">=1.7.0,<1.8" },
-    { name = "nvidia-nat-config-optimizer", marker = "extra == 'plugins'", specifier = ">=1.7.0,<1.8" },
-    { name = "nvidia-nat-config-optimizer", marker = "extra == 'services'", specifier = ">=1.7.0,<1.8" },
-    { name = "nvidia-nat-core", marker = "extra == 'all'", specifier = ">=1.7.0,<1.8" },
-    { name = "nvidia-nat-core", marker = "extra == 'nemo-agents-example-calculator'", specifier = ">=1.7.0,<1.8" },
-    { name = "nvidia-nat-core", marker = "extra == 'nemo-agents-plugin'", specifier = ">=1.7.0,<1.8" },
-    { name = "nvidia-nat-core", marker = "extra == 'plugins'", specifier = ">=1.7.0,<1.8" },
-    { name = "nvidia-nat-core", marker = "extra == 'services'", specifier = ">=1.7.0,<1.8" },
-    { name = "nvidia-nat-langchain", marker = "extra == 'all'", specifier = ">=1.7.0,<1.8" },
-    { name = "nvidia-nat-langchain", marker = "extra == 'nemo-agents-plugin'", specifier = ">=1.7.0,<1.8" },
-    { name = "nvidia-nat-langchain", marker = "extra == 'plugins'", specifier = ">=1.7.0,<1.8" },
-    { name = "nvidia-nat-langchain", marker = "extra == 'services'", specifier = ">=1.7.0,<1.8" },
+    { name = "nvidia-nat-config-optimizer", marker = "extra == 'all'", specifier = ">=1.8.0,<1.9" },
+    { name = "nvidia-nat-config-optimizer", marker = "extra == 'nemo-agents-plugin'", specifier = ">=1.8.0,<1.9" },
+    { name = "nvidia-nat-config-optimizer", marker = "extra == 'plugins'", specifier = ">=1.8.0,<1.9" },
+    { name = "nvidia-nat-config-optimizer", marker = "extra == 'services'", specifier = ">=1.8.0,<1.9" },
+    { name = "nvidia-nat-core", marker = "extra == 'all'", specifier = ">=1.8.0,<1.9" },
+    { name = "nvidia-nat-core", marker = "extra == 'nemo-agents-example-calculator'", specifier = ">=1.8.0,<1.9" },
+    { name = "nvidia-nat-core", marker = "extra == 'nemo-agents-plugin'", specifier = ">=1.8.0,<1.9" },
+    { name = "nvidia-nat-core", marker = "extra == 'plugins'", specifier = ">=1.8.0,<1.9" },
+    { name = "nvidia-nat-core", marker = "extra == 'services'", specifier = ">=1.8.0,<1.9" },
+    { name = "nvidia-nat-langchain", marker = "extra == 'all'", specifier = ">=1.8.0,<1.9" },
+    { name = "nvidia-nat-langchain", marker = "extra == 'nemo-agents-plugin'", specifier = ">=1.8.0,<1.9" },
+    { name = "nvidia-nat-langchain", marker = "extra == 'plugins'", specifier = ">=1.8.0,<1.9" },
+    { name = "nvidia-nat-langchain", marker = "extra == 'services'", specifier = ">=1.8.0,<1.9" },
     { name = "openai", marker = "extra == 'all'", specifier = ">=1.61.0" },
     { name = "openai", marker = "extra == 'guardrails-service'", specifier = ">=1.61.0" },
     { name = "openai", marker = "extra == 'nemo-evaluator-sdk'", specifier = ">=1.61.0" },
@@ -6452,7 +6437,7 @@ dev = [
     { name = "nmp-testing", editable = "packages/nmp_testing" },
     { name = "notebook", specifier = ">=7.5.6" },
     { name = "nox" },
-    { name = "nvidia-nat-atif", specifier = ">=1.7.0,<1.8" },
+    { name = "nvidia-nat-atif", specifier = ">=1.8.0,<1.9" },
     { name = "papermill", specifier = ">=2.6.0" },
     { name = "pre-commit", specifier = ">=3.8.0" },
     { name = "pydantic-settings", specifier = ">=2.6.1" },
@@ -7807,18 +7792,18 @@ wheels = [
 
 [[package]]
 name = "nvidia-nat-atif"
-version = "1.7.0"
+version = "1.8.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic", extra = ["email"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2f/fb/d50faa2e9cc0dc4a6a652bcca4bf3282ad98541b97c4469c9251293af2d7/nvidia_nat_atif-1.7.0-py3-none-any.whl", hash = "sha256:65d471a366dfafe75cf94428bdba3007bd3e1368487e2e16fd62484298635334", size = 105803, upload-time = "2026-05-21T19:05:26.386Z" },
+    { url = "https://files.pythonhosted.org/packages/f1/ee/a22d1b5d5d6f3d625f451f5185b7e32a6464058f2c7899f6d98c68f46aef/nvidia_nat_atif-1.8.0-py3-none-any.whl", hash = "sha256:38c97d6e506e8cc151a997bfd6cafa08b969e181b50b9302f28d2229a3b37829", size = 105633, upload-time = "2026-06-17T00:25:16.624Z" },
 ]
 
 [[package]]
 name = "nvidia-nat-config-optimizer"
-version = "1.7.0"
+version = "1.8.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -7830,12 +7815,12 @@ dependencies = [
     { name = "pyyaml", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b1/71/bed9096495d4f1278f3ce1f3d56028d9bb53a8cb220d6621a237fac63d0e/nvidia_nat_config_optimizer-1.7.0-py3-none-any.whl", hash = "sha256:5b14cb63d1076f314f63039a4f659c0d4129f20b2bedc38b026ceee53da9e8f1", size = 40133, upload-time = "2026-05-21T19:01:23.961Z" },
+    { url = "https://files.pythonhosted.org/packages/65/39/ae7dab34800eb4b8ccb50adfda37b8da74b18af6974027720525b08a48b0/nvidia_nat_config_optimizer-1.8.0-py3-none-any.whl", hash = "sha256:dc5ef765fbff28d74af462351756c91f35b62c6adc83f5938e61aa9a35c5292d", size = 40134, upload-time = "2026-06-17T00:21:05.628Z" },
 ]
 
 [[package]]
 name = "nvidia-nat-core"
-version = "1.7.0"
+version = "1.8.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -7871,23 +7856,23 @@ dependencies = [
     { name = "uvicorn", extra = ["standard"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/28/cf/634983c35ab78e410d0b625181d1b1dfad5a28cbddabd31ca8c33fa8ab68/nvidia_nat_core-1.7.0-py3-none-any.whl", hash = "sha256:fb4691ad3437e0e8b8d84256d36da18085ba1fc6dd47861e7a7e64c6a808390c", size = 808487, upload-time = "2026-05-21T19:01:41.952Z" },
+    { url = "https://files.pythonhosted.org/packages/10/17/46f8bb24ba9789064ab6a90a905f31218bca802346adace079256db82c72/nvidia_nat_core-1.8.0-py3-none-any.whl", hash = "sha256:645bcc995f73598016b750f7849decb24bea857549f96f5fcbbd8ff37f0c3fc5", size = 779726, upload-time = "2026-06-17T00:21:24.556Z" },
 ]
 
 [[package]]
 name = "nvidia-nat-eval"
-version = "1.7.0"
+version = "1.8.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "nvidia-nat-atif", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/06/64/98b02f25d20609b781f7af39ecaee7af1a991d41f443a82b98bebb418ad1/nvidia_nat_eval-1.7.0-py3-none-any.whl", hash = "sha256:724fa6410a7a66050b525d75660d7fb753ed83aba32c37d31111ae322d54a548", size = 69584, upload-time = "2026-05-21T19:03:53.676Z" },
+    { url = "https://files.pythonhosted.org/packages/7a/25/0fd8109c653d967d82f8ef6fc729c41504e3b4ec51dcfd39c952275d4e67/nvidia_nat_eval-1.8.0-py3-none-any.whl", hash = "sha256:4baebf66289040708c22bfd57f6edb37728409795a260bd0f07b894c9ec8b110", size = 69649, upload-time = "2026-06-17T00:23:20.109Z" },
 ]
 
 [[package]]
 name = "nvidia-nat-langchain"
-version = "1.7.0"
+version = "1.8.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "langchain", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -7902,8 +7887,8 @@ dependencies = [
     { name = "langchain-nvidia-ai-endpoints", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "langchain-oci", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "langchain-openai", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "langchain-tavily", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "langgraph", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "langsmith", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nvidia-nat-core", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nvidia-nat-eval", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nvidia-nat-opentelemetry", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -7912,12 +7897,12 @@ dependencies = [
     { name = "wikipedia", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b9/30/5c43dd14e0c5ba1a3e03001646542863a2a8560893ee7a4ba8d7a0a9faff/nvidia_nat_langchain-1.7.0-py3-none-any.whl", hash = "sha256:e00812f9d2c602bb59cc006081a5deef2e71cc46357e70f51503780196f9cc20", size = 197908, upload-time = "2026-05-21T19:07:14.689Z" },
+    { url = "https://files.pythonhosted.org/packages/f0/49/eee7d8f68568e4c994a67ee0def4070e8fdeb0d603a7ef580050b3ee3d34/nvidia_nat_langchain-1.8.0-py3-none-any.whl", hash = "sha256:8120ad2b972ce2d90fae1e7f95b3daf6b463310e0105fc330896bfb069a5d403", size = 197395, upload-time = "2026-06-17T00:27:13.69Z" },
 ]
 
 [[package]]
 name = "nvidia-nat-opentelemetry"
-version = "1.7.0"
+version = "1.8.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "nvidia-nat-core", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -7927,7 +7912,7 @@ dependencies = [
     { name = "opentelemetry-sdk", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5d/01/9ec9a91d9317158e200d424968d5ea49524fa6e0af85a6ec77f2a9f730d2/nvidia_nat_opentelemetry-1.7.0-py3-none-any.whl", hash = "sha256:e468fb4bd2a9e2fa4fb0d67daa1dea22b900c70301249d2785aa96f305808f7f", size = 68848, upload-time = "2026-05-21T19:19:34.156Z" },
+    { url = "https://files.pythonhosted.org/packages/df/df/33cba1fb316f720b075dac2330b588b1a62d9d991cd6e1d5bc8f795b3bba/nvidia_nat_opentelemetry-1.8.0-py3-none-any.whl", hash = "sha256:2ef2de28a1d07029126ae1c13ff39b9dd61a6985e43199e6fe80968b465b1eec", size = 68449, upload-time = "2026-06-17T00:39:23.758Z" },
 ]
 
 [[package]]
