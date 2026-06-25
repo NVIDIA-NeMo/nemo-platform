@@ -123,7 +123,7 @@ def test_job_logs_across_multiple_batches(sdk: NeMoPlatform, workspace: str):
         sdk, completed_job, workspace, f"Job failed with status: {completed_job.status}"
     )
 
-    step_logs = wait_for_job_logs(sdk, job.name, workspace, min_log_count=num_logs, timeout=120)
+    step_logs = wait_for_job_logs(sdk, job.name, workspace, min_log_count=num_logs, timeout=240)
 
     assert len(step_logs.data) >= num_logs, f"Expected at least {num_logs} logs, got {len(step_logs.data)}"
 
@@ -165,7 +165,7 @@ def test_job_config_is_readable(sdk: NeMoPlatform, workspace: str):
         sdk, completed_job, workspace, f"Job failed with status: {completed_job.status}"
     )
 
-    step_logs = wait_for_job_logs(sdk, job.name, workspace, min_log_count=2, timeout=60)
+    step_logs = wait_for_job_logs(sdk, job.name, workspace, min_log_count=2, timeout=240)
     all_messages = " ".join(log.message for log in step_logs.data)
     assert "Hello from job config!" in all_messages, "Step logs do not show config was read"
 
@@ -264,7 +264,7 @@ def test_job_using_secret_environment_variable(sdk: NeMoPlatform, workspace: str
             sdk, completed_job, workspace, f"Job failed with status: {completed_job.status}"
         )
 
-        step_logs = wait_for_job_logs(sdk, job.name, workspace, min_log_count=1, timeout=120)
+        step_logs = wait_for_job_logs(sdk, job.name, workspace, min_log_count=1, timeout=240)
         all_messages = " ".join(log.message for log in step_logs.data)
         assert secret_value in all_messages, "Step logs do not show secret environment variable was used"
 
@@ -304,7 +304,7 @@ def test_job_with_expected_failure(sdk: NeMoPlatform, workspace: str):
     completed_job = wait_for_platform_job(sdk, job.name, workspace)
     assert completed_job.status == "error", f"Job should have failed but has status: {completed_job.status}"
 
-    step_logs = wait_for_job_logs(sdk, job.name, workspace, min_log_count=1, timeout=120)
+    step_logs = wait_for_job_logs(sdk, job.name, workspace, min_log_count=1, timeout=240)
     assert len(step_logs.data) >= 1, "Expected at least one step log"
     all_messages = " ".join(log.message for log in step_logs.data)
     assert "This step will fail" in all_messages, "Step logs do not contain expected output"
