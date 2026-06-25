@@ -34,7 +34,15 @@ DEFAULT_MAX_CONCURRENCY = 8
 
 
 class PublishError(RuntimeError):
-    """Raised when publishing cannot complete (e.g. a trajectory's span never resolves)."""
+    """Raised when one or more trials fail to publish (or a span never resolves).
+
+    Carries the partial :class:`PublishReport` of trials that *did* publish, so the
+    caller can see what landed before re-running.
+    """
+
+    def __init__(self, message: str, *, report: PublishReport | None = None) -> None:
+        super().__init__(message)
+        self.report = report
 
 
 class PublishedTrial(BaseModel):
@@ -48,6 +56,16 @@ class PublishedTrial(BaseModel):
     evaluator_result_count: int = Field(description="Number of evaluator-result rows written for this trial.")
 
 
+class SkippedScore(BaseModel):
+    """A score output omitted from publish because Intake can't represent it yet (cross-team ask X6)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    trial_id: str = Field(description="Trial whose score output was omitted.")
+    name: str = Field(description='"{metric_type}.{output}" of the omitted output.')
+    reason: str = Field(description="Why it was omitted (e.g. 'scoring failed', 'non-finite value').")
+
+
 class PublishReport(BaseModel):
     """Summary of a ``publish_to_intake`` run."""
 
@@ -58,6 +76,10 @@ class PublishReport(BaseModel):
     run_id: str = Field(description="Source AgentEvalResult run id.")
     published_trials: list[PublishedTrial] = Field(
         default_factory=list, description="Per-trial records of what was written."
+    )
+    skipped: list[SkippedScore] = Field(
+        default_factory=list,
+        description="Score outputs omitted because Intake can't represent failed/non-finite scores (cross-team ask X6).",
     )
 
     @property
@@ -86,8 +108,14 @@ async def publish_to_intake(
 
     For each trial: POST the ATIF trajectory, resolve its root span, then POST one
     evaluator-result per metric output. Trials are published concurrently up to
-    ``max_concurrency``; any HTTP/validation failure propagates to the caller (the
-    caller chose to publish). The already-written local bundle is never touched.
+    ``max_concurrency``.
+
+    Publishing is **not atomic** and Intake has no rollback, so a per-trial failure
+    must not abort the others: every trial that can land does, and the failures are
+    collected and raised together as a :class:`PublishError` (carrying the partial
+    report). The evaluation's local bundle is the system of record and is never
+    touched, so the caller can re-run ``publish_to_intake`` once the issue is fixed
+    to publish the remaining trials. (Re-publish is not yet idempotent — see ask X1.)
 
     ``experiment_id`` must reference an Experiment that already exists — ATIF ingest
     rejects unknown experiments with HTTP 400. Creating the Experiment/group is a
@@ -104,6 +132,7 @@ async def publish_to_intake(
         scores_by_trial[score.trial_id].append(score)
 
     semaphore = asyncio.Semaphore(max_concurrency)
+    skipped: list[SkippedScore] = []
 
     async def _publish_trial(trial: AgentEvalTrial) -> PublishedTrial:
         async with semaphore:
@@ -123,10 +152,12 @@ async def publish_to_intake(
 
             written = 0
             for score in scores_by_trial.get(trial.id, []):
-                for row in mapping.score_to_evaluator_results(score, session_id=session_id, span_id=span_id):
+                rows, omitted = mapping.score_to_evaluator_results(score, session_id=session_id, span_id=span_id)
+                for row in rows:
                     row["workspace"] = resolved_workspace
                     await platform.intake.evaluator_results.create(**row)
                     written += 1
+                skipped.extend(SkippedScore(trial_id=trial.id, name=item.name, reason=item.reason) for item in omitted)
 
             return PublishedTrial(
                 trial_id=trial.id,
@@ -135,13 +166,41 @@ async def publish_to_intake(
                 evaluator_result_count=written,
             )
 
-    published = await asyncio.gather(*(_publish_trial(trial) for trial in result.trials))
+    outcomes = await asyncio.gather(*(_publish_trial(trial) for trial in result.trials), return_exceptions=True)
 
-    return PublishReport(
+    published: list[PublishedTrial] = []
+    failures: list[tuple[str, BaseException]] = []
+    for trial, outcome in zip(result.trials, outcomes, strict=True):
+        if isinstance(outcome, PublishedTrial):
+            published.append(outcome)
+        else:
+            failures.append((trial.id, outcome))
+
+    report = PublishReport(
         experiment_id=experiment_id,
         workspace=resolved_workspace,
         run_id=result.run_id,
-        published_trials=list(published),
+        published_trials=published,
+        skipped=skipped,
+    )
+    if failures:
+        raise PublishError(_publish_failure_message(result, report, failures), report=report)
+    return report
+
+
+def _publish_failure_message(
+    result: AgentEvalResult,
+    report: PublishReport,
+    failures: list[tuple[str, BaseException]],
+) -> str:
+    """Build an actionable error: what failed, where the results are cached, how to recover."""
+    location = f"cached locally at {result.output_dir}" if result.output_dir is not None else "in the local run bundle"
+    detail = "\n  ".join(f"{trial_id}: {type(error).__name__}: {error}" for trial_id, error in failures)
+    return (
+        f"publish_to_intake: {len(failures)} of {len(result.trials)} trial(s) failed to publish "
+        f"({report.trial_count} succeeded). The evaluation results are {location}; re-run "
+        f"publish_to_intake(result, ...) once the issue is resolved to publish the rest.\n"
+        f"Failed trials:\n  {detail}"
     )
 
 

@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+import math
+
 import pytest
 from nemo_evaluator.intake.mapping import (
     ATIF_SCHEMA_VERSION,
@@ -28,6 +30,7 @@ from nemo_evaluator_sdk.metrics.protocol import (
     Label,
     MetricOutput,
 )
+from nemo_platform.types.intake.evaluator_result_create_params import EvaluatorResultCreateParams
 
 
 def _trial(*, trial_id: str = "trial-1", task_id: str = "task-1", output_text: str | None = "hello") -> AgentEvalTrial:
@@ -36,17 +39,30 @@ def _trial(*, trial_id: str = "trial-1", task_id: str = "task-1", output_text: s
     return AgentEvalTrial(id=trial_id, task_id=task_id, status=status, output=output)
 
 
-def _score(*, outputs: list[MetricOutput], diagnostics: list[AgentEvalDiagnostic] | None = None) -> AgentEvalTaskScore:
+def _score(
+    *,
+    outputs: list[MetricOutput],
+    diagnostics: list[AgentEvalDiagnostic] | None = None,
+    status: AgentEvalScoreStatus = AgentEvalScoreStatus.COMPLETED,
+) -> AgentEvalTaskScore:
     return AgentEvalTaskScore(
         id="score-1",
         run_id="run-1",
         task_id="task-1",
         trial_id="trial-1",
         metric_type="accuracy",
-        status=AgentEvalScoreStatus.COMPLETED,
+        status=status,
         outputs=outputs,
         diagnostics=diagnostics or [],
     )
+
+
+def _rows(
+    score: AgentEvalTaskScore, *, session_id: str = "s", span_id: str = "sp"
+) -> list[EvaluatorResultCreateParams]:
+    """The publishable rows from a score, dropping the skipped list (for row-shape assertions)."""
+    rows, _ = score_to_evaluator_results(score, session_id=session_id, span_id=span_id)
+    return rows
 
 
 # --- session_id_for ---------------------------------------------------------
@@ -109,7 +125,7 @@ def test_trial_to_atif_ingest_includes_final_metrics_when_given() -> None:
 
 
 def test_score_row_naming_and_targeting() -> None:
-    rows = score_to_evaluator_results(
+    rows = _rows(
         _score(outputs=[MetricOutput(name="score", value=0.5)]),
         session_id="run-1:trial-1",
         span_id="span-abc",
@@ -121,9 +137,8 @@ def test_score_row_naming_and_targeting() -> None:
 
 
 def test_one_row_per_output() -> None:
-    rows = score_to_evaluator_results(
+    rows = _rows(
         _score(outputs=[MetricOutput(name="a", value=1.0), MetricOutput(name="b", value=2.0)]),
-        session_id="s",
         span_id="span",
     )
     assert [row["name"] for row in rows] == ["accuracy.a", "accuracy.b"]
@@ -131,9 +146,7 @@ def test_one_row_per_output() -> None:
 
 @pytest.mark.parametrize("value", [True, BooleanValue(True)])
 def test_boolean_coercion_true(value: object) -> None:
-    row = score_to_evaluator_results(
-        _score(outputs=[MetricOutput(name="passed", value=value)]), session_id="s", span_id="sp"
-    )[0]
+    row = _rows(_score(outputs=[MetricOutput(name="passed", value=value)]))[0]
     assert row["data_type"] == "BOOLEAN"
     assert row["value"] == 1.0
     assert "string_value" not in row
@@ -141,18 +154,14 @@ def test_boolean_coercion_true(value: object) -> None:
 
 @pytest.mark.parametrize("value", [False, BooleanValue(False)])
 def test_boolean_coercion_false(value: object) -> None:
-    row = score_to_evaluator_results(
-        _score(outputs=[MetricOutput(name="passed", value=value)]), session_id="s", span_id="sp"
-    )[0]
+    row = _rows(_score(outputs=[MetricOutput(name="passed", value=value)]))[0]
     assert row["data_type"] == "BOOLEAN"
     assert row["value"] == 0.0
 
 
 @pytest.mark.parametrize("value", [0.87, 3, ContinuousScore(0.87), DiscreteScore(3)])
 def test_numeric_coercion(value: object) -> None:
-    row = score_to_evaluator_results(
-        _score(outputs=[MetricOutput(name="m", value=value)]), session_id="s", span_id="sp"
-    )[0]
+    row = _rows(_score(outputs=[MetricOutput(name="m", value=value)]))[0]
     assert row["data_type"] == "NUMERIC"
     assert isinstance(row["value"], float)
     assert "string_value" not in row
@@ -160,9 +169,7 @@ def test_numeric_coercion(value: object) -> None:
 
 @pytest.mark.parametrize("value", ["PASS", Label("PASS")])
 def test_text_coercion(value: object) -> None:
-    row = score_to_evaluator_results(
-        _score(outputs=[MetricOutput(name="verdict", value=value)]), session_id="s", span_id="sp"
-    )[0]
+    row = _rows(_score(outputs=[MetricOutput(name="verdict", value=value)]))[0]
     assert row["data_type"] == "TEXT"
     assert row["string_value"] == "PASS"
     assert "value" not in row
@@ -176,12 +183,39 @@ def test_comment_taken_from_first_diagnostic() -> None:
             AgentEvalDiagnostic(severity=AgentEvalDiagnosticSeverity.INFO, message="second"),
         ],
     )
-    row = score_to_evaluator_results(score, session_id="s", span_id="sp")[0]
+    row = _rows(score)[0]
     assert row["comment"] == "first"
 
 
 def test_comment_absent_without_diagnostics() -> None:
-    row = score_to_evaluator_results(
-        _score(outputs=[MetricOutput(name="score", value=1.0)]), session_id="s", span_id="sp"
-    )[0]
+    row = _rows(_score(outputs=[MetricOutput(name="score", value=1.0)]))[0]
     assert "comment" not in row
+
+
+# --- score_to_evaluator_results: skipped outputs ----------------------------
+
+
+def test_non_finite_outputs_are_skipped_not_dropped_silently() -> None:
+    rows, skipped = score_to_evaluator_results(
+        _score(outputs=[MetricOutput(name="score", value=1.0), MetricOutput(name="broken", value=math.nan)]),
+        session_id="s",
+        span_id="sp",
+    )
+    assert [row["name"] for row in rows] == ["accuracy.score"]
+    assert [(item.name, item.reason) for item in skipped] == [("accuracy.broken", "non-finite value")]
+
+
+def test_failed_score_yields_no_rows_and_skips_every_output() -> None:
+    rows, skipped = score_to_evaluator_results(
+        _score(
+            outputs=[MetricOutput(name="score", value=1.0), MetricOutput(name="passed", value=True)],
+            status=AgentEvalScoreStatus.FAILED,
+        ),
+        session_id="s",
+        span_id="sp",
+    )
+    assert rows == []
+    assert [(item.name, item.reason) for item in skipped] == [
+        ("accuracy.score", "scoring failed"),
+        ("accuracy.passed", "scoring failed"),
+    ]

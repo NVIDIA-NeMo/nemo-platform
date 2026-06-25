@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import AsyncIterator
 from types import SimpleNamespace
 from typing import Any, cast
@@ -32,10 +33,13 @@ class _FakeAtif:
 
 
 class _FakeEvaluatorResults:
-    def __init__(self, calls: list[dict[str, Any]]) -> None:
+    def __init__(self, calls: list[dict[str, Any]], *, fail_session: str | None = None) -> None:
         self._calls = calls
+        self._fail_session = fail_session
 
     async def create(self, **kwargs: Any) -> object:
+        if self._fail_session is not None and kwargs.get("session_id") == self._fail_session:
+            raise RuntimeError(f"evaluator-results 500 for {kwargs['session_id']}")
         self._calls.append(kwargs)
         return SimpleNamespace(evaluator_result_id="eval-1")
 
@@ -64,13 +68,14 @@ class _FakeClient:
         workspace: str | None = "default",
         root_span_id: str | None = "span",
         atif_fail: bool = False,
+        fail_eval_session: str | None = None,
     ) -> None:
         self.workspace = workspace
         self.atif_calls: list[dict[str, Any]] = []
         self.eval_calls: list[dict[str, Any]] = []
         self.intake = SimpleNamespace(
             ingest=SimpleNamespace(atif=_FakeAtif(self.atif_calls, fail=atif_fail)),
-            evaluator_results=_FakeEvaluatorResults(self.eval_calls),
+            evaluator_results=_FakeEvaluatorResults(self.eval_calls, fail_session=fail_eval_session),
             traces=_FakeTraces(root_span_id=root_span_id),
         )
 
@@ -91,14 +96,19 @@ def _trial(trial_id: str, task_id: str = "task-1") -> AgentEvalTrial:
     )
 
 
-def _score(trial_id: str, metric_type: str, outputs: list[MetricOutput]) -> AgentEvalTaskScore:
+def _score(
+    trial_id: str,
+    metric_type: str,
+    outputs: list[MetricOutput],
+    status: AgentEvalScoreStatus = AgentEvalScoreStatus.COMPLETED,
+) -> AgentEvalTaskScore:
     return AgentEvalTaskScore(
         id=f"score-{trial_id}-{metric_type}",
         run_id="run-1",
         task_id="task-1",
         trial_id=trial_id,
         metric_type=metric_type,
-        status=AgentEvalScoreStatus.COMPLETED,
+        status=status,
         outputs=outputs,
     )
 
@@ -206,3 +216,54 @@ async def test_ingest_failure_propagates() -> None:
     client = _FakeClient(atif_fail=True)
     with pytest.raises(RuntimeError, match="atif ingest 400"):
         await publish_to_intake(result, platform=cast(AsyncNeMoPlatform, client), experiment_id="exp-1")
+
+
+async def test_failed_and_non_finite_scores_are_skipped_and_reported() -> None:
+    # NaN can't be sent (not JSON-serializable) and a FAILED score is not a real measurement; both
+    # are omitted but surfaced in the report so the omission is explicit, not silent (X6).
+    result = _result(
+        trials=[_trial("t-1")],
+        scores=[
+            _score(
+                "t-1", "accuracy", [MetricOutput(name="score", value=1.0), MetricOutput(name="broken", value=math.nan)]
+            ),
+            _score("t-1", "judge", [MetricOutput(name="verdict", value=math.nan)], status=AgentEvalScoreStatus.FAILED),
+        ],
+    )
+    client = _FakeClient()
+    report = await publish_to_intake(result, platform=cast(AsyncNeMoPlatform, client), experiment_id="exp-1")
+
+    # Only the finite, completed output is sent to Intake.
+    assert {call["name"] for call in client.eval_calls} == {"accuracy.score"}
+    # The omissions are reported, with reasons.
+    assert {(skip.name, skip.reason) for skip in report.skipped} == {
+        ("accuracy.broken", "non-finite value"),
+        ("judge.verdict", "scoring failed"),
+    }
+
+
+async def test_one_trial_failure_does_not_block_others_and_is_reported() -> None:
+    # Partial uploads are acceptable (intake has no rollback), so a single trial's failure must NOT
+    # abort the others — every trial that can land should land, leaving less for an idempotent retry.
+    result = _result(
+        trials=[_trial("t-1"), _trial("t-2")],
+        scores=[
+            _score("t-1", "accuracy", [MetricOutput(name="score", value=1.0)]),
+            _score("t-2", "accuracy", [MetricOutput(name="score", value=0.0)]),
+        ],
+    )
+    client = _FakeClient(fail_eval_session="run-1:t-2")
+
+    with pytest.raises(PublishError) as excinfo:
+        await publish_to_intake(
+            result, platform=cast(AsyncNeMoPlatform, client), experiment_id="exp-1", max_concurrency=1
+        )
+
+    # The healthy trial still published despite the other failing.
+    assert any(call["session_id"] == "run-1:t-1" for call in client.eval_calls)
+    assert all(call["session_id"] != "run-1:t-2" for call in client.eval_calls)
+
+    # The failure surfaces the affected trial and points the user at recovery.
+    message = str(excinfo.value).lower()
+    assert "t-2" in message
+    assert "re-run" in message or "cached" in message or "publish" in message
