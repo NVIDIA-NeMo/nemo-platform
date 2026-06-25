@@ -35,7 +35,11 @@ import type {
   ClaudeCodeInputRequest,
   ClaudeCodePermissionRequest,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
-import { useCustomAssistantChatRuntime } from '@studio/routes/agents/ClaudeCodeChatRoute/useCustomAssistantChatRuntime';
+import {
+  useCustomAssistantChatRuntime,
+  type CustomAssistantRunContext,
+  type CustomAssistantRunResult,
+} from '@studio/routes/agents/ClaudeCodeChatRoute/useCustomAssistantChatRuntime';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -428,18 +432,18 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
     [clearInputRequest, clearPermissionRequest, clearStudioNavigationRequest, workspace]
   );
 
-  const {
-    appendUserMessage,
-    handleReset: resetThread,
-    isRunning,
-    replaceMessages,
-    runtime,
-    submitPrompt,
-  } = useCustomAssistantChatRuntime({
-    initialMessages: options?.initialMessages,
-    onBeforeRun: requestStudioNavigationDecision,
-    onError,
-    onRun: async ({ prompt, signal, appendAssistantParts, prepareForUserInput, isCurrentRun }) => {
+  // Extracted into useCallback so onRun is a stable reference. An inline async
+  // function recreates on every render, which propagates through runCompletion →
+  // handleNewMessage → useExternalStoreRuntime, causing the runtime to be
+  // recreated on every streaming chunk and every message to re-render/flicker.
+  const handleRun = useCallback(
+    async ({
+      prompt,
+      signal,
+      appendAssistantParts,
+      prepareForUserInput,
+      isCurrentRun,
+    }: CustomAssistantRunContext): Promise<CustomAssistantRunResult | void> => {
       clearPermissionRequest();
       clearInputRequest();
       clearStudioNavigationRequest();
@@ -451,7 +455,7 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
           sessionId: activeSessionId,
           message: prompt,
           studioPathname,
-          workspace: options?.workspace,
+          workspace,
           signal,
           handlers: {
             onClaudeEvent: (event) => {
@@ -488,6 +492,32 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
 
       return { status: doneReceived ? COMPLETE_STATUS : CANCELLED_STATUS };
     },
+    [
+      clearPermissionRequest,
+      clearInputRequest,
+      clearStudioNavigationRequest,
+      ensureSessionId,
+      studioPathname,
+      workspace,
+      setArtifacts,
+      handlePermissionRequest,
+      handleInputRequest,
+      queryClient,
+    ]
+  );
+
+  const {
+    appendUserMessage,
+    handleReset: resetThread,
+    isRunning,
+    replaceMessages,
+    runtime,
+    submitPrompt,
+  } = useCustomAssistantChatRuntime({
+    initialMessages: options?.initialMessages,
+    onBeforeRun: requestStudioNavigationDecision,
+    onError,
+    onRun: handleRun,
   });
 
   const resolveInputRequest = useCallback(

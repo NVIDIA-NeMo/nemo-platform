@@ -16,6 +16,13 @@ import type { ClaudeCodeChatRuntime } from '@studio/routes/agents/ClaudeCodeChat
 import { type FC, useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+const MESSAGE_CONTENT_PROPS = { markdownLinkComponent: ClaudeCodeStudioLink };
+
+const EMPTY_STATE = {
+  slotHeading: 'Start a Claude Code session',
+  slotSubheading: 'Ask Claude Code to work in this workspace.',
+};
+
 const CHAT_VIEWPORT_SCROLLBAR_CLASS = [
   '[scrollbar-width:thin]',
   '[scrollbar-color:var(--border-color-interaction-base)_transparent]',
@@ -158,11 +165,8 @@ export const ClaudeCodeChatThread: FC<ClaudeCodeChatThreadProps> = ({
         placeholder="Ask Claude Code to work in this workspace"
         onReset={handleChatReset}
         showRunningIndicator={!studioNavigationRequest && !decisionRequest && !inputRequest}
-        messageContentProps={{ markdownLinkComponent: ClaudeCodeStudioLink }}
-        emptyState={{
-          slotHeading: 'Start a Claude Code session',
-          slotSubheading: 'Ask Claude Code to work in this workspace.',
-        }}
+        messageContentProps={MESSAGE_CONTENT_PROPS}
+        emptyState={EMPTY_STATE}
         composerOverride={
           studioNavigationRequest ? (
             <AgentDecisionInput
