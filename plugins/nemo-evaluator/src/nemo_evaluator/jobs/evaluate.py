@@ -11,6 +11,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any, ClassVar, Self, TypeAlias
 
+# Imported for their registration side effects: each module registers its
+# payload kind in the bundle registry so MetricBundle payloads validate.
+import nemo_evaluator.shared.metric_bundles.cloudpickle  # noqa: F401
+import nemo_evaluator.shared.metric_bundles.inline  # noqa: F401
 from nemo_evaluator.api.schemas import MetricInline
 from nemo_evaluator.filesets import FilesetRef, download_dataset, download_dataset_sync
 from nemo_evaluator.metric_refs import MetricRef, resolve_metric_specs
@@ -21,7 +25,6 @@ from nemo_evaluator.shared.metric_bundles.bundles import (
     metric_bundle_packager_for_payload,
     unbundle_metric,
 )
-from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricPayload  # noqa: F401
 from nemo_evaluator_sdk import Evaluator
 from nemo_evaluator_sdk.execution.config import resolve_params
 from nemo_evaluator_sdk.execution.metric_execution import run_sync

@@ -61,13 +61,7 @@ evaluator: Evaluator = client.evaluator  # this object is an Evaluator resource
 Use `evaluator.run(metric=metric, dataset=dataset)` for a local synchronous evaluation. Use `evaluator.submit(metric=metric, dataset=dataset)` when you need a durable remote job:
 
 ```python
-from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
-
-job = evaluator.submit(
-    metric=metric,
-    dataset=dataset,
-    metric_bundle_packager=CloudpickleMetricBundlePackager(),
-)
+job = evaluator.submit(metric=metric, dataset=dataset)
 job.wait_until_done()
 result = job.get_result()
 ```
@@ -226,15 +220,12 @@ for score in result.aggregate_scores.scores:
 <Tab title="Remote Job">
 
 ```python
-from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
-
 metric = ContextRecallMetric(judge_model=judge_model)
 
 job = evaluator.submit(
     metric=metric,
     dataset=offline_rows,
     config=RunConfig(parallelism=8),
-    metric_bundle_packager=CloudpickleMetricBundlePackager(),
 )
 job.wait_until_done()
 result = job.get_result()
@@ -305,15 +296,12 @@ for score in result.aggregate_scores.scores:
 <Tab title="Remote Job">
 
 ```python
-from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
-
 metric = ContextPrecisionMetric(judge_model=judge_model)
 
 job = evaluator.submit(
     metric=metric,
     dataset=offline_rows,
     config=RunConfig(parallelism=8),
-    metric_bundle_packager=CloudpickleMetricBundlePackager(),
 )
 job.wait_until_done()
 result = job.get_result()
@@ -387,8 +375,6 @@ for score in result.aggregate_scores.scores:
 <Tab title="Remote Job">
 
 ```python
-from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
-
 metric = ContextRelevanceMetric(judge_model=judge_model)
 
 job = evaluator.submit(
@@ -400,7 +386,6 @@ job = evaluator.submit(
         }
     ],
     config=RunConfig(parallelism=8),
-    metric_bundle_packager=CloudpickleMetricBundlePackager(),
 )
 job.wait_until_done()
 result = job.get_result()
@@ -455,8 +440,6 @@ for score in result.aggregate_scores.scores:
 <Tab title="Remote Job">
 
 ```python
-from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
-
 metric = ContextEntityRecallMetric(judge_model=judge_model)
 
 job = evaluator.submit(
@@ -468,7 +451,6 @@ job = evaluator.submit(
         }
     ],
     config=RunConfig(parallelism=8),
-    metric_bundle_packager=CloudpickleMetricBundlePackager(),
 )
 job.wait_until_done()
 result = job.get_result()
@@ -533,8 +515,6 @@ for score in result.aggregate_scores.scores:
 <Tab title="Remote Job">
 
 ```python
-from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
-
 metric = FaithfulnessMetric(judge_model=judge_model)
 
 job = evaluator.submit(
@@ -543,7 +523,6 @@ job = evaluator.submit(
     config=online_config,
     target=generation_model,
     prompt_template=online_prompt_template,
-    metric_bundle_packager=CloudpickleMetricBundlePackager(),
 )
 job.wait_until_done()
 result = job.get_result()
@@ -607,8 +586,6 @@ for score in result.aggregate_scores.scores:
 <Tab title="Remote Job">
 
 ```python
-from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
-
 metric = ResponseGroundednessMetric(judge_model=judge_model)
 
 job = evaluator.submit(
@@ -617,7 +594,6 @@ job = evaluator.submit(
     config=online_config,
     target=generation_model,
     prompt_template=online_prompt_template,
-    metric_bundle_packager=CloudpickleMetricBundlePackager(),
 )
 job.wait_until_done()
 result = job.get_result()
@@ -680,8 +656,6 @@ for score in result.aggregate_scores.scores:
 <Tab title="Remote Job">
 
 ```python
-from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
-
 metric = NoiseSensitivityMetric(judge_model=judge_model)
 
 job = evaluator.submit(
@@ -698,7 +672,6 @@ job = evaluator.submit(
         }
     ],
     config=RunConfig(parallelism=8),
-    metric_bundle_packager=CloudpickleMetricBundlePackager(),
 )
 job.wait_until_done()
 result = job.get_result()
@@ -777,8 +750,6 @@ for score in result.aggregate_scores.scores:
 <Tab title="Remote Job">
 
 ```python
-from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
-
 metric = ResponseRelevancyMetric(
     judge_model=judge_model,
     embeddings_model=embeddings_model,
@@ -791,7 +762,6 @@ job = evaluator.submit(
     config=online_config,
     target=generation_model,
     prompt_template=online_prompt_template,
-    metric_bundle_packager=CloudpickleMetricBundlePackager(),
 )
 job.wait_until_done()
 result = job.get_result()
@@ -915,13 +885,7 @@ judge_model = Model(
 For durable remote execution, submit the same metric and dataset that you tested locally:
 
 ```python
-from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
-
-job = evaluator.submit(
-    metric=metric,
-    dataset=dataset,
-    metric_bundle_packager=CloudpickleMetricBundlePackager(),
-)
+job = evaluator.submit(metric=metric, dataset=dataset)
 job.wait_until_done()
 artifacts_dir = job.download_artifacts(path="evaluation_artifacts")
 print(f"Saved artifacts under {artifacts_dir}")

@@ -59,7 +59,6 @@ Submit your evaluation to the Evaluator service using the NeMo Platform SDK:
 
 ```python
 from nemo_evaluator.sdk import Evaluator
-from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 from nemo_platform import NeMoPlatform
 
 
@@ -74,7 +73,6 @@ job = evaluator.submit(
     metric=metric,
     dataset=dataset,
     config=config,
-    metric_bundle_packager=CloudpickleMetricBundlePackager(),
 )
 job.wait_until_done()
 result = job.get_result()
