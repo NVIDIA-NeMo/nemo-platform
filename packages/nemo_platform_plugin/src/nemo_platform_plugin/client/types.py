@@ -151,8 +151,13 @@ class Paginated(Generic[ModelT, StrategyT]):
 
 
 # ---------------------------------------------------------------------------
-# Client-side options (blessed parameter names)
+# Endpoint parameter registries
 # ---------------------------------------------------------------------------
+
+# Parameter names with special handling in the endpoint decorator.
+# These are routed to specific fields on ``PreparedRequest`` (body, content,
+# query_params) and are not treated as path parameters.
+RESERVED_PARAM_NAMES: frozenset[str] = frozenset({"self", "body", "content", "query_params"})
 
 # Parameters with these names are recognised in endpoint signatures as
 # client-side options.  They are stripped from the HTTP request and stashed

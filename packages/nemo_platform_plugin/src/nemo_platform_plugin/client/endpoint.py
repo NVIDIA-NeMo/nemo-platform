@@ -38,14 +38,12 @@ from typing import Any, get_type_hints
 
 from nemo_platform_plugin.client.types import (
     BLESSED_CLIENT_PARAMS,
+    RESERVED_PARAM_NAMES,
     P,
     PreparedRequest,
     ResponseT,
 )
 from pydantic import BaseModel
-
-# Parameter names with special handling in _build_prepared_request.
-_RESERVED_PARAM_NAMES = frozenset({"self", "body", "content", "query_params"})
 
 
 def _identify_client_option_params(fn: Callable) -> set[str]:
@@ -68,7 +66,7 @@ def _validate_params(fn: Callable, path_param_names: set[str], client_option_nam
     - A blessed client option (e.g. ``exist_ok``) with the correct type
     """
     sig = inspect.signature(fn)
-    known = _RESERVED_PARAM_NAMES | path_param_names | client_option_names
+    known = RESERVED_PARAM_NAMES | path_param_names | client_option_names
     unknown = set(sig.parameters.keys()) - known
     fn_name = getattr(fn, "__qualname__", getattr(fn, "__name__", repr(fn)))
     if unknown:
