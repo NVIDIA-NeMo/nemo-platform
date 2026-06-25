@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from nemo_platform import AsyncNeMoPlatform
+    from nemo_platform_plugin.client.client import AsyncNemoClient
     from nemo_platform_plugin.config import PlatformConfig
     from nemo_platform_plugin.entities import EntityClient
 
@@ -48,6 +49,18 @@ def get_sdk_client() -> "AsyncNeMoPlatform":
     """
     raise RuntimeError(
         "get_sdk_client() was called without being overridden. Ensure your Service subclass calls super().create_app()."
+    )
+
+
+def get_nemo_client() -> "AsyncNemoClient":
+    """FastAPI dependency for getting an async NemoClient.
+
+    This is a placeholder — the actual client is injected via
+    app.dependency_overrides in Service.create_app().
+    """
+    raise RuntimeError(
+        "get_nemo_client() was called without being overridden. "
+        "Ensure your Service subclass calls super().create_app()."
     )
 
 
