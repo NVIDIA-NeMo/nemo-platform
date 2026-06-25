@@ -1,12 +1,14 @@
 # nmp-automodel container images
 
+All Automodel Docker build files live under **`docker/automodel/`** (wheel vendor script: `docker/base/build-ffmpeg-vendor.sh`).
+
 Three images for the **nmp-automodel** customization backend. Published as flat repo names under **`my-registry/nemo-platform-dev/nmp-automodel-*`** (no nested `nmp/...` path — some registries reject that on push).
 
 | Image | Dockerfile | Role |
 |-------|------------|------|
-| `nmp-automodel-base` | `Dockerfile.nmp-automodel-base` | PyTorch 26.05 + Automodel + `mamba-ssm` / `causal-conv1d` wheels |
-| `nmp-automodel-tasks` | `Dockerfile.nmp-automodel-tasks` | Platform task glue (`file_io`, `model_entity`, `model_spec`); GPU-capable base |
-| `nmp-automodel-training` | `Dockerfile.nmp-automodel-training` | Training step (`nmp.automodel.tasks.training`) |
+| `nmp-automodel-base` | `docker/automodel/Dockerfile.nmp-automodel-base` | PyTorch 26.05 + Automodel + `mamba-ssm` / `causal-conv1d` wheels |
+| `nmp-automodel-tasks` | `docker/automodel/Dockerfile.nmp-automodel-tasks` | Platform task glue (`file_io`, `model_entity`, `model_spec`); GPU-capable base |
+| `nmp-automodel-training` | `docker/automodel/Dockerfile.nmp-automodel-training` | Training step (`nmp.automodel.tasks.training`) |
 
 Full references (default tag `local`):
 

@@ -13,10 +13,10 @@
 #      blocks uv from installing/upgrading torch into the venv so the NGC
 #      base's PyTorch + CUDA remain the runtime stack.
 #   1b. bitsandbytes — compiled from source against NGC CUDA 13.2 (same pattern
-#       as docker/Dockerfile.nmp-automodel-base). PyPI wheels only ship through
+#       as docker/automodel/Dockerfile.nmp-automodel-base). PyPI wheels only ship through
 #       cuda130; source build replaces the wheel from step 1.
 #   1c. mamba-ssm + causal-conv1d — prebuilt cu13.2 / cp312 wheels (shared with
-#       docker/Dockerfile.nmp-automodel-base).
+#       docker/automodel/Dockerfile.nmp-automodel-base).
 #   1d. flash-attn — optional for unsloth and currently NOT installed (see the
 #       commented TODO below). Without it Unsloth falls back when xformers is
 #       also missing (common on newer CUDA stacks), logging "FA2 = False /
@@ -28,14 +28,14 @@
 # Default tag:    `local` (override via BAKE_TAG at build time).
 
 # NGC PyTorch base. 26.05-py3 ships PyTorch 2.12 + CUDA 13.2 + Python 3.12 (aligned with
-# docker/Dockerfile.nmp-automodel-base). Override at build time:
+# docker/automodel/Dockerfile.nmp-automodel-base). Override at build time:
 # --set nmp-unsloth-training.args.PYTORCH_BASE=...
 ARG PYTORCH_BASE=nvcr.io/nvidia/pytorch:26.05-py3
 
 # Prebuilt CUDA-extension wheels (mamba-ssm + causal-conv1d), shared with
-# docker/Dockerfile.nmp-automodel-base. The bake `nmp-unsloth-training` target
+# docker/automodel/Dockerfile.nmp-automodel-base. The bake `nmp-unsloth-training` target
 # resolves these contexts to the causal-conv1d-wheel / mamba-ssm-wheel images
-# (see docker-bake.hcl + docker/base/Dockerfile.mamba-wheel). Local builds need
+# (see docker-bake.hcl + docker/base/Dockerfile.python-wheels). Local builds need
 # `USE_LOCAL_WHEELS=1` (build the wheel targets) or a reachable WHEELS_REGISTRY.
 FROM causal-conv1d-wheel-image AS causal-conv1d-wheel-src
 FROM mamba-ssm-wheel-image AS mamba-ssm-wheel-src
