@@ -11,6 +11,7 @@ ARG PYTORCH_BASE=nvcr.io/nvidia/pytorch:26.05-py3
 
 FROM causal-conv1d-wheel-image AS causal-conv1d-wheel-src
 FROM mamba-ssm-wheel-image AS mamba-ssm-wheel-src
+FROM ffmpeg-vlm-wheel-image AS ffmpeg-vlm-wheel-src
 
 FROM alpine/git AS automodel-clone
 ARG AUTOMODEL_COMMIT
@@ -111,36 +112,19 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     "grpcio>=1.81.1,<2" \
     "wandb>=0.28.0,<1"
 
-# <ffmpeg-fix>
-# Bundled FFmpeg in PyAV / opencv wheels is still below nspect 8.1.2 (av 17.1.0 → 8.1.1,
-# opencv-python-headless 4.13.0.92 → 8.0.1). Re-enable these pins once upstream wheels
-# ship FFmpeg >= 8.1.2, then drop the rm -rf cleanup step below.
-#
-# Expected to break without av / opencv (until pins are restored):
-#   - Qwen3-Omni / Qwen2.5-Omni VLM (qwen_omni_utils imports av; qwen3_omni_collate_fn)
-#   - Omni use_audio_in_video (av.open to probe video audio tracks)
-#   - Mistral / Pixtral / Mistral3 image inputs (mistral_common cv2.resize in image tokenizer)
-#   - import albumentations (cv2 required; listed in vlm extra but unused by Automodel today)
-# Still expected to work:
-#   - Qwen VL fine-tune (FORCE_QWENVL_VIDEO_READER=torchcodec; no av import in qwen_vl_utils)
-#   - Qwen3-Omni ASR-only collate (audio/collate_fns avoids qwen_omni_utils)
-#   - Mistral / Pixtral text-only tokenization
-# RUN --mount=type=cache,target=/root/.cache/uv \
-#     uv pip install \
-#     "av>=17.1.0,<18" \
-#     "opencv-python-headless>=4.13.0.92,<4.14"
-
-# Remove PyAV / opencv from the venv so nspect does not scan bundled libav* in av.libs /
-# opencv_python_headless.libs. vlm sync still pulls them transitively (qwen-omni-utils,
-# albumentations, mistral-common[opencv]); see breakage notes above.
-RUN rm -rf \
+# Replace PyPI av/opencv (bundled FFmpeg < 8.1.2) with custom wheels from ffmpeg-vlm-wheel.
+# vlm sync pulls PyPI copies transitively; drop them before installing our manylinux wheels.
+RUN --mount=from=ffmpeg-vlm-wheel-src,target=/tmp/ffmpeg-vlm-wheel-src,readonly \
+    rm -rf \
     /opt/venv/lib/python*/site-packages/av \
     /opt/venv/lib/python*/site-packages/av-*.dist-info \
     /opt/venv/lib/python*/site-packages/av.libs \
     /opt/venv/lib/python*/site-packages/cv2 \
     /opt/venv/lib/python*/site-packages/opencv_python_headless.libs \
-    /opt/venv/lib/python*/site-packages/opencv_python_headless-*.dist-info
-# </ffmpeg-fix>
+    /opt/venv/lib/python*/site-packages/opencv_python_headless-*.dist-info && \
+    uv pip install --no-cache-dir --no-deps \
+    /tmp/ffmpeg-vlm-wheel-src/wheels/av-*cp312*.whl \
+    /tmp/ffmpeg-vlm-wheel-src/wheels/opencv_python_headless-*cp312*.whl
 
 # Published base image (same filesystem as builder).
 FROM ${PYTORCH_BASE} AS nmp-automodel-base

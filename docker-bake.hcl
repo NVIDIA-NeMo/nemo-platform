@@ -84,7 +84,7 @@ variable "BASE_TAG_AUTOMODEL" {
 
 # The tag for base images if needed
 variable "WHEELS_TAG" {
-  default = "65632527b258367fb8855ef431f596abb8538577"
+  default = "624a85aa368f6ee8bacba251a7853dc534bc3e7c"
 }
 
 variable "BAKE_CACHE_SOURCE_BRANCH" {
@@ -732,6 +732,7 @@ target "nmp-automodel-base-builder" {
   contexts = {
     causal-conv1d-wheel-image = causal_conv1d_wheel_context()
     mamba-ssm-wheel-image     = mamba_ssm_wheel_context()
+    ffmpeg-vlm-wheel-image    = ffmpeg_vlm_wheel_context()
   }
   platforms = get_platforms()
 }
