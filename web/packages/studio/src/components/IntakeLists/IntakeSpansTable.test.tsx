@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { IntakeSpansTable } from '@studio/components/IntakeSpansTable';
+import { IntakeSpansTable } from '@studio/components/IntakeLists/IntakeSpansTable';
 import { renderRoute, screen } from '@studio/tests/util/render';
 import userEvent from '@testing-library/user-event';
 

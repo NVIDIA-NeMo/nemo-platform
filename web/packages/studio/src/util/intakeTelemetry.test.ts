@@ -4,8 +4,11 @@
 import { SpanKind, SpanStatus, type Span } from '@nemo/sdk/generated/platform/schema';
 import {
   buildSpanHierarchyRows,
+  buildSpanTree,
   compareSpansByStartedAt,
   formatCost,
+  getSpansDurationMs,
+  type SpanTreeNode,
 } from '@studio/util/intakeTelemetry';
 
 const makeSpan = (span: Partial<Span> & Pick<Span, 'span_id' | 'started_at'>): Span => ({
@@ -113,5 +116,100 @@ describe('intakeTelemetry span hierarchy helpers', () => {
       ['span-1', 0, 'cycle_or_unreachable'],
       ['span-2', 1, undefined],
     ]);
+  });
+});
+
+const flattenTree = (nodes: SpanTreeNode[]): [string, number][] =>
+  nodes.flatMap((node) => [
+    [node.span.span_id, node.depth] as [string, number],
+    ...flattenTree(node.children),
+  ]);
+
+describe('buildSpanTree', () => {
+  it('nests spans by parent_span_id, ordered by start time', () => {
+    const tree = buildSpanTree([
+      makeSpan({ span_id: 'child-2', parent_span_id: 'root', started_at: '2026-05-20T00:00:03Z' }),
+      makeSpan({ span_id: 'root', started_at: '2026-05-20T00:00:01Z' }),
+      makeSpan({
+        span_id: 'grandchild',
+        parent_span_id: 'child-1',
+        started_at: '2026-05-20T00:00:04Z',
+      }),
+      makeSpan({ span_id: 'child-1', parent_span_id: 'root', started_at: '2026-05-20T00:00:02Z' }),
+    ]);
+
+    expect(tree).toHaveLength(1);
+    expect(flattenTree(tree)).toEqual([
+      ['root', 0],
+      ['child-1', 1],
+      ['grandchild', 2],
+      ['child-2', 1],
+    ]);
+  });
+
+  it('keeps multiple roots ordered by start time', () => {
+    const tree = buildSpanTree([
+      makeSpan({ span_id: 'root-2', started_at: '2026-05-20T00:00:03Z' }),
+      makeSpan({ span_id: 'root-1', started_at: '2026-05-20T00:00:01Z' }),
+      makeSpan({
+        span_id: 'child-1',
+        parent_span_id: 'root-1',
+        started_at: '2026-05-20T00:00:02Z',
+      }),
+    ]);
+
+    expect(tree.map((node) => node.span.span_id)).toEqual(['root-1', 'root-2']);
+    expect(tree[0].children.map((node) => node.span.span_id)).toEqual(['child-1']);
+  });
+
+  it('surfaces spans whose parent is outside the current page', () => {
+    const tree = buildSpanTree([
+      makeSpan({
+        span_id: 'orphan-child',
+        parent_span_id: 'missing-parent',
+        started_at: '2026-05-20T00:00:01Z',
+      }),
+    ]);
+
+    expect(tree).toEqual([
+      expect.objectContaining({ depth: 0, hierarchyStatus: 'parent_outside_page', children: [] }),
+    ]);
+    expect(tree[0].span.span_id).toBe('orphan-child');
+  });
+
+  it('surfaces cyclic spans with an unresolved-hierarchy marker', () => {
+    const tree = buildSpanTree([
+      makeSpan({ span_id: 'span-1', parent_span_id: 'span-2', started_at: '2026-05-20T00:00:01Z' }),
+      makeSpan({ span_id: 'span-2', parent_span_id: 'span-1', started_at: '2026-05-20T00:00:02Z' }),
+    ]);
+
+    expect(flattenTree(tree)).toEqual([
+      ['span-1', 0],
+      ['span-2', 1],
+    ]);
+    expect(tree[0].hierarchyStatus).toBe('cycle_or_unreachable');
+  });
+});
+
+describe('getSpansDurationMs', () => {
+  it('spans the earliest start to the latest end', () => {
+    expect(
+      getSpansDurationMs([
+        makeSpan({
+          span_id: 'a',
+          started_at: '2026-05-20T00:00:00Z',
+          ended_at: '2026-05-20T00:00:02Z',
+        }),
+        makeSpan({
+          span_id: 'b',
+          started_at: '2026-05-20T00:00:01Z',
+          ended_at: '2026-05-20T00:00:05Z',
+        }),
+      ])
+    ).toBe(5000);
+  });
+
+  it('returns undefined when no usable timestamps exist', () => {
+    expect(getSpansDurationMs([])).toBeUndefined();
   });
 });

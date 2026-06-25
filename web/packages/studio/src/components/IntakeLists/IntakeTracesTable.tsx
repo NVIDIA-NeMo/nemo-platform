@@ -11,7 +11,7 @@ import { useListTraces } from '@nemo/sdk/generated/platform/api';
 import type { Trace, TraceFilter, TraceSortField } from '@nemo/sdk/generated/platform/schema';
 import { Badge, Button } from '@nvidia/foundations-react-core';
 import { getErrorMessage } from '@studio/api/common/utils';
-import { IntakeTelemetryDataView } from '@studio/components/IntakeTelemetryDataView';
+import { IntakeTelemetryDataView } from '@studio/components/IntakeLists/IntakeTelemetryDataView';
 import { useWorkspaceFromPathIfExists } from '@studio/hooks/useWorkspaceFromPath';
 import { getIntakeTraceRoute } from '@studio/routes/utils';
 import {

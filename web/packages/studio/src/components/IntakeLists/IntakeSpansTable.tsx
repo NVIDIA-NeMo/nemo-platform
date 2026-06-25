@@ -17,8 +17,8 @@ import {
 } from '@nemo/sdk/generated/platform/schema';
 import { Anchor, Button, Text } from '@nvidia/foundations-react-core';
 import { getErrorMessage } from '@studio/api/common/utils';
-import { IntakeTelemetryDataView } from '@studio/components/IntakeTelemetryDataView';
-import { IntakeTelemetryStatusBadge } from '@studio/components/IntakeTelemetryStatusBadge';
+import { IntakeTelemetryStatusBadge } from '@studio/components/IntakeDetail/IntakeComponents/IntakeTelemetryStatusBadge';
+import { IntakeTelemetryDataView } from '@studio/components/IntakeLists/IntakeTelemetryDataView';
 import { useWorkspaceFromPathIfExists } from '@studio/hooks/useWorkspaceFromPath';
 import { getIntakeSpanRoute, getIntakeTraceRoute } from '@studio/routes/utils';
 import {
