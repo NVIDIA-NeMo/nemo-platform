@@ -368,13 +368,15 @@ describe('useClaudeCodeChatRuntime', () => {
         input: { command: 'pwd' },
       });
     });
-    expect(result.current.decisionRequest).toEqual(expect.objectContaining({ id: 'request-2' }));
+    // request-2 is queued while request-1 submission is still in-flight
+    expect(result.current.decisionRequest).toEqual(expect.objectContaining({ id: 'request-1' }));
 
     await act(async () => {
       resolvePermission();
       await resolvePromise;
     });
 
+    // request-1 resolved → request-2 dequeued and now active
     expect(result.current.decisionRequest).toEqual(expect.objectContaining({ id: 'request-2' }));
 
     await act(async () => {
@@ -489,8 +491,9 @@ describe('useClaudeCodeChatRuntime', () => {
         input: { title: 'Select a dataset' },
       });
     });
+    // request-2 is queued while request-1 submission is still in-flight
     expect(result.current.inputRequest).toEqual(
-      expect.objectContaining({ requestId: 'request-2' })
+      expect.objectContaining({ requestId: 'request-1' })
     );
 
     await act(async () => {
@@ -498,6 +501,7 @@ describe('useClaudeCodeChatRuntime', () => {
       await resolvePromise;
     });
 
+    // request-1 resolved → request-2 dequeued and now active
     expect(result.current.inputRequest).toEqual(
       expect.objectContaining({ requestId: 'request-2' })
     );
