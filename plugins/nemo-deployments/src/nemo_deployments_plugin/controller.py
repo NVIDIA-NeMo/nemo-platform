@@ -179,7 +179,7 @@ class DeploymentsController(NemoController):
                 Deployment,
                 filter_operation=ComparisonOperation(
                     operator=FilterOperator.IN,
-                    field="status",
+                    field="data.status",
                     value=list(NON_TERMINAL_DEPLOYMENT_STATUSES),
                 ),
             )
@@ -197,7 +197,7 @@ class DeploymentsController(NemoController):
                 Volume,
                 filter_operation=ComparisonOperation(
                     operator=FilterOperator.IN,
-                    field="status",
+                    field="data.status",
                     value=list(NON_TERMINAL_VOLUME_STATUSES),
                 ),
             )
@@ -218,7 +218,7 @@ class DeploymentsController(NemoController):
                 Deployment,
                 filter_operation=ComparisonOperation(
                     operator=FilterOperator.IN,
-                    field="status",
+                    field="data.status",
                     value=list(_TERMINAL_ORPHAN_STATUSES),
                 ),
             )
