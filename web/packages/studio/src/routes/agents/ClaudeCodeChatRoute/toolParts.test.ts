@@ -75,4 +75,29 @@ describe('Claude Code tool parts', () => {
       { type: 'text', text: 'Ready for the next step.' },
     ]);
   });
+
+  it('accepts an inline Studio summary block from the model', () => {
+    const parts: readonly ThreadAssistantMessagePart[] = [
+      { type: 'text', text: 'Detailed work that should be collapsed.' },
+      {
+        type: 'text',
+        text: `${STUDIO_MESSAGE_SUMMARY_START} worked_for: ~3 minutes summary: Analyzed calculator-agent and generated 3 optimization suggestions. Snapshot and suggestions persisted. details_label: worked for ~3 minutes ${STUDIO_MESSAGE_SUMMARY_END}`,
+      },
+    ];
+
+    expect(getClaudeCodeCompletedMessageParts(parts)).toMatchObject([
+      {
+        type: 'tool-call',
+        toolName: CLAUDE_CODE_COLLAPSED_STUDIO_DETAILS_TOOL_NAME,
+        args: {
+          label: 'worked for ~3 minutes',
+          parts: [{ type: 'text', text: 'Detailed work that should be collapsed.' }],
+        },
+      },
+      {
+        type: 'text',
+        text: 'Analyzed calculator-agent and generated 3 optimization suggestions. Snapshot and suggestions persisted.',
+      },
+    ]);
+  });
 });
