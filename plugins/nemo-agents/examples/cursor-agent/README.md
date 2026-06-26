@@ -19,7 +19,11 @@ cursor-agent status
 
 For non-interactive environments, set `CURSOR_API_KEY` before starting `nemo`.
 
-Install the NeMo Relay CLI so `nemo-relay` is available on `PATH`:
+Install Rust so `cargo` is available on `PATH`, then install the NeMo Relay CLI.
+The `cargo install` command below writes `nemo-relay` into the active virtual
+environment when `VIRTUAL_ENV` is set, or into `.venv` otherwise. After
+activating that environment, `nemo-relay --help` should resolve on `PATH` for
+the smoke test:
 
 ```bash
 git clone git@github.com:NVIDIA/NeMo-Relay.git
