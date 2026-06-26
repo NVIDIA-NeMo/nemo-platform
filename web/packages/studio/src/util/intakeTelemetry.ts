@@ -5,10 +5,21 @@ import type { Span, SpanEvaluationContext, Trace } from '@nemo/sdk/generated/pla
 
 export const EMPTY_VALUE = '—';
 
+export type SpanHierarchyStatus = 'parent_outside_page' | 'cycle_or_unreachable';
+
 export type SpanTableRow = Span & {
   hierarchyDepth: number;
-  hierarchyStatus?: 'parent_outside_page' | 'cycle_or_unreachable';
+  hierarchyStatus?: SpanHierarchyStatus;
 };
+
+/** A span and its descendants, for rendering the trace trajectory as a tree. */
+export interface SpanTreeNode {
+  span: Span;
+  /** 0 for top-level spans, incrementing for each level of nesting. */
+  depth: number;
+  hierarchyStatus?: SpanHierarchyStatus;
+  children: SpanTreeNode[];
+}
 
 export const formatInteger = (value: number | null | undefined): string => {
   if (value === null || value === undefined) return EMPTY_VALUE;
@@ -140,4 +151,83 @@ export const buildSpanHierarchyRows = (spans: Span[]): SpanTableRow[] => {
   }
 
   return rows;
+};
+
+/**
+ * Nested counterpart to {@link buildSpanHierarchyRows}: returns the spans as a
+ * tree keyed by `parent_span_id`, applying the same ordering and the same
+ * `parent_outside_page` / `cycle_or_unreachable` fallbacks for spans whose
+ * parent is missing from the page or that form a cycle.
+ */
+export const buildSpanTree = (spans: Span[]): SpanTreeNode[] => {
+  const spansById = new Map(spans.map((span) => [span.span_id, span]));
+  const childrenByParent = new Map<string, Span[]>();
+  const roots: Span[] = [];
+  const orphans: Span[] = [];
+
+  for (const span of spans) {
+    if (span.parent_span_id && spansById.has(span.parent_span_id)) {
+      const children = childrenByParent.get(span.parent_span_id) ?? [];
+      children.push(span);
+      childrenByParent.set(span.parent_span_id, children);
+    } else if (span.parent_span_id) {
+      orphans.push(span);
+    } else {
+      roots.push(span);
+    }
+  }
+
+  for (const children of childrenByParent.values()) {
+    children.sort(compareSpansByStartedAt);
+  }
+  roots.sort(compareSpansByStartedAt);
+  orphans.sort(compareSpansByStartedAt);
+
+  const visited = new Set<string>();
+
+  const build = (
+    span: Span,
+    depth: number,
+    hierarchyStatus?: SpanHierarchyStatus
+  ): SpanTreeNode | undefined => {
+    if (visited.has(span.span_id)) return undefined;
+    visited.add(span.span_id);
+    const children = (childrenByParent.get(span.span_id) ?? [])
+      .map((child) => build(child, depth + 1))
+      .filter((node): node is SpanTreeNode => node !== undefined);
+    return { span, depth, hierarchyStatus, children };
+  };
+
+  const nodes: SpanTreeNode[] = [];
+  const push = (node: SpanTreeNode | undefined): void => {
+    if (node) nodes.push(node);
+  };
+
+  for (const root of roots) push(build(root, 0));
+  for (const orphan of orphans) push(build(orphan, 0, 'parent_outside_page'));
+  for (const span of spans) push(build(span, 0, 'cycle_or_unreachable'));
+
+  return nodes;
+};
+
+/**
+ * Overall wall-clock span of a set of spans: latest `ended_at` minus earliest
+ * `started_at`. Used to summarize a trace/session from its spans. Returns
+ * `undefined` when no usable timestamps are present.
+ */
+export const getSpansDurationMs = (spans: Span[]): number | undefined => {
+  let earliestStart = Number.POSITIVE_INFINITY;
+  let latestEnd = Number.NEGATIVE_INFINITY;
+
+  for (const span of spans) {
+    const startedAt = Date.parse(span.started_at);
+    if (!Number.isNaN(startedAt)) earliestStart = Math.min(earliestStart, startedAt);
+    const endedAt = span.ended_at ? Date.parse(span.ended_at) : Number.NaN;
+    if (!Number.isNaN(endedAt)) latestEnd = Math.max(latestEnd, endedAt);
+  }
+
+  if (earliestStart === Number.POSITIVE_INFINITY || latestEnd === Number.NEGATIVE_INFINITY) {
+    return undefined;
+  }
+  return Math.max(latestEnd - earliestStart, 0);
 };

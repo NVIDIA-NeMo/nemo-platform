@@ -11,7 +11,6 @@ from fastapi.testclient import TestClient
 from helpers import list_response, make_deployment, make_deployment_config
 from nemo_deployments_plugin.api.v2 import deployment_configs as configs_module
 from nemo_deployments_plugin.api.v2.dependencies import get_entity_client
-from nemo_deployments_plugin.entities import Prerequisite
 from nemo_platform_plugin.entity_client import NemoEntityConflictError, NemoEntityNotFoundError
 
 
@@ -32,7 +31,6 @@ def client(mock_entity_client: AsyncMock) -> TestClient:
 
 
 def test_create_deployment_config_201(client: TestClient, mock_entity_client: AsyncMock) -> None:
-    mock_entity_client.list.return_value = list_response([])
     mock_entity_client.create.return_value = make_deployment_config("cfg1")
     resp = client.post(
         "/apis/deployments/v2/workspaces/default/deployment-configs",
@@ -40,19 +38,6 @@ def test_create_deployment_config_201(client: TestClient, mock_entity_client: As
     )
     assert resp.status_code == 201
     assert resp.json()["name"] == "cfg1"
-
-
-def test_create_deployment_config_cycle_400(client: TestClient, mock_entity_client: AsyncMock) -> None:
-    a = make_deployment_config("a")
-    b = make_deployment_config("b")
-    b.prerequisites = [Prerequisite(deployment_name="a")]
-    mock_entity_client.list.return_value = list_response([a, b])
-    resp = client.post(
-        "/apis/deployments/v2/workspaces/default/deployment-configs",
-        json={"name": "a", "prerequisites": [{"deployment_name": "b"}]},
-    )
-    assert resp.status_code == 400
-    assert "cycle" in resp.json()["detail"].lower()
 
 
 def test_get_deployment_config_404(client: TestClient, mock_entity_client: AsyncMock) -> None:
@@ -76,7 +61,6 @@ def test_delete_deployment_config_409_when_referenced(client: TestClient, mock_e
 
 
 def test_create_deployment_config_409(client: TestClient, mock_entity_client: AsyncMock) -> None:
-    mock_entity_client.list.return_value = list_response([])
     mock_entity_client.create.side_effect = NemoEntityConflictError("exists")
     resp = client.post(
         "/apis/deployments/v2/workspaces/default/deployment-configs",

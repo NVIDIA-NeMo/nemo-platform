@@ -22,6 +22,11 @@ const ExperimentDetailRoute = lazy(() =>
     default: module.ExperimentDetailRoute,
   }))
 );
+const ExperimentTraceDetailRoute = lazy(() =>
+  import('@studio/routes/ExperimentTraceDetailRoute').then((module) => ({
+    default: module.ExperimentTraceDetailRoute,
+  }))
+);
 
 export const experimentRoutes: RouteObject[] = gateExperimentRoutes([
   {
@@ -38,5 +43,10 @@ export const experimentRoutes: RouteObject[] = gateExperimentRoutes([
     path: ROUTES.workspace.experimentDetail,
     element: <ExperimentDetailRoute />,
     errorElement: <ErrorPanel title="Experiment" />,
+  },
+  {
+    path: ROUTES.workspace.experimentTraceDetail,
+    element: <ExperimentTraceDetailRoute />,
+    errorElement: <ErrorPanel title="Trace" />,
   },
 ]);

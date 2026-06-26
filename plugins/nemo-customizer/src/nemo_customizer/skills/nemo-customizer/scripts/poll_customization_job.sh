@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Poll customization job until top-level status is terminal.
 # Usage: poll_customization_job.sh <plugin>-<job-id> [interval_seconds]
-# Requires: NEMO_BASE_URL or NMP_BASE_URL; run from nemo-platform root.
+# Requires: NMP_BASE_URL; run from nemo-platform root.
 # Resolves `nemo` on PATH, else `uv run nemo` (see SKILL.md Pre-flight).
 # Exit 0 on completed; exit 1 on error, cancelled, or get-status failure.
 

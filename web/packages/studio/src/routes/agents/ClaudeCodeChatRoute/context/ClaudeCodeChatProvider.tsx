@@ -42,8 +42,10 @@ export const ClaudeCodeChatProvider: FC<ClaudeCodeChatProviderProps> = ({
     [workspace]
   );
 
+  const handleError = useCallback((error: Error) => toast.error(error.message), [toast]);
+
   const chat = useClaudeCodeChatRuntime({
-    onError: (error) => toast.error(error.message),
+    onError: handleError,
     onSessionIdChange: handleSessionIdChange,
     studioPathname: `${location.pathname}${location.search}`,
     workspace,

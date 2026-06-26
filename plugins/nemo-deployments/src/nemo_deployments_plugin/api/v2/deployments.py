@@ -11,7 +11,15 @@ from typing import cast
 from fastapi import APIRouter, Depends, HTTPException, Query
 from nemo_deployments_plugin.api.v2.dependencies import get_entity_client
 from nemo_deployments_plugin.entities import Deployment, DeploymentConfig, DeploymentStatus
+from nemo_deployments_plugin.reconciler.entity_client import list_all_pages
 from nemo_deployments_plugin.schema import CreateDeploymentRequest, DeploymentFilter, DeploymentPage
+from nemo_deployments_plugin.validation import (
+    PrerequisiteCycleError,
+    build_existing_prerequisite_map,
+    deployment_graph_key,
+    detect_prerequisite_cycle,
+    prerequisite_names,
+)
 from nemo_platform_plugin.api.filters import make_filter_obj_dep
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError, NemoEntityNotFoundError
 from nemo_platform_plugin.filter_ops import ComparisonOperation, FilterOperator
@@ -69,12 +77,25 @@ async def create_deployment(
             detail=(f"DeploymentConfig '{config_name}' not found in workspace '{config_workspace}'."),
         ) from exc
 
+    prereq_names = prerequisite_names(body.prerequisites, workspace)
+    try:
+        existing_deployments = await list_all_pages(entity_client, Deployment, workspace=workspace)
+        existing_map = build_existing_prerequisite_map(existing_deployments)
+        detect_prerequisite_cycle(
+            deployment_name=deployment_graph_key(workspace, body.name),
+            prerequisites=prereq_names,
+            existing=existing_map,
+        )
+    except PrerequisiteCycleError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     deployment = Deployment(
         name=body.name,
         workspace=workspace,
         deployment_config=config_name,
         desired_state=body.desired_state,
         executor=body.executor,
+        prerequisites=body.prerequisites,
         status="PENDING",
     )
     try:

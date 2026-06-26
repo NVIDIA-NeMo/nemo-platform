@@ -224,9 +224,6 @@ export const useCustomAssistantChatRuntime = ({
         );
       };
 
-      createAssistantMessage();
-      setIsRunning(true);
-
       const setAssistantText = (text: string) => {
         ensureAssistantMessage();
         responseText = text;
@@ -265,9 +262,11 @@ export const useCustomAssistantChatRuntime = ({
         });
 
         if (beforeRunResult === 'cancel' || runController.signal.aborted || !isCurrentRun()) {
-          completeActiveAssistantMessage(CANCELLED_STATUS);
           return;
         }
+
+        createAssistantMessage();
+        setIsRunning(true);
 
         const result = await onRun({
           prompt,

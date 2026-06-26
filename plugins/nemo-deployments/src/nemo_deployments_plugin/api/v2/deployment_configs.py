@@ -16,12 +16,6 @@ from nemo_deployments_plugin.schema import (
     DeploymentConfigFilter,
     DeploymentConfigPage,
 )
-from nemo_deployments_plugin.validation import (
-    PrerequisiteCycleError,
-    build_existing_prerequisite_map,
-    detect_prerequisite_cycle,
-    prerequisite_names,
-)
 from nemo_platform_plugin.api.filters import make_filter_obj_dep
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError, NemoEntityNotFoundError
 from nemo_platform_plugin.schema import PaginationData
@@ -33,45 +27,12 @@ router = APIRouter()
 _config_filter_dep = make_filter_obj_dep(DeploymentConfigFilter)
 
 
-async def _list_all_deployment_configs(
-    entity_client: NemoEntitiesClient,
-    workspace: str,
-) -> list[DeploymentConfig]:
-    """Page through all deployment configs for prerequisite graph validation."""
-    page = 1
-    configs: list[DeploymentConfig] = []
-    while True:
-        result = await entity_client.list(
-            DeploymentConfig,
-            workspace=workspace,
-            page=page,
-            page_size=100,
-        )
-        configs.extend(result.data)
-        if result.pagination is None or page >= result.pagination.total_pages:
-            break
-        page += 1
-    return configs
-
-
 @router.post("/deployment-configs", response_model=DeploymentConfig, status_code=201, tags=["Deployment Configs"])
 async def create_deployment_config(
     workspace: str,
     body: CreateDeploymentConfigRequest,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
 ) -> DeploymentConfig:
-    prereq_names = prerequisite_names(body.prerequisites)
-    try:
-        existing_configs = await _list_all_deployment_configs(entity_client, workspace)
-        existing_map = build_existing_prerequisite_map(existing_configs)
-        detect_prerequisite_cycle(
-            config_name=body.name,
-            prerequisites=prereq_names,
-            existing=existing_map,
-        )
-    except PrerequisiteCycleError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
     config = DeploymentConfig(
         name=body.name,
         workspace=workspace,

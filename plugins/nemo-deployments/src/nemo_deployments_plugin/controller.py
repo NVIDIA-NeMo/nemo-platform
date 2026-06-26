@@ -6,18 +6,19 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from typing import ClassVar
 
 from nemo_deployments_plugin.backends.registry import ExecutorRegistry, ExecutorSpec
 from nemo_deployments_plugin.config import ControllerConfig, DeploymentsConfig
 from nemo_deployments_plugin.entities import Deployment, DeploymentConfig, Volume
 from nemo_deployments_plugin.reconciler.deployment_reconciler import DeploymentReconciler
-from nemo_deployments_plugin.reconciler.entity_client import get_deployment_for_config_name, list_all_pages
+from nemo_deployments_plugin.reconciler.entity_client import list_all_pages
 from nemo_deployments_plugin.reconciler.orphan_cleanup import reconcile_orphans
+from nemo_deployments_plugin.reconciler.prerequisite import parse_deployment_ref
 from nemo_deployments_plugin.reconciler.volume_mounts import collect_volume_mount_names
 from nemo_deployments_plugin.reconciler.volume_reconciler import VolumeReconciler
 from nemo_deployments_plugin.types import NON_TERMINAL_DEPLOYMENT_STATUSES, NON_TERMINAL_VOLUME_STATUSES
-from nemo_deployments_plugin.validation import prerequisite_names
 from nemo_platform.resources.entities import AsyncEntitiesResource
 from nemo_platform_plugin.controller import NemoController
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError, NemoEntityNotFoundError
@@ -25,6 +26,8 @@ from nemo_platform_plugin.filter_ops import ComparisonOperation, FilterOperator
 from nemo_platform_plugin.sdk_provider import get_async_platform_sdk
 
 logger = logging.getLogger(__name__)
+
+_TERMINAL_ORPHAN_STATUSES = ("SUCCEEDED", "FAILED")
 
 
 class DeploymentsController(NemoController):
@@ -43,6 +46,7 @@ class DeploymentsController(NemoController):
         self._orphan_cleanup_elapsed_seconds: float = 0.0
         self._deployments_list_ok: bool = True
         self._volumes_list_ok: bool = True
+        self._terminal_deployments_list_ok: bool = True
 
     @property
     def is_healthy(self) -> bool:
@@ -102,16 +106,26 @@ class DeploymentsController(NemoController):
             raise RuntimeError("DeploymentsController.reconcile() called before on_startup()")
 
         deployments = await self._list_deployments()
+        if self.stop_requested():
+            return
+
         volumes = await self._list_volumes()
+        if self.stop_requested():
+            return
+
         configs = await self._load_configs(deployments)
         self._deployment_reconciler.set_config_cache(configs)
 
-        by_name, by_config = _index_deployments(deployments)
+        deployments_by_name = _index_deployments(deployments)
         volumes_by_name = _index_volumes(volumes)
         await self._ensure_volume_refs_loaded(configs, volumes_by_name)
-        await self._ensure_prerequisite_refs_loaded(configs, by_name, by_config)
+        await self._ensure_prerequisite_refs_loaded(deployments, deployments_by_name)
+        if self.stop_requested():
+            return
 
         for volume in volumes:
+            if self.stop_requested():
+                return
             try:
                 await self._volume_reconciler.reconcile_one(volume)
             except NemoEntityConflictError:
@@ -120,11 +134,12 @@ class DeploymentsController(NemoController):
                 logger.exception("Error reconciling volume %s/%s", volume.workspace, volume.name)
 
         for deployment in deployments:
+            if self.stop_requested():
+                return
             try:
                 await self._deployment_reconciler.reconcile_one(
                     deployment,
-                    deployments_by_config=by_config,
-                    deployments_by_name=by_name,
+                    deployments_by_name=deployments_by_name,
                     volumes_by_name=volumes_by_name,
                 )
             except NemoEntityConflictError:
@@ -138,8 +153,16 @@ class DeploymentsController(NemoController):
             orphan_interval > 0
             and self._orphan_cleanup_elapsed_seconds >= orphan_interval
             and self._deployments_list_ok
+            and not self.stop_requested()
         ):
-            known_ids = {f"{d.workspace}/{d.name}" for d in deployments}
+            terminal_deployments = await self._list_terminal_deployments_for_orphan_grace()
+            if not self._terminal_deployments_list_ok:
+                return
+            known_ids = _orphan_protected_ids(
+                deployments,
+                terminal_deployments,
+                self.controller_config.terminal_orphan_grace_seconds,
+            )
             await reconcile_orphans(self._registry.all_backends(), known_ids)
             self._orphan_cleanup_elapsed_seconds = 0.0
 
@@ -183,6 +206,27 @@ class DeploymentsController(NemoController):
         except Exception:
             logger.exception("Failed to list non-terminal volumes")
             self._volumes_list_ok = False
+            return []
+
+    async def _list_terminal_deployments_for_orphan_grace(self) -> list[Deployment]:
+        grace_seconds = self.controller_config.terminal_orphan_grace_seconds
+        if grace_seconds <= 0:
+            return []
+        try:
+            deployments = await list_all_pages(
+                self.entities,
+                Deployment,
+                filter_operation=ComparisonOperation(
+                    operator=FilterOperator.IN,
+                    field="status",
+                    value=list(_TERMINAL_ORPHAN_STATUSES),
+                ),
+            )
+            self._terminal_deployments_list_ok = True
+            return deployments
+        except Exception:
+            logger.exception("Failed to list terminal deployments for orphan grace")
+            self._terminal_deployments_list_ok = False
             return []
 
     async def _load_configs(self, deployments: list[Deployment]) -> dict[tuple[str, str], DeploymentConfig]:
@@ -231,62 +275,81 @@ class DeploymentsController(NemoController):
 
     async def _ensure_prerequisite_refs_loaded(
         self,
-        configs: dict[tuple[str, str], DeploymentConfig],
-        by_name: dict[tuple[str, str], Deployment],
-        by_config: dict[tuple[str, str], Deployment],
+        deployments: list[Deployment],
+        deployments_by_name: dict[tuple[str, str], Deployment],
     ) -> None:
         """Load prerequisite deployments from entity store (including terminal states)."""
-        for (workspace, _config_name), config in configs.items():
-            for prereq_config_name in prerequisite_names(config.prerequisites):
-                key_by_config = (workspace, prereq_config_name)
-                if key_by_config in by_config or (workspace, prereq_config_name) in by_name:
+        for deployment in deployments:
+            for prerequisite in deployment.prerequisites:
+                try:
+                    workspace, name = parse_deployment_ref(prerequisite.deployment_name, deployment.workspace)
+                except ValueError:
+                    logger.warning(
+                        "Invalid prerequisite ref '%s' on deployment '%s' in workspace '%s'",
+                        prerequisite.deployment_name,
+                        deployment.name,
+                        deployment.workspace,
+                    )
+                    continue
+                key = (workspace, name)
+                if key in deployments_by_name:
                     continue
                 try:
-                    dep = await get_deployment_for_config_name(
-                        self.entities,
-                        workspace=workspace,
-                        config_name=prereq_config_name,
-                    )
+                    dep = await self.entities.get(Deployment, name=name, workspace=workspace)
                 except NemoEntityNotFoundError:
                     logger.debug(
                         "Prerequisite deployment '%s' not yet available in workspace '%s'",
-                        prereq_config_name,
+                        name,
                         workspace,
                     )
                     continue
-                if dep is None:
-                    logger.debug(
-                        "Prerequisite deployment '%s' not yet available in workspace '%s'",
-                        prereq_config_name,
+                except Exception:
+                    logger.warning(
+                        "Failed to load prerequisite deployment '%s' in workspace '%s'",
+                        name,
                         workspace,
+                        exc_info=True,
                     )
                     continue
-                by_name[(workspace, dep.name)] = dep
-                by_config[(workspace, dep.deployment_config)] = dep
-                if dep.name != prereq_config_name:
-                    by_config[key_by_config] = dep
+                deployments_by_name[key] = dep
 
 
 def _index_volumes(volumes: list[Volume]) -> dict[tuple[str, str], Volume]:
     return {(volume.workspace, volume.name): volume for volume in volumes}
 
 
-def _index_deployments(
-    deployments: list[Deployment],
-) -> tuple[dict[tuple[str, str], Deployment], dict[tuple[str, str], Deployment]]:
-    by_name: dict[tuple[str, str], Deployment] = {}
-    by_config: dict[tuple[str, str], Deployment] = {}
-    for deployment in deployments:
-        by_name[(deployment.workspace, deployment.name)] = deployment
-        config_key = (deployment.workspace, deployment.deployment_config)
-        existing = by_config.get(config_key)
-        if existing is None or deployment.name == deployment.deployment_config:
-            by_config[config_key] = deployment
-        elif existing.name != deployment.deployment_config:
-            logger.warning(
-                "Multiple deployments share DeploymentConfig '%s' in workspace '%s'; prerequisite lookup uses '%s'",
-                deployment.deployment_config,
-                deployment.workspace,
-                by_config[config_key].name,
-            )
-    return by_name, by_config
+def _index_deployments(deployments: list[Deployment]) -> dict[tuple[str, str], Deployment]:
+    return {(deployment.workspace, deployment.name): deployment for deployment in deployments}
+
+
+def _orphan_protected_ids(
+    active_deployments: list[Deployment],
+    terminal_deployments: list[Deployment],
+    grace_seconds: int,
+) -> set[str]:
+    known_ids = {f"{deployment.workspace}/{deployment.name}" for deployment in active_deployments}
+    if grace_seconds <= 0:
+        return known_ids
+
+    now = datetime.now(timezone.utc)
+    for deployment in terminal_deployments:
+        if _terminal_within_grace(deployment, grace_seconds, now):
+            known_ids.add(f"{deployment.workspace}/{deployment.name}")
+    return known_ids
+
+
+def _terminal_within_grace(deployment: Deployment, grace_seconds: int, now: datetime) -> bool:
+    if deployment.status not in _TERMINAL_ORPHAN_STATUSES:
+        return False
+    terminal_at = _terminal_timestamp(deployment)
+    if terminal_at is None:
+        # Missing history: prefer protecting backend resources over premature orphan delete.
+        return True
+    return (now - terminal_at).total_seconds() < grace_seconds
+
+
+def _terminal_timestamp(deployment: Deployment) -> datetime | None:
+    for event in reversed(deployment.status_history):
+        if event.status in _TERMINAL_ORPHAN_STATUSES and event.timestamp:
+            return datetime.fromisoformat(event.timestamp)
+    return None
