@@ -53,7 +53,7 @@ export const StatusBadge = <T extends string = string>({
 
   return (
     <Badge color={config.color} kind="solid">
-      {Icon ? <Icon width="12px" height="12px" role="img" /> : null}
+      {Icon ? <Icon width="12px" height="12px" aria-hidden="true" /> : null}
       {label}
     </Badge>
   );

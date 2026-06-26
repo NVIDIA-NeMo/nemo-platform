@@ -377,7 +377,7 @@ describe('SimpleFilesTable', () => {
         }),
       });
 
-      const fileInput = screen.getByLabelText('Upload More Files', {
+      const fileInput = screen.getByLabelText('Upload more files', {
         selector: 'input',
       }) as HTMLInputElement;
       expect(fileInput).toHaveClass('sr-only');
@@ -392,7 +392,7 @@ describe('SimpleFilesTable', () => {
         wrapper: createWrapper({ files: mockNewFiles }, mockDispatch),
       });
 
-      const fileInput = screen.getByLabelText('Upload More Files', {
+      const fileInput = screen.getByLabelText('Upload more files', {
         selector: 'input',
       }) as HTMLInputElement;
       const newFile = new File(['new content'], 'newfile.jsonl');
@@ -416,11 +416,10 @@ describe('SimpleFilesTable', () => {
         wrapper: createWrapper({ files: mockNewFiles }),
       });
 
-      const fileInput = screen.getByLabelText('Upload More Files', {
+      const fileInput = screen.getByLabelText('Upload more files', {
         selector: 'input',
       });
 
-      expect(fileInput).toHaveAttribute('id', 'upload-more-files');
       expect(fileInput).toHaveAttribute('type', 'file');
     });
   });

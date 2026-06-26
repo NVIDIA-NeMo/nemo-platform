@@ -163,6 +163,7 @@ export const ClaudeCodeChatThread: FC<ClaudeCodeChatThreadProps> = ({
           },
         }}
         placeholder="Ask Claude Code to work in this workspace"
+        minInputRows={3}
         onReset={handleChatReset}
         showRunningIndicator={!studioNavigationRequest && !decisionRequest && !inputRequest}
         messageContentProps={MESSAGE_CONTENT_PROPS}

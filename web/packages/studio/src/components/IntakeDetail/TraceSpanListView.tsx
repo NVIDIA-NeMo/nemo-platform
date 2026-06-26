@@ -24,6 +24,7 @@ interface SpanListViewProps {
   banner: ReactNode;
   feedbackBySpan: Map<string, FeedbackAnnotationInputValue>;
   annotationCountBySpan: Map<string, number>;
+  notesBySpan: ReadonlySet<string>;
   noteRequest: NoteRequest;
   onAddNote: (spanId: string) => void;
 }
@@ -37,6 +38,7 @@ export const SpanListView: FC<SpanListViewProps> = ({
   banner,
   feedbackBySpan,
   annotationCountBySpan,
+  notesBySpan,
   noteRequest,
   onAddNote,
 }) => (
@@ -59,7 +61,7 @@ export const SpanListView: FC<SpanListViewProps> = ({
                 spanId={span.span_id}
                 sessionId={span.session_id}
                 activeFeedback={feedbackBySpan.get(span.span_id)}
-                annotationCount={annotationCountBySpan.get(span.span_id)}
+                hasNotes={notesBySpan.has(span.span_id)}
                 onAddNote={() => onAddNote(span.span_id)}
               />
             </>

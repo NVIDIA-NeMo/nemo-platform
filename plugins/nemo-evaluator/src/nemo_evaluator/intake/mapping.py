@@ -29,9 +29,11 @@ Design constraints (see AALGO-289):
 
 from __future__ import annotations
 
+import math
+from dataclasses import dataclass
 from typing import Literal
 
-from nemo_evaluator_sdk.agent_eval.scores import AgentEvalTaskScore
+from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial
 from nemo_platform.types.intake.evaluator_result_create_params import EvaluatorResultCreateParams
 from nemo_platform.types.intake.evaluator_result_data_type import EvaluatorResultDataType
@@ -112,29 +114,57 @@ def trial_to_atif_ingest(
     return body
 
 
+@dataclass(frozen=True)
+class SkippedOutput:
+    """A metric output omitted from publish, with the reason it was dropped (see cross-team ask X6)."""
+
+    name: str
+    reason: str
+
+
 def score_to_evaluator_results(
     score: AgentEvalTaskScore,
     *,
     session_id: str,
     span_id: str,
-) -> list[EvaluatorResultCreateParams]:
-    """Turn one ``AgentEvalTaskScore`` into one evaluator-result param per output.
+) -> tuple[list[EvaluatorResultCreateParams], list[SkippedOutput]]:
+    """Map one ``AgentEvalTaskScore`` to ``(rows, skipped)`` for Intake.
 
-    ``name`` is ``"{metric_type}.{output}"`` (matching the SDK summary's
-    aggregate naming). The output's value is coerced into the matching
-    ``data_type``, populating exactly one of ``value`` / ``string_value``.
-    ``session_id`` and ``span_id`` are supplied by the caller: the trajectory
-    span id is resolved at publish time (the adapter's concern), not derivable
-    from the pure score.
+    ``rows`` is one evaluator-result param per publishable output: ``name`` is
+    ``"{metric_type}.{output}"`` (matching the SDK summary's aggregate naming) and the
+    value is coerced into the matching ``data_type``, populating exactly one of ``value``
+    / ``string_value``. ``session_id``/``span_id`` are supplied by the caller — the
+    trajectory span id is resolved at publish time, not derivable from the pure score.
+
+    ``skipped`` carries the outputs that can't be published, with the reason — so the
+    publishable/omitted split has a single source of truth and callers can report the
+    omissions instead of silently losing them. A FAILED score yields no rows (every output
+    skipped); a completed score's non-finite (NaN/inf) outputs are dropped (NaN isn't
+    JSON-representable — the platform client's encoder rejects it — so it can't be sent).
+
+    TODO(X6): once Intake can represent a failed metric result, publish these as failures
+    instead of dropping them.
     """
+    if score.status == AgentEvalScoreStatus.FAILED:
+        skipped = [
+            SkippedOutput(name=f"{score.metric_type}.{output.name}", reason="scoring failed")
+            for output in score.outputs
+        ]
+        return [], skipped
+
     comment = score.diagnostics[0].message if score.diagnostics else None
     rows: list[EvaluatorResultCreateParams] = []
+    skipped: list[SkippedOutput] = []
     for output in score.outputs:
+        name = f"{score.metric_type}.{output.name}"
         data_type, value, string_value = _coerce_metric_value(output.value)
+        if value is not None and not math.isfinite(value):
+            skipped.append(SkippedOutput(name=name, reason="non-finite value"))
+            continue
         row: EvaluatorResultCreateParams = {
             "session_id": session_id,
             "span_id": span_id,
-            "name": f"{score.metric_type}.{output.name}",
+            "name": name,
             "data_type": data_type,
         }
         if value is not None:
@@ -144,7 +174,7 @@ def score_to_evaluator_results(
         if comment is not None:
             row["comment"] = comment
         rows.append(row)
-    return rows
+    return rows, skipped
 
 
 def _coerce_metric_value(value: object) -> tuple[EvaluatorResultDataType, float | None, str | None]:
