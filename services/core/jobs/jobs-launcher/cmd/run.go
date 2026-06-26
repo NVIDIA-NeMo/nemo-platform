@@ -30,9 +30,17 @@ var runCmd = &cobra.Command{
 		if err != nil {
 			logger.Printf("Error: %v\n", err)
 		}
-		os.Exit(exitCode)
+		// Stash exit code instead of calling os.Exit here. os.Exit skips
+		// deferred functions, including the OTEL shutdown in runExecWithStdin
+		// that flushes remaining log batches. Execute() calls os.Exit after
+		// cobra returns and all defers have run.
+		launcherExitCode = exitCode
 	},
 }
+
+// launcherExitCode holds the subprocess exit code. Set by the run command,
+// read by Execute() to exit after defers (including OTEL shutdown) complete.
+var launcherExitCode int
 
 func init() {
 	rootCmd.AddCommand(runCmd)
