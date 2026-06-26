@@ -41,7 +41,7 @@ import {
   type CustomAssistantRunResult,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/useCustomAssistantChatRuntime';
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
 
 const ASK_USER_QUESTION_TOOL_NAME = 'AskUserQuestion';
 const CUSTOM_INSTRUCTION_LABEL = 'No, and tell the Agent what to do';
@@ -86,6 +86,10 @@ interface AskUserQuestionDecisionState {
 
 type ActiveDecisionState = PermissionDecisionState | AskUserQuestionDecisionState;
 
+type QueuedRequest =
+  | { kind: 'permission'; request: ClaudeCodePermissionRequest }
+  | { kind: 'input'; request: ClaudeCodeInputRequest };
+
 export type StudioNavigationDecision = 'continue' | 'navigate' | 'cancel';
 
 export interface StudioNavigationRequest {
@@ -107,31 +111,19 @@ const trimString = (value: unknown): string | undefined => {
 
 const parseAskUserQuestionOption = (value: unknown): AskUserQuestionOption | undefined => {
   if (!isRecord(value)) return undefined;
-
   const label = trimString(value.label);
   if (!label) return undefined;
-
-  return {
-    label,
-    description: trimString(value.description),
-  };
+  return { label, description: trimString(value.description) };
 };
 
 const parseAskUserQuestion = (value: unknown): AskUserQuestion | undefined => {
   if (!isRecord(value)) return undefined;
-
   const question = trimString(value.question);
   if (!question) return undefined;
-
   const options = Array.isArray(value.options)
     ? value.options.map(parseAskUserQuestionOption).filter(isDefined)
     : [];
-
-  return {
-    question,
-    header: trimString(value.header),
-    options,
-  };
+  return { question, header: trimString(value.header), options };
 };
 
 const parseAskUserQuestions = (input: Record<string, unknown>): readonly AskUserQuestion[] => {
@@ -145,7 +137,6 @@ const createAskUserQuestionChoices = (
   if (!question.options.length) {
     return [createCustomInstructionChoice('answer-text')];
   }
-
   return [
     ...question.options.map((option, index) => ({
       id: `answer-${index}`,
@@ -162,7 +153,6 @@ const createAskUserQuestionRequest = (
 ): AgentDecisionRequest => {
   const question = state.questions[state.questionIndex];
   const title = question.header ?? 'Agent question';
-
   return {
     id: `${requestId}:${state.questionIndex}`,
     title:
@@ -188,11 +178,9 @@ const formatAskUserQuestionReason = (
     })
     .filter(isDefined)
     .join(', ');
-
   if (questions.length === 1) {
     return `Your question has been answered: ${answerText}. You can now continue with this answer in mind.`;
   }
-
   return `Your questions have been answered: ${answerText}. You can now continue with these answers in mind.`;
 };
 
@@ -209,20 +197,12 @@ const formatAskUserQuestionDisplayText = (
     .filter(isDefined)
     .join('\n\n');
 
-const getArtifactsSignature = (artifacts: ClaudeCodeChatArtifacts | undefined): string =>
-  artifacts ? JSON.stringify(artifacts) : '';
-
 const createWorkspaceArtifacts = (
   artifacts: ClaudeCodeChatArtifacts | undefined,
   workspace: string | undefined
 ): ClaudeCodeChatArtifacts => {
   const nextArtifacts = artifacts ?? createEmptyClaudeCodeChatArtifacts();
-  return nextArtifacts.workspace || !workspace
-    ? nextArtifacts
-    : {
-        ...nextArtifacts,
-        workspace,
-      };
+  return nextArtifacts.workspace || !workspace ? nextArtifacts : { ...nextArtifacts, workspace };
 };
 
 interface UseClaudeCodeChatRuntimeOptions {
@@ -241,6 +221,122 @@ interface LoadClaudeCodeSessionOptions {
   sessionId: string;
 }
 
+// ---------------------------------------------------------------------------
+// Blocking-request reducer
+// Owns all permission / input request state including the FIFO queue.
+// ---------------------------------------------------------------------------
+
+interface BlockingState {
+  activePermission: ClaudeCodePermissionRequest | null;
+  activeDecision: ActiveDecisionState | null;
+  decisionStatus: AgentDecisionInputStatus;
+  activeInput: ClaudeCodeInputRequest | null;
+  inputStatus: AgentDecisionInputStatus;
+  queue: readonly QueuedRequest[];
+}
+
+type BlockingAction =
+  | { type: 'enqueue_permission'; request: ClaudeCodePermissionRequest }
+  | { type: 'enqueue_input'; request: ClaudeCodeInputRequest }
+  | { type: 'advance_question'; state: AskUserQuestionDecisionState }
+  | { type: 'set_decision_status'; status: AgentDecisionInputStatus }
+  | { type: 'set_input_status'; status: AgentDecisionInputStatus }
+  | { type: 'clear_permission'; requestId?: string; dequeueNext?: boolean }
+  | { type: 'clear_input'; requestId?: string; dequeueNext?: boolean }
+  | { type: 'reset' };
+
+const INITIAL_BLOCKING_STATE: BlockingState = {
+  activePermission: null,
+  activeDecision: null,
+  decisionStatus: 'pending',
+  activeInput: null,
+  inputStatus: 'pending',
+  queue: [],
+};
+
+const withPermissionActivated = (
+  state: BlockingState,
+  request: ClaudeCodePermissionRequest
+): BlockingState => {
+  if (request.toolName === ASK_USER_QUESTION_TOOL_NAME) {
+    const questions = parseAskUserQuestions(request.input);
+    if (questions.length) {
+      return {
+        ...state,
+        activePermission: request,
+        activeDecision: { kind: 'ask-user-question', questions, questionIndex: 0, answers: {} },
+        decisionStatus: 'pending',
+      };
+    }
+  }
+  return {
+    ...state,
+    activePermission: request,
+    activeDecision: { kind: 'permission' },
+    decisionStatus: 'pending',
+  };
+};
+
+const withNextDequeued = (state: BlockingState): BlockingState => {
+  const [next, ...rest] = state.queue;
+  if (!next) return state;
+  const base = { ...state, queue: rest };
+  if (next.kind === 'permission') return withPermissionActivated(base, next.request);
+  return { ...base, activeInput: next.request, inputStatus: 'pending' };
+};
+
+function blockingReducer(state: BlockingState, action: BlockingAction): BlockingState {
+  switch (action.type) {
+    case 'enqueue_permission':
+      if (state.activePermission || state.activeInput) {
+        return {
+          ...state,
+          queue: [...state.queue, { kind: 'permission', request: action.request }],
+        };
+      }
+      return withPermissionActivated(state, action.request);
+
+    case 'enqueue_input':
+      if (state.activePermission || state.activeInput) {
+        return { ...state, queue: [...state.queue, { kind: 'input', request: action.request }] };
+      }
+      return { ...state, activeInput: action.request, inputStatus: 'pending' };
+
+    case 'advance_question':
+      return { ...state, activeDecision: action.state, decisionStatus: 'pending' };
+
+    case 'set_decision_status':
+      return { ...state, decisionStatus: action.status };
+
+    case 'set_input_status':
+      return { ...state, inputStatus: action.status };
+
+    case 'clear_permission': {
+      if (action.requestId && state.activePermission?.requestId !== action.requestId) return state;
+      const cleared: BlockingState = {
+        ...state,
+        activePermission: null,
+        activeDecision: null,
+        decisionStatus: 'pending',
+      };
+      return action.dequeueNext ? withNextDequeued(cleared) : cleared;
+    }
+
+    case 'clear_input': {
+      if (action.requestId && state.activeInput?.requestId !== action.requestId) return state;
+      const cleared: BlockingState = { ...state, activeInput: null, inputStatus: 'pending' };
+      return action.dequeueNext ? withNextDequeued(cleared) : cleared;
+    }
+
+    case 'reset':
+      return INITIAL_BLOCKING_STATE;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Hook
+// ---------------------------------------------------------------------------
+
 export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptions) => {
   const queryClient = useQueryClient();
   const workspace = options?.workspace;
@@ -248,138 +344,105 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
   const [artifacts, setArtifacts] = useState<ClaudeCodeChatArtifacts>(
     createWorkspaceArtifacts(options?.initialArtifacts, workspace)
   );
-  const [decisionRequest, setDecisionRequest] = useState<AgentDecisionRequest | null>(null);
-  const [decisionChoices, setDecisionChoices] = useState<readonly AgentDecisionChoice[]>([]);
-  const [decisionStatus, setDecisionStatus] = useState<AgentDecisionInputStatus>('pending');
-  const [inputRequest, setInputRequest] = useState<ClaudeCodeInputRequest | null>(null);
-  const [inputStatus, setInputStatus] = useState<AgentDecisionInputStatus>('pending');
   const [studioNavigationRequest, setStudioNavigationRequest] =
     useState<StudioNavigationRequest | null>(null);
   const [studioNavigationStatus, setStudioNavigationStatus] =
     useState<AgentDecisionInputStatus>('pending');
-  const sessionIdRef = useRef<string | null>(options?.initialSessionId ?? null);
-  const permissionRequestRef = useRef<ClaudeCodePermissionRequest | null>(null);
-  const inputRequestRef = useRef<ClaudeCodeInputRequest | null>(null);
-  const studioNavigationResolverRef = useRef<((decision: StudioNavigationDecision) => void) | null>(
-    null
-  );
-  const activeDecisionRef = useRef<ActiveDecisionState | null>(null);
-  const initialArtifactsRef = useRef<ClaudeCodeChatArtifacts | undefined>(
-    options?.initialArtifacts
-  );
-  const initialArtifactsSignature = getArtifactsSignature(options?.initialArtifacts);
+  const [blocking, dispatchBlocking] = useReducer(blockingReducer, INITIAL_BLOCKING_STATE);
+  const { activeDecision, activeInput, activePermission, decisionStatus, inputStatus } = blocking;
+
+  const [navigationResolver, setNavigationResolver] = useState<
+    ((decision: StudioNavigationDecision) => void) | null
+  >(null);
   const onError = options?.onError;
   const onSessionIdChange = options?.onSessionIdChange;
   const studioPathname = options?.studioPathname;
 
-  initialArtifactsRef.current = options?.initialArtifacts;
+  // Derive from JSON so callers that create inline objects don't trigger
+  // the effect on every render — identity is stable as long as content is unchanged.
+  const initialArtifactsJson = options?.initialArtifacts
+    ? JSON.stringify(options.initialArtifacts)
+    : null;
+  const initialArtifacts = useMemo<ClaudeCodeChatArtifacts | undefined>(
+    () =>
+      initialArtifactsJson
+        ? (JSON.parse(initialArtifactsJson) as ClaudeCodeChatArtifacts)
+        : undefined,
+    [initialArtifactsJson]
+  );
 
   useEffect(() => {
-    setArtifacts(createWorkspaceArtifacts(initialArtifactsRef.current, workspace));
-  }, [initialArtifactsSignature, workspace]);
+    setArtifacts(createWorkspaceArtifacts(initialArtifacts, workspace));
+  }, [initialArtifacts, workspace]);
+
+  const decisionRequest = useMemo((): AgentDecisionRequest | null => {
+    if (!activePermission) return null;
+    if (activeDecision?.kind === 'ask-user-question') {
+      return createAskUserQuestionRequest(activePermission.requestId, activeDecision);
+    }
+    const actionDescription =
+      typeof activePermission.input.description === 'string'
+        ? activePermission.input.description
+        : undefined;
+    return {
+      id: activePermission.requestId,
+      title: 'Approval required',
+      description: `Agent wants to use ${activePermission.toolName}${
+        actionDescription ? `: ${actionDescription}` : ''
+      }.`,
+      details: activePermission.input,
+    };
+  }, [activePermission, activeDecision]);
+
+  const decisionChoices = useMemo((): readonly AgentDecisionChoice[] => {
+    if (!activePermission) return [];
+    if (activeDecision?.kind === 'ask-user-question') {
+      return createAskUserQuestionChoices(activeDecision.questions[activeDecision.questionIndex]);
+    }
+    return PERMISSION_CHOICES;
+  }, [activePermission, activeDecision]);
 
   const ensureSessionId = useCallback(async (): Promise<string> => {
-    if (sessionIdRef.current) return sessionIdRef.current;
-
+    if (sessionId) return sessionId;
+    // Only one run is active at a time (UI prevents concurrent submissions),
+    // so no race between concurrent callers here.
     const nextSessionId = await createClaudeCodeSession();
-    sessionIdRef.current = nextSessionId;
     setSessionId(nextSessionId);
     onSessionIdChange?.(nextSessionId);
     return nextSessionId;
-  }, [onSessionIdChange]);
+  }, [sessionId, onSessionIdChange]);
 
-  const clearPermissionRequest = useCallback((requestId?: string) => {
-    if (requestId && permissionRequestRef.current?.requestId !== requestId) return;
-
-    permissionRequestRef.current = null;
-    activeDecisionRef.current = null;
-    setDecisionRequest(null);
-    setDecisionChoices([]);
-    setDecisionStatus('pending');
-  }, []);
-
-  const clearInputRequest = useCallback((requestId?: string) => {
-    if (requestId && inputRequestRef.current?.requestId !== requestId) return;
-
-    inputRequestRef.current = null;
-    setInputRequest(null);
-    setInputStatus('pending');
-  }, []);
-
-  const clearStudioNavigationRequest = useCallback(() => {
-    studioNavigationResolverRef.current = null;
+  // Accepts an optional decision to cancel a pending navigation promise before
+  // clearing, avoiding a spurious 'submitting' status on programmatic cancels.
+  const clearStudioNavigationRequest = useCallback((cancelDecision?: StudioNavigationDecision) => {
+    setNavigationResolver((current: ((decision: StudioNavigationDecision) => void) | null) => {
+      if (cancelDecision) current?.(cancelDecision);
+      return null;
+    });
     setStudioNavigationRequest(null);
     setStudioNavigationStatus('pending');
   }, []);
 
-  const resolveStudioNavigationRequest = useCallback((decision: StudioNavigationDecision) => {
-    const resolve = studioNavigationResolverRef.current;
-    if (!resolve) return;
+  const resolveStudioNavigationRequest = useCallback(
+    (decision: StudioNavigationDecision) => {
+      if (!navigationResolver) return;
+      setStudioNavigationStatus('submitting');
+      navigationResolver(decision);
+    },
+    [navigationResolver]
+  );
 
-    setStudioNavigationStatus('submitting');
-    resolve(decision);
+  // Stable: dispatch is guaranteed stable by React, clearStudioNavigationRequest has [] deps.
+  const handlePermissionRequest = useCallback((request: ClaudeCodePermissionRequest) => {
+    dispatchBlocking({ type: 'enqueue_permission', request });
   }, []);
-
-  const setAskUserQuestionDecision = useCallback(
-    (request: ClaudeCodePermissionRequest, state: AskUserQuestionDecisionState) => {
-      const question = state.questions[state.questionIndex];
-      const choices = createAskUserQuestionChoices(question);
-
-      activeDecisionRef.current = state;
-      setDecisionStatus('pending');
-      setDecisionRequest(createAskUserQuestionRequest(request.requestId, state));
-      setDecisionChoices(choices);
-    },
-    []
-  );
-
-  const handlePermissionRequest = useCallback(
-    (request: ClaudeCodePermissionRequest) => {
-      const actionDescription =
-        typeof request.input.description === 'string' ? request.input.description : undefined;
-
-      clearInputRequest();
-      permissionRequestRef.current = request;
-      activeDecisionRef.current = { kind: 'permission' };
-      setDecisionStatus('pending');
-
-      if (request.toolName === ASK_USER_QUESTION_TOOL_NAME) {
-        const questions = parseAskUserQuestions(request.input);
-        if (questions.length) {
-          const state: AskUserQuestionDecisionState = {
-            kind: 'ask-user-question',
-            questions,
-            questionIndex: 0,
-            answers: {},
-          };
-          setAskUserQuestionDecision(request, state);
-          return;
-        }
-      }
-
-      setDecisionRequest({
-        id: request.requestId,
-        title: 'Approval required',
-        description: `Agent wants to use ${request.toolName}${
-          actionDescription ? `: ${actionDescription}` : ''
-        }.`,
-        details: request.input,
-      });
-      setDecisionChoices(PERMISSION_CHOICES);
-    },
-    [clearInputRequest, setAskUserQuestionDecision]
-  );
 
   const handleInputRequest = useCallback(
     (request: ClaudeCodeInputRequest) => {
-      clearPermissionRequest();
       clearStudioNavigationRequest();
-
-      inputRequestRef.current = request;
-      setInputStatus('pending');
-      setInputRequest(request);
+      dispatchBlocking({ type: 'enqueue_input', request });
     },
-    [clearPermissionRequest, clearStudioNavigationRequest]
+    [clearStudioNavigationRequest]
   );
 
   const requestStudioNavigationDecision = useCallback(
@@ -399,21 +462,16 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
       const suggestion = getStudioUiNavigationSuggestion(prompt, workspace);
       if (!suggestion) return 'continue';
 
-      clearPermissionRequest();
-      clearInputRequest();
+      dispatchBlocking({ type: 'reset' });
       prepareForUserInput();
 
       let resolveDecision: (decision: StudioNavigationDecision) => void = () => undefined;
       const decisionPromise = new Promise<StudioNavigationDecision>((resolve) => {
         resolveDecision = resolve;
       });
-      studioNavigationResolverRef.current = resolveDecision;
+      setNavigationResolver(() => resolveDecision);
       setStudioNavigationStatus('pending');
-      setStudioNavigationRequest({
-        id: `${suggestion.id}:${Date.now()}`,
-        prompt,
-        suggestion,
-      });
+      setStudioNavigationRequest({ id: `${suggestion.id}:${Date.now()}`, prompt, suggestion });
 
       const handleAbort = () => resolveDecision('cancel');
       signal.addEventListener('abort', handleAbort, { once: true });
@@ -424,12 +482,10 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
         return decision === 'continue' ? 'continue' : 'cancel';
       } finally {
         signal.removeEventListener('abort', handleAbort);
-        if (studioNavigationResolverRef.current === resolveDecision) {
-          clearStudioNavigationRequest();
-        }
+        clearStudioNavigationRequest();
       }
     },
-    [clearInputRequest, clearPermissionRequest, clearStudioNavigationRequest, workspace]
+    [clearStudioNavigationRequest, workspace]
   );
 
   // Extracted into useCallback so onRun is a stable reference. An inline async
@@ -444,8 +500,7 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
       prepareForUserInput,
       isCurrentRun,
     }: CustomAssistantRunContext): Promise<CustomAssistantRunResult | void> => {
-      clearPermissionRequest();
-      clearInputRequest();
+      dispatchBlocking({ type: 'reset' });
       clearStudioNavigationRequest();
       const activeSessionId = await ensureSessionId();
       let doneReceived = false;
@@ -460,7 +515,6 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
           handlers: {
             onClaudeEvent: (event) => {
               if (signal.aborted || !isCurrentRun()) return;
-
               setArtifacts((current) => updateClaudeCodeChatArtifactsFromEvent(current, event));
               appendAssistantParts(getAssistantPartsFromClaudeEvent(event));
             },
@@ -484,25 +538,20 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
         });
         void queryClient.invalidateQueries({ queryKey: CLAUDE_CODE_HISTORY_SESSIONS_QUERY_KEY });
       } finally {
-        if (isCurrentRun()) {
-          clearPermissionRequest();
-          clearInputRequest();
-        }
+        if (isCurrentRun()) dispatchBlocking({ type: 'reset' });
       }
 
       return { status: doneReceived ? COMPLETE_STATUS : CANCELLED_STATUS };
     },
     [
-      clearPermissionRequest,
-      clearInputRequest,
       clearStudioNavigationRequest,
       ensureSessionId,
+      handleInputRequest,
+      handlePermissionRequest,
+      queryClient,
+      setArtifacts,
       studioPathname,
       workspace,
-      setArtifacts,
-      handlePermissionRequest,
-      handleInputRequest,
-      queryClient,
     ]
   );
 
@@ -528,33 +577,31 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
       decision: ClaudeCodeInputDecision;
       displayText?: string;
     }) => {
-      const activeSessionId = sessionIdRef.current;
-      const activeRequest = inputRequestRef.current;
-      if (!activeSessionId || !activeRequest) return;
+      if (!sessionId || !activeInput) return;
 
       const trimmedDisplayText = displayText?.trim();
-      setInputStatus('submitting');
+      dispatchBlocking({ type: 'set_input_status', status: 'submitting' });
 
       try {
         await resolveClaudeCodeInput({
-          sessionId: activeSessionId,
-          requestId: activeRequest.requestId,
+          sessionId,
+          requestId: activeInput.requestId,
           decision,
         });
-        if (!decision.skipped && trimmedDisplayText) {
-          appendUserMessage(trimmedDisplayText);
-        }
-        clearInputRequest(activeRequest.requestId);
+        if (!decision.skipped && trimmedDisplayText) appendUserMessage(trimmedDisplayText);
+        dispatchBlocking({
+          type: 'clear_input',
+          requestId: activeInput.requestId,
+          dequeueNext: true,
+        });
       } catch (error: unknown) {
-        if (inputRequestRef.current?.requestId === activeRequest.requestId) {
-          setInputStatus('pending');
-        }
+        dispatchBlocking({ type: 'set_input_status', status: 'pending' });
         const errorMessage =
           error instanceof Error ? error.message : 'Failed to resolve Claude Code input';
         onError?.(new Error(errorMessage));
       }
     },
-    [appendUserMessage, clearInputRequest, onError]
+    [sessionId, activeInput, appendUserMessage, onError]
   );
 
   const submitActiveDecision = useCallback(
@@ -567,126 +614,106 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
       displayText?: string;
       reason?: string;
     }): Promise<boolean> => {
-      const activeSessionId = sessionIdRef.current;
-      const activeRequest = permissionRequestRef.current;
-      if (!activeSessionId || !activeRequest) return false;
+      if (!sessionId || !activePermission) return false;
 
       const trimmedReason = reason?.trim();
       const trimmedDisplayText = displayText?.trim();
-      setDecisionStatus('submitting');
+      dispatchBlocking({ type: 'set_decision_status', status: 'submitting' });
 
       try {
         await resolveClaudeCodePermission({
-          sessionId: activeSessionId,
-          requestId: activeRequest.requestId,
+          sessionId,
+          requestId: activePermission.requestId,
           decision: {
             approved,
             reason: approved ? undefined : trimmedReason || 'Denied by user',
           },
         });
-        if (!approved && trimmedDisplayText) {
-          appendUserMessage(trimmedDisplayText);
-        }
-        clearPermissionRequest(activeRequest.requestId);
+        if (!approved && trimmedDisplayText) appendUserMessage(trimmedDisplayText);
+        dispatchBlocking({
+          type: 'clear_permission',
+          requestId: activePermission.requestId,
+          dequeueNext: true,
+        });
         return true;
       } catch (error: unknown) {
-        if (permissionRequestRef.current?.requestId === activeRequest.requestId) {
-          setDecisionStatus('pending');
-        }
+        dispatchBlocking({ type: 'set_decision_status', status: 'pending' });
         const errorMessage =
           error instanceof Error ? error.message : 'Failed to resolve Claude Code permission';
         onError?.(new Error(errorMessage));
         return false;
       }
     },
-    [appendUserMessage, clearPermissionRequest, onError]
+    [sessionId, activePermission, appendUserMessage, onError]
   );
 
   const resolveAskUserQuestionDecision = useCallback(
     async (choice: AgentDecisionChoice, submission?: AgentDecisionSubmission) => {
-      const activeRequest = permissionRequestRef.current;
-      const state = activeDecisionRef.current;
-      if (!activeRequest || state?.kind !== 'ask-user-question') return;
+      if (!activePermission || activeDecision?.kind !== 'ask-user-question') return;
 
-      const activeQuestion = state.questions[state.questionIndex];
+      const activeQuestion = activeDecision.questions[activeDecision.questionIndex];
       const answer = submission?.text?.trim() || choice.label.trim();
       if (!answer) return;
 
-      const answers = {
-        ...state.answers,
-        [activeQuestion.question]: answer,
-      };
+      const answers = { ...activeDecision.answers, [activeQuestion.question]: answer };
 
-      if (state.questionIndex < state.questions.length - 1) {
-        setAskUserQuestionDecision(activeRequest, {
-          ...state,
-          answers,
-          questionIndex: state.questionIndex + 1,
+      if (activeDecision.questionIndex < activeDecision.questions.length - 1) {
+        dispatchBlocking({
+          type: 'advance_question',
+          state: { ...activeDecision, answers, questionIndex: activeDecision.questionIndex + 1 },
         });
         return;
       }
 
       const submitted = await submitActiveDecision({
         approved: false,
-        reason: formatAskUserQuestionReason(state.questions, answers),
-        displayText: formatAskUserQuestionDisplayText(state.questions, answers),
+        reason: formatAskUserQuestionReason(activeDecision.questions, answers),
+        displayText: formatAskUserQuestionDisplayText(activeDecision.questions, answers),
       });
       if (submitted) {
         setArtifacts((current) =>
-          updateClaudeCodeChatArtifactsFromSelections(current, state.questions, answers)
+          updateClaudeCodeChatArtifactsFromSelections(current, activeDecision.questions, answers)
         );
       }
     },
-    [setAskUserQuestionDecision, submitActiveDecision]
+    [activePermission, activeDecision, setArtifacts, submitActiveDecision]
   );
 
   const resolveDecisionRequest = useCallback(
     async (choice: AgentDecisionChoice, submission?: AgentDecisionSubmission) => {
-      const state = activeDecisionRef.current;
-      if (state?.kind === 'ask-user-question') {
+      if (activeDecision?.kind === 'ask-user-question') {
         await resolveAskUserQuestionDecision(choice, submission);
         return;
       }
-
       const approved = choice.id === 'yes';
       const trimmedReason = submission?.text?.trim();
-
       await submitActiveDecision({
         approved,
         reason: approved ? undefined : trimmedReason || 'Denied by user',
         displayText: approved ? undefined : trimmedReason,
       });
     },
-    [resolveAskUserQuestionDecision, submitActiveDecision]
+    [activeDecision, resolveAskUserQuestionDecision, submitActiveDecision]
   );
 
-  const skipDecisionRequest = useCallback(async () => {
-    await submitActiveDecision({ approved: false, reason: 'Skipped by user' });
-  }, [submitActiveDecision]);
+  const skipDecisionRequest = useCallback(
+    () => void submitActiveDecision({ approved: false, reason: 'Skipped by user' }),
+    [submitActiveDecision]
+  );
 
-  const skipInputRequest = useCallback(async () => {
-    await resolveInputRequest({ decision: { skipped: true } });
-  }, [resolveInputRequest]);
+  const skipInputRequest = useCallback(
+    () => void resolveInputRequest({ decision: { skipped: true } }),
+    [resolveInputRequest]
+  );
 
   const handleReset = useCallback(() => {
-    sessionIdRef.current = null;
     setSessionId(null);
     onSessionIdChange?.(null);
     setArtifacts(createWorkspaceArtifacts(undefined, workspace));
-    clearPermissionRequest();
-    clearInputRequest();
-    resolveStudioNavigationRequest('cancel');
-    clearStudioNavigationRequest();
+    dispatchBlocking({ type: 'reset' });
+    clearStudioNavigationRequest('cancel');
     resetThread();
-  }, [
-    clearInputRequest,
-    clearPermissionRequest,
-    clearStudioNavigationRequest,
-    onSessionIdChange,
-    resetThread,
-    resolveStudioNavigationRequest,
-    workspace,
-  ]);
+  }, [clearStudioNavigationRequest, onSessionIdChange, resetThread, workspace]);
 
   const loadSession = useCallback(
     ({
@@ -694,25 +721,14 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
       messages,
       sessionId: nextSessionId,
     }: LoadClaudeCodeSessionOptions) => {
-      sessionIdRef.current = nextSessionId;
       setSessionId(nextSessionId);
       onSessionIdChange?.(nextSessionId);
       setArtifacts(createWorkspaceArtifacts(nextArtifacts, workspace));
-      clearPermissionRequest();
-      clearInputRequest();
-      resolveStudioNavigationRequest('cancel');
-      clearStudioNavigationRequest();
+      dispatchBlocking({ type: 'reset' });
+      clearStudioNavigationRequest('cancel');
       replaceMessages(messages);
     },
-    [
-      clearInputRequest,
-      clearPermissionRequest,
-      clearStudioNavigationRequest,
-      onSessionIdChange,
-      replaceMessages,
-      resolveStudioNavigationRequest,
-      workspace,
-    ]
+    [clearStudioNavigationRequest, onSessionIdChange, replaceMessages, workspace]
   );
 
   return {
@@ -721,17 +737,17 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
     decisionRequest,
     decisionStatus,
     handleReset,
-    inputRequest,
+    inputRequest: activeInput,
     inputStatus,
     isRunning,
     loadSession,
-    resolveInputRequest,
     resolveDecisionRequest,
+    resolveInputRequest,
     resolveStudioNavigationRequest,
     runtime,
     sessionId,
-    skipInputRequest,
     skipDecisionRequest,
+    skipInputRequest,
     studioNavigationRequest,
     studioNavigationStatus,
     submitPrompt,
