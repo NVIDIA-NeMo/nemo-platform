@@ -10,7 +10,12 @@ import { ArrowUp, ImagePlus, RotateCcw, Square } from 'lucide-react';
 
 type AssistantComposerProps = Pick<
   AssistantChatThreadProps,
-  'disabled' | 'placeholder' | 'onReset' | 'slotComposerStart' | 'enableImageAttachments'
+  | 'disabled'
+  | 'placeholder'
+  | 'onReset'
+  | 'slotComposerStart'
+  | 'enableImageAttachments'
+  | 'minInputRows'
 > & {
   className?: string;
 };
@@ -22,6 +27,7 @@ export const AssistantComposer = ({
   slotComposerStart,
   className,
   enableImageAttachments = true,
+  minInputRows,
 }: AssistantComposerProps) => (
   <div className="flex w-full flex-col gap-2">
     {slotComposerStart && <div className="shrink-0">{slotComposerStart}</div>}
@@ -40,6 +46,7 @@ export const AssistantComposer = ({
           disabled={disabled}
           placeholder={placeholder}
           submitMode="enter"
+          minRows={minInputRows}
           className="max-h-32 min-h-[24px] flex-1 resize-none border-0 bg-transparent px-density-md py-density-md text-sm leading-6 outline-none disabled:cursor-not-allowed disabled:text-fg-disabled"
         />
         {enableImageAttachments && (
