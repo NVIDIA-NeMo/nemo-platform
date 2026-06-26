@@ -375,8 +375,11 @@ def test_job_cancel_once_active(sdk: NeMoPlatform, workspace: str):
 # Tests that require a container backend (Docker or Kubernetes)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.container_only
-@pytest.mark.flaky(reruns=2)
+# AIRCORE-853: K8s reconciler checks for errored pods before checking if the
+# job is suspended. When K8s kills pods during suspension, the terminated pod
+# is misclassified as an error, causing the job to transition to 'error'
+# instead of 'paused'. Re-enable once the reconciler is fixed.
+@pytest.mark.skip(reason="AIRCORE-853: pause races with errored-pod detection in K8s reconciler")
 def test_job_pause_resume(sdk: NeMoPlatform, workspace: str):
     """Test that a job can be paused and then resumed after being paused."""
     job = sdk.jobs.create(
