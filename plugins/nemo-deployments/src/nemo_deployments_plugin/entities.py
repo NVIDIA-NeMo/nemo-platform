@@ -18,11 +18,12 @@ from nemo_deployments_plugin.types import (
     DesiredState,
     DriftRecoveryAction,
     Endpoint,
+    PrerequisiteCondition,
     RestartPolicy,
     VolumeStatus,
 )
 from nemo_platform_plugin.entity import NemoEntity
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class EnvVar(BaseModel):
@@ -178,13 +179,45 @@ class VolumeBackendConfig(BaseModel):
 
 class DriftRecoveryPolicy(BaseModel):
     action: DriftRecoveryAction = "recreate"
+    max_attempts: int | None = Field(
+        default=None,
+        ge=0,
+        description="Override controller drift_recovery_max_attempts when set.",
+    )
+    initial_delay_seconds: int | None = Field(
+        default=None,
+        ge=0,
+        description="Override controller drift_recovery_initial_delay_seconds when set.",
+    )
+    max_delay_seconds: int | None = Field(
+        default=None,
+        ge=0,
+        description="Override controller drift_recovery_max_delay_seconds when set.",
+    )
+
+    @model_validator(mode="after")
+    def _validate_delays(self) -> DriftRecoveryPolicy:
+        if (
+            self.initial_delay_seconds is not None
+            and self.max_delay_seconds is not None
+            and self.initial_delay_seconds > self.max_delay_seconds
+        ):
+            raise ValueError("initial_delay_seconds must not exceed max_delay_seconds")
+        return self
 
 
 class Prerequisite(BaseModel):
     deployment_name: str = Field(
         description=(
-            "Name of another DeploymentConfig in the same workspace that must reach "
-            "a ready terminal state before this config's deployment may start."
+            "Name of another Deployment in the same workspace (or workspace/name) that must "
+            "satisfy condition before this deployment may start."
+        ),
+    )
+    condition: PrerequisiteCondition = Field(
+        default="succeeded",
+        description=(
+            "ready: prerequisite Deployment.status == READY. "
+            "succeeded: prerequisite Deployment.status == SUCCEEDED with exit_code == 0."
         ),
     )
 
@@ -204,7 +237,6 @@ class DeploymentConfig(NemoEntity, entity_type=ENTITY_TYPE_DEPLOYMENT_CONFIG):
     config_files: list[ConfigFile] = Field(default_factory=list, alias="configFiles")
     restart_policy: RestartPolicy = Field(default="Always", alias="restartPolicy")
     backoff_limit: int = Field(default=6, alias="backoffLimit")
-    prerequisites: list[Prerequisite] = Field(default_factory=list)
     drift_recovery: DriftRecoveryPolicy = Field(default_factory=DriftRecoveryPolicy, alias="driftRecovery")
     labels: dict[str, str] = Field(default_factory=dict)
     backend_config: DeploymentBackendConfig = Field(default_factory=DeploymentBackendConfig, alias="backendConfig")
@@ -221,6 +253,7 @@ class Deployment(NemoEntity, entity_type=ENTITY_TYPE_DEPLOYMENT):
         default=None,
         description="Named executor registry entry; falls back to plugin default_executor.",
     )
+    prerequisites: list[Prerequisite] = Field(default_factory=list)
     status: DeploymentStatus = Field(default="PENDING")
     status_message: str = Field(default="")
     endpoints: list[Endpoint] = Field(default_factory=list)

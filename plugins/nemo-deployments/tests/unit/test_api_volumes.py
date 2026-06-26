@@ -52,9 +52,15 @@ def test_list_volumes_200(client: TestClient, mock_entity_client: AsyncMock) -> 
 
 
 def test_delete_volume_204(client: TestClient, mock_entity_client: AsyncMock) -> None:
+    volume = make_volume()
     mock_entity_client.list.return_value = list_response([])
+    mock_entity_client.get.return_value = volume
     resp = client.delete("/apis/deployments/v2/workspaces/default/volumes/vol1")
     assert resp.status_code == 204
+    mock_entity_client.update.assert_awaited_once()
+    updated = mock_entity_client.update.await_args.args[0]
+    assert updated.status == "DELETING"
+    mock_entity_client.delete.assert_not_awaited()
 
 
 def test_delete_volume_409_when_referenced(client: TestClient, mock_entity_client: AsyncMock) -> None:

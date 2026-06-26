@@ -96,7 +96,7 @@ Job JSON references the secret by name:
 Store the API key in the **platform** secret store. A local `wandb login` cache on your laptop is **not** used by training containers.
 
 ```bash
-export NEMO_BASE_URL=http://<platform-host>:8080   # omit when using default localhost
+export NMP_BASE_URL=http://<platform-host>:8080   # omit when using default localhost
 cd /path/to/nemo-platform
 
 # Create (first time)

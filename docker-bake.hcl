@@ -75,7 +75,7 @@ variable "BASE_TAG_PYTHON" {
 
 # Pin for nmp-automodel-base.
 variable "BASE_TAG_AUTOMODEL" {
-  default = "65632527b258367fb8855ef431f596abb8538577"
+  default = "f8239353044d71cbd53e209b60c0600ead484b58"
 }
 
 # The tag for base images if needed

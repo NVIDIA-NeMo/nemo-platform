@@ -2,8 +2,37 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import pytest
-from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalTask, SemanticReducer, SemanticView, ViewSignal
+from nemo_evaluator_sdk.agent_eval.tasks import (
+    AgentEvalTask,
+    AgentEvalTaskset,
+    AgentEvalTasksetLoader,
+    SemanticReducer,
+    SemanticView,
+    ViewSignal,
+)
 from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutputSpec, MetricResult
+from pydantic import ValidationError
+
+
+def test_taskset_requires_tasks_and_unique_ids() -> None:
+    task = AgentEvalTask(id="t", intent="i", inputs={})
+    assert AgentEvalTaskset(tasks=[task]).tasks == [task]
+    with pytest.raises(ValidationError, match="at least 1"):
+        AgentEvalTaskset(tasks=[])
+    with pytest.raises(ValidationError, match="duplicate taskset task ids"):
+        AgentEvalTaskset(tasks=[task, AgentEvalTask(id="t", intent="i", inputs={})])
+
+
+def test_loader_protocol_is_satisfied_by_a_named_load_adapter() -> None:
+    class _Loader:
+        name = "fake"
+
+        def load(self, *, source: object = None, limit: object = None, evidence_dir: object = None) -> AgentEvalTaskset:
+            return AgentEvalTaskset(tasks=[AgentEvalTask(id="t", intent="i", inputs={})])
+
+    loader = _Loader()
+    assert isinstance(loader, AgentEvalTasksetLoader)
+    assert [task.id for task in loader.load().tasks] == ["t"]
 
 
 class _Metric:

@@ -44,3 +44,9 @@ def test_service_authz_covers_mounted_routes() -> None:
         }
         for method in route_methods:
             assert method in contribution.endpoints[path], f"missing authz method {method} for {path}"
+
+
+def test_controller_entry_point() -> None:
+    from nemo_deployments_plugin.controller import DeploymentsController
+
+    assert DeploymentsController.name == "deployments"
