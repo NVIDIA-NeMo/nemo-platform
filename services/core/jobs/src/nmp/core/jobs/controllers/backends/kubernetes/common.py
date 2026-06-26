@@ -1017,21 +1017,27 @@ def create_pod_template_spec(
     # matching the subprocess backend which unconditionally creates a
     # persistent directory for every job.
     #
-    # Today, persistent storage is always mounted for every job when a PVC
-    # is configured. This means every job pod gets a PVC subpath even if it
-    # never writes to ctx.storage.persistent (e.g. Data Designer only uses
-    # ephemeral storage). The env var is injected automatically so plugins
-    # don't need to declare it in compile().
+    # Previously, each plugin had to declare NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH
+    # in its compile() environment list for the K8s backend to create the PVC
+    # mount and inject the env var. If a plugin forgot, the job pod would crash
+    # at runtime with a KeyError when the bridge tried to read the env var —
+    # a footgun that bit Data Designer (AIRCORE-844). The subprocess backend
+    # never had this problem because it unconditionally creates and injects
+    # the persistent directory.
     #
-    # TODO: Long-term, job authors should be able to explicitly declare
-    # whether they need persistent storage via a first-class field on the
-    # job spec (e.g. `requires_persistent_storage: bool` on NemoJob or in
-    # PlatformJobStep), rather than the current implicit mechanism of
-    # passing a magic env var in the step's environment list. This would
-    # let the backend skip PVC provisioning for jobs that don't need it,
-    # and make the contract between compile() and the runtime explicit
-    # rather than relying on env var name conventions. See AIRCORE-844
-    # for context.
+    # Now the K8s backend auto-provisions persistent storage for every job,
+    # eliminating the mismatch. Every job pod gets a PVC subpath even if it
+    # never writes to ctx.storage.persistent. Plugins that explicitly declare
+    # the env var in compile() still work — their value overrides the default.
+    #
+    # TODO: Job authors should be able to explicitly declare whether they
+    # need persistent storage via a first-class field on the job spec (e.g.
+    # `requires_persistent_storage: bool` on NemoJob or PlatformJobStep),
+    # rather than the current implicit mechanism of passing a magic env var
+    # in the step's environment list. This would let the backend skip PVC
+    # provisioning for jobs that don't need it, and make the contract
+    # between compile() and the runtime explicit rather than relying on
+    # env var name conventions.
     if not job_storage_mount and storage_config and storage_config.pvc_name:
         job_storage_mount = DEFAULT_JOB_STORAGE_PATH
 
