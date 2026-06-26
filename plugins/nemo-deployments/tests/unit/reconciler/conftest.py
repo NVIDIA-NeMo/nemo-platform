@@ -38,7 +38,8 @@ class MockDeploymentBackend(DeploymentBackend):
         self.volume_create_status = volume_create_status or VolumeStatusUpdate(status="BOUND")
         self.create_calls: list[dict[str, Any]] = []
         self.read_calls: list[tuple[str, str]] = []
-        self.delete_calls: list[tuple[str, str]] = []
+        self.deployment_delete_calls: list[tuple[str, str]] = []
+        self.volume_delete_calls: list[tuple[str, str]] = []
         super().__init__(sdk or AsyncMock(), config or {})
 
     def shutdown(self) -> None:
@@ -53,7 +54,7 @@ class MockDeploymentBackend(DeploymentBackend):
         return self.read_status_result
 
     async def delete_deployment(self, workspace: str, name: str) -> BackendStatusUpdate:
-        self.delete_calls.append((workspace, name))
+        self.deployment_delete_calls.append((workspace, name))
         return self.delete_status
 
     async def list_managed_deployment_names(self) -> list[str]:
@@ -69,6 +70,7 @@ class MockDeploymentBackend(DeploymentBackend):
         return VolumeStatusUpdate(status="BOUND")
 
     async def delete_volume(self, workspace: str, name: str) -> VolumeStatusUpdate:
+        self.volume_delete_calls.append((workspace, name))
         return VolumeStatusUpdate(status="RELEASED")
 
 

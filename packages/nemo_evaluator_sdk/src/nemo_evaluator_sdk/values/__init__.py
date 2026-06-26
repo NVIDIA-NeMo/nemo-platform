@@ -10,7 +10,14 @@ from nemo_evaluator_sdk.values.dataset_schemas import (
     InputSchema,
 )
 from nemo_evaluator_sdk.values.datasets import DatasetInput, DatasetRows
-from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor, LocalFilesystemEvidence
+from nemo_evaluator_sdk.values.evidence import (
+    CandidateEvidence,
+    CommandResult,
+    EvidenceDescriptor,
+    FilesystemDiff,
+    FilesystemEntry,
+    LocalFilesystemEvidence,
+)
 from nemo_evaluator_sdk.values.metrics import (
     BLEU,
     F1,
@@ -98,7 +105,10 @@ __all__ = [
     "BooleanValue",
     "CandidateEvidence",
     "CandidateOutput",
+    "CommandResult",
     "ContinuousScore",
+    "FilesystemDiff",
+    "FilesystemEntry",
     "DatasetRow",
     "DatasetRows",
     "DefaultAggregateFieldName",

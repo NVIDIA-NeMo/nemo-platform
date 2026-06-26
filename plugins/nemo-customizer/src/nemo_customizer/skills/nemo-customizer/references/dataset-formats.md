@@ -54,3 +54,15 @@ Optional fields on the unsloth `dataset` block:
 - The automodel SFT format `{"prompt": "...", "completion": "..."}` is **not** directly consumable by unsloth — unsloth has no built-in `prompt`/`completion` concatenation. Convert to either messages or pre-rendered text before upload.
 
 EMBEDDING and CUSTOM (automodel-only schemas) are not supported by unsloth today.
+
+## Post-training evaluation
+
+Eval rows must use the **same CHAT `messages` shape** as training. Do not flatten to `prompt`/`expected` for the evaluator.
+
+| Training JSONL | Eval dataset | Eval `prompt_template` | Metric reference |
+|----------------|--------------|------------------------|------------------|
+| `messages` (single- or multi-turn) | Same fileset split (`validation.jsonl`) | `messages[:-1]` — exclude final assistant label — see `post-training-eval.md` | `{{ item.messages[-1].content }}` |
+
+LoRA inference and eval use the **provider** gateway on the **base** entity (`/provider/<name>/-/v1`, `model: default--<adapter>`). Base model uses the model-entity path. Full SFT / merged checkpoints use the **output** model entity's model-entity URL — deploy first. See `post-training-eval.md` and the **Using the adapter** / **Using the fine-tuned model** sections in `SKILL.md`.
+
+Shared helpers and compare CLI: `references/eval_helpers.py`. Full workflow: `references/post-training-eval.md`.

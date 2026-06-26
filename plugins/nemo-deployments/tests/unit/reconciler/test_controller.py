@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import threading
+from datetime import datetime, timedelta, timezone
 from typing import cast
 from unittest.mock import AsyncMock, patch
 
@@ -10,8 +12,8 @@ import pytest
 from helpers import list_response, make_deployment, make_deployment_config, make_volume
 from nemo_deployments_plugin.backends.registry import ExecutorRegistry
 from nemo_deployments_plugin.config import ControllerConfig
-from nemo_deployments_plugin.controller import DeploymentsController
-from nemo_deployments_plugin.entities import DeploymentConfig, Prerequisite
+from nemo_deployments_plugin.controller import DeploymentsController, _orphan_protected_ids
+from nemo_deployments_plugin.entities import Deployment, DeploymentConfig, Prerequisite, StatusEvent
 from nemo_platform_plugin.entity_client import NemoEntityConflictError
 
 
@@ -120,6 +122,34 @@ async def test_controller_unhealthy_when_deployments_fail_volumes_ok() -> None:
 
 @pytest.mark.asyncio
 @patch("nemo_deployments_plugin.controller.reconcile_orphans")
+async def test_orphan_cleanup_skipped_when_terminal_list_fails(mock_orphans: AsyncMock) -> None:
+    ctrl = DeploymentsController()
+    dep = make_deployment()
+
+    mock_entities = AsyncMock()
+    mock_entities.list.side_effect = [
+        list_response([dep]),
+        list_response([]),
+        RuntimeError("terminal list failed"),
+    ]
+
+    mock_registry = _stub_registry()
+    mock_dep_reconciler = AsyncMock()
+    mock_dep_reconciler.set_config_cache = lambda configs: None
+
+    ctrl._entities = mock_entities
+    ctrl._registry = mock_registry
+    ctrl._controller_config = ControllerConfig(orphan_cleanup_interval_seconds=10)
+    ctrl._deployment_reconciler = mock_dep_reconciler
+    ctrl._volume_reconciler = AsyncMock()
+
+    await ctrl.reconcile()
+    await ctrl.reconcile()
+    mock_orphans.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@patch("nemo_deployments_plugin.controller.reconcile_orphans")
 async def test_orphan_cleanup_skipped_when_deployments_list_fails(mock_orphans: AsyncMock) -> None:
     ctrl = DeploymentsController()
     ctrl._entities = AsyncMock()
@@ -146,6 +176,7 @@ async def test_controller_runs_orphan_cleanup_on_interval(mock_orphans: AsyncMoc
         list_response([dep]),
         list_response([]),
         list_response([dep]),
+        list_response([]),
         list_response([]),
     ]
 
@@ -198,14 +229,13 @@ async def test_controller_fetches_terminal_prerequisite_for_dag() -> None:
     server = make_deployment("server")
     server.deployment_config = "server"
     server.status = "PENDING"
+    server.prerequisites = [Prerequisite(deployment_name="puller", condition="succeeded")]
     server_cfg = make_deployment_config("server")
-    server_cfg.prerequisites = [Prerequisite(deployment_name="puller", condition="succeeded")]
 
     mock_entities = AsyncMock()
     mock_entities.list.side_effect = [
         list_response([server]),
         list_response([]),
-        list_response([puller]),
     ]
 
     async def mock_get(entity_cls, name: str, workspace: str = "default", **_kwargs: object):
@@ -213,7 +243,9 @@ async def test_controller_fetches_terminal_prerequisite_for_dag() -> None:
             if name == "server":
                 return server_cfg
             return make_deployment_config(name, workspace)
-        raise AssertionError(f"unexpected get: {entity_cls}")
+        if entity_cls is Deployment and name == "puller":
+            return puller
+        raise AssertionError(f"unexpected get: {entity_cls} {name}")
 
     mock_entities.get.side_effect = mock_get
 
@@ -236,8 +268,8 @@ async def test_controller_fetches_terminal_prerequisite_for_dag() -> None:
 
 
 @pytest.mark.asyncio
-async def test_controller_fetches_prerequisite_when_deployment_name_differs_from_config() -> None:
-    """Prerequisite references DeploymentConfig name; entity name may differ."""
+async def test_controller_fetches_prerequisite_by_deployment_name() -> None:
+    """Prerequisite references Deployment entity name, not DeploymentConfig name."""
     ctrl = DeploymentsController()
     puller = make_deployment("puller-run-1")
     puller.deployment_config = "puller"
@@ -246,14 +278,13 @@ async def test_controller_fetches_prerequisite_when_deployment_name_differs_from
     server = make_deployment("server")
     server.deployment_config = "server"
     server.status = "PENDING"
+    server.prerequisites = [Prerequisite(deployment_name="puller-run-1", condition="succeeded")]
     server_cfg = make_deployment_config("server")
-    server_cfg.prerequisites = [Prerequisite(deployment_name="puller", condition="succeeded")]
 
     mock_entities = AsyncMock()
     mock_entities.list.side_effect = [
         list_response([server]),
         list_response([]),
-        list_response([puller]),
     ]
 
     async def mock_get(entity_cls, name: str, workspace: str = "default", **_kwargs: object):
@@ -261,6 +292,8 @@ async def test_controller_fetches_prerequisite_when_deployment_name_differs_from
             if name == "server":
                 return server_cfg
             return make_deployment_config(name, workspace)
+        if entity_cls is Deployment and name == "puller-run-1":
+            return puller
         raise AssertionError(f"unexpected get: {entity_cls} {name}")
 
     mock_entities.get.side_effect = mock_get
@@ -277,6 +310,70 @@ async def test_controller_fetches_prerequisite_when_deployment_name_differs_from
     await ctrl.reconcile()
 
     call_args = mock_dep_reconciler.reconcile_one.await_args
-    by_config = call_args.kwargs["deployments_by_config"]
-    assert ("default", "puller") in by_config
-    assert by_config[("default", "puller")].name == "puller-run-1"
+    by_name = call_args.kwargs["deployments_by_name"]
+    assert ("default", "puller-run-1") in by_name
+    assert by_name[("default", "puller-run-1")].name == "puller-run-1"
+
+
+@pytest.mark.asyncio
+async def test_controller_stops_mid_reconcile_when_stop_requested() -> None:
+    ctrl = DeploymentsController()
+    dep1 = make_deployment("dep1")
+    dep2 = make_deployment("dep2")
+    stop = threading.Event()
+
+    mock_entities = AsyncMock()
+    mock_entities.list.side_effect = [
+        list_response([dep1, dep2]),
+        list_response([]),
+    ]
+
+    mock_dep_reconciler = AsyncMock()
+    mock_dep_reconciler.set_config_cache = lambda configs: None
+
+    async def reconcile_and_stop(deployment: object, **kwargs: object) -> None:
+        stop.set()
+
+    mock_dep_reconciler.reconcile_one.side_effect = reconcile_and_stop
+
+    ctrl.set_stop_signal(stop)
+    ctrl._entities = mock_entities
+    ctrl._registry = _stub_registry()
+    ctrl._controller_config = ControllerConfig(orphan_cleanup_interval_seconds=0)
+    ctrl._deployment_reconciler = mock_dep_reconciler
+    ctrl._volume_reconciler = AsyncMock()
+
+    await ctrl.reconcile()
+
+    assert mock_dep_reconciler.reconcile_one.await_count == 1
+
+
+def test_orphan_protected_ids_includes_terminal_within_grace() -> None:
+    active = make_deployment("active")
+    terminal = make_deployment("done")
+    terminal.status = "SUCCEEDED"
+    recent = datetime.now(timezone.utc) - timedelta(seconds=30)
+    terminal.status_history = [StatusEvent(status="SUCCEEDED", timestamp=recent.isoformat())]
+
+    known = _orphan_protected_ids([active], [terminal], grace_seconds=3600)
+    assert "default/active" in known
+    assert "default/done" in known
+
+
+def test_orphan_protected_ids_excludes_terminal_after_grace() -> None:
+    terminal = make_deployment("done")
+    terminal.status = "SUCCEEDED"
+    old = datetime.now(timezone.utc) - timedelta(seconds=7200)
+    terminal.status_history = [StatusEvent(status="SUCCEEDED", timestamp=old.isoformat())]
+
+    known = _orphan_protected_ids([], [terminal], grace_seconds=3600)
+    assert "default/done" not in known
+
+
+def test_orphan_protected_ids_includes_terminal_without_history() -> None:
+    terminal = make_deployment("done")
+    terminal.status = "SUCCEEDED"
+    terminal.status_history = []
+
+    known = _orphan_protected_ids([], [terminal], grace_seconds=3600)
+    assert "default/done" in known

@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from helpers import list_response, make_deployment, make_deployment_config
 from nemo_deployments_plugin.api.v2 import deployments as deployments_module
 from nemo_deployments_plugin.api.v2.dependencies import get_entity_client
-from nemo_deployments_plugin.entities import DeploymentConfig
+from nemo_deployments_plugin.entities import DeploymentConfig, Prerequisite
 from nemo_platform_plugin.entity_client import NemoEntityConflictError, NemoEntityNotFoundError
 
 
@@ -42,6 +42,7 @@ def test_create_deployment_validates_config(client: TestClient, mock_entity_clie
 
 def test_create_deployment_201(client: TestClient, mock_entity_client: AsyncMock) -> None:
     mock_entity_client.get.return_value = make_deployment_config()
+    mock_entity_client.list.return_value = list_response([])
     mock_entity_client.create.return_value = make_deployment()
     resp = client.post(
         "/apis/deployments/v2/workspaces/default/deployments",
@@ -51,10 +52,29 @@ def test_create_deployment_201(client: TestClient, mock_entity_client: AsyncMock
     assert resp.json()["status"] == "PENDING"
 
 
+def test_create_deployment_cycle_400(client: TestClient, mock_entity_client: AsyncMock) -> None:
+    mock_entity_client.get.return_value = make_deployment_config()
+    a = make_deployment("a")
+    b = make_deployment("b")
+    b.prerequisites = [Prerequisite(deployment_name="a")]
+    mock_entity_client.list.return_value = list_response([a, b])
+    resp = client.post(
+        "/apis/deployments/v2/workspaces/default/deployments",
+        json={
+            "name": "a",
+            "deployment_config": "cfg1",
+            "prerequisites": [{"deployment_name": "b"}],
+        },
+    )
+    assert resp.status_code == 400
+    assert "cycle" in resp.json()["detail"].lower()
+
+
 def test_create_deployment_accepts_workspace_qualified_config_ref(
     client: TestClient, mock_entity_client: AsyncMock
 ) -> None:
     mock_entity_client.get.return_value = make_deployment_config("cfg1", workspace="other")
+    mock_entity_client.list.return_value = list_response([])
     mock_entity_client.create.return_value = make_deployment()
     resp = client.post(
         "/apis/deployments/v2/workspaces/default/deployments",
