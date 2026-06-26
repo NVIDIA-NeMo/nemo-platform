@@ -15,10 +15,7 @@ from nemo_platform.types.inference import ModelProvider
 from nmp.testing import MockProviderResponse, add_mock_provider, assert_exit_0, run_nemo_local
 from nmp.testing.pytest_outcomes import pytest_skip
 
-pytestmark = [
-    pytest.mark.timeout(600),
-    pytest.mark.e2e_config("e2e/configs/local-subprocess.yaml"),
-]
+pytestmark = [pytest.mark.e2e_config("e2e/configs/local-subprocess.yaml")]
 
 PROVIDER_NAME = "test-provider"
 
@@ -283,8 +280,8 @@ def _create_job_and_get_dataset(
         return results.load_dataset()
 
 
-def _download_artifacts_when_ready(job: Any, tmpdir: str, timeout: float = 300) -> Any:
-    deadline = time.monotonic() + timeout
+def _download_artifacts_when_ready(job: Any, tmpdir: str) -> Any:
+    deadline = time.monotonic() + 60
     last_error: DataDesignerJobError | None = None
 
     while time.monotonic() < deadline:

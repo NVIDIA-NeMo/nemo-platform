@@ -417,14 +417,8 @@ def test_job_pause_resume(sdk: NeMoPlatform, workspace: str):
         f"Job should have been resumed but has status: {resumed_job.status}"
     )
 
-    # Cancel the long-running job after verifying resume works, rather than
-    # waiting for the full sleep to complete (K8s restarts the sleep timer
-    # when the pod is re-created after resume).
-    sdk.jobs.cancel(workspace=workspace, name=job.name)
-    cancelled_job = wait_for_platform_job(sdk, job.name, workspace)
-    assert cancelled_job.status == "cancelled", _job_diagnostic_message(
-        sdk, cancelled_job, workspace, f"Job should have been cancelled but has status: {cancelled_job.status}"
-    )
+    completed_job = wait_for_platform_job(sdk, job.name, workspace)
+    assert completed_job.status == "completed", f"Job failed with status: {completed_job.status}"
 
 
 @pytest.mark.skip(reason="AIRCORE-853: pause races with errored-pod detection in K8s reconciler")

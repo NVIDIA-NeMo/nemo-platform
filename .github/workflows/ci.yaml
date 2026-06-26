@@ -504,7 +504,6 @@ jobs:
             -v \
             --run-e2e \
             --no-cov \
-            -k "not nemotron_personas" \
             --junitxml=report-kubernetes-e2e.xml
 
       - name: Collect Kubernetes logs
