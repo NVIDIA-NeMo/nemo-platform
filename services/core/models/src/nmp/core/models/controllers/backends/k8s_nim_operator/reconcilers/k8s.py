@@ -37,6 +37,7 @@ from nmp.core.models.app import ModelWeightsType, get_deployment_resource_name
 from nmp.core.models.app.constants import MODEL_MANAGED_BY_LABEL, MODEL_MANAGED_BY_MODELS_CONTROLLER
 from nmp.core.models.controllers.backends import generic_compiler, vllm_compiler
 from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate
+from nmp.core.models.controllers.backends.common import DeploymentConfigView
 from nmp.core.models.controllers.backends.engine import (
     ENGINE_GENERIC,
     ENGINE_VLLM,
@@ -137,7 +138,7 @@ class K8sReconciler(Reconciler):
             if resolved.files_hf_url is None:
                 raise ValueError(f"Cannot create {engine} deployment: Files HF endpoint was not resolved")
 
-            user_id, group_id = self._pod_user(engine)
+            user_id, group_id = self._pod_user(engine, view)
             pvc = vllm_k8s_compiler.compile_pvc(
                 resource_name=resource_name,
                 workspace=deployment.workspace,
@@ -449,16 +450,25 @@ class K8sReconciler(Reconciler):
     # Engine-parameterized serving objects (shared by vLLM + generic)
     # ------------------------------------------------------------------
 
-    def _pod_user(self, engine: str) -> tuple[Optional[int], Optional[int]]:
-        """Pod securityContext uid/gid for an engine.
+    def _pod_user(self, engine: str, view: DeploymentConfigView) -> tuple[Optional[int], Optional[int]]:
+        """Pod securityContext uid/gid for a deployment.
 
-        vLLM pins its image's user (2000/0); a generic container runs as its own
-        image's user (unset), since we can't assume an arbitrary image tolerates a
-        forced uid/gid.
+        An explicit ``executor_config.run_as_user`` / ``run_as_group`` always wins
+        (each independently). Otherwise the engine default applies: vLLM pins its
+        image's user (2000/0); a generic container runs as its own image's user
+        (unset), since we can't assume an arbitrary image tolerates a forced
+        uid/gid.
         """
         if engine == ENGINE_VLLM:
-            return self._backend_config.default_vllm_user_id, self._backend_config.default_vllm_group_id
-        return None, None
+            default_user: Optional[int] = self._backend_config.default_vllm_user_id
+            default_group: Optional[int] = self._backend_config.default_vllm_group_id
+        else:
+            default_user = None
+            default_group = None
+
+        user_id = view.run_as_user if view.run_as_user is not None else default_user
+        group_id = view.run_as_group if view.run_as_group is not None else default_group
+        return user_id, group_id
 
     def _serving_spec(
         self,
@@ -478,7 +488,7 @@ class K8sReconciler(Reconciler):
         resource_name = resolved.resource_name
         health_path = resolve_health_path(engine, view)
         startup_grace = self._backend_config.default_startup_probe_grace_period_seconds or 600
-        user_id, group_id = self._pod_user(engine)
+        user_id, group_id = self._pod_user(engine, view)
 
         if engine == ENGINE_GENERIC:
             image_name, image_tag = generic_compiler.resolve_generic_image(view)
