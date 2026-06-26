@@ -8,7 +8,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from backends.docker_helpers import container_attrs, sample_config
+from backends.docker.docker_helpers import container_attrs, sample_config
 from docker.errors import NotFound
 from nemo_deployments_plugin.backends.docker.backend import DockerDeploymentBackend
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL

@@ -30,7 +30,7 @@ def is_port_free(port: int) -> bool:
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            sock.bind(("0.0.0.0", port))  # noqa: S104  # nosec B104
+            sock.bind(("127.0.0.1", port))
             return True
     except OSError:
         return False

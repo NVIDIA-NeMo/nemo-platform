@@ -60,6 +60,7 @@ def test_is_port_free_returns_true_when_bind_succeeds(monkeypatch: pytest.Monkey
             return None
 
         def bind(self, addr: tuple[str, int]) -> None:
+            assert addr == ("127.0.0.1", 9000)
             return None
 
     monkeypatch.setattr(ports_mod, "is_remote_docker_host", lambda: False)

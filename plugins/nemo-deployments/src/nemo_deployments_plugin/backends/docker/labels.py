@@ -79,5 +79,5 @@ def volume_identity_labels(workspace: str, name: str) -> dict[str, str]:
     }
 
 
-def managed_by_filter() -> dict[str, str]:
+def managed_by_filter() -> dict[str, str | bool]:
     return {"label": f"{MANAGED_BY_KEY}={MANAGED_BY_LABEL}"}
