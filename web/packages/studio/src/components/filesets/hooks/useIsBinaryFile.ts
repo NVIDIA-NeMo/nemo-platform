@@ -1,68 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { KNOWN_TEXT_EXTENSIONS } from '@studio/constants/constants';
 import { isBinaryExtension } from '@studio/util/binaryFile';
-
-/**
- * Extensions that are unambiguously text. The backend always returns
- * `application/octet-stream` for all files, so Content-Type-based detection
- * is unusable — this allowlist is the authority for text classification.
- */
-const KNOWN_TEXT_EXTENSIONS = new Set([
-  // Data
-  'json',
-  'jsonl',
-  'csv',
-  'tsv',
-  // Code
-  'py',
-  'js',
-  'jsx',
-  'ts',
-  'tsx',
-  'java',
-  'c',
-  'cpp',
-  'h',
-  'go',
-  'rs',
-  'rb',
-  'php',
-  'swift',
-  'kt',
-  'scala',
-  'r',
-  'm',
-  'sh',
-  'bash',
-  'zsh',
-  'fish',
-  // Markup / Config
-  'html',
-  'htm',
-  'xml',
-  'yaml',
-  'yml',
-  'toml',
-  'ini',
-  'cfg',
-  'conf',
-  'jsonc',
-  'env',
-  // Text
-  'txt',
-  'md',
-  'rst',
-  'log',
-  'diff',
-  'patch',
-  // Other
-  'sql',
-  'graphql',
-  'proto',
-  'dockerfile',
-  'makefile',
-]);
 
 function isKnownTextExtension(path: string): boolean {
   const ext = path.split('.').at(-1)?.toLowerCase();
