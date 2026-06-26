@@ -14,6 +14,7 @@ interface ClaudeCodeLayoutProps {
   activeSessionId?: string;
   artifacts?: ClaudeCodeChatArtifacts;
   children: ReactNode;
+  hideArtifacts?: boolean;
   onNewChat?: () => void;
 }
 
@@ -21,6 +22,7 @@ export const ClaudeCodeLayout: FC<ClaudeCodeLayoutProps> = ({
   activeSessionId,
   artifacts,
   children,
+  hideArtifacts,
   onNewChat,
 }) => {
   const workspace = useWorkspaceFromPath();
@@ -46,6 +48,7 @@ export const ClaudeCodeLayout: FC<ClaudeCodeLayoutProps> = ({
       <ClaudeCodeHistoryPanel
         activeSessionId={activeSessionId}
         artifacts={artifacts}
+        hideArtifacts={hideArtifacts}
         onNewChat={handleNewChat}
         onSelectSession={handleSelectSession}
       />
