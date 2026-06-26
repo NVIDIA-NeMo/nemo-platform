@@ -16,6 +16,10 @@ Two failure classes are caught at .so load time, before any GPU device is touche
                          the one installed (ABI mismatch)
 """
 
+import sys
+from importlib.util import find_spec
+from pathlib import Path
+
 import pytest
 
 
@@ -47,6 +51,22 @@ def test_causal_conv1d_importable():
 @pytest.mark.smoke_nmp_automodel_training
 def test_bitsandbytes_importable():
     import bitsandbytes  # noqa: F401
+
+
+@pytest.mark.smoke_nmp_automodel_tasks
+@pytest.mark.smoke_nmp_automodel_training
+@pytest.mark.parametrize("module", ["av", "cv2"])
+def test_unused_media_packages_removed(module: str):
+    assert find_spec(module) is None
+
+
+@pytest.mark.smoke_nmp_automodel_tasks
+@pytest.mark.smoke_nmp_automodel_training
+@pytest.mark.parametrize("directory", ["av.libs", "opencv_python.libs", "opencv_python_headless.libs"])
+def test_unused_media_shared_libraries_removed(directory: str):
+    for entry in sys.path:
+        if entry.endswith(("site-packages", "dist-packages")):
+            assert not (Path(entry) / directory).exists()
 
 
 @pytest.mark.smoke_nmp_automodel_tasks

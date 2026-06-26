@@ -115,6 +115,7 @@ COPY --from=nmp-automodel-base-builder /opt/venv /opt/venv
 COPY --from=nmp-automodel-base-builder /opt/Automodel /opt/Automodel
 # Builder pins uv 0.9.14 but does not ship it in the venv layer; PyTorch base may ship 0.10.x.
 COPY --from=ghcr.io/astral-sh/uv:0.9.14 /uv /bin/uv
+COPY docker/scripts/automodel-cve-cleanup.sh /bin/
 
 # Stale copies under NGC system site-packages (verified on nvcr.io/nvidia/pytorch:26.05-py3).
 # CVE scanners read dist-packages even when --system-site-packages resolves imports from /opt/venv.
@@ -142,6 +143,8 @@ RUN rm -rf \
     /usr/local/lib/python3.12/dist-packages/mlflow \
     /usr/local/lib/python3.12/dist-packages/mlflow-*.dist-info \
     /usr/local/lib/python3.12/dist-packages/mlflow_skinny-*.dist-info
+
+RUN bash /bin/automodel-cve-cleanup.sh
 
 ENV VIRTUAL_ENV=/opt/venv \
     UV_PROJECT_ENVIRONMENT=/opt/venv \

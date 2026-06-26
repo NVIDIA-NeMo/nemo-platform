@@ -85,6 +85,11 @@ Override registry: `export WHEELS_REGISTRY=...` and `export IMAGE_REGISTRY=...` 
 |-------|---------|
 | `3d98f6e3.diff` | Drop `decord` + `imageio-ffmpeg` (old bundled ffmpeg); use `torchcodec` for VLM video (`FORCE_QWENVL_VIDEO_READER=torchcodec`) |
 
+`docker/scripts/automodel-cve-cleanup.sh` runs in the published base image and removes
+unused PyAV/OpenCV packages plus their vendored FFmpeg libraries. Platform Automodel
+jobs use text/retrieval fine-tuning paths; VLM/diffusion media helpers that require
+`av` or `cv2` are intentionally not available in these runtime images.
+
 **Tasks image:** `uv sync --package nmp-automodel --no-dev --inexact` from the minimal workspace. CPU steps only need platform SDK glue; upgrading ancillary packages here does not affect training.
 
 **Training image:** Do **not** use `uv sync` — it upgrades `transformers` and breaks `PreTrainedModel`. Use **`uv pip install -e`** with **`--overrides no_override_requirements.txt`**, then `uv pip install --no-deps -e /opt/Automodel` to re-pin `nemo_automodel` from the base clone (not PyPI).
