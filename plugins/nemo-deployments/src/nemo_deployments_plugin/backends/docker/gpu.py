@@ -13,6 +13,7 @@ import logging
 import subprocess
 import threading
 from dataclasses import dataclass, field
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,29 @@ class DockerGPUPool:
                 self.gpu_to_workload_id[gpu_id] = None
             return gpu_ids
 
+    def restore_allocations(self, allocations: dict[str, list[int]]) -> None:
+        """Mark GPUs as allocated for workloads discovered from running containers."""
+        with self._mutex:
+            for workload_id, gpu_ids in allocations.items():
+                for gpu_id in gpu_ids:
+                    if gpu_id not in self.gpu_to_workload_id:
+                        logger.warning(
+                            "Skipping GPU %s for workload %s during pool recovery (not in reserved pool)",
+                            gpu_id,
+                            workload_id,
+                        )
+                        continue
+                    existing = self.gpu_to_workload_id[gpu_id]
+                    if existing is not None and existing != workload_id:
+                        logger.warning(
+                            "GPU %s already allocated to %s; skipping recovery claim for %s",
+                            gpu_id,
+                            existing,
+                            workload_id,
+                        )
+                        continue
+                    self.gpu_to_workload_id[gpu_id] = workload_id
+
 
 _pool: DockerGPUPool | None = None
 _pool_lock = threading.Lock()
@@ -90,6 +114,93 @@ def detect_gpu_device_ids() -> list[int]:
     return ids
 
 
+def parse_gpu_device_ids(device_requests: list[Any] | None) -> list[int]:
+    """Extract NVIDIA GPU device IDs from Docker HostConfig DeviceRequests."""
+    if not device_requests:
+        return []
+    gpu_ids: list[int] = []
+    for request in device_requests:
+        if isinstance(request, dict):
+            driver = request.get("Driver")
+            raw_ids = request.get("DeviceIDs")
+        else:
+            driver = getattr(request, "Driver", None)
+            raw_ids = getattr(request, "DeviceIDs", None)
+        if driver != "nvidia" or not raw_ids:
+            continue
+        for raw_id in raw_ids:
+            try:
+                gpu_ids.append(int(raw_id))
+            except (TypeError, ValueError):
+                continue
+    return gpu_ids
+
+
+def discover_managed_gpu_allocations(client: Any) -> dict[str, list[int]]:
+    """Return workload_id -> GPU IDs for running deployment-managed containers."""
+    from nemo_deployments_plugin.backends.docker.labels import (
+        DEPLOYMENT_NAME_LABEL,
+        DEPLOYMENT_WORKSPACE_LABEL,
+        MANAGED_BY_KEY,
+        deployment_key,
+        managed_by_filter,
+    )
+    from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
+
+    try:
+        containers = client.containers.list(all=True, filters=managed_by_filter())
+    except Exception:
+        logger.warning("Failed to list managed containers for GPU pool recovery", exc_info=True)
+        return {}
+
+    allocations: dict[str, list[int]] = {}
+    for container in containers:
+        labels = container.labels or {}
+        if labels.get(MANAGED_BY_KEY) != MANAGED_BY_LABEL:
+            continue
+        workspace = labels.get(DEPLOYMENT_WORKSPACE_LABEL)
+        name = labels.get(DEPLOYMENT_NAME_LABEL)
+        if not workspace or not name:
+            continue
+        if container.status != "running":
+            continue
+        try:
+            container.reload()
+        except Exception:
+            logger.debug("Skipping container %s during GPU pool recovery", container.name, exc_info=True)
+            continue
+        host_config = container.attrs.get("HostConfig") or {}
+        gpu_ids = parse_gpu_device_ids(host_config.get("DeviceRequests"))
+        if not gpu_ids:
+            continue
+        workload_id = deployment_key(workspace, name)
+        allocations.setdefault(workload_id, []).extend(gpu_ids)
+    return allocations
+
+
+def _recover_pool_allocations(pool: DockerGPUPool) -> None:
+    try:
+        import docker
+    except ImportError:
+        logger.debug("Docker SDK unavailable for GPU pool recovery")
+        return
+
+    client = docker.from_env()
+    try:
+        allocations = discover_managed_gpu_allocations(client)
+        if allocations:
+            pool.restore_allocations(allocations)
+            logger.info(
+                "DockerGPUPool: recovered GPU allocations from %d managed container(s): %s",
+                len(allocations),
+                allocations,
+            )
+    except Exception:
+        logger.warning("Failed to recover GPU allocations from managed containers", exc_info=True)
+    finally:
+        client.close()
+
+
 def get_shared_gpu_pool() -> DockerGPUPool | None:
     """Lazy singleton GPU pool shared across docker executor instances in this process."""
     global _pool
@@ -99,4 +210,5 @@ def get_shared_gpu_pool() -> DockerGPUPool | None:
             if not device_ids:
                 return None
             _pool = DockerGPUPool(reserved_gpu_device_ids=device_ids)
+            _recover_pool_allocations(_pool)
         return _pool
