@@ -428,7 +428,8 @@ def chat(model_id: str):
     )
 
 
-base_response = chat(MODEL_NAME)
+base_response = chat(f"default/{MODEL_NAME}")
+lora_response = chat(f"default--{OUTPUT_NAME}")
 lora_response = chat(OUTPUT_NAME)
 
 print("Base model response:")
