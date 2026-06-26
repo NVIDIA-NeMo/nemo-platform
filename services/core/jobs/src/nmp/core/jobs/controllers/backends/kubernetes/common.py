@@ -1015,8 +1015,23 @@ def create_pod_template_spec(
 
     # Auto-provision persistent job storage when the cluster has a PVC,
     # matching the subprocess backend which unconditionally creates a
-    # persistent directory. Plugins do not need to declare the env var
-    # in compile() — the backend handles it.
+    # persistent directory for every job.
+    #
+    # Today, persistent storage is always mounted for every job when a PVC
+    # is configured. This means every job pod gets a PVC subpath even if it
+    # never writes to ctx.storage.persistent (e.g. Data Designer only uses
+    # ephemeral storage). The env var is injected automatically so plugins
+    # don't need to declare it in compile().
+    #
+    # TODO: Long-term, job authors should be able to explicitly declare
+    # whether they need persistent storage via a first-class field on the
+    # job spec (e.g. `requires_persistent_storage: bool` on NemoJob or in
+    # PlatformJobStep), rather than the current implicit mechanism of
+    # passing a magic env var in the step's environment list. This would
+    # let the backend skip PVC provisioning for jobs that don't need it,
+    # and make the contract between compile() and the runtime explicit
+    # rather than relying on env var name conventions. See AIRCORE-844
+    # for context.
     if not job_storage_mount and storage_config and storage_config.pvc_name:
         job_storage_mount = DEFAULT_JOB_STORAGE_PATH
 
