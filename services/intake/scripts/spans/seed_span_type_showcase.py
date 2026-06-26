@@ -57,7 +57,6 @@ from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 from opentelemetry import trace
-from opentelemetry.context import Context
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
@@ -135,7 +134,6 @@ class Seeder:
         error_message: str | None = None,
     ) -> Iterator[Span]:
         start_ns = self._base_ns + start_ms * MS
-        span = None
         cm = self._tracer.start_as_current_span(
             name,
             start_time=start_ns,
@@ -371,8 +369,16 @@ def seed_agent_trace(seeder: Seeder) -> None:
                 "llm.cache_hit": True,
                 **_messages(
                     [
-                        {"_dir": "input", "role": "system", "content": "You are a precise research assistant. Cite sources."},
-                        {"_dir": "input", "role": "user", "content": "Summarize solid-state battery progress with citations."},
+                        {
+                            "_dir": "input",
+                            "role": "system",
+                            "content": "You are a precise research assistant. Cite sources.",
+                        },
+                        {
+                            "_dir": "input",
+                            "role": "user",
+                            "content": "Summarize solid-state battery progress with citations.",
+                        },
                         {
                             "_dir": "output",
                             "role": "assistant",
@@ -766,9 +772,7 @@ def main() -> None:
     print("=== Done ===")
 
 
-def _post_eval_results(
-    client: httpx.Client, base_url: str, workspace: str, results: list[dict[str, Any]]
-) -> None:
+def _post_eval_results(client: httpx.Client, base_url: str, workspace: str, results: list[dict[str, Any]]) -> None:
     url = f"{base_url}/apis/intake/v2/workspaces/{workspace}/evaluator-results"
     for body in results:
         response = client.post(url, json=body)
@@ -776,9 +780,7 @@ def _post_eval_results(
     print(f"posted {len(results)} evaluator results")
 
 
-def _post_annotations(
-    client: httpx.Client, base_url: str, workspace: str, annotations: list[dict[str, Any]]
-) -> None:
+def _post_annotations(client: httpx.Client, base_url: str, workspace: str, annotations: list[dict[str, Any]]) -> None:
     url = f"{base_url}/apis/intake/v2/workspaces/{workspace}/annotations"
     # The server assigns a fresh ann-{uuid} per POST, so re-running would stack
     # duplicate feedback/labels/notes. Clear existing annotations on the showcase

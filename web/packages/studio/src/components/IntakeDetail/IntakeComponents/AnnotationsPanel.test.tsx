@@ -17,10 +17,9 @@ describe('AnnotationsPanel', () => {
   it('lists and creates span annotations through the generated client', async () => {
     const user = userEvent.setup();
 
-    renderRoute(
-      <AnnotationsPanel workspace="default" spanId={SPAN_ID} sessionId={SESSION_ID} />,
-      { history: '/workspaces/default/intake/spans/span-root-001' }
-    );
+    renderRoute(<AnnotationsPanel workspace="default" spanId={SPAN_ID} sessionId={SESSION_ID} />, {
+      history: '/workspaces/default/intake/spans/span-root-001',
+    });
 
     expect(
       await screen.findByText('Good final response, but verify policy citations.')
@@ -40,10 +39,9 @@ describe('AnnotationsPanel', () => {
   it('deletes span annotations through the generated client', async () => {
     const user = userEvent.setup();
 
-    renderRoute(
-      <AnnotationsPanel workspace="default" spanId={SPAN_ID} sessionId={SESSION_ID} />,
-      { history: '/workspaces/default/intake/spans/span-root-001' }
-    );
+    renderRoute(<AnnotationsPanel workspace="default" spanId={SPAN_ID} sessionId={SESSION_ID} />, {
+      history: '/workspaces/default/intake/spans/span-root-001',
+    });
 
     const note = await screen.findByRole('article', { name: 'Note annotation' });
     await user.click(within(note).getByRole('button', { name: /Delete/i }));

@@ -14,7 +14,14 @@ import {
   SpanStatus,
   type Trace,
 } from '@nemo/sdk/generated/platform/schema';
-import { Button, Flex, SegmentedControl, Spinner, Stack, Text } from '@nvidia/foundations-react-core';
+import {
+  Button,
+  Flex,
+  SegmentedControl,
+  Spinner,
+  Stack,
+  Text,
+} from '@nvidia/foundations-react-core';
 import { getErrorMessage } from '@studio/api/common/utils';
 import { IntakeErrorBanner } from '@studio/components/IntakeDetail/IntakeComponents/IntakeErrorBanner';
 import { SpanListView } from '@studio/components/IntakeDetail/TraceSpanListView';
