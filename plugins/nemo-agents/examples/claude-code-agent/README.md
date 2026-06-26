@@ -18,14 +18,15 @@ claude auth login
 claude auth status
 ```
 
-Install the NeMo Relay CLI so `nemo-relay` is available on `PATH`. To avoid
-leaving a Relay checkout inside the `nemo-platform` repository, clone it under
-`/tmp` for local smoke tests:
+Install Rust so `cargo` is available on `PATH`, then install the NeMo Relay CLI.
+The `cargo install` command below writes `nemo-relay` into the active virtual
+environment when `VIRTUAL_ENV` is set, or into `.venv` otherwise. After
+activating that environment, `nemo-relay --help` should resolve on `PATH` for
+the smoke test:
 
 ```bash
-export NEMO_RELAY_ROOT=/tmp/nemo-relay-adapter-test
-rm -rf "$NEMO_RELAY_ROOT"
-git clone git@github.com:NVIDIA/NeMo-Relay.git "$NEMO_RELAY_ROOT"
+git clone git@github.com:NVIDIA/NeMo-Relay.git
+export NEMO_RELAY_ROOT="$PWD/NeMo-Relay"
 cargo install --path "$NEMO_RELAY_ROOT/crates/cli" --root "${VIRTUAL_ENV:-.venv}" --locked
 nemo-relay --help
 ```
