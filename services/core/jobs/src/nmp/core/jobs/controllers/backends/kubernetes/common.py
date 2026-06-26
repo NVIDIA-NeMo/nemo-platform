@@ -31,6 +31,7 @@ from nmp.common.jobs.constants import (
     PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
     TERMINAL_EXIT_CODES,
 )
+from nemo_platform_plugin.jobs.constants import DEFAULT_JOB_STORAGE_PATH
 from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.core.jobs.api.v2.jobs.schemas import PlatformJobStepWithContext
 from nmp.core.jobs.app.constants import (
@@ -468,12 +469,11 @@ def common_labels_for_step(step: PlatformJobStepWithContext) -> dict[str, str]:
         }
     )
 
-    # Check if this step uses persistent storage
-    if step.step_spec.environment:
-        for envvar in step.step_spec.environment:
-            if envvar.name == PERSISTENT_JOB_STORAGE_PATH_ENVVAR and envvar.value:
-                labels[JOB_USES_PERSISTENT_STORAGE_LABEL] = "true"
-                break
+    # Persistent storage is always provisioned when the cluster has a PVC
+    # configured, so the label is always "true". Cleanup is gated on the
+    # storage config having a pvc_name at cleanup time, so this is safe
+    # even if no PVC is actually configured.
+    labels[JOB_USES_PERSISTENT_STORAGE_LABEL] = "true"
 
     return labels
 
@@ -991,7 +991,7 @@ def create_pod_template_spec(
     if step.step_spec.environment:
         for envvar in step.step_spec.environment:
             if envvar.value is not None:
-                # If the job has requested persistent job storage path, capture it for use when constructing the volume mount.
+                # Allow step to override the default persistent storage mount path.
                 if envvar.name == PERSISTENT_JOB_STORAGE_PATH_ENVVAR:
                     job_storage_mount = envvar.value
 
@@ -1012,6 +1012,21 @@ def create_pod_template_spec(
         ),
     ]
     storage_config = config.storage
+
+    # Auto-provision persistent job storage when the cluster has a PVC,
+    # matching the subprocess backend which unconditionally creates a
+    # persistent directory. Plugins do not need to declare the env var
+    # in compile() — the backend handles it.
+    if not job_storage_mount and storage_config and storage_config.pvc_name:
+        job_storage_mount = DEFAULT_JOB_STORAGE_PATH
+
+    # Inject persistent storage env var if provisioned (either by the step
+    # declaring it or auto-provisioned above) and not already in the env list.
+    if job_storage_mount and not any(
+        e.name == PERSISTENT_JOB_STORAGE_PATH_ENVVAR for e in env
+    ):
+        env.append(client.V1EnvVar(name=PERSISTENT_JOB_STORAGE_PATH_ENVVAR, value=job_storage_mount))
+
     if storage_config.additional_volume_mounts:
         volume_mounts.extend(mount.to_k8s() for mount in storage_config.additional_volume_mounts)
 

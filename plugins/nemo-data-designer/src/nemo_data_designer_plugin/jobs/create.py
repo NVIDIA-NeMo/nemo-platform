@@ -18,11 +18,9 @@ from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
     CPUExecutionProviderSpec,
-    EnvironmentVariable,
     PlatformJobSpec,
     PlatformJobStep,
 )
-from nemo_platform_plugin.jobs.constants import DEFAULT_JOB_STORAGE_PATH, PERSISTENT_JOB_STORAGE_PATH_ENVVAR
 from nemo_platform_plugin.jobs.image import get_qualified_image
 from pydantic import BaseModel
 
@@ -85,12 +83,7 @@ class CreateJob(NemoJob):
                         ),
                     ),
                     config=spec.model_dump(),
-                    environment=[
-                        EnvironmentVariable(
-                            name=PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
-                            value=DEFAULT_JOB_STORAGE_PATH,
-                        ),
-                    ],
+                    environment=[],
                 )
             ],
         )

@@ -1461,9 +1461,10 @@ def test_schedule_without_storage_no_label(kubernetes_job, cpu_execution_provide
     call_args = mock_create_job.call_args
     job_body = call_args.kwargs["body"]
 
-    # Check that the persistent storage label is always set; "false" when not using persistent storage
+    # Persistent storage is always provisioned when PVC is configured,
+    # so the label is always "true" regardless of step environment.
     assert JOB_USES_PERSISTENT_STORAGE_LABEL in job_body.metadata.labels
-    assert job_body.metadata.labels[JOB_USES_PERSISTENT_STORAGE_LABEL] == "false"
+    assert job_body.metadata.labels[JOB_USES_PERSISTENT_STORAGE_LABEL] == "true"
 
 
 def test_schedule_with_additional_volumes(kubernetes_job, cpu_execution_provider, test_step_pending):
