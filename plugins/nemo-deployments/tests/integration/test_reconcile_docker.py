@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from docker.errors import NotFound
 from docker_availability import skip_without_docker
+from integration_helpers import force_remove_container
 from nemo_deployments_plugin.backends.docker.backend import DockerDeploymentBackend
 from nemo_deployments_plugin.backends.docker.labels import container_name, docker_volume_name
 from nemo_deployments_plugin.backends.registry import BACKEND_CLASSES, ExecutorRegistry
@@ -168,7 +169,7 @@ async def test_puller_server_prerequisite_chain(docker_registry: ExecutorRegistr
             await asyncio.sleep(0.5)
         assert puller_dep.status == "SUCCEEDED"
 
-        for _ in range(10):
+        for _ in range(40):
             await deployment_reconciler.reconcile_one(
                 server_dep,
                 deployments_by_name=by_name,
@@ -184,10 +185,7 @@ async def test_puller_server_prerequisite_chain(docker_registry: ExecutorRegistr
         await backend.delete_deployment("itest", "server")
         await backend.delete_volume("itest", "weights")
         for c_name in (container_name("itest", "puller"), container_name("itest", "server")):
-            try:
-                client.containers.get(c_name).remove(force=True)
-            except NotFound:
-                pass
+            force_remove_container(client, c_name)
         try:
             client.volumes.get(docker_volume_name("itest", "weights")).remove(force=True)
         except NotFound:

@@ -9,8 +9,8 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from docker.errors import NotFound
 from docker_availability import skip_without_docker
+from integration_helpers import force_remove_container
 from nemo_deployments_plugin.backends.docker.backend import DockerDeploymentBackend
 from nemo_deployments_plugin.backends.docker.labels import container_name
 from nemo_deployments_plugin.backends.registry import BACKEND_CLASSES
@@ -118,10 +118,7 @@ async def test_never_deployment_succeeds(docker_backend: DockerDeploymentBackend
         assert status.exit_code == 0
     finally:
         await docker_backend.delete_deployment("itest", "echo-job")
-        try:
-            client.containers.get(c_name).remove(force=True)
-        except NotFound:
-            pass
+        force_remove_container(client, c_name)
 
 
 @pytest.mark.asyncio
@@ -155,7 +152,4 @@ async def test_lost_detection_for_always(docker_backend: DockerDeploymentBackend
         assert status.status == "LOST"
     finally:
         await docker_backend.delete_deployment("itest", "lost-srv")
-        try:
-            client.containers.get(c_name).remove(force=True)
-        except NotFound:
-            pass
+        force_remove_container(client, c_name)
