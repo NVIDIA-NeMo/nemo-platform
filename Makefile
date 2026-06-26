@@ -120,6 +120,16 @@ docs-watch: ## Start Fern docs dev plus a repo-level watcher for docs/** changes
 docs-check: ## Validate the Fern docs (fern check + validate-mdx + gated-link check)
 	cd docs/fern && npm run check
 
+.PHONY: docs-check-python-snippets
+docs-check-python-snippets: ## Syntax-check and type-check Python snippets in one doc (DOCS_PATH=...)
+	@if [ -z "$(strip $(DOCS_PATH))" ]; then echo "Usage: make docs-check-python-snippets DOCS_PATH=docs/customizer/tutorials/import-hf-model.mdx" >&2; exit 2; fi
+	uv run --frozen python docs/_scripts/lint_python_snippets.py "$(DOCS_PATH)"
+
+.PHONY: docs-run-notebook
+docs-run-notebook: ## Execute one Fern notebook source (DOCS_PATH=.mdx/.ipynb/.md, optional ARGS=...)
+	@if [ -z "$(strip $(DOCS_PATH))" ]; then echo "Usage: make docs-run-notebook DOCS_PATH=docs/customizer/tutorials/sft-customization-job.mdx" >&2; exit 2; fi
+	uv run --frozen python docs/fern/scripts/run_notebooks.py $(ARGS) "$(DOCS_PATH)"
+
 .PHONY: docs-broken-links
 docs-broken-links: ## Report broken links across the built docs
 	cd docs/fern && npm run broken-links
