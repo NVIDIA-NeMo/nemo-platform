@@ -25,6 +25,7 @@ interface SpanTreeViewProps {
   collapseToken: number;
   activeFeedback?: FeedbackAnnotationInputValue;
   annotationCount?: number;
+  hasNotes?: boolean;
   focusNoteNonce?: number;
   onAddNote: () => void;
 }
@@ -44,6 +45,7 @@ export const SpanTreeView: FC<SpanTreeViewProps> = ({
   collapseToken,
   activeFeedback,
   annotationCount,
+  hasNotes,
   focusNoteNonce,
   onAddNote,
 }) => (
@@ -82,7 +84,7 @@ export const SpanTreeView: FC<SpanTreeViewProps> = ({
                   spanId={selectedSpan.span_id}
                   sessionId={selectedSpan.session_id}
                   activeFeedback={activeFeedback}
-                  annotationCount={annotationCount}
+                  hasNotes={hasNotes}
                   onAddNote={onAddNote}
                 />
               </span>
