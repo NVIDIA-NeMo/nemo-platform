@@ -444,7 +444,6 @@ def chat(model_id: str):
 
 base_response = chat(f"default/{MODEL_NAME}")
 lora_response = chat(f"default--{OUTPUT_NAME}")
-lora_response = chat(OUTPUT_NAME)
 
 print("Base model response:")
 print(base_response["choices"][0]["message"]["content"])
