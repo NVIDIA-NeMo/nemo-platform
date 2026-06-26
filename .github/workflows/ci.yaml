@@ -462,7 +462,7 @@ jobs:
           kind delete cluster --name "${KIND_CLUSTER_NAME}" || true
 
   kind-cpu-e2e:
-    name: Kind CPU e2e (jobs + data-designer)
+    name: Kind CPU e2e
     needs: [changes, build-cpu-smoke-images]
     if: >
       !cancelled() &&

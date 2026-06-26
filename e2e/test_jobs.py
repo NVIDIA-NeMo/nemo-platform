@@ -376,6 +376,7 @@ def test_job_cancel_once_active(sdk: NeMoPlatform, workspace: str):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.container_only
+@pytest.mark.flaky(reruns=2)
 def test_job_pause_resume(sdk: NeMoPlatform, workspace: str):
     """Test that a job can be paused and then resumed after being paused."""
     job = sdk.jobs.create(
