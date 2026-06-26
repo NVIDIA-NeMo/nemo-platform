@@ -42,9 +42,10 @@ def _get_ctx(sdk: NeMoPlatform) -> JobContext:
     workspace = os.environ[NEMO_JOB_WORKSPACE_ENVVAR]
     job_name = os.environ[NEMO_JOB_ID_ENVVAR]
 
+    persistent_env = os.environ.get(PERSISTENT_JOB_STORAGE_PATH_ENVVAR)
     storage = StoragePaths(
         ephemeral=Path(os.environ[EPHEMERAL_TASK_STORAGE_PATH_ENVVAR]),
-        persistent=Path(os.environ[PERSISTENT_JOB_STORAGE_PATH_ENVVAR]),
+        persistent=Path(persistent_env) if persistent_env else None,
     )
     results = PlatformJobResults(
         workspace=workspace,

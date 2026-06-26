@@ -208,14 +208,12 @@ Durable remote `evaluator.submit(...)` jobs additionally accept a `ModelRef` tar
 
 ```python
 from nemo_evaluator_sdk import ModelRef, RunConfigOnlineModel
-from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 
 job = evaluator.submit(
     metric=metric,
     dataset=dataset,
     config=RunConfigOnlineModel(),
     target=ModelRef(root="default/my-model"),
-    metric_bundle_packager=CloudpickleMetricBundlePackager(),
 )
 ```
 

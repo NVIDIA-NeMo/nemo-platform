@@ -13,6 +13,7 @@ import uuid
 
 import pytest
 from nemo_platform import NeMoPlatform, NotFoundError
+from nemo_platform_plugin.jobs.constants import DEFAULT_JOB_STORAGE_PATH
 from nmp.testing.e2e import wait_for_job_logs, wait_for_platform_job
 
 JOB_SOURCE = "e2e-test-jobs"
@@ -166,6 +167,10 @@ def test_job_config_is_readable(sdk: NeMoPlatform, workspace: str):
 
 def test_job_passing_data_between_steps(sdk: NeMoPlatform, workspace: str):
     """Test that data can be passed between job steps via persistent storage."""
+    persistent_storage_env = {
+        "name": "NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH",
+        "value": DEFAULT_JOB_STORAGE_PATH,
+    }
     job = sdk.jobs.create(
         workspace=workspace,
         source=JOB_SOURCE,
@@ -184,6 +189,7 @@ def test_job_passing_data_between_steps(sdk: NeMoPlatform, workspace: str):
                             ],
                         },
                     },
+                    "environment": [persistent_storage_env],
                 },
                 {
                     "name": "consume-data-step",
@@ -197,6 +203,7 @@ def test_job_passing_data_between_steps(sdk: NeMoPlatform, workspace: str):
                             ],
                         },
                     },
+                    "environment": [persistent_storage_env],
                 },
             ],
         },
@@ -361,11 +368,15 @@ def test_job_cancel_once_active(sdk: NeMoPlatform, workspace: str):
 
 
 # ---------------------------------------------------------------------------
-# Tests that require Docker backend
+# Tests that require a container backend (Docker or Kubernetes)
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skip(reason="Subprocess backend does not support pause/resume (no SIGSTOP/SIGCONT handling)")
+# AIRCORE-853: K8s reconciler checks for errored pods before checking if the
+# job is suspended. When K8s kills pods during suspension, the terminated pod
+# is misclassified as an error, causing the job to transition to 'error'
+# instead of 'paused'. Re-enable once the reconciler is fixed.
+@pytest.mark.skip(reason="AIRCORE-853: pause races with errored-pod detection in K8s reconciler")
 def test_job_pause_resume(sdk: NeMoPlatform, workspace: str):
     """Test that a job can be paused and then resumed after being paused."""
     job = sdk.jobs.create(
@@ -406,7 +417,7 @@ def test_job_pause_resume(sdk: NeMoPlatform, workspace: str):
     assert completed_job.status == "completed", f"Job failed with status: {completed_job.status}"
 
 
-@pytest.mark.skip(reason="Subprocess backend does not support pause/resume (no SIGSTOP/SIGCONT handling)")
+@pytest.mark.skip(reason="AIRCORE-853: pause races with errored-pod detection in K8s reconciler")
 def test_job_pause_and_cancel(sdk: NeMoPlatform, workspace: str):
     """Test that a job can be paused and then cancelled after being paused."""
     job = sdk.jobs.create(
@@ -442,7 +453,7 @@ def test_job_pause_and_cancel(sdk: NeMoPlatform, workspace: str):
     assert cancelled_job.status == "cancelled", f"Job should have been cancelled but has status: {cancelled_job.status}"
 
 
-@pytest.mark.skip(reason="Docker-only: additional volumes require container volume mounts")
+@pytest.mark.skip(reason="Requires additional_volumes configured in Helm chart storage config")
 def test_job_using_additional_volume(sdk: NeMoPlatform, workspace: str):
     """Test that a job can use an additional volume to store data between steps."""
     job = sdk.jobs.create(
@@ -493,10 +504,7 @@ def test_job_using_additional_volume(sdk: NeMoPlatform, workspace: str):
     assert "Successfully read data from persistent storage" in step_logs.data[2].message
 
 
-@pytest.mark.skip(
-    reason="Docker-only: image validation is bypassed in subprocess mode "
-    "(cpu→subprocess translation discards the container image)"
-)
+@pytest.mark.container_only
 @pytest.mark.parametrize("bad_image", ["__invalid_ubuntu:image", "ubuntu:does-not-exist-1234"])
 def test_job_invalid_image_format(sdk: NeMoPlatform, workspace: str, bad_image: str):
     """Test that a job with a bad image fails appropriately."""

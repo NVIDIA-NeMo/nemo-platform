@@ -62,6 +62,7 @@ jobs:
           HEAD_REF: ${{ steps.metadata.outputs.head_ref }}
         working-directory: ./docs/fern
         run: |
+          node scripts/filter-public-openapi.mjs
           OUTPUT=$(npx -y fern-api@latest generate --docs --preview --id "$HEAD_REF" 2>&1)
           echo "$OUTPUT"
           URL=$(echo "$OUTPUT" | grep -oP 'Published docs to \K.*(?= \()')

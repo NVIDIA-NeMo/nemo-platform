@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -15,9 +15,30 @@ from nemo_evaluator.sdk.metric_resources import (
     AsyncEvaluatorMetricsResource,
     EvaluatorMetricsResource,
 )
-from nemo_evaluator.shared.metric_bundles.bundles import MetricBundle, bundle_metric
+from nemo_evaluator.shared.metric_bundles.bundles import (
+    MetricBundle,
+    MetricBundlePackagerPolicyError,
+    bundle_metric,
+)
 from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
+from nemo_evaluator_sdk.metrics.protocol import Metric as RuntimeMetric
+from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
+
+
+class _CustomRuntimeMetric:
+    """A protocol-satisfying metric that is not inline-bundleable."""
+
+    type = "custom-score"
+    description = "custom metric"
+    labels: dict[str, str] = {}
+
+    def output_spec(self) -> list[MetricOutputSpec]:
+        return [MetricOutputSpec.continuous_score("score")]
+
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
+        del input
+        return MetricResult(outputs=[MetricOutput(name="score", value=1.0)])
 
 
 def _bundle() -> MetricBundle:
@@ -81,12 +102,24 @@ def test_sync_create_posts_bundle_and_returns_metric() -> None:
     assert body["payload"]["kind"] == "cloudpickle"
 
 
-def test_sync_create_requires_packager_for_runtime_metric() -> None:
-    resource = EvaluatorMetricsResource(_platform(MagicMock()))
+def test_sync_create_defaults_to_inline_for_builtin_metric() -> None:
+    bundle = _bundle()
+    http_client = MagicMock()
+    http_client.post.return_value = _response(_metric_response("exact", bundle))
+    resource = EvaluatorMetricsResource(_platform(http_client))
     metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
 
-    with pytest.raises(ValueError, match="metric_bundle_packager is required"):
-        resource.create("exact", metric=metric)
+    resource.create("exact", metric=metric)
+
+    body = http_client.post.call_args.kwargs["json"]
+    assert body["payload"]["kind"] == "inline"
+
+
+def test_sync_create_requires_explicit_packager_for_custom_metric() -> None:
+    resource = EvaluatorMetricsResource(_platform(MagicMock()))
+
+    with pytest.raises(MetricBundlePackagerPolicyError, match="CloudpickleMetricBundlePackager"):
+        resource.create("custom", metric=cast(RuntimeMetric, _CustomRuntimeMetric()))
 
 
 def test_sync_retrieve_targets_item_url() -> None:

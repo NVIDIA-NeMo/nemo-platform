@@ -39,9 +39,6 @@ def mock_k8s_config():
         patch("nmp.core.models.controllers.backends.k8s_nim_operator.backend.k8s_config.load_kube_config"),
         patch("nmp.core.models.controllers.backends.k8s_nim_operator.backend.k8s_client.ApiClient"),
         patch("nmp.core.models.controllers.backends.k8s_nim_operator.backend.DynamicClient"),
-        patch(
-            "nmp.core.models.controllers.backends.k8s_nim_operator.backend.K8sNimOperatorServiceBackend._validate_nim_operator_crds"
-        ),
     ):
         yield
 

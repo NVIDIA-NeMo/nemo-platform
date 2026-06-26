@@ -13,7 +13,9 @@ Understanding these basics will help you navigate the fine-tuning process more e
 The time to complete this tutorial is approximately 15 minutes.
 
 </Note>
-    This tutorial focuses on understanding and discovery—no actual training jobs are created.
+
+This tutorial focuses on understanding and discovery—no actual training jobs are created.
+
 ## Prerequisites
 
 <Markdown src="/snippets/_snippets/tutorials/prereqs.mdx" />
@@ -60,7 +62,7 @@ flowchart LR
  A[1. Create FileSet<br/>with model files] --> B[2. Create Model Entity<br/>pointing to FileSet]
  B --> C[3. Create Customization Job<br/>referencing Model Entity]
  C --> D{Training Type?}
- D -->{{ LoRA }} E[Adapter created and<br/>attached to Model Entity]
+ D -->|LoRA| E[Adapter created and<br/>attached to Model Entity]
  D -->|Full SFT| F[New Model Entity<br/>with customized weights]
  E --> G[Auto-deploy to NIM<br/>if enabled]
 
@@ -184,10 +186,10 @@ for adapter in model.adapters or []:
 Adapters are enabled by default, but you can disable an adapter to remove it from inference without deleting it. When you set `enabled=False`, the sidecar running alongside the NIM automatically removes the adapter's files on its next reconciliation pass (every few seconds). Re-enabling the adapter causes the sidecar to re-download and serve it again.
 
 ```python
-client.models.update_adapter(
+client.models.adapters.update(
+    adapter="my-custom-lora",
     model_name="llama-3-2-1b",
     workspace="default",
-    adapter_name="my-custom-lora",
     enabled=False,
 )
 ```
@@ -195,10 +197,10 @@ client.models.update_adapter(
 To re-enable:
 
 ```python
-client.models.update_adapter(
+client.models.adapters.update(
+    adapter="my-custom-lora",
     model_name="llama-3-2-1b",
     workspace="default",
-    adapter_name="my-custom-lora",
     enabled=True,
 )
 ```
@@ -208,7 +210,7 @@ client.models.update_adapter(
 You can also create adapters manually (e.g., from externally trained weights):
 
 ```python
-model = client.models.create_adapter(
+model = client.models.adapters.create(
     model_name="llama-3-2-1b",
     workspace="default",
     name="my-custom-lora",
@@ -314,15 +316,15 @@ If this constraint isn't met, your training job will fail with a validation erro
 
 flowchart TD
  A[What's your goal?] --> B{Need maximum<br/>performance?}
- B -->{{ Yes }} C{Have 4+ GPUs?}
- B -->{{ No }} D[Choose LoRA]
+ B -->|Yes| C{Have 4+ GPUs?}
+ B -->|No| D[Choose LoRA]
  
- C -->{{ Yes }} E[Choose Full SFT]
- C -->{{ No }} D
+ C -->|Yes| E[Choose Full SFT]
+ C -->|No| D
  
  D --> F{Multiple<br/>use cases?}
- F -->{{ Yes }} G[Train multiple<br/>LoRA adapters]
- F -->{{ No }} H[Single LoRA<br/>adapter]
+ F -->|Yes| G[Train multiple<br/>LoRA adapters]
+ F -->|No| H[Single LoRA<br/>adapter]
  
  E --> I[New Model Entity<br/>with full weights]
  G --> J[Multiple adapters<br/>on same Model Entity]
@@ -462,7 +464,7 @@ job = client.customization.automodel.jobs.create(
 )
 
 # Add an adapter to a model
-client.models.create_adapter(
+client.models.adapters.create(
     model_name="llama-3-2-1b",
     workspace="default",
     name="my-adapter",

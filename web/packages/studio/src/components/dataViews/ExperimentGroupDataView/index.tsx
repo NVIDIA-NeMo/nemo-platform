@@ -16,8 +16,10 @@ import { useGetExperimentGroup } from '@nemo/sdk/generated/platform/api';
 import type { ExperimentFilter } from '@nemo/sdk/generated/platform/schema';
 import { Button, Text, Tooltip } from '@nvidia/foundations-react-core';
 import { Empty } from '@studio/components/dataViews/ExperimentGroupDataView/Empty';
+import { MeanValueTooltipCell } from '@studio/components/dataViews/ExperimentGroupDataView/MeanValueTooltipCell';
 import {
   type ExperimentRow,
+  type ListExperimentsSortParam,
   useExperimentGroupExperiments,
 } from '@studio/components/dataViews/ExperimentGroupDataView/useExperimentGroupExperiments';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
@@ -30,7 +32,24 @@ import { useNavigate } from 'react-router-dom';
 export type { ExperimentRow };
 
 const SORTABLE_FIELDS = ['name', 'created_at'] as const;
-const DEFAULT_SORT = '-created_at';
+const DEFAULT_SORT: ListExperimentsSortParam = '-created_at';
+const SORT_PARAMS = [
+  'name',
+  '-name',
+  'created_at',
+  '-created_at',
+] as const satisfies readonly ListExperimentsSortParam[];
+const SORT_PARAM_SET: ReadonlySet<string> = new Set(SORT_PARAMS);
+
+const isListExperimentsSortParam = (sort: string): sort is ListExperimentsSortParam =>
+  SORT_PARAM_SET.has(sort);
+
+const getExperimentSortParam = (
+  sortingState: Parameters<typeof getSortParamWithWhitelist>[0]
+): ListExperimentsSortParam => {
+  const sort = getSortParamWithWhitelist(sortingState, SORTABLE_FIELDS, DEFAULT_SORT);
+  return isListExperimentsSortParam(sort) ? sort : DEFAULT_SORT;
+};
 
 interface ExperimentGroupDataViewProps {
   experimentGroupName: string;
@@ -69,11 +88,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
 
   const page = dataViewState.pagination.state.pageIndex + 1;
   const pageSize = dataViewState.pagination.state.pageSize;
-  const sortParam = getSortParamWithWhitelist(
-    dataViewState.sorting.state,
-    SORTABLE_FIELDS,
-    DEFAULT_SORT
-  );
+  const sortParam = getExperimentSortParam(dataViewState.sorting.state);
 
   const {
     rows: orderedData,
@@ -244,28 +259,59 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
           id: `score-${index}`,
           header: `Avg ${snakeCaseToTitleCase(name)}`,
           enableSorting: false,
+          meta: { title: false },
           size: 140,
-          cell: ({ getValue }) => (
-            <Text>{formatEvaluatorScore(getValue<number | undefined>())}</Text>
-          ),
+          cell: ({ row }) => {
+            const score = row.original.aggregate_scores?.[name];
+            return (
+              <MeanValueTooltipCell
+                label={snakeCaseToTitleCase(name)}
+                runNoun="scored run"
+                count={score?.count}
+                runCount={row.original.run_count}
+              >
+                {formatEvaluatorScore(score?.mean)}
+              </MeanValueTooltipCell>
+            );
+          },
         })
       ),
       accessor((original) => original.cost_usd?.mean, {
         id: 'cost_usd',
         header: 'Avg Cost',
         enableSorting: false,
+        meta: { title: false },
         cell: ({ row }) => {
-          const mean = row.original.cost_usd?.mean;
-          return <Text>{mean != null ? `$${mean.toFixed(3)}` : '-'}</Text>;
+          const { cost_usd, run_count } = row.original;
+          return (
+            <MeanValueTooltipCell
+              label="cost"
+              runNoun="run"
+              count={cost_usd?.count}
+              runCount={run_count}
+            >
+              {cost_usd?.mean != null ? `$${cost_usd.mean.toFixed(3)}` : '-'}
+            </MeanValueTooltipCell>
+          );
         },
       }),
       accessor((original) => original.latency_ms?.mean, {
         id: 'latency_ms',
         header: 'Avg Latency',
+        meta: { title: false },
         enableSorting: false,
         cell: ({ row }) => {
-          const mean = row.original.latency_ms?.mean;
-          return <Text>{mean != null ? `${Math.round(mean)} ms` : '-'}</Text>;
+          const { latency_ms, run_count } = row.original;
+          return (
+            <MeanValueTooltipCell
+              label="latency"
+              runNoun="run"
+              count={latency_ms?.count}
+              runCount={run_count}
+            >
+              {latency_ms?.mean != null ? `${Math.round(latency_ms.mean)} ms` : '-'}
+            </MeanValueTooltipCell>
+          );
         },
       }),
       accessor((original) => original.run_count, {

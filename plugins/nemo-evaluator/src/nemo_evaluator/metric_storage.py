@@ -16,9 +16,10 @@ from __future__ import annotations
 import logging
 import uuid
 
-# Importing the cloudpickle module registers the "cloudpickle" payload kind in
-# the bundle registry so MetricBundle payloads round-trip through validation.
+# Importing the payload modules registers their bundle payload kinds in the
+# bundle registry so MetricBundle payloads round-trip through validation.
 import nemo_evaluator.shared.metric_bundles.cloudpickle  # noqa: F401
+import nemo_evaluator.shared.metric_bundles.inline  # noqa: F401
 from nemo_evaluator.shared.metric_bundles.bundles import MetricBundle
 from nemo_platform import AsyncNeMoPlatform
 from pydantic import ValidationError

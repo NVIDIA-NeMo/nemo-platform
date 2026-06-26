@@ -354,7 +354,8 @@ def export_onnx(
         Path to the exported ``model.onnx`` file.
     """
     # need to import here for the tests
-    from nemo_automodel.components.models.biencoder.export_onnx import export_to_onnx
+    # llama_bidirectional is Automodel's module path; export_to_onnx uses HF AutoModel and works for any encoder checkpoint.
+    from nemo_automodel.components.models.llama_bidirectional.export_onnx import export_to_onnx
 
     logger.info(f"Exporting embedding model at path {model_path} to ONNX format at path {output_path}")
 

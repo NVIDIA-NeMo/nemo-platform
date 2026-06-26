@@ -991,7 +991,7 @@ def create_pod_template_spec(
     if step.step_spec.environment:
         for envvar in step.step_spec.environment:
             if envvar.value is not None:
-                # If the job has requested persistent job storage path, capture it for use when constructing the volume mount.
+                # Allow step to override the default persistent storage mount path.
                 if envvar.name == PERSISTENT_JOB_STORAGE_PATH_ENVVAR:
                     job_storage_mount = envvar.value
 
@@ -1012,6 +1012,20 @@ def create_pod_template_spec(
         ),
     ]
     storage_config = config.storage
+
+    # Persistent job storage (PVC mount) is only provisioned when the step
+    # explicitly declares NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH in its
+    # compile() environment. Jobs that don't declare it won't get a PVC
+    # mount — if they try to access ctx.storage.persistent at runtime,
+    # StoragePaths raises a clear RuntimeError guiding them to add it.
+    #
+    # TODO: Job authors should be able to declare whether they need
+    # persistent storage via a first-class field on the job spec (e.g.
+    # `requires_persistent_storage: bool` on NemoJob or PlatformJobStep),
+    # rather than the current mechanism of passing a magic env var in the
+    # step's environment list. This would make the contract between
+    # compile() and the runtime explicit. See AIRCORE-844 for context.
+
     if storage_config.additional_volume_mounts:
         volume_mounts.extend(mount.to_k8s() for mount in storage_config.additional_volume_mounts)
 

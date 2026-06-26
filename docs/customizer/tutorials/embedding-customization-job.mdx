@@ -368,7 +368,7 @@ Get your credentials:
 
 #### Quick Setup Example
 
-This tutorial fine-tunes [nvidia/llama-3.2-nv-embedqa-1b-v2](https://huggingface.co/nvidia/llama-3.2-nv-embedqa-1b-v2), NVIDIA embedding model optimized for question-answering and retrieval tasks.
+This tutorial fine-tunes [nvidia/llama-nemotron-embed-1b-v2](https://huggingface.co/nvidia/llama-nemotron-embed-1b-v2), an NVIDIA embedding model optimized for question-answering and retrieval tasks.
 
 ```python
 # Create secrets for model access
@@ -404,7 +404,7 @@ print(f"NGC_API_KEY secret: {NGC_SECRET_NAME}")
 
 ### 7. Create Base Model FileSet and Model Entity
 
-Create a fileset pointing to the [nvidia/llama-3.2-nv-embedqa-1b-v2](https://huggingface.co/nvidia/llama-3.2-nv-embedqa-1b-v2) embedding model from HuggingFace, then create a Model Entity that references this fileset. Model downloading will take place at training time.
+Create a fileset pointing to the [nvidia/llama-nemotron-embed-1b-v2](https://huggingface.co/nvidia/llama-nemotron-embed-1b-v2) embedding model from HuggingFace, then create a Model Entity that references this fileset. Model downloading will take place at training time.
 
 ```python
 import time
@@ -418,7 +418,7 @@ try:
     base_model_fs = client.files.filesets.create(
         workspace="default",
         name=MODEL_NAME,
-        description="NVIDIA Llama 3.2 NV EmbedQA 1B v2 embedding model",
+        description="NVIDIA Llama Nemotron Embed 1B v2 embedding model",
         storage=HuggingfaceStorageConfigParam(
             type="huggingface",
             # repo_id is the full model name from Hugging Face

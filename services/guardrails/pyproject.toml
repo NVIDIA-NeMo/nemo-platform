@@ -30,9 +30,9 @@ dependencies = [
   # as a dependency.
   "dataclasses-json>=0.6.7",
   "openai>=1.61.0",
-  "opentelemetry-distro>=0.41b0",
+  "opentelemetry-distro>=0.64b0",
   "opentelemetry-exporter-otlp>=1.22.0",
-  "opentelemetry-instrumentation-fastapi>=0.48b0",
+  "opentelemetry-instrumentation-fastapi>=0.64b0",
   "pydantic-settings>=2.2.1",
   "python-multipart~=0.0.9",
   "requests>=2.31.0",
@@ -45,8 +45,8 @@ dependencies = [
   "yara-python==4.5.1",
   "alembic>=1.10.4,<2.0.0",
   "opentelemetry-sdk>=1.27.0,<2.0.0",
-  "opentelemetry-instrumentation-requests>=0.48b0",
-  "opentelemetry-instrumentation-httpx>=0.48b0",
+  "opentelemetry-instrumentation-requests>=0.64b0",
+  "opentelemetry-instrumentation-httpx>=0.64b0",
 ]
 
 [project.scripts]

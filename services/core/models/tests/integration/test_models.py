@@ -1566,9 +1566,6 @@ def test_backend_config_key_k8s_works_end_to_end():
         patch("nmp.core.models.controllers.backends.k8s_nim_operator.backend.k8s_config.load_kube_config"),
         patch("nmp.core.models.controllers.backends.k8s_nim_operator.backend.k8s_client.ApiClient"),
         patch("nmp.core.models.controllers.backends.k8s_nim_operator.backend.DynamicClient"),
-        patch(
-            "nmp.core.models.controllers.backends.k8s_nim_operator.backend.K8sNimOperatorServiceBackend._validate_nim_operator_crds"
-        ),
     ):
         registry = BackendRegistry.from_config(
             nmp_sdk=AsyncMock(),

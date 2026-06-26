@@ -19,4 +19,4 @@ export const DEFAULT_API_ERR_MSG = 'Invalid API response. Please try again later
 export const DEFAULT_TOOLS_FILE_NAME = 'tools.json';
 export const EMPTY_FIELD_VALUE = '-';
 export const EMPTY_FIELD_EMDASH_VALUE = '—';
-export const DEFAULT_BUILD_MODEL_NAME = 'nvidia-nvidia-llama-3-3-nemotron-super-49b-v1-5';
+export const DEFAULT_BUILD_MODEL_NAME = 'nvidia-llama-3-3-nemotron-super-49b-v1';

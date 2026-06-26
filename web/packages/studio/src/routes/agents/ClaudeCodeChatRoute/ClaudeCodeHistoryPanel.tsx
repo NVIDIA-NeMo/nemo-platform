@@ -10,10 +10,13 @@ import { SkillsPanelContents } from '@studio/routes/agents/ClaudeCodeChatRoute/h
 import type { ClaudeCodeHistoryPanelProps } from '@studio/routes/agents/ClaudeCodeChatRoute/historyPanel/types';
 import { useLocalStorage } from '@studio/util/hooks/useLocalStorage';
 import { CLAUDE_CODE_HISTORY_OPEN_KEY, CLAUDE_CODE_PANEL_TAB_KEY } from '@studio/util/localStorage';
-import { PanelRightOpen } from 'lucide-react';
+import { PanelRightClose, PanelRightOpen } from 'lucide-react';
 import { type FC } from 'react';
 
-export const ClaudeCodeHistoryPanel: FC<ClaudeCodeHistoryPanelProps> = (props) => {
+export const ClaudeCodeHistoryPanel: FC<ClaudeCodeHistoryPanelProps> = ({
+  hideArtifacts,
+  ...props
+}) => {
   const [historyOpen, setHistoryOpen] = useLocalStorage(CLAUDE_CODE_HISTORY_OPEN_KEY, 'true');
   const [panelTab, setPanelTab] = useLocalStorage(CLAUDE_CODE_PANEL_TAB_KEY, 'history');
   const isOpen = historyOpen !== 'false';
@@ -44,12 +47,14 @@ export const ClaudeCodeHistoryPanel: FC<ClaudeCodeHistoryPanelProps> = (props) =
 
   return (
     <aside className="flex min-h-80 w-full shrink-0 flex-col border-t border-base bg-surface-base lg:w-[30rem] lg:border-l lg:border-t-0 xl:w-[32rem]">
-      <ClaudeCodeArtifactsPane
-        artifacts={props.artifacts}
-        collapseLabel={toggleLabel}
-        onCollapse={() => setHistoryOpen('false')}
-      />
-      <section className="flex min-h-0 basis-1/2 flex-col">
+      {!hideArtifacts && (
+        <ClaudeCodeArtifactsPane
+          artifacts={props.artifacts}
+          collapseLabel={toggleLabel}
+          onCollapse={() => setHistoryOpen('false')}
+        />
+      )}
+      <section className={`flex min-h-0 flex-col ${hideArtifacts ? 'flex-1' : 'basis-1/2'}`}>
         <Flex
           align="center"
           justify="between"
@@ -63,6 +68,19 @@ export const ClaudeCodeHistoryPanel: FC<ClaudeCodeHistoryPanelProps> = (props) =
             items={PANEL_TAB_ITEMS}
             className="min-w-0 flex-1"
           />
+          {hideArtifacts && (
+            <Tooltip slotContent={toggleLabel} side="left">
+              <Button
+                aria-label={toggleLabel}
+                kind="tertiary"
+                size="small"
+                type="button"
+                onClick={() => setHistoryOpen('false')}
+              >
+                <PanelRightClose size={18} />
+              </Button>
+            </Tooltip>
+          )}
         </Flex>
         <div className="flex min-h-0 flex-1 flex-col">
           {selectedTab === 'history' ? (

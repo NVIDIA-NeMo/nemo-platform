@@ -80,7 +80,6 @@ export const CustomFilesetForm: FC<CustomFilesetFormProps> = ({
             <ControlledTextInput
               label="Fileset Name"
               disabled={isSubmitPending}
-              autoFocus
               useControllerProps={{
                 name: 'name',
                 control,

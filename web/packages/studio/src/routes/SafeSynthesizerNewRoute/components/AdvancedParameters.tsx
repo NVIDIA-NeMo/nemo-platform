@@ -216,22 +216,20 @@ export const AdvancedParameters = () => {
           <Flex direction="row" align="center" gap="density-md" className="w-full">
             <div className="w-[225px]" />
             <div className="flex-1">
-              <label>
-                <Flex gap="density-sm" direction="row" align="center">
-                  <Checkbox
-                    checked={useAutomaticSampling}
-                    onCheckedChange={async (checked) => {
-                      setValue(
-                        'spec.config.training.num_input_records_to_sample',
-                        checked ? 'auto' : DEFAULT_NUM_INPUT_RECORDS_TO_SAMPLE
-                      );
-                      // Trigger validation to clear any existing errors
-                      await trigger('spec.config.training.num_input_records_to_sample');
-                    }}
-                  />
-                  Use Automatic Sampling
-                </Flex>
-              </label>
+              <Flex gap="density-sm" direction="row" align="center">
+                <Checkbox
+                  aria-labelledby="auto-sampling-label"
+                  checked={useAutomaticSampling}
+                  onCheckedChange={async (checked) => {
+                    setValue(
+                      'spec.config.training.num_input_records_to_sample',
+                      checked ? 'auto' : DEFAULT_NUM_INPUT_RECORDS_TO_SAMPLE
+                    );
+                    await trigger('spec.config.training.num_input_records_to_sample');
+                  }}
+                />
+                <span id="auto-sampling-label">Use Automatic Sampling</span>
+              </Flex>
             </div>
           </Flex>
         </Stack>
@@ -299,21 +297,20 @@ export const AdvancedParameters = () => {
         <Flex direction="row" align="center" gap="density-md" className="w-full">
           <div className="min-w-[200px]" />
           <div className="flex-1">
-            <label>
-              <Flex gap="density-sm" direction="row" align="center">
-                <Checkbox
-                  checked={useAutomaticScaling}
-                  onCheckedChange={(checked) => {
-                    if (checked) {
-                      setValue('spec.config.training.rope_scaling_factor', 'auto');
-                    } else {
-                      setValue('spec.config.training.rope_scaling_factor', 1);
-                    }
-                  }}
-                />
-                Use Automatic Scaling
-              </Flex>
-            </label>
+            <Flex gap="density-sm" direction="row" align="center">
+              <Checkbox
+                aria-labelledby="auto-scaling-label"
+                checked={useAutomaticScaling}
+                onCheckedChange={(checked) => {
+                  if (checked) {
+                    setValue('spec.config.training.rope_scaling_factor', 'auto');
+                  } else {
+                    setValue('spec.config.training.rope_scaling_factor', 1);
+                  }
+                }}
+              />
+              <span id="auto-scaling-label">Use Automatic Scaling</span>
+            </Flex>
           </div>
         </Flex>
       </Stack>

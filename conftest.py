@@ -287,6 +287,12 @@ def pytest_runtest_setup(item):
     if "e2e" in [marker.name for marker in item.iter_markers()]:
         if not item.config.getoption("--run-e2e"):
             skip_test("Skipping e2e test (use --run-e2e to run)")
+    if "subprocess_only" in [marker.name for marker in item.iter_markers()]:
+        if os.environ.get("NMP_BASE_URL"):
+            skip_test("Skipping subprocess-only test (NMP_BASE_URL is set)")
+    if "container_only" in [marker.name for marker in item.iter_markers()]:
+        if not os.environ.get("NMP_BASE_URL"):
+            skip_test("Skipping container-only test (requires NMP_BASE_URL)")
 
 
 from xdist.scheduler.loadscope import LoadScopeScheduling  # noqa: E402

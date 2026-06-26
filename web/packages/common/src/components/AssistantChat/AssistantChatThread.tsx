@@ -45,6 +45,7 @@ export const AssistantChatThread = ({
   composerOverride,
   messageContentProps,
   enableImageAttachments,
+  minInputRows,
 }: AssistantChatThreadProps) => {
   const { className: threadViewportClassName, ...threadViewportAttributes } =
     attributes?.ThreadViewport ?? {};
@@ -122,6 +123,7 @@ export const AssistantChatThread = ({
               onReset={onReset}
               slotComposerStart={slotComposerStart}
               enableImageAttachments={enableImageAttachments}
+              minInputRows={minInputRows}
             />
           )}
         </Flex>

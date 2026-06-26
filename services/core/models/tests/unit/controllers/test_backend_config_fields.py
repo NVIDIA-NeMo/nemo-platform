@@ -595,3 +595,60 @@ def test_default_annotations_applied_to_nimservice_metadata_and_spec(sample_depl
 
     assert nimservice.metadata["annotations"] == {"prometheus.io/scrape": "true", "custom/key": "value"}
     assert nimservice.spec.annotations == {"prometheus.io/scrape": "true", "custom/key": "value"}
+
+
+# ---------------------------------------------------------------------------
+# vLLM-on-k8s config fields (raw-object emission path)
+# ---------------------------------------------------------------------------
+
+
+def test_default_vllm_image_default_value():
+    """default_vllm_image / _tag fall back to the upstream vLLM image."""
+    backend_config = K8sNimOperatorConfig()
+    assert backend_config.default_vllm_image == "vllm/vllm-openai"
+    assert backend_config.default_vllm_image_tag == "v0.22.1"
+
+
+def test_default_vllm_image_override():
+    """default_vllm_image / _tag can be repointed at a mirror."""
+    backend_config = K8sNimOperatorConfig(
+        default_vllm_image="my-registry/vllm-openai",
+        default_vllm_image_tag="v0.99.0",
+    )
+    assert backend_config.default_vllm_image == "my-registry/vllm-openai"
+    assert backend_config.default_vllm_image_tag == "v0.99.0"
+
+
+def test_service_account_name_defaults_to_none():
+    """service_account_name defaults to None (namespace default ServiceAccount)."""
+    assert K8sNimOperatorConfig().service_account_name is None
+
+
+def test_service_account_name_override():
+    """service_account_name can be set to a shared models ServiceAccount."""
+    backend_config = K8sNimOperatorConfig(service_account_name="nemo-models-sa")
+    assert backend_config.service_account_name == "nemo-models-sa"
+
+
+def test_default_shared_memory_size_limit_defaults_to_none():
+    """default_shared_memory_size_limit defaults to None (node default /dev/shm)."""
+    assert K8sNimOperatorConfig().default_shared_memory_size_limit is None
+
+
+def test_default_shared_memory_size_limit_override():
+    """default_shared_memory_size_limit can be set for vLLM tensor-parallel NCCL."""
+    backend_config = K8sNimOperatorConfig(default_shared_memory_size_limit="8Gi")
+    assert backend_config.default_shared_memory_size_limit == "8Gi"
+
+
+def test_default_vllm_uid_gid_match_image_user():
+    """vLLM uid/gid default to the upstream image's 'vllm' user (2000) / root group (0)."""
+    backend_config = K8sNimOperatorConfig()
+    assert backend_config.default_vllm_user_id == 2000
+    assert backend_config.default_vllm_group_id == 0
+
+
+def test_default_vllm_uid_gid_override():
+    backend_config = K8sNimOperatorConfig(default_vllm_user_id=1234, default_vllm_group_id=5678)
+    assert backend_config.default_vllm_user_id == 1234
+    assert backend_config.default_vllm_group_id == 5678

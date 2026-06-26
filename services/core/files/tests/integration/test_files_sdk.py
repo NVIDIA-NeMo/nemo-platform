@@ -1075,9 +1075,10 @@ class TestFilesetImmutabilityForNonServicePrincipals:
         sdk.files.filesets.delete(name=name, workspace=workspace)
 
     @pytest.mark.skip(
-        reason="Auth identity is not propagated through the fsspec upload path. "
-        "Previously worked because the test used the internal _upload_file() method which "
-        "bypassed fsspec. Needs first-class NemoClient auth (AIRCORE-828)."
+        reason="Auth identity does not propagate through the fsspec upload path. "
+        "The _client_from_sdk backward compat creates a fresh httpx.AsyncClient "
+        "that doesn't carry the service principal's identity headers. "
+        "Tracked by AIRCORE-840."
     )
     def test_service_principal_can_set_service_source_and_upload_then_user_cannot_upload(
         self, sdk_user_and_service: tuple[NeMoPlatform, NeMoPlatform]

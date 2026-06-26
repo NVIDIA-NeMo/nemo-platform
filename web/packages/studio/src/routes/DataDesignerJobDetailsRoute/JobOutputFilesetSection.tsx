@@ -1,38 +1,26 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { parseFilesetLocation } from '@nemo/common/src/components/DatasetFileSelect/parseFilesetLocation';
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
 import { KVPair } from '@nemo/common/src/components/KVPair';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
-import { PlatformJobTerminalStatuses } from '@nemo/common/src/constants/query';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
-import { useDataDesignerListCreateJobResults } from '@nemo/sdk/generated/data-designer/api';
-import type { CreateJob as DataDesignerJob } from '@nemo/sdk/generated/data-designer/schema';
 import {
   getFilesListFilesetFilesQueryKey,
-  useFilesListFilesetFiles,
   useFilesRetrieveFileset,
 } from '@nemo/sdk/generated/platform/api';
 import type { FilesetFileOutput } from '@nemo/sdk/generated/platform/schema';
 import { Anchor, Banner, Card, Stack, Text } from '@nvidia/foundations-react-core';
 import { FilesetFilePreviewPanel } from '@studio/components/FilesetFilePreviewPanel';
 import type { FileSystemFile } from '@studio/components/FilesTable/utils';
+import { useDataDesignerArtifactsFileset } from '@studio/routes/DataDesignerJobDetailsRoute/useDataDesignerArtifactsFileset';
 import { getFilesetDetailsRoute } from '@studio/routes/utils';
 import { getHumanReadableFileSize } from '@studio/util/files';
 import { useQueryClient } from '@tanstack/react-query';
-import { ComponentProps, FC, useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ComponentProps, type FC } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
-const ARTIFACTS_RESULT_NAME = 'artifacts';
-
 type FileRow = FilesetFileOutput & { id: string };
-
-interface JobOutputFilesetSectionProps {
-  workspace: string;
-  jobName: string;
-  job: DataDesignerJob;
-}
 
 function fileRowToSystemFile(row: FileRow): FileSystemFile {
   return {
@@ -43,50 +31,26 @@ function fileRowToSystemFile(row: FileRow): FileSystemFile {
   };
 }
 
-export const JobOutputFilesetSection: FC<JobOutputFilesetSectionProps> = ({
-  workspace,
-  jobName,
-  job,
-}) => {
+export const JobOutputFilesetSection: FC = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [previewFile, setPreviewFile] = useState<FileSystemFile | null>(null);
 
-  const isTerminal = job.status != null && PlatformJobTerminalStatuses.includes(job.status);
-
-  const { data: resultsResponse, isLoading: isResultsLoading } =
-    useDataDesignerListCreateJobResults(workspace, jobName, {
-      query: {
-        refetchInterval: isTerminal ? false : 3000,
-      },
-    });
-
-  const artifactsResult = useMemo(() => {
-    const data = resultsResponse?.data;
-    if (!data?.length) {
-      return undefined;
-    }
-    const preferred = data.find((r) => r.name === ARTIFACTS_RESULT_NAME);
-    if (preferred) {
-      return preferred;
-    }
-    return data.find((r) => r.artifact_url && parseFilesetLocation(r.artifact_url, workspace));
-  }, [resultsResponse?.data, workspace]);
-
-  const filesetLoc = useMemo(
-    () =>
-      artifactsResult?.artifact_url
-        ? parseFilesetLocation(artifactsResult.artifact_url, workspace)
-        : null,
-    [artifactsResult?.artifact_url, workspace]
-  );
-
-  const filesetWorkspace = filesetLoc?.workspace ?? '';
-  const filesetName = filesetLoc?.name ?? '';
-  const listFilesParams = useMemo(
-    () => (filesetLoc?.filesListPathPrefix ? { path: filesetLoc.filesListPathPrefix } : undefined),
-    [filesetLoc?.filesListPathPrefix]
-  );
+  const {
+    isTerminal,
+    artifactsResult,
+    filesetLoc,
+    filesetWorkspace,
+    filesetName,
+    listFilesParams,
+    files,
+    isResultsLoading,
+    isResultsError,
+    resultsError,
+    isFilesLoading,
+    isFilesError: isListFilesError,
+    filesError: listFilesError,
+  } = useDataDesignerArtifactsFileset();
 
   const {
     data: filesetMeta,
@@ -99,25 +63,11 @@ export const JobOutputFilesetSection: FC<JobOutputFilesetSectionProps> = ({
     },
   });
 
-  const {
-    data: listFilesResponse,
-    isLoading: isFilesLoading,
-    isError: isListFilesError,
-    error: listFilesError,
-  } = useFilesListFilesetFiles(filesetWorkspace, filesetName, listFilesParams, {
-    query: {
-      enabled: Boolean(filesetWorkspace && filesetName),
-    },
-  });
-
   const dataViewState = useStudioDataViewState({
     defaultPageSize: 10,
   });
 
-  const rows: FileRow[] = useMemo(() => {
-    const fileList = listFilesResponse?.data ?? [];
-    return fileList.map((f) => ({ ...f, id: f.file_ref }));
-  }, [listFilesResponse?.data]);
+  const rows: FileRow[] = useMemo(() => files.map((f) => ({ ...f, id: f.file_ref })), [files]);
 
   const makeColumns: ComponentProps<typeof StudioDataView<FileRow>>['makeColumns'] = useMemo(
     () => (helpers) => [
@@ -190,10 +140,10 @@ export const JobOutputFilesetSection: FC<JobOutputFilesetSectionProps> = ({
     }
   }, [filesetWorkspace, filesetName]);
 
-  if (isResultsLoading && !resultsResponse) {
+  if (isResultsLoading && !artifactsResult) {
     return (
       <Card>
-        <Stack gap="4" padding="8">
+        <Stack gap="4">
           <Text kind="body/regular/md" className="text-muted">
             Loading job results…
           </Text>
@@ -202,11 +152,24 @@ export const JobOutputFilesetSection: FC<JobOutputFilesetSectionProps> = ({
     );
   }
 
+  if (isResultsError) {
+    return (
+      <Card>
+        <Stack gap="4">
+          <Banner kind="inline" status="error" title="Could not load job results">
+            {resultsError instanceof Error
+              ? resultsError.message
+              : 'The job results list could not be loaded.'}
+          </Banner>
+        </Stack>
+      </Card>
+    );
+  }
+
   if (!artifactsResult) {
     return (
       <Card>
-        <Stack gap="4" padding="8">
-          <Text kind="body/bold/lg">Output fileset</Text>
+        <Stack gap="4">
           <Text kind="body/regular/md" className="text-muted">
             {isTerminal
               ? 'No artifacts result was returned for this job.'
@@ -220,8 +183,7 @@ export const JobOutputFilesetSection: FC<JobOutputFilesetSectionProps> = ({
   if (!filesetLoc) {
     return (
       <Card>
-        <Stack gap="4" padding="8">
-          <Text kind="body/bold/lg">Output fileset</Text>
+        <Stack gap="4">
           <KVPair
             label="Artifact URL"
             value={artifactsResult.artifact_url}
@@ -243,7 +205,7 @@ export const JobOutputFilesetSection: FC<JobOutputFilesetSectionProps> = ({
   return (
     <>
       <Card>
-        <Stack gap="2" padding="2">
+        <Stack gap="2">
           <Stack gap="2">
             <Text kind="body/bold/lg">Output fileset</Text>
             <Text kind="body/regular/sm" className="text-muted">
@@ -279,10 +241,6 @@ export const JobOutputFilesetSection: FC<JobOutputFilesetSectionProps> = ({
           </Stack>
 
           <Stack gap="4">
-            <Text kind="label/semibold/md">Files</Text>
-            <Text kind="body/regular/sm" className="text-muted">
-              Select a row to preview the file.
-            </Text>
             <StudioDataView<FileRow>
               dataViewState={dataViewState}
               makeColumns={makeColumns}

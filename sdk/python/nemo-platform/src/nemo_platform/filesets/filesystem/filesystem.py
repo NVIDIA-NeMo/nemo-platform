@@ -627,7 +627,8 @@ class FilesetFileSystem(AsyncFileSystem):
         workspace, fileset, file_path = parse_fileset_ref(path, workspace_fallback=self._workspace)
         if not file_path:
             raise ValueError("Cannot delete fileset root via rm")
-        await self._client.send(endpoints.delete_file(workspace=workspace, name=fileset, path=file_path))
+        resp = await self._client.send(endpoints.delete_file(workspace=workspace, name=fileset, path=file_path))
+        resp.data()  # raises on non-2xx
         # Invalidate parent directory's cache since file info is stored there
         self.invalidate_cache(self._parent(build_fileset_ref(path)))
 
@@ -787,20 +788,20 @@ class FilesetFileSystem(AsyncFileSystem):
         if not file_path:
             return
 
-        binary_response = await self._client.send(
+        response = await self._client.send(
             endpoints.download_file(workspace=workspace, name=fileset, path=file_path),
         )
 
-        async with binary_response.stream() as response:
+        async with response:
             # Set callback size from Content-Length if available
-            content_length = response.headers.get("content-length")
+            content_length = response.http_response.headers.get("content-length")
             if content_length:
                 callback.set_size(int(content_length))
 
             await anyio.Path(lpath).parent.mkdir(parents=True, exist_ok=True)
             async with await anyio.open_file(lpath, "wb") as f:
                 # Use aiter_raw() instead of iter_bytes() to bypass httpx chunking overhead.
-                async for chunk in response.aiter_raw(self.blocksize):
+                async for chunk in response.http_response.aiter_raw(self.blocksize):
                     await f.write(chunk)
                     callback.relative_update(len(chunk))
 

@@ -48,6 +48,7 @@ export interface AssistantChatThreadProps {
   composerOverride?: ReactNode;
   messageContentProps?: AssistantChatMessageContentProps;
   enableImageAttachments?: boolean;
+  minInputRows?: number;
 }
 
 export interface AssistantChatProps {

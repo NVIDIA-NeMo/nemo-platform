@@ -119,22 +119,8 @@ def test_sync_list_items() -> None:
     resp = client.list_items()
     page = resp.data()
 
-    assert len(page.data) == 1
-    assert page.data[0].name == "my-item"
-
-
-def test_sync_list_items_with_query_params() -> None:
-    client, mock_http = _sync_client()
-    mock_http.request.return_value = _resp(
-        200, {"data": [ITEM_PAYLOAD], "pagination": None, "sort": None, "filter": None}
-    )
-
-    resp = client.list_items(query_params={"page": 2, "page_size": 5})
-    page = resp.data()
-
-    assert len(page.data) == 1
-    _, kwargs = mock_http.request.call_args
-    assert kwargs["params"] == {"page": 2, "page_size": 5}
+    assert len(page.items) == 1
+    assert page.items[0].name == "my-item"
 
 
 def test_sync_update_item() -> None:
@@ -206,8 +192,8 @@ async def test_async_list_items() -> None:
     resp = await client.list_items()
     page = resp.data()
 
-    assert len(page.data) == 1
-    assert page.data[0].name == "my-item"
+    assert len(page.items) == 1
+    assert page.items[0].name == "my-item"
 
 
 @pytest.mark.asyncio

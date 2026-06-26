@@ -25,6 +25,7 @@ export const FilesetSidePanelWrapper: FC<FilesetSidePanelWrapperProps> = ({
     attributes={{
       SidePanelHeading: { className: 'font-normal' },
       SidePanelMain: { className: 'p-0 overflow-x-hidden' },
+      SidePanelCloseButton: { type: 'button' },
     }}
     bordered
     modal

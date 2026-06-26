@@ -10,14 +10,15 @@ from nemo_platform import NeMoPlatform
 
 
 def test_health_ready(sdk: NeMoPlatform):
-    """GET /health/ready returns 200 when all services are up."""
-    resp = sdk._client.get("/health/ready")
+    """GET /status returns 200 with healthy status when all services are up."""
+    resp = sdk._client.get("/status")
     assert resp.status_code == 200
+    assert resp.json()["status"] == "healthy"
 
 
 def test_health_live(sdk: NeMoPlatform):
-    """GET /health/live returns 200 (liveness probe)."""
-    resp = sdk._client.get("/health/live")
+    """GET /status returns 200 (platform is reachable)."""
+    resp = sdk._client.get("/status")
     assert resp.status_code == 200
 
 

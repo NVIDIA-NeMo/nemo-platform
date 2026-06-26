@@ -53,7 +53,10 @@ class NemoHTTPError(Exception):
                 return body["detail"]
         except Exception:
             pass
-        return resp.text
+        try:
+            return resp.text
+        except httpx.ResponseNotRead:
+            return f"HTTP {resp.status_code}"
 
 
 # ---------------------------------------------------------------------------

@@ -28,6 +28,7 @@ JOB_SOURCE = "e2e-auth-test"
 logger = logging.getLogger(__name__)
 
 pytestmark = [
+    pytest.mark.subprocess_only,
     pytest.mark.e2e_config("e2e/configs/local-subprocess.yaml", {"auth": {"enabled": True}}),
 ]
 

@@ -529,12 +529,16 @@ models:
         default_user_id:
         # Default group ID for NIM containers (security context)
         default_group_id:
+        # Default user ID for vLLM puller + server pods (security context). Defaults to 2000 to match the upstream vLLM image's 'vllm' user, which has an /etc/passwd entry (avoids torch getpwuid crashes from an unknown uid). | default: 2000
+        default_vllm_user_id: 2000
+        # Default group ID / fsGroup for vLLM puller + server pods. Defaults to 0 (root group) to match the upstream vLLM image and keep weights readable across the puller and server pods. | default: 0
+        default_vllm_group_id: 0
         # Kubernetes secret name for Files service authentication (HF_TOKEN) | default: 'nemo-models-files-token'
         files_auth_secret: nemo-models-files-token
         # The name of the image pull secret for the modelPuller image | default: 'nvcrimagepullsecret'
         huggingface_model_puller_image_pull_secret: nvcrimagepullsecret
-        # BusyBox image repository used by plugin init containers. | default: 'busybox'
-        busybox_image: busybox
+        # BusyBox image repository used by plugin init containers. Fully qualified (docker.io/library/...) so it resolves on container runtimes that enforce fully-qualified image names (short names like 'busybox' fail there). | default: 'docker.io/library/busybox'
+        busybox_image: docker.io/library/busybox
         # BusyBox image tag used by plugin init containers. | default: 'latest'
         busybox_image_tag: latest
         # NGC API key secret name for pulling NIM images | default: 'ngc-api'
@@ -543,10 +547,18 @@ models:
         default_nimservice_image: nvcr.io/nim/nvidia/llm-nim
         # Default NIMService image tag (used if not specified in deployment config) | default: '1.13.1'
         default_nimservice_image_tag: 1.13.1
+        # Default vLLM server image repository (used if not specified in deployment config) | default: 'vllm/vllm-openai'
+        default_vllm_image: vllm/vllm-openai
+        # Default vLLM server image tag (used if not specified in deployment config) | default: 'v0.22.1'
+        default_vllm_image_tag: v0.22.1
         # Default guided decoding backend for NIM (e.g., 'outlines', 'auto', 'lm-format-enforcer') | default: 'outlines'
         nim_guided_decoding_backend: outlines
         # Kubernetes namespace for NIM deployments (defaults to controller's namespace if not set)
         namespace:
+        # ServiceAccount name for directly-emitted vLLM Deployment pods and the weight-puller Job. If not set, the namespace default ServiceAccount is used.
+        service_account_name:
+        # Shared memory (/dev/shm) size limit for vLLM Deployment pods (e.g. '8Gi'). If not set, the emptyDir uses the node default size.
+        default_shared_memory_size_limit:
         # Default Kubernetes resource requirements for all NIM deployments. Can be overridden per-deployment via k8s_nim_operator_config. Example: {'requests': {'cpu': '2', 'memory': '8Gi'}, 'limits': {'memory': '16Gi'}}
         default_resources:
         # Default Kubernetes tolerations for all NIM deployments. Can be overridden per-deployment via k8s_nim_operator_config. Example: [{'key': 'nvidia.com/gpu', 'operator': 'Exists', 'effect': 'NoSchedule'}]

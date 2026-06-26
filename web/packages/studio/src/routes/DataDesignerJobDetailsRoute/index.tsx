@@ -3,39 +3,39 @@
 
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
-import { PlatformJobTerminalStatuses } from '@nemo/common/src/constants/query';
-import { useDataDesignerGetCreateJob } from '@nemo/sdk/generated/data-designer/api';
-import { Button, Card, Stack, Text } from '@nvidia/foundations-react-core';
+import {
+  Button,
+  Flex,
+  Stack,
+  TabsContent,
+  TabsList,
+  TabsRoot,
+  TabsTrigger,
+  Text,
+} from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { Loading } from '@studio/components/Layouts/Loading';
-import { ROUTE_PARAMS } from '@studio/constants/routes';
-import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
+import { DataDesignerConfigPanel } from '@studio/routes/DataDesignerJobDetailsRoute/DataDesignerConfigPanel';
+import { DatasetProfilerSection } from '@studio/routes/DataDesignerJobDetailsRoute/DatasetProfilerSection';
 import { JobOutputFilesetSection } from '@studio/routes/DataDesignerJobDetailsRoute/JobOutputFilesetSection';
+import { useDataDesignerJobFromRoute } from '@studio/routes/DataDesignerJobDetailsRoute/useDataDesignerJobFromRoute';
 import { getDataDesignerJobListRoute } from '@studio/routes/utils';
-import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
-import { ArrowLeft } from 'lucide-react';
-import { FC } from 'react';
+import { ArrowLeft, FileJson } from 'lucide-react';
+import { useState, type FC } from 'react';
 import { Link } from 'react-router-dom';
 
 export const DataDesignerJobDetailsRoute: FC = () => {
-  const workspace = useWorkspaceFromPath();
-  const { dataDesignerJobName } = useRequiredPathParams([ROUTE_PARAMS.dataDesignerJobName]);
-
   const {
-    data: job,
+    workspace,
+    jobName: dataDesignerJobName,
+    job,
     isLoading,
     isError,
     refetch,
-  } = useDataDesignerGetCreateJob(workspace, dataDesignerJobName, {
-    query: {
-      refetchInterval: (query) => {
-        const status = query.state.data?.status;
-        const isTerminated = status && PlatformJobTerminalStatuses.includes(status);
-        return isTerminated ? false : 3000;
-      },
-    },
-  });
+  } = useDataDesignerJobFromRoute();
+
+  const [isConfigPanelOpen, setIsConfigPanelOpen] = useState(false);
 
   useBreadcrumbs({
     items: [
@@ -78,25 +78,23 @@ export const DataDesignerJobDetailsRoute: FC = () => {
 
   return (
     <AccessibleTitle title={`Data Designer Job - ${job.name}`}>
-      <Stack className="h-full overflow-auto" gap="density-2xl" padding="density-2xl">
-        <Button asChild kind="secondary">
-          <Link to={getDataDesignerJobListRoute(workspace)}>
-            <ArrowLeft /> Back to Data Designer
-          </Link>
-        </Button>
-
-        <Card>
-          <Stack gap="density-lg">
-            <Text kind="body/bold/2xl">{job.name}</Text>
-            {job.description && (
-              <Text kind="body/regular/md" className="text-muted">
-                {job.description}
-              </Text>
-            )}
-            <Stack direction="row" gap="density-md" align="center">
-              <Text kind="label/semibold/md">Status:</Text>
+      <Stack className="h-full min-h-0" gap="density-2xl" padding="density-2xl">
+        <Stack gap="density-md">
+          <Flex gap="density-md" align="center" justify="between" className="flex-wrap">
+            <Flex gap="density-md" align="center" className="flex-wrap">
+              <Text kind="body/bold/2xl">{job.name}</Text>
               {job.status ? <StatusBadge status={job.status} /> : null}
-            </Stack>
+            </Flex>
+            <Button type="button" kind="secondary" onClick={() => setIsConfigPanelOpen(true)}>
+              <FileJson /> View config
+            </Button>
+          </Flex>
+          {job.description && (
+            <Text kind="body/regular/md" className="text-muted">
+              {job.description}
+            </Text>
+          )}
+          <Flex gap="density-lg" className="flex-wrap">
             {job.created_at && (
               <Text kind="body/regular/sm" className="text-muted">
                 Created: {new Date(job.created_at).toLocaleString()}
@@ -107,11 +105,29 @@ export const DataDesignerJobDetailsRoute: FC = () => {
                 Updated: {new Date(job.updated_at).toLocaleString()}
               </Text>
             )}
-          </Stack>
-        </Card>
+          </Flex>
+        </Stack>
 
-        <JobOutputFilesetSection workspace={workspace} jobName={dataDesignerJobName} job={job} />
+        <TabsRoot defaultValue="profile" className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
+          <TabsList>
+            <TabsTrigger value="profile">Profile</TabsTrigger>
+            <TabsTrigger value="output">Output files</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="profile" className="min-h-0 flex-1 overflow-y-auto px-0">
+            <DatasetProfilerSection />
+          </TabsContent>
+
+          <TabsContent value="output" className="min-h-0 flex-1 overflow-y-auto px-0">
+            <JobOutputFilesetSection />
+          </TabsContent>
+        </TabsRoot>
       </Stack>
+
+      <DataDesignerConfigPanel
+        open={isConfigPanelOpen}
+        onClose={() => setIsConfigPanelOpen(false)}
+      />
     </AccessibleTitle>
   );
 };

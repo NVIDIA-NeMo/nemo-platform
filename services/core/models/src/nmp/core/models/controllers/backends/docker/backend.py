@@ -12,14 +12,12 @@ pulling, model downloading, container creation) is delegated to
 import asyncio
 import os
 from logging import getLogger
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 from docker.errors import APIError, NotFound
 from nemo_platform import NotFoundError
 from nemo_platform.types.inference.model_deployment import ModelDeployment
-from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig
-from nemo_platform.types.models.model_entity import ModelEntity
 from nmp.common.config import get_platform_config
 from nmp.common.docker.gpu_pool import DockerGPUPool
 from nmp.common.resources import SharedResourceManager
@@ -37,6 +35,7 @@ from nmp.core.models.controllers.backends.docker.creation_reconciler import (
     NGC_IMAGE_REGISTRY_USER_NAME,
     DockerDeploymentCreationReconciler,
 )
+from nmp.core.models.controllers.context import ModelContext
 from requests.exceptions import ConnectionError as RequestsConnectionError
 from requests.exceptions import ReadTimeout
 from urllib3.exceptions import ReadTimeoutError as Urllib3ReadTimeoutError
@@ -184,17 +183,15 @@ class DockerServiceBackend(ServiceBackend):
     # ServiceBackend CRUD interface
     # ==================================================================
 
-    async def create_model_deployment(
-        self,
-        deployment: ModelDeployment,
-        config: ModelDeploymentConfig,
-        model_entity: Optional[ModelEntity] = None,
-    ) -> DeploymentStatusUpdate:
+    async def create_model_deployment(self, ctx: ModelContext) -> DeploymentStatusUpdate:
         """Create a new model deployment as a Docker container.
 
         Resolves NGC credentials and delegates the multi-stage creation
         pipeline to :class:`DockerDeploymentCreationReconciler`.
         """
+        deployment = ctx.model_deployment
+        config = ctx.model_deployment_config
+        model_entity = ctx.model_entity
         resolved_ngc_key = await self._resolve_ngc_api_key()
         await self._ensure_ngc_login(resolved_ngc_key)
 
@@ -205,25 +202,22 @@ class DockerServiceBackend(ServiceBackend):
             resolved_ngc_key,
         )
 
-    async def update_model_deployment(
-        self,
-        deployment: ModelDeployment,
-        config: ModelDeploymentConfig,
-        model_entity: Optional[ModelEntity] = None,
-    ) -> DeploymentStatusUpdate:
+    async def update_model_deployment(self, ctx: ModelContext) -> DeploymentStatusUpdate:
         """Update a model deployment by recreating the container."""
+        deployment = ctx.model_deployment
         logger.info(f"Updating Docker deployment: {deployment.workspace}/{deployment.name}")
         delete_result = await self.delete_model_deployment(deployment.workspace, deployment.name)
         if delete_result.status == "ERROR":
             return delete_result
-        return await self.create_model_deployment(deployment, config, model_entity)
+        return await self.create_model_deployment(ctx)
 
-    async def get_model_deployment_status(self, deployment: ModelDeployment) -> DeploymentStatusUpdate:
+    async def get_model_deployment_status(self, ctx: ModelContext) -> DeploymentStatusUpdate:
         """Get the status of a Docker model deployment.
 
         While the deployment is still progressing through the creation
         pipeline this delegates to the reconciler's ``advance`` method.
         """
+        deployment = ctx.model_deployment
         if self._reconciler.is_deploying(deployment.workspace, deployment.name):
             deployment_key = self._reconciler.get_deployment_key(deployment.workspace, deployment.name)
             return await self._reconciler.advance(deployment_key)
