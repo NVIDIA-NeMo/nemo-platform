@@ -4,14 +4,13 @@
 import { BadgeStatus, badgeStatus } from '@nemo/common/src/components/StatusBadge/badgeStatus';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge/index';
 import * as customQueries from '@nemo/common/src/tests/customQueries';
-import { queries, render, screen, within } from '@testing-library/react';
+import { queries, render, screen } from '@testing-library/react';
 import { CircleCheck } from 'lucide-react';
 
 const allQueries = {
   ...queries,
   ...customQueries,
 };
-const customScreen = within(document.body, allQueries);
 
 describe('StatusBadge component', () => {
   beforeEach(() => {
@@ -84,10 +83,6 @@ describe('StatusBadge component', () => {
       expect(badge).toBeInTheDocument();
       expect(badge).toHaveTextContent(expectedBadge.label);
 
-      // Check if icon is rendered when icon exists
-      const icon = customScreen.getByRole('img');
-      expect(icon).toBeInTheDocument();
-
       unmount();
     });
   });
@@ -146,6 +141,47 @@ describe('StatusBadge component', () => {
     });
   });
 
+  describe('icon accessibility attributes', () => {
+    it('sets aria-hidden="true" on the status icon (not role="img")', () => {
+      render(<StatusBadge status="completed" />);
+
+      // CircleCheck is rendered for the "completed" status
+      // eslint-disable-next-line testing-library/no-node-access
+      const icon = document.querySelector('.lucide-circle-check');
+      expect(icon).toBeInTheDocument();
+      expect(icon).toHaveAttribute('aria-hidden', 'true');
+    });
+
+    it('does NOT set role="img" on the status icon', () => {
+      render(<StatusBadge status="completed" />);
+
+      // Icons are decorative; they must not be exposed to AT via role="img"
+      expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    });
+
+    it('sets aria-hidden="true" on a custom statusConfig icon', () => {
+      const CONFIG = {
+        success: { label: 'Success', color: 'green' as const, icon: CircleCheck },
+      };
+      render(<StatusBadge status="success" statusConfig={CONFIG} />);
+
+      // eslint-disable-next-line testing-library/no-node-access
+      const icon = document.querySelector('.lucide-circle-check');
+      expect(icon).toBeInTheDocument();
+      expect(icon).toHaveAttribute('aria-hidden', 'true');
+      expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    });
+
+    it('does not render any img role element when config entry has no icon', () => {
+      const CONFIG = {
+        error: { label: 'Error', color: 'red' as const },
+      };
+      render(<StatusBadge status="error" statusConfig={CONFIG} />);
+
+      expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    });
+  });
+
   describe('statusConfig prop (config-driven path)', () => {
     const STATUS_CONFIG = {
       success: { label: 'Success', color: 'green' as const, icon: CircleCheck },
@@ -157,14 +193,9 @@ describe('StatusBadge component', () => {
       expect(screen.getByTestId('nv-badge')).toHaveTextContent('Success');
     });
 
-    it('renders icon when config entry has one', () => {
-      render(<StatusBadge status="success" statusConfig={STATUS_CONFIG} />);
-      expect(screen.getByRole('img')).toBeInTheDocument();
-    });
-
-    it('renders no icon when config entry omits one', () => {
+    it('renders the label for a config entry without an icon', () => {
       render(<StatusBadge status="error" statusConfig={STATUS_CONFIG} />);
-      expect(screen.queryByRole('img')).not.toBeInTheDocument();
+      expect(screen.getByTestId('nv-badge')).toHaveTextContent('Error');
     });
 
     it('falls back to provided fallback for unknown status', () => {
