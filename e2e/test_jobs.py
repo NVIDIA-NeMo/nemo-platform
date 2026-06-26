@@ -13,14 +13,10 @@ import uuid
 
 import pytest
 from nemo_platform import NeMoPlatform, NotFoundError
+from nemo_platform_plugin.jobs.constants import DEFAULT_JOB_STORAGE_PATH
 from nmp.testing.e2e import wait_for_job_logs, wait_for_platform_job
 
 JOB_SOURCE = "e2e-test-jobs"
-
-# Default mount path for persistent job storage in K8s pods.
-# The subprocess backend injects this env var automatically, but the K8s backend
-# only creates the PVC mount when the step explicitly declares it in environment.
-DEFAULT_JOB_STORAGE_PATH = "/var/run/scratch/job"
 
 pytestmark = [
     pytest.mark.timeout(600),
