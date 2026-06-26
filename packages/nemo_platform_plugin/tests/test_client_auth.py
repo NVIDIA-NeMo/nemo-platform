@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import httpx
 import pytest
@@ -29,10 +29,8 @@ from nemo_platform_plugin.client.oidc import (
     generate_unsigned_jwt,
 )
 from nemo_platform_plugin.client_provider import (
-    DefaultNemoClientProvider,
     get_async_nemo_client,
     get_nemo_client,
-    set_client_provider,
 )
 
 # ---------------------------------------------------------------------------
@@ -441,45 +439,18 @@ class TestFromConfig:
 
 
 # ---------------------------------------------------------------------------
-# NemoClientProvider
+# get_nemo_client / get_async_nemo_client
 # ---------------------------------------------------------------------------
 
 
-class TestNemoClientProvider:
-    def test_default_provider_returns_client(self):
-        provider = DefaultNemoClientProvider()
-        client = provider.get_nemo_client(as_service="test-svc", internal=True)
+class TestGetNemoClient:
+    def test_returns_sync_client(self):
+        client = get_nemo_client(as_service="test-svc", internal=True)
         assert isinstance(client, NemoClient)
 
-    def test_default_provider_returns_async_client(self):
-        provider = DefaultNemoClientProvider()
-        client = provider.get_async_nemo_client(as_service="test-svc")
+    def test_returns_async_client(self):
+        client = get_async_nemo_client(as_service="test-svc")
         assert isinstance(client, AsyncNemoClient)
-
-    def test_get_nemo_client_uses_provider(self):
-        mock_provider = MagicMock(spec=DefaultNemoClientProvider)
-        expected_client = NemoClient(base_url="http://test:8080")
-        mock_provider.get_nemo_client.return_value = expected_client
-
-        set_client_provider(mock_provider)
-        try:
-            result = get_nemo_client(as_service="svc")
-            assert result is expected_client
-            mock_provider.get_nemo_client.assert_called_once_with(as_service="svc", internal=False, on_behalf_of=None)
-        finally:
-            set_client_provider(None)
-
-    def test_get_async_nemo_client_uses_provider(self):
-        mock_provider = MagicMock(spec=DefaultNemoClientProvider)
-        expected_client = AsyncNemoClient(base_url="http://test:8080")
-        mock_provider.get_async_nemo_client.return_value = expected_client
-
-        set_client_provider(mock_provider)
-        try:
-            result = get_async_nemo_client(as_service="svc")
-            assert result is expected_client
-        finally:
-            set_client_provider(None)
 
 
 # ---------------------------------------------------------------------------

@@ -3,18 +3,12 @@
 
 """NemoClient factory for task containers and services.
 
-Analogous to :mod:`nemo_platform_plugin.sdk_provider` but returns
-:class:`~nemo_platform_plugin.client.client.NemoClient` /
-:class:`~nemo_platform_plugin.client.client.AsyncNemoClient` instead of
-``NeMoPlatform`` / ``AsyncNeMoPlatform``.
+Builds :class:`~nemo_platform_plugin.client.client.NemoClient` /
+:class:`~nemo_platform_plugin.client.client.AsyncNemoClient` from
+environment variables (``NMP_BASE_URL``, ``NMP_PRINCIPAL``).
 
-Lookup order for the provider
------------------------------
-
-1. **Explicit override** — set via :func:`set_client_provider` (for tests).
-2. **Entry-point discovery** — scans the ``nemo.client_provider`` group.
-3. **Built-in default** — :class:`DefaultNemoClientProvider`, an env-var-based
-   implementation that reads ``NMP_BASE_URL`` and ``NMP_PRINCIPAL``.
+For user-facing / CLI usage, prefer ``NemoClient.from_config()`` which
+reads ``~/.config/nmp/config.yaml`` and wires up OIDC token refresh.
 """
 
 from __future__ import annotations
@@ -22,8 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from importlib.metadata import entry_points
-from typing import Any, Protocol, runtime_checkable
+from typing import Any
 
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 
@@ -31,39 +24,6 @@ logger = logging.getLogger(__name__)
 
 _INTERNAL_REQUEST_HEADER = "X-NMP-Internal"
 _NMP_PRINCIPAL_ENVVAR = "NMP_PRINCIPAL"
-
-
-# ---------------------------------------------------------------------------
-# Protocol
-# ---------------------------------------------------------------------------
-
-
-@runtime_checkable
-class NemoClientProvider(Protocol):
-    """Contract for building authenticated NemoClient handles."""
-
-    def get_nemo_client(
-        self,
-        *,
-        as_service: str | None = None,
-        internal: bool = False,
-        on_behalf_of: str | None = None,
-    ) -> NemoClient:
-        """Build a sync NemoClient handle."""
-
-    def get_async_nemo_client(
-        self,
-        *,
-        as_service: str | None = None,
-        internal: bool = False,
-        on_behalf_of: str | None = None,
-    ) -> AsyncNemoClient:
-        """Build an async NemoClient handle."""
-
-
-# ---------------------------------------------------------------------------
-# Default provider (env-var based)
-# ---------------------------------------------------------------------------
 
 
 def _read_principal_from_env() -> dict[str, Any] | None:
@@ -79,120 +39,43 @@ def _read_principal_from_env() -> dict[str, Any] | None:
     return data
 
 
-class DefaultNemoClientProvider:
-    """Env-var-based provider that ships with the plugin package.
+def _build_headers(
+    *,
+    as_service: str | None = None,
+    internal: bool = False,
+    on_behalf_of: str | None = None,
+) -> dict[str, str]:
+    """Build X-NMP-* headers from env vars and explicit parameters."""
+    headers: dict[str, str] = {}
 
-    Reads ``NMP_BASE_URL`` and ``NMP_PRINCIPAL``.
-    """
+    if internal:
+        headers[_INTERNAL_REQUEST_HEADER] = "true"
 
-    def get_nemo_client(
-        self,
-        *,
-        as_service: str | None = None,
-        internal: bool = False,
-        on_behalf_of: str | None = None,
-    ) -> NemoClient:
-        headers = self._build_headers(as_service=as_service, internal=internal, on_behalf_of=on_behalf_of)
-        return NemoClient(base_url=self._base_url(), default_headers=headers or None)
+    if as_service is not None:
+        headers["X-NMP-Principal-Id"] = f"service:{as_service}"
+    else:
+        principal = _read_principal_from_env()
+        if principal is not None:
+            headers["X-NMP-Principal-Id"] = principal["id"]
+            if principal.get("email"):
+                headers["X-NMP-Principal-Email"] = principal["email"]
+            if principal.get("groups"):
+                headers["X-NMP-Principal-Groups"] = ",".join(principal["groups"])
+            if principal.get("on_behalf_of"):
+                headers["X-NMP-Principal-On-Behalf-Of"] = principal["on_behalf_of"]
+                if principal.get("on_behalf_of_email"):
+                    headers["X-NMP-Principal-On-Behalf-Of-Email"] = principal["on_behalf_of_email"]
+                if principal.get("on_behalf_of_groups"):
+                    headers["X-NMP-Principal-On-Behalf-Of-Groups"] = ",".join(principal["on_behalf_of_groups"])
 
-    def get_async_nemo_client(
-        self,
-        *,
-        as_service: str | None = None,
-        internal: bool = False,
-        on_behalf_of: str | None = None,
-    ) -> AsyncNemoClient:
-        headers = self._build_headers(as_service=as_service, internal=internal, on_behalf_of=on_behalf_of)
-        return AsyncNemoClient(base_url=self._base_url(), default_headers=headers or None)
+    if on_behalf_of is not None:
+        headers["X-NMP-Principal-On-Behalf-Of"] = on_behalf_of
 
-    @staticmethod
-    def _build_headers(
-        *,
-        as_service: str | None = None,
-        internal: bool = False,
-        on_behalf_of: str | None = None,
-    ) -> dict[str, str]:
-        headers: dict[str, str] = {}
-
-        if internal:
-            headers[_INTERNAL_REQUEST_HEADER] = "true"
-
-        if as_service is not None:
-            headers["X-NMP-Principal-Id"] = f"service:{as_service}"
-        else:
-            principal = _read_principal_from_env()
-            if principal is not None:
-                headers["X-NMP-Principal-Id"] = principal["id"]
-                if principal.get("email"):
-                    headers["X-NMP-Principal-Email"] = principal["email"]
-                if principal.get("groups"):
-                    headers["X-NMP-Principal-Groups"] = ",".join(principal["groups"])
-                if principal.get("on_behalf_of"):
-                    headers["X-NMP-Principal-On-Behalf-Of"] = principal["on_behalf_of"]
-                    if principal.get("on_behalf_of_email"):
-                        headers["X-NMP-Principal-On-Behalf-Of-Email"] = principal["on_behalf_of_email"]
-                    if principal.get("on_behalf_of_groups"):
-                        headers["X-NMP-Principal-On-Behalf-Of-Groups"] = ",".join(principal["on_behalf_of_groups"])
-
-        if on_behalf_of is not None:
-            headers["X-NMP-Principal-On-Behalf-Of"] = on_behalf_of
-
-        return headers
-
-    @staticmethod
-    def _base_url() -> str:
-        return os.environ.get("NMP_BASE_URL", "http://localhost:8080")
+    return headers
 
 
-# ---------------------------------------------------------------------------
-# Provider resolution
-# ---------------------------------------------------------------------------
-
-_cached_provider: NemoClientProvider | None = None
-
-
-def set_client_provider(provider: NemoClientProvider | None) -> None:
-    """Override the provider (primarily for tests).
-
-    Pass ``None`` to clear the override and fall back to entry-point
-    discovery on the next call.
-    """
-    global _cached_provider
-    _cached_provider = provider
-
-
-def _resolve_provider() -> NemoClientProvider:
-    global _cached_provider
-    if _cached_provider is not None:
-        return _cached_provider
-
-    eps = {ep.name: ep for ep in entry_points(group="nemo.client_provider")}
-    if len(eps) > 1:
-        names = ", ".join(eps)
-        raise RuntimeError(
-            f"Multiple NemoClient providers registered under 'nemo.client_provider': {names}. "
-            "Only one provider should be registered."
-        )
-    for ep in eps.values():
-        try:
-            obj = ep.load()
-            if isinstance(obj, type):
-                obj = obj()
-            if isinstance(obj, NemoClientProvider):
-                logger.debug("Using NemoClient provider from entry-point %r", ep.name)
-                _cached_provider = obj
-                return obj
-        except Exception:
-            logger.warning("Failed to load NemoClient provider %r; skipping", ep.name, exc_info=True)
-
-    logger.debug("No entry-point NemoClient provider found; using DefaultNemoClientProvider")
-    _cached_provider = DefaultNemoClientProvider()
-    return _cached_provider
-
-
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
+def _base_url() -> str:
+    return os.environ.get("NMP_BASE_URL", "http://localhost:8080")
 
 
 def get_nemo_client(
@@ -201,12 +84,13 @@ def get_nemo_client(
     internal: bool = False,
     on_behalf_of: str | None = None,
 ) -> NemoClient:
-    """Build a sync NemoClient for the current service context."""
-    return _resolve_provider().get_nemo_client(
-        as_service=as_service,
-        internal=internal,
-        on_behalf_of=on_behalf_of,
-    )
+    """Build a sync NemoClient for the current service context.
+
+    Reads ``NMP_BASE_URL`` (default ``http://localhost:8080``) and
+    ``NMP_PRINCIPAL`` from the environment.
+    """
+    headers = _build_headers(as_service=as_service, internal=internal, on_behalf_of=on_behalf_of)
+    return NemoClient(base_url=_base_url(), default_headers=headers or None)
 
 
 def get_async_nemo_client(
@@ -215,9 +99,10 @@ def get_async_nemo_client(
     internal: bool = False,
     on_behalf_of: str | None = None,
 ) -> AsyncNemoClient:
-    """Build an async NemoClient for the current service context."""
-    return _resolve_provider().get_async_nemo_client(
-        as_service=as_service,
-        internal=internal,
-        on_behalf_of=on_behalf_of,
-    )
+    """Build an async NemoClient for the current service context.
+
+    Reads ``NMP_BASE_URL`` (default ``http://localhost:8080``) and
+    ``NMP_PRINCIPAL`` from the environment.
+    """
+    headers = _build_headers(as_service=as_service, internal=internal, on_behalf_of=on_behalf_of)
+    return AsyncNemoClient(base_url=_base_url(), default_headers=headers or None)
