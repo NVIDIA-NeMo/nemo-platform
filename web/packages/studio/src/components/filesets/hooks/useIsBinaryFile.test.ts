@@ -6,63 +6,61 @@ import { renderHook } from '@testing-library/react';
 
 describe('useIsBinaryFile', () => {
   it('returns isBinary=false for .jsonl files', () => {
-    const { result } = renderHook(() =>
-      useIsBinaryFile('default', 'test-dataset', 'data/test.jsonl')
-    );
+    const { result } = renderHook(() => useIsBinaryFile('data/test.jsonl'));
 
     expect(result.current).toEqual({ isBinary: false, isLoading: false });
   });
 
   it('returns isBinary=false for .json files', () => {
-    const { result } = renderHook(() => useIsBinaryFile('default', 'test-dataset', 'config.json'));
+    const { result } = renderHook(() => useIsBinaryFile('config.json'));
 
     expect(result.current).toEqual({ isBinary: false, isLoading: false });
   });
 
   it('returns isBinary=false for .csv files', () => {
-    const { result } = renderHook(() => useIsBinaryFile('default', 'test-dataset', 'data.csv'));
+    const { result } = renderHook(() => useIsBinaryFile('data.csv'));
 
     expect(result.current).toEqual({ isBinary: false, isLoading: false });
   });
 
   it('returns isBinary=false for .py files', () => {
-    const { result } = renderHook(() => useIsBinaryFile('default', 'test-dataset', 'script.py'));
+    const { result } = renderHook(() => useIsBinaryFile('script.py'));
 
     expect(result.current).toEqual({ isBinary: false, isLoading: false });
   });
 
   it('returns isBinary=false for .yaml and .yml files', () => {
-    const { result } = renderHook(() => useIsBinaryFile('default', 'test-dataset', 'config.yaml'));
+    const { result } = renderHook(() => useIsBinaryFile('config.yaml'));
 
     expect(result.current).toEqual({ isBinary: false, isLoading: false });
   });
 
   it('returns isBinary=false for .md files', () => {
-    const { result } = renderHook(() => useIsBinaryFile('default', 'test-dataset', 'README.md'));
+    const { result } = renderHook(() => useIsBinaryFile('README.md'));
 
     expect(result.current).toEqual({ isBinary: false, isLoading: false });
   });
 
   it('returns isBinary=false when filePath is undefined', () => {
-    const { result } = renderHook(() => useIsBinaryFile('default', 'test-dataset', undefined));
+    const { result } = renderHook(() => useIsBinaryFile(undefined));
 
     expect(result.current).toEqual({ isBinary: false, isLoading: false });
   });
 
   it('returns isBinary=true for .png files (binary blocklist)', () => {
-    const { result } = renderHook(() => useIsBinaryFile('default', 'test-dataset', 'image.png'));
+    const { result } = renderHook(() => useIsBinaryFile('image.png'));
 
     expect(result.current).toEqual({ isBinary: true, isLoading: false });
   });
 
   it('returns isBinary=true for .zip files (binary blocklist)', () => {
-    const { result } = renderHook(() => useIsBinaryFile('default', 'test-dataset', 'archive.zip'));
+    const { result } = renderHook(() => useIsBinaryFile('archive.zip'));
 
     expect(result.current).toEqual({ isBinary: true, isLoading: false });
   });
 
   it('returns isBinary=false for unknown extensions (fail-open)', () => {
-    const { result } = renderHook(() => useIsBinaryFile('default', 'test-dataset', 'data.unknown'));
+    const { result } = renderHook(() => useIsBinaryFile('data.unknown'));
 
     expect(result.current).toEqual({ isBinary: false, isLoading: false });
   });

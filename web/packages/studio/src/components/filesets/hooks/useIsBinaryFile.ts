@@ -80,11 +80,10 @@ function isKnownTextExtension(path: string): boolean {
  * Returns `{ isBinary, isLoading }`. `isLoading` is always `false` since
  * detection is synchronous.
  */
-export function useIsBinaryFile(
-  _workspace: string,
-  _filesetName: string,
-  filePath: string | undefined
-): { isBinary: boolean; isLoading: boolean } {
+export function useIsBinaryFile(filePath: string | undefined): {
+  isBinary: boolean;
+  isLoading: boolean;
+} {
   if (!filePath) return { isBinary: false, isLoading: false };
   if (isKnownTextExtension(filePath)) return { isBinary: false, isLoading: false };
   if (isBinaryExtension(filePath)) return { isBinary: true, isLoading: false };
