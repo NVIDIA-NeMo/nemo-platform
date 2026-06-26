@@ -7,6 +7,7 @@ import {
   CLAUDE_CODE_JOB_PROGRESS_TOOL_NAME,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/jobProgressConsts';
 import {
+  CLAUDE_CODE_COLLAPSED_STUDIO_DETAILS_TOOL_NAME,
   CLAUDE_CODE_COLLAPSED_THINKING_TOOL_NAME,
   CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
@@ -97,6 +98,49 @@ const expectLineChangeColors = ({
 };
 
 describe('ClaudeCodeToolCallPart', () => {
+  it('renders Studio summary details behind a worked-for disclosure', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ClaudeCodeToolCallPart
+        addResult={vi.fn()}
+        args={{
+          label: 'worked for 42s',
+          parts: [
+            { type: 'text', text: 'I inspected the prompt builder.' },
+            {
+              type: 'tool-call',
+              args: { command: 'pwd' },
+              argsText: '{"command":"pwd"}',
+              toolCallId: 'toolu_bash',
+              toolName: 'Bash',
+            },
+          ],
+        }}
+        argsText=""
+        resume={vi.fn()}
+        status={{ type: 'complete' }}
+        toolCallId="claude-code-collapsed-studio-details"
+        toolName={CLAUDE_CODE_COLLAPSED_STUDIO_DETAILS_TOOL_NAME}
+        type="tool-call"
+      />
+    );
+
+    const disclosure = screen.getByTestId('claude-code-collapsed-studio-details');
+    expect(disclosure).toHaveTextContent('worked for 42s');
+    expect(disclosure).not.toHaveAttribute('open');
+    expect(screen.getByTestId('claude-code-collapsed-studio-details-content')).toHaveTextContent(
+      'I inspected the prompt builder.'
+    );
+    expect(screen.getByTestId('claude-code-collapsed-studio-details-content')).toHaveTextContent(
+      'Ran pwd'
+    );
+
+    await user.click(screen.getByText('worked for 42s'));
+
+    expect(disclosure).toHaveAttribute('open');
+  });
+
   it('renders collapsed thinking as an expandable subtle disclosure', async () => {
     const user = userEvent.setup();
 

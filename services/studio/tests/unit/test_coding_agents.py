@@ -632,6 +632,24 @@ def test_build_studio_system_prompt_preserves_empty_enabled_destinations():
     assert destinations_line == "Enabled Studio link destinations for this Studio instance: ."
 
 
+def test_build_studio_system_prompt_includes_message_summary_contract():
+    prompt = coding_agents._build_studio_system_prompt(
+        "default",
+        "https://studio.test",
+        "/workspaces/default/dashboard/code-agent",
+        {},
+    )
+
+    assert "Required message-summary behavior:" in prompt
+    assert coding_agents.STUDIO_MESSAGE_SUMMARY_START in prompt
+    assert coding_agents.STUDIO_MESSAGE_SUMMARY_END in prompt
+    assert "worked_for: <elapsed time if you know it, otherwise unknown>" in prompt
+    assert "summary: <1-3 short sentences" in prompt
+    assert "details_label: worked for <same elapsed time or unknown>" in prompt
+    assert "behind a 'worked for <time>' accordion" in prompt
+    assert "Do not omit the summary block because the message is short." in prompt
+
+
 def test_studio_link_destinations_cover_registered_workspace_routes():
     repo_root = Path(__file__).resolve().parents[4]
     routes_index = (repo_root / "web/packages/studio/src/routes/index.tsx").read_text()

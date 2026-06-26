@@ -61,6 +61,8 @@ SERVER_CWD = Path(os.getcwd()).resolve()
 STUDIO_CONTEXT_START = "<nemo_studio_context>"
 STUDIO_CONTEXT_END = "</nemo_studio_context>"
 STUDIO_CONTEXT_USER_REQUEST_PREFIX = "User request:"
+STUDIO_MESSAGE_SUMMARY_START = "<<<NEMO_STUDIO_MESSAGE_SUMMARY_V1>>>"
+STUDIO_MESSAGE_SUMMARY_END = "<<<END_NEMO_STUDIO_MESSAGE_SUMMARY_V1>>>"
 
 
 class NewSessionResponse(BaseModel):
@@ -294,6 +296,18 @@ def _build_studio_system_prompt(
         "For finite choices that have no dedicated Studio picker (for example deployments, jobs, or next actions) and for yes/no or multiple-choice clarifications, use Claude Code's AskUserQuestion tool so Studio can render clickable options instead of asking the user to type.",
         "For AskUserQuestion, provide input shaped as {'questions': [{'header': '<short title>', 'question': '<what should the user choose?>', 'options': [{'label': '<option>', 'description': '<short impact/details>'}]}]}.",
         "If you need both a finite choice and free-form text, ask multiple AskUserQuestion questions: first the finite options, then a text question without options.",
+        "Required message-summary behavior:",
+        "At the end of every assistant message to the user, include a short Studio summary block after your normal detailed work.",
+        f"Start the summary block on its own line with {STUDIO_MESSAGE_SUMMARY_START} and end it on its own line with {STUDIO_MESSAGE_SUMMARY_END}.",
+        "Inside the summary block, use exactly these fields on separate lines:",
+        "worked_for: <elapsed time if you know it, otherwise unknown>",
+        "summary: <1-3 short sentences, at most 60 words, describing the user-visible result and current state>",
+        "details_label: worked for <same elapsed time or unknown>",
+        "Keep detailed explanation, command output, tool logs, diffs, and step-by-step work outside the summary block and before it.",
+        "Do not put raw command output, code diffs, tool logs, or long reasoning inside the summary block.",
+        "Studio will use this block to collapse everything before it behind a 'worked for <time>' accordion and show only the short summary by default.",
+        "When you are interrupted by a permission request, input request, or need to ask the user something, still include the summary block describing what happened so far and what you need next.",
+        "Do not omit the summary block because the message is short.",
         "Prefer NeMo Studio MCP tools and Studio views over CLI commands for user-facing follow-up actions, navigation, inspection, and status/result review.",
         "Do not tell the user to run nemo CLI commands, shell commands, curl commands, or status commands to inspect agents, jobs, evaluations, filesets, models, traces, logs, or results when a Studio view, Studio link, or Studio progress card is available for the same purpose.",
         "Use CLI commands only to perform work that has no Studio UI equivalent, when the user explicitly asks for CLI/debugging, or when you must gather data that Studio tools cannot provide.",
