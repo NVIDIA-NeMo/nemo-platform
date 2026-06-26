@@ -261,12 +261,12 @@ func runExec(args []string, stdinReader io.Reader) (int, error) {
 
 	// Wait for all output to be read before calling cmd.Wait().
 	// cmd.Wait() closes stdout/stderr pipes, so readers must finish first.
-	// With the synchronous log processor, each log record is fully exported
-	// (HTTP request completed) before slog.Log returns, so once the readers
-	// finish all logs have already been delivered to the server.
+	// Once readers finish, all log records have been submitted to the OTEL
+	// batch processor. The deferred otelShutdown in runExecWithStdin flushes
+	// remaining batches before the process exits.
 	wg.Wait()
 
-	// Now that all output has been read and exported, wait for the process to finish.
+	// Now that all output has been read, wait for the process to finish.
 	err = cmd.Wait()
 
 	exitCode := cmd.ProcessState.ExitCode()
