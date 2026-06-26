@@ -131,24 +131,32 @@ Create a HuggingFace-backed fileset for the private model, then register a Model
 ```python
 HF_REPO_ID = "google/gemma-2-2b-it"
 MODEL_NAME = "gemma-2-2b-it"
+model_storage = HuggingfaceStorageConfigParam(
+    type="huggingface",
+    repo_id=HF_REPO_ID,
+    repo_type="model",
+    token_secret=hf_secret.name,
+)
 
 try:
     base_model_fs = client.files.filesets.create(
         workspace="default",
         name=MODEL_NAME,
         description=f"Private HuggingFace model {HF_REPO_ID}",
-        storage=HuggingfaceStorageConfigParam(
-            type="huggingface",
-            repo_id=HF_REPO_ID,
-            repo_type="model",
-            token_secret=hf_secret.name,
-        ),
+        storage=model_storage,
         cache=True,
     )
     print(f"Created model fileset: {base_model_fs.name}")
 except ConflictError:
-    print(f"Model fileset '{MODEL_NAME}' already exists, continuing...")
-    base_model_fs = client.files.filesets.retrieve(workspace="default", name=MODEL_NAME)
+    print(f"Model fileset '{MODEL_NAME}' already exists, refreshing HuggingFace settings...")
+    client.files.filesets.delete(workspace="default", name=MODEL_NAME)
+    base_model_fs = client.files.filesets.create(
+        workspace="default",
+        name=MODEL_NAME,
+        description=f"Private HuggingFace model {HF_REPO_ID}",
+        storage=model_storage,
+        cache=True,
+    )
 
 try:
     base_model = client.models.create(
@@ -175,6 +183,12 @@ while not base_model.spec:
 
 if base_model.spec:
     base_model.spec.linear_layers = None
+    base_model = client.models.update(
+        workspace="default",
+        name=MODEL_NAME,
+        spec=base_model.spec,
+        verbose=True,
+    )
 print(base_model.model_dump_json(indent=2))
 ```
 
