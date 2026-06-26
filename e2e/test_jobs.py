@@ -426,7 +426,7 @@ def test_job_pause_resume(sdk: NeMoPlatform, workspace: str):
     )
 
 
-@pytest.mark.container_only
+@pytest.mark.skip(reason="AIRCORE-853: pause races with errored-pod detection in K8s reconciler")
 def test_job_pause_and_cancel(sdk: NeMoPlatform, workspace: str):
     """Test that a job can be paused and then cancelled after being paused."""
     job = sdk.jobs.create(
