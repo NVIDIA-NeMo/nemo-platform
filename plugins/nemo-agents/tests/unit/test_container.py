@@ -607,7 +607,14 @@ class TestValidateAgentConfig:
     def test_known_workflow_types_pass(self, tmp_path: Path) -> None:
         from nemo_agents_plugin.container.validator import validate_agent_config
 
-        for wf_type in ("codex_agent", "react_agent", "tool_calling_agent", "reasoning_agent", "rewoo_agent"):
+        for wf_type in (
+            "codex_agent",
+            "cursor_agent",
+            "react_agent",
+            "tool_calling_agent",
+            "reasoning_agent",
+            "rewoo_agent",
+        ):
             p = tmp_path / f"{wf_type}.yaml"
             p.write_text(f"workflow:\n  _type: {wf_type}\n")
             result = validate_agent_config(p)
