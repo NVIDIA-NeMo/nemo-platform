@@ -9,7 +9,6 @@ Ported from Platform-Deploy e2e/test_jobs.py, adapted for the SDK's TypedDict
 param types and filtered to tests that work without Docker.
 """
 
-import os
 import uuid
 
 import pytest
@@ -376,11 +375,7 @@ def test_job_cancel_once_active(sdk: NeMoPlatform, workspace: str):
 # Tests that require a container backend (Docker or Kubernetes)
 # ---------------------------------------------------------------------------
 
-_is_subprocess_mode = not os.environ.get("NMP_BASE_URL")
-_skip_subprocess = pytest.mark.skipif(_is_subprocess_mode, reason="Requires container backend (set NMP_BASE_URL)")
-
-
-@_skip_subprocess
+@pytest.mark.container_only
 def test_job_pause_resume(sdk: NeMoPlatform, workspace: str):
     """Test that a job can be paused and then resumed after being paused."""
     job = sdk.jobs.create(
@@ -427,7 +422,7 @@ def test_job_pause_resume(sdk: NeMoPlatform, workspace: str):
     )
 
 
-@_skip_subprocess
+@pytest.mark.container_only
 def test_job_pause_and_cancel(sdk: NeMoPlatform, workspace: str):
     """Test that a job can be paused and then cancelled after being paused."""
     job = sdk.jobs.create(
@@ -514,7 +509,7 @@ def test_job_using_additional_volume(sdk: NeMoPlatform, workspace: str):
     assert "Successfully read data from persistent storage" in step_logs.data[2].message
 
 
-@_skip_subprocess
+@pytest.mark.container_only
 @pytest.mark.parametrize("bad_image", ["__invalid_ubuntu:image", "ubuntu:does-not-exist-1234"])
 def test_job_invalid_image_format(sdk: NeMoPlatform, workspace: str, bad_image: str):
     """Test that a job with a bad image fails appropriately."""

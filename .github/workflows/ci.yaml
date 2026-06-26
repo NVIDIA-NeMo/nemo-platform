@@ -500,8 +500,7 @@ jobs:
           test -n "${NMP_E2E_CLUSTER_URL}"
           export NMP_BASE_URL="${NMP_E2E_CLUSTER_URL}"
           uv run --frozen pytest \
-            e2e/test_jobs.py \
-            e2e/test_data_designer.py \
+            e2e \
             -v \
             --run-e2e \
             --no-cov \
