@@ -1,14 +1,14 @@
 # syntax=docker/dockerfile:1
 #######
-# Mamba Wheel Builder
+# Python Wheel Builder
 #
 # Builds Python wheels for:
 #   - causal-conv1d (CUDA extension required by mamba-ssm)
 #   - mamba-ssm     (selective state space model)
+#   - av + opencv-python-headless (FFmpeg 8.1.2 bundled wheels for nspect / VLM)
 #
-# Both only ship source distributions on PyPI and require nvcc to compile.
-# The two builds are independent stages so BuildKit runs them in parallel.
-# Each image stores its wheel at /wheels/*.whl.
+# causal-conv1d / mamba-ssm only ship source on PyPI and require nvcc.
+# av / opencv wheels bundle FFmpeg; upstream PyPI wheels lag nspect 8.1.2.
 # Build via the nmp-automodel-gpu-wheels bake group.
 #
 # Build args:
@@ -16,6 +16,9 @@
 #   MAMBA_22_COMMIT        - git SHA or tag to build
 #   CUDA_VERSION           - CUDA devel image version      (default: 12.8.1)
 #   TORCH_CUDA_ARCH_LIST   - semicolon-separated SM targets (default: "8.0;8.6;9.0")
+#   FFMPEG_VERSION         - FFmpeg for av/opencv wheels   (default: 8.1.2)
+#   PYAV_VERSION           - PyAV git tag                  (default: v17.1.0)
+#   OPENCV_PYTHON_GIT_TAG   - opencv-python git tag (92 = PyPI 4.13.0.92)
 #######
 
 ARG CUDA_VERSION=12.8.1
@@ -271,3 +274,85 @@ COPY --from=mamba-ssm-25-wheel-builder-py312 /wheels /wheels
 COPY --from=mamba-ssm-23-wheel-builder-py312 /wheels /wheels
 COPY --from=mamba-ssm-23-wheel-builder-py312-cu13.1.1 /wheels /wheels/cu13.1.1
 COPY --from=mamba-ssm-23-wheel-builder-py312-cu13.2 /wheels /wheels/cu13.2
+
+# =============================================================================
+# FFmpeg / VLM wheels (manylinux_2_28, cp312) — av + opencv-python-headless
+# =============================================================================
+FROM quay.io/pypa/manylinux_2_28_x86_64:latest AS ffmpeg-vendor-base-py312-amd64
+FROM quay.io/pypa/manylinux_2_28_aarch64:latest AS ffmpeg-vendor-base-py312-arm64
+
+ARG TARGETARCH
+FROM ffmpeg-vendor-base-py312-${TARGETARCH} AS ffmpeg-vendor-base-py312
+
+ARG FFMPEG_VERSION=8.1.2
+
+ENV FFMPEG_VERSION=${FFMPEG_VERSION} \
+    FFMPEG_PREFIX=/ffmpeg_build \
+    PKG_CONFIG_PATH=/ffmpeg_build/lib/pkgconfig:/usr/local/lib/pkgconfig \
+    LD_LIBRARY_PATH=/ffmpeg_build/lib:${LD_LIBRARY_PATH:-}
+
+RUN yum install -y \
+    curl \
+    git \
+    nasm \
+    yasm \
+    openssl-devel \
+    pkgconfig \
+    && yum clean all
+
+COPY docker/base/build-ffmpeg-vendor.sh /usr/local/bin/build-ffmpeg-vendor.sh
+RUN chmod +x /usr/local/bin/build-ffmpeg-vendor.sh && \
+    build-ffmpeg-vendor.sh
+
+# =============================================================================
+# av wheel — PyAV against shared FFmpeg 8.1.2
+# =============================================================================
+FROM ffmpeg-vendor-base-py312 AS av-wheel-builder-py312
+
+ARG PYAV_VERSION=v17.1.0
+
+ENV PKG_CONFIG_PATH=/ffmpeg_build/lib/pkgconfig \
+    LD_LIBRARY_PATH=/ffmpeg_build/lib:${LD_LIBRARY_PATH:-}
+
+RUN mkdir -p /wheels /tmp/wheelhouse && \
+    /opt/python/cp312-cp312/bin/pip install -U "pip<26" "cython>=3.1,<4" "numpy>=2.0" auditwheel && \
+    git clone --depth 1 --branch ${PYAV_VERSION} https://github.com/PyAV-Org/PyAV.git /src/PyAV && \
+    cd /src/PyAV && \
+    /opt/python/cp312-cp312/bin/pip wheel . --no-deps -w /tmp/wheelhouse && \
+    auditwheel repair /tmp/wheelhouse/av-*.whl -w /wheels && \
+    rm -rf /src/PyAV /tmp/wheelhouse
+
+# =============================================================================
+# opencv-python-headless wheel — opencv-python 4.13 against shared FFmpeg 8.1.2
+# =============================================================================
+FROM ffmpeg-vendor-base-py312 AS opencv-headless-wheel-builder-py312
+
+ARG OPENCV_PYTHON_GIT_TAG=92
+
+ENV CI_BUILD=1 \
+    ENABLE_HEADLESS=1 \
+    PKG_CONFIG_PATH=/ffmpeg_build/lib/pkgconfig:/usr/local/lib/pkgconfig \
+    LD_LIBRARY_PATH=/ffmpeg_build/lib:${LD_LIBRARY_PATH:-} \
+    LDFLAGS=-L/ffmpeg_build/lib
+
+RUN yum install -y \
+    zlib-devel \
+    libjpeg-turbo-devel \
+    && yum clean all
+
+RUN mkdir -p /wheels /tmp/wheelhouse && \
+    /opt/python/cp312-cp312/bin/pip install -U "pip<26" "numpy>=2.0" auditwheel && \
+    git clone --depth 1 --branch ${OPENCV_PYTHON_GIT_TAG} https://github.com/opencv/opencv-python.git /src/opencv-python && \
+    cd /src/opencv-python && \
+    git submodule update --init --recursive opencv && \
+    OPENCV_PYTHON_SKIP_GIT_COMMANDS=1 \
+    /opt/python/cp312-cp312/bin/pip wheel . --no-deps -w /tmp/wheelhouse && \
+    auditwheel repair /tmp/wheelhouse/opencv_python_headless-*.whl -w /wheels && \
+    rm -rf /src/opencv-python /tmp/wheelhouse
+
+# The final ffmpeg-vlm-wheel image contains (one arch per platform build):
+#   - av-*-cp311-abi3-manylinux_2_28_*.whl  (PyAV stable ABI; works on cp312)
+#   - opencv_python_headless-*-cp312-*.whl
+FROM scratch AS ffmpeg-vlm-wheel
+COPY --from=av-wheel-builder-py312 /wheels /wheels
+COPY --from=opencv-headless-wheel-builder-py312 /wheels /wheels

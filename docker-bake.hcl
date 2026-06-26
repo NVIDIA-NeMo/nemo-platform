@@ -52,6 +52,10 @@ variable "MAMBA_SSM_WHEEL_CONTEXT" {
   default = ""
 }
 
+variable "FFMPEG_VLM_WHEEL_CONTEXT" {
+  default = ""
+}
+
 variable "DISTROLESS_BASE" {
   default = "nvcr.io/nvidia/distroless/python:3.11-v4.0.8"
 }
@@ -75,12 +79,12 @@ variable "BASE_TAG_PYTHON" {
 
 # Pin for nmp-automodel-base.
 variable "BASE_TAG_AUTOMODEL" {
-  default = "f8239353044d71cbd53e209b60c0600ead484b58"
+  default = "f0756dd64eaf2ddb9c5c962e18216b2e70ba4b64"
 }
 
 # The tag for base images if needed
 variable "WHEELS_TAG" {
-  default = "65632527b258367fb8855ef431f596abb8538577"
+  default = "f0756dd64eaf2ddb9c5c962e18216b2e70ba4b64"
 }
 
 variable "BAKE_CACHE_SOURCE_BRANCH" {
@@ -138,6 +142,11 @@ function "get_mamba_ssm_wheel_image" {
   result = "${WHEELS_REGISTRY}/mamba-ssm-wheel:${WHEELS_TAG}"
 }
 
+function "get_ffmpeg_vlm_wheel_image" {
+  params = []
+  result = "${WHEELS_REGISTRY}/ffmpeg-vlm-wheel:${WHEELS_TAG}"
+}
+
 function "get_arch_tag" {
   params = []
   result = BUILD_ARCH == "linux/arm64" ? "linux-arm64" : "linux-amd64"
@@ -173,6 +182,11 @@ function "causal_conv1d_wheel_context" {
 function "mamba_ssm_wheel_context" {
   params = []
   result = notequal(MAMBA_SSM_WHEEL_CONTEXT, "") ? MAMBA_SSM_WHEEL_CONTEXT : notequal(USE_LOCAL_WHEELS, "") ? "target:mamba-ssm-wheel" : "docker-image://${get_mamba_ssm_wheel_image()}"
+}
+
+function "ffmpeg_vlm_wheel_context" {
+  params = []
+  result = notequal(FFMPEG_VLM_WHEEL_CONTEXT, "") ? FFMPEG_VLM_WHEEL_CONTEXT : notequal(USE_LOCAL_WHEELS, "") ? "target:ffmpeg-vlm-wheel" : "docker-image://${get_ffmpeg_vlm_wheel_image()}"
 }
 
 function "wheel_tags" {
@@ -293,6 +307,7 @@ group "nmp-automodel-gpu-wheels" {
   targets = [
     "causal-conv1d-wheel",
     "mamba-ssm-wheel",
+    "ffmpeg-vlm-wheel",
   ]
 }
 
@@ -500,15 +515,14 @@ target "nmp-cpu-tasks-docker" {
   platforms  = get_platforms()
 }
 
-# Mamba Wheel Builders
-# Builds Python wheels for mamba-ssm and causal-conv1d in parallel.
-# Both only ship source distributions on PyPI; this pre-builds them for
-# amd64 and arm64. The wheels live at /wheels/*.whl inside the image.
+# Python wheel builders (causal-conv1d, mamba-ssm, av, opencv-python-headless).
+# CUDA extensions only ship source on PyPI; av/opencv bundle FFmpeg. Pre-built for
+# amd64 and arm64. Wheels live at /wheels/*.whl inside each image.
 
 target "causal-conv1d-wheel" {
   target     = "causal-conv1d-wheel"
   context    = "."
-  dockerfile = "docker/base/Dockerfile.mamba-wheel"
+  dockerfile = "docker/base/Dockerfile.python-wheels"
   cache-to   = maybe_registry_cache_to("causal-conv1d-wheel")
   cache-from = maybe_registry_cache_from("causal-conv1d-wheel")
   tags       = wheel_tags("causal-conv1d-wheel")
@@ -523,7 +537,7 @@ target "causal-conv1d-wheel" {
 target "mamba-ssm-wheel" {
   target     = "mamba-ssm-wheel"
   context    = "."
-  dockerfile = "docker/base/Dockerfile.mamba-wheel"
+  dockerfile = "docker/base/Dockerfile.python-wheels"
   cache-to   = maybe_registry_cache_to("mamba-ssm-wheel")
   cache-from = maybe_registry_cache_from("mamba-ssm-wheel")
   tags       = wheel_tags("mamba-ssm-wheel")
@@ -534,6 +548,17 @@ target "mamba-ssm-wheel" {
     MAMBA_23_COMMIT = MAMBA_23_COMMIT
   }
   platforms = get_platforms()
+}
+
+target "ffmpeg-vlm-wheel" {
+  target     = "ffmpeg-vlm-wheel"
+  context    = "."
+  dockerfile = "docker/base/Dockerfile.python-wheels"
+  cache-to   = maybe_registry_cache_to("ffmpeg-vlm-wheel")
+  cache-from = maybe_registry_cache_from("ffmpeg-vlm-wheel")
+  tags       = wheel_tags("ffmpeg-vlm-wheel")
+  output     = image_output()
+  platforms  = get_platforms()
 }
 
 
@@ -698,7 +723,7 @@ target "automodel-platform-workspace" {
 target "nmp-automodel-base-builder" {
   target          = "nmp-automodel-base"
   context         = "."
-  dockerfile      = "docker/Dockerfile.nmp-automodel-base"
+  dockerfile      = "docker/automodel/Dockerfile.nmp-automodel-base"
   no-cache-filter = ["automodel-clone"]
   cache-to        = maybe_registry_cache_to("nmp-automodel-base")
   cache-from      = maybe_registry_cache_from("nmp-automodel-base")
@@ -707,6 +732,7 @@ target "nmp-automodel-base-builder" {
   contexts = {
     causal-conv1d-wheel-image = causal_conv1d_wheel_context()
     mamba-ssm-wheel-image     = mamba_ssm_wheel_context()
+    ffmpeg-vlm-wheel-image    = ffmpeg_vlm_wheel_context()
   }
   platforms = get_platforms()
 }
@@ -714,7 +740,7 @@ target "nmp-automodel-base-builder" {
 target "nmp-automodel-tasks-docker" {
   target     = "runtime"
   context    = "."
-  dockerfile = "docker/Dockerfile.nmp-automodel-tasks"
+  dockerfile = "docker/automodel/Dockerfile.nmp-automodel-tasks"
   contexts = {
     platform-workspace = "target:automodel-platform-workspace"
     nmp-automodel-base = automodel_base_context()
@@ -729,7 +755,7 @@ target "nmp-automodel-tasks-docker" {
 target "nmp-automodel-training-docker" {
   target     = "runtime"
   context    = "."
-  dockerfile = "docker/Dockerfile.nmp-automodel-training"
+  dockerfile = "docker/automodel/Dockerfile.nmp-automodel-training"
   contexts = {
     platform-workspace = "target:automodel-platform-workspace"
     nmp-automodel-base = automodel_base_context()
@@ -744,7 +770,7 @@ target "nmp-automodel-training-docker" {
 target "nmp-automodel-tasks-smoke-test" {
   target     = "smoke-test"
   context    = "."
-  dockerfile = "docker/Dockerfile.nmp-automodel-tasks"
+  dockerfile = "docker/automodel/Dockerfile.nmp-automodel-tasks"
   contexts = {
     platform-workspace = "target:automodel-platform-workspace"
     nmp-automodel-base = automodel_base_context()
@@ -760,7 +786,7 @@ target "nmp-automodel-tasks-smoke-test" {
 target "nmp-automodel-training-smoke-test" {
   target     = "smoke-test"
   context    = "."
-  dockerfile = "docker/Dockerfile.nmp-automodel-training"
+  dockerfile = "docker/automodel/Dockerfile.nmp-automodel-training"
   contexts = {
     platform-workspace = "target:automodel-platform-workspace"
     nmp-automodel-base = automodel_base_context()
