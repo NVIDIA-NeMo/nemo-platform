@@ -30,9 +30,11 @@ describe('useIsBinaryFile', () => {
   });
 
   it('returns isBinary=false for .yaml and .yml files', () => {
-    const { result } = renderHook(() => useIsBinaryFile('config.yaml'));
+    const { result: yamlResult } = renderHook(() => useIsBinaryFile('config.yaml'));
+    const { result: ymlResult } = renderHook(() => useIsBinaryFile('config.yml'));
 
-    expect(result.current).toEqual({ isBinary: false, isLoading: false });
+    expect(yamlResult.current).toEqual({ isBinary: false, isLoading: false });
+    expect(ymlResult.current).toEqual({ isBinary: false, isLoading: false });
   });
 
   it('returns isBinary=false for .md files', () => {
