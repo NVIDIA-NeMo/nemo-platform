@@ -12,7 +12,7 @@ BASE_IMAGE_NAME = "nmp-automodel-base"
 TASKS_IMAGE_NAME = "nmp-automodel-tasks"
 TRAINING_IMAGE_NAME = "nmp-automodel-training"
 
-# Must match ENTRYPOINT in Dockerfile.nmp-automodel-{tasks,training}.
+# Must match ENTRYPOINT in docker/automodel/Dockerfile.nmp-automodel-{tasks,training}.
 # Job specs must set this explicitly: Docker API create() replaces the image
 # entrypoint when the platform passes entrypoint=[].
 AUTOMODEL_PYTHON_ENTRYPOINT = ["/opt/venv/bin/python"]

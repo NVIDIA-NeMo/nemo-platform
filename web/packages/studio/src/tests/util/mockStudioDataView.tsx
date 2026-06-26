@@ -101,7 +101,7 @@ function MockRowActionsCell<DataType>({
   const items = rowActions(row) as RowMenuItem[];
 
   return (
-    <div onClick={(e) => e.stopPropagation()}>
+    <>
       <button
         type="button"
         aria-label="Actions"
@@ -115,13 +115,13 @@ function MockRowActionsCell<DataType>({
         Actions
       </button>
       {open ? (
-        <ul role="menu" onClick={(e) => e.stopPropagation()}>
+        <ul>
           {items.map((item, i) => {
             if (item.kind === 'divider') {
-              return <li key={i} role="presentation" />;
+              return <li key={i} />;
             }
             return (
-              <li key={i} role="presentation">
+              <li key={i}>
                 <button
                   type="button"
                   role="menuitem"
@@ -139,7 +139,7 @@ function MockRowActionsCell<DataType>({
           })}
         </ul>
       ) : null}
-    </div>
+    </>
   );
 }
 

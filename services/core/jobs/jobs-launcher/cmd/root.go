@@ -23,4 +23,9 @@ func Execute() {
 		logger.Printf("Command execution failed: %v", err)
 		os.Exit(1)
 	}
+	// os.Exit here instead of in the cobra Run callback so that deferred
+	// functions (OTEL shutdown / log flush) in runExecWithStdin run first.
+	if launcherExitCode != 0 {
+		os.Exit(launcherExitCode)
+	}
 }

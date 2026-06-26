@@ -110,9 +110,14 @@ NGC_API_KEY_ENV = "NGC_API_KEY"
 
 @pytest.fixture
 def ngc_api_key() -> str:
-    """Return the NGC API key from the environment."""
-    key = os.environ.get(NGC_API_KEY_ENV)
-    assert key, f"{NGC_API_KEY_ENV} must be set"
+    """Return the NGC API key from the environment.
+
+    Skips the test when the key is missing or set to a CI placeholder
+    value (e.g. ``not-used-for-ghcr-cpu-*``).
+    """
+    key = os.environ.get(NGC_API_KEY_ENV, "")
+    if not key or key.startswith("not-used"):
+        pytest.skip(f"{NGC_API_KEY_ENV} not set or is a placeholder")
     return key
 
 

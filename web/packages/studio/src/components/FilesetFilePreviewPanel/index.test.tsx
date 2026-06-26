@@ -3,7 +3,7 @@
 
 import { FilesetFilePreviewPanel } from '@studio/components/FilesetFilePreviewPanel';
 import { TestProviders } from '@studio/tests/util/TestProviders';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 // Mock the useWorkers hook since FileActions uses it
 vi.mock('@studio/providers/workers/useWorkers', () => ({
@@ -208,7 +208,7 @@ describe('FilesetFilePreviewPanel', () => {
     expect(codeEditor).toBeInTheDocument();
   });
 
-  it('calls onFolderClick when folder breadcrumb is clicked', () => {
+  it('calls onFolderClick when folder breadcrumb is clicked', async () => {
     const onFolderClick = vi.fn();
     const props = {
       ...defaultProps,
@@ -222,14 +222,17 @@ describe('FilesetFilePreviewPanel', () => {
       </TestProviders>
     );
 
-    // Click on the first folder breadcrumb
+    // Click on the first folder breadcrumb. Navigation is deferred until the
+    // panel's close animation finishes, so the callback fires asynchronously.
     const folder1Breadcrumb = screen.getByText('folder1');
     fireEvent.click(folder1Breadcrumb);
 
-    expect(onFolderClick).toHaveBeenCalledWith('folder1');
+    // Navigation must not fire synchronously — it waits for the close animation.
+    expect(onFolderClick).not.toHaveBeenCalled();
+    await waitFor(() => expect(onFolderClick).toHaveBeenCalledWith('folder1'));
   });
 
-  it('calls onFolderClick with correct path for nested folders', () => {
+  it('calls onFolderClick with correct path for nested folders', async () => {
     const onFolderClick = vi.fn();
     const props = {
       ...defaultProps,
@@ -243,11 +246,13 @@ describe('FilesetFilePreviewPanel', () => {
       </TestProviders>
     );
 
-    // Click on the second folder breadcrumb
+    // Click on the second folder breadcrumb (navigation deferred until close).
     const folder2Breadcrumb = screen.getByText('folder2');
     fireEvent.click(folder2Breadcrumb);
 
-    expect(onFolderClick).toHaveBeenCalledWith('folder1/folder2');
+    // Navigation must not fire synchronously — it waits for the close animation.
+    expect(onFolderClick).not.toHaveBeenCalled();
+    await waitFor(() => expect(onFolderClick).toHaveBeenCalledWith('folder1/folder2'));
   });
 
   it('does not make file breadcrumb clickable', () => {
@@ -269,7 +274,7 @@ describe('FilesetFilePreviewPanel', () => {
     expect(fileBreadcrumb.tagName).toBe('SPAN');
   });
 
-  it('calls onFilesetClick when fileset breadcrumb is clicked', () => {
+  it('calls onFilesetClick when fileset breadcrumb is clicked', async () => {
     const onFilesetClick = vi.fn();
     const props = {
       ...defaultProps,
@@ -282,9 +287,12 @@ describe('FilesetFilePreviewPanel', () => {
       </TestProviders>
     );
 
+    // Navigation is deferred until the panel's close animation finishes.
     const filesetBreadcrumb = screen.getByText('test-dataset');
     fireEvent.click(filesetBreadcrumb);
 
-    expect(onFilesetClick).toHaveBeenCalledTimes(1);
+    // Navigation must not fire synchronously — it waits for the close animation.
+    expect(onFilesetClick).not.toHaveBeenCalled();
+    await waitFor(() => expect(onFilesetClick).toHaveBeenCalledTimes(1));
   });
 });

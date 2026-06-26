@@ -76,7 +76,12 @@ export const Nebula = ({
       className={`relative size-full min-h-[200px] min-w-[200px] ${className}`}
       data-testid="nv-nebula"
     >
-      <canvas ref={handleRef} className="pointer-events-none absolute inset-[0]" />
+      <canvas
+        ref={handleRef}
+        className="pointer-events-none absolute inset-[0]"
+        aria-hidden="true"
+        tabIndex={-1}
+      />
     </div>
   );
 };
