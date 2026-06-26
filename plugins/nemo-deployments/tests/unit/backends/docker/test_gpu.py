@@ -120,3 +120,25 @@ def test_get_shared_gpu_pool_recovers_running_allocations() -> None:
     assert pool.gpu_to_workload_id[0] == "smoke/srv"
     assert pool.gpu_to_workload_id[1] is None
     gpu_module._pool = None
+
+
+def test_get_shared_gpu_pool_retries_after_recovery_failure() -> None:
+    gpu_module._pool = None
+    mock_client = MagicMock()
+    mock_client.containers.list.side_effect = RuntimeError("docker unavailable")
+
+    with (
+        patch.object(gpu_module, "detect_gpu_device_ids", return_value=[0, 1]),
+        patch("docker.from_env", return_value=mock_client),
+    ):
+        assert get_shared_gpu_pool() is None
+        assert gpu_module._pool is None
+
+        mock_client.containers.list.side_effect = None
+        mock_client.containers.list.return_value = []
+
+        pool = get_shared_gpu_pool()
+
+    assert pool is not None
+    assert pool.gpu_to_workload_id == {0: None, 1: None}
+    gpu_module._pool = None

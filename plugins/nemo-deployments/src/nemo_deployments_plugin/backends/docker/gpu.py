@@ -151,7 +151,7 @@ def discover_managed_gpu_allocations(client: Any) -> dict[str, list[int]]:
         containers = client.containers.list(all=True, filters=managed_by_filter())
     except Exception:
         logger.warning("Failed to list managed containers for GPU pool recovery", exc_info=True)
-        return {}
+        raise
 
     allocations: dict[str, list[int]] = {}
     for container in containers:
@@ -178,25 +178,28 @@ def discover_managed_gpu_allocations(client: Any) -> dict[str, list[int]]:
     return allocations
 
 
-def _recover_pool_allocations(pool: DockerGPUPool) -> None:
+def _recover_pool_allocations(pool: DockerGPUPool) -> bool:
+    """Restore in-use GPUs from running containers. Returns False on transient failure."""
     try:
         import docker
     except ImportError:
         logger.debug("Docker SDK unavailable for GPU pool recovery")
-        return
+        return True
 
     client = docker.from_env()
     try:
         allocations = discover_managed_gpu_allocations(client)
+        pool.restore_allocations(allocations)
         if allocations:
-            pool.restore_allocations(allocations)
             logger.info(
                 "DockerGPUPool: recovered GPU allocations from %d managed container(s): %s",
                 len(allocations),
                 allocations,
             )
+        return True
     except Exception:
         logger.warning("Failed to recover GPU allocations from managed containers", exc_info=True)
+        return False
     finally:
         client.close()
 
@@ -209,6 +212,8 @@ def get_shared_gpu_pool() -> DockerGPUPool | None:
             device_ids = detect_gpu_device_ids()
             if not device_ids:
                 return None
-            _pool = DockerGPUPool(reserved_gpu_device_ids=device_ids)
-            _recover_pool_allocations(_pool)
+            pool = DockerGPUPool(reserved_gpu_device_ids=device_ids)
+            if not _recover_pool_allocations(pool):
+                return None
+            _pool = pool
         return _pool
