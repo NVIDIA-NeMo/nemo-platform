@@ -13,7 +13,7 @@ _NEMO_AGENTS_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_cursor_agent_workflow_type_registered() -> None:
-    assert CursorAgentWorkflowConfig._typed_model_name == "cursor_agent"
+    assert CursorAgentWorkflowConfig.static_type() == "cursor_agent"
 
 
 def test_cursor_adapter_nat_components_entry_point_registered() -> None:
