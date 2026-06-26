@@ -116,7 +116,7 @@ describe('AgentDecisionInput', () => {
     );
   });
 
-  it('shows a send button for the text choice and submits the entered text', async () => {
+  it('shows a send button that is disabled while a text choice awaits input', async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn();
 
@@ -129,13 +129,13 @@ describe('AgentDecisionInput', () => {
       />
     );
 
-    expect(screen.queryByRole('button', { name: /Send alternative instruction/i })).toBeNull();
+    const sendButton = screen.getByRole('button', { name: /Send/i });
+    expect(sendButton).not.toBeDisabled();
 
     await user.click(
       screen.getByRole('option', { name: /3\.\s+Tell the Agent what to do differently/i })
     );
 
-    const sendButton = screen.getByRole('button', { name: /Send alternative instruction/i });
     expect(sendButton).toBeDisabled();
 
     await user.type(
