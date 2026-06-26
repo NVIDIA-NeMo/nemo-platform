@@ -276,6 +276,30 @@ async def test_create_generic_config_succeeds_when_image_and_health_path_set(
 
 
 @pytest.mark.asyncio
+async def test_create_generic_config_rejects_lora_enabled(deployment_config_service, mock_entity_client):
+    """LoRA is unsupported for generic (no compiler to wire the sidecar) -> rejected."""
+    mock_list_result = MagicMock()
+    mock_list_result.data = []
+    mock_entity_client.list.return_value = mock_list_result
+
+    request = CreateModelDeploymentConfigRequest(
+        name="generic-config",
+        engine="generic",
+        model_spec=ModelDeploymentConfigModelSpec(lora_enabled=True),
+        executor_config=ContainerExecutorConfig(
+            gpu=0,
+            image_name="my/image",
+            image_tag="1.0",
+            health_check_path="/healthz",
+        ),
+    )
+
+    with pytest.raises(ValueError, match="LoRA"):
+        await deployment_config_service.create_deployment_config(request, "default")
+    mock_entity_client.create.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_get_deployment_config_found(deployment_config_service, mock_entity_client, sample_config_entity):
     """Test retrieving an existing deployment config."""
     # Arrange - for get_latest_version

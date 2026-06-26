@@ -114,8 +114,8 @@ class K8sReconciler(Reconciler):
     async def create(self, resolved: ResolvedDeployment) -> DeploymentStatusUpdate:
         """Create the deployment's backend resources.
 
-        Weighted deployments do phase P0: emit the PVC + weight-puller Job (the
-        Deployment + Service are created later by the status path once the Job
+        Weighted deployments start at phase P0: emit the PVC + weight-puller Job
+        (the Deployment + Service are created later by the status path once the Job
         completes -- controller-side weight-readiness gating). Weightless generic
         deployments have nothing to pull, so the serving Deployment + Service are
         emitted immediately.
@@ -224,9 +224,20 @@ class K8sReconciler(Reconciler):
                 return await self.create(resolved)
 
             # Unchanged source: patch the serving Deployment + Service in place if
-            # present, else (still in the pull phase) the status path creates them.
+            # present.
             if self._serving_deployment_exists(resource_name):
                 self._apply_serving_objects(resolved)
+                return DeploymentStatusUpdate(
+                    status="PENDING",
+                    status_message="Update accepted",
+                    host_url=self._status.host_url(resource_name),
+                )
+            # No serving Deployment yet. If the puller Job is still present we're
+            # mid-pull; the status path will emit the serving objects at P3, so the
+            # update is a no-op (re-running create() here would re-assert the PVC +
+            # Job needlessly). Only fall back to create() if the pull objects are
+            # gone (genuine drift).
+            if self._puller_job_exists(resource_name):
                 return DeploymentStatusUpdate(
                     status="PENDING",
                     status_message="Update accepted",
@@ -388,6 +399,23 @@ class K8sReconciler(Reconciler):
         try:
             self._core_v1.read_namespaced_persistent_volume_claim(
                 name=vllm_k8s_compiler.pvc_name(resource_name), namespace=self._k8s_namespace
+            )
+            return True
+        except k8s_client.exceptions.ApiException as e:
+            if e.status == 404:
+                return False
+            raise
+
+    def _puller_job_exists(self, resource_name: str) -> bool:
+        """True if the weight-puller Job for this deployment still exists.
+
+        Used by the update path to detect the mid-pull window (PVC + Job created,
+        serving Deployment not yet emitted) so an unchanged-source update is a
+        no-op rather than re-running create().
+        """
+        try:
+            self._batch_v1.read_namespaced_job(
+                name=vllm_k8s_compiler.pull_job_name(resource_name), namespace=self._k8s_namespace
             )
             return True
         except k8s_client.exceptions.ApiException as e:

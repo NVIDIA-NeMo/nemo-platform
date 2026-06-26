@@ -2454,6 +2454,36 @@ async def test_vllm_update_changed_source_repulls(k8s_backend, sample_deployment
 
 
 @pytest.mark.asyncio
+async def test_vllm_update_during_pull_is_noop(k8s_backend, sample_deployment):
+    """Unchanged source, serving Deployment not yet created but puller Job present.
+
+    Mid-pull updates must be a no-op (the status path emits the serving objects at
+    P3); we must not re-run create() or patch a non-existent Deployment.
+    """
+    backend = _vllm_backend(k8s_backend)
+    config = _vllm_config()
+
+    existing_job = MagicMock()
+    existing_job.metadata.labels = {"nmp.nvidia.com/engine": "vllm"}
+    existing_job.metadata.annotations = {"nmp.nvidia.com/model-source": "default/qwen"}
+    backend._batch_v1.read_namespaced_job.return_value = existing_job
+    # Serving Deployment does not exist yet (still pulling).
+    backend._apps_v1.read_namespaced_deployment.side_effect = _api_exception(404)
+
+    with patch.object(backend, "_resolve_model_source", return_value=("default", "qwen", None)):
+        _sync_reconcilers(backend)
+        result = await backend.update_model_deployment(
+            ModelContext(model_deployment=sample_deployment, model_deployment_config=config, model_entity=None)
+        )
+
+    assert result.status == "PENDING"
+    # No-op: no re-create of PVC/Job, no Deployment patch.
+    backend._core_v1.create_namespaced_persistent_volume_claim.assert_not_called()
+    backend._batch_v1.create_namespaced_job.assert_not_called()
+    backend._apps_v1.patch_namespaced_deployment.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_vllm_list_managed_unions_deployments(k8s_backend):
     """list_managed_deployment_names unions NIMServices and raw vLLM Deployments."""
     backend = _vllm_backend(k8s_backend)

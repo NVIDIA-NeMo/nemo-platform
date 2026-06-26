@@ -19,6 +19,7 @@ from nmp.core.models.schemas import (
     CreateModelDeploymentConfigRequest,
     Engine,
     ModelDeploymentConfig,
+    ModelDeploymentConfigModelSpec,
     ModelDeploymentStatus,
     UpdateModelDeploymentConfigRequest,
 )
@@ -26,8 +27,12 @@ from nmp.core.models.schemas import (
 logger = logging.getLogger(__name__)
 
 
-def _validate_engine_config(engine: Engine, executor_config: ContainerExecutorConfig) -> None:
-    """Validate engine-specific requirements on the executor config.
+def _validate_engine_config(
+    engine: Engine,
+    executor_config: ContainerExecutorConfig,
+    model_spec: ModelDeploymentConfigModelSpec,
+) -> None:
+    """Validate engine-specific requirements on the deployment config.
 
     The ``generic`` engine runs an arbitrary container with no inference-engine
     compiler, so it has no platform-default image and no canonical health
@@ -38,6 +43,10 @@ def _validate_engine_config(engine: Engine, executor_config: ContainerExecutorCo
     Values are also rejected when they contain surrounding whitespace: an
     image reference or probe path is used verbatim downstream, where a
     leading/trailing space would silently produce an invalid value.
+
+    LoRA is rejected for ``generic``: there is no engine compiler to wire the
+    adapter sidecar against, so ``lora_enabled`` would otherwise be silently
+    ignored. Reject it up front rather than accept a config that can't be honored.
     """
     if engine != Engine.GENERIC:
         return
@@ -58,6 +67,11 @@ def _validate_engine_config(engine: Engine, executor_config: ContainerExecutorCo
     if padded:
         raise ValueError(
             "executor_config." + " and executor_config.".join(padded) + " must not have leading or trailing whitespace."
+        )
+    if model_spec.lora_enabled:
+        raise ValueError(
+            "The 'generic' engine does not support LoRA (model_spec.lora_enabled); "
+            "there is no engine compiler to wire the adapter sidecar against."
         )
 
 
@@ -141,7 +155,7 @@ class ModelDeploymentConfigService:
         if existing is not None:
             raise ValueError(f"Deployment config with workspace '{workspace}' and name '{request.name}' already exists")
 
-        _validate_engine_config(request.engine, request.executor_config)
+        _validate_engine_config(request.engine, request.executor_config, request.model_spec)
 
         if not request.model_entity_id:
             try:
@@ -294,7 +308,7 @@ class ModelDeploymentConfigService:
         if not current:
             raise ValueError(f"Deployment config with workspace '{workspace}' and name '{name}' does not exist")
 
-        _validate_engine_config(request.engine, request.executor_config)
+        _validate_engine_config(request.engine, request.executor_config, request.model_spec)
 
         new_version = current.entity_version + 1
 
