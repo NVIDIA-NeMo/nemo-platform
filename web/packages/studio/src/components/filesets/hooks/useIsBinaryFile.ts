@@ -4,9 +4,9 @@
 import { isBinaryExtension } from '@studio/util/binaryFile';
 
 /**
- * Extensions that are unambiguously text. The backend HEAD endpoint returns
+ * Extensions that are unambiguously text. The backend always returns
  * `application/octet-stream` for all files, so Content-Type-based detection
- * fails for these. This allowlist short-circuits the HEAD request.
+ * is unusable — this allowlist is the authority for text classification.
  */
 const KNOWN_TEXT_EXTENSIONS = new Set([
   // Data
