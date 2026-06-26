@@ -75,6 +75,12 @@ def build_model_load_kwargs(spec: UnslothJobOutput, resolved_model: str) -> dict
         "full_finetuning": spec.training.finetuning_type == "all_weights",
         "trust_remote_code": spec.model.trust_remote_code,
         "device_map": spec.model.device_map if spec.model.device_map is not None else {"": 0},
+        # TODO(CVE-2026-31253): Uncomment when ModelLoadSpec.attn_implementation is exposed.
+        # **(
+        #     {"attn_implementation": spec.model.attn_implementation}
+        #     if spec.model.attn_implementation is not None
+        #     else {}
+        # ),
     }
 
 

@@ -59,6 +59,14 @@ class TrainingSpec(BaseModel):
         default=None,
         description="Model precision for training. Auto-detected from the checkpoint when unset.",
     )
+    # TODO(CVE-2026-31253): Uncomment once flash-attention has a patched release (GHSA-7g5w-pq96-8c5w).
+    # attn_implementation: str | None = Field(
+    #     default=None,
+    #     description=(
+    #         "Attention backend for HuggingFace model loading: 'sdpa' (default when unset), "
+    #         "'flash_attention_2' (requires flash-attn), or 'eager'."
+    #     ),
+    # )
     execution_profile: str | None = Field(default=None, min_length=1)
     teacher_model: str | None = None
     distillation_ratio: float = Field(default=0.5, ge=0.0, le=1.0)

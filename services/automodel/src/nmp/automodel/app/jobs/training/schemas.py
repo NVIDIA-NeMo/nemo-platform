@@ -69,6 +69,8 @@ class ModelConfig(BaseModel):
         default="sdpa",
         description="Attention backend: 'sdpa' (PyTorch native), 'flash_attention_2' (requires flash-attn), 'eager' (no optimization)",
     )
+    # Not exposed on the public job API until CVE-2026-31253 / GHSA-7g5w-pq96-8c5w is resolved;
+    # compiler always leaves the default above unless TODO plumbing is uncommented.
     trust_remote_code: bool = Field(
         default=False,
         description="Allow executing custom model code from the checkpoint. Required for some community models",

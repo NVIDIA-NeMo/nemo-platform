@@ -74,6 +74,14 @@ class ModelLoadSpec(BaseModel):
             "multi-device experiments."
         ),
     )
+    # TODO(CVE-2026-31253): Uncomment once flash-attention has a patched release (GHSA-7g5w-pq96-8c5w).
+    # attn_implementation: Literal["sdpa", "flash_attention_2", "eager"] | None = Field(
+    #     default=None,
+    #     description=(
+    #         "Attention backend forwarded to FastLanguageModel.from_pretrained. "
+    #         "Default sdpa when unset."
+    #     ),
+    # )
 
 
 class LoRAParams(BaseModel):

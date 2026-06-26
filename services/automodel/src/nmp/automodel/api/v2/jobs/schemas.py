@@ -229,6 +229,14 @@ class _TrainingBase(BaseModel):
         default=None,
         description="Model precision for training. Auto-detected if unset.",
     )
+    # TODO(CVE-2026-31253): Uncomment once flash-attention has a patched release (GHSA-7g5w-pq96-8c5w).
+    # attn_implementation: Optional[str] = Field(
+    #     default=None,
+    #     description=(
+    #         "Attention backend for model loading: 'sdpa' (default when unset), "
+    #         "'flash_attention_2' (requires flash-attn), or 'eager'."
+    #     ),
+    # )
     seed: Optional[int] = Field(
         default=None,
         description="Random seed for reproducibility. Optional.",

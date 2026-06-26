@@ -241,6 +241,8 @@ def _translate_model_config(
         name=_extract_model_name(job_spec),
         max_seq_length=training.max_seq_length,
         precision=training.precision,
+        # TODO(CVE-2026-31253): Uncomment when attn_implementation is exposed on the job API.
+        # attn_implementation=training.attn_implementation or "sdpa",
         trust_remote_code=trust_remote_code,
         is_embedding_model=is_embedding_model,
         chat_template=chat_template,

@@ -64,6 +64,8 @@ def _build_training_block(spec: dict[str, Any]) -> SFTTraining | DistillationTra
         "sequence_packing": batch.get("sequence_packing", False),
         "max_seq_length": training.get("max_seq_length", 2048),
         "precision": training.get("precision"),
+        # TODO(CVE-2026-31253): Uncomment when attn_implementation is exposed on TrainingSpec / _TrainingBase.
+        # "attn_implementation": training.get("attn_implementation"),
         "seed": schedule.get("seed"),
         "parallelism": ParallelismParams(
             num_nodes=parallelism.get("num_nodes", 1),
