@@ -566,7 +566,7 @@ See **Integrations (automodel + unsloth)** above.
 |-------|---------|-------|
 | `name` | auto-derived from `<model-entity>-<dataset>-<hex12>` | The output model entity / fileset name. |
 | `description` | `null` | Free-form description carried onto the entity and fileset. |
-| `save_method` | `"lora"` | `"lora"` (adapter — small, deploy via NIM/vLLM with adapter loader), `"merged_16bit"` (merged checkpoint, deploy without adapter), `"merged_4bit"` (lossy, storage-tight). `merged_*` requires `training.finetuning_type: "lora"`. |
+| `save_method` | `"lora"` | `"lora"` (adapter — hot-reloads on base LoRA deployment; no new inference deploy), `"merged_16bit"` (merged checkpoint — **deploy** `output.name` as model entity), `"merged_4bit"` (lossy, storage-tight; deploy like merged). `merged_*` requires `training.finetuning_type: "lora"`. |
 
 After `to_spec`, the canonical `OutputResponse` also carries `type` (`"adapter"` for `save_method: "lora"`, `"model"` otherwise) and `fileset` (defaults to `name`); both are derived — submitter doesn't set them.
 
@@ -598,12 +598,12 @@ Drop `rank` before lowering batch when OOM. Higher `alpha/rank` ratios amplify a
 
 ### Save-method picker
 
-| User wants | `save_method` |
-|------------|---------------|
-| Smallest artefact, deploy via adapter loader (default NIM / vLLM) | `lora` |
-| Full-weight checkpoint to deploy without an adapter | `merged_16bit` |
-| Disk-tight merged checkpoint (lossy) | `merged_4bit` |
-| Full SFT (no LoRA) | `lora` is invalid here; output is always a full model — leave `save_method` at default and ignore the merged options |
+| User wants | `save_method` | Inference after training |
+|------------|---------------|--------------------------|
+| Smallest artefact; hot-reload on base LoRA deployment | `lora` | No new deploy — adapter loads on existing `lora_enabled` deployment |
+| Full-weight checkpoint as standalone model | `merged_16bit` | **Deploy** `output.name` as new model entity |
+| Disk-tight merged checkpoint (lossy) | `merged_4bit` | **Deploy** `output.name` as new model entity |
+| Full SFT (no LoRA) | `lora` is invalid; output is always a full model | **Deploy** `output.name` as new model entity |
 
 `merged_*` require `training.finetuning_type: "lora"`. The schema validator surfaces a clear error if violated.
 

@@ -76,7 +76,7 @@ _DEFAULTS: dict[str, str] = {
     # 'nvidia-nat[most]==<ver>'`` against public PyPI.  Note: NAT does not
     # define an ``[all]`` extra — ``[most]`` is the comprehensive one
     # (includes langchain / react-agent / wiki-search).
-    "nat_version": "1.7.0",
+    "nat_version": "1.8.0",
 }
 
 _ENV_MAP: dict[str, str] = {

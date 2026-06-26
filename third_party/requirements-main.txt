@@ -253,7 +253,6 @@ aiohttp==3.13.5 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or 
     #   langchain-community
     #   langchain-nvidia-ai-endpoints
     #   langchain-oci
-    #   langchain-tavily
     #   litellm
     #   nemoguardrails
     #   ngcsdk
@@ -1323,7 +1322,6 @@ langchain==1.3.11 ; (platform_machine == 'arm64' and sys_platform == 'darwin') o
     # via
     #   langchain-community
     #   langchain-oci
-    #   langchain-tavily
     #   nemo-guardrails-plugin
     #   nemoguardrails
     #   nvidia-nat-langchain
@@ -1362,7 +1360,6 @@ langchain-core==1.4.8 ; (platform_machine == 'arm64' and sys_platform == 'darwin
     #   langchain-nvidia-ai-endpoints
     #   langchain-oci
     #   langchain-openai
-    #   langchain-tavily
     #   langchain-text-splitters
     #   langgraph
     #   langgraph-checkpoint
@@ -1417,10 +1414,6 @@ langchain-protocol==0.0.18 ; (platform_machine == 'arm64' and sys_platform == 'd
     # via
     #   langchain-core
     #   langgraph-sdk
-langchain-tavily==0.2.18 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:cd7859ae1a6ce79236580ef67072ff5fc43c7ded94e7eac38ff04209ca85a320 \
-    --hash=sha256:dccf3ad1c50e2cb2a89bec11727555805c9df8abd42c1f3ad42ccad86e28aa44
-    # via nvidia-nat-langchain
 langchain-text-splitters==1.1.2 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:782a723db0a4746ac91e251c7c1d57fd23636e4f38ed733074e28d7a86f41627 \
     --hash=sha256:a2de0d799ff31886429fd6e2e0032df275b60ec817c19059a7b46181cc1c2f10
@@ -1453,6 +1446,7 @@ langsmith==0.8.2 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or
     #   langchain-classic
     #   langchain-community
     #   langchain-core
+    #   nvidia-nat-langchain
     #   openevals
 lark==1.3.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:b426a7a6d6d53189d318f2b6236ab5d6429eaf09259f1ca33eb716eed10d2905 \
@@ -1802,32 +1796,32 @@ nvidia-ml-py==13.595.45 ; (platform_machine == 'arm64' and sys_platform == 'darw
     #   nemo-platform-ext
     #   nemo-platform-sdk
     #   nmp-common
-nvidia-nat-atif==1.7.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:65d471a366dfafe75cf94428bdba3007bd3e1368487e2e16fd62484298635334
+nvidia-nat-atif==1.8.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:38c97d6e506e8cc151a997bfd6cafa08b969e181b50b9302f28d2229a3b37829
     # via
     #   nvidia-nat-core
     #   nvidia-nat-eval
-nvidia-nat-config-optimizer==1.7.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:5b14cb63d1076f314f63039a4f659c0d4129f20b2bedc38b026ceee53da9e8f1
+nvidia-nat-config-optimizer==1.8.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:dc5ef765fbff28d74af462351756c91f35b62c6adc83f5938e61aa9a35c5292d
     # via nemo-agents-plugin
-nvidia-nat-core==1.7.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:fb4691ad3437e0e8b8d84256d36da18085ba1fc6dd47861e7a7e64c6a808390c
+nvidia-nat-core==1.8.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:645bcc995f73598016b750f7849decb24bea857549f96f5fcbbd8ff37f0c3fc5
     # via
     #   nemo-agents-example-calculator
     #   nemo-agents-plugin
     #   nvidia-nat-config-optimizer
     #   nvidia-nat-langchain
     #   nvidia-nat-opentelemetry
-nvidia-nat-eval==1.7.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:724fa6410a7a66050b525d75660d7fb753ed83aba32c37d31111ae322d54a548
+nvidia-nat-eval==1.8.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:4baebf66289040708c22bfd57f6edb37728409795a260bd0f07b894c9ec8b110
     # via
     #   nvidia-nat-config-optimizer
     #   nvidia-nat-langchain
-nvidia-nat-langchain==1.7.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:e00812f9d2c602bb59cc006081a5deef2e71cc46357e70f51503780196f9cc20
+nvidia-nat-langchain==1.8.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:8120ad2b972ce2d90fae1e7f95b3daf6b463310e0105fc330896bfb069a5d403
     # via nemo-agents-plugin
-nvidia-nat-opentelemetry==1.7.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:e468fb4bd2a9e2fa4fb0d67daa1dea22b900c70301249d2785aa96f305808f7f
+nvidia-nat-opentelemetry==1.8.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:2ef2de28a1d07029126ae1c13ff39b9dd61a6985e43199e6fe80968b465b1eec
     # via nvidia-nat-langchain
 oauthlib==3.3.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:0f0f8aa759826a193cf66c12ea1af1637f87b9b4622d46e866952bb022e538c9 \
@@ -2792,7 +2786,6 @@ requests==2.33.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or
     #   langchain-classic
     #   langchain-community
     #   langchain-nvidia-ai-endpoints
-    #   langchain-tavily
     #   langsmith
     #   mlflow-skinny
     #   nemo-platform-ext

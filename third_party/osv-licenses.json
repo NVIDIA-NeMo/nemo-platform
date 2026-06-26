@@ -5798,16 +5798,6 @@
         },
         {
           "package": {
-            "name": "langchain-tavily",
-            "version": "0.2.18",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "MIT"
-          ]
-        },
-        {
-          "package": {
             "name": "langchain-text-splitters",
             "version": "1.1.2",
             "ecosystem": "PyPI"
@@ -8073,7 +8063,7 @@
         {
           "package": {
             "name": "nvidia-nat-atif",
-            "version": "1.7.0",
+            "version": "1.8.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -8083,7 +8073,7 @@
         {
           "package": {
             "name": "nvidia-nat-config-optimizer",
-            "version": "1.7.0",
+            "version": "1.8.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -8093,7 +8083,7 @@
         {
           "package": {
             "name": "nvidia-nat-core",
-            "version": "1.7.0",
+            "version": "1.8.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -8103,7 +8093,7 @@
         {
           "package": {
             "name": "nvidia-nat-eval",
-            "version": "1.7.0",
+            "version": "1.8.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -8113,7 +8103,7 @@
         {
           "package": {
             "name": "nvidia-nat-langchain",
-            "version": "1.7.0",
+            "version": "1.8.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -8123,7 +8113,7 @@
         {
           "package": {
             "name": "nvidia-nat-opentelemetry",
-            "version": "1.7.0",
+            "version": "1.8.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -10813,7 +10803,7 @@
   "license_summary": [
     {
       "name": "MIT",
-      "count": 130
+      "count": 129
     },
     {
       "name": "Apache-2.0",
