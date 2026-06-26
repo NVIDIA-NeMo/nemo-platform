@@ -37,11 +37,6 @@ inputs:
     required: false
     default: not-used
 
-outputs:
-  cluster_url:
-    description: The NeMo Platform cluster URL
-    value: ${{ steps.export-url.outputs.cluster_url }}
-
 runs:
   using: composite
   steps:
@@ -169,14 +164,6 @@ runs:
           kubectl get all -n "${NAMESPACE}" || true
           exit 1
         fi
-
-    - name: Export cluster URL
-      id: export-url
-      shell: bash
-      env:
-        NMP_E2E_CLUSTER_URL: ${{ env.NMP_E2E_CLUSTER_URL }}
-      run: |
-        echo "cluster_url=${NMP_E2E_CLUSTER_URL}" >> "${GITHUB_OUTPUT}"
 
     - name: Wait for API
       shell: bash

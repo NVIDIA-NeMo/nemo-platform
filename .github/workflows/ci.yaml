@@ -463,9 +463,11 @@ jobs:
 
   kind-cpu-e2e:
     name: Kind CPU e2e (jobs + data-designer)
-    # TODO(AIRCORE-844): Remove pinned image and restore build-cpu-smoke-images dependency before merging.
-    # Pinned to skip the ~10min image build while iterating on test-only changes.
-    needs: [changes]
+    needs: [changes, build-cpu-smoke-images]
+    if: >
+      !cancelled() &&
+      needs.build-cpu-smoke-images.result == 'success' &&
+      needs.build-cpu-smoke-images.outputs.publish_images == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -473,9 +475,6 @@ jobs:
       packages: read
     env:
       KIND_CLUSTER_NAME: gha-${{ github.run_id }}-${{ github.run_attempt }}-kind-e2e
-      # TODO(AIRCORE-844): Remove pinned image tag before merging.
-      NMP_E2E_PINNED_REGISTRY: ghcr.io/nvidia-nemo/nemo-platform
-      NMP_E2E_PINNED_TAG: 69c80c7ed015213305180cdb05a724b3a488856a
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -486,8 +485,8 @@ jobs:
         uses: ./.github/actions/setup-kind-cluster
         with:
           kind_cluster_name: ${{ env.KIND_CLUSTER_NAME }}
-          image_registry: ${{ env.NMP_E2E_PINNED_REGISTRY }}
-          image_tag: ${{ env.NMP_E2E_PINNED_TAG }}
+          image_registry: ${{ needs.build-cpu-smoke-images.outputs.image_registry }}
+          image_tag: ${{ needs.build-cpu-smoke-images.outputs.image_tag }}
           kind_image_pull_token: ${{ github.token }}
           kind_image_pull_user: ${{ github.actor }}
 
