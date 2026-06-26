@@ -31,7 +31,6 @@ from nmp.common.jobs.constants import (
     PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
     TERMINAL_EXIT_CODES,
 )
-from nemo_platform_plugin.jobs.constants import DEFAULT_JOB_STORAGE_PATH
 from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.core.jobs.api.v2.jobs.schemas import PlatformJobStepWithContext
 from nmp.core.jobs.app.constants import (
@@ -469,11 +468,12 @@ def common_labels_for_step(step: PlatformJobStepWithContext) -> dict[str, str]:
         }
     )
 
-    # Persistent storage is always provisioned when the cluster has a PVC
-    # configured, so the label is always "true". Cleanup is gated on the
-    # storage config having a pvc_name at cleanup time, so this is safe
-    # even if no PVC is actually configured.
-    labels[JOB_USES_PERSISTENT_STORAGE_LABEL] = "true"
+    # Check if this step uses persistent storage
+    if step.step_spec.environment:
+        for envvar in step.step_spec.environment:
+            if envvar.name == PERSISTENT_JOB_STORAGE_PATH_ENVVAR and envvar.value:
+                labels[JOB_USES_PERSISTENT_STORAGE_LABEL] = "true"
+                break
 
     return labels
 
@@ -1013,40 +1013,18 @@ def create_pod_template_spec(
     ]
     storage_config = config.storage
 
-    # Auto-provision persistent job storage when the cluster has a PVC,
-    # matching the subprocess backend which unconditionally creates a
-    # persistent directory for every job.
+    # Persistent job storage (PVC mount) is only provisioned when the step
+    # explicitly declares NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH in its
+    # compile() environment. Jobs that don't declare it won't get a PVC
+    # mount — if they try to access ctx.storage.persistent at runtime,
+    # StoragePaths raises a clear RuntimeError guiding them to add it.
     #
-    # Previously, each plugin had to declare NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH
-    # in its compile() environment list for the K8s backend to create the PVC
-    # mount and inject the env var. If a plugin forgot, the job pod would crash
-    # at runtime with a KeyError when the bridge tried to read the env var —
-    # a footgun that bit Data Designer (AIRCORE-844). The subprocess backend
-    # never had this problem because it unconditionally creates and injects
-    # the persistent directory.
-    #
-    # Now the K8s backend auto-provisions persistent storage for every job,
-    # eliminating the mismatch. Every job pod gets a PVC subpath even if it
-    # never writes to ctx.storage.persistent. Plugins that explicitly declare
-    # the env var in compile() still work — their value overrides the default.
-    #
-    # TODO: Job authors should be able to explicitly declare whether they
-    # need persistent storage via a first-class field on the job spec (e.g.
+    # TODO: Job authors should be able to declare whether they need
+    # persistent storage via a first-class field on the job spec (e.g.
     # `requires_persistent_storage: bool` on NemoJob or PlatformJobStep),
-    # rather than the current implicit mechanism of passing a magic env var
-    # in the step's environment list. This would let the backend skip PVC
-    # provisioning for jobs that don't need it, and make the contract
-    # between compile() and the runtime explicit rather than relying on
-    # env var name conventions.
-    if not job_storage_mount and storage_config and storage_config.pvc_name:
-        job_storage_mount = DEFAULT_JOB_STORAGE_PATH
-
-    # Inject persistent storage env var if provisioned (either by the step
-    # declaring it or auto-provisioned above) and not already in the env list.
-    if job_storage_mount and not any(
-        e.name == PERSISTENT_JOB_STORAGE_PATH_ENVVAR for e in env
-    ):
-        env.append(client.V1EnvVar(name=PERSISTENT_JOB_STORAGE_PATH_ENVVAR, value=job_storage_mount))
+    # rather than the current mechanism of passing a magic env var in the
+    # step's environment list. This would make the contract between
+    # compile() and the runtime explicit. See AIRCORE-844 for context.
 
     if storage_config.additional_volume_mounts:
         volume_mounts.extend(mount.to_k8s() for mount in storage_config.additional_volume_mounts)
