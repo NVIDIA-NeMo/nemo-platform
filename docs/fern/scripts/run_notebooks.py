@@ -16,6 +16,7 @@ import argparse
 import os
 import re
 import sys
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -103,8 +104,16 @@ def has_executable_snippets(mdx_path: Path, repo_root: Path) -> bool:
 
 
 def materialize_mdx_as_markdown(mdx_path: Path, repo_root: Path) -> Path:
-    temp_md_path = mdx_path.with_suffix(".tmp.md")
-    temp_md_path.write_text(mdx_to_markdown_text(mdx_path, repo_root), encoding="utf-8")
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=mdx_path.parent,
+        prefix=f"{mdx_path.stem}-",
+        suffix=".tmp.md",
+        delete=False,
+    ) as temp_file:
+        temp_file.write(mdx_to_markdown_text(mdx_path, repo_root))
+        temp_md_path = Path(temp_file.name)
     return temp_md_path
 
 
@@ -296,6 +305,7 @@ def main() -> int:
     args = parser.parse_args()
 
     repo_root = resolve_repo_root()
+    selections: list[NotebookSelection] = []
     try:
         selections = select_notebooks(args.paths, repo_root)
     except Exception as error:
@@ -323,7 +333,7 @@ def main() -> int:
         return 130
     finally:
         if not args.keep_temp_files:
-            for selection in locals().get("selections", []):
+            for selection in selections:
                 cleanup_selection_temp_files(selection.path)
 
 

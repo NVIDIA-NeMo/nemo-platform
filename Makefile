@@ -19,6 +19,8 @@ endif
 PYTEST_EXTRA ?=
 PYTHON_VERSION ?= 3.11
 BOOTSTRAP_CREATE_VENV ?= 1
+BOOTSTRAP_EXPECTED_VIRTUAL_ENV := $(CURDIR)/.venv
+BOOTSTRAP_ACTIVATION_REMINDER = if [ "$${VIRTUAL_ENV:-}" != "$(BOOTSTRAP_EXPECTED_VIRTUAL_ENV)" ]; then echo ""; echo "Next steps:"; echo "  source .venv/bin/activate"; echo "  nemo --help"; fi
 
 # Display platform info
 $(info local system architecture: $(PLATFORM)/$(ARCH))
@@ -189,6 +191,9 @@ bootstrap-python: ## Bootstrap Python dependencies.
 	@if [ -n "$(strip $(BOOTSTRAP_LOCAL_PLUGIN_DIRS))" ]; then \
 		$(MAKE) bootstrap-plugins BOOTSTRAP_LOCAL_PLUGIN_DIRS="$(BOOTSTRAP_LOCAL_PLUGIN_DIRS)"; \
 	fi
+	@if [ "$(filter bootstrap-python,$(MAKECMDGOALS))" = "bootstrap-python" ]; then \
+		$(BOOTSTRAP_ACTIVATION_REMINDER); \
+	fi
 
 .PHONY: verify-node-version
 verify-node-version: ## Verify pnpm and Node.js satisfy Studio's package engine
@@ -232,6 +237,7 @@ bootstrap: bootstrap-python ## Bootstrap the local dev environment, including St
 		echo "  make bootstrap-studio"; \
 	fi
 	@echo "bootstrap completed"
+	@$(BOOTSTRAP_ACTIVATION_REMINDER)
 
 .PHONY: run
 run: build-policy ## Run the NeMo Platform locally with Docker job backend

@@ -3,6 +3,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from docs._scripts.lint_python_snippets import (
     extract_python_snippets,
     find_doc_files,
@@ -24,6 +26,14 @@ def test_find_doc_files_includes_mdx_and_skips_node_modules(tmp_path: Path) -> N
     ignored.write_text("# Ignored\n", encoding="utf-8")
 
     assert find_doc_files([docs_dir]) == [md, mdx]
+
+
+def test_find_doc_files_rejects_non_doc_file(tmp_path: Path) -> None:
+    notebook = tmp_path / "page.ipynb"
+    notebook.write_text("{}", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Expected a Markdown/MDX file"):
+        find_doc_files([notebook])
 
 
 def test_extract_python_snippets_supports_mdx_info_strings_and_indent(tmp_path: Path) -> None:

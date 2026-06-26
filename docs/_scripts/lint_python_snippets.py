@@ -103,7 +103,9 @@ def find_doc_files(paths: Iterable[Path]) -> list[Path]:
         if path.is_file():
             if path.suffix in DOC_SUFFIXES:
                 doc_files.append(path)
-            continue
+                continue
+            expected = ", ".join(sorted(DOC_SUFFIXES))
+            raise ValueError(f"Expected a Markdown/MDX file ({expected}) or directory: {path}")
 
         for root, dirs, files in os.walk(path):
             dirs[:] = [directory for directory in dirs if directory not in SKIP_DIRS]
@@ -441,7 +443,7 @@ def main() -> int:
             project_root=args.project_root.resolve(),
             timeout_seconds=args.timeout_seconds,
         )
-    except FileNotFoundError as error:
+    except (FileNotFoundError, ValueError) as error:
         print(f"ERROR: {error}", file=sys.stderr)
         return 2
 

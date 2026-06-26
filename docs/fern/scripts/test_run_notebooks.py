@@ -75,10 +75,7 @@ def test_select_notebooks_resolves_fern_mdx_source(tmp_path: Path) -> None:
 def test_select_notebooks_falls_back_to_mdx_snippets_without_notebook(tmp_path: Path) -> None:
     mdx = tmp_path / "tutorial.mdx"
     mdx.write_text(
-        "# Tutorial\n\n"
-        "```python\n"
-        "print('hello')\n"
-        "```\n",
+        "# Tutorial\n\n```python\nprint('hello')\n```\n",
         encoding="utf-8",
     )
 
@@ -102,14 +99,15 @@ def test_materialize_mdx_as_markdown_expands_fern_markdown_snippets(tmp_path: Pa
     snippet.write_text("```python\nprint('from snippet')\n```\n", encoding="utf-8")
     mdx = tmp_path / "tutorial.mdx"
     mdx.write_text(
-        "# Tutorial\n\n"
-        '<Markdown src="/snippets/_snippets/setup.mdx" />\n',
+        '# Tutorial\n\n<Markdown src="/snippets/_snippets/setup.mdx" />\n',
         encoding="utf-8",
     )
 
     temp_md = materialize_mdx_as_markdown(mdx, tmp_path)
 
     try:
+        assert temp_md.parent == mdx.parent
+        assert temp_md != mdx.with_suffix(".tmp.md")
         assert temp_md.read_text(encoding="utf-8") == "# Tutorial\n\n```python\nprint('from snippet')\n```\n\n"
     finally:
         temp_md.unlink(missing_ok=True)

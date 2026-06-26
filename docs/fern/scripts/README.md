@@ -82,6 +82,6 @@ uv run python docs/fern/scripts/run_notebooks.py \
 Execute through Make:
 
 ```bash
-make docs-run-notebook DOC_PATH=docs/customizer/tutorials/sft-customization-job.mdx
-make docs-run-notebook DOC_PATH=docs/customizer/tutorials/sft-customization-job.mdx ARGS=--dry-run
+make docs-run-notebook DOCS_PATH=docs/customizer/tutorials/sft-customization-job.mdx
+make docs-run-notebook DOCS_PATH=docs/customizer/tutorials/sft-customization-job.mdx ARGS=--dry-run
 ```

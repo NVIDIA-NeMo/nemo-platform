@@ -1,21 +1,21 @@
-# Linting Documentation Notebooks
+# Linting Documentation Python Snippets
 
-Lint documentation notebooks for syntax and type errors without executing them using `docs/_scripts/lint_notebooks.py`.
+Lint Markdown and MDX Python fenced code blocks for syntax and type errors without executing them using `docs/_scripts/lint_python_snippets.py`.
 
 ## Basic Usage
 
 ```sh
-uv run python docs/_scripts/lint_notebooks.py <path>
+uv run python docs/_scripts/lint_python_snippets.py <path>
 ```
 
 Examples:
 
 ```sh
-# Lint a single notebook
-uv run python docs/_scripts/lint_notebooks.py docs/run-inference/tutorials/deploy-llm-nims.md
+# Lint a single doc page
+uv run python docs/_scripts/lint_python_snippets.py docs/run-inference/tutorials/deploy-llm-nims.md
 
-# Lint all notebooks in a directory
-uv run python docs/_scripts/lint_notebooks.py docs/run-inference/
+# Lint all Markdown/MDX pages in a directory
+uv run python docs/_scripts/lint_python_snippets.py docs/run-inference/
 ```
 
 ### Running in Cursor Agent Sandbox Mode
@@ -24,10 +24,10 @@ When running through the Cursor agent in sandbox mode, the agent will set `UV_CA
 
 ## Type Checking
 
-Add `--type-check` to run `ty` type checker on the combined notebook cells:
+Add `--type-check` to run `ty` type checker on the combined snippets:
 
 ```sh
-uv run python docs/_scripts/lint_notebooks.py docs/run-inference/ --type-check
+uv run python docs/_scripts/lint_python_snippets.py docs/run-inference/ --type-check
 ```
 
 This catches:
@@ -45,10 +45,10 @@ Note: `ty` is alpha software and reports some false positives for SDK attributes
 ## How It Works
 
 The script:
-1. Finds notebooks with the `@nemo-nb: process` marker
-2. Extracts all Python code cells
-3. Combines them into a single file (so cross-cell context works)
-4. Runs `ty check` and passes through the output
+1. Finds Markdown and MDX files under the requested paths
+2. Extracts all `python` and `py` fenced code blocks
+3. Combines snippets from each page into a single file so earlier snippets can define later context
+4. Runs `ty check` and maps diagnostics back to the original doc lines
 
 ## Fixing Linter Errors
 
@@ -92,4 +92,4 @@ The SDK's gateway methods return `object` type, causing false positives when acc
 
 ## Markers
 
-Only notebooks with the `@nemo-nb: process` marker will be linted.
+All Markdown and MDX pages under the requested paths are scanned. Use `<!-- @nemo-docs: skip-python-snippet-check -->` before a block to skip it.
