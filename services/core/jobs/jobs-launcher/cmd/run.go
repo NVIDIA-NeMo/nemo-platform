@@ -16,11 +16,9 @@ import (
 	"strings"
 	"sync"
 	"syscall"
-	"time"
 
 	"github.com/NVIDIA-NeMo/nemo-platform/services/core/jobs/jobs-launcher/nmpclient"
 	"github.com/spf13/cobra"
-	"go.opentelemetry.io/otel/sdk/log"
 )
 
 var runCmd = &cobra.Command{
@@ -130,7 +128,7 @@ func runExecWithStdin(args []string) (int, error) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	otelShutdown, loggerProvider, err := setupOTELSDK(ctx)
+	otelShutdown, _, err := setupOTELSDK(ctx)
 	if err != nil {
 		return 1, err
 	}
@@ -139,11 +137,11 @@ func runExecWithStdin(args []string) (int, error) {
 		err = errors.Join(err, otelShutdown(context.Background()))
 	}()
 
-	return runExec(args, os.Stdin, loggerProvider)
+	return runExec(args, os.Stdin)
 }
 
 // runExec runs the specified command with arguments, injecting secrets as environment variables if specified
-func runExec(args []string, stdinReader io.Reader, loggerProvider *log.LoggerProvider) (int, error) {
+func runExec(args []string, stdinReader io.Reader) (int, error) {
 	// Command and arguments
 	cmdName := args[0]
 	cmdArgs := []string{}
@@ -253,23 +251,15 @@ func runExec(args []string, stdinReader io.Reader, loggerProvider *log.LoggerPro
 		}
 	}()
 
-	// Wait for the process to finish
-	err = cmd.Wait()
-
-	// Wait for all output to be processed before returning
-	// This ensures logs are fully read and sent to OTEL before shutdown
+	// Wait for all output to be read before calling cmd.Wait().
+	// cmd.Wait() closes stdout/stderr pipes, so readers must finish first.
+	// With the synchronous log processor, each log record is fully exported
+	// (HTTP request completed) before slog.Log returns, so once the readers
+	// finish all logs have already been delivered to the server.
 	wg.Wait()
 
-	// Force flush the OTEL pipeline to ensure all batched logs are exported
-	// This is especially important for short-lived jobs that fail quickly, where the
-	// batch processor may still have pending logs that haven't been exported yet
-	if loggerProvider != nil {
-		flushCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if flushErr := loggerProvider.ForceFlush(flushCtx); flushErr != nil {
-			logger.Printf("Warning: failed to flush OTEL logs: %v\n", flushErr)
-		}
-	}
+	// Now that all output has been read and exported, wait for the process to finish.
+	err = cmd.Wait()
 
 	exitCode := cmd.ProcessState.ExitCode()
 	if err != nil {

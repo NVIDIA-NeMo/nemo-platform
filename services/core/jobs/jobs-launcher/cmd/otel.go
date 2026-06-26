@@ -104,8 +104,12 @@ func newLoggerProvider(res *resource.Resource) (*log.LoggerProvider, error) {
 		return nil, err
 	}
 
+	// Use a synchronous processor so each log record is exported immediately.
+	// The launcher is a short-lived process that wraps a single job command;
+	// batching adds no throughput benefit and creates a race where os.Exit
+	// kills in-flight HTTP exports before they complete.
 	loggerProvider := log.NewLoggerProvider(
-		log.WithProcessor(log.NewBatchProcessor(logExporter)),
+		log.WithProcessor(log.NewSimpleProcessor(logExporter)),
 		log.WithResource(res),
 	)
 	return loggerProvider, nil
