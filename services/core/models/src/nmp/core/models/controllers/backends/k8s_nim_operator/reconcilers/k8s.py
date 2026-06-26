@@ -718,14 +718,42 @@ class K8sReconciler(Reconciler):
             return None
 
     def _existing_model_source(self, resource_name: str) -> str | None:
-        """Read the model-source annotation off the existing puller Job, if any."""
+        """Read the recorded model-source for a deployment, from the Job or the PVC.
+
+        The model source is stamped as an annotation on BOTH the puller Job and
+        the PVC at create time. The Job is the primary source while it exists, but
+        it is deleted at P3 (to release the RWO volume) once weights are pulled --
+        so for an already-serving deployment the Job is gone and we must read the
+        annotation from the (long-lived) PVC instead. Without the PVC fallback a
+        later model-revision change would read ``None`` here, skip the re-pull
+        branch, and serve stale weights.
+
+        Returns ``None`` only when neither object carries the annotation (or
+        neither exists). Non-404 API errors are propagated rather than swallowed.
+        """
+        # Primary: the puller Job (present during/just after the pull phase).
         try:
             job = self._batch_v1.read_namespaced_job(
                 name=vllm_k8s_compiler.pull_job_name(resource_name), namespace=self._k8s_namespace
             )
-        except k8s_client.exceptions.ApiException:
-            return None
-        annotations = (job.metadata.annotations or {}) if job.metadata else {}
+            annotations = (job.metadata.annotations or {}) if job.metadata else {}
+            source = annotations.get(vllm_k8s_compiler.MODEL_SOURCE_ANNOTATION)
+            if source:
+                return source
+        except k8s_client.exceptions.ApiException as e:
+            if e.status != 404:
+                raise
+
+        # Fallback: the PVC (survives Job deletion at P3).
+        try:
+            pvc = self._core_v1.read_namespaced_persistent_volume_claim(
+                name=vllm_k8s_compiler.pvc_name(resource_name), namespace=self._k8s_namespace
+            )
+        except k8s_client.exceptions.ApiException as e:
+            if e.status == 404:
+                return None
+            raise
+        annotations = (pvc.metadata.annotations or {}) if pvc.metadata else {}
         return annotations.get(vllm_k8s_compiler.MODEL_SOURCE_ANNOTATION)
 
     def _delete_serving_resources(self, resource_name: str) -> list[str]:

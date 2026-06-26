@@ -2454,6 +2454,88 @@ async def test_vllm_update_changed_source_repulls(k8s_backend, sample_deployment
 
 
 @pytest.mark.asyncio
+async def test_vllm_update_changed_source_repulls_after_job_deleted(k8s_backend, sample_deployment):
+    """Changed source is detected via the PVC annotation once the puller Job is gone.
+
+    At P3 the puller Job is deleted, so an already-serving deployment has no Job.
+    The model source must still be read (from the PVC) so a revision change
+    re-pulls instead of serving stale weights.
+    """
+    backend = _vllm_backend(k8s_backend)
+    config = _vllm_config()
+
+    # Puller Job has been deleted (P3 completed).
+    backend._batch_v1.read_namespaced_job.side_effect = _api_exception(404)
+    # PVC survives and carries the original model source.
+    existing_pvc = MagicMock()
+    existing_pvc.metadata.annotations = {"nmp.nvidia.com/model-source": "default/old-model"}
+    backend._core_v1.read_namespaced_persistent_volume_claim.return_value = existing_pvc
+
+    with patch.object(backend, "_resolve_model_source", return_value=("default", "qwen", "v2")):
+        with patch.object(backend._k8s_reconciler, "_delete_serving_resources") as mock_delete:
+            _sync_reconcilers(backend)
+            result = await backend.update_model_deployment(
+                ModelContext(model_deployment=sample_deployment, model_deployment_config=config, model_entity=None)
+            )
+
+    # Source change detected from the PVC -> re-pull.
+    mock_delete.assert_called_once()
+    backend._core_v1.create_namespaced_persistent_volume_claim.assert_called_once()
+    backend._batch_v1.create_namespaced_job.assert_called_once()
+    assert result.status == "PENDING"
+
+
+@pytest.mark.asyncio
+async def test_vllm_update_unchanged_source_via_pvc_does_not_repull(k8s_backend, sample_deployment):
+    """Unchanged source read from the PVC (Job gone) patches in place, no re-pull."""
+    backend = _vllm_backend(k8s_backend)
+    config = _vllm_config()
+
+    backend._batch_v1.read_namespaced_job.side_effect = _api_exception(404)
+    existing_pvc = MagicMock()
+    existing_pvc.metadata.annotations = {"nmp.nvidia.com/model-source": "default/qwen"}
+    backend._core_v1.read_namespaced_persistent_volume_claim.return_value = existing_pvc
+    # Serving Deployment exists -> patch path.
+    backend._apps_v1.read_namespaced_deployment.return_value = MagicMock()
+
+    with patch.object(backend, "_resolve_model_source", return_value=("default", "qwen", None)):
+        with patch.object(backend._k8s_reconciler, "_delete_serving_resources") as mock_delete:
+            _sync_reconcilers(backend)
+            result = await backend.update_model_deployment(
+                ModelContext(model_deployment=sample_deployment, model_deployment_config=config, model_entity=None)
+            )
+
+    mock_delete.assert_not_called()
+    backend._batch_v1.create_namespaced_job.assert_not_called()
+    backend._apps_v1.patch_namespaced_deployment.assert_called_once()
+    assert result.status == "PENDING"
+
+
+@pytest.mark.asyncio
+async def test_existing_model_source_reads_pvc_when_job_absent(k8s_backend):
+    """_existing_model_source falls back to the PVC annotation when the Job is gone."""
+    backend = _vllm_backend(k8s_backend)
+    backend._batch_v1.read_namespaced_job.side_effect = _api_exception(404)
+    pvc = MagicMock()
+    pvc.metadata.annotations = {"nmp.nvidia.com/model-source": "default/qwen@v3"}
+    backend._core_v1.read_namespaced_persistent_volume_claim.return_value = pvc
+
+    _sync_reconcilers(backend)
+    assert backend._k8s_reconciler._existing_model_source("md-default-qwen") == "default/qwen@v3"
+
+
+@pytest.mark.asyncio
+async def test_existing_model_source_none_when_job_and_pvc_absent(k8s_backend):
+    """_existing_model_source returns None when neither Job nor PVC exists."""
+    backend = _vllm_backend(k8s_backend)
+    backend._batch_v1.read_namespaced_job.side_effect = _api_exception(404)
+    backend._core_v1.read_namespaced_persistent_volume_claim.side_effect = _api_exception(404)
+
+    _sync_reconcilers(backend)
+    assert backend._k8s_reconciler._existing_model_source("md-default-qwen") is None
+
+
+@pytest.mark.asyncio
 async def test_vllm_update_during_pull_is_noop(k8s_backend, sample_deployment):
     """Unchanged source, serving Deployment not yet created but puller Job present.
 
