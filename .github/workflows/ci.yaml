@@ -1451,7 +1451,6 @@ jobs:
       - docker-bake-graph
       - build-cpu-smoke-images
       - kind-cpu-smoke
-      - kind-cpu-e2e
       - helm-lint
       - helm-chart-verifier
       - lint
