@@ -55,7 +55,7 @@ Then upload (see main skill). Validate with `nemo files list <DATASET_NAME> --wo
 
 ## Mapping to job JSON
 
-The same converted JSONL works for both backends, but the **dataset block in job JSON is shaped per backend**.
+Only the **chat-template / `messages` (`to_chat`) output is backend-agnostic** — that JSONL feeds both SFT backends (automodel + unsloth). The `to_sft` (`prompt` / `completion`) shape is **automodel-only**; unsloth needs a `to_text` rendering instead (see below). Either way, the **dataset block in job JSON is shaped per backend**. (rl/DPO uses preference data, not this SFT output — see `dataset-formats.md` § NeMo-RL.)
 
 | Backend | Row format used | Dataset block in job JSON |
 |---------|----------------|---------------------------|
@@ -73,4 +73,4 @@ def to_text(ex):
     return {"text": f"{user}\n{assistant}"}
 ```
 
-For the chat path (`has_chat` True), the `to_chat` JSONL works unchanged across both backends — only the job-JSON dataset block differs.
+For the chat path (`has_chat` True), the `to_chat` JSONL works unchanged across both SFT backends (automodel + unsloth) — only the job-JSON dataset block differs.
