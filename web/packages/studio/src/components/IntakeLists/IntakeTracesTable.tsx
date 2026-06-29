@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { dateTimeFilter } from '@nemo/common/src/components/DataView/dateTimeFilter';
+import { EditColumnsMenu } from '@nemo/common/src/components/DataView/internal';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
@@ -10,6 +11,7 @@ import { getSortParamWithWhitelist } from '@nemo/common/src/utils/query';
 import { useListTraces } from '@nemo/sdk/generated/platform/api';
 import type { Trace, TraceFilter, TraceSortField } from '@nemo/sdk/generated/platform/schema';
 import { Badge, Button } from '@nvidia/foundations-react-core';
+import { Columns3 } from 'lucide-react';
 import { getErrorMessage } from '@studio/api/common/utils';
 import { IntakeTelemetryDataView } from '@studio/components/IntakeLists/IntakeTelemetryDataView';
 import { useWorkspaceFromPathIfExists } from '@studio/hooks/useWorkspaceFromPath';
@@ -26,14 +28,14 @@ import { useNavigate } from 'react-router-dom';
 
 export interface IntakeTracesTableProps {
   workspace?: string;
-  filterTogglePortalTargetId?: string;
+  slotEndPortalTargetId?: string;
   emptyStateActions?: ReactNode;
   noResultsActions?: ReactNode;
 }
 
 export const IntakeTracesTable: FC<IntakeTracesTableProps> = ({
   workspace: workspaceProp,
-  filterTogglePortalTargetId,
+  slotEndPortalTargetId,
   emptyStateActions,
   noResultsActions,
 }) => {
@@ -163,7 +165,15 @@ export const IntakeTracesTable: FC<IntakeTracesTableProps> = ({
     <IntakeTelemetryDataView<Trace>
       dataViewState={dataViewState}
       makeColumns={makeColumns}
-      filterTogglePortalTargetId={filterTogglePortalTargetId}
+      slotEndPortalTargetId={slotEndPortalTargetId}
+      toolbarSlotEnd={
+        <EditColumnsMenu kind="secondary" showChevron={false} slotContent={<div aria-hidden className="h-0 w-[230px]" />}>
+          <>
+            <Columns3 />
+            <span className="hide-mobile">Columns</span>
+          </>
+        </EditColumnsMenu>
+      }
       onRowClick={(trace) => navigate(getIntakeTraceRoute(requestWorkspace, trace.id))}
       attributes={{
         DataViewRoot: {

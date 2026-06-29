@@ -16,7 +16,7 @@ const IntakeTracesTableRoute = lazy(() =>
   import('@studio/components/IntakeLists/IntakeTracesTable').then(({ IntakeTracesTable }) => {
     const IntakeTracesTableRouteComponent: FC = () => (
       <Stack className="flex-1 min-h-0">
-        <IntakeTracesTable filterTogglePortalTargetId={INTAKE_FILTER_ACTION_TARGET_ID} />
+        <IntakeTracesTable slotEndPortalTargetId={INTAKE_FILTER_ACTION_TARGET_ID} />
       </Stack>
     );
 
@@ -27,7 +27,7 @@ const IntakeSpansTableRoute = lazy(() =>
   import('@studio/components/IntakeLists/IntakeSpansTable').then(({ IntakeSpansTable }) => {
     const IntakeSpansTableRouteComponent: FC = () => (
       <Stack className="flex-1 min-h-0">
-        <IntakeSpansTable filterTogglePortalTargetId={INTAKE_FILTER_ACTION_TARGET_ID} />
+        <IntakeSpansTable slotEndPortalTargetId={INTAKE_FILTER_ACTION_TARGET_ID} />
       </Stack>
     );
 

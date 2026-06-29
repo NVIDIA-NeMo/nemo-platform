@@ -98,7 +98,7 @@ const SpanNameCell: FC<SpanNameCellProps> = ({ span, depth, showHierarchy }) => 
 
 export interface IntakeSpansTableProps {
   workspace?: string;
-  filterTogglePortalTargetId?: string;
+  slotEndPortalTargetId?: string;
   fixedFilter?: SpanFilter;
   mode?: ListSpansMode;
   defaultSort?: { id: string; desc: boolean };
@@ -115,7 +115,7 @@ export interface IntakeSpansTableProps {
 
 export const IntakeSpansTable: FC<IntakeSpansTableProps> = ({
   workspace: workspaceProp,
-  filterTogglePortalTargetId,
+  slotEndPortalTargetId,
   fixedFilter,
   mode = 'summary',
   defaultSort = { id: 'started_at', desc: true },
@@ -311,7 +311,7 @@ export const IntakeSpansTable: FC<IntakeSpansTableProps> = ({
     <IntakeTelemetryDataView<SpanTableRow>
       dataViewState={dataViewState}
       makeColumns={makeColumns}
-      filterTogglePortalTargetId={filterTogglePortalTargetId}
+      slotEndPortalTargetId={slotEndPortalTargetId}
       onRowClick={handleRowClick}
       attributes={{
         DataViewRoot: {
