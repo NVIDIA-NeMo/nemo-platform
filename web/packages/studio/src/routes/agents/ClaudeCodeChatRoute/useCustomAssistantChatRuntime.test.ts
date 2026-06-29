@@ -188,6 +188,52 @@ describe('useCustomAssistantChatRuntime', () => {
     });
   });
 
+  it('preserves resumed assistant parts when setting assistant text', async () => {
+    const bashPart: ThreadAssistantMessagePart = {
+      type: 'tool-call',
+      toolCallId: 'toolu_bash',
+      toolName: 'Bash',
+      args: { command: 'pwd' },
+      argsText: '{"command":"pwd"}',
+    };
+    let finishRun!: () => void;
+    const onRun = vi.fn(async (context: CustomAssistantRunContext) => {
+      context.appendAssistantParts([{ type: 'text', text: 'I need approval first.' }, bashPart]);
+      context.prepareForUserInput();
+      context.setAssistantText('\n\nContinuing after approval.');
+      await new Promise<void>((resolve) => {
+        finishRun = resolve;
+      });
+    });
+    const { result } = renderHook(() => useCustomAssistantChatRuntime({ onRun }));
+
+    act(() => {
+      void result.current.submitPrompt('List files');
+    });
+
+    await waitFor(() => {
+      const runtime = getMockRuntime(result.current.runtime);
+      expect(runtime.messages.map((message) => message.role)).toEqual(['user', 'assistant']);
+      expect(getAssistantContent(runtime.messages)).toEqual([
+        { type: 'text', text: 'I need approval first.' },
+        bashPart,
+        { type: 'text', text: '\n\nContinuing after approval.' },
+      ]);
+      expect(runtime.messages[1]?.status).toEqual({ type: 'running' });
+    });
+
+    await act(async () => {
+      finishRun();
+    });
+
+    await waitFor(() => {
+      expect(getMockRuntime(result.current.runtime).messages[1]?.status).toEqual({
+        type: 'complete',
+        reason: 'stop',
+      });
+    });
+  });
+
   it('combines consecutive subtle tool calls across streamed appends', async () => {
     let runContext: CustomAssistantRunContext | undefined;
     const onRun = vi.fn(async (context: CustomAssistantRunContext) => {

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { MessageContent } from '@nemo/common/src/components/Chat/MessageContent';
+import { renderListItemChildren } from '@nemo/common/src/components/Chat/MessageContent/helpers';
+import { MarkdownParagraph } from '@nemo/common/src/components/Chat/MessageContent/MarkdownParagraph';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Components } from 'react-markdown';
@@ -10,6 +12,11 @@ const expectNoDirectParagraphChild = (listItem: HTMLElement): void => {
   // The list marker alignment depends on the first paragraph being unwrapped inside list items.
   // eslint-disable-next-line testing-library/no-node-access
   expect(listItem.querySelector(':scope > p')).not.toBeInTheDocument();
+};
+
+const expectListParagraphDensity = (paragraph: HTMLElement): void => {
+  expect(paragraph).toHaveClass('text-sm', 'leading-6');
+  expect(paragraph).not.toHaveClass('leading-[160%]');
 };
 
 describe('MessageContent', () => {
@@ -83,6 +90,16 @@ describe('MessageContent', () => {
     expect(listItems[0]).toHaveTextContent('First item with a paragraph.');
     expectNoDirectParagraphChild(listItems[1]);
     expect(listItems[1]).toHaveTextContent('Second item with a paragraph.');
+  });
+
+  it('keeps unwrapped list item paragraphs at list item density', () => {
+    render(
+      <ul>
+        <li>{renderListItemChildren(<MarkdownParagraph>Wrapped item</MarkdownParagraph>)}</li>
+      </ul>
+    );
+
+    expectListParagraphDensity(screen.getByText('Wrapped item'));
   });
 
   it('keeps indented loose ordered list content aligned with the number marker', () => {

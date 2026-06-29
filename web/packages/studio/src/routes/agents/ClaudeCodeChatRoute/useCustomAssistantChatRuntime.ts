@@ -249,6 +249,18 @@ export const useCustomAssistantChatRuntime = ({
 
       const setAssistantText = (text: string) => {
         ensureAssistantMessage();
+        if (responseContent) {
+          const textToAppend = text.startsWith(responseText)
+            ? text.slice(responseText.length)
+            : text;
+          responseContent = textToAppend
+            ? mergeAssistantParts(responseContent, [{ type: 'text', text: textToAppend }])
+            : responseContent;
+          responseText = getAssistantPartsText(responseContent);
+          updateAssistantMessageContent(assistantMessageId!, responseContent, RUNNING_STATUS);
+          return;
+        }
+
         responseText = text;
         responseContent = undefined;
         updateAssistantMessageText(assistantMessageId!, responseText, RUNNING_STATUS);
