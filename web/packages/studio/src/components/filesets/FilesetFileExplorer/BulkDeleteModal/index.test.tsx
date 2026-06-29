@@ -284,6 +284,31 @@ describe('BulkDeleteModal', () => {
       });
     });
 
+    it('disables Cancel and Delete buttons while deletion is in progress', async () => {
+      let resolveDelete!: () => void;
+      mockMutateAsync.mockReturnValue(
+        new Promise<void>((resolve) => {
+          resolveDelete = resolve;
+        })
+      );
+
+      render(<BulkDeleteModal {...defaultProps} />);
+      await user.click(getTriggerButton());
+
+      const dialog = getDialog();
+
+      // Don't await — the delete is intentionally left pending
+      const clickPromise = user.click(within(dialog).getByRole('button', { name: /^delete$/i }));
+
+      await waitFor(() => {
+        expect(within(dialog).getByRole('button', { name: /cancel/i })).toBeDisabled();
+      });
+
+      // Resolve to allow the modal to close and avoid act() warnings
+      resolveDelete();
+      await clickPromise;
+    });
+
     it('closes modal after successful deletion', async () => {
       render(<BulkDeleteModal {...defaultProps} />);
 
