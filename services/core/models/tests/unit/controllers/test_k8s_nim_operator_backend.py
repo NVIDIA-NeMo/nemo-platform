@@ -1934,7 +1934,9 @@ async def test_delete_model_deployment_by_id_calls_delete_resources(mock_nmp_sdk
 # ===========================================================================
 
 
-def _vllm_config(*, gpu: int = 1, lora_enabled: bool = False, run_as_user=None, run_as_group=None):
+def _vllm_config(
+    *, gpu: int = 1, lora_enabled: bool = False, run_as_user: int | None = None, run_as_group: int | None = None
+):
     """A minimal vLLM ModelDeploymentConfig-like object for dispatch/compile."""
     return SimpleNamespace(
         engine="vllm",
@@ -2007,8 +2009,8 @@ def _generic_config(
     gpu: int = 0,
     image="nvcr.io/nim/nvidia/nemoguard-jailbreak-detect",
     tag="1.10.1",
-    run_as_user=None,
-    run_as_group=None,
+    run_as_user: int | None = None,
+    run_as_group: int | None = None,
 ):
     """A minimal generic ModelDeploymentConfig-like object (no model weights)."""
     return SimpleNamespace(
@@ -2591,6 +2593,31 @@ async def test_existing_model_source_none_when_job_and_pvc_absent(k8s_backend):
 
     _sync_reconcilers(backend)
     assert backend._k8s_reconciler._existing_model_source("md-default-qwen") is None
+
+
+@pytest.mark.asyncio
+async def test_existing_model_source_reraises_job_api_errors(k8s_backend):
+    """A non-404 error reading the Job propagates (not swallowed / no PVC fallback)."""
+    backend = _vllm_backend(k8s_backend)
+    backend._batch_v1.read_namespaced_job.side_effect = _api_exception(500)
+
+    _sync_reconcilers(backend)
+    with pytest.raises(k8s_client.exceptions.ApiException):
+        backend._k8s_reconciler._existing_model_source("md-default-qwen")
+    # The PVC fallback must not be consulted when the Job read fails hard.
+    backend._core_v1.read_namespaced_persistent_volume_claim.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_existing_model_source_reraises_pvc_api_errors(k8s_backend):
+    """A non-404 error reading the PVC propagates (not swallowed / not None)."""
+    backend = _vllm_backend(k8s_backend)
+    backend._batch_v1.read_namespaced_job.side_effect = _api_exception(404)
+    backend._core_v1.read_namespaced_persistent_volume_claim.side_effect = _api_exception(500)
+
+    _sync_reconcilers(backend)
+    with pytest.raises(k8s_client.exceptions.ApiException):
+        backend._k8s_reconciler._existing_model_source("md-default-qwen")
 
 
 @pytest.mark.asyncio
