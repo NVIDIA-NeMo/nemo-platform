@@ -1,0 +1,89 @@
+# Optional authentik identity provider for NeMo Platform (reference, not core).
+#
+# Stands up authentik (open-source OIDC IdP) so you can use "bring your own IdP"
+# with NeMo Platform, including MACHINE auth via the OAuth2 client-credentials
+# grant. NeMo already validates any OIDC token and authorizes via group->role
+# bindings, so this needs zero NeMo core changes.
+#
+# Bring up (explicit project name so other stacks are untouched):
+#   docker compose -p nemo-authentik -f contrib/authentik/docker-compose.yml up -d
+# Tear down (removes only what this stack created):
+#   docker compose -p nemo-authentik -f contrib/authentik/docker-compose.yml down -v
+#
+# See contrib/authentik/README.md for the full machine-auth walkthrough.
+
+x-authentik-env: &authentik-env
+  AUTHENTIK_REDIS__HOST: authentik-redis
+  AUTHENTIK_POSTGRESQL__HOST: authentik-postgres
+  AUTHENTIK_POSTGRESQL__USER: ${PG_USER:-authentik}
+  AUTHENTIK_POSTGRESQL__NAME: ${PG_DB:-authentik}
+  AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS:-authentik}
+  AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:-change-me-dev-only}
+  # Dev only. Never use these defaults outside local testing.
+  AUTHENTIK_BOOTSTRAP_PASSWORD: ${AUTHENTIK_BOOTSTRAP_PASSWORD:-akadmin-dev}
+  AUTHENTIK_BOOTSTRAP_TOKEN: ${AUTHENTIK_BOOTSTRAP_TOKEN:-bootstrap-token-dev}
+
+services:
+  authentik-postgres:
+    image: docker.io/library/postgres:16-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    environment:
+      POSTGRES_USER: ${PG_USER:-authentik}
+      POSTGRES_DB: ${PG_DB:-authentik}
+      POSTGRES_PASSWORD: ${PG_PASS:-authentik}
+    volumes:
+      - authentik-pgdata:/var/lib/postgresql/data
+
+  authentik-redis:
+    image: docker.io/library/redis:7-alpine
+    restart: unless-stopped
+    command: --save 60 1 --loglevel warning
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - authentik-redisdata:/data
+
+  authentik-server:
+    image: ghcr.io/goauthentik/server:${AUTHENTIK_TAG:-2024.12}
+    restart: unless-stopped
+    command: server
+    environment: *authentik-env
+    ports:
+      # NeMo points oidc.issuer at http://localhost:9000/application/o/nemo/
+      - "9000:9000"
+    volumes:
+      # Blueprints mounted here are applied automatically on startup.
+      - ./blueprints:/blueprints/custom:ro
+      - authentik-media:/media
+    depends_on:
+      authentik-postgres:
+        condition: service_healthy
+      authentik-redis:
+        condition: service_healthy
+
+  authentik-worker:
+    image: ghcr.io/goauthentik/server:${AUTHENTIK_TAG:-2024.12}
+    restart: unless-stopped
+    command: worker
+    environment: *authentik-env
+    volumes:
+      - ./blueprints:/blueprints/custom:ro
+      - authentik-media:/media
+    depends_on:
+      authentik-postgres:
+        condition: service_healthy
+      authentik-redis:
+        condition: service_healthy
+
+volumes:
+  authentik-pgdata:
+  authentik-redisdata:
+  authentik-media:

@@ -1,0 +1,65 @@
+{
+  "skill": "nemo-auth-setup",
+  "tests": [
+    {
+      "type": "explicit",
+      "prompt": "Use nemo-auth-setup to turn on authentication for the platform.",
+      "expected_skill": "nemo-auth-setup"
+    },
+    {
+      "type": "explicit",
+      "prompt": "Run the nemo-auth-setup skill and spin up the reference identity provider.",
+      "expected_skill": "nemo-auth-setup"
+    },
+    {
+      "type": "explicit",
+      "prompt": "Invoke nemo-auth-setup. I'll bring my own OIDC provider.",
+      "expected_skill": "nemo-auth-setup"
+    },
+    {
+      "type": "implicit",
+      "prompt": "Turn on authentication for NeMo and connect it to an identity provider.",
+      "expected_skill": "nemo-auth-setup"
+    },
+    {
+      "type": "implicit",
+      "prompt": "I want each agent to have its own identity so I can control and trace what it calls.",
+      "expected_skill": "nemo-auth-setup"
+    },
+    {
+      "type": "implicit",
+      "prompt": "Set up SSO and role-based access so people only see their own workspaces.",
+      "expected_skill": "nemo-auth-setup"
+    },
+    {
+      "type": "contextual",
+      "prompt": "We're about to demo to a customer who cares about identity and access. Stand up a reference IdP and show me an agent getting blocked, then allowed once I grant it a role, then revoked.",
+      "expected_skill": "nemo-auth-setup"
+    },
+    {
+      "type": "contextual",
+      "prompt": "We already run Okta. Point NeMo at it so my team logs in with their company accounts.",
+      "expected_skill": "nemo-auth-setup"
+    },
+    {
+      "type": "contextual",
+      "prompt": "Right now anyone with the shared key can hit any model. I want per-identity access I can revoke. Help me set that up on NeMo.",
+      "expected_skill": "nemo-auth-setup"
+    },
+    {
+      "type": "negative-control",
+      "prompt": "Store my OpenAI API key as a secret in NeMo.",
+      "expected_skill_not": "nemo-auth-setup"
+    },
+    {
+      "type": "negative-control",
+      "prompt": "Shut down the whole platform and wipe the data directory.",
+      "expected_skill_not": "nemo-auth-setup"
+    },
+    {
+      "type": "negative-control",
+      "prompt": "Reset my NVIDIA Entra login token for the email CLI.",
+      "expected_skill_not": "nemo-auth-setup"
+    }
+  ]
+}

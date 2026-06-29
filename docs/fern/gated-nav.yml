@@ -23,6 +23,8 @@
     path: ../../auth/authentication/providers/index.mdx
   - page: Using Authentication
     path: ../../auth/authentication/using-authentication.mdx
+  - page: Machine Identity
+    path: ../../auth/authentication/machine-identity.mdx
   - page: API Scopes
     path: ../../auth/authorization/api-scopes.mdx
   - page: Overview
