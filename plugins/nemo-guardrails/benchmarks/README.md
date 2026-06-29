@@ -206,8 +206,10 @@ plugins/nemo-guardrails/src/nemo_guardrails_plugin/benchmarks/analyze.py
 ```
 
 Why only delta_p50 (and not absolute with-guardrails p50)? delta_p50
-isolates the middleware's contribution — shared CI runner noise cancels
-across the two variants.
+keeps the check focused on the guardrails overhead relative to the
+without-guardrails path. This cancels shared local-run noise when both variants
+run on the same machine, but CI matrix jobs may land on separate runners, so
+the tolerances also account for inter-runner variance.
 
 #### Baseline constants
 
@@ -225,8 +227,8 @@ across the two variants.
   the numbers.
 
 Worked example: at c=16 the override is 200 ms, so a run with observed
-delta_p50 = 1689 (diff +199 from baseline 1390) passes; observed
-delta_p50 = 1691 (diff +201) fails.
+delta_p50 = 1589 (diff +199 from baseline 1390) passes; observed
+delta_p50 = 1591 (diff +201) fails.
 
 Notes on the current values:
 
@@ -235,7 +237,7 @@ Notes on the current values:
   if latencies in CI produce less variance.
 - Any change to mock-LLM latencies, the guardrails config, or the runner
   class invalidates the current baseline values. The benchmark should be
-  re-run in CI several tiems to establish updated baseline values.
+  re-run in CI several times to establish updated baseline values.
 
 #### Running the analyzer locally
 
