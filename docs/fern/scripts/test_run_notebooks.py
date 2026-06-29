@@ -50,6 +50,27 @@ def test_resolve_mdx_notebook_uses_colab_link(tmp_path: Path) -> None:
     assert resolve_mdx_notebook(mdx, repo_root) == notebook
 
 
+def test_resolve_mdx_notebook_accepts_slash_branch_refs(tmp_path: Path) -> None:
+    repo_root = tmp_path
+    notebook = repo_root / "docs" / "customizer" / "tutorials" / "tutorial.ipynb"
+    notebook.parent.mkdir(parents=True)
+    _write_notebook(notebook)
+
+    colab_mdx = repo_root / "colab.mdx"
+    colab_mdx.write_text(
+        "[Run in Google Colab](https://colab.research.google.com/github/NVIDIA-NeMo/nemo-platform/blob/release/2026.06/docs/customizer/tutorials/tutorial.ipynb)\n",
+        encoding="utf-8",
+    )
+    fern_mdx = repo_root / "fern.mdx"
+    fern_mdx.write_text(
+        '<Notebook colabUrl="https://github.com/NVIDIA-NeMo/nemo-platform/blob/feature/docs-update/docs/customizer/tutorials/tutorial.ipynb" />\n',
+        encoding="utf-8",
+    )
+
+    assert resolve_mdx_notebook(colab_mdx, repo_root) == notebook
+    assert resolve_mdx_notebook(fern_mdx, repo_root) == notebook
+
+
 def test_select_notebooks_skips_skip_test_marker(tmp_path: Path) -> None:
     notebook = tmp_path / "skip.ipynb"
     _write_notebook(notebook, "<!-- @nemo-nb: process -->\n<!-- @nemo-nb: skip-test -->")

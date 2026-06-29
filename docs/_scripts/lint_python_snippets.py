@@ -42,7 +42,7 @@ SKIP_DIRS = {
 }
 
 FENCE_RE = re.compile(r"^([ \t]*)(`{3,}|~{3,})(.*)$")
-TY_OUTPUT_RE = re.compile(r"^(.+?):(\d+):(\d+): (.+)$")
+TY_OUTPUT_RE = re.compile(r"^(?P<path>.+?):(?P<line>\d+):(?P<column>\d+): (?P<message>.+)$")
 
 SKIP_NEXT_BLOCK_MARKERS = {
     "<!-- @nemo-docs: skip-python-snippet-check -->",
@@ -259,9 +259,17 @@ def prepare_type_check_file(
     if not any(line.strip() for line in source_lines):
         return None
 
-    safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(doc_path.with_suffix("")))
-    temp_path = temp_dir / f"{safe_name}.py"
-    temp_path.write_text("\n".join(source_lines), encoding="utf-8")
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=temp_dir,
+        prefix="snippet-",
+        suffix=".py",
+        delete=False,
+    ) as temp_file:
+        temp_file.write("\n".join(source_lines))
+        temp_path = Path(temp_file.name)
+
     return PreparedTypeCheckFile(doc_path=doc_path, temp_path=temp_path, line_mapping=tuple(line_mapping))
 
 
@@ -291,7 +299,7 @@ def run_type_check(
         if not prepared_files:
             return {path: tuple(messages) for path, messages in results.items()}
 
-        temp_to_prepared = {prepared.temp_path: prepared for prepared in prepared_files}
+        temp_to_prepared = {str(prepared.temp_path): prepared for prepared in prepared_files}
         command = [
             "uv",
             "run",
@@ -326,29 +334,21 @@ def run_type_check(
         unmatched_lines: list[str] = []
 
         for line in output.splitlines():
-            matched_prepared: PreparedTypeCheckFile | None = None
-            matched_temp_path: Path | None = None
-            for temp_path, prepared in temp_to_prepared.items():
-                if line.startswith(str(temp_path)):
-                    matched_prepared = prepared
-                    matched_temp_path = temp_path
-                    break
-
-            if matched_prepared is None or matched_temp_path is None:
+            match = TY_OUTPUT_RE.match(line)
+            if match is None:
                 if line.strip():
                     unmatched_lines.append(line)
                 continue
 
-            match = TY_OUTPUT_RE.match(line)
-            if match is None:
-                results[matched_prepared.doc_path].append(
-                    line.replace(str(matched_temp_path), str(matched_prepared.doc_path))
-                )
+            matched_prepared = temp_to_prepared.get(match.group("path"))
+            if matched_prepared is None:
+                if line.strip():
+                    unmatched_lines.append(line)
                 continue
 
-            combined_line = int(match.group(2))
-            column = match.group(3)
-            message = match.group(4)
+            combined_line = int(match.group("line"))
+            column = match.group("column")
+            message = match.group("message")
             doc_line = translate_line_number(combined_line, matched_prepared.line_mapping)
             results[matched_prepared.doc_path].append(f"{matched_prepared.doc_path}:{doc_line}:{column}: {message}")
 

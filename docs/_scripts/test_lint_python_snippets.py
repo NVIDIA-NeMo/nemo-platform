@@ -5,10 +5,14 @@ from pathlib import Path
 
 import pytest
 
+from docs._scripts import lint_python_snippets
 from docs._scripts.lint_python_snippets import (
+    PreparedTypeCheckFile,
+    PythonSnippet,
     extract_python_snippets,
     find_doc_files,
     prepare_type_check_file,
+    run_type_check,
     syntax_check,
     translate_line_number,
 )
@@ -153,3 +157,71 @@ print(value)
     assert prepared.temp_path.read_text(encoding="utf-8") == "value = 1\n\nprint(value)\n"
     assert prepared.line_mapping == (2, 2, 11, 11)
     assert translate_line_number(3, prepared.line_mapping) == 11
+
+
+def test_prepare_type_check_file_uses_unique_temp_paths_for_colliding_doc_names(tmp_path: Path) -> None:
+    first_doc = tmp_path / "docs" / "a_b.md"
+    second_doc = tmp_path / "docs" / "a" / "b.md"
+    first_doc.parent.mkdir(parents=True)
+    second_doc.parent.mkdir(parents=True)
+    for doc in (first_doc, second_doc):
+        doc.write_text("```python\nvalue = 1\n```\n", encoding="utf-8")
+
+    first_prepared = prepare_type_check_file(first_doc, extract_python_snippets(first_doc), tmp_path)
+    second_prepared = prepare_type_check_file(second_doc, extract_python_snippets(second_doc), tmp_path)
+
+    assert first_prepared is not None
+    assert second_prepared is not None
+    assert first_prepared.temp_path != second_prepared.temp_path
+    assert first_prepared.temp_path.read_text(encoding="utf-8") == "value = 1\n"
+    assert second_prepared.temp_path.read_text(encoding="utf-8") == "value = 1\n"
+
+
+def test_run_type_check_matches_temp_paths_exactly(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    doc = tmp_path / "doc.md"
+    doc_with_prefixed_temp_path = tmp_path / "doc-prefixed.md"
+    temp_path = tmp_path / "snippet.py"
+    prefixed_temp_path = tmp_path / "snippet.py-extra"
+    prepared_files = {
+        doc: PreparedTypeCheckFile(doc_path=doc, temp_path=temp_path, line_mapping=(10,)),
+        doc_with_prefixed_temp_path: PreparedTypeCheckFile(
+            doc_path=doc_with_prefixed_temp_path,
+            temp_path=prefixed_temp_path,
+            line_mapping=(20,),
+        ),
+    }
+
+    def fake_prepare_type_check_file(
+        doc_path: Path,
+        snippets: list[PythonSnippet],
+        temp_dir: Path,
+    ) -> PreparedTypeCheckFile:
+        return prepared_files[doc_path]
+
+    def fake_run(
+        command: list[str],
+        **kwargs: object,
+    ) -> lint_python_snippets.subprocess.CompletedProcess[str]:
+        return lint_python_snippets.subprocess.CompletedProcess(
+            command,
+            returncode=1,
+            stdout=f"{prefixed_temp_path}:1:5: exact match only\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(lint_python_snippets, "prepare_type_check_file", fake_prepare_type_check_file)
+    monkeypatch.setattr(lint_python_snippets.subprocess, "run", fake_run)
+
+    results = run_type_check(
+        {
+            doc: [PythonSnippet(path=doc, start_line=1, source="value = 1", type_check=True)],
+            doc_with_prefixed_temp_path: [
+                PythonSnippet(path=doc_with_prefixed_temp_path, start_line=1, source="value = 2", type_check=True)
+            ],
+        },
+        project_root=tmp_path,
+        timeout_seconds=120,
+    )
+
+    assert results[doc] == ()
+    assert results[doc_with_prefixed_temp_path] == (f"{doc_with_prefixed_temp_path}:20:5: exact match only",)

@@ -32,9 +32,9 @@ from nemo_nb import (
 )
 
 COLAB_NOTEBOOK_RE = re.compile(
-    r"https://colab\.research\.google\.com/github/[^/]+/[^/]+/blob/[^/]+/(?P<path>docs/[^)\"'\s]+\.ipynb)"
+    r"https://colab\.research\.google\.com/github/[^/]+/[^/]+/blob/(?:[^/]+/)+(?P<path>docs/[^)\"'\s]+\.ipynb)"
 )
-FERN_NOTEBOOK_RE = re.compile(r"colabUrl=[\"'].*?/blob/[^/]+/(?P<path>docs/[^\"']+\.ipynb)[\"']")
+FERN_NOTEBOOK_RE = re.compile(r"colabUrl=[\"'].*?/blob/(?:[^/]+/)+(?P<path>docs/[^\"']+\.ipynb)[\"']")
 FERN_MARKDOWN_RE = re.compile(r"^[ \t]*<Markdown\s+src=[\"'](?P<src>[^\"']+)[\"']\s*/>[ \t]*$", re.MULTILINE)
 EXECUTABLE_FENCE_RE = re.compile(r"^```(?P<language>[\w+-]*)\s*$", re.MULTILINE)
 EXECUTABLE_FENCE_LANGUAGES = {"python", "py", "sh", "bash", "shell"}
