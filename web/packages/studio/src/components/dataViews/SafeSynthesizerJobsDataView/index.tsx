@@ -70,9 +70,14 @@ export const SafeSynthesizerJobsDataView: FC = () => {
   });
 
   const handleDeleteJobs = async (jobsToDelete: SafeSynthesizerJob[]) => {
-    const valid = jobsToDelete.filter((job) => job.workspace && job.name);
+    const invalid = jobsToDelete.filter((job) => !job.workspace || !job.name);
+    if (invalid.length > 0) {
+      throw new Error(
+        `Cannot delete ${invalid.length} job${invalid.length !== 1 ? 's' : ''}: missing workspace or name.`
+      );
+    }
     await Promise.all(
-      valid.map(async (job) => {
+      jobsToDelete.map(async (job) => {
         try {
           await deleteJobMutation.mutateAsync({ workspace: job.workspace!, name: job.name });
         } catch (error) {
