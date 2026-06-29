@@ -122,6 +122,19 @@ docs-watch: ## Start Fern docs dev plus a repo-level watcher for docs/** changes
 docs-check: ## Validate the Fern docs (fern check + validate-mdx + gated-link check)
 	cd docs/fern && npm run check
 
+.PHONY: test-auth-idp
+test-auth-idp: ## Run the auth-idp test suite
+	uv run --frozen pytest tests/auth_idp -v
+
+AUTHENTIK_EXAMPLE_COMPOSE_DIR ?= contrib/auth/authentik
+
+.PHONY: run-contrib-auth-authentik
+run-contrib-auth-authentik: ## Build/load the local nmp-api image and run the Authentik example stack in the foreground
+	IMAGE_REGISTRY=$${IMAGE_REGISTRY:-local} BAKE_TAG=$${BAKE_TAG:-authentik-local} $(MAKE) docker-load TARGET=docker-cpu
+	@set -e; \
+	trap 'cd $(AUTHENTIK_EXAMPLE_COMPOSE_DIR) && IMAGE_REGISTRY=$${IMAGE_REGISTRY:-local} BAKE_TAG=$${BAKE_TAG:-authentik-local} docker compose down -v' EXIT INT TERM; \
+	cd $(AUTHENTIK_EXAMPLE_COMPOSE_DIR) && IMAGE_REGISTRY=$${IMAGE_REGISTRY:-local} BAKE_TAG=$${BAKE_TAG:-authentik-local} docker compose up
+
 .PHONY: docs-check-python-snippets
 docs-check-python-snippets: ## Syntax-check and type-check Python snippets in one doc (DOCS_PATH=...)
 	@if [ -z "$(strip $(DOCS_PATH))" ]; then echo "Usage: make docs-check-python-snippets DOCS_PATH=docs/customizer/tutorials/import-hf-model.mdx" >&2; exit 2; fi

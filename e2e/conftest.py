@@ -236,6 +236,12 @@ def _services(_services_instance: RunningServices) -> Iterator[str]:
 
 
 @pytest.fixture(scope="module")
+def e2e_sidecars(_services_instance: RunningServices) -> dict[str, dict[str, str]]:
+    sidecars = _services_instance.sidecars or {}
+    return {name: {key: str(value) for key, value in metadata.items()} for name, metadata in sidecars.items()}
+
+
+@pytest.fixture(scope="module")
 def sdk(_services: str, _services_instance: RunningServices) -> NeMoPlatform:
     """Provide an SDK client connected to the running platform.
 

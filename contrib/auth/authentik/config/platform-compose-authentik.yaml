@@ -1,0 +1,70 @@
+e2e:
+  backend: docker
+
+platform:
+  runtime: "none"
+  base_url: "http://0.0.0.0:8080"
+
+service: {}
+
+auth:
+  enabled: true
+  allow_unsigned_jwt: false
+  policy_decision_point_provider: embedded
+  policy_decision_point_base_url: "http://127.0.0.1:8080"
+  policy_data_refresh_interval: 2
+  bundle_cache_seconds: 15
+  admin_email: "admin@example.com"
+  oidc:
+    enabled: true
+    issuer: "http://authentik-server:9000/application/o/nemo/"
+    client_id: "nemo-platform"
+    subject_claim: "sub"
+    email_claim: "email"
+    groups_claim: "groups"
+    default_scopes: "openid profile email offline_access groups"
+
+entities: {}
+
+jobs:
+  executors:
+    - provider: subprocess
+      profile: default
+      backend: subprocess
+      config:
+        working_directory: /data/subprocess-jobs
+        cleanup_completed_jobs_immediately: false
+        ttl_seconds_before_active: 60
+        ttl_seconds_active: 3600
+        ttl_seconds_after_finished: 300
+  executor_defaults:
+    subprocess:
+      working_directory: /data/subprocess-jobs
+      cleanup_completed_jobs_immediately: false
+      ttl_seconds_before_active: 60
+      ttl_seconds_active: 3600
+      ttl_seconds_after_finished: 300
+
+evaluator:
+  recreate_existing_system_entities: true
+
+safe_synthesizer: {}
+
+models:
+  controller:
+    interval_seconds: 5
+    model_deployment_garbage_collection_ttl_seconds: 30
+
+inference_gateway: {}
+
+secrets:
+  allow_key_creation: true
+
+files:
+  default_storage_config:
+    type: local
+    path: /data/files
+
+studio:
+  static_files_path: /static/studio
+  sandbox_enabled: true

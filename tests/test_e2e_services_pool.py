@@ -1,60 +1,72 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-from pathlib import Path
-
-import httpx
 
 import e2e.services_pool as services_pool
-from e2e.services_pool import E2EServicesPool, ModuleConfigState, ServicesPoolKey
 
 
-class _StubModule:
-    def __init__(self, nodeid: str) -> None:
-        self.nodeid = nodeid
+def test_render_e2e_config_for_docker_preserves_container_paths(tmp_path) -> None:
+    config = {
+        "e2e": {"backend": "docker"},
+        "jobs": {
+            "executors": [
+                {
+                    "provider": "subprocess",
+                    "config": {"working_directory": "/data/subprocess-jobs"},
+                }
+            ]
+        },
+        "files": {"default_storage_config": {"type": "local", "path": "/data/files"}},
+    }
+
+    rendered = services_pool._render_e2e_config_for_backend(config, tmp_path)
+
+    assert rendered["jobs"]["executors"][0]["config"]["working_directory"] == "/data/subprocess-jobs"
+    assert rendered["files"]["default_storage_config"]["path"] == "/data/files"
 
 
-class _ExitedProc:
-    def poll(self) -> int:
-        return 1
+def test_render_e2e_config_for_subprocess_rewrites_instance_paths(tmp_path) -> None:
+    config = {
+        "jobs": {
+            "executors": [
+                {
+                    "provider": "subprocess",
+                    "config": {"working_directory": ".tmp/e2e/subprocess-jobs"},
+                }
+            ]
+        },
+        "files": {"default_storage_config": {"type": "local", "path": ".tmp/e2e/files"}},
+    }
+
+    rendered = services_pool._render_e2e_config_for_backend(config, tmp_path)
+
+    assert rendered["jobs"]["executors"][0]["config"]["working_directory"] == str(tmp_path / "subprocess-jobs")
+    assert rendered["files"]["default_storage_config"]["path"] == str(tmp_path / "files")
 
 
-def test_acquire_for_module_preserves_auth_for_external_url(monkeypatch) -> None:
-    pool = E2EServicesPool()
-    module = _StubModule("e2e/test_example.py")
-    pool._module_states[module.nodeid] = ModuleConfigState(
-        module_id=module.nodeid,
-        key=ServicesPoolKey(config_hash="abc123"),
-        config_path=Path("/tmp/platform.yaml"),
-        config_data={},
-        config_layers=(),
-        auth_enabled=True,
-    )
-    monkeypatch.setenv("NMP_BASE_URL", "http://external.example")
+def test_docker_backend_overrides_prefer_e2e_specific_env(monkeypatch) -> None:
+    monkeypatch.setenv("IMAGE_REGISTRY", "ghcr.io/example/default")
+    monkeypatch.setenv("BAKE_TAG", "default-tag")
+    monkeypatch.setenv("NMP_E2E_IMAGE_REGISTRY", "ghcr.io/example/e2e")
+    monkeypatch.setenv("NMP_E2E_IMAGE_TAG", "e2e-tag")
 
-    services = pool.acquire_for_module(module)
+    overrides = services_pool._docker_backend_overrides()
 
-    assert services.url == "http://external.example"
-    assert services.auth_enabled is True
+    assert overrides == {
+        "registry": "ghcr.io/example/e2e",
+        "tag": "e2e-tag",
+    }
 
 
-def test_wait_for_healthy_returns_false_immediately_when_process_has_exited(monkeypatch) -> None:
-    monkeypatch.setattr(
-        services_pool.httpx,
-        "get",
-        lambda *args, **kwargs: (_ for _ in ()).throw(httpx.RequestError("down")),
-    )
-    monkeypatch.setattr(services_pool.time, "sleep", lambda _: (_ for _ in ()).throw(AssertionError("slept")))
+def test_docker_backend_overrides_fall_back_to_ci_bake_env(monkeypatch) -> None:
+    monkeypatch.delenv("NMP_E2E_IMAGE_REGISTRY", raising=False)
+    monkeypatch.delenv("NMP_E2E_IMAGE_TAG", raising=False)
+    monkeypatch.setenv("IMAGE_REGISTRY", "ghcr.io/example/default")
+    monkeypatch.setenv("BAKE_TAG", "default-tag")
 
-    assert services_pool._wait_for_healthy("http://example.com", _ExitedProc(), timeout=0.1) is False
+    overrides = services_pool._docker_backend_overrides()
 
-
-def test_wait_for_auth_ready_returns_false_immediately_when_process_has_exited(monkeypatch) -> None:
-    monkeypatch.setattr(
-        services_pool.httpx,
-        "post",
-        lambda *args, **kwargs: (_ for _ in ()).throw(httpx.RequestError("down")),
-    )
-    monkeypatch.setattr(services_pool.time, "sleep", lambda _: (_ for _ in ()).throw(AssertionError("slept")))
-
-    assert services_pool._wait_for_auth_ready("http://example.com", _ExitedProc(), timeout=0.1) is False
+    assert overrides == {
+        "registry": "ghcr.io/example/default",
+        "tag": "default-tag",
+    }

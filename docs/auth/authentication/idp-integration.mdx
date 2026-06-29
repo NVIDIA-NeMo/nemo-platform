@@ -1,0 +1,14 @@
+---
+title: "Integrate NeMo Platform With An Identity Provider"
+description: ""
+---
+NeMo Platform integrates with external OIDC identity providers. Some reference
+providers live under `contrib/auth/*`.  These are examples that can be adapted
+to work in production.
+
+## Provider References
+
+- `contrib/auth/authentik`
+
+Each provider bundle includes a gateway layer that strips inbound
+`X-NMP-Principal-*` headers before traffic reaches NeMo.

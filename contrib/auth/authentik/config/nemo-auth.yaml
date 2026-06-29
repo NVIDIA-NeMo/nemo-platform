@@ -1,0 +1,16 @@
+auth:
+  enabled: true
+  allow_unsigned_jwt: false
+  policy_decision_point_provider: embedded
+  policy_decision_point_base_url: "http://localhost:8080"
+  policy_data_refresh_interval: 2
+  bundle_cache_seconds: 15
+  admin_email: "admin@example.com"
+  oidc:
+    enabled: true
+    issuer: "http://127.0.0.1:19000/application/o/nemo/"
+    client_id: "nemo-platform"
+    subject_claim: "sub"
+    email_claim: "email"
+    groups_claim: "groups"
+    default_scopes: "openid profile email offline_access groups"

@@ -15,6 +15,7 @@ import os
 import shutil
 import tempfile
 import time
+import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -35,11 +36,17 @@ CONTAINER_PORT = 8080
 HEALTH_ENDPOINT = "/health/ready"
 STARTUP_TIMEOUT_SECONDS = 60
 NMP_API_NETWORK_ALIAS = "nmp-quickstart"
+NMP_API_CONTAINER_NAME_PREFIX = "nmp-api-test"
 
 # Docker client timeout in seconds. This needs to be higher than the default 60s
 # to handle Docker-in-Docker (DinD) environments in CI where the Docker daemon
 # may be slower to respond.
 DOCKER_CLIENT_TIMEOUT_SECONDS = 180
+
+
+def _api_container_name() -> str:
+    """Return a readable, collision-resistant Docker container name for NeMo E2E."""
+    return f"{NMP_API_CONTAINER_NAME_PREFIX}-{uuid.uuid4().hex[:8]}"
 
 
 class Docker(E2EBackend):
@@ -100,6 +107,7 @@ class Docker(E2EBackend):
                 docker_client_kw={"timeout": DOCKER_CLIENT_TIMEOUT_SECONDS},
             )
             self.container.with_kwargs(init=True)
+            self.container.with_name(_api_container_name())
             self.container.with_network(self.network)
             self.container.with_network_aliases(NMP_API_NETWORK_ALIAS)
             self.container.with_exposed_ports(CONTAINER_PORT)
@@ -440,6 +448,21 @@ class Docker(E2EBackend):
         base_url = f"http://{container_host}:{self._host_port}"
         headers = {"X-NMP-Principal-Id": principal_id} if principal_id else None
         return NeMoPlatform(base_url=base_url, default_headers=headers)
+
+    @property
+    def network_name(self) -> str | None:
+        """Get the dedicated Docker network name for this backend."""
+        return self.network.name if self.network is not None else None
+
+    @property
+    def network_alias(self) -> str:
+        """Get the stable network alias used by sibling containers."""
+        return NMP_API_NETWORK_ALIAS
+
+    @property
+    def container_port(self) -> int:
+        """Get the internal API port exposed within the Docker network."""
+        return CONTAINER_PORT
 
     @property
     def base_url(self) -> str:
