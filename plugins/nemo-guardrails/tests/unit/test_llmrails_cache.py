@@ -908,7 +908,7 @@ def _fake_rails(name: str = "rails") -> SimpleNamespace:
     rails = SimpleNamespace(
         name=name,
         events_history_cache={"prefix-A": "prior"},
-        explain_info=object(),
+        _explain_info=object(),
         update_llm_calls=[],
     )
 
@@ -1753,7 +1753,7 @@ class TestCacheLeaseReset:
         cache = LLMRailsCache(builder=_FakeBuilder())
 
         async with cache.lease(STABLE_A) as rails:
-            assert rails.explain_info is None
+            assert rails._explain_info is None
 
     async def test_update_llm_called_with_main_llm(self) -> None:
         cache = LLMRailsCache(builder=_FakeBuilder())

@@ -20,6 +20,7 @@ core invariant.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -33,6 +34,7 @@ from nemo_guardrails_plugin.llmrails_cache import (
 )
 from nemo_platform.types.guardrail import RailsConfig as PlatformRailsConfig
 from nemo_platform_plugin.inference_middleware import OpenAICompatibleInferenceTarget
+from nemoguardrails.integrations.langchain.llm_adapter import LangChainLLMAdapter
 from nemoguardrails.rails.llm.llmrails import LLMRails
 
 pytestmark = [pytest.mark.integration]
@@ -78,7 +80,7 @@ class TestRealLLMRailsBuildFromStableConfig:
         # No main model in cached config → __init__ leaves self.llm == None.
         # update_llm() at acquire time will set it.
         assert rails.llm is None
-        assert rails.llm_generation_actions.llm is None
+        assert rails._llm_generation_actions.llm is None
         # The request action param is therefore not registered yet.
         assert "llm" not in rails.runtime.registered_action_params
 
@@ -95,13 +97,13 @@ class TestRealLLMRailsBuildFromStableConfig:
         rails = LLMRails(config=stable.rails)
 
         assert rails.llm is None
-        assert rails.llm_generation_actions.llm is None
+        assert rails._llm_generation_actions.llm is None
 
     def test_update_llm_seeds_main_after_build(self) -> None:
         """After build, ``update_llm(main_llm)`` must wire the LLM into all
         three places ``LLMRails.update_llm`` documents:
-        - ``self.llm``
-        - ``self.llm_generation_actions.llm``
+        - ``self.llm`` (wrapped in LangChainLLMAdapter by the library)
+        - ``self._llm_generation_actions.llm``
         - ``runtime.action_param("llm")``
         """
         stable = stabilize(_platform_rails([]), _resolve_target)
@@ -110,9 +112,11 @@ class TestRealLLMRailsBuildFromStableConfig:
         main_llm = MagicMock(spec=BaseLanguageModel, name="main_llm")
         rails.update_llm(main_llm)
 
-        assert rails.llm is main_llm
-        assert rails.llm_generation_actions.llm is main_llm
-        assert rails.runtime.registered_action_params["llm"] is main_llm
+        # The library wraps raw BaseLanguageModel in LangChainLLMAdapter on update_llm.
+        assert isinstance(rails.llm, LangChainLLMAdapter)
+        assert rails.llm.raw_llm is main_llm
+        assert rails._llm_generation_actions.llm.raw_llm is main_llm
+        assert rails.runtime.registered_action_params["llm"].raw_llm is main_llm
 
 
 # ---------------------------------------------------------------------------
@@ -135,11 +139,12 @@ class TestCacheWithRealBuilder:
         try:
             async with cache.lease(stable, main_llm=main_llm, provenance=Provenance("test")) as rails:
                 assert isinstance(rails, LLMRails)
-                assert rails.llm is main_llm
-                assert rails.llm_generation_actions.llm is main_llm
+                assert isinstance(rails.llm, LangChainLLMAdapter)
+                assert rails.llm.raw_llm is main_llm
+                assert rails._llm_generation_actions.llm.raw_llm is main_llm
                 # lease's reset path wiped these.
                 assert rails.events_history_cache == {}
-                assert rails.explain_info is None
+                assert rails._explain_info is None
         finally:
             await cache.close()
 
@@ -158,9 +163,10 @@ class TestCacheWithRealBuilder:
 
             async with cache.lease(stable, main_llm=second_llm) as rails_b:
                 assert id(rails_b) == first_id, "cache should reuse the pooled instance"
-                assert rails_b.llm is second_llm
-                assert rails_b.llm_generation_actions.llm is second_llm
-                assert rails_b.runtime.registered_action_params["llm"] is second_llm
+                assert isinstance(rails_b.llm, LangChainLLMAdapter)
+                assert rails_b.llm.raw_llm is second_llm
+                assert rails_b._llm_generation_actions.llm.raw_llm is second_llm
+                assert rails_b.runtime.registered_action_params["llm"].raw_llm is second_llm
         finally:
             await cache.close()
 
@@ -235,3 +241,96 @@ def test_supports_colang_version(colang_version: str) -> None:
     stable = stabilize(platform_rails_config, _resolve_target)
     rails = LLMRails(config=stable.rails)
     assert rails.config.colang_version == colang_version
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: import_paths injection and tool_output rail behaviour
+# ---------------------------------------------------------------------------
+
+
+def _tool_output_platform_rails(allowed_tools: list[str]) -> PlatformRailsConfig:
+    return PlatformRailsConfig.model_validate(
+        {
+            "rails": {"tool_output": {"flows": ["check tool allowlist"]}},
+            "custom_data": {"tool_allowlist": {"allowed_tools": allowed_tools}},
+            "models": [],
+        }
+    )
+
+
+class TestToolRailsImportPathsInjection:
+    """Phase 3: DefaultLLMRailsBuilder injects tool rail Colang flows so the
+    runtime's flow_configs contains our built-in guard flows."""
+
+    async def test_tool_rail_flows_injected_into_config(self) -> None:
+        """Flows from flows.co must appear in config.flows after build so the
+        Colang runtime's _init_flow_configs() registers them in flow_configs."""
+        stable = stabilize(_platform_rails(), _resolve_target)
+        before_ids = {f.get("id") for f in (stable.rails.flows or [])}
+        assert "check tool allowlist" not in before_ids
+
+        rails = await DefaultLLMRailsBuilder().build(stable.rails)
+
+        after_ids = {f.get("id") for f in rails.config.flows}
+        assert "check tool allowlist" in after_ids
+        assert "check tool arguments" in after_ids
+        assert "check tool schema" in after_ids
+        assert "check tool result linkage" in after_ids
+
+    async def test_tool_rail_flow_injection_does_not_mutate_cached_config(self) -> None:
+        """Building multiple LLMRails instances from one stable config must not
+        append duplicate built-in tool flows to the cached config object."""
+        stable = stabilize(_platform_rails(), _resolve_target)
+
+        first = await DefaultLLMRailsBuilder().build(stable.rails)
+        second = await DefaultLLMRailsBuilder().build(stable.rails)
+
+        original_ids = [flow.get("id") for flow in (stable.rails.flows or [])]
+        first_ids = [flow.get("id") for flow in first.config.flows]
+        second_ids = [flow.get("id") for flow in second.config.flows]
+
+        assert "check tool allowlist" not in original_ids
+        assert first_ids.count("check tool allowlist") == 1
+        assert second_ids.count("check tool allowlist") == 1
+        assert first_ids.count("check tool result linkage") == 1
+        assert second_ids.count("check tool result linkage") == 1
+
+    async def test_check_tool_allowlist_action_registered(self) -> None:
+        """After build the action dispatcher must know about our custom actions."""
+        stable = stabilize(_platform_rails(), _resolve_target)
+
+        rails = await DefaultLLMRailsBuilder().build(stable.rails)
+
+        assert rails.runtime.action_dispatcher.has_registered("check_tool_allowlist")
+        assert rails.runtime.action_dispatcher.has_registered("check_tool_arguments")
+        assert rails.runtime.action_dispatcher.has_registered("check_tool_schema")
+        assert rails.runtime.action_dispatcher.has_registered("check_tool_result_linkage")
+
+    async def test_generate_async_returns_without_stalling_when_tool_allowed(self) -> None:
+        """Resolves the open question: generate_async with rail_types=['tool_output']
+        must return without stalling on StartToolCallBotAction.
+
+        This test verifies the call completes within the timeout. Blocking detection
+        via activated_rails is exercised in the middleware integration tests.
+        """
+        stable = stabilize(_tool_output_platform_rails(allowed_tools=["get_weather"]), _resolve_target)
+        rails = await DefaultLLMRailsBuilder().build(stable.rails)
+
+        messages = [
+            {"role": "user", "content": "What's the weather?"},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {"id": "call_1", "type": "function", "function": {"name": "get_weather", "arguments": "{}"}}
+                ],
+            },
+        ]
+
+        result = await asyncio.wait_for(
+            rails.generate_async(messages=messages, options={"rails": ["tool_output"]}),
+            timeout=30,
+        )
+
+        # log is None because we didn't request activated_rails in options.
+        assert result.log is None

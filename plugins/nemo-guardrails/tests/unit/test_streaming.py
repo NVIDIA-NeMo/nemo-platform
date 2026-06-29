@@ -6,12 +6,14 @@ from typing import Any
 
 from nemo_guardrails_plugin.streaming import (
     ChatCompletionChunkMetadata,
+    buffer_chat_completion_stream,
     build_final_chat_completion_chunk,
     build_streaming_error_response,
     chunks_to_strings,
     close_async_iterator,
     extract_delta_content,
     parse_streaming_error_token,
+    response_body_to_streaming_chunks,
     strings_to_chunks,
 )
 
@@ -75,6 +77,113 @@ class TestChunksToStrings:
         assert metadata.response.model == "served-model"
         assert metadata.response.system_fingerprint == "fp-abc"
         assert metadata.finish_reason == "stop"
+
+
+class TestBufferChatCompletionStream:
+    async def test_reconstructs_streamed_tool_calls(self) -> None:
+        async def chunks() -> AsyncIterator[dict[str, Any]]:
+            yield {
+                "id": "chatcmpl-123",
+                "object": "chat.completion.chunk",
+                "created": 123,
+                "model": "served-model",
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {
+                            "role": "assistant",
+                            "tool_calls": [
+                                {
+                                    "index": 0,
+                                    "id": "call_1",
+                                    "type": "function",
+                                    "function": {"name": "wi", "arguments": '{"question"'},
+                                }
+                            ],
+                        },
+                    }
+                ],
+            }
+            yield {
+                "id": "chatcmpl-123",
+                "object": "chat.completion.chunk",
+                "created": 123,
+                "model": "served-model",
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"tool_calls": [{"index": 0, "function": {"name": "ki", "arguments": ':"NVIDIA"}'}}]},
+                    }
+                ],
+            }
+            yield {
+                "id": "chatcmpl-123",
+                "object": "chat.completion.chunk",
+                "created": 123,
+                "model": "served-model",
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}],
+            }
+
+        buffered = await buffer_chat_completion_stream(chunks())
+
+        assert buffered.is_tool_call_response is True
+        assert buffered.response_body["choices"][0]["finish_reason"] == "tool_calls"
+        assert buffered.tool_calls == [
+            {
+                "id": "call_1",
+                "type": "function",
+                "function": {"name": "wiki", "arguments": '{"question":"NVIDIA"}'},
+            }
+        ]
+
+    async def test_reconstructs_content_stream_without_tool_calls(self) -> None:
+        async def chunks() -> AsyncIterator[dict[str, Any]]:
+            yield {"id": "chatcmpl-123", "created": 123, "model": "served-model", "choices": [{"index": 0, "delta": {"role": "assistant", "content": "Hel"}}]}
+            yield {"id": "chatcmpl-123", "created": 123, "model": "served-model", "choices": [{"index": 0, "delta": {"content": "lo"}, "finish_reason": "stop"}]}
+
+        buffered = await buffer_chat_completion_stream(chunks())
+
+        assert buffered.is_tool_call_response is False
+        assert buffered.response_body["choices"][0]["message"] == {"role": "assistant", "content": "Hello"}
+        assert buffered.response_body["choices"][0]["finish_reason"] == "stop"
+
+
+class TestResponseBodyToStreamingChunks:
+    async def test_converts_blocked_response_to_streaming_chunks(self) -> None:
+        chunks = await _collect(
+            response_body_to_streaming_chunks(
+                {
+                    "id": "chatcmpl-123",
+                    "created": 123,
+                    "model": "served-model",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {"role": "assistant", "content": "blocked"},
+                            "finish_reason": "content_filter",
+                        }
+                    ],
+                },
+                fallback_model="request-model",
+            )
+        )
+
+        assert chunks == [
+            {
+                "id": "chatcmpl-123",
+                "object": "chat.completion.chunk",
+                "created": 123,
+                "model": "served-model",
+                "choices": [{"index": 0, "delta": {"role": "assistant", "content": "blocked"}}],
+            },
+            {
+                "id": "chatcmpl-123",
+                "object": "chat.completion.chunk",
+                "created": 123,
+                "model": "served-model",
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "content_filter"}],
+            },
+        ]
 
 
 class TestStringsToChunks:

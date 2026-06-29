@@ -17,7 +17,7 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, contextmanager
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import nemo_platform
@@ -61,6 +61,8 @@ from nemoguardrails.rails.llm.options import ActivatedRail, GenerationLog, Gener
 def _sdk_rails(
     *,
     input_flows: list[str] | None = None,
+    tool_input_flows: list[str] | None = None,
+    tool_output_flows: list[str] | None = None,
     output_flows: list[str] | None = None,
     output_streaming: dict[str, Any] | None = None,
     models: list[dict[str, Any]] | None = None,
@@ -77,6 +79,10 @@ def _sdk_rails(
     if input_flows is None:
         input_flows = ["custom check"]
     rails["input"] = {"flows": input_flows}
+    if tool_input_flows is not None:
+        rails["tool_input"] = {"flows": tool_input_flows}
+    if tool_output_flows is not None:
+        rails["tool_output"] = {"flows": tool_output_flows}
     if output_flows is not None:
         output_rails: dict[str, Any] = {"flows": output_flows}
         if output_streaming is not None:
@@ -91,6 +97,8 @@ def _entity_source(
     workspace: str = "my-workspace",
     name: str = "my-config",
     input_flows: list[str] | None = None,
+    tool_input_flows: list[str] | None = None,
+    tool_output_flows: list[str] | None = None,
     output_flows: list[str] | None = None,
     output_streaming: dict[str, Any] | None = None,
     models: list[dict[str, Any]] | None = None,
@@ -102,6 +110,8 @@ def _entity_source(
         updated_at=updated_at,
         rails=_sdk_rails(
             input_flows=input_flows,
+            tool_input_flows=tool_input_flows,
+            tool_output_flows=tool_output_flows,
             output_flows=output_flows,
             output_streaming=output_streaming,
             models=models,
@@ -113,6 +123,8 @@ def _inline_source(
     *,
     label: str | None = "ad-hoc",
     input_flows: list[str] | None = None,
+    tool_input_flows: list[str] | None = None,
+    tool_output_flows: list[str] | None = None,
     output_flows: list[str] | None = None,
     output_streaming: dict[str, Any] | None = None,
     models: list[dict[str, Any]] | None = None,
@@ -121,6 +133,8 @@ def _inline_source(
         label=label,
         rails=_sdk_rails(
             input_flows=input_flows,
+            tool_input_flows=tool_input_flows,
+            tool_output_flows=tool_output_flows,
             output_flows=output_flows,
             output_streaming=output_streaming,
             models=models,
@@ -271,7 +285,7 @@ def _patch_prepare_lease(rails: Any | None = None):
     cache = MagicMock()
     cache.lease = _lease
 
-    stable = StableRailsConfig(rails=MagicMock(), content_hash="hash-stub", embedding_model_id=None)
+    stable = StableRailsConfig(MagicMock(), "hash-stub", None)
 
     async def _prepare(*_args: Any, **_kwargs: Any) -> tuple[Any, Any, Any, Any]:
         return cache, stable, Provenance("ws/name@ts"), MagicMock()
@@ -321,7 +335,7 @@ class TestGetMiddlewareConfig:
         assert isinstance(result, EntityGuardrailConfigSource)
         assert result.workspace == "my-workspace"
         assert result.name == "my-config"
-        assert result.updated_at == entity.updated_at
+        assert result.updated_at == str(entity.updated_at)
         assert result.rails is entity.data
 
     async def test_splits_config_id_correctly(self, middleware: GuardrailsMiddleware) -> None:
@@ -403,7 +417,7 @@ class TestGetMiddlewareConfig:
         with a real entity revision; reject at the resolver boundary."""
         assert middleware._sdk is not None
         entity = _make_entity()
-        entity.updated_at = ""
+        cast(Any, entity).updated_at = ""
 
         with patch.object(middleware._sdk.guardrail.configs, "retrieve", new=AsyncMock(return_value=entity)):
             with pytest.raises(ValueError, match="empty updated_at"):
@@ -626,6 +640,44 @@ class TestProcessRequest:
         assert ctx.state(PLUGIN_NAME).get(STATE_KEY_INPUT_GENERATION_RESPONSE) is generation_response
         assert ctx.response_body_annotations["guardrails_data"]["config_ids"] == ["my-workspace/my-config"]
 
+    async def test_tool_input_passes_then_input_rails_still_run(self, middleware: GuardrailsMiddleware) -> None:
+        request_body = {
+            "model": "ws/llama",
+            "messages": [
+                {"role": "user", "content": "What's the weather?"},
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {"id": "call_1", "type": "function", "function": {"name": "get_weather", "arguments": "{}"}}
+                    ],
+                },
+                {"role": "tool", "tool_call_id": "call_1", "name": "get_weather", "content": "Sunny"},
+            ],
+        }
+        source = _entity_source(input_flows=["self check input"], tool_input_flows=["check tool result linkage"])
+        tool_input_response = _make_generation_response(is_blocked=False)
+        input_response = _make_generation_response(is_blocked=False)
+        run_rails_mock = AsyncMock(side_effect=[tool_input_response, input_response])
+        ctx = _make_ctx(request_body)
+
+        with patch.object(middleware, "_run_rails", new=run_rails_mock):
+            result = await _process_request(middleware, request_body, {}, source, ctx=ctx)
+
+        assert result == request_body
+        assert run_rails_mock.call_count == 2
+
+        first_call = run_rails_mock.call_args_list[0]
+        second_call = run_rails_mock.call_args_list[1]
+
+        assert first_call.kwargs["rail_types"] == ["tool_input"]
+        assert first_call.kwargs["context_vars"] == {"messages": request_body["messages"]}
+
+        assert second_call.kwargs["rail_types"] == ["input"]
+        assert second_call.kwargs.get("context_vars") is None
+
+        assert ctx.state(PLUGIN_NAME).get(STATE_KEY_INPUT_GENERATION_RESPONSE) is input_response
+
     async def test_user_log_options_forwarded_to_run_rails(self, middleware: GuardrailsMiddleware) -> None:
         request_body = {
             "model": "ws/llama",
@@ -714,7 +766,7 @@ class TestProcessRequest:
             )
 
         assert isinstance(result, ImmediateResponse)
-        data: dict[str, Any] = result.data
+        data = cast(dict[str, Any], result.data)
         assert "guardrails_data" not in data
         assert result.response_body_annotations["guardrails_data"]["config_ids"] == ["<inline:my-test>"]
 
@@ -1197,7 +1249,18 @@ class TestProcessResponse:
 
         assert exc_info.value.status_code == 422
 
-    async def test_output_flows_reject_multiple_choices(self, middleware: GuardrailsMiddleware) -> None:
+    @pytest.mark.parametrize(
+        "source",
+        [
+            pytest.param(_entity_source(output_flows=["self check output"]), id="output"),
+            pytest.param(_entity_source(input_flows=[], tool_output_flows=["check tool allowlist"]), id="tool_output"),
+        ],
+    )
+    async def test_output_side_flows_reject_multiple_choices(
+        self,
+        middleware: GuardrailsMiddleware,
+        source: EntityGuardrailConfigSource,
+    ) -> None:
         request_body = {"model": "ws/llama", "messages": [{"role": "user", "content": "Hello"}], "n": 2}
         response_result = {
             "id": "chatcmpl-123",
@@ -1218,7 +1281,7 @@ class TestProcessResponse:
                     request_body,
                     {},
                     {},
-                    _entity_source(output_flows=["self check output"]),
+                    source,
                 )
 
         assert exc_info.value.status_code == 400
@@ -1503,11 +1566,7 @@ class TestStreamingLeaseLifecycle:
         async def build(_config: RailsConfig) -> Any:
             return rails
 
-        stable = StableRailsConfig(
-            rails=MagicMock(spec=RailsConfig),
-            content_hash="hash-stub",
-            embedding_model_id=None,
-        )
+        stable = StableRailsConfig(MagicMock(spec=RailsConfig), "hash-stub", None)
         pool = Pool(stable=stable)
 
         @asynccontextmanager
@@ -1795,7 +1854,7 @@ class TestStreamingLeaseLifecycle:
 
         cache = MagicMock()
         cache.lease = failing_lease
-        stable = StableRailsConfig(rails=MagicMock(), content_hash="hash-stub", embedding_model_id=None)
+        stable = StableRailsConfig(MagicMock(), "hash-stub", None)
 
         async def patched_prepare(*_args: Any, **_kwargs: Any) -> tuple[Any, Any, Any, Any]:
             return cache, stable, Provenance("ws/name@ts"), MagicMock()

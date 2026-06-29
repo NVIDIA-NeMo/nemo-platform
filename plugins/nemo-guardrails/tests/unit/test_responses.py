@@ -12,6 +12,7 @@ from nemo_guardrails_plugin.responses import (
     build_immediate_response,
     build_inference_response,
     build_output_response_body,
+    guardrails_data_to_dict,
 )
 from nemo_platform_plugin.inference_middleware import InferenceMiddlewareError, InferenceResponse
 from nemoguardrails.rails.llm.options import ActivatedRail, GenerationLog, GenerationResponse
@@ -51,10 +52,42 @@ def _make_response_result(content: str = "Hello!") -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+def _make_tool_call_response_result(tool_calls: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "id": "chatcmpl-456",
+        "object": "chat.completion",
+        "model": "my-model",
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": None, "tool_calls": tool_calls},
+                "finish_reason": "tool_calls",
+            }
+        ],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+    }
+
+
 class TestBuildAssistantMessageFromResponseResult:
     def test_extracts_content(self) -> None:
         result = build_assistant_message_from_response_result(_make_response_result("Hello!"))
         assert result == {"role": "assistant", "content": "Hello!"}
+
+    def test_preserves_tool_calls(self) -> None:
+        tool_calls = [{"id": "call_1", "type": "function", "function": {"name": "get_weather", "arguments": "{}"}}]
+        result = build_assistant_message_from_response_result(_make_tool_call_response_result(tool_calls))
+        assert result["role"] == "assistant"
+        assert result["content"] == ""
+        assert result["tool_calls"] == tool_calls
+
+    def test_no_tool_calls_key_on_normal_response(self) -> None:
+        result = build_assistant_message_from_response_result(_make_response_result("Hello!"))
+        assert "tool_calls" not in result
+
+    def test_empty_tool_calls_list_not_forwarded(self) -> None:
+        result = build_assistant_message_from_response_result(_make_tool_call_response_result([]))
+        assert "tool_calls" not in result
+        assert result["content"] == ""
 
     @pytest.mark.parametrize(
         "response_result",
@@ -117,6 +150,20 @@ class TestBuildBlockedOutputResponseBody:
         assert guardrails_choice["index"] == 1
         assert guardrails_choice["message"]["role"] == GUARDRAILS_DATA_MESSAGE_ROLE
         assert json.loads(guardrails_choice["message"]["content"])["config_ids"] == ["ws/my-config"]
+
+    def test_guardrails_data_serializer_falls_back_when_model_dump_fails(self) -> None:
+        class BrokenModelDump:
+            def __init__(self) -> None:
+                self.config_ids = ["ws/my-config"]
+                self.log = {"activated_rails": [{"name": "check tool allowlist", "type": "tool_output"}]}
+
+            def model_dump(self, **_: Any) -> dict[str, Any]:
+                raise TypeError("'NoneType' object cannot be converted to 'SchemaSerializer'")
+
+        assert guardrails_data_to_dict(BrokenModelDump()) == {
+            "config_ids": ["ws/my-config"],
+            "log": {"activated_rails": [{"name": "check tool allowlist", "type": "tool_output"}]},
+        }
 
 
 # ---------------------------------------------------------------------------

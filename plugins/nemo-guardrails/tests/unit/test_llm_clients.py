@@ -15,7 +15,7 @@ from nemo_guardrails_plugin.llm_clients import (
     register_header_aware_nim_provider,
 )
 from nemo_platform_plugin.sdk_provider import get_forwarding_headers
-from nemoguardrails.llm.models import langchain_initializer
+from nemoguardrails.integrations.langchain import langchain_initializer
 
 
 class HeaderAwareClientForTest(Protocol):
