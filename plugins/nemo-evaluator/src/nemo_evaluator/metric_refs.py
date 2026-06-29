@@ -12,7 +12,7 @@ converted, so the canonical job spec and execution path only ever see runtime
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TypeAlias
 
 from nemo_evaluator.api.schemas import MetricInline
 from nemo_evaluator.entities import MetricBundleEntity
@@ -35,6 +35,10 @@ class MetricRef(RootModel[str]):
         pattern=_METRIC_REF_PATTERN,
         description="Reference to a stored metric (format: workspace/metric-name, or metric-name in the job workspace).",
     )
+
+
+#: A wire metric is either an inline bundle DTO or a reference to a stored metric.
+MetricRefOrInline: TypeAlias = MetricInline | MetricRef
 
 
 def parse_metric_ref(root: str, default_workspace: str) -> tuple[str, str]:
@@ -75,7 +79,7 @@ async def resolve_metric_ref(
 
 
 async def resolve_metric_specs(
-    metrics: list[MetricInline | MetricRef],
+    metrics: list[MetricRefOrInline],
     *,
     workspace: str,
     entity_client: Any,

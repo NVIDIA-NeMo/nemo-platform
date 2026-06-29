@@ -24,6 +24,7 @@ evaluator = "nemo_evaluator.sdk.resources:evaluator_sdk_resources"
 
 [project.entry-points."nemo.jobs"]
 "evaluator.evaluate" = "nemo_evaluator.jobs.evaluate:EvaluateJob"
+"evaluator.agent-evaluate" = "nemo_evaluator.jobs.agent_evaluate:AgentEvalJob"
 
 [project.entry-points."nemo.skills"]
 evaluator = "nemo_evaluator.skills:get_skills_path"
@@ -42,16 +43,17 @@ packages = ["src/nemo_evaluator"]
 nemo-evaluator-sdk = { workspace = true }
 nemo-platform-plugin = { workspace = true }
 nemo-platform-sdk = { workspace = true }
+nmp-testing = { workspace = true }
 
 [dependency-groups]
-dev = ["pytest>=8.3.4", "pytest-asyncio>=0.25.3", "ruff>=0.11.8"]
+dev = ["pytest>=8.3.4", "pytest-asyncio>=0.25.3", "ruff>=0.11.8", "nmp-testing"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 pythonpath = ["src"]
 testpaths = ["tests"]
 markers = [
-    "integration: live service integration tests (opt-in; e.g. RUN_INTAKE_INTEGRATION=1)",
+    "integration: live service integration tests (opt-in; spin up a real platform — subprocess/docker backends — or gated by e.g. RUN_INTAKE_INTEGRATION=1); deselect with -m 'not integration'",
 ]
 
 # Opt this plugin into OpenAPI spec generation

@@ -44,7 +44,7 @@ class AgentOutput(BaseModel):
         default=None,
         description="User-visible final text produced by the agent, if any.",
     )
-    response: Any | None = Field(
+    response: dict[str, Any] | None = Field(
         default=None,
         description="Structured final response payload produced by the agent, if any.",
     )
