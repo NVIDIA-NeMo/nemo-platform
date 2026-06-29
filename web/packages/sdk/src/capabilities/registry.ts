@@ -58,7 +58,8 @@ export const searchCapabilities = (
   query: string,
   options: SearchOptions = {}
 ): CapabilitySummary[] => {
-  const { limit = 25, service, readOnly } = options;
+  const { limit, service, readOnly } = options;
+  const safeLimit = limit && Number.isInteger(limit) && limit > 0 ? Math.floor(limit) : 25;
   const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
 
   const scored: Array<{ meta: CapabilityMeta; score: number }> = [];
@@ -75,5 +76,5 @@ export const searchCapabilities = (
   }
 
   scored.sort((a, b) => b.score - a.score || a.meta.name.localeCompare(b.meta.name));
-  return scored.slice(0, limit).map(({ meta }) => toSummary(meta));
+  return scored.slice(0, safeLimit).map(({ meta }) => toSummary(meta));
 };

@@ -127,6 +127,17 @@ describe('searchCapabilities', () => {
   it('returns nothing when not every term matches', () => {
     expect(searchCapabilities(registry, 'models nonexistentterm')).toHaveLength(0);
   });
+
+  it('caps results at a positive integer limit', () => {
+    expect(searchCapabilities(registry, 'models', { limit: 1 })).toHaveLength(1);
+  });
+
+  it('ignores non-positive or non-integer limits instead of dropping results', () => {
+    const all = searchCapabilities(registry, 'models');
+    for (const limit of [0, -1, 1.5, NaN]) {
+      expect(searchCapabilities(registry, 'models', { limit })).toHaveLength(all.length);
+    }
+  });
 });
 
 describe('gateway', () => {

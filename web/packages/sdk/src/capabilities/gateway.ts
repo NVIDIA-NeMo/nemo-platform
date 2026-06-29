@@ -85,7 +85,8 @@ export const createGateway = (capabilities: readonly CapabilityMeta[]): Capabili
       const query = asString(args.query);
       if (!query) return err('Invalid arguments: "query" is required.');
       const results = searchCapabilities(capabilities, query, {
-        limit: typeof args.limit === 'number' ? args.limit : undefined,
+        limit:
+          typeof args.limit === 'number' && args.limit >= 1 ? Math.floor(args.limit) : undefined,
         service: asString(args.service),
         readOnly: typeof args.readOnly === 'boolean' ? args.readOnly : undefined,
       });
