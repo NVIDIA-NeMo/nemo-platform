@@ -24,7 +24,6 @@ import {
   ModalHeading,
   ModalMain,
   ModalRoot,
-  Stack,
 } from '@nvidia/foundations-react-core';
 import { FC, MouseEvent, useId, useMemo } from 'react';
 
@@ -69,35 +68,28 @@ const UploadModalContent: FC<UploadModalProps> = ({
   return (
     <ModalRoot id={modalId} open={open} onOpenChange={handleUserClose} {...attributes?.ModalRoot}>
       <ModalDialog>
-        <ModalContent
-          className={`max-h-[90vh] overflow-y-auto ${className || ''}`}
-          {...attributes?.ModalContent}
-        >
-          <Stack gap="density-2xl" className="max-h-full overflow-y-hidden">
-            <ModalHeading {...attributes?.ModalHeading}>{title}</ModalHeading>
-            <ModalMain {...attributes?.ModalMain} asChild>
-              <Stack gap="density-md" className="shrink overflow-y-auto">
-                <UploadPickerBody
-                  workspace={workspace}
-                  includeDataset={includeDataset}
-                  includeTabs={includeTabs}
-                />
-              </Stack>
-            </ModalMain>
-            <ModalFooter className="flex w-full justify-end gap-2" {...attributes?.ModalFooter}>
-              <Button kind="tertiary" onClick={handleUserClose} type="button">
-                {cancelButtonText}
-              </Button>
-              <LoadingButton
-                type="button"
-                color="brand"
-                loading={isSubmitting}
-                onClick={handleSubmit}
-              >
-                {submitButtonText}
-              </LoadingButton>
-            </ModalFooter>
-          </Stack>
+        <ModalContent className={`w-[560px] ${className || ''}`} {...attributes?.ModalContent}>
+          <ModalHeading {...attributes?.ModalHeading}>{title}</ModalHeading>
+          <ModalMain {...attributes?.ModalMain}>
+            <UploadPickerBody
+              workspace={workspace}
+              includeDataset={includeDataset}
+              includeTabs={includeTabs}
+            />
+          </ModalMain>
+          <ModalFooter className="flex w-full justify-end gap-2" {...attributes?.ModalFooter}>
+            <Button kind="tertiary" onClick={handleUserClose} type="button">
+              {cancelButtonText}
+            </Button>
+            <LoadingButton
+              type="button"
+              color="brand"
+              loading={isSubmitting}
+              onClick={handleSubmit}
+            >
+              {submitButtonText}
+            </LoadingButton>
+          </ModalFooter>
         </ModalContent>
       </ModalDialog>
     </ModalRoot>

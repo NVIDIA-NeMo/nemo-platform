@@ -11,6 +11,7 @@ ARG PYTORCH_BASE=nvcr.io/nvidia/pytorch:26.05-py3
 
 FROM causal-conv1d-wheel-image AS causal-conv1d-wheel-src
 FROM mamba-ssm-wheel-image AS mamba-ssm-wheel-src
+FROM ffmpeg-vlm-wheel-image AS ffmpeg-vlm-wheel-src
 
 FROM alpine/git AS automodel-clone
 ARG AUTOMODEL_COMMIT
@@ -95,18 +96,36 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     "black>=26.3.1,<27" \
     "GitPython>=3.1.50,<4" \
     "jaraco-context>=6.1.0,<7" \
-    "jupyter-server>=2.18.0,<3" \
+    "jupyter-server>=2.20.0,<3" \
     "jupyterlab>=4.5.7,<5" \
     "mistune>=3.2.1,<4" \
     "notebook>=7.5.6,<8" \
     "onnx>=1.21.0,<2" \
     "pillow>=12.2.0,<13" \
     "pyasn1>=0.6.3,<1" \
+    "pyarrow>=23.0.1,<24" \
+    "msgpack>=1.2.1,<2" \
+    "cryptography>=48.0.1,<49" \
     "tornado>=6.5.5,<7" \
     "urllib3>=2.7.0,<3" \
     "mlflow-skinny>=3.11.1,<3.12.0" \
     "grpcio>=1.81.1,<2" \
-    "wandb==0.27.2"
+    "wandb>=0.28.0,<1"
+
+# Replace PyPI av/opencv (bundled FFmpeg < 8.1.2) with custom wheels from ffmpeg-vlm-wheel.
+# vlm sync pulls PyPI copies transitively; drop them before installing our manylinux wheels.
+# PyAV 17.x uses cp311-abi3 (stable ABI) — compatible with cp312, not cp312-cp312 tagged.
+RUN --mount=from=ffmpeg-vlm-wheel-src,target=/tmp/ffmpeg-vlm-wheel-src,readonly \
+    rm -rf \
+    /opt/venv/lib/python*/site-packages/av \
+    /opt/venv/lib/python*/site-packages/av-*.dist-info \
+    /opt/venv/lib/python*/site-packages/av.libs \
+    /opt/venv/lib/python*/site-packages/cv2 \
+    /opt/venv/lib/python*/site-packages/opencv_python_headless.libs \
+    /opt/venv/lib/python*/site-packages/opencv_python_headless-*.dist-info && \
+    uv pip install --no-cache-dir --no-deps \
+    /tmp/ffmpeg-vlm-wheel-src/wheels/av-*-abi3-manylinux_2_28_*.whl \
+    /tmp/ffmpeg-vlm-wheel-src/wheels/opencv_python_headless-*cp312*.whl
 
 # Published base image (same filesystem as builder).
 FROM ${PYTORCH_BASE} AS nmp-automodel-base
@@ -119,6 +138,12 @@ COPY --from=ghcr.io/astral-sh/uv:0.9.14 /uv /bin/uv
 # Stale copies under NGC system site-packages (verified on nvcr.io/nvidia/pytorch:26.05-py3).
 # CVE scanners read dist-packages even when --system-site-packages resolves imports from /opt/venv.
 # rm -rf (not pip uninstall) avoids corrupted dist-info RECORDs on the NGC base image.
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --only-upgrade openssl libssl3t64 && \
+    rm -rf /var/lib/apt/lists/*
+
+# NGC ships Nsight Systems (~585 MB); not used by nmp-automodel training.
+# Cleanup stale NGC image packages.
 RUN rm -rf \
     /usr/local/lib/python3.12/dist-packages/aiohttp \
     /usr/local/lib/python3.12/dist-packages/aiohttp-*.dist-info \
@@ -141,7 +166,12 @@ RUN rm -rf \
     /usr/local/lib/python3.12/dist-packages/wandb-*.dist-info \
     /usr/local/lib/python3.12/dist-packages/mlflow \
     /usr/local/lib/python3.12/dist-packages/mlflow-*.dist-info \
-    /usr/local/lib/python3.12/dist-packages/mlflow_skinny-*.dist-info
+    /usr/local/lib/python3.12/dist-packages/mlflow_skinny-*.dist-info \
+    /usr/local/lib/python3.12/dist-packages/jupyter_server \
+    /usr/local/lib/python3.12/dist-packages/jupyter_server-*.dist-info \
+    /usr/local/cuda/NsightSystems-cli-* \
+    /usr/local/bin/nsys \
+    /usr/local/cuda/bin/nsys
 
 ENV VIRTUAL_ENV=/opt/venv \
     UV_PROJECT_ENVIRONMENT=/opt/venv \

@@ -99,7 +99,7 @@ const SECTIONS: Record<
   llm: { value: 'span-llm', label: 'Usage', Body: UsageSection },
   input: { value: 'span-input', label: 'Input', Body: InputSection },
   output: { value: 'span-output', label: 'Output', Body: OutputSection },
-  metadata: { value: 'span-summary', label: 'Metadata', Body: MetadataSection },
+  metadata: { value: 'span-summary', label: 'Attributes', Body: MetadataSection },
   annotations: { value: 'span-annotations', label: 'Annotations', Body: AnnotationsSection },
 };
 
@@ -109,15 +109,14 @@ const sectionLabel = (label: string): ReactNode => (
   </Text>
 );
 
-// The Annotations section trigger shows a count badge to the right of its label.
+// The Annotations section trigger shows the annotation count as a badge to the
+// right of its label — always, including zero.
 const annotationsSectionLabel = (label: string, count: number | undefined): ReactNode => (
   <Flex align="center" gap="density-sm" className="min-w-0">
     <Text kind="body/semibold/sm">{label}</Text>
-    {count !== undefined && count > 0 && (
-      <Badge color="gray" kind="solid">
-        {count}
-      </Badge>
-    )}
+    <Badge color="gray" kind="solid">
+      {count ?? 0}
+    </Badge>
   </Flex>
 );
 

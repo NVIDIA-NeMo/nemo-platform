@@ -29,9 +29,9 @@ vi.mock('@nvidia/foundations-react-core', () => ({
   ),
   Flex: ({ children }: React.PropsWithChildren) => <div>{children}</div>,
   Tag: ({ children, onClick }: React.PropsWithChildren<{ onClick?: () => void }>) => (
-    <span role="button" onClick={onClick}>
+    <button type="button" onClick={onClick}>
       {children}
-    </span>
+    </button>
   ),
 }));
 

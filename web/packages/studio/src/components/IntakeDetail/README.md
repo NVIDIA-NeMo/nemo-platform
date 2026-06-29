@@ -7,6 +7,9 @@ SPDX-License-Identifier: Apache-2.0
 
 Trace and span detail UI: trajectory explorer, per-span bodies, kind templates, and shared atoms. List views (traces/spans tables) live in `IntakeLists/`.
 
+Span templates provide specialized view for each known KIND template, with a fallback for unknown kinds. To review the output of these templates, run the seed script at:
+services/intake/scripts/spans/seed_span_type_showcase.py.
+
 ## Architecture
 
 ```mermaid
@@ -56,7 +59,7 @@ flowchart TB
 | Layer                           | Role                                                                                                                       |
 | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | **Routes**                      | Thin wrappers; resolve workspace + id, set breadcrumbs. `IntakeTraceDetailContent` is exported for experiment trace reuse. |
-| **IntakeTraceDetailView**       | Page header, trace summary header, span explorer, trace-level Metadata / Experiment Context accordions, raw JSON debug.    |
+| **IntakeTraceDetailView**       | Page header, trace summary header, span explorer, trace-level Attributes / Experiment Context accordions, raw JSON debug.  |
 | **TraceSpanAccordions**         | Fetches spans (`detailed`) and trace annotations; Tree/List toggle; expand/collapse toolbar; row headers + feedback.       |
 | **SpanTreeView / SpanListView** | Layout shells for tree vs list modes; shared row chrome (`SpanTriggerLabel`, `SpanTriggerMeta`, `SpanFeedbackControls`).   |
 | **TraceSpanAccordionContent**   | Lazy `useGetSpan` when a span body is shown; merges list summary with full detail via `mergeSpanDetails`.                  |
