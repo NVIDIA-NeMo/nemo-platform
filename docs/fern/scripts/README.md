@@ -56,3 +56,32 @@ uv run python docs/fern/scripts/ipynb-to-mdx.py \
 ```
 
 Re-run whenever the source `.ipynb` changes.
+
+## `run_notebooks.py`
+
+Runs the source notebook for a Fern `.mdx` page using `nemo_nb` marker semantics:
+the source notebook must have `@nemo-nb: process`, and `@nemo-nb: skip-test`
+opts it out of execution. When given a Fern `.mdx` page, the runner resolves the
+adjacent source `.ipynb` or the notebook linked from the Colab URL.
+
+Dry-run notebook selection:
+
+```bash
+uv run python docs/fern/scripts/run_notebooks.py \
+  --dry-run \
+  docs/customizer/tutorials/sft-customization-job.mdx
+```
+
+Execute Python cells only (default):
+
+```bash
+uv run python docs/fern/scripts/run_notebooks.py \
+  docs/customizer/tutorials/sft-customization-job.mdx
+```
+
+Execute through Make:
+
+```bash
+make docs-run-notebook DOCS_PATH=docs/customizer/tutorials/sft-customization-job.mdx
+make docs-run-notebook DOCS_PATH=docs/customizer/tutorials/sft-customization-job.mdx ARGS=--dry-run
+```

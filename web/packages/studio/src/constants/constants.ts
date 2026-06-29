@@ -20,3 +20,59 @@ export const DEFAULT_TOOLS_FILE_NAME = 'tools.json';
 export const EMPTY_FIELD_VALUE = '-';
 export const EMPTY_FIELD_EMDASH_VALUE = '—';
 export const DEFAULT_BUILD_MODEL_NAME = 'nvidia-llama-3-3-nemotron-super-49b-v1';
+
+export const KNOWN_TEXT_EXTENSIONS = new Set([
+  // Data
+  'json',
+  'jsonl',
+  'csv',
+  'tsv',
+  // Code
+  'py',
+  'js',
+  'jsx',
+  'ts',
+  'tsx',
+  'java',
+  'c',
+  'cpp',
+  'h',
+  'go',
+  'rs',
+  'rb',
+  'php',
+  'swift',
+  'kt',
+  'scala',
+  'r',
+  'm',
+  'sh',
+  'bash',
+  'zsh',
+  'fish',
+  // Markup / Config
+  'html',
+  'htm',
+  'xml',
+  'yaml',
+  'yml',
+  'toml',
+  'ini',
+  'cfg',
+  'conf',
+  'jsonc',
+  'env',
+  // Text
+  'txt',
+  'md',
+  'rst',
+  'log',
+  'diff',
+  'patch',
+  // Other
+  'sql',
+  'graphql',
+  'proto',
+  'dockerfile',
+  'makefile',
+]);

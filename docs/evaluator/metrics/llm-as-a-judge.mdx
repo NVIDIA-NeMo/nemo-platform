@@ -269,24 +269,33 @@ By default, aggregate scores include `count`, `mean`, `min`, and `max`. Request 
 
 
 ```python
-
 result = evaluator.run(
     metric=metric,
     dataset=[
         {"input": "What is the capital of France?", "output": "Paris."},
         {"input": "What is 2 + 2?", "output": "4."},
     ],
-    aggregate_fields=("std_dev", "variance", "percentiles", "histogram"),
+    aggregate_fields=("std_dev", "variance"),
 )
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}:")
     print(f" mean: {score.mean:.3f}")
     print(f" std_dev: {score.std_dev:.3f}")
-    if score.percentiles:
-        print(f" p50: {score.percentiles.p50:.3f}")
-        print(f" p90: {score.percentiles.p90:.3f}")
+    print(f" variance: {score.variance:.3f}")
 ```
+
+<Note>
+
+Available aggregate fields depend on the score type:
+
+- All scores: `count`, `mean`, `min`, `max`, `std_dev`, `variance`
+- Range scores only: `percentiles`, `histogram`
+- Rubric scores only: `rubric_distribution`, `mode_category`
+
+Requesting `percentiles` or `histogram` for a rubric score has no effect, and the rubric-only fields are not produced for range scores.
+
+</Note>
 
 
 ---
@@ -389,13 +398,13 @@ LLM-as-a-Judge supports two types of scores: **range scores** (numerical ratings
 
 Use range scores for numerical ratings on a continuous scale:
 
-```python
+```json
 {
-    "name": "relevance",
-    "description": "How relevant is the response (1=irrelevant, 5=highly relevant)",
-    "minimum": 1,
-    "maximum": 5,
-    "parser": {"type": "json", "json_path": "relevance"},
+  "name": "relevance",
+  "description": "How relevant is the response (1=irrelevant, 5=highly relevant)",
+  "minimum": 1,
+  "maximum": 5,
+  "parser": {"type": "json", "json_path": "relevance"}
 }
 ```
 
@@ -403,16 +412,16 @@ Use range scores for numerical ratings on a continuous scale:
 
 Use rubric scores for categorical evaluations with explicit criteria:
 
-```python
+```json
 {
-    "name": "sentiment",
-    "description": "Sentiment of the response",
-    "rubric": [
-        {"label": "negative", "value": -1, "description": "Response has negative tone"},
-        {"label": "neutral", "value": 0, "description": "Response is neutral"},
-        {"label": "positive", "value": 1, "description": "Response has positive tone"},
-    ],
-    "parser": {"type": "json", "json_path": "sentiment"},
+  "name": "sentiment",
+  "description": "Sentiment of the response",
+  "rubric": [
+    {"label": "negative", "value": -1, "description": "Response has negative tone"},
+    {"label": "neutral", "value": 0, "description": "Response is neutral"},
+    {"label": "positive", "value": 1, "description": "Response has positive tone"}
+  ],
+  "parser": {"type": "json", "json_path": "sentiment"}
 }
 ```
 
