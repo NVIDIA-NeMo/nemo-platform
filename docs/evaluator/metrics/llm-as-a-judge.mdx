@@ -69,13 +69,14 @@ from nemo_evaluator_sdk import (
     RunConfig,
     LLMJudgeMetric
 )
+from nemo_evaluator_sdk.enums import ModelFormat
 
 
 metric = LLMJudgeMetric(
     model=Model(
         url="<judge-nim-url>/v1",
         name="meta/llama-3.1-70b-instruct",
-        format="nim",
+        format=ModelFormat.NVIDIA_NIM,
     ),
     scores=[
         RangeScore(
@@ -106,7 +107,7 @@ metric = LLMJudgeMetric(
             },
             {
                 "role": "user",
-                "content": "Question: {{item.input}}\n\nResponse: {{item.output}}\n\nRate this response.",
+                "content": "Question: {{input}}\n\nResponse: {{output}}\n\nRate this response.",
             },
         ]
     },
@@ -170,38 +171,24 @@ Use rubric scores when you want categorical labels with explicit descriptions:
 
 ```python
 from nemo_evaluator_sdk import JSONScoreParser, Model, RubricScore, LLMJudgeMetric
+from nemo_evaluator_sdk.enums import ModelFormat
+from nemo_evaluator_sdk.values import Rubric
 
 metric = LLMJudgeMetric(
     model=Model(
         url="<judge-nim-url>/v1",
         name="meta/llama-3.1-70b-instruct",
-        format="nim",
+        format=ModelFormat.NVIDIA_NIM,
     ),
     scores=[
         RubricScore(
             name="quality",
             description="Overall quality of the response",
             rubric=[
-                {
-                    "label": "poor",
-                    "value": 0,
-                    "description": "Response is unhelpful or incorrect",
-                },
-                {
-                    "label": "acceptable",
-                    "value": 1,
-                    "description": "Response is partially correct",
-                },
-                {
-                    "label": "good",
-                    "value": 2,
-                    "description": "Response is correct and helpful",
-                },
-                {
-                    "label": "excellent",
-                    "value": 3,
-                    "description": "Response is comprehensive and insightful",
-                },
+                Rubric(label="poor", value=0, description="Response is unhelpful or incorrect"),
+                Rubric(label="acceptable", value=1, description="Response is partially correct"),
+                Rubric(label="good", value=2, description="Response is correct and helpful"),
+                Rubric(label="excellent", value=3, description="Response is comprehensive and insightful"),
             ],
             parser=JSONScoreParser(json_path="quality"),
         ),
@@ -209,21 +196,9 @@ metric = LLMJudgeMetric(
             name="completeness",
             description="How complete the answer is",
             rubric=[
-                {
-                    "label": "incomplete",
-                    "value": 0,
-                    "description": "Missing key information",
-                },
-                {
-                    "label": "partial",
-                    "value": 1,
-                    "description": "Covers main points but lacks detail",
-                },
-                {
-                    "label": "complete",
-                    "value": 2,
-                    "description": "Fully addresses the question",
-                },
+                Rubric(label="incomplete", value=0, description="Missing key information"),
+                Rubric(label="partial", value=1, description="Covers main points but lacks detail"),
+                Rubric(label="complete", value=2, description="Fully addresses the question"),
             ],
             parser=JSONScoreParser(json_path="completeness"),
         ),
@@ -241,7 +216,7 @@ metric = LLMJudgeMetric(
             },
             {
                 "role": "user",
-                "content": "Question: {{item.input}}\n\nResponse: {{item.output}}\n\nRate this response.",
+                "content": "Question: {{input}}\n\nResponse: {{output}}\n\nRate this response.",
             },
         ]
     },
@@ -307,25 +282,23 @@ For production workloads, submit the same metric and dataset as a durable platfo
 
 ```python
 from nemo_evaluator_sdk import RunConfig, JSONScoreParser, Model, RubricScore, LLMJudgeMetric
+from nemo_evaluator_sdk.enums import ModelFormat
+from nemo_evaluator_sdk.values import Rubric
 
 metric = LLMJudgeMetric(
     model=Model(
         url="<judge-nim-url>/v1",
         name="meta/llama-3.1-70b-instruct",
-        format="nim",
+        format=ModelFormat.NVIDIA_NIM,
     ),
     scores=[
         RubricScore(
             name="quality",
             description="Overall quality of the response",
             rubric=[
-                {"label": "poor", "value": 0, "description": "Response is unhelpful"},
-                {"label": "good", "value": 1, "description": "Response is helpful"},
-                {
-                    "label": "excellent",
-                    "value": 2,
-                    "description": "Response is exceptional",
-                },
+                Rubric(label="poor", value=0, description="Response is unhelpful"),
+                Rubric(label="good", value=1, description="Response is helpful"),
+                Rubric(label="excellent", value=2, description="Response is exceptional"),
             ],
             parser=JSONScoreParser(json_path="quality"),
         )
@@ -338,7 +311,7 @@ metric = LLMJudgeMetric(
             },
             {
                 "role": "user",
-                "content": "Question: {{item.input}}\n\nResponse: {{item.output}}",
+                "content": "Question: {{input}}\n\nResponse: {{output}}",
             },
         ]
     },
