@@ -7,16 +7,19 @@ import { getCompactRelativeTime } from '@studio/routes/agents/ClaudeCodeChatRout
 import type { ClaudeCodeHistorySession } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
 import cn from 'classnames';
 import { MessageSquare } from 'lucide-react';
+import React from 'react';
+
+interface HistorySessionButtonProps {
+  active: boolean;
+  onSelect: () => void;
+  session: ClaudeCodeHistorySession;
+}
 
 export const HistorySessionButton = ({
   active,
   onSelect,
   session,
-}: {
-  active: boolean;
-  onSelect: () => void;
-  session: ClaudeCodeHistorySession;
-}) => (
+}: HistorySessionButtonProps): React.JSX.Element => (
   <button
     type="button"
     aria-current={active ? 'page' : undefined}
