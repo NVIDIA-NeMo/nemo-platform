@@ -42,7 +42,7 @@ export const DatasetBulkDeleteModal: FC<DatasetBulkDeleteModalProps> = ({
       },
     },
   });
-  const { mutateAsync: deleteDatasets } = useMutateMany(deleteDataset);
+  const { mutateAsync: deleteDatasets } = useMutateMany(deleteDataset, { action: 'delete' });
 
   const handleDelete = async (datasets: FilesetOutput[]) => {
     const datasetsToDelete = datasets.filter(
