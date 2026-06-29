@@ -28,6 +28,7 @@ from nemo_evaluator.shared.metric_bundles.bundles import unbundle_metric
 from nemo_evaluator_sdk import Evaluator
 from nemo_evaluator_sdk.execution.config import resolve_params
 from nemo_evaluator_sdk.execution.metric_execution import run_sync
+from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.values import (
     Agent,
     AgentBase,
@@ -103,6 +104,59 @@ def _resolve_run_dataset(
             destination=destination,
         )
     raise ValueError("FilesetRef datasets require an SDK client for local evaluator job execution.")
+
+
+def run_evaluation(
+    *,
+    metrics: list[Metric],
+    dataset: InlineDataset | Path,
+    params: RunConfig | RunConfigOnline | RunConfigOnlineModel,
+    target: TargetSpec | None,
+    prompt_template: str | dict[str, Any] | None,
+    field_mapping: FieldMapping | None,
+) -> EvaluationArtifactResult:
+    """Dispatch resolved metrics to the SDK evaluator by target type (offline/model/agent).
+
+    Shared by the job and the sync route; ``params`` must already be resolved.
+    """
+    if not metrics:
+        raise ValueError("run_evaluation requires at least one metric")
+    evaluator = Evaluator()
+    runtime_metrics = metrics if len(metrics) > 1 else metrics[0]
+    if isinstance(target, Model):
+        if not isinstance(params, RunConfigOnlineModel):
+            raise TypeError("model target requires RunConfigOnlineModel")
+        return evaluator.run_sync(
+            metrics=runtime_metrics,
+            dataset=dataset,
+            config=params,
+            target=target,
+            field_mapping=field_mapping,
+            prompt_template=prompt_template,
+        )
+    if isinstance(target, AgentBase):
+        if type(params) is not RunConfigOnline:
+            raise TypeError("agent target requires RunConfigOnline")
+        if prompt_template is None:
+            raise ValueError("agent target requires prompt_template")
+        return evaluator.run_sync(
+            metrics=runtime_metrics,
+            dataset=dataset,
+            config=params,
+            target=target,
+            field_mapping=field_mapping,
+            prompt_template=prompt_template,
+        )
+    if type(params) is not RunConfig:
+        raise TypeError("offline evaluation requires RunConfig")
+    return evaluator.run_sync(
+        metrics=runtime_metrics,
+        dataset=dataset,
+        config=params,
+        target=None,
+        field_mapping=field_mapping,
+        prompt_template=None,
+    )
 
 
 class _EvaluateSpecCommon(BaseModel):
@@ -254,7 +308,6 @@ class EvaluateJob(NemoJob):
     ) -> dict:
         """Run the evaluator job locally and persist its result artifact."""
         spec = EvaluateSpec.model_validate(config)
-        evaluator = Evaluator()
         params = resolve_params(spec.params, spec.target)
         metrics = [unbundle_metric(to_runtime_bundle(metric)) for metric in spec.metrics]
         dataset = _resolve_run_dataset(
@@ -263,42 +316,14 @@ class EvaluateJob(NemoJob):
             sdk=sdk,
             async_sdk=async_sdk,
         )
-        runtime_metrics = metrics if len(metrics) > 1 else metrics[0]
-        if isinstance(spec.target, Model):
-            if not isinstance(params, RunConfigOnlineModel):
-                raise TypeError("model target requires RunConfigOnlineModel")
-            result = evaluator.run_sync(
-                metrics=runtime_metrics,
-                dataset=dataset,
-                config=params,
-                target=spec.target,
-                field_mapping=spec.field_mapping,
-                prompt_template=spec.prompt_template,
-            )
-        elif isinstance(spec.target, AgentBase):
-            if type(params) is not RunConfigOnline:
-                raise TypeError("agent target requires RunConfigOnline")
-            if spec.prompt_template is None:
-                raise ValueError("agent target requires prompt_template")
-            result = evaluator.run_sync(
-                metrics=runtime_metrics,
-                dataset=dataset,
-                config=params,
-                target=spec.target,
-                field_mapping=spec.field_mapping,
-                prompt_template=spec.prompt_template,
-            )
-        else:
-            if type(params) is not RunConfig:
-                raise TypeError("offline evaluation requires RunConfig")
-            result = evaluator.run_sync(
-                metrics=runtime_metrics,
-                dataset=dataset,
-                config=params,
-                target=None,
-                field_mapping=spec.field_mapping,
-                prompt_template=None,
-            )
+        result = run_evaluation(
+            metrics=metrics,
+            dataset=dataset,
+            params=params,
+            target=spec.target,
+            prompt_template=spec.prompt_template,
+            field_mapping=spec.field_mapping,
+        )
         result_files = self._write_result_files(result, ctx.storage.persistent)
         artifact = ctx.results.save(DEFAULT_RESULT_NAME, result_files.full_result)
         ctx.results.save(AGGREGATE_SCORES_RESULT_NAME, result_files.aggregate_scores)

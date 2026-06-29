@@ -7,11 +7,54 @@ The evaluator plugin is a first-party for evaluator functionality. It keeps the 
 | Surface | Entry point | Current behavior |
 |---|---|---|
 | CLI | `nemo.cli:evaluator` | Adds `nemo evaluator info` and hosts evaluator job commands. |
-| Service | `nemo.services:evaluator` | `jobs`, `healthz` paths. |
+| Service | `nemo.services:evaluator` | `evaluate/jobs` lifecycle, `metrics` CRUD, the read-only metric-type catalog + `evaluate/schema`, the synchronous `evaluate` route, and `healthz`. |
 | SDK | `nemo.sdk:evaluator` | Adds `client.evaluator.plugin_status() and run(), submit() interfaces`. |
 | Job | `nemo.jobs:evaluator.evaluate` | Backs local `run` through in-process execution and `submit` through durable platform job submission. |
 | Docs | `nemo.docs:evaluator` | Publishes this reference page. |
 | Skills | `nemo.skills:evaluator` | Publishes the evaluator plugin development skill. |
+
+## REST API
+
+All routes are under `/apis/evaluator`. Several map directly to CLI commands so non-Python clients (e.g. Studio) can reach the same functionality.
+
+| Method + path | Purpose | CLI equivalent |
+|---|---|---|
+| `GET /v2/metric-types` | List built-in metric types and descriptions | `nemo evaluator metric-types` |
+| `GET /v2/metric-types/{metric_type}` | JSON schema for one metric type | `nemo evaluator metric-types <name>` |
+| `GET /v2/evaluate/schema` | JSON schema for the evaluate input spec | `nemo evaluator evaluate explain` |
+| `POST /v2/workspaces/{workspace}/evaluate` | Run a bounded evaluation **synchronously** and return the result inline | `nemo evaluator evaluate run` |
+| `POST /v2/workspaces/{workspace}/evaluate/jobs` (+ lifecycle) | Submit a durable evaluation job | `nemo evaluator evaluate submit` |
+| `GET/POST/DELETE /v2/workspaces/{workspace}/metrics[/{name}]` | Stored-metric CRUD (create/list/get/delete; immutable) | — |
+
+### Synchronous evaluate constraints
+
+`POST .../evaluate` is the "test a metric" path. It runs **in the long-lived API process**, so it
+is deliberately bounded to what is safe there (anything else goes to the durable `/evaluate/jobs`
+API, which runs in an isolated container). It returns `422` for:
+
+- **Cloudpickle metric bundles** — arbitrary code is never unpickled in the API process.
+- **Network (remote) metric types** (`remote`, `nemo-agent-toolkit-remote`) — they call a
+  user-supplied URL (SSRF).
+- **Metrics with secret references** — the in-process backend resolves secrets from the API
+  process environment, so request-supplied secrets are refused (exfiltration guard).
+- **Inline model definitions** — any model a metric uses (e.g. an LLM-judge's judge model) must
+  be a platform **`ModelRef`** (`workspace/model`). Refs resolve to the inference gateway with no
+  secret, and the in-process call carries the **caller's** request-scoped headers (principal +
+  trace), so it runs as the caller — not an elevated service principal — and leaks no secret.
+  Inline models carry an arbitrary URL and are rejected.
+- **Online targets** — generation against a model/agent target is not supported here; submit a job.
+
+So **LLM-judge and other model-backed metrics are supported** as long as their models are
+`ModelRef`s. The dataset must be **inline rows** (no `FilesetRef`), capped at `MAX_SYNC_ROWS` (10).
+
+Execution runs on a dedicated bounded thread pool (`_SYNC_EVAL_MAX_WORKERS`, 4) under a wall-clock
+timeout (`SYNC_EVALUATE_TIMEOUT_SECONDS`, 60s) → `504` on expiry. When all slots are busy the
+endpoint returns `503` rather than queueing (a blocking SDK call can't be cancelled, so a
+timed-out evaluation keeps holding its slot until the underlying call actually returns). For
+anything heavier, use the durable job API.
+
+Authz: read routes require `evaluator:read`; the synchronous evaluate route requires the
+`evaluator.evaluate.exec` permission (`evaluator:write`).
 
 ## Current Job
 

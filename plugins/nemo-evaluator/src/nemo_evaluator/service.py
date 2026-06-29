@@ -8,6 +8,8 @@ from __future__ import annotations
 from typing import ClassVar
 
 from fastapi import APIRouter
+from nemo_evaluator.api.v2 import catalog as catalog_routes
+from nemo_evaluator.api.v2 import evaluate as evaluate_routes
 from nemo_evaluator.api.v2 import metrics as metrics_routes
 from nemo_evaluator.api.v2 import results as results_routes
 from nemo_evaluator.api.v2 import tasks as tasks_routes
@@ -37,7 +39,7 @@ class EvaluatorPluginService(NemoService):
     """Service surface for the evaluator plugin."""
 
     name: ClassVar[str] = "evaluator"
-    dependencies: ClassVar[list[str]] = ["nemo-evaluator-sdk", "entities", "files"]
+    dependencies: ClassVar[list[str]] = ["nemo-evaluator-sdk", "entities", "files", "models", "inference-gateway"]
 
     def get_routers(self) -> list[RouterSpec]:
         router = APIRouter()
@@ -115,6 +117,20 @@ class EvaluatorPluginService(NemoService):
                 router=tasksets_routes.router,
                 tag="Evaluator Plugin Tasksets Routes",
                 description="Stored taskset CRUD routes.",
+                prefix="/v2/workspaces/{workspace}",
+            ),
+            RouterSpec(
+                # GET /apis/evaluator/v2/metric-types and /apis/evaluator/v2/evaluate/schema.
+                router=catalog_routes.router,
+                tag="Evaluator Plugin Catalog Routes",
+                description="Metric-type catalog and evaluate input-schema discovery routes.",
+                prefix="/v2",
+            ),
+            RouterSpec(
+                # POST /apis/evaluator/v2/workspaces/{workspace}/evaluate (synchronous).
+                router=evaluate_routes.router,
+                tag="Evaluator Plugin Synchronous Evaluate Route",
+                description="Synchronous, bounded evaluation that returns the result inline.",
                 prefix="/v2/workspaces/{workspace}",
             ),
         ]

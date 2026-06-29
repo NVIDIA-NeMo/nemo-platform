@@ -133,6 +133,15 @@ status = platform_client.evaluator.plugin_status()
 
 See examples of using the plugin SDK interface in [plugin_sdk_examples.py](./assets/examples/plugin_sdk_examples.py).
 
+## REST API
+
+The CLI metric-discovery and evaluate commands have HTTP equivalents under `/apis/evaluator`, for non-Python clients:
+
+- `GET /v2/metric-types` and `GET /v2/metric-types/{metric_type}` — mirror `nemo evaluator metric-types [<name>]`.
+- `GET /v2/evaluate/schema` — mirrors `nemo evaluator evaluate explain`.
+- `POST /v2/workspaces/{workspace}/evaluate` — synchronous evaluation (mirrors `nemo evaluator evaluate run`). Inline built-in metrics + inline rows only (cloudpickle bundles and FilesetRef datasets are rejected; submit those as a durable job).
+- `POST /v2/workspaces/{workspace}/evaluate/jobs` — durable jobs (mirrors `nemo evaluator evaluate submit`).
+
 ## Security
 Make sure not to print any secrets to stdout since this can be collected as logs
 
