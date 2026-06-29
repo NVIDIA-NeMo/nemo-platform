@@ -32,10 +32,14 @@ async def check_readiness_probe(
     if probe.exec_action is not None and probe.exec_action.command:
         return await _check_exec_probe(container, probe)
 
-    if probe.http_get is not None and host_url is not None:
+    if probe.http_get is not None:
+        if host_url is None:
+            return False, "http probe requires a mapped host port — no host_url available"
         return await _check_http_probe(host_url, probe, host_ports=host_ports, named_ports=named_ports)
 
-    if probe.tcp_socket is not None and host_url is not None:
+    if probe.tcp_socket is not None:
+        if host_url is None:
+            return False, "tcp probe requires a mapped host port — no host_url available"
         return await _check_tcp_probe(host_url, probe, host_ports=host_ports, named_ports=named_ports)
 
     return True, "probe type not implemented; treating as ready"
@@ -53,9 +57,9 @@ async def _check_exec_probe(container: DockerContainer, probe: Probe) -> tuple[b
         if result.output:
             stdout, stderr = result.output
             chunks = []
-            if stdout:
+            if stdout and isinstance(stdout, bytes):
                 chunks.append(stdout.decode("utf-8", errors="ignore"))
-            if stderr:
+            if stderr and isinstance(stderr, bytes):
                 chunks.append(stderr.decode("utf-8", errors="ignore"))
             output = "".join(chunks)
         return exit_code, output
@@ -137,7 +141,7 @@ async def _check_tcp_probe(
     timeout = probe.timeout_seconds
 
     def _connect() -> None:
-        with socket.create_connection((host, target_port), timeout=timeout):
+        with socket.create_connection((host, target_port)):
             return
 
     try:

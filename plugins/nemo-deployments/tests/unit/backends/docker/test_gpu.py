@@ -14,6 +14,7 @@ from nemo_deployments_plugin.backends.docker.gpu import (
     get_shared_gpu_pool,
     parse_gpu_device_ids,
 )
+from nemo_deployments_plugin.backends.docker.labels import DEPLOYMENT_NAME_LABEL, DEPLOYMENT_WORKSPACE_LABEL
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
 
 
@@ -50,8 +51,8 @@ def test_discover_managed_gpu_allocations_from_running_container() -> None:
     container.name = "dep-smoke-srv"
     container.labels = {
         "managed-by": MANAGED_BY_LABEL,
-        "nmp.nvidia.com/deployment-workspace": "smoke",
-        "nmp.nvidia.com/deployment-name": "srv",
+        DEPLOYMENT_WORKSPACE_LABEL: "smoke",
+        DEPLOYMENT_NAME_LABEL: "srv",
     }
     container.attrs = {
         "HostConfig": {
@@ -76,8 +77,8 @@ def test_discover_managed_gpu_allocations_skips_exited_container() -> None:
     container.status = "exited"
     container.labels = {
         "managed-by": MANAGED_BY_LABEL,
-        "nmp.nvidia.com/deployment-workspace": "smoke",
-        "nmp.nvidia.com/deployment-name": "srv",
+        DEPLOYMENT_WORKSPACE_LABEL: "smoke",
+        DEPLOYMENT_NAME_LABEL: "srv",
     }
 
     client = MagicMock()
@@ -93,8 +94,8 @@ def test_get_shared_gpu_pool_recovers_running_allocations() -> None:
     container.name = "dep-smoke-srv"
     container.labels = {
         "managed-by": MANAGED_BY_LABEL,
-        "nmp.nvidia.com/deployment-workspace": "smoke",
-        "nmp.nvidia.com/deployment-name": "srv",
+        DEPLOYMENT_WORKSPACE_LABEL: "smoke",
+        DEPLOYMENT_NAME_LABEL: "srv",
     }
     container.attrs = {
         "HostConfig": {

@@ -11,8 +11,10 @@ import pytest
 from backends.docker.docker_helpers import container_attrs, sample_config
 from nemo_deployments_plugin.backends.docker.backend import DockerDeploymentBackend
 from nemo_deployments_plugin.backends.docker.labels import (
+    CONFIG_NAME_LABEL,
     DEPLOYMENT_NAME_LABEL,
     DEPLOYMENT_WORKSPACE_LABEL,
+    RESTART_POLICY_LABEL,
 )
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
 
@@ -28,8 +30,8 @@ async def test_create_existing_matching_container_returns_read_status(
         "managed-by": MANAGED_BY_LABEL,
         DEPLOYMENT_WORKSPACE_LABEL: "default",
         DEPLOYMENT_NAME_LABEL: "srv",
-        "nmp.nvidia.com/restart-policy": "Always",
-        "nmp.nvidia.com/deployment-config": "cfg1",
+        RESTART_POLICY_LABEL: "Always",
+        CONFIG_NAME_LABEL: "cfg1",
     }
     existing.id = "abc"
     existing.status = "running"

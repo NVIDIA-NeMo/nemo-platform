@@ -12,23 +12,16 @@ from __future__ import annotations
 import logging
 import subprocess
 import threading
-from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import docker
 
 logger = logging.getLogger(__name__)
 
 
 class GPUAllocationError(Exception):
     """Raised when GPU allocation fails due to insufficient resources."""
-
-
-@dataclass
-class GPUPoolStatus:
-    total: int
-    available: int
-    allocated: int
-    allocations: dict[str, list[int]] = field(default_factory=dict)
-    gpu_state: dict[int, str | None] = field(default_factory=dict)
 
 
 class DockerGPUPool:
@@ -136,7 +129,7 @@ def parse_gpu_device_ids(device_requests: list[Any] | None) -> list[int]:
     return gpu_ids
 
 
-def discover_managed_gpu_allocations(client: Any) -> dict[str, list[int]]:
+def discover_managed_gpu_allocations(client: docker.DockerClient) -> dict[str, list[int]]:
     """Return workload_id -> GPU IDs for running deployment-managed containers."""
     from nemo_deployments_plugin.backends.docker.labels import (
         DEPLOYMENT_NAME_LABEL,

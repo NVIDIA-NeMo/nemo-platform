@@ -9,12 +9,15 @@ import asyncio
 import logging
 import os
 import socket
-from typing import Any
+from typing import TYPE_CHECKING
 
 from nemo_deployments_plugin.backends.docker.labels import managed_by_filter
 from nemo_deployments_plugin.entities import DockerDeploymentConfig
 
 import docker
+
+if TYPE_CHECKING:
+    from docker.models.containers import Container as DockerContainer
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +39,7 @@ def is_port_free(port: int) -> bool:
         return False
 
 
-def collect_used_host_ports(containers: list[Any]) -> set[int]:
+def collect_used_host_ports(containers: list[DockerContainer]) -> set[int]:
     used: set[int] = set()
     for container in containers:
         try:

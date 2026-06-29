@@ -135,10 +135,13 @@ class DeploymentReconciler:
             await self._reconcile_create(deployment, config, backend)
             return
 
-        if deployment.status in ("STARTING", "READY", "LOST"):
+        if deployment.status in ("STARTING", "READY", "LOST", "UNKNOWN"):
             status_update = await backend.read_status(workspace=deployment.workspace, name=deployment.name)
             if status_update.status == "LOST":
                 await self._handle_drift(deployment, config, backend)
+                return
+            if status_update.status == "UNKNOWN":
+                await self._handle_unknown_status(deployment, status_update)
                 return
             if status_update.status in ("READY", "SUCCEEDED"):
                 self._drift_cache.remove(deployment_id(deployment))
@@ -266,6 +269,59 @@ class DeploymentReconciler:
                     status_message=(f"Recovery attempt {attempt}/{limits.max_attempts} failed: {exc}. Will retry."),
                 ),
             )
+
+    def _controller_recovery_limits(self) -> DriftRecoveryLimits:
+        ctrl = self._controller_config
+        return DriftRecoveryLimits(
+            max_attempts=ctrl.drift_recovery_max_attempts,
+            initial_delay_seconds=ctrl.drift_recovery_initial_delay_seconds,
+            max_delay_seconds=ctrl.drift_recovery_max_delay_seconds,
+        )
+
+    async def _handle_unknown_status(self, deployment: Deployment, status_update: BackendStatusUpdate) -> None:
+        """Handle transient backend communication failures without terminal FAILED."""
+        dep_id = deployment_id(deployment)
+        cache = self._drift_cache
+        limits = self._controller_recovery_limits()
+        cache.add(dep_id)
+        match cache.should_recover(dep_id, limits):
+            case RecoveryAction.EXHAUSTED:
+                attempts = cache.get_attempts(dep_id)
+                await self._update_deployment_status_failure(
+                    deployment,
+                    (
+                        f"Unable to communicate with backend after {attempts} attempts. "
+                        f"Last error: {status_update.status_message}. Manual intervention required."
+                    ),
+                )
+                return
+            case RecoveryAction.BACKOFF:
+                logger.debug("Backend check for %s in backoff period", dep_id)
+                return
+            case RecoveryAction.PROCEED:
+                pass
+
+        attempt = cache.add_attempt(dep_id)
+        logger.warning(
+            "Backend returned UNKNOWN for %s (attempt %d/%d): %s",
+            dep_id,
+            attempt,
+            limits.max_attempts,
+            status_update.status_message,
+        )
+        await self._update_deployment_status(
+            deployment,
+            BackendStatusUpdate(
+                status="UNKNOWN",
+                status_message=(
+                    f"Unable to determine deployment status (attempt {attempt}/{limits.max_attempts}). "
+                    f"{status_update.status_message}"
+                ),
+                error_details=status_update.error_details,
+                endpoints=status_update.endpoints,
+                exit_code=status_update.exit_code,
+            ),
+        )
 
     async def _update_deployment_status_pending(self, deployment: Deployment, message: str) -> None:
         if deployment.status == "PENDING" and deployment.status_message == message:

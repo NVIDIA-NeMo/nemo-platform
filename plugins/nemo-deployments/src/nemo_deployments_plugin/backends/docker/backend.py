@@ -8,7 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from nemo_deployments_plugin.backends.base import (
     BackendStatusUpdate,
@@ -52,17 +52,27 @@ from nemo_deployments_plugin.backends.docker.status import (
     missing_container_status,
 )
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
-from nemo_deployments_plugin.entities import Deployment, DeploymentConfig
+from nemo_deployments_plugin.entities import Container, Deployment, DeploymentConfig
 from nemo_deployments_plugin.types import Endpoint, RestartPolicy
 from nemo_platform.resources.entities import AsyncEntitiesResource
 from nemo_platform_plugin.config import LOOPBACK_ADDRESSES
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
+from requests.exceptions import ConnectionError as RequestsConnectionError
+from requests.exceptions import ReadTimeout
+from urllib3.exceptions import ReadTimeoutError as Urllib3ReadTimeoutError
+
+if TYPE_CHECKING:
+    from docker.models.containers import Container as DockerContainer
+
+    import docker
 
 logger = logging.getLogger(__name__)
 
 
 class DockerDeploymentBackend(DeploymentBackend):
     """Manage deployments and volumes as Docker containers and volumes."""
+
+    _client: docker.DockerClient
 
     def init(self) -> None:
         try:
@@ -81,11 +91,13 @@ class DockerDeploymentBackend(DeploymentBackend):
         self._gpu_pool = get_shared_gpu_pool()
         self._client = self._create_client()
 
-    def _create_client(self) -> Any:
+    def _create_client(self) -> docker.DockerClient:
         kwargs: dict[str, Any] = {"timeout": self._executor_config.docker_timeout}
         if self._executor_config.docker_host:
             kwargs["base_url"] = self._executor_config.docker_host
-        return self._docker.from_env(**kwargs)
+        client = self._docker.from_env(**kwargs)
+        client.api.timeout = self._executor_config.docker_timeout
+        return client
 
     def shutdown(self) -> None:
         if hasattr(self, "_client") and self._client is not None:
@@ -231,6 +243,18 @@ class DockerDeploymentBackend(DeploymentBackend):
         except self._docker_errors.NotFound:
             restart_policy = await self._resolve_restart_policy(workspace, name)
             return missing_container_status(restart_policy, container_name=c_name)
+        except (
+            self._docker_errors.APIError,
+            ReadTimeout,
+            Urllib3ReadTimeoutError,
+            RequestsConnectionError,
+        ) as exc:
+            logger.error("Transient Docker API error checking container %s: %s", c_name, exc)
+            return BackendStatusUpdate(
+                status="UNKNOWN",
+                status_message=f"Docker API error while checking container status: {exc}",
+                error_details={"error": str(exc), "container_name": c_name},
+            )
         except Exception as exc:
             return BackendStatusUpdate(status="FAILED", status_message=f"Docker API error: {exc}")
 
@@ -413,7 +437,7 @@ class DockerDeploymentBackend(DeploymentBackend):
 
     def _container_matches_deployment(
         self,
-        container: Any,
+        container: DockerContainer,
         workspace: str,
         name: str,
         config_name: str,
@@ -461,7 +485,7 @@ class DockerDeploymentBackend(DeploymentBackend):
         except Exception:
             return None
 
-    def _extract_host_ports(self, container: Any) -> dict[int, int]:
+    def _extract_host_ports(self, container: DockerContainer) -> dict[int, int]:
         result: dict[int, int] = {}
         ports = container.ports or {}
         for key, bindings in ports.items():
@@ -480,7 +504,7 @@ class DockerDeploymentBackend(DeploymentBackend):
         host = os.environ.get("NMP_LOOPBACK_ADDRESS", LOOPBACK_ADDRESSES[0])
         return host_url_for_port(host, host_port)
 
-    def _build_endpoints(self, container_spec: Any, host_ports: dict[int, int]) -> list[Endpoint]:
+    def _build_endpoints(self, container_spec: Container, host_ports: dict[int, int]) -> list[Endpoint]:
         endpoints: list[Endpoint] = []
         host = os.environ.get("NMP_LOOPBACK_ADDRESS", LOOPBACK_ADDRESSES[0])
         for port_spec in container_spec.ports:
@@ -499,7 +523,7 @@ class DockerDeploymentBackend(DeploymentBackend):
             )
         return endpoints
 
-    def _endpoints_from_container_ports(self, container: Any, host_ports: dict[int, int]) -> list[Endpoint]:
+    def _endpoints_from_container_ports(self, container: DockerContainer, host_ports: dict[int, int]) -> list[Endpoint]:
         if not host_ports:
             return []
         host = os.environ.get("NMP_LOOPBACK_ADDRESS", LOOPBACK_ADDRESSES[0])

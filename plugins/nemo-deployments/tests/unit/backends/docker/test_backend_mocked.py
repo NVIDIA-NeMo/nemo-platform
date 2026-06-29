@@ -9,8 +9,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from backends.docker.docker_helpers import container_attrs, sample_config
-from docker.errors import NotFound
+from docker.errors import APIError, NotFound
 from nemo_deployments_plugin.backends.docker.backend import DockerDeploymentBackend
+from nemo_deployments_plugin.backends.docker.labels import (
+    CONFIG_NAME_LABEL,
+    DEPLOYMENT_NAME_LABEL,
+    DEPLOYMENT_WORKSPACE_LABEL,
+    RESTART_POLICY_LABEL,
+)
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
 from nemo_deployments_plugin.entities import Deployment
 
@@ -49,8 +55,8 @@ async def test_read_status_ready_when_running_without_probe(
     container.status = "running"
     container.labels = {
         "managed-by": MANAGED_BY_LABEL,
-        "nmp.nvidia.com/restart-policy": "Always",
-        "nmp.nvidia.com/deployment-config": "cfg1",
+        RESTART_POLICY_LABEL: "Always",
+        CONFIG_NAME_LABEL: "cfg1",
     }
     container.ports = {}
     container.attrs = container_attrs()
@@ -86,6 +92,19 @@ async def test_read_status_lost_when_missing_always(
 
 
 @pytest.mark.asyncio
+async def test_read_status_unknown_on_transient_docker_error(
+    docker_backend: DockerDeploymentBackend,
+    mock_docker_client: MagicMock,
+) -> None:
+    mock_docker_client.containers.get.side_effect = APIError("connection reset")
+
+    update = await docker_backend.read_status(workspace="default", name="srv")
+
+    assert update.status == "UNKNOWN"
+    assert "Docker API error" in update.status_message
+
+
+@pytest.mark.asyncio
 async def test_delete_deployment_idempotent(
     docker_backend: DockerDeploymentBackend,
     mock_docker_client: MagicMock,
@@ -105,8 +124,8 @@ async def test_list_managed_deployment_names(
     container = MagicMock()
     container.labels = {
         "managed-by": MANAGED_BY_LABEL,
-        "nmp.nvidia.com/deployment-workspace": "default",
-        "nmp.nvidia.com/deployment-name": "srv",
+        DEPLOYMENT_WORKSPACE_LABEL: "default",
+        DEPLOYMENT_NAME_LABEL: "srv",
     }
     mock_docker_client.containers.list.return_value = [container]
 

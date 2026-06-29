@@ -11,12 +11,12 @@ import re
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
 
 MANAGED_BY_KEY = "managed-by"
-DEPLOYMENT_WORKSPACE_LABEL = "nmp.nvidia.com/deployment-workspace"
-DEPLOYMENT_NAME_LABEL = "nmp.nvidia.com/deployment-name"
-RESTART_POLICY_LABEL = "nmp.nvidia.com/restart-policy"
-CONFIG_NAME_LABEL = "nmp.nvidia.com/deployment-config"
-VOLUME_WORKSPACE_LABEL = "nmp.nvidia.com/volume-workspace"
-VOLUME_NAME_LABEL = "nmp.nvidia.com/volume-name"
+DEPLOYMENT_WORKSPACE_LABEL = "nemo.nvidia.com/deployment-workspace"
+DEPLOYMENT_NAME_LABEL = "nemo.nvidia.com/deployment-name"
+RESTART_POLICY_LABEL = "nemo.nvidia.com/restart-policy"
+CONFIG_NAME_LABEL = "nemo.nvidia.com/deployment-config"
+VOLUME_WORKSPACE_LABEL = "nemo.nvidia.com/volume-workspace"
+VOLUME_NAME_LABEL = "nemo.nvidia.com/volume-name"
 
 
 def k8s_safe_name(base_name: str, *, max_length: int = 63, suffix: str = "") -> str:
@@ -50,7 +50,7 @@ def deployment_key(workspace: str, name: str) -> str:
     return f"{workspace}/{name}"
 
 
-BACKOFF_LIMIT_LABEL = "nmp.nvidia.com/backoff-limit"
+BACKOFF_LIMIT_LABEL = "nemo.nvidia.com/backoff-limit"
 
 
 def deployment_identity_labels(
