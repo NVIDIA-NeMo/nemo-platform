@@ -7,7 +7,18 @@ import { BulkDeleteModal as GenericBulkDeleteModal } from '@studio/components/Bu
 import { extractFilePathsFromDirectory } from '@studio/components/filesets/FilesetFileExplorer/extractFilePathsFromDirectory';
 import type { FileSystemNode } from '@studio/components/FilesTable/utils';
 import { Trash } from 'lucide-react';
-import { cloneElement, isValidElement, type FC, type ReactNode, useState } from 'react';
+import {
+  cloneElement,
+  isValidElement,
+  type FC,
+  type MouseEventHandler,
+  type ReactNode,
+  useState,
+} from 'react';
+
+interface TriggerProps {
+  onClick?: MouseEventHandler;
+}
 
 interface BulkDeleteModalProps {
   selectedItems: FileSystemNode[];
@@ -42,9 +53,13 @@ export const BulkDeleteModal: FC<BulkDeleteModalProps> = ({
 
   const openTrigger = () => setOpen(true);
 
-  const trigger = isValidElement(slotTrigger) ? (
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    cloneElement(slotTrigger as React.ReactElement<any>, { onClick: openTrigger })
+  const trigger = isValidElement<TriggerProps>(slotTrigger) ? (
+    cloneElement(slotTrigger, {
+      onClick: (e: Parameters<MouseEventHandler>[0]) => {
+        slotTrigger.props.onClick?.(e);
+        openTrigger();
+      },
+    })
   ) : (
     <Button kind="secondary" data-testid="bulk-delete-modal-trigger-button" onClick={openTrigger}>
       <Trash />
