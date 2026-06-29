@@ -10330,24 +10330,18 @@ components:
           - $ref: '#/components/schemas/NumberFilter'
           description: Filter by run count, e.g. filter[run_count][$gte]=5.
         cost_usd:
+          allOf:
+          - $ref: '#/components/schemas/MetricStatFilters'
           description: Filter by a cost_usd rollup stat, e.g. filter[cost_usd.mean][$lte]=0.5.
-          title: Cost Usd
-          additionalProperties:
-            $ref: '#/components/schemas/NumberFilter'
-          type: object
         latency_ms:
+          allOf:
+          - $ref: '#/components/schemas/MetricStatFilters'
           description: Filter by a latency_ms rollup stat, e.g. filter[latency_ms.p95][$lte]=1000.
-          title: Latency Ms
-          additionalProperties:
-            $ref: '#/components/schemas/NumberFilter'
-          type: object
         evaluators:
           description: Filter by an evaluator rollup stat, e.g. filter[evaluators.<name>.mean][$gte]=0.8.
           title: Evaluators
           additionalProperties:
-            additionalProperties:
-              $ref: '#/components/schemas/NumberFilter'
-            type: object
+            $ref: '#/components/schemas/MetricStatFilters'
           type: object
       title: ExperimentFilter
       type: object
@@ -12938,6 +12932,38 @@ components:
       - metadata
       title: MetadataAnnotationInput
       description: Structured key/value metadata attached to a span or session.
+    MetricStatFilters:
+      additionalProperties: false
+      description: 'Numeric range filters keyed by rollup aggregate stat.
+
+
+        Declaring each stat explicitly (rather than an open ``dict[str, NumberFilter]``)
+        makes the valid
+
+        stats visible in the OpenAPI schema, e.g. ``filter[cost_usd.mean][$lte]=0.5``.
+        These stats must
+
+        stay in sync with the runtime sort/filter grammar (``_METRIC_STATS`` in the
+        experiments
+
+        endpoints); a unit test guards the parity.'
+      properties:
+        sum:
+          $ref: '#/components/schemas/NumberFilter'
+        mean:
+          $ref: '#/components/schemas/NumberFilter'
+        median:
+          $ref: '#/components/schemas/NumberFilter'
+        p90:
+          $ref: '#/components/schemas/NumberFilter'
+        p95:
+          $ref: '#/components/schemas/NumberFilter'
+        p99:
+          $ref: '#/components/schemas/NumberFilter'
+        count:
+          $ref: '#/components/schemas/NumberFilter'
+      title: MetricStatFilters
+      type: object
     MiddlewareCall:
       properties:
         name:

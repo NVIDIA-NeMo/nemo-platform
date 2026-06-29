@@ -152,6 +152,26 @@ class ExperimentResponse(BaseModel):
         )
 
 
+class MetricStatFilters(BaseModel):
+    """Numeric range filters keyed by rollup aggregate stat.
+
+    Declaring each stat explicitly (rather than an open ``dict[str, NumberFilter]``) makes the valid
+    stats visible in the OpenAPI schema, e.g. ``filter[cost_usd.mean][$lte]=0.5``. These stats must
+    stay in sync with the runtime sort/filter grammar (``_METRIC_STATS`` in the experiments
+    endpoints); a unit test guards the parity.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    sum: NumberFilter | None = None
+    mean: NumberFilter | None = None
+    median: NumberFilter | None = None
+    p90: NumberFilter | None = None
+    p95: NumberFilter | None = None
+    p99: NumberFilter | None = None
+    count: NumberFilter | None = None
+
+
 class ExperimentGroupFilter(Filter):
     """Filter for listing ExperimentGroups."""
 
@@ -196,17 +216,15 @@ class ExperimentFilter(Filter):
     run_count: Annotated[NumberFilter | None, map_entity_field("run_count")] = Field(
         default=None, description="Filter by run count, e.g. filter[run_count][$gte]=5."
     )
-    cost_usd: Annotated[dict[str, NumberFilter] | None, map_entity_field("cost_usd", namespace=True)] = Field(
+    cost_usd: Annotated[MetricStatFilters | None, map_entity_field("cost_usd", namespace=True)] = Field(
         default=None, description="Filter by a cost_usd rollup stat, e.g. filter[cost_usd.mean][$lte]=0.5."
     )
-    latency_ms: Annotated[dict[str, NumberFilter] | None, map_entity_field("latency_ms", namespace=True)] = Field(
+    latency_ms: Annotated[MetricStatFilters | None, map_entity_field("latency_ms", namespace=True)] = Field(
         default=None, description="Filter by a latency_ms rollup stat, e.g. filter[latency_ms.p95][$lte]=1000."
     )
-    evaluators: Annotated[dict[str, dict[str, NumberFilter]] | None, map_entity_field("evaluators", namespace=True)] = (
-        Field(
-            default=None,
-            description="Filter by an evaluator rollup stat, e.g. filter[evaluators.<name>.mean][$gte]=0.8.",
-        )
+    evaluators: Annotated[dict[str, MetricStatFilters] | None, map_entity_field("evaluators", namespace=True)] = Field(
+        default=None,
+        description="Filter by an evaluator rollup stat, e.g. filter[evaluators.<name>.mean][$gte]=0.8.",
     )
 
 

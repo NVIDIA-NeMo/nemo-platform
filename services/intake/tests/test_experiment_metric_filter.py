@@ -13,13 +13,14 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from nmp.common.api.filter import ComparisonOperation, FilterOperator, LogicalOperation
 from nmp.intake.api.v2.experiments.endpoints import (
+    _METRIC_STATS,
     _extract_metric_predicates,
     _is_metric_field,
     _is_valid_metric_path,
     _matches_metric_predicates,
     _operation_references_metric,
 )
-from nmp.intake.api.v2.experiments.schemas import EvaluatorAggregate, ExperimentResponse
+from nmp.intake.api.v2.experiments.schemas import EvaluatorAggregate, ExperimentResponse, MetricStatFilters
 
 EXPERIMENTS = "/apis/intake/v2/workspaces/default/experiments"
 GROUPS = "/apis/intake/v2/workspaces/default/experiment-groups"
@@ -51,6 +52,12 @@ def test_is_metric_field_classifies_by_head() -> None:
     assert _is_metric_field("evaluators.harbor.verifier.mean")
     assert not _is_metric_field("data.name")
     assert not _is_metric_field("name")
+
+
+def test_metric_stat_filters_match_runtime_stats() -> None:
+    # The stats enumerated in the OpenAPI-visible schema must mirror the runtime grammar, or the spec
+    # would advertise stats the server rejects (or omit ones it accepts).
+    assert set(MetricStatFilters.model_fields) == set(_METRIC_STATS)
 
 
 def test_is_valid_metric_path() -> None:
