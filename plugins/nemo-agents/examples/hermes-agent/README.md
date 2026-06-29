@@ -1,20 +1,22 @@
-# Codex Agent
+# Hermes Agent
 
-This example configures the vendored Codex workflow adapter shipped with the
+This example configures the vendored Hermes workflow adapter shipped with the
 `nemo-agents` plugin.
 
 The adapter is already packaged with `nemo-agents`; do not install a separate
-NAT Codex adapter package.
+NAT Hermes adapter package.
 
 ## Prerequisites
 
-Install the Codex CLI and configure authentication in the same environment that
-will run `nemo`:
+Install and configure Hermes Agent in the same environment that will run
+`nemo`. The workflow config launches Hermes with `uvx`, so a global `hermes`
+executable is not required:
 
 ```bash
-npm install -g @openai/codex
-codex login
-codex login status
+uvx --from hermes-agent hermes setup
+uvx --from hermes-agent hermes auth
+uvx --from hermes-agent hermes model
+uvx --from hermes-agent hermes status
 ```
 
 Install Rust so `cargo` is available on `PATH`, then install the NeMo Relay CLI.
@@ -37,19 +39,19 @@ From the `nemo-platform` repository root, create and deploy the example agent:
 
 ```bash
 nemo agents create \
-  --name codex-agent \
-  --agent-config plugins/nemo-agents/examples/codex-agent/codex-agent.yml
+  --name hermes-agent \
+  --agent-config plugins/nemo-agents/examples/hermes-agent/hermes-agent.yml
 
-nemo agents deploy --agent codex-agent
+nemo agents deploy --agent hermes-agent
 ```
 
 Invoke it with a read-only prompt first:
 
 ```bash
 nemo agents invoke \
-  --agent codex-agent \
+  --agent hermes-agent \
   --input "Read pyproject.toml and say only the project name. Do not edit files."
 ```
 
-The config uses `sandbox_mode: read-only` and `approval_policy: never` by
-default so the first smoke test can inspect files without editing the workspace.
+`uvx --from hermes-agent hermes status` should show a concrete model and an
+authenticated provider before a live model-backed workflow run.

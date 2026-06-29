@@ -53,6 +53,8 @@ nemo_agents_files_telemetry = "nemo_agents_plugin.telemetry.files_service_export
 nat_claude_code_agent_adapter = "nat_claude_code_agent_adapter.register"
 nat_codex_agent_adapter = "nat_codex_agent_adapter.register"
 nat_cursor_agent_adapter = "nat_cursor_agent_adapter.register"
+nat_hermes_agent_adapter = "nat_hermes_agent_adapter.register"
+nat_openclaw_agent_adapter = "nat_openclaw_agent_adapter.register"
 
 [project.optional-dependencies]
 container = [
@@ -77,6 +79,8 @@ packages = [
     "vendor/claude_code_agent_adapter/src/nat_claude_code_agent_adapter",
     "vendor/codex_agent_adapter/src/nat_codex_agent_adapter",
     "vendor/cursor_agent_adapter/src/nat_cursor_agent_adapter",
+    "vendor/hermes_agent_adapter/src/nat_hermes_agent_adapter",
+    "vendor/openclaw_agent_adapter/src/nat_openclaw_agent_adapter",
 ]
 
 [tool.uv.sources]

@@ -60,6 +60,12 @@ export interface ExperimentGroupExperiments {
   isLoading: boolean;
   /** True when either query is fetching */
   isFetching: boolean;
+  /**
+   * True once the sortable (unpinned) page has loaded successfully for the current sort. Tracks the
+   * current sort key specifically — it stays false while a new sort is in flight or has errored — so
+   * callers can record the last good sort for sort-error recovery.
+   */
+  isSuccess: boolean;
 }
 
 /**
@@ -114,6 +120,8 @@ export function useExperimentGroupExperiments({
     data: unpinnedResponse,
     isLoading: isUnpinnedLoading,
     isFetching: isUnpinnedFetching,
+    isSuccess: isUnpinnedSuccess,
+    isPlaceholderData: isUnpinnedPlaceholder,
     error: unpinnedError,
   } = useListExperiments(
     workspace,
@@ -196,6 +204,9 @@ export function useExperimentGroupExperiments({
   // both lists have loaded once, rather than clearing as soon as the faster query returns.
   const isLoading = isPinnedLoading || isUnpinnedLoading;
   const isFetching = isPinnedFetching || isUnpinnedFetching;
+  // Sort-error recovery keys off the unpinned (sort-carrying) query. Exclude placeholder data so
+  // `keepPreviousData`'s in-flight 'success' doesn't bank an about-to-fail sort as the last good one.
+  const isSuccess = isUnpinnedSuccess && !isUnpinnedPlaceholder;
 
-  return { rows, togglePin, totalCount, error, isLoading, isFetching };
+  return { rows, togglePin, totalCount, error, isLoading, isFetching, isSuccess };
 }

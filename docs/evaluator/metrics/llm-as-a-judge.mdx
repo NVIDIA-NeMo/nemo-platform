@@ -69,13 +69,14 @@ from nemo_evaluator_sdk import (
     RunConfig,
     LLMJudgeMetric
 )
+from nemo_evaluator_sdk.enums import ModelFormat
 
 
 metric = LLMJudgeMetric(
     model=Model(
         url="<judge-nim-url>/v1",
         name="meta/llama-3.1-70b-instruct",
-        format="nim",
+        format=ModelFormat.NVIDIA_NIM,
     ),
     scores=[
         RangeScore(
@@ -106,7 +107,7 @@ metric = LLMJudgeMetric(
             },
             {
                 "role": "user",
-                "content": "Question: {{item.input}}\n\nResponse: {{item.output}}\n\nRate this response.",
+                "content": "Question: {{input}}\n\nResponse: {{output}}\n\nRate this response.",
             },
         ]
     },
@@ -170,38 +171,24 @@ Use rubric scores when you want categorical labels with explicit descriptions:
 
 ```python
 from nemo_evaluator_sdk import JSONScoreParser, Model, RubricScore, LLMJudgeMetric
+from nemo_evaluator_sdk.enums import ModelFormat
+from nemo_evaluator_sdk.values import Rubric
 
 metric = LLMJudgeMetric(
     model=Model(
         url="<judge-nim-url>/v1",
         name="meta/llama-3.1-70b-instruct",
-        format="nim",
+        format=ModelFormat.NVIDIA_NIM,
     ),
     scores=[
         RubricScore(
             name="quality",
             description="Overall quality of the response",
             rubric=[
-                {
-                    "label": "poor",
-                    "value": 0,
-                    "description": "Response is unhelpful or incorrect",
-                },
-                {
-                    "label": "acceptable",
-                    "value": 1,
-                    "description": "Response is partially correct",
-                },
-                {
-                    "label": "good",
-                    "value": 2,
-                    "description": "Response is correct and helpful",
-                },
-                {
-                    "label": "excellent",
-                    "value": 3,
-                    "description": "Response is comprehensive and insightful",
-                },
+                Rubric(label="poor", value=0, description="Response is unhelpful or incorrect"),
+                Rubric(label="acceptable", value=1, description="Response is partially correct"),
+                Rubric(label="good", value=2, description="Response is correct and helpful"),
+                Rubric(label="excellent", value=3, description="Response is comprehensive and insightful"),
             ],
             parser=JSONScoreParser(json_path="quality"),
         ),
@@ -209,21 +196,9 @@ metric = LLMJudgeMetric(
             name="completeness",
             description="How complete the answer is",
             rubric=[
-                {
-                    "label": "incomplete",
-                    "value": 0,
-                    "description": "Missing key information",
-                },
-                {
-                    "label": "partial",
-                    "value": 1,
-                    "description": "Covers main points but lacks detail",
-                },
-                {
-                    "label": "complete",
-                    "value": 2,
-                    "description": "Fully addresses the question",
-                },
+                Rubric(label="incomplete", value=0, description="Missing key information"),
+                Rubric(label="partial", value=1, description="Covers main points but lacks detail"),
+                Rubric(label="complete", value=2, description="Fully addresses the question"),
             ],
             parser=JSONScoreParser(json_path="completeness"),
         ),
@@ -241,7 +216,7 @@ metric = LLMJudgeMetric(
             },
             {
                 "role": "user",
-                "content": "Question: {{item.input}}\n\nResponse: {{item.output}}\n\nRate this response.",
+                "content": "Question: {{input}}\n\nResponse: {{output}}\n\nRate this response.",
             },
         ]
     },
@@ -269,24 +244,33 @@ By default, aggregate scores include `count`, `mean`, `min`, and `max`. Request 
 
 
 ```python
-
 result = evaluator.run(
     metric=metric,
     dataset=[
         {"input": "What is the capital of France?", "output": "Paris."},
         {"input": "What is 2 + 2?", "output": "4."},
     ],
-    aggregate_fields=("std_dev", "variance", "percentiles", "histogram"),
+    aggregate_fields=("std_dev", "variance"),
 )
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}:")
     print(f" mean: {score.mean:.3f}")
     print(f" std_dev: {score.std_dev:.3f}")
-    if score.percentiles:
-        print(f" p50: {score.percentiles.p50:.3f}")
-        print(f" p90: {score.percentiles.p90:.3f}")
+    print(f" variance: {score.variance:.3f}")
 ```
+
+<Note>
+
+Available aggregate fields depend on the score type:
+
+- All scores: `count`, `mean`, `min`, `max`, `std_dev`, `variance`
+- Range scores only: `percentiles`, `histogram`
+- Rubric scores only: `rubric_distribution`, `mode_category`
+
+Requesting `percentiles` or `histogram` for a rubric score has no effect, and the rubric-only fields are not produced for range scores.
+
+</Note>
 
 
 ---
@@ -298,25 +282,23 @@ For production workloads, submit the same metric and dataset as a durable platfo
 
 ```python
 from nemo_evaluator_sdk import RunConfig, JSONScoreParser, Model, RubricScore, LLMJudgeMetric
+from nemo_evaluator_sdk.enums import ModelFormat
+from nemo_evaluator_sdk.values import Rubric
 
 metric = LLMJudgeMetric(
     model=Model(
         url="<judge-nim-url>/v1",
         name="meta/llama-3.1-70b-instruct",
-        format="nim",
+        format=ModelFormat.NVIDIA_NIM,
     ),
     scores=[
         RubricScore(
             name="quality",
             description="Overall quality of the response",
             rubric=[
-                {"label": "poor", "value": 0, "description": "Response is unhelpful"},
-                {"label": "good", "value": 1, "description": "Response is helpful"},
-                {
-                    "label": "excellent",
-                    "value": 2,
-                    "description": "Response is exceptional",
-                },
+                Rubric(label="poor", value=0, description="Response is unhelpful"),
+                Rubric(label="good", value=1, description="Response is helpful"),
+                Rubric(label="excellent", value=2, description="Response is exceptional"),
             ],
             parser=JSONScoreParser(json_path="quality"),
         )
@@ -329,7 +311,7 @@ metric = LLMJudgeMetric(
             },
             {
                 "role": "user",
-                "content": "Question: {{item.input}}\n\nResponse: {{item.output}}",
+                "content": "Question: {{input}}\n\nResponse: {{output}}",
             },
         ]
     },
@@ -389,13 +371,13 @@ LLM-as-a-Judge supports two types of scores: **range scores** (numerical ratings
 
 Use range scores for numerical ratings on a continuous scale:
 
-```python
+```json
 {
-    "name": "relevance",
-    "description": "How relevant is the response (1=irrelevant, 5=highly relevant)",
-    "minimum": 1,
-    "maximum": 5,
-    "parser": {"type": "json", "json_path": "relevance"},
+  "name": "relevance",
+  "description": "How relevant is the response (1=irrelevant, 5=highly relevant)",
+  "minimum": 1,
+  "maximum": 5,
+  "parser": {"type": "json", "json_path": "relevance"}
 }
 ```
 
@@ -403,16 +385,16 @@ Use range scores for numerical ratings on a continuous scale:
 
 Use rubric scores for categorical evaluations with explicit criteria:
 
-```python
+```json
 {
-    "name": "sentiment",
-    "description": "Sentiment of the response",
-    "rubric": [
-        {"label": "negative", "value": -1, "description": "Response has negative tone"},
-        {"label": "neutral", "value": 0, "description": "Response is neutral"},
-        {"label": "positive", "value": 1, "description": "Response has positive tone"},
-    ],
-    "parser": {"type": "json", "json_path": "sentiment"},
+  "name": "sentiment",
+  "description": "Sentiment of the response",
+  "rubric": [
+    {"label": "negative", "value": -1, "description": "Response has negative tone"},
+    {"label": "neutral", "value": 0, "description": "Response is neutral"},
+    {"label": "positive", "value": 1, "description": "Response has positive tone"}
+  ],
+  "parser": {"type": "json", "json_path": "sentiment"}
 }
 ```
 
