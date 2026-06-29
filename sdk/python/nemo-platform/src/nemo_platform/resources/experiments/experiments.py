@@ -88,7 +88,6 @@ class ExperimentsResource(SyncAPIResource):
         description: str | Omit = omit,
         metadata: Dict[str, object] | Omit = omit,
         source_link: str | Omit = omit,
-        summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         exist_ok: bool = False,
@@ -115,8 +114,6 @@ class ExperimentsResource(SyncAPIResource):
           metadata: Free-form producer metadata.
 
           source_link: Optional URL for the source experiment.
-
-          summary: Human-authored summary of results.
 
 
           exist_ok: Do not raise an error if the resource already exists. Returns the existing resource.
@@ -146,7 +143,6 @@ class ExperimentsResource(SyncAPIResource):
                         "description": description,
                         "metadata": metadata,
                         "source_link": source_link,
-                        "summary": summary,
                     },
                     experiment_create_params.ExperimentCreateParams,
                 ),
@@ -210,7 +206,6 @@ class ExperimentsResource(SyncAPIResource):
         description: str | Omit = omit,
         metadata: Dict[str, object] | Omit = omit,
         source_link: str | Omit = omit,
-        summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -236,8 +231,6 @@ class ExperimentsResource(SyncAPIResource):
           metadata: Free-form producer metadata.
 
           source_link: Optional URL for the source experiment.
-
-          summary: Human-authored summary of results.
 
           extra_headers: Send extra headers
 
@@ -268,7 +261,6 @@ class ExperimentsResource(SyncAPIResource):
                     "description": description,
                     "metadata": metadata,
                     "source_link": source_link,
-                    "summary": summary,
                 },
                 experiment_update_params.ExperimentUpdateParams,
             ),
@@ -504,7 +496,6 @@ class AsyncExperimentsResource(AsyncAPIResource):
         description: str | Omit = omit,
         metadata: Dict[str, object] | Omit = omit,
         source_link: str | Omit = omit,
-        summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         exist_ok: bool = False,
@@ -531,8 +522,6 @@ class AsyncExperimentsResource(AsyncAPIResource):
           metadata: Free-form producer metadata.
 
           source_link: Optional URL for the source experiment.
-
-          summary: Human-authored summary of results.
 
 
           exist_ok: Do not raise an error if the resource already exists. Returns the existing resource.
@@ -562,7 +551,6 @@ class AsyncExperimentsResource(AsyncAPIResource):
                         "description": description,
                         "metadata": metadata,
                         "source_link": source_link,
-                        "summary": summary,
                     },
                     experiment_create_params.ExperimentCreateParams,
                 ),
@@ -626,7 +614,6 @@ class AsyncExperimentsResource(AsyncAPIResource):
         description: str | Omit = omit,
         metadata: Dict[str, object] | Omit = omit,
         source_link: str | Omit = omit,
-        summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -652,8 +639,6 @@ class AsyncExperimentsResource(AsyncAPIResource):
           metadata: Free-form producer metadata.
 
           source_link: Optional URL for the source experiment.
-
-          summary: Human-authored summary of results.
 
           extra_headers: Send extra headers
 
@@ -684,7 +669,6 @@ class AsyncExperimentsResource(AsyncAPIResource):
                     "description": description,
                     "metadata": metadata,
                     "source_link": source_link,
-                    "summary": summary,
                 },
                 experiment_update_params.ExperimentUpdateParams,
             ),

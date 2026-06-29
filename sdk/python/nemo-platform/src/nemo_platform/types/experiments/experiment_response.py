@@ -80,8 +80,6 @@ class ExperimentResponse(BaseModel):
 
     source_link: Optional[str] = None
 
-    summary: Optional[str] = None
-
     updated_at: Optional[datetime] = None
 
     if not PYDANTIC_V1:
