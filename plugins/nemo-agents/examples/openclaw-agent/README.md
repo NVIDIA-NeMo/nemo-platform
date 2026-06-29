@@ -12,7 +12,7 @@ Install the OpenClaw CLI and configure authentication in the same environment
 that will run `nemo`:
 
 ```bash
-npm install -g openclaw@latest
+npm install -g openclaw@2026.6.10
 openclaw --version
 openclaw onboard
 openclaw doctor
@@ -35,6 +35,7 @@ This requires Node.js and npm in addition to the OpenClaw CLI:
 ```bash
 git clone git@github.com:NVIDIA/NeMo-Relay.git
 export NEMO_RELAY_ROOT="$PWD/NeMo-Relay"
+git -C "$NEMO_RELAY_ROOT" checkout 19a537ddb045d853304f0f6a43dbc5346ad84233
 npm install --prefix "$NEMO_RELAY_ROOT" --workspace=nemo-relay-node --workspace=nemo-relay-openclaw --ignore-scripts
 npm run --prefix "$NEMO_RELAY_ROOT" build --workspace=nemo-relay-node
 npm run --prefix "$NEMO_RELAY_ROOT" build --workspace=nemo-relay-openclaw
@@ -45,7 +46,7 @@ Install the OpenClaw Codex plugin and authenticate it if you want the example to
 use OpenClaw's Codex app-server runtime:
 
 ```bash
-openclaw plugins install @openclaw/codex
+openclaw plugins install @openclaw/codex@2026.6.10
 openclaw models auth login --provider openai
 openclaw models status
 ```

@@ -17,7 +17,7 @@ workflow:
   # Change this to the repository or workspace OpenClaw should operate in.
   working_directory: .
   agent_id: main
-  session_key: nemo-openclaw-agent
+  session_key: null
   local: false
   codex_app_server_mode: guardian
   codex_app_server_approval_policy: on-request

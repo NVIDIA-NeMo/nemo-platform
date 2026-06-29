@@ -3,7 +3,7 @@
 
 """Unit tests for the vendored OpenClaw adapter packaging."""
 
-from importlib.metadata import entry_points
+from importlib.metadata import distribution
 from pathlib import Path
 
 import yaml
@@ -17,8 +17,8 @@ def test_openclaw_agent_workflow_type_registered() -> None:
 
 
 def test_openclaw_adapter_nat_components_entry_point_registered() -> None:
-    eps = entry_points(group="nat.components")
-    ep = next(ep for ep in eps if ep.name == "nat_openclaw_agent_adapter")
+    eps = distribution("nemo-agents-plugin").entry_points
+    ep = next(ep for ep in eps if ep.group == "nat.components" and ep.name == "nat_openclaw_agent_adapter")
     assert ep.value == "nat_openclaw_agent_adapter.register"
 
 
