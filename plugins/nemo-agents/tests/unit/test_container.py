@@ -612,6 +612,7 @@ class TestValidateAgentConfig:
             "codex_agent",
             "cursor_agent",
             "hermes_agent",
+            "openclaw_agent",
             "react_agent",
             "tool_calling_agent",
             "reasoning_agent",
