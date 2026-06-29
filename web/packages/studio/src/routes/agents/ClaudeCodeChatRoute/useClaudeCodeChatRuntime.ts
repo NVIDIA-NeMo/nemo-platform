@@ -528,6 +528,14 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
               prepareForUserInput();
               handleInputRequest(request);
             },
+            onPermissionExpired: (requestId) => {
+              if (signal.aborted || !isCurrentRun()) return;
+              dispatchBlocking({ type: 'clear_permission', requestId, dequeueNext: true });
+            },
+            onInputExpired: (requestId) => {
+              if (signal.aborted || !isCurrentRun()) return;
+              dispatchBlocking({ type: 'clear_input', requestId, dequeueNext: true });
+            },
             onDone: () => {
               doneReceived = true;
             },

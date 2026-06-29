@@ -276,6 +276,39 @@ describe('AgentDecisionInput', () => {
     expect(onSubmit).toHaveBeenCalledWith({ id: 'no', label: 'No' });
   });
 
+  it('resets to the default choice when request.id changes', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+
+    const { rerender } = render(
+      <AgentDecisionInput
+        request={request}
+        choices={choices}
+        defaultChoiceId="yes"
+        onSubmit={onSubmit}
+      />
+    );
+
+    // Navigate to the text-input choice on the first request
+    await user.click(
+      screen.getByRole('option', { name: /3\.\s+Tell the Agent what to do differently/i })
+    );
+    expect(screen.getByRole('button', { name: /Send/i })).toBeDisabled();
+
+    // Simulate a new request arriving (different id) — as if a queued permission dequeued
+    rerender(
+      <AgentDecisionInput
+        request={{ ...request, id: 'permission-2', title: 'New request' }}
+        choices={choices}
+        defaultChoiceId="yes"
+        onSubmit={onSubmit}
+      />
+    );
+
+    // Send button must be enabled immediately — no stale "alternative" selection
+    expect(screen.getByRole('button', { name: /Send/i })).not.toBeDisabled();
+  });
+
   it('calls skip from the bottom action', async () => {
     const user = userEvent.setup();
     const onSkip = vi.fn();
