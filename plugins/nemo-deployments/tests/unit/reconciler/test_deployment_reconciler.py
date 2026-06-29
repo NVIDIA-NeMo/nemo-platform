@@ -97,11 +97,11 @@ async def test_ready_monitoring(
 @pytest.mark.asyncio
 async def test_unknown_status_retries_then_fails(
     mock_entities: AsyncMock,
-    executor_registry: ExecutorRegistry,
+    mock_backend: MockDeploymentBackend,
 ) -> None:
     reconciler = DeploymentReconciler(
         mock_entities,
-        executor_registry,
+        ExecutorRegistry({"default": mock_backend}, default_executor="default"),
         ControllerConfig(
             drift_recovery_max_attempts=3,
             drift_recovery_initial_delay_seconds=0,
@@ -112,8 +112,6 @@ async def test_unknown_status_retries_then_fails(
     dep.status = "STARTING"
     cfg = make_deployment_config()
     reconciler.set_config_cache({("default", "cfg1"): cfg})
-    mock_backend = executor_registry.resolve("default")
-    assert isinstance(mock_backend, MockDeploymentBackend)
     mock_backend.read_status_result = BackendStatusUpdate(
         status="UNKNOWN",
         status_message="Docker API error while checking container status: connection reset",
