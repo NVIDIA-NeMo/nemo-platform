@@ -11,7 +11,6 @@ import { getSortParamWithWhitelist } from '@nemo/common/src/utils/query';
 import { useListTraces } from '@nemo/sdk/generated/platform/api';
 import type { Trace, TraceFilter, TraceSortField } from '@nemo/sdk/generated/platform/schema';
 import { Badge, Button } from '@nvidia/foundations-react-core';
-import { Columns3 } from 'lucide-react';
 import { getErrorMessage } from '@studio/api/common/utils';
 import { IntakeTelemetryDataView } from '@studio/components/IntakeLists/IntakeTelemetryDataView';
 import { useWorkspaceFromPathIfExists } from '@studio/hooks/useWorkspaceFromPath';
@@ -23,6 +22,7 @@ import {
   getTraceDisplayName,
 } from '@studio/util/intakeTelemetry';
 import { keepPreviousData } from '@tanstack/react-query';
+import { Columns3 } from 'lucide-react';
 import type { ComponentProps, FC, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -167,7 +167,11 @@ export const IntakeTracesTable: FC<IntakeTracesTableProps> = ({
       makeColumns={makeColumns}
       slotEndPortalTargetId={slotEndPortalTargetId}
       toolbarSlotEnd={
-        <EditColumnsMenu kind="secondary" showChevron={false} slotContent={<div aria-hidden className="h-0 w-[230px]" />}>
+        <EditColumnsMenu
+          kind="secondary"
+          showChevron={false}
+          slotContent={<div aria-hidden className="h-0 w-[230px]" />}
+        >
           <>
             <Columns3 />
             <span className="hide-mobile">Columns</span>

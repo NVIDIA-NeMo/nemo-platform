@@ -63,9 +63,7 @@ const IntakeTelemetryToolbar = <DataType,>({
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
-    setPortalTarget(
-      slotEndPortalTargetId ? document.getElementById(slotEndPortalTargetId) : null
-    );
+    setPortalTarget(slotEndPortalTargetId ? document.getElementById(slotEndPortalTargetId) : null);
   }, [slotEndPortalTargetId]);
 
   const filterToggle = hasFilterableColumns ? (
@@ -80,7 +78,13 @@ const IntakeTelemetryToolbar = <DataType,>({
   return (
     <>
       {shouldPortalToggle && portalTarget
-        ? createPortal(<>{filterToggle}{slotEnd}</>, portalTarget)
+        ? createPortal(
+            <>
+              {filterToggle}
+              {slotEnd}
+            </>,
+            portalTarget
+          )
         : null}
       {rendersToolbar && (
         <DataView.Toolbar
