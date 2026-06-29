@@ -20,7 +20,10 @@ export const HistorySessionButton = ({
   <button
     type="button"
     aria-current={active ? 'page' : undefined}
-    title={new Date(session.mtime * 1000).toLocaleString()}
+    title={[
+      session.first_prompt || 'Claude Code session',
+      new Date(session.mtime * 1000).toLocaleString(),
+    ].join('\n')}
     className={cn(
       'w-full cursor-pointer border-b border-base px-density-md py-density-sm text-left transition-colors hover:bg-surface-sunken focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent',
       active && 'bg-surface-sunken'
