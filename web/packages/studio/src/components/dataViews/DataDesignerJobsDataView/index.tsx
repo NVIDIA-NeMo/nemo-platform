@@ -11,26 +11,21 @@ import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { JOB_POLLING_INTERVAL_MS } from '@nemo/common/src/constants';
-import { CJobCancellableStatuses } from '@nemo/common/src/constants/query';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { getSortParam } from '@nemo/common/src/utils/query';
-import {
-  getDataDesignerListCreateJobsQueryKey,
-  useDataDesignerCancelCreateJob,
-  useDataDesignerListCreateJobs,
-} from '@nemo/sdk/generated/data-designer/api';
+import { useDataDesignerListCreateJobs } from '@nemo/sdk/generated/data-designer/api';
 import type {
   CreateJob as DataDesignerJob,
   CreateJobsListFilter as DataDesignerJobsListFilter,
   CreateJobsSortField as DataDesignerJobsSortField,
 } from '@nemo/sdk/generated/data-designer/schema';
 import { Banner, Button, Text } from '@nvidia/foundations-react-core';
+import { DataDesignerJobActionsMenu } from '@studio/components/DataDesignerJobActionsMenu';
 import { DeleteJobModal } from '@studio/components/dataViews/DataDesignerJobsDataView/DeleteJobModal';
-import { QuickActionsMenuRoot } from '@studio/components/QuickActionsMenu/QuickActionsMenuRoot';
 import { STATUS_FILTER_OPTIONS } from '@studio/constants/platformJobs';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getDataDesignerJobDetailsRoute, getNewDataDesignerJobRoute } from '@studio/routes/utils';
-import { keepPreviousData, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData } from '@tanstack/react-query';
 import { Trash } from 'lucide-react';
 import { ComponentProps, FC, useCallback, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -40,7 +35,6 @@ type DataDesignerJobWithId = DataDesignerJob & { id: string };
 export const DataDesignerJobsDataView: FC = () => {
   const navigate = useNavigate();
   const workspace = useWorkspaceFromPath();
-  const queryClient = useQueryClient();
 
   const dataViewState = useStudioDataViewState({
     defaultSort: { id: 'created_at', desc: true },
@@ -49,34 +43,6 @@ export const DataDesignerJobsDataView: FC = () => {
 
   const [deleteJobs, setDeleteJobs] = useState<DataDesignerJob[]>([]);
   const [cancelError, setCancelError] = useState<string | undefined>(undefined);
-
-  const cancelJobMutation = useDataDesignerCancelCreateJob({
-    mutation: {
-      onSuccess: () => {
-        queryClient.resetQueries({
-          queryKey: getDataDesignerListCreateJobsQueryKey(workspace),
-        });
-        setCancelError(undefined);
-      },
-      onError: (error) => {
-        setCancelError(error instanceof Error ? error.message : 'Failed to cancel job');
-      },
-    },
-  });
-
-  const handleCancelJob = useCallback(
-    async (job: DataDesignerJob) => {
-      if (job.workspace && job.name) {
-        try {
-          setCancelError(undefined);
-          await cancelJobMutation.mutateAsync({ workspace: job.workspace, name: job.name });
-        } catch {
-          // Error is handled by onError callback
-        }
-      }
-    },
-    [cancelJobMutation]
-  );
 
   const { data: dataDesignerResponse, isLoading } = useDataDesignerListCreateJobs(
     workspace,
@@ -173,29 +139,10 @@ export const DataDesignerJobsDataView: FC = () => {
       size: 70,
       enableResizing: false,
       cell: ({ row }) => (
-        <QuickActionsMenuRoot
-          actions={[
-            {
-              label: 'View details',
-              onSelect: () => {
-                if (row.original.name) {
-                  navigate(getDataDesignerJobDetailsRoute(workspace, row.original.name));
-                }
-              },
-            },
-            {
-              label: 'Delete',
-              onSelect: () => setDeleteJobs([row.original]),
-            },
-            ...(row.original.status && CJobCancellableStatuses.includes(row.original.status)
-              ? [
-                  {
-                    label: 'Cancel',
-                    onSelect: () => handleCancelJob(row.original),
-                  },
-                ]
-              : []),
-          ]}
+        <DataDesignerJobActionsMenu
+          job={row.original}
+          includeViewDetails
+          onCancelError={setCancelError}
         />
       ),
     }),

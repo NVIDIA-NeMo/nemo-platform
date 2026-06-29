@@ -4,6 +4,7 @@
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import {
+  Banner,
   Button,
   Flex,
   Stack,
@@ -14,6 +15,7 @@ import {
   Text,
 } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
+import { DataDesignerJobActionsMenu } from '@studio/components/DataDesignerJobActionsMenu';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { DataDesignerConfigPanel } from '@studio/routes/DataDesignerJobDetailsRoute/DataDesignerConfigPanel';
@@ -23,7 +25,7 @@ import { useDataDesignerJobFromRoute } from '@studio/routes/DataDesignerJobDetai
 import { getDataDesignerJobListRoute } from '@studio/routes/utils';
 import { ArrowLeft, FileJson } from 'lucide-react';
 import { useState, type FC } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 export const DataDesignerJobDetailsRoute: FC = () => {
   const {
@@ -35,7 +37,9 @@ export const DataDesignerJobDetailsRoute: FC = () => {
     refetch,
   } = useDataDesignerJobFromRoute();
 
+  const navigate = useNavigate();
   const [isConfigPanelOpen, setIsConfigPanelOpen] = useState(false);
+  const [cancelError, setCancelError] = useState<string | undefined>(undefined);
 
   useBreadcrumbs({
     items: [
@@ -85,10 +89,22 @@ export const DataDesignerJobDetailsRoute: FC = () => {
               <Text kind="body/bold/2xl">{job.name}</Text>
               {job.status ? <StatusBadge status={job.status} /> : null}
             </Flex>
-            <Button type="button" kind="secondary" onClick={() => setIsConfigPanelOpen(true)}>
-              <FileJson /> View config
-            </Button>
+            <Flex gap="density-md" align="center">
+              <Button type="button" kind="secondary" onClick={() => setIsConfigPanelOpen(true)}>
+                <FileJson /> View config
+              </Button>
+              <DataDesignerJobActionsMenu
+                job={job}
+                onDeleted={() => navigate(getDataDesignerJobListRoute(workspace))}
+                onCancelError={setCancelError}
+              />
+            </Flex>
           </Flex>
+          {cancelError && (
+            <Banner kind="inline" status="error">
+              {cancelError}
+            </Banner>
+          )}
           {job.description && (
             <Text kind="body/regular/md" className="text-muted">
               {job.description}

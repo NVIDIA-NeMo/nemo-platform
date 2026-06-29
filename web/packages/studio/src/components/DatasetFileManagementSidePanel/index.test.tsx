@@ -113,4 +113,38 @@ describe('DatasetFileManagementSidePanel', () => {
 
     expect(await screen.findByText('No Files')).toBeInTheDocument();
   });
+
+  it('renders the inline file preview instead of the explorer when a file is selected', async () => {
+    renderComponent({
+      filesList: [
+        { path: 'folder1/file.txt', size: 100, file_ref: 'oid1', file_url: filesetUrl('file.txt') },
+      ],
+      selectedFilePath: 'folder1/file.txt',
+    });
+
+    // File breadcrumb segments are shown in the heading...
+    await waitFor(() => {
+      expect(screen.getByText('folder1')).toBeInTheDocument();
+      expect(screen.getByText('file.txt')).toBeInTheDocument();
+    });
+
+    // ...and the explorer (search/toolbar) is not rendered.
+    expect(screen.queryByTestId('dataset-details-search-input')).not.toBeInTheDocument();
+  });
+
+  it('navigates to the fileset root when the fileset breadcrumb is clicked in preview', async () => {
+    const user = userEvent.setup();
+    const onFolderChange = vi.fn();
+    renderComponent({
+      filesList: [
+        { path: 'file.txt', size: 100, file_ref: 'oid1', file_url: filesetUrl('file.txt') },
+      ],
+      selectedFilePath: 'file.txt',
+      onFolderChange,
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'test-dataset' }));
+
+    expect(onFolderChange).toHaveBeenCalledWith();
+  });
 });
