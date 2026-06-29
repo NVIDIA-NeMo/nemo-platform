@@ -23,7 +23,11 @@ from typing_extensions import TypedDict
 __all__ = ["CapturedChatCompletionsResponseParam"]
 
 
-class CapturedChatCompletionsResponseParam(TypedDict, total=False, extra_items=object):  # type: ignore[call-arg]
+class CapturedChatCompletionsResponseParam(  # type: ignore[call-arg]
+    TypedDict,
+    total=False,
+    extra_items=object,  # pyright: ignore[reportGeneralTypeIssues]
+):
     """Flexible captured chat-completions response."""
 
     choices: Iterable[Dict[str, object]]
