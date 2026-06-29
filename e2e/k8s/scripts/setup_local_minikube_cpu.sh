@@ -101,6 +101,15 @@ ${KUBECTL_NS[@]} create secret docker-registry nvcrimagepullsecret \
   --docker-password="${NVCI_DOCKER_PASSWORD:-local-dev-placeholder}" \
   --dry-run=client -o yaml | ${KUBECTL_NS[@]} apply -f -
 
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+    log_info "Creating GHCR image pull secret..."
+    ${KUBECTL_NS[@]} create secret docker-registry ghcr-pull \
+      --docker-server=ghcr.io \
+      --docker-username=x-access-token \
+      --docker-password="${GITHUB_TOKEN}" \
+      --dry-run=client -o yaml | ${KUBECTL_NS[@]} apply -f -
+fi
+
 if [ -n "${HF_TOKEN:-}" ]; then
     log_info "Creating HuggingFace token secret..."
     ${KUBECTL_NS[@]} create secret generic huggingface-token \

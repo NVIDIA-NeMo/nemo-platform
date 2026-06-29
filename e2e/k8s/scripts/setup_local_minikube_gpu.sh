@@ -144,6 +144,17 @@ ${KUBECTL_NS} create secret docker-registry nvcrimagepullsecret \
   --docker-password="$NGC_API_KEY" \
   --dry-run=client -o yaml | ${KUBECTL_NS} apply -f -
 
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+    log_info "Creating GHCR image pull secret..."
+    ${KUBECTL_NS} create secret docker-registry ghcr-pull \
+      --docker-server=ghcr.io \
+      --docker-username=x-access-token \
+      --docker-password="$GITHUB_TOKEN" \
+      --dry-run=client -o yaml | ${KUBECTL_NS} apply -f -
+else
+    log_warn "GITHUB_TOKEN not set, skipping GHCR image pull secret"
+fi
+
 if [ -n "${HF_TOKEN:-}" ]; then
     log_info "Creating HuggingFace token secret..."
     ${KUBECTL_NS} create secret generic huggingface-token \

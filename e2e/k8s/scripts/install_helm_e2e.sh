@@ -239,6 +239,12 @@ if [ -n "${NMP_E2E_PULL_POLICY}" ]; then
     )
 fi
 
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+    HELM_ARGS+=(
+        --set "imagePullSecrets[0].name=ghcr-pull"
+    )
+fi
+
 log_info "Helm install inputs:"
 printf '  release: %s\n' "${HELM_RELEASE_NAME}"
 printf '  namespace: %s\n' "${NAMESPACE}"
