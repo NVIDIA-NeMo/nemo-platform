@@ -13,7 +13,6 @@ logger = logging.getLogger(__name__)
 
 AUTH_PACKAGE_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_POLICY_WASM_PATH = AUTH_PACKAGE_DIR / "assets" / "policy.wasm"
-DEFAULT_POLICY_DIR = AUTH_PACKAGE_DIR / "app" / "policies"
 DEFAULT_BUILD_TIMEOUT_SECONDS = 120
 OPA_VERSION = os.environ.get("OPA_VERSION", "v1.8.0")
 OPA_VERSION_NO_V = OPA_VERSION.removeprefix("v")
@@ -37,31 +36,12 @@ def discover_repo_root(start: Path | None = None) -> Path | None:
     return None
 
 
-def _source_files(policy_dir: Path, repo_root: Path | None) -> list[Path]:
-    sources = list(policy_dir.glob("*.rego"))
-    if repo_root is not None:
-        build_script = repo_root / "script" / "build_policy_wasm.sh"
-        if build_script.is_file():
-            sources.append(build_script)
-    return sources
-
-
 def policy_wasm_needs_build(
     *,
     wasm_path: Path = DEFAULT_POLICY_WASM_PATH,
-    policy_dir: Path = DEFAULT_POLICY_DIR,
-    repo_root: Path | None = None,
 ) -> bool:
-    """Return True when policy.wasm is missing or older than source policy files."""
-    if not wasm_path.exists():
-        return True
-
-    sources = _source_files(policy_dir, repo_root)
-    if not sources:
-        return False
-
-    wasm_mtime = wasm_path.stat().st_mtime_ns
-    return any(source.stat().st_mtime_ns > wasm_mtime for source in sources)
+    """Return True when policy.wasm is missing."""
+    return not wasm_path.exists()
 
 
 def _opa_asset_name() -> str:
@@ -95,7 +75,6 @@ def _offline_build_hint(repo_root: Path, wasm_path: Path) -> str:
         "\n"
         "  3. If you only need to test startup with an already-built artifact, copy a current policy.wasm:\n"
         f"       cp /path/to/policy.wasm {wasm_path}\n"
-        f"       touch {wasm_path}\n"
         "\n"
         f'The OPA binary must report "Version: {OPA_VERSION_NO_V}" from `/path/to/{asset} version`.'
     )
@@ -111,7 +90,7 @@ def _build_policy_wasm(
     build_script = repo_root / "script" / "build_policy_wasm.sh"
     if not build_script.is_file():
         raise PolicyWasmError(
-            f"Embedded auth PDP policy.wasm is missing or stale at {wasm_path}, "
+            f"Embedded auth PDP policy.wasm is missing at {wasm_path}, "
             f"but the build script was not found at {build_script}." + _offline_build_hint(repo_root, wasm_path)
         )
 
@@ -159,30 +138,29 @@ def ensure_embedded_policy_wasm(
     *,
     auto_build: bool = True,
     wasm_path: Path = DEFAULT_POLICY_WASM_PATH,
-    policy_dir: Path = DEFAULT_POLICY_DIR,
     repo_root: Path | None = None,
     discover_source_checkout: bool = True,
     build_timeout_seconds: int = DEFAULT_BUILD_TIMEOUT_SECONDS,
     env_overrides: Mapping[str, str] | None = None,
 ) -> Path:
-    """Ensure the embedded PDP WASM artifact exists and is fresh enough to load."""
+    """Ensure the embedded PDP WASM artifact exists."""
     resolved_repo_root = repo_root
     if resolved_repo_root is None and discover_source_checkout:
         resolved_repo_root = discover_repo_root()
 
-    if not policy_wasm_needs_build(wasm_path=wasm_path, policy_dir=policy_dir, repo_root=resolved_repo_root):
+    if not policy_wasm_needs_build(wasm_path=wasm_path):
         return wasm_path
 
     if not auto_build:
         raise PolicyWasmError(
-            f"Embedded auth PDP policy.wasm is missing or stale at {wasm_path}. "
+            f"Embedded auth PDP policy.wasm is missing at {wasm_path}. "
             "Run `make build-policy` from the NeMo Platform repo root, or set "
             "`auth.embedded_pdp_auto_build_wasm=true` for local source checkouts."
         )
 
     if resolved_repo_root is None:
         raise PolicyWasmError(
-            f"Embedded auth PDP policy.wasm is missing or stale at {wasm_path}, "
+            f"Embedded auth PDP policy.wasm is missing at {wasm_path}, "
             "and this does not look like a NeMo Platform source checkout. Rebuild the package/image "
             "with the policy WASM artifact included."
         )

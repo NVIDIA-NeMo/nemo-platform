@@ -134,12 +134,11 @@ def get_policy() -> OPAPolicy:
     if _policy is None:
         with _policy_lock:
             if _policy is None:
-                path = ensure_embedded_policy_wasm()
-
                 from nmp.common.config import get_service_config
                 from nmp.core.auth.config import AuthServiceConfig
 
                 cfg = get_service_config(AuthServiceConfig)
+                path = ensure_embedded_policy_wasm(auto_build=cfg.embedded_pdp_auto_build_wasm)
                 _policy = OPAPolicy(
                     str(path),
                     fuel_limit=cfg.embedded_pdp_cpu_limit * 1_000_000,

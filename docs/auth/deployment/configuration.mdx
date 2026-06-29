@@ -98,11 +98,12 @@ auth:
  admin_email: "admin@example.com"
 ```
 
-When running from a source checkout, embedded PDP startup automatically builds a
-missing or stale `policy.wasm` with the pinned OPA version used by
-`make build-policy`. Packaged deployments should include `policy.wasm` at image
-or wheel build time; set `embedded_pdp_auto_build_wasm: false` to fail fast if
-that artifact is missing.
+When running from a source checkout, embedded PDP startup can automatically build
+a missing `policy.wasm` with the pinned OPA version used by `make build-policy`.
+Packaged deployments should include `policy.wasm` at image or wheel build time;
+set `embedded_pdp_auto_build_wasm: false` to fail fast if that artifact is missing.
+After changing policy source files, run `make build-policy` to refresh the
+artifact.
 
 In offline development environments, provide the pinned OPA binary explicitly:
 

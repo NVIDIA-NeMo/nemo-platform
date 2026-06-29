@@ -188,10 +188,10 @@ cleanup() { rm -rf "${BUNDLE_TMP}"; }
 trap cleanup EXIT
 
 # Build in a subshell so the cd doesn't affect OUTPUT_DIR resolution.
-# Using relative paths (*.rego) ensures the wasm output is path-independent.
+# Using relative paths (./*.rego) ensures the wasm output is path-independent.
 # shellcheck disable=SC2086
 
-(cd "${POLICY_DIR}" && "${OPA}" build -t wasm ${ENTRYPOINTS} -o "${BUNDLE_TMP}/bundle.tar.gz" *.rego)
+(cd "${POLICY_DIR}" && "${OPA}" build -t wasm ${ENTRYPOINTS} -o "${BUNDLE_TMP}/bundle.tar.gz" ./*.rego)
 
 ls -1 "${BUNDLE_TMP}"
 

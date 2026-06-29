@@ -24,14 +24,9 @@ The embedded PDP uses a WASM-compiled Rego policy engine built into the auth ser
 
 ### How It Works
 
-- Rego policy files are compiled to `policy.wasm` with `make build-policy`
+- Rego policy files are compiled into the `policy.wasm` artifact loaded by the auth service
 - Policy data (role bindings, workspace visibility, endpoint permissions) is served by the auth service
 - Data is refreshed on a configurable interval (default: 30 seconds)
-
-In source checkouts, startup with `auth.enabled: true` and
-`policy_decision_point_provider: embedded` automatically builds a missing or
-stale `policy.wasm` using the pinned OPA version from `script/build_policy_wasm.sh`.
-Packaged wheels and container images should include `policy.wasm` at build time.
 
 ### Configuration
 
@@ -40,7 +35,7 @@ auth:
  enabled: true
  policy_decision_point_provider: "embedded"
  policy_decision_point_base_url: "http://auth:8000"
- embedded_pdp_auto_build_wasm: false
+ embedded_pdp_auto_build_wasm: true
  policy_data_refresh_interval: 30 # seconds
 ```
 
