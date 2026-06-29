@@ -41,6 +41,26 @@ npm run --prefix "$NEMO_RELAY_ROOT" build --workspace=nemo-relay-openclaw
 openclaw plugins install --link "$NEMO_RELAY_ROOT/integrations/openclaw"
 ```
 
+Install the OpenClaw Codex plugin and authenticate it if you want the example to
+use OpenClaw's Codex app-server runtime:
+
+```bash
+openclaw plugins install @openclaw/codex
+openclaw models auth login --provider openai
+openclaw models status
+```
+
+Configure OpenClaw to use a Codex-backed model by default:
+
+```bash
+openclaw config set 'plugins.entries["codex"].enabled' true --strict-json
+openclaw config set 'agents.defaults.model.primary' openai/gpt-5.5
+openclaw config set 'agents.defaults.models["openai/gpt-5.5"].agentRuntime.id' codex
+openclaw config validate
+```
+
+The example config uses the OpenClaw default model configured above.
+
 Enable the `nemo-relay` plugin and choose an absolute ATIF output directory:
 
 ```bash
