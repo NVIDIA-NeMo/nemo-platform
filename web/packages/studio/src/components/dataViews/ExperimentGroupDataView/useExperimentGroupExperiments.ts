@@ -121,6 +121,7 @@ export function useExperimentGroupExperiments({
     isLoading: isUnpinnedLoading,
     isFetching: isUnpinnedFetching,
     isSuccess: isUnpinnedSuccess,
+    isPlaceholderData: isUnpinnedPlaceholder,
     error: unpinnedError,
   } = useListExperiments(
     workspace,
@@ -203,9 +204,9 @@ export function useExperimentGroupExperiments({
   // both lists have loaded once, rather than clearing as soon as the faster query returns.
   const isLoading = isPinnedLoading || isUnpinnedLoading;
   const isFetching = isPinnedFetching || isUnpinnedFetching;
-  // Only the unpinned query carries the caller's (potentially metric-backed) sort; the pinned query
-  // always sorts by `-pinned_at`. So sort-error recovery keys off the unpinned query's success.
-  const isSuccess = isUnpinnedSuccess;
+  // Sort-error recovery keys off the unpinned (sort-carrying) query. Exclude placeholder data so
+  // `keepPreviousData`'s in-flight 'success' doesn't bank an about-to-fail sort as the last good one.
+  const isSuccess = isUnpinnedSuccess && !isUnpinnedPlaceholder;
 
   return { rows, togglePin, totalCount, error, isLoading, isFetching, isSuccess };
 }

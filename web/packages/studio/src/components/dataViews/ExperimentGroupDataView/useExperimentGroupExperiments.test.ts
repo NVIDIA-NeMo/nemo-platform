@@ -189,6 +189,26 @@ describe('useExperimentGroupExperiments', () => {
     expect(result.current.isSuccess).toBe(true);
   });
 
+  it('does not report isSuccess while a new sort is in flight and the previous page is shown as placeholder', () => {
+    // The `keepPreviousData` window: status 'success' but isPlaceholderData true. isSuccess must stay
+    // false, else sort-error recovery banks the about-to-fail sort and the next 413/503 isn't recovered.
+    mockUseListExperiments.mockImplementation(((_workspace, params) =>
+      (params?.filter as { is_pinned?: boolean } | undefined)?.is_pinned
+        ? queryResult([pin('p')], 1)
+        : ({
+            data: { data: [unp('u')], pagination: { total_results: 1 } },
+            isLoading: false,
+            isFetching: true,
+            isSuccess: true,
+            isPlaceholderData: true,
+            error: null,
+          } as unknown as ReturnType<typeof useListExperiments>)) as typeof useListExperiments);
+
+    const { result } = renderHook(() => useExperimentGroupExperiments(baseParams));
+
+    expect(result.current.isSuccess).toBe(false);
+  });
+
   it('scopes pin/unpin invalidation to this group, not the whole workspace', () => {
     mockLists({ rows: [], total: 0 }, { rows: [], total: 0 });
 
