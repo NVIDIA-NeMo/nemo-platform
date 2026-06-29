@@ -319,7 +319,6 @@ async def create_experiment(
         source_link=body.source_link,
         metadata=body.metadata,
         description=body.description,
-        summary=body.summary,
     )
     try:
         created = await entity_client.create(entity)
@@ -454,7 +453,7 @@ async def get_experiment(
 
 # Identity and the dataset it was run against are fixed for the life of an
 # Experiment (see the ingest invariants); changing them means it's a different
-# Experiment. PUT may only edit group membership, source link, summary, description, metadata.
+# Experiment. PUT may only edit group membership, source link, description, metadata.
 _IMMUTABLE_EXPERIMENT_FIELDS = ("name", "dataset_name", "dataset_version")
 
 
@@ -499,7 +498,6 @@ async def update_experiment(
     existing.source_link = body.source_link
     existing.metadata = body.metadata
     existing.description = body.description
-    existing.summary = body.summary
     updated = await entity_client.update(existing)
     response = ExperimentResponse.from_entity(updated)
     await _hydrate_rollups(workspace=workspace, responses=[response], rollup_repository=rollup_repository)

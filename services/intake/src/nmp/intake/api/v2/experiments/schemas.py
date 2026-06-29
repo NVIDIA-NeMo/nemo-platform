@@ -42,7 +42,6 @@ class ExperimentRequest(BaseModel):
     source_link: AnyUrl | None = Field(default=None, description="Optional URL for the source experiment.")
     metadata: dict[str, Any] = Field(default_factory=dict, description="Free-form producer metadata.")
     description: str | None = Field(default=None, description="Human-readable description.")
-    summary: str | None = Field(default=None, description="Human-authored summary of results.")
 
 
 class ExperimentGroupResponse(BaseModel):
@@ -97,7 +96,6 @@ class ExperimentResponse(BaseModel):
     source_link: AnyUrl | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     description: str | None = None
-    summary: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
     pinned_at: datetime | None = Field(
@@ -145,7 +143,6 @@ class ExperimentResponse(BaseModel):
             source_link=entity.source_link,
             metadata=entity.metadata,
             description=entity.description,
-            summary=entity.summary,
             created_at=entity.created_at,
             updated_at=entity.updated_at,
             pinned_at=entity.pinned_at,

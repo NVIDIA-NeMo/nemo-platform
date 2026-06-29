@@ -166,16 +166,16 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
         meta: { title: false },
         size: 300,
         cell: ({ row }) => {
-          const { name, summary } = row.original;
-          if (!summary) return <Text>{name}</Text>;
+          const { name, description } = row.original;
+          if (!description) return <Text>{name}</Text>;
           return (
             <Tooltip
               slotContent={
                 <div className="flex flex-col gap-1">
                   <Text kind="label/regular/sm" className="text-secondary">
-                    Summary
+                    Description
                   </Text>
-                  <Text kind="body/regular/sm">{summary}</Text>
+                  <Text kind="body/regular/sm">{description}</Text>
                 </div>
               }
               className={tooltipClassName}

@@ -10447,10 +10447,6 @@ components:
           title: Description
           description: Human-readable description.
           type: string
-        summary:
-          title: Summary
-          description: Human-authored summary of results.
-          type: string
       additionalProperties: false
       type: object
       required:
@@ -10492,9 +10488,6 @@ components:
           title: Metadata
         description:
           title: Description
-          type: string
-        summary:
-          title: Summary
           type: string
         created_at:
           title: Created At
