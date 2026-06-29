@@ -11,18 +11,18 @@ import type { Components } from 'react-markdown';
 
 export const messageMarkdownComponents: Components = {
   h1: ({ children }) => (
-    <Text asChild kind="title/lg">
-      <h1 className="mb-density-sm mt-density-3xl first:mt-0">{children}</h1>
+    <Text asChild kind="label/bold/lg">
+      <h1 className="mb-density-sm mt-density-2xl first:mt-0">{children}</h1>
     </Text>
   ),
   h2: ({ children }) => (
-    <Text asChild kind="title/md">
-      <h2 className="mb-density-sm mt-density-3xl first:mt-0">{children}</h2>
+    <Text asChild kind="label/bold/md">
+      <h2 className="mb-density-sm mt-density-xl first:mt-0">{children}</h2>
     </Text>
   ),
   h3: ({ children }) => (
     <Text asChild kind="label/bold/md">
-      <h3 className="mb-density-sm mt-density-2xl first:mt-0">{children}</h3>
+      <h3 className="mb-density-xs mt-density-lg first:mt-0">{children}</h3>
     </Text>
   ),
   h4: ({ children }) => (
@@ -42,32 +42,37 @@ export const messageMarkdownComponents: Components = {
   ),
   p: MarkdownParagraph,
   ul: ({ children, className }) => (
-    <ul className={cn('my-density-xl list-disc pl-density-lg', className)}>{children}</ul>
+    <ul className={cn('my-density-md list-disc pl-density-lg', className)}>{children}</ul>
   ),
   ol: ({ children, className, start }) => (
-    <ol className={cn('my-density-xl list-decimal pl-density-2xl', className)} start={start}>
+    <ol className={cn('my-density-md list-decimal pl-density-2xl', className)} start={start}>
       {children}
     </ol>
   ),
   li: ({ children, className }) => (
     <li
       className={cn(
-        'mb-density-sm whitespace-normal pl-density-xs text-sm leading-[160%] last:mb-0 [&>p]:my-0',
+        'mb-density-xs whitespace-normal pl-density-xs text-sm leading-6 last:mb-0 [&>p]:my-0',
         className
       )}
     >
       {renderListItemChildren(children)}
     </li>
   ),
-  hr: () => <hr className="my-density-sm border-base" />,
+  hr: () => <hr className="my-density-md border-base" />,
   blockquote: ({ children, className }) => (
     <blockquote
-      className={cn('my-density-xs border-l-4 border-base pl-density-sm text-secondary', className)}
+      className={cn(
+        'my-density-sm rounded-r border-l-4 border-l-[var(--border-color-brand)] bg-[var(--background-color-accent-green-subtle)] px-density-sm py-density-xs text-primary',
+        className
+      )}
     >
       {children}
     </blockquote>
   ),
-  img: ({ src, alt }) => <img src={src} alt={alt ?? ''} className="max-w-full" />,
+  img: ({ src, alt }) => (
+    <img src={src} alt={alt ?? ''} className="max-w-full rounded border border-base" />
+  ),
   // Most chat surfaces keep model-supplied links inert. Consumers that know how
   // to handle links can provide their own renderer.
   a: ({ children }) => <span>{children}</span>,

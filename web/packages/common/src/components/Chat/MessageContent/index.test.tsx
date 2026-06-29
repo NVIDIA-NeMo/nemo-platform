@@ -24,35 +24,32 @@ describe('MessageContent', () => {
 
     expect(screen.getByRole('heading', { level: 1, name: 'Overview' })).toHaveClass(
       'mb-density-sm',
-      'mt-density-3xl',
+      'mt-density-2xl',
       'first:mt-0'
     );
     expect(screen.getByRole('heading', { level: 2, name: 'Plan' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 2, name: 'Plan' })).toHaveClass(
       'mb-density-sm',
-      'mt-density-3xl'
+      'mt-density-xl'
     );
     expect(screen.getByRole('heading', { level: 3, name: 'Details' })).toHaveClass(
-      'mb-density-sm',
-      'mt-density-2xl'
+      'mb-density-xs',
+      'mt-density-lg'
     );
-    expect(screen.getByTestId('chat-message-content-text')).toHaveClass(
-      'text-sm',
-      'leading-[160%]'
-    );
+    expect(screen.getByTestId('chat-message-content-text')).toHaveClass('text-sm', 'leading-6');
     expect(screen.getByTestId('chat-message-content-text')).not.toHaveClass('text-base');
-    expect(screen.getByText('Read the route carefully.')).toHaveClass('mb-density-xl');
-    expect(screen.getByRole('list')).toHaveClass('my-density-xl', 'list-disc');
+    expect(screen.getByText('Read the route carefully.')).toHaveClass('mb-density-md');
+    expect(screen.getByRole('list')).toHaveClass('my-density-md', 'list-disc');
     expect(screen.getByRole('list')).not.toHaveClass('space-y-0.5');
     const listItems = screen.getAllByRole('listitem');
     expect(listItems).toHaveLength(2);
     expect(listItems[0]).toHaveTextContent('Read the route');
     expect(listItems[0]).toHaveClass(
-      'mb-density-sm',
+      'mb-density-xs',
       'whitespace-normal',
       'pl-density-xs',
       'text-sm',
-      'leading-[160%]',
+      'leading-6',
       'last:mb-0',
       '[&>p]:my-0'
     );
@@ -77,7 +74,7 @@ describe('MessageContent', () => {
     expect(screen.getByTestId('chat-message-content-text')).toHaveClass('whitespace-normal');
     expect(orderedList.tagName).toBe('OL');
     expect(orderedList).toHaveAttribute('start', '2');
-    expect(orderedList).toHaveClass('my-density-xl', 'list-decimal', 'pl-density-2xl');
+    expect(orderedList).toHaveClass('my-density-md', 'list-decimal', 'pl-density-2xl');
     expect(orderedList).not.toHaveClass('pl-density-lg');
 
     const listItems = within(orderedList).getAllByRole('listitem');

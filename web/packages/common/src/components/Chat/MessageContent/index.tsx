@@ -46,7 +46,7 @@ export const MessageContent: FC<PropsWithChildren<MessageContentProps>> = ({
     if (descriptor.type === 'plaintext') {
       return (
         <div
-          className="whitespace-normal text-sm font-normal leading-[160%]"
+          className="max-w-full whitespace-normal text-sm font-normal leading-6 text-primary"
           data-testid="chat-message-content-text"
           key={`plaintext-${contentHash}`}
         >

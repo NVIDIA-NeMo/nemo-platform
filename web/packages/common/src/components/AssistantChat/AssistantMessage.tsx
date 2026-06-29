@@ -24,17 +24,19 @@ export const AssistantMessage = ({
   <MessagePrimitive.Root
     data-testid="assistant-chat-message"
     data-testspeaker="assistant"
-    className="group/message self-stretch whitespace-normal"
+    className="group/message flex w-full flex-col items-start gap-density-xs whitespace-normal"
   >
-    <AssistantChatMessageContent
-      messageContentProps={messageContentProps}
-      toolCallPartComponent={toolCallPartComponent}
-    />
+    <div className="w-full max-w-full rounded-lg border border-base border-l-4 border-l-[var(--border-color-brand)] bg-surface-base px-density-lg py-density-md shadow ring-1 ring-black/5 dark:ring-white/10">
+      <AssistantChatMessageContent
+        messageContentProps={messageContentProps}
+        toolCallPartComponent={toolCallPartComponent}
+      />
+    </div>
     {showRunningIndicator ? (
       <MessagePrimitive.If last>
         <ThreadPrimitive.If running>
           <div
-            className="mt-density-xs flex h-6 items-center"
+            className="flex h-6 w-full items-center"
             data-testid="assistant-chat-running-indicator"
           >
             <Skeleton className="h-density-4 w-full" data-testid="assistant-chat-skeleton" />
@@ -44,7 +46,7 @@ export const AssistantMessage = ({
     ) : null}
     {!hideAssistantMessageActions ? (
       <div
-        className="mt-density-xs flex h-8 items-center"
+        className="flex h-7 items-center pl-density-xs"
         data-testid="assistant-chat-message-actions"
       >
         <ActionBarPrimitive.Root hideWhenRunning className={MESSAGE_ACTIONS_CLASS}>

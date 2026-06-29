@@ -18,7 +18,7 @@ export const CodeDisplay: FC<CodeDisplayProps> = ({ children, containerClassName
   const code = detectedLang ? children?.slice(detectedLang.length).trim() || '' : children || '';
 
   return (
-    <div className={cn('my-density-xs', containerClassName)} data-testid="code-display">
+    <div className={cn('my-density-md', containerClassName)} data-testid="code-display">
       <CodeSnippet
         value={code || ''}
         language={detectedLang || 'markdown'}

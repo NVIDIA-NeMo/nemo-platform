@@ -65,15 +65,22 @@ const subtleToolCases: SubtleToolCase[] = [
 
 const expectSubtleToolBlock = (subtleBlock: HTMLElement) => {
   expect(subtleBlock).toHaveClass(
-    'my-0.5',
+    'my-density-xs',
     'flex',
     'max-w-full',
     'flex-wrap',
     'items-center',
     'gap-x-density-sm',
-    'gap-y-0',
-    'text-gray-400',
-    'dark:text-gray-400'
+    'gap-y-density-xs',
+    'rounded',
+    'border',
+    'border-base',
+    'border-l-2',
+    'border-l-[var(--border-color-accent-blue)]',
+    'bg-[color-mix(in_srgb,var(--background-color-accent-blue-subtle)_38%,var(--background-color-surface-base))]',
+    'px-density-sm',
+    'py-density-xs',
+    'text-secondary'
   );
   expect(subtleBlock).not.toHaveClass('claude-code-tool-call-running');
   expect(subtleBlock).not.toHaveClass('bg-gray-050', 'dark:bg-gray-900');

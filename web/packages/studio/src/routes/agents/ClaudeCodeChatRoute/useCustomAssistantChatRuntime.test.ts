@@ -165,6 +165,29 @@ describe('useCustomAssistantChatRuntime', () => {
     });
   });
 
+  it('keeps resumed agent output in the same assistant message when no user message was inserted', async () => {
+    const onRun = vi.fn(async (context: CustomAssistantRunContext) => {
+      context.appendAssistantParts([{ type: 'text', text: 'I need approval first.' }]);
+      context.prepareForUserInput();
+      context.appendAssistantParts([{ type: 'text', text: '\n\nContinuing after approval.' }]);
+    });
+    const { result } = renderHook(() => useCustomAssistantChatRuntime({ onRun }));
+
+    await act(async () => {
+      await result.current.submitPrompt('List files');
+    });
+
+    await waitFor(() => {
+      const runtime = getMockRuntime(result.current.runtime);
+      expect(runtime.messages.map((message) => message.role)).toEqual(['user', 'assistant']);
+      expect(runtime.messages.map(getMessageText)).toEqual([
+        'List files',
+        'I need approval first.\n\nContinuing after approval.',
+      ]);
+      expect(runtime.messages[1]?.status).toEqual({ type: 'complete', reason: 'stop' });
+    });
+  });
+
   it('combines consecutive subtle tool calls across streamed appends', async () => {
     let runContext: CustomAssistantRunContext | undefined;
     const onRun = vi.fn(async (context: CustomAssistantRunContext) => {
