@@ -15,31 +15,23 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from typing import List, Optional
-from datetime import datetime
+from __future__ import annotations
 
-from ..._models import BaseModel
-from .ranking_field import RankingField
+from typing_extensions import Literal, Required, TypedDict
 
-__all__ = ["ExperimentGroupResponse"]
+__all__ = ["RankingFieldParam"]
 
 
-class ExperimentGroupResponse(BaseModel):
-    """ExperimentGroup as served by the API."""
+class RankingFieldParam(TypedDict, total=False):
+    """
+    One field in a group's ranking: a sortable rollup-metric path and its direction.
+    """
 
-    id: str
+    direction: Required[Literal["asc", "desc"]]
+    """Sort direction for this field."""
 
-    name: str
+    field: Required[str]
+    """Rollup-metric sort path, e.g.
 
-    workspace: str
-
-    created_at: Optional[datetime] = None
-
-    description: Optional[str] = None
-
-    experiment_count: Optional[int] = None
-    """Number of live (non-soft-deleted) experiments in this group."""
-
-    ranking: Optional[List[RankingField]] = None
-
-    updated_at: Optional[datetime] = None
+    cost_usd.mean, latency_ms.p95, or evaluators.<name>.mean.
+    """

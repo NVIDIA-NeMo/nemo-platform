@@ -40,43 +40,43 @@ def test_sort_by_evaluator_mean_descending() -> None:
         _exp("b", evaluators={"reward": 0.9}),
         _exp("c", evaluators={"reward": 0.6}),
     ]
-    ordered = _sort_experiments(rows, field="evaluators.reward.mean", descending=True)
+    ordered = _sort_experiments(rows, keys=[("evaluators.reward.mean", True)])
     assert _names(ordered) == ["b", "c", "a"]
 
 
 def test_sort_by_cost_ascending() -> None:
     rows = [_exp("a", cost_mean=2.0), _exp("b", cost_mean=0.5), _exp("c", cost_mean=1.0)]
-    ordered = _sort_experiments(rows, field="cost_usd.mean", descending=False)
+    ordered = _sort_experiments(rows, keys=[("cost_usd.mean", False)])
     assert _names(ordered) == ["b", "c", "a"]
 
 
 def test_sort_by_run_count() -> None:
     rows = [_exp("a", run_count=3), _exp("b", run_count=10), _exp("c", run_count=1)]
-    assert _names(_sort_experiments(rows, field="run_count", descending=True)) == ["b", "a", "c"]
+    assert _names(_sort_experiments(rows, keys=[("run_count", True)])) == ["b", "a", "c"]
 
 
 def test_evaluator_name_with_dots_resolves() -> None:
     # "harbor.verifier" contains a dot; the stat is the last segment.
     rows = [_exp("a", evaluators={"harbor.verifier": 0.2}), _exp("b", evaluators={"harbor.verifier": 0.8})]
-    ordered = _sort_experiments(rows, field="evaluators.harbor.verifier.mean", descending=True)
+    ordered = _sort_experiments(rows, keys=[("evaluators.harbor.verifier.mean", True)])
     assert _names(ordered) == ["b", "a"]
 
 
 def test_missing_metric_sorts_last_in_both_directions() -> None:
     rows = [_exp("scored", cost_mean=1.0), _exp("unscored")]  # unscored has no cost
-    assert _names(_sort_experiments(rows, field="cost_usd.mean", descending=True)) == ["scored", "unscored"]
-    assert _names(_sort_experiments(rows, field="cost_usd.mean", descending=False)) == ["scored", "unscored"]
+    assert _names(_sort_experiments(rows, keys=[("cost_usd.mean", True)])) == ["scored", "unscored"]
+    assert _names(_sort_experiments(rows, keys=[("cost_usd.mean", False)])) == ["scored", "unscored"]
 
 
 def test_ties_broken_by_name() -> None:
     rows = [_exp("c", cost_mean=1.0), _exp("a", cost_mean=1.0), _exp("b", cost_mean=1.0)]
     # Equal values -> deterministic ascending-name order, regardless of sort direction.
-    assert _names(_sort_experiments(rows, field="cost_usd.mean", descending=True)) == ["a", "b", "c"]
+    assert _names(_sort_experiments(rows, keys=[("cost_usd.mean", True)])) == ["a", "b", "c"]
 
 
 def test_entity_field_sort() -> None:
     rows = [_exp("b"), _exp("a"), _exp("c")]
-    assert _names(_sort_experiments(rows, field="name", descending=False)) == ["a", "b", "c"]
+    assert _names(_sort_experiments(rows, keys=[("name", False)])) == ["a", "b", "c"]
 
 
 def test_validate_accepts_entity_and_metric_fields() -> None:

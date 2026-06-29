@@ -51,6 +51,12 @@ class TestExperimentGroups:
             workspace="workspace",
             name="name",
             description="description",
+            ranking=[
+                {
+                    "direction": "asc",
+                    "field": "field",
+                }
+            ],
         )
         assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
 
@@ -161,6 +167,12 @@ class TestExperimentGroups:
             workspace="workspace",
             body_name="name",
             description="description",
+            ranking=[
+                {
+                    "direction": "asc",
+                    "field": "field",
+                }
+            ],
         )
         assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
 
@@ -342,6 +354,12 @@ class TestAsyncExperimentGroups:
             workspace="workspace",
             name="name",
             description="description",
+            ranking=[
+                {
+                    "direction": "asc",
+                    "field": "field",
+                }
+            ],
         )
         assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
 
@@ -452,6 +470,12 @@ class TestAsyncExperimentGroups:
             workspace="workspace",
             body_name="name",
             description="description",
+            ranking=[
+                {
+                    "direction": "asc",
+                    "field": "field",
+                }
+            ],
         )
         assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
 

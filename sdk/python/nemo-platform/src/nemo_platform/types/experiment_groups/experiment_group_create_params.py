@@ -17,7 +17,10 @@
 
 from __future__ import annotations
 
+from typing import Iterable
 from typing_extensions import Required, TypedDict
+
+from .ranking_field_param import RankingFieldParam
 
 __all__ = ["ExperimentGroupCreateParams"]
 
@@ -30,3 +33,11 @@ class ExperimentGroupCreateParams(TypedDict, total=False):
 
     description: str
     """Human-readable purpose of the group."""
+
+    ranking: Iterable[RankingFieldParam]
+    """Ordered ranking config (priority order; first is primary, rest are tiebreakers).
+
+    Sets the default sort for this group's experiments list. Each field must be a
+    numeric rollup metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or
+    evaluators.<name>.<stat>.
+    """

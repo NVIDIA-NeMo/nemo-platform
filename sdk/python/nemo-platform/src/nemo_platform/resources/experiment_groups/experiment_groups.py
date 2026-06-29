@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+from typing import Iterable
 from typing_extensions import Literal
 
 import httpx
@@ -38,6 +39,7 @@ from ...types.experiment_groups import (
     experiment_group_create_params,
     experiment_group_update_params,
 )
+from ...types.experiment_groups.ranking_field_param import RankingFieldParam
 from ...types.experiment_groups.experiment_group_response import ExperimentGroupResponse
 from ...types.experiment_groups.experiment_group_filter_param import ExperimentGroupFilterParam
 from ..._exceptions import ConflictError
@@ -71,6 +73,7 @@ class ExperimentGroupsResource(SyncAPIResource):
         workspace: str | None = None,
         name: str,
         description: str | Omit = omit,
+        ranking: Iterable[RankingFieldParam] | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         exist_ok: bool = False,
@@ -86,6 +89,11 @@ class ExperimentGroupsResource(SyncAPIResource):
           name: Workspace-unique group name.
 
           description: Human-readable purpose of the group.
+
+          ranking: Ordered ranking config (priority order; first is primary, rest are tiebreakers).
+              Sets the default sort for this group's experiments list. Each field must be a
+              numeric rollup metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or
+              evaluators.<name>.<stat>.
 
 
           exist_ok: Do not raise an error if the resource already exists. Returns the existing resource.
@@ -110,6 +118,7 @@ class ExperimentGroupsResource(SyncAPIResource):
                     {
                         "name": name,
                         "description": description,
+                        "ranking": ranking,
                     },
                     experiment_group_create_params.ExperimentGroupCreateParams,
                 ),
@@ -170,6 +179,7 @@ class ExperimentGroupsResource(SyncAPIResource):
         workspace: str | None = None,
         body_name: str,
         description: str | Omit = omit,
+        ranking: Iterable[RankingFieldParam] | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -184,6 +194,11 @@ class ExperimentGroupsResource(SyncAPIResource):
           body_name: Workspace-unique group name.
 
           description: Human-readable purpose of the group.
+
+          ranking: Ordered ranking config (priority order; first is primary, rest are tiebreakers).
+              Sets the default sort for this group's experiments list. Each field must be a
+              numeric rollup metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or
+              evaluators.<name>.<stat>.
 
           extra_headers: Send extra headers
 
@@ -209,6 +224,7 @@ class ExperimentGroupsResource(SyncAPIResource):
                 {
                     "body_name": body_name,
                     "description": description,
+                    "ranking": ranking,
                 },
                 experiment_group_update_params.ExperimentGroupUpdateParams,
             ),
@@ -346,6 +362,7 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
         workspace: str | None = None,
         name: str,
         description: str | Omit = omit,
+        ranking: Iterable[RankingFieldParam] | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         exist_ok: bool = False,
@@ -361,6 +378,11 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
           name: Workspace-unique group name.
 
           description: Human-readable purpose of the group.
+
+          ranking: Ordered ranking config (priority order; first is primary, rest are tiebreakers).
+              Sets the default sort for this group's experiments list. Each field must be a
+              numeric rollup metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or
+              evaluators.<name>.<stat>.
 
 
           exist_ok: Do not raise an error if the resource already exists. Returns the existing resource.
@@ -385,6 +407,7 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
                     {
                         "name": name,
                         "description": description,
+                        "ranking": ranking,
                     },
                     experiment_group_create_params.ExperimentGroupCreateParams,
                 ),
@@ -445,6 +468,7 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
         workspace: str | None = None,
         body_name: str,
         description: str | Omit = omit,
+        ranking: Iterable[RankingFieldParam] | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -459,6 +483,11 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
           body_name: Workspace-unique group name.
 
           description: Human-readable purpose of the group.
+
+          ranking: Ordered ranking config (priority order; first is primary, rest are tiebreakers).
+              Sets the default sort for this group's experiments list. Each field must be a
+              numeric rollup metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or
+              evaluators.<name>.<stat>.
 
           extra_headers: Send extra headers
 
@@ -484,6 +513,7 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
                 {
                     "body_name": body_name,
                     "description": description,
+                    "ranking": ranking,
                 },
                 experiment_group_update_params.ExperimentGroupUpdateParams,
             ),

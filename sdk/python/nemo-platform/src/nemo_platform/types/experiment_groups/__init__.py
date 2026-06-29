@@ -17,6 +17,8 @@
 
 from __future__ import annotations
 
+from .ranking_field import RankingField as RankingField
+from .ranking_field_param import RankingFieldParam as RankingFieldParam
 from .experiment_group_response import ExperimentGroupResponse as ExperimentGroupResponse
 from .experiment_group_list_params import ExperimentGroupListParams as ExperimentGroupListParams
 from .experiment_group_filter_param import ExperimentGroupFilterParam as ExperimentGroupFilterParam
