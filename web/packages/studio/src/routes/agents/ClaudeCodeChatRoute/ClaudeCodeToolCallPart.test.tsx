@@ -103,6 +103,13 @@ const expectLineChangeColors = ({
   }
 };
 
+const expectFileChangeBlockFullWidth = () => {
+  expect(screen.getByTestId('claude-code-tool-call-file-change')).toHaveClass(
+    'w-full',
+    'max-w-full'
+  );
+};
+
 describe('ClaudeCodeToolCallPart', () => {
   it('renders collapsed thinking as an expandable subtle disclosure', async () => {
     const user = userEvent.setup();
@@ -341,7 +348,7 @@ describe('ClaudeCodeToolCallPart', () => {
       />
     );
 
-    expect(screen.getByTestId('claude-code-tool-call-file-change')).toBeInTheDocument();
+    expectFileChangeBlockFullWidth();
     const details = screen.getByTestId('claude-code-tool-call-file-change-details');
 
     expect(screen.getByText('Wrote 1 file')).toBeInTheDocument();
@@ -403,7 +410,7 @@ describe('ClaudeCodeToolCallPart', () => {
       />
     );
 
-    expect(screen.getByTestId('claude-code-tool-call-file-change')).toBeInTheDocument();
+    expectFileChangeBlockFullWidth();
     expect(screen.getByText('Edited 1 file')).toBeInTheDocument();
     expect(
       screen.getByText('web/packages/studio/src/routes/agents/ExistingFile.tsx')

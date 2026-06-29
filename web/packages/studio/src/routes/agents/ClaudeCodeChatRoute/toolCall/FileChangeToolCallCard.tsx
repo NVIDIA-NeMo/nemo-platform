@@ -30,7 +30,7 @@ export const FileChangeToolCallCard = ({
 
   return (
     <div
-      className="my-density-xs overflow-hidden rounded border border-base bg-surface-raised"
+      className="my-density-xs w-full max-w-full overflow-hidden rounded border border-base bg-surface-raised"
       data-testid="claude-code-tool-call-file-change"
     >
       <details className="group/write" data-testid="claude-code-tool-call-file-change-details">
