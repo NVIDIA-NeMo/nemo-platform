@@ -38,6 +38,7 @@ _build
 conf.py
 
 # temporary ipynb files
+*.tmp.md
 *.tmp.ipynb
 
 # base64 content

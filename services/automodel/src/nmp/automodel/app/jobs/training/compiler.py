@@ -157,10 +157,14 @@ def compile_training_step(
             global_batch_size=training.batch_size,
             micro_batch_size=training.micro_batch_size,
             sequence_packing=training.sequence_packing,
+            sequence_packing_max_samples=training.sequence_packing_max_samples,
         ),
         optimizer=TrainingStepConfig.OptimizerConfig(
+            optimizer_name=training.optimizer,
+            lr_decay_style=training.lr_decay_style,
             learning_rate=training.learning_rate,
             min_learning_rate=training.min_learning_rate,
+            eps=training.adam_eps,
             weight_decay=training.weight_decay,
             beta1=training.adam_beta1,
             beta2=training.adam_beta2,
@@ -241,6 +245,7 @@ def _translate_model_config(
         name=_extract_model_name(job_spec),
         max_seq_length=training.max_seq_length,
         precision=training.precision,
+        attn_implementation=training.attn_implementation,
         trust_remote_code=trust_remote_code,
         is_embedding_model=is_embedding_model,
         chat_template=chat_template,
@@ -293,7 +298,8 @@ def _translate_lora_config(api_lora: LoRAParams, me: ModelEntity) -> LoRAConfig:
         alpha=api_lora.alpha,
         dropout=api_lora.dropout,
         target_modules=api_lora.target_modules,
-        use_triton=True,
+        exclude_modules=api_lora.exclude_modules,
+        use_triton=api_lora.use_triton,
     )
 
     if not lora.target_modules:
