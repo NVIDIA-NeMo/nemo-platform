@@ -666,17 +666,20 @@ class TestBuildCtxFromEnv:
         with pytest.raises(RuntimeError, match="NEMO_JOB_WORKSPACE"):
             _build_ctx_from_env(_DEFAULT_SDK)
 
-    def test_missing_persistent_storage_raises(self, tmp_path: Path, monkeypatch) -> None:
-        # No silent fallback to ``/var/run/scratch/job``: that path only
-        # exists in container images, so a missing envvar in a subprocess
-        # executor must surface as a hard configuration error rather than
-        # masquerade as a working ctx.
+    def test_missing_persistent_storage_builds_ctx_but_access_raises(self, tmp_path: Path, monkeypatch) -> None:
+        # Persistent storage is optional — the ctx builds successfully
+        # without it, but accessing ctx.storage.persistent raises a clear
+        # RuntimeError so jobs that need it fail fast with guidance.
         monkeypatch.setenv("NEMO_JOB_WORKSPACE", "ws")
         monkeypatch.delenv("NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH", raising=False)
         monkeypatch.setenv("NEMO_JOB_EPHEMERAL_TASK_STORAGE_PATH", str(tmp_path / "e"))
+        monkeypatch.setenv("NEMO_JOB_ID", "test-job")
 
-        with pytest.raises(RuntimeError, match="NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH"):
-            _build_ctx_from_env(_DEFAULT_SDK)
+        ctx = _build_ctx_from_env(_DEFAULT_SDK)
+        assert ctx.storage.ephemeral == tmp_path / "e"
+
+        with pytest.raises(RuntimeError, match="did not request persistent storage"):
+            _ = ctx.storage.persistent
 
     def test_missing_ephemeral_storage_raises(self, tmp_path: Path, monkeypatch) -> None:
         monkeypatch.setenv("NEMO_JOB_WORKSPACE", "ws")

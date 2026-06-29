@@ -21,8 +21,11 @@ export default [
       'jsx-a11y': jsxA11yPlugin,
     },
     rules: {
+      // All non-deprecated jsx-a11y rules as warnings.
       ...Object.fromEntries(
-        Object.keys(jsxA11yPlugin.rules).map((rule) => [`jsx-a11y/${rule}`, 'warn'])
+        Object.entries(jsxA11yPlugin.rules)
+          .filter(([, rule]) => !rule.meta?.deprecated)
+          .map(([rule]) => [`jsx-a11y/${rule}`, 'warn'])
       ),
     },
   },

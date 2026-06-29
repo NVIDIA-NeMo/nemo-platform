@@ -75,9 +75,11 @@ def compile_automodel_config(
     seed = int(os.environ.get("PL_GLOBAL_SEED", customizer_config.seed))
 
     if _is_embedding_model:
-        # Biencoder recipe creates StatefulRNG from seed value internally
-        # See: nemo_automodel/recipes/biencoder/train_biencoder.py
+        # Bi-encoder recipe creates StatefulRNG from seed internally.
+        # See: nemo_automodel/recipes/retrieval/train_bi_encoder.py
         cfg["seed"] = seed
+        # Contrastive temperature (formerly model.t in Automodel <=0.3.x).
+        cfg["temperature"] = 0.02
     else:
         # LLM recipe expects the full rng config object
         cfg["rng"] = {
@@ -103,34 +105,9 @@ def compile_automodel_config(
     if _is_embedding_model:
         cfg["model"].update(
             {
-                "_target_": "nemo_automodel.components.models.biencoder.NeMoAutoModelBiencoder.from_pretrained",
-                # Use the same encoder for both queries and passages. default value taken from Automodel example
-                "share_encoder": True,
-                # Add a trainable linear layer after pooling to reduce embedding dimension. default value taken from Automodel example
-                "add_linear_pooler": False,
-                # How to combine token embeddings into a single document/query embedding. default value taken from Automodel example
+                "_target_": "nemo_automodel._transformers.auto_model.NeMoAutoModelBiEncoder.from_pretrained",
                 "pooling": "avg",
-                # Normalize embeddings to unit length (length = 1). default value taken from Automodel example
                 "l2_normalize": True,
-                # When training an embedding model, we want it to learn that similar things should have similar embeddings
-                # and different things should have different embeddings.
-                # Temperature controls how "strict" the model is when learning these relationships.
-                # Low value (0.02), tells the model to pick the correct doc and penalizes near-misses.
-                # High value (like 1.0 that's Automodel default) tells the model to be more lenient and allows for near-misses.
-                # 0.02 is taken from the Automodel example for biencoder training.
-                "t": 0.02,
-                # Total number of passages per query during training: 1 positive + (n-1) negatives.
-                # For example, train_n_passages=5 means 1 positive and 4 negative passages per query.
-                # This differs from legacy Customizer's 'num_hard_negatives' which only counted negatives
-                # (num_hard_negatives=4 is equivalent to train_n_passages=5).
-                "train_n_passages": embedding_config.train_n_passages,
-                # Number of negative passages per query during validation.
-                "eval_negative_size": get_eval_negative_size(embedding_config),
-                # Gradient checkpointing saves memory by not storing all activations during forward pass.
-                # Instead, it recomputes them during backward pass with a memory trade-off - less memory, slower training.
-                # Useful for large models or limited GPU memory.
-                # TODO: consider exposing this in CustomizationJobInput
-                "do_gradient_checkpointing": embedding_config.do_gradient_checkpointing,
                 "use_liger_kernel": True,
                 "use_sdpa_patching": True,
             }
@@ -168,6 +145,8 @@ def compile_automodel_config(
         "ep_size": p.expert_parallel_size,
         "sequence_parallel": p.sequence_parallel,
     }
+    if _is_embedding_model and embedding_config.do_gradient_checkpointing:
+        cfg["distributed"]["activation_checkpointing"] = True
     if p.pipeline_parallel_size > 1:
         cfg["distributed"]["pipeline"] = {
             "pp_schedule": "interleaved1f1b",
@@ -679,7 +658,7 @@ def _configure_embedding_dataset(
 
     This uses retrieval_dataset_inline.make_retrieval_dataset which handles:
         - Loading inline text directly from JSONL
-        - RetrievalBiencoderCollator for tokenization and batching
+        - BiEncoderCollator for tokenization and batching
 
     Args:
         cfg: Configuration dictionary to populate.
@@ -696,14 +675,15 @@ def _configure_embedding_dataset(
         "_target_": "torchdata.stateful_dataloader.StatefulDataLoader",
         "dataset": {
             "_target_": "nemo_automodel.components.datasets.llm.retrieval_dataset_inline.make_retrieval_dataset",
+            "model_type": "bi_encoder",
             "data_dir_list": [str(train_file)],
             "data_type": "train",
-            "train_n_passages": embedding_config.train_n_passages,
+            "n_passages": embedding_config.train_n_passages,
             "seed": seed,
             "do_shuffle": True,
         },
         "collate_fn": {
-            "_target_": "nemo_automodel.components.datasets.llm.RetrievalBiencoderCollator",
+            "_target_": "nemo_automodel.components.datasets.llm.BiEncoderCollator",
             "q_max_len": embedding_config.query_max_length,
             "p_max_len": embedding_config.passage_max_length,
             "query_prefix": embedding_config.query_prefix,
@@ -719,15 +699,16 @@ def _configure_embedding_dataset(
             "_target_": "torchdata.stateful_dataloader.StatefulDataLoader",
             "dataset": {
                 "_target_": "nemo_automodel.components.datasets.llm.retrieval_dataset_inline.make_retrieval_dataset",
+                "model_type": "bi_encoder",
                 "data_dir_list": [str(val_file)],
                 "data_type": "eval",
-                "train_n_passages": embedding_config.train_n_passages,
+                "n_passages": embedding_config.train_n_passages,
                 "eval_negative_size": get_eval_negative_size(embedding_config),
                 "seed": seed,
                 "do_shuffle": False,
             },
             "collate_fn": {
-                "_target_": "nemo_automodel.components.datasets.llm.RetrievalBiencoderCollator",
+                "_target_": "nemo_automodel.components.datasets.llm.BiEncoderCollator",
                 "q_max_len": embedding_config.query_max_length,
                 "p_max_len": embedding_config.passage_max_length,
                 "query_prefix": embedding_config.query_prefix,

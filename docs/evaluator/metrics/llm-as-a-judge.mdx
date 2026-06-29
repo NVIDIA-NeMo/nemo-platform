@@ -298,7 +298,6 @@ For production workloads, submit the same metric and dataset as a durable platfo
 
 ```python
 from nemo_evaluator_sdk import RunConfig, JSONScoreParser, Model, RubricScore, LLMJudgeMetric
-from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 
 metric = LLMJudgeMetric(
     model=Model(
@@ -347,7 +346,6 @@ job = evaluator.submit(
         {"input": "What is 2 + 2?", "output": "4"},
     ],
     config=RunConfig(parallelism=8, limit_samples=100),
-    metric_bundle_packager=CloudpickleMetricBundlePackager(),
 )
 print("Submitted job:", job.name)
 
@@ -436,13 +434,13 @@ By default, the JSON parser is used for range and rubric scores, with the score 
 
 ```python
 # JSON parser (default)
-"parser": {"type": "json", "json_path": "quality"}
+parser = {"type": "json", "json_path": "quality"}
 
 # Regex parser (for models that do not support structured output)
-"parser": {"type": "regex", "pattern": "QUALITY: (\\w+)"}
+parser = {"type": "regex", "pattern": "QUALITY: (\\w+)"}
 
 # Regex parser with method='search' (finds pattern anywhere in text)
-"parser": {"type": "regex", "pattern": "SCORE: (\\d+)", "method": "search"}
+parser = {"type": "regex", "pattern": "SCORE: (\\d+)", "method": "search"}
 ```
 
 <Tip>
@@ -642,15 +640,13 @@ metric = {
 Control judge model behavior with inference parameters:
 
 ```python
-
-"prompt_template": {
+prompt_template = {
     "messages": [...],
-    "temperature": 0.1, # Lower for more consistent scoring
-    "max_tokens": 1024, # Increase if judge needs more space
-    "timeout": 30, # Request timeout in seconds
-    "stop": ["<{{ end_of_text }}>"] # Stop sequences
+    "temperature": 0.1,  # Lower for more consistent scoring
+    "max_tokens": 1024,  # Increase if judge needs more space
+    "timeout": 30,  # Request timeout in seconds
+    "stop": ["<end_of_text>"],  # Stop sequences
 }
-
 ```
 
 <Note>

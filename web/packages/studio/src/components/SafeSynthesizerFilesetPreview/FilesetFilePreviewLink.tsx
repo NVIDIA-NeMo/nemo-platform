@@ -5,7 +5,7 @@ import { parseFilesetUrl } from '@nemo/common/src/components/DatasetFileSelect/u
 import { ScrollTable } from '@nemo/common/src/components/ScrollTable';
 import { useFilesDownloadFile } from '@nemo/sdk/generated/platform/api';
 import {
-  Anchor,
+  Button,
   CodeSnippet,
   type TableColumnDefinition,
   type TableRowDefinition,
@@ -132,20 +132,13 @@ export const FilesetFilePreviewLink: FC<FilesetFilePreviewLinkProps> = ({ url, c
         </FilePreview>
       )}
 
-      <Anchor
-        role="button"
-        tabIndex={0}
+      <Button
+        kind="tertiary"
         onClick={handlePreviewClick}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            handlePreviewClick();
-          }
-        }}
-        className="truncate max-w-full cursor-pointer"
+        className="truncate max-w-full text-left p-0 h-auto"
       >
         {children}
-      </Anchor>
+      </Button>
     </>
   );
 };

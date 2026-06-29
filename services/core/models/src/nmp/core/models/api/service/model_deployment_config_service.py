@@ -15,13 +15,64 @@ from nmp.core.models.entities import Model as ModelEntity
 from nmp.core.models.entities import ModelDeployment as ModelDeploymentEntity
 from nmp.core.models.entities import ModelDeploymentConfig as ModelDeploymentConfigEntity
 from nmp.core.models.schemas import (
+    ContainerExecutorConfig,
     CreateModelDeploymentConfigRequest,
+    Engine,
     ModelDeploymentConfig,
+    ModelDeploymentConfigModelSpec,
     ModelDeploymentStatus,
     UpdateModelDeploymentConfigRequest,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _validate_engine_config(
+    engine: Engine,
+    executor_config: ContainerExecutorConfig,
+    model_spec: ModelDeploymentConfigModelSpec,
+) -> None:
+    """Validate engine-specific requirements on the deployment config.
+
+    The ``generic`` engine runs an arbitrary container with no inference-engine
+    compiler, so it has no platform-default image and no canonical health
+    endpoint. Both ``image_name`` and ``health_check_path`` must therefore be
+    supplied explicitly; the other engines fall back to their configured
+    defaults when these are unset.
+
+    Values are also rejected when they contain surrounding whitespace: an
+    image reference or probe path is used verbatim downstream, where a
+    leading/trailing space would silently produce an invalid value.
+
+    LoRA is rejected for ``generic``: there is no engine compiler to wire the
+    adapter sidecar against, so ``lora_enabled`` would otherwise be silently
+    ignored. Reject it up front rather than accept a config that can't be honored.
+    """
+    if engine != Engine.GENERIC:
+        return
+    missing: list[str] = []
+    padded: list[str] = []
+    for field in ("image_name", "health_check_path"):
+        value = getattr(executor_config, field)
+        if not (value and value.strip()):
+            missing.append(field)
+        elif value != value.strip():
+            padded.append(field)
+    if missing:
+        raise ValueError(
+            "The 'generic' engine requires executor_config."
+            + " and executor_config.".join(missing)
+            + " to be set (no platform default exists for a generic container)."
+        )
+    if padded:
+        raise ValueError(
+            "executor_config." + " and executor_config.".join(padded) + " must not have leading or trailing whitespace."
+        )
+    if model_spec.lora_enabled:
+        raise ValueError(
+            "The 'generic' engine does not support LoRA (model_spec.lora_enabled); "
+            "there is no engine compiler to wire the adapter sidecar against."
+        )
 
 
 class ReferentialIntegrityError(Exception):
@@ -103,6 +154,8 @@ class ModelDeploymentConfigService:
         existing = await self._get_latest_version(workspace, request.name)
         if existing is not None:
             raise ValueError(f"Deployment config with workspace '{workspace}' and name '{request.name}' already exists")
+
+        _validate_engine_config(request.engine, request.executor_config, request.model_spec)
 
         if not request.model_entity_id:
             try:
@@ -254,6 +307,8 @@ class ModelDeploymentConfigService:
         current = await self._get_by_base_name_and_version(workspace, name)
         if not current:
             raise ValueError(f"Deployment config with workspace '{workspace}' and name '{name}' does not exist")
+
+        _validate_engine_config(request.engine, request.executor_config, request.model_spec)
 
         new_version = current.entity_version + 1
 

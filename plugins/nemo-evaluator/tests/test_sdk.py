@@ -31,8 +31,9 @@ from nemo_evaluator.shared.metric_bundles.bundles import (
     bundle_metric,
 )
 from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
+from nemo_evaluator.shared.metric_bundles.inline import InlineMetricBundlePackager
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
-from nemo_evaluator_sdk.metrics.protocol import Metric
+from nemo_evaluator_sdk.metrics.protocol import Metric, MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 from nemo_evaluator_sdk.values import FieldMapping, Model, ModelRef, RunConfig, RunConfigOnline, RunConfigOnlineModel
 from nemo_evaluator_sdk.values.results import AggregatedMetricResult, EvaluationResult
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
@@ -96,6 +97,21 @@ class _RecordingMetricBundlePackager(MetricBundlePackager):
     def load(self, payload: MetricBundlePayload) -> Metric:
         del payload
         raise NotImplementedError("test packager only exercises submission-side packaging")
+
+
+class _CustomRuntimeMetric:
+    """A protocol-satisfying metric that is not part of MetricsUnion (not inline-bundleable)."""
+
+    type = "custom-score"
+    description = "custom metric"
+    labels: dict[str, str] = {}
+
+    def output_spec(self) -> list[MetricOutputSpec]:
+        return [MetricOutputSpec.continuous_score("score")]
+
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
+        del input
+        return MetricResult(outputs=[MetricOutput(name="score", value=1.0)])
 
 
 class _SyncPlatform:
@@ -213,6 +229,29 @@ def test_build_evaluate_spec_requires_metric_bundle_packager() -> None:
             dataset=[{"expected": "a", "output": "a"}],
             params=RunConfig(),
         )
+
+
+def test_local_run_allows_cloudpickle_fallback_for_custom_metric(mocker: MockerFixture) -> None:
+    """Local run() executes in the caller's process, so custom metrics fall back to cloudpickle.
+
+    The fallback is enabled only for local execution; remote submit/create still require an
+    explicit cloudpickle opt-in (covered separately).
+    """
+    import nemo_evaluator.sdk._executor as executor_module
+
+    spy = mocker.spy(executor_module, "resolve_default_metric_bundle_packager")
+    resource = Evaluator(cast(NeMoPlatform, _SyncPlatform()))
+    # Short-circuit after packaging so we don't drive the local job runtime.
+    mocker.patch.object(resource._executor, "run_local", side_effect=RuntimeError("stop after packaging"))
+
+    with pytest.raises(RuntimeError, match="stop after packaging"):
+        resource.run(
+            metric=cast(Metric, _CustomRuntimeMetric()),
+            dataset=[{"expected": "a", "output": "a"}],
+        )
+
+    # No MetricBundlePackagerPolicyError: the custom metric was bundled (via cloudpickle) and reached execution.
+    assert spy.call_args.kwargs["allow_cloudpickle_fallback"] is True
 
 
 def test_build_evaluate_spec_includes_target_and_prompt_template() -> None:
@@ -590,13 +629,27 @@ class TestEvaluatorSubmit:
             metric_bundle_packager=packager,
         )
 
-    def test_requires_metric_bundle_packager(self) -> None:
-        """Submit should fail fast before delegating without a remote metric packager."""
+    def test_defaults_to_inline_packager_for_builtin_metric(self, mocker: MockerFixture) -> None:
+        """Submit of a built-in metric without an explicit packager defaults to inline bundling."""
+        resource = Evaluator(cast(NeMoPlatform, _SyncPlatform()))
+        expected_job = mocker.Mock(spec=EvaluatorJobResource)
+        submit = mocker.patch.object(resource._executor, "submit", return_value=expected_job)
+
+        job = resource.submit(
+            metric=ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}"),
+            dataset=[{"expected": "a", "output": "a"}],
+        )
+
+        assert job is expected_job
+        assert isinstance(submit.call_args.kwargs["metric_bundle_packager"], InlineMetricBundlePackager)
+
+    def test_requires_explicit_packager_for_custom_metric(self) -> None:
+        """Submit of a custom metric requires an explicit cloudpickle opt-in."""
         resource = Evaluator(cast(NeMoPlatform, _SyncPlatform()))
 
-        with pytest.raises(ValueError, match="metric_bundle_packager is required"):
+        with pytest.raises(MetricBundlePackagerPolicyError, match="CloudpickleMetricBundlePackager"):
             resource.submit(
-                metric=ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}"),
+                metric=cast(Metric, _CustomRuntimeMetric()),
                 dataset=[{"expected": "a", "output": "a"}],
             )
 
@@ -1071,13 +1124,28 @@ class TestAsyncEvaluatorSubmit:
         )
 
     @pytest.mark.asyncio
-    async def test_requires_metric_bundle_packager(self) -> None:
-        """Submit should fail fast before delegating without a remote metric packager."""
+    async def test_defaults_to_inline_packager_for_builtin_metric(self, mocker: MockerFixture) -> None:
+        """Async submit of a built-in metric defaults to inline bundling."""
+        resource = AsyncEvaluator(cast(AsyncNeMoPlatform, _AsyncPlatform()))
+        expected_job = mocker.Mock(spec=AsyncEvaluatorJobResource)
+        submit = mocker.patch.object(resource._executor, "submit", new=AsyncMock(return_value=expected_job))
+
+        job = await resource.submit(
+            metric=ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}"),
+            dataset=[{"expected": "a", "output": "a"}],
+        )
+
+        assert job is expected_job
+        assert isinstance(submit.call_args.kwargs["metric_bundle_packager"], InlineMetricBundlePackager)
+
+    @pytest.mark.asyncio
+    async def test_requires_explicit_packager_for_custom_metric(self) -> None:
+        """Async submit of a custom metric requires an explicit cloudpickle opt-in."""
         resource = AsyncEvaluator(cast(AsyncNeMoPlatform, _AsyncPlatform()))
 
-        with pytest.raises(ValueError, match="metric_bundle_packager is required"):
+        with pytest.raises(MetricBundlePackagerPolicyError, match="CloudpickleMetricBundlePackager"):
             await resource.submit(
-                metric=ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}"),
+                metric=cast(Metric, _CustomRuntimeMetric()),
                 dataset=[{"expected": "a", "output": "a"}],
             )
 

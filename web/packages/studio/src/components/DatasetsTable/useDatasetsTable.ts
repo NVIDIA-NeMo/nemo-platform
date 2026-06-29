@@ -116,8 +116,6 @@ export function useDatasetsTable({
     if (selection === prevSelectionRef.current) return;
     prevSelectionRef.current = selection;
 
-    if (!onDatasetsSelected) return;
-
     // For single selection, keep only the most recently selected row
     const selectedIds = Object.keys(selection).filter((id) => selection[id]);
     if (selectionType === 'single' && selectedIds.length > 1) {
@@ -125,6 +123,8 @@ export function useDatasetsTable({
       dataViewState.rowSelection.set({ [lastSelected]: true });
       return; // The set above will re-trigger this effect with the corrected state
     }
+
+    if (!onDatasetsSelected) return;
 
     const selectedDatasets = datasets.filter((d) => selection[d.id]);
     onDatasetsSelected(selectedDatasets);

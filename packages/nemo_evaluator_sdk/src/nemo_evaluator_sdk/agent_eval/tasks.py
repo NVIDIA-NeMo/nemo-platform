@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.metrics.utils import metric_type_name
@@ -128,6 +128,62 @@ class AgentEvalTask(BaseModel):
                         f"view {view_name!r} references unknown output {signal.output!r} for metric {signal.metric!r}"
                     )
         return self
+
+
+class AgentEvalTaskset(BaseModel):
+    """A named set of SDK-native tasks (with optional metadata) to evaluate.
+
+    Produced by an :class:`AgentEvalTasksetLoader`; the evaluator scores
+    ``tasks`` directly and never consumes a loader.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    tasks: list[AgentEvalTask] = Field(
+        default_factory=list,
+        min_length=1,
+        description="Tasks in this set; at least one is required and task ids must be unique.",
+    )
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Free-form taskset metadata for the run.")
+
+    @model_validator(mode="after")
+    def _task_ids_unique(self) -> AgentEvalTaskset:
+        ids = [task.id for task in self.tasks]
+        duplicates = sorted({task_id for task_id in ids if ids.count(task_id) > 1})
+        if duplicates:
+            raise ValueError(f"duplicate taskset task ids: {duplicates}")
+        return self
+
+
+@runtime_checkable
+class AgentEvalTasksetLoader(Protocol):
+    """Protocol for adapting an external taskset into agent-eval.
+
+    A loader is a named adapter that loads SDK-native tasks (optionally from an
+    external ``source``). Per the design, loaders are resolved upstream into an
+    :class:`AgentEvalTaskset`; the evaluator scores those tasks and never consumes
+    a loader directly.
+    """
+
+    @property
+    def name(self) -> str:
+        """Stable taskset name used in diagnostics, metadata, and user-facing output."""
+        ...
+
+    def load(
+        self,
+        *,
+        source: str | Path | None = None,
+        limit: int | None = None,
+        evidence_dir: Path | None = None,
+    ) -> AgentEvalTaskset:
+        """Load tasks into an :class:`AgentEvalTaskset`.
+
+        ``source`` is an optional path/URI to load from, ``limit`` an optional
+        positive cap on the number of tasks, and ``evidence_dir`` an optional
+        directory holding task evidence inputs.
+        """
+        ...
 
 
 class AgentEvalRunConfig(BaseModel):

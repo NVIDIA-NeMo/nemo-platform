@@ -19,14 +19,14 @@ Prefer the form that's most natural for the caller:
 Generated CLI list commands expose each simple filter field as its own option:
 
 ```bash
-nemo evaluation benchmarks list --filter.name mmlu --filter.project my-project
+nemo files filesets list --filter.purpose dataset --filter.storage-type local
 ```
 
 Dot flags cover exact-match on scalar fields. For operators (`$gte`, `$like`, …) or boolean combinations, fall through to `--filter` with text or JSON:
 
 ```bash
-nemo evaluation benchmarks list --filter 'name:"mmlu" AND created_at>="2025-01-01"'
-nemo evaluation benchmarks list --filter '{"created_at":{"$gte":"2025-01-01"}}'
+nemo files filesets list --filter 'purpose:"dataset" AND created_at>="2025-01-01"'
+nemo files filesets list --filter '{"created_at":{"$gte":"2025-01-01"}}'
 ```
 
 ### Bracket notation
@@ -34,13 +34,13 @@ nemo evaluation benchmarks list --filter '{"created_at":{"$gte":"2025-01-01"}}'
 The preferred form for REST query strings. Each `?filter[field][$op]=value` pair is URL-encoding-friendly and composable:
 
 ```
-GET /v2/workspaces/{ws}/benchmarks?filter[name][$like]=mmlu&filter[created_at][$gte]=2025-01-01
+GET /apis/files/v2/workspaces/{workspace}/filesets?filter[purpose]=dataset&filter[created_at][$gte]=2025-01-01
 ```
 
 When no operator is specified, the default is `$eq`:
 
 ```
-?filter[name]=mmlu # equivalent to filter[name][$eq]=mmlu
+?filter[purpose]=dataset # equivalent to filter[purpose][$eq]=dataset
 ```
 
 <Note>
@@ -53,7 +53,7 @@ On datetime fields, bare bracket values also default to `$eq` — `?filter[creat
 A compact, human-readable query string. Handy for CLI and SDK string filters; in URLs you need to URL-encode spaces and quotes, so bracket notation is usually easier there.
 
 ```bash
-nemo evaluation benchmarks list --filter 'name:"mmlu" AND created_at>"2025-01-01"'
+nemo files filesets list --filter 'purpose:"dataset" AND created_at>"2025-01-01"'
 ```
 
 ```python
@@ -90,20 +90,20 @@ Pass a dictionary to the `filter` parameter. Keys are field names; values are ei
 
 ```python
 # Exact match
-results = client.evaluation.benchmarks.list(filter={"name": "mmlu"})
+results = client.files.filesets.list(filter={"purpose": "dataset"})
 
 # Operator syntax
-results = client.evaluation.benchmarks.list(filter={"name": {"$like": "mmlu"}})
+results = client.files.filesets.list(filter={"name": {"$like": "training"}})
 
 # Multiple conditions
-results = client.evaluation.benchmarks.list(
+results = client.files.filesets.list(
     filter={
-        "$and": [{"name": {"$like": "mmlu"}}, {"description": {"$like": "reasoning"}}]
+        "$and": [{"purpose": "dataset"}, {"description": {"$like": "training"}}]
     }
 )
 
 # Date range
-results = client.evaluation.benchmarks.list(
+results = client.files.filesets.list(
     filter={
         "created_at": {"$gte": "2025-01-01T00:00:00", "$lte": "2025-06-30T23:59:59"}
     }

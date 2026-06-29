@@ -187,6 +187,7 @@ def make_controller_run_func(controller_cls: type[NemoController]) -> Callable[[
 
     def run(stop_signal: threading.Event) -> None:
         controller = controller_cls()
+        controller.set_stop_signal(stop_signal)
         adapter = NemoControllerAdapter(controller)
 
         if not _wait_for_controller_dependencies(controller_cls, stop_signal):

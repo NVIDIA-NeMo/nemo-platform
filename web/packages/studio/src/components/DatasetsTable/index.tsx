@@ -40,6 +40,7 @@ export const DatasetsTable: FC<DatasetsTableProps> = ({
   getDatasetRoute,
   renderRowActions,
   purposeFilter,
+  attributes,
 }) => {
   const {
     workspace,
@@ -128,6 +129,7 @@ export const DatasetsTable: FC<DatasetsTableProps> = ({
             : undefined
         }
         attributes={{
+          ...attributes,
           DataViewSearchBar: {
             placeholder: 'Search filesets...',
           },
