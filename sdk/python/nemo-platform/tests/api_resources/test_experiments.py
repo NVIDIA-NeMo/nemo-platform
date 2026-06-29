@@ -257,13 +257,55 @@ class TestExperiments:
             workspace="workspace",
             filter={
                 "cost_usd": {
-                    "foo": {
+                    "count": {
                         "eq": 0,
                         "gt": 0,
                         "gte": 0,
                         "lt": 0,
                         "lte": 0,
-                    }
+                    },
+                    "mean": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "median": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p90": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p95": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p99": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "sum": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
                 },
                 "created_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
@@ -274,26 +316,110 @@ class TestExperiments:
                 "dataset_version": "dataset_version",
                 "evaluators": {
                     "foo": {
-                        "foo": {
+                        "count": {
                             "eq": 0,
                             "gt": 0,
                             "gte": 0,
                             "lt": 0,
                             "lte": 0,
-                        }
+                        },
+                        "mean": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                        "median": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                        "p90": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                        "p95": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                        "p99": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                        "sum": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
                     }
                 },
                 "experiment_group_id": "experiment_group_id",
                 "is_deleted": True,
                 "is_pinned": True,
                 "latency_ms": {
-                    "foo": {
+                    "count": {
                         "eq": 0,
                         "gt": 0,
                         "gte": 0,
                         "lt": 0,
                         "lte": 0,
-                    }
+                    },
+                    "mean": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "median": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p90": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p95": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p99": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "sum": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
                 },
                 "name": "name",
                 "run_count": {
@@ -731,13 +857,55 @@ class TestAsyncExperiments:
             workspace="workspace",
             filter={
                 "cost_usd": {
-                    "foo": {
+                    "count": {
                         "eq": 0,
                         "gt": 0,
                         "gte": 0,
                         "lt": 0,
                         "lte": 0,
-                    }
+                    },
+                    "mean": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "median": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p90": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p95": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p99": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "sum": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
                 },
                 "created_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
@@ -748,26 +916,110 @@ class TestAsyncExperiments:
                 "dataset_version": "dataset_version",
                 "evaluators": {
                     "foo": {
-                        "foo": {
+                        "count": {
                             "eq": 0,
                             "gt": 0,
                             "gte": 0,
                             "lt": 0,
                             "lte": 0,
-                        }
+                        },
+                        "mean": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                        "median": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                        "p90": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                        "p95": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                        "p99": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                        "sum": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
                     }
                 },
                 "experiment_group_id": "experiment_group_id",
                 "is_deleted": True,
                 "is_pinned": True,
                 "latency_ms": {
-                    "foo": {
+                    "count": {
                         "eq": 0,
                         "gt": 0,
                         "gte": 0,
                         "lt": 0,
                         "lte": 0,
-                    }
+                    },
+                    "mean": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "median": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p90": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p95": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p99": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "sum": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
                 },
                 "name": "name",
                 "run_count": {

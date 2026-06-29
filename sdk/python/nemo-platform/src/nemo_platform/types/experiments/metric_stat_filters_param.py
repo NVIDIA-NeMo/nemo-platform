@@ -17,23 +17,32 @@
 
 from __future__ import annotations
 
-from typing import Iterable
-from typing_extensions import Required, TypedDict
+from typing_extensions import TypedDict
 
-from .captured_chat_message_param import CapturedChatMessageParam
+from .number_filter_param import NumberFilterParam
 
-__all__ = ["CapturedChatCompletionsRequestParam"]
+__all__ = ["MetricStatFiltersParam"]
 
 
-class CapturedChatCompletionsRequestParam(  # type: ignore[call-arg]
-    TypedDict,
-    total=False,
-    extra_items=object,  # pyright: ignore[reportGeneralTypeIssues]
-):
-    """Flexible captured chat-completions request."""
+class MetricStatFiltersParam(TypedDict, total=False):
+    """Numeric range filters keyed by rollup aggregate stat.
 
-    messages: Required[Iterable[CapturedChatMessageParam]]
-    """Messages comprising the conversation."""
+    Declaring each stat explicitly (rather than an open ``dict[str, NumberFilter]``) makes the valid
+    stats visible in the OpenAPI schema, e.g. ``filter[cost_usd.mean][$lte]=0.5``. These stats must
+    stay in sync with the runtime sort/filter grammar (``_METRIC_STATS`` in the experiments
+    endpoints); a unit test guards the parity.
+    """
 
-    model: Required[str]
-    """The model identifier used for this request."""
+    count: NumberFilterParam
+
+    mean: NumberFilterParam
+
+    median: NumberFilterParam
+
+    p90: NumberFilterParam
+
+    p95: NumberFilterParam
+
+    p99: NumberFilterParam
+
+    sum: NumberFilterParam
