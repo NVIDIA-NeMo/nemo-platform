@@ -32,7 +32,7 @@ export const useMutateMany = <TData, TVariables>(
 
       if (failedItems.length > 0) {
         throw new Error(
-          `Failed to ${action} ${failedItems.length} out of ${items.length} items. Errors: ${failedItems.map((failure) => failure.reason.message).join('; ')}`
+          `Failed to ${action} ${failedItems.length} out of ${items.length} items. Errors: ${failedItems.map((failure) => (failure.reason instanceof Error ? failure.reason.message : String(failure.reason))).join('; ')}`
         );
       }
 
