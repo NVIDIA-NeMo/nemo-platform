@@ -18,6 +18,7 @@ from typing import Generator
 import pytest
 from nmp.testing.pytest_outcomes import pytest_skip as skip_test
 
+from tests.auth_idp.xdist import append_xdist_group_suffix
 from tests.discovery_exclusions import TEST_DISCOVERY_EXCLUSIONS
 
 # Set test environment variables BEFORE any imports
@@ -211,6 +212,7 @@ def pytest_collection_modifyitems(config, items):
     category_markers = {
         "unit",
         "e2e",
+        "auth_idp",
         "smoke_gpu_tasks",
         "smoke_nmp_automodel_tasks",
         "smoke_nmp_automodel_training",
@@ -246,6 +248,13 @@ def pytest_collection_modifyitems(config, items):
         # Auto-mark tests without category markers as unit tests
         if not marker_names.intersection(category_markers):
             item.add_marker(pytest.mark.unit)
+
+        if getattr(config.option, "numprocesses", None) or getattr(config, "workerinput", None) is not None:
+            group_names = set()
+            for mark in item.iter_markers("xdist_group"):
+                name = mark.args[0] if mark.args else mark.kwargs.get("name", "default")
+                group_names.add(str(name))
+            item._nodeid = append_xdist_group_suffix(item.nodeid, group_names)
 
 
 # ============================================================================
@@ -295,6 +304,7 @@ def pytest_runtest_setup(item):
             skip_test("Skipping container-only test (requires NMP_BASE_URL)")
 
 
+from xdist.scheduler.loadgroup import LoadGroupScheduling  # noqa: E402
 from xdist.scheduler.loadscope import LoadScopeScheduling  # noqa: E402
 
 # Temporary workaround for https://github.com/pytest-dev/pytest-xdist/issues/1189
@@ -310,3 +320,7 @@ def _patched_reschedule(self, node):
 
 
 LoadScopeScheduling._reschedule = _patched_reschedule  # type: ignore[invalid-assignment]
+
+
+def pytest_xdist_make_scheduler(config, log):
+    return LoadGroupScheduling(config, log)

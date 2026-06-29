@@ -50,6 +50,16 @@ def is_auth_disabled(base_url: str, timeout: float = 3.0) -> bool | None:
         return None
 
 
+def _runtime_token_source_label() -> str | None:
+    """Return the runtime token override source using the same precedence as config loading."""
+    from nemo_platform.config.config import Config
+
+    try:
+        return Config.runtime_access_token_source_label()
+    except ValueError:
+        return "NEMO_WORKLOAD_TOKEN_FILE environment override could not be read"
+
+
 def ensure_valid_token(context: Context, refresh_buffer_seconds: int = 300) -> bool:
     """
     Check if the current token is valid and refresh if needed.
@@ -504,6 +514,11 @@ def login(
         console.print("  Refresh token: [yellow]not available[/] (add 'offline_access' scope to enable)")
 
     console.print("\n[bold green]Credentials saved to config file.[/]")
+    if runtime_token_source := _runtime_token_source_label():
+        console.print(
+            f"[yellow]Warning:[/] {runtime_token_source} is active and will override these saved credentials. "
+            "Unset the runtime token override to use this login for future commands."
+        )
     console.print("\n[dim]Run 'nemo workspaces list' to verify your access.[/]")
 
 
@@ -514,6 +529,7 @@ def logout(ctx: typer.Context) -> None:
     from rich.console import Console
 
     from nemo_platform.config.config import Config
+    from nemo_platform.config.models import NoAuthUser
 
     cli_context: CLIContext = ctx.obj
     context = cli_context.get_sdk_context()
@@ -526,8 +542,32 @@ def logout(ctx: typer.Context) -> None:
         return
 
     logout_params: ConfigParams = {"access_token": None, "refresh_token": None}
-    Config.write(logout_params, context_name=context.context_name)
+    updated_config = Config.write(logout_params, context_name=context.context_name)
+    config_path = Config.get_default_config_path()
+    if isinstance(updated_config, Config):
+        config_path = updated_config.get_config_path() or config_path
+        persisted_config = Config.load(config_path=config_path).get_config_file()
+        persisted_context = next((ctx for ctx in persisted_config.contexts if ctx.name == context.context_name), None)
+        persisted_user = None
+        if persisted_context is not None:
+            persisted_user = next(
+                (user for user in persisted_config.users if user.name == persisted_context.user), None
+            )
+
+        if persisted_context is None or not isinstance(persisted_user, NoAuthUser):
+            raise AuthError(
+                "Logout did not clear credentials for "
+                f"context '{context.context_name}' in config file '{config_path.name}' at {config_path}. "
+                "Run 'nemo auth status' and check the Config File and Credential Source rows."
+            )
+
     console.print("[green]Logged out successfully.[/]")
+    console.print(f"  Context: [cyan]{context.context_name}[/]")
+    console.print(f"  Config file: [cyan]{config_path}[/]")
+    if runtime_token_source := _runtime_token_source_label():
+        console.print(
+            f"  [yellow]Warning:[/] {runtime_token_source} is still active and will override saved credentials."
+        )
 
 
 @app.command("refresh")
@@ -713,6 +753,7 @@ def status(ctx: typer.Context) -> None:
     from rich.console import Console
     from rich.table import Table
 
+    from nemo_platform.config.config import Config
     from nemo_platform.config.models import OAuthUser
 
     cli_context: CLIContext = ctx.obj
@@ -733,13 +774,22 @@ def status(ctx: typer.Context) -> None:
 
     table = Table(title="Authentication Status", show_header=False)
     table.add_column("Property", style="cyan")
-    table.add_column("Value")
+    table.add_column("Value", overflow="fold")
 
     table.add_row("Cluster", str(context.cluster.base_url))
     table.add_row("Context", context.context_name)
+    table.add_row("Config File", str(Config.get_default_config_path()))
+    runtime_token_source = _runtime_token_source_label()
 
     if context.user:
-        table.add_row("Auth Type", context.user.type)
+        if runtime_token_source:
+            table.add_row(
+                "Credential Source",
+                f"[yellow]{runtime_token_source}[/]",
+            )
+        else:
+            table.add_row("Auth Type", context.user.type)
+            table.add_row("Credential Source", "config file")
 
         if isinstance(context.user, OAuthUser):
             # OAuth token authentication
@@ -751,27 +801,28 @@ def status(ctx: typer.Context) -> None:
 
             if claims:
                 # Show decoded JWT info
-                email = claims.get("upn") or claims.get("email") or claims.get("preferred_username")
-                if email:
-                    table.add_row("Email", email)
+                if not runtime_token_source:
+                    email = claims.get("upn") or claims.get("email") or claims.get("preferred_username")
+                    if email:
+                        table.add_row("Email", email)
 
-                subject = claims.get("oid") or claims.get("sub")
-                if subject:
-                    table.add_row("User ID", subject)
+                    subject = claims.get("oid") or claims.get("sub")
+                    if subject:
+                        table.add_row("User ID", subject)
 
-                scopes = claims.get("scp") or claims.get("scope") or ""
-                if isinstance(scopes, str):
-                    scopes = scopes.split()
-                if scopes:
-                    table.add_row("Scopes", " ".join(scopes))
-                else:
-                    table.add_row("Scopes", "[dim]none[/]")
+                    scopes = claims.get("scp") or claims.get("scope") or ""
+                    if isinstance(scopes, str):
+                        scopes = scopes.split()
+                    if scopes:
+                        table.add_row("Scopes", " ".join(scopes))
+                    else:
+                        table.add_row("Scopes", "[dim]none[/]")
 
-                groups = claims.get("groups") or claims.get("cognito:groups") or []
-                if isinstance(groups, str):
-                    groups = [groups]
-                if groups:
-                    table.add_row("Groups", ", ".join(groups))
+                    groups = claims.get("groups") or claims.get("cognito:groups") or []
+                    if isinstance(groups, str):
+                        groups = [groups]
+                    if groups:
+                        table.add_row("Groups", ", ".join(groups))
 
                 exp = claims.get("exp")
                 if exp:
@@ -785,11 +836,12 @@ def status(ctx: typer.Context) -> None:
                     else:
                         table.add_row("Expires", f"[red]EXPIRED[/] ({exp_dt.isoformat()})")
 
-            # Show refresh token status
-            if context.user.refresh_token:
-                table.add_row("Refresh Token", "[green]available[/] (run 'nemo auth refresh' to renew)")
-            else:
-                table.add_row("Refresh Token", "[yellow]not available[/]")
+            if not runtime_token_source:
+                # Show refresh token status for saved credentials only.
+                if context.user.refresh_token:
+                    table.add_row("Refresh Token", "[green]available[/] (run 'nemo auth refresh' to renew)")
+                else:
+                    table.add_row("Refresh Token", "[yellow]not available[/]")
 
             # Show redacted token
             redacted = f"{token_value[:20]}...{token_value[-10:]}" if len(token_value) > 30 else "***"

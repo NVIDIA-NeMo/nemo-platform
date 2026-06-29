@@ -337,6 +337,61 @@ class TestConfigWithoutFile:
         assert config.user.refresh_token is None
         assert not hasattr(config.user, "token_endpoint")
 
+    def test_config_from_workload_token_env_only(self, monkeypatch: pytest.MonkeyPatch):
+        """NEMO_WORKLOAD_TOKEN should bootstrap OAuth auth without a config file."""
+        monkeypatch.setenv("NMP_BASE_URL", "https://api.example.com")
+        monkeypatch.setenv("NEMO_WORKLOAD_TOKEN", "workload-token-123")
+
+        config = get_context()
+
+        assert isinstance(config.user, OAuthUser)
+        assert config.user.token.get_secret_value() == "workload-token-123"
+
+    def test_config_from_workload_token_file_env_only(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        """NEMO_WORKLOAD_TOKEN_FILE should bootstrap OAuth auth without a config file."""
+        token_path = tmp_path / "workload.token"
+        token_path.write_text("workload-token-from-file\n", encoding="utf-8")
+        monkeypatch.setenv("NMP_BASE_URL", "https://api.example.com")
+        monkeypatch.setenv("NEMO_WORKLOAD_TOKEN_FILE", str(token_path))
+
+        config = get_context()
+
+        assert isinstance(config.user, OAuthUser)
+        assert config.user.token.get_secret_value() == "workload-token-from-file"
+
+    def test_config_from_missing_workload_token_file_reports_configuration_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """NEMO_WORKLOAD_TOKEN_FILE should fail clearly when the configured token file cannot be read."""
+        token_path = tmp_path / "missing-workload.token"
+        monkeypatch.setenv("NMP_BASE_URL", "https://api.example.com")
+        monkeypatch.setenv("NEMO_WORKLOAD_TOKEN_FILE", str(token_path))
+
+        with pytest.raises(ValueError, match="NEMO_WORKLOAD_TOKEN_FILE"):
+            get_context()
+
+    def test_nmp_access_token_precedes_workload_token_env(self, monkeypatch: pytest.MonkeyPatch):
+        """NMP_ACCESS_TOKEN remains the highest-precedence token env var."""
+        monkeypatch.setenv("NMP_BASE_URL", "https://api.example.com")
+        monkeypatch.setenv("NMP_ACCESS_TOKEN", "preferred-token")
+        monkeypatch.setenv("NEMO_WORKLOAD_TOKEN", "workload-token-123")
+
+        config = get_context()
+
+        assert isinstance(config.user, OAuthUser)
+        assert config.user.token.get_secret_value() == "preferred-token"
+
+    def test_runtime_access_token_source_label_uses_config_precedence(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Runtime token source labels should share Config's token env precedence."""
+        missing_token_path = tmp_path / "missing-workload.token"
+        monkeypatch.setenv("NMP_ACCESS_TOKEN", "preferred-token")
+        monkeypatch.setenv("NEMO_WORKLOAD_TOKEN", "workload-token-123")
+        monkeypatch.setenv("NEMO_WORKLOAD_TOKEN_FILE", str(missing_token_path))
+
+        assert Config.runtime_access_token_source_label() == "NMP_ACCESS_TOKEN environment override"
+
     def test_config_from_env_access_token_ignores_legacy_api_key_env(self, monkeypatch: pytest.MonkeyPatch):
         """NMP_ACCESS_TOKEN is used when legacy NMP_API_KEY is present without config."""
         monkeypatch.setenv("NMP_BASE_URL", "https://api.example.com")

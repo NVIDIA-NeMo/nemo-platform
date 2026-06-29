@@ -16,13 +16,16 @@ from copy import deepcopy
 from dataclasses import dataclass
 from importlib.metadata import entry_points
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Literal, NotRequired, TypedDict
 
 import httpx
 import pytest
 import yaml
 from _pytest.nodes import Node
+from nmp.testing.e2e import Docker as DockerE2EBackend
 from nmp.testing.e2e.config import deep_merge
+
+from e2e.backends.docker_compose import DockerComposeE2EBackend
 
 logger = logging.getLogger(__name__)
 _E2E_HARNESS_DEBUG = os.environ.get("E2E_HARNESS_DEBUG") == "1"
@@ -33,6 +36,7 @@ _AUTH_READY_TIMEOUT = 60
 _E2E_ADMIN_EMAIL = "admin@example.com"
 _E2E_REPO_ROOT = Path(__file__).resolve().parents[1]
 _DEFAULT_E2E_PLATFORM_CONFIG = _E2E_REPO_ROOT / "packages/nmp_platform/config/local.yaml"
+_E2E_COMPOSE_LIFECYCLE_ENV = "NMP_E2E_COMPOSE_LIFECYCLE"
 
 
 def admin_headers() -> dict[str, str]:
@@ -47,14 +51,30 @@ class ServicesPoolKey:
     config_hash: str
 
 
+class E2EHarnessConfig(TypedDict, total=False):
+    backend: Literal["subprocess", "docker", "docker_compose"]
+    compose_file: str
+    compose_project_name: str
+    service_url: str
+    auth_ready_url: str
+    wait_url: str
+    lifecycle: Literal["fresh", "reuse"]
+    compose_project_prefix: str
+    env: dict[str, str]
+
+
 @dataclass
 class RunningServices:
     url: str
     log_path: Path | None
     proc: subprocess.Popen[Any] | None
     config_path: Path | None
+    close: Callable[[], None] | None = None
     auth_enabled: bool = False
     key: ServicesPoolKey | None = None
+    docker_network_name: str | None = None
+    docker_container_alias: str | None = None
+    docker_container_port: int | None = None
 
 
 @dataclass(frozen=True)
@@ -63,6 +83,7 @@ class ModuleConfigState:
     key: ServicesPoolKey
     config_path: Path | None
     config_data: dict[str, Any]
+    harness_config: E2EHarnessConfig
     config_layers: tuple[str, ...]
     auth_enabled: bool
 
@@ -116,7 +137,13 @@ class E2EServicesPool:
         services = self._running_by_key.get(state.key)
         if services is None:
             log_path = self._get_log_dir() / f"services-{state.key.config_hash}-{uuid.uuid4().hex[:8]}.log"
-            services = _start_services(state.config_path, state.config_data, state.key.config_hash, log_path)
+            services = _start_services(
+                state.config_path,
+                state.config_data,
+                state.harness_config,
+                state.key.config_hash,
+                log_path,
+            )
             self._running_by_key[state.key] = services
         previous_key = self._active_service_key_by_module.get(module.nodeid)
         if previous_key is not None and previous_key != state.key:
@@ -169,13 +196,15 @@ class E2EServicesPool:
         if module.nodeid in self._module_states:
             return
         resolved_paths, config_data = _load_effective_e2e_config_from_node(module)
-        key = _services_pool_key(_canonical_config_hash(config_data))
+        harness_config = _resolve_e2e_harness_config_from_node(module)
+        key = _services_pool_key(_canonical_services_hash(config_data, harness_config))
         auth_enabled = _e2e_auth_enabled(config_data)
         self._module_states[module.nodeid] = ModuleConfigState(
             module_id=module.nodeid,
             key=key,
             config_path=None,
             config_data=config_data,
+            harness_config=harness_config,
             config_layers=tuple(str(path) for path in resolved_paths),
             auth_enabled=auth_enabled,
         )
@@ -184,13 +213,14 @@ class E2EServicesPool:
             "Registered E2E module config",
             e2e_module=module.nodeid,
             config_hash=key.config_hash,
+            harness_backend=harness_config["backend"],
             config_layers=list(self._module_states[module.nodeid].config_layers),
             auth_enabled=auth_enabled,
         )
 
     def _materialize_config_path(self, state: ModuleConfigState) -> ModuleConfigState:
         data_dir = e2e_services_data_dir(self._get_log_dir(), state.key.config_hash)
-        rendered_config_data = with_e2e_instance_paths(state.config_data, data_dir)
+        rendered_config_data = _render_e2e_config_for_backend(state.config_data, data_dir, state.harness_config)
         rendered_config = yaml.safe_dump(rendered_config_data, default_flow_style=False, sort_keys=True)
         config_path = self._get_generated_config_dir() / f"platform-{state.key.config_hash}.yaml"
         if not config_path.exists():
@@ -206,6 +236,7 @@ class E2EServicesPool:
             key=state.key,
             config_path=config_path,
             config_data=state.config_data,
+            harness_config=state.harness_config,
             config_layers=state.config_layers,
             auth_enabled=state.auth_enabled,
         )
@@ -226,6 +257,8 @@ class E2EServicesPool:
     @staticmethod
     def _terminate_services(services: RunningServices) -> None:
         if services.proc is None:
+            if services.close is not None:
+                services.close()
             return
         if services.proc.poll() is not None:
             E2EServicesPool._log_debug(
@@ -257,6 +290,7 @@ class E2EServicesPool:
             "auth_enabled": state.auth_enabled,
             "config_layers": list(state.config_layers),
             "config_path": str(state.config_path) if state.config_path is not None else None,
+            "harness_backend": state.harness_config["backend"],
         }
         if services is not None:
             details.update(
@@ -264,6 +298,9 @@ class E2EServicesPool:
                     "service_url": services.url,
                     "service_pid": services.proc.pid if services.proc is not None else None,
                     "service_log_path": str(services.log_path) if services.log_path is not None else None,
+                    "docker_network_name": services.docker_network_name,
+                    "docker_container_alias": services.docker_container_alias,
+                    "docker_container_port": services.docker_container_port,
                 }
             )
         return details
@@ -289,6 +326,37 @@ def _resolve_e2e_config_layers_from_node(node: Node) -> list[str | dict[str, Any
             continue
         raise pytest.UsageError("pytest.mark.e2e_config arguments must be strings or dicts")
     return layers
+
+
+def _resolve_e2e_harness_config_from_node(node: Node) -> E2EHarnessConfig:
+    marker = node.get_closest_marker("e2e_config")
+    if marker is None:
+        return {"backend": "subprocess"}
+    unknown = set(marker.kwargs) - {"harness"}
+    if unknown:
+        raise pytest.UsageError(f"pytest.mark.e2e_config only supports the 'harness' keyword, got: {sorted(unknown)}")
+    harness = marker.kwargs.get("harness")
+    if harness is None:
+        return {"backend": "subprocess"}
+    if not isinstance(harness, dict):
+        raise pytest.UsageError("pytest.mark.e2e_config harness must be a mapping")
+    normalized = _normalize_config(harness)
+    backend = normalized.get("backend", "subprocess")
+    if backend not in {"subprocess", "docker", "docker_compose"}:
+        raise pytest.UsageError(f"unsupported e2e harness backend: {backend}")
+    normalized["backend"] = backend
+    if backend == "docker_compose":
+        required = {"compose_file", "service_url"}
+        missing = sorted(required - set(normalized))
+        if missing:
+            raise pytest.UsageError(f"docker_compose harness config missing required keys: {missing}")
+        lifecycle = normalized.get("lifecycle", os.environ.get(_E2E_COMPOSE_LIFECYCLE_ENV, "fresh"))
+        if lifecycle not in {"fresh", "reuse"}:
+            raise pytest.UsageError(
+                f"unsupported docker_compose lifecycle from {_E2E_COMPOSE_LIFECYCLE_ENV}: {lifecycle}"
+            )
+        normalized["lifecycle"] = lifecycle
+    return normalized
 
 
 def _resolve_config_path(config_ref: str) -> Path:
@@ -320,6 +388,19 @@ def _normalize_config(value: Any, path: tuple[str, ...] = ()) -> Any:
 def _canonical_config_hash(config_data: dict[str, Any]) -> str:
     normalized = _normalize_config(config_data)
     payload = json.dumps(normalized, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
+
+
+def _canonical_services_hash(config_data: dict[str, Any], harness_config: E2EHarnessConfig) -> str:
+    payload = json.dumps(
+        {
+            "platform": _normalize_config(config_data),
+            "harness": _normalize_config(harness_config),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
 
 
@@ -405,6 +486,35 @@ def _real_service_plugin_allowlist() -> str | None:
     return ",".join(names) if names else None
 
 
+def _e2e_backend(harness_config: E2EHarnessConfig) -> Literal["subprocess", "docker", "docker_compose"]:
+    return harness_config.get("backend", "subprocess")
+
+
+def _render_e2e_config_for_backend(
+    config_data: dict[str, Any], data_dir: Path, harness_config: E2EHarnessConfig
+) -> dict[str, Any]:
+    if _e2e_backend(harness_config) in {"docker", "docker_compose"}:
+        return deepcopy(config_data)
+    return with_e2e_instance_paths(config_data, data_dir)
+
+
+class DockerBackendOverrides(TypedDict, total=False):
+    registry: str
+    tag: str
+    gpu_requested: NotRequired[bool]
+
+
+def _docker_backend_overrides() -> DockerBackendOverrides:
+    registry = os.environ.get("NMP_E2E_IMAGE_REGISTRY") or os.environ.get("IMAGE_REGISTRY")
+    tag = os.environ.get("NMP_E2E_IMAGE_TAG") or os.environ.get("BAKE_TAG")
+    overrides: DockerBackendOverrides = {}
+    if registry:
+        overrides["registry"] = registry
+    if tag:
+        overrides["tag"] = tag
+    return overrides
+
+
 def e2e_services_env(config_path: Path, data_dir: Path) -> dict[str, str]:
     """Environment for the ``nemo services run`` child process."""
     env = os.environ.copy()
@@ -455,10 +565,10 @@ def _wait_for_healthy(url: str, proc: subprocess.Popen[Any], timeout: float = _H
     return False
 
 
-def _wait_for_auth_ready(url: str, proc: subprocess.Popen[Any], timeout: float = _AUTH_READY_TIMEOUT) -> bool:
+def _wait_for_auth_ready(url: str, proc: subprocess.Popen[Any] | None, timeout: float = _AUTH_READY_TIMEOUT) -> bool:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        if _process_exited(proc):
+        if proc is not None and _process_exited(proc):
             return False
         probe_name = f"auth-probe-{uuid.uuid4().hex[:8]}"
         entity_name = f"auth-probe-entity-{uuid.uuid4().hex[:8]}"
@@ -470,7 +580,7 @@ def _wait_for_auth_ready(url: str, proc: subprocess.Popen[Any], timeout: float =
                 timeout=5.0,
             )
             if create_resp.status_code != 201:
-                if _process_exited(proc):
+                if proc is not None and _process_exited(proc):
                     return False
                 time.sleep(_HEALTH_POLL_INTERVAL)
                 continue
@@ -503,13 +613,28 @@ def _wait_for_auth_ready(url: str, proc: subprocess.Popen[Any], timeout: float =
             return True
         except httpx.RequestError as exc:
             logger.debug("Auth readiness probe failed; will retry: %s", exc)
-        if _process_exited(proc):
+        if proc is not None and _process_exited(proc):
             return False
         time.sleep(_HEALTH_POLL_INTERVAL)
     return False
 
 
 def _start_services(
+    config_path: Path,
+    config_data: dict[str, Any],
+    harness_config: E2EHarnessConfig,
+    config_hash: str,
+    log_path: Path,
+) -> RunningServices:
+    backend = _e2e_backend(harness_config)
+    if backend == "docker":
+        return _start_services_docker(config_path, config_data, config_hash)
+    if backend == "docker_compose":
+        return _start_services_docker_compose(config_path, config_data, harness_config, config_hash, log_path)
+    return _start_services_subprocess(config_path, config_data, config_hash, log_path)
+
+
+def _start_services_subprocess(
     config_path: Path, config_data: dict[str, Any], config_hash: str, log_path: Path
 ) -> RunningServices:
     port = _find_free_port()
@@ -570,3 +695,102 @@ def _start_services(
         auth_enabled=auth_enabled,
         key=_services_pool_key(config_hash),
     )
+
+
+def _start_services_docker(config_path: Path, config_data: dict[str, Any], config_hash: str) -> RunningServices:
+    backend = DockerE2EBackend(config_path=config_path, **_docker_backend_overrides())
+    try:
+        backend.start()
+    except Exception:
+        backend.stop()
+        raise
+
+    auth_enabled = _e2e_auth_enabled(config_data)
+    if auth_enabled and not _wait_for_auth_ready(backend.base_url, None):
+        backend.stop()
+        pytest.fail(f"Platform auth seed did not become ready within {_AUTH_READY_TIMEOUT}s.")
+
+    services = RunningServices(
+        url=backend.base_url,
+        log_path=None,
+        proc=None,
+        config_path=config_path,
+        close=backend.stop,
+        auth_enabled=auth_enabled,
+        key=_services_pool_key(config_hash),
+        docker_network_name=backend.network_name,
+        docker_container_alias=backend.network_alias,
+        docker_container_port=backend.container_port,
+    )
+
+    return services
+
+
+def _start_services_docker_compose(
+    config_path: Path,
+    config_data: dict[str, Any],
+    harness_config: E2EHarnessConfig,
+    config_hash: str,
+    log_path: Path,
+) -> RunningServices:
+    compose_file = _resolve_config_path(harness_config["compose_file"])
+    project_name = harness_config.get("compose_project_name")
+    if project_name is None:
+        project_prefix = harness_config.get("compose_project_prefix", "e2e-compose")
+        project_name = f"{project_prefix}-{config_hash}"
+    service_url = harness_config["service_url"]
+    wait_url = harness_config.get("wait_url")
+    backend = DockerComposeE2EBackend(
+        compose_file=compose_file,
+        config_path=config_path,
+        project_name=project_name,
+        service_url=service_url,
+        wait_url=wait_url,
+        env=harness_config.get("env"),
+        lifecycle=harness_config["lifecycle"],
+    )
+    try:
+        backend.start()
+    except Exception:
+        _write_docker_compose_logs(backend, log_path)
+        backend.stop()
+        raise
+
+    auth_enabled = _e2e_auth_enabled(config_data)
+    auth_ready_url = harness_config.get("auth_ready_url", backend.service_url)
+    if auth_enabled and not _wait_for_auth_ready(auth_ready_url, None):
+        _write_docker_compose_logs(backend, log_path)
+        backend.stop()
+        pytest.fail(
+            f"Platform auth seed did not become ready within {_AUTH_READY_TIMEOUT}s.\nlog:\n{_read_log_text(log_path)}"
+        )
+
+    def close() -> None:
+        try:
+            _write_docker_compose_logs(backend, log_path)
+        finally:
+            backend.stop()
+
+    return RunningServices(
+        url=backend.service_url,
+        log_path=log_path,
+        proc=None,
+        config_path=config_path,
+        close=close,
+        auth_enabled=auth_enabled,
+        key=_services_pool_key(config_hash),
+    )
+
+
+def _write_docker_compose_logs(backend: DockerComposeE2EBackend, log_path: Path) -> None:
+    try:
+        backend.write_logs(log_path)
+    except Exception:
+        logger.exception("Could not write docker compose services log", extra={"log_path": str(log_path)})
+
+
+def _read_log_text(log_path: Path) -> str:
+    try:
+        return log_path.read_text()
+    except OSError as exc:
+        return f"<could not read {log_path}: {exc}>"

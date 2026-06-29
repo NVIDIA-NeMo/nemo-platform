@@ -49,6 +49,9 @@ outputs:
   cpu-smoke:
     description: "'true' if CPU smoke image or Kubernetes smoke test inputs changed"
     value: ${{ steps.filter.outputs.deps == 'true' || steps.filter.outputs.docker == 'true' || steps.filter.outputs.docker-scripts == 'true' || steps.filter.outputs.helm == 'true' || steps.filter.outputs.openapi == 'true' || steps.filter.outputs.python-runtime == 'true' || steps.filter.outputs.web-studio == 'true' || steps.filter.outputs.k8s-smoke == 'true' }}
+  auth-idp:
+    description: "'true' if auth-idp tests or their containerized E2E harness inputs changed"
+    value: ${{ steps.filter.outputs.auth-idp == 'true' }}
 
 runs:
   using: "composite"
@@ -110,3 +113,9 @@ runs:
             - '.github/scripts/ngc_metadata.py'
             - '.github/scripts/tests/test_ngc_metadata.py'
             - '.github/assets/ngc/**'
+          auth-idp:
+            - 'conftest.py'
+            - 'pytest.ini'
+            - 'tests/auth_idp/**'
+            - 'e2e/**'
+            - 'contrib/auth/**'

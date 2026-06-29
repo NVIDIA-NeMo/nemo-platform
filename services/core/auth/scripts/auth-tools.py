@@ -1210,7 +1210,7 @@ def _generate_permissions_reference(auth_config: Dict) -> str:
         role_perms_map[role_name] = extract_role_permissions_recursive(roles_data, role_name)
 
     area_groups = _build_docs_area_groups(registry)
-    ordered_roles = ["Viewer", "Editor", "Admin"]
+    ordered_roles = ["Viewer", "Editor", "Admin", "JobRunner"]
 
     lines: List[str] = []
     lines.append("---")
@@ -1238,7 +1238,10 @@ def _generate_permissions_reference(auth_config: Dict) -> str:
     lines.append("")
     lines.append("<Note>")
     lines.append("")
-    lines.append("PlatformAdmin is omitted — it bypasses permission checks entirely at the policy level.")
+    lines.append(
+        "PlatformAdmin is omitted — it bypasses permission checks entirely at the policy level. "
+        "JobRunner is intended for workload identities, not interactive users."
+    )
     lines.append("")
     lines.append("</Note>")
 
@@ -1247,8 +1250,10 @@ def _generate_permissions_reference(auth_config: Dict) -> str:
         lines.append(f"## {display_name}")
         lines.append("")
 
-        lines.append("| Permission | Description | Viewer | Editor | Admin |")
-        lines.append("|------------|-------------|:------:|:------:|:-----:|")
+        header_cells = ["Permission", "Description", *ordered_roles]
+        alignment_cells = ["------------", "-------------", *[":------:" for _ in ordered_roles]]
+        lines.append(f"| {' | '.join(header_cells)} |")
+        lines.append(f"| {' | '.join(alignment_cells)} |")
 
         rows = _build_grouped_rows(perm_names, registry, role_perms_map, ordered_roles)
         lines.extend(rows)

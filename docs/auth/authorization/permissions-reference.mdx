@@ -11,110 +11,111 @@ For token-level access restrictions, see [API Scopes](/documentation/access-cont
 
 <Note>
 
-PlatformAdmin is omitted — it bypasses permission checks entirely at the policy level.
+PlatformAdmin is omitted — it bypasses permission checks entirely at the policy level. JobRunner is intended for workload identities, not interactive users.
 
 </Note>
 ## Entities API
 
-| Permission | Description | Viewer | Editor | Admin |
-|------------|-------------|:------:|:------:|:-----:|
-| <code>entities.(read &#124; create &#124; update &#124; delete)</code> | Read, create, update, delete entities |  |  |  |
+| Permission | Description | Viewer | Editor | Admin | JobRunner |
+| ------------ | ------------- | :------: | :------: | :------: | :------: |
+| <code>entities.(read &#124; create &#124; update &#124; delete)</code> | Read, create, update, delete entities |  |  |  |  |
 
 ## Files API
 
-| Permission | Description | Viewer | Editor | Admin |
-|------------|-------------|:------:|:------:|:-----:|
-| <code>filesets.(read &#124; list)</code> | Read, list files | ✓ | ✓ | ✓ |
-| <code>filesets.(create &#124; update &#124; delete)</code> | Create, update, delete files |  | ✓ | ✓ |
+| Permission | Description | Viewer | Editor | Admin | JobRunner |
+| ------------ | ------------- | :------: | :------: | :------: | :------: |
+| <code>filesets.(read &#124; list)</code> | Read, list files | ✓ | ✓ | ✓ |  |
+| <code>filesets.(create &#124; update &#124; delete)</code> | Create, update, delete files |  | ✓ | ✓ |  |
 
 ## Guardrails API
 
-| Permission | Description | Viewer | Editor | Admin |
-|------------|-------------|:------:|:------:|:-----:|
-| `guardrails.checks.exec` | Execute guardrail checks |  | ✓ | ✓ |
-| <code>guardrails.configs.(read &#124; list)</code> | Read, list guardrails configs | ✓ | ✓ | ✓ |
-| <code>guardrails.configs.(create &#124; update &#124; delete)</code> | Create, update, delete guardrails configs |  | ✓ | ✓ |
+| Permission | Description | Viewer | Editor | Admin | JobRunner |
+| ------------ | ------------- | :------: | :------: | :------: | :------: |
+| `guardrails.checks.exec` | Execute guardrail checks |  | ✓ | ✓ |  |
+| <code>guardrails.configs.(read &#124; list)</code> | Read, list guardrails configs | ✓ | ✓ | ✓ |  |
+| <code>guardrails.configs.(create &#124; update &#124; delete)</code> | Create, update, delete guardrails configs |  | ✓ | ✓ |  |
 
 ## IAM API
 
-| Permission | Description | Viewer | Editor | Admin |
-|------------|-------------|:------:|:------:|:-----:|
-| <code>iam.(read &#124; list &#124; create &#124; delete)</code> | Read, list, create, delete iam |  |  | ✓ |
-| `iam.bundle.read` | Download OPA authorization bundle (external OPA / advanced ops) |  |  |  |
+| Permission | Description | Viewer | Editor | Admin | JobRunner |
+| ------------ | ------------- | :------: | :------: | :------: | :------: |
+| <code>iam.(read &#124; list &#124; create &#124; delete)</code> | Read, list, create, delete iam |  |  | ✓ |  |
+| `iam.bundle.read` | Download OPA authorization bundle (external OPA / advanced ops) |  |  |  |  |
 
 ## Inference API
 
-| Permission | Description | Viewer | Editor | Admin |
-|------------|-------------|:------:|:------:|:-----:|
-| <code>inference.deployment-configs.(read &#124; list)</code> | Read, list inference deployment-configs | ✓ | ✓ | ✓ |
-| <code>inference.deployment-configs.(create &#124; delete)</code> | Create, delete inference deployment-configs |  | ✓ | ✓ |
-| <code>inference.deployments.(read &#124; list)</code> | Read, list inference deployments | ✓ | ✓ | ✓ |
-| <code>inference.deployments.(create &#124; update &#124; delete)</code> | Create, update, delete inference deployments |  | ✓ | ✓ |
-| `inference.gateway.model.exec` | Execute model gateway inference | ✓ | ✓ | ✓ |
-| `inference.gateway.openai.exec` | Execute OpenAI-compatible gateway inference | ✓ | ✓ | ✓ |
-| `inference.gateway.provider.exec` | Execute provider gateway inference | ✓ | ✓ | ✓ |
-| <code>inference.providers.(read &#124; list)</code> | Read, list inference providers | ✓ | ✓ | ✓ |
-| <code>inference.providers.(create &#124; update &#124; delete)</code> | Create, update, delete inference providers |  | ✓ | ✓ |
-| <code>inference.virtual-models.(read &#124; list)</code> | Read, list inference virtual-models | ✓ | ✓ | ✓ |
-| <code>inference.virtual-models.(create &#124; update &#124; delete)</code> | Create, update, delete inference virtual-models |  | ✓ | ✓ |
+| Permission | Description | Viewer | Editor | Admin | JobRunner |
+| ------------ | ------------- | :------: | :------: | :------: | :------: |
+| <code>inference.deployment-configs.(read &#124; list)</code> | Read, list inference deployment-configs | ✓ | ✓ | ✓ |  |
+| <code>inference.deployment-configs.(create &#124; delete)</code> | Create, delete inference deployment-configs |  | ✓ | ✓ |  |
+| <code>inference.deployments.(read &#124; list)</code> | Read, list inference deployments | ✓ | ✓ | ✓ |  |
+| <code>inference.deployments.(create &#124; update &#124; delete)</code> | Create, update, delete inference deployments |  | ✓ | ✓ |  |
+| `inference.gateway.model.exec` | Execute model gateway inference | ✓ | ✓ | ✓ |  |
+| `inference.gateway.openai.exec` | Execute OpenAI-compatible gateway inference | ✓ | ✓ | ✓ |  |
+| `inference.gateway.provider.exec` | Execute provider gateway inference | ✓ | ✓ | ✓ |  |
+| <code>inference.providers.(read &#124; list)</code> | Read, list inference providers | ✓ | ✓ | ✓ |  |
+| <code>inference.providers.(create &#124; update &#124; delete)</code> | Create, update, delete inference providers |  | ✓ | ✓ |  |
+| <code>inference.virtual-models.(read &#124; list)</code> | Read, list inference virtual-models | ✓ | ✓ | ✓ |  |
+| <code>inference.virtual-models.(create &#124; update &#124; delete)</code> | Create, update, delete inference virtual-models |  | ✓ | ✓ |  |
 
 ## Jobs API
 
-| Permission | Description | Viewer | Editor | Admin |
-|------------|-------------|:------:|:------:|:-----:|
-| <code>jobs.(read &#124; list)</code> | Read, list jobs | ✓ | ✓ | ✓ |
-| <code>jobs.(create &#124; update &#124; delete &#124; cancel)</code> | Create, update, delete, cancel jobs |  | ✓ | ✓ |
+| Permission | Description | Viewer | Editor | Admin | JobRunner |
+| ------------ | ------------- | :------: | :------: | :------: | :------: |
+| <code>jobs.(read &#124; list)</code> | Read, list jobs | ✓ | ✓ | ✓ |  |
+| <code>jobs.(create &#124; update &#124; delete &#124; cancel)</code> | Create, update, delete, cancel jobs |  | ✓ | ✓ |  |
+| `jobs.logs.create` | Upload job logs |  |  |  | ✓ |
 
 ## Models API
 
-| Permission | Description | Viewer | Editor | Admin |
-|------------|-------------|:------:|:------:|:-----:|
-| <code>models.(read &#124; list)</code> | Read, list models | ✓ | ✓ | ✓ |
-| <code>models.(create &#124; update &#124; delete)</code> | Create, update, delete models |  | ✓ | ✓ |
-| <code>models.adapters.(read &#124; list)</code> | Read, list models adapters | ✓ | ✓ | ✓ |
-| <code>models.adapters.(create &#124; update &#124; delete)</code> | Create, update, delete models adapters |  | ✓ | ✓ |
-| `models.prompts.read` | Read model prompts | ✓ | ✓ | ✓ |
-| <code>models.prompts.(create &#124; update &#124; delete)</code> | Create, update, delete models prompts |  | ✓ | ✓ |
-| `models.prompts.list` | List model prompts |  |  |  |
-| `models.tool-call-plugin.set` | Whether this user can set tool_call_plugin on Models or Deployment Configs *(policy-enforced)* |  |  | ✓ |
-| `models.trust-remote-code.set` | Whether this user can set trust_remote_code on Models *(policy-enforced)* |  |  | ✓ |
+| Permission | Description | Viewer | Editor | Admin | JobRunner |
+| ------------ | ------------- | :------: | :------: | :------: | :------: |
+| <code>models.(read &#124; list)</code> | Read, list models | ✓ | ✓ | ✓ |  |
+| <code>models.(create &#124; update &#124; delete)</code> | Create, update, delete models |  | ✓ | ✓ |  |
+| <code>models.adapters.(read &#124; list)</code> | Read, list models adapters | ✓ | ✓ | ✓ |  |
+| <code>models.adapters.(create &#124; update &#124; delete)</code> | Create, update, delete models adapters |  | ✓ | ✓ |  |
+| `models.prompts.read` | Read model prompts | ✓ | ✓ | ✓ |  |
+| <code>models.prompts.(create &#124; update &#124; delete)</code> | Create, update, delete models prompts |  | ✓ | ✓ |  |
+| `models.prompts.list` | List model prompts |  |  |  |  |
+| `models.tool-call-plugin.set` | Whether this user can set tool_call_plugin on Models or Deployment Configs *(policy-enforced)* |  |  | ✓ |  |
+| `models.trust-remote-code.set` | Whether this user can set trust_remote_code on Models *(policy-enforced)* |  |  | ✓ |  |
 
 ## Platform
 
-| Permission | Description | Viewer | Editor | Admin |
-|------------|-------------|:------:|:------:|:-----:|
-| `platform.admin` | Platform-wide administrative bypass *(policy-enforced)* |  |  |  |
+| Permission | Description | Viewer | Editor | Admin | JobRunner |
+| ------------ | ------------- | :------: | :------: | :------: | :------: |
+| `platform.admin` | Platform-wide administrative bypass *(policy-enforced)* |  |  |  |  |
 
 ## Projects API
 
-| Permission | Description | Viewer | Editor | Admin |
-|------------|-------------|:------:|:------:|:-----:|
-| <code>projects.(read &#124; list)</code> | Read, list projects | ✓ | ✓ | ✓ |
-| <code>projects.(create &#124; update &#124; delete)</code> | Create, update, delete projects |  | ✓ | ✓ |
+| Permission | Description | Viewer | Editor | Admin | JobRunner |
+| ------------ | ------------- | :------: | :------: | :------: | :------: |
+| <code>projects.(read &#124; list)</code> | Read, list projects | ✓ | ✓ | ✓ |  |
+| <code>projects.(create &#124; update &#124; delete)</code> | Create, update, delete projects |  | ✓ | ✓ |  |
 
 ## Safe Synthesizer API
 
-| Permission | Description | Viewer | Editor | Admin |
-|------------|-------------|:------:|:------:|:-----:|
-| <code>safe-synthesizer.jobs.(read &#124; list &#124; create &#124; delete &#124; cancel)</code> | Read, list, create, delete, cancel safe synthesizer jobs |  |  |  |
+| Permission | Description | Viewer | Editor | Admin | JobRunner |
+| ------------ | ------------- | :------: | :------: | :------: | :------: |
+| <code>safe-synthesizer.jobs.(read &#124; list &#124; create &#124; delete &#124; cancel)</code> | Read, list, create, delete, cancel safe synthesizer jobs |  |  |  |  |
 
 ## Secrets API
 
-| Permission | Description | Viewer | Editor | Admin |
-|------------|-------------|:------:|:------:|:-----:|
-| <code>secrets.(read &#124; list)</code> | Read, list secrets | ✓ | ✓ | ✓ |
-| <code>secrets.(create &#124; update &#124; delete)</code> | Create, update, delete secrets |  | ✓ | ✓ |
-| <code>secrets.(access &#124; rotate)</code> | Access, rotate secrets |  |  |  |
+| Permission | Description | Viewer | Editor | Admin | JobRunner |
+| ------------ | ------------- | :------: | :------: | :------: | :------: |
+| <code>secrets.(read &#124; list)</code> | Read, list secrets | ✓ | ✓ | ✓ |  |
+| <code>secrets.(create &#124; update &#124; delete)</code> | Create, update, delete secrets |  | ✓ | ✓ |  |
+| <code>secrets.(access &#124; rotate)</code> | Access, rotate secrets |  |  |  |  |
 
 ## Workspaces API
 
-| Permission | Description | Viewer | Editor | Admin |
-|------------|-------------|:------:|:------:|:-----:|
-| <code>workspaces.(read &#124; list)</code> | Read, list workspaces | ✓ | ✓ | ✓ |
-| <code>workspaces.(update &#124; delete)</code> | Update, delete workspaces |  | ✓ | ✓ |
-| `workspaces.create` | Create workspaces |  |  |  |
-| <code>workspaces.members.(list &#124; create &#124; update &#124; delete)</code> | List, create, update, delete workspaces members |  |  | ✓ |
-| `workspaces.members.read` | Read workspace member details |  |  |  |
+| Permission | Description | Viewer | Editor | Admin | JobRunner |
+| ------------ | ------------- | :------: | :------: | :------: | :------: |
+| <code>workspaces.(read &#124; list)</code> | Read, list workspaces | ✓ | ✓ | ✓ |  |
+| <code>workspaces.(update &#124; delete)</code> | Update, delete workspaces |  | ✓ | ✓ |  |
+| `workspaces.create` | Create workspaces |  |  |  |  |
+| <code>workspaces.members.(list &#124; create &#124; update &#124; delete)</code> | List, create, update, delete workspaces members |  |  | ✓ |  |
+| `workspaces.members.read` | Read workspace member details |  |  |  |  |
 
 ## Related
 
