@@ -8,7 +8,18 @@ import { useMutateMany } from '@studio/api/common/useMutateMany';
 import { invalidateDatasetCaches } from '@studio/api/datasets/invalidateDatasetCaches';
 import { BulkDeleteModal as GenericBulkDeleteModal } from '@studio/components/BulkDeleteModal';
 import { Trash } from 'lucide-react';
-import { cloneElement, isValidElement, type FC, type ReactNode, useState } from 'react';
+import {
+  cloneElement,
+  isValidElement,
+  type FC,
+  type MouseEventHandler,
+  type ReactNode,
+  useState,
+} from 'react';
+
+interface TriggerProps {
+  onClick?: MouseEventHandler;
+}
 
 interface DatasetBulkDeleteModalProps {
   selectedDatasets: FilesetOutput[];
@@ -38,6 +49,9 @@ export const DatasetBulkDeleteModal: FC<DatasetBulkDeleteModalProps> = ({
       (dataset): dataset is FilesetOutput & { workspace: string; name: string } =>
         !!(dataset.workspace && dataset.name)
     );
+    if (datasetsToDelete.length !== datasets.length) {
+      throw new Error('Cannot delete datasets without workspace and name.');
+    }
     await deleteDatasets(
       datasetsToDelete.map((dataset) => ({ workspace: dataset.workspace, name: dataset.name }))
     );
@@ -46,9 +60,13 @@ export const DatasetBulkDeleteModal: FC<DatasetBulkDeleteModalProps> = ({
 
   const openTrigger = () => setOpen(true);
 
-  const trigger = isValidElement(slotTrigger) ? (
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    cloneElement(slotTrigger as React.ReactElement<any>, { onClick: openTrigger })
+  const trigger = isValidElement<TriggerProps>(slotTrigger) ? (
+    cloneElement(slotTrigger, {
+      onClick: (e: Parameters<MouseEventHandler>[0]) => {
+        slotTrigger.props.onClick?.(e);
+        openTrigger();
+      },
+    })
   ) : (
     <Button kind="secondary" data-testid="bulk-delete-modal-trigger-button" onClick={openTrigger}>
       <Trash />
