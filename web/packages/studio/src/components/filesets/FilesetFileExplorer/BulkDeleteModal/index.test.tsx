@@ -302,6 +302,7 @@ describe('BulkDeleteModal', () => {
 
       await waitFor(() => {
         expect(within(dialog).getByRole('button', { name: /cancel/i })).toBeDisabled();
+        expect(within(dialog).getByRole('button', { name: /delete/i })).toBeDisabled();
       });
 
       // Resolve to allow the modal to close and avoid act() warnings
