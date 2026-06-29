@@ -61,8 +61,9 @@ export const DataDesignerJobActionsMenu: FC<DataDesignerJobActionsMenuProps> = (
 
   const handleClone = useCallback(() => {
     const cloneJobRequest = buildClonedJobRequest(job);
+    if (!cloneJobRequest) return;
     navigate(getNewDataDesignerJobRoute(workspace), {
-      state: cloneJobRequest ? { cloneJobRequest } : undefined,
+      state: { cloneJobRequest },
     });
   }, [job, navigate, workspace]);
 

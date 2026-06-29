@@ -114,32 +114,24 @@ describe('DatasetFileManagementSidePanel', () => {
     expect(await screen.findByText('No Files')).toBeInTheDocument();
   });
 
-  it('renders the inline file preview instead of the explorer when a file is selected', async () => {
-    renderComponent({
-      filesList: [
-        { path: 'folder1/file.txt', size: 100, file_ref: 'oid1', file_url: filesetUrl('file.txt') },
-      ],
-      selectedFilePath: 'folder1/file.txt',
-    });
+  it('shows subfolder breadcrumb segments when navigating into a folder', async () => {
+    renderComponent({ currentFolder: 'folder1/subfolder' });
 
-    // File breadcrumb segments are shown in the heading...
+    // Breadcrumb segments for each part of the current folder path are rendered
     await waitFor(() => {
-      expect(screen.getByText('folder1')).toBeInTheDocument();
-      expect(screen.getByText('file.txt')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'folder1' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'subfolder' })).toBeInTheDocument();
     });
 
-    // ...and the explorer (search/toolbar) is not rendered.
-    expect(screen.queryByTestId('dataset-details-search-input')).not.toBeInTheDocument();
+    // The explorer (search/toolbar) is always rendered
+    expect(screen.getByTestId('dataset-details-search-input')).toBeInTheDocument();
   });
 
-  it('navigates to the fileset root when the fileset breadcrumb is clicked in preview', async () => {
+  it('navigates to the fileset root when the fileset breadcrumb is clicked', async () => {
     const user = userEvent.setup();
     const onFolderChange = vi.fn();
     renderComponent({
-      filesList: [
-        { path: 'file.txt', size: 100, file_ref: 'oid1', file_url: filesetUrl('file.txt') },
-      ],
-      selectedFilePath: 'file.txt',
+      currentFolder: 'folder1',
       onFolderChange,
     });
 

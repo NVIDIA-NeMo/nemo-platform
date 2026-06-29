@@ -174,7 +174,7 @@ describe('NewDataDesignerJobForm', () => {
 
       render(<NewDataDesignerJobForm />);
       await screen.findByRole('button', { name: 'Create Job' });
-      await user.type(screen.getByRole('textbox', { name: /dataset name/i }), 'my-custom-name');
+      await user.type(screen.getByRole('textbox', { name: /fileset name/i }), 'my-custom-name');
       await user.type(screen.getByLabelText('Data description'), 'At least ten characters');
       await user.click(screen.getByRole('button', { name: 'Simulate Generate' }));
 

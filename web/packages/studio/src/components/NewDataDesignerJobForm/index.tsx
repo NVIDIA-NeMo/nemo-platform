@@ -45,8 +45,13 @@ const sharedFields = {
   modelRef: z.string().min(1, 'Please select a model'),
   rows: z.number({ required_error: 'Rows is required' }).min(1, 'Must be at least 1'),
   inferenceSecret: z.string().optional(),
-  // Editable job request JSON. Validity is surfaced inline by the JSON editor and guarded on submit.
-  jsonContent: z.string(),
+  // Editable job request JSON. Must contain a valid config before submit.
+  jsonContent: z
+    .string()
+    .refine(
+      (value) => !!parseJsonContentToJobRequest(value).jobRequest?.spec?.config,
+      'Generate or provide valid job JSON before creating.'
+    ),
 };
 
 const newDataDesignerJobFormSchema = z.object({
@@ -84,7 +89,13 @@ export const NewDataDesignerJobForm: FC = () => {
     [clonedJobRequest]
   );
 
-  const { control, handleSubmit, setValue, getValues } = useForm<NewDataDesignerJobFormFields>({
+  const {
+    control,
+    handleSubmit,
+    setValue,
+    getValues,
+    formState: { errors },
+  } = useForm<NewDataDesignerJobFormFields>({
     resolver: zodResolver(isClone ? cloneDataDesignerJobFormSchema : newDataDesignerJobFormSchema),
     defaultValues: {
       name: clonedJobRequest?.name ?? '',
@@ -261,6 +272,12 @@ export const NewDataDesignerJobForm: FC = () => {
             />
           </Stack>
         </Panel>
+
+        {errors.jsonContent && (
+          <Text kind="body/regular/sm" className="text-danger">
+            {errors.jsonContent.message}
+          </Text>
+        )}
 
         {submitError && (
           <Text kind="body/regular/sm" className="text-danger">
