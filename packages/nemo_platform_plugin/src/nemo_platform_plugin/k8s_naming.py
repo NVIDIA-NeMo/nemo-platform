@@ -7,8 +7,6 @@ Plugins cannot depend on ``nmp_common``; this module lives in ``nemo_platform_pl
 so deployments, models, and other plugins share one hashing/normalization contract.
 """
 
-from __future__ import annotations
-
 import hashlib
 import re
 from typing import Literal
@@ -40,6 +38,12 @@ def k8s_safe_name(
     should pass ``hash_input=workspace_name_identity(workspace, name)`` so the hash
     reflects the unambiguous identity rather than a join-ambiguous prefix.
     """
+    min_required_length = 1 + len(suffix)
+    if include_hash:
+        min_required_length += 1 + HASH_SUFFIX_LENGTH
+    if min_required_length > max_length:
+        raise ValueError("max_length is too small for base name, hash, and suffix")
+
     hash_source = hash_input if hash_input is not None else base_name
     hash_suffix = hashlib.sha256(hash_source.encode()).hexdigest()[:HASH_SUFFIX_LENGTH]
 

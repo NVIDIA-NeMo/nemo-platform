@@ -14,8 +14,6 @@ import ``nmp_common``). Orphan cleanup and idempotency rely on identity labels,
 not container names alone.
 """
 
-from __future__ import annotations
-
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
 from nemo_platform_plugin.k8s_naming import k8s_safe_name, workspace_name_identity
 

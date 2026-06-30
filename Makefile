@@ -302,7 +302,8 @@ PYTEST_WORKERS ?= auto
 PYTEST_MAX_WORKERS ?= 16
 PYTEST_CMD := env PYTHONWARNINGS="ignore::UserWarning:pytest_only.version" uv run --frozen \
 	pytest \
-	-n $(PYTEST_WORKERS) --maxprocesses=$(PYTEST_MAX_WORKERS) --dist loadscope --timeout=120 $(PYTEST_VERBOSITY) $(PYTEST_EXTRA)
+	-n $(PYTEST_WORKERS) --maxprocesses=$(PYTEST_MAX_WORKERS) --max-worker-restart=2 \
+	--dist loadscope --timeout=120 $(PYTEST_VERBOSITY) $(PYTEST_EXTRA)
 
 PYTEST_CI_OPTS := --cov=src --cov=packages \
 	--junitxml=report.xml \
