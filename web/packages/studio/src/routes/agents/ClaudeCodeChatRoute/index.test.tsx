@@ -94,6 +94,20 @@ describe('ClaudeCodeChatRoute', () => {
     expect(mocks.loadSession).not.toHaveBeenCalled();
   });
 
+  it('does not submit a dashboard prompt to an existing session before the reset completes', async () => {
+    // The bug: startNewChat() calls setSessionId(null) which is a React state update.
+    // If submitPrompt is called in the same synchronous block, ensureSessionId still
+    // holds the old session ID in its closure and the prompt goes to the wrong session.
+    mocks.chat.sessionId = 'old-session';
+
+    renderClaudeCodeChatRoute({ state: { initialPrompt: 'Hello' } });
+
+    await waitFor(() => expect(mocks.startNewChat).toHaveBeenCalled());
+    // submitPrompt must NOT have been called yet — it should be deferred until
+    // sessionId becomes null (handled by the second effect).
+    expect(mocks.chat.submitPrompt).not.toHaveBeenCalled();
+  });
+
   it('loads the session selected via the session query param', async () => {
     renderClaudeCodeChatRoute({ search: '?session=session-existing' });
 
