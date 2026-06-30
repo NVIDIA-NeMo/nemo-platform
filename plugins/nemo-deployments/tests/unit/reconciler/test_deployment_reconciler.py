@@ -1,20 +1,73 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-from unittest.mock import AsyncMock
+from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from helpers import make_deployment, make_deployment_config
 from nemo_deployments_plugin.backends.base import BackendStatusUpdate
 from nemo_deployments_plugin.backends.registry import ExecutorRegistry
 from nemo_deployments_plugin.config import ControllerConfig
-from nemo_deployments_plugin.entities import Prerequisite, Volume
+from nemo_deployments_plugin.entities import Deployment, Prerequisite, StatusEvent, Volume
 from nemo_deployments_plugin.reconciler.deployment_reconciler import DeploymentReconciler
 from nemo_deployments_plugin.reconciler.orphan_cleanup import reconcile_orphans
 from nemo_platform_plugin.entity_client import NemoEntityConflictError, NemoEntityNotFoundError
 from reconciler.conftest import MockDeploymentBackend
 
 NO_VOLUMES: dict[tuple[str, str], Volume] = {}
+
+NOW = datetime(2026, 6, 30, 12, 0, 0, tzinfo=timezone.utc)
+STARTING_TIMEOUT_SECONDS = 60
+
+
+@pytest.fixture
+def patch_reconciler_now():
+    with patch(
+        "nemo_deployments_plugin.reconciler.deployment_reconciler.datetime",
+        wraps=datetime,
+    ) as mock_dt:
+        mock_dt.now.return_value = NOW
+        yield
+
+
+def _starting_timeout_reconciler(
+    mock_entities: AsyncMock,
+    mock_backend: MockDeploymentBackend,
+    *,
+    starting_timeout_seconds: int = STARTING_TIMEOUT_SECONDS,
+) -> DeploymentReconciler:
+    return DeploymentReconciler(
+        mock_entities,
+        ExecutorRegistry({"default": mock_backend}, default_executor="default"),
+        ControllerConfig(
+            drift_recovery_max_attempts=3,
+            drift_recovery_initial_delay_seconds=1,
+            drift_recovery_max_delay_seconds=10,
+            starting_timeout_seconds=starting_timeout_seconds,
+        ),
+    )
+
+
+def _deployment_stuck_starting(*, elapsed_seconds: int) -> Deployment:
+    starting_at = NOW - timedelta(seconds=elapsed_seconds)
+    dep = make_deployment()
+    dep.status = "STARTING"
+    dep.status_history = [
+        StatusEvent(status="STARTING", message="created", timestamp=starting_at.isoformat()),
+    ]
+    return dep
+
+
+async def _reconcile_stuck_starting(
+    reconciler: DeploymentReconciler,
+    mock_backend: MockDeploymentBackend,
+    dep: Deployment,
+) -> None:
+    cfg = make_deployment_config()
+    reconciler.set_config_cache({("default", "cfg1"): cfg})
+    mock_backend.read_status_result = BackendStatusUpdate(status="STARTING", status_message="waiting")
+    await reconciler.reconcile_one(dep, deployments_by_name={}, volumes_by_name=NO_VOLUMES)
 
 
 @pytest.mark.asyncio
@@ -164,6 +217,100 @@ async def test_on_failure_succeeded_terminal(
 
     assert dep.status == "SUCCEEDED"
     assert dep.exit_code == 0
+
+
+@pytest.mark.asyncio
+async def test_starting_timeout_fails_at_boundary(
+    mock_entities: AsyncMock,
+    mock_backend: MockDeploymentBackend,
+    patch_reconciler_now,
+) -> None:
+    reconciler = _starting_timeout_reconciler(mock_entities, mock_backend)
+    dep = _deployment_stuck_starting(elapsed_seconds=STARTING_TIMEOUT_SECONDS)
+
+    await _reconcile_stuck_starting(reconciler, mock_backend, dep)
+
+    assert dep.status == "FAILED"
+    assert "stuck in STARTING" in dep.status_message
+    assert dep.error_details is not None
+    assert dep.error_details["reason"] == "starting_timeout"
+    assert dep.error_details["elapsed_seconds"] == STARTING_TIMEOUT_SECONDS
+    assert dep.error_details["timeout_seconds"] == STARTING_TIMEOUT_SECONDS
+
+
+@pytest.mark.asyncio
+async def test_starting_timeout_before_boundary_stays_starting(
+    mock_entities: AsyncMock,
+    mock_backend: MockDeploymentBackend,
+    patch_reconciler_now,
+) -> None:
+    reconciler = _starting_timeout_reconciler(mock_entities, mock_backend)
+    dep = _deployment_stuck_starting(elapsed_seconds=STARTING_TIMEOUT_SECONDS - 1)
+
+    await _reconcile_stuck_starting(reconciler, mock_backend, dep)
+
+    assert dep.status == "STARTING"
+    assert dep.error_details is None
+
+
+@pytest.mark.asyncio
+async def test_starting_timeout_disabled_when_zero(
+    mock_entities: AsyncMock,
+    mock_backend: MockDeploymentBackend,
+    patch_reconciler_now,
+) -> None:
+    reconciler = _starting_timeout_reconciler(mock_entities, mock_backend, starting_timeout_seconds=0)
+    dep = _deployment_stuck_starting(elapsed_seconds=7200)
+
+    await _reconcile_stuck_starting(reconciler, mock_backend, dep)
+
+    assert dep.status == "STARTING"
+    assert dep.error_details is None
+
+
+@pytest.mark.asyncio
+async def test_starting_timeout_uses_latest_starting_episode(
+    mock_entities: AsyncMock,
+    mock_backend: MockDeploymentBackend,
+    patch_reconciler_now,
+) -> None:
+    """After drift recovery, elapsed time should reset from the latest STARTING entry."""
+    reconciler = _starting_timeout_reconciler(mock_entities, mock_backend)
+    dep = make_deployment()
+    dep.status = "STARTING"
+    old_starting = NOW - timedelta(hours=2)
+    recent_starting = NOW - timedelta(seconds=30)
+    dep.status_history = [
+        StatusEvent(status="STARTING", message="created", timestamp=old_starting.isoformat()),
+        StatusEvent(status="READY", message="healthy", timestamp=(NOW - timedelta(hours=1)).isoformat()),
+        StatusEvent(status="LOST", message="backend lost", timestamp=(NOW - timedelta(minutes=45)).isoformat()),
+        StatusEvent(status="STARTING", message="recovering", timestamp=recent_starting.isoformat()),
+    ]
+
+    await _reconcile_stuck_starting(reconciler, mock_backend, dep)
+
+    assert dep.status == "STARTING"
+    assert dep.error_details is None
+
+
+@pytest.mark.asyncio
+async def test_starting_timeout_falls_back_to_first_history_entry(
+    mock_entities: AsyncMock,
+    mock_backend: MockDeploymentBackend,
+    patch_reconciler_now,
+) -> None:
+    reconciler = _starting_timeout_reconciler(mock_entities, mock_backend)
+    dep = make_deployment()
+    dep.status = "STARTING"
+    dep.status_history = [
+        StatusEvent(status="PENDING", message="waiting", timestamp=(NOW - timedelta(seconds=60)).isoformat()),
+    ]
+
+    await _reconcile_stuck_starting(reconciler, mock_backend, dep)
+
+    assert dep.status == "FAILED"
+    assert dep.error_details is not None
+    assert dep.error_details["reason"] == "starting_timeout"
 
 
 @pytest.mark.asyncio

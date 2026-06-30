@@ -143,6 +143,11 @@ class DeploymentReconciler:
             if status_update.status == "UNKNOWN":
                 await self._handle_unknown_status(deployment, status_update)
                 return
+            if status_update.status == "STARTING":
+                timeout_update = self._check_starting_timeout(deployment)
+                if timeout_update is not None:
+                    await self._update_deployment_status(deployment, timeout_update)
+                    return
             if status_update.status in ("READY", "SUCCEEDED"):
                 self._drift_cache.remove(deployment_id(deployment))
             await self._update_deployment_status(deployment, status_update)
@@ -323,6 +328,29 @@ class DeploymentReconciler:
             ),
         )
 
+    def _check_starting_timeout(self, deployment: Deployment) -> BackendStatusUpdate | None:
+        timeout = self._controller_config.starting_timeout_seconds
+        if timeout <= 0:
+            return None
+        starting_at = _starting_timestamp(deployment)
+        if starting_at is None:
+            return None
+        elapsed = (datetime.now(timezone.utc) - starting_at).total_seconds()
+        if elapsed < timeout:
+            return None
+        elapsed_int = int(elapsed)
+        return BackendStatusUpdate(
+            status="FAILED",
+            status_message=(
+                f"Deployment stuck in STARTING for {elapsed_int}s (timeout: {timeout}s). Readiness checks never passed."
+            ),
+            error_details={
+                "reason": "starting_timeout",
+                "elapsed_seconds": elapsed_int,
+                "timeout_seconds": timeout,
+            },
+        )
+
     async def _update_deployment_status_pending(self, deployment: Deployment, message: str) -> None:
         if deployment.status == "PENDING" and deployment.status_message == message:
             return
@@ -366,6 +394,15 @@ class DeploymentReconciler:
             await self._entities.update(deployment)
         except NemoEntityConflictError:
             raise
+
+
+def _starting_timestamp(deployment: Deployment) -> datetime | None:
+    for event in reversed(deployment.status_history):
+        if event.status == "STARTING" and event.timestamp:
+            return datetime.fromisoformat(event.timestamp)
+    if deployment.status_history and deployment.status_history[0].timestamp:
+        return datetime.fromisoformat(deployment.status_history[0].timestamp)
+    return None
 
 
 def _prerequisite_failed(
