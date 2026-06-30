@@ -28,6 +28,7 @@ from nemo_platform_plugin.client.auth import (
     StaticToken,
     TokenProvider,
 )
+from nemo_platform_plugin.client.errors import ConflictError, raise_for_status
 from nemo_platform_plugin.client.response import (
     AsyncNemoBinaryResponse,
     AsyncNemoPaginatedResponse,
@@ -199,26 +200,17 @@ class BaseNemoClient:
                 filtered[k] = v
         return filtered or None
 
-    def _apply_client_options(self, request: PreparedRequest, response: NemoResponse) -> NemoResponse:
-        """Apply blessed client options (e.g. ``exist_ok``) to the response.
+    def _raise_for_status(self, raw: httpx.Response, request: PreparedRequest) -> None:
+        """Raise on non-2xx, unless a client option suppresses the error.
 
-        Options are stashed on ``PreparedRequest.client_options`` by the
-        endpoint decorator and applied here after the HTTP call completes.
+        For example, ``exist_ok=True`` swallows 409 Conflict.
         """
-        if not request.client_options:
-            return response
-
-        if request.client_options.get("exist_ok"):
-            if response.http_response.status_code == 409:
-                body = response.body
-                if body is None and request.response_type is not None:
-                    try:
-                        body = request.response_type.model_validate(response.http_response.json())
-                    except (ValueError, TypeError):
-                        pass
-                return NemoResponse(http_response=response.http_response, body=body, request=request)
-
-        return response
+        try:
+            raise_for_status(raw)
+        except ConflictError:
+            if request.client_options and request.client_options.get("exist_ok"):
+                return
+            raise
 
 
 class NemoClient(BaseNemoClient):
@@ -360,11 +352,11 @@ class NemoClient(BaseNemoClient):
             )
 
         raw = self._request_with_retry(request, url, req_headers, params, resolved_retry)
+        self._raise_for_status(raw, request)
         body = None
-        if raw.is_success and request.response_type is not None:
+        if request.response_type is not None:
             body = request.response_type.model_validate(raw.json())
-        response = NemoResponse(http_response=raw, body=body, request=request)
-        return self._apply_client_options(request, response)
+        return NemoResponse(http_response=raw, body=body, request=request)
 
     def _request_with_retry(
         self,
@@ -546,11 +538,11 @@ class AsyncNemoClient(BaseNemoClient):
             )
 
         raw = await self._request_with_retry(request, url, req_headers, params, resolved_retry)
+        self._raise_for_status(raw, request)
         body = None
-        if raw.is_success and request.response_type is not None:
+        if request.response_type is not None:
             body = request.response_type.model_validate(raw.json())
-        response = NemoResponse(http_response=raw, body=body, request=request)
-        return self._apply_client_options(request, response)
+        return NemoResponse(http_response=raw, body=body, request=request)
 
     async def _request_with_retry(
         self,

@@ -39,8 +39,11 @@ class NemoResponse(Generic[ResponseT]):
     request: PreparedRequest
 
     def data(self) -> ResponseT:
-        """Return the body if the status is 2xx, otherwise raise."""
-        raise_for_status(self.http_response)
+        """Return the parsed response body.
+
+        Since ``send()`` raises on non-2xx, this is a convenience accessor
+        equivalent to ``.body``.
+        """
         return self.body
 
 

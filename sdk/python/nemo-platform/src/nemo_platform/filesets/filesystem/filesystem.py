@@ -399,15 +399,23 @@ class FilesetFileSystem(AsyncFileSystem):
         except ImportError:
             pass
 
+        # Prefer _custom_headers (set via with_options/set_default_headers),
+        # fall back to the httpx client's actual headers (set at construction,
+        # e.g. TestClient(headers={...})), filtering out httpx defaults.
+        custom_headers = sdk._custom_headers
+        if not custom_headers:
+            skip = {"accept", "accept-encoding", "connection", "user-agent", "host"}
+            custom_headers = {k: v for k, v in sdk._client.headers.items() if k.lower() not in skip}
+
         return AsyncNemoClient(
             base_url=str(sdk.base_url).rstrip("/"),
             workspace=sdk.workspace,
-            default_headers=sdk._custom_headers,
+            default_headers=custom_headers,
             timeout=sdk.timeout,
             http_client=httpx.AsyncClient(
                 transport=transport,
                 base_url=str(sdk.base_url).rstrip("/"),
-                headers=sdk._custom_headers,
+                headers=custom_headers,
             ),
         )
 
@@ -627,8 +635,7 @@ class FilesetFileSystem(AsyncFileSystem):
         workspace, fileset, file_path = parse_fileset_ref(path, workspace_fallback=self._workspace)
         if not file_path:
             raise ValueError("Cannot delete fileset root via rm")
-        resp = await self._client.send(endpoints.delete_file(workspace=workspace, name=fileset, path=file_path))
-        resp.data()  # raises on non-2xx
+        await self._client.send(endpoints.delete_file(workspace=workspace, name=fileset, path=file_path))
         # Invalidate parent directory's cache since file info is stored there
         self.invalidate_cache(self._parent(build_fileset_ref(path)))
 

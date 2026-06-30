@@ -11,6 +11,7 @@ import httpx
 import pytest
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.endpoint import delete, get, post
+from nemo_platform_plugin.client.errors import ConflictError, NemoHTTPError
 from nemo_platform_plugin.client.method import method
 from nemo_platform_plugin.client.types import PreparedRequest, RetryPolicy
 from pydantic import BaseModel
@@ -137,10 +138,11 @@ class TestExistOkViaMethod:
             pass
 
         client = TestClient(base_url=BASE, http_client=mock_http)
-        resp = client.create_item(body=ItemRequest(name="alice"))
 
-        assert resp.http_response.status_code == 409
-        assert resp.body is None
+        with pytest.raises(ConflictError) as exc_info:
+            client.create_item(body=ItemRequest(name="alice"))
+
+        assert exc_info.value.status_code == 409
 
     def test_exist_ok_true_non_409_passes_through(self) -> None:
         mock_http = MagicMock(spec=httpx.Client)
@@ -225,7 +227,7 @@ class TestRetryPolicy:
         assert resp.body.name == "alice"
         assert mock_http.request.call_count == 2
 
-    def test_retry_exhausted_returns_last_response(self) -> None:
+    def test_retry_exhausted_raises(self) -> None:
         mock_http = MagicMock(spec=httpx.Client)
         mock_http.request.return_value = httpx.Response(
             503,
@@ -238,9 +240,11 @@ class TestRetryPolicy:
             http_client=mock_http,
             retry=RetryPolicy(max_retries=2, backoff_base=0.0),
         )
-        resp = client.send(GET_ITEM(name="alice"))
 
-        assert resp.http_response.status_code == 503
+        with pytest.raises(NemoHTTPError) as exc_info:
+            client.send(GET_ITEM(name="alice"))
+
+        assert exc_info.value.status_code == 503
         assert mock_http.request.call_count == 3
 
     def test_no_retry_on_non_retryable_status(self) -> None:
@@ -256,9 +260,11 @@ class TestRetryPolicy:
             http_client=mock_http,
             retry=RetryPolicy(max_retries=2, backoff_base=0.0),
         )
-        resp = client.send(GET_ITEM(name="alice"))
 
-        assert resp.http_response.status_code == 404
+        with pytest.raises(NemoHTTPError) as exc_info:
+            client.send(GET_ITEM(name="alice"))
+
+        assert exc_info.value.status_code == 404
         assert mock_http.request.call_count == 1
 
     def test_retry_on_transport_error(self) -> None:
@@ -295,7 +301,9 @@ class TestRetryPolicy:
             http_client=mock_http,
             retry=RetryPolicy(max_retries=5, backoff_base=0.0),
         )
-        client.send(GET_ITEM(name="alice"), retry=RetryPolicy(max_retries=1, backoff_base=0.0))
+
+        with pytest.raises(NemoHTTPError):
+            client.send(GET_ITEM(name="alice"), retry=RetryPolicy(max_retries=1, backoff_base=0.0))
 
         assert mock_http.request.call_count == 2
 
@@ -308,9 +316,11 @@ class TestRetryPolicy:
         )
 
         client = NemoClient(base_url=BASE, http_client=mock_http)
-        resp = client.send(GET_ITEM(name="alice"))
 
-        assert resp.http_response.status_code == 503
+        with pytest.raises(NemoHTTPError) as exc_info:
+            client.send(GET_ITEM(name="alice"))
+
+        assert exc_info.value.status_code == 503
         assert mock_http.request.call_count == 1
 
 

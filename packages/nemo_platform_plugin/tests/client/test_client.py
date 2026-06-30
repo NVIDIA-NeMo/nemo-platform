@@ -303,7 +303,7 @@ def test_query_params_all_none_becomes_none() -> None:
 
 
 def test_error_response_extracts_detail() -> None:
-    """.data() raises NemoHTTPError with detail extracted from response body."""
+    """send() raises NemoHTTPError with detail extracted from response body."""
     mock_http = MagicMock(spec=httpx.Client)
     mock_http.request.return_value = httpx.Response(
         422,
@@ -312,10 +312,9 @@ def test_error_response_extracts_detail() -> None:
     )
 
     client = NemoClient(base_url=BASE, http_client=mock_http)
-    resp = client.send(CREATE_ITEM(ItemRequest(name="")))
 
     with pytest.raises(NemoHTTPError) as exc_info:
-        resp.data()
+        client.send(CREATE_ITEM(ItemRequest(name="")))
 
     assert exc_info.value.status_code == 422
     assert exc_info.value.detail == "Validation failed: name is required"
@@ -324,7 +323,7 @@ def test_error_response_extracts_detail() -> None:
 
 
 def test_error_response_fallback_to_text() -> None:
-    """.data() raises NemoHTTPError with raw text when no JSON detail."""
+    """send() raises NemoHTTPError with raw text when no JSON detail."""
     mock_http = MagicMock(spec=httpx.Client)
     mock_http.request.return_value = httpx.Response(
         500,
@@ -333,17 +332,16 @@ def test_error_response_fallback_to_text() -> None:
     )
 
     client = NemoClient(base_url=BASE, http_client=mock_http)
-    resp = client.send(GET_ITEM(name="x"))
 
     with pytest.raises(NemoHTTPError) as exc_info:
-        resp.data()
+        client.send(GET_ITEM(name="x"))
 
     assert exc_info.value.status_code == 500
     assert exc_info.value.detail == "Internal Server Error"
 
 
 def test_error_response_raises_specific_subclass() -> None:
-    """.data() raises status-code-specific NemoHTTPError subclass."""
+    """send() raises status-code-specific NemoHTTPError subclass."""
     mock_http = MagicMock(spec=httpx.Client)
     mock_http.request.return_value = httpx.Response(
         404,
@@ -352,10 +350,9 @@ def test_error_response_raises_specific_subclass() -> None:
     )
 
     client = NemoClient(base_url=BASE, http_client=mock_http)
-    resp = client.send(GET_ITEM(name="missing"))
 
     with pytest.raises(NotFoundError) as exc_info:
-        resp.data()
+        client.send(GET_ITEM(name="missing"))
 
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "Not found"
@@ -423,8 +420,8 @@ def test_response_carries_prepared_request() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_data_raises_status_specific_error() -> None:
-    """.data() must raise status-code-specific NemoHTTPError subclass."""
+def test_send_raises_on_non_2xx() -> None:
+    """send() must raise immediately on non-2xx."""
     mock_http = MagicMock(spec=httpx.Client)
     mock_http.request.return_value = httpx.Response(
         403,
@@ -433,10 +430,9 @@ def test_data_raises_status_specific_error() -> None:
     )
 
     client = NemoClient(base_url=BASE, http_client=mock_http)
-    resp = client.send(CREATE_ITEM(ItemRequest(name="x")))
 
     with pytest.raises(NemoHTTPError) as exc_info:
-        resp.data()
+        client.send(CREATE_ITEM(ItemRequest(name="x")))
 
     assert exc_info.value.status_code == 403
 
