@@ -19,9 +19,7 @@ from nemo_deployments_plugin.entities import (
     Container,
     ContainerPort,
     Deployment,
-    DeploymentBackendConfig,
     DeploymentConfig,
-    DockerDeploymentConfig,
 )
 
 import docker
@@ -67,9 +65,6 @@ def _always_http_config() -> DeploymentConfig:
                 ports=[ContainerPort(containerPort=80, protocol="TCP", name="http")],
             )
         ],
-        backend_config=DeploymentBackendConfig(
-            docker=DockerDeploymentConfig(port_range_start=9050, port_range_end=9060)
-        ),
     )
 
 

@@ -3,16 +3,22 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from docker.errors import NotFound
 from nemo_deployments_plugin.backends.base import BackendStatusUpdate, DeploymentBackend, LogResult, VolumeStatusUpdate
+from nemo_deployments_plugin.backends.docker.backend import DockerDeploymentBackend
 from nemo_deployments_plugin.backends.registry import (
     ExecutorNotFoundError,
     ExecutorRegistry,
     ExecutorSpec,
     UnknownBackendTypeError,
 )
+from nemo_deployments_plugin.entities import Container, ContainerPort, DeploymentConfig
 from nemo_platform import AsyncNeMoPlatform
 
 
@@ -48,6 +54,23 @@ class _StubBackend(DeploymentBackend):
 @pytest.fixture
 def backend_classes() -> dict[str, type[DeploymentBackend]]:
     return {"docker": _StubBackend, "k8s": _StubBackend}
+
+
+@contextmanager
+def _patched_docker_init(
+    *,
+    mock_docker_client: MagicMock | None = None,
+    mock_entities: AsyncMock | None = None,
+) -> Iterator[MagicMock]:
+    client = mock_docker_client or MagicMock()
+    entities = mock_entities or AsyncMock()
+    with (
+        patch("nemo_deployments_plugin.backends.docker.backend.AsyncEntitiesResource"),
+        patch("nemo_deployments_plugin.backends.docker.backend.NemoEntitiesClient", return_value=entities),
+        patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=None),
+        patch("docker.from_env", return_value=client),
+    ):
+        yield client
 
 
 def test_empty_registry_starts(backend_classes: dict[str, type[DeploymentBackend]]) -> None:
@@ -120,17 +143,75 @@ def test_registry_rolls_back_on_partial_init(backend_classes: dict[str, type[Dep
     assert shutdown_calls == ["shutdown"]
 
 
-def test_multiple_docker_executors_distinct_config(backend_classes: dict[str, type[DeploymentBackend]]) -> None:
+def test_multiple_docker_executors_distinct_config() -> None:
     sdk = AsyncNeMoPlatform(base_url="http://localhost:8080")
-    registry = ExecutorRegistry.from_config(
-        sdk,
-        [
-            ExecutorSpec(name="docker-a", backend="docker", config={"port_range_start": 9000}),
-            ExecutorSpec(name="docker-b", backend="docker", config={"port_range_start": 9100}),
-        ],
-        backend_classes=backend_classes,
-    )
+    with _patched_docker_init():
+        registry = ExecutorRegistry.from_config(
+            sdk,
+            [
+                ExecutorSpec(name="docker-a", backend="docker", config={"port_range_start": 9000}),
+                ExecutorSpec(name="docker-b", backend="docker", config={"port_range_start": 9100}),
+            ],
+        )
     a = registry.resolve("docker-a")
     b = registry.resolve("docker-b")
-    assert a._config["port_range_start"] == 9000
-    assert b._config["port_range_start"] == 9100
+    assert isinstance(a, DockerDeploymentBackend)
+    assert isinstance(b, DockerDeploymentBackend)
+    assert a._executor_config.port_range_start == 9000
+    assert b._executor_config.port_range_start == 9100
+
+
+@pytest.mark.asyncio
+async def test_executor_port_range_used_for_allocation() -> None:
+    sdk = AsyncNeMoPlatform(base_url="http://localhost:8080")
+    mock_entities = AsyncMock()
+    mock_docker_client = MagicMock()
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+
+    with (
+        _patched_docker_init(mock_docker_client=mock_docker_client, mock_entities=mock_entities),
+        patch(
+            "nemo_deployments_plugin.backends.docker.backend.find_available_port",
+            new_callable=AsyncMock,
+            return_value=9055,
+        ) as mock_find_port,
+    ):
+        registry = ExecutorRegistry.from_config(
+            sdk,
+            [
+                ExecutorSpec(
+                    name="local-docker",
+                    backend="docker",
+                    config={"port_range_start": 9050, "port_range_end": 9060, "pull_images": False},
+                ),
+            ],
+        )
+        backend = registry.resolve("local-docker")
+        assert isinstance(backend, DockerDeploymentBackend)
+
+        mock_entities.get.return_value = DeploymentConfig(
+            name="cfg1",
+            workspace="default",
+            containers=[
+                Container(
+                    name="main",
+                    image="nginx:alpine",
+                    ports=[ContainerPort(containerPort=80, protocol="TCP", name="http")],
+                )
+            ],
+        )
+        mock_docker_client.containers.run.return_value = MagicMock(id="abc123")
+
+        update = await backend.create_deployment(
+            workspace="default",
+            name="srv",
+            config_name="cfg1",
+            labels={},
+            backend_config={},
+        )
+
+    assert update.status == "STARTING"
+    mock_find_port.assert_awaited()
+    call_args = mock_find_port.await_args
+    assert call_args is not None
+    assert call_args.args[1:3] == (9050, 9060)

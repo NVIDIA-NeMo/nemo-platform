@@ -23,3 +23,23 @@ Prerequisites are declared on each `Deployment` and reference other deployment
 names in the same workspace (bare name or `workspace/name`). The controller loads
 terminal prerequisite deployments from the entity store when they are not in the
 active non-terminal list.
+
+## Docker executors
+
+Host port allocation for published container ports is configured per named docker
+executor (not on `DeploymentConfig.backend_config.docker`). Set `port_range_start`
+and `port_range_end` on the executor `config` block in platform YAML:
+
+```yaml
+deployments:
+  executors:
+    - name: local-docker
+      backend: docker
+      config:
+        port_range_start: 9000
+        port_range_end: 9100
+  default_executor: local-docker
+```
+
+Entity-level `backend_config.docker` accepts only deployment-specific overrides such
+as `network`.

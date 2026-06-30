@@ -36,7 +36,7 @@ async def test_create_deployment_starts_container(
         name="srv",
         config_name="cfg1",
         labels={"managed-by": MANAGED_BY_LABEL},
-        backend_config={"docker": {"port_range_start": 9000, "port_range_end": 9100}},
+        backend_config={},
     )
 
     assert update.status == "STARTING"

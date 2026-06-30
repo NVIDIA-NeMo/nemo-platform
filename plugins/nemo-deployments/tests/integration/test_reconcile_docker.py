@@ -22,9 +22,7 @@ from nemo_deployments_plugin.config import ControllerConfig
 from nemo_deployments_plugin.entities import (
     Container,
     Deployment,
-    DeploymentBackendConfig,
     DeploymentConfig,
-    DockerDeploymentConfig,
     Prerequisite,
     Volume,
     VolumeMount,
@@ -111,9 +109,6 @@ async def test_puller_server_prerequisite_chain(docker_registry: ExecutorRegistr
             )
         ],
         volumeMounts=[VolumeMount(name="weights", mountPath="/data")],
-        backend_config=DeploymentBackendConfig(
-            docker=DockerDeploymentConfig(port_range_start=9070, port_range_end=9080)
-        ),
     )
 
     config_cache = {

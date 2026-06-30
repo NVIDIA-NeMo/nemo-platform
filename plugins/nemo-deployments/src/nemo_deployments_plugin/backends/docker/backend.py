@@ -163,7 +163,8 @@ class DockerDeploymentBackend(DeploymentBackend):
         for port_spec in container_spec.ports:
             host_port = await find_available_port(
                 self._client,
-                docker_cfg,
+                self._executor_config.port_range_start,
+                self._executor_config.port_range_end,
                 exclude_ports=set(host_ports.values()),
             )
             if host_port is None:

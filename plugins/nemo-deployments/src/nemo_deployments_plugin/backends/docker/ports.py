@@ -12,7 +12,6 @@ import socket
 from typing import TYPE_CHECKING
 
 from nemo_deployments_plugin.backends.docker.labels import managed_by_filter
-from nemo_deployments_plugin.entities import DockerDeploymentConfig
 
 import docker
 
@@ -57,7 +56,8 @@ def collect_used_host_ports(containers: list[DockerContainer]) -> set[int]:
 
 async def find_available_port(
     client: docker.DockerClient,
-    docker_cfg: DockerDeploymentConfig,
+    port_range_start: int,
+    port_range_end: int,
     *,
     exclude_ports: set[int] | None = None,
 ) -> int | None:
@@ -74,13 +74,13 @@ async def find_available_port(
     used_ports = collect_used_host_ports(containers)
     if exclude_ports:
         used_ports = used_ports | exclude_ports
-    for port in range(docker_cfg.port_range_start, docker_cfg.port_range_end + 1):
+    for port in range(port_range_start, port_range_end + 1):
         if port not in used_ports and is_port_free(port):
             return port
 
     logger.error(
         "No available ports in range %s-%s",
-        docker_cfg.port_range_start,
-        docker_cfg.port_range_end,
+        port_range_start,
+        port_range_end,
     )
     return None
