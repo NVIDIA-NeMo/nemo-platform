@@ -929,5 +929,3 @@ resources:
           experiment_session_responses_page: ExperimentSessionResponsesPage
         methods:
           list: get /apis/intake/v2/workspaces/{workspace}/experiments/{name}/sessions
-  methods:
-    create: post /apis/auth/v2/authz/{entrypoint}

@@ -480,6 +480,68 @@ async def test_download_network_error(hf_config, hf_secrets_empty):
         assert mock_sleep.await_count == retry_attempts - 1
 
 
+async def test_download_retries_reuse_http_session(hf_config, hf_secrets_empty):
+    """Retry attempts reuse the backend's pooled HTTP session."""
+    with (
+        patch("nmp.core.files.app.backends.huggingface.hf_hub_url") as mock_url,
+        patch("nmp.core.files.app.backends.huggingface.get_http_session") as mock_get_session,
+        patch("nmp.core.files.app.backends.huggingface.download_url_streaming") as mock_stream,
+    ):
+        mock_url.return_value = "https://huggingface.co/test-org/test-repo/resolve/main/test.txt"
+        session = Mock()
+        mock_get_session.return_value = session
+
+        async def failing_chunks():
+            raise aiohttp.ClientError("Connection failed")
+            yield  # pragma: no cover
+
+        mock_stream.side_effect = lambda *args, **kwargs: failing_chunks()
+
+        impl = HuggingfaceStorageImpl(hf_config, hf_secrets_empty)
+        download_iter = await impl.download("test.txt", None)
+
+        with (
+            patch("nmp.core.files.app.backends.huggingface.sleep", new_callable=AsyncMock),
+            pytest.raises(HuggingfaceUnavailableError),
+        ):
+            async for _ in download_iter:
+                pass
+
+    assert mock_get_session.call_count == 1
+    assert {call.kwargs["session"] for call in mock_stream.call_args_list} == {session}
+
+
+async def test_download_does_not_retry_after_yielding_chunk(hf_config, hf_secrets_empty):
+    """A streaming failure after yielding bytes is propagated without replaying content."""
+    with (
+        patch("nmp.core.files.app.backends.huggingface.hf_hub_url") as mock_url,
+        patch("nmp.core.files.app.backends.huggingface.download_url_streaming") as mock_stream,
+    ):
+        mock_url.return_value = "https://huggingface.co/test-org/test-repo/resolve/main/test.txt"
+
+        async def chunks_then_error():
+            yield b"chunk1"
+            raise aiohttp.ClientError("Connection dropped")
+
+        mock_stream.side_effect = lambda *args, **kwargs: chunks_then_error()
+
+        impl = HuggingfaceStorageImpl(hf_config, hf_secrets_empty)
+        download_iter = await impl.download("test.txt", None)
+
+        chunks = []
+        with (
+            patch("nmp.core.files.app.backends.huggingface.sleep", new_callable=AsyncMock) as mock_sleep,
+            pytest.raises(HuggingfaceUnavailableError) as exc_info,
+        ):
+            async for chunk in download_iter:
+                chunks.append(chunk)
+
+    assert "Network error" in str(exc_info.value)
+    assert chunks == [b"chunk1"]
+    mock_stream.assert_called_once()
+    mock_sleep.assert_not_awaited()
+
+
 async def test_validate_storage_success(hf_config, mock_hf_api, hf_secrets_empty):
     """Test successful storage validation."""
     # Mock repo_info with siblings

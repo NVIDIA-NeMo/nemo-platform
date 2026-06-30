@@ -107,6 +107,7 @@ def raise_for_hf_status(
 
 
 def _map_hf_http_error(exc: HfHubHTTPError) -> Exception:
+    """Map HuggingFace Hub HTTP exceptions into storage backend exceptions."""
     if exc.response is not None:
         try:
             raise_for_hf_status(
@@ -125,6 +126,7 @@ def _map_hf_http_error(exc: HfHubHTTPError) -> Exception:
 
 
 def _retry_after_seconds(headers: dict[str, str] | None) -> float | None:
+    """Parse a Retry-After header into seconds when HuggingFace provides one."""
     if not headers:
         return None
 
@@ -154,6 +156,7 @@ async def _sleep_before_retry(
     headers: dict[str, str] | None,
     error: Exception,
 ) -> None:
+    """Sleep according to Retry-After or exponential backoff before retrying."""
     retry_after = _retry_after_seconds(headers)
     delay = (
         min(retry_after, retry_config.hf_retry_max_delay_seconds)
@@ -175,6 +178,7 @@ async def _sleep_before_retry(
 
 
 async def _run_hf_request(operation: str, request: Callable[[], _T]) -> _T:
+    """Run a blocking HuggingFace Hub request with transient retry handling."""
     retry_config = files_config()
     for attempt in range(1, retry_config.hf_retry_attempts + 1):
         try:
@@ -208,6 +212,90 @@ async def _run_hf_request(operation: str, request: Callable[[], _T]) -> _T:
             raise mapped from exc
 
     raise AssertionError("unreachable in _run_hf_request")
+
+
+def _map_hf_download_error(
+    *,
+    path: str,
+    download_url: str,
+    exc: aiohttp.ClientError,
+) -> tuple[Exception, dict[str, str] | None]:
+    """Map aiohttp download errors and preserve response headers for retry delays."""
+    if isinstance(exc, aiohttp.ClientResponseError):
+        response_headers = dict(exc.headers) if exc.headers else None
+        try:
+            raise_for_hf_status(exc.status, response_headers, download_url)
+        except (
+            HuggingfaceAccessError,
+            HuggingfaceConfigError,
+            HuggingfaceUnavailableError,
+            HuggingfaceBackendError,
+        ) as mapped:
+            return mapped, response_headers
+        return HuggingfaceBackendError(f"HTTP error downloading file {path}: {exc.status}"), response_headers
+
+    return HuggingfaceUnavailableError(f"Network error downloading file {path}: {exc}"), None
+
+
+async def _map_hf_download_stream_errors(
+    stream: AsyncIterator[bytes],
+    *,
+    path: str,
+    download_url: str,
+) -> AsyncIterator[bytes]:
+    """Translate stream errors after retrying is no longer safe."""
+    try:
+        async for chunk in stream:
+            yield chunk
+    except aiohttp.ClientError as exc:
+        mapped, _ = _map_hf_download_error(path=path, download_url=download_url, exc=exc)
+        raise mapped from exc
+
+
+async def _stream_hf_download_with_retries(
+    *,
+    path: str,
+    download_url: str,
+    session: aiohttp.ClientSession,
+    headers: dict[str, str] | None,
+    byte_range: ByteRange | None,
+    chunk_size: int,
+) -> AsyncIterator[bytes]:
+    """Stream a download, retrying only errors before the first chunk is emitted."""
+    retry_config = files_config()
+    for attempt in range(1, retry_config.hf_retry_attempts + 1):
+        stream = download_url_streaming(
+            url=download_url,
+            session=session,
+            headers=dict(headers) if headers else None,
+            byte_range=byte_range,
+            chunk_size=chunk_size,
+        )
+
+        try:
+            first_chunk = await anext(stream)
+        except StopAsyncIteration:
+            return
+        except aiohttp.ClientError as exc:
+            mapped, response_headers = _map_hf_download_error(path=path, download_url=download_url, exc=exc)
+            if isinstance(mapped, HuggingfaceUnavailableError) and attempt < retry_config.hf_retry_attempts:
+                await _sleep_before_retry(
+                    operation="download file",
+                    attempt=attempt,
+                    retry_config=retry_config,
+                    headers=response_headers,
+                    error=mapped,
+                )
+                continue
+            raise mapped from exc
+
+        # Once bytes have reached the caller, retrying would replay the file prefix.
+        yield first_chunk
+        async for chunk in _map_hf_download_stream_errors(stream, path=path, download_url=download_url):
+            yield chunk
+        return
+
+    raise AssertionError("unreachable in _stream_hf_download_with_retries")
 
 
 @dataclass
@@ -346,49 +434,16 @@ class HuggingfaceStorageImpl(StorageImpl):
             headers["Authorization"] = f"Bearer {self.secrets.get('token')}"
 
         async def _download() -> AsyncIterator[bytes]:
-            retry_config = files_config()
-            for attempt in range(1, retry_config.hf_retry_attempts + 1):
-                session = get_http_session()
-                yielded = False
-                try:
-                    async for chunk in download_url_streaming(
-                        url=download_url,
-                        session=session,
-                        headers=headers if headers else None,
-                        byte_range=byte_range,
-                        chunk_size=self.config.read_chunk_size,
-                    ):
-                        yielded = True
-                        yield chunk
-                    return
-                except aiohttp.ClientResponseError as exc:
-                    response_headers = dict(exc.headers) if exc.headers else None
-                    try:
-                        raise_for_hf_status(exc.status, response_headers, download_url)
-                    except HuggingfaceUnavailableError as mapped:
-                        if yielded or attempt >= retry_config.hf_retry_attempts:
-                            raise mapped from exc
-                        await _sleep_before_retry(
-                            operation="download file",
-                            attempt=attempt,
-                            retry_config=retry_config,
-                            headers=response_headers,
-                            error=mapped,
-                        )
-                        continue
-                    raise
-                except aiohttp.ClientError as exc:
-                    mapped = HuggingfaceUnavailableError(f"Network error downloading file {path}: {exc}")
-                    if yielded or attempt >= retry_config.hf_retry_attempts:
-                        raise mapped from exc
-                    await _sleep_before_retry(
-                        operation="download file",
-                        attempt=attempt,
-                        retry_config=retry_config,
-                        headers=None,
-                        error=mapped,
-                    )
-                    continue
+            session = get_http_session()
+            async for chunk in _stream_hf_download_with_retries(
+                path=path,
+                download_url=download_url,
+                session=session,
+                headers=headers if headers else None,
+                byte_range=byte_range,
+                chunk_size=self.config.read_chunk_size,
+            ):
+                yield chunk
 
         return _download()
 
