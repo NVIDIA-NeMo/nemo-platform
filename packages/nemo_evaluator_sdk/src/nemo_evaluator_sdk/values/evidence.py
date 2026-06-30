@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, PrivateAttr, model_validator
 
 
 class FilesystemEntry(BaseModel):
@@ -293,7 +293,12 @@ class LocalFilesystemEvidence:
 class EvidenceDescriptor(BaseModel):
     """Descriptor for a candidate trace, source, or artifact."""
 
-    model_config = ConfigDict(extra="forbid")
+    # ``anyOf`` mirrors the ``_requires_ref_or_data`` validator into the OpenAPI schema, so a payload
+    # with neither ``ref`` nor ``data`` is rejected by the contract, not just at runtime.
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={"anyOf": [{"required": ["ref"]}, {"required": ["data"]}]},
+    )
 
     kind: str = Field(description="Evidence type, e.g. 'filesystem', 'trace', 'log_bundle', or 'review'.")
     ref: str | None = Field(
@@ -304,7 +309,7 @@ class EvidenceDescriptor(BaseModel):
         default=None,
         description="Parser hint for the evidence payload, e.g. 'atif' for normalized traces.",
     )
-    data: Any | None = Field(
+    data: JsonValue | None = Field(
         default=None,
         description="Small inline evidence payload; at least one of ref or data must be set.",
     )

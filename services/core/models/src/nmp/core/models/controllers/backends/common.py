@@ -55,6 +55,8 @@ class DeploymentConfigView:
     image_name: Optional[str] = None
     image_tag: Optional[str] = None
     health_check_path: Optional[str] = None
+    run_as_user: Optional[int] = None
+    run_as_group: Optional[int] = None
     additional_envs: Optional[Dict[str, str]] = None
     additional_args: Optional[List[str]] = None
     k8s_nim_operator_config: Optional[K8sNIMOperatorConfig] = None
@@ -78,6 +80,8 @@ def deployment_config_view(config: Optional[_DeploymentConfigLike]) -> Deploymen
         image_name=getattr(executor, "image_name", None),
         image_tag=getattr(executor, "image_tag", None),
         health_check_path=getattr(executor, "health_check_path", None),
+        run_as_user=getattr(executor, "run_as_user", None),
+        run_as_group=getattr(executor, "run_as_group", None),
         additional_envs=getattr(executor, "additional_envs", None),
         additional_args=getattr(executor, "additional_args", None),
         k8s_nim_operator_config=getattr(executor, "k8s_nim_operator_config", None),

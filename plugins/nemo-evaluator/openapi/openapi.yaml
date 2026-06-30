@@ -45,6 +45,380 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/evaluator/v2/workspaces/{workspace}/agent-evaluate/jobs:
+    post:
+      tags:
+      - Evaluator Plugin Agent Eval Jobs Routes
+      summary: Create Job
+      operationId: create_job_apis_evaluator_v2_workspaces__workspace__agent_evaluate_jobs_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentEvaluateJobRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentEvaluateJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Evaluator Plugin Agent Eval Jobs Routes
+      summary: List Jobs
+      operationId: list_jobs_apis_evaluator_v2_workspaces__workspace__agent_evaluate_jobs_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          exclusiveMinimum: 0
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          exclusiveMinimum: 0
+          description: Page size.
+          default: 10
+          title: Page Size
+        description: Page size.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/AgentEvaluateJobsSortField'
+          description: The field to sort by. To sort in decreasing order, use `-`
+            in front of the field name.
+          default: -created_at
+        description: The field to sort by. To sort in decreasing order, use `-` in
+          front of the field name.
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/AgentEvaluateJobsListFilter'
+        description: Filter jobs on various criteria.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentEvaluateJobsPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/evaluator/v2/workspaces/{workspace}/agent-evaluate/jobs/{job}/results/{name}:
+    get:
+      tags:
+      - Evaluator Plugin Agent Eval Jobs Routes
+      summary: Get Job Result
+      operationId: get_job_result_apis_evaluator_v2_workspaces__workspace__agent_evaluate_jobs__job__results__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: job
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobResultResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/evaluator/v2/workspaces/{workspace}/agent-evaluate/jobs/{job}/results/{name}/download:
+    get:
+      tags:
+      - Evaluator Plugin Agent Eval Jobs Routes
+      summary: Download Job Result
+      operationId: download_job_result_apis_evaluator_v2_workspaces__workspace__agent_evaluate_jobs__job__results__name__download_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: job
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Not Found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/evaluator/v2/workspaces/{workspace}/agent-evaluate/jobs/{name}:
+    get:
+      tags:
+      - Evaluator Plugin Agent Eval Jobs Routes
+      summary: Get Job
+      operationId: get_job_apis_evaluator_v2_workspaces__workspace__agent_evaluate_jobs__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentEvaluateJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Evaluator Plugin Agent Eval Jobs Routes
+      summary: Delete Job
+      operationId: delete_job_apis_evaluator_v2_workspaces__workspace__agent_evaluate_jobs__name__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/evaluator/v2/workspaces/{workspace}/agent-evaluate/jobs/{name}/cancel:
+    post:
+      tags:
+      - Evaluator Plugin Agent Eval Jobs Routes
+      summary: Cancel Job
+      operationId: cancel_job_apis_evaluator_v2_workspaces__workspace__agent_evaluate_jobs__name__cancel_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentEvaluateJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/evaluator/v2/workspaces/{workspace}/agent-evaluate/jobs/{name}/logs:
+    get:
+      tags:
+      - Evaluator Plugin Agent Eval Jobs Routes
+      summary: Get Job Logs
+      operationId: get_job_logs_apis_evaluator_v2_workspaces__workspace__agent_evaluate_jobs__name__logs_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      - name: limit
+        in: query
+        required: false
+        schema:
+          title: Limit
+          type: integer
+      - name: page_cursor
+        in: query
+        required: false
+        schema:
+          title: Page Cursor
+          type: string
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobLogPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/evaluator/v2/workspaces/{workspace}/agent-evaluate/jobs/{name}/results:
+    get:
+      tags:
+      - Evaluator Plugin Agent Eval Jobs Routes
+      summary: List Job Results
+      operationId: list_job_results_apis_evaluator_v2_workspaces__workspace__agent_evaluate_jobs__name__results_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobListResultResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/evaluator/v2/workspaces/{workspace}/agent-evaluate/jobs/{name}/status:
+    get:
+      tags:
+      - Evaluator Plugin Agent Eval Jobs Routes
+      summary: Get Job Status
+      operationId: get_job_status_apis_evaluator_v2_workspaces__workspace__agent_evaluate_jobs__name__status_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobStatusResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /apis/evaluator/v2/workspaces/{workspace}/evaluate/jobs:
     post:
       tags:
@@ -605,6 +979,15 @@ paths:
 components:
   schemas:
     Agent:
+      allOf:
+      - if:
+          properties:
+            format:
+              const: generic
+        then:
+          required:
+          - body
+          - response_path
       properties:
         url:
           type: string
@@ -655,6 +1038,520 @@ components:
         \ HTTP POST with Jinja-templated body and\n  JSONPath extraction for response\
         \ and trajectory.\n- ``nemo_agent_toolkit``: NeMo Agent Toolkit SSE streaming\
         \ protocol\n  (``/generate/full?filter_steps=none``)."
+    AgentEvalInputSpec:
+      oneOf:
+      - properties:
+          target:
+            not:
+              type: 'null'
+        required:
+        - target
+      - properties:
+          trials:
+            not:
+              type: 'null'
+        required:
+        - trials
+      properties:
+        target:
+          anyOf:
+          - $ref: '#/components/schemas/ModelTargetInput'
+          - $ref: '#/components/schemas/AgentTargetInput'
+          - $ref: '#/components/schemas/CodexRunnerTarget'
+          title: Target
+          description: 'What generates trials online: a Model or Agent endpoint, or
+            an agent runner (e.g. Codex CLI). Endpoint targets carry their own request
+            config (prompt template / inference params). Mutually exclusive with `trials`.'
+        trials:
+          title: Trials
+          description: Precomputed trials to score directly (offline eval), instead
+            of generating them from a `target`. Mutually exclusive with `target`.
+          items:
+            $ref: '#/components/schemas/AgentEvalTrialInput'
+          type: array
+        max_concurrent_tasks:
+          type: integer
+          minimum: 1.0
+          title: Max Concurrent Tasks
+          description: Maximum number of tasks evaluated concurrently. Distinct from
+            a target's `params.parallelism`, which bounds concurrent inference requests
+            *within* trial generation.
+          default: 4
+        fail_fast:
+          type: boolean
+          title: Fail Fast
+          description: Stop the run on the first scoring failure when True.
+          default: false
+        benchmark:
+          additionalProperties: true
+          type: object
+          title: Benchmark
+          description: Benchmark metadata recorded with the run.
+        tasks:
+          items:
+            $ref: '#/components/schemas/AgentEvalTaskInput'
+          type: array
+          minItems: 1
+          title: Tasks
+          description: Tasks to evaluate; at least one is required.
+      additionalProperties: false
+      type: object
+      required:
+      - tasks
+      title: AgentEvalInputSpec
+      description: 'Submitter-facing agent-evaluation input: tasks whose metrics may
+        be inline or references.'
+    AgentEvalSpec:
+      oneOf:
+      - properties:
+          target:
+            not:
+              type: 'null'
+        required:
+        - target
+      - properties:
+          trials:
+            not:
+              type: 'null'
+        required:
+        - trials
+      properties:
+        target:
+          anyOf:
+          - $ref: '#/components/schemas/ModelTargetOutput'
+          - $ref: '#/components/schemas/AgentTargetOutput'
+          - $ref: '#/components/schemas/CodexRunnerTarget'
+          title: Target
+          description: 'What generates trials online: a Model or Agent endpoint, or
+            an agent runner (e.g. Codex CLI). Endpoint targets carry their own request
+            config (prompt template / inference params). Mutually exclusive with `trials`.'
+        trials:
+          title: Trials
+          description: Precomputed trials to score directly (offline eval), instead
+            of generating them from a `target`. Mutually exclusive with `target`.
+          items:
+            $ref: '#/components/schemas/AgentEvalTrialOutput'
+          type: array
+        max_concurrent_tasks:
+          type: integer
+          minimum: 1.0
+          title: Max Concurrent Tasks
+          description: Maximum number of tasks evaluated concurrently. Distinct from
+            a target's `params.parallelism`, which bounds concurrent inference requests
+            *within* trial generation.
+          default: 4
+        fail_fast:
+          type: boolean
+          title: Fail Fast
+          description: Stop the run on the first scoring failure when True.
+          default: false
+        benchmark:
+          additionalProperties: true
+          type: object
+          title: Benchmark
+          description: Benchmark metadata recorded with the run.
+        tasks:
+          items:
+            $ref: '#/components/schemas/AgentEvalTaskSpec'
+          type: array
+          minItems: 1
+          title: Tasks
+          description: Tasks to evaluate; at least one is required.
+      additionalProperties: false
+      type: object
+      required:
+      - tasks
+      title: AgentEvalSpec
+      description: 'Canonical agent-evaluation spec: tasks with all metric references
+        resolved to inline.'
+    AgentEvalTaskInput:
+      properties:
+        id:
+          type: string
+          title: Id
+          description: Stable task identifier, unique within the task collection.
+        intent:
+          type: string
+          title: Intent
+          description: Human-readable description of the desired agent behavior.
+        inputs:
+          additionalProperties: true
+          type: object
+          title: Inputs
+          description: What the agent receives or starts from (instruction, seed,
+            refs).
+        views:
+          additionalProperties:
+            $ref: '#/components/schemas/SemanticView'
+          type: object
+          title: Views
+          description: Optional reporting views mapping this task's metric outputs
+            into named semantic scores.
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+          description: Free-form metadata associated with the task.
+        metrics:
+          items:
+            anyOf:
+            - $ref: '#/components/schemas/MetricInline'
+            - $ref: '#/components/schemas/MetricRef'
+          type: array
+          title: Metrics
+          description: Metrics that score this task, inline and/or references to stored
+            metrics.
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - intent
+      - inputs
+      title: AgentEvalTaskInput
+      description: 'Submitter-facing task DTO: metrics may be inline bundles or stored-metric
+        references.'
+    AgentEvalTaskSpec:
+      properties:
+        id:
+          type: string
+          title: Id
+          description: Stable task identifier, unique within the task collection.
+        intent:
+          type: string
+          title: Intent
+          description: Human-readable description of the desired agent behavior.
+        inputs:
+          additionalProperties: true
+          type: object
+          title: Inputs
+          description: What the agent receives or starts from (instruction, seed,
+            refs).
+        views:
+          additionalProperties:
+            $ref: '#/components/schemas/SemanticView'
+          type: object
+          title: Views
+          description: Optional reporting views mapping this task's metric outputs
+            into named semantic scores.
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+          description: Free-form metadata associated with the task.
+        metrics:
+          items:
+            $ref: '#/components/schemas/MetricInline'
+          type: array
+          title: Metrics
+          description: Inline metric bundles that score this task; reconstructed to
+            runtime metrics at run time.
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - intent
+      - inputs
+      title: AgentEvalTaskSpec
+      description: 'Canonical task DTO: metrics fully resolved to inline bundles,
+        reconstructed at run time.'
+    AgentEvalTrialInput:
+      properties:
+        id:
+          type: string
+          title: Id
+          description: Stable identifier for this trial.
+        task_id:
+          type: string
+          title: Task Id
+          description: Identifier of the AgentEvalTask this trial was produced for.
+        status:
+          allOf:
+          - $ref: '#/components/schemas/AgentEvalTrialStatus'
+          description: Lifecycle status of the trial.
+        output:
+          allOf:
+          - $ref: '#/components/schemas/AgentOutput'
+          description: Final agent output captured for the trial; required when status
+            is completed.
+        evidence:
+          allOf:
+          - $ref: '#/components/schemas/CandidateEvidenceInput'
+          description: Named evidence descriptors (final state, traces, logs, ...)
+            captured for the trial.
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+          description: Free-form metadata associated with the trial.
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - task_id
+      - status
+      title: AgentEvalTrialInput
+      description: 'Durable trial artifact for one task: output, evidence, status,
+        and metadata.'
+    AgentEvalTrialOutput:
+      properties:
+        id:
+          type: string
+          title: Id
+          description: Stable identifier for this trial.
+        task_id:
+          type: string
+          title: Task Id
+          description: Identifier of the AgentEvalTask this trial was produced for.
+        status:
+          allOf:
+          - $ref: '#/components/schemas/AgentEvalTrialStatus'
+          description: Lifecycle status of the trial.
+        output:
+          allOf:
+          - $ref: '#/components/schemas/AgentOutput'
+          description: Final agent output captured for the trial; required when status
+            is completed.
+        evidence:
+          allOf:
+          - $ref: '#/components/schemas/CandidateEvidenceOutput'
+          description: Named evidence descriptors (final state, traces, logs, ...)
+            captured for the trial.
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+          description: Free-form metadata associated with the trial.
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - task_id
+      - status
+      title: AgentEvalTrialOutput
+      description: 'Durable trial artifact for one task: output, evidence, status,
+        and metadata.'
+    AgentEvalTrialStatus:
+      type: string
+      enum:
+      - completed
+      - failed
+      - partial
+      title: AgentEvalTrialStatus
+      description: 'Lifecycle status for a trial: completed, failed, or partial.'
+    AgentEvaluateJob:
+      properties:
+        id:
+          title: Id
+          type: string
+        name:
+          type: string
+          title: Name
+        description:
+          title: Description
+          type: string
+        project:
+          title: Project
+          type: string
+        workspace:
+          title: Workspace
+          type: string
+        created_at:
+          title: Created At
+          type: string
+          format: date-time
+        updated_at:
+          title: Updated At
+          type: string
+          format: date-time
+        spec:
+          $ref: '#/components/schemas/AgentEvalSpec'
+        status:
+          $ref: '#/components/schemas/PlatformJobStatus'
+        status_details:
+          title: Status Details
+          additionalProperties: true
+          type: object
+        error_details:
+          title: Error Details
+          additionalProperties: true
+          type: object
+        ownership:
+          title: Ownership
+          additionalProperties: true
+          type: object
+        custom_fields:
+          title: Custom Fields
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - name
+      - spec
+      title: AgentEvaluateJob
+    AgentEvaluateJobRequest:
+      properties:
+        name:
+          title: Name
+          type: string
+        description:
+          title: Description
+          type: string
+        project:
+          title: Project
+          type: string
+        spec:
+          $ref: '#/components/schemas/AgentEvalInputSpec'
+        ownership:
+          title: Ownership
+          additionalProperties: true
+          type: object
+        custom_fields:
+          title: Custom Fields
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - spec
+      title: AgentEvaluateJobRequest
+    AgentEvaluateJobsListFilter:
+      additionalProperties: false
+      properties:
+        created_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Jobs created at 'gte' datetime or 'lte' datetime.
+        name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
+          description: Name of the job.
+          title: Name
+        workspace:
+          description: Workspace of the job.
+          title: Workspace
+          type: string
+        project:
+          description: Project containing the job.
+          title: Project
+          type: string
+        status:
+          allOf:
+          - $ref: '#/components/schemas/PlatformJobStatus'
+          description: The current status.
+        updated_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Jobs updated at 'gte' datetime or 'lte' datetime.
+      title: AgentEvaluateJobsListFilter
+      type: object
+    AgentEvaluateJobsPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/AgentEvaluateJob'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: AgentEvaluateJobsPage
+    AgentEvaluateJobsSortField:
+      type: string
+      enum:
+      - created_at
+      - -created_at
+      - updated_at
+      - -updated_at
+      title: AgentEvaluateJobsSortField
+    AgentOutput:
+      properties:
+        output_text:
+          title: Output Text
+          description: User-visible final text produced by the agent, if any.
+          type: string
+        response:
+          allOf:
+          - $ref: '#/components/schemas/JsonValue'
+          description: "Final response payload produced by the agent, if any. Any\
+            \ JSON value \u2014 a structured object, or a raw JSON string/array for\
+            \ agents that don't return an object."
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+          description: Free-form metadata associated with the agent output.
+      additionalProperties: false
+      type: object
+      title: AgentOutput
+      description: Captured final output from the evaluated agent, model, or imported
+        baseline for a trial.
+    AgentTargetInput:
+      properties:
+        kind:
+          type: string
+          const: agent
+          title: Kind
+          default: agent
+        agent:
+          allOf:
+          - $ref: '#/components/schemas/Agent'
+          description: The agent endpoint to generate trials against.
+        params:
+          allOf:
+          - $ref: '#/components/schemas/RunConfigOnline'
+          description: Optional online-inference parameters for trial generation.
+      additionalProperties: false
+      type: object
+      required:
+      - agent
+      title: AgentTargetInput
+      description: 'Generate trials by calling an Agent (generic HTTP) endpoint.
+
+
+        The agent shapes its own request via its ``body`` / ``response_path``, so
+        there is no separate
+
+        prompt template here.'
+    AgentTargetOutput:
+      properties:
+        kind:
+          type: string
+          const: agent
+          title: Kind
+          default: agent
+        agent:
+          allOf:
+          - $ref: '#/components/schemas/Agent'
+          description: The agent endpoint to generate trials against.
+        params:
+          allOf:
+          - $ref: '#/components/schemas/RunConfigOnline'
+          description: Optional online-inference parameters for trial generation.
+      additionalProperties: false
+      type: object
+      required:
+      - agent
+      title: AgentTargetOutput
+      description: 'Generate trials by calling an Agent (generic HTTP) endpoint.
+
+
+        The agent shapes its own request via its ``body`` / ``response_path``, so
+        there is no separate
+
+        prompt template here.'
     BundledMetricOutputSpec:
       properties:
         name:
@@ -674,6 +1571,42 @@ components:
       - value_json_schema
       title: BundledMetricOutputSpec
       description: JSON-safe projection of a runtime metric output spec.
+    CandidateEvidenceInput:
+      properties:
+        descriptors:
+          additionalProperties:
+            $ref: '#/components/schemas/EvidenceDescriptor'
+          type: object
+          title: Descriptors
+          description: Evidence descriptors keyed by name (e.g. 'final_state', 'trace',
+            'logs').
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+          description: Free-form metadata associated with the evidence collection.
+      additionalProperties: false
+      type: object
+      title: CandidateEvidenceInput
+      description: Named evidence descriptors attached to an AgentEvalAttempt.
+    CandidateEvidenceOutput:
+      properties:
+        descriptors:
+          additionalProperties:
+            $ref: '#/components/schemas/EvidenceDescriptor'
+          type: object
+          title: Descriptors
+          description: Evidence descriptors keyed by name (e.g. 'final_state', 'trace',
+            'logs').
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+          description: Free-form metadata associated with the evidence collection.
+      additionalProperties: false
+      type: object
+      title: CandidateEvidenceOutput
+      description: Named evidence descriptors attached to an AgentEvalAttempt.
     CloudpickleMetricPayload:
       properties:
         kind:
@@ -723,6 +1656,27 @@ components:
         polymorphically (typed as an abstract base), which renders as an opaque
 
         object in the spec; this concrete DTO documents the actual fields.'
+    CodexRunnerTarget:
+      properties:
+        kind:
+          type: string
+          const: codex
+          title: Kind
+          default: codex
+        model:
+          title: Model
+          description: Codex model to use (e.g. 'gpt-5.5'); CLI default when omitted.
+          type: string
+        timeout_s:
+          type: integer
+          minimum: 1.0
+          title: Timeout S
+          description: Per-task timeout for the Codex CLI, in seconds.
+          default: 600
+      additionalProperties: false
+      type: object
+      title: CodexRunnerTarget
+      description: Generate trials by driving the Codex CLI agent runner.
     DatetimeFilter:
       additionalProperties: false
       properties:
@@ -985,6 +1939,44 @@ components:
       title: EvaluateSpec
       description: Canonical SDK evaluation spec with platform model and metric references
         resolved.
+    EvidenceDescriptor:
+      anyOf:
+      - required:
+        - ref
+      - required:
+        - data
+      properties:
+        kind:
+          type: string
+          title: Kind
+          description: Evidence type, e.g. 'filesystem', 'trace', 'log_bundle', or
+            'review'.
+        ref:
+          title: Ref
+          description: Reference to externally stored evidence (e.g. a local path
+            or storage ref).
+          type: string
+        format:
+          title: Format
+          description: Parser hint for the evidence payload, e.g. 'atif' for normalized
+            traces.
+          type: string
+        data:
+          allOf:
+          - $ref: '#/components/schemas/JsonValue'
+          description: Small inline evidence payload; at least one of ref or data
+            must be set.
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+          description: Free-form metadata associated with the evidence descriptor.
+      additionalProperties: false
+      type: object
+      required:
+      - kind
+      title: EvidenceDescriptor
+      description: Descriptor for a candidate trace, source, or artifact.
     FieldMapping:
       properties:
         input:
@@ -1152,6 +2144,8 @@ components:
         so no code is shipped or executed on load. Used for platform-recognized
 
         built-in metric types.'
+    JsonValue:
+      title: JsonValue
     Metric:
       properties:
         id:
@@ -1411,6 +2405,72 @@ components:
       - name
       title: Model
       description: Model definition for use without persisting to the Models API.
+    ModelTargetInput:
+      properties:
+        kind:
+          type: string
+          const: model
+          title: Kind
+          default: model
+        model:
+          allOf:
+          - $ref: '#/components/schemas/Model'
+          description: The model endpoint to generate trials against.
+        prompt_template:
+          anyOf:
+          - type: string
+          - additionalProperties: true
+            type: object
+          title: Prompt Template
+          description: How each task maps to the chat/completion request. Defaults
+            to a single user message carrying the task prompt when omitted.
+        params:
+          allOf:
+          - $ref: '#/components/schemas/RunConfigOnlineModel'
+          description: Optional online-inference parameters for trial generation.
+      additionalProperties: false
+      type: object
+      required:
+      - model
+      title: ModelTargetInput
+      description: 'Generate trials by calling a Model (OpenAI-compatible) endpoint.
+
+
+        The prompt template *is* the request sent to the model, so it lives here with
+        the endpoint.'
+    ModelTargetOutput:
+      properties:
+        kind:
+          type: string
+          const: model
+          title: Kind
+          default: model
+        model:
+          allOf:
+          - $ref: '#/components/schemas/Model'
+          description: The model endpoint to generate trials against.
+        prompt_template:
+          anyOf:
+          - type: string
+          - additionalProperties: true
+            type: object
+          title: Prompt Template
+          description: How each task maps to the chat/completion request. Defaults
+            to a single user message carrying the task prompt when omitted.
+        params:
+          allOf:
+          - $ref: '#/components/schemas/RunConfigOnlineModel'
+          description: Optional online-inference parameters for trial generation.
+      additionalProperties: false
+      type: object
+      required:
+      - model
+      title: ModelTargetOutput
+      description: 'Generate trials by calling a Model (OpenAI-compatible) endpoint.
+
+
+        The prompt template *is* the request sent to the model, so it lives here with
+        the endpoint.'
     PaginationData:
       properties:
         page:
@@ -1817,6 +2877,40 @@ components:
       description: 'Reference to a platform secret or local environment variable.
         Format: ''secret_name'' (uses request workspace) or ''workspace/secret_name''
         (explicit workspace).'
+    SemanticReducer:
+      type: string
+      enum:
+      - single
+      - all
+      - any
+      - mean
+      - weighted_mean
+      title: SemanticReducer
+      description: Reduction strategy used to combine task-scoped view signals into
+        one score.
+    SemanticView:
+      properties:
+        reducer:
+          allOf:
+          - $ref: '#/components/schemas/SemanticReducer'
+          description: Strategy used to reduce this view's signals into a single task-level
+            score.
+        signals:
+          items:
+            $ref: '#/components/schemas/ViewSignal'
+          type: array
+          minItems: 1
+          title: Signals
+          description: Ordered metric outputs contributing to this view; at least
+            one is required.
+      additionalProperties: false
+      type: object
+      required:
+      - reducer
+      - signals
+      title: SemanticView
+      description: Task-scoped reporting view that maps a task's own metric outputs
+        into a named score.
     StringFilter:
       additionalProperties: false
       properties:
@@ -1869,3 +2963,26 @@ components:
       - msg
       - type
       title: ValidationError
+    ViewSignal:
+      properties:
+        metric:
+          type: string
+          title: Metric
+          description: Task-local metric type (metric.type) whose output feeds this
+            signal.
+        output:
+          type: string
+          title: Output
+          description: Name of the metric output, as declared by the metric's output_spec().
+        weight:
+          title: Weight
+          description: Relative weight for this signal when the view reducer is 'weighted_mean';
+            unused otherwise.
+          type: number
+      additionalProperties: false
+      type: object
+      required:
+      - metric
+      - output
+      title: ViewSignal
+      description: Task-scoped metric output that contributes to a semantic view.

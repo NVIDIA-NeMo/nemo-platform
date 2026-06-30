@@ -13,7 +13,19 @@ NeMo Platform brings NVIDIA NeMo libraries together under one CLI, Python SDK, a
 
 ## Get started
 
-**Prerequisites:** Python 3.11-3.14, uv, and an API key for an inference provider (NVIDIA Build, OpenAI, Anthropic, Google Gemini, or a local Ollama instance). Node.js 22.18.x with `pnpm` only if you want the web UI.
+**Prerequisites:** Python 3.11-3.14 and an API key for an inference provider (NVIDIA Build, OpenAI, Anthropic, Google Gemini, or a local Ollama instance). For source development, you also need Git, GNU Make, uv, and Node.js 22.18.x with `pnpm` if you want the web UI.
+
+Quick install from PyPI:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install "nemo-platform[all]"
+
+nemo setup
+```
+
+Source checkout for development:
 
 ```bash
 git clone https://github.com/NVIDIA-NeMo/nemo-platform.git
@@ -27,7 +39,7 @@ nemo setup
 
 `nemo setup` starts local services, registers your LLM provider, discovers available models, installs agent skills, and deploys a sample agent (see more below).
 
-See **[SETUP.md](SETUP.md)** for the full setup playbook (local data dir, DB reset, manual service start, troubleshooting).
+See **[SETUP.md](SETUP.md)** for the full source setup playbook (local data dir, DB reset, manual service start, troubleshooting).
 
 Verify:
 

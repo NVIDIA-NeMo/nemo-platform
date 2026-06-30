@@ -12,6 +12,7 @@ import time
 from collections.abc import Callable
 
 from nemo_platform import NeMoPlatform
+from nemo_platform.types.jobs.platform_job_response import PlatformJobResponse
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +90,7 @@ def wait_for_platform_job(
     image_pull_timeout: float = 600.0,
     poll_interval: float = 1.0,
     status_to_check: str = "",
-):
+) -> PlatformJobResponse:
     """Wait for a platform job to reach a terminal state.
 
     Uses the SDK's jobs API to poll for job status until it reaches
@@ -148,6 +149,8 @@ def wait_for_platform_job(
             error_parts.append(f"Failed to get job status: {detail_err}")
         raise TimeoutError("\n".join(error_parts)) from e
 
+    # poll_until_terminal calls get_status (which sets last_job) at least once before returning.
+    assert last_job is not None
     return last_job
 
 
@@ -218,6 +221,8 @@ def wait_for_job_completion(
             error_parts.append(f"Full job details: {job_response.json()}")
         raise TimeoutError("\n".join(error_parts)) from e
 
+    # poll_until_terminal calls get_status (which sets last_status) at least once before returning.
+    assert last_status is not None
     return last_status
 
 

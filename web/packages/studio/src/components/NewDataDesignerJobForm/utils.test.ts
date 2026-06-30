@@ -1,9 +1,15 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { CreateJobRequest as DataDesignerJobRequest } from '@nemo/sdk/generated/data-designer/schema';
+import type {
+  CreateJob as DataDesignerJob,
+  CreateJobRequest as DataDesignerJobRequest,
+} from '@nemo/sdk/generated/data-designer/schema';
 import {
   applyFormModelToJobRequest,
+  buildClonedJobRequest,
+  CLONE_NAME_SUFFIX,
+  getCloneJobRequestFromState,
   getErrorMessage,
   getWorkspaceAndModel,
   modelsFromProviders,
@@ -201,5 +207,68 @@ describe('applyFormModelToJobRequest', () => {
     // col without model_alias stays unchanged
     expect(result.spec?.config?.columns[1]).toEqual(expect.objectContaining({ name: 'col2' }));
     expect(result.spec?.config?.columns[1]).not.toHaveProperty('model_alias');
+  });
+});
+
+describe('buildClonedJobRequest', () => {
+  const makeJob = (overrides: Partial<DataDesignerJob> = {}): DataDesignerJob =>
+    ({
+      name: 'reviews',
+      description: 'Synthetic product reviews',
+      spec: {
+        job_config: {
+          num_records: 250,
+          config: { columns: [{ name: 'col1' }], model_configs: [] },
+        },
+        model_providers: [],
+        model_configs: [],
+      },
+      ...overrides,
+    }) as DataDesignerJob;
+
+  it('copies the job config into a request with a -copy name', () => {
+    const result = buildClonedJobRequest(makeJob());
+    expect(result).toEqual({
+      name: `reviews${CLONE_NAME_SUFFIX}`,
+      description: 'Synthetic product reviews',
+      spec: {
+        num_records: 250,
+        config: { columns: [{ name: 'col1' }], model_configs: [] },
+      },
+    });
+  });
+
+  it('returns null when the job has no usable config', () => {
+    expect(buildClonedJobRequest(makeJob({ spec: undefined }))).toBeNull();
+    expect(
+      buildClonedJobRequest(
+        makeJob({
+          spec: {
+            job_config: { num_records: 1 },
+            model_providers: [],
+            model_configs: [],
+          },
+        } as unknown as Partial<DataDesignerJob>)
+      )
+    ).toBeNull();
+  });
+});
+
+describe('getCloneJobRequestFromState', () => {
+  const cloneJobRequest: DataDesignerJobRequest = {
+    name: 'reviews-copy',
+    spec: { num_records: 10, config: { columns: [], model_configs: [] } },
+  };
+
+  it('returns the cloned job request from valid state', () => {
+    expect(getCloneJobRequestFromState({ cloneJobRequest })).toBe(cloneJobRequest);
+  });
+
+  it('returns null for absent or malformed state', () => {
+    expect(getCloneJobRequestFromState(null)).toBeNull();
+    expect(getCloneJobRequestFromState(undefined)).toBeNull();
+    expect(getCloneJobRequestFromState({})).toBeNull();
+    expect(getCloneJobRequestFromState('nope')).toBeNull();
+    expect(getCloneJobRequestFromState({ cloneJobRequest: { name: 'no-spec' } })).toBeNull();
   });
 });

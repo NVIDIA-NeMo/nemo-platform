@@ -113,4 +113,30 @@ describe('DatasetFileManagementSidePanel', () => {
 
     expect(await screen.findByText('No Files')).toBeInTheDocument();
   });
+
+  it('shows subfolder breadcrumb segments when navigating into a folder', async () => {
+    renderComponent({ currentFolder: 'folder1/subfolder' });
+
+    // Breadcrumb segments for each part of the current folder path are rendered
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'folder1' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'subfolder' })).toBeInTheDocument();
+    });
+
+    // The explorer (search/toolbar) is always rendered
+    expect(screen.getByTestId('dataset-details-search-input')).toBeInTheDocument();
+  });
+
+  it('navigates to the fileset root when the fileset breadcrumb is clicked', async () => {
+    const user = userEvent.setup();
+    const onFolderChange = vi.fn();
+    renderComponent({
+      currentFolder: 'folder1',
+      onFolderChange,
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'test-dataset' }));
+
+    expect(onFolderChange).toHaveBeenCalledWith();
+  });
 });

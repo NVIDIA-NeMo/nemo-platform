@@ -8859,6 +8859,21 @@ components:
             that expose a non-standard health endpoint.
           type: string
           maxLength: 255
+        run_as_user:
+          title: Run As User
+          description: Pod securityContext runAsUser (uid) for the serving container
+            (k8s backend only). If unset, the engine default applies (vLLM pins its
+            image's user; generic uses the image's own user). Ignored by the docker
+            backend.
+          type: integer
+          minimum: 0.0
+        run_as_group:
+          title: Run As Group
+          description: Pod securityContext runAsGroup (gid) for the serving container
+            (k8s backend only). If unset, the engine default applies. Ignored by the
+            docker backend.
+          type: integer
+          minimum: 0.0
         additional_envs:
           title: Additional Envs
           description: Additional environment variables for the deployment
