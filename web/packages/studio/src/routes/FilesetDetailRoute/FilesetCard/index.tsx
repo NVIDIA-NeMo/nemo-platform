@@ -1,10 +1,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getEntityReference } from '@nemo/common/src/namedEntity';
+import { useModelsListModels } from '@nemo/sdk/generated/platform/api';
 import {
   FilesetPurpose,
   type FilesetFileOutput,
   type FilesetOutput,
+  type ModelEntityFilter,
 } from '@nemo/sdk/generated/platform/schema';
 import { Stack } from '@nvidia/foundations-react-core';
 import { useDatasetFileContent } from '@studio/api/datasets/useDatasetFileContent';
@@ -36,6 +39,19 @@ export const FilesetCard: FC<FilesetCardProps> = ({
   isFilesError,
 }) => {
   const readmePath = useMemo(() => files?.find(isRootReadme)?.path, [files]);
+  const isModel = fileset.purpose === FilesetPurpose.model;
+
+  const { data: modelEntitiesResponse } = useModelsListModels(
+    workspace,
+    // fileset filter is valid on the backend but missing from the generated SDK type (stale SDK)
+    {
+      filter: {
+        fileset: getEntityReference({ workspace, name: filesetName }),
+      } as ModelEntityFilter,
+    },
+    { query: { enabled: isModel } }
+  );
+  const modelEntities = modelEntitiesResponse?.data ?? [];
 
   const {
     data: rawContent,
@@ -73,7 +89,11 @@ export const FilesetCard: FC<FilesetCardProps> = ({
       </div>
       <div className="lg:col-span-1">
         <Stack gap="density-xl" className="h-full overflow-auto">
-          <FilesetMetadataPanel fileset={fileset} readmeMetadata={parsed?.metadata} />
+          <FilesetMetadataPanel
+            fileset={fileset}
+            readmeMetadata={parsed?.metadata}
+            modelEntities={isModel ? modelEntities : undefined}
+          />
           {isDataset && (
             <DatasetSamplePanel workspace={workspace} filesetName={filesetName} files={files} />
           )}

@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { KVPair } from '@nemo/common/src/components/KVPair';
 import { Divider, Stack, Tag, Text } from '@nvidia/foundations-react-core';
-import { ReadOnlyField } from '@studio/components/common/ReadOnlyField';
 import { TaskDisplay } from '@studio/components/evaluation/Configurations/TaskDisplay';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import {
@@ -48,11 +48,11 @@ export const ConfigurationDetailsPanel: FC<ConfigurationDetailsPanelProps> = ({
   return (
     <Stack gap="density-2xl" className={`overflow-y-auto w-full ${className || ''}`}>
       <Stack gap="density-2xl" className="w-full">
-        <ReadOnlyField label="Configuration Name" value={configName} />
-        <ReadOnlyField label="Configuration ID" value={configId} />
+        <KVPair label="Configuration Name" value={configName} />
+        <KVPair label="Configuration ID" value={configId} />
 
         {tags && tags.length > 0 && (
-          <ReadOnlyField
+          <KVPair
             label="Tags"
             value={
               <Stack gap="density-sm" direction="row">

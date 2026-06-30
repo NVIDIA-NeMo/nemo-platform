@@ -49,7 +49,6 @@ from nmp.core.inference_gateway.config import InferenceGatewayConfig
 from nmp.core.jobs.config import JobsServiceConfig
 from nmp.core.models.config import ModelsConfig
 from nmp.core.secrets.config import SecretsServiceConfig
-from nmp.evaluator.config import EvaluatorSettings
 from nmp.studio.config import StudioConfig
 from nmp.unsloth.config import UnslothConfig
 from ruamel.yaml import YAML
@@ -72,7 +71,6 @@ CONFIG_CLASSES: list[type[Any]] = [
     SecretsServiceConfig,
     AutomodelConfig,
     UnslothConfig,
-    EvaluatorSettings,
     SafeSynthesizerConfig,
     StudioConfig,
 ]

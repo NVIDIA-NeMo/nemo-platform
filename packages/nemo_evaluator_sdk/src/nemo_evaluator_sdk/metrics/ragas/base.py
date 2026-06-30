@@ -42,7 +42,7 @@ if TYPE_CHECKING:
     from langchain_core.callbacks import BaseCallbackHandler
 
     from ragas import EvaluationDataset
-    from ragas.llms import LangchainLLMWrapper
+    from ragas.llms.base import LangchainLLMWrapper
 
 # RAGAS configuration constants
 RAGAS_MAX_WAIT = 600  # 10 minutes in seconds
@@ -67,6 +67,21 @@ RAGAS_OUTPUT_NAME_TO_SDK_OUTPUT_NAME: dict[str, str] = {
     "tool_call_accuracy": MetricType.TOOL_CALL_ACCURACY.value,
     "topic_adherence": MetricType.TOPIC_ADHERENCE.value,
 }
+
+
+def _strip_ragas_mode_suffix(name: str) -> str:
+    """Strip RAGAS's ``(mode=<mode>)`` suffix from a score name.
+
+    RAGAS keys mode-bearing metrics (e.g. ``NoiseSensitivity`` with mode
+    relevant/irrelevant, ``TopicAdherence`` with mode precision/recall/f1) as
+    ``"<name>(mode=<mode>)"`` (see ``ragas.evaluation``). The SDK declares the bare
+    metric-type name in ``output_spec``, so the suffix is removed before mapping the
+    RAGAS output name back to the declared SDK output name.
+    """
+    base, separator, remainder = name.partition("(mode=")
+    if separator and remainder.endswith(")"):
+        return base
+    return name
 
 
 # Lazy loaders for langchain classes (cached to avoid repeated imports)
@@ -265,9 +280,10 @@ class BaseRAGASMetric(MetricBase):
         if not declared or not scores:
             return scores
 
-        translated_scores = {
-            RAGAS_OUTPUT_NAME_TO_SDK_OUTPUT_NAME.get(name, name): value for name, value in scores.items()
-        }
+        translated_scores = {}
+        for name, value in scores.items():
+            base_name = _strip_ragas_mode_suffix(name)
+            translated_scores[RAGAS_OUTPUT_NAME_TO_SDK_OUTPUT_NAME.get(base_name, base_name)] = value
         aligned = {
             name: scores[name] if name in scores else translated_scores[name]
             for name in declared

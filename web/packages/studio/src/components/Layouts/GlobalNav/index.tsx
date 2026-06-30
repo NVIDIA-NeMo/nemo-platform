@@ -5,13 +5,15 @@ import { AppBar, Button, Flex, Stack, Text, Tooltip } from '@nvidia/foundations-
 import { Breadcrumbs } from '@studio/components/Breadcrumbs';
 import { UserPopover } from '@studio/components/UserPopover';
 import { TOUR_ENABLED } from '@studio/constants/environment';
+import { ROUTES } from '@studio/constants/routes';
 import { useWorkspaceFromPathIfExists } from '@studio/hooks/useWorkspaceFromPath';
+import { ClaudeCodeTopBarChat } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeTopBarChat';
 import { ThemeSwitch } from '@studio/routes/PageLayout/ThemeSwitch';
 import { getWorkspaceDetailsDefaultRoute } from '@studio/routes/utils';
 import { useSidebarState } from '@studio/util/hooks/useSidebarState';
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { lazy, Suspense, type FC, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, matchPath, useLocation } from 'react-router-dom';
 
 const WelcomeTour = lazy(() =>
   import('@studio/components/WelcomeTour').then((m) => ({ default: m.WelcomeTour }))
@@ -24,6 +26,12 @@ interface Props {
 export const GlobalNav: FC<Props> = ({ sideNav }) => {
   const { expanded, toggle } = useSidebarState();
   const workspace = useWorkspaceFromPathIfExists();
+  const location = useLocation();
+  const isDashboardRoute =
+    matchPath({ path: ROUTES.workspace.dashboard, end: true }, location.pathname) !== null;
+  const isClaudeCodeChatRoute =
+    matchPath({ path: ROUTES.workspace.claudeCodeChat, end: true }, location.pathname) !== null;
+  const shouldMountClaudeCodeTopBarChat = !isDashboardRoute && !isClaudeCodeChatRoute;
 
   const toggleLabel = expanded ? 'Collapse sidebar' : 'Expand sidebar';
   const ToggleSidebarButton = (
@@ -71,6 +79,7 @@ export const GlobalNav: FC<Props> = ({ sideNav }) => {
                 <WelcomeTour />
               </Suspense>
             )}
+            {shouldMountClaudeCodeTopBarChat && <ClaudeCodeTopBarChat />}
             <ThemeSwitch />
             <span data-tour="nav-user">
               <UserPopover />

@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing_extensions import Literal, TypedDict
+from typing_extensions import TypedDict
 
 from .experiment_filter_param import ExperimentFilterParam
 
@@ -29,8 +29,13 @@ class ExperimentListParams(TypedDict, total=False):
 
     filter: ExperimentFilterParam
     """
-    Filter experiments by name, experiment_group_id, agent_name, agent_version,
-    dataset_name, dataset_version, created_by, created_at, or updated_at.
+    Filter experiments by name, experiment_group_id, dataset_name, dataset_version,
+    created_by, created_at, or updated_at. Pass is_deleted=true to return only
+    soft-deleted experiments; omit to see only live ones. Pass is_pinned=true (or
+    false) to filter by pinned state; omit to return both. Filter by a rollup metric
+    with numeric range operators ($gte/$lte/$gt/$lt/$eq): filter[run_count][$gte]=5,
+    filter[cost_usd.mean][$lte]=0.5, filter[latency_ms.p95][$lte]=1000, or
+    filter[evaluators.<name>.mean][$gte]=0.8.
     """
 
     page: int
@@ -39,5 +44,11 @@ class ExperimentListParams(TypedDict, total=False):
     page_size: int
     """Page size."""
 
-    sort: Literal["-created_at", "created_at", "-updated_at", "updated_at", "-name", "name"]
-    """Sort field; prefix with '-' for descending."""
+    sort: str
+    """Field to sort by; prefix with '-' for descending.
+
+    Sort by an experiment attribute (name, created_at, updated_at, pinned_at) or by
+    an aggregate metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or
+    evaluators.<name>.<stat>, where <stat> is one of mean, median, p90, p95, p99,
+    sum, count.
+    """

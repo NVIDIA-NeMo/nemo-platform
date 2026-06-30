@@ -18,7 +18,10 @@ import {
   createTextMessage,
   getMessageText,
 } from '@nemo/common/src/components/AssistantChat/messageUtils';
-import { groupConsecutiveClaudeCodeSubtleToolCalls } from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
+import {
+  getClaudeCodeCompletedMessageParts,
+  groupConsecutiveClaudeCodeSubtleToolCalls,
+} from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
 import { useCallback, useRef, useState } from 'react';
 
 export interface CustomAssistantRunContext {
@@ -37,10 +40,26 @@ export interface CustomAssistantRunResult {
   text?: string;
 }
 
+export type CustomAssistantBeforeRunResult = 'continue' | 'cancel';
+
+export interface CustomAssistantBeforeRunContext {
+  prompt: string;
+  signal: AbortSignal;
+  prepareForUserInput: () => void;
+  isCurrentRun: () => boolean;
+}
+
 interface UseCustomAssistantChatRuntimeOptions {
   initialMessages?: readonly ThreadMessageLike[];
+  onBeforeRun?: (
+    context: CustomAssistantBeforeRunContext
+  ) => Promise<CustomAssistantBeforeRunResult | void> | CustomAssistantBeforeRunResult | void;
   onRun: (context: CustomAssistantRunContext) => Promise<CustomAssistantRunResult | void>;
   onError?: (error: Error) => void;
+}
+
+interface CompleteAssistantMessageOptions {
+  readonly collapseClaudeCodeContent?: boolean;
 }
 
 const isAbortError = (error: unknown): boolean =>
@@ -90,8 +109,17 @@ const hasVisibleAssistantContent = (content: ThreadMessageLike['content']): bool
   });
 };
 
+const completeClaudeCodeAssistantContent = (
+  content: ThreadMessageLike['content'],
+  status: MessageStatus
+): ThreadMessageLike['content'] => {
+  if (status.type !== 'complete' || !Array.isArray(content)) return content;
+  return getClaudeCodeCompletedMessageParts(content);
+};
+
 export const useCustomAssistantChatRuntime = ({
   initialMessages = [],
+  onBeforeRun,
   onRun,
   onError,
 }: UseCustomAssistantChatRuntimeOptions) => {
@@ -176,7 +204,8 @@ export const useCustomAssistantChatRuntime = ({
 
       const completeActiveAssistantMessage = (
         status: MessageStatus,
-        content: ThreadMessageLike['content'] = getCurrentResponseContent()
+        content: ThreadMessageLike['content'] = getCurrentResponseContent(),
+        options: CompleteAssistantMessageOptions = {}
       ) => {
         if (!assistantMessageId) return;
 
@@ -184,11 +213,14 @@ export const useCustomAssistantChatRuntime = ({
         assistantMessageId = null;
         responseText = '';
         responseContent = undefined;
-        completeAssistantMessageContent(currentAssistantMessageId, content, status);
+        completeAssistantMessageContent(
+          currentAssistantMessageId,
+          options.collapseClaudeCodeContent === false
+            ? content
+            : completeClaudeCodeAssistantContent(content, status),
+          status
+        );
       };
-
-      createAssistantMessage();
-      setIsRunning(true);
 
       const setAssistantText = (text: string) => {
         ensureAssistantMessage();
@@ -214,10 +246,26 @@ export const useCustomAssistantChatRuntime = ({
       };
 
       const prepareForUserInput = () => {
-        completeActiveAssistantMessage(COMPLETE_STATUS);
+        completeActiveAssistantMessage(COMPLETE_STATUS, getCurrentResponseContent(), {
+          collapseClaudeCodeContent: false,
+        });
       };
 
       try {
+        const beforeRunResult = await onBeforeRun?.({
+          prompt,
+          signal: runController.signal,
+          prepareForUserInput,
+          isCurrentRun,
+        });
+
+        if (beforeRunResult === 'cancel' || runController.signal.aborted || !isCurrentRun()) {
+          return;
+        }
+
+        createAssistantMessage();
+        setIsRunning(true);
+
         const result = await onRun({
           prompt,
           signal: runController.signal,
@@ -263,6 +311,7 @@ export const useCustomAssistantChatRuntime = ({
     },
     [
       completeAssistantMessageContent,
+      onBeforeRun,
       onError,
       onRun,
       setThreadMessages,
@@ -329,6 +378,15 @@ export const useCustomAssistantChatRuntime = ({
     setThreadMessages([]);
   }, [setThreadMessages]);
 
+  const replaceMessages = useCallback(
+    (nextMessages: readonly ThreadMessageLike[]) => {
+      abortControllerRef.current?.abort();
+      setIsRunning(false);
+      setThreadMessages(nextMessages);
+    },
+    [setThreadMessages]
+  );
+
   const runtime = useExternalStoreRuntime<ThreadMessageLike>({
     messages,
     setMessages: setThreadMessages,
@@ -345,6 +403,8 @@ export const useCustomAssistantChatRuntime = ({
     appendUserMessage,
     handleReset,
     isRunning,
+    messages,
+    replaceMessages,
     runtime,
     submitPrompt,
   };

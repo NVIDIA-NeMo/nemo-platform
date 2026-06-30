@@ -1,0 +1,37 @@
+{{- if .Values.core.enabled }}
+{{- if .Values.core.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "nmp-core.controller-servicename" . }}
+  labels:
+    app.kubernetes.io/component: nmp-core-controller
+    {{- include "nemo-platform.labels" . | nindent 4 }}
+    {{- with .Values.core.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  annotations:
+  {{- with .Values.core.controller.annotations }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.core.serviceMonitor.annotations }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: nmp-core-controller
+      {{- include "nemo-platform.labels" . | nindent 6 }}
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  endpoints:
+    - port: http
+      {{- with .Values.core.serviceMonitor.interval }}
+      interval: {{ . }}
+      {{- end }}
+      {{- with .Values.core.serviceMonitor.scheme }}
+      scheme: {{ . }}
+      {{- end }}
+{{- end }}
+{{- end }}

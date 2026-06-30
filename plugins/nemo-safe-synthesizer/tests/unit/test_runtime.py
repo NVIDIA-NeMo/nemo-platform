@@ -86,6 +86,7 @@ def test_setup_runtime_uses_separate_uv_install_commands(tmp_path, monkeypatch):
     assert "setuptools" in calls[1][0]
     assert "uv-dynamic-versioning" in calls[1][0]
     assert calls[2][0][:6] == ["uv", "pip", "install", "--python", str(runtime_python), "--no-build-isolation"]
+    assert str(tmp_path / runtime.RUNTIME_CONSTRAINTS_FILE) in calls[2][0]
     assert "--extra-index-url" in calls[2][0]
     assert runtime.FLASHINFER_CU129_INDEX_URL in calls[2][0]
     assert runtime.PYTORCH_CU129_INDEX_URL in calls[2][0]
@@ -103,6 +104,15 @@ def test_setup_runtime_uses_separate_uv_install_commands(tmp_path, monkeypatch):
         "-e",
         str(tmp_path / "plugins/nemo-safe-synthesizer"),
     ]
+    assert calls[4][0] == ["uv", "pip", "check", "--python", str(runtime_python)]
+
+
+def test_runtime_constraints_include_aws_sdk_bounds():
+    constraints = runtime.repo_root() / runtime.RUNTIME_CONSTRAINTS_FILE
+    content = constraints.read_text()
+
+    assert "boto3>=" in content
+    assert "botocore>=" in content
 
 
 def test_setup_runtime_refuses_to_delete_repo_root(tmp_path, monkeypatch):

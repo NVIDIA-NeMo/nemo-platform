@@ -5,9 +5,25 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, Self
+from typing import Literal, Self
 
+from nemo_platform_plugin.integrations import IntegrationsSpec
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+__all__ = [
+    "AutomodelJobInput",
+    "AutomodelJobOutput",
+    "BatchSpec",
+    "DatasetSpec",
+    "LoRAParams",
+    "OptimizerSpec",
+    "OutputRequest",
+    "OutputResponse",
+    "ParallelismSpec",
+    "ScheduleSpec",
+    "TrainingSpec",
+    "ValidationError",
+]
 
 
 class ValidationError(ValueError):
@@ -19,8 +35,13 @@ class LoRAParams(BaseModel):
 
     rank: int = Field(default=16, gt=0)
     alpha: int = Field(default=32, gt=0)
+    dropout: float = Field(default=0.0, ge=0.0, le=1.0, description="LoRA dropout probability for regularization.")
     merge: bool = False
     target_modules: list[str] | None = None
+    exclude_modules: list[str] | None = Field(
+        default=None, description="Module name patterns to exclude from LoRA (e.g. ['*.out_proj'])."
+    )
+    use_triton: bool = Field(default=True, description="Use the optimized Triton LoRA kernel.")
 
 
 class DatasetSpec(BaseModel):
@@ -38,6 +59,14 @@ class TrainingSpec(BaseModel):
     finetuning_type: Literal["lora", "all_weights", "lora_merged"] = "lora"
     lora: LoRAParams | None = None
     max_seq_length: int = Field(default=2048, gt=0)
+    precision: Literal["bf16", "fp16", "fp32", "fp8"] | None = Field(
+        default=None,
+        description="Model precision for training. Auto-detected from the checkpoint when unset.",
+    )
+    attn_implementation: Literal["sdpa", "flash_attention_2", "eager"] = Field(
+        default="sdpa",
+        description="Attention backend: 'sdpa' (PyTorch native), 'flash_attention_2', or 'eager'.",
+    )
     execution_profile: str | None = Field(default=None, min_length=1)
     teacher_model: str | None = None
     distillation_ratio: float = Field(default=0.5, ge=0.0, le=1.0)
@@ -69,14 +98,27 @@ class BatchSpec(BaseModel):
     global_batch_size: int = Field(default=8, gt=0)
     micro_batch_size: int = Field(default=1, gt=0)
     sequence_packing: bool = False
+    sequence_packing_max_samples: int = Field(
+        default=1000, gt=0, description="Samples analyzed to estimate the optimal pack size when packing is enabled."
+    )
 
 
 class OptimizerSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     learning_rate: float = Field(default=5e-6, gt=0.0)
+    min_learning_rate: float | None = Field(
+        default=None, ge=0.0, description="Minimum learning rate for the cosine decay schedule."
+    )
     weight_decay: float = Field(default=0.01, ge=0.0)
+    adam_beta1: float = Field(default=0.9, ge=0.0, lt=1.0, description="Adam optimizer beta1.")
+    adam_beta2: float = Field(default=0.999, ge=0.0, lt=1.0, description="Adam optimizer beta2.")
     warmup_steps: int = Field(default=0, ge=0)
+    adam_eps: float = Field(default=1e-8, gt=0.0, description="Adam/AdamW epsilon for numerical stability.")
+    optimizer: Literal["Adam", "AdamW"] = Field(default="Adam", description="Optimizer algorithm.")
+    lr_decay_style: Literal["cosine", "linear", "constant"] = Field(
+        default="cosine", description="Learning-rate decay schedule."
+    )
 
 
 class ParallelismSpec(BaseModel):
@@ -88,6 +130,7 @@ class ParallelismSpec(BaseModel):
     pipeline_parallel_size: int = Field(default=1, gt=0)
     context_parallel_size: int = Field(default=1, gt=0)
     expert_parallel_size: int | None = Field(default=None, gt=0)
+    sequence_parallel: bool = Field(default=False, description="Enable sequence parallelism.")
 
 
 class OutputRequest(BaseModel):
@@ -104,21 +147,6 @@ class OutputResponse(BaseModel):
     type: Literal["model", "adapter"]
     fileset: str
     description: str | None = None
-
-
-class WandbIntegration(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    enabled: bool = True
-    project: str | None = None
-    api_key_secret: str | None = None
-
-
-class IntegrationsSpec(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    wandb: WandbIntegration | None = None
-    mlflow: dict[str, Any] | None = None
 
 
 class AutomodelJobInput(BaseModel):

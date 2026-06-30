@@ -106,9 +106,7 @@ export const CustomizationFilesetSelect: FC<CustomizationFilesetSelectProps> = (
     }
   };
 
-  const selectedDropdownValue = selectedFilesetBase
-    ? getEntityReference(selectedFilesetBase)
-    : undefined;
+  const selectedDropdownValue = selectedFilesetBase ? getEntityReference(selectedFilesetBase) : '';
 
   // File preview state and content fetching
   const {

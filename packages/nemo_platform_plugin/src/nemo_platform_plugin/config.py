@@ -77,13 +77,14 @@ from os import environ
 from pathlib import Path
 from typing import Any, ClassVar, Literal, Self, Type, TypeVar
 
-import docker
 import yaml
 from docker.errors import DockerException
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic._internal._model_construction import ModelMetaclass
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 from requests.exceptions import Timeout as RequestsTimeout
+
+import docker
 
 logger = logging.getLogger(__name__)
 

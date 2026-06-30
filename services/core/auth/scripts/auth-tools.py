@@ -1091,6 +1091,10 @@ AREA_DISPLAY_NAMES = {
     "workspaces": "Workspaces API",
 }
 
+DOCS_EXCLUDED_PERMISSION_AREAS = {
+    "intake",
+}
+
 
 def _perm_role_signature(perm_name: str, role_perms_map: Dict[str, Set[str]], ordered_roles: List[str]) -> tuple:
     """Return a tuple of booleans indicating which roles have this permission."""
@@ -1120,6 +1124,17 @@ _ACTION_ORDER = {
 def _action_sort_key(action: str) -> tuple:
     """Return a sort key that puts common CRUD actions in natural order."""
     return (_ACTION_ORDER.get(action, 100), action)
+
+
+def _build_docs_area_groups(registry: Dict[str, Dict]) -> Dict[str, List[str]]:
+    """Group registered permissions by area, excluding areas hidden from public docs."""
+    area_groups: Dict[str, List[str]] = {}
+    for perm_name in sorted(registry.keys()):
+        area = perm_name.split(".")[0]
+        if area in DOCS_EXCLUDED_PERMISSION_AREAS:
+            continue
+        area_groups.setdefault(area, []).append(perm_name)
+    return area_groups
 
 
 def _build_grouped_rows(
@@ -1166,8 +1181,8 @@ def _build_grouped_rows(
             rows.append(f"| `{perm_name}` | {description} | {role_marks} |")
         else:
             actions = [_perm_action(p) for p in group]
-            actions_str = " \\\\| ".join(actions)
-            display = f"`{prefix}.({actions_str})`"
+            actions_str = " &#124; ".join(actions)
+            display = f"<code>{prefix}.({actions_str})</code>"
             # Build a combined description from the common prefix
             desc_parts = prefix.split(".")
             area_label = (
@@ -1194,11 +1209,7 @@ def _generate_permissions_reference(auth_config: Dict) -> str:
     for role_name in roles_data:
         role_perms_map[role_name] = extract_role_permissions_recursive(roles_data, role_name)
 
-    area_groups: Dict[str, List[str]] = {}
-    for perm_name in sorted(registry.keys()):
-        area = perm_name.split(".")[0]
-        area_groups.setdefault(area, []).append(perm_name)
-
+    area_groups = _build_docs_area_groups(registry)
     ordered_roles = ["Viewer", "Editor", "Admin"]
 
     lines: List[str] = []
@@ -1206,18 +1217,23 @@ def _generate_permissions_reference(auth_config: Dict) -> str:
     lines.append('title: "Permissions Reference"')
     lines.append('description: ""')
     lines.append("---")
-    lines.append("(permissions-reference)=")
     lines.append("")
+    lines.append(
+        "{/* This page is generated from the auth configuration. "
+        "Regenerate it with `uv run python services/core/auth/scripts/auth-tools.py generate-docs`. */}"
+    )
     lines.append("")
     lines.append(
         "Complete reference of all permissions across the NeMo Platform APIs. "
         "Each permission controls access to a specific operation within an individual API. "
-        "Permissions are assigned to users through [roles](roles-and-permissions.md)."
+        "Permissions are assigned to users through "
+        "[roles](/documentation/access-control/authorization/roles-and-permissions)."
     )
     lines.append("")
     lines.append(
-        "For token-level access restrictions, see [API Scopes](api-scopes.md). "
-        "For the RBAC model, see [Authorization Concepts](../concepts.md)."
+        "For token-level access restrictions, see "
+        "[API Scopes](/documentation/access-control/authorization/api-scopes). "
+        "For the RBAC model, see [Authorization Concepts](/documentation/access-control/concepts)."
     )
     lines.append("")
     lines.append("<Note>")
@@ -1241,10 +1257,20 @@ def _generate_permissions_reference(auth_config: Dict) -> str:
 
     lines.append("## Related")
     lines.append("")
-    lines.append("- [Roles & Permissions](roles-and-permissions.md) — Role descriptions and hierarchy.")
-    lines.append("- [API Scopes](api-scopes.md) — Token-level scope restrictions.")
-    lines.append("- [Authorization Concepts](../concepts.md) — Workspaces, roles, bindings, and the RBAC model.")
-    lines.append("- [Security Model](../security-model.md) — Trust boundaries and authorization layers.")
+    lines.append(
+        "- [Roles & Permissions](/documentation/access-control/authorization/roles-and-permissions) "
+        "— Role descriptions and hierarchy."
+    )
+    lines.append(
+        "- [API Scopes](/documentation/access-control/authorization/api-scopes) — Token-level scope restrictions."
+    )
+    lines.append(
+        "- [Authorization Concepts](/documentation/access-control/concepts) "
+        "— Workspaces, roles, bindings, and the RBAC model."
+    )
+    lines.append(
+        "- [Security Model](/documentation/access-control/security-model) — Trust boundaries and authorization layers."
+    )
     lines.append("")
 
     return "\n".join(lines)
@@ -1287,13 +1313,14 @@ def generate_docs(
     auth_config = load_yaml(auth_path)
     content = _generate_permissions_reference(auth_config)
     registry = extract_registered_permissions(auth_config)
+    area_groups = _build_docs_area_groups(registry)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(content, encoding="utf-8")
 
-    area_count = len({name.split(".")[0] for name in registry})
+    permission_count = sum(len(perm_names) for perm_names in area_groups.values())
     console.print(f"[green]✓ Generated permissions reference at {output_path}[/green]")
-    console.print(f"[dim]{len(registry)} permissions across {area_count} areas[/dim]")
+    console.print(f"[dim]{permission_count} permissions across {len(area_groups)} areas[/dim]")
 
 
 def extract_role_permissions_recursive(

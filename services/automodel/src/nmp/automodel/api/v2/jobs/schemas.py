@@ -5,9 +5,9 @@
 
 from typing import Annotated, Any, Dict, Literal, Optional, Self, Union
 
+from nemo_platform_plugin.integrations import IntegrationsSpec
 from nmp.automodel.entities.validators import validate_fileset_uri
 from nmp.automodel.entities.values import FinetuningType, OutputNameType, Precision
-from nmp.common.api.common import SecretRef
 from nmp.common.entities.constants import (
     MAX_LENGTH_255,
     REGEX_WORD_CHARACTER_DOT_DASH,
@@ -87,6 +87,14 @@ class LoRAParams(_PEFTParams):
         default=None,
         description="Module name patterns to apply LoRA to (e.g., ['*.q_proj', '*.v_proj']). "
         "If not set, applies to all '*proj' linear layers.",
+    )
+    exclude_modules: Optional[list[str]] = Field(
+        default=None,
+        description="Module name patterns to exclude from LoRA (e.g., ['*.out_proj']).",
+    )
+    use_triton: bool = Field(
+        default=True,
+        description="Use the optimized Triton LoRA kernel.",
     )
     merge: bool = Field(
         default=False,
@@ -173,12 +181,20 @@ class _TrainingBase(BaseModel):
         default=0.999,
         description="Adam beta2 parameter. Adjust for optimizer tuning.",
     )
+    adam_eps: float = Field(
+        default=1e-8,
+        gt=0.0,
+        description="Adam/AdamW epsilon for numerical stability.",
+    )
     warmup_steps: int = Field(
         default=0,
         ge=0,
         description="Linear warmup steps. Recommended: 10% of total training steps for stable training.",
     )
-    optimizer: Optional[str] = Field(default=None, description="Optimizer name (e.g., 'adamw').")
+    optimizer: Literal["Adam", "AdamW"] = Field(default="Adam", description="Optimizer algorithm.")
+    lr_decay_style: Literal["cosine", "linear", "constant"] = Field(
+        default="cosine", description="Learning-rate decay schedule."
+    )
 
     # --- Schedule ---
     epochs: int = Field(
@@ -218,6 +234,11 @@ class _TrainingBase(BaseModel):
         default=False,
         description="Enable sequence packing for efficiency. Can improve training speed.",
     )
+    sequence_packing_max_samples: int = Field(
+        default=1000,
+        gt=0,
+        description="Samples analyzed to estimate the optimal pack size when sequence packing is enabled.",
+    )
 
     # --- Model ---
     max_seq_length: int = Field(
@@ -228,6 +249,10 @@ class _TrainingBase(BaseModel):
     precision: Optional[Precision] = Field(
         default=None,
         description="Model precision for training. Auto-detected if unset.",
+    )
+    attn_implementation: Literal["sdpa", "flash_attention_2", "eager"] = Field(
+        default="sdpa",
+        description="Attention backend: 'sdpa' (PyTorch native), 'flash_attention_2', or 'eager'.",
     )
     seed: Optional[int] = Field(
         default=None,
@@ -321,93 +346,6 @@ class DPOTraining(_TrainingBase):
 
 AnyTraining = Union[SFTTraining, DistillationTraining, DPOTraining]
 TrainingMethod = Annotated[AnyTraining, Discriminator("type")]
-
-
-# ============================================================
-# Integration Configs (unchanged)
-# ============================================================
-
-
-class WandBParams(BaseModel):
-    """Weights & Biases integration configuration.
-
-    To use W&B, provide an api_key_secret referencing a secret that contains
-    the WANDB_API_KEY value. Optionally provide base_url for self-hosted W&B servers.
-    """
-
-    project: Optional[str] = Field(
-        default=None,
-        description="W&B project name (groups related runs). Defaults to output.name if not set.",
-    )
-    name: Optional[str] = Field(
-        default=None,
-        description="W&B run name. Defaults to job_id if not provided.",
-    )
-    entity: Optional[str] = Field(
-        default=None,
-        description="W&B entity (team or username).",
-    )
-    tags: Optional[list[str]] = Field(
-        default=None,
-        description="W&B tags for filtering runs.",
-    )
-    notes: Optional[str] = Field(
-        default=None,
-        description="W&B notes/description for the run.",
-    )
-    base_url: Optional[str] = Field(
-        default=None,
-        description="Base URL for self-hosted W&B server (e.g., 'https://wandb.mycompany.com'). "
-        "If not provided, uses the default W&B cloud service.",
-    )
-    api_key_secret: SecretRef | None = Field(
-        default=None,
-        description="Reference to a secret containing the WANDB_API_KEY. "
-        "Format: 'secret_name' (uses request workspace) or 'workspace/secret_name' (explicit workspace).",
-    )
-
-
-class MLflowParams(BaseModel):
-    """MLflow integration configuration."""
-
-    experiment_name: Optional[str] = Field(
-        default=None,
-        description="MLflow experiment name (groups related runs). Defaults to output.name if not set.",
-    )
-    run_name: Optional[str] = Field(
-        default=None,
-        description="MLflow run name. Defaults to job_id if not provided.",
-    )
-    tags: Optional[dict[str, str]] = Field(
-        default=None,
-        description="MLflow tags as key-value pairs for filtering runs.",
-    )
-    description: Optional[str] = Field(
-        default=None,
-        description="MLflow run description.",
-    )
-    tracking_uri: Optional[str] = Field(
-        default=None,
-        description="MLflow tracking server URI (e.g., 'http://mlflow.mycompany.com:5000'). "
-        "Can also be set via MLFLOW_TRACKING_URI environment variable.",
-    )
-
-
-class IntegrationParams(BaseModel):
-    """Third-party integration configurations.
-
-    Each integration type has its own optional field. To enable an integration,
-    provide its configuration object. Omit or set to None to disable.
-    """
-
-    wandb: Optional[WandBParams] = Field(
-        default=None,
-        description="Weights & Biases integration configuration.",
-    )
-    mlflow: Optional[MLflowParams] = Field(
-        default=None,
-        description="MLflow integration configuration.",
-    )
 
 
 # ============================================================
@@ -521,7 +459,7 @@ class _CustomizationJobBase(BaseModel):
         description="Training dataset fileset as 'workspace/name' or 'name' (resolved in the job path workspace)."
     )
     training: TrainingMethod = Field(description="Training method and hyperparameters.")
-    integrations: Optional[IntegrationParams] = Field(
+    integrations: Optional[IntegrationsSpec] = Field(
         default=None,
         description="Third-party integrations (e.g., Weights & Biases, MLflow).",
     )

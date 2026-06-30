@@ -2,17 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useFilesListFilesetFiles } from '@nemo/sdk/generated/platform/api';
-import { SidePanel } from '@nvidia/foundations-react-core';
+import { SidePanel, SidePanelCloseButton } from '@nvidia/foundations-react-core';
 import { FilesetFilePreviewHeader } from '@studio/components/FilesetFilePreviewPanel/components/FilesetFilePreviewHeader';
 import { FilesetFilePreviewContent } from '@studio/components/FilesetFilePreviewPanel/FilesetFilePreviewContent';
 import type { FileSystemFile } from '@studio/components/FilesTable/utils';
-import type { FC } from 'react';
+import { useRef, type FC } from 'react';
 
 export interface FilesetFilePreviewPanelProps {
   // Panel chrome
   open: boolean;
   onCloseClick: () => void;
   onOutsideClick?: () => void;
+  onClosing?: () => void;
 
   // Fileset context
   workspace: string;
@@ -46,6 +47,7 @@ export const FilesetFilePreviewPanel: FC<FilesetFilePreviewPanelProps> = ({
   open,
   onCloseClick,
   onOutsideClick,
+  onClosing,
   workspace,
   filesetName,
   filePath,
@@ -58,16 +60,25 @@ export const FilesetFilePreviewPanel: FC<FilesetFilePreviewPanelProps> = ({
   isLoading,
   error,
 }) => {
+  const closeTriggerRef = useRef<HTMLButtonElement>(null);
+  const pendingCloseRef = useRef<(() => void) | null>(null);
+
   const handleOpenChange = (isOpen: boolean) => {
-    if (!isOpen) onCloseClick();
+    if (isOpen) return;
+    onClosing?.();
+    const navigateOnClose = pendingCloseRef.current ?? onCloseClick;
+    pendingCloseRef.current = null;
+    navigateOnClose();
   };
 
-  const handleOutside = () => {
-    if (onOutsideClick) {
-      onOutsideClick();
-    } else {
-      onCloseClick();
-    }
+  const markDismiss = () => {
+    pendingCloseRef.current = onOutsideClick ?? onCloseClick;
+  };
+
+  // Run the animated close, then `action` once it finishes.
+  const closeWith = (action: () => void) => {
+    pendingCloseRef.current = action;
+    closeTriggerRef.current?.click();
   };
 
   const { data: allFilesResponse } = useFilesListFilesetFiles(workspace, filesetName, undefined, {
@@ -82,33 +93,39 @@ export const FilesetFilePreviewPanel: FC<FilesetFilePreviewPanelProps> = ({
       side="right"
       open={open}
       onOpenChange={handleOpenChange}
-      onEscapeKeyDown={(e) => {
-        e.preventDefault();
-        handleOutside();
-      }}
-      onPointerDownOutside={(e) => {
-        e.preventDefault();
-        handleOutside();
-      }}
+      onEscapeKeyDown={markDismiss}
+      onPointerDownOutside={markDismiss}
       slotHeading={
         <FilesetFilePreviewHeader
           workspace={workspace}
           filesetName={filesetName}
           filePath={filePath}
           file={file}
-          onFilesetClick={onFilesetClick}
-          onFolderClick={onFolderClick}
+          onFilesetClick={onFilesetClick ? () => closeWith(onFilesetClick) : undefined}
+          onFolderClick={
+            onFolderClick ? (folderPath) => closeWith(() => onFolderClick(folderPath)) : undefined
+          }
           onDeleteSuccess={onDeleteSuccess}
           onRenameSuccess={onRenameSuccess}
         />
       }
       attributes={{
         SidePanelHeading: { className: 'font-normal' },
+        SidePanelCloseButton: { type: 'button' },
       }}
       bordered
       modal
       className="max-w-[960px] w-full"
     >
+      <SidePanelCloseButton
+        ref={closeTriggerRef}
+        type="button"
+        className="sr-only"
+        tabIndex={-1}
+        aria-hidden
+      >
+        Close
+      </SidePanelCloseButton>
       <FilesetFilePreviewContent
         workspace={workspace}
         filesetName={filesetName}

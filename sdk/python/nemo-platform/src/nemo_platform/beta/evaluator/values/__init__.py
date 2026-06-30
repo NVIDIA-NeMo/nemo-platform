@@ -10,6 +10,14 @@ from nemo_platform.beta.evaluator.values.dataset_schemas import (
     InputSchema,
 )
 from nemo_platform.beta.evaluator.values.datasets import DatasetInput, DatasetRows
+from nemo_platform.beta.evaluator.values.evidence import (
+    CandidateEvidence,
+    CommandResult,
+    EvidenceDescriptor,
+    FilesystemDiff,
+    FilesystemEntry,
+    LocalFilesystemEvidence,
+)
 from nemo_platform.beta.evaluator.values.metrics import (
     BLEU,
     F1,
@@ -95,8 +103,12 @@ __all__ = [
     "AggregateScore",
     "AggregateScoreBase",
     "BooleanValue",
+    "CandidateEvidence",
     "CandidateOutput",
+    "CommandResult",
     "ContinuousScore",
+    "FilesystemDiff",
+    "FilesystemEntry",
     "DatasetRow",
     "DatasetRows",
     "DefaultAggregateFieldName",
@@ -110,6 +122,7 @@ __all__ = [
     "InferenceParams",
     "JSONScoreParser",
     "Label",
+    "LocalFilesystemEvidence",
     "MetricDescriptor",
     "MetricInput",
     "MetricOutput",
@@ -121,6 +134,7 @@ __all__ = [
     "ModelRef",
     "DatasetInput",
     "EvaluationResult",
+    "EvidenceDescriptor",
     "Percentiles",
     "RangeScore",
     "ReasoningParams",

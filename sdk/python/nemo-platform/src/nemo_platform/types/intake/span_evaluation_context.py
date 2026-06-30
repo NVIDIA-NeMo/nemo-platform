@@ -23,12 +23,6 @@ __all__ = ["SpanEvaluationContext"]
 
 
 class SpanEvaluationContext(BaseModel):
-    dataset_id: Optional[str] = None
-
-    dataset_name: Optional[str] = None
-
-    dataset_version: Optional[str] = None
-
     evaluation_id: Optional[str] = None
 
     evaluation_run_id: Optional[str] = None

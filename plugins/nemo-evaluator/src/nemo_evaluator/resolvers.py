@@ -8,7 +8,7 @@ from __future__ import annotations
 import inspect
 import logging
 from collections.abc import Awaitable
-from typing import Protocol, TypeVar, cast
+from typing import Protocol, TypeVar, cast, runtime_checkable
 
 from nemo_evaluator_sdk.enums import ModelFormat
 from nemo_evaluator_sdk.values.models import Model, ModelRef
@@ -54,8 +54,14 @@ class _InferenceResource(Protocol):
     providers: _ProvidersResource
 
 
-class _PlatformSDK(Protocol):
-    """Minimal platform SDK surface used by this resolver."""
+@runtime_checkable
+class ModelResolverSDK(Protocol):
+    """Minimal platform SDK surface used by model-reference resolution.
+
+    Runtime-checkable so callers can confirm conformance and raise a clear error instead of failing
+    deep in resolution. The resolver tolerates sync or async clients (see ``_maybe_await``), so this
+    only asserts the presence of the ``models`` / ``inference`` resources, not their await-ness.
+    """
 
     models: _ModelsResource
     inference: _InferenceResource
@@ -69,7 +75,7 @@ async def _maybe_await(value: _T | Awaitable[_T]) -> _T:
 
 
 async def _resolve_provider_host_url(
-    sdk: _PlatformSDK,
+    sdk: ModelResolverSDK,
     model_entity: PlatformModelEntity,
 ) -> str | None:
     """Resolve the direct provider host URL from a model entity's first provider."""
@@ -100,7 +106,7 @@ class PlatformModelResolver:
 
     def __init__(self, sdk: object) -> None:
         """Store the platform SDK used for model lookup."""
-        self._sdk = cast(_PlatformSDK, sdk)
+        self._sdk = cast(ModelResolverSDK, sdk)
 
     async def resolve_model(self, model_ref: ModelRef) -> Model:
         """Resolve ``workspace/name`` to an SDK Model routed through inference gateway."""

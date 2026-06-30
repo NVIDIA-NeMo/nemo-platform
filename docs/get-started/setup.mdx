@@ -9,14 +9,37 @@ Install NeMo Platform and start working with AI agents.
 <a id="nemo-setup-prerequisites"></a>
 ## Prerequisites
 
-- Python 3.11-3.13
-- [Git](https://git-scm.com/), GNU Make, [uv](https://docs.astral.sh/uv/), [Node.js (≥22.18.0, \<23)](https://nodejs.org/en/download) satisfying `web/package.json`, and [pnpm](https://pnpm.io/installation)
+- Python 3.11-3.14
 - An API key from one of: [NVIDIA Build](https://build.nvidia.com), [OpenAI](https://platform.openai.com/api-keys), [Anthropic](https://console.anthropic.com/settings/keys), [Google Gemini](https://aistudio.google.com/apikey), or a local [Ollama](https://ollama.com) instance (no key needed)
 - 16 GB available disk space and 8 GB RAM
+- For the PyPI install: `pip` in a Python environment
+- For the source checkout install: [Git](https://git-scm.com/), GNU Make, [uv](https://docs.astral.sh/uv/), [Node.js (≥22.18.0, \<23)](https://nodejs.org/en/download) satisfying `web/package.json`, and [pnpm](https://pnpm.io/installation)
 
 ## Install
 
-Clone the source repository and bootstrap the local environment:
+Choose the install path that matches what you want to do.
+
+### Install from PyPI
+
+Use the [PyPI package](https://pypi.org/project/nemo-platform/) for the quickest local install. The `all` extra includes the SDK, CLI, platform services, and default first-party plugins:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install "nemo-platform[all]"
+```
+
+For SDK and CLI usage only, install the base package:
+
+```bash
+pip install nemo-platform
+```
+
+After installing `nemo-platform[all]` from PyPI, continue with `nemo setup`.
+
+### Install from source
+
+Use the source checkout when you are contributing to NeMo Platform, editing local plugins, building Studio assets from source, or running development workflows:
 
 ```bash
 git clone https://github.com/NVIDIA-NeMo/nemo-platform.git
@@ -52,6 +75,27 @@ The wizard walks through each stage:
 7. **Deploy agent** — optionally deploys a demo calculator agent on the platform
 
 Each stage is idempotent — you can re-run `nemo setup` at any time to add more providers or update your configuration.
+
+### Auth and OIDC source installs
+
+`nemo setup` and `nemo services run` do not create authorization role bindings by themselves. If you enable auth in source config with `auth.enabled: true` and set `auth.admin_email`, run the platform seed task so the bootstrap IAM bindings exist.
+
+For local single-process source runs, enable startup seeding before starting services:
+
+```bash
+export NMP_SEED_ON_STARTUP=true
+nemo services run
+```
+
+You can set `platform.seed_on_startup: true` in platform config instead. If services are already running, wait for readiness and run the seed task manually from the repository root:
+
+```bash
+# Set NMP_BASE_URL first if services are not on http://localhost:8080.
+curl -sf http://localhost:8080/health/ready
+uv run python -m nmp.platform_seed
+```
+
+`uv run nemo-platform run task --task nmp.platform_seed` is equivalent. The seed task is idempotent. It creates the **PlatformAdmin** binding in the `system` workspace for `auth.admin_email`, the wildcard **Editor** binding for the default workspace, and the wildcard **Viewer** binding for the `system` workspace. Without this step, OIDC login can succeed but admin operations may still return `403 Forbidden` because the RBAC bindings are missing.
 
 When setup completes, try chatting with the model you selected. Use the model name shown at the end of setup (or find it with `nemo models list`):
 

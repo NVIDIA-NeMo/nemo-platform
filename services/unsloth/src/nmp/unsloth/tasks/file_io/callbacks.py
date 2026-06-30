@@ -4,7 +4,6 @@
 """Custom fsspec callbacks for progress reporting during file I/O operations."""
 
 import logging
-import os
 import threading
 from abc import abstractmethod
 from dataclasses import dataclass
@@ -13,29 +12,30 @@ from typing import Any
 
 from fsspec.callbacks import Callback, TqdmCallback
 from nmp.common.jobs.schemas import PlatformJobStatus
-from nmp.unsloth.app.jobs.file_io.schemas import DownloadStats, TaskPhase, UploadStats
-from nmp.unsloth.tasks.file_io.progress_reporter import ProgressReporter
+from nmp.customization_common.schemas.file_io import DownloadStats, TaskPhase, UploadStats
+from nmp.customization_common.tasks.file_io_progress_reporter import ProgressReporter
+from nmp.customization_common.tasks.file_io_utils import list_local_files as _list_local_files
 
 logger = logging.getLogger(__name__)
 
 
 def get_percentage(current: int, total: int) -> int:
-    """Get integer percentage 0-100.
+    """Get integer percentage 0-100, clamped to the valid range.
 
-    Raises:
-        ValueError: If current > total or either value is negative.
+    Progress accounting must never abort the underlying transfer. Inputs
+    can fall outside ``[0, total]`` for benign reasons — most commonly when
+    the pre-transfer file listing under-counts a source that contains nested
+    directories, so the live ``current`` count exceeds ``total`` by the
+    number of nested files. Clamp rather than raise so a cosmetic progress
+    number can't fail a multi-GB download.
     """
-    if current > total:
-        raise ValueError(
-            f"Unexpected value of the current and total values: current={current} cannot be greater than total={total}",
-        )
-    if total < 0:
-        raise ValueError(f"Unexpected negative value of the total value: total={total}, current={current}")
-    if current < 0:
-        raise ValueError(f"Unexpected negative value of the current value: current={current}, total={total}")
-
-    if total == 0:
+    if total <= 0:
         return 0
+    if current > total or current < 0:
+        # Benign (see docstring) but worth a breadcrumb now that we no longer
+        # raise — the old hard error is what previously surfaced count drift.
+        logger.debug("get_percentage clamping out-of-range progress: current=%s total=%s", current, total)
+    current = max(0, min(current, total))
     return int((current / total) * 100)
 
 
@@ -157,32 +157,8 @@ class BaseProgressCallback(Callback):
 
     @staticmethod
     def list_local_files(src_path: Path) -> list[FileInfo]:
-        """List all files under *src_path*.
-
-        If ``src_path`` is a file, returns a single ``FileInfo``. If it
-        is a directory, recursively lists all files. Mirrors the shape
-        returned by ``sdk.files.list``.
-        """
-        if not src_path.exists():
-            logger.warning(f"Failed to list local files. Source path does not exist: {src_path}")
-            return []
-
-        try:
-            if src_path.is_file():
-                logger.info(f"Found 1 file: {src_path.name}")
-                return [FileInfo(path=src_path.name, size=src_path.stat().st_size)]
-
-            files = []
-            for root, _, filenames in os.walk(src_path):
-                for filename in filenames:
-                    full_path = Path(root) / filename
-                    relative_path = full_path.relative_to(src_path)
-                    files.append(FileInfo(path=str(relative_path), size=full_path.stat().st_size))
-            logger.info(f"Found {len(files)} files in {src_path}")
-            return files
-        except Exception as e:
-            logger.warning(f"Failed to list local files. Source path: {src_path}. Error: {e}")
-            return []
+        """List all files under *src_path* (see shared ``list_local_files``)."""
+        return [FileInfo(path=f.path, size=f.size) for f in _list_local_files(src_path)]
 
     @abstractmethod
     def branched(self, source_path: str, dest_path: str, **kwargs: Any) -> "BaseSingleFileCallback":

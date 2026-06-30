@@ -29,9 +29,10 @@ validation errors, not silently-ignored fields.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from nemo_platform_plugin.integrations import IntegrationsSpec
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ModelLoadSpec(BaseModel):
@@ -60,6 +61,27 @@ class ModelLoadSpec(BaseModel):
     load_in_8bit: bool = False
     dtype: Literal["auto", "bfloat16", "float16", "float32"] = "auto"
     trust_remote_code: bool = False
+    device_map: str | int | dict[str, int] | None = Field(
+        default=None,
+        description=(
+            "Device placement forwarded to FastLanguageModel.from_pretrained. "
+            "Omit (null) to pin the whole model to the single visible GPU "
+            "({'': 0}) — the right default for this single-GPU backend, and it "
+            "avoids accelerate's auto-placement under-sizing GPU memory on "
+            "unified-memory parts (e.g. GB10 / DGX Spark), which otherwise "
+            "spills layers to CPU and aborts 4-bit loads. Set 'auto', "
+            "'balanced', 'sequential', a device index, or a custom map for "
+            "multi-device experiments."
+        ),
+    )
+    rope_scaling: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "RoPE scaling config for long-context extension, passed to "
+            "FastLanguageModel.from_pretrained (e.g. {'type': 'linear', 'factor': 2.0}). "
+            "None uses the model's native context length."
+        ),
+    )
 
 
 class LoRAParams(BaseModel):
@@ -85,6 +107,33 @@ class LoRAParams(BaseModel):
     bias: Literal["none", "all", "lora_only"] = "none"
     use_rslora: bool = False
     random_state: int = 3407
+    use_dora: bool = Field(
+        default=False,
+        description="DoRA (weight-decomposed LoRA). Improves quality at low ranks; adds training overhead.",
+    )
+    loftq_config: dict[str, Any] | None = Field(
+        default=None,
+        description="LoftQ initialization config for quantized bases. None disables LoftQ.",
+    )
+    modules_to_save: list[str] | None = Field(
+        default=None,
+        description=(
+            "Extra non-LoRA modules to train and save in full (e.g. ['embed_tokens', 'lm_head']). "
+            "Needed for vocab changes / continued pretraining."
+        ),
+    )
+    layers_to_transform: int | list[int] | None = Field(
+        default=None,
+        description="Restrict LoRA to specific layer index(es). None applies to all layers.",
+    )
+    layer_replication: list[list[int]] | None = Field(
+        default=None,
+        description="Layer-replication ranges for stacking, e.g. [[0, 16], [8, 24]]. None disables.",
+    )
+    init_lora_weights: bool | Literal["gaussian", "pissa", "olora", "loftq"] = Field(
+        default=True,
+        description="LoRA weight init scheme. True = PEFT default; 'pissa'/'olora'/'loftq' for advanced inits.",
+    )
 
 
 class TrainingSpec(BaseModel):
@@ -93,12 +142,28 @@ class TrainingSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     training_type: Literal["sft"] = "sft"
-    finetuning_type: Literal["lora", "full"] = "lora"
+    finetuning_type: Literal["lora", "all_weights"] = "lora"
     lora: LoRAParams | None = Field(
         default=None,
         description="Required when finetuning_type='lora'. Auto-filled with defaults if omitted.",
     )
     use_gradient_checkpointing: Literal["unsloth", "true", "false"] = "unsloth"
+
+    @model_validator(mode="after")
+    def _enforce_lora_invariant(self) -> Self:
+        """Keep ``lora`` consistent with ``finetuning_type`` at the schema level.
+
+        ``build_peft_kwargs`` (and the training driver) assume a LoRA run always
+        carries a populated ``lora`` block. Enforcing it here means every path
+        that builds a ``TrainingSpec`` — the plugin's ``UnslothJobInput``, a
+        directly-constructed ``UnslothJobOutput``, SDK callers, tests — gets the
+        invariant for free, instead of relying on a downstream ``assert``.
+        """
+        if self.finetuning_type == "lora" and self.lora is None:
+            self.lora = LoRAParams()
+        if self.finetuning_type == "all_weights" and self.lora is not None:
+            raise ValueError("training.lora must be unset when finetuning_type='all_weights'")
+        return self
 
 
 class DatasetSpec(BaseModel):
@@ -139,7 +204,9 @@ class ScheduleSpec(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    epochs: int | None = Field(default=None, gt=0)
+    # Consistent with Automodel: train for ``epochs`` (default 1) unless ``max_steps``
+    # is set, in which case the trainer caps training at that many steps.
+    epochs: int = Field(default=1, gt=0)
     max_steps: int | None = Field(default=None, gt=0)
     warmup_steps: int = Field(default=0, ge=0)
     warmup_ratio: float | None = Field(default=None, ge=0.0, le=1.0)
@@ -154,6 +221,13 @@ class ScheduleSpec(BaseModel):
     save_steps: int | None = Field(default=None, gt=0)
     eval_steps: int | None = Field(default=None, gt=0)
     seed: int = 3407
+    lr_scheduler_kwargs: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Extra kwargs for the LR scheduler, e.g. {'num_cycles': 3} for cosine_with_restarts. "
+            "None uses scheduler defaults."
+        ),
+    )
 
 
 class BatchSpec(BaseModel):
@@ -178,6 +252,18 @@ class OptimizerSpec(BaseModel):
         "paged_adamw_8bit",
         "sgd",
     ] = "adamw_8bit"
+    adam_beta1: float = Field(default=0.9, ge=0.0, lt=1.0, description="Adam/AdamW beta1.")
+    adam_beta2: float = Field(default=0.999, ge=0.0, lt=1.0, description="Adam/AdamW beta2.")
+    adam_epsilon: float = Field(default=1e-8, gt=0.0, description="Adam/AdamW epsilon for numerical stability.")
+    max_grad_norm: float = Field(default=1.0, ge=0.0, description="Gradient-clipping max norm (TRL default 1.0).")
+    label_smoothing_factor: float = Field(
+        default=0.0, ge=0.0, lt=1.0, description="Label smoothing for the cross-entropy loss. 0.0 disables."
+    )
+    neftune_noise_alpha: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="NEFTune embedding-noise alpha (quality boost). None disables.",
+    )
 
 
 class HardwareSpec(BaseModel):
@@ -192,25 +278,6 @@ class HardwareSpec(BaseModel):
     precision: Literal["bf16", "fp16"] = Field(
         default="bf16",
         description="Mixed-precision dtype for training. bf16 recommended for Ampere+.",
-    )
-
-
-class WandbIntegration(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    enabled: bool = False
-    project: str | None = None
-    run_name: str | None = None
-    # No api_key_secret for now — users export WANDB_API_KEY in the
-    # training container environment themselves.
-
-
-class IntegrationsSpec(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    wandb: WandbIntegration | None = None
-    report_to: list[Literal["wandb", "tensorboard", "mlflow", "none"]] = Field(
-        default_factory=lambda: ["none"],
     )
 
 

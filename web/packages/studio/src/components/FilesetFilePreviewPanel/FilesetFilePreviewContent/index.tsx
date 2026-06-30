@@ -63,11 +63,7 @@ export const FilesetFilePreviewContent: FC<FilesetFilePreviewContentProps> = ({
   hideHeader = false,
   enabled = true,
 }) => {
-  const { isBinary: binary, isLoading: isBinaryLoading } = useIsBinaryFile(
-    workspace,
-    filesetName,
-    filePath
-  );
+  const { isBinary: binary, isLoading: isBinaryLoading } = useIsBinaryFile(filePath);
 
   const {
     data: internalContent,

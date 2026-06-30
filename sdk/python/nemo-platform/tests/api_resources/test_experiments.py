@@ -41,9 +41,8 @@ class TestExperiments:
     def test_method_create(self, client: NeMoPlatform) -> None:
         experiment = client.experiments.create(
             workspace="workspace",
-            agent_name="agent_name",
-            agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             name="name",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
@@ -53,16 +52,13 @@ class TestExperiments:
     def test_method_create_with_all_params(self, client: NeMoPlatform) -> None:
         experiment = client.experiments.create(
             workspace="workspace",
-            agent_name="agent_name",
-            agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             name="name",
             dataset_version="dataset_version",
             description="description",
-            experiment_group_id="experiment_group_id",
             metadata={"foo": "bar"},
             source_link="https://example.com",
-            summary="summary",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
@@ -71,9 +67,8 @@ class TestExperiments:
     def test_raw_response_create(self, client: NeMoPlatform) -> None:
         response = client.experiments.with_raw_response.create(
             workspace="workspace",
-            agent_name="agent_name",
-            agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             name="name",
         )
 
@@ -87,9 +82,8 @@ class TestExperiments:
     def test_streaming_response_create(self, client: NeMoPlatform) -> None:
         with client.experiments.with_streaming_response.create(
             workspace="workspace",
-            agent_name="agent_name",
-            agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             name="name",
         ) as response:
             assert not response.is_closed
@@ -106,9 +100,8 @@ class TestExperiments:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
             client.experiments.with_raw_response.create(
                 workspace="",
-                agent_name="agent_name",
-                agent_version="agent_version",
                 dataset_name="dataset_name",
+                experiment_group_id="experiment_group_id",
                 name="name",
             )
 
@@ -170,9 +163,8 @@ class TestExperiments:
         experiment = client.experiments.update(
             path_name="name",
             workspace="workspace",
-            agent_name="agent_name",
-            agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             body_name="name",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
@@ -183,16 +175,13 @@ class TestExperiments:
         experiment = client.experiments.update(
             path_name="name",
             workspace="workspace",
-            agent_name="agent_name",
-            agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             body_name="name",
             dataset_version="dataset_version",
             description="description",
-            experiment_group_id="experiment_group_id",
             metadata={"foo": "bar"},
             source_link="https://example.com",
-            summary="summary",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
@@ -202,9 +191,8 @@ class TestExperiments:
         response = client.experiments.with_raw_response.update(
             path_name="name",
             workspace="workspace",
-            agent_name="agent_name",
-            agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             body_name="name",
         )
 
@@ -219,9 +207,8 @@ class TestExperiments:
         with client.experiments.with_streaming_response.update(
             path_name="name",
             workspace="workspace",
-            agent_name="agent_name",
-            agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             body_name="name",
         ) as response:
             assert not response.is_closed
@@ -239,9 +226,8 @@ class TestExperiments:
             client.experiments.with_raw_response.update(
                 path_name="name",
                 workspace="",
-                agent_name="agent_name",
-                agent_version="agent_version",
                 dataset_name="dataset_name",
+                experiment_group_id="experiment_group_id",
                 body_name="name",
             )
 
@@ -249,9 +235,8 @@ class TestExperiments:
             client.experiments.with_raw_response.update(
                 path_name="",
                 workspace="workspace",
-                agent_name="agent_name",
-                agent_version="agent_version",
                 dataset_name="dataset_name",
+                experiment_group_id="experiment_group_id",
                 body_name="name",
             )
 
@@ -269,8 +254,57 @@ class TestExperiments:
         experiment = client.experiments.list(
             workspace="workspace",
             filter={
-                "agent_name": "agent_name",
-                "agent_version": "agent_version",
+                "cost_usd": {
+                    "count": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "mean": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "median": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p90": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p95": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p99": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "sum": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                },
                 "created_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
                     "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
@@ -278,8 +312,121 @@ class TestExperiments:
                 "created_by": "created_by",
                 "dataset_name": "dataset_name",
                 "dataset_version": "dataset_version",
+                "evaluators": {
+                    "foo": {
+                        "count": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                        "mean": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                        "median": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                        "p90": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                        "p95": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                        "p99": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                        "sum": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                    }
+                },
                 "experiment_group_id": "experiment_group_id",
+                "is_deleted": True,
+                "is_pinned": True,
+                "latency_ms": {
+                    "count": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "mean": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "median": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p90": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p95": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p99": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "sum": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                },
                 "name": "name",
+                "run_count": {
+                    "eq": 0,
+                    "gt": 0,
+                    "gte": 0,
+                    "lt": 0,
+                    "lte": 0,
+                },
                 "updated_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
                     "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
@@ -287,7 +434,7 @@ class TestExperiments:
             },
             page=1,
             page_size=1,
-            sort="-created_at",
+            sort="sort",
         )
         assert_matches_type(SyncDefaultPagination[ExperimentResponse], experiment, path=["response"])
 
@@ -377,6 +524,110 @@ class TestExperiments:
                 workspace="workspace",
             )
 
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_method_pin(self, client: NeMoPlatform) -> None:
+        experiment = client.experiments.pin(
+            name="name",
+            workspace="workspace",
+        )
+        assert_matches_type(ExperimentResponse, experiment, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_raw_response_pin(self, client: NeMoPlatform) -> None:
+        response = client.experiments.with_raw_response.pin(
+            name="name",
+            workspace="workspace",
+        )
+
+        assert response.is_closed is True
+        assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+        experiment = response.parse()
+        assert_matches_type(ExperimentResponse, experiment, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_streaming_response_pin(self, client: NeMoPlatform) -> None:
+        with client.experiments.with_streaming_response.pin(
+            name="name",
+            workspace="workspace",
+        ) as response:
+            assert not response.is_closed
+            assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+
+            experiment = response.parse()
+            assert_matches_type(ExperimentResponse, experiment, path=["response"])
+
+        assert cast(Any, response.is_closed) is True
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_path_params_pin(self, client: NeMoPlatform) -> None:
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
+            client.experiments.with_raw_response.pin(
+                name="name",
+                workspace="",
+            )
+
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
+            client.experiments.with_raw_response.pin(
+                name="",
+                workspace="workspace",
+            )
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_method_unpin(self, client: NeMoPlatform) -> None:
+        experiment = client.experiments.unpin(
+            name="name",
+            workspace="workspace",
+        )
+        assert_matches_type(ExperimentResponse, experiment, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_raw_response_unpin(self, client: NeMoPlatform) -> None:
+        response = client.experiments.with_raw_response.unpin(
+            name="name",
+            workspace="workspace",
+        )
+
+        assert response.is_closed is True
+        assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+        experiment = response.parse()
+        assert_matches_type(ExperimentResponse, experiment, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_streaming_response_unpin(self, client: NeMoPlatform) -> None:
+        with client.experiments.with_streaming_response.unpin(
+            name="name",
+            workspace="workspace",
+        ) as response:
+            assert not response.is_closed
+            assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+
+            experiment = response.parse()
+            assert_matches_type(ExperimentResponse, experiment, path=["response"])
+
+        assert cast(Any, response.is_closed) is True
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_path_params_unpin(self, client: NeMoPlatform) -> None:
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
+            client.experiments.with_raw_response.unpin(
+                name="name",
+                workspace="",
+            )
+
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
+            client.experiments.with_raw_response.unpin(
+                name="",
+                workspace="workspace",
+            )
+
 
 class TestAsyncExperiments:
     parametrize = pytest.mark.parametrize(
@@ -388,9 +639,8 @@ class TestAsyncExperiments:
     async def test_method_create(self, async_client: AsyncNeMoPlatform) -> None:
         experiment = await async_client.experiments.create(
             workspace="workspace",
-            agent_name="agent_name",
-            agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             name="name",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
@@ -400,16 +650,13 @@ class TestAsyncExperiments:
     async def test_method_create_with_all_params(self, async_client: AsyncNeMoPlatform) -> None:
         experiment = await async_client.experiments.create(
             workspace="workspace",
-            agent_name="agent_name",
-            agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             name="name",
             dataset_version="dataset_version",
             description="description",
-            experiment_group_id="experiment_group_id",
             metadata={"foo": "bar"},
             source_link="https://example.com",
-            summary="summary",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
@@ -418,9 +665,8 @@ class TestAsyncExperiments:
     async def test_raw_response_create(self, async_client: AsyncNeMoPlatform) -> None:
         response = await async_client.experiments.with_raw_response.create(
             workspace="workspace",
-            agent_name="agent_name",
-            agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             name="name",
         )
 
@@ -434,9 +680,8 @@ class TestAsyncExperiments:
     async def test_streaming_response_create(self, async_client: AsyncNeMoPlatform) -> None:
         async with async_client.experiments.with_streaming_response.create(
             workspace="workspace",
-            agent_name="agent_name",
-            agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             name="name",
         ) as response:
             assert not response.is_closed
@@ -453,9 +698,8 @@ class TestAsyncExperiments:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
             await async_client.experiments.with_raw_response.create(
                 workspace="",
-                agent_name="agent_name",
-                agent_version="agent_version",
                 dataset_name="dataset_name",
+                experiment_group_id="experiment_group_id",
                 name="name",
             )
 
@@ -517,9 +761,8 @@ class TestAsyncExperiments:
         experiment = await async_client.experiments.update(
             path_name="name",
             workspace="workspace",
-            agent_name="agent_name",
-            agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             body_name="name",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
@@ -530,16 +773,13 @@ class TestAsyncExperiments:
         experiment = await async_client.experiments.update(
             path_name="name",
             workspace="workspace",
-            agent_name="agent_name",
-            agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             body_name="name",
             dataset_version="dataset_version",
             description="description",
-            experiment_group_id="experiment_group_id",
             metadata={"foo": "bar"},
             source_link="https://example.com",
-            summary="summary",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
@@ -549,9 +789,8 @@ class TestAsyncExperiments:
         response = await async_client.experiments.with_raw_response.update(
             path_name="name",
             workspace="workspace",
-            agent_name="agent_name",
-            agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             body_name="name",
         )
 
@@ -566,9 +805,8 @@ class TestAsyncExperiments:
         async with async_client.experiments.with_streaming_response.update(
             path_name="name",
             workspace="workspace",
-            agent_name="agent_name",
-            agent_version="agent_version",
             dataset_name="dataset_name",
+            experiment_group_id="experiment_group_id",
             body_name="name",
         ) as response:
             assert not response.is_closed
@@ -586,9 +824,8 @@ class TestAsyncExperiments:
             await async_client.experiments.with_raw_response.update(
                 path_name="name",
                 workspace="",
-                agent_name="agent_name",
-                agent_version="agent_version",
                 dataset_name="dataset_name",
+                experiment_group_id="experiment_group_id",
                 body_name="name",
             )
 
@@ -596,9 +833,8 @@ class TestAsyncExperiments:
             await async_client.experiments.with_raw_response.update(
                 path_name="",
                 workspace="workspace",
-                agent_name="agent_name",
-                agent_version="agent_version",
                 dataset_name="dataset_name",
+                experiment_group_id="experiment_group_id",
                 body_name="name",
             )
 
@@ -616,8 +852,57 @@ class TestAsyncExperiments:
         experiment = await async_client.experiments.list(
             workspace="workspace",
             filter={
-                "agent_name": "agent_name",
-                "agent_version": "agent_version",
+                "cost_usd": {
+                    "count": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "mean": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "median": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p90": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p95": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p99": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "sum": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                },
                 "created_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
                     "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
@@ -625,8 +910,121 @@ class TestAsyncExperiments:
                 "created_by": "created_by",
                 "dataset_name": "dataset_name",
                 "dataset_version": "dataset_version",
+                "evaluators": {
+                    "foo": {
+                        "count": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                        "mean": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                        "median": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                        "p90": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                        "p95": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                        "p99": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                        "sum": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                    }
+                },
                 "experiment_group_id": "experiment_group_id",
+                "is_deleted": True,
+                "is_pinned": True,
+                "latency_ms": {
+                    "count": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "mean": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "median": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p90": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p95": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p99": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "sum": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                },
                 "name": "name",
+                "run_count": {
+                    "eq": 0,
+                    "gt": 0,
+                    "gte": 0,
+                    "lt": 0,
+                    "lte": 0,
+                },
                 "updated_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
                     "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
@@ -634,7 +1032,7 @@ class TestAsyncExperiments:
             },
             page=1,
             page_size=1,
-            sort="-created_at",
+            sort="sort",
         )
         assert_matches_type(AsyncDefaultPagination[ExperimentResponse], experiment, path=["response"])
 
@@ -720,6 +1118,110 @@ class TestAsyncExperiments:
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
             await async_client.experiments.with_raw_response.delete(
+                name="",
+                workspace="workspace",
+            )
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_method_pin(self, async_client: AsyncNeMoPlatform) -> None:
+        experiment = await async_client.experiments.pin(
+            name="name",
+            workspace="workspace",
+        )
+        assert_matches_type(ExperimentResponse, experiment, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_raw_response_pin(self, async_client: AsyncNeMoPlatform) -> None:
+        response = await async_client.experiments.with_raw_response.pin(
+            name="name",
+            workspace="workspace",
+        )
+
+        assert response.is_closed is True
+        assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+        experiment = await response.parse()
+        assert_matches_type(ExperimentResponse, experiment, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_streaming_response_pin(self, async_client: AsyncNeMoPlatform) -> None:
+        async with async_client.experiments.with_streaming_response.pin(
+            name="name",
+            workspace="workspace",
+        ) as response:
+            assert not response.is_closed
+            assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+
+            experiment = await response.parse()
+            assert_matches_type(ExperimentResponse, experiment, path=["response"])
+
+        assert cast(Any, response.is_closed) is True
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_path_params_pin(self, async_client: AsyncNeMoPlatform) -> None:
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
+            await async_client.experiments.with_raw_response.pin(
+                name="name",
+                workspace="",
+            )
+
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
+            await async_client.experiments.with_raw_response.pin(
+                name="",
+                workspace="workspace",
+            )
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_method_unpin(self, async_client: AsyncNeMoPlatform) -> None:
+        experiment = await async_client.experiments.unpin(
+            name="name",
+            workspace="workspace",
+        )
+        assert_matches_type(ExperimentResponse, experiment, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_raw_response_unpin(self, async_client: AsyncNeMoPlatform) -> None:
+        response = await async_client.experiments.with_raw_response.unpin(
+            name="name",
+            workspace="workspace",
+        )
+
+        assert response.is_closed is True
+        assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+        experiment = await response.parse()
+        assert_matches_type(ExperimentResponse, experiment, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_streaming_response_unpin(self, async_client: AsyncNeMoPlatform) -> None:
+        async with async_client.experiments.with_streaming_response.unpin(
+            name="name",
+            workspace="workspace",
+        ) as response:
+            assert not response.is_closed
+            assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+
+            experiment = await response.parse()
+            assert_matches_type(ExperimentResponse, experiment, path=["response"])
+
+        assert cast(Any, response.is_closed) is True
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_path_params_unpin(self, async_client: AsyncNeMoPlatform) -> None:
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
+            await async_client.experiments.with_raw_response.unpin(
+                name="name",
+                workspace="",
+            )
+
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
+            await async_client.experiments.with_raw_response.unpin(
                 name="",
                 workspace="workspace",
             )

@@ -16,12 +16,12 @@ from nmp.common.observability.otel import get_otel_headers
 
 logger = logging.getLogger(__name__)
 
-# Test-only: HTTP client to use for SDK requests in test context.
-# Set by test fixtures to route requests through the test transport.
+# Test-only: HTTP clients to use for SDK requests in test context.
+# Set by test fixtures to route requests through the in-process test transport.
 #
-# TODO: Remove this module-level variable once all direct get_async_platform_sdk()
-# callers are migrated to use DependencyProvider. See architecture/docs/http-client-injection.md
-# for migration path and best practices.
+# TODO: Remove these module-level variables once all direct get_platform_sdk() /
+# get_async_platform_sdk() callers are migrated to use DependencyProvider. See
+# architecture/docs/http-client-injection.md for migration path and best practices.
 _test_http_client: Optional[httpx.AsyncClient] = None
 
 
@@ -134,6 +134,7 @@ def _get_default_headers(
 def get_platform_sdk(
     as_service: str | None = None,
     internal: bool = False,
+    http_client: httpx.Client | None = None,
     on_behalf_of: str | Principal | None = None,
 ) -> NeMoPlatform:
     """
@@ -146,6 +147,7 @@ def get_platform_sdk(
                    If None and auth is enabled, propagates the current user's auth context.
         internal: If True, mark all requests from this SDK as internal requests.
                  Use this for controllers and background tasks that make internal API calls.
+        http_client: Optional sync HTTP client to use for requests.
         on_behalf_of: Optional principal ID to use for on-behalf-of authorization.
 
     Returns:
@@ -154,14 +156,14 @@ def get_platform_sdk(
     headers = _get_default_headers(as_service, internal, on_behalf_of)
     sdk = NeMoPlatform(
         base_url=_base_url_from_config(),
-        http_client=shared_sync_http_client(),
+        http_client=http_client or shared_sync_http_client(),
         default_headers=headers if headers else None,
     )
     sdk._prepare_url = _create_url_router(sdk._prepare_url)
     return sdk
 
 
-def get_task_sdk(as_service: str) -> NeMoPlatform:
+def get_task_sdk(as_service: str, http_client: httpx.Client | None = None) -> NeMoPlatform:
     """Create an SDK for use inside a task container with on-behalf-of auth.
 
     Reads the job creator's principal from the NMP_PRINCIPAL environment variable
@@ -170,6 +172,7 @@ def get_task_sdk(as_service: str) -> NeMoPlatform:
 
     Args:
         as_service: Service name for the service principal (e.g., "customizer").
+        http_client: Optional sync HTTP client to use for requests.
 
     Returns:
         Configured NeMoPlatform SDK with internal + on-behalf-of headers.
@@ -183,6 +186,7 @@ def get_task_sdk(as_service: str) -> NeMoPlatform:
     return get_platform_sdk(
         as_service=as_service,
         internal=True,
+        http_client=http_client,
         on_behalf_of=principal.effective_principal if principal else None,
     )
 
@@ -337,17 +341,23 @@ class PlatformSDKProvider:
     discovered automatically when ``nmp-common`` is installed.
     """
 
-    def get_task_sdk(self, service_name: str) -> NeMoPlatform:
-        return get_task_sdk(service_name)
+    def get_task_sdk(self, service_name: str, http_client: httpx.Client | None = None) -> NeMoPlatform:
+        return get_task_sdk(service_name, http_client=http_client)
 
     def get_platform_sdk(
         self,
         *,
         as_service: str | None = None,
         internal: bool = False,
+        http_client: httpx.Client | None = None,
         on_behalf_of: str | Principal | None = None,
     ) -> NeMoPlatform:
-        return get_platform_sdk(as_service=as_service, internal=internal, on_behalf_of=on_behalf_of)
+        return get_platform_sdk(
+            as_service=as_service,
+            internal=internal,
+            http_client=http_client,
+            on_behalf_of=on_behalf_of,
+        )
 
     def get_async_platform_sdk(
         self,

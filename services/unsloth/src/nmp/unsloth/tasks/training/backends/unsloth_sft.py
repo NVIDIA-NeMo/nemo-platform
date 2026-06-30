@@ -21,11 +21,15 @@ imports silently degrade performance.
 
 import logging
 import os
+from dataclasses import replace
 from typing import Any, Literal
 
 from nemo_platform_plugin.job_context import JobContext
+from nmp.customization_common.service.context import NMPJobContext
+from nmp.unsloth.integrations.hf_bridge import apply_integrations_to_sft_config
 from nmp.unsloth.schemas import UnslothJobOutput
 from nmp.unsloth.tasks.training.backends.callbacks import TrainingProgressCallback
+from nmp.unsloth.tasks.training.progress import JobsServiceProgressReporter
 
 logger = logging.getLogger(__name__)
 
@@ -50,9 +54,72 @@ def compute_default_eval_steps(
     return max(1, effective_steps - 1)
 
 
+def build_model_load_kwargs(spec: UnslothJobOutput, resolved_model: str) -> dict[str, Any]:
+    """Assemble ``FastLanguageModel.from_pretrained`` kwargs (sans torch dtype).
+
+    Kept torch-free so it can be unit-tested without the heavy ML stack; the
+    ``dtype`` literal → torch dtype mapping stays in :func:`train_sft`.
+
+    For ``finetuning_type='all_weights'`` we pass ``full_finetuning=True``.
+    Unsloth only routes through ``FastModel.from_pretrained`` (which marks every
+    parameter trainable and sets up the optimizer/precision state for full FT)
+    when this flag is set. Without it — even with 4-/8-bit disabled — Unsloth
+    takes its default LoRA-optimized load path and warns that full finetuning
+    was not requested, leaving the all-weights run mis-configured.
+    """
+    kwargs: dict[str, Any] = {
+        "model_name": resolved_model,
+        "max_seq_length": spec.model.max_seq_length,
+        "load_in_4bit": spec.model.load_in_4bit,
+        "load_in_8bit": spec.model.load_in_8bit,
+        "full_finetuning": spec.training.finetuning_type == "all_weights",
+        "trust_remote_code": spec.model.trust_remote_code,
+        "device_map": spec.model.device_map if spec.model.device_map is not None else {"": 0},
+    }
+    # Only pass rope_scaling when set — None lets Unsloth use the model's native context length.
+    if spec.model.rope_scaling is not None:
+        kwargs["rope_scaling"] = spec.model.rope_scaling
+    return kwargs
+
+
+def build_peft_kwargs(spec: UnslothJobOutput, *, gradient_checkpointing: bool | str) -> dict[str, Any]:
+    """Assemble ``FastLanguageModel.get_peft_model`` kwargs for a LoRA run.
+
+    Torch-free (unit-testable). Caller resolves ``gradient_checkpointing`` from
+    ``spec.training.use_gradient_checkpointing`` (the JSON literal → ``True`` /
+    ``False`` / ``"unsloth"`` mapping). Optional knobs (``loftq_config``,
+    ``modules_to_save``, ``layers_to_transform``, ``layer_replication``) are only
+    emitted when set so PEFT/Unsloth see absence, not ``None``.
+    """
+    lora = spec.training.lora
+    assert lora is not None  # guaranteed by TrainingSpec._enforce_lora_invariant
+    kwargs: dict[str, Any] = {
+        "r": lora.rank,
+        "lora_alpha": lora.alpha,
+        "lora_dropout": lora.dropout,
+        "target_modules": list(lora.target_modules),
+        "bias": lora.bias,
+        "use_rslora": lora.use_rslora,
+        "random_state": lora.random_state,
+        "use_dora": lora.use_dora,
+        "init_lora_weights": lora.init_lora_weights,
+        "use_gradient_checkpointing": gradient_checkpointing,
+        "max_seq_length": spec.model.max_seq_length,
+    }
+    if lora.loftq_config is not None:
+        kwargs["loftq_config"] = lora.loftq_config
+    if lora.modules_to_save is not None:
+        kwargs["modules_to_save"] = lora.modules_to_save
+    if lora.layers_to_transform is not None:
+        kwargs["layers_to_transform"] = lora.layers_to_transform
+    if lora.layer_replication is not None:
+        kwargs["layer_replication"] = lora.layer_replication
+    return kwargs
+
+
 def train_sft(
-    spec: "UnslothJobOutput",
-    ctx: "JobContext",
+    spec: UnslothJobOutput,
+    ctx: JobContext,
     *,
     model_path: str | None = None,
     dataset_path: str | None = None,
@@ -126,13 +193,7 @@ def train_sft(
 
     # ── Model loading ──────────────────────────────────────────────────
     resolved_model = model_path or spec.model.name
-    model_kwargs: dict[str, Any] = {
-        "model_name": resolved_model,
-        "max_seq_length": spec.model.max_seq_length,
-        "load_in_4bit": spec.model.load_in_4bit,
-        "load_in_8bit": spec.model.load_in_8bit,
-        "trust_remote_code": spec.model.trust_remote_code,
-    }
+    model_kwargs = build_model_load_kwargs(spec, resolved_model)
     # Unsloth's `dtype` kwarg accepts `None` (auto) or a torch dtype. Map
     # the JSON-friendly literal to a torch dtype lazily.
     if spec.model.dtype != "auto":
@@ -161,19 +222,13 @@ def train_sft(
             gc_value = False
         model = FastLanguageModel.get_peft_model(
             model,
-            r=spec.training.lora.rank,
-            lora_alpha=spec.training.lora.alpha,
-            lora_dropout=spec.training.lora.dropout,
-            target_modules=list(spec.training.lora.target_modules),
-            bias=spec.training.lora.bias,
-            use_rslora=spec.training.lora.use_rslora,
-            random_state=spec.training.lora.random_state,
-            use_gradient_checkpointing=gc_value,
-            max_seq_length=spec.model.max_seq_length,
+            **build_peft_kwargs(spec, gradient_checkpointing=gc_value),
         )
-    # Full FT: leave `model` as-is. `from_pretrained` already returned the
-    # un-wrapped HF model since `load_in_4bit`/`load_in_8bit` were both
-    # rejected by the spec validator for `finetuning_type='full'`.
+    # All-weights FT: leave `model` as-is. `build_model_load_kwargs` passed
+    # `full_finetuning=True`, so `from_pretrained` routed through Unsloth's
+    # `FastModel.from_pretrained` and returned an un-wrapped HF model with every
+    # parameter trainable (4-/8-bit were already rejected by the spec validator
+    # for `finetuning_type='all_weights'`).
 
     # ── Dataset ────────────────────────────────────────────────────────
     resolved_train_path = dataset_path or spec.dataset.path
@@ -203,6 +258,23 @@ def train_sft(
     bf16 = spec.hardware.precision == "bf16"
     fp16 = spec.hardware.precision == "fp16"
 
+    # Prefer identifiers from the passed JobContext; the in-process UnslothJob.run()
+    # path may not have the Job Controller env vars set. Fall back to env-derived
+    # values for fields JobContext doesn't carry (step/task).
+    job_ctx = NMPJobContext.from_env()
+    if ctx.job_id:
+        job_ctx = replace(job_ctx, job_id=ctx.job_id, workspace=ctx.workspace)
+
+    report_to, integration_kwargs, integration_env = apply_integrations_to_sft_config(
+        integrations=spec.integrations,
+        job_ctx=job_ctx,
+        output_name=spec.output.name,
+        workspace_path=output_dir,
+        model_name=spec.model.name,
+    )
+    for key, value in integration_env.items():
+        os.environ[key] = value
+
     args_kwargs: dict[str, Any] = {
         "output_dir": str(output_dir),
         "per_device_train_batch_size": spec.batch.per_device_train_batch_size,
@@ -210,24 +282,32 @@ def train_sft(
         "learning_rate": spec.optimizer.learning_rate,
         "weight_decay": spec.optimizer.weight_decay,
         "optim": spec.optimizer.optim,
+        "adam_beta1": spec.optimizer.adam_beta1,
+        "adam_beta2": spec.optimizer.adam_beta2,
+        "adam_epsilon": spec.optimizer.adam_epsilon,
+        "max_grad_norm": spec.optimizer.max_grad_norm,
+        "label_smoothing_factor": spec.optimizer.label_smoothing_factor,
         "lr_scheduler_type": spec.schedule.lr_scheduler_type,
         "warmup_steps": spec.schedule.warmup_steps,
         "logging_steps": spec.schedule.logging_steps,
         "seed": spec.schedule.seed,
         "bf16": bf16,
         "fp16": fp16,
-        "report_to": list(
-            spec.integrations.report_to if spec.integrations is not None else ["none"],
-        ),
+        "report_to": list(report_to),
         # SFT-specific — belong on SFTConfig in trl>=0.13, not on SFTTrainer.
         "dataset_text_field": spec.dataset.text_field,
         "max_length": spec.model.max_seq_length,
         "packing": spec.dataset.packing,
     }
+    # Optional knobs: only set when provided so trl/transformers keep their defaults.
+    if spec.optimizer.neftune_noise_alpha is not None:
+        args_kwargs["neftune_noise_alpha"] = spec.optimizer.neftune_noise_alpha
+    if spec.schedule.lr_scheduler_kwargs is not None:
+        args_kwargs["lr_scheduler_kwargs"] = spec.schedule.lr_scheduler_kwargs
     if spec.schedule.warmup_ratio is not None:
         args_kwargs["warmup_ratio"] = spec.schedule.warmup_ratio
-    if spec.schedule.epochs is not None:
-        args_kwargs["num_train_epochs"] = spec.schedule.epochs
+    # epochs always set (defaults to 1); max_steps, when present, caps/overrides it (trl semantics).
+    args_kwargs["num_train_epochs"] = spec.schedule.epochs
     if spec.schedule.max_steps is not None:
         args_kwargs["max_steps"] = spec.schedule.max_steps
     if spec.schedule.save_steps is not None:
@@ -251,13 +331,7 @@ def train_sft(
         args_kwargs["eval_steps"] = eval_steps
         args_kwargs["eval_strategy"] = "steps"
 
-    # Wandb run-name: surfaces in W&B when WANDB_API_KEY is set in the
-    # environment. We don't manage the secret — the user does.
-    if spec.integrations is not None and spec.integrations.wandb is not None and spec.integrations.wandb.enabled:
-        if spec.integrations.wandb.run_name:
-            args_kwargs["run_name"] = spec.integrations.wandb.run_name
-        if spec.integrations.wandb.project:
-            os.environ.setdefault("WANDB_PROJECT", spec.integrations.wandb.project)
+    args_kwargs.update(integration_kwargs)
 
     args = SFTConfig(**args_kwargs)
 
@@ -297,9 +371,6 @@ def train_sft(
 
 def _create_progress_callback() -> TrainingProgressCallback:
     """Build a Jobs-service progress callback from platform env vars."""
-    from nmp.unsloth.app.jobs.context import NMPJobContext
-    from nmp.unsloth.tasks.training.progress import JobsServiceProgressReporter
-
     return TrainingProgressCallback(JobsServiceProgressReporter(NMPJobContext.from_env()))
 
 
@@ -392,7 +463,7 @@ def _load_training_dataset(
     return raw.map(_render)
 
 
-def _save_model(model: Any, tokenizer: Any, output_dir: Any, spec: "UnslothJobOutput") -> Any:
+def _save_model(model: Any, tokenizer: Any, output_dir: Any, spec: UnslothJobOutput) -> Any:
     """Dispatch on save_method; returns the path actually written to.
 
     Unsloth's recipes use three methods:

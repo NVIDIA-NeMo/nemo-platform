@@ -118,11 +118,6 @@ export const DatasetSelect: FC<Props> = ({ project, disabled, error }) => {
           className="motion-safe:[&.nv-input:not(.nv-input--disabled):not(.nv-input--readonly)]:transition-[margin,color,background-color,border-color,outline-color,text-decoration-color,fill,stroke] duration-250 data-[state=open]:mb-24"
           disabled={disabled}
           items={[
-            {
-              slotHeading: 'Existing Datasets',
-              attributes: { MenuHeading: { className: 'hidden', 'aria-hidden': true } },
-              items: datasetOptions,
-            },
             ...(allowNewDataset
               ? [
                   {
@@ -139,10 +134,15 @@ export const DatasetSelect: FC<Props> = ({ project, disabled, error }) => {
                   },
                 ]
               : []),
+            {
+              slotHeading: 'Existing Datasets',
+              attributes: { MenuHeading: { className: 'hidden', 'aria-hidden': true } },
+              items: datasetOptions,
+            },
           ]}
           value={selectedDatasetOption}
           onValueChange={handleDatasetSelect}
-          placeholder="Select a Dataset"
+          placeholder="Select a dataset"
         />
       )}
     </FormField>

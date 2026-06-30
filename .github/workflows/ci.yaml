@@ -8,6 +8,17 @@ on:
   merge_group:
     types: [checks_requested]
   workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Optional CPU smoke image tag. Defaults to the commit SHA.
+        required: false
+        type: string
+        default: ""
+      publish:
+        description: Publish CPU smoke images to GHCR.
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   actions: read
@@ -30,6 +41,9 @@ jobs:
       docs: ${{ steps.changes.outputs.docs }}
       web-studio: ${{ steps.changes.outputs.web-studio }}
       tools: ${{ steps.changes.outputs.tools }}
+      docker: ${{ steps.changes.outputs.docker }}
+      helm: ${{ steps.changes.outputs.helm }}
+      cpu-smoke: ${{ steps.changes.outputs.cpu-smoke }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: ./.github/actions/changes
@@ -56,6 +70,670 @@ jobs:
         run: |
           "${RUNNER_TEMP}/actionlint/actionlint"
 
+  docker-bake-graph:
+    name: Docker bake graph
+    needs: [changes]
+    if: >
+      !cancelled() && (
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.docker == 'true'
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - name: Print bake groups
+        shell: bash
+        run: |
+          make docker-print TARGET=docker-cpu
+          make docker-print TARGET=docker-gpu
+          make docker-print TARGET=docker-auditor
+          make docker-print TARGET=docker-python-base
+          make docker-print TARGET=nmp-automodel-gpu-wheels
+          make docker-print TARGET=nmp-automodel
+          make docker-print TARGET=nmp-unsloth
+
+  build-cpu-smoke-images:
+    name: Build CPU smoke images
+    needs: [changes]
+    if: >
+      !cancelled() && (
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.cpu-smoke == 'true'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_registry: ${{ steps.bake-vars.outputs.image_registry }}
+      image_tag: ${{ steps.bake-vars.outputs.image_tag }}
+      publish_images: ${{ steps.bake-vars.outputs.publish_images }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Free disk space
+        uses: ./.github/actions/free-disk-space
+        with:
+          disable_swap: "true"
+          remove_haskell: "true"
+          remove_java: "true"
+          remove_ruby: "true"
+          remove_swift: "true"
+          prune_docker: "true"
+
+      - name: Set up Docker Buildx
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker buildx create --name nmp-builder --driver docker-container --use
+          docker buildx inspect --bootstrap
+
+      - name: Configure bake variables
+        id: bake-vars
+        shell: bash
+        env:
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          INPUT_IMAGE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.image_tag || '' }}
+          INPUT_PUBLISH: ${{ inputs.publish }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+
+          image_registry="ghcr.io/${GITHUB_REPOSITORY,,}"
+          source_sha="${SOURCE_SHA:-$GITHUB_SHA}"
+          bake_tag="${INPUT_IMAGE_TAG:-$source_sha}"
+          fastembed_cache_dir="${RUNNER_TEMP}/fastembed-cache"
+          publish_images="false"
+
+          if [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            publish_images="true"
+          fi
+
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ] && [ "$HEAD_REPOSITORY" = "$GITHUB_REPOSITORY" ]; then
+            publish_images="true"
+          fi
+
+          if [ "$GITHUB_EVENT_NAME" = "merge_group" ]; then
+            publish_images="true"
+          fi
+
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$INPUT_PUBLISH" = "true" ]; then
+            publish_images="true"
+          fi
+
+          {
+            printf 'IMAGE_REGISTRY=%s\n' "$image_registry"
+            printf 'BASE_REGISTRY=%s\n' "$image_registry"
+            printf 'CACHE_REGISTRY=%s\n' "$image_registry"
+            printf 'BAKE_TAG=%s\n' "$bake_tag"
+            printf 'CI_COMMIT_SHA=%s\n' "$source_sha"
+            printf 'FASTEMBED_CACHE_CONTEXT=%s\n' "$fastembed_cache_dir"
+            printf 'FASTEMBED_CACHE_DIR=%s\n' "$fastembed_cache_dir"
+            printf 'DOCKER_BAKE_ALLOW_FS_READ=%s\n' "$fastembed_cache_dir"
+            printf 'FASTEMBED_MODEL_REPO=%s\n' "qdrant/all-MiniLM-L6-v2-onnx"
+            printf 'FASTEMBED_MODEL_REVISION=%s\n' "main"
+            printf 'PUBLISH_IMAGES=%s\n' "$publish_images"
+          } >> "$GITHUB_ENV"
+          {
+            printf 'image_registry=%s\n' "$image_registry"
+            printf 'image_tag=%s\n' "$bake_tag"
+            printf 'publish_images=%s\n' "$publish_images"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Prepare fastembed model cache directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${FASTEMBED_CACHE_DIR}"
+          touch "${FASTEMBED_CACHE_DIR}/.cache-context"
+
+      - name: Restore fastembed model cache
+        id: fastembed-cache
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ${{ runner.temp }}/fastembed-cache
+          key: fastembed-qdrant-all-MiniLM-L6-v2-onnx-main-v1
+
+      - name: Install uv for fastembed model cache
+        if: steps.fastembed-cache.outputs.cache-hit != 'true'
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          version-file: pyproject.toml
+          cache-dependency-glob: uv.lock
+
+      - name: Populate fastembed model cache
+        if: steps.fastembed-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          HF_HUB_DISABLE_UPDATE_CHECK=1 uv run --no-project --with 'huggingface-hub>=1.0.1,<2.0.0' hf download \
+            "${FASTEMBED_MODEL_REPO}" \
+            --revision "${FASTEMBED_MODEL_REVISION}" \
+            --cache-dir "${FASTEMBED_CACHE_DIR}" \
+            --format quiet
+          find "${FASTEMBED_CACHE_DIR}/models--qdrant--all-MiniLM-L6-v2-onnx/snapshots" \
+            -mindepth 1 -maxdepth 1 -type d -print -quit | grep -q .
+
+      - name: Log in to GHCR
+        if: env.PUBLISH_IMAGES == 'true'
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+      - name: Print Docker bake graph
+        shell: bash
+        run: make docker-print TARGET=docker-cpu
+
+      - name: Build CPU images
+        if: env.PUBLISH_IMAGES != 'true'
+        shell: bash
+        run: make docker-load TARGET=docker-cpu
+
+      - name: Build and publish CPU images
+        if: env.PUBLISH_IMAGES == 'true'
+        shell: bash
+        run: make docker-push TARGET=docker-cpu
+
+      - name: Save fastembed model cache
+        if: steps.fastembed-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        continue-on-error: true
+        with:
+          path: ${{ runner.temp }}/fastembed-cache
+          key: fastembed-qdrant-all-MiniLM-L6-v2-onnx-main-v1
+
+  build-auditor-test-image:
+    name: Build auditor test image
+    needs: [changes]
+    if: >
+      !cancelled() && (
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.cpu-smoke == 'true'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Free disk space
+        uses: ./.github/actions/free-disk-space
+        with:
+          disable_swap: "true"
+          remove_haskell: "true"
+          remove_java: "true"
+          remove_ruby: "true"
+          remove_swift: "true"
+          prune_docker: "true"
+
+      - name: Set up Docker Buildx
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker buildx create --name nmp-builder --driver docker-container --use
+          docker buildx inspect --bootstrap
+
+      - name: Configure bake variables
+        shell: bash
+        env:
+          INPUT_IMAGE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.image_tag || '' }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+
+          image_registry="ghcr.io/${GITHUB_REPOSITORY,,}"
+          source_sha="${SOURCE_SHA:-$GITHUB_SHA}"
+          bake_tag="${INPUT_IMAGE_TAG:-$source_sha}"
+
+          {
+            printf 'IMAGE_REGISTRY=%s\n' "$image_registry"
+            printf 'BASE_REGISTRY=%s\n' "$image_registry"
+            printf 'CACHE_REGISTRY=%s\n' "$image_registry"
+            printf 'BAKE_TAG=%s\n' "$bake_tag"
+            printf 'CI_COMMIT_SHA=%s\n' "$source_sha"
+          } >> "$GITHUB_ENV"
+
+      - name: Print Docker bake graph
+        shell: bash
+        run: make docker-print TARGET=docker-auditor
+
+      - name: Build auditor image
+        shell: bash
+        run: make docker-build TARGET=docker-auditor
+
+  build-safe-synthesizer-test-image:
+    name: Build Safe Synthesizer test image
+    needs: [changes]
+    if: >
+      !cancelled() && (
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.cpu-smoke == 'true'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Free disk space
+        uses: ./.github/actions/free-disk-space
+        with:
+          disable_swap: "true"
+          remove_haskell: "true"
+          remove_java: "true"
+          remove_ruby: "true"
+          remove_swift: "true"
+          prune_docker: "true"
+
+      - name: Set up Docker Buildx
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker buildx create --name nmp-builder --driver docker-container --use
+          docker buildx inspect --bootstrap
+
+      - name: Configure bake variables
+        shell: bash
+        env:
+          INPUT_IMAGE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.image_tag || '' }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+
+          image_registry="ghcr.io/${GITHUB_REPOSITORY,,}"
+          source_sha="${SOURCE_SHA:-$GITHUB_SHA}"
+          bake_tag="${INPUT_IMAGE_TAG:-$source_sha}"
+
+          {
+            printf 'IMAGE_REGISTRY=%s\n' "$image_registry"
+            printf 'BASE_REGISTRY=%s\n' "$image_registry"
+            printf 'CACHE_REGISTRY=%s\n' "$image_registry"
+            printf 'BAKE_TAG=%s\n' "$bake_tag"
+            printf 'CI_COMMIT_SHA=%s\n' "$source_sha"
+          } >> "$GITHUB_ENV"
+
+      - name: Print Docker bake graph
+        shell: bash
+        run: make docker-print TARGET=docker-gpu
+
+      - name: Build Safe Synthesizer image
+        shell: bash
+        run: make docker-build TARGET=docker-gpu
+
+  kind-cpu-smoke:
+    name: Kind CPU smoke test
+    needs: [changes, build-cpu-smoke-images]
+    if: >
+      !cancelled() &&
+      needs.build-cpu-smoke-images.result == 'success' &&
+      needs.build-cpu-smoke-images.outputs.publish_images == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: read
+    env:
+      KIND_CLUSTER_NAME: gha-${{ github.run_id }}-${{ github.run_attempt }}-kind-smoke
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Setup Kind cluster with NeMo Platform
+        uses: ./.github/actions/setup-kind-cluster
+        with:
+          kind_cluster_name: ${{ env.KIND_CLUSTER_NAME }}
+          image_registry: ${{ needs.build-cpu-smoke-images.outputs.image_registry }}
+          image_tag: ${{ needs.build-cpu-smoke-images.outputs.image_tag }}
+          kind_image_pull_token: ${{ github.token }}
+          kind_image_pull_user: ${{ github.actor }}
+
+      - name: Run CPU job e2e smoke test
+        shell: bash
+        env:
+          _TYPER_FORCE_DISABLE_TERMINAL: "1"
+          E2E_SERVICES_LOG_DIR: ${{ runner.temp }}/e2e-services-logs
+          NGC_API_KEY: not-used-for-ghcr-cpu-smoke
+        run: |
+          test -n "${NMP_E2E_CLUSTER_URL}"
+          export NMP_BASE_URL="${NMP_E2E_CLUSTER_URL}"
+          uv run --frozen pytest \
+            e2e/test_jobs.py::test_job_using_secret_environment_variable \
+            -v \
+            --run-e2e \
+            --no-cov \
+            --junitxml=report-kubernetes-smoke.xml
+
+      - name: Collect Kubernetes logs
+        if: always()
+        shell: bash
+        run: e2e/k8s/scripts/collect_k8s_logs.sh
+
+      - name: Disk usage summary
+        if: always()
+        shell: bash
+        run: |
+          echo "=== Host disk ==="
+          df -h /
+          echo "=== Docker system ==="
+          docker system df
+          echo "=== kind node storage ==="
+          for node in $(kind get nodes --name "${KIND_CLUSTER_NAME}" 2>/dev/null); do
+            echo "--- ${node} ---"
+            docker exec "${node}" sh -c "du -sh /var/lib/containerd /var/lib/kubelet /var/log 2>/dev/null | sort -h" || true
+          done
+
+      - name: Upload Kubernetes artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: kind-smoke-kubernetes-artifacts
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            k8s-logs/
+            report-kubernetes-smoke.xml
+            ${{ runner.temp }}/e2e-services-logs/
+
+      - name: Delete kind cluster
+        if: always()
+        shell: bash
+        run: |
+          docker rm -f "cloud-provider-kind-${KIND_CLUSTER_NAME}" || true
+          kind delete cluster --name "${KIND_CLUSTER_NAME}" || true
+
+  kind-cpu-e2e:
+    name: Kind CPU e2e
+    needs: [changes, build-cpu-smoke-images]
+    if: >
+      !cancelled() &&
+      needs.build-cpu-smoke-images.result == 'success' &&
+      needs.build-cpu-smoke-images.outputs.publish_images == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: read
+    env:
+      KIND_CLUSTER_NAME: gha-${{ github.run_id }}-${{ github.run_attempt }}-kind-e2e
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Setup Kind cluster with NeMo Platform
+        uses: ./.github/actions/setup-kind-cluster
+        with:
+          kind_cluster_name: ${{ env.KIND_CLUSTER_NAME }}
+          image_registry: ${{ needs.build-cpu-smoke-images.outputs.image_registry }}
+          image_tag: ${{ needs.build-cpu-smoke-images.outputs.image_tag }}
+          kind_image_pull_token: ${{ github.token }}
+          kind_image_pull_user: ${{ github.actor }}
+
+      - name: Run jobs and data-designer e2e tests
+        shell: bash
+        env:
+          _TYPER_FORCE_DISABLE_TERMINAL: "1"
+          E2E_SERVICES_LOG_DIR: ${{ runner.temp }}/e2e-services-logs
+          NGC_API_KEY: not-used-for-ghcr-cpu-e2e
+        run: |
+          test -n "${NMP_E2E_CLUSTER_URL}"
+          export NMP_BASE_URL="${NMP_E2E_CLUSTER_URL}"
+          uv run --frozen pytest \
+            e2e \
+            -v \
+            --run-e2e \
+            --no-cov \
+            --junitxml=report-kubernetes-e2e.xml
+
+      - name: Collect Kubernetes logs
+        if: always()
+        shell: bash
+        run: e2e/k8s/scripts/collect_k8s_logs.sh
+
+      - name: Disk usage summary
+        if: always()
+        shell: bash
+        run: |
+          echo "=== Host disk ==="
+          df -h /
+          echo "=== Docker system ==="
+          docker system df
+          echo "=== kind node storage ==="
+          for node in $(kind get nodes --name "${KIND_CLUSTER_NAME}" 2>/dev/null); do
+            echo "--- ${node} ---"
+            docker exec "${node}" sh -c "du -sh /var/lib/containerd /var/lib/kubelet /var/log 2>/dev/null | sort -h" || true
+          done
+
+      - name: Upload Kubernetes artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: kind-e2e-kubernetes-artifacts
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            k8s-logs/
+            report-kubernetes-e2e.xml
+            ${{ runner.temp }}/e2e-services-logs/
+
+      - name: Delete kind cluster
+        if: always()
+        shell: bash
+        run: |
+          docker rm -f "cloud-provider-kind-${KIND_CLUSTER_NAME}" || true
+          kind delete cluster --name "${KIND_CLUSTER_NAME}" || true
+
+  helm-lint:
+    name: Helm lint
+    needs: [changes]
+    if: >
+      !cancelled() && (
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.helm == 'true'
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      HELM_FOLDER: k8s/helm
+      HELM_RELEASE_NAME: nemo-platform
+      KUBECONFORM_VERSION: v0.6.7
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - name: Install Helm
+        uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
+      - name: Install kubeconform
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p "${RUNNER_TEMP}/kubeconform"
+          kubeconform_archive="kubeconform-linux-amd64.tar.gz"
+          curl -fsSL \
+            -o "${RUNNER_TEMP}/kubeconform.tar.gz" \
+            "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/${kubeconform_archive}"
+          curl -fsSL \
+            -o "${RUNNER_TEMP}/kubeconform.CHECKSUMS" \
+            "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/CHECKSUMS"
+          grep "  ${kubeconform_archive}$" "${RUNNER_TEMP}/kubeconform.CHECKSUMS" \
+            | sed "s#  ${kubeconform_archive}#  ${RUNNER_TEMP}/kubeconform.tar.gz#" \
+            | sha256sum -c -
+          tar -xzf "${RUNNER_TEMP}/kubeconform.tar.gz" -C "${RUNNER_TEMP}/kubeconform" kubeconform
+          chmod +x "${RUNNER_TEMP}/kubeconform/kubeconform"
+          echo "${RUNNER_TEMP}/kubeconform" >> "${GITHUB_PATH}"
+      - name: Add NVIDIA Helm repo
+        shell: bash
+        run: |
+          helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
+          helm repo update
+      - name: Lint and validate Helm chart
+        shell: bash
+        run: tools/lint/lint-helm.sh
+      - name: Upload Helm lint artifacts
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: helm-lint-artifacts
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            k8s/helm/ci/*.output
+            k8s/helm/ci/*.kubeconform.json
+
+  helm-chart-verifier:
+    name: Helm chart verifier
+    needs: [changes]
+    if: >
+      !cancelled() && (
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.helm == 'true'
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CHART_VERIFIER_VERSION: "1.14.0"
+      HELM_FOLDER: k8s/helm
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - name: Install Helm
+        uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
+      - name: Install chart-verifier
+        id: install-chart-verifier
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p "${RUNNER_TEMP}/chart-verifier"
+          chart_verifier_archive="chart-verifier-${CHART_VERIFIER_VERSION}.tgz"
+          chart_verifier_archive_path="${RUNNER_TEMP}/chart-verifier.tar.gz"
+          release_metadata_path="${RUNNER_TEMP}/chart-verifier-release.json"
+          release_url="https://github.com/redhat-certification/chart-verifier/releases/download/${CHART_VERIFIER_VERSION}/${chart_verifier_archive}"
+          release_api_url="https://api.github.com/repos/redhat-certification/chart-verifier/releases/tags/${CHART_VERIFIER_VERSION}"
+
+          curl_args=(
+            --fail
+            --show-error
+            --silent
+            --location
+            --retry 5
+            --retry-delay 2
+            --retry-all-errors
+          )
+          github_api_args=(
+            "${curl_args[@]}"
+            --header "Accept: application/vnd.github+json"
+            --header "X-GitHub-Api-Version: 2022-11-28"
+          )
+          if [ -n "${GITHUB_TOKEN:-}" ]; then
+            github_api_args+=(--header "Authorization: Bearer ${GITHUB_TOKEN}")
+          fi
+
+          if ! curl "${curl_args[@]}" -o "${chart_verifier_archive_path}" "${release_url}"; then
+            echo "::warning::Unable to download chart-verifier ${CHART_VERIFIER_VERSION}; skipping chart verifier."
+            echo "installed=false" >> "${GITHUB_OUTPUT}"
+            exit 1
+          fi
+
+          if ! curl "${github_api_args[@]}" -o "${release_metadata_path}" "${release_api_url}"; then
+            echo "::warning::Unable to fetch chart-verifier release metadata; skipping chart verifier."
+            echo "installed=false" >> "${GITHUB_OUTPUT}"
+            exit 1
+          fi
+
+          if ! chart_verifier_sha256="$(
+            python3 - "${release_metadata_path}" "${chart_verifier_archive}" <<'PY'
+          import json
+          import sys
+
+          metadata_path = sys.argv[1]
+          target = sys.argv[2]
+
+          with open(metadata_path, encoding="utf-8") as metadata_file:
+              release = json.load(metadata_file)
+
+          for asset in release.get("assets", []):
+              if asset.get("name") != target:
+                  continue
+              digest = asset.get("digest", "")
+              if digest.startswith("sha256:"):
+                  print(digest.removeprefix("sha256:"))
+                  sys.exit(0)
+
+          print(f"sha256 digest not found for release asset {target}", file=sys.stderr)
+          sys.exit(1)
+          PY
+          )"; then
+            echo "::warning::Unable to read chart-verifier release digest; skipping chart verifier."
+            echo "installed=false" >> "${GITHUB_OUTPUT}"
+            exit 1
+          fi
+
+          printf '%s  %s\n' "${chart_verifier_sha256}" "${RUNNER_TEMP}/chart-verifier.tar.gz" \
+            | sha256sum -c -
+          tar -xzf "${RUNNER_TEMP}/chart-verifier.tar.gz" -C "${RUNNER_TEMP}/chart-verifier" chart-verifier
+          chmod +x "${RUNNER_TEMP}/chart-verifier/chart-verifier"
+          echo "${RUNNER_TEMP}/chart-verifier" >> "${GITHUB_PATH}"
+          echo "installed=true" >> "${GITHUB_OUTPUT}"
+      - name: Prepare Helm dependencies
+        if: steps.install-chart-verifier.outputs.installed == 'true'
+        shell: bash
+        run: |
+          helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
+          helm repo update
+          helm dep update "${HELM_FOLDER}"
+      - name: Run chart verifier
+        if: steps.install-chart-verifier.outputs.installed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          report_json="${RUNNER_TEMP}/chart-verifier-report.json"
+          chart-verifier verify --enable helm-lint,is-helm-v3,contains-values,has-readme \
+            -o json "${HELM_FOLDER}" | tee "${report_json}"
+
+          python3 - "${report_json}" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as report_file:
+              data = json.load(report_file)
+
+          failed = [
+              result.get("check", "?")
+              for result in data.get("results", [])
+              if result.get("outcome") == "FAIL"
+          ]
+          if failed:
+              print("chart-verifier failed checks: " + ", ".join(failed), file=sys.stderr)
+              sys.exit(1)
+          PY
+
   lint:
     name: Lint all
     runs-on: ubuntu-latest
@@ -66,6 +744,7 @@ jobs:
         with:
           enable-cache: true
           python-version: "3.11"
+          cache-dependency-glob: uv.lock
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: '22'
@@ -131,6 +810,7 @@ jobs:
         with:
           python-version: "3.11"
           enable-cache: true
+          cache-dependency-glob: uv.lock
       - name: Run tools unit tests
         run: uv run pytest tools -v --junit-xml=report.xml
       - name: Upload test artifacts
@@ -160,6 +840,7 @@ jobs:
         with:
           python-version: "3.11"
           enable-cache: true
+          cache-dependency-glob: uv.lock
       - name: Run unit tests
         run: make test-unit-ci
         env:
@@ -198,6 +879,7 @@ jobs:
         with:
           python-version: "3.11"
           enable-cache: true
+          cache-dependency-glob: uv.lock
       - name: Log in to Docker Hub
         uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
         with:
@@ -240,7 +922,7 @@ jobs:
       fail-fast: false
       matrix:
         package: [nemo-platform, nemo-platform-plugin]
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -282,7 +964,7 @@ jobs:
       fail-fast: false
       matrix:
         package: [nemo-platform, nemo-platform-plugin]
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -291,6 +973,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
+          cache-dependency-glob: uv.lock
       - name: Download wheel
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -368,6 +1051,7 @@ jobs:
         with:
           python-version: "3.13"
           enable-cache: true
+          cache-dependency-glob: uv.lock
       - name: Run e2e tests
         run: make test-e2e
         env:
@@ -611,6 +1295,7 @@ jobs:
           working-directory: nemo-platform
           python-version: "3.11"
           enable-cache: true
+          cache-dependency-glob: uv.lock
       - name: Bootstrap Python environment
         working-directory: nemo-platform
         run: make bootstrap-python
@@ -634,7 +1319,15 @@ jobs:
   coverage-comment:
     name: Post coverage comment
     needs: [python-unit-test, python-integration-test]
-    if: always() && github.event_name == 'pull_request'
+    if: >
+      always() &&
+      github.event_name == 'pull_request' &&
+      (
+        needs.python-unit-test.result == 'success' ||
+        needs.python-unit-test.result == 'failure' ||
+        needs.python-integration-test.result == 'success' ||
+        needs.python-integration-test.result == 'failure'
+      )
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
@@ -755,6 +1448,11 @@ jobs:
     needs:
       - changes
       - actionlint
+      - docker-bake-graph
+      - build-cpu-smoke-images
+      - kind-cpu-smoke
+      - helm-lint
+      - helm-chart-verifier
       - lint
       - policy-wasm
       - python-unit-test-tools
@@ -797,4 +1495,3 @@ jobs:
 
           printf '%s\n' "${NEEDS_JSON}" \
             | jq -e 'to_entries | map(.value.result) | all(. as $result | ["success", "skipped"] | any($result == .))'
-

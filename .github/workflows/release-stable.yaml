@@ -21,12 +21,19 @@ on:
         description: "Release artifact scope."
         required: false
         type: choice
-        default: sdks
+        default: all
         options:
+          - all
           - sdks
+          - containers
           - custom
       sdk_ids:
         description: "Comma-separated SDK IDs for custom releases."
+        required: false
+        type: string
+        default: ""
+      container_ids:
+        description: "Comma-separated container IDs for custom releases."
         required: false
         type: string
         default: ""
@@ -51,6 +58,7 @@ jobs:
           RELEASE_DATE: ${{ inputs.release_date }}
           RELEASE_SCOPE: ${{ inputs.release_scope }}
           SDK_IDS: ${{ inputs.sdk_ids }}
+          CONTAINER_IDS: ${{ inputs.container_ids }}
         run: |
           set -euo pipefail
 
@@ -69,6 +77,7 @@ jobs:
             echo "| Release scope | ${RELEASE_SCOPE} |"
             if [[ "${RELEASE_SCOPE}" == "custom" ]]; then
               echo "| SDK IDs | ${SDK_IDS:-not provided} |"
+              echo "| Container IDs | ${CONTAINER_IDS:-not provided} |"
             fi
             echo "| Destination | Stable git tag, release bundle artifact, downstream \`release-bundle-produced\` dispatch |"
             echo
@@ -101,6 +110,7 @@ jobs:
       release_date: ${{ inputs.release_date }}
       release_scope: ${{ inputs.release_scope }}
       sdk_ids: ${{ inputs.sdk_ids }}
+      container_ids: ${{ inputs.container_ids }}
     secrets:
       CI_DISPATCH_TOKEN: ${{ secrets.CI_DISPATCH_TOKEN }}
       CI_DISPATCH_REPO: ${{ secrets.CI_DISPATCH_REPO }}

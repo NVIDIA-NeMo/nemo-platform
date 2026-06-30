@@ -14,9 +14,10 @@ import { FC, useState } from 'react';
 interface DeleteJobModalProps {
   jobs: DataDesignerJob[];
   onClose: () => void;
+  onDeleted?: () => void;
 }
 
-export const DeleteJobModal: FC<DeleteJobModalProps> = ({ jobs, onClose }) => {
+export const DeleteJobModal: FC<DeleteJobModalProps> = ({ jobs, onClose, onDeleted }) => {
   const queryClient = useQueryClient();
   const workspace = useWorkspaceFromPath();
   const [deleteError, setDeleteError] = useState<string | undefined>(undefined);
@@ -52,6 +53,7 @@ export const DeleteJobModal: FC<DeleteJobModalProps> = ({ jobs, onClose }) => {
 
       await Promise.all(deletePromises);
       onClose();
+      onDeleted?.();
       return true;
     } catch (error) {
       setDeleteError(

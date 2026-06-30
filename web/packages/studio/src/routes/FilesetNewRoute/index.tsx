@@ -2,171 +2,33 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { ControlledTextArea } from '@nemo/common/src/components/form/ControlledTextArea';
-import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
-import { RadioCard } from '@nemo/common/src/components/RadioCard';
-import { getEntityReference } from '@nemo/common/src/namedEntity';
-import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import { FILESET_NAME_MAX_LENGTH, FILESET_NAME_REGEXP } from '@nemo/common/src/utils/filesetName';
 import {
-  filesUploadFile,
-  getFilesListFilesetFilesQueryKey,
-  getFilesListFilesetsQueryKey,
-  getFilesRetrieveFilesetQueryKey,
-  useFilesCreateFileset,
-} from '@nemo/sdk/generated/platform/api';
-import {
-  FilesetOutput,
-  FilesetPurpose,
-  CreateFilesetRequest,
-} from '@nemo/sdk/generated/platform/schema';
-import { FilesCreateFilesetBody } from '@nemo/sdk/generated/platform/zod/files';
-import {
-  Badge,
-  Block,
-  Button,
-  Card,
-  Flex,
-  Grid,
-  GridItem,
-  RadioGroupRoot,
-  SegmentedControl,
-  SidePanel,
-  Stack,
-  TabsContent,
-  TabsTrigger,
-  TabsRoot,
-  Text,
-  TabsList,
-  Upload,
-} from '@nvidia/foundations-react-core';
-import { getErrorMessage as getApiErrorMessage } from '@studio/api/common/utils';
+  checkDatasetQuality,
+  type DatasetQualityReport,
+} from '@nemo/common/src/utils/datasetQuality';
+import { FilesetPurpose } from '@nemo/sdk/generated/platform/schema';
+import { Button, SegmentedControl, SidePanel, Stack } from '@nvidia/foundations-react-core';
 import { useSampleDatasetFiles } from '@studio/api/datasets/useSampleDatasetFiles';
-import { FILESET_DETAILS_ENABLED } from '@studio/constants/environment';
 import { SAMPLE_DATASETS, SampleDataset } from '@studio/constants/sampleDatasets';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
+import { DATASET_TYPE_CUSTOM, DATASET_TYPE_SAMPLE } from '@studio/routes/FilesetNewRoute/constants';
+import { CustomFilesetForm } from '@studio/routes/FilesetNewRoute/CustomFilesetForm';
+import { getSampleDatasetName } from '@studio/routes/FilesetNewRoute/helpers';
+import { SampleDatasetSection } from '@studio/routes/FilesetNewRoute/SampleDatasetSection';
+import {
+  DatasetCreateFilesetFormSchema,
+  DatasetFormFields,
+  DatasetType,
+} from '@studio/routes/FilesetNewRoute/types';
+import { useCreateFileset } from '@studio/routes/FilesetNewRoute/useCreateFileset';
 import { CreateSecretModal } from '@studio/routes/SecretsListRoute/CreateSecretModal';
-import { SecretSearchableSelect } from '@studio/routes/SecretsListRoute/SecretSearchableSelect';
-import {
-  getFilesetDetailRoute,
-  getFilesetDetailsRoute,
-  getWorkspaceFilesetsRoute,
-} from '@studio/routes/utils';
+import { getWorkspaceFilesetsRoute } from '@studio/routes/utils';
 import { handleFormErrorsGeneric } from '@studio/util/forms/error';
-import {
-  isHuggingFaceUrl,
-  isNgcUrl,
-  storageConfigFromUrl,
-} from '@studio/util/storageConfigFromUrl';
-import { QueryObserverResult, useQueryClient } from '@tanstack/react-query';
-import { FileCheck } from 'lucide-react';
-import { FC, useCallback, useMemo, useRef, useState } from 'react';
-import { Controller, useForm } from 'react-hook-form';
+import { isHuggingFaceUrl, isNgcUrl } from '@studio/util/storageConfigFromUrl';
+import { QueryObserverResult } from '@tanstack/react-query';
+import { FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
-import { z } from 'zod';
-
-const DATASET_NAME_REQUIRED_MESSAGE = 'Name is required.';
-
-const DATASET_NAME_PATTERN_MESSAGE =
-  'Name must start with a lowercase letter, be 2–63 characters, and contain only lowercase letters, digits, hyphens, dots, underscores, plus, and @ (no consecutive hyphens, cannot end with a hyphen).';
-
-/** Per-purpose copy shown in the purpose selector. Kept adjacent to the enum so each value has user-facing explanation. */
-const PURPOSE_OPTIONS: {
-  value: FilesetPurpose;
-  label: string;
-  description: string;
-}[] = [
-  {
-    value: FilesetPurpose.generic,
-    label: 'Generic',
-    description:
-      "Default. Use for files that don't fit the Dataset or Model categories. Doesn't add purpose-specific metadata fields.",
-  },
-  {
-    value: FilesetPurpose.dataset,
-    label: 'Dataset',
-    description:
-      'For training and evaluation data. Enables dataset-specific metadata, including schema information.',
-  },
-  {
-    value: FilesetPurpose.model,
-    label: 'Model',
-    description:
-      'For model weights and checkpoints. Enables model-specific metadata, including tool-calling and model configuration fields.',
-  },
-];
-
-/**
- * Override the SDK-generated name validation. The generated zod uses the Files
- * service DTO's loose pattern (`^[\w\-.]+$`, max 255); the entity store
- * downstream enforces a stricter RFC-1035-ish pattern. Validate against the
- * strict pattern here so the user sees a useful inline error instead of a 422.
- */
-const DatasetCreateFilesetFormSchema = FilesCreateFilesetBody.extend({
-  name: z
-    .string()
-    .trim()
-    .min(1, DATASET_NAME_REQUIRED_MESSAGE)
-    .max(FILESET_NAME_MAX_LENGTH)
-    .regex(FILESET_NAME_REGEXP, DATASET_NAME_PATTERN_MESSAGE),
-  purpose: z.nativeEnum(FilesetPurpose),
-});
-
-type CreateFilesetFormFields = z.infer<typeof DatasetCreateFilesetFormSchema>;
-
-/** Form extends schema with optional files (Upload/sample) and external storage inputs (url/secretKey). */
-type DatasetFormFields = CreateFilesetFormFields & {
-  files?: File[];
-  url?: string;
-  secretKey?: string;
-};
-
-const DATASET_TYPE_CUSTOM = 'custom';
-const DATASET_TYPE_SAMPLE = 'sample';
-type DatasetType = typeof DATASET_TYPE_CUSTOM | typeof DATASET_TYPE_SAMPLE;
-
-function getSampleDatasetName(workspace: string, sampleId: string): string {
-  const truncatedProjectName = workspace.split('-')[1] || workspace;
-  return `${sampleId}-${truncatedProjectName}`;
-}
-
-/**
- * User-facing error for external storage create failure, with a stable prefix per storage type
- * so the toast never shows raw [object Object] from API detail.
- */
-function getExternalStorageCreateErrorMessage(err: unknown, externalUrl: string): string {
-  let prefix: string;
-  try {
-    const parsed = new URL(externalUrl);
-    if (isNgcUrl(parsed)) {
-      prefix = 'Failed to create fileset from NGC. ';
-    } else if (isHuggingFaceUrl(parsed)) {
-      prefix = 'Failed to create fileset from Hugging Face. ';
-    } else {
-      prefix = 'Failed to create fileset from external storage. ';
-    }
-  } catch {
-    prefix = 'Failed to create fileset from external storage. ';
-  }
-  const detail =
-    err && typeof err === 'object'
-      ? getApiErrorMessage(err as Error, 'Please check your URL and credentials.')
-      : 'Please check your URL and credentials.';
-  return prefix + detail;
-}
-
-/** Normalize form files (may be File[] or KUI Upload's FileUploadItem[]) to File[]. */
-function toFileList(value: unknown): File[] {
-  if (!value) return [];
-  const arr = Array.isArray(value) ? value : [value];
-  return arr.flatMap((item) =>
-    item instanceof File
-      ? [item]
-      : (item as { file?: File }).file
-        ? [(item as { file: File }).file]
-        : []
-  );
-}
 
 export const FilesetNewRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
@@ -175,9 +37,17 @@ export const FilesetNewRoute: FC = () => {
     SAMPLE_DATASETS[0]
   );
   const [isSubmitPending, setIsSubmitPending] = useState(false);
+  const [qualityReports, setQualityReports] = useState<DatasetQualityReport[]>([]);
+  const [isValidating, setIsValidating] = useState(false);
+  const qualityReportRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (qualityReports.length > 0) {
+      qualityReportRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [qualityReports]);
+
   const navigate = useNavigate();
-  const toast = useToast();
-  const queryClient = useQueryClient();
   const sampleFilesRef = useRef<Promise<QueryObserverResult<File[], Error>> | null>(null);
 
   const [storageTab, setStorageTab] = useState<'local' | 'external'>('local');
@@ -205,6 +75,15 @@ export const FilesetNewRoute: FC = () => {
   });
 
   const url = watch('url');
+  const purpose = watch('purpose');
+
+  useEffect(() => {
+    if (purpose !== FilesetPurpose.dataset) {
+      setQualityReports([]);
+      setIsValidating(false);
+    }
+  }, [purpose]);
+
   const selectedSecretName = watch('secretKey');
   const secretKeyLabel = useMemo(() => {
     if (!url?.trim()) return 'Secret Key';
@@ -222,54 +101,31 @@ export const FilesetNewRoute: FC = () => {
     enabled: false,
   });
 
-  const { mutateAsync: createFileset } = useFilesCreateFileset({
-    mutation: {
-      onSuccess: (fileset) => {
-        queryClient.resetQueries({ queryKey: getFilesListFilesetsQueryKey(fileset.workspace) });
-        queryClient.resetQueries({
-          queryKey: getFilesRetrieveFilesetQueryKey(fileset.workspace, fileset.name),
-        });
-        queryClient.resetQueries({
-          queryKey: getFilesListFilesetFilesQueryKey(fileset.workspace, fileset.name),
-        });
-      },
-    },
-  });
+  /**
+   * Runs dataset quality checks on newly selected JSONL files and updates the report state.
+   * Only runs when purpose is 'dataset'; clears reports for other purposes or non-JSONL files.
+   */
+  const handleFilesChange = useCallback(
+    async (files: File[]) => {
+      setValue('files', files, { shouldValidate: false });
 
-  /** Step: create fileset. Present failures to user in caller. */
-  const createFilesetStep = useCallback(
-    async (workspace: string, data: CreateFilesetRequest): Promise<FilesetOutput> => {
-      const fileset: FilesetOutput = await createFileset({
-        workspace,
-        data: {
-          name: data.name,
-          description: data.description ?? '',
-          project: data.project,
-          storage: data.storage ?? undefined,
-          purpose: data.purpose ?? FilesetPurpose.generic,
-          metadata: data.metadata,
-          custom_fields: data.custom_fields,
-          cache: data.cache,
-        },
-      });
-      return fileset;
-    },
-    [createFileset]
-  );
+      if (purpose !== FilesetPurpose.dataset) {
+        setQualityReports([]);
+        return;
+      }
 
-  /** Step: upload files to dataset. Present failures to user in caller. */
-  const uploadFilesToDatasetStep = useCallback(
-    async (workspace: string, fileset: FilesetOutput, files: File[]): Promise<void> => {
-      await Promise.all(
-        files.map(async (file) => {
-          const blob = new Blob([await file.arrayBuffer()], {
-            type: file.type || 'application/octet-stream',
-          });
-          return filesUploadFile(workspace, fileset.name, file.name, blob);
-        })
-      );
+      const jsonlFiles = files.filter((f) => f.name.endsWith('.jsonl'));
+      if (jsonlFiles.length === 0) {
+        setQualityReports([]);
+        return;
+      }
+
+      setIsValidating(true);
+      const reports = await Promise.all(jsonlFiles.map(checkDatasetQuality));
+      setQualityReports(reports);
+      setIsValidating(false);
     },
-    []
+    [purpose, setValue]
   );
 
   // Sync hidden name/description when a sample is selected (sample tab = simulated local form)
@@ -282,10 +138,11 @@ export const FilesetNewRoute: FC = () => {
     [workspace, setValue]
   );
 
-  // When switching tabs, reset the opposite tab’s form state so we don’t leak values
+  // When switching tabs, reset the opposite tab's form state so we don't leak values
   const handleTabChange = useCallback(
     (value: DatasetType) => {
       setActiveTab(value);
+      setQualityReports([]);
       if (value === DATASET_TYPE_CUSTOM) {
         setValue('name', '', { shouldValidate: false });
         setValue('description', '', { shouldValidate: false });
@@ -311,129 +168,18 @@ export const FilesetNewRoute: FC = () => {
     ]
   );
 
-  const onSubmit = useCallback(
-    async (data: DatasetFormFields) => {
-      const { success, error } = DatasetCreateFilesetFormSchema.safeParse(data);
-      if (!success) {
-        toast.error(error.message);
-        return;
-      }
+  const hasValidationErrors =
+    purpose === FilesetPurpose.dataset && qualityReports.some((r) => r.hasErrors);
 
-      setIsSubmitPending(true);
-
-      // Step 1 (sample only): fetch sample files via lazy query
-      let files: File[];
-      if (activeTab === DATASET_TYPE_SAMPLE) {
-        if (!sampleFilesRef.current) {
-          toast.error('No sample files could be loaded.');
-          setIsSubmitPending(false);
-          return;
-        }
-        const result = (await sampleFilesRef.current) as QueryObserverResult<File[], Error>;
-        if (result.isError || result.error) {
-          toast.error(getApiErrorMessage(result.error as Error, 'Failed to load sample files'));
-          setIsSubmitPending(false);
-          return;
-        }
-        if (!result.data?.length) {
-          toast.error('No sample files could be loaded.');
-          setIsSubmitPending(false);
-          return;
-        }
-        files = result.data;
-      } else {
-        files = toFileList(getValues('files'));
-      }
-
-      // Step 2: create fileset. Sample tab always produces a dataset-purpose fileset
-      // (preconfigured samples are training/eval data by definition); Custom tab
-      // uses whatever the user picked in the Purpose selector.
-      const effectivePurpose =
-        activeTab === DATASET_TYPE_SAMPLE ? FilesetPurpose.dataset : data.purpose;
-      let createPayload: CreateFilesetRequest = {
-        name: data.name,
-        description: data.description ?? '',
-        project: data.project,
-        storage: data.storage ?? undefined,
-        purpose: effectivePurpose,
-        metadata: data.metadata,
-        custom_fields: data.custom_fields,
-        cache: data.cache,
-      };
-      const url = getValues('url');
-      const secretRef = getValues('secretKey')?.trim() || undefined;
-      if (storageTab === 'external' && url?.trim()) {
-        try {
-          createPayload = {
-            ...createPayload,
-            storage: storageConfigFromUrl({
-              url: url.trim(),
-              secretKey: secretRef,
-            }),
-          };
-        } catch (e) {
-          toast.error(
-            e instanceof Error
-              ? e.message
-              : 'Invalid external storage URL or credential. For NGC, select a secret with your API key.'
-          );
-          setIsSubmitPending(false);
-          return;
-        }
-      }
-
-      let fileset: FilesetOutput;
-      try {
-        fileset = await createFilesetStep(workspace, createPayload);
-      } catch (err) {
-        const message =
-          storageTab === 'external' && url?.trim()
-            ? getExternalStorageCreateErrorMessage(err, url.trim())
-            : getApiErrorMessage(err as Error, 'Failed to create fileset');
-        toast.error(message);
-        setIsSubmitPending(false);
-        return;
-      }
-
-      // Step 3: upload files to dataset
-      if (files.length) {
-        try {
-          await uploadFilesToDatasetStep(workspace, fileset, files);
-        } catch (err) {
-          toast.error(getApiErrorMessage(err as Error, 'Failed to upload files'));
-          setIsSubmitPending(false);
-          return;
-        }
-      }
-
-      setIsSubmitPending(false);
-      if (
-        FILESET_DETAILS_ENABLED &&
-        (fileset.purpose === FilesetPurpose.dataset || fileset.purpose === FilesetPurpose.model)
-      ) {
-        navigate(getFilesetDetailRoute(workspace, fileset.name));
-        return;
-      }
-      navigate(
-        getFilesetDetailsRoute(
-          workspace,
-          getEntityReference(fileset, { encode: true }),
-          undefined,
-          true
-        )
-      );
-    },
-    [
-      activeTab,
-      createFilesetStep,
-      getValues,
-      navigate,
-      storageTab,
-      toast,
-      uploadFilesToDatasetStep,
-      workspace,
-    ]
-  );
+  const onSubmit = useCreateFileset({
+    workspace,
+    activeTab,
+    storageTab,
+    hasValidationErrors,
+    getValues,
+    sampleFilesRef,
+    setIsSubmitPending,
+  });
 
   const handleClose = useCallback(() => {
     navigate(getWorkspaceFilesetsRoute(workspace));
@@ -464,7 +210,7 @@ export const FilesetNewRoute: FC = () => {
             <Button
               type="button"
               color="brand"
-              disabled={isSubmitPending}
+              disabled={isSubmitPending || hasValidationErrors}
               onClick={handleSubmit(
                 onSubmit,
                 handleFormErrorsGeneric({ title: 'Fileset New Form Errors' })
@@ -487,166 +233,35 @@ export const FilesetNewRoute: FC = () => {
             ]}
           />
           {activeTab === DATASET_TYPE_CUSTOM && (
-            <>
-              <Text kind="body/regular/md">
-                Filesets organize files by purpose. Pick a purpose to control which metadata fields
-                are available, give the fileset a name, and choose where its files live.
-              </Text>
-              <form
-                onSubmit={handleSubmit(
-                  onSubmit,
-                  handleFormErrorsGeneric({ title: 'Fileset New Form Errors' })
-                )}
-              >
-                <Stack gap="density-2xl">
-                  <Flex direction="col" gap="density-lg">
-                    <ControlledTextInput
-                      label="Fileset Name"
-                      disabled={isSubmitPending}
-                      autoFocus
-                      useControllerProps={{
-                        name: 'name',
-                        control,
-                      }}
-                    />
-
-                    <ControlledTextArea
-                      label="Description (optional)"
-                      disabled={isSubmitPending}
-                      useControllerProps={{ name: 'description', control }}
-                    />
-                  </Flex>
-
-                  <Flex direction="col" gap="density-lg" className="w-full min-w-0">
-                    <Text kind="label/bold/lg">Purpose</Text>
-                    <Text kind="body/regular/md">
-                      Purpose determines which metadata fields are available and can&apos;t be
-                      changed after the fileset is created.
-                    </Text>
-                    <Controller
-                      control={control}
-                      name="purpose"
-                      render={({ field }) => (
-                        <RadioGroupRoot
-                          name={field.name}
-                          className="w-full"
-                          value={field.value}
-                          onValueChange={(value) => field.onChange(value as FilesetPurpose)}
-                        >
-                          <Grid gap="density-md" cols={1}>
-                            {PURPOSE_OPTIONS.map((option) => (
-                              <RadioCard
-                                key={option.value}
-                                value={option.value}
-                                label={option.label}
-                                description={option.description}
-                              />
-                            ))}
-                          </Grid>
-                        </RadioGroupRoot>
-                      )}
-                    />
-                  </Flex>
-
-                  <Flex direction="col" gap="density-lg" className="w-full min-w-0">
-                    <Text kind="label/bold/lg">Source</Text>
-                    <Text kind="body/regular/md">
-                      Upload files for local read/write access, or provide a URL and a workspace
-                      secret for external read-only access.
-                    </Text>
-
-                    <TabsRoot
-                      className="w-full min-w-0"
-                      value={storageTab}
-                      onValueChange={(value) => {
-                        const next = value as 'local' | 'external';
-                        setStorageTab(next);
-                        if (next === 'local') {
-                          setValue('url', '', { shouldValidate: false });
-                          setValue('secretKey', '', { shouldValidate: false });
-                        }
-                      }}
-                    >
-                      <TabsList>
-                        <TabsTrigger value="local">Upload</TabsTrigger>
-                        <TabsTrigger value="external">External</TabsTrigger>
-                      </TabsList>
-                      <TabsContent className="w-full min-w-0 p-0 items-stretch" value="local">
-                        <Upload
-                          accept="text/csv,text/json,.jsonl,.parquet"
-                          multiple
-                          onValueChange={(files) => {
-                            const list = Array.isArray(files) ? files : files ? [files] : undefined;
-                            setValue('files', toFileList(list), { shouldValidate: false });
-                          }}
-                        >
-                          Supports JSONL, CSV, and Parquet files up to 50 MB.
-                        </Upload>
-                      </TabsContent>
-                      <TabsContent className="w-full min-w-0 p-0 items-stretch" value="external">
-                        <Stack gap="density-lg" className="w-full min-w-0">
-                          <ControlledTextInput
-                            label="URL"
-                            disabled={isSubmitPending}
-                            useControllerProps={{ name: 'url', control }}
-                          />
-                          <SecretSearchableSelect
-                            workspace={workspace}
-                            queryEnabled={
-                              activeTab === DATASET_TYPE_CUSTOM &&
-                              storageTab === 'external' &&
-                              Boolean(workspace)
-                            }
-                            ensureOptionValue={selectedSecretName || undefined}
-                            useControllerProps={{ control, name: 'secretKey' }}
-                            onRequestNewSecret={() => setCreateSecretModalOpen(true)}
-                            triggerPlaceholder=""
-                            formFieldProps={{
-                              slotLabel: secretKeyLabel,
-                              slotInfo:
-                                'Select a secret that stores the credential for this URL, or choose New Secret to create one.',
-                              slotError: errors.secretKey?.message,
-                            }}
-                          />
-                        </Stack>
-                      </TabsContent>
-                    </TabsRoot>
-                  </Flex>
-                </Stack>
-              </form>
-            </>
+            <CustomFilesetForm
+              control={control}
+              errors={errors}
+              setValue={setValue}
+              isSubmitPending={isSubmitPending}
+              purpose={purpose}
+              activeTab={activeTab}
+              workspace={workspace}
+              storageTab={storageTab}
+              setStorageTab={setStorageTab}
+              selectedSecretName={selectedSecretName}
+              secretKeyLabel={secretKeyLabel}
+              isValidating={isValidating}
+              qualityReports={qualityReports}
+              qualityReportRef={qualityReportRef}
+              onFormSubmit={handleSubmit(
+                onSubmit,
+                handleFormErrorsGeneric({ title: 'Fileset New Form Errors' })
+              )}
+              onFilesChange={handleFilesChange}
+              onClearQualityReports={() => setQualityReports([])}
+              onRequestNewSecret={() => setCreateSecretModalOpen(true)}
+            />
           )}
           {activeTab === DATASET_TYPE_SAMPLE && (
-            <>
-              <Block>
-                <Text kind="body/regular/md" className="block">
-                  Choose from the following pre-configured sample datasets.
-                </Text>
-              </Block>
-              <Grid gap="density-md" cols={2}>
-                {SAMPLE_DATASETS.map((dataset) => (
-                  <GridItem key={dataset.id}>
-                    <Card
-                      interactive
-                      selected={selectedSampleDataset.id === dataset.id}
-                      onClick={() => handleSelectSample(dataset)}
-                      className="cursor-pointer shadow-none!"
-                      slotHeader={
-                        <Badge kind="solid" color="purple">
-                          <FileCheck />
-                          Sample Dataset
-                        </Badge>
-                      }
-                    >
-                      <Flex gap="density-sm" direction="col">
-                        <Text kind="label/bold/md">{dataset.name}</Text>
-                        <Text kind="body/regular/md">{dataset.description}</Text>
-                      </Flex>
-                    </Card>
-                  </GridItem>
-                ))}
-              </Grid>
-            </>
+            <SampleDatasetSection
+              selectedSampleDataset={selectedSampleDataset}
+              onSelectSample={handleSelectSample}
+            />
           )}
         </Stack>
       </SidePanel>

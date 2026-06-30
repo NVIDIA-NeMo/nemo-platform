@@ -8,7 +8,7 @@ Create a FileSet containing your base model checkpoint before creating a Model E
 ## Prerequisites
 
 - Obtained the base URL of your NeMo Platform.
-- For HuggingFace models: Created a secret with your HF token. Refer to [Manage Secrets](/documentation/get-started/core-concepts/manage-secrets).
+- For gated or private HuggingFace models: Created a secret with your HF token. Refer to [Manage Secrets](/documentation/get-started/core-concepts/manage-secrets).
 - Set the `NMP_BASE_URL` environment variable.
 
 ```bash
@@ -19,11 +19,7 @@ export NMP_BASE_URL="https://your-nemo-platform-url"
 
 ## From HuggingFace Hub
 
-The most common method is downloading directly from HuggingFace:
-
-<Tabs>
-
-<Tab title="Python SDK">
+The most common method is downloading directly from HuggingFace. The example below uses [Qwen/Qwen3-1.7B](https://huggingface.co/Qwen/Qwen3-1.7B), a public model that requires no token:
 
 ```python
 import os
@@ -35,37 +31,20 @@ client = NeMoPlatform(
     workspace="default",
 )
 
-HF_REPO_ID = "meta-llama/Llama-3.2-1B-Instruct"
-MODEL_NAME = "llama-3-2-1b"
-HF_SECRET_NAME = "my-hf-token"
-HF_TOKEN = os.environ.get("HF_TOKEN")
-if not HF_TOKEN:
-    raise RuntimeError("Set HF_TOKEN before creating the HuggingFace secret.")
-
-# First, create a secret for your HF token (if not already created)
-try:
-    hf_secret = client.secrets.create(
-        name=HF_SECRET_NAME,
-        workspace="default",
-        value=HF_TOKEN,
-    )
-    print(f"Created secret: {HF_SECRET_NAME}")
-except ConflictError:
-    print(f"Secret '{HF_SECRET_NAME}' already exists, continuing...")
-    hf_secret = client.secrets.retrieve(name=HF_SECRET_NAME, workspace="default")
+HF_REPO_ID = "Qwen/Qwen3-1.7B"
+MODEL_NAME = "qwen3-1.7b"
 
 # Create FileSet from HuggingFace
 try:
     fileset = client.files.filesets.create(
         workspace="default",
         name=MODEL_NAME,
-        description="Llama 3.2 1B Instruct from HuggingFace",
+        description="Qwen3 1.7B from HuggingFace",
         purpose="model",
         storage=HuggingfaceStorageConfigParam(
             type="huggingface",
             repo_id=HF_REPO_ID,
             repo_type="model",
-            token_secret=hf_secret.name,
         ),
     )
     print(f"Created FileSet: {fileset.name}")
@@ -76,47 +55,22 @@ except ConflictError:
 print(f"FileSet ready: {fileset.name}")
 ```
 
-</Tab>
-<Tab title="CLI">
-
-```bash
-export WORKSPACE="default"
-export HF_REPO_ID="meta-llama/Llama-3.2-1B-Instruct"
-export MODEL_NAME="llama-3-2-1b"
-export HF_SECRET_NAME="my-hf-token"
-
-# Export HF_TOKEN with your HuggingFace token before running this.
-: "${HF_TOKEN:?Set HF_TOKEN before creating the HuggingFace secret.}"
-
-nemo secrets get "$HF_SECRET_NAME" --workspace "$WORKSPACE" >/dev/null 2>&1 || \
-  printf '%s' "$HF_TOKEN" | nemo secrets create "$HF_SECRET_NAME" \
-    --workspace "$WORKSPACE" \
-    --from-file -
-
-nemo files filesets create "$MODEL_NAME" \
-  --workspace "$WORKSPACE" \
-  --description "Llama 3.2 1B Instruct from HuggingFace" \
-  --purpose model \
-  --exist-ok \
-  --storage '{
-    "type": "huggingface",
-    "repo_id": "'"$HF_REPO_ID"'",
-    "repo_type": "model",
-    "token_secret": "'"$HF_SECRET_NAME"'"
-  }'
-
-nemo files filesets get "$MODEL_NAME" --workspace "$WORKSPACE"
-```
-
-</Tab>
-
-</Tabs>
 <Tip>
 
-For gated models (like Llama), you need to:
-1. Accept the model license on HuggingFace
-2. Create a HuggingFace token with read access
-3. Store the token as a secret in the platform
+Gated models (such as Llama) require a HuggingFace token. To use one:
+
+1. Accept the model license on the HuggingFace model page.
+2. Create a HuggingFace token with read access.
+3. Store the token as a secret in the platform (see [Manage Secrets](/documentation/get-started/core-concepts/manage-secrets)), then pass it as `token_secret` in the storage config:
+
+```python
+storage=HuggingfaceStorageConfigParam(
+    type="huggingface",
+    repo_id="meta-llama/Llama-3.2-1B-Instruct",
+    repo_type="model",
+    token_secret="my-hf-token",
+)
+```
 
 </Tip>
 ---
@@ -124,10 +78,6 @@ For gated models (like Llama), you need to:
 ## From NGC
 
 For models from NVIDIA NGC:
-
-<Tabs>
-
-<Tab title="Python SDK">
 
 ```python
 import os
@@ -183,46 +133,6 @@ except ConflictError:
     fileset = client.files.filesets.retrieve(workspace="default", name=MODEL_NAME)
 ```
 
-</Tab>
-<Tab title="CLI">
-
-```bash
-export WORKSPACE="default"
-export MODEL_NAME="nemotron-mini-4b"
-export NGC_RESOURCE="nemotron-mini-4b-instruct"
-export NGC_ORG="nvidia"
-export NGC_TEAM="nemo"
-export NGC_VERSION="1.0"
-export NGC_API_KEY_SECRET="my-ngc-key"
-
-# Export NGC_API_KEY with your NGC API key before running this.
-: "${NGC_API_KEY:?Set NGC_API_KEY before creating the NGC secret.}"
-
-nemo secrets get "$NGC_API_KEY_SECRET" --workspace "$WORKSPACE" >/dev/null 2>&1 || \
-  printf '%s' "$NGC_API_KEY" | nemo secrets create "$NGC_API_KEY_SECRET" \
-    --workspace "$WORKSPACE" \
-    --from-file -
-
-nemo files filesets create "$MODEL_NAME" \
-  --workspace "$WORKSPACE" \
-  --description "Nemotron Mini 4B from NGC" \
-  --purpose model \
-  --exist-ok \
-  --storage '{
-    "type": "ngc",
-    "org": "'"$NGC_ORG"'",
-    "team": "'"$NGC_TEAM"'",
-    "resource": "'"$NGC_RESOURCE"'",
-    "version": "'"$NGC_VERSION"'",
-    "api_key_secret": "'"$NGC_API_KEY_SECRET"'"
-  }'
-
-nemo files filesets get "$MODEL_NAME" --workspace "$WORKSPACE"
-```
-
-</Tab>
-
-</Tabs>
 ---
 
 ## Check FileSet Status
@@ -233,7 +143,7 @@ Files are downloaded in the background after you create a FileSet. Check the sta
 # List files in the FileSet
 files = client.files.list(
     workspace="default",
-    fileset="llama-3-2-1b",
+    fileset="qwen3-1.7b",
 )
 
 print(f"Files in FileSet ({len(files)} total):")
@@ -247,25 +157,25 @@ for f in files[:10]:  # Show first 10
 {
   "data": [
     {
-      "file_ref": "/v2/workspaces/default/filesets/llama-3-2-1b/-/config.json",
+      "file_ref": "/v2/workspaces/default/filesets/qwen3-1.7b/-/config.json",
       "path": "config.json",
       "size": 1234,
       "cache_status": null
     },
     {
-      "file_ref": "/v2/workspaces/default/filesets/llama-3-2-1b/-/model.safetensors",
+      "file_ref": "/v2/workspaces/default/filesets/qwen3-1.7b/-/model.safetensors",
       "path": "model.safetensors",
       "size": 2400000000,
       "cache_status": null
     },
     {
-      "file_ref": "/v2/workspaces/default/filesets/llama-3-2-1b/-/tokenizer.json",
+      "file_ref": "/v2/workspaces/default/filesets/qwen3-1.7b/-/tokenizer.json",
       "path": "tokenizer.json",
       "size": 9085657,
       "cache_status": null
     },
     {
-      "file_ref": "/v2/workspaces/default/filesets/llama-3-2-1b/-/tokenizer_config.json",
+      "file_ref": "/v2/workspaces/default/filesets/qwen3-1.7b/-/tokenizer_config.json",
       "path": "tokenizer_config.json",
       "size": 901,
       "cache_status": null

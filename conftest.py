@@ -232,7 +232,7 @@ def pytest_collection_modifyitems(config, items):
                 item.add_marker(pytest.mark.e2e)
                 marker_names.add("e2e")
 
-        # Auto-mark integration tests (e.g., /services/evaluator/tests/integration/)
+        # Auto-mark integration tests (e.g., /services/core/jobs/tests/integration/)
         elif "/integration/" in fspath_str:
             if "integration" not in marker_names:
                 item.add_marker(pytest.mark.integration)
@@ -287,6 +287,12 @@ def pytest_runtest_setup(item):
     if "e2e" in [marker.name for marker in item.iter_markers()]:
         if not item.config.getoption("--run-e2e"):
             skip_test("Skipping e2e test (use --run-e2e to run)")
+    if "subprocess_only" in [marker.name for marker in item.iter_markers()]:
+        if os.environ.get("NMP_BASE_URL"):
+            skip_test("Skipping subprocess-only test (NMP_BASE_URL is set)")
+    if "container_only" in [marker.name for marker in item.iter_markers()]:
+        if not os.environ.get("NMP_BASE_URL"):
+            skip_test("Skipping container-only test (requires NMP_BASE_URL)")
 
 
 from xdist.scheduler.loadscope import LoadScopeScheduling  # noqa: E402

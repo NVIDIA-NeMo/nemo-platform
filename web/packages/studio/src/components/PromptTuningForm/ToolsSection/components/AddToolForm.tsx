@@ -94,6 +94,7 @@ export const AddToolForm: FC<AddToolFormProps> = ({ disabled }) => {
                       accept=".json,.jsonl"
                       onChange={handleFileChange}
                       disabled={disabled}
+                      aria-label="Upload tool definition file"
                     />
                   </label>
                 </Button>

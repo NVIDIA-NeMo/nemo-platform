@@ -5,39 +5,15 @@
 
 from __future__ import annotations
 
-import logging
-import signal
 import sys
-from enum import IntEnum
-from types import FrameType
 
 from nemo_evaluator.jobs.evaluate import EvaluateJob
-from nemo_platform_plugin.sdk_provider import get_task_sdk
-from nemo_platform_plugin.tasks.dispatcher import run_task
-
-logger = logging.getLogger(__name__)
-
-
-class EvaluateTaskExitCode(IntEnum):
-    """Evaluator task setup exit codes."""
-
-    SDK_INITIALIZATION_FAILED = 2
-
-
-def _shutdown_handler(signum: int, frame: FrameType | None) -> None:
-    logger.warning("Received shutdown signal (%d). Exiting.", signum)
-    raise SystemExit(128 + signum)
+from nemo_evaluator.tasks.runner import run_task_main
 
 
 def main() -> int:
     """Build the task SDK and dispatch to the evaluator plugin job."""
-    signal.signal(signal.SIGTERM, _shutdown_handler)
-    try:
-        sdk = get_task_sdk("evaluator")
-    except Exception:
-        logger.exception("Failed to build task SDK for evaluator")
-        return EvaluateTaskExitCode.SDK_INITIALIZATION_FAILED
-    return run_task(EvaluateJob, sdk=sdk)
+    return run_task_main(EvaluateJob, service_name="evaluator")
 
 
 if __name__ == "__main__":

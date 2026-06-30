@@ -18,7 +18,6 @@
 from __future__ import annotations
 
 from typing import Dict
-from typing_extensions import Literal
 
 import httpx
 
@@ -82,16 +81,13 @@ class ExperimentsResource(SyncAPIResource):
         self,
         *,
         workspace: str | None = None,
-        agent_name: str,
-        agent_version: str,
         dataset_name: str,
+        experiment_group_id: str,
         name: str,
         dataset_version: str | Omit = omit,
         description: str | Omit = omit,
-        experiment_group_id: str | Omit = omit,
         metadata: Dict[str, object] | Omit = omit,
         source_link: str | Omit = omit,
-        summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         exist_ok: bool = False,
@@ -104,11 +100,10 @@ class ExperimentsResource(SyncAPIResource):
         Create Experiment
 
         Args:
-          agent_name: Name of the agent under test.
-
-          agent_version: Version of the agent under test.
-
           dataset_name: Producer-supplied dataset name.
+
+          experiment_group_id: Entity id of the owning ExperimentGroup. Required — the group must already
+              exist.
 
           name: Producer-supplied, workspace-unique experiment id.
 
@@ -116,14 +111,9 @@ class ExperimentsResource(SyncAPIResource):
 
           description: Human-readable description.
 
-          experiment_group_id: Entity id of the owning ExperimentGroup; optional. Soft reference, not
-              validated.
-
           metadata: Free-form producer metadata.
 
           source_link: Optional URL for the source experiment.
-
-          summary: Human-authored summary of results.
 
 
           exist_ok: Do not raise an error if the resource already exists. Returns the existing resource.
@@ -146,16 +136,13 @@ class ExperimentsResource(SyncAPIResource):
                 path_template("/apis/intake/v2/workspaces/{workspace}/experiments", workspace=workspace),
                 body=maybe_transform(
                     {
-                        "agent_name": agent_name,
-                        "agent_version": agent_version,
                         "dataset_name": dataset_name,
+                        "experiment_group_id": experiment_group_id,
                         "name": name,
                         "dataset_version": dataset_version,
                         "description": description,
-                        "experiment_group_id": experiment_group_id,
                         "metadata": metadata,
                         "source_link": source_link,
-                        "summary": summary,
                     },
                     experiment_create_params.ExperimentCreateParams,
                 ),
@@ -212,16 +199,13 @@ class ExperimentsResource(SyncAPIResource):
         path_name: str,
         *,
         workspace: str | None = None,
-        agent_name: str,
-        agent_version: str,
         dataset_name: str,
+        experiment_group_id: str,
         body_name: str,
         dataset_version: str | Omit = omit,
         description: str | Omit = omit,
-        experiment_group_id: str | Omit = omit,
         metadata: Dict[str, object] | Omit = omit,
         source_link: str | Omit = omit,
-        summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -233,11 +217,10 @@ class ExperimentsResource(SyncAPIResource):
         Update Experiment
 
         Args:
-          agent_name: Name of the agent under test.
-
-          agent_version: Version of the agent under test.
-
           dataset_name: Producer-supplied dataset name.
+
+          experiment_group_id: Entity id of the owning ExperimentGroup. Required — the group must already
+              exist.
 
           body_name: Producer-supplied, workspace-unique experiment id.
 
@@ -245,14 +228,9 @@ class ExperimentsResource(SyncAPIResource):
 
           description: Human-readable description.
 
-          experiment_group_id: Entity id of the owning ExperimentGroup; optional. Soft reference, not
-              validated.
-
           metadata: Free-form producer metadata.
 
           source_link: Optional URL for the source experiment.
-
-          summary: Human-authored summary of results.
 
           extra_headers: Send extra headers
 
@@ -276,16 +254,13 @@ class ExperimentsResource(SyncAPIResource):
             ),
             body=maybe_transform(
                 {
-                    "agent_name": agent_name,
-                    "agent_version": agent_version,
                     "dataset_name": dataset_name,
+                    "experiment_group_id": experiment_group_id,
                     "body_name": body_name,
                     "dataset_version": dataset_version,
                     "description": description,
-                    "experiment_group_id": experiment_group_id,
                     "metadata": metadata,
                     "source_link": source_link,
-                    "summary": summary,
                 },
                 experiment_update_params.ExperimentUpdateParams,
             ),
@@ -302,7 +277,7 @@ class ExperimentsResource(SyncAPIResource):
         filter: ExperimentFilterParam | Omit = omit,
         page: int | Omit = omit,
         page_size: int | Omit = omit,
-        sort: Literal["-created_at", "created_at", "-updated_at", "updated_at", "-name", "name"] | Omit = omit,
+        sort: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -314,14 +289,22 @@ class ExperimentsResource(SyncAPIResource):
         List Experiments
 
         Args:
-          filter: Filter experiments by name, experiment_group_id, agent_name, agent_version,
-              dataset_name, dataset_version, created_by, created_at, or updated_at.
+          filter: Filter experiments by name, experiment_group_id, dataset_name, dataset_version,
+              created_by, created_at, or updated_at. Pass is_deleted=true to return only
+              soft-deleted experiments; omit to see only live ones. Pass is_pinned=true (or
+              false) to filter by pinned state; omit to return both. Filter by a rollup metric
+              with numeric range operators ($gte/$lte/$gt/$lt/$eq): filter[run_count][$gte]=5,
+              filter[cost_usd.mean][$lte]=0.5, filter[latency_ms.p95][$lte]=1000, or
+              filter[evaluators.<name>.mean][$gte]=0.8.
 
           page: Page number.
 
           page_size: Page size.
 
-          sort: Sort field; prefix with '-' for descending.
+          sort: Field to sort by; prefix with '-' for descending. Sort by an experiment
+              attribute (name, created_at, updated_at, pinned_at) or by an aggregate metric:
+              run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>,
+              where <stat> is one of mean, median, p90, p95, p99, sum, count.
 
           extra_headers: Send extra headers
 
@@ -395,6 +378,91 @@ class ExperimentsResource(SyncAPIResource):
             cast_to=NoneType,
         )
 
+    def pin(
+        self,
+        name: str,
+        *,
+        workspace: str | None = None,
+        # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
+        # The extra values given here take precedence over values defined on the client or passed to this method.
+        extra_headers: Headers | None = None,
+        extra_query: Query | None = None,
+        extra_body: Body | None = None,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
+    ) -> ExperimentResponse:
+        """
+        Pin an experiment to the top of the list (workspace-shared).
+
+        Re-pinning an already-pinned experiment refreshes `pinned_at` to the current
+        timestamp, which is intentional (most-recently-pinned sorts first).
+
+        Args:
+          extra_headers: Send extra headers
+
+          extra_query: Add additional query parameters to the request
+
+          extra_body: Add additional JSON properties to the request
+
+          timeout: Override the client-level default timeout for this request, in seconds
+        """
+        if workspace is None:
+            workspace = self._client._get_workspace_path_param()
+        if not workspace:
+            raise ValueError(f"Expected a non-empty value for `workspace` but received {workspace!r}")
+        if not name:
+            raise ValueError(f"Expected a non-empty value for `name` but received {name!r}")
+        return self._post(
+            path_template(
+                "/apis/intake/v2/workspaces/{workspace}/experiments/{name}/pin", workspace=workspace, name=name
+            ),
+            options=make_request_options(
+                extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
+            ),
+            cast_to=ExperimentResponse,
+        )
+
+    def unpin(
+        self,
+        name: str,
+        *,
+        workspace: str | None = None,
+        # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
+        # The extra values given here take precedence over values defined on the client or passed to this method.
+        extra_headers: Headers | None = None,
+        extra_query: Query | None = None,
+        extra_body: Body | None = None,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
+    ) -> ExperimentResponse:
+        """Unpin an experiment.
+
+        Idempotent: unpinning an already-unpinned experiment is a
+        no-op.
+
+        Args:
+          extra_headers: Send extra headers
+
+          extra_query: Add additional query parameters to the request
+
+          extra_body: Add additional JSON properties to the request
+
+          timeout: Override the client-level default timeout for this request, in seconds
+        """
+        if workspace is None:
+            workspace = self._client._get_workspace_path_param()
+        if not workspace:
+            raise ValueError(f"Expected a non-empty value for `workspace` but received {workspace!r}")
+        if not name:
+            raise ValueError(f"Expected a non-empty value for `name` but received {name!r}")
+        return self._delete(
+            path_template(
+                "/apis/intake/v2/workspaces/{workspace}/experiments/{name}/pin", workspace=workspace, name=name
+            ),
+            options=make_request_options(
+                extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
+            ),
+            cast_to=ExperimentResponse,
+        )
+
 
 class AsyncExperimentsResource(AsyncAPIResource):
     @cached_property
@@ -424,16 +492,13 @@ class AsyncExperimentsResource(AsyncAPIResource):
         self,
         *,
         workspace: str | None = None,
-        agent_name: str,
-        agent_version: str,
         dataset_name: str,
+        experiment_group_id: str,
         name: str,
         dataset_version: str | Omit = omit,
         description: str | Omit = omit,
-        experiment_group_id: str | Omit = omit,
         metadata: Dict[str, object] | Omit = omit,
         source_link: str | Omit = omit,
-        summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         exist_ok: bool = False,
@@ -446,11 +511,10 @@ class AsyncExperimentsResource(AsyncAPIResource):
         Create Experiment
 
         Args:
-          agent_name: Name of the agent under test.
-
-          agent_version: Version of the agent under test.
-
           dataset_name: Producer-supplied dataset name.
+
+          experiment_group_id: Entity id of the owning ExperimentGroup. Required — the group must already
+              exist.
 
           name: Producer-supplied, workspace-unique experiment id.
 
@@ -458,14 +522,9 @@ class AsyncExperimentsResource(AsyncAPIResource):
 
           description: Human-readable description.
 
-          experiment_group_id: Entity id of the owning ExperimentGroup; optional. Soft reference, not
-              validated.
-
           metadata: Free-form producer metadata.
 
           source_link: Optional URL for the source experiment.
-
-          summary: Human-authored summary of results.
 
 
           exist_ok: Do not raise an error if the resource already exists. Returns the existing resource.
@@ -488,16 +547,13 @@ class AsyncExperimentsResource(AsyncAPIResource):
                 path_template("/apis/intake/v2/workspaces/{workspace}/experiments", workspace=workspace),
                 body=await async_maybe_transform(
                     {
-                        "agent_name": agent_name,
-                        "agent_version": agent_version,
                         "dataset_name": dataset_name,
+                        "experiment_group_id": experiment_group_id,
                         "name": name,
                         "dataset_version": dataset_version,
                         "description": description,
-                        "experiment_group_id": experiment_group_id,
                         "metadata": metadata,
                         "source_link": source_link,
-                        "summary": summary,
                     },
                     experiment_create_params.ExperimentCreateParams,
                 ),
@@ -554,16 +610,13 @@ class AsyncExperimentsResource(AsyncAPIResource):
         path_name: str,
         *,
         workspace: str | None = None,
-        agent_name: str,
-        agent_version: str,
         dataset_name: str,
+        experiment_group_id: str,
         body_name: str,
         dataset_version: str | Omit = omit,
         description: str | Omit = omit,
-        experiment_group_id: str | Omit = omit,
         metadata: Dict[str, object] | Omit = omit,
         source_link: str | Omit = omit,
-        summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -575,11 +628,10 @@ class AsyncExperimentsResource(AsyncAPIResource):
         Update Experiment
 
         Args:
-          agent_name: Name of the agent under test.
-
-          agent_version: Version of the agent under test.
-
           dataset_name: Producer-supplied dataset name.
+
+          experiment_group_id: Entity id of the owning ExperimentGroup. Required — the group must already
+              exist.
 
           body_name: Producer-supplied, workspace-unique experiment id.
 
@@ -587,14 +639,9 @@ class AsyncExperimentsResource(AsyncAPIResource):
 
           description: Human-readable description.
 
-          experiment_group_id: Entity id of the owning ExperimentGroup; optional. Soft reference, not
-              validated.
-
           metadata: Free-form producer metadata.
 
           source_link: Optional URL for the source experiment.
-
-          summary: Human-authored summary of results.
 
           extra_headers: Send extra headers
 
@@ -618,16 +665,13 @@ class AsyncExperimentsResource(AsyncAPIResource):
             ),
             body=await async_maybe_transform(
                 {
-                    "agent_name": agent_name,
-                    "agent_version": agent_version,
                     "dataset_name": dataset_name,
+                    "experiment_group_id": experiment_group_id,
                     "body_name": body_name,
                     "dataset_version": dataset_version,
                     "description": description,
-                    "experiment_group_id": experiment_group_id,
                     "metadata": metadata,
                     "source_link": source_link,
-                    "summary": summary,
                 },
                 experiment_update_params.ExperimentUpdateParams,
             ),
@@ -644,7 +688,7 @@ class AsyncExperimentsResource(AsyncAPIResource):
         filter: ExperimentFilterParam | Omit = omit,
         page: int | Omit = omit,
         page_size: int | Omit = omit,
-        sort: Literal["-created_at", "created_at", "-updated_at", "updated_at", "-name", "name"] | Omit = omit,
+        sort: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -656,14 +700,22 @@ class AsyncExperimentsResource(AsyncAPIResource):
         List Experiments
 
         Args:
-          filter: Filter experiments by name, experiment_group_id, agent_name, agent_version,
-              dataset_name, dataset_version, created_by, created_at, or updated_at.
+          filter: Filter experiments by name, experiment_group_id, dataset_name, dataset_version,
+              created_by, created_at, or updated_at. Pass is_deleted=true to return only
+              soft-deleted experiments; omit to see only live ones. Pass is_pinned=true (or
+              false) to filter by pinned state; omit to return both. Filter by a rollup metric
+              with numeric range operators ($gte/$lte/$gt/$lt/$eq): filter[run_count][$gte]=5,
+              filter[cost_usd.mean][$lte]=0.5, filter[latency_ms.p95][$lte]=1000, or
+              filter[evaluators.<name>.mean][$gte]=0.8.
 
           page: Page number.
 
           page_size: Page size.
 
-          sort: Sort field; prefix with '-' for descending.
+          sort: Field to sort by; prefix with '-' for descending. Sort by an experiment
+              attribute (name, created_at, updated_at, pinned_at) or by an aggregate metric:
+              run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>,
+              where <stat> is one of mean, median, p90, p95, p99, sum, count.
 
           extra_headers: Send extra headers
 
@@ -737,6 +789,91 @@ class AsyncExperimentsResource(AsyncAPIResource):
             cast_to=NoneType,
         )
 
+    async def pin(
+        self,
+        name: str,
+        *,
+        workspace: str | None = None,
+        # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
+        # The extra values given here take precedence over values defined on the client or passed to this method.
+        extra_headers: Headers | None = None,
+        extra_query: Query | None = None,
+        extra_body: Body | None = None,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
+    ) -> ExperimentResponse:
+        """
+        Pin an experiment to the top of the list (workspace-shared).
+
+        Re-pinning an already-pinned experiment refreshes `pinned_at` to the current
+        timestamp, which is intentional (most-recently-pinned sorts first).
+
+        Args:
+          extra_headers: Send extra headers
+
+          extra_query: Add additional query parameters to the request
+
+          extra_body: Add additional JSON properties to the request
+
+          timeout: Override the client-level default timeout for this request, in seconds
+        """
+        if workspace is None:
+            workspace = self._client._get_workspace_path_param()
+        if not workspace:
+            raise ValueError(f"Expected a non-empty value for `workspace` but received {workspace!r}")
+        if not name:
+            raise ValueError(f"Expected a non-empty value for `name` but received {name!r}")
+        return await self._post(
+            path_template(
+                "/apis/intake/v2/workspaces/{workspace}/experiments/{name}/pin", workspace=workspace, name=name
+            ),
+            options=make_request_options(
+                extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
+            ),
+            cast_to=ExperimentResponse,
+        )
+
+    async def unpin(
+        self,
+        name: str,
+        *,
+        workspace: str | None = None,
+        # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
+        # The extra values given here take precedence over values defined on the client or passed to this method.
+        extra_headers: Headers | None = None,
+        extra_query: Query | None = None,
+        extra_body: Body | None = None,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
+    ) -> ExperimentResponse:
+        """Unpin an experiment.
+
+        Idempotent: unpinning an already-unpinned experiment is a
+        no-op.
+
+        Args:
+          extra_headers: Send extra headers
+
+          extra_query: Add additional query parameters to the request
+
+          extra_body: Add additional JSON properties to the request
+
+          timeout: Override the client-level default timeout for this request, in seconds
+        """
+        if workspace is None:
+            workspace = self._client._get_workspace_path_param()
+        if not workspace:
+            raise ValueError(f"Expected a non-empty value for `workspace` but received {workspace!r}")
+        if not name:
+            raise ValueError(f"Expected a non-empty value for `name` but received {name!r}")
+        return await self._delete(
+            path_template(
+                "/apis/intake/v2/workspaces/{workspace}/experiments/{name}/pin", workspace=workspace, name=name
+            ),
+            options=make_request_options(
+                extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
+            ),
+            cast_to=ExperimentResponse,
+        )
+
 
 class ExperimentsResourceWithRawResponse:
     def __init__(self, experiments: ExperimentsResource) -> None:
@@ -756,6 +893,12 @@ class ExperimentsResourceWithRawResponse:
         )
         self.delete = to_raw_response_wrapper(
             experiments.delete,
+        )
+        self.pin = to_raw_response_wrapper(
+            experiments.pin,
+        )
+        self.unpin = to_raw_response_wrapper(
+            experiments.unpin,
         )
 
     @cached_property
@@ -782,6 +925,12 @@ class AsyncExperimentsResourceWithRawResponse:
         self.delete = async_to_raw_response_wrapper(
             experiments.delete,
         )
+        self.pin = async_to_raw_response_wrapper(
+            experiments.pin,
+        )
+        self.unpin = async_to_raw_response_wrapper(
+            experiments.unpin,
+        )
 
     @cached_property
     def sessions(self) -> AsyncSessionsResourceWithRawResponse:
@@ -807,6 +956,12 @@ class ExperimentsResourceWithStreamingResponse:
         self.delete = to_streamed_response_wrapper(
             experiments.delete,
         )
+        self.pin = to_streamed_response_wrapper(
+            experiments.pin,
+        )
+        self.unpin = to_streamed_response_wrapper(
+            experiments.unpin,
+        )
 
     @cached_property
     def sessions(self) -> SessionsResourceWithStreamingResponse:
@@ -831,6 +986,12 @@ class AsyncExperimentsResourceWithStreamingResponse:
         )
         self.delete = async_to_streamed_response_wrapper(
             experiments.delete,
+        )
+        self.pin = async_to_streamed_response_wrapper(
+            experiments.pin,
+        )
+        self.unpin = async_to_streamed_response_wrapper(
+            experiments.unpin,
         )
 
     @cached_property

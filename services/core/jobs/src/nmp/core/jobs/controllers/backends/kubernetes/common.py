@@ -56,6 +56,7 @@ from nmp.core.jobs.controllers.backends.base import (
     JobExecutionProfileConfig,
     get_logs_endpoint_from_fileset,
     resolve_gpu_job_shm_size,
+    resolve_task_image,
 )
 from nmp.core.jobs.controllers.backends.exceptions import FailedToScheduleError, JobStorageError
 from pydantic import BaseModel, Field, model_validator
@@ -990,7 +991,7 @@ def create_pod_template_spec(
     if step.step_spec.environment:
         for envvar in step.step_spec.environment:
             if envvar.value is not None:
-                # If the job has requested persistent job storage path, capture it for use when constructing the volume mount.
+                # Allow step to override the default persistent storage mount path.
                 if envvar.name == PERSISTENT_JOB_STORAGE_PATH_ENVVAR:
                     job_storage_mount = envvar.value
 
@@ -1011,6 +1012,20 @@ def create_pod_template_spec(
         ),
     ]
     storage_config = config.storage
+
+    # Persistent job storage (PVC mount) is only provisioned when the step
+    # explicitly declares NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH in its
+    # compile() environment. Jobs that don't declare it won't get a PVC
+    # mount — if they try to access ctx.storage.persistent at runtime,
+    # StoragePaths raises a clear RuntimeError guiding them to add it.
+    #
+    # TODO: Job authors should be able to declare whether they need
+    # persistent storage via a first-class field on the job spec (e.g.
+    # `requires_persistent_storage: bool` on NemoJob or PlatformJobStep),
+    # rather than the current mechanism of passing a magic env var in the
+    # step's environment list. This would make the contract between
+    # compile() and the runtime explicit. See AIRCORE-844 for context.
+
     if storage_config.additional_volume_mounts:
         volume_mounts.extend(mount.to_k8s() for mount in storage_config.additional_volume_mounts)
 
@@ -1102,10 +1117,14 @@ def create_pod_template_spec(
     for cmd in container.entrypoint or []:
         command.append(cmd)
 
+    # Resolve the task image: explicit container.image takes precedence,
+    # then the profile's default_task_image, then platform CPU tasks image fallback.
+    task_image = resolve_task_image(container.image, config.default_task_image)
+
     # Main job container
     job_container = client.V1Container(
         name=NEMO_JOB_TASK_CONTAINER_NAME,
-        image=container.image,
+        image=task_image,
         command=command,
         args=container.command,
         env=env,

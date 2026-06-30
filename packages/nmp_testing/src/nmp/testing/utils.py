@@ -7,9 +7,11 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 import time
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -47,31 +49,44 @@ def get_repo_root() -> Path:
 
 def run_nemo_local(
     *args: str,
+    base_url: str | None = None,
+    workspace: str | None = None,
     env_extra: dict[str, str] | None = None,
     timeout: int = 120,
     cwd: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    """Run the NeMo CLI (`nemo`) from repo root without cluster URL injection.
+    """Run the NeMo CLI (``nemo``) from repo root.
 
-    Used by tests that target local CLI behavior (config, quickstart) and
-    don't need the E2E cluster URL injected.
+    Used by tests that target local CLI behavior as well as E2E flows that
+    need to point the CLI at a specific platform instance.
 
-    Pass ``cwd`` to run from a different directory (e.g. a ``tmp_path`` with a
-    fake ``.git`` marker so ``skills install`` writes there instead of the real
-    repo root).
+    Pass ``base_url`` and ``workspace`` to inject ``NMP_BASE_URL`` and
+    ``NMP_WORKSPACE`` directly. The CLI gets an empty temporary
+    ``NMP_CONFIG_FILE`` so test calls do not read a developer's local CLI/SDK
+    config. Pass ``cwd`` to run from a different directory (e.g. a ``tmp_path``
+    with a fake ``.git`` marker so ``skills install`` writes there instead of
+    the real repo root).
     """
-    env = os.environ.copy()
-    if env_extra:
-        env.update(env_extra)
-    cmd = ["uv", "run", "--project", str(get_repo_root()), "--frozen", "nemo", *args]
-    return subprocess.run(
-        cmd,
-        cwd=cwd or get_repo_root(),
-        env=env,
-        timeout=timeout,
-        capture_output=True,
-        text=True,
-    )
+    with tempfile.TemporaryDirectory(prefix="nmp-cli-config-") as config_dir:
+        env = os.environ.copy()
+        config_path = Path(config_dir) / "config.yaml"
+        config_path.write_text("{}\n")
+        env["NMP_CONFIG_FILE"] = str(config_path)
+        if base_url is not None:
+            env["NMP_BASE_URL"] = base_url.rstrip("/")
+        if workspace is not None:
+            env["NMP_WORKSPACE"] = workspace
+        if env_extra:
+            env.update(env_extra)
+        cmd = ["uv", "run", "--project", str(get_repo_root()), "--frozen", "nemo", *args]
+        return subprocess.run(
+            cmd,
+            cwd=cwd or get_repo_root(),
+            env=env,
+            timeout=timeout,
+            capture_output=True,
+            text=True,
+        )
 
 
 @dataclass
@@ -348,6 +363,32 @@ def grant_workspace_role(
         roles=list(roles),
         wait_role_propagation=wait_role_propagation,
     )
+
+
+@contextmanager
+def igw_mock_provider_mode(prefix: str = "igw-mock-") -> Iterator[None]:
+    """Enable IGW mock-provider mode in *this* process for the duration of the ``with`` block.
+
+    Overrides ``InferenceGatewayConfig.mock_provider_prefix`` so :func:`add_mock_provider` can name
+    and resolve mock providers. Use this when driving a *real* platform subprocess (where
+    :func:`create_test_client` isn't in play) but the in-process config still has to recognize the
+    mock prefix.
+
+    Implemented as a ``Configuration`` override, which ``get_service_config`` honors ahead of the
+    env-derived config — so it works regardless of whether the IGW config was already read/cached
+    (an env var would lose that race) — and is scoped to the block, so it can't leak into unrelated
+    suites. The prior ``InferenceGatewayConfig`` override (if any) is restored on exit.
+    """
+    from nmp.common.config import Configuration
+    from nmp.core.inference_gateway.config import InferenceGatewayConfig
+
+    current = Configuration.get_service_config(InferenceGatewayConfig)
+    merged = InferenceGatewayConfig(**{**current.model_dump(), "mock_provider_prefix": prefix})
+    Configuration.set_overrides({InferenceGatewayConfig: merged})
+    try:
+        yield
+    finally:
+        Configuration.clear_override(InferenceGatewayConfig)
 
 
 def add_mock_provider(

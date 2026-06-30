@@ -117,8 +117,8 @@ auth:
   admin_email:
   # Name of the default workspace where all authenticated users get Editor role | default: 'default'
   default_workspace: default
-  # CPU budget for embedded PDP policy evaluation, in millions of WASM fuel units. Typical evaluations use 20-25; default of 100 provides ~4x headroom. | default: 100
-  embedded_pdp_cpu_limit: 100
+  # CPU budget for embedded PDP policy evaluation, in millions of WASM fuel units. Default of 200 provides headroom for full plugin-merged authorization data. | default: 200
+  embedded_pdp_cpu_limit: 200
   # Maximum linear memory (MB) the embedded PDP WASM runtime can consume. | default: 32
   embedded_pdp_memory_limit_mb: 32
 ```
@@ -224,6 +224,8 @@ jobs:
       cleanup_completed_jobs_immediately: true
       # Path to the jobs launcher tool | default: '/tools/jobs-launcher'
       launcher_tool_path: /tools/jobs-launcher
+      # Default container image for job task pods. Used when a job step omits container.image. When unset, falls back to the platform CPU tasks image (platform.image_registry/nmp-cpu-tasks:platform.image_tag).
+      default_task_image:
       # Optional env vars applied to all jobs (e.g. HOME=/tmp). Keys must not conflict with platform-reserved names. Job steps may override these variables.
       env: {}
       # Docker storage configuration
@@ -250,6 +252,8 @@ jobs:
       cleanup_completed_jobs_immediately: true
       # Path to the jobs launcher tool | default: '/tools/jobs-launcher'
       launcher_tool_path: /tools/jobs-launcher
+      # Default container image for job task pods. Used when a job step omits container.image. When unset, falls back to the platform CPU tasks image (platform.image_registry/nmp-cpu-tasks:platform.image_tag).
+      default_task_image:
       # Optional env vars applied to all jobs (e.g. HOME=/tmp). Keys must not conflict with platform-reserved names. Job steps may override these variables.
       env: {}
       # Kubernetes namespace to submit the job to. If not set, it will be determined from the environment.
@@ -322,6 +326,8 @@ jobs:
       cleanup_completed_jobs_immediately: true
       # Path to the jobs launcher tool | default: '/tools/jobs-launcher'
       launcher_tool_path: /tools/jobs-launcher
+      # Default container image for job task pods. Used when a job step omits container.image. When unset, falls back to the platform CPU tasks image (platform.image_registry/nmp-cpu-tasks:platform.image_tag).
+      default_task_image:
       # Optional env vars applied to all jobs (e.g. HOME=/tmp). Keys must not conflict with platform-reserved names. Job steps may override these variables.
       env: {}
       # Kubernetes namespace to submit the job to. If not set, it will be determined from the environment.
@@ -402,6 +408,8 @@ jobs:
       cleanup_completed_jobs_immediately: false
       # Path to the jobs launcher tool | default: '/tools/jobs-launcher'
       launcher_tool_path: /tools/jobs-launcher
+      # Default container image for job task pods. Used when a job step omits container.image. When unset, falls back to the platform CPU tasks image (platform.image_registry/nmp-cpu-tasks:platform.image_tag).
+      default_task_image:
       # Optional env vars applied to all jobs (e.g. HOME=/tmp). Keys must not conflict with platform-reserved names. Job steps may override these variables.
       env: {}
       # Root directory for subprocess job state, config, storage, and logs. | default: '/tmp/nmp-subprocess-jobs'
@@ -414,6 +422,8 @@ jobs:
   schedule_interval_seconds: 5
   # Register the subprocess/default execution profile. When unset, defaults to true for docker/none runtimes and false for kubernetes.
   enable_subprocess_executor:
+  # Include raw job log lines in controller diagnostics snapshots. Disabled by default because job logs may contain secrets or PII. Enable only for local debugging or test environments. | default: False
+  include_job_logs_in_diagnostics: false
 ```
 
 ### `models`
@@ -422,8 +432,8 @@ Consolidated configuration for the Models service.
 
 ```yaml
 models:
-  # HuggingFace model puller image for weights in data store or huggingface | default: 'nvcr.io/nvidia/nemo-microservices/nds-v2-huggingface-cli:25.10'
-  huggingface_model_puller: nvcr.io/nvidia/nemo-microservices/nds-v2-huggingface-cli:25.10
+  # Image used to pull model weights. Its entrypoint is overridden to the Hugging Face CLI ('hf download ...'), so any image with the 'hf' CLI on PATH works. Defaults to the platform's nmp-api image (registry/tag from platform config); override to use a different puller image.
+  huggingface_model_puller: my-registry/nmp-api:local
   # Controller service configuration
   controller:
     # Interval in seconds for the Models Controller to run its control loop | default: 5
@@ -461,8 +471,8 @@ models:
         models_docker_port_range_start: 49152
         # End of port range for port forwarding (inclusive). Defaults to 500-port range within IANA dynamic/ephemeral range. | default: 49652
         models_docker_port_range_end: 49652
-        # HuggingFace model puller image for downloading SFT model weights from Files service | default: 'nvcr.io/nvidia/nemo-microservices/nds-v2-huggingface-cli:25.10'
-        huggingface_model_puller: nvcr.io/nvidia/nemo-microservices/nds-v2-huggingface-cli:25.10
+        # Image used to pull model weights. Its entrypoint is overridden to the Hugging Face CLI ('hf download ...'), so any image with the 'hf' CLI on PATH works. Defaults to the platform's nmp-api image (registry/tag from platform config); override to use a different puller image.
+        huggingface_model_puller: my-registry/nmp-api:local
         # Timeout in seconds for the model puller container to complete (default: 30 minutes) | default: 1800
         model_puller_timeout: 1800
         # Per-file HTTP download timeout in seconds for the model puller (HF_HUB_DOWNLOAD_TIMEOUT). Increase if large model files fail with IncompleteRead/ChunkedEncodingError (default: 2 hours). | default: 7200
@@ -475,6 +485,16 @@ models:
         busybox_image: busybox
         # BusyBox image tag used for helper containers. | default: 'latest'
         busybox_image_tag: latest
+        # Image name (without registry/tag) used for the LoRA adapters sidecar container. Registry and tag are taken from NMP_IMAGE_REGISTRY / NMP_IMAGE_TAG. The sidecar is invoked via the lora_sidecar_command. | default: 'nmp-api'
+        lora_sidecar_image_name: nmp-api
+        # Command passed to the LoRA sidecar container. Default uses the nmp-platform-runner entrypoint present in nmp-api.
+        lora_sidecar_command:
+        - --sidecars
+        - adapters
+        - --port
+        - '60830'
+        # Optional entrypoint override for the LoRA sidecar container. Leave empty to use the image's default entrypoint (correct for nmp-api). | default: ''
+        lora_sidecar_entrypoint: ''
         # Maximum time (in seconds) a deployment may stay in PENDING before being transitioned to ERROR. Default: 7200 (2 hours). | default: 7200
         pending_timeout_seconds: 7200
         # Maximum number of container restarts before a PENDING deployment is transitioned to ERROR (crash loop detection). Default: 5. | default: 5
@@ -494,16 +514,31 @@ models:
         peft_source: http://nemo-entity-store:8000
         # PEFT refresh interval in seconds (only used when lora_enabled is true) | default: 30
         peft_refresh_interval: 30
+        # Image name (without registry/tag) for the LoRA adapters sidecar container. Registry and tag are taken from the platform config (NMP_IMAGE_REGISTRY / NMP_IMAGE_TAG). Override to 'nmp-automodel-tasks' for local dev when that image is already available but nmp-api is not. | default: 'nmp-api'
+        lora_sidecar_image_name: nmp-api
+        # Kubernetes container command (entrypoint) for the LoRA sidecar. Default uses the nmp-platform-runner entrypoint present in nmp-api. When using nmp-automodel-tasks set to ['python'] and set lora_sidecar_args to ['-m', 'nmp.core.models.sidecars.adapters.main'].
+        lora_sidecar_command:
+        - nemo
+        - services
+        - run
+        - --sidecars
+        - adapters
+        # Kubernetes container args for the LoRA sidecar (appended after lora_sidecar_command). Leave empty for nmp-api. Set to ['-m', 'nmp.core.models.sidecars.adapters.main'] when using nmp-automodel-tasks. | default: []
+        lora_sidecar_args: []
         # Default user ID for NIM containers (security context)
         default_user_id:
         # Default group ID for NIM containers (security context)
         default_group_id:
+        # Default user ID for vLLM puller + server pods (security context). Defaults to 2000 to match the upstream vLLM image's 'vllm' user, which has an /etc/passwd entry (avoids torch getpwuid crashes from an unknown uid). | default: 2000
+        default_vllm_user_id: 2000
+        # Default group ID / fsGroup for vLLM puller + server pods. Defaults to 0 (root group) to match the upstream vLLM image and keep weights readable across the puller and server pods. | default: 0
+        default_vllm_group_id: 0
         # Kubernetes secret name for Files service authentication (HF_TOKEN) | default: 'nemo-models-files-token'
         files_auth_secret: nemo-models-files-token
         # The name of the image pull secret for the modelPuller image | default: 'nvcrimagepullsecret'
         huggingface_model_puller_image_pull_secret: nvcrimagepullsecret
-        # BusyBox image repository used by plugin init containers. | default: 'busybox'
-        busybox_image: busybox
+        # BusyBox image repository used by plugin init containers. Fully qualified (docker.io/library/...) so it resolves on container runtimes that enforce fully-qualified image names (short names like 'busybox' fail there). | default: 'docker.io/library/busybox'
+        busybox_image: docker.io/library/busybox
         # BusyBox image tag used by plugin init containers. | default: 'latest'
         busybox_image_tag: latest
         # NGC API key secret name for pulling NIM images | default: 'ngc-api'
@@ -512,10 +547,18 @@ models:
         default_nimservice_image: nvcr.io/nim/nvidia/llm-nim
         # Default NIMService image tag (used if not specified in deployment config) | default: '1.13.1'
         default_nimservice_image_tag: 1.13.1
+        # Default vLLM server image repository (used if not specified in deployment config) | default: 'vllm/vllm-openai'
+        default_vllm_image: vllm/vllm-openai
+        # Default vLLM server image tag (used if not specified in deployment config) | default: 'v0.22.1'
+        default_vllm_image_tag: v0.22.1
         # Default guided decoding backend for NIM (e.g., 'outlines', 'auto', 'lm-format-enforcer') | default: 'outlines'
         nim_guided_decoding_backend: outlines
         # Kubernetes namespace for NIM deployments (defaults to controller's namespace if not set)
         namespace:
+        # ServiceAccount name for directly-emitted vLLM Deployment pods and the weight-puller Job. If not set, the namespace default ServiceAccount is used.
+        service_account_name:
+        # Shared memory (/dev/shm) size limit for vLLM Deployment pods (e.g. '8Gi'). If not set, the emptyDir uses the node default size.
+        default_shared_memory_size_limit:
         # Default Kubernetes resource requirements for all NIM deployments. Can be overridden per-deployment via k8s_nim_operator_config. Example: {'requests': {'cpu': '2', 'memory': '8Gi'}, 'limits': {'memory': '16Gi'}}
         default_resources:
         # Default Kubernetes tolerations for all NIM deployments. Can be overridden per-deployment via k8s_nim_operator_config. Example: [{'key': 'nvidia.com/gpu', 'operator': 'Exists', 'effect': 'NoSchedule'}]
@@ -811,44 +854,6 @@ unsloth:
   default_job_resource_memory_limit: 16Gi
   # Default GPU execution profile when the job spec omits training.execution_profile. | default: 'gpu'
   default_training_execution_profile: gpu
-```
-
-### `evaluator`
-
-Configuration for the Evaluator service.
-
-```yaml
-evaluator:
-  # Configuration for jobs created with Evaluator service.
-  jobs:
-    # Directory path in job container for evaluation configuration. | default: '/configs'
-    configs_dir: /configs
-    # Directory path of the shared volume mount for job steps to persist artifacts for a job. | default: '/jobs'
-    volume_path: /jobs
-    # Directory path in the job container for results to be output. | default: '/jobs/results'
-    results_dir: /jobs/results
-    # Directory path in the job container for dataset files to be downloaded to and loaded from. | default: '/jobs/datasets'
-    dataset_dir: /jobs/datasets
-  # Configuration for EvalFactory integration with NeMo Platform.
-  evalfactory:
-    # default: 'nvcr.io/nvidia/eval-factory/agentic_eval:26.01'
-    agentic_eval: nvcr.io/nvidia/eval-factory/agentic_eval:26.01
-    # default: 'nvcr.io/nvidia/eval-factory/bfcl:26.01'
-    bfcl: nvcr.io/nvidia/eval-factory/bfcl:26.01
-    # default: 'nvcr.io/nvidia/eval-factory/lm-evaluation-harness:26.01'
-    lm_eval_harness: nvcr.io/nvidia/eval-factory/lm-evaluation-harness:26.01
-    # default: 'nvcr.io/nvidia/eval-factory/bigcode-evaluation-harness:26.01'
-    bigcode_evaluation_harness: nvcr.io/nvidia/eval-factory/bigcode-evaluation-harness:26.01
-    # default: 'nvcr.io/nvidia/eval-factory/rag_retriever_eval:26.01'
-    rag_retriever: nvcr.io/nvidia/eval-factory/rag_retriever_eval:26.01
-    # default: 'nvcr.io/nvidia/eval-factory/safety-harness:26.01'
-    safety_harness: nvcr.io/nvidia/eval-factory/safety-harness:26.01
-    # default: 'nvcr.io/nvidia/eval-factory/simple-evals:26.01'
-    simple_evals: nvcr.io/nvidia/eval-factory/simple-evals:26.01
-    # Connect to a hosted Milvus server for retrieval evaluations
-    milvus_url:
-  # Upsert system metrics and benchmarks on app startup | default: False
-  recreate_existing_system_entities: false
 ```
 
 ### `safe_synthesizer`

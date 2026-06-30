@@ -25,7 +25,7 @@ export interface StatusResultProps extends Partial<StatusMessageProps> {
       hasFiltersApplied: boolean;
       hasSearchApplied: boolean;
     }
-  ) => JSX.Element;
+  ) => JSX.Element | null;
 }
 
 export function StatusResult({

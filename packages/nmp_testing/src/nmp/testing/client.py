@@ -246,11 +246,11 @@ def create_test_client(
 
     Example (with access_log for request verification):
         with create_test_client(
-            EvaluatorService, auth_enabled=True, access_log=True, client_type=ClientContext
+            FilesService, auth_enabled=True, access_log=True, client_type=ClientContext
         ) as ctx:
             ctx.access_log.clear()  # Clear requests from setup
             ctx.test_client.get(
-                "/apis/evaluation/v2/workspaces/default/metrics",
+                "/apis/files/v2/workspaces/default/filesets",
                 headers={"X-NMP-Principal-Id": "test@example.com"},
             )
             # Verify internal entity requests used the same principal
@@ -384,9 +384,9 @@ def create_test_client(
             app.state.access_log = access_log_instance
 
         # Configure module-level http client as FALLBACK for direct callers of
-        # get_async_platform_sdk() that don't use DependencyProvider. The primary injection
-        # path is through DependencyProvider (see below). This module-level variable will
-        # be removed once all direct callers are migrated.
+        # get_async_platform_sdk()/get_platform_sdk() that don't use DependencyProvider.
+        # The primary injection path is through DependencyProvider (see below). These
+        # module-level variables will be removed once all direct callers are migrated.
         # See architecture/docs/http-client-injection.md for details.
         sdk_factory_module._test_http_client = async_http_client
         stack.callback(lambda: setattr(sdk_factory_module, "_test_http_client", None))

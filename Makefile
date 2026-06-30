@@ -19,6 +19,8 @@ endif
 PYTEST_EXTRA ?=
 PYTHON_VERSION ?= 3.11
 BOOTSTRAP_CREATE_VENV ?= 1
+BOOTSTRAP_EXPECTED_VIRTUAL_ENV := $(CURDIR)/.venv
+BOOTSTRAP_ACTIVATION_REMINDER = if [ "$${VIRTUAL_ENV:-}" != "$(BOOTSTRAP_EXPECTED_VIRTUAL_ENV)" ]; then echo ""; echo "Next steps:"; echo "  source .venv/bin/activate"; echo "  nemo --help"; fi
 
 # Display platform info
 $(info local system architecture: $(PLATFORM)/$(ARCH))
@@ -28,6 +30,33 @@ $(info local system architecture: $(PLATFORM)/$(ARCH))
 help:
 	@echo "Makefile commands:"
 	@grep -E '^[a-zA-Z_-][a-zA-Z0-9_/-]*:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
+
+DOCKER_BAKE_FILE ?= docker-bake.hcl
+DOCKER_TARGET ?= $(if $(TARGET),$(TARGET),docker-cpu)
+DOCKER_PLATFORMS ?= $(BUILD_ARCH)
+DOCKER_PLATFORM_SET = $(if $(DOCKER_PLATFORMS),--set "*.platform=$(DOCKER_PLATFORMS)",)
+DOCKER_BAKE_ALLOW_FS_READ ?=
+DOCKER_BAKE_ALLOW_FS_READ_FLAG = $(if $(DOCKER_BAKE_ALLOW_FS_READ), --allow=fs.read=$(DOCKER_BAKE_ALLOW_FS_READ),)
+
+.PHONY: docker-list-targets
+docker-list-targets: ## List Docker bake targets
+	docker buildx bake -f $(DOCKER_BAKE_FILE) --list=targets
+
+.PHONY: docker-print
+docker-print: ## Print Docker bake graph for TARGET, default docker-cpu
+	docker buildx bake -f $(DOCKER_BAKE_FILE) --print $(DOCKER_TARGET)
+
+.PHONY: docker-build
+docker-build: ## Build Docker bake TARGET without pushing, default docker-cpu
+	docker buildx bake$(DOCKER_BAKE_ALLOW_FS_READ_FLAG) -f $(DOCKER_BAKE_FILE) $(DOCKER_TARGET)
+
+.PHONY: docker-load
+docker-load: ## Build and load single-platform Docker bake TARGET, default docker-cpu
+	docker buildx bake$(DOCKER_BAKE_ALLOW_FS_READ_FLAG) -f $(DOCKER_BAKE_FILE) $(DOCKER_TARGET) $(DOCKER_PLATFORM_SET) --load
+
+.PHONY: docker-push
+docker-push: ## Build and push Docker bake TARGET, default docker-cpu
+	docker buildx bake$(DOCKER_BAKE_ALLOW_FS_READ_FLAG) -f $(DOCKER_BAKE_FILE) $(DOCKER_TARGET) --push
 
 .PHONY: refresh-openapi
 refresh-openapi:  ## Generate the OpenAPI specification
@@ -85,9 +114,23 @@ docs-deps: ## Install the Fern docs tooling (docs/fern node deps)
 docs: ## Start the Fern docs dev server (local preview, prints a localhost URL)
 	cd docs/fern && npm run dev
 
+.PHONY: docs-watch
+docs-watch: ## Start Fern docs dev plus a repo-level watcher for docs/** changes
+	cd docs/fern && npm run watch
+
 .PHONY: docs-check
 docs-check: ## Validate the Fern docs (fern check + validate-mdx + gated-link check)
 	cd docs/fern && npm run check
+
+.PHONY: docs-check-python-snippets
+docs-check-python-snippets: ## Syntax-check and type-check Python snippets in one doc (DOCS_PATH=...)
+	@if [ -z "$(strip $(DOCS_PATH))" ]; then echo "Usage: make docs-check-python-snippets DOCS_PATH=docs/customizer/tutorials/import-hf-model.mdx" >&2; exit 2; fi
+	uv run --frozen python docs/_scripts/lint_python_snippets.py "$(DOCS_PATH)"
+
+.PHONY: docs-run-notebook
+docs-run-notebook: ## Execute one Fern notebook source (DOCS_PATH=.mdx/.ipynb/.md, optional ARGS=...)
+	@if [ -z "$(strip $(DOCS_PATH))" ]; then echo "Usage: make docs-run-notebook DOCS_PATH=docs/customizer/tutorials/sft-customization-job.mdx" >&2; exit 2; fi
+	uv run --frozen python docs/fern/scripts/run_notebooks.py $(ARGS) "$(DOCS_PATH)"
 
 .PHONY: docs-broken-links
 docs-broken-links: ## Report broken links across the built docs
@@ -148,6 +191,9 @@ bootstrap-python: ## Bootstrap Python dependencies.
 	@if [ -n "$(strip $(BOOTSTRAP_LOCAL_PLUGIN_DIRS))" ]; then \
 		$(MAKE) bootstrap-plugins BOOTSTRAP_LOCAL_PLUGIN_DIRS="$(BOOTSTRAP_LOCAL_PLUGIN_DIRS)"; \
 	fi
+	@if [ "$(filter bootstrap-python,$(MAKECMDGOALS))" = "bootstrap-python" ]; then \
+		$(BOOTSTRAP_ACTIVATION_REMINDER); \
+	fi
 
 .PHONY: verify-node-version
 verify-node-version: ## Verify pnpm and Node.js satisfy Studio's package engine
@@ -191,6 +237,7 @@ bootstrap: bootstrap-python ## Bootstrap the local dev environment, including St
 		echo "  make bootstrap-studio"; \
 	fi
 	@echo "bootstrap completed"
+	@$(BOOTSTRAP_ACTIVATION_REMINDER)
 
 .PHONY: run
 run: build-policy ## Run the NeMo Platform locally with Docker job backend

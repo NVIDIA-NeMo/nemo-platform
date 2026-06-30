@@ -272,12 +272,13 @@ async def test_reconcile_deployments_with_created_status(reconciler, mock_backen
     # Process deployments (now passing contexts with pre-fetched data)
     await reconciler.reconcile_deployments([created_context, pending_context])
 
-    # Verify backend.create was called for CREATED deployment with the config and model_entity
-    # Config is already in context so no retrieve call happens during reconciliation
-    mock_backend.create_model_deployment.assert_called_once_with(created_deployment, mock_deployment_config, None)
+    # Verify backend.create was called for CREATED deployment with the full context
+    # (the context bundles deployment + config + entity; already pre-fetched, so no
+    # retrieve happens during reconciliation).
+    mock_backend.create_model_deployment.assert_called_once_with(created_context)
 
-    # Verify backend.get_status was called for PENDING deployment
-    mock_backend.get_model_deployment_status.assert_called_once_with(pending_deployment)
+    # Verify backend.get_status was called for PENDING deployment with the context.
+    mock_backend.get_model_deployment_status.assert_called_once_with(pending_context)
 
     # Verify SDK update was called twice (once for each deployment)
     assert reconciler._models_sdk.inference.deployments.update_status.call_count == 2
@@ -1133,8 +1134,8 @@ async def test_lost_status_triggers_drift_recovery(reconciler, mock_backend_regi
     # Process deployment
     await reconciler.reconcile_deployments([ctx])
 
-    # Verify backend.create_model_deployment was called for recovery
-    mock_backend.create_model_deployment.assert_called_once_with(deployment, mock_deployment_config, None)
+    # Verify backend.create_model_deployment was called for recovery with the context
+    mock_backend.create_model_deployment.assert_called_once_with(ctx)
 
     # Verify status was updated to PENDING with recovery message
     reconciler._models_sdk.inference.deployments.update_status.assert_called_once()

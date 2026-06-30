@@ -27,6 +27,7 @@ import type {
 import { useDatasetInputFileReducer } from '@studio/components/DatasetInputFile/useDatasetInputFileReducer';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getDatasetDisplayNameFromFilesUrl } from '@studio/util/files';
+import { logger } from '@studio/util/logger';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus, CircleCheck, CircleHelp, Eye, File as FileIcon, Trash2 } from 'lucide-react';
 import { FC, useCallback, useEffect, useRef } from 'react';
@@ -126,7 +127,9 @@ export const DatasetInputFile: FC<DatasetInputFileProps> = ({
       const datasetWorkspace = file.dataset?.workspace;
       const datasetName = file.dataset?.name;
       if (!datasetWorkspace || !datasetName) {
-        console.error('Cannot load dataset file: missing workspace or name', file.dataset);
+        logger.error(
+          `Cannot load dataset file: missing workspace or name: ${JSON.stringify(file.dataset)}`
+        );
         return;
       }
 

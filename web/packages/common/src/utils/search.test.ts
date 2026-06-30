@@ -1,7 +1,11 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { buildApiSearchParam, convertQueryToList, mergeURLSearchParams } from './search';
+import {
+  buildApiSearchParam,
+  convertQueryToList,
+  mergeURLSearchParams,
+} from '@nemo/common/src/utils/search';
 
 describe('buildApiSearchParam', () => {
   it('returns undefined for undefined input', () => {

@@ -7,6 +7,7 @@ import os
 from enum import Enum
 from typing import Literal
 
+from nemo_platform_plugin.jobs.image import get_qualified_image
 from pydantic import BaseModel, Field
 
 MODELS_DOCKER_NETWORKING_MODE = os.getenv("MODELS_DOCKER_NETWORKING_MODE", "local")
@@ -132,8 +133,11 @@ class DockerBackendConfig(BaseModel):
     )
 
     huggingface_model_puller: str = Field(
-        default="nvcr.io/nvidia/nemo-microservices/nds-v2-huggingface-cli:25.10",
-        description="HuggingFace model puller image for downloading SFT model weights from Files service",
+        default_factory=lambda: get_qualified_image("nmp-api"),
+        description="Image used to pull model weights. Its entrypoint is overridden to the "
+        "Hugging Face CLI ('hf download ...'), so any image with the 'hf' CLI on PATH works. "
+        "Defaults to the platform's nmp-api image (registry/tag from platform config); override "
+        "to use a different puller image.",
     )
 
     model_puller_timeout: int = Field(
@@ -171,6 +175,31 @@ class DockerBackendConfig(BaseModel):
     busybox_image_tag: str = Field(
         default="latest",
         description="BusyBox image tag used for helper containers.",
+    )
+
+    lora_sidecar_image_name: str = Field(
+        default="nmp-api",
+        description=(
+            "Image name (without registry/tag) used for the LoRA adapters sidecar container. "
+            "Registry and tag are taken from NMP_IMAGE_REGISTRY / NMP_IMAGE_TAG. "
+            "The sidecar is invoked via the lora_sidecar_command."
+        ),
+    )
+
+    lora_sidecar_command: list[str] = Field(
+        default=["--sidecars", "adapters", "--port", "60830"],
+        description=(
+            "Command passed to the LoRA sidecar container. "
+            "Default uses the nmp-platform-runner entrypoint present in nmp-api. "
+        ),
+    )
+
+    lora_sidecar_entrypoint: str = Field(
+        default="",
+        description=(
+            "Optional entrypoint override for the LoRA sidecar container. "
+            "Leave empty to use the image's default entrypoint (correct for nmp-api). "
+        ),
     )
 
     # ==========================================================================

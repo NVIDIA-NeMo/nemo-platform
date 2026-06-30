@@ -191,6 +191,11 @@ class TestS3StorageImplInit:
         impl = S3StorageImpl(config, {})
         assert await impl.get_cache_path_key(path) == expected
 
+    def test_config_owns_storage_data(self):
+        """Deleting an S3 fileset removes objects under our prefix, so we own the data."""
+        config = S3StorageConfig(bucket="test-bucket", prefix="p", use_sdk_auth=True)
+        assert config.owns_storage_data is True
+
 
 class TestS3StorageImplListFiles:
     """Test list_files method."""

@@ -1,13 +1,9 @@
 ---
-title: "@nemo-nb: hide"
+title: "Evaluate Response Quality with LLM-as-a-Judge"
 description: ""
 ---
 
-
-
-
 <a id="evaluate-run-llm-judge-evaluation"></a>
-# Evaluate Response Quality with LLM-as-a-Judge
 
 **LLM-as-a-Judge** is a technique where you use a large language model to evaluate the outputs of another model. Instead of relying solely on automated metrics or manual review, you prompt a capable LLM to score responses based on criteria you define, such as helpfulness, accuracy, or tone.
 
@@ -40,8 +36,10 @@ This tutorial takes approximately **20 minutes** to complete.
 
 1. Install and start NeMo Platform using the [Setup guide](/documentation/get-started).
 
+For PyPI installs, use the `nemo-platform` wrapper package. If you are working from a source checkout, run `make bootstrap` from the repository root instead.
+
 ```bash
-! pip install nemo-platform[all]
+! pip install "nemo-platform[all]"
 ! nemo setup
 ```
 
@@ -160,7 +158,7 @@ from nemo_evaluator_sdk.values import (
     Model,
     RangeScore,
 )
-from nmp.evaluator.app.values import FilesetRef
+from nemo_evaluator.sdk import FilesetRef
 
 JUDGE_MODEL_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 JUDGE_MODEL_NAME = "nvidia/nemotron-3-nano-30b-a3b"

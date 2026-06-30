@@ -20,10 +20,11 @@ from .platform_config import PlatformConfig
 logger = logging.getLogger(__name__)
 
 if typing.TYPE_CHECKING:
-    from docker import DockerClient
     from docker.models.containers import Container
     from docker.models.networks import Network
     from docker.types import Mount
+
+    from docker import DockerClient
 
 
 class PullProgress(TypedDict):

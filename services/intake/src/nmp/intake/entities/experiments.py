@@ -10,6 +10,7 @@ views. Rollups are derived from ClickHouse at read time.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, ClassVar
 
 from nmp.common.entities.client import EntityBase
@@ -25,6 +26,13 @@ class ExperimentGroup(EntityBase):
     __entity_type__: ClassVar[str] = "experiment_group"
 
     description: str | None = Field(default=None, description="Human-readable purpose of the group.")
+    is_deleted: bool = Field(
+        default=False,
+        description=(
+            "Soft-delete flag. DELETE flips this to true and cascades to child experiments. "
+            "Deleted groups are hidden from list/get unless `filter[is_deleted]=true` is supplied."
+        ),
+    )
 
 
 class Experiment(EntityBase):
@@ -35,16 +43,12 @@ class Experiment(EntityBase):
 
     __entity_type__: ClassVar[str] = "experiment"
 
-    experiment_group_id: str | None = Field(
-        default=None,
+    experiment_group_id: str = Field(
         description=(
-            "Entity id of the owning ExperimentGroup; null when ungrouped. A soft reference: "
-            "it is not validated on write, and deleting a group does not cascade to its Experiments."
+            "Entity id of the owning ExperimentGroup. Required — every Experiment must belong to a Group. "
+            "Validated at create/update time; deleting a Group cascades to its Experiments."
         ),
     )
-
-    agent_name: str = Field(description="Name of the agent under test.")
-    agent_version: str = Field(description="Version of the agent under test.")
 
     dataset_name: str = Field(description="Producer-supplied dataset name.")
     dataset_version: str | None = Field(default=None, description="Producer-supplied dataset version.")
@@ -56,4 +60,21 @@ class Experiment(EntityBase):
     )
 
     description: str | None = Field(default=None, description="Human-readable description of the experiment.")
-    summary: str | None = Field(default=None, description="Human-authored summary of results.")
+
+    is_deleted: bool = Field(
+        default=False,
+        description=(
+            "Soft-delete flag. DELETE flips this to true; on delete the entity is also renamed "
+            "(`<name>-deleted-<utc-iso>`) so the original name is free for reuse. Deleted experiments "
+            "are hidden from list/get and rejected by ATIF ingest unless `filter[is_deleted]=true`."
+        ),
+    )
+
+    pinned_at: datetime | None = Field(
+        default=None,
+        description=(
+            "Timestamp at which the experiment was pinned to the top of the list, or null if unpinned. "
+            "Managed via POST/DELETE /experiments/{name}/pin (not via the create or update body). "
+            "Pin state is workspace-shared: every user with workspace access sees the same pinned set."
+        ),
+    )

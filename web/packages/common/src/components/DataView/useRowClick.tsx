@@ -72,20 +72,14 @@ function RowKeyboardTarget({
   subIndex?: number;
 }) {
   return (
-    <span
+    <button
+      type="button"
       className="sr-only"
-      tabIndex={0}
-      role="button"
       aria-label="Open row"
       data-row-click
       data-row-index={dataIndex}
       {...(subIndex !== undefined && { 'data-sub-index': subIndex })}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onActivate();
-        }
-      }}
+      onClick={onActivate}
     />
   );
 }

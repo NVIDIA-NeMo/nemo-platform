@@ -1,8 +1,8 @@
 # NeMo Platform
 
 [![License](https://img.shields.io/badge/license-Apache_2.0-D22128?style=flat-square)](https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/LICENSE)
-[![Python](https://img.shields.io/badge/python-3.11--3.13-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
-[![Docs](https://img.shields.io/badge/docs-nvidia--nemo.github.io-76B900?style=flat-square&logo=readthedocs&logoColor=white)](https://nvidia-nemo.github.io/nemo-platform/)
+[![Python](https://img.shields.io/badge/python-3.11--3.14-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![Docs](https://img.shields.io/static/v1?label=docs&message=docs.nvidia.com%2Fnemo-platform&color=76B900&style=flat-square&logo=readthedocs&logoColor=white)](https://docs.nvidia.com/nemo-platform)
 
 Make the agents you ship faster, more accurate, and safer.
 
@@ -19,7 +19,7 @@ NeMo Platform brings NVIDIA NeMo libraries together under one CLI, Python SDK, a
 
 ## Install
 
-**Prerequisites:** Python 3.11–3.13 and an API key for an inference provider (NVIDIA Build, OpenAI, Anthropic, Google Gemini, or a local Ollama instance).
+**Prerequisites:** Python 3.11–3.14 and an API key for an inference provider (NVIDIA Build, OpenAI, Anthropic, Google Gemini, or a local Ollama instance).
 
 The `nemo-platform` distribution is a convenience wrapper that bundles the SDK, shared runtime packages, default first-party plugins, and platform services into a single wheel. Install just the SDK and CLI, or install everything needed to run the platform locally:
 
@@ -80,7 +80,7 @@ http://localhost:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1/c
 ## Links
 
 - **Source:** https://github.com/NVIDIA-NeMo/nemo-platform
-- **Documentation:** https://nvidia-nemo.github.io/nemo-platform/
+- **Documentation:** https://docs.nvidia.com/nemo-platform/
 - **Setup playbook:** https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/SETUP.md
 - **CLI reference:** https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/docs/cli/index.md
 - **API reference:** https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/docs/api/index.md

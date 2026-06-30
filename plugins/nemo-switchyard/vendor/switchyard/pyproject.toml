@@ -10,7 +10,7 @@ requires = ["setuptools>=77.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "switchyard"
+name = "switchyard-vendored"
 version = "0.1.0+vendored.9407922"
 description = "Vendored subset of Switchyard (lib + telemetry) for the NeMo Platform nemo-switchyard plugin"
 readme = "README.md"

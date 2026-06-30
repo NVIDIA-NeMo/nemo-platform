@@ -3,10 +3,9 @@
 
 """ClickHouse repository for per-session rows of an Experiment.
 
-Returns one row per ingested session (test case execution), joining
-``experiment_sessions`` with the session's root span (status + input text)
-and per-session aggregates from all spans (tokens + cost), plus per-evaluator
-session-mean scores from ``evaluator_results``.
+Returns one row per ingested session (test case execution), using ``trace_index``
+for root/session membership and per-session aggregates from all spans (tokens +
+cost), plus per-evaluator session-mean scores from ``evaluator_results``.
 """
 
 from __future__ import annotations
@@ -64,12 +63,11 @@ class ExperimentSessionRepository:
         page: int,
         page_size: int,
     ) -> ExperimentSessionPage:
-        sessions_table = self._client.table("experiment_sessions")
+        trace_index_table = self._client.table("trace_index")
         spans_table = self._client.table("spans")
         evaluator_results_table = self._client.table("evaluator_results")
 
-        scoped_filter_sql, scoped_filter_parameters = _scoped_filter(test_case_id=test_case_id)
-        status_filter_sql, status_filter_parameters = _status_filter(status=status)
+        scoped_filter_sql, scoped_filter_parameters = _scoped_filter(test_case_id=test_case_id, status=status)
 
         base_parameters: dict[str, Any] = {
             "workspace": workspace,
@@ -81,15 +79,12 @@ class ExperimentSessionRepository:
         }
 
         count_sql = _count_sql(
-            sessions_table=sessions_table,
-            spans_table=spans_table,
+            trace_index_table=trace_index_table,
             scoped_filter_sql=scoped_filter_sql,
-            status_filter_sql=status_filter_sql,
-            include_root_status=status is not None,
         )
         count_result = await self._client.query(
             count_sql,
-            parameters={**base_parameters, **scoped_filter_parameters, **status_filter_parameters},
+            parameters={**base_parameters, **scoped_filter_parameters},
         )
         total = int(count_result.result_rows[0][0]) if count_result.result_rows else 0
         if total == 0:
@@ -97,18 +92,16 @@ class ExperimentSessionRepository:
 
         offset = (page - 1) * page_size
         list_sql = _list_sql(
-            sessions_table=sessions_table,
+            trace_index_table=trace_index_table,
             spans_table=spans_table,
             evaluator_results_table=evaluator_results_table,
             scoped_filter_sql=scoped_filter_sql,
-            status_filter_sql=status_filter_sql,
         )
         list_result = await self._client.query(
             list_sql,
             parameters={
                 **base_parameters,
                 **scoped_filter_parameters,
-                **status_filter_parameters,
                 "limit": page_size,
                 "offset": offset,
             },
@@ -117,21 +110,19 @@ class ExperimentSessionRepository:
         return ExperimentSessionPage(rows=rows, total=total)
 
 
-def _scoped_filter(*, test_case_id: str | None) -> tuple[str, dict[str, Any]]:
+def _scoped_filter(*, test_case_id: str | None, status: SpanStatus | None) -> tuple[str, dict[str, Any]]:
+    clauses: list[str] = []
     parameters: dict[str, Any] = {}
     if test_case_id is not None:
         parameters["test_case_id"] = test_case_id
-        return "AND test_case_id = %(test_case_id)s", parameters
-    return "", parameters
-
-
-def _status_filter(*, status: SpanStatus | None) -> tuple[str | None, dict[str, Any]]:
+        clauses.append("test_case_id = %(test_case_id)s")
     if status is not None:
-        return "root_span_status = %(status)s", {"status": status.value}
-    return None, {}
+        parameters["status"] = status.value
+        clauses.append("root_status = %(status)s")
+    return "".join(f"\n            AND {clause}" for clause in clauses), parameters
 
 
-def _scoped_sessions_sql(sessions_table: str, *, scoped_filter_sql: str) -> str:
+def _scoped_sessions_sql(trace_index_table: str, *, scoped_filter_sql: str) -> str:
     return f"""
         SELECT
             workspace,
@@ -140,104 +131,46 @@ def _scoped_sessions_sql(sessions_table: str, *, scoped_filter_sql: str) -> str:
             test_case_id,
             trace_id,
             root_span_id,
-            start_time,
-            end_time,
-            latency_ms
-        FROM {sessions_table} FINAL
+            root_started_at AS start_time,
+            root_ended_at AS end_time,
+            latency_ms,
+            root_status AS root_span_status,
+            root_input AS input
+        FROM {trace_index_table} FINAL
         WHERE workspace = %(workspace)s
             AND is_deleted = 0
             AND experiment_id = %(experiment_name)s
             {scoped_filter_sql}
-        ORDER BY start_time ASC, root_span_id ASC
+        ORDER BY root_started_at ASC, root_span_id ASC
         LIMIT 1 BY workspace, session_id, experiment_id
-    """
-
-
-def _current_root_spans_sql(spans_table: str) -> str:
-    return current_spans_sql(
-        spans_table,
-        extra_where_sql=(
-            "(span_versions.workspace, span_versions.session_id, span_versions.external_span_id) IN "
-            "(SELECT workspace, session_id, root_span_id FROM scoped_sessions)"
-        ),
-    )
-
-
-def _rooted_sessions_sql() -> str:
-    return """
-        SELECT
-            sessions.workspace AS workspace,
-            sessions.experiment_id AS experiment_id,
-            sessions.session_id AS session_id,
-            sessions.test_case_id AS test_case_id,
-            sessions.trace_id AS trace_id,
-            sessions.root_span_id AS root_span_id,
-            sessions.start_time AS start_time,
-            sessions.end_time AS end_time,
-            sessions.latency_ms AS latency_ms,
-            coalesce(root.status, 'unknown') AS root_span_status,
-            root.input AS input
-        FROM scoped_sessions AS sessions
-        LEFT JOIN current_root_spans AS root
-            ON sessions.workspace = root.workspace
-            AND sessions.session_id = root.session_id
-            AND sessions.root_span_id = root.external_span_id
-            AND root.is_deleted = 0
     """
 
 
 def _count_sql(
     *,
-    sessions_table: str,
-    spans_table: str,
+    trace_index_table: str,
     scoped_filter_sql: str,
-    status_filter_sql: str,
-    include_root_status: bool,
 ) -> str:
-    scoped_sessions_sql = _scoped_sessions_sql(sessions_table, scoped_filter_sql=scoped_filter_sql)
-    if not include_root_status:
-        return f"""
-            SELECT count()
-            FROM (
-                {scoped_sessions_sql}
-            ) AS scoped_sessions
-        """
-
+    scoped_sessions_sql = _scoped_sessions_sql(trace_index_table, scoped_filter_sql=scoped_filter_sql)
     return f"""
-        WITH
-        scoped_sessions AS (
-            {scoped_sessions_sql}
-        ),
-        current_root_spans AS (
-            {_current_root_spans_sql(spans_table)}
-        ),
-        rooted_sessions AS (
-            {_rooted_sessions_sql()}
-        )
         SELECT count()
-        FROM rooted_sessions
-        {f"WHERE {status_filter_sql}" if status_filter_sql else ""}
+        FROM (
+            {scoped_sessions_sql}
+        ) AS scoped_sessions
     """
 
 
 def _list_sql(
     *,
-    sessions_table: str,
+    trace_index_table: str,
     spans_table: str,
     evaluator_results_table: str,
     scoped_filter_sql: str,
-    status_filter_sql: str,
 ) -> str:
     return f"""
         WITH
         scoped_sessions AS (
-            {_scoped_sessions_sql(sessions_table, scoped_filter_sql=scoped_filter_sql)}
-        ),
-        current_root_spans AS (
-            {_current_root_spans_sql(spans_table)}
-        ),
-        rooted_sessions AS (
-            {_rooted_sessions_sql()}
+            {_scoped_sessions_sql(trace_index_table, scoped_filter_sql=scoped_filter_sql)}
         ),
         page_sessions AS (
             SELECT
@@ -252,8 +185,7 @@ def _list_sql(
                 latency_ms,
                 root_span_status,
                 input
-            FROM rooted_sessions
-            {f"WHERE {status_filter_sql}" if status_filter_sql else ""}
+            FROM scoped_sessions
             ORDER BY start_time ASC, root_span_id ASC
             LIMIT %(limit)s OFFSET %(offset)s
         ),

@@ -29,16 +29,19 @@ from __future__ import annotations
 import logging
 from typing import ClassVar
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import Response
 from nemo_example_plugin.config import ExampleConfig
 from nemo_example_plugin.core import say_hello
 from nemo_example_plugin.entities import ExampleItem
 from nemo_example_plugin.functions.greet import CountFunction, GreetFunction
 from nemo_example_plugin.middleware_service import build_middleware_config_router
-from nemo_example_plugin.schema import (
+from nemo_example_plugin.schema import ExampleItemFilter
+from nemo_example_plugin.types.payloads import (
+    BlobUploadResponse,
     CreateExampleItemRequest,
-    ExampleItemFilter,
     ExampleItemPage,
+    HelloResponse,
     UpdateExampleItemRequest,
 )
 from nemo_platform_plugin.api.filters import make_filter_obj_dep
@@ -50,18 +53,8 @@ from nemo_platform_plugin.entity_client import (
 from nemo_platform_plugin.functions.routes import add_function_routes
 from nemo_platform_plugin.schema import PaginationData
 from nemo_platform_plugin.service import NemoService, RouterSpec
-from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Response model for the minimal hello endpoint
-# ---------------------------------------------------------------------------
-
-
-class HelloResponse(BaseModel):
-    message: str
 
 
 # ---------------------------------------------------------------------------
@@ -118,6 +111,11 @@ class ExampleService(NemoService):
                 description="Streaming NDJSON NemoFunction example.",
                 prefix="/v2/workspaces/{workspace}",
             ),
+            RouterSpec(
+                _build_binary_router(),
+                tag="Example Binary",
+                description="Binary upload/download endpoints for testing.",
+            ),
         ]
 
 
@@ -147,6 +145,35 @@ def _build_hello_router() -> APIRouter:
         else:
             message = say_hello(name)
         return HelloResponse(message=message)
+
+    return router
+
+
+# ---------------------------------------------------------------------------
+# Binary upload/download router
+# ---------------------------------------------------------------------------
+
+
+def _build_binary_router() -> APIRouter:
+    """Simple binary endpoints for testing the typed client's binary support."""
+    router = APIRouter()
+
+    # In-memory store for uploaded bytes (keyed by name)
+    _store: dict[str, bytes] = {}
+
+    @router.put("/blob/{name}", status_code=200, response_model=BlobUploadResponse)
+    async def upload_blob(name: str, request: Request) -> BlobUploadResponse:
+        """Accept raw binary and store it. Returns byte count."""
+        data = await request.body()
+        _store[name] = data
+        return BlobUploadResponse(name=name, size=len(data))
+
+    @router.get("/blob/{name}", response_class=Response)
+    async def download_blob(name: str) -> Response:
+        """Return stored binary content."""
+        if name not in _store:
+            raise HTTPException(status_code=404, detail=f"Blob '{name}' not found")
+        return Response(content=_store[name], media_type="application/octet-stream")
 
     return router
 

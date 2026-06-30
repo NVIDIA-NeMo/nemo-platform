@@ -30,27 +30,27 @@ from nemo_platform_plugin.jobs.api_factory import (
 )
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nmp.common.jobs.constants import DEFAULT_JOB_STORAGE_PATH, PERSISTENT_JOB_STORAGE_PATH_ENVVAR
+from nmp.customization_common.schemas.file_io import (
+    DownloadItem,
+    FileIOTaskConfig,
+    FileSetRef,
+    UploadItem,
+)
+from nmp.customization_common.schemas.model_entity import (
+    DeploymentParameters as ModelEntityDeploymentParameters,
+)
+from nmp.customization_common.schemas.model_entity import ModelEntityTaskConfig, PEFTConfig
+from nmp.customization_common.service.platform_client import fetch_model_entity
 from nmp.unsloth.app.constants import (
     DEFAULT_DATASET_PATH,
     DEFAULT_MODEL_PATH,
     DEFAULT_OUTPUT_MODEL_PATH,
     DEFAULT_VALIDATION_DATASET_PATH,
 )
-from nmp.unsloth.app.jobs.file_io.schemas import (
-    DownloadItem,
-    FileIOTaskConfig,
-    FileSetRef,
-    UploadItem,
-)
-from nmp.unsloth.app.jobs.model_entity.schemas import (
-    DeploymentParameters as ModelEntityDeploymentParameters,
-)
-from nmp.unsloth.app.jobs.model_entity.schemas import ModelEntityTaskConfig, PEFTConfig
 from nmp.unsloth.app.jobs.training.compiler import compile_training_step
 from nmp.unsloth.config import config
 from nmp.unsloth.entities.values import FinetuningType
 from nmp.unsloth.images import UNSLOTH_PYTHON_ENTRYPOINT, get_tasks_image
-from nmp.unsloth.platform_client import fetch_model_entity
 from nmp.unsloth.schemas import UnslothJobOutput
 
 logger = logging.getLogger(__name__)

@@ -4,7 +4,7 @@ description: ""
 ---
 <a id="agents-plugins"></a>
 
-NeMo Platform 0.1.0 is extended through Python plugins and
+NeMo Platform 0.2.0 is extended through Python plugins and
 coding-agent skills. Plugins add runtime capabilities to the local platform.
 Skills teach your coding agent how to operate those capabilities on your behalf.
 
@@ -103,5 +103,5 @@ Plugin authors use the `nemo-platform-plugin` package. A minimal plugin declares
 points in `pyproject.toml`, implements the matching class, and restarts
 `nemo services run` so the local platform discovers it.
 
-Keep plugins local-first for OSS 0.1.0: avoid requiring a cluster,
+Keep plugins local-first for OSS 0.2.0: avoid requiring a cluster,
 container runtime, or external control plane for the documented launch path.

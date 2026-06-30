@@ -34,6 +34,10 @@ class MetricBundlingError(ValueError):
     """Raised when a metric cannot be bundled or hydrated."""
 
 
+class MetricBundlePackagerPolicyError(RuntimeError):
+    """Raised when metric packaging is not configured for an operation."""
+
+
 class MetricMetadata(BaseModel):
     """User-facing metadata captured with a bundled metric."""
 

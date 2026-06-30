@@ -1,0 +1,24 @@
+/* SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. */
+/* SPDX-License-Identifier: Apache-2.0 */
+
+/*
+ * Last-resort CSS for IntakeAccordion. Everything else (surface, trigger and
+ * content padding, item borders, label/end layout) is applied directly on the
+ * components — KUI's accordion reads `--nv-*` variables for those, so the
+ * component sets them inline (see index.tsx).
+ *
+ * The one thing that can't be done from the component: KUI wraps the trigger
+ * children in its own `.nv-accordion-label-text` element (display:block) and
+ * exposes neither a className nor a variable for it. The intake trigger needs
+ * that wrapper to be the flex track that lets the label group grow and pins the
+ * end group (metrics/actions) to the right, so it's styled here. Scoped under
+ * `.intake-accordion`; lives outside Tailwind's @layer utilities so it wins over
+ * KUI's layered base rule without !important.
+ */
+.intake-accordion .nv-accordion-label-text {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: center;
+  gap: var(--spacing-density-lg);
+}

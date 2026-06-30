@@ -2,11 +2,15 @@
 name = "nemo-guardrails-plugin"
 version = "0.1.0"
 description = "NeMo Guardrails Plugin"
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.11,<3.15"
 dependencies = [
     "nemo-platform-plugin",
     "nemo-platform",
     "nemoguardrails[tracing]==0.21.0",
+    "langchain>=1.3.11",
+    "langchain-community>=0.3.31,<0.4",
+    "langchain-core>=1.4.8",
+    "langchain-openai>=1.3.3",
     # Workaround: nemoguardrails 0.21.0 imports `dataclasses_json` but doesn't declare it
     # as a dependency.
     "dataclasses-json>=0.6.7",
@@ -18,10 +22,9 @@ dependencies = [
 bench = [
     "httpx>=0.27",
     "pyyaml>=6.0",
-    # NOTE: aiperf itself is *not* listed here. Its 0.x line pins
-    # aiofiles<24.2 which conflicts with evaluator-service's
-    # aiofiles>=25.1. To avoid downgrading the shared workspace venv, the
-    # harness installs aiperf into a dedicated venv at run time; see
+    # NOTE: aiperf itself is *not* listed here. Its 0.x line pins older
+    # transitive dependencies. To avoid downgrading the shared workspace venv,
+    # the harness installs aiperf into a dedicated venv at run time; see
     # `nemo_guardrails_plugin.benchmarks.bootstrap`.
 ]
 

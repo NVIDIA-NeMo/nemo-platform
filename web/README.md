@@ -58,8 +58,8 @@ Stack: [Vitest](https://vitest.dev/) + [React Testing Library](https://testing-l
 
 Conventions:
 
-- Co-locate unit tests next to source: `Chat/index.tsx` ↔ `Chat/index.spec.tsx`.
-- Larger user-workflow tests (create/delete project, chat, etc.) live in `packages/studio/src/tests`, e.g. `create-a-model.spec.tsx`.
+- Co-locate unit tests next to source: `Chat/index.tsx` ↔ `Chat/index.test.tsx`.
+- Larger user-workflow tests (create/delete project, chat, etc.) live in `packages/studio/src/tests`, e.g. `create-a-model.test.tsx`.
 - E2E specs live in `packages/studio/e2e-tests`.
 
 From `/packages/studio`:

@@ -2,14 +2,28 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { BASE_URL, PLATFORM_BASE_URL } from '@studio/constants/environment';
+import {
+  cleanClaudeCodeArtifactText,
+  createEmptyClaudeCodeChatArtifacts,
+  updateClaudeCodeChatArtifactsFromHistoryItems,
+} from '@studio/routes/agents/ClaudeCodeChatRoute/artifacts';
 import { parseJsonObject, parseSseChunk } from '@studio/routes/agents/ClaudeCodeChatRoute/stream';
 import type {
   ClaudeCodeAssistantHistoryPart,
+  ClaudeCodeChatArtifacts,
+  ClaudeCodeChatFileArtifact,
+  ClaudeCodeChatJobArtifact,
+  ClaudeCodeChatLinkArtifact,
+  ClaudeCodeChatModelSource,
+  ClaudeCodeChatSelectionArtifact,
   ClaudeCodeHistorySession,
+  ClaudeCodeInputDecision,
+  ClaudeCodeInputRequest,
   ClaudeCodePermissionDecision,
   ClaudeCodePermissionRequest,
   ClaudeCodeSessionHistory,
   ClaudeCodeSessionHistoryItem,
+  ClaudeCodeSkill,
   ClaudeCodeStreamHandlers,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
 
@@ -39,6 +53,8 @@ export const CLAUDE_CODE_HISTORY_SESSIONS_QUERY_KEY = [
   'history',
   'sessions',
 ] as const;
+
+export const CLAUDE_CODE_SKILLS_QUERY_KEY = ['claude-code', 'skills'] as const;
 
 export const getClaudeCodeSessionHistoryQueryKey = (sessionId: string) =>
   ['claude-code', 'history', 'session', sessionId] as const;
@@ -84,6 +100,86 @@ const getNumber = (value: unknown): number =>
 const getStringArray = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 
+const getOptionalString = (value: unknown): string | undefined => {
+  const text = getString(value).trim();
+  return text || undefined;
+};
+
+const getOptionalArtifactString = (value: unknown): string | undefined => {
+  const text = getOptionalString(value);
+  return text ? cleanClaudeCodeArtifactText(text) : undefined;
+};
+
+const parseModelSource = (value: unknown): ClaudeCodeChatModelSource | undefined => {
+  if (value === 'coding_agent' || value === 'selection' || value === 'spec') return value;
+  return undefined;
+};
+
+const parseSelectionArtifact = (value: unknown): ClaudeCodeChatSelectionArtifact | undefined => {
+  if (!isRecord(value)) return undefined;
+  const label = getOptionalString(value.label);
+  const artifactValue = getOptionalArtifactString(value.value);
+  if (!label || !artifactValue) return undefined;
+  return { label, value: artifactValue };
+};
+
+const parseFileArtifact = (value: unknown): ClaudeCodeChatFileArtifact | undefined => {
+  if (!isRecord(value)) return undefined;
+  const action = getOptionalString(value.action);
+  const path = getOptionalString(value.path);
+  if (!action || !path) return undefined;
+  return { action, path };
+};
+
+const parseLinkArtifact = (value: unknown): ClaudeCodeChatLinkArtifact | undefined => {
+  if (!isRecord(value)) return undefined;
+  const label = getOptionalString(value.label);
+  if (!label) return undefined;
+  return {
+    label,
+    destination: getOptionalString(value.destination),
+    href: getOptionalString(value.href),
+  };
+};
+
+const parseJobArtifact = (value: unknown): ClaudeCodeChatJobArtifact | undefined => {
+  if (!isRecord(value)) return undefined;
+  const name = getOptionalArtifactString(value.name);
+  if (!name) return undefined;
+  return {
+    name,
+    job_type: getOptionalArtifactString(value.job_type),
+    source: getOptionalArtifactString(value.source),
+    href: getOptionalString(value.href),
+  };
+};
+
+const parseArray = <T>(value: unknown, parseItem: (item: unknown) => T | undefined): T[] =>
+  Array.isArray(value) ? value.map(parseItem).filter((item): item is T => item !== undefined) : [];
+
+const parseChatArtifacts = (value: unknown): ClaudeCodeChatArtifacts => {
+  if (!isRecord(value)) return createEmptyClaudeCodeChatArtifacts();
+
+  const modelSource = parseModelSource(value.model_source);
+  const model = getOptionalArtifactString(value.model);
+  const codingAgentModel =
+    getOptionalArtifactString(value.coding_agent_model) ||
+    (modelSource === 'coding_agent' ? model : undefined);
+
+  return {
+    agent: getOptionalArtifactString(value.agent),
+    model: modelSource === 'coding_agent' ? undefined : model,
+    model_source: modelSource === 'coding_agent' ? undefined : modelSource,
+    coding_agent_model: codingAgentModel,
+    workspace: getOptionalArtifactString(value.workspace),
+    selections: parseArray(value.selections, parseSelectionArtifact),
+    files: parseArray(value.files, parseFileArtifact),
+    links: parseArray(value.links, parseLinkArtifact),
+    jobs: parseArray(value.jobs, parseJobArtifact),
+    tools: getStringArray(value.tools).map(cleanClaudeCodeArtifactText),
+  };
+};
+
 const parseHistorySession = (value: unknown): ClaudeCodeHistorySession | undefined => {
   if (!isRecord(value)) return undefined;
   const sessionId = getString(value.session_id);
@@ -97,6 +193,25 @@ const parseHistorySession = (value: unknown): ClaudeCodeHistorySession | undefin
     token_count: getNumber(value.token_count),
     tool_call_count: getNumber(value.tool_call_count),
     tool_calls: getStringArray(value.tool_calls),
+    chat_artifacts: parseChatArtifacts(value.chat_artifacts),
+  };
+};
+
+const parseClaudeCodeSkill = (value: unknown): ClaudeCodeSkill | undefined => {
+  if (!isRecord(value)) return undefined;
+  const name = getString(value.name);
+  const claudeName = getString(value.claude_name);
+  const installPath = getString(value.install_path);
+  if (!name || !claudeName || !installPath) return undefined;
+
+  return {
+    name,
+    claude_name: claudeName,
+    description: getString(value.description),
+    source: getString(value.source) || '-',
+    source_path: getString(value.source_path) || undefined,
+    install_path: installPath,
+    installed: value.installed === true,
   };
 };
 
@@ -111,6 +226,7 @@ const parseAssistantPart = (value: unknown): ClaudeCodeAssistantHistoryPart | un
   if (value.type === 'tool_use') {
     return {
       type: 'tool_use',
+      id: getString(value.id) || undefined,
       name: getString(value.name) || 'tool',
       input: isRecord(value.input) ? value.input : {},
     };
@@ -152,6 +268,21 @@ export const listClaudeCodeHistorySessions = async (): Promise<ClaudeCodeHistory
     .filter((session): session is ClaudeCodeHistorySession => session !== undefined);
 };
 
+export const listClaudeCodeSkills = async (): Promise<ClaudeCodeSkill[]> => {
+  const response = await fetch(claudeCodeApiUrl('/skills'));
+
+  if (!response.ok) {
+    throw new Error(await getResponseErrorMessage(response, 'Failed to load Claude Code skills'));
+  }
+
+  const body = (await response.json()) as unknown;
+  if (!Array.isArray(body)) return [];
+
+  return body
+    .map(parseClaudeCodeSkill)
+    .filter((skill): skill is ClaudeCodeSkill => skill !== undefined);
+};
+
 export const getClaudeCodeSessionHistory = async (
   sessionId: string
 ): Promise<ClaudeCodeSessionHistory> => {
@@ -168,13 +299,19 @@ export const getClaudeCodeSessionHistory = async (
     throw new Error('Claude Code session history response was not an object');
   }
 
+  const items = Array.isArray(body.items)
+    ? body.items
+        .map(parseSessionHistoryItem)
+        .filter((item): item is ClaudeCodeSessionHistoryItem => item !== undefined)
+    : [];
+
   return {
     session_id: getString(body.session_id) || sessionId,
-    items: Array.isArray(body.items)
-      ? body.items
-          .map(parseSessionHistoryItem)
-          .filter((item): item is ClaudeCodeSessionHistoryItem => item !== undefined)
-      : [],
+    items,
+    chat_artifacts: updateClaudeCodeChatArtifactsFromHistoryItems(
+      parseChatArtifacts(body.chat_artifacts),
+      items
+    ),
   };
 };
 
@@ -199,6 +336,25 @@ const parsePermissionRequest = (payload: unknown): ClaudeCodePermissionRequest |
   };
 };
 
+const parseInputRequest = (payload: unknown): ClaudeCodeInputRequest | undefined => {
+  if (!isRecord(payload) || typeof payload.request_id !== 'string') return undefined;
+  if (
+    payload.kind !== 'agent' &&
+    payload.kind !== 'eval_config' &&
+    payload.kind !== 'dataset_file' &&
+    payload.kind !== 'model'
+  ) {
+    return undefined;
+  }
+  if (!isRecord(payload.input) || Array.isArray(payload.input)) return undefined;
+
+  return {
+    requestId: payload.request_id,
+    kind: payload.kind,
+    input: payload.input,
+  };
+};
+
 const handleSseEvent = (
   event: { event?: string; data: string },
   handlers: ClaudeCodeStreamHandlers
@@ -220,6 +376,16 @@ const handleSseEvent = (
       return false;
     }
     handlers.onPermissionRequest(request);
+    return true;
+  }
+
+  if (event.event === 'input_request') {
+    const request = parseInputRequest(parseJsonObject(event.data));
+    if (!request) {
+      handlers.onError(new Error('Claude Code input request was malformed'));
+      return false;
+    }
+    handlers.onInputRequest(request);
     return true;
   }
 
@@ -255,6 +421,31 @@ export const resolveClaudeCodePermission = async ({
     throw new Error(
       await getResponseErrorMessage(response, 'Failed to resolve Claude Code permission')
     );
+  }
+};
+
+export const resolveClaudeCodeInput = async ({
+  decision,
+  requestId,
+  sessionId,
+}: {
+  decision: ClaudeCodeInputDecision;
+  requestId: string;
+  sessionId: string;
+}): Promise<void> => {
+  const response = await fetch(claudeCodeApiUrl(`/sessions/${sessionId}/inputs/${requestId}`), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      skipped: decision.skipped,
+      value: decision.value,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await getResponseErrorMessage(response, 'Failed to resolve Claude Code input'));
   }
 };
 

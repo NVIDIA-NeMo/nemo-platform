@@ -31,18 +31,14 @@ class SpanAttributeField(StrEnum):
     MODEL = "model"
     PROVIDER = "provider"
     PROMPT_ID = "prompt_id"
-    PROMPT_NAME = "prompt_name"
-    PROMPT_VERSION = "prompt_version"
     AGENT_ID = "agent_id"
     AGENT_NAME = "agent_name"
+    AGENT_VERSION = "agent_version"
     TOOL_NAME = "tool_name"
     PROJECT = "project"
     EVALUATION_ID = "evaluation_id"
     EVALUATION_SHA = "evaluation_sha"
     EVALUATION_RUN_ID = "evaluation_run_id"
-    DATASET_ID = "dataset_id"
-    DATASET_NAME = "dataset_name"
-    DATASET_VERSION = "dataset_version"
     TEST_CASE_ID = "test_case_id"
     ERROR_TYPE = "error_type"
     ERROR_MESSAGE = "error_message"
@@ -107,26 +103,6 @@ ATTRIBUTE_SPECS = (
         ),
     ),
     AttributeSpec(
-        field=SpanAttributeField.PROMPT_NAME,
-        bag=AttributeBag.STRING,
-        bag_key="prompt.name",
-        source_keys=(
-            "gen_ai.prompt.name",
-            "llm.prompt_template.name",
-            "prompt.name",
-        ),
-    ),
-    AttributeSpec(
-        field=SpanAttributeField.PROMPT_VERSION,
-        bag=AttributeBag.STRING,
-        bag_key="prompt.version",
-        source_keys=(
-            "gen_ai.prompt.version",
-            "llm.prompt_template.version",
-            "prompt.version",
-        ),
-    ),
-    AttributeSpec(
         field=SpanAttributeField.AGENT_ID,
         bag=AttributeBag.STRING,
         bag_key="gen_ai.agent.id",
@@ -143,6 +119,15 @@ ATTRIBUTE_SPECS = (
             "gen_ai.agent.name",
             "llm.agent.name",
             "agent.name",
+        ),
+    ),
+    AttributeSpec(
+        field=SpanAttributeField.AGENT_VERSION,
+        bag=AttributeBag.STRING,
+        bag_key="agent.version",
+        source_keys=(
+            "gen_ai.agent.version",
+            "agent.version",
         ),
     ),
     AttributeSpec(
@@ -167,72 +152,26 @@ ATTRIBUTE_SPECS = (
     AttributeSpec(
         field=SpanAttributeField.EVALUATION_ID,
         bag=AttributeBag.STRING,
-        # Renamed from evaluation.id.
-        bag_key="experiment.id",
-        source_keys=(
-            "experiment.id",
-            "experiment_id",
-            "evaluation.id",
-            "evaluation_id",
-        ),
+        bag_key="nemo.experiment.id",
+        source_keys=("nemo.experiment.id",),
     ),
     AttributeSpec(
         field=SpanAttributeField.EVALUATION_SHA,
         bag=AttributeBag.STRING,
-        bag_key="experiment.sha",
-        source_keys=(
-            "experiment.sha",
-            "experiment_sha",
-            "evaluation.sha",
-            "evaluation_sha",
-        ),
+        bag_key="nemo.experiment.sha",
+        source_keys=("nemo.experiment.sha",),
     ),
     AttributeSpec(
         field=SpanAttributeField.EVALUATION_RUN_ID,
         bag=AttributeBag.STRING,
-        bag_key="experiment.run_id",
-        source_keys=(
-            "experiment.run_id",
-            "evaluation.run_id",
-            "evaluation_run_id",
-        ),
-    ),
-    AttributeSpec(
-        field=SpanAttributeField.DATASET_ID,
-        bag=AttributeBag.STRING,
-        bag_key="dataset.id",
-        source_keys=(
-            "dataset.id",
-            "dataset_id",
-        ),
-    ),
-    AttributeSpec(
-        field=SpanAttributeField.DATASET_NAME,
-        bag=AttributeBag.STRING,
-        bag_key="dataset.name",
-        source_keys=(
-            "dataset.name",
-            "dataset_name",
-        ),
-    ),
-    AttributeSpec(
-        field=SpanAttributeField.DATASET_VERSION,
-        bag=AttributeBag.STRING,
-        bag_key="dataset.version",
-        source_keys=(
-            "dataset.version",
-            "dataset_version",
-        ),
+        bag_key="nemo.experiment.run_id",
+        source_keys=("nemo.experiment.run_id",),
     ),
     AttributeSpec(
         field=SpanAttributeField.TEST_CASE_ID,
         bag=AttributeBag.STRING,
-        bag_key="test_case.id",
-        source_keys=(
-            "test_case.id",
-            "test_case_id",
-            "dataset.test_case_id",
-        ),
+        bag_key="nemo.test_case.id",
+        source_keys=("nemo.test_case.id",),
     ),
     AttributeSpec(
         field=SpanAttributeField.ERROR_TYPE,
@@ -337,16 +276,7 @@ ATTRIBUTE_SPECS = (
 SPECS_BY_FIELD = {spec.field: spec for spec in ATTRIBUTE_SPECS}
 SPECS_BY_FIELD_VALUE = {spec.field.value: spec for spec in ATTRIBUTE_SPECS}
 SPECS_BY_BAG_KEY = {spec.bag_key: spec for spec in ATTRIBUTE_SPECS}
-LEGACY_BAG_KEY_ALIASES = {
-    SpanAttributeField.EVALUATION_ID: ("evaluation.id",),
-    SpanAttributeField.EVALUATION_SHA: ("evaluation.sha",),
-    SpanAttributeField.EVALUATION_RUN_ID: ("evaluation.run_id",),
-    SpanAttributeField.TEST_CASE_ID: ("dataset.test_case_id",),
-}
-LEGACY_KNOWN_BAG_KEYS = frozenset(key for aliases in LEGACY_BAG_KEY_ALIASES.values() for key in aliases) | frozenset(
-    {"evaluation.metadata"}
-)
-KNOWN_BAG_KEYS = frozenset(SPECS_BY_BAG_KEY) | LEGACY_KNOWN_BAG_KEYS
+KNOWN_BAG_KEYS = frozenset(SPECS_BY_BAG_KEY)
 QUERYABLE_FIELDS = frozenset(SPECS_BY_FIELD_VALUE)
 
 # Source keys that populate top-level span fields or payloads rather than
@@ -452,24 +382,11 @@ def where_clause(
     if bag_value is None:
         raise ValueError(f"Span attribute filter {field!r} does not support null values")
 
-    alias_keys = LEGACY_BAG_KEY_ALIASES.get(spec.field, ())
-    if not alias_keys:
-        sql = (
-            f"has(mapKeys({spec.bag.value}), %({key_param})s) "
-            f"AND {spec.bag.value}[%({key_param})s] {sql_operator} %({value_param})s"
-        )
-        return sql, {key_param: spec.bag_key, value_param: bag_value}
-
-    clauses: list[str] = []
-    parameters: dict[str, Any] = {value_param: bag_value}
-    for index, bag_key in enumerate((spec.bag_key, *alias_keys)):
-        aliased_key_param = key_param if index == 0 else f"{key_param}_{index}"
-        clauses.append(
-            f"(has(mapKeys({spec.bag.value}), %({aliased_key_param})s) "
-            f"AND {spec.bag.value}[%({aliased_key_param})s] {sql_operator} %({value_param})s)"
-        )
-        parameters[aliased_key_param] = bag_key
-    return f"({' OR '.join(clauses)})", parameters
+    sql = (
+        f"has(mapKeys({spec.bag.value}), %({key_param})s) "
+        f"AND {spec.bag.value}[%({key_param})s] {sql_operator} %({value_param})s"
+    )
+    return sql, {key_param: spec.bag_key, value_param: bag_value}
 
 
 def to_semantic_value(value: Any, spec: AttributeSpec) -> str | int | float | bool | Decimal | None:

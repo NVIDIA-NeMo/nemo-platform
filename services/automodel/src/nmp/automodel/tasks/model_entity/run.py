@@ -37,14 +37,14 @@ from nemo_platform.types.inference import (
 from nemo_platform.types.models import LoraParam, ModelEntity
 from nemo_platform.types.shared_params.tool_call_config import ToolCallConfig as ToolCallConfigParam
 from nmp.automodel.app.constants import SERVICE_NAME
-from nmp.automodel.app.jobs.context import NMPJobContext
-from nmp.automodel.app.jobs.model_entity.schemas import (
+from nmp.automodel.entities.values import FinetuningType
+from nmp.common.sdk_factory import get_task_sdk
+from nmp.customization_common.schemas.model_entity import (
     DeploymentParameters,
     ModelEntityCreationError,
     ModelEntityTaskConfig,
 )
-from nmp.automodel.entities.values import FinetuningType
-from nmp.common.sdk_factory import get_task_sdk
+from nmp.customization_common.service.context import NMPJobContext
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)

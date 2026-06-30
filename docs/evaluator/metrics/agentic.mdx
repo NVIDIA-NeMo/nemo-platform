@@ -529,20 +529,33 @@ Measures how well the agent maintained focus on assigned topics throughout a con
 |-----------|------|---------|-------------|
 | `metric_mode` | string | `"f1"` | Scoring mode: `"f1"`, `"precision"`, or `"recall"` |
 
+<Note>
+
+Topic Adherence is a multi-turn metric: it scores a complete conversation supplied as a `user_input` message list. Online target generation produces a single response from a single prompt and cannot construct a multi-turn conversation, so it is not supported for this metric. Use the offline **Run Locally** or **Submit Job** modes with a pre-built multi-turn conversation.
+
+</Note>
+
 <Tabs>
 
 <Tab title="Run Locally">
 
 ```python
-from nemo_evaluator_sdk import Model
+from nemo_evaluator_sdk import InferenceParams, Model, SecretRef
 from nemo_evaluator_sdk.metrics.ragas import TopicAdherenceMetric
 
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",
     name="meta/llama-3.1-70b-instruct",
-    api_key_secret="nvidia-api-key",
+    api_key_secret=SecretRef(root="nvidia-api-key"),
 )
-metric = TopicAdherenceMetric(metric_mode="f1", judge_model=judge_model)
+# Force JSON-only judge output. RAGAS parses the judge's topic extraction and
+# classification responses as structured JSON; verbose free-text replies fail to
+# parse and are recorded as NaN scores instead of a valid result.
+metric = TopicAdherenceMetric(
+    metric_mode="f1",
+    judge_model=judge_model,
+    inference=InferenceParams.model_validate({"temperature": 0, "response_format": {"type": "json_object"}}),
+)
 
 result = evaluator.run(
     metric=metric,
@@ -566,15 +579,21 @@ print(result.aggregate_scores)
 <Tab title="Submit Job">
 
 ```python
-from nemo_evaluator_sdk import RunConfig, Model
+from nemo_evaluator_sdk import InferenceParams, RunConfig, Model, SecretRef
 from nemo_evaluator_sdk.metrics.ragas import TopicAdherenceMetric
 
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",
     name="meta/llama-3.1-70b-instruct",
-    api_key_secret="nvidia-api-key",
+    api_key_secret=SecretRef(root="nvidia-api-key"),
 )
-metric = TopicAdherenceMetric(metric_mode="f1", judge_model=judge_model)
+# Force JSON-only judge output so RAGAS can parse the judge responses; verbose
+# free-text replies otherwise fail to parse and are recorded as NaN scores.
+metric = TopicAdherenceMetric(
+    metric_mode="f1",
+    judge_model=judge_model,
+    inference=InferenceParams.model_validate({"temperature": 0, "response_format": {"type": "json_object"}}),
+)
 
 job = evaluator.submit(
     metric=metric,
@@ -598,57 +617,13 @@ print(result.aggregate_scores)
 ```
 
 </Tab>
-<Tab title="Online Target Generation">
-
-```python
-from nemo_evaluator_sdk import RunConfigOnlineModel, InferenceParams, Model
-from nemo_evaluator_sdk.metrics.ragas import TopicAdherenceMetric
-
-judge_model = Model(
-    url="https://integrate.api.nvidia.com/v1/chat/completions",
-    name="meta/llama-3.1-70b-instruct",
-    api_key_secret="nvidia-api-key",
-)
-target_model = Model(
-    url="https://integrate.api.nvidia.com/v1/chat/completions",
-    name="nvidia/llama-3.3-nemotron-super-49b-v1",
-    api_key_secret="nvidia-api-key",
-)
-metric = TopicAdherenceMetric(metric_mode="f1", judge_model=judge_model)
-
-result = evaluator.run(
-    metric=metric,
-    dataset=[
-        {
-            "user_input": "Tell me about healthy eating",
-            "reference_topics": ["health", "nutrition", "diet"],
-        }
-    ],
-    config=RunConfigOnlineModel(
-        parallelism=4,
-        inference=InferenceParams(temperature=0.7, max_tokens=1024),
-    ),
-    target=target_model,
-    prompt_template={
-        "messages": [
-            {
-                "role": "user",
-                "content": "{{item.user_input}}",
-            }
-        ]
-    },
-)
-print(result.aggregate_scores)
-```
-
-</Tab>
 <Tab title="Result">
 
 ```json
 {
   "aggregate_scores": [
     {
-      "name": "topic_adherence(mode=f1)",
+      "name": "topic_adherence",
       "count": 1,
       "mean": 0.85,
       "min": 0.85,
@@ -659,7 +634,7 @@ print(result.aggregate_scores)
     {
       "index": 0,
       "scores": {
-        "topic_adherence(mode=f1)": 0.85
+        "topic_adherence": 0.85
       }
     }
   ]
@@ -669,6 +644,13 @@ print(result.aggregate_scores)
 </Tab>
 
 </Tabs>
+
+<Note>
+
+Confirm a real score: a valid result has `count` of at least 1, `nan_count` of 0, and a `mean` in the range `[0, 1]`. A result with `count: 0` and `nan_count: 1` means the judge output could not be parsed into a score — verify the JSON-only judge configuration shown above is applied.
+
+</Note>
+
 ---
 
 ### Agent Goal Accuracy
@@ -722,13 +704,13 @@ Compare the agent's outcome against a known reference:
 <Tab title="Run Locally">
 
 ```python
-from nemo_evaluator_sdk import Model
+from nemo_evaluator_sdk import Model, SecretRef
 from nemo_evaluator_sdk.metrics.ragas import AgentGoalAccuracyMetric
 
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",
     name="meta/llama-3.1-70b-instruct",
-    api_key_secret="nvidia-api-key",
+    api_key_secret=SecretRef(root="nvidia-api-key"),
 )
 metric = AgentGoalAccuracyMetric(use_reference=True, judge_model=judge_model)
 
@@ -760,13 +742,13 @@ print(result.aggregate_scores)
 <Tab title="Submit Job">
 
 ```python
-from nemo_evaluator_sdk import RunConfig, Model
+from nemo_evaluator_sdk import RunConfig, Model, SecretRef
 from nemo_evaluator_sdk.metrics.ragas import AgentGoalAccuracyMetric
 
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",
     name="meta/llama-3.1-70b-instruct",
-    api_key_secret="nvidia-api-key",
+    api_key_secret=SecretRef(root="nvidia-api-key"),
 )
 metric = AgentGoalAccuracyMetric(use_reference=True, judge_model=judge_model)
 
@@ -869,13 +851,13 @@ The judge LLM infers the goal from the conversation context:
 <Tab title="Run Locally">
 
 ```python
-from nemo_evaluator_sdk import Model
+from nemo_evaluator_sdk import Model, SecretRef
 from nemo_evaluator_sdk.metrics.ragas import AgentGoalAccuracyMetric
 
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",
     name="meta/llama-3.1-70b-instruct",
-    api_key_secret="nvidia-api-key",
+    api_key_secret=SecretRef(root="nvidia-api-key"),
 )
 metric = AgentGoalAccuracyMetric(use_reference=False, judge_model=judge_model)
 
@@ -915,13 +897,13 @@ print(result.aggregate_scores)
 <Tab title="Submit Job">
 
 ```python
-from nemo_evaluator_sdk import RunConfig, Model
+from nemo_evaluator_sdk import RunConfig, Model, SecretRef
 from nemo_evaluator_sdk.metrics.ragas import AgentGoalAccuracyMetric
 
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",
     name="meta/llama-3.1-70b-instruct",
-    api_key_secret="nvidia-api-key",
+    api_key_secret=SecretRef(root="nvidia-api-key"),
 )
 metric = AgentGoalAccuracyMetric(use_reference=False, judge_model=judge_model)
 
@@ -984,13 +966,13 @@ Evaluates the factual correctness of an agent's answer by comparing it against a
 <Tab title="Run Locally">
 
 ```python
-from nemo_evaluator_sdk import Model
+from nemo_evaluator_sdk import Model, SecretRef
 from nemo_evaluator_sdk.metrics.ragas import AnswerAccuracyMetric
 
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",
     name="meta/llama-3.1-70b-instruct",
-    api_key_secret="nvidia-api-key",
+    api_key_secret=SecretRef(root="nvidia-api-key"),
 )
 metric = AnswerAccuracyMetric(judge_model=judge_model)
 
@@ -1011,13 +993,13 @@ print(result.aggregate_scores)
 <Tab title="Submit Job">
 
 ```python
-from nemo_evaluator_sdk import RunConfig, Model
+from nemo_evaluator_sdk import RunConfig, Model, SecretRef
 from nemo_evaluator_sdk.metrics.ragas import AnswerAccuracyMetric
 
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",
     name="meta/llama-3.1-70b-instruct",
-    api_key_secret="nvidia-api-key",
+    api_key_secret=SecretRef(root="nvidia-api-key"),
 )
 metric = AnswerAccuracyMetric(judge_model=judge_model)
 
@@ -1041,18 +1023,18 @@ print(result.aggregate_scores)
 <Tab title="Online Target Generation">
 
 ```python
-from nemo_evaluator_sdk import RunConfigOnlineModel, InferenceParams, Model
+from nemo_evaluator_sdk import RunConfigOnlineModel, InferenceParams, Model, SecretRef
 from nemo_evaluator_sdk.metrics.ragas import AnswerAccuracyMetric
 
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",
     name="meta/llama-3.1-70b-instruct",
-    api_key_secret="nvidia-api-key",
+    api_key_secret=SecretRef(root="nvidia-api-key"),
 )
 target_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",
     name="nvidia/llama-3.3-nemotron-super-49b-v1",
-    api_key_secret="nvidia-api-key",
+    api_key_secret=SecretRef(root="nvidia-api-key"),
 )
 metric = AnswerAccuracyMetric(judge_model=judge_model)
 
@@ -1184,13 +1166,13 @@ Each data entry must follow the [NeMo Agent Toolkit](https://docs.nvidia.com/nem
 Most agentic metrics require a judge LLM. Configure the judge model in the metric definition:
 
 ```python
-from nemo_evaluator_sdk import Model
+from nemo_evaluator_sdk import Model, SecretRef
 
 
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",
     name="meta/llama-3.1-70b-instruct",
-    api_key_secret="nvidia-api-key",
+    api_key_secret=SecretRef(root="nvidia-api-key"),
 )
 ```
 
@@ -1204,13 +1186,13 @@ judge_model = Model(
 For models that support extended reasoning, such as `nvidia/llama-3.3-nemotron-super-49b-v1`, add system prompt and reasoning parameters to online model generation:
 
 ```python
-from nemo_evaluator_sdk import RunConfigOnlineModel, InferenceParams, Model, ReasoningParams
+from nemo_evaluator_sdk import RunConfigOnlineModel, InferenceParams, Model, ReasoningParams, SecretRef
 
 
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",
     name="nvidia/llama-3.3-nemotron-super-49b-v1",
-    api_key_secret="nvidia-api-key",
+    api_key_secret=SecretRef(root="nvidia-api-key"),
 )
 
 config = RunConfigOnlineModel(
@@ -1225,14 +1207,14 @@ config = RunConfigOnlineModel(
 If your judge endpoint requires an API key, store it as a secret:
 
 ```python
-from nemo_evaluator_sdk import Model
+from nemo_evaluator_sdk import Model, SecretRef
 
 client.secrets.create(name="nvidia-api-key", value="nvapi-YOUR_API_KEY_HERE")
 
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",
     name="meta/llama-3.1-70b-instruct",
-    api_key_secret="nvidia-api-key",
+    api_key_secret=SecretRef(root="nvidia-api-key"),
 )
 ```
 

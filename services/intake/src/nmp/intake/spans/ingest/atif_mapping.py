@@ -63,6 +63,7 @@ def trajectory_to_spans(
             workspace=workspace,
             default_session_id=trajectory.session_id,
             default_agent_name=trajectory.agent.name,
+            default_agent_version=trajectory.agent.version,
             default_model_name=trajectory.agent.model_name,
             external_parent_span_id=trajectory_span.external_span_id,
             step=step,
@@ -75,6 +76,7 @@ def trajectory_to_spans(
                 workspace=workspace,
                 default_session_id=trajectory.session_id,
                 default_agent_name=trajectory.agent.name,
+                default_agent_version=trajectory.agent.version,
                 default_model_name=trajectory.agent.model_name,
                 external_parent_span_id=step_span.external_span_id,
                 step=step,
@@ -90,6 +92,7 @@ def trajectory_to_spans(
                 workspace=workspace,
                 default_session_id=trajectory.session_id,
                 default_agent_name=trajectory.agent.name,
+                default_agent_version=trajectory.agent.version,
                 default_model_name=trajectory.agent.model_name,
                 external_parent_span_id=step_span.external_span_id,
                 step=step,
@@ -123,14 +126,41 @@ def _trajectory_to_span(
     # while evaluation_context is queryable metadata on the root span.
     #
     # Token/cost accounting belongs on the spans that incurred the LLM calls
-    # (the agent steps), not duplicated onto the trajectory coordinator span.
-    # The trace-level rollup sums per-step metrics; writing trajectory.final_metrics
-    # here too would double-count any source that emits both (e.g. opencode).
+    # when a source emits per-step metrics. Some ATIF producers only emit
+    # trajectory.final_metrics, so use those root totals field-by-field when
+    # the matching per-step accounting is absent.
+    final_metrics = trajectory.final_metrics
+    input_tokens = (
+        final_metrics.total_prompt_tokens
+        if final_metrics is not None and not _trajectory_has_step_prompt_metrics(trajectory)
+        else None
+    )
+    output_tokens = (
+        final_metrics.total_completion_tokens
+        if final_metrics is not None and not _trajectory_has_step_completion_metrics(trajectory)
+        else None
+    )
+    cached_tokens = (
+        final_metrics.total_cached_tokens
+        if final_metrics is not None and not _trajectory_has_step_cached_metrics(trajectory)
+        else None
+    )
+    cost_total_usd = (
+        _decimal(final_metrics.total_cost_usd)
+        if final_metrics is not None and not _trajectory_has_step_cost_metrics(trajectory)
+        else None
+    )
     external_span_id = stable_id(workspace, trajectory.session_id, "trajectory", prefix="span")
     attribute_bags = _span_attributes(
         model=trajectory.agent.model_name,
         agent_name=trajectory.agent.name,
+        agent_version=trajectory.agent.version,
         evaluation_context=trajectory.evaluation_context,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cached_tokens=cached_tokens,
+        total_tokens=_sum_ints(input_tokens, output_tokens),
+        cost_total_usd=cost_total_usd,
         raw_attributes=raw_attributes,
     )
     return IntakeSpan(
@@ -158,6 +188,7 @@ def _step_to_span(
     workspace: str,
     default_session_id: str,
     default_agent_name: str,
+    default_agent_version: str | None,
     default_model_name: str | None,
     external_parent_span_id: str,
     step: AtifStep,
@@ -179,6 +210,7 @@ def _step_to_span(
     attribute_bags = _span_attributes(
         model=model_name or default_model_name,
         agent_name=default_agent_name,
+        agent_version=default_agent_version,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         cached_tokens=metrics.cached_tokens if metrics is not None else None,
@@ -211,6 +243,7 @@ def _tool_call_to_span(
     workspace: str,
     default_session_id: str,
     default_agent_name: str,
+    default_agent_version: str | None,
     default_model_name: str | None,
     external_parent_span_id: str,
     step: AtifStep,
@@ -234,6 +267,7 @@ def _tool_call_to_span(
     attribute_bags = _span_attributes(
         model=_step_model_name(step) or default_model_name,
         agent_name=default_agent_name,
+        agent_version=default_agent_version,
         tool_name=tool_call.function_name,
         error_message=error_message,
         raw_attributes={
@@ -267,6 +301,7 @@ def _subagent_ref_to_span(
     workspace: str,
     default_session_id: str,
     default_agent_name: str,
+    default_agent_version: str | None,
     default_model_name: str | None,
     external_parent_span_id: str,
     step: AtifStep,
@@ -294,6 +329,7 @@ def _subagent_ref_to_span(
     attribute_bags = _span_attributes(
         model=_step_model_name(step) or default_model_name,
         agent_name=default_agent_name,
+        agent_version=default_agent_version,
         error_message=error_message,
         raw_attributes={
             "step_id": step.step_id,
@@ -387,6 +423,7 @@ def _evaluator_result_to_span(
     attribute_bags = _span_attributes(
         model=trajectory.agent.model_name,
         agent_name=trajectory.agent.name,
+        agent_version=trajectory.agent.version,
         raw_attributes=raw_attributes,
     )
     return [
@@ -416,6 +453,7 @@ def _span_attributes(
     *,
     model: str | None = None,
     agent_name: str | None = None,
+    agent_version: str | None = None,
     evaluation_context: EvaluationContext | None = None,
     tool_name: str | None = None,
     error_message: str | None = None,
@@ -429,12 +467,10 @@ def _span_attributes(
     semantic_attributes = SpanSemanticAttributes(
         model=model,
         agent_name=agent_name,
+        agent_version=agent_version,
         evaluation_id=evaluation_context.evaluation_id if evaluation_context is not None else None,
         evaluation_sha=evaluation_context.evaluation_sha if evaluation_context is not None else None,
         evaluation_run_id=evaluation_context.evaluation_run_id if evaluation_context is not None else None,
-        dataset_id=evaluation_context.dataset_id if evaluation_context is not None else None,
-        dataset_name=evaluation_context.dataset_name if evaluation_context is not None else None,
-        dataset_version=evaluation_context.dataset_version if evaluation_context is not None else None,
         test_case_id=evaluation_context.test_case_id if evaluation_context is not None else None,
         tool_name=tool_name,
         error_message=error_message,
@@ -446,7 +482,7 @@ def _span_attributes(
     )
     attribute_bags = semantic_attributes.to_bags()
     if evaluation_context is not None and evaluation_context.metadata:
-        attribute_bags.put_json("experiment.metadata", evaluation_context.metadata)
+        attribute_bags.put_json("nemo.experiment.metadata", evaluation_context.metadata)
     if raw_attributes is not None:
         attribute_bags.put_json("atif.raw", raw_attributes)
     return attribute_bags
@@ -461,10 +497,10 @@ def trajectory_to_evaluator_results(
 ) -> list[EvaluatorResult]:
     """Extract evaluator_results rows from an ATIF trajectory's verifier_result block.
 
-    Returns one evaluator_result row targeting the EVALUATOR-kind span that
-    ``trajectory_to_spans`` already produced for the verifier. The span preserves
-    the original tree structure; this row makes the score queryable by name and
-    value without parsing the span payload.
+    Emits one row per Harbor reward key (``verifier_result.rewards``), named by that
+    key, targeting the EVALUATOR-kind span that ``trajectory_to_spans`` produced for
+    the verifier. The span preserves the original tree structure; these rows make each
+    score queryable by name and value without parsing the span payload.
     """
 
     extra = trajectory.extra or {}
@@ -474,30 +510,47 @@ def trajectory_to_evaluator_results(
     evaluator_span = next((span for span in spans if span.kind == SpanKind.EVALUATOR), None)
     if evaluator_span is None:
         return []
-    score = _evaluator_score(verifier_result)
-    if score is None:
-        return []
-    data_type, value, string_value = _coerce_evaluator_value(score)
-    return [
-        EvaluatorResult(
-            evaluator_result_id=stable_id(
-                evaluator_span.external_span_id,
-                "harbor.verifier",
-                prefix="eval",
-            ),
-            span_id=evaluator_span.external_span_id,
-            session_id=trajectory.session_id,
-            workspace=workspace,
-            name="harbor.verifier",
-            value=value,
-            string_value=string_value,
-            data_type=data_type,
-            comment=None,
-            created_by="intake:atif_importer",
-            created_at=ingested_at,
-            ingested_at=ingested_at,
+    results: list[EvaluatorResult] = []
+    for name, raw_value in _evaluator_rewards(verifier_result):
+        data_type, value, string_value = _coerce_evaluator_value(raw_value)
+        results.append(
+            EvaluatorResult(
+                # Per-key id: the reward name keeps each criterion's row distinct on the
+                # same span, and an identical re-ingest hashes to the same id (dedupe).
+                evaluator_result_id=stable_id(evaluator_span.external_span_id, name, prefix="eval"),
+                span_id=evaluator_span.external_span_id,
+                session_id=trajectory.session_id,
+                workspace=workspace,
+                name=name,
+                value=value,
+                string_value=string_value,
+                data_type=data_type,
+                comment=None,
+                created_by="intake:atif_importer",
+                created_at=ingested_at,
+                ingested_at=ingested_at,
+            )
         )
-    ]
+    return results
+
+
+def _evaluator_rewards(verifier_result: dict[str, Any]) -> list[tuple[str, bool | int | float | str]]:
+    """Per-reward ``(name, value)`` pairs from a Harbor ``verifier_result``.
+
+    Harbor writes a ``rewards`` dict (``reward.json``) whose keys are the metric
+    identities — one named reward per ``tests/`` subdirectory, or the 1D
+    ``{"reward": <score>}`` convention. Each key becomes its own evaluator_result, so
+    multi-criterion verifiers keep their per-criterion breakdown and keys (incl.
+    namespaced ones like ``v1/correctness``) pass through verbatim. Falls back to a
+    single ``reward`` row when only a bare top-level ``score`` scalar is present.
+    """
+    rewards = verifier_result.get("rewards")
+    if isinstance(rewards, dict):
+        return [(name, value) for name, value in rewards.items() if isinstance(value, (int, float, str))]
+    score = verifier_result.get("score")
+    if isinstance(score, (int, float, str)):
+        return [("reward", score)]
+    return []
 
 
 def _coerce_evaluator_value(
@@ -548,6 +601,31 @@ def _step_model_name(step: AtifStep) -> str | None:
 
 def _step_metrics(step: AtifStep) -> AtifMetrics | None:
     return step.metrics if isinstance(step, AtifStepAgent) else None
+
+
+def _trajectory_has_step_prompt_metrics(trajectory: AtifTrajectory) -> bool:
+    return any(
+        (metrics := _step_metrics(step)) is not None and metrics.prompt_tokens is not None for step in trajectory.steps
+    )
+
+
+def _trajectory_has_step_completion_metrics(trajectory: AtifTrajectory) -> bool:
+    return any(
+        (metrics := _step_metrics(step)) is not None and metrics.completion_tokens is not None
+        for step in trajectory.steps
+    )
+
+
+def _trajectory_has_step_cached_metrics(trajectory: AtifTrajectory) -> bool:
+    return any(
+        (metrics := _step_metrics(step)) is not None and metrics.cached_tokens is not None for step in trajectory.steps
+    )
+
+
+def _trajectory_has_step_cost_metrics(trajectory: AtifTrajectory) -> bool:
+    return any(
+        (metrics := _step_metrics(step)) is not None and metrics.cost_usd is not None for step in trajectory.steps
+    )
 
 
 def _trajectory_input(trajectory: AtifTrajectory) -> str | None:

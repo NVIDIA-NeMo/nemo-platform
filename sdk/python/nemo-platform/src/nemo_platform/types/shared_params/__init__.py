@@ -23,7 +23,6 @@ from .string_filter import StringFilter as StringFilter
 from .backend_format import BackendFormat as BackendFormat
 from .datetime_filter import DatetimeFilter as DatetimeFilter
 from .finetuning_type import FinetuningType as FinetuningType
-from .fileset_metadata import FilesetMetadata as FilesetMetadata
 from .inference_params import InferenceParams as InferenceParams
 from .tool_call_config import ToolCallConfig as ToolCallConfig
 from .api_endpoint_data import APIEndpointData as APIEndpointData
@@ -32,6 +31,7 @@ from .linear_layer_spec import LinearLayerSpec as LinearLayerSpec
 from .generic_sort_field import GenericSortField as GenericSortField
 from .platform_job_status import PlatformJobStatus as PlatformJobStatus
 from .sliding_window_config import SlidingWindowConfig as SlidingWindowConfig
+from .fileset_metadata_param import FilesetMetadataParam as FilesetMetadataParam
 from .model_metadata_content import ModelMetadataContent as ModelMetadataContent
 from .dataset_metadata_content import DatasetMetadataContent as DatasetMetadataContent
 from .tool_calling_metadata_content import ToolCallingMetadataContent as ToolCallingMetadataContent

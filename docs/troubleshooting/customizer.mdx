@@ -5,7 +5,7 @@ description: ""
 **Job fails during model download:**
 - Verify the HuggingFace token secret is configured correctly
 - Accept the model's license on the [HuggingFace model page](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct)
-- Check job status: `client.customization.jobs.retrieve(name=job.name, workspace="default")`
+- Check job status: `client.jobs.get_status(name=job.name, workspace="default")`
 
 **Job fails with disk full or 500 error when retrieving logs:**
 - The platform's shared persistent volume is likely full. Customization jobs require significant disk space: ~3× model size for full SFT, ~1.5× for LoRA. If you are also deploying the model from a base checkpoint fileset, plan for ~2.5× model size overall.

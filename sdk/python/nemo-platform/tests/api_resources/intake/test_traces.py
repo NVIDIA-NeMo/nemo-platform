@@ -111,12 +111,7 @@ class TestTraces:
             workspace="workspace",
             filter={
                 "id": "id",
-                "dataset_id": "dataset_id",
-                "dataset_name": "dataset_name",
-                "dataset_version": "dataset_version",
-                "evaluation_id": "evaluation_id",
-                "evaluation_run_id": "evaluation_run_id",
-                "evaluation_sha": "evaluation_sha",
+                "experiment_id": "experiment_id",
                 "session_id": "session_id",
                 "started_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
@@ -249,12 +244,7 @@ class TestAsyncTraces:
             workspace="workspace",
             filter={
                 "id": "id",
-                "dataset_id": "dataset_id",
-                "dataset_name": "dataset_name",
-                "dataset_version": "dataset_version",
-                "evaluation_id": "evaluation_id",
-                "evaluation_run_id": "evaluation_run_id",
-                "evaluation_sha": "evaluation_sha",
+                "experiment_id": "experiment_id",
                 "session_id": "session_id",
                 "started_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),

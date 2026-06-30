@@ -2,29 +2,49 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from nmp.common.jobs.constants import DEFAULT_JOB_STORAGE_PATH
+from nmp.customization_common.service.constants import (
+    DEFAULT_DATASET_OUTPUT_DIR_NAME,
+    DEFAULT_DATASET_PATH,
+    DEFAULT_MODEL_OUTPUT_DIR_NAME,
+    DEFAULT_MODEL_PATH,
+    DEFAULT_OUTPUT_MODEL_DIR_NAME,
+    DEFAULT_OUTPUT_MODEL_PATH,
+    NMP_FILES_URL_ENVVAR,
+    NMP_JOBS_URL_ENVVAR,
+)
+
+__all__ = [
+    "DEFAULT_DATASET_OUTPUT_DIR_NAME",
+    "DEFAULT_DATASET_PATH",
+    "DEFAULT_MODEL_OUTPUT_DIR_NAME",
+    "DEFAULT_MODEL_PATH",
+    "DEFAULT_OUTPUT_MODEL_DIR_NAME",
+    "DEFAULT_OUTPUT_MODEL_PATH",
+    "DEFAULT_SEED",
+    "DEFAULT_TEACHER_MODEL_DIR_NAME",
+    "DEFAULT_TEACHER_MODEL_PATH",
+    "DEFAULT_TRAINING_OUTPUT_DIR_NAME",
+    "DEFAULT_TRAINING_OUTPUT_PATH",
+    "DEFAULT_TRAINING_RESULT_FILE_NAME",
+    "NMP_FILES_URL_ENVVAR",
+    "NMP_JOBS_URL_ENVVAR",
+    "SERVICE_NAME",
+    "V4_MODEL_FOR_CAUSAL_LM_MAPPING_NAMES",
+]
 
 SERVICE_NAME = "customizer"
 
 # Global default seed for reproducibility
 DEFAULT_SEED = 1111
 
-# Relative directory names (used as subdirectory names under job storage)
-DEFAULT_MODEL_OUTPUT_DIR_NAME = "model"
-DEFAULT_DATASET_OUTPUT_DIR_NAME = "dataset"
+# Relative directory names unique to automodel (teacher model + training outputs).
 DEFAULT_TEACHER_MODEL_DIR_NAME = "teacher_model"
 DEFAULT_TRAINING_OUTPUT_DIR_NAME = "training"
-DEFAULT_OUTPUT_MODEL_DIR_NAME = "output_model"
 DEFAULT_TRAINING_RESULT_FILE_NAME = "customizer_training_result.json"
 
 # Absolute paths (used in PlatformJobSpec for cross-step file sharing via PVC)
-DEFAULT_MODEL_PATH = f"{DEFAULT_JOB_STORAGE_PATH}/{DEFAULT_MODEL_OUTPUT_DIR_NAME}"
-DEFAULT_DATASET_PATH = f"{DEFAULT_JOB_STORAGE_PATH}/{DEFAULT_DATASET_OUTPUT_DIR_NAME}"
 DEFAULT_TEACHER_MODEL_PATH = f"{DEFAULT_JOB_STORAGE_PATH}/{DEFAULT_TEACHER_MODEL_DIR_NAME}"
 DEFAULT_TRAINING_OUTPUT_PATH = f"{DEFAULT_JOB_STORAGE_PATH}/{DEFAULT_TRAINING_OUTPUT_DIR_NAME}"
-DEFAULT_OUTPUT_MODEL_PATH = f"{DEFAULT_JOB_STORAGE_PATH}/{DEFAULT_OUTPUT_MODEL_DIR_NAME}"
-
-NMP_JOBS_URL_ENVVAR = "NMP_JOBS_URL"
-NMP_FILES_URL_ENVVAR = "NMP_FILES_URL"
 
 # Models whose checkpoints require transformers-v4-compatible config.json output.
 # When v4_compatible is enabled, the original pretrained config.json is preserved

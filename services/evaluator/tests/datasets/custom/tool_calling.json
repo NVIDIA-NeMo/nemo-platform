@@ -1,9 +1,0 @@
-{
-  "messages": [
-    {"role": "user", "content": "Book a table for 2 at 7pm."},
-    {"role": "assistant", "content": "Booking a table...", "tool_calls": [{"function": {"name": "book_table", "arguments": {"people": 2, "time": "7pm"}}}]}
-  ],
-  "tool_calls": [
-    {"function": {"name": "book_table", "arguments": {"people": 2, "time": "7pm"}}}
-  ]
-}

@@ -25,5 +25,11 @@ __all__ = ["ExperimentGroupFilterParam"]
 class ExperimentGroupFilterParam(TypedDict, total=False):
     """Filter for listing ExperimentGroups."""
 
+    is_deleted: bool
+    """When true, returns only soft-deleted groups.
+
+    Omit (or false) to see only live groups.
+    """
+
     name: str
     """Filter groups by name."""

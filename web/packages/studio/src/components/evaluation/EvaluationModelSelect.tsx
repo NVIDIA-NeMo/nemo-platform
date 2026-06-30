@@ -12,6 +12,7 @@ import {
   FormField,
   SelectContent,
   SelectItem,
+  SelectListbox,
   SelectRoot,
   SelectTrigger,
   Stack,
@@ -116,61 +117,63 @@ export const EvaluationModelSelect = <TFieldValues extends FieldValues = FieldVa
           required={required}
           status={fieldError ? 'error' : undefined}
         />
-        <SelectContent className="w-(--radix-popper-anchor-width) bg-surface-raised border border-base rounded-md shadow-md overflow-hidden">
-          <Block className="p-2 w-full sticky top-0 bg-surface z-10">
-            <TextInput
-              ref={filterInputRef}
-              name="model-filter"
-              className="overflow-hidden"
-              slotStart={<Filter />}
-              placeholder="Search..."
-              value={search}
-              onChange={handleSearchChange}
-              attributes={{
-                Input: {
-                  ['data-testid' as never]: 'model-filter',
-                },
-              }}
-            />
-          </Block>
-          <Stack className="overflow-auto w-full max-h-[300px]">
-            {groupedItems.size > 0 ? (
-              Array.from(groupedItems.entries()).map(([workspace, wsItems]) => (
-                <DropdownSection key={workspace}>
-                  <DropdownHeading>
-                    <Flex gap="density-sm" align="center">
-                      {creatorToIcon(workspace, { className: 'text-base' })}
-                      <Text className="font-bold">{workspace}</Text>
-                    </Flex>
-                  </DropdownHeading>
-                  {wsItems.map((item) => (
-                    <SelectItem key={item.value} className="relative" value={item.value}>
-                      <Flex className="w-full" align="center" justify="between" gap="density-sm">
-                        <Text className="truncate flex-1">
-                          {item.adapter
-                            ? `${item.model.name} / ${item.adapter.name}`
-                            : item.model.name}
-                        </Text>
-                        {item.adapter && (
-                          <Badge kind="solid" color="green" className="shrink-0">
-                            LoRA
-                          </Badge>
-                        )}
+        <SelectContent className="w-(--radix-popper-anchor-width)">
+          <SelectListbox>
+            <Block className="p-2 w-full sticky top-0 bg-surface z-10">
+              <TextInput
+                ref={filterInputRef}
+                name="model-filter"
+                className="overflow-hidden"
+                slotStart={<Filter />}
+                placeholder="Search..."
+                value={search}
+                onChange={handleSearchChange}
+                attributes={{
+                  Input: {
+                    ['data-testid' as never]: 'model-filter',
+                  },
+                }}
+              />
+            </Block>
+            <Stack className="overflow-auto w-full max-h-[300px]">
+              {groupedItems.size > 0 ? (
+                Array.from(groupedItems.entries()).map(([workspace, wsItems]) => (
+                  <DropdownSection key={workspace}>
+                    <DropdownHeading>
+                      <Flex gap="density-sm" align="center">
+                        {creatorToIcon(workspace, { className: 'text-base' })}
+                        <Text className="font-bold">{workspace}</Text>
                       </Flex>
-                    </SelectItem>
-                  ))}
+                    </DropdownHeading>
+                    {wsItems.map((item) => (
+                      <SelectItem key={item.value} className="relative" value={item.value}>
+                        <Flex className="w-full" align="center" justify="between" gap="density-sm">
+                          <Text className="truncate flex-1">
+                            {item.adapter
+                              ? `${item.model.name} / ${item.adapter.name}`
+                              : item.model.name}
+                          </Text>
+                          {item.adapter && (
+                            <Badge kind="solid" color="green" className="shrink-0">
+                              LoRA
+                            </Badge>
+                          )}
+                        </Flex>
+                      </SelectItem>
+                    ))}
+                  </DropdownSection>
+                ))
+              ) : (
+                <DropdownSection>
+                  {!isLoading && (
+                    <DropdownHeading>
+                      <Text>No Models Found</Text>
+                    </DropdownHeading>
+                  )}
                 </DropdownSection>
-              ))
-            ) : (
-              <DropdownSection>
-                {!isLoading && (
-                  <DropdownHeading>
-                    <Text>No Models Found</Text>
-                  </DropdownHeading>
-                )}
-              </DropdownSection>
-            )}
-          </Stack>
+              )}
+            </Stack>
+          </SelectListbox>
         </SelectContent>
       </SelectRoot>
     </FormField>

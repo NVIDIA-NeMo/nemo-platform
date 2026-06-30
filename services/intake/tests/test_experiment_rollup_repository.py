@@ -44,7 +44,7 @@ async def test_experiment_rollups_anchor_on_root_session_membership():
                 ["experiment_id", "run_count"],
             ),
             _QueryResult(
-                [("exp-a", "harbor.verifier", 3.0, 0.75, 0.8, 1.0, 1.0, 1.0, 4)],
+                [("exp-a", "reward", 3.0, 0.75, 0.8, 1.0, 1.0, 1.0, 4)],
                 ["experiment_id", "evaluator_name", "sum", "mean", "median", "p90", "p95", "p99", "count"],
             ),
             _QueryResult(
@@ -52,6 +52,8 @@ async def test_experiment_rollups_anchor_on_root_session_membership():
                     (
                         "exp-a",
                         ["model-b", "model-a"],
+                        ["agent-a"],
+                        ["1.0.0", "1.0.1"],
                         0.65,
                         0.1625,
                         0.2,
@@ -71,6 +73,8 @@ async def test_experiment_rollups_anchor_on_root_session_membership():
                 [
                     "experiment_id",
                     "model_names",
+                    "agent_names",
+                    "agent_versions",
                     "cost_sum",
                     "cost_mean",
                     "cost_median",
@@ -95,15 +99,17 @@ async def test_experiment_rollups_anchor_on_root_session_membership():
 
     rollup = rollups["exp-a"]
     assert rollup.run_count == 3
-    assert rollup.evaluator_names == ["harbor.verifier"]
+    assert rollup.evaluator_names == ["reward"]
     assert rollup.model_names == ["model-a", "model-b"]
-    assert rollup.evaluator_scores["harbor.verifier"].sum == 3.0
-    assert rollup.evaluator_scores["harbor.verifier"].mean == 0.75
-    assert rollup.evaluator_scores["harbor.verifier"].median == 0.8
-    assert rollup.evaluator_scores["harbor.verifier"].p90 == 1.0
-    assert rollup.evaluator_scores["harbor.verifier"].p95 == 1.0
-    assert rollup.evaluator_scores["harbor.verifier"].p99 == 1.0
-    assert rollup.evaluator_scores["harbor.verifier"].count == 4
+    assert rollup.agent_names == ["agent-a"]
+    assert rollup.agent_versions == ["1.0.0", "1.0.1"]
+    assert rollup.evaluator_scores["reward"].sum == 3.0
+    assert rollup.evaluator_scores["reward"].mean == 0.75
+    assert rollup.evaluator_scores["reward"].median == 0.8
+    assert rollup.evaluator_scores["reward"].p90 == 1.0
+    assert rollup.evaluator_scores["reward"].p95 == 1.0
+    assert rollup.evaluator_scores["reward"].p99 == 1.0
+    assert rollup.evaluator_scores["reward"].count == 4
     assert rollup.cost_usd is not None
     assert rollup.cost_usd.sum == 0.65
     assert rollup.cost_usd.mean == 0.1625
@@ -122,9 +128,10 @@ async def test_experiment_rollups_anchor_on_root_session_membership():
     assert rollup.latency_ms.count == 4
 
     assert len(client.queries) == 3
-    assert "FROM experiment_sessions FINAL" in client.queries[0]
+    assert "FROM trace_index FINAL" in client.queries[0]
     assert "count() AS run_count" in client.queries[0]
     assert "experiment_id IN (%(experiment_id_0)s)" in client.queries[0]
+    assert "ORDER BY root_started_at ASC, root_span_id ASC" in client.queries[0]
     assert "FROM evaluator_results FINAL" in client.queries[1]
     assert "quantileExact(0.5)(value) AS median" in client.queries[1]
     assert "quantileExact(0.99)(value) AS p99" in client.queries[1]

@@ -1,237 +1,31 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import {
-  Banner,
-  Button,
-  Flex,
-  Skeleton,
-  Stack,
-  Text,
-  Tooltip,
-} from '@nvidia/foundations-react-core';
-import { Empty } from '@studio/components/Empty';
-import {
-  CLAUDE_CODE_HISTORY_SESSIONS_QUERY_KEY,
-  listClaudeCodeHistorySessions,
-} from '@studio/routes/agents/ClaudeCodeChatRoute/api';
-import type { ClaudeCodeHistorySession } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
+import { Button, Flex, SegmentedControl, Tooltip } from '@nvidia/foundations-react-core';
+import { ClaudeCodeArtifactsPane } from '@studio/routes/agents/ClaudeCodeChatRoute/historyPanel/ClaudeCodeArtifactsPane';
+import { PANEL_TAB_ITEMS } from '@studio/routes/agents/ClaudeCodeChatRoute/historyPanel/constants';
+import { isClaudeCodePanelTab } from '@studio/routes/agents/ClaudeCodeChatRoute/historyPanel/helpers';
+import { HistoryPanelContents } from '@studio/routes/agents/ClaudeCodeChatRoute/historyPanel/HistoryPanelContents';
+import { SkillsPanelContents } from '@studio/routes/agents/ClaudeCodeChatRoute/historyPanel/SkillsPanelContents';
+import type { ClaudeCodeHistoryPanelProps } from '@studio/routes/agents/ClaudeCodeChatRoute/historyPanel/types';
 import { useLocalStorage } from '@studio/util/hooks/useLocalStorage';
-import { CLAUDE_CODE_HISTORY_OPEN_KEY } from '@studio/util/localStorage';
-import { useQuery } from '@tanstack/react-query';
-import cn from 'classnames';
-import {
-  History,
-  MessageSquare,
-  MessageSquarePlus,
-  PanelRightClose,
-  PanelRightOpen,
-  RefreshCw,
-  Wrench,
-} from 'lucide-react';
+import { CLAUDE_CODE_HISTORY_OPEN_KEY, CLAUDE_CODE_PANEL_TAB_KEY } from '@studio/util/localStorage';
+import { PanelRightClose, PanelRightOpen } from 'lucide-react';
 import { type FC } from 'react';
 
-interface ClaudeCodeHistoryPanelProps {
-  activeSessionId?: string;
-  onNewChat: () => void;
-  onSelectSession: (sessionId: string) => void;
-}
-
-const getCompactRelativeTime = (mtime: number): string => {
-  const elapsedMs = Math.max(Date.now() - mtime * 1000, 0);
-  const minuteMs = 60 * 1000;
-  const hourMs = 60 * minuteMs;
-  const dayMs = 24 * hourMs;
-
-  if (elapsedMs < minuteMs) return 'now';
-  if (elapsedMs < hourMs) return `${Math.floor(elapsedMs / minuteMs)}m`;
-  if (elapsedMs < dayMs) return `${Math.floor(elapsedMs / hourMs)}h`;
-
-  const days = Math.floor(elapsedMs / dayMs);
-  if (days < 31) return `${days}d`;
-
-  return new Date(mtime * 1000).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-  });
-};
-
-const HistoryPanelSkeleton = () => (
-  <Stack gap="density-sm" padding="density-md">
-    <Skeleton className="h-16 w-full" />
-    <Skeleton className="h-16 w-full" />
-    <Skeleton className="h-16 w-full" />
-  </Stack>
-);
-
-const ToolCallSummary = ({ toolCalls }: { toolCalls: string[] }) => {
-  if (!toolCalls.length) return null;
-
-  return (
-    <Flex className="min-w-0 text-secondary" align="center" gap="density-xs">
-      <Wrench size={12} className="shrink-0" />
-      <Text kind="body/regular/sm" className="truncate">
-        {toolCalls.join(', ')}
-      </Text>
-    </Flex>
-  );
-};
-
-const HistorySessionButton = ({
-  active,
-  onSelect,
-  session,
-}: {
-  active: boolean;
-  onSelect: () => void;
-  session: ClaudeCodeHistorySession;
-}) => (
-  <button
-    type="button"
-    aria-current={active ? 'page' : undefined}
-    title={new Date(session.mtime * 1000).toLocaleString()}
-    className={cn(
-      'w-full cursor-pointer border-b border-base px-density-md py-density-sm text-left transition-colors hover:bg-surface-sunken focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent',
-      active && 'bg-surface-sunken'
-    )}
-    onClick={onSelect}
-  >
-    <Stack gap="density-xs">
-      <Flex align="center" gap="density-sm">
-        <span
-          className={cn(
-            'flex size-6 shrink-0 items-center justify-center text-secondary',
-            active && 'text-accent'
-          )}
-        >
-          <MessageSquare size={12} />
-        </span>
-        <Flex align="center" justify="between" gap="density-sm" className="min-w-0 flex-1">
-          <Text kind="body/regular/sm" className="min-w-0 flex-1 line-clamp-2">
-            {session.first_prompt || 'Claude Code session'}
-          </Text>
-          <Text kind="body/regular/sm" color="secondary" className="shrink-0 whitespace-nowrap">
-            {getCompactRelativeTime(session.mtime)}
-          </Text>
-        </Flex>
-      </Flex>
-      {session.tool_calls.length > 0 && (
-        <div className="pl-8">
-          <ToolCallSummary toolCalls={session.tool_calls} />
-        </div>
-      )}
-    </Stack>
-  </button>
-);
-
-interface HistoryPanelContentsProps extends ClaudeCodeHistoryPanelProps {
-  collapseLabel: string;
-  onCollapse: () => void;
-}
-
-const HistoryPanelContents = ({
-  activeSessionId,
-  collapseLabel,
-  onCollapse,
-  onNewChat,
-  onSelectSession,
-}: HistoryPanelContentsProps) => {
-  const {
-    data: sessions = [],
-    error,
-    isLoading,
-    refetch,
-  } = useQuery({
-    queryKey: CLAUDE_CODE_HISTORY_SESSIONS_QUERY_KEY,
-    queryFn: listClaudeCodeHistorySessions,
-  });
-
-  return (
-    <>
-      <Flex
-        align="center"
-        justify="between"
-        gap="density-sm"
-        className="border-b border-base px-density-md py-density-sm"
-      >
-        <Flex align="center" gap="density-sm" className="min-w-0">
-          <History size={18} className="shrink-0 text-secondary" />
-          <Text kind="label/bold/md" className="truncate">
-            Claude history
-          </Text>
-        </Flex>
-        <Flex align="center" gap="density-xs">
-          <Tooltip slotContent="Refresh history">
-            <Button
-              aria-label="Refresh history"
-              kind="tertiary"
-              size="small"
-              type="button"
-              disabled={isLoading}
-              onClick={() => void refetch()}
-            >
-              <RefreshCw size={16} />
-            </Button>
-          </Tooltip>
-          <Tooltip slotContent={collapseLabel} side="left">
-            <Button
-              aria-label={collapseLabel}
-              kind="tertiary"
-              size="small"
-              type="button"
-              onClick={onCollapse}
-            >
-              <PanelRightClose size={18} />
-            </Button>
-          </Tooltip>
-        </Flex>
-      </Flex>
-      <div className="border-b border-base px-density-md py-density-sm">
-        <Button
-          color="neutral"
-          kind="secondary"
-          size="small"
-          type="button"
-          className="w-full"
-          onClick={onNewChat}
-        >
-          <MessageSquarePlus size={16} />
-          <Text kind="label/bold/md">New chat</Text>
-        </Button>
-      </div>
-      {error && (
-        <div className="px-density-md py-density-sm">
-          <Banner kind="inline" status="error">
-            Could not load Claude history.
-          </Banner>
-        </div>
-      )}
-      {isLoading ? (
-        <HistoryPanelSkeleton />
-      ) : sessions.length ? (
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {sessions.map((session) => (
-            <HistorySessionButton
-              key={session.session_id}
-              active={session.session_id === activeSessionId}
-              session={session}
-              onSelect={() => onSelectSession(session.session_id)}
-            />
-          ))}
-        </div>
-      ) : !error ? (
-        <Flex className="min-h-0 flex-1" align="center" justify="center">
-          <Empty title="No chats yet" description="Claude Code sessions will appear here." />
-        </Flex>
-      ) : null}
-    </>
-  );
-};
-
-export const ClaudeCodeHistoryPanel: FC<ClaudeCodeHistoryPanelProps> = (props) => {
+export const ClaudeCodeHistoryPanel: FC<ClaudeCodeHistoryPanelProps> = ({
+  hideArtifacts,
+  ...props
+}) => {
   const [historyOpen, setHistoryOpen] = useLocalStorage(CLAUDE_CODE_HISTORY_OPEN_KEY, 'true');
+  const [panelTab, setPanelTab] = useLocalStorage(CLAUDE_CODE_PANEL_TAB_KEY, 'history');
   const isOpen = historyOpen !== 'false';
+  const selectedTab =
+    typeof panelTab === 'string' && isClaudeCodePanelTab(panelTab) ? panelTab : 'history';
   const toggleLabel = isOpen ? 'Collapse Claude history' : 'Expand Claude history';
+  const handleTabChange = (value: string) => {
+    if (isClaudeCodePanelTab(value)) setPanelTab(value);
+  };
 
   if (!isOpen) {
     return (
@@ -252,12 +46,50 @@ export const ClaudeCodeHistoryPanel: FC<ClaudeCodeHistoryPanelProps> = (props) =
   }
 
   return (
-    <aside className="flex min-h-80 w-full shrink-0 flex-col border-t border-base bg-surface-base lg:w-84 lg:border-l lg:border-t-0">
-      <HistoryPanelContents
-        {...props}
-        collapseLabel={toggleLabel}
-        onCollapse={() => setHistoryOpen('false')}
-      />
+    <aside className="flex min-h-80 w-full shrink-0 flex-col border-t border-base bg-surface-base lg:w-[30rem] lg:border-l lg:border-t-0 xl:w-[32rem]">
+      {!hideArtifacts && (
+        <ClaudeCodeArtifactsPane
+          artifacts={props.artifacts}
+          collapseLabel={toggleLabel}
+          onCollapse={() => setHistoryOpen('false')}
+        />
+      )}
+      <section className={`flex min-h-0 flex-col ${hideArtifacts ? 'flex-1' : 'basis-1/2'}`}>
+        <Flex
+          align="center"
+          justify="between"
+          gap="density-sm"
+          className="border-b border-base px-density-md py-density-sm"
+        >
+          <SegmentedControl
+            size="tiny"
+            value={selectedTab}
+            onValueChange={handleTabChange}
+            items={PANEL_TAB_ITEMS}
+            className="min-w-0 flex-1"
+          />
+          {hideArtifacts && (
+            <Tooltip slotContent={toggleLabel} side="left">
+              <Button
+                aria-label={toggleLabel}
+                kind="tertiary"
+                size="small"
+                type="button"
+                onClick={() => setHistoryOpen('false')}
+              >
+                <PanelRightClose size={18} />
+              </Button>
+            </Tooltip>
+          )}
+        </Flex>
+        <div className="flex min-h-0 flex-1 flex-col">
+          {selectedTab === 'history' ? (
+            <HistoryPanelContents {...props} />
+          ) : (
+            <SkillsPanelContents />
+          )}
+        </div>
+      </section>
     </aside>
   );
 };

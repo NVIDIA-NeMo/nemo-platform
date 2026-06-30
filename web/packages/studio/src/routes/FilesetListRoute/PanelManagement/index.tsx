@@ -17,50 +17,42 @@ interface PanelManagementProps {
 }
 
 /**
- * Manages the dataset and file preview panels using the animation pattern.
+ * Dataset and file preview panels.
  *
- * This component handles:
- * - URL param reading and syncing
- * - Animation state management
- * - Panel open/close animations
- * - Dataset file fetching
- * - Navigation handlers for both panels
+ * **Mount** follows the URL; close navigation is deferred until the SidePanel exit
+ * animation finishes, so panel data stays mounted for the whole close.
+ *
+ * **Open** is separate. SidePanel skips enter animation when mounting already open, so
+ * we mount closed and flip open one commit later (effect). Close must flip open false
+ * synchronously in the handler — an effect-driven close races SidePanel's isClosing
+ * reset and causes a visible flash.
  */
 export const PanelManagement: FC<PanelManagementProps> = ({ workspace }) => {
   const navigate = useNavigate();
   const { getQueryParam } = useQueryParams();
 
   // ==========================================
-  // URL PARAMS & ANIMATION STATE
+  // URL PARAMS & OPEN STATE
   // ==========================================
 
-  // 1. Read URL params
+  // `useParams()` already returns decoded values, and `getFilesetFileRoute()`
+  // encodes them when building the URL — decoding again here is redundant and
+  // throws on valid names containing a literal `%`.
   const {
-    [ROUTE_PARAMS.filesetId]: datasetIdEncoded,
+    [ROUTE_PARAMS.filesetId]: datasetIdFromUrl,
     [ROUTE_PARAMS.filePathEncoded]: filePathFromUrl,
   } = useParams();
-
-  const datasetIdFromUrl = datasetIdEncoded ? decodeURIComponent(datasetIdEncoded) : undefined;
   const currentFolder = getQueryParam(QUERY_PARAMETERS.filesetFolder);
 
-  // 2. Animation state (holds values during close animations)
-  const [animatingDatasetId, setAnimatingDatasetId] = useState<string | undefined>();
-  const [animatingFilePath, setAnimatingFilePath] = useState<string | undefined>();
+  // Mount as soon as the URL references the panel (see component doc).
+  const showDatasetPanel = !!datasetIdFromUrl;
+  const showFilePanel = !!filePathFromUrl;
 
-  // 3. Open state (controls animations)
+  // Open flag — lags the URL on open (drives the slide-in), flips synchronously
+  // on close (see close handlers below).
   const [isDatasetPanelOpen, setIsDatasetPanelOpen] = useState(false);
   const [isFilePanelOpen, setIsFilePanelOpen] = useState(false);
 
-  // 4. Sync URL params to animating state
-  useEffect(() => {
-    if (datasetIdFromUrl) setAnimatingDatasetId(datasetIdFromUrl);
-  }, [datasetIdFromUrl]);
-
-  useEffect(() => {
-    if (filePathFromUrl) setAnimatingFilePath(filePathFromUrl);
-  }, [filePathFromUrl]);
-
-  // 5. Sync open state with URL (triggers animations)
   useEffect(() => {
     setIsDatasetPanelOpen(!!datasetIdFromUrl);
   }, [datasetIdFromUrl]);
@@ -69,16 +61,12 @@ export const PanelManagement: FC<PanelManagementProps> = ({ workspace }) => {
     setIsFilePanelOpen(!!filePathFromUrl);
   }, [filePathFromUrl]);
 
-  // 6. Determine panel visibility
-  const showDatasetPanel = !!(datasetIdFromUrl || animatingDatasetId);
-  const showFilePanel = !!(filePathFromUrl || animatingFilePath);
-
   // ==========================================
   // DATASET PANEL LOGIC
   // ==========================================
 
   // Parse dataset info from URL
-  const datasetFullName = animatingDatasetId || '';
+  const datasetFullName = datasetIdFromUrl ?? '';
   const { workspace: datasetworkspace, name: datasetName } = getPartsFromReference(datasetFullName);
 
   // Fetch dataset files
@@ -93,13 +81,8 @@ export const PanelManagement: FC<PanelManagementProps> = ({ workspace }) => {
 
   // Dataset panel handlers
   const handleDatasetPanelClose = () => {
+    setIsDatasetPanelOpen(false);
     navigate(generatePath(ROUTES.workspace.filesets, { workspace }));
-  };
-
-  const handleDatasetPanelOpenChange = (open: boolean) => {
-    if (!open && !datasetIdFromUrl) {
-      setAnimatingDatasetId(undefined); // Safe to unmount
-    }
   };
 
   const handleFileSelect = (filePath: string) => {
@@ -111,9 +94,12 @@ export const PanelManagement: FC<PanelManagementProps> = ({ workspace }) => {
   // FILE PANEL LOGIC
   // ==========================================
 
-  const decodedFilePath = animatingFilePath ? decodeURIComponent(animatingFilePath) : '';
+  const decodedFilePath = filePathFromUrl ?? '';
 
-  // File panel handlers
+  const handleFilePanelClosing = () => {
+    setIsFilePanelOpen(false);
+  };
+
   const handleFilePanelClose = () => {
     const folderPathFromFile = decodedFilePath.split('/').slice(0, -1).join('/');
     navigate(
@@ -180,7 +166,6 @@ export const PanelManagement: FC<PanelManagementProps> = ({ workspace }) => {
           onFolderChange={handleFolderClick}
           onFileSelect={handleFileSelect}
           onClose={handleDatasetPanelClose}
-          onOpenChange={handleDatasetPanelOpenChange}
         />
       )}
 
@@ -190,6 +175,7 @@ export const PanelManagement: FC<PanelManagementProps> = ({ workspace }) => {
           open={isFilePanelOpen}
           onCloseClick={handleFilePanelClose}
           onOutsideClick={handleFilePanelOutsideClick}
+          onClosing={handleFilePanelClosing}
           workspace={datasetworkspace || ''}
           filesetName={datasetName || ''}
           filePath={decodedFilePath}

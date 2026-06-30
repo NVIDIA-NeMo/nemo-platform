@@ -4,6 +4,7 @@
 """Tests for _prepare_aut_config_for_runtime IGW routing logic."""
 
 import json
+import stat
 import subprocess
 import sys
 from importlib import util
@@ -102,6 +103,31 @@ class TestIGWRouting:
         result = _prepare_aut_config_for_runtime(aut_config, tmp_path, nat_model="custom-model")
         cfg = yaml.safe_load(result.read_text())
         assert cfg["llms"]["agent"]["model_name"] == "custom-model"
+
+    def test_resolves_default_model_placeholder_from_host_context(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from nemo_agents_plugin import utils as agent_utils
+
+        monkeypatch.setattr(agent_utils, "get_default_model", lambda: "nvidia-nemotron-3-nano-30b-a3b")
+        config = {
+            "llms": {
+                "agent": {
+                    "_type": "openai",
+                    "api_key": "not-used",
+                    "model_name": "${NEMO_DEFAULT_MODEL}",
+                }
+            }
+        }
+        config_path = tmp_path / "agent.yml"
+        with config_path.open("w") as f:
+            yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+        result = _prepare_aut_config_for_runtime(config_path, tmp_path)
+        cfg = yaml.safe_load(result.read_text())
+
+        assert cfg["llms"]["agent"]["model_name"] == "nvidia-nemotron-3-nano-30b-a3b"
+        assert "${NEMO_DEFAULT_MODEL}" not in result.read_text()
 
     def test_custom_workspace(self, aut_config: Path, tmp_path: Path) -> None:
         result = _prepare_aut_config_for_runtime(aut_config, tmp_path, workspace="staging")
@@ -399,6 +425,65 @@ workflow:
         assert trajectory["session_id"] == "session-1"
         assert len(trajectory["steps"]) == 2
 
+    def test_nat_trace_export_assembles_legacy_sse_delta_stream(self) -> None:
+        events = [
+            {"value": " The"},
+            {"value": " task"},
+            {"value": " is"},
+            {"value": " complete."},
+        ]
+
+        assert nat_trace_export._assemble_legacy_stream(events) == "The task is complete."
+
+    def test_nat_trace_export_assembles_legacy_sse_cumulative_stream(self) -> None:
+        events = [
+            {"value": "partial answer"},
+            {"value": "complete final answer"},
+        ]
+
+        assert nat_trace_export._assemble_legacy_stream(events) == "complete final answer"
+
+    def test_invoke_aut_fallback_parses_legacy_sse_stream(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        requested_urls: list[str] = []
+
+        def fake_read_http_response(url: str, _payload: bytes, _timeout: int) -> str:
+            requested_urls.append(url)
+            if url.endswith("/generate/atif"):
+                raise nat_trace_export.urllib.error.HTTPError(url, 404, "not found", hdrs={}, fp=None)
+            assert url.endswith("/generate/full?filter_steps=none")
+            return "\n\n".join(
+                [
+                    'data: {"value": " The"}',
+                    'data: {"value": " task"}',
+                    'data: {"value": " is"}',
+                    'data: {"value": " complete."}',
+                ]
+            )
+
+        monkeypatch.setattr(nat_trace_export, "_read_http_response", fake_read_http_response)
+
+        rc = nat_trace_export._invoke_aut("http://aut.example", "Finish the task.", tmp_path, timeout=10)
+
+        assert rc == 0
+        assert requested_urls == [
+            "http://aut.example/generate/atif",
+            "http://aut.example/generate/full?filter_steps=none",
+        ]
+        assert json.loads((tmp_path / "final_message.json").read_text(encoding="utf-8")) == {
+            "result": "The task is complete."
+        }
+        assert (tmp_path / "final_message.txt").read_text(encoding="utf-8") == "The task is complete.\n"
+        assert json.loads((tmp_path / "legacy_stream_events.json").read_text(encoding="utf-8")) == [
+            {"value": " The"},
+            {"value": " task"},
+            {"value": " is"},
+            {"value": " complete."},
+        ]
+
     def test_build_aut_agent_cmd_keeps_diagnostics_best_effort(self) -> None:
         cmd = _build_aut_agent_cmd("/tmp/instruction.md")
         script = cmd[2]
@@ -643,6 +728,58 @@ workflow:
         assert (str(codex_auth), "/tmp/codex_host_auth.json:ro") in captured_mounts
         assert (str(workspace_dir), "/app/workspace") in captured_mounts
         assert (str(codex_home), "/tmp/codex_host_home") not in captured_mounts
+
+    def test_run_agent_phase_relaxes_bind_mount_directory_permissions(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        task_dir = tmp_path / "task"
+        task_dir.mkdir()
+        (task_dir / "instruction.md").write_text("Do the thing.")
+        output_dir = tmp_path / "out"
+        state_dir = tmp_path / "state"
+        workspace_dir = tmp_path / "workspace"
+        state_dir.mkdir()
+        workspace_dir.mkdir()
+        state_dir.chmod(0o775)
+        workspace_dir.chmod(0o775)
+
+        monkeypatch.setenv("OPENAI_API_KEY", "openai-secret")
+        captured_mounts: list[tuple[str, str]] = []
+
+        def fake_docker_run(*_args: object, **kwargs: object) -> subprocess.CompletedProcess:
+            mounts = cast(list[tuple[str, str]], kwargs["mounts"])
+            captured_mounts.extend(mounts)
+            return subprocess.CompletedProcess(args=["docker"], returncode=0, stdout="", stderr="")
+
+        monkeypatch.setattr(nat_runner, "_docker_run", fake_docker_run)
+
+        assert run_agent_phase(
+            task_dir,
+            "task-image",
+            output_dir,
+            nvidia_api_key="",
+            anthropic_api_key="",
+            anthropic_base_url="https://anthropic.example",
+            nmp_base_url="http://localhost:8080",
+            agent_model=None,
+            agent_params={},
+            codex_auth_json=None,
+            timeout=10,
+            agent_backend="codex",
+            aut_agent_name="test-agent",
+            aut_agent_config=None,
+            aut_seed_providers=True,
+            state_dir=state_dir,
+            workspace_dir=workspace_dir,
+        )
+
+        agent_log_dir = output_dir / "agent"
+        assert stat.S_IMODE(agent_log_dir.stat().st_mode) == 0o777
+        assert stat.S_IMODE(state_dir.stat().st_mode) == 0o777
+        assert stat.S_IMODE(workspace_dir.stat().st_mode) == 0o777
+        assert (str(agent_log_dir), "/logs/agent") in captured_mounts
+        assert (str(state_dir), "/data") in captured_mounts
+        assert (str(workspace_dir), "/app/workspace") in captured_mounts
 
     def test_run_verify_phase_mounts_shared_evaluator_harness(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path

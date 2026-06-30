@@ -5,6 +5,7 @@ import type { ThreadAssistantMessagePart, ThreadMessageLike } from '@assistant-u
 import { COMPLETE_STATUS } from '@nemo/common/src/components/AssistantChat/constants';
 import {
   createClaudeCodeToolCallPart,
+  getClaudeCodeCompletedMessageParts,
   groupConsecutiveClaudeCodeSubtleToolCalls,
   mergeConsecutiveClaudeCodeSubtleToolMessages,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
@@ -36,10 +37,13 @@ const getAssistantMessagePart = (
   if (part.type === 'text') return { type: 'text', text: part.text };
   if (part.type === 'tool_use') {
     const toolName = part.name || 'tool';
+    const trimmedId = typeof part.id === 'string' ? part.id.trim() : '';
+    const toolCallId =
+      trimmedId || `claude-history-tool-${assistantMessageId}-${toolName}-${index}`;
 
     return createClaudeCodeToolCallPart({
       input: part.input,
-      toolCallId: `claude-history-tool-${assistantMessageId}-${toolName}-${index}`,
+      toolCallId,
       toolName,
     });
   }
@@ -77,5 +81,9 @@ export const getClaudeCodeHistoryMessages = (
     })
     .filter((message): message is ThreadMessageLike => message !== undefined);
 
-  return mergeConsecutiveClaudeCodeSubtleToolMessages(messages);
+  return mergeConsecutiveClaudeCodeSubtleToolMessages(messages).map((message) =>
+    message.role === 'assistant' && Array.isArray(message.content)
+      ? { ...message, content: getClaudeCodeCompletedMessageParts(message.content) }
+      : message
+  );
 };

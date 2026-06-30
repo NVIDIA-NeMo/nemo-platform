@@ -7,17 +7,15 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+from nemo_platform_plugin.integrations import IntegrationsSpec
 from nmp.automodel.api.v2.jobs.schemas import (
     CustomizationJobOutput,
     DistillationTraining,
-    IntegrationParams,
     LoRAParams,
     OutputResponse,
     ParallelismParams,
     SFTTraining,
-    WandBParams,
 )
-from nmp.common.api.common import SecretRef
 from pydantic import BaseModel
 
 
@@ -37,8 +35,11 @@ def _build_peft(training: dict[str, Any]) -> LoRAParams | None:
     return LoRAParams(
         rank=lora.get("rank", 16),
         alpha=lora.get("alpha", 32),
+        dropout=lora.get("dropout", 0.0),
         merge=ft == "lora_merged" or lora.get("merge", False),
         target_modules=lora.get("target_modules"),
+        exclude_modules=lora.get("exclude_modules"),
+        use_triton=lora.get("use_triton", True),
     )
 
 
@@ -52,7 +53,13 @@ def _build_training_block(spec: dict[str, Any]) -> SFTTraining | DistillationTra
     common: dict[str, Any] = {
         "peft": _build_peft(training),
         "learning_rate": optimizer.get("learning_rate", 1e-4),
+        "min_learning_rate": optimizer.get("min_learning_rate"),
         "weight_decay": optimizer.get("weight_decay", 0.01),
+        "adam_beta1": optimizer.get("adam_beta1", 0.9),
+        "adam_beta2": optimizer.get("adam_beta2", 0.999),
+        "adam_eps": optimizer.get("adam_eps", 1e-8),
+        "optimizer": optimizer.get("optimizer", "Adam"),
+        "lr_decay_style": optimizer.get("lr_decay_style", "cosine"),
         "warmup_steps": optimizer.get("warmup_steps", 0),
         "epochs": schedule.get("epochs", 1),
         "max_steps": schedule.get("max_steps"),
@@ -60,7 +67,10 @@ def _build_training_block(spec: dict[str, Any]) -> SFTTraining | DistillationTra
         "batch_size": batch.get("global_batch_size", 8),
         "micro_batch_size": batch.get("micro_batch_size", 1),
         "sequence_packing": batch.get("sequence_packing", False),
+        "sequence_packing_max_samples": batch.get("sequence_packing_max_samples", 1000),
         "max_seq_length": training.get("max_seq_length", 2048),
+        "precision": training.get("precision"),
+        "attn_implementation": training.get("attn_implementation", "sdpa"),
         "seed": schedule.get("seed"),
         "parallelism": ParallelismParams(
             num_nodes=parallelism.get("num_nodes", 1),
@@ -69,6 +79,7 @@ def _build_training_block(spec: dict[str, Any]) -> SFTTraining | DistillationTra
             pipeline_parallel_size=parallelism.get("pipeline_parallel_size", 1),
             context_parallel_size=parallelism.get("context_parallel_size", 1),
             expert_parallel_size=parallelism.get("expert_parallel_size"),
+            sequence_parallel=parallelism.get("sequence_parallel", False),
         ),
         "execution_profile": training.get("execution_profile"),
     }
@@ -85,19 +96,11 @@ def _build_training_block(spec: dict[str, Any]) -> SFTTraining | DistillationTra
     return SFTTraining(**common)
 
 
-def _build_integrations(spec: dict[str, Any]) -> IntegrationParams | None:
+def _build_integrations(spec: dict[str, Any]) -> IntegrationsSpec | None:
     raw = spec.get("integrations")
     if not raw:
         return None
-    wandb = raw.get("wandb")
-    wandb_params = None
-    if wandb:
-        secret = wandb.get("api_key_secret")
-        wandb_params = WandBParams(
-            project=wandb.get("project"),
-            api_key_secret=SecretRef(secret) if isinstance(secret, str) else secret,
-        )
-    return IntegrationParams(wandb=wandb_params, mlflow=raw.get("mlflow"))
+    return IntegrationsSpec.model_validate(raw)
 
 
 def automodel_spec_to_compiler_output(spec: dict[str, Any] | BaseModel) -> CustomizationJobOutput:

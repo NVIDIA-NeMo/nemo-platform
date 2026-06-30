@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 
@@ -18,9 +19,6 @@ EVALUATION_CONTEXT: dict[str, Any] = {
     "evaluation_id": "chat-eval",
     "evaluation_sha": "chat-eval-sha",
     "evaluation_run_id": "evalrun-chat-001",
-    "dataset_id": "chat-dataset",
-    "dataset_name": "Chat Dataset",
-    "dataset_version": "v1",
     "test_case_id": "chat-case-001",
     "metadata": {"source": "chat-completions-test"},
 }
@@ -53,7 +51,8 @@ def _openai_response(**overrides: Any) -> dict[str, Any]:
     response = {
         "id": "chatcmpl-test-abc123",
         "object": "chat.completion",
-        "created": 1778698885,
+        # Keep within the spans list default 30-day started_at lookback.
+        "created": int(datetime.now(timezone.utc).timestamp()),
         "model": "gpt-4o-mini-2024-08-06",
         "choices": [
             {
@@ -261,9 +260,6 @@ def test_chat_completions_ingest_accepts_deprecated_evaluation_context(client: T
         "evaluation_id": EVALUATION_CONTEXT["evaluation_id"],
         "evaluation_sha": EVALUATION_CONTEXT["evaluation_sha"],
         "evaluation_run_id": EVALUATION_CONTEXT["evaluation_run_id"],
-        "dataset_id": EVALUATION_CONTEXT["dataset_id"],
-        "dataset_name": EVALUATION_CONTEXT["dataset_name"],
-        "dataset_version": EVALUATION_CONTEXT["dataset_version"],
         "test_case_id": EVALUATION_CONTEXT["test_case_id"],
         "metadata": EVALUATION_CONTEXT["metadata"],
     }
@@ -447,12 +443,12 @@ def test_chat_completions_ingest_accepts_both_context_shapes_with_experiment_con
 
 
 def _create_experiment(client: TestClient, name: str) -> str:
+    group_id = _ensure_group(client)
     response = client.post(
         "/apis/intake/v2/workspaces/default/experiments",
         json={
             "name": name,
-            "agent_name": "sample-agent",
-            "agent_version": "1.0.0",
+            "experiment_group_id": group_id,
             "dataset_name": "chat-dataset",
             "dataset_version": "v1",
         },
@@ -464,3 +460,14 @@ def _create_experiment(client: TestClient, name: str) -> str:
     existing = client.get(f"/apis/intake/v2/workspaces/default/experiments/{name}")
     assert existing.status_code == 200, existing.text
     return existing.json()["name"]
+
+
+def _ensure_group(client: TestClient, name: str = "chat-completions-test-group") -> str:
+    response = client.post(
+        "/apis/intake/v2/workspaces/default/experiment-groups",
+        json={"name": name},
+    )
+    if response.status_code == 409:
+        response = client.get(f"/apis/intake/v2/workspaces/default/experiment-groups/{name}")
+    response.raise_for_status()
+    return response.json()["id"]

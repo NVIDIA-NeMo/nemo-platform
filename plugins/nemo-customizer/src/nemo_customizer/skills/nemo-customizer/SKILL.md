@@ -27,6 +27,7 @@ triggers:
 not-for:
   - nemo-build-agent (agent scaffold/deploy, not weight training)
   - nemo-explore (agent design only)
+  - nemo-setup (platform install; route here when CLI resolution fails)
   - safe-synthesizer (tabular synthetic data training)
 compatibility: >-
   Requires nemo-customizer-plugin and a customization contributor (`nemo.customization.contributors`).
@@ -50,9 +51,56 @@ End-to-end **SFT + LoRA** on NeMo Platform. Two backend plugins ship in this rep
 
 Decision rule below in **Plugin pick**. Batch shell work; reuse resources with `--exist-ok`; skip CLI `--help` unless a command fails.
 
+## Pre-flight — CLI resolution
+
+Run from the **nemo-platform** git root (top-level `pyproject.toml`), not a plugin subfolder. Example commands below use `nemo …` — resolve the invocation **once** before any other step:
+
+```bash
+cd /path/to/nemo-platform
+if command -v nemo >/dev/null 2>&1; then
+  echo "nemo"
+elif command -v uv >/dev/null 2>&1 && uv run nemo --help >/dev/null 2>&1; then
+  echo "uv run nemo"
+else
+  echo "CLI_NOT_FOUND"
+fi
+```
+
+| Result | Action |
+|--------|--------|
+| `nemo` | Use `nemo …` for all commands in this workflow |
+| `uv run nemo` | Prefix every command with `uv run` (repo dev checkout without `nemo` on `PATH`) |
+| `CLI_NOT_FOUND` | Stop. Route to **nemo-setup** (`make bootstrap` then `nemo setup` from the nemo-platform repo root). Do not continue. |
+
+## Authentication (optional)
+
+Platform auth is **not required** to run customization when the cluster has authentication disabled. Check with `nemo auth status` — if it reports authentication is disabled, skip login and proceed.
+
+When auth **is** enabled on the connected platform, API calls need credentials:
+
+| Situation | Action |
+|-----------|--------|
+| Auth disabled | Skip login |
+| Auth enabled, unsigned JWT allowed (typical local dev: `auth.allow_unsigned_jwt: true`) | `nemo auth login --unsigned-token --email <user email or admin@example.com>` |
+| Auth enabled, OIDC configured | `nemo auth login` (or `--username` / `--password` for non-interactive) |
+| 401/403 on any platform call | Run the matching login above, then retry |
+
+Use `admin@example.com` unless the user specifies another email. Run `nemo auth status` after login to confirm.
+
+## HuggingFace token (gated models)
+
+Gated HF repos (Llama, Gemma, Mistral instruct, …) need a platform secret (convention: **`hf-token`**) referenced as **`token_secret`** on the **model fileset** — not in job JSON (unlike W&B's `api_key_secret`). The Files service does **not** read your local `~/.cache/huggingface` or shell `HF_TOKEN`.
+
+| Model access | Action |
+|--------------|--------|
+| Public (e.g. `Qwen/Qwen3-1.7B`) | Skip; omit `token_secret` on the fileset |
+| Gated / private HF repo | Before model fileset creation or job submit: `nemo secrets list --workspace default` and confirm `hf-token` exists. If missing, **ask the user** for their HF token and **stop** — do not create the fileset or submit until wired up. |
+
+Full create/update commands, fileset `token_secret`, license acceptance, and download-phase errors: `references/troubleshooting.md` § **Gated HuggingFace models**.
+
 ## Plugin pick
 
-1. After `nemo auth login`, run `uv run nemo jobs list-execution-profiles -f json` (see `references/troubleshooting.md` for parsing).
+1. Run `nemo jobs list-execution-profiles -f json` (login first only if auth is enabled — see **Authentication**; see `references/troubleshooting.md` for parsing).
 2. If the user explicitly asked for Unsloth → **`unsloth`**.
 3. Else if the user explicitly asked for Automodel → **`automodel`**.
 4. Else if any profile has `provider: gpu` or `gpu_distributed` → **`automodel`** (default).
@@ -62,14 +110,14 @@ Training never runs inside the `nemo` CLI process. After `submit`, the platform'
 
 ## Gotchas
 
-- Run all `uv run` commands from the **nemo-platform** git root (top-level `pyproject.toml`), not a plugin subfolder.
-- Set `NEMO_BASE_URL` (or `NMP_BASE_URL`) only when the user gives a platform URL; default `http://127.0.0.1:8080` (same as `http://localhost:8080`). Track whether the user **overrode** the base URL — see **Platform unreachable** below.
+- Resolve the CLI per **Pre-flight — CLI resolution** before any `nemo …` command; run from the **nemo-platform** git root, not a plugin subfolder.
+- Set `NMP_BASE_URL` only when the user gives a platform URL; default `http://127.0.0.1:8080` (same as `http://localhost:8080`). The `nemo` CLI reads this env var (see SDK `NMP_BASE_URL`). Track whether the user **overrode** the base URL — see **Platform unreachable** below.
 - **Platform unreachable** — if any platform API call fails with a connection error (`Connection error`, timeout, refused):
-  - **User gave a custom URL** (e.g. `10.0.0.51:8080`) or you exported a non-default `NEMO_BASE_URL` / `NMP_BASE_URL`: stop and tell the user the platform is not reachable at that address. Do **not** offer to start local services.
+  - **User gave a custom URL** or you exported a non-default `NMP_BASE_URL`: stop and tell the user the platform is not reachable at that address. Do **not** offer to start local services.
   - **Default URL only** (no user override): **ask** whether to start the platform locally. If they agree, from the **nemo-platform** git root run in the **background**:
 
     ```bash
-    uv run nemo services run \
+    nemo services run \
       --host 0.0.0.0 \
       --port 8080 \
       --controllers jobs,entities,models \
@@ -88,35 +136,42 @@ Training never runs inside the `nemo` CLI process. After `submit`, the platform'
 - Skill **defaults** (`micro_batch_size` 1, `global_batch_size` 4) are safe on unknown VRAM. When the user has **≥48 GB** on one GPU, use **Batch sizing** instead of defaults. Unsloth's analogues are `batch.per_device_train_batch_size` and `batch.gradient_accumulation_steps` (effective batch = product).
 - **Unsloth training is single-GPU per job** (inside the container). `hardware.gpus` sets `CUDA_VISIBLE_DEVICES` before `import torch` — **selection, not reservation**. No `parallelism`/TP/PP block in job JSON. Multi-GPU sharding → use automodel. Pass `--profile <name>` on `unsloth submit` when the default `gpu` profile is wrong (automodel sets `training.execution_profile` in JSON instead).
 - **Unsloth validation defaults** — when `dataset.validation_path` is set and `schedule.eval_steps` is omitted, the trainer runs validation once per effective epoch automatically. Report final `metrics.val_loss` from job status (see **Report to user**). Set `eval_steps` explicitly to override cadence.
-- **Do not use local `docker info`** to pick automodel vs unsloth. After auth, run `uv run nemo jobs list-execution-profiles -f json` against the user's platform (see `references/troubleshooting.md`). Default output is a table — **`-f json` is required** for scripting; parse **stdout only** (do not pipe `2>&1` into `json.load`).
+- **Do not use local `docker info`** to pick automodel vs unsloth. Run `nemo jobs list-execution-profiles -f json` against the user's platform (login first only if auth is enabled — see **Authentication**; see `references/troubleshooting.md`). Default output is a table — **`-f json` is required** for scripting; parse **stdout only** (do not pipe `2>&1` into `json.load`).
 - **Do not merge stderr into stdout when parsing JSON** — `submit`, `explain`, and `-f json` commands write **JSON on stdout**; harmless warnings like `Configuration file not found, using defaults` go to **stderr**. Piping with **`2>&1`** before `json.load` raises `JSONDecodeError` even when submit **succeeded** — a common cause of **duplicate jobs** when the agent re-submits after a parse error. Parse stdout only; redirect stderr if needed (`2>/dev/null`). See `references/troubleshooting.md` § **Parsing CLI JSON**.
-- For submit/image/plugin errors (both backends), read `references/troubleshooting.md`. Unsloth needs the `nmp-unsloth-training` container image on the **platform host's** Docker daemon (see `services/unsloth/docker/README.md`).
-- **Missing training image on a remote platform** — if the user gave a non-localhost `NEMO_BASE_URL` / `NMP_BASE_URL` (e.g. `10.0.0.51:8080`) and the job errors with `Failed to pull image`, `manifest unknown`, or missing `nmp-unsloth-training` / automodel training image: **do not** run `docker build`, `docker pull`, or `docker buildx bake` on the agent machine. Report with **Report to user** (use **Output adapter fileset (planned):** on error), then append on-target build steps from `references/troubleshooting.md` § **Missing training images**.
+- For submit/image/plugin errors (both backends), read `references/troubleshooting.md`. Unsloth needs the `nmp-unsloth-training` container image on the **platform host's** Docker daemon (see `docker/unsloth/README.md`).
+- **Missing training image on a remote platform** — if the user gave a non-localhost `NMP_BASE_URL` and the job errors with `Failed to pull image`, `manifest unknown`, or missing `nmp-unsloth-training` / automodel training image: **do not** run `docker build`, `docker pull`, or `docker buildx bake` on the agent machine. Report with **Report to user** (use **Output adapter fileset (planned):** on error), then append on-target build steps from `references/troubleshooting.md` § **Missing training images**.
+- **Gated HuggingFace models** (Llama, Gemma, …) — confirm `hf-token` + fileset `token_secret` before submit; download fails with `Failed to access upstream storage` / 502 when missing. See **HuggingFace token (gated models)** and `references/troubleshooting.md` § **Gated HuggingFace models**.
+- **Post-training eval format** — use the same CHAT `messages` JSONL as training. **Do not** flatten rows to `prompt`/`expected` for the evaluator. Send `messages[:-1]` at inference (exclude final assistant label); score against `messages[-1].content`. See `references/post-training-eval.md` and `references/eval_helpers.py`.
+- **LoRA adapters load automatically for eval** — when a LoRA job completes (`save_method: lora`), the adapter is registered on the base model entity and hot-reloaded on any **READY** deployment with `lora_enabled: true`. **Do not** create or update deployments before LoRA eval. **Full SFT** (`finetuning_type: all_weights`) and **merged checkpoints** (`merged_16bit` / `merged_4bit`) register a new **model** entity at `output.name` — **deploy that entity for inference** before chat or eval; full weights are not hot-reloaded onto the base deployment. For LoRA eval, route through the **provider** gateway (`/provider/<name>/-/v1` with `model: default--<adapter>`); the model-entity path (`/model/<entity>/-/v1`) always hits the base model. See `references/post-training-eval.md` § **Request routing (base vs LoRA)**.
 
 ## Workflow
 
 Common steps then **branch by plugin pick**:
 
 ```text
-- [ ] export NEMO_BASE_URL (if user provided endpoint); note whether base URL is user-overridden
-- [ ] cd nemo-platform && uv run nemo auth login --unsigned-token --email <user email or admin@example.com>
-- [ ] uv run nemo jobs list-execution-profiles -f json — apply Plugin pick rules above
+- [ ] Resolve CLI (Pre-flight — CLI resolution); cd nemo-platform
+- [ ] export NMP_BASE_URL (if user provided endpoint); note whether base URL is user-overridden
+- [ ] nemo auth status — skip login if auth disabled; if auth enabled and unsigned JWT allowed, `nemo auth login --unsigned-token --email <…>`; if OIDC, `nemo auth login`
+- [ ] nemo jobs list-execution-profiles -f json — apply Plugin pick rules above (retry login on 401/403)
 - [ ] On connection error: default URL → ask to start platform (see Platform unreachable); custom URL → report unreachable and stop
 - [ ] Convert HF dataset → /tmp/train-data/*.jsonl (see references/hf-conversion.md)
 - [ ] Create dataset fileset (--exist-ok), upload train.jsonl (+ validation.jsonl), nemo files list to verify
-- [ ] Create HF weights fileset + model entity if missing (--exist-ok)
+- [ ] Gated HF base model? → confirm `hf-token` exists; ask user and stop if missing (see HuggingFace token + troubleshooting § Gated HuggingFace models)
+- [ ] Create HF weights fileset + model entity if missing (--exist-ok; gated repos need `token_secret` on fileset — see troubleshooting)
 
 # automodel branch (submit → Docker GPU job)
 - [ ] Write /tmp/job.json (batch sizing for ≥48 GB GPU; else Defaults table)
-- [ ] uv run nemo customization automodel submit /tmp/job.json --workspace default
+- [ ] nemo customization automodel submit /tmp/job.json --workspace default
 - [ ] Poll until top-level terminal (`poll_customization_job.sh`; default 15s interval, or 30–60s manual polls)
 - [ ] Report using output template below
+- [ ] Optional: compare base vs adapter on validation — `references/eval_helpers.py …` (LoRA only; CHAT format; adapters hot-reload automatically; see `references/post-training-eval.md`)
 
 # unsloth branch (submit → Docker GPU job)
 - [ ] Write /tmp/job.json using the UnslothJobInput shape (see Fast path — unsloth)
-- [ ] uv run nemo customization unsloth submit /tmp/job.json --workspace default [--profile <gpu-profile>]
+- [ ] nemo customization unsloth submit /tmp/job.json --workspace default [--profile <gpu-profile>]
 - [ ] Poll until top-level terminal (`poll_customization_job.sh unsloth-<job-id>`; default 15s interval)
 - [ ] Report using output template below
+- [ ] Optional: compare base vs adapter on validation — `references/eval_helpers.py …` (LoRA only; CHAT format; adapters hot-reload automatically; see `references/post-training-eval.md`)
 ```
 
 ## Fast path — automodel
@@ -126,35 +181,37 @@ Substitute `<hf-repo>`, `<hf-dataset>`, `<model-entity>`, `<weights-fileset>`, `
 **Setup**
 
 ```bash
-export NEMO_BASE_URL=http://127.0.0.1:8080   # user override only
+export NMP_BASE_URL=http://127.0.0.1:8080   # user override only
 cd /path/to/nemo-platform
-uv run nemo auth login --unsigned-token --email admin@example.com
-uv run nemo jobs list-execution-profiles -f json   # platform GPU profiles → automodel; set training.execution_profile if needed
+nemo auth status   # skip login if auth disabled; if enabled + unsigned JWT allowed → login --unsigned-token --email admin@example.com
+nemo jobs list-execution-profiles -f json   # platform GPU profiles → automodel; set training.execution_profile if needed
 ```
 
 **1. Dataset** — convert per `references/hf-conversion.md`, then:
 
 ```bash
 DATASET=<dataset-fileset>   # e.g. commonsense_qa
-uv run nemo files filesets create "$DATASET" --workspace default --purpose dataset --exist-ok
-uv run nemo files upload /tmp/train-data/train.jsonl "$DATASET" --workspace default --remote-path train.jsonl
+nemo files filesets create "$DATASET" --workspace default --purpose dataset --exist-ok
+nemo files upload /tmp/train-data/train.jsonl "$DATASET" --workspace default --remote-path train.jsonl
 # validation.jsonl if present
-uv run nemo files list "$DATASET" --workspace default
+nemo files list "$DATASET" --workspace default
 ```
 
-**2. Model** — skip if entity exists (`nemo models list --workspace default`).
+**2. Model** — skip if entity exists (`nemo models list --workspace default`). For **gated** HF repos, complete **HuggingFace token (gated models)** first — see `references/troubleshooting.md` § **Gated HuggingFace models** for `token_secret` on the fileset.
 
 ```bash
 WEIGHTS=<weights-fileset>   # e.g. qwen3-1.7b
 MODEL_ENTITY=<model-entity>   # Models API entity (not dataset fileset, not HF id)
 HF_REPO=<hf-repo>           # e.g. Qwen/Qwen3-1.7B
 
-uv run nemo files filesets create "$WEIGHTS" --workspace default --purpose model --exist-ok \
+nemo files filesets create "$WEIGHTS" --workspace default --purpose model --exist-ok \
   --storage '{"type":"huggingface","repo_id":"'"$HF_REPO"'","repo_type":"model","revision":"main"}'
 
-uv run nemo models create "$MODEL_ENTITY" --workspace default --exist-ok \
+nemo models create "$MODEL_ENTITY" --workspace default --exist-ok \
   --input-data '{"name":"'"$MODEL_ENTITY"'","fileset":"default/'"$WEIGHTS"'","custom_fields":{"hf_model_id":"'"$HF_REPO"'"}}'
 ```
+
+For gated repos, add `"token_secret":"hf-token"` to the `--storage` JSON (after creating the secret). See troubleshooting § **Gated HuggingFace models**.
 
 **3. Job JSON** — write `/tmp/job.json`. `model` is the **registered model entity** (`default/<model-entity>`), not an HF repo id or dataset fileset. Full hyperparameter reference: `references/hyperparameters.md`.
 
@@ -182,11 +239,11 @@ uv run nemo models create "$MODEL_ENTITY" --workspace default --exist-ok \
 **4. Submit and poll**
 
 ```bash
-uv run nemo customization automodel submit /tmp/job.json --workspace default
+nemo customization automodel submit /tmp/job.json --workspace default
 bash plugins/nemo-customizer/src/nemo_customizer/skills/nemo-customizer/scripts/poll_customization_job.sh automodel-<job-id>
 ```
 
-Read `<job-id>` from the `"name"` field in submit stdout (JSON). **Do not use `2>&1`** before `json.load` — warnings on stderr break parsing; see Gotchas. Optional interval override: append seconds (e.g. `… 30`). Or poll manually: `uv run nemo jobs get-status automodel-<job-id>` every 30–60s.
+Read `<job-id>` from the `"name"` field in submit stdout (JSON). **Do not use `2>&1`** before `json.load` — warnings on stderr break parsing; see Gotchas. Optional interval override: append seconds (e.g. `… 30`). Or poll manually: `nemo jobs get-status automodel-<job-id>` every 30–60s.
 
 ## Fast path — unsloth
 
@@ -230,11 +287,11 @@ If the model uses `messages` chat format (preferred when the tokenizer has a cha
 **4. Submit and poll**
 
 ```bash
-uv run nemo customization unsloth submit /tmp/job.json --workspace default
+nemo customization unsloth submit /tmp/job.json --workspace default
 bash plugins/nemo-customizer/src/nemo_customizer/skills/nemo-customizer/scripts/poll_customization_job.sh unsloth-<job-id>
 ```
 
-Read `<job-id>` from the `"name"` field in submit stdout (JSON). **Do not use `2>&1`** before `json.load` — warnings on stderr break parsing; see Gotchas. Optional interval override: append seconds (e.g. `… 30`). Or poll manually: `uv run nemo jobs get-status unsloth-<job-id>` every 30–60s. If submit fails on an unknown profile, re-list execution profiles and pass `--profile <name>` on submit (default is `gpu`).
+Read `<job-id>` from the `"name"` field in submit stdout (JSON). **Do not use `2>&1`** before `json.load` — warnings on stderr break parsing; see Gotchas. Optional interval override: append seconds (e.g. `… 30`). Or poll manually: `nemo jobs get-status unsloth-<job-id>` every 30–60s. If submit fails on an unknown profile, re-list execution profiles and pass `--profile <name>` on submit (default is `gpu`).
 
 If you try `nemo customization unsloth run …`, the CLI hard-fails with a pointer to `submit`.
 
@@ -248,7 +305,7 @@ Shared:
 | Plugin | `automodel` (override per **Plugin pick**) |
 | Training | SFT + LoRA, `max_seq_length` 2048 |
 | Schedule | `epochs` ≥ 1; omit `max_steps` |
-| Auth email | `admin@example.com` unless user specifies |
+| Auth email (when login required) | `admin@example.com` unless user specifies |
 
 Automodel-specific:
 
@@ -333,7 +390,7 @@ Pick the path by whether the **base model fits in ~48 GB on one GPU** (LoRA or f
 "batch": { "global_batch_size": 8, "micro_batch_size": 1 }
 ```
 
-`execution_profile` is usually still **`"gpu"`** — confirm with `uv run nemo jobs list-execution-profiles -f json`.
+`execution_profile` is usually still **`"gpu"`** — confirm with `nemo jobs list-execution-profiles -f json`.
 
 **Example — Qwen3-8B LoRA, 2× 48 GB (fits one GPU):** single-GPU **micro 16 / GBS 64** → 2-GPU data parallel **micro 16 / GBS 128**, `learning_rate` `8e-5`.
 
@@ -346,7 +403,7 @@ Pick the path by whether the **base model fits in ~48 GB on one GPU** (LoRA or f
 | 4B–8B | 1 | 2 | `5e-6` |
 | >8B | 1 | 1 | lower LR or use TP / shorter seq |
 
-Output type is **model** (full checkpoint), not adapter. Expect much longer runs than LoRA at the same batch.
+Output type is **model** (full checkpoint), not adapter. Expect much longer runs than LoRA at the same batch. **Inference:** deploy `default/<output.name>` as a new model entity — full SFT does not hot-reload onto the base model's LoRA deployment.
 
 ### `max_seq_length` scaling
 
@@ -405,14 +462,14 @@ There is no `parallelism` block, no TP / PP / DP, no GBS divisibility math. Mult
 
 `load_in_4bit: true` (default) keeps base weights in 4-bit, which is what makes the "smaller per-device batch on bigger models" rule milder than vanilla HF. If you raise `per_device_train_batch_size` and hit OOM (exit 137) or training crashes (exit 1), halve `per_device_train_batch_size` first and double `gradient_accumulation_steps` to keep the effective batch the same.
 
-**Save method.** Default `output.save_method: "lora"` (adapter only — small, fast, deploy-friendly). Use `"merged_16bit"` if the user wants a full-weight checkpoint to deploy without an adapter loader; `"merged_4bit"` only when storage is tight (lossy). Merged methods require `training.finetuning_type: "lora"`.
+**Save method.** Default `output.save_method: "lora"` (adapter only — small, fast, hot-reloads on LoRA-enabled deployments). Use `"merged_16bit"` if the user wants a full-weight checkpoint to deploy as a standalone model entity; `"merged_4bit"` only when storage is tight (lossy). Merged methods require `training.finetuning_type: "lora"`. Merged and full SFT outputs must be **deployed for inference** — they do not hot-reload onto the base adapter deployment.
 
 **Tuning loop (unsloth):**
 
 | Symptom | Action |
 |---------|--------|
 | CUDA OOM | Halve `per_device_train_batch_size` (keep effective batch via `gradient_accumulation_steps`); then lower `model.max_seq_length`; then drop `lora.rank` to 8 |
-| Missing `nmp-unsloth-training` image | Build/pull the Unsloth container image — see `references/troubleshooting.md` and `services/unsloth/docker/README.md` |
+| Missing `nmp-unsloth-training` image | Build/pull the Unsloth container image — see `references/troubleshooting.md` and `docker/unsloth/README.md` |
 | `Unsloth training requires platform.runtime: docker` | Platform not using the Docker executor | Start platform with `platform.runtime: docker` and a GPU execution profile; training runs in containers on that host's Docker daemon |
 | Loss not moving | Raise `learning_rate` one step (e.g. `5e-5` → `1e-4`); confirm `apply_chat_template` matches the data shape; check the LoRA `target_modules` covers the right layers (defaults are Unsloth's 7-module set) |
 
@@ -454,13 +511,13 @@ After polling reaches a **terminal** status (`completed`, `error`, or `cancelled
 | **Final validation loss** | Last entry in `status_details.metrics.val_loss`. If the list is empty, report `n/a (no validation run)` and note whether validation data was configured. Automodel validates once per epoch by default. Unsloth validates once per epoch when `dataset.validation_path` is set and `schedule.eval_steps` is omitted (platform default: `max(1, effective_steps - 1)`). |
 | **Notes** | See **Notes by status** below |
 
-**Metrics extraction** — after polling, always run `uv run nemo jobs get-status <job-id>` and read `status_details.metrics` (both backends accumulate `train_loss` and `val_loss` time series there). Include both final losses in the report even when status is `error` if training completed before the failure (e.g. entity registration failed after upload).
+**Metrics extraction** — after polling, always run `nemo jobs get-status <job-id>` and read `status_details.metrics` (both backends accumulate `train_loss` and `val_loss` time series there). Include both final losses in the report even when status is `error` if training completed before the failure (e.g. entity registration failed after upload).
 
 **Notes by status**
 
 | Status | Notes |
 |--------|-------|
-| `completed` | Brief success summary (e.g. adapter registered on model entity). When `metrics.train_loss` has ≥2 entries, add a loss-drop sentence: *Loss dropped from \<first value, 1 dp\> at step 1 to \<last value, 3 dp\> at step \<N\>; validation loss was \<val or n/a\>.* |
+| `completed` | Brief success summary. LoRA (`save_method: lora`): adapter registered on base model entity. Full SFT / merged checkpoint: new model entity at `output.name`. When `metrics.train_loss` has ≥2 entries, add a loss-drop sentence: *Loss dropped from \<first value, 1 dp\> at step 1 to \<last value, 3 dp\> at step \<N\>; validation loss was \<val or n/a\>.* Append **Using the adapter** (LoRA) or **Using the fine-tuned model** (full SFT / merged) with discovered provider name and concrete gateway URLs (see below). |
 | `error` | Quote `error_details.message` or the failing step; note setup that succeeded before the failure (auth, dataset upload, submit). |
 | `cancelled` | Cancellation reason if available. |
 
@@ -527,21 +584,113 @@ After polling reaches a **terminal** status (`completed`, `error`, or `cancelled
 | Output save method | lora |
 ```
 
-**Using the adapter (`completed` only)** — after **Training configuration**, run `uv run nemo models get <model-entity> --workspace default` (parse stdout only) to confirm the adapter is listed under `adapters`. Append this section:
+**Using the output (`completed` only)** — after **Training configuration**, branch on output type:
+
+| Output | When | Report section |
+|--------|------|----------------|
+| LoRA adapter | `save_method: lora` (default) | **Using the adapter** — below |
+| Full model | `finetuning_type: all_weights`, or `save_method: merged_16bit` / `merged_4bit` | **Using the fine-tuned model** — below |
+
+### Using the adapter (LoRA / `save_method: lora`)
+
+Run these discovery commands (parse stdout only; do not pipe `2>&1` into JSON parsers):
+
+1. `nemo models get <model-entity> --workspace default` — confirm `<output.name>` appears under `adapters` with `enabled: true`.
+2. `nemo inference providers list --workspace default -f json` — pick a **READY** provider whose `served_models` includes `default/<model-entity>` (base entity). Record its `name` as `<provider>` (often matches the deployment name).
+
+On a deployment with `lora_enabled: true`, the adapter is **hot-reloaded automatically** — no new deployment, deployment update, or provider reconfiguration before inference or post-training eval. Append this section with **concrete URLs and provider name** from discovery:
 
 ```markdown
 ### Using the adapter
 
-The adapter `<output.name>` is attached to `default/<model-entity>`. List adapters with:
+The adapter `<output.name>` is registered on `default/<model-entity>`. Weights are hot-reloaded on LoRA-enabled deployments serving the **base** entity — no new deployment or provider update after training.
+
+#### Request routing (base vs LoRA)
+
+| Target | Gateway path | OpenAI base URL | Request `"model"` field |
+|--------|--------------|-----------------|-------------------------|
+| **Base** weights | model-entity | `$NMP_BASE_URL/apis/inference-gateway/v2/workspaces/default/model/<model-entity>/-/v1` | `default/<model-entity>` |
+| **LoRA adapter** | **provider** | `$NMP_BASE_URL/apis/inference-gateway/v2/workspaces/default/provider/<provider>/-/v1` | `default--<output.name>` |
+
+**Common mistake:** posting to the model-entity URL with `"model": "default--<output.name>"` still runs the **base** model. Base-vs-adapter eval will look identical until LoRA requests use the **provider** URL above. See `references/post-training-eval.md` § **Request routing (base vs LoRA)**.
+
+#### Chat inference (CHAT-trained models)
+
+Match training context at inference — send **`messages[:-1]`** (all turns except the final assistant label). Single-turn rows are just the user message; multi-turn rows keep prior user/assistant history.
+
+| Setting | Value | Why |
+|---------|-------|-----|
+| `messages` | All turns except the final assistant label from the JSONL row | Same decode path as SFT |
+| `max_tokens` | `64` for short assistant labels | Training targets are brief (e.g. MCQA choice text) |
+| `temperature` | `0` | Reproducible eval / regression checks |
+| `chat_template_kwargs.enable_thinking` | `false` for Qwen3 short-answer SFT | Thinking mode needs extra tokens and changes output shape vs training |
+
+#### Example — LoRA adapter via provider
 
 \`\`\`bash
-export NEMO_BASE_URL=<platform-url>   # omit line when using default localhost
-cd /path/to/nemo-platform
-uv run nemo models get <model-entity> --workspace default
+export NMP_BASE_URL=<platform-url>   # omit when using default localhost
+nemo inference gateway provider post v1/chat/completions <provider> --workspace default \\
+  --body '{
+    "model": "default--<output.name>",
+    "messages": [<all turns except final assistant label from the eval row>],
+    "max_tokens": 64,
+    "temperature": 0,
+    "chat_template_kwargs": {"enable_thinking": false}
+  }'
 \`\`\`
+
+#### Example — base model via model-entity (comparison)
+
+\`\`\`bash
+export NMP_BASE_URL=<platform-url>
+nemo inference gateway model post v1/chat/completions <model-entity> --workspace default \\
+  --body '{
+    "model": "default/<model-entity>",
+    "messages": [<same prompt turns as LoRA example — exclude final assistant label>],
+    "max_tokens": 64,
+    "temperature": 0,
+    "chat_template_kwargs": {"enable_thinking": false}
+  }'
+\`\`\`
+
+#### Post-training eval (optional)
+
+Validation loss from training is **not** accuracy. To compare base vs adapter on the validation split with correct routing:
+
+\`\`\`bash
+cd /path/to/nemo-platform
+uv run python plugins/nemo-customizer/src/nemo_customizer/skills/nemo-customizer/references/eval_helpers.py \\
+  --model-entity <model-entity> \\
+  --adapter <output.name> \\
+  --provider <provider> \\
+  --dataset-fileset <dataset-fileset> \\
+  --split validation.jsonl
+\`\`\`
+
+Uses CHAT `messages` rows unchanged from the training fileset (`messages[:-1]` at inference). Repeat `--adapter` for multi-adapter compare. `--provider` is optional when a READY provider is auto-discovered. Set `NMP_BASE_URL` (or pass `--base-url`) when the platform is not localhost. LoRA only — full SFT / merged outputs need a deployed model entity (see **Using the fine-tuned model**).
 ```
 
-Use the user's platform URL in `NEMO_BASE_URL` when they overrode it; omit the export line for default `http://127.0.0.1:8080`. The JSON `adapters` array shows `name`, `fileset`, `finetuning_type`, and `lora_config` for each registered adapter.
+### Using the fine-tuned model (full SFT / merged checkpoint)
+
+When `finetuning_type: all_weights` or `save_method` is `merged_16bit` / `merged_4bit`, the job registers a **model** entity at `output.name` with full fine-tuned weights. **Deploy that entity before inference or eval** — full checkpoints are not hot-reloaded onto the base model's LoRA deployment.
+
+1. `nemo models get <output.name> --workspace default` — confirm the fine-tuned model entity exists.
+2. Create or update an inference deployment / provider that serves `default/<output.name>` (same workflow as deploying any model entity).
+3. Append this section with the **READY** provider or deployment name and concrete gateway URL.
+
+```markdown
+### Using the fine-tuned model
+
+Fine-tuned weights are on model entity `default/<output.name>`. Unlike LoRA adapters, full checkpoints **require a new inference deployment** (or provider update) before chat or eval.
+
+| Target | Gateway path | OpenAI base URL | Request `"model"` field |
+|--------|--------------|-----------------|-------------------------|
+| Fine-tuned model | model-entity | `$NMP_BASE_URL/apis/inference-gateway/v2/workspaces/default/model/<output.name>/-/v1` | `default/<output.name>` |
+
+Use the same chat settings as LoRA inference (`messages[:-1]`, `max_tokens`, `temperature`, `enable_thinking` as appropriate). Post-training eval: run generation eval against this model-entity URL (not `eval_helpers.py --adapter`, which is LoRA-specific).
+```
+
+Use the user's platform URL in `NMP_BASE_URL` when they overrode it; omit the export line for default `http://127.0.0.1:8080`. Substitute `<provider>`, concrete URLs, and entity names with values from discovery — do not leave generic placeholders in the user-facing report. For **LoRA**, do **not** tell the user to update the deployment before calling the adapter — registration on the base model entity is sufficient. For **full SFT / merged**, tell the user they must deploy `<output.name>` before inference.
 
 **Save report to `/tmp`** — unless the user opts out, write the full Markdown report (header, **Training configuration**, **Using the adapter** when `completed`, and **Resources created** when a slug or new filesets were used) to `/tmp/fine-tune-result-<slug-or-job-suffix>.md`. Use the random slug from the run when one was assigned; otherwise use the job id suffix (e.g. `a925b07ff678`).
 
@@ -549,7 +698,9 @@ Use the user's platform URL in `NEMO_BASE_URL` when they overrode it; omit the e
 
 | Error type | Append |
 |------------|--------|
-| Missing training image + user-overridden `NEMO_BASE_URL` / `NMP_BASE_URL` | `references/troubleshooting.md` § **Missing training images** — on-target build steps, env vars, re-submit commands. **Do not** `docker build` locally for a remote platform. |
+| Missing training image + user-overridden `NMP_BASE_URL` | `references/troubleshooting.md` § **Missing training images** — on-target build steps, env vars, re-submit commands. **Do not** `docker build` locally for a remote platform. |
+| Download fails / `Failed to access upstream storage` / 502 on gated HF model | `references/troubleshooting.md` § **Gated HuggingFace models** — create/update `hf-token`, add `token_secret` to fileset, confirm HF license, re-submit. |
+| W&B not syncing / no `[launcher]` secret lines / `WandbCallback requires wandb` / wandb 401 | `references/troubleshooting.md` § **W&B / integrations not working** (jobs-launcher build, secret update, unsloth image). Setup: `references/integrations-setup.md`. |
 
 For other terminal errors, keep the same header template; put remediation detail in **Notes** or a short **Next steps** section as appropriate.
 
@@ -562,9 +713,15 @@ For other terminal errors, keep the same header template; put remediation detail
 | Field glossary, distillation/KD, schema (both backends) | `references/hyperparameters.md` (not batch sizing) |
 | Batch sizing (≥48 GB), OOM / throughput | **Batch sizing — automodel** / **Batch sizing — unsloth** above |
 | Multi-GPU same node | **Multi-GPU (same node)** under automodel batch sizing (unsloth is single-GPU) |
-| Backend choice, execution profiles, submit failure, container images, missing image on remote platform, CLI, connection errors | `references/troubleshooting.md` (§ **Parsing CLI JSON** for `2>&1` / `json.load`) |
+| Backend choice, execution profiles, submit failure, container images, missing image on remote platform, gated HF auth / download 502, CLI, connection errors | `references/troubleshooting.md` (§ **Parsing CLI JSON** for `2>&1` / `json.load`; § **Gated HuggingFace models** for `hf-token`) |
 | Live JSON schema | `uv run nemo customization automodel explain` / `uv run nemo customization unsloth explain` |
-| Job JSON fixture (automodel) | `plugins/nemo-automodel/tests/fixtures/qwen3_0.6b_sft_lora.json` (ignore `max_steps` for real runs) |
-| Job JSON fixture (unsloth) | `plugins/nemo-unsloth/tests/fixtures/minimal_unsloth_sft.json` (ignore `max_steps` for real runs) |
+| Job JSON fixture (automodel, minimal) | `plugins/nemo-automodel/tests/fixtures/qwen3_0.6b_sft_lora.json` (ignore `max_steps` for real runs) |
+| Job JSON fixture (unsloth, minimal) | `plugins/nemo-unsloth/tests/fixtures/minimal_unsloth_sft.json` (ignore `max_steps` for real runs) |
+| Job JSON fixture (integrations, both backends) | `plugins/nemo-automodel/tests/fixtures/integrations_wandb_mlflow.json`, `plugins/nemo-unsloth/tests/fixtures/integrations_wandb_mlflow.json` |
+| Automodel compile-path contract configs | `services/automodel/tests/contract/input_configs/` → YAML in `output_configs/` (legacy `TrainingStepConfig` shape, not submit JSON) |
+| W&B / MLflow field reference | `references/hyperparameters.md` § **Integrations (automodel + unsloth)** |
+| W&B secret + MLflow local server + jobs-launcher | `references/integrations-setup.md` |
+| Gated HF model auth (`hf-token`, fileset `token_secret`) | `references/troubleshooting.md` § **Gated HuggingFace models** |
+| Post-training eval (base vs LoRA, CHAT format parity) | `references/post-training-eval.md`, `references/eval_helpers.py` |
 
-Related: `plugins/nemo-automodel/README.md`, `plugins/nemo-unsloth/README.md`, `plugins/nemo-customizer/docs/CUSTOMIZATION.md`, skills **`nemo-files`**, **`nemo-status`**.
+Related: `plugins/nemo-automodel/README.md`, `plugins/nemo-unsloth/README.md`, `plugins/nemo-customizer/docs/CUSTOMIZATION.md`, skills **`nemo-files`**, **`nemo-status`**, **`nemo-secrets`**.

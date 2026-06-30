@@ -1,9 +1,9 @@
-"""E2E tests for platform jobs via the subprocess executor.
+"""E2E tests for platform jobs.
 
-These tests submit jobs with CPUExecutionProviderSpec (container image + command).
-In subprocess mode, the jobs service translates cpu/default steps to subprocess
-steps automatically — the container image is discarded and the command runs
-directly on the host.
+These tests submit jobs with CPUExecutionProviderSpec (container + command).
+The container image is omitted so that:
+- On subprocess mode, the cpu→subprocess translation discards it anyway.
+- On Kubernetes/Docker, the execution profile's default_task_image is used.
 
 Ported from Platform-Deploy e2e/test_jobs.py, adapted for the SDK's TypedDict
 param types and filtered to tests that work without Docker.
@@ -12,16 +12,16 @@ param types and filtered to tests that work without Docker.
 import uuid
 
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform import NeMoPlatform, NotFoundError
+from nemo_platform_plugin.jobs.constants import DEFAULT_JOB_STORAGE_PATH
 from nmp.testing.e2e import wait_for_job_logs, wait_for_platform_job
 
 JOB_SOURCE = "e2e-test-jobs"
 
-# The image is discarded by the cpu→subprocess translation, but must be
-# syntactically valid for the API to accept the CPUExecutionProvider.
-PLACEHOLDER_IMAGE = "placeholder:unused"
-
-pytestmark = [pytest.mark.timeout(600)]
+pytestmark = [
+    pytest.mark.timeout(600),
+    pytest.mark.e2e_config("e2e/configs/local-subprocess.yaml"),
+]
 
 
 def _job_diagnostic_message(sdk: NeMoPlatform, job, workspace: str, prefix: str) -> str:
@@ -62,7 +62,6 @@ def test_basic_platform_job_lifecycle(sdk: NeMoPlatform, workspace: str):
                     "executor": {
                         "provider": "cpu",
                         "container": {
-                            "image": PLACEHOLDER_IMAGE,
                             "command": ["echo", "Hello from e2e test!"],
                         },
                     },
@@ -106,7 +105,6 @@ def test_job_logs_across_multiple_batches(sdk: NeMoPlatform, workspace: str):
                     "executor": {
                         "provider": "cpu",
                         "container": {
-                            "image": PLACEHOLDER_IMAGE,
                             "command": ["sh", "-c", log_command],
                         },
                     },
@@ -146,7 +144,6 @@ def test_job_config_is_readable(sdk: NeMoPlatform, workspace: str):
                     "executor": {
                         "provider": "cpu",
                         "container": {
-                            "image": PLACEHOLDER_IMAGE,
                             "command": ["sh", "-c", "echo 'Step config:'; cat $NEMO_JOB_STEP_CONFIG_FILE_PATH;"],
                         },
                     },
@@ -170,6 +167,10 @@ def test_job_config_is_readable(sdk: NeMoPlatform, workspace: str):
 
 def test_job_passing_data_between_steps(sdk: NeMoPlatform, workspace: str):
     """Test that data can be passed between job steps via persistent storage."""
+    persistent_storage_env = {
+        "name": "NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH",
+        "value": DEFAULT_JOB_STORAGE_PATH,
+    }
     job = sdk.jobs.create(
         workspace=workspace,
         source=JOB_SOURCE,
@@ -181,7 +182,6 @@ def test_job_passing_data_between_steps(sdk: NeMoPlatform, workspace: str):
                     "executor": {
                         "provider": "cpu",
                         "container": {
-                            "image": PLACEHOLDER_IMAGE,
                             "command": [
                                 "sh",
                                 "-c",
@@ -189,13 +189,13 @@ def test_job_passing_data_between_steps(sdk: NeMoPlatform, workspace: str):
                             ],
                         },
                     },
+                    "environment": [persistent_storage_env],
                 },
                 {
                     "name": "consume-data-step",
                     "executor": {
                         "provider": "cpu",
                         "container": {
-                            "image": PLACEHOLDER_IMAGE,
                             "command": [
                                 "sh",
                                 "-c",
@@ -203,6 +203,7 @@ def test_job_passing_data_between_steps(sdk: NeMoPlatform, workspace: str):
                             ],
                         },
                     },
+                    "environment": [persistent_storage_env],
                 },
             ],
         },
@@ -226,40 +227,52 @@ def test_job_using_secret_environment_variable(sdk: NeMoPlatform, workspace: str
     secret = sdk.secrets.create(workspace=workspace, name=secret_name, value=secret_value)
     assert secret.name is not None, "Failed to create platform secret"
 
-    job = sdk.jobs.create(
-        workspace=workspace,
-        source=JOB_SOURCE,
-        spec={"test": "value"},
-        platform_spec={
-            "steps": [
-                {
-                    "name": "secret-envvar-step",
-                    "executor": {
-                        "provider": "cpu",
-                        "container": {
-                            "image": PLACEHOLDER_IMAGE,
-                            "command": ["sh", "-c", 'echo "Secret value is: $SECRET_ENV_VAR"'],
+    secret_deleted = False
+    try:
+        job = sdk.jobs.create(
+            workspace=workspace,
+            source=JOB_SOURCE,
+            spec={"test": "value"},
+            platform_spec={
+                "steps": [
+                    {
+                        "name": "secret-envvar-step",
+                        "executor": {
+                            "provider": "cpu",
+                            "container": {
+                                "command": ["sh", "-c", 'echo "Secret value is: $SECRET_ENV_VAR"'],
+                            },
                         },
+                        "environment": [
+                            {
+                                "name": "SECRET_ENV_VAR",
+                                "from_secret": {"name": secret.name},
+                            },
+                        ],
                     },
-                    "environment": [
-                        {
-                            "name": "SECRET_ENV_VAR",
-                            "from_secret": {"name": secret.name},
-                        },
-                    ],
-                },
-            ],
-        },
-    )
+                ],
+            },
+        )
 
-    completed_job = wait_for_platform_job(sdk, job.name, workspace)
-    assert completed_job.status == "completed", _job_diagnostic_message(
-        sdk, completed_job, workspace, f"Job failed with status: {completed_job.status}"
-    )
+        completed_job = wait_for_platform_job(sdk, job.name, workspace)
+        assert completed_job.status == "completed", _job_diagnostic_message(
+            sdk, completed_job, workspace, f"Job failed with status: {completed_job.status}"
+        )
 
-    step_logs = wait_for_job_logs(sdk, job.name, workspace, min_log_count=1, timeout=120)
-    all_messages = " ".join(log.message for log in step_logs.data)
-    assert secret_value in all_messages, "Step logs do not show secret environment variable was used"
+        step_logs = wait_for_job_logs(sdk, job.name, workspace, min_log_count=1, timeout=120)
+        all_messages = " ".join(log.message for log in step_logs.data)
+        assert secret_value in all_messages, "Step logs do not show secret environment variable was used"
+
+        sdk.secrets.delete(workspace=workspace, name=secret_name)
+        secret_deleted = True
+        with pytest.raises(NotFoundError):
+            sdk.secrets.retrieve(secret_name, workspace=workspace)
+    finally:
+        if not secret_deleted:
+            try:
+                sdk.secrets.delete(workspace=workspace, name=secret_name)
+            except Exception:
+                pass
 
 
 def test_job_with_expected_failure(sdk: NeMoPlatform, workspace: str):
@@ -275,7 +288,6 @@ def test_job_with_expected_failure(sdk: NeMoPlatform, workspace: str):
                     "executor": {
                         "provider": "cpu",
                         "container": {
-                            "image": PLACEHOLDER_IMAGE,
                             "command": ["sh", "-c", "echo 'This step will fail'; exit 1;"],
                         },
                     },
@@ -305,7 +317,6 @@ def test_job_cancel_immediately(sdk: NeMoPlatform, workspace: str):
                     "executor": {
                         "provider": "cpu",
                         "container": {
-                            "image": PLACEHOLDER_IMAGE,
                             "command": ["sh", "-c", "sleep 60"],
                         },
                     },
@@ -335,7 +346,6 @@ def test_job_cancel_once_active(sdk: NeMoPlatform, workspace: str):
                     "executor": {
                         "provider": "cpu",
                         "container": {
-                            "image": PLACEHOLDER_IMAGE,
                             "command": ["sh", "-c", "sleep 300"],
                         },
                     },
@@ -358,11 +368,15 @@ def test_job_cancel_once_active(sdk: NeMoPlatform, workspace: str):
 
 
 # ---------------------------------------------------------------------------
-# Tests that require Docker backend
+# Tests that require a container backend (Docker or Kubernetes)
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skip(reason="Subprocess backend does not support pause/resume (no SIGSTOP/SIGCONT handling)")
+# AIRCORE-853: K8s reconciler checks for errored pods before checking if the
+# job is suspended. When K8s kills pods during suspension, the terminated pod
+# is misclassified as an error, causing the job to transition to 'error'
+# instead of 'paused'. Re-enable once the reconciler is fixed.
+@pytest.mark.skip(reason="AIRCORE-853: pause races with errored-pod detection in K8s reconciler")
 def test_job_pause_resume(sdk: NeMoPlatform, workspace: str):
     """Test that a job can be paused and then resumed after being paused."""
     job = sdk.jobs.create(
@@ -376,7 +390,6 @@ def test_job_pause_resume(sdk: NeMoPlatform, workspace: str):
                     "executor": {
                         "provider": "cpu",
                         "container": {
-                            "image": PLACEHOLDER_IMAGE,
                             "command": ["sh", "-c", "sleep 300"],
                         },
                     },
@@ -404,7 +417,7 @@ def test_job_pause_resume(sdk: NeMoPlatform, workspace: str):
     assert completed_job.status == "completed", f"Job failed with status: {completed_job.status}"
 
 
-@pytest.mark.skip(reason="Subprocess backend does not support pause/resume (no SIGSTOP/SIGCONT handling)")
+@pytest.mark.skip(reason="AIRCORE-853: pause races with errored-pod detection in K8s reconciler")
 def test_job_pause_and_cancel(sdk: NeMoPlatform, workspace: str):
     """Test that a job can be paused and then cancelled after being paused."""
     job = sdk.jobs.create(
@@ -418,7 +431,6 @@ def test_job_pause_and_cancel(sdk: NeMoPlatform, workspace: str):
                     "executor": {
                         "provider": "cpu",
                         "container": {
-                            "image": PLACEHOLDER_IMAGE,
                             "command": ["sh", "-c", "sleep 300"],
                         },
                     },
@@ -441,7 +453,7 @@ def test_job_pause_and_cancel(sdk: NeMoPlatform, workspace: str):
     assert cancelled_job.status == "cancelled", f"Job should have been cancelled but has status: {cancelled_job.status}"
 
 
-@pytest.mark.skip(reason="Docker-only: additional volumes require container volume mounts")
+@pytest.mark.skip(reason="Requires additional_volumes configured in Helm chart storage config")
 def test_job_using_additional_volume(sdk: NeMoPlatform, workspace: str):
     """Test that a job can use an additional volume to store data between steps."""
     job = sdk.jobs.create(
@@ -455,7 +467,6 @@ def test_job_using_additional_volume(sdk: NeMoPlatform, workspace: str):
                     "executor": {
                         "provider": "cpu",
                         "container": {
-                            "image": PLACEHOLDER_IMAGE,
                             "command": [
                                 "sh",
                                 "-c",
@@ -470,7 +481,6 @@ def test_job_using_additional_volume(sdk: NeMoPlatform, workspace: str):
                     "executor": {
                         "provider": "cpu",
                         "container": {
-                            "image": PLACEHOLDER_IMAGE,
                             "command": [
                                 "sh",
                                 "-c",
@@ -494,10 +504,7 @@ def test_job_using_additional_volume(sdk: NeMoPlatform, workspace: str):
     assert "Successfully read data from persistent storage" in step_logs.data[2].message
 
 
-@pytest.mark.skip(
-    reason="Docker-only: image validation is bypassed in subprocess mode "
-    "(cpu→subprocess translation discards the container image)"
-)
+@pytest.mark.container_only
 @pytest.mark.parametrize("bad_image", ["__invalid_ubuntu:image", "ubuntu:does-not-exist-1234"])
 def test_job_invalid_image_format(sdk: NeMoPlatform, workspace: str, bad_image: str):
     """Test that a job with a bad image fails appropriately."""

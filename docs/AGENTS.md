@@ -10,11 +10,16 @@ Run these from the repo root (they wrap `cd docs/fern && npm run …`):
 |---|---|
 | `make docs-deps` | Install docs tooling (first run on a machine) |
 | `make docs` | Local dev server (live preview) |
+| `make docs-watch` | Local dev server plus repo-level watcher for `docs/**` changes outside `docs/fern/` |
 | `make docs-check` | `fern check` + MDX validation + gated-link check (what CI runs) |
+| `make docs-check-python-snippets DOCS_PATH=...` | Syntax-check and type-check Python fenced snippets in one doc |
+| `make docs-run-notebook DOCS_PATH=...` | Execute the source notebook for one Fern `.mdx`/`.ipynb` doc using `nemo-nb` markers |
 | `make docs-broken-links` | Report broken links |
 | `make docs-fix-links` | Auto-delink references into gated pages |
 
 Local preview and the published site read the **same** `docs/fern/versions/latest.yml`, so what you see locally is what ships.
+
+Use `make docs` when you are only editing `docs/fern/` config. Use `make docs-watch` when you are editing page content elsewhere under `docs/`, since it restarts the Fern dev server when repo-level docs files change outside `docs/fern/`.
 
 ## Rules that bite if you miss them
 
@@ -36,4 +41,4 @@ These are generated; edit the source and regenerate:
 
 ## API reference
 
-The REST API reference is rendered natively by Fern from the OpenAPI spec — `docs/fern/generators.yml` points at `docs/fern/openapi/openapi.yaml` (a symlink to the generated repo-root `openapi/openapi.yaml`), surfaced by the `- api: API Reference` nav node. No `<swagger-ui>` embed.
+The REST API reference is rendered natively by Fern from a docs-only filtered OpenAPI spec. `docs/fern/openapi/openapi.yaml` is a symlink to the generated repo-root `openapi/openapi.yaml`, and `npm run prepare:openapi` writes `docs/fern/openapi/openapi.public.yaml` for Fern. `docs/fern/generators.yml` must point at the public filtered spec, surfaced by the `- api: API Reference` nav node. No `<swagger-ui>` embed.

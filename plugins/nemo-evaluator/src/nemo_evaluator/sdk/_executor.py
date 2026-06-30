@@ -10,6 +10,7 @@ from collections.abc import Sequence
 from typing import Any, TypeAlias, cast
 
 import httpx
+from nemo_evaluator.api.schemas import MetricInline
 from nemo_evaluator.filesets import FilesetRef
 from nemo_evaluator.jobs.evaluate import EvaluateInputSpec, EvaluateJob, EvaluateSpec, TargetSpec
 from nemo_evaluator.resolvers import PlatformModelResolver
@@ -22,8 +23,13 @@ from nemo_evaluator.sdk.job_resources import (
 )
 from nemo_evaluator.sdk.types import PluginDatasetInput
 from nemo_evaluator.sdk.utils import filter_benchmark_result, filter_evaluation_result
-from nemo_evaluator.shared.metric_bundles.bundles import MetricBundle, MetricBundlePackager, bundle_metric
-from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
+from nemo_evaluator.shared.metric_bundles.bundles import (
+    MetricBundle,
+    MetricBundlePackager,
+    MetricBundlePackagerPolicyError,
+    bundle_metric,
+)
+from nemo_evaluator.shared.metric_bundles.defaults import resolve_default_metric_bundle_packager
 from nemo_evaluator_sdk.datasets.loader import prepare_dataset_rows
 from nemo_evaluator_sdk.execution.config import resolve_params
 from nemo_evaluator_sdk.execution.metric_execution import run_sync
@@ -49,10 +55,6 @@ _DEFAULT_PENDING_TIMEOUT_SECONDS = 600.0
 
 EvaluateRequestSpec: TypeAlias = EvaluateInputSpec | EvaluateSpec
 SubmitTargetSpec = TargetSpec | ModelRef
-
-
-class MetricBundlePackagerPolicyError(RuntimeError):
-    """Raised when plugin backend metric packaging is not configured."""
 
 
 def _require_metric_bundle_packager(metric_bundle_packager: MetricBundlePackager | None) -> MetricBundlePackager:
@@ -119,8 +121,10 @@ def _build_evaluate_spec(
 ) -> EvaluateInputSpec:
     """Build the evaluator plugin input spec shared by local and remote execution."""
     effective_packager = _require_metric_bundle_packager(metric_bundle_packager)
+    runtime_bundles = bundle_metrics_for_spec(metrics, metric_bundle_packager=effective_packager)
     spec = {
-        "metrics": bundle_metrics_for_spec(metrics, metric_bundle_packager=effective_packager),
+        # Carry inline metrics as the wire DTO (matches EvaluateInputSpec.metrics).
+        "metrics": [MetricInline.model_validate_json(bundle.model_dump_json()) for bundle in runtime_bundles],
         "dataset": _dataset_config(dataset, params),
         "params": params.model_dump(mode="json"),
     }
@@ -304,7 +308,9 @@ class _SyncEvaluatorPluginExecutor:
             target=target,
             field_mapping=field_mapping,
             prompt_template=prompt_template,
-            metric_bundle_packager=CloudpickleMetricBundlePackager(),
+            metric_bundle_packager=resolve_default_metric_bundle_packager(
+                metric, None, allow_cloudpickle_fallback=True, action="Running"
+            ),
         )
         payload = self.run_local(
             spec=spec,
@@ -364,7 +370,9 @@ class _SyncEvaluatorPluginExecutor:
             target=target,
             field_mapping=field_mapping,
             prompt_template=prompt_template,
-            metric_bundle_packager=CloudpickleMetricBundlePackager(),
+            metric_bundle_packager=resolve_default_metric_bundle_packager(
+                metrics, None, allow_cloudpickle_fallback=True, action="Running"
+            ),
         )
         payload = self.run_local(
             spec=spec,
@@ -535,7 +543,9 @@ class _AsyncEvaluatorPluginExecutor:
             target=target,
             field_mapping=field_mapping,
             prompt_template=prompt_template,
-            metric_bundle_packager=CloudpickleMetricBundlePackager(),
+            metric_bundle_packager=resolve_default_metric_bundle_packager(
+                metric, None, allow_cloudpickle_fallback=True, action="Running"
+            ),
         )
         payload = await self.run_local(
             spec=spec,
@@ -566,7 +576,9 @@ class _AsyncEvaluatorPluginExecutor:
             target=target,
             field_mapping=field_mapping,
             prompt_template=prompt_template,
-            metric_bundle_packager=CloudpickleMetricBundlePackager(),
+            metric_bundle_packager=resolve_default_metric_bundle_packager(
+                metrics, None, allow_cloudpickle_fallback=True, action="Running"
+            ),
         )
         payload = await self.run_local(
             spec=spec,

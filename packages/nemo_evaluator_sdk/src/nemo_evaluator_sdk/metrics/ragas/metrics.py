@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 # Type-only imports for static analysis (not imported at runtime)
 if TYPE_CHECKING:
     from ragas import EvaluationDataset
-    from ragas.llms import LangchainLLMWrapper
+    from ragas.llms.base import LangchainLLMWrapper
 
 from nemo_evaluator_sdk.enums import MetricType
 from nemo_evaluator_sdk.metrics.ragas.base import BaseRAGASMetric

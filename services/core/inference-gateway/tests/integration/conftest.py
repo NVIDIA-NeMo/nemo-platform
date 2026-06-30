@@ -8,7 +8,6 @@ from __future__ import annotations
 from typing import Any, Generator
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import docker
 import pytest
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nmp.core.inference_gateway.api.dependencies import global_model_cache
@@ -31,6 +30,8 @@ from nmp.testing.docker import (
     ensure_mock_sidecar_image,
     get_worker_port_range,
 )
+
+import docker
 
 # =============================================================================
 # Constants
@@ -86,29 +87,19 @@ class MockServiceBackend(ServiceBackend):
         """No-op init for mock backend."""
         pass
 
-    async def create_model_deployment(
-        self,
-        deployment: Any,
-        config: Any,
-        model_entity: Any = None,
-    ) -> DeploymentStatusUpdate:
+    async def create_model_deployment(self, ctx: Any) -> DeploymentStatusUpdate:
         """Record call and return configured response."""
-        self.create_calls.append((deployment, config, model_entity))
+        self.create_calls.append((ctx.model_deployment, ctx.model_deployment_config, ctx.model_entity))
         return self.create_response
 
-    async def update_model_deployment(
-        self,
-        deployment: Any,
-        config: Any,
-        model_entity: Any = None,
-    ) -> DeploymentStatusUpdate:
+    async def update_model_deployment(self, ctx: Any) -> DeploymentStatusUpdate:
         """Record call and return configured response."""
-        self.update_calls.append((deployment, config, model_entity))
+        self.update_calls.append((ctx.model_deployment, ctx.model_deployment_config, ctx.model_entity))
         return self.create_response
 
-    async def get_model_deployment_status(self, deployment: Any) -> DeploymentStatusUpdate:
+    async def get_model_deployment_status(self, ctx: Any) -> DeploymentStatusUpdate:
         """Record call and return configured response."""
-        self.status_calls.append(deployment)
+        self.status_calls.append(ctx.model_deployment)
         return self.status_response
 
     async def delete_model_deployment(self, deployment: Any) -> DeploymentStatusUpdate:

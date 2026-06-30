@@ -4,7 +4,7 @@ version = "0.0.0"
 description = "NeMo Evaluator SDK"
 readme = "README.md"
 authors = [{ name = "NVIDIA", email = "nemo@nvidia.com" }]
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.11,<3.15"
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
@@ -14,6 +14,9 @@ classifiers = [
   "Topic :: Software Development",
   "License :: OSI Approved :: Apache Software License",
   "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
   "pydantic>=2.10.6",
@@ -25,12 +28,18 @@ dependencies = [
   "openai>=1.61.0",
   "sacrebleu>=2.5.1",
   "rouge_score==0.1.2",
+  "ragas==0.4.3",
+  "langchain-openai>=1.3.3",
+  "langchain-nvidia-ai-endpoints>=1.4.1,<2.0.0",
 ]
 
 [dependency-groups]
 dev = ["nemo-evaluator-plugin", "nemo-platform-sdk"]
 
 [project.optional-dependencies]
+agent-runtimes = [
+  "openai-agents[docker]>=0.17.3,<0.18",
+]
 engine = []
 nemo-platform = [
   "nemo-platform-sdk",

@@ -1,0 +1,45 @@
+name: Cleanup GHCR CI Images
+
+on:
+  schedule:
+    - cron: "43 4 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Log stale GHCR package versions without deleting them.
+        required: false
+        type: boolean
+        default: false
+      stale_hours:
+        description: Delete versions last updated more than this many hours ago.
+        required: false
+        type: number
+        default: 24
+
+permissions: {}
+
+concurrency:
+  group: ghcr-cleanup-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    name: Delete stale GHCR CI image versions
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      DRY_RUN: ${{ inputs.dry_run || 'false' }}
+      STALE_HOURS: ${{ inputs.stale_hours || '24' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Delete stale package versions
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/cleanup-ghcr-ci-images.sh

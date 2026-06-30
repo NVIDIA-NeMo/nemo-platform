@@ -281,8 +281,8 @@ def test_multiple_directly_downloaded_wheels_fail_clearly(tmp_path: Path):
         )
 
 
-def test_non_sdk_artifact_type_fails_clearly(tmp_path: Path):
-    with pytest.raises(BundleMetadataError, match="only SDK artifacts are supported"):
+def test_unsupported_artifact_type_fails_clearly(tmp_path: Path):
+    with pytest.raises(BundleMetadataError, match="unsupported artifact type"):
         bundle_metadata.write_release_bundle_metadata(
             sdk_artifacts_dir=tmp_path / "downloaded-artifacts",
             bundle_dir=tmp_path / "release-bundle",
@@ -294,8 +294,108 @@ def test_non_sdk_artifact_type_fails_clearly(tmp_path: Path):
         )
 
 
+def test_container_artifacts_become_metadata_only_entries(tmp_path: Path):
+    sdk_artifacts_dir = tmp_path / "downloaded-artifacts"
+    bundle_dir = tmp_path / "release-bundle"
+    write_wheel(sdk_artifacts_dir, "nemo-platform")
+
+    bundle_metadata.write_release_bundle_metadata(
+        sdk_artifacts_dir=sdk_artifacts_dir,
+        bundle_dir=bundle_dir,
+        selected_artifacts_json=selected_artifacts(
+            {"type": "sdk", "id": "nemo-platform"},
+            {"type": "container", "id": "nmp-automodel-tasks"},
+            {"type": "container", "id": "nmp-unsloth-training"},
+        ),
+        cadence="rc",
+        release_label="1.0.0-rc1",
+        release_date_json="null",
+        source_sha="c" * 40,
+    )
+
+    artifacts = read_manifest(bundle_dir)["artifacts"]
+    assert artifacts[1:] == [  # type: ignore[index]
+        {"type": "container", "id": "nmp-automodel-tasks", "version": "1.0.0-rc1"},
+        {"type": "container", "id": "nmp-unsloth-training", "version": "1.0.0-rc1"},
+    ]
+    # Container entries are metadata-only: no path, and nothing extra in checksums.
+    assert set(parse_checksums(bundle_dir)) == {
+        "release-manifest.json",
+        "wheels/nemo_platform-1.0.0-py3-none-any.whl",
+    }
+
+
+def test_container_only_selection_is_valid(tmp_path: Path):
+    bundle_dir = tmp_path / "release-bundle"
+    bundle_metadata.write_release_bundle_metadata(
+        sdk_artifacts_dir=tmp_path / "downloaded-artifacts",
+        bundle_dir=bundle_dir,
+        selected_artifacts_json=selected_artifacts(
+            {"type": "container", "id": "nmp-automodel-tasks"},
+            {"type": "container", "id": "nmp-unsloth-training"},
+        ),
+        cadence="release",
+        release_label="1.0.0",
+        release_date_json="null",
+        source_sha="a" * 40,
+    )
+
+    # Container-only bundle: only container entries, no wheels, checksums = manifest only.
+    assert read_manifest(bundle_dir)["artifacts"] == [
+        {"type": "container", "id": "nmp-automodel-tasks", "version": "1.0.0"},
+        {"type": "container", "id": "nmp-unsloth-training", "version": "1.0.0"},
+    ]
+    assert set(parse_checksums(bundle_dir)) == {"release-manifest.json"}
+
+
+def test_empty_selection_fails_clearly(tmp_path: Path):
+    with pytest.raises(BundleMetadataError, match="non-empty list"):
+        bundle_metadata.write_release_bundle_metadata(
+            sdk_artifacts_dir=tmp_path / "downloaded-artifacts",
+            bundle_dir=tmp_path / "release-bundle",
+            selected_artifacts_json="[]",
+            cadence="release",
+            release_label="1.0.0",
+            release_date_json="null",
+            source_sha="a" * 40,
+        )
+
+
+def test_duplicate_container_ids_fail_clearly(tmp_path: Path):
+    with pytest.raises(BundleMetadataError, match="duplicate container id: nmp-automodel-tasks"):
+        bundle_metadata.write_release_bundle_metadata(
+            sdk_artifacts_dir=tmp_path / "downloaded-artifacts",
+            bundle_dir=tmp_path / "release-bundle",
+            selected_artifacts_json=selected_artifacts(
+                {"type": "sdk", "id": "nemo-platform"},
+                {"type": "container", "id": "nmp-automodel-tasks"},
+                {"type": "container", "id": "nmp-automodel-tasks"},
+            ),
+            cadence="release",
+            release_label="1.0.0",
+            release_date_json="null",
+            source_sha="a" * 40,
+        )
+
+
+def test_unsafe_container_id_fails_clearly(tmp_path: Path):
+    with pytest.raises(BundleMetadataError, match="container id must be a safe single path segment"):
+        bundle_metadata.write_release_bundle_metadata(
+            sdk_artifacts_dir=tmp_path / "downloaded-artifacts",
+            bundle_dir=tmp_path / "release-bundle",
+            selected_artifacts_json=selected_artifacts(
+                {"type": "sdk", "id": "nemo-platform"},
+                {"type": "container", "id": "../evil"},
+            ),
+            cadence="release",
+            release_label="1.0.0",
+            release_date_json="null",
+            source_sha="a" * 40,
+        )
+
+
 def test_duplicate_selected_sdk_ids_fail_clearly(tmp_path: Path):
-    with pytest.raises(BundleMetadataError, match="duplicate SDK id: nemo-platform"):
+    with pytest.raises(BundleMetadataError, match="duplicate sdk id: nemo-platform"):
         bundle_metadata.write_release_bundle_metadata(
             sdk_artifacts_dir=tmp_path / "downloaded-artifacts",
             bundle_dir=tmp_path / "release-bundle",

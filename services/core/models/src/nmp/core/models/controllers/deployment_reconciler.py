@@ -186,20 +186,20 @@ class ModelDeploymentReconciler:
 
                 match deployment.status:
                     case "CREATED":
-                        # Use pre-fetched config and entity from context
-                        config = ctx.model_deployment_config
-                        model_entity = ctx.model_entity
-
-                        # Lambda needed to bind the config and model_entity arguments
+                        # Lambda needed to bind ctx (the reconcile context bundles
+                        # the deployment, config, and model entity).
                         await self._reconcile_individual_deployment(
                             deployment,
-                            lambda dep: backend.create_model_deployment(dep, config, model_entity),
+                            lambda _dep, _ctx=ctx: backend.create_model_deployment(_ctx),
                             "create",
                             existing_provider=ctx.model_provider,
                         )
                     case "PENDING" | "READY" | "UNKNOWN":
-                        # Check status and handle drift/backend issues
-                        status_update = await backend.get_model_deployment_status(deployment)
+                        # Check status and handle drift/backend issues. The ctx
+                        # carries the config + entity so backends that advance
+                        # creation in the status path (k8s vLLM) can compile the
+                        # serving objects.
+                        status_update = await backend.get_model_deployment_status(ctx)
 
                         if status_update.status == "LOST":
                             # Drift detected - attempt recovery
@@ -213,11 +213,14 @@ class ModelDeploymentReconciler:
                             # Clear recovery state - deployment is healthy or in terminal state
                             self._drift_recovery_cache.remove(model_deployment_id)
 
-                        # Process the status update
+                        # Process the status update. ``status_update`` is already
+                        # fetched above, so ``_reconcile_individual_deployment``
+                        # won't invoke this callable; it's passed only for the
+                        # generic signature (bind ctx for type consistency).
                         action = "check status of" if deployment.status == "PENDING" else "monitor"
                         await self._reconcile_individual_deployment(
                             deployment,
-                            backend.get_model_deployment_status,
+                            lambda _dep, _ctx=ctx: backend.get_model_deployment_status(_ctx),
                             action,
                             existing_provider=ctx.model_provider,
                             status_update=status_update,
@@ -507,11 +510,7 @@ class ModelDeploymentReconciler:
 
         try:
             # Call create_model_deployment to recreate resources
-            status_update = await backend.create_model_deployment(
-                deployment,
-                ctx.model_deployment_config,
-                ctx.model_entity,
-            )
+            status_update = await backend.create_model_deployment(ctx)
 
             # Build recovery message
             recovery_message = (

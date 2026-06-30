@@ -31,11 +31,14 @@ export const modelsHandlers = [
         page_size: Number(searchParams.get('page_size')) || 1000,
       };
 
+      const { entityStoreModelWithFileset } = await import('@studio/mocks/entity-store/models');
+
       // Get all models
       let models = [
         entityStoreBaseModel1,
         entityStorePromptTunedModel1,
         entityStoreCustomizedModel1,
+        entityStoreModelWithFileset,
       ];
 
       // Filter by adapters (models with PEFT/LoRA adapters)
@@ -58,12 +61,18 @@ export const modelsHandlers = [
         );
       }
 
+      // Filter by fileset
+      const filesetFilter = searchParams.get('filter[fileset]');
+      if (filesetFilter) {
+        models = models.filter((model) => model.fileset === filesetFilter);
+      }
+
       // Filter by workspace
       const workspaceFilter = searchParams.get('filter[workspace]');
       if (workspaceFilter) {
         models = models.filter((model) => model.workspace === workspaceFilter);
-      } else {
-        // If no workspace filter, filter by the workspace from the path
+      } else if (!filesetFilter) {
+        // If no workspace filter and no fileset filter, filter by the workspace from the path
         models = models.filter((model) => model.workspace === workspace);
       }
 

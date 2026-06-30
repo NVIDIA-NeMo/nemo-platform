@@ -5,25 +5,27 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any, ClassVar, Self, TypeAlias
 
+# Imported for their registration side effects: each module registers its
+# payload kind in the bundle registry so MetricBundle payloads validate.
+import nemo_evaluator.shared.metric_bundles.cloudpickle  # noqa: F401
+import nemo_evaluator.shared.metric_bundles.inline  # noqa: F401
+from nemo_evaluator.api.schemas import MetricInline
 from nemo_evaluator.filesets import FilesetRef, download_dataset, download_dataset_sync
-from nemo_evaluator.resolvers import PlatformModelResolver
-from nemo_evaluator.shared.metric_bundles.bundles import (
-    MetricBundle,
-    bundle_metric,
-    metric_bundle_packager_for_payload,
-    unbundle_metric,
+from nemo_evaluator.jobs.metric_resolution import (
+    resolve_metrics_to_inline,
+    to_runtime_bundle,
+    unresolved_model_refs,
 )
-from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricPayload  # noqa: F401
+from nemo_evaluator.metric_refs import MetricRefOrInline
+from nemo_evaluator.shared.metric_bundles.bundles import unbundle_metric
 from nemo_evaluator_sdk import Evaluator
 from nemo_evaluator_sdk.execution.config import resolve_params
 from nemo_evaluator_sdk.execution.metric_execution import run_sync
-from nemo_evaluator_sdk.metrics.protocol import Metric, MetricWithModels
 from nemo_evaluator_sdk.values import (
     Agent,
     FieldMapping,
@@ -41,7 +43,10 @@ from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 TargetSpec = Model | Agent
-MetricSpec: TypeAlias = Annotated[list[MetricBundle], Field(min_length=1)]
+MetricSpec: TypeAlias = Annotated[list[MetricRefOrInline], Field(min_length=1)]
+# Canonical spec carries inline metrics only (refs resolved) — still the wire DTO,
+# so the runtime MetricBundle never surfaces as a public schema.
+ResolvedMetricSpec: TypeAlias = Annotated[list[MetricInline], Field(min_length=1)]
 EvaluationArtifactResult: TypeAlias = EvaluationResult | BenchmarkEvaluationResult
 InlineDataset: TypeAlias = Annotated[list[dict[str, object]], Field(min_length=1)]
 DatasetSpec: TypeAlias = InlineDataset | FilesetRef
@@ -64,22 +69,6 @@ class EvaluationResultFiles:
     aggregate_scores: Path
     row_scores: Path
     artifacts_dir: Path
-
-
-def _unresolved_model_refs(metrics: list[Metric]) -> list[str]:
-    refs = [
-        model_ref.root
-        for item in metrics
-        if isinstance(item, MetricWithModels)
-        for model_ref in item.model_refs().values()
-    ]
-    return sorted(refs)
-
-
-def _bundle_resolved_metric(metric: Metric, source_bundle: MetricBundle) -> MetricBundle:
-    packager = metric_bundle_packager_for_payload(source_bundle.payload)
-    resolved_bundle = bundle_metric(metric, packager)
-    return resolved_bundle.model_copy(update={"metadata": source_bundle.metadata})
 
 
 def _resolve_run_dataset(
@@ -111,12 +100,17 @@ def _resolve_run_dataset(
     raise ValueError("FilesetRef datasets require an SDK client for local evaluator job execution.")
 
 
-class EvaluateInputSpec(BaseModel):
-    """Submitter-facing SDK evaluation input for the evaluator plugin job."""
+class _EvaluateSpecCommon(BaseModel):
+    """Fields shared by the submitter input and the canonical (resolved) spec.
+
+    ``EvaluateInputSpec`` and ``EvaluateSpec`` are siblings rather than a
+    subtype pair: they differ only in their ``metrics`` field (refs allowed vs.
+    fully resolved), and a mutable field can't be narrowed across inheritance
+    without violating invariance.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
-    metrics: MetricSpec = Field(description="Bundled metric entities to evaluate.")
     dataset: DatasetSpec = Field(
         description="Inline dataset rows or a persisted FilesetRef dataset source to evaluate.",
     )
@@ -137,12 +131,22 @@ class EvaluateInputSpec(BaseModel):
         return self
 
 
-class EvaluateSpec(EvaluateInputSpec):
-    """Canonical SDK evaluation spec with platform model references resolved."""
+class EvaluateInputSpec(_EvaluateSpecCommon):
+    """Submitter-facing SDK evaluation input for the evaluator plugin job."""
+
+    metrics: MetricSpec = Field(
+        description="Metrics to evaluate, given as inline metrics and/or references to stored metrics.",
+    )
+
+
+class EvaluateSpec(_EvaluateSpecCommon):
+    """Canonical SDK evaluation spec with platform model and metric references resolved."""
+
+    metrics: ResolvedMetricSpec = Field(description="Inline metrics with all references resolved.")
 
     @model_validator(mode="after")
     def reject_unresolved_metric_model_refs(self) -> Self:
-        unresolved_refs = _unresolved_model_refs([unbundle_metric(bundle) for bundle in self.metrics])
+        unresolved_refs = unresolved_model_refs([unbundle_metric(to_runtime_bundle(metric)) for metric in self.metrics])
         if unresolved_refs:
             raise ValueError(
                 "EvaluateSpec metric models must be resolved before compile/run: " + ", ".join(unresolved_refs)
@@ -168,7 +172,7 @@ class EvaluateJob(NemoJob):
         spec: BaseModel,
         entity_client: object,
         job_name: str | None,
-        async_sdk: object,
+        async_sdk: AsyncNeMoPlatform | None,
         profile: str | None = None,
         options: dict | None = None,
     ) -> PlatformJobSpec:
@@ -210,34 +214,30 @@ class EvaluateJob(NemoJob):
         *,
         workspace: str,
         entity_client: object,
-        async_sdk: AsyncNeMoPlatform | NeMoPlatform | None,
+        async_sdk: AsyncNeMoPlatform | None,
         is_local: bool,
     ) -> BaseModel:
-        """Resolve submitter-facing model references into the canonical evaluation spec."""
-        del workspace, entity_client, is_local
+        """Resolve submitter-facing model and metric references into the canonical evaluation spec."""
+        del is_local
         submit_spec = (
             input_spec.model_copy(deep=True)
             if isinstance(input_spec, EvaluateInputSpec)
-            else EvaluateInputSpec.model_validate(input_spec.model_dump())
+            else EvaluateInputSpec.model_validate_json(input_spec.model_dump_json())
         )
-        metrics = [unbundle_metric(bundle) for bundle in submit_spec.metrics]
-        submit_spec.params = resolve_params(submit_spec.params, submit_spec.target)
-        unresolved_refs = _unresolved_model_refs(metrics)
-        if unresolved_refs:
-            if async_sdk is None:
-                raise ValueError(
-                    "ModelRef metrics require `async_sdk` for spec resolution: " + ", ".join(unresolved_refs)
-                )
-            resolver = PlatformModelResolver(async_sdk)
-            await asyncio.gather(
-                *(metric.resolve_models(resolver) for metric in metrics if isinstance(metric, MetricWithModels))
-            )
-        if unresolved_refs:
-            submit_spec.metrics = [
-                _bundle_resolved_metric(metric, bundle)
-                for metric, bundle in zip(metrics, submit_spec.metrics, strict=True)
-            ]
-        return EvaluateSpec.model_validate(submit_spec.model_dump(mode="python"))
+        metrics = await resolve_metrics_to_inline(
+            submit_spec.metrics,
+            workspace=workspace,
+            entity_client=entity_client,
+            async_sdk=async_sdk,
+        )
+        return EvaluateSpec(
+            metrics=metrics,
+            dataset=submit_spec.dataset,
+            params=resolve_params(submit_spec.params, submit_spec.target),
+            target=submit_spec.target,
+            prompt_template=submit_spec.prompt_template,
+            field_mapping=submit_spec.field_mapping,
+        )
 
     def run(
         self,
@@ -251,7 +251,7 @@ class EvaluateJob(NemoJob):
         spec = EvaluateSpec.model_validate(config)
         evaluator = Evaluator()
         params = resolve_params(spec.params, spec.target)
-        metrics = [unbundle_metric(bundle) for bundle in spec.metrics]
+        metrics = [unbundle_metric(to_runtime_bundle(metric)) for metric in spec.metrics]
         dataset = _resolve_run_dataset(
             spec.dataset,
             ctx=ctx,

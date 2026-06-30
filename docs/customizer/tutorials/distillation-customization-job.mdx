@@ -3,7 +3,730 @@ title: "Knowledge Distillation Customization"
 description: ""
 ---
 
-<NotebookViewer
-  name="distillation-customization-job"
-  colabUrl="https://colab.research.google.com/github/NVIDIA-NeMo/nemo-platform/blob/main/docs/customizer/tutorials/distillation-customization-job.ipynb"
-/>
+[Run in Google Colab](https://colab.research.google.com/github/NVIDIA-NeMo/nemo-platform/blob/main/docs/customizer/tutorials/distillation-customization-job.ipynb)
+
+# Knowledge Distillation Customization
+
+Learn how to train a smaller student model to mimic a larger teacher model using knowledge distillation (KD).
+
+## About
+
+Knowledge Distillation transfers knowledge from a large **teacher** model to a smaller **student** model. During training, the student learns to match the teacher's output probability distribution, producing a compact model that retains much of the teacher's capability.
+
+**What you can achieve with KD:**
+
+- **Compress models:** Distill a 3B model into a 1B model for faster inference and lower deployment costs
+- **Reduce latency:** Deploy a smaller model that responds faster while preserving quality
+- **Lower resource requirements:** Serve a distilled model on fewer GPUs
+
+### KD vs SFT: Understanding the Trade-offs
+
+| Aspect | Full SFT | Knowledge Distillation |
+| --- | --- | --- |
+| **Training signal** | Ground-truth labels only | Teacher's soft probability distribution + labels |
+| **Knowledge source** | Dataset examples | Teacher model's learned representations |
+| **Output model size** | Same as input model | Typically a smaller student model |
+| **GPU requirements** | Needs to fit one model | Needs to fit both teacher and student in memory |
+| **Best for** | Domain adaptation, new knowledge injection | Model compression, latency reduction |
+
+### Key Parameters
+
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `teacher_model` | *(required)* | Teacher model entity URN (e.g., `default/llama-3-2-3b-teacher`) |
+| `teacher_precision` | `bf16` | Precision for the frozen teacher (`bf16`, `fp16`, `fp32`). Lower = less memory |
+| `distillation_ratio` | `0.5` | Balance between CE loss and KD loss. `0.0` = CE only, `1.0` = KD only |
+| `distillation_temperature` | `1.0` | Softmax temperature. Higher = softer distributions, more knowledge transfer |
+
+### Workflow Overview
+
+This tutorial follows a complete distillation pipeline:
+
+1. **Fine-tune the teacher** (SFT on the task dataset) so it learns the domain
+2. **Establish a baseline** by deploying the base student model and measuring ROUGE scores
+3. **Distill into the student** using the fine-tuned teacher's soft targets
+4. **Evaluate the distilled student** and compare ROUGE scores against the baseline
+
+**When to choose KD:**
+
+- You have a high-quality large model and want a smaller, faster version
+- Deployment latency or cost is a constraint
+- The teacher and student share the same vocabulary (e.g., both are Llama models)
+
+**When to choose SFT instead:** Refer to the [Full SFT tutorial](/documentation/customizer-reference/tutorials/sft-customization-job) when you want to train a model directly on labeled data without a teacher.
+
+## Prerequisites
+
+Before starting this tutorial, ensure you have:
+
+1. **Completed the [Quickstart](/documentation/get-started)** to install and deploy NeMo Platform locally
+2. **Installed the Python SDK** (PyPI wrapper: `pip install "nemo-platform[all]"`; source checkout: run `make bootstrap` from the repository root)
+3. **Installed evaluation dependencies:**
+
+```sh
+pip install evaluate rouge_score datasets
+```
+
+## Quick Start
+
+### 1. Initialize SDK
+
+The SDK needs to know your NeMo Platform server URL. By default, `http://localhost:8080` is used in accordance with the [Quickstart](/documentation/get-started) guide. If NeMo Platform is running at a custom location, you can override the URL by setting the `NMP_BASE_URL` environment variable:
+
+```sh
+export NMP_BASE_URL=<YOUR_NMP_BASE_URL>
+```
+
+```python
+import json
+import os
+import time
+import uuid
+from pathlib import Path
+
+from nemo_platform import NeMoPlatform, ConflictError
+
+NMP_BASE_URL = os.environ.get("NMP_BASE_URL", "http://localhost:8080")
+client = NeMoPlatform(
+    base_url=NMP_BASE_URL,
+    workspace="default"
+)
+```
+
+### 2. Prepare Dataset
+
+Knowledge distillation uses the same dataset formats as SFT. We use the SQuAD dataset for both teacher training and distillation so that the teacher first learns the task, then transfers that knowledge to the student.
+
+We also hold out a small **test split** for ROUGE evaluation at the end.
+
+```python
+from datasets import load_dataset, DatasetDict
+
+print("Loading dataset rajpurkar/squad")
+raw_dataset = load_dataset("rajpurkar/squad")
+if not isinstance(raw_dataset, DatasetDict):
+    raise ValueError("Dataset does not contain expected splits")
+
+print("Loaded dataset")
+
+SEED = 1234
+TRAINING_SIZE = 3000
+VALIDATION_SIZE = 300
+TEST_SIZE = 100
+DATASET_PATH = Path("kd-dataset").absolute()
+
+os.makedirs(DATASET_PATH, exist_ok=True)
+
+train_set = raw_dataset.get('train')
+split = train_set.train_test_split(test_size=0.05, seed=SEED)
+
+train_ds = split['train'].select(range(min(TRAINING_SIZE, len(split['train']))))
+val_ds = split['test'].select(range(min(VALIDATION_SIZE, len(split['test']))))
+test_ds = split['test'].select(range(VALIDATION_SIZE, min(VALIDATION_SIZE + TEST_SIZE, len(split['test']))))
+
+
+def convert_squad(example):
+    """Convert SQuAD format to prompt/completion format."""
+    prompt = f"Context: {example['context']} Question: {example['question']} Answer:"
+    completion = example["answers"]["text"][0]
+    return {"prompt": prompt, "completion": completion}
+
+
+def write_jsonl(dataset, path):
+    with open(path, "w", encoding="utf-8") as f:
+        for example in dataset:
+            f.write(json.dumps(convert_squad(example)) + "\n")
+
+
+def write_test_jsonl(dataset, path):
+    """Save test split with raw context/question for chat-style evaluation."""
+    with open(path, "w", encoding="utf-8") as f:
+        for example in dataset:
+            f.write(json.dumps({
+                "context": example["context"],
+                "question": example["question"],
+                "completion": example["answers"]["text"][0],
+            }) + "\n")
+
+
+write_jsonl(train_ds, f"{DATASET_PATH}/training.jsonl")
+write_jsonl(val_ds, f"{DATASET_PATH}/validation.jsonl")
+write_test_jsonl(test_ds, f"{DATASET_PATH}/testing.jsonl")
+
+print(f"Training:   {len(train_ds)} rows")
+print(f"Validation: {len(val_ds)} rows")
+print(f"Test:       {len(test_ds)} rows")
+
+with open(f"{DATASET_PATH}/training.jsonl", 'r') as f:
+    sample = json.loads(f.readline())
+    print(f"\nSample prompt:     {sample['prompt'][:150]}...")
+    print(f"Sample completion:  {sample['completion']}")
+```
+
+```python
+DATASET_NAME = "kd-dataset"
+
+try:
+    client.files.filesets.create(
+        workspace="default",
+        name=DATASET_NAME,
+        description="Knowledge distillation training data"
+    )
+    print(f"Created fileset: {DATASET_NAME}")
+except ConflictError:
+    print(f"Fileset '{DATASET_NAME}' already exists, continuing...")
+
+client.files.upload(
+    local_path=f"{DATASET_PATH}/",
+    remote_path="",
+    fileset=DATASET_NAME,
+    workspace="default"
+)
+
+print("Uploaded files:")
+print(json.dumps([f.model_dump() for f in client.files.list(fileset=DATASET_NAME, workspace="default").data], indent=2))
+```
+
+### 3. Secrets Setup
+
+In this tutorial we use two Llama 3.2 Instruct models from HuggingFace:
+- **Teacher:** [meta-llama/Llama-3.2-3B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct) (3B parameters)
+- **Student:** [meta-llama/Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct) (1B parameters)
+
+Both models share the same tokenizer/vocabulary (required for knowledge distillation) and include a chat template for deployment with `/chat/completions`.
+
+**HuggingFace Authentication:**
+- For gated models (Llama, Gemma), you must provide a HuggingFace token via the `token_secret` parameter
+- Get your token from [HuggingFace Settings](https://huggingface.co/settings/tokens) (requires Read access)
+- Accept the model's terms on the HuggingFace model page before using it:
+  - [meta-llama/Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct)
+  - [meta-llama/Llama-3.2-3B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct)
+
+```python
+HF_TOKEN = os.getenv("HF_TOKEN")
+
+
+def create_or_get_secret(name: str, value: str | None, label: str):
+    if not value:
+        raise ValueError(f"{label} is not set")
+    try:
+        secret = client.secrets.create(
+            name=name,
+            workspace="default",
+            value=value,
+        )
+        print(f"Created secret: {name}")
+        return secret
+    except ConflictError:
+        print(f"Secret '{name}' already exists, continuing...")
+        return client.secrets.retrieve(name=name, workspace="default")
+
+
+hf_secret = create_or_get_secret("hf-token", HF_TOKEN, "HF_TOKEN")
+print("HF_TOKEN secret:")
+print(hf_secret.model_dump_json(indent=2))
+```
+
+### 4. Create Model FileSets and Model Entities
+
+Knowledge distillation requires **two** model entities:
+1. **Student model** — the smaller model that will be trained ([meta-llama/Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct))
+2. **Teacher model** — the larger model that provides soft targets ([meta-llama/Llama-3.2-3B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct))
+
+Using the Instruct variants ensures the output model includes a chat template, which is required for the `/chat/completions` inference endpoint.
+
+```python
+from nemo_platform.types.files import HuggingfaceStorageConfigParam
+
+SPEC_TIMEOUT_SECONDS = 120
+
+
+def create_model(hf_repo: str, model_name: str, description: str):
+    """Create a fileset + model entity and wait for ModelSpec."""
+    try:
+        client.files.filesets.create(
+            workspace="default",
+            name=model_name,
+            description=description,
+            storage=HuggingfaceStorageConfigParam(
+                type="huggingface",
+                repo_id=hf_repo,
+                repo_type="model",
+                token_secret=hf_secret.name
+            )
+        )
+        print(f"Created fileset: {model_name}")
+    except ConflictError:
+        print(f"Fileset '{model_name}' already exists.")
+
+    try:
+        model = client.models.create(
+            workspace="default",
+            name=model_name,
+            fileset=f"default/{model_name}",
+        )
+        print(f"Created Model Entity: {model_name}")
+    except ConflictError:
+        print(f"Model '{model_name}' already exists. Updating fileset.")
+        model = client.models.update(
+            workspace="default",
+            name=model_name,
+            fileset=f"default/{model_name}",
+        )
+
+    print(f"Waiting for ModelSpec on {model_name}...")
+    spec_start = time.time()
+    while not model.spec:
+        if time.time() - spec_start > SPEC_TIMEOUT_SECONDS:
+            raise TimeoutError(f"ModelSpec not populated within {SPEC_TIMEOUT_SECONDS}s")
+        time.sleep(2)
+        model = client.models.retrieve(workspace="default", name=model_name)
+    print(f"ModelSpec populated: {model.spec}")
+    return model
+
+
+student_model = create_model(
+    hf_repo="meta-llama/Llama-3.2-1B-Instruct",
+    model_name="llama-3-2-1b-student",
+    description="Llama 3.2 1B Instruct student model",
+)
+
+print()
+
+teacher_model = create_model(
+    hf_repo="meta-llama/Llama-3.2-3B-Instruct",
+    model_name="llama-3-2-3b-teacher",
+    description="Llama 3.2 3B Instruct teacher model",
+)
+```
+
+---
+
+## Phase 1: Fine-Tune the Teacher
+
+### 5. Train Teacher with Full SFT
+
+For best distillation results, fine-tune the teacher on the **same dataset** that will be used for distillation. This ensures the teacher has learned the task-specific knowledge that the student will inherit.
+
+We train the 3B Instruct model with Full SFT on the SQuAD dataset.
+
+```python
+from nemo_automodel_plugin.schema import AutomodelJobInput
+
+job_suffix = uuid.uuid4().hex[:4]
+
+TEACHER_JOB_NAME = f"teacher-sft-job-{job_suffix}"
+TEACHER_OUTPUT_NAME = f"teacher-model-{job_suffix}"
+
+teacher_spec = AutomodelJobInput(
+    model=f"default/{teacher_model.name}",
+    dataset={"training": f"default/{DATASET_NAME}"},
+    training={
+        "training_type": "sft",
+        "finetuning_type": "all_weights",
+        "max_seq_length": 2048,
+    },
+    schedule={"epochs": 1},
+    batch={"global_batch_size": 64, "micro_batch_size": 1},
+    optimizer={"learning_rate": 5e-5},
+    parallelism={"num_gpus_per_node": 1},
+    output={"name": TEACHER_OUTPUT_NAME},
+)
+
+teacher_job = client.customization.automodel.jobs.create(
+    spec=teacher_spec, workspace="default", name=TEACHER_JOB_NAME
+)
+
+TRAINED_TEACHER_NAME = TEACHER_OUTPUT_NAME
+print(f"Teacher training job: {teacher_job.job.name}")
+print(f"Output teacher model: {TRAINED_TEACHER_NAME}")
+
+```
+
+```python
+from IPython.display import clear_output
+
+
+def wait_for_job(job_name: str):
+    """Poll job status until completion."""
+    while True:
+        status = client.jobs.get_status(name=job_name, workspace="default")
+        clear_output(wait=True)
+        print(f"Job: {job_name}")
+        print(f"Status: {status.status}")
+
+        for job_step in status.steps or []:
+            if job_step.name == "training":
+                for task in job_step.tasks or []:
+                    details = task.status_details or {}
+                    step = details.get("step")
+                    max_steps = details.get("max_steps")
+                    if step is not None and max_steps is not None:
+                        print(f"Progress: Step {step}/{max_steps} ({step / max_steps * 100:.1f}%)")
+                    phase = details.get("phase")
+                    if phase:
+                        print(f"Phase: {phase}")
+                    break
+                break
+
+        if status.status in ("completed", "failed", "cancelled", "error"):
+            print(f"\nJob finished: {status.status}")
+            return status
+
+        time.sleep(10)
+
+
+teacher_status = wait_for_job(TEACHER_JOB_NAME)
+assert teacher_status.status == "completed"
+```
+
+---
+
+## Phase 2: Establish Baseline (Base Student)
+
+### 6. Deploy the Base Student Model
+
+Before distillation, deploy the base student model (1B Instruct, without any fine-tuning) to establish a baseline ROUGE score. After distillation, we compare the distilled student against this baseline to measure improvement.
+
+```python
+baseline_suffix = uuid.uuid4().hex[:4]
+BASELINE_DEPLOYMENT_CONFIG = f"baseline-student-cfg-{baseline_suffix}"
+BASELINE_DEPLOYMENT_NAME = f"baseline-student-{baseline_suffix}"
+
+baseline_deployment_config = client.inference.deployment_configs.create(
+    workspace="default",
+    name=BASELINE_DEPLOYMENT_CONFIG,
+    engine="vllm",
+    model_spec={
+        "model_namespace": "default",
+        "model_name": student_model.name,
+    },
+    executor_config={
+        "gpu": 1,
+        "image_name": "vllm/vllm-openai",
+        "image_tag": "v0.22.1",
+    },
+)
+
+baseline_deployment = client.inference.deployments.create(
+    workspace="default",
+    name=BASELINE_DEPLOYMENT_NAME,
+    config=baseline_deployment_config.name
+)
+
+print(f"Baseline student deployment: {baseline_deployment.name}")
+
+```
+
+```python
+def wait_for_deployment(deployment_name: str, timeout_minutes: int = 30):
+    """Poll deployment until ready."""
+    start = time.time()
+    timeout = timeout_minutes * 60
+    while True:
+        dep = client.inference.deployments.retrieve(name=deployment_name, workspace="default")
+        elapsed = time.time() - start
+        clear_output(wait=True)
+        print(f"Deployment: {deployment_name}")
+        print(f"Status: {dep.status}")
+        print(f"Elapsed: {int(elapsed // 60)}m {int(elapsed % 60)}s")
+
+        if dep.status == "READY":
+            print("\nDeployment is ready!")
+            return dep
+        if dep.status in ("FAILED", "ERROR", "TERMINATED", "LOST"):
+            print(f"\nDeployment failed: {dep.status}")
+            return dep
+        if elapsed > timeout:
+            print(f"\nTimeout ({timeout_minutes}m). Check status manually.")
+            return dep
+        time.sleep(15)
+
+
+dep_status = wait_for_deployment(BASELINE_DEPLOYMENT_NAME)
+assert dep_status.status == "READY"
+```
+
+### 7. Generate Baseline Predictions on Test Set
+
+```python
+with open(f"{DATASET_PATH}/testing.jsonl", "r", encoding="utf-8") as f:
+    test_data = [json.loads(line) for line in f]
+
+contexts = [row["context"] for row in test_data]
+questions = [row["question"] for row in test_data]
+reference_completions = [row["completion"] for row in test_data]
+
+print(f"Test samples: {len(contexts)}")
+print(f"Sample context:   {contexts[0]}")
+print(f"Sample question:  {questions[0]}")
+print(f"Sample reference: {reference_completions[0]}")
+```
+
+```python
+def generate_completions(
+    deployment_name: str,
+    output_model_name: str,
+    contexts: list[str],
+    questions: list[str],
+) -> list[str]:
+    """Generate completions for a list of context/question pairs using a deployed model."""
+    completions = []
+    for context, question in zip(contexts, questions):
+        messages = [
+            {
+                "role": "user",
+                "content": f"Based on the following context, answer the question.\n\nContext: {context}\n\nQuestion: {question}",
+            }
+        ]
+        response = client.inference.gateway.provider.post(
+            "v1/chat/completions",
+            name=deployment_name,
+            workspace="default",
+            body={
+                "model": f"default/{output_model_name}",
+                "messages": messages,
+                "temperature": 0,
+                "max_tokens": 128,
+            }
+        )
+        completions.append(response["choices"][0]["message"]["content"])
+    return completions
+
+
+print("Generating baseline (base student) predictions...")
+baseline_completions = generate_completions(BASELINE_DEPLOYMENT_NAME, student_model.name, contexts, questions)
+print(f"Generated {len(baseline_completions)} baseline predictions")
+print(f"\nSample baseline output: {baseline_completions[0]}")
+```
+
+### 8. Delete Baseline Deployment
+
+Delete the baseline student deployment to free GPU resources for the distillation training job and subsequent distilled model deployment.
+
+```python
+client.inference.deployments.delete(name=BASELINE_DEPLOYMENT_NAME, workspace="default")
+print(f"Deleted baseline deployment: {BASELINE_DEPLOYMENT_NAME}")
+
+if not client.models.wait_for_status(
+    deployment_name=BASELINE_DEPLOYMENT_NAME,
+    desired_status="DELETED",
+    workspace="default",
+    timeout=600,
+):
+    raise TimeoutError(
+        f"Deployment {BASELINE_DEPLOYMENT_NAME} was not deleted within timeout"
+    )
+
+client.inference.deployment_configs.delete(name=BASELINE_DEPLOYMENT_CONFIG, workspace="default")
+print(f"Deleted baseline deployment config: {BASELINE_DEPLOYMENT_CONFIG}")
+```
+
+---
+
+## Phase 3: Distill into Student
+
+### 9. Create Knowledge Distillation Job
+
+Now create a distillation job that trains the 1B student using the **fine-tuned** 3B teacher's output distribution. The `model` field specifies the student, and `teacher_model` references the trained teacher model entity from Phase 1.
+
+**GPU Requirements:**
+
+KD requires loading both student and teacher models, so plan GPU memory accordingly:
+- 1B student + 3B teacher: 1 GPU (24GB+ VRAM each)
+- 3B student + 8B teacher: 4 GPUs
+- 8B student + 70B teacher: 8+ GPUs
+
+Use `teacher_precision="bf16"` (default) to reduce teacher memory footprint.
+
+```python
+from nemo_automodel_plugin.schema import AutomodelJobInput
+
+KD_JOB_NAME = f"my-kd-job-{job_suffix}"
+KD_OUTPUT_NAME = f"kd-student-{job_suffix}"
+
+kd_spec = AutomodelJobInput(
+    model=f"default/{student_model.name}",
+    dataset={"training": f"default/{DATASET_NAME}"},
+    training={
+        "training_type": "distillation",
+        "finetuning_type": "all_weights",
+        "teacher_model": f"default/{TRAINED_TEACHER_NAME}",
+        "teacher_precision": "bf16",
+        "distillation_ratio": 0.5,
+        "distillation_temperature": 2.0,
+        "max_seq_length": 2048,
+    },
+    schedule={"epochs": 1},
+    batch={"global_batch_size": 64, "micro_batch_size": 1},
+    optimizer={"learning_rate": 5e-5},
+    parallelism={"num_gpus_per_node": 1},
+    output={"name": KD_OUTPUT_NAME},
+)
+
+kd_job = client.customization.automodel.jobs.create(
+    spec=kd_spec, workspace="default", name=KD_JOB_NAME
+)
+
+DISTILLED_STUDENT_NAME = KD_OUTPUT_NAME
+print(f"Distillation job: {kd_job.job.name}")
+print(f"Output student model: {DISTILLED_STUDENT_NAME}")
+
+```
+
+### 10. Track Distillation Progress
+
+```python
+kd_status = wait_for_job(KD_JOB_NAME)
+assert kd_status.status == "completed"
+```
+
+---
+
+## Phase 4: Evaluate the Distilled Student Model
+
+### 11. Deploy the Distilled Student Model
+
+The output model has the same architecture as the 1B student—only its weights have been updated via distillation. It requires just 1 GPU to deploy.
+
+```python
+deploy_suffix_2 = uuid.uuid4().hex[:4]
+STUDENT_DEPLOYMENT_CONFIG = f"kd-student-deploy-cfg-{deploy_suffix_2}"
+STUDENT_DEPLOYMENT_NAME = f"kd-student-deploy-{deploy_suffix_2}"
+
+student_deployment_config = client.inference.deployment_configs.create(
+    workspace="default",
+    name=STUDENT_DEPLOYMENT_CONFIG,
+    engine="vllm",
+    model_spec={
+        "model_namespace": "default",
+        "model_name": DISTILLED_STUDENT_NAME,
+    },
+    executor_config={
+        "gpu": 1,
+        "image_name": "vllm/vllm-openai",
+        "image_tag": "v0.22.1",
+    },
+)
+
+student_deployment = client.inference.deployments.create(
+    workspace="default",
+    name=STUDENT_DEPLOYMENT_NAME,
+    config=student_deployment_config.name
+)
+
+print(f"Student deployment: {student_deployment.name}")
+
+```
+
+```python
+wait_for_deployment(STUDENT_DEPLOYMENT_NAME)
+```
+
+### 12. Generate Student Predictions on Test Set
+
+```python
+print("Generating distilled student predictions...")
+student_completions = generate_completions(STUDENT_DEPLOYMENT_NAME, DISTILLED_STUDENT_NAME, contexts, questions)
+print(f"Generated {len(student_completions)} student predictions")
+print(f"\nSample student output: {student_completions[0]}")
+```
+
+### 13. Compute ROUGE Scores
+
+Compare the base student (before distillation) and the distilled student against the ground-truth reference completions using ROUGE metrics.
+
+```python
+import evaluate
+
+rouge = evaluate.load("rouge")
+
+baseline_scores = rouge.compute(predictions=baseline_completions, references=reference_completions)
+student_scores = rouge.compute(predictions=student_completions, references=reference_completions)
+
+metrics = list(baseline_scores.keys())
+header = f"{'Model':<35} " + " ".join(f"{m:>10}" for m in metrics)
+separator = "-" * len(header)
+
+print("=" * 60)
+print("ROUGE SCORE COMPARISON")
+print("=" * 60)
+print(header)
+print(separator)
+print(f"{'Base Student (1B, no training)':<35} " + " ".join(f"{baseline_scores[m]:>10.4f}" for m in metrics))
+print(f"{'Distilled Student (1B, KD)':<35} " + " ".join(f"{student_scores[m]:>10.4f}" for m in metrics))
+```
+
+```python
+print("Sample predictions (first 3):\n")
+for i in range(min(3, len(contexts))):
+    print(f"--- Sample {i + 1} ---")
+    print(f"Question:  {questions[i]}")
+    print(f"Reference: {reference_completions[i]}")
+    print(f"Baseline:  {baseline_completions[i][:200]}")
+    print(f"Distilled: {student_completions[i][:200]}")
+    print()
+```
+
+**Interpreting ROUGE Scores:**
+
+| Metric | Measures |
+|--------|----------|
+| **ROUGE-1** | Unigram overlap between prediction and reference |
+| **ROUGE-2** | Bigram overlap (captures phrase-level similarity) |
+| **ROUGE-L** | Longest common subsequence (captures sentence structure) |
+| **ROUGE-Lsum** | ROUGE-L computed over full summaries |
+
+**What to expect:**
+- The base student (1B, no training) provides a lower bound since it has not seen the task data
+- The distilled student (1B, KD) should significantly outperform the base student, demonstrating the knowledge transferred from the 3B teacher
+- If the distilled student scores are not much higher than the baseline, try increasing `distillation_temperature`, adjusting `distillation_ratio`, or training for more epochs
+
+---
+
+## Hyperparameters
+
+For detailed information on all available hyperparameters, recommended values, and tuning guidance, refer to the [Hyperparameter Reference](/documentation/customizer-reference/manage-customization-jobs/training-configuration).
+
+---
+
+## Troubleshooting
+
+**Job fails during model download:**
+- Verify authentication secrets are configured (refer to [Managing Secrets](/documentation/get-started/core-concepts/manage-secrets))
+- For gated HuggingFace models (Llama, Gemma), accept the license on the model page
+- Check both `model` (student) and `teacher_model` URNs are correct
+- Ensure both model entities exist: `client.models.retrieve(name=..., workspace="default")`
+
+**Job fails with OOM (Out of Memory) error:**
+
+KD loads both models, so OOM is more likely than with SFT:
+1. **First try:** Use `teacher_precision="bf16"` to reduce teacher memory
+2. **Still OOM:** Reduce `micro_batch_size` to 1
+3. **Still OOM:** Reduce `global_batch_size` and `max_seq_length`
+4. **Last resort:** Increase `num_gpus_per_node`
+
+**No chat template / `/chat/completions` fails:**
+- Use Instruct model variants (e.g., `Llama-3.2-1B-Instruct`) instead of base models (`Llama-3.2-1B`). Base models do not include a chat template in their tokenizer, so the output model will also lack one.
+
+**Distilled model quality is poor:**
+- Increase `distillation_temperature` (try 2.0–5.0) to transfer more nuanced knowledge
+- Adjust `distillation_ratio`—if dataset labels are high-quality, lower the ratio; if the teacher is strong, raise it
+- Increase `epochs` or `max_steps` for more training
+- Verify teacher and student share the same vocabulary
+
+**Vocabulary mismatch error:**
+- Teacher and student must use the same tokenizer. Use models from the same family (e.g., Llama 3.2 1B Instruct + Llama 3.2 3B Instruct)
+
+**Deployment fails:**
+- Verify output model exists: `client.models.retrieve(name=DISTILLED_STUDENT_NAME, workspace="default")`
+- Check deployment logs: `client.inference.deployments.get_logs(name=deployment.name, workspace="default")`
+- The distilled model has the same size as the student, so GPU requirements match the student model
+
+
+## Next Steps
+
+- [Monitor training metrics](/documentation/customizer-reference/tutorials/metrics) in detail
+- [Evaluate your fine-tuned model](/documentation/evaluate-models) using the Evaluator service
+- Learn about [LoRA customization](/documentation/customizer-reference/tutorials/lora-customization-job) for resource-efficient fine-tuning
+- Learn about [Full SFT](/documentation/customizer-reference/tutorials/sft-customization-job) for direct supervised fine-tuning

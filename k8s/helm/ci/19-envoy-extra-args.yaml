@@ -1,0 +1,11 @@
+# CI validates by running: helm template nemo-platform . -f ci/19-envoy-extra-args.yaml
+# Ensures envoy deployment renders when envoyProxy.extraArgs is set (auth + envoy enabled).
+
+platformConfig:
+  auth:
+    enabled: true
+
+envoyProxy:
+  extraArgs:
+    - --concurrency
+    - "2"

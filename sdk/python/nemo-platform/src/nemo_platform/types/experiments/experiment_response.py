@@ -30,15 +30,20 @@ class ExperimentResponse(BaseModel):
 
     id: str
 
-    agent_name: str
-
-    agent_version: str
-
     dataset_name: str
+
+    experiment_group_id: str
+    """Entity id of the owning ExperimentGroup. Required for every Experiment."""
 
     name: str
 
     workspace: str
+
+    agent_names: Optional[List[str]] = None
+    """Distinct agent names observed across ingested sessions for this experiment."""
+
+    agent_versions: Optional[List[str]] = None
+    """Distinct agent versions observed across ingested sessions for this experiment."""
 
     aggregate_scores: Optional[Dict[str, EvaluatorAggregate]] = None
 
@@ -53,12 +58,6 @@ class ExperimentResponse(BaseModel):
 
     evaluator_names: Optional[List[str]] = None
 
-    experiment_group_id: Optional[str] = None
-    """Entity id of the owning ExperimentGroup; null when ungrouped.
-
-    Soft reference, not validated.
-    """
-
     latency_ms: Optional[EvaluatorAggregate] = None
     """Aggregate statistics over evaluator scores or session-level metric values."""
 
@@ -67,6 +66,12 @@ class ExperimentResponse(BaseModel):
     model_names: Optional[List[str]] = None
     """Distinct model names observed across ingested sessions for this experiment."""
 
+    pinned_at: Optional[datetime] = None
+    """Timestamp at which the experiment was pinned, or null if unpinned.
+
+    Managed via POST/DELETE /experiments/{name}/pin.
+    """
+
     run_count: Optional[int] = None
     """
     Number of distinct ingested experiment sessions; one session is treated as one
@@ -74,8 +79,6 @@ class ExperimentResponse(BaseModel):
     """
 
     source_link: Optional[str] = None
-
-    summary: Optional[str] = None
 
     updated_at: Optional[datetime] = None
 

@@ -70,6 +70,40 @@ def test_build_file_download_config_rejects_missing_model_fileset() -> None:
         _build_file_download_config(_make_job_output(), _make_mock_model_entity(fileset=None))
 
 
+def test_compile_training_step_carries_pass2_fields() -> None:
+    """Pass-2 hyperparameters on the v2 SFTTraining reach the internal TrainingStepConfig."""
+    from nmp.automodel.app.jobs.training.compiler import compile_training_step
+
+    job_output = CustomizationJobOutput(
+        model="default/test-target",
+        dataset="default/my-dataset",
+        training=SFTTraining(
+            peft=LoRAParams(rank=8, alpha=32, merge=False, exclude_modules=["*.out_proj"], use_triton=False),
+            learning_rate=1e-4,
+            adam_eps=1e-6,
+            optimizer="AdamW",
+            lr_decay_style="linear",
+            attn_implementation="flash_attention_2",
+            batch_size=4,
+            micro_batch_size=1,
+            sequence_packing=True,
+            sequence_packing_max_samples=256,
+            max_seq_length=2048,
+        ),
+        output=OutputResponse(name="out", type="adapter", fileset="out-fs"),
+    )
+    step = compile_training_step(job_output, base_env=[], me=_make_mock_model_entity())
+    cfg = step.config if hasattr(step, "config") else step["config"]
+
+    assert cfg["optimizer"]["optimizer_name"] == "AdamW"
+    assert cfg["optimizer"]["lr_decay_style"] == "linear"
+    assert cfg["optimizer"]["eps"] == 1e-6
+    assert cfg["model"]["attn_implementation"] == "flash_attention_2"
+    assert cfg["batch"]["sequence_packing_max_samples"] == 256
+    assert cfg["training"]["lora"]["exclude_modules"] == ["*.out_proj"]
+    assert cfg["training"]["lora"]["use_triton"] is False
+
+
 @pytest.mark.asyncio
 async def test_platform_job_config_compiler_sft_lora(mock_sdk, monkeypatch):
     monkeypatch.setattr(

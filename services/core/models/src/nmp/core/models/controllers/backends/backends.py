@@ -4,13 +4,11 @@
 """Base backend interface for Models Controller service."""
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform.types.inference import ModelDeploymentStatus
-from nemo_platform.types.inference.model_deployment import ModelDeployment
-from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig
-from nemo_platform.types.models.model_entity import ModelEntity
+from nmp.core.models.controllers.context import ModelContext
 from pydantic import BaseModel
 
 
@@ -67,15 +65,12 @@ class ServiceBackend(ABC):
         ...
 
     @abstractmethod
-    async def create_model_deployment(
-        self, deployment: ModelDeployment, config: ModelDeploymentConfig, model_entity: Optional[ModelEntity] = None
-    ) -> DeploymentStatusUpdate:
+    async def create_model_deployment(self, ctx: ModelContext) -> DeploymentStatusUpdate:
         """Create a new model deployment.
 
         Args:
-            deployment: The ModelDeployment object to create
-            config: The ModelDeploymentConfig for this deployment
-            model_entity: Optional Model entity from Entity Store (contains peft, artifact, etc.)
+            ctx: The reconciliation context bundling the ModelDeployment, its
+                ModelDeploymentConfig, and the optional Model entity.
 
         Returns:
             DeploymentStatusUpdate with the current status after creation attempt
@@ -86,15 +81,13 @@ class ServiceBackend(ABC):
         ...
 
     @abstractmethod
-    async def update_model_deployment(
-        self, deployment: ModelDeployment, config: ModelDeploymentConfig, model_entity: Optional[ModelEntity] = None
-    ) -> DeploymentStatusUpdate:
+    async def update_model_deployment(self, ctx: ModelContext) -> DeploymentStatusUpdate:
         """Update an existing model deployment.
 
         Args:
-            deployment: The ModelDeployment object with updated configuration
-            config: The ModelDeploymentConfig for this deployment (may be a new version)
-            model_entity: Optional Model entity from Entity Store (contains peft, artifact, etc.)
+            ctx: The reconciliation context bundling the ModelDeployment, its
+                (possibly new-version) ModelDeploymentConfig, and the optional
+                Model entity.
 
         Returns:
             DeploymentStatusUpdate with the current status after update attempt
@@ -105,11 +98,14 @@ class ServiceBackend(ABC):
         ...
 
     @abstractmethod
-    async def get_model_deployment_status(self, deployment: ModelDeployment) -> DeploymentStatusUpdate:
+    async def get_model_deployment_status(self, ctx: ModelContext) -> DeploymentStatusUpdate:
         """Get the current status of a model deployment.
 
         Args:
-            deployment: The ModelDeployment object to check
+            ctx: The reconciliation context bundling the ModelDeployment, its
+                ModelDeploymentConfig, and the optional Model entity. Some backends
+                need the config to advance creation (e.g. the k8s vLLM path emits
+                the serving Deployment once the weight-puller Job completes).
 
         Returns:
             DeploymentStatusUpdate with the current deployment status
