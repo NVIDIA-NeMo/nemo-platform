@@ -35,9 +35,9 @@ from nmp.common.sdk_factory import get_sdk_on_behalf_of
 from nmp.core.models.app import ModelWeightsType, get_model_weights_type, is_multi_llm_image, parse_model_name_revision
 from nmp.core.models.app.constants import MODEL_MANAGED_BY_LABEL, MODEL_MANAGED_BY_MODELS_CONTROLLER
 from nmp.core.models.app.utils import (
-    _get_k8s_safe_name,
     get_docker_container_name,
     get_docker_plugin_puller_container_name,
+    get_docker_puller_container_name,
     get_docker_volume_name,
 )
 from nmp.core.models.controllers.backends import generic_compiler, vllm_compiler
@@ -255,13 +255,7 @@ class DockerDeploymentCreationReconciler:
 
     def get_puller_container_name(self, workspace: str, name: str) -> str:
         """SFT/model puller container name (hashed ``workspace/name`` identity)."""
-        label_name = f"md-puller-{workspace}-{name}"
-        return _get_k8s_safe_name(
-            label_name,
-            max_length=63,
-            name_type="label",
-            hash_input=self.get_deployment_key(workspace, name),
-        )
+        return get_docker_puller_container_name(workspace, name)
 
     def get_plugin_puller_container_name(self, workspace: str, name: str) -> str:
         """Tool-call plugin fileset puller container name."""

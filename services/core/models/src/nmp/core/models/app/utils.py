@@ -7,12 +7,19 @@ import hashlib
 import re
 from enum import Enum
 from logging import getLogger
-from typing import Generic, List, Literal, Optional, TypeVar
+from typing import Generic, List, Optional, TypeVar
 
 from nemo_platform.types.inference.model_deployment import ModelDeployment
 from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig
 from nemo_platform.types.inference.model_provider import ModelProvider
 from nemo_platform.types.models import ModelEntity
+from nemo_platform_plugin.k8s_naming import (
+    DNS_LABEL_MAX_LENGTH,
+    DNS_SUBDOMAIN_MAX_LENGTH,
+    HASH_SUFFIX_LENGTH,
+    k8s_safe_name,
+    workspace_name_identity,
+)
 from nmp.common.api.common import PaginationData
 from nmp.common.entities.constants import NAME_PATTERN as ENTITY_NAME_PATTERN
 from pydantic import BaseModel
@@ -260,147 +267,14 @@ def normalize_model_entity_name(model_name: str) -> str:
     return normalized
 
 
-_HASH_SUFFIX_LENGTH = 8
 _LORA_SIDECAR_SUFFIX = "-sidecar"
 # Primary Docker container names must leave room for an optional LoRA sidecar suffix.
-_DOCKER_CONTAINER_NAME_MAX_LENGTH = 63 - len(_LORA_SIDECAR_SUFFIX)
+_DOCKER_CONTAINER_NAME_MAX_LENGTH = DNS_LABEL_MAX_LENGTH - len(_LORA_SIDECAR_SUFFIX)
 
-
-def _workspace_name_identity(workspace: str, name: str) -> str:
-    """Canonical ``workspace/name`` identity used as ``hash_input`` for resource names."""
-    return f"{workspace}/{name}"
-
-
-def _get_k8s_safe_name(
-    base_name: str,
-    max_length: int = 63,
-    suffix: str = "",
-    name_type: Literal["label", "dns_subdomain"] = "label",
-    hash_input: str | None = None,
-    *,
-    include_hash: bool = True,
-) -> str:
-    """
-    Generate a Kubernetes-compliant name from a base name.
-
-    This function is deterministic - the same input will always produce the same output.
-    It follows a logical order:
-    1. Generate deterministic hash from hash_input (or base_name when omitted)
-    2. Normalize characters to K8s-compatible format
-    3. Truncate if needed to fit max_length with hash and suffix
-    4. Always append an 8-char hash suffix for uniqueness
-
-    Handles both RFC 1035 DNS labels (for Services, Pods, etc.) and RFC 1123 DNS subdomains (for Secrets).
-
-    DNS Label Rules (RFC 1035):
-    - Max 63 characters
-    - Only lowercase alphanumeric and hyphens
-    - Must start with a letter
-    - Must end with alphanumeric
-    - Regex: [a-z]([-a-z0-9]*[a-z0-9])?
-
-    DNS Subdomain Rules (RFC 1123):
-    - Max 253 characters
-    - Lowercase alphanumeric, hyphens, and dots
-    - Must start with alphanumeric
-    - Must end with alphanumeric
-
-    Args:
-        base_name: The original name to convert
-        max_length: Maximum length for the K8s resource (63 for labels, 253 for DNS subdomains)
-        suffix: Optional suffix to append (e.g., "-pvc", "-hf-token")
-        name_type: Type of K8s name - "label" for RFC 1035, "dns_subdomain" for RFC 1123
-        hash_input: Optional distinct identity for hashing (defaults to base_name).
-            Resource builders pass ``workspace/name`` so ambiguous hyphen joins
-            (e.g. ``foo`` + ``bar-baz`` vs ``foo-bar`` + ``baz``) hash differently.
-        include_hash: When False, append ``suffix`` only without a second hash.
-            Used when deriving init/sidecar names from an already-hashed base.
-
-    Returns:
-        A Kubernetes-compliant name that fits within max_length
-
-    Examples:
-        >>> _get_k8s_safe_name("test-deployment", max_length=63, suffix="")
-        'test-deployment-5f363e0a'
-
-        >>> _get_k8s_safe_name("llama-3.2-1b", max_length=63, name_type="label")
-        'llama-3-2-1b-...'
-
-        >>> _get_k8s_safe_name("a" * 100, max_length=63, suffix="-pvc")
-        'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-5f363e0a-pvc'
-    """
-    hash_source = hash_input if hash_input is not None else base_name
-    hash_suffix = hashlib.sha256(hash_source.encode()).hexdigest()[:_HASH_SUFFIX_LENGTH]
-
-    # Normalize characters to K8s-compatible format
-    normalized = base_name.lower()
-
-    # For DNS labels (Services, Pods, etc.), replace dots and invalid chars with hyphens
-    # For DNS subdomains (Secrets), dots are allowed
-    if name_type == "label":
-        normalized = re.sub(r"[^a-z0-9-]", "-", normalized)
-        normalized = re.sub(r"-+", "-", normalized)
-        if normalized and not normalized[0].isalpha():
-            normalized = f"x{normalized}"
-    else:  # dns_subdomain
-        normalized = re.sub(r"[^a-z0-9.-]", "-", normalized)
-        normalized = re.sub(r"[.]+", ".", normalized).strip(".")
-        labels = []
-        for label in normalized.split("."):
-            label = re.sub(r"-+", "-", label).strip("-")
-            labels.append(label or "x")
-        normalized = ".".join(labels)
-        normalized = normalized.lstrip("-.")
-        if not normalized or not normalized[0].isalnum():
-            normalized = f"x{normalized}"
-
-    normalized = normalized.rstrip("-.")
-    if not normalized or not normalized[-1].isalnum():
-        normalized = "x" if not normalized else normalized.rstrip("-.")
-        if not normalized:
-            normalized = "x"
-
-    if not include_hash:
-        if len(normalized) + len(suffix) <= max_length:
-            return f"{normalized}{suffix}"
-
-        max_base_len = max_length - len(suffix)
-        if max_base_len < 1:
-            max_base_len = 1
-        truncated = normalized[:max_base_len].rstrip("-.")
-        if not truncated or not truncated[-1].isalnum():
-            while truncated and not truncated[-1].isalnum():
-                truncated = truncated[:-1]
-            if not truncated:
-                truncated = "x"
-        return f"{truncated}{suffix}"
-
-    hash_len = _HASH_SUFFIX_LENGTH
-    reserved = hash_len + 1 + len(suffix)
-    if len(normalized) + reserved > max_length:
-        max_base_len = max_length - reserved
-        if max_base_len < 1:
-            max_base_len = max(1, max_length - hash_len - len(suffix))
-
-        truncated = normalized[:max_base_len]
-        truncated = truncated.rstrip("-.")
-        if not truncated or not truncated[-1].isalnum():
-            while truncated and not truncated[-1].isalnum():
-                truncated = truncated[:-1]
-            if not truncated:
-                truncated = "x"
-        normalized = truncated
-
-    result = f"{normalized}-{hash_suffix}{suffix}"
-
-    if len(result) > max_length:
-        excess = len(result) - max_length
-        normalized = normalized[: len(normalized) - excess].rstrip("-.")
-        if not normalized:
-            normalized = "x"
-        result = f"{normalized}-{hash_suffix}{suffix}"
-
-    return result
+# Backward-compatible aliases for models service call sites and tests.
+_HASH_SUFFIX_LENGTH = HASH_SUFFIX_LENGTH
+_get_k8s_safe_name = k8s_safe_name
+_workspace_name_identity = workspace_name_identity
 
 
 def get_docker_container_name(workspace: str, name: str) -> str:
@@ -419,7 +293,16 @@ def get_docker_volume_name(workspace: str, name: str) -> str:
     label_name = f"nim-cache-{workspace}-{name}"
     return _get_k8s_safe_name(
         label_name,
-        max_length=63,
+        name_type="label",
+        hash_input=_workspace_name_identity(workspace, name),
+    )
+
+
+def get_docker_puller_container_name(workspace: str, name: str) -> str:
+    """Docker SFT/model puller container name."""
+    label_name = f"md-puller-{workspace}-{name}"
+    return _get_k8s_safe_name(
+        label_name,
         name_type="label",
         hash_input=_workspace_name_identity(workspace, name),
     )
@@ -430,7 +313,6 @@ def get_docker_plugin_puller_container_name(workspace: str, name: str) -> str:
     label_name = f"md-plugin-{workspace}-{name}"
     return _get_k8s_safe_name(
         label_name,
-        max_length=63,
         name_type="label",
         hash_input=_workspace_name_identity(workspace, name),
     )
@@ -463,7 +345,6 @@ def get_deployment_resource_name(workspace: str, name: str) -> str:
     identity = _workspace_name_identity(workspace, name)
     return _get_k8s_safe_name(
         base,
-        max_length=63,
         suffix="",
         name_type="label",
         hash_input=identity,
@@ -537,7 +418,7 @@ def get_deployment_secret_name(workspace: str, name: str, prefix: str = "md", su
     identity = _workspace_name_identity(workspace, name)
     return _get_k8s_safe_name(
         base,
-        max_length=253,
+        max_length=DNS_SUBDOMAIN_MAX_LENGTH,
         suffix=suffix,
         name_type="dns_subdomain",
         hash_input=identity,

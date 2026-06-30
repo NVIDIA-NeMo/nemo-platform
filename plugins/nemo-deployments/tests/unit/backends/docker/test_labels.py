@@ -15,9 +15,9 @@ from nemo_deployments_plugin.backends.docker.labels import (
     container_name,
     deployment_identity_labels,
     docker_volume_name,
-    k8s_safe_name,
 )
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
+from nemo_platform_plugin.k8s_naming import k8s_safe_name
 
 _HASH8 = re.compile(r"-[0-9a-f]{8}$")
 _DNS_LABEL = re.compile(r"^[a-z](?:[a-z0-9-]*[a-z0-9])?$")
