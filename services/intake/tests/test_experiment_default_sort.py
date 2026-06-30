@@ -133,10 +133,18 @@ def test_default_metric_sort_degrades_without_rollups(client: TestClient) -> Non
     group = client.post(
         GROUPS, json={"name": "g-deg", "default_sort": [{"field": "cost_usd.mean", "direction": "asc"}]}
     ).json()
-    client.post(EXPERIMENTS, json={"name": "e1", "experiment_group_id": group["id"], "dataset_name": "ds"})
+    for name in ("e1", "e2", "e3"):
+        created = client.post(
+            EXPERIMENTS, json={"name": name, "experiment_group_id": group["id"], "dataset_name": "ds"}
+        )
+        assert created.status_code == 201, created.text
 
     default_sorted = client.get(EXPERIMENTS, params={"filter[experiment_group_id]": group["id"]})
     assert default_sorted.status_code == 200, default_sorted.text
+    # The cost rollup is unset, so the default sort falls back to -created_at: newest first.
+    # (ISO-8601 UTC timestamps sort lexicographically == chronologically.)
+    created_ats = [row["created_at"] for row in default_sorted.json()["data"]]
+    assert created_ats == sorted(created_ats, reverse=True)
 
     explicit_metric = client.get(
         EXPERIMENTS, params={"filter[experiment_group_id]": group["id"], "sort": "-cost_usd.mean"}
