@@ -19,15 +19,16 @@ claude auth status
 ```
 
 Install Rust so `cargo` is available on `PATH`, then install the NeMo Relay CLI.
-The `cargo install` command below writes `nemo-relay` into the active virtual
-environment when `VIRTUAL_ENV` is set, or into `.venv` otherwise. After
-activating that environment, `nemo-relay --help` should resolve on `PATH` for
-the smoke test:
+If `VIRTUAL_ENV` is set, the commands below install into that environment;
+otherwise they install into a local `.nemo-relay` directory. The `PATH` export
+makes the installed `nemo-relay` binary available for the smoke test:
 
 ```bash
 git clone git@github.com:NVIDIA/NeMo-Relay.git
 export NEMO_RELAY_ROOT="$PWD/NeMo-Relay"
-cargo install --path "$NEMO_RELAY_ROOT/crates/cli" --root "${VIRTUAL_ENV:-.venv}" --locked
+export NEMO_RELAY_INSTALL_ROOT="${VIRTUAL_ENV:-$PWD/.nemo-relay}"
+cargo install --path "$NEMO_RELAY_ROOT/crates/cli" --root "$NEMO_RELAY_INSTALL_ROOT" --locked
+export PATH="$NEMO_RELAY_INSTALL_ROOT/bin:$PATH"
 nemo-relay --help
 ```
 

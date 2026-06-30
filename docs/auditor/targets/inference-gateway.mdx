@@ -35,21 +35,21 @@ Both `workspace` and `provider` are required. Other keys inside `nmp_uri_spec` a
 
 ## Worked Example
 
-Audit a NIM endpoint registered as the `nvidia-build` provider in the `default` workspace:
+Audit a NIM endpoint registered as the `nvidia-inference-api` provider in the `default` workspace:
 
 ```python
 target = client.auditor.targets.create(
     workspace="default",
     name="llama-31-8b",
     type="nim.NVOpenAIChat",
-    model="meta/llama-3.1-8b-instruct",
+    model="nvidia/meta/llama-3.1-8b-instruct",
     options={
         "nim": {
             "max_tokens": 1024,
             "nmp_uri_spec": {
                 "inference_gateway": {
                     "workspace": "default",
-                    "provider": "nvidia-build",
+                    "provider": "nvidia-inference-api",
                 },
             },
         },

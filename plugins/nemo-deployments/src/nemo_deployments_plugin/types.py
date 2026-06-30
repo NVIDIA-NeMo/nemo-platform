@@ -16,6 +16,7 @@ DeploymentStatus = Literal[
     "SUCCEEDED",
     "FAILED",
     "LOST",
+    "UNKNOWN",
     "DELETING",
 ]
 VolumeStatus = Literal["PENDING", "BOUND", "DELETING", "RELEASED", "FAILED"]
@@ -30,6 +31,7 @@ NON_TERMINAL_DEPLOYMENT_STATUSES: tuple[DeploymentStatus, ...] = (
     "STARTING",
     "READY",
     "LOST",
+    "UNKNOWN",
     "DELETING",
 )
 NON_TERMINAL_VOLUME_STATUSES: tuple[VolumeStatus, ...] = ("PENDING", "BOUND", "DELETING")

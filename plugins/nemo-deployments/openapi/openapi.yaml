@@ -798,6 +798,7 @@ components:
           - SUCCEEDED
           - FAILED
           - LOST
+          - UNKNOWN
           - DELETING
           title: Status
           default: PENDING
@@ -1330,6 +1331,7 @@ components:
           - SUCCEEDED
           - FAILED
           - LOST
+          - UNKNOWN
           - DELETING
           title: Status
         message:
@@ -1393,6 +1395,7 @@ components:
           - SUCCEEDED
           - FAILED
           - LOST
+          - UNKNOWN
           - DELETING
           title: Status
         status_message:

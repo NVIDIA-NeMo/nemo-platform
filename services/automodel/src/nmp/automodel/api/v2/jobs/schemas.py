@@ -88,6 +88,14 @@ class LoRAParams(_PEFTParams):
         description="Module name patterns to apply LoRA to (e.g., ['*.q_proj', '*.v_proj']). "
         "If not set, applies to all '*proj' linear layers.",
     )
+    exclude_modules: Optional[list[str]] = Field(
+        default=None,
+        description="Module name patterns to exclude from LoRA (e.g., ['*.out_proj']).",
+    )
+    use_triton: bool = Field(
+        default=True,
+        description="Use the optimized Triton LoRA kernel.",
+    )
     merge: bool = Field(
         default=False,
         description="Merge LoRA weights into base model after training. "
@@ -173,12 +181,20 @@ class _TrainingBase(BaseModel):
         default=0.999,
         description="Adam beta2 parameter. Adjust for optimizer tuning.",
     )
+    adam_eps: float = Field(
+        default=1e-8,
+        gt=0.0,
+        description="Adam/AdamW epsilon for numerical stability.",
+    )
     warmup_steps: int = Field(
         default=0,
         ge=0,
         description="Linear warmup steps. Recommended: 10% of total training steps for stable training.",
     )
-    optimizer: Optional[str] = Field(default=None, description="Optimizer name (e.g., 'adamw').")
+    optimizer: Literal["Adam", "AdamW"] = Field(default="Adam", description="Optimizer algorithm.")
+    lr_decay_style: Literal["cosine", "linear", "constant"] = Field(
+        default="cosine", description="Learning-rate decay schedule."
+    )
 
     # --- Schedule ---
     epochs: int = Field(
@@ -218,6 +234,11 @@ class _TrainingBase(BaseModel):
         default=False,
         description="Enable sequence packing for efficiency. Can improve training speed.",
     )
+    sequence_packing_max_samples: int = Field(
+        default=1000,
+        gt=0,
+        description="Samples analyzed to estimate the optimal pack size when sequence packing is enabled.",
+    )
 
     # --- Model ---
     max_seq_length: int = Field(
@@ -228,6 +249,10 @@ class _TrainingBase(BaseModel):
     precision: Optional[Precision] = Field(
         default=None,
         description="Model precision for training. Auto-detected if unset.",
+    )
+    attn_implementation: Literal["sdpa", "flash_attention_2", "eager"] = Field(
+        default="sdpa",
+        description="Attention backend: 'sdpa' (PyTorch native), 'flash_attention_2', or 'eager'.",
     )
     seed: Optional[int] = Field(
         default=None,

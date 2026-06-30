@@ -35,7 +35,11 @@ export const ExperimentDetailRoute: FC = () => {
   return (
     <AccessibleTitle title={experimentName}>
       <Stack className="h-full overflow-auto" gap="density-2xl" padding="density-2xl">
-        <PageHeader className="p-0" slotHeading={experimentName} />
+        <PageHeader
+          className="p-0"
+          slotHeading={experimentName}
+          slotDescription={experiment?.description || undefined}
+        />
         <ExperimentDetailMetrics experimentName={experimentName} />
         <div className="flex flex-col gap-4 border-t border-base pt-4">
           <div className="flex items-center gap-3">

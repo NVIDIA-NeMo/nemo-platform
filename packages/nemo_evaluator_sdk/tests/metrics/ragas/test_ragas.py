@@ -195,6 +195,67 @@ def test_align_scores_does_not_guess_unknown_ragas_metric_name():
     assert aligned == {"unexpected_ragas_name": 0.75}
 
 
+@pytest.mark.parametrize(
+    "metric_factory,ragas_score_name,sdk_score_name",
+    [
+        # RAGAS keys mode-bearing metrics as "<name>(mode=<mode>)" (see ragas.evaluation).
+        # NoiseSensitivity defaults to mode="relevant"; the SDK declares the bare
+        # "noise_sensitivity" output, so the suffix must be stripped (NVBug 6369321).
+        (
+            lambda: NoiseSensitivityMetric(judge_model=MOCK_JUDGE_MODEL),
+            "noise_sensitivity(mode=relevant)",
+            MetricType.NOISE_SENSITIVITY.value,
+        ),
+        (
+            lambda: NoiseSensitivityMetric(judge_model=MOCK_JUDGE_MODEL),
+            "noise_sensitivity(mode=irrelevant)",
+            MetricType.NOISE_SENSITIVITY.value,
+        ),
+        # The same mode-suffixing applies to TopicAdherence (mode=precision/recall/f1).
+        (
+            lambda: TopicAdherenceMetric(metric_mode="f1", judge_model=MOCK_JUDGE_MODEL),
+            "topic_adherence(mode=f1)",
+            MetricType.TOPIC_ADHERENCE.value,
+        ),
+    ],
+)
+def test_align_scores_strips_ragas_mode_suffix(metric_factory, ragas_score_name, sdk_score_name):
+    metric = metric_factory()
+    aligned = metric._align_scores_to_output_spec({ragas_score_name: 0.75})
+    assert aligned == {sdk_score_name: 0.75}
+
+
+@pytest.mark.asyncio
+async def test_noise_sensitivity_metric_accepts_ragas_mode_qualified_score():
+    """Regression for NVBug 6369321.
+
+    RAGAS emits NoiseSensitivity scores under the mode-qualified key
+    ``noise_sensitivity(mode=relevant)``. The metric must align that to the declared
+    ``noise_sensitivity`` output instead of failing validation with
+    "Missing declared metric outputs: ['noise_sensitivity']".
+    """
+    metric = NoiseSensitivityMetric(judge_model=MOCK_JUDGE_MODEL)
+
+    mock_evaluate = MagicMock()
+    mock_evaluate.return_value.scores = [{"noise_sensitivity(mode=relevant)": 0.42}]
+    with patch("nemo_evaluator_sdk.metrics.ragas.base.get_evaluate_function", return_value=mock_evaluate):
+        result = await compute_scores(
+            metric,
+            {
+                "user_input": "What is the capital of France?",
+                "retrieved_contexts": [
+                    "Paris is the capital and largest city of France.",
+                    "Berlin is the capital of Germany.",
+                ],
+                "response": "The capital of France is Paris.",
+                "reference": "Paris is the capital of France.",
+            },
+            {},
+        )
+    assert isinstance(result, MetricResult)
+    assert _get_score_value(result, "noise_sensitivity") == 0.42
+
+
 def test_nan_scores_use_declared_output_spec_names():
     metric = ContextRelevanceMetric(judge_model=MOCK_JUDGE_MODEL)
     nan_scores = metric._nan_scores_for_metrics([])

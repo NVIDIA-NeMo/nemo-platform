@@ -186,6 +186,8 @@ class TrainingStepConfig(BaseModel):
 
     class OptimizerConfig(BaseModel):
         optimizer_type: Optional[OptimizerType] = Field(default=None)
+        optimizer_name: str = "Adam"
+        lr_decay_style: str = "cosine"
         learning_rate: float = 1e-4
         min_learning_rate: Optional[float] = None
         eps: float = 1e-8

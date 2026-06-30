@@ -22,6 +22,10 @@ from typing_extensions import TypedDict
 __all__ = ["LogAdapterConfigParam"]
 
 
-class LogAdapterConfigParam(TypedDict, total=False, extra_items=object):  # type: ignore[call-arg]
+class LogAdapterConfigParam(  # type: ignore[call-arg]
+    TypedDict,
+    total=False,
+    extra_items=object,  # pyright: ignore[reportGeneralTypeIssues]
+):
     name: str
     """The name of the adapter."""

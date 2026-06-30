@@ -10,8 +10,8 @@ import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataV
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
+import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
-import { getSortParamWithWhitelist } from '@nemo/common/src/utils/query';
 import { useGetExperimentGroup } from '@nemo/sdk/generated/platform/api';
 import type { ExperimentFilter } from '@nemo/sdk/generated/platform/schema';
 import { Button, Text, Tooltip } from '@nvidia/foundations-react-core';
@@ -22,6 +22,7 @@ import {
   type ListExperimentsSortParam,
   useExperimentGroupExperiments,
 } from '@studio/components/dataViews/ExperimentGroupDataView/useExperimentGroupExperiments';
+import { useSortErrorRecovery } from '@studio/components/dataViews/ExperimentGroupDataView/useSortErrorRecovery';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getExperimentDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
@@ -31,24 +32,31 @@ import { useNavigate } from 'react-router-dom';
 
 export type { ExperimentRow };
 
-const SORTABLE_FIELDS = ['name', 'created_at'] as const;
 const DEFAULT_SORT: ListExperimentsSortParam = '-created_at';
-const SORT_PARAMS = [
-  'name',
-  '-name',
-  'created_at',
-  '-created_at',
-] as const satisfies readonly ListExperimentsSortParam[];
-const SORT_PARAM_SET: ReadonlySet<string> = new Set(SORT_PARAMS);
 
-const isListExperimentsSortParam = (sort: string): sort is ListExperimentsSortParam =>
-  SORT_PARAM_SET.has(sort);
+// Maps sortable static column ids to their API sort fields.
+const STATIC_SORT_FIELD_MAP: Readonly<Record<string, string>> = {
+  name: 'name',
+  created_at: 'created_at',
+  cost_usd: 'cost_usd.mean',
+  latency_ms: 'latency_ms.mean',
+  run_count: 'run_count',
+};
 
 const getExperimentSortParam = (
-  sortingState: Parameters<typeof getSortParamWithWhitelist>[0]
+  sortingState: { id: string; desc: boolean }[]
 ): ListExperimentsSortParam => {
-  const sort = getSortParamWithWhitelist(sortingState, SORTABLE_FIELDS, DEFAULT_SORT);
-  return isListExperimentsSortParam(sort) ? sort : DEFAULT_SORT;
+  const [first] = sortingState;
+  if (!first) return DEFAULT_SORT;
+  let field = STATIC_SORT_FIELD_MAP[first.id];
+  if (!field) {
+    // Evaluator columns use id `evaluator-<name>` so the API field can be derived without
+    // a separate lookup into evaluatorNames (which would create a circular dependency).
+    const evaluatorMatch = first.id.match(/^evaluator-(.+)$/);
+    if (evaluatorMatch) field = `evaluators.${evaluatorMatch[1]}.mean`;
+  }
+  if (!field) return DEFAULT_SORT;
+  return `${first.desc ? '-' : ''}${field}`;
 };
 
 interface ExperimentGroupDataViewProps {
@@ -71,6 +79,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
 }) => {
   const workspace = useWorkspaceFromPath();
   const navigate = useNavigate();
+  const toast = useToast();
   const {
     data: group,
     isLoading: isGroupLoading,
@@ -96,6 +105,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
     totalCount,
     error,
     isLoading,
+    isSuccess,
   } = useExperimentGroupExperiments({
     workspace,
     experimentGroupId,
@@ -104,6 +114,17 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
     page,
     pageSize,
     sort: sortParam,
+  });
+
+  // A metric sort (cost, latency, evaluator score) can fail with 413/503/400. Recover by toasting
+  // and reverting the sort indicator to the last good sort instead of replacing the table with an
+  // error; `isRecoverableSortError` lets us skip the page-level error for that case.
+  const isRecoverableSortError = useSortErrorRecovery({
+    error,
+    isSuccess,
+    sortingState: dataViewState.sorting.state,
+    setSorting: dataViewState.sorting.set,
+    onError: toast.error,
   });
 
   // One score column per evaluator: the union of evaluator names across the loaded rows,
@@ -166,16 +187,16 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
         meta: { title: false },
         size: 300,
         cell: ({ row }) => {
-          const { name, summary } = row.original;
-          if (!summary) return <Text>{name}</Text>;
+          const { name, description } = row.original;
+          if (!description) return <Text>{name}</Text>;
           return (
             <Tooltip
               slotContent={
                 <div className="flex flex-col gap-1">
                   <Text kind="label/regular/sm" className="text-secondary">
-                    Summary
+                    Description
                   </Text>
-                  <Text kind="body/regular/sm">{summary}</Text>
+                  <Text kind="body/regular/sm">{description}</Text>
                 </div>
               }
               className={tooltipClassName}
@@ -254,18 +275,19 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
           }
         )
       ),
-      ...evaluatorNames.map((name, index) =>
-        accessor((original) => original.aggregate_scores?.[name]?.mean, {
-          id: `score-${index}`,
-          header: `Avg ${snakeCaseToTitleCase(name)}`,
-          enableSorting: false,
+      ...evaluatorNames.map((name) => {
+        const title = snakeCaseToTitleCase(name);
+        return accessor((original) => original.aggregate_scores?.[name]?.mean, {
+          id: `evaluator-${name}`,
+          header: `Avg ${title}`,
+          enableSorting: true,
           meta: { title: false },
           size: 140,
           cell: ({ row }) => {
             const score = row.original.aggregate_scores?.[name];
             return (
               <MeanValueTooltipCell
-                label={snakeCaseToTitleCase(name)}
+                label={title}
                 runNoun="scored run"
                 count={score?.count}
                 runCount={row.original.run_count}
@@ -274,12 +296,12 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
               </MeanValueTooltipCell>
             );
           },
-        })
-      ),
+        });
+      }),
       accessor((original) => original.cost_usd?.mean, {
         id: 'cost_usd',
         header: 'Avg Cost',
-        enableSorting: false,
+        enableSorting: true,
         meta: { title: false },
         cell: ({ row }) => {
           const { cost_usd, run_count } = row.original;
@@ -299,7 +321,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
         id: 'latency_ms',
         header: 'Avg Latency',
         meta: { title: false },
-        enableSorting: false,
+        enableSorting: true,
         cell: ({ row }) => {
           const { latency_ms, run_count } = row.original;
           return (
@@ -317,7 +339,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
       accessor((original) => original.run_count, {
         id: 'run_count',
         header: 'Run Count',
-        enableSorting: false,
+        enableSorting: true,
         cell: ({ row }) => <Text>{String(row.original.run_count ?? 0)}</Text>,
       }),
       accessor('created_at', {
@@ -350,7 +372,9 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
     return <ErrorMessage message="Failed to load experiment group." />;
   }
 
-  if (error) {
+  // A recoverable sort error is handled by useSortErrorRecovery (toast + revert), and the table keeps
+  // showing the last good page — so don't replace it with the full-page error for that case.
+  if (error && !isRecoverableSortError) {
     return <ErrorMessage message="Failed to load experiments." />;
   }
 

@@ -37,7 +37,7 @@ async def test_list_all_pages_fetches_multiple_pages() -> None:
         Deployment,
         filter_operation=ComparisonOperation(
             operator=FilterOperator.IN,
-            field="status",
+            field="data.status",
             value=["PENDING"],
         ),
     )
