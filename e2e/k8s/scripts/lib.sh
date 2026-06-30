@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# Shared utilities for e2e K8s setup scripts.
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+
+log_info()  { echo -e "\033[0;32m[INFO]\033[0m $*"; }
+log_warn()  { echo -e "\033[1;33m[WARN]\033[0m $*"; }
+log_error() { echo -e "\033[0;31m[ERROR]\033[0m $*"; }
+
+# ---------------------------------------------------------------------------
+# Secrets
+# ---------------------------------------------------------------------------
+
+# create_platform_secrets NAMESPACE
+#
+# Creates the standard set of platform secrets in the given namespace.
+# Each secret is created only when its corresponding env var is set:
+#   - ngc-api + nvcrimagepullsecret: when NGC_API_KEY is set
+#   - ghcr-pull: when GITHUB_TOKEN is set
+#   - huggingface-token: when HF_TOKEN is set
+create_platform_secrets() {
+    local namespace="${1:?namespace is required}"
+    local kubectl_ns=(kubectl -n "${namespace}")
+
+    if [ -n "${NGC_API_KEY:-}" ]; then
+        log_info "Creating NGC API secret..."
+        "${kubectl_ns[@]}" create secret generic ngc-api \
+          --from-literal=NGC_API_KEY="${NGC_API_KEY}" \
+          --dry-run=client -o yaml | "${kubectl_ns[@]}" apply -f -
+
+        log_info "Creating NGC image pull secret..."
+        "${kubectl_ns[@]}" create secret docker-registry nvcrimagepullsecret \
+          --docker-server=nvcr.io \
+          --docker-username='$oauthtoken' \
+          --docker-password="${NGC_API_KEY}" \
+          --dry-run=client -o yaml | "${kubectl_ns[@]}" apply -f -
+    else
+        log_warn "NGC_API_KEY not set, skipping NGC secrets"
+    fi
+
+    if [ -n "${GITHUB_TOKEN:-}" ]; then
+        log_info "Creating GHCR image pull secret..."
+        "${kubectl_ns[@]}" create secret docker-registry ghcr-pull \
+          --docker-server=ghcr.io \
+          --docker-username=x-access-token \
+          --docker-password="${GITHUB_TOKEN}" \
+          --dry-run=client -o yaml | "${kubectl_ns[@]}" apply -f -
+    else
+        log_warn "GITHUB_TOKEN not set, skipping GHCR image pull secret"
+    fi
+
+    if [ -n "${HF_TOKEN:-}" ]; then
+        log_info "Creating HuggingFace token secret..."
+        "${kubectl_ns[@]}" create secret generic huggingface-token \
+          --from-literal=HF_TOKEN="${HF_TOKEN}" \
+          --dry-run=client -o yaml | "${kubectl_ns[@]}" apply -f -
+    else
+        log_warn "HF_TOKEN not set, skipping HuggingFace token secret"
+    fi
+}
