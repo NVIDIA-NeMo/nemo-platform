@@ -43,7 +43,7 @@ const ColumnTypeCard: FC<ColumnTypeCardProps> = ({ option, onSelect }) => {
         <Icon size={15} className={ICON_COLOR_CLASS[color]} aria-hidden />
       </Flex>
       <Stack gap="density-xxs" className="min-w-0">
-        <Text kind="body/semibold/sm" className="truncate">
+        <Text kind="body/semibold/sm" className="truncate text-primary">
           {label}
         </Text>
         <Text kind="body/regular/xs" className="truncate text-secondary">
