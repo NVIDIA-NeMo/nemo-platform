@@ -9,7 +9,10 @@ import { ClaudeCodeChatThread } from '@studio/routes/agents/ClaudeCodeChatRoute/
 import { ClaudeCodeLayout } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeLayout';
 import { useClaudeCodeChatContext } from '@studio/routes/agents/ClaudeCodeChatRoute/context/useClaudeCodeChatContext';
 import type { ClaudeCodeChatRouteState } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
-import { getSelectedClaudeCodeSessionId } from '@studio/routes/agents/ClaudeCodeChatRoute/util';
+import {
+  CLAUDE_CODE_SESSION_SEARCH_PARAM,
+  getSelectedClaudeCodeSessionId,
+} from '@studio/routes/agents/ClaudeCodeChatRoute/util';
 import { getClaudeCodeChatRoute, getWorkspaceDashboardRoute } from '@studio/routes/utils';
 import { type FC, useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -65,11 +68,15 @@ export const ClaudeCodeChatRoute: FC = () => {
   });
 
   // Point the shared runtime at the session selected via the URL.
+  // Skip when initialPrompt is set — that effect will clear the ?session= param
+  // and start a fresh chat; letting both effects run in parallel causes loadSession
+  // to race against startNewChat on the same render.
   useEffect(() => {
+    if (initialPrompt) return;
     if (selectedSessionId && selectedSessionId !== sessionId) {
       loadSession(selectedSessionId);
     }
-  }, [loadSession, selectedSessionId, sessionId]);
+  }, [initialPrompt, loadSession, selectedSessionId, sessionId]);
 
   // Consume a dashboard-provided prompt exactly once: start fresh and defer
   // submission until the session is actually cleared.
@@ -80,7 +87,10 @@ export const ClaudeCodeChatRoute: FC = () => {
 
   useEffect(() => {
     if (!initialPrompt) return;
-    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+    const params = new URLSearchParams(location.search);
+    params.delete(CLAUDE_CODE_SESSION_SEARCH_PARAM);
+    const search = params.toString();
+    navigate(`${location.pathname}${search ? `?${search}` : ''}`, { replace: true, state: null });
     startNewChat();
     setDeferredPrompt(initialPrompt);
   }, [initialPrompt, location.pathname, location.search, navigate, startNewChat]);

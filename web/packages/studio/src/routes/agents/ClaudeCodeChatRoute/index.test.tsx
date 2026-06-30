@@ -108,6 +108,19 @@ describe('ClaudeCodeChatRoute', () => {
     expect(mocks.chat.submitPrompt).not.toHaveBeenCalled();
   });
 
+  it('does not trigger a session load when initialPrompt clears a ?session= param', async () => {
+    // The race: Effect 1 preserving ?session= in the navigate call lets the
+    // session-load effect see selectedSessionId = 'old' + sessionId = null on the
+    // next render and call loadSession, conflicting with startNewChat.
+    renderClaudeCodeChatRoute({
+      search: '?session=old-session',
+      state: { initialPrompt: 'Hello' },
+    });
+
+    await waitFor(() => expect(mocks.startNewChat).toHaveBeenCalled());
+    expect(mocks.loadSession).not.toHaveBeenCalled();
+  });
+
   it('loads the session selected via the session query param', async () => {
     renderClaudeCodeChatRoute({ search: '?session=session-existing' });
 
