@@ -425,11 +425,7 @@ async def _invoke_nat_agent(
         # inspectable.
         # The legacy ``_make_nat_agent_request`` path keeps capture disabled, so it
         # still raises (it converts non-COMPLETED results into a RuntimeError).
-        http_error = (
-            _http_status_error(exc)
-            if config.capture_evidence or nat_stream_translator is not None
-            else None
-        )
+        http_error = _http_status_error(exc) if config.capture_evidence or nat_stream_translator is not None else None
         if http_error is None:
             raise
         capture = _NatStreamCapture(
