@@ -3,12 +3,16 @@
 
 """Standalone agent evaluation orchestration."""
 
+# ruff: noqa: I001 - the vendored SDK mirror uses different import-order settings.
+
 from __future__ import annotations
 
 import asyncio
+import uuid
 from collections import defaultdict
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
+from functools import partial
 from logging import getLogger
 from pathlib import Path
 from typing import Any, cast
@@ -35,9 +39,10 @@ from nemo_platform.beta.evaluator.agent_eval.trials import (
 )
 from nemo_platform.beta.evaluator.agent_inference import (
     AgentInferenceFn,
-    make_agent_inference_request,
+    invoke_agent,
     new_agent_inference_client,
 )
+from nemo_platform.beta.evaluator.agent_stream_translation import NatStreamTranslator
 from nemo_platform.beta.evaluator.execution.metric_execution import generate_online_sample, run_sync
 from nemo_platform.beta.evaluator.execution.samples import build_metric_input
 from nemo_platform.beta.evaluator.inference import InferenceFn
@@ -66,10 +71,12 @@ class AgentEvaluator:
         inference_fn: InferenceFn | AgentInferenceFn | None = None,
         client: AsyncOpenAI | httpx.AsyncClient | None = None,
         default_headers: dict[str, str] | None = None,
+        nat_stream_translator: NatStreamTranslator | None = None,
     ) -> None:
         self.inference_fn = inference_fn
         self.client = client
         self.default_headers = default_headers
+        self.nat_stream_translator = nat_stream_translator
 
     async def run(
         self,
@@ -258,6 +265,19 @@ class AgentEvaluator:
                             inference_fn=self.inference_fn,
                             client=client,
                             default_headers=self.default_headers,
+                            template_context={
+                                "agent_eval": {
+                                    "run_id": config.run_id,
+                                    "task_id": task.id,
+                                    "invocation_id": f"{config.run_id}:{task.id}:{target.name}",
+                                }
+                            },
+                            evidence_dir=(
+                                _task_evidence_dir(Path(config.output_dir), index=index, task_id=task.id)
+                                if config.output_dir is not None and isinstance(target, Agent)
+                                else None
+                            ),
+                            nat_stream_translator=self.nat_stream_translator,
                         )
                     except Exception as exc:
                         if params.ignore_request_failure:
@@ -281,6 +301,9 @@ async def _generate_sample(
     inference_fn: InferenceFn | AgentInferenceFn | None,
     client: AsyncOpenAI | httpx.AsyncClient | None,
     default_headers: dict[str, str] | None,
+    template_context: dict[str, Any] | None,
+    evidence_dir: Path | None,
+    nat_stream_translator: NatStreamTranslator | None,
 ) -> dict[str, Any]:
     # InferenceFn and AgentInferenceFn are callable protocols, so isinstance cannot discriminate
     # the injected fn; narrow it per target type with a cast (matching execution/benchmark_execution).
@@ -302,10 +325,21 @@ async def _generate_sample(
             preprocess_hooks=preprocess_hooks,
             postprocess_hooks=postprocess_hooks,
             default_headers=default_headers,
+            template_context=template_context,
         )
 
     agent_inference_fn = (
-        cast(AgentInferenceFn, inference_fn) if inference_fn is not None else make_agent_inference_request
+        cast(AgentInferenceFn, inference_fn)
+        if inference_fn is not None
+        else cast(
+            AgentInferenceFn,
+            partial(
+                invoke_agent,
+                evidence_dir=evidence_dir,
+                nat_stream_translator=nat_stream_translator,
+                invocation_context=(template_context or {}).get("agent_eval"),
+            ),
+        )
     )
     return await generate_online_sample(
         target=target,
@@ -316,6 +350,7 @@ async def _generate_sample(
         inference_fn=agent_inference_fn,
         client=client if isinstance(client, httpx.AsyncClient) else None,
         default_headers=default_headers,
+        template_context=template_context,
     )
 
 
@@ -326,27 +361,63 @@ def _trial_from_sample(task: AgentEvalTask, target: Model | Agent, sample: dict[
         # `reasoning_content` with empty `content`. Fall back to that text so the
         # trial stays scorable instead of being dropped as empty output.
         output_text = _reasoning_content_fallback(sample.get("response"))
+    evidence = sample.get("evidence")
+    if evidence is not None and not isinstance(evidence, CandidateEvidence):
+        evidence = CandidateEvidence.model_validate(evidence)
     if "trajectory" in sample:
         trace = EvidenceDescriptor(kind="trace", format="json", data=sample["trajectory"])
-    else:
-        trace = EvidenceDescriptor(kind="sdk_online_generation", data={"task_id": task.id, "target": target.name})
+        descriptors = dict(evidence.descriptors) if evidence is not None else {}
+        descriptors["trace"] = trace
+        evidence = CandidateEvidence(
+            descriptors=descriptors,
+            metadata=dict(evidence.metadata) if evidence is not None else {},
+        )
+    elif evidence is None:
+        evidence = CandidateEvidence(
+            descriptors={
+                "trace": EvidenceDescriptor(
+                    kind="sdk_online_generation",
+                    data={"task_id": task.id, "target": target.name},
+                )
+            }
+        )
+
+    status_value = sample.get("invocation_status", AgentEvalTrialStatus.COMPLETED.value)
+    status = AgentEvalTrialStatus(status_value)
+    invocation_metadata = sample.get("invocation_metadata")
+    if not isinstance(invocation_metadata, dict):
+        invocation_metadata = {}
 
     return AgentEvalTrial(
         id=f"{task.id}:{target.name}",
         task_id=task.id,
-        status=AgentEvalTrialStatus.COMPLETED,
+        status=status,
         output=AgentOutput(
             output_text=output_text if isinstance(output_text, str) else None,
             response=sample.get("response"),
             metadata={
-                key: value for key, value in sample.items() if key not in {"output_text", "response", "trajectory"}
+                **invocation_metadata,
+                **{
+                    key: value
+                    for key, value in sample.items()
+                    if key
+                    not in {
+                        "evidence",
+                        "invocation_metadata",
+                        "invocation_status",
+                        "output_text",
+                        "response",
+                        "trajectory",
+                    }
+                },
             },
         ),
-        evidence=CandidateEvidence(descriptors={"trace": trace}),
+        evidence=evidence,
         metadata={
             "model_id": target.name,
             "target_name": target.name,
             "generated": True,
+            **invocation_metadata,
         },
     )
 
@@ -560,4 +631,16 @@ def _persist_with_optional_dashboard(
 
 
 def _new_run_id() -> str:
-    return f"agent-eval-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
+    timestamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
+    return f"agent-eval-{timestamp}-{uuid.uuid4().hex[:8]}"
+
+
+def _task_evidence_dir(output_dir: Path, *, index: int, task_id: str) -> Path:
+    safe_task_id = _safe_path_component(task_id)
+    task_dir = f"{index:06d}-{safe_task_id}" if safe_task_id else f"task-{index:06d}"
+    return output_dir / "evidence" / task_dir
+
+
+def _safe_path_component(value: str) -> str:
+    sanitized = "".join(char if char.isalnum() or char in "-_." else "-" for char in value)
+    return sanitized.strip("-_.")[:120]

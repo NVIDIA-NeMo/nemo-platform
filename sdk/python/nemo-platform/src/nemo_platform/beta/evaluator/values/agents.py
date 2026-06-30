@@ -3,6 +3,8 @@
 
 """Agent-related value types."""
 
+# ruff: noqa: I001 - the vendored SDK mirror uses different import-order settings.
+
 from __future__ import annotations
 
 import os
@@ -13,6 +15,33 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from nemo_platform.beta.evaluator.enums import AgentFormat
 from nemo_platform.beta.evaluator.values.common import SecretRef
+
+
+class NatAgentConfig(BaseModel):
+    """NeMo Agent Toolkit request and stream handling configuration."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    endpoint: str = Field(
+        default="/generate/full",
+        description="Relative path below agent.url, or an absolute NAT endpoint URL.",
+    )
+    request_mode: Literal["input_message", "passthrough"] = Field(
+        default="input_message",
+        description="Derive the legacy input_message payload or send the rendered request unchanged.",
+    )
+    query_params: dict[str, str] = Field(
+        default_factory=lambda: {"filter_steps": "none"},
+        description="Query parameters sent to the NAT endpoint.",
+    )
+    response_path: str = Field(
+        default="$.value",
+        description="JSONPath applied to data-channel payloads; the last match is the final output.",
+    )
+    capture_evidence: bool = Field(
+        default=False,
+        description="Capture raw and parsed stream evidence for agent-eval trials.",
+    )
 
 
 class Agent(BaseModel):
@@ -68,11 +97,17 @@ class Agent(BaseModel):
         default=None,
         description="JSONPath expression to extract the trajectory from the agent's response body. Optional.",
     )
+    nat: NatAgentConfig | None = Field(
+        default=None,
+        description="Optional NAT endpoint and stream configuration; defaults preserve /generate/full behavior.",
+    )
 
     # TODO: When agent is type NAT, prefill body, response_path and trajectory_path depending on url ends with generate or generate/full.
     @model_validator(mode="after")
     def _validate_generic_fields(self) -> Agent:
         if self.format == AgentFormat.GENERIC:
+            if self.nat is not None:
+                raise ValueError("'nat' is only valid when agent format is 'nemo_agent_toolkit'.")
             if self.body is None:
                 raise ValueError("'body' is required when agent format is 'generic'.")
             if self.response_path is None:

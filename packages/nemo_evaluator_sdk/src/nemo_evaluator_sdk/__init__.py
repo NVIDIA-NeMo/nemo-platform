@@ -3,9 +3,17 @@
 
 """NeMo Evaluator SDK."""
 
+# ruff: noqa: I001 - the vendored SDK mirror uses different import-order settings.
+
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _package_version
 
+from nemo_evaluator_sdk.agent_stream_translation import (
+    NatSSEFrame,
+    NatStreamTranslation,
+    NatStreamTranslationContext,
+    NatStreamTranslator,
+)
 from nemo_evaluator_sdk.datasets import DatasetLoadError, load_dataset, load_dataset_as_dicts
 from nemo_evaluator_sdk.execution.backends.local.backend import LocalBackend
 from nemo_evaluator_sdk.execution.evaluator import Evaluator
@@ -57,6 +65,7 @@ from nemo_evaluator_sdk.values import (
     MetricResult,
     Model,
     ModelRef,
+    NatAgentConfig,
     RangeScore,
     ReasoningParams,
     RemoteScore,
@@ -111,6 +120,11 @@ __all__ = [
     "Model",
     "ModelRef",
     "ModelResolver",
+    "NatAgentConfig",
+    "NatSSEFrame",
+    "NatStreamTranslation",
+    "NatStreamTranslationContext",
+    "NatStreamTranslator",
     "NemoAgentToolkitRemoteMetric",
     "NumberCheckMetric",
     "RangeScore",

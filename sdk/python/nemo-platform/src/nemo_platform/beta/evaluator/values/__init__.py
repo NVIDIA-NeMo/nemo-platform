@@ -3,10 +3,14 @@
 
 """Public value types for evaluator SDK runtime."""
 
-from nemo_platform.beta.evaluator.values.agents import Agent
+# ruff: noqa: I001 - the vendored SDK mirror uses different import-order settings.
+
+from nemo_platform.beta.evaluator.values.agents import Agent, NatAgentConfig
 from nemo_platform.beta.evaluator.values.atif import (
     FinalMetrics,
     Metrics,
+    Observation,
+    ObservationResult,
     Step,
     ToolCall,
     Trajectory,
@@ -107,6 +111,7 @@ from nemo_platform.beta.evaluator.values.scores import (
 
 __all__ = [
     "Agent",
+    "NatAgentConfig",
     "AggregateFieldName",
     "AggregatedMetricResult",
     "AggregateRangeScore",
@@ -123,6 +128,8 @@ __all__ = [
     "FinalMetrics",
     "LogHandle",
     "Metrics",
+    "Observation",
+    "ObservationResult",
     "Step",
     "ToolCall",
     "Trajectory",

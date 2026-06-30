@@ -3,6 +3,8 @@
 
 """Metric evaluation orchestration for evaluator SDK runtime."""
 
+# ruff: noqa: I001 - the vendored SDK mirror uses different import-order settings.
+
 from __future__ import annotations
 
 import asyncio
@@ -19,9 +21,12 @@ import httpx
 import nemo_evaluator_sdk.inference as inference
 from nemo_evaluator_sdk.agent_inference import (
     AgentInferenceFn,
+    AgentInvocationResult,
+    invoke_agent,
     make_agent_inference_request,
     new_agent_inference_client,
 )
+from nemo_evaluator_sdk.agent_stream_translation import NatStreamTranslator
 from nemo_evaluator_sdk.enums import ModelFormat
 from nemo_evaluator_sdk.execution.config import fail_fast_from_params, resolve_params
 from nemo_evaluator_sdk.execution.pipeline import (
@@ -306,6 +311,7 @@ async def generate_online_sample(
     preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
     postprocess_hooks: Sequence[inference.PostprocessResponse] | None = None,
     default_headers: dict[str, str] | None = None,
+    template_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]: ...
 
 
@@ -322,6 +328,7 @@ async def generate_online_sample(
     preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
     postprocess_hooks: Sequence[inference.PostprocessResponse] | None = None,
     default_headers: dict[str, str] | None = None,
+    template_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]: ...
 
 
@@ -337,6 +344,7 @@ async def generate_online_sample(
     preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
     postprocess_hooks: Sequence[inference.PostprocessResponse] | None = None,
     default_headers: dict[str, str] | None = None,
+    template_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Generate one sample payload using shared request rendering and inference logic.
 
@@ -348,7 +356,7 @@ async def generate_online_sample(
     - ``target: Agent`` pairs with ``inference_fn: AgentInferenceFn``.
       ``default_headers`` is forwarded to the inference fn.
     """
-    request = render_request(prompt_template, context={**row, "item": row})
+    request = render_request(prompt_template, context={**row, "item": row, **(template_context or {})})
     if isinstance(target, Model):
         model_params = params if isinstance(params, RunConfigOnlineModel) else None
         _maybe_set_nim_default_max_tokens(request=request, model=target, params=model_params)
@@ -382,11 +390,20 @@ async def generate_online_sample(
             timeout=timeout,
         )
 
-    processed_response, output_text = _process_online_response(
-        response,
+    if isinstance(response, AgentInvocationResult):
+        invocation = response
+        response_payload = response.response
+    else:
+        invocation = None
+        response_payload = cast(dict[str, Any], response)
+    processed_response, processed_output_text = _process_online_response(
+        response_payload,
         index=index,
         postprocess_hooks=postprocess_hooks,
     )
+    output_text = processed_output_text
+    if invocation is not None and not isinstance(output_text, str):
+        output_text = invocation.output_text
 
     sample: dict[str, Any] = {}
     if output_text:
@@ -398,6 +415,11 @@ async def generate_online_sample(
     # through the nested response payload.
     if isinstance(processed_response, dict) and "trajectory" in processed_response:
         sample["trajectory"] = processed_response["trajectory"]
+    if invocation is not None:
+        sample["invocation_status"] = invocation.status.value
+        sample["invocation_metadata"] = invocation.metadata
+        if invocation.evidence is not None:
+            sample["evidence"] = invocation.evidence
     return sample
 
 
@@ -413,6 +435,7 @@ async def generate_online_sample_agent(
     agent_inference_fn: AgentInferenceFn | None = None,
     client: httpx.AsyncClient | None = None,
     default_headers: dict[str, str] | None = None,
+    nat_stream_translator: NatStreamTranslator | None = None,
 ) -> dict[str, Any]:
     """Generate one agent sample through the unified online sample helper."""
     return await generate_online_sample(
@@ -421,7 +444,14 @@ async def generate_online_sample_agent(
         index=index,
         prompt_template=prompt_template,
         params=params,
-        inference_fn=agent_inference_fn or make_agent_inference_request,
+        inference_fn=(
+            agent_inference_fn
+            or (
+                partial(invoke_agent, nat_stream_translator=nat_stream_translator)
+                if nat_stream_translator is not None
+                else invoke_agent
+            )
+        ),
         client=client,
         preprocess_hooks=preprocess_hooks,
         postprocess_hooks=postprocess_hooks,
