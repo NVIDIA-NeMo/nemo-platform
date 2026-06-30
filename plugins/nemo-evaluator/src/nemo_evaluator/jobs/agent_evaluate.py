@@ -10,9 +10,8 @@ per-trial scores + summary). The row-based counterpart is
 
 Per-task metrics may be given inline or as references to stored metrics;
 references are resolved into inline metrics during ``to_spec`` via the shared
-:mod:`nemo_evaluator.jobs.metric_resolution` helper. The result bundle is
-persisted as job artifacts; persisting it to the platform (entity + fileset) is
-a follow-up.
+:mod:`nemo_evaluator.jobs.metric_resolution` helper. The result bundle (trials +
+scores + summary) is persisted as job artifacts.
 """
 
 from __future__ import annotations
@@ -20,6 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar
+from urllib.parse import urlsplit
 
 from nemo_evaluator.api.schemas import MetricInline
 from nemo_evaluator.jobs.agent_compiler import compile_agent_eval_job
@@ -114,7 +114,7 @@ class AgentEvalJob(NemoJob):
         *,
         workspace: str,
         entity_client: object,
-        async_sdk: AsyncNeMoPlatform | NeMoPlatform | None,
+        async_sdk: AsyncNeMoPlatform | None,
         is_local: bool,
     ) -> BaseModel:
         """Resolve each task's metric references into inline metrics for the canonical spec."""
@@ -146,7 +146,7 @@ class AgentEvalJob(NemoJob):
             tasks=resolved_tasks,
             target=submit_spec.target,
             trials=submit_spec.trials,
-            parallelism=submit_spec.parallelism,
+            max_concurrent_tasks=submit_spec.max_concurrent_tasks,
             fail_fast=submit_spec.fail_fast,
             benchmark=submit_spec.benchmark,
         )
@@ -169,15 +169,40 @@ class AgentEvalJob(NemoJob):
         return compile_agent_eval_job(canonical_spec, profile=profile)
 
     @staticmethod
-    def _build_evaluator(platform: NeMoPlatform | AsyncNeMoPlatform | None) -> AgentEvaluator:
+    def _endpoint_url(target: Target | None) -> str | None:
+        """The HTTP endpoint a Model/Agent target generates against; ``None`` for a runner/offline."""
+        if isinstance(target, ModelTarget):
+            return str(target.model.url)
+        if isinstance(target, AgentTarget):
+            return str(target.agent.url)
+        return None
+
+    @staticmethod
+    def _is_platform_routed(url: str, platform: NeMoPlatform | AsyncNeMoPlatform) -> bool:
+        """True when *url* points at the platform itself (e.g. an IGW route under its base URL).
+
+        Compared by origin (host + port): the platform serves IGW under its own base URL, so a target
+        whose host matches is in-platform. A third-party endpoint the user configured does not match —
+        and must not receive the job's on-behalf-of identity (id/email/groups is PII).
+        """
+        target, base = urlsplit(url), urlsplit(str(platform.base_url))
+        return (target.hostname, target.port) == (base.hostname, base.port)
+
+    @staticmethod
+    def _build_evaluator(
+        platform: NeMoPlatform | AsyncNeMoPlatform | None, target: Target | None
+    ) -> AgentEvaluator:
         """Construct the evaluator, forwarding the job's platform identity to online inference.
 
-        Online generation against a platform-routed Model/Agent target must act as the job's
-        principal, so the task SDK's identity headers (:data:`_FORWARDED_IDENTITY_HEADERS`, e.g.
-        the service principal id and on-behalf-of) are forwarded to the evaluator's inference client.
-        External-provider targets ignore these and authenticate via their own api key, so forwarding
-        the platform identity is safe (no bearer is forwarded, so the platform token never leaks to a
-        third-party endpoint). Isolated so tests can inject a fake inference seam.
+        Online generation against a *platform-routed* Model/Agent target must act as the job's
+        principal, so the task SDK's identity headers (:data:`_FORWARDED_IDENTITY_HEADERS`, e.g. the
+        service principal id and on-behalf-of) are forwarded to the evaluator's inference client.
+
+        Forwarding is gated on the target being platform-routed (:meth:`_is_platform_routed`): a
+        third-party endpoint (or a runner with no HTTP endpoint) gets *no* identity headers, so the
+        delegated identity — which includes the user's email and group PII — never leaves the platform.
+        External providers authenticate via their own api key and don't need it anyway. Isolated so
+        tests can inject a fake inference seam.
 
         ``platform`` is the SDK handle injected into ``run`` — a real ``NeMoPlatform`` in a submitted
         job (built by ``get_task_sdk``, threading ``NMP_PRINCIPAL`` as on-behalf-of). It is ``None``
@@ -189,7 +214,8 @@ class AgentEvalJob(NemoJob):
         AALGO-297 follow-ups.
         """
         identity_headers: dict[str, str] = {}
-        if platform is not None:
+        url = AgentEvalJob._endpoint_url(target)
+        if platform is not None and url is not None and AgentEvalJob._is_platform_routed(url, platform):
             identity_headers = {
                 key: value
                 for key, value in platform.default_headers.items()
@@ -241,7 +267,7 @@ class AgentEvalJob(NemoJob):
         run_config = AgentEvalRunConfig(
             params=params,
             prompt_template=prompt_template,
-            parallelism=spec.parallelism,
+            parallelism=spec.max_concurrent_tasks,
             benchmark=spec.benchmark,
             fail_fast=spec.fail_fast,
             write_dashboard=False,
@@ -249,7 +275,7 @@ class AgentEvalJob(NemoJob):
         # `run` may be injected a sync `sdk` (submitted jobs, via get_task_sdk) and/or an
         # `async_sdk`; forward whichever identity is present, preferring async when both are — the
         # same precedence the SDK-backed dataset resolver uses.
-        evaluator = self._build_evaluator(async_sdk or sdk)
+        evaluator = self._build_evaluator(async_sdk or sdk, spec.target)
         result = evaluator.run_sync(tasks=tasks, trials=spec.trials, target=target, config=run_config)
 
         files = self._write_result_files(result, ctx.storage.persistent)

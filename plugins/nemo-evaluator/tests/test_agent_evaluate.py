@@ -203,37 +203,67 @@ def test_runner_target_is_accepted(tmp_path: Path) -> None:
     assert isinstance(spec.target, CodexRunnerTarget)
 
 
-@pytest.mark.parametrize("sdk_cls", [NeMoPlatform, AsyncNeMoPlatform])
-def test_build_evaluator_forwards_platform_identity_headers(
-    sdk_cls: type[NeMoPlatform | AsyncNeMoPlatform],
-) -> None:
-    """Online inference must act as the job's principal, so the injected SDK's identity headers are
-    forwarded to the evaluator. Forwarding is an explicit allowlist: the service principal id and
-    on-behalf-of go through, but Stainless/transport noise and other ``X-NMP-*`` (e.g. trace) headers
-    do not — so no bearer or internal metadata leaks to a third-party endpoint. A submitted job is
-    injected the sync ``NeMoPlatform``; ``run_local`` may inject the async counterpart."""
-    sdk = sdk_cls(
+def _sdk_with_identity(sdk_cls: type[NeMoPlatform | AsyncNeMoPlatform]) -> NeMoPlatform | AsyncNeMoPlatform:
+    return sdk_cls(
         base_url="http://platform",
         default_headers={
             "X-NMP-Principal-Id": "service:evaluator",
             "X-NMP-Principal-On-Behalf-Of": "user-1",
+            "X-NMP-Principal-On-Behalf-Of-Email": "user@corp.test",  # PII — must stay in-platform
             "X-NMP-Internal": "true",
             "X-NMP-Trace-Id": "must-not-forward",  # non-identity X-NMP-* must be dropped
-            "Authorization": "Bearer super-secret",  # bearer must never reach a third-party endpoint
+            "Authorization": "Bearer super-secret",  # bearer must never reach any endpoint
         },
     )
 
-    evaluator = AgentEvalJob._build_evaluator(sdk)
+
+def _model_target(url: str) -> ModelTarget:
+    return ModelTarget(model=Model(url=url, name="m"))
+
+
+@pytest.mark.parametrize("sdk_cls", [NeMoPlatform, AsyncNeMoPlatform])
+def test_build_evaluator_forwards_identity_headers_to_platform_routed_target(
+    sdk_cls: type[NeMoPlatform | AsyncNeMoPlatform],
+) -> None:
+    """A platform-routed target (same host as the SDK base URL, e.g. an IGW route) must act as the
+    job's principal, so identity headers are forwarded. Forwarding is an explicit allowlist: the
+    service principal id and on-behalf-of go through, but transport noise and other ``X-NMP-*`` (e.g.
+    trace) headers and the bearer do not."""
+    sdk = _sdk_with_identity(sdk_cls)
+    target = _model_target("http://platform/apis/inference-gateway/v2/workspaces/default/model/m/-/v1/chat/completions")
+
+    evaluator = AgentEvalJob._build_evaluator(sdk, target)
 
     assert evaluator.default_headers == {
         "X-NMP-Principal-Id": "service:evaluator",
         "X-NMP-Principal-On-Behalf-Of": "user-1",
+        "X-NMP-Principal-On-Behalf-Of-Email": "user@corp.test",
         "X-NMP-Internal": "true",
     }
 
 
+@pytest.mark.parametrize("sdk_cls", [NeMoPlatform, AsyncNeMoPlatform])
+def test_build_evaluator_sends_no_identity_to_third_party_target(
+    sdk_cls: type[NeMoPlatform | AsyncNeMoPlatform],
+) -> None:
+    """A third-party target the user configured must receive no on-behalf-of identity — that would
+    leak the delegated user's id/email/groups PII to an external host (it authenticates via its own
+    api key anyway)."""
+    sdk = _sdk_with_identity(sdk_cls)
+    target = _model_target("https://api.openai.com/v1/chat/completions")
+
+    assert AgentEvalJob._build_evaluator(sdk, target).default_headers is None
+
+
+def test_build_evaluator_runner_target_forwards_no_headers() -> None:
+    # A runner (Codex CLI) has no platform HTTP endpoint, so there's no identity to forward.
+    sdk = _sdk_with_identity(NeMoPlatform)
+    assert AgentEvalJob._build_evaluator(sdk, CodexRunnerTarget(model="gpt-5.5")).default_headers is None
+
+
 def test_build_evaluator_without_platform_forwards_no_headers() -> None:
-    assert AgentEvalJob._build_evaluator(None).default_headers is None
+    target = _model_target("http://platform/apis/inference-gateway/v2/workspaces/default/model/m/-/v1/chat/completions")
+    assert AgentEvalJob._build_evaluator(None, target).default_headers is None
 
 
 def test_input_spec_accepts_stored_metric_reference() -> None:

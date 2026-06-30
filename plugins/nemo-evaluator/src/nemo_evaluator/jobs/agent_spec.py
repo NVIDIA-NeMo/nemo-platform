@@ -128,10 +128,17 @@ class _AgentEvalSpecCommon(BaseModel):
 
     # ``oneOf`` mirrors the ``_require_exactly_one_trial_source`` validator into the OpenAPI schema, so
     # the generated contract (and clients) reject a target-less or both-supplied request instead of
-    # only discovering it via a 422 at runtime.
+    # only discovering it via a 422 at runtime. Each branch also excludes an explicit ``null`` (the
+    # validator keys off non-null, not mere presence), so a request that sends ``"target": null``
+    # alongside ``trials`` is accepted by the schema exactly as the runtime accepts it.
     model_config = ConfigDict(
         extra="forbid",
-        json_schema_extra={"oneOf": [{"required": ["target"]}, {"required": ["trials"]}]},
+        json_schema_extra={
+            "oneOf": [
+                {"required": ["target"], "properties": {"target": {"not": {"type": "null"}}}},
+                {"required": ["trials"], "properties": {"trials": {"not": {"type": "null"}}}},
+            ]
+        },
     )
 
     target: Target | None = Field(
@@ -145,7 +152,12 @@ class _AgentEvalSpecCommon(BaseModel):
         description="Precomputed trials to score directly (offline eval), instead of generating them from a "
         "`target`. Mutually exclusive with `target`.",
     )
-    parallelism: int = Field(default=4, ge=1, description="Maximum number of tasks scored concurrently.")
+    max_concurrent_tasks: int = Field(
+        default=4,
+        ge=1,
+        description="Maximum number of tasks evaluated concurrently. Distinct from a target's "
+        "`params.parallelism`, which bounds concurrent inference requests *within* trial generation.",
+    )
     fail_fast: bool = Field(default=False, description="Stop the run on the first scoring failure when True.")
     benchmark: dict[str, Any] = Field(default_factory=dict, description="Benchmark metadata recorded with the run.")
 

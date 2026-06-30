@@ -16,7 +16,7 @@ import asyncio
 
 from nemo_evaluator.api.schemas import MetricInline
 from nemo_evaluator.metric_refs import MetricRefOrInline, resolve_metric_specs
-from nemo_evaluator.resolvers import ModelResolverSdk, PlatformModelResolver
+from nemo_evaluator.resolvers import ModelResolverSDK, PlatformModelResolver
 from nemo_evaluator.shared.metric_bundles.bundles import (
     MetricBundle,
     bundle_metric,
@@ -76,7 +76,7 @@ async def resolve_metrics_to_inline(
       else (``None`` or the sync client) is narrowed to ``None`` and rejected with a clear error when
       a stored ``MetricRef`` is actually present — never awaited blindly.
     * **Model-ref resolution** duck-types the client (``PlatformModelResolver`` tolerates sync or
-      async via ``_maybe_await``), so it accepts anything conforming to ``ModelResolverSdk``; a
+      async via ``_maybe_await``), so it accepts anything conforming to ``ModelResolverSDK``; a
       non-conforming or absent client is rejected up front rather than failing deep in resolution.
     """
     files_sdk = async_sdk if isinstance(async_sdk, AsyncNeMoPlatform) else None
@@ -90,7 +90,7 @@ async def resolve_metrics_to_inline(
     final_bundles = resolved_bundles
     unresolved = unresolved_model_refs(runtime_metrics)
     if unresolved:
-        if not isinstance(async_sdk, ModelResolverSdk):
+        if not isinstance(async_sdk, ModelResolverSDK):
             raise ValueError(
                 "ModelRef metrics require a platform connection (models + inference) to resolve: "
                 + ", ".join(unresolved)

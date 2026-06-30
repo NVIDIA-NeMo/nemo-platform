@@ -55,7 +55,7 @@ class _InferenceResource(Protocol):
 
 
 @runtime_checkable
-class ModelResolverSdk(Protocol):
+class ModelResolverSDK(Protocol):
     """Minimal platform SDK surface used by model-reference resolution.
 
     Runtime-checkable so callers can confirm conformance and raise a clear error instead of failing
@@ -75,7 +75,7 @@ async def _maybe_await(value: _T | Awaitable[_T]) -> _T:
 
 
 async def _resolve_provider_host_url(
-    sdk: ModelResolverSdk,
+    sdk: ModelResolverSDK,
     model_entity: PlatformModelEntity,
 ) -> str | None:
     """Resolve the direct provider host URL from a model entity's first provider."""
@@ -106,7 +106,7 @@ class PlatformModelResolver:
 
     def __init__(self, sdk: object) -> None:
         """Store the platform SDK used for model lookup."""
-        self._sdk = cast(ModelResolverSdk, sdk)
+        self._sdk = cast(ModelResolverSDK, sdk)
 
     async def resolve_model(self, model_ref: ModelRef) -> Model:
         """Resolve ``workspace/name`` to an SDK Model routed through inference gateway."""

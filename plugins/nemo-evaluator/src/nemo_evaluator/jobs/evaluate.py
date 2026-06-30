@@ -214,7 +214,7 @@ class EvaluateJob(NemoJob):
         *,
         workspace: str,
         entity_client: object,
-        async_sdk: AsyncNeMoPlatform | NeMoPlatform | None,
+        async_sdk: AsyncNeMoPlatform | None,
         is_local: bool,
     ) -> BaseModel:
         """Resolve submitter-facing model and metric references into the canonical evaluation spec."""

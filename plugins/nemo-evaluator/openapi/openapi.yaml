@@ -1040,9 +1040,17 @@ components:
         \ protocol\n  (``/generate/full?filter_steps=none``)."
     AgentEvalInputSpec:
       oneOf:
-      - required:
+      - properties:
+          target:
+            not:
+              type: 'null'
+        required:
         - target
-      - required:
+      - properties:
+          trials:
+            not:
+              type: 'null'
+        required:
         - trials
       properties:
         target:
@@ -1061,11 +1069,13 @@ components:
           items:
             $ref: '#/components/schemas/AgentEvalTrialInput'
           type: array
-        parallelism:
+        max_concurrent_tasks:
           type: integer
           minimum: 1.0
-          title: Parallelism
-          description: Maximum number of tasks scored concurrently.
+          title: Max Concurrent Tasks
+          description: Maximum number of tasks evaluated concurrently. Distinct from
+            a target's `params.parallelism`, which bounds concurrent inference requests
+            *within* trial generation.
           default: 4
         fail_fast:
           type: boolean
@@ -1093,9 +1103,17 @@ components:
         be inline or references.'
     AgentEvalSpec:
       oneOf:
-      - required:
+      - properties:
+          target:
+            not:
+              type: 'null'
+        required:
         - target
-      - required:
+      - properties:
+          trials:
+            not:
+              type: 'null'
+        required:
         - trials
       properties:
         target:
@@ -1114,11 +1132,13 @@ components:
           items:
             $ref: '#/components/schemas/AgentEvalTrialOutput'
           type: array
-        parallelism:
+        max_concurrent_tasks:
           type: integer
           minimum: 1.0
-          title: Parallelism
-          description: Maximum number of tasks scored concurrently.
+          title: Max Concurrent Tasks
+          description: Maximum number of tasks evaluated concurrently. Distinct from
+            a target's `params.parallelism`, which bounds concurrent inference requests
+            *within* trial generation.
           default: 4
         fail_fast:
           type: boolean
@@ -1463,11 +1483,11 @@ components:
           description: User-visible final text produced by the agent, if any.
           type: string
         response:
-          title: Response
-          description: Structured final response payload produced by the agent, if
-            any.
-          additionalProperties: true
-          type: object
+          allOf:
+          - $ref: '#/components/schemas/JsonValue'
+          description: "Final response payload produced by the agent, if any. Any\
+            \ JSON value \u2014 a structured object, or a raw JSON string/array for\
+            \ agents that don't return an object."
         metadata:
           additionalProperties: true
           type: object

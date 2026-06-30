@@ -26,6 +26,14 @@ from nemo_platform_plugin.jobs.image import get_qualified_image
 
 AGENT_EVAL_STEP_NAME = "agent-evaluate"
 
+#: Container wiring for the agent-evaluate step: the shared cpu-tasks image, run via ``python -m``.
+#: Constants (not inline literals) so the step definition and its tests share one source of truth.
+#: (Making these spec-configurable is a possible future enhancement — see PR #496 discussion — but
+#: they're fixed for the MVP.)
+AGENT_EVAL_IMAGE = "nmp-cpu-tasks"
+AGENT_EVAL_ENTRYPOINT = ["python", "-m"]
+AGENT_EVAL_COMMAND = ["nemo_evaluator.tasks.agent_evaluate"]
+
 
 def compile_agent_eval_job(spec: AgentEvalSpec, *, profile: str | None = None) -> PlatformJobSpec:
     """Compile a canonical agent-evaluation spec into a plugin-native platform job."""
@@ -55,9 +63,9 @@ def _agent_eval_step(spec: AgentEvalSpec, profile: str | None) -> PlatformJobSte
             profile=profile or "default",
             provider="cpu",
             container=ContainerSpec(
-                image=get_qualified_image("nmp-cpu-tasks"),
-                entrypoint=["python", "-m"],
-                command=["nemo_evaluator.tasks.agent_evaluate"],
+                image=get_qualified_image(AGENT_EVAL_IMAGE),
+                entrypoint=AGENT_EVAL_ENTRYPOINT,
+                command=AGENT_EVAL_COMMAND,
             ),
         ),
         config=spec.model_dump(mode="json"),
