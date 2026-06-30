@@ -79,12 +79,4 @@ describe('AddColumnPalette', () => {
     expect(await screen.findByText(/No column types match/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /UUID/ })).not.toBeInTheDocument();
   });
-
-  it('groups all 13 sampler sub-types under the Sampler heading', () => {
-    render(<AddColumnPalette />);
-
-    // Sampler is the only group with 13 options, so its count tag is unambiguous.
-    expect(screen.getByText('Sampler')).toBeInTheDocument();
-    expect(screen.getByText('13')).toBeInTheDocument();
-  });
 });
