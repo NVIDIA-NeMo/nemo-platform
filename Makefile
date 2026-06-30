@@ -182,9 +182,16 @@ verify-python-version: ## Verify Python version and install if necessary
 # Optional escape hatch for local plugin packages that cannot participate in the
 # root uv workspace/lock. Leave empty for the normal monorepo bootstrap path.
 BOOTSTRAP_LOCAL_PLUGIN_DIRS ?=
+.PHONY: ensure-uv
+ensure-uv: ## Install uv if not present, using the version constraint from pyproject.toml.
+	@if ! command -v uv >/dev/null 2>&1; then \
+		uv_spec=$$(grep -E '"uv[>=<! ]' pyproject.toml | head -1 | sed 's/.*"\(uv[^"]*\)".*/\1/'); \
+		echo "uv not found — installing '$$uv_spec' via pip"; \
+		pip install "$$uv_spec"; \
+	fi
 
 .PHONY: bootstrap-python
-bootstrap-python: ## Bootstrap Python dependencies.
+bootstrap-python: ensure-uv ## Bootstrap Python dependencies.
 	@echo "~~~~~~"
 	@echo "installing python dependencies"
 	uv sync --frozen --all-packages
