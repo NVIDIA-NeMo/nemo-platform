@@ -1245,6 +1245,9 @@ components:
             format:
               const: generic
         then:
+          not:
+            required:
+            - nat
           required:
           - body
           - response_path
@@ -1286,6 +1289,11 @@ components:
           description: JSONPath expression to extract the trajectory from the agent's
             response body. Optional.
           type: string
+        nat:
+          allOf:
+          - $ref: '#/components/schemas/NatAgentConfig'
+          description: Optional NAT endpoint and stream configuration; defaults preserve
+            /generate/full behavior.
       additionalProperties: false
       type: object
       required:
@@ -3126,6 +3134,44 @@ components:
 
         The prompt template *is* the request sent to the model, so it lives here with
         the endpoint.'
+    NatAgentConfig:
+      properties:
+        endpoint:
+          type: string
+          title: Endpoint
+          description: Relative path below agent.url, or an absolute NAT endpoint
+            URL.
+          default: /generate/full
+        request_mode:
+          type: string
+          enum:
+          - input_message
+          - passthrough
+          title: Request Mode
+          description: Derive the legacy input_message payload or send the rendered
+            request unchanged.
+          default: input_message
+        query_params:
+          additionalProperties:
+            type: string
+          type: object
+          title: Query Params
+          description: Query parameters sent to the NAT endpoint.
+        response_path:
+          type: string
+          title: Response Path
+          description: JSONPath applied to data-channel payloads; the last match is
+            the final output.
+          default: $.value
+        capture_evidence:
+          type: boolean
+          title: Capture Evidence
+          description: Capture raw and parsed stream evidence for agent-eval trials.
+          default: false
+      additionalProperties: false
+      type: object
+      title: NatAgentConfig
+      description: NeMo Agent Toolkit request and stream handling configuration.
     PaginationData:
       properties:
         page:
