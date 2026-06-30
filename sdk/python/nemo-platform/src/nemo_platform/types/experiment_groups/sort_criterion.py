@@ -19,12 +19,12 @@ from typing_extensions import Literal
 
 from ..._models import BaseModel
 
-__all__ = ["RankingField"]
+__all__ = ["SortCriterion"]
 
 
-class RankingField(BaseModel):
+class SortCriterion(BaseModel):
     """
-    One field in a group's ranking: a sortable rollup-metric path and its direction.
+    One criterion in a group's default sort: a sortable rollup-metric path and its direction.
     """
 
     direction: Literal["asc", "desc"]

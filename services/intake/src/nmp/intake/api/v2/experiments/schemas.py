@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Annotated, Any
 
 from nmp.common.entities.values import DatetimeFilter, Filter, NumberFilter, map_entity_field
-from nmp.intake.entities.experiments import Experiment, ExperimentGroup, RankingField
+from nmp.intake.entities.experiments import Experiment, ExperimentGroup, SortCriterion
 from nmp.intake.spans.domain import SpanStatus
 from nmp.intake.spans.experiment_session_repository import ExperimentSessionRow
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field
@@ -26,12 +26,12 @@ class ExperimentGroupRequest(BaseModel):
 
     name: str = Field(description="Workspace-unique group name.")
     description: str | None = Field(default=None, description="Human-readable purpose of the group.")
-    ranking: list[RankingField] | None = Field(
+    default_sort: list[SortCriterion] | None = Field(
         default=None,
         description=(
-            "Ordered ranking config (priority order; first is primary, rest are tiebreakers). Sets the "
-            "default sort for this group's experiments list. Each field must be a numeric rollup metric: "
-            "run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>."
+            "Ordered default sort (priority order; first is primary, rest are tiebreakers) for this "
+            "group's experiments list. Each field must be a numeric rollup metric: run_count, "
+            "cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>."
         ),
     )
 
@@ -60,7 +60,7 @@ class ExperimentGroupResponse(BaseModel):
     name: str
     workspace: str
     description: str | None = None
-    ranking: list[RankingField] | None = None
+    default_sort: list[SortCriterion] | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
     experiment_count: int = Field(
@@ -75,7 +75,7 @@ class ExperimentGroupResponse(BaseModel):
             name=entity.name,
             workspace=entity.workspace,
             description=entity.description,
-            ranking=entity.ranking,
+            default_sort=entity.default_sort,
             created_at=entity.created_at,
             updated_at=entity.updated_at,
         )

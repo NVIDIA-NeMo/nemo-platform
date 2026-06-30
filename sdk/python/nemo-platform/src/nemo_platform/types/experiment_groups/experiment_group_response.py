@@ -19,7 +19,7 @@ from typing import List, Optional
 from datetime import datetime
 
 from ..._models import BaseModel
-from .ranking_field import RankingField
+from .sort_criterion import SortCriterion
 
 __all__ = ["ExperimentGroupResponse"]
 
@@ -35,11 +35,11 @@ class ExperimentGroupResponse(BaseModel):
 
     created_at: Optional[datetime] = None
 
+    default_sort: Optional[List[SortCriterion]] = None
+
     description: Optional[str] = None
 
     experiment_count: Optional[int] = None
     """Number of live (non-soft-deleted) experiments in this group."""
-
-    ranking: Optional[List[RankingField]] = None
 
     updated_at: Optional[datetime] = None

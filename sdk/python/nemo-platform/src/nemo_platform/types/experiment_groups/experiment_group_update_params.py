@@ -21,7 +21,7 @@ from typing import Iterable
 from typing_extensions import Required, Annotated, TypedDict
 
 from ..._utils import PropertyInfo
-from .ranking_field_param import RankingFieldParam
+from .sort_criterion_param import SortCriterionParam
 
 __all__ = ["ExperimentGroupUpdateParams"]
 
@@ -32,13 +32,12 @@ class ExperimentGroupUpdateParams(TypedDict, total=False):
     body_name: Required[Annotated[str, PropertyInfo(alias="name")]]
     """Workspace-unique group name."""
 
+    default_sort: Iterable[SortCriterionParam]
+    """
+    Ordered default sort (priority order; first is primary, rest are tiebreakers)
+    for this group's experiments list. Each field must be a numeric rollup metric:
+    run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>.
+    """
+
     description: str
     """Human-readable purpose of the group."""
-
-    ranking: Iterable[RankingFieldParam]
-    """Ordered ranking config (priority order; first is primary, rest are tiebreakers).
-
-    Sets the default sort for this group's experiments list. Each field must be a
-    numeric rollup metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or
-    evaluators.<name>.<stat>.
-    """

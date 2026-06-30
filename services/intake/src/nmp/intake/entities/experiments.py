@@ -17,8 +17,8 @@ from nmp.common.entities.client import EntityBase
 from pydantic import AnyUrl, BaseModel, Field
 
 
-class RankingField(BaseModel):
-    """One field in a group's ranking: a sortable rollup-metric path and its direction."""
+class SortCriterion(BaseModel):
+    """One criterion in a group's default sort: a sortable rollup-metric path and its direction."""
 
     field: str = Field(
         description="Rollup-metric sort path, e.g. cost_usd.mean, latency_ms.p95, or evaluators.<name>.mean."
@@ -35,11 +35,11 @@ class ExperimentGroup(EntityBase):
     __entity_type__: ClassVar[str] = "experiment_group"
 
     description: str | None = Field(default=None, description="Human-readable purpose of the group.")
-    ranking: list[RankingField] | None = Field(
+    default_sort: list[SortCriterion] | None = Field(
         default=None,
         description=(
-            "Ordered ranking config in priority order (first is primary, the rest are tiebreakers). When "
-            "set, it is the default sort for this group's experiments list. Each field must be a numeric "
+            "Ordered default sort in priority order (first is primary, the rest are tiebreakers). When "
+            "set, it is the default order for this group's experiments list. Each field must be a numeric "
             "rollup metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>."
         ),
     )

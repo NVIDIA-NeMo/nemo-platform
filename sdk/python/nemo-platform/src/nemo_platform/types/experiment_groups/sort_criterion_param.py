@@ -19,12 +19,12 @@ from __future__ import annotations
 
 from typing_extensions import Literal, Required, TypedDict
 
-__all__ = ["RankingFieldParam"]
+__all__ = ["SortCriterionParam"]
 
 
-class RankingFieldParam(TypedDict, total=False):
+class SortCriterionParam(TypedDict, total=False):
     """
-    One field in a group's ranking: a sortable rollup-metric path and its direction.
+    One criterion in a group's default sort: a sortable rollup-metric path and its direction.
     """
 
     direction: Required[Literal["asc", "desc"]]
