@@ -13,6 +13,14 @@ log_error() { echo -e "\033[0;31m[ERROR]\033[0m $*"; }
 # Secrets
 # ---------------------------------------------------------------------------
 
+# _dockerconfigjson SERVER USERNAME PASSWORD
+#
+# Prints a dockerconfigjson blob for a single registry.
+_dockerconfigjson() {
+    printf '{"auths":{"%s":{"username":"%s","password":"%s","auth":"%s"}}}' \
+      "$1" "$2" "$3" "$(printf '%s:%s' "$2" "$3" | base64 | tr -d '\n')"
+}
+
 # create_platform_secrets NAMESPACE
 #
 # Creates the standard set of platform secrets in the given namespace.
@@ -20,6 +28,9 @@ log_error() { echo -e "\033[0;31m[ERROR]\033[0m $*"; }
 #   - ngc-api + nvcrimagepullsecret: when NGC_API_KEY is set
 #   - ghcr-pull: when GITHUB_TOKEN is set
 #   - huggingface-token: when HF_TOKEN is set
+#
+# Secret values are passed via process substitution to keep them out of
+# process arguments visible in /proc.
 create_platform_secrets() {
     local namespace="${1:?namespace is required}"
     local kubectl_ns=(kubectl -n "${namespace}")
@@ -27,14 +38,13 @@ create_platform_secrets() {
     if [ -n "${NGC_API_KEY:-}" ]; then
         log_info "Creating NGC API secret..."
         "${kubectl_ns[@]}" create secret generic ngc-api \
-          --from-literal=NGC_API_KEY="${NGC_API_KEY}" \
+          --from-file=NGC_API_KEY=<(printf '%s' "${NGC_API_KEY}") \
           --dry-run=client -o yaml | "${kubectl_ns[@]}" apply -f -
 
         log_info "Creating NGC image pull secret..."
-        "${kubectl_ns[@]}" create secret docker-registry nvcrimagepullsecret \
-          --docker-server=nvcr.io \
-          --docker-username='$oauthtoken' \
-          --docker-password="${NGC_API_KEY}" \
+        "${kubectl_ns[@]}" create secret generic nvcrimagepullsecret \
+          --type=kubernetes.io/dockerconfigjson \
+          --from-file=.dockerconfigjson=<(_dockerconfigjson nvcr.io '$oauthtoken' "${NGC_API_KEY}") \
           --dry-run=client -o yaml | "${kubectl_ns[@]}" apply -f -
     else
         log_warn "NGC_API_KEY not set, skipping NGC secrets"
@@ -42,10 +52,9 @@ create_platform_secrets() {
 
     if [ -n "${GITHUB_TOKEN:-}" ]; then
         log_info "Creating GHCR image pull secret..."
-        "${kubectl_ns[@]}" create secret docker-registry ghcr-pull \
-          --docker-server=ghcr.io \
-          --docker-username=x-access-token \
-          --docker-password="${GITHUB_TOKEN}" \
+        "${kubectl_ns[@]}" create secret generic ghcr-pull \
+          --type=kubernetes.io/dockerconfigjson \
+          --from-file=.dockerconfigjson=<(_dockerconfigjson ghcr.io x-access-token "${GITHUB_TOKEN}") \
           --dry-run=client -o yaml | "${kubectl_ns[@]}" apply -f -
     else
         log_warn "GITHUB_TOKEN not set, skipping GHCR image pull secret"
@@ -54,7 +63,7 @@ create_platform_secrets() {
     if [ -n "${HF_TOKEN:-}" ]; then
         log_info "Creating HuggingFace token secret..."
         "${kubectl_ns[@]}" create secret generic huggingface-token \
-          --from-literal=HF_TOKEN="${HF_TOKEN}" \
+          --from-file=HF_TOKEN=<(printf '%s' "${HF_TOKEN}") \
           --dry-run=client -o yaml | "${kubectl_ns[@]}" apply -f -
     else
         log_warn "HF_TOKEN not set, skipping HuggingFace token secret"
