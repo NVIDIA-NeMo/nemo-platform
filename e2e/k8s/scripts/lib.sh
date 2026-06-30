@@ -24,8 +24,9 @@ _dockerconfigjson() {
 # create_platform_secrets NAMESPACE
 #
 # Creates the standard set of platform secrets in the given namespace.
-# Each secret is created only when its corresponding env var is set:
-#   - ngc-api + nvcrimagepullsecret: when NGC_API_KEY is set
+# NGC secrets are always created (with a placeholder if NGC_API_KEY is unset)
+# because the helm chart expects the ngc-api secret to exist. Other secrets
+# are created only when their corresponding env var is set:
 #   - ghcr-pull: when GITHUB_TOKEN is set
 #   - huggingface-token: when HF_TOKEN is set
 #
@@ -34,21 +35,22 @@ _dockerconfigjson() {
 create_platform_secrets() {
     local namespace="${1:?namespace is required}"
     local kubectl_ns=(kubectl -n "${namespace}")
+    local ngc_key="${NGC_API_KEY:-placeholder}"
 
-    if [ -n "${NGC_API_KEY:-}" ]; then
-        log_info "Creating NGC API secret..."
-        "${kubectl_ns[@]}" create secret generic ngc-api \
-          --from-file=NGC_API_KEY=<(printf '%s' "${NGC_API_KEY}") \
-          --dry-run=client -o yaml | "${kubectl_ns[@]}" apply -f -
-
-        log_info "Creating NGC image pull secret..."
-        "${kubectl_ns[@]}" create secret generic nvcrimagepullsecret \
-          --type=kubernetes.io/dockerconfigjson \
-          --from-file=.dockerconfigjson=<(_dockerconfigjson nvcr.io '$oauthtoken' "${NGC_API_KEY}") \
-          --dry-run=client -o yaml | "${kubectl_ns[@]}" apply -f -
-    else
-        log_warn "NGC_API_KEY not set, skipping NGC secrets"
+    if [ -z "${NGC_API_KEY:-}" ]; then
+        log_warn "NGC_API_KEY not set, creating NGC secrets with placeholder"
     fi
+
+    log_info "Creating NGC API secret..."
+    "${kubectl_ns[@]}" create secret generic ngc-api \
+      --from-file=NGC_API_KEY=<(printf '%s' "${ngc_key}") \
+      --dry-run=client -o yaml | "${kubectl_ns[@]}" apply -f -
+
+    log_info "Creating NGC image pull secret..."
+    "${kubectl_ns[@]}" create secret generic nvcrimagepullsecret \
+      --type=kubernetes.io/dockerconfigjson \
+      --from-file=.dockerconfigjson=<(_dockerconfigjson nvcr.io '$oauthtoken' "${ngc_key}") \
+      --dry-run=client -o yaml | "${kubectl_ns[@]}" apply -f -
 
     if [ -n "${GITHUB_TOKEN:-}" ]; then
         log_info "Creating GHCR image pull secret..."
