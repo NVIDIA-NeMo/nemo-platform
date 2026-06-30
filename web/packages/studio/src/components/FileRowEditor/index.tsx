@@ -10,6 +10,7 @@ import { FILE_FORMAT_TAG_COLOR } from '@studio/components/FileRowEditor/constant
 import {
   formatFromFileName,
   parseDataFile,
+  serializeDataFile,
   TEXT_PARSEABLE_FORMATS,
   type DataFileFormat,
 } from '@studio/components/FileRowEditor/parse';
@@ -282,6 +283,25 @@ export const FileRowEditor: FC<FileRowEditorProps> = ({
 
   const handleOpenFileClick = () => fileInputRef.current?.click();
 
+  const handleDownload = () => {
+    // Parquet/unknown files have no in-browser binary form, so export the current rows as
+    // JSON; text formats round-trip to their own extension.
+    const downloadFormat: DataFileFormat = TEXT_PARSEABLE_FORMATS.includes(fileFormat)
+      ? fileFormat
+      : 'json';
+    const downloadName =
+      downloadFormat === fileFormat ? fileName : `${fileName.replace(/\.[^.]+$/, '')}.json`;
+    const blob = new Blob([serializeDataFile(rows, downloadFormat)], {
+      type: 'application/octet-stream',
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = downloadName;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleFileSelected = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     // Reset the input so selecting the same file again re-triggers change.
@@ -370,7 +390,12 @@ export const FileRowEditor: FC<FileRowEditorProps> = ({
               </Button>
             </>
           )}
-          <Button kind="secondary" color="neutral">
+          <Button
+            kind="secondary"
+            color="neutral"
+            onClick={handleDownload}
+            disabled={rows.length === 0}
+          >
             <Download size={16} />
             Download
           </Button>

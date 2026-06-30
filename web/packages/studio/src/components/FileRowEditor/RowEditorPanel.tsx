@@ -61,12 +61,25 @@ interface JsonFieldProps {
 const JsonField: FC<JsonFieldProps> = ({ label, value, onChange }) => {
   const [text, setText] = useState(() => JSON.stringify(value ?? null, null, 2));
   const [error, setError] = useState(false);
+  // Track the value we last propagated so we can tell our own commits (skip — they would
+  // reformat mid-edit) apart from an external change, e.g. the same row being reopened
+  // after a cancel. The latter must reset any stale invalid draft back to committed JSON.
+  const committedValue = useRef(value);
+
+  useEffect(() => {
+    if (value !== committedValue.current) {
+      committedValue.current = value;
+      setText(JSON.stringify(value ?? null, null, 2));
+      setError(false);
+    }
+  }, [value]);
 
   const commit = (next: string) => {
     setText(next);
     try {
       const parsed: unknown = JSON.parse(next);
       setError(false);
+      committedValue.current = parsed;
       onChange(parsed);
     } catch {
       setError(true);
@@ -315,7 +328,7 @@ export const RowEditorPanel: FC<RowEditorPanelProps> = ({
               <Button type="button" kind="secondary" color="neutral" onClick={onClose}>
                 Cancel
               </Button>
-              <Button type="submit" kind="primary" color="brand" onClick={onSave}>
+              <Button type="submit" kind="primary" color="brand">
                 Save Changes
               </Button>
             </Flex>
