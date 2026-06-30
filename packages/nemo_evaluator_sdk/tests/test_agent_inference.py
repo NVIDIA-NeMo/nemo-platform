@@ -776,7 +776,7 @@ class TestNATAgentExecutor:
         assert result.evidence.require("trace", kind="trace").format == "atif"
 
     @pytest.mark.asyncio
-    async def test_translator_is_not_called_for_pre_frame_transport_failure(self):
+    async def test_pre_frame_http_error_with_translator_returns_partial_without_capture(self):
         agent = Agent(
             url="http://nat.test",
             name="nat-agent",
@@ -786,7 +786,7 @@ class TestNATAgentExecutor:
                 request_mode="passthrough",
                 query_params={},
                 response_path="$.value.value",
-                capture_evidence=True,
+                capture_evidence=False,
             ),
         )
         request = httpx.Request("POST", "http://nat.test/generate/stream")
@@ -812,6 +812,9 @@ class TestNATAgentExecutor:
         assert result.status is AgentInvocationStatus.PARTIAL
         translator.assert_not_called()
         assert result.evidence is not None
+        http_metadata = result.evidence.require("http_metadata").data
+        assert isinstance(http_metadata, dict)
+        assert http_metadata["status_code"] == 503
         assert "translation_error" not in result.evidence.names()
 
     @pytest.mark.asyncio

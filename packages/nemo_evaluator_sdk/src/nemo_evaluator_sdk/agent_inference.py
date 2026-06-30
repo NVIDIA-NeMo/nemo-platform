@@ -419,12 +419,17 @@ async def _invoke_nat_agent(
         capture = await run_with_resilience(endpoint_key, _invoke_stream, max_attempts=max_attempts)
     except Exception as exc:
         log.exception("NAT agent request to %s failed after %d attempts", endpoint, max_attempts)
-        # When evidence capture is enabled, surface an HTTP failure that occurred
-        # before the first stream frame as a PARTIAL result with http_metadata
-        # evidence instead of raising, so the agent-eval trial stays inspectable.
+        # When evidence capture or a stream translator is enabled, surface an HTTP
+        # failure that occurred before the first stream frame as a PARTIAL result
+        # with http_metadata evidence instead of raising, so the trial stays
+        # inspectable.
         # The legacy ``_make_nat_agent_request`` path keeps capture disabled, so it
         # still raises (it converts non-COMPLETED results into a RuntimeError).
-        http_error = _http_status_error(exc) if config.capture_evidence else None
+        http_error = (
+            _http_status_error(exc)
+            if config.capture_evidence or nat_stream_translator is not None
+            else None
+        )
         if http_error is None:
             raise
         capture = _NatStreamCapture(
