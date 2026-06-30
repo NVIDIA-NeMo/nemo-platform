@@ -4,6 +4,9 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/create_secrets.sh"
+
 KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME:-nmp-e2e}"
 KIND_NODE_IMAGE="${KIND_NODE_IMAGE:-kindest/node:v1.33.7@sha256:d26ef333bdb2cbe9862a0f7c3803ecc7b4303d8cea8e814b481b09949d353040}"
 KUBE_NAMESPACE="${KUBE_NAMESPACE:-default}"
@@ -93,35 +96,7 @@ fi
 KUBECTL_NS=(kubectl -n "${KUBE_NAMESPACE}")
 
 log_info "Creating Kubernetes secrets in namespace ${KUBE_NAMESPACE}..."
-"${KUBECTL_NS[@]}" create secret generic ngc-api \
-  --from-literal=NGC_API_KEY="${NGC_API_KEY}" \
-  --dry-run=client -o yaml | "${KUBECTL_NS[@]}" apply -f -
-
-"${KUBECTL_NS[@]}" create secret docker-registry nvcrimagepullsecret \
-  --docker-server=nvcr.io \
-  --docker-username="\$oauthtoken" \
-  --docker-password="${NGC_API_KEY}" \
-  --dry-run=client -o yaml | "${KUBECTL_NS[@]}" apply -f -
-
-if [ -n "${GITHUB_TOKEN:-}" ]; then
-    log_info "Creating GHCR image pull secret..."
-    "${KUBECTL_NS[@]}" create secret docker-registry ghcr-pull \
-      --docker-server=ghcr.io \
-      --docker-username=x-access-token \
-      --docker-password="${GITHUB_TOKEN}" \
-      --dry-run=client -o yaml | "${KUBECTL_NS[@]}" apply -f -
-else
-    log_warn "GITHUB_TOKEN not set, skipping GHCR image pull secret"
-fi
-
-if [ -n "${HF_TOKEN:-}" ]; then
-    log_info "Creating HuggingFace token secret..."
-    "${KUBECTL_NS[@]}" create secret generic huggingface-token \
-      --from-literal=HF_TOKEN="${HF_TOKEN}" \
-      --dry-run=client -o yaml | "${KUBECTL_NS[@]}" apply -f -
-else
-    log_warn "HF_TOKEN not set, skipping HuggingFace token secret"
-fi
+create_platform_secrets "${KUBE_NAMESPACE}"
 
 log_info "Creating Gateway ${KUBE_NAMESPACE}/${KUBE_GATEWAY_NAME}..."
 kubectl apply -f - <<EOF

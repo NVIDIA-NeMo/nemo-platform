@@ -4,6 +4,9 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/create_secrets.sh"
+
 MINIKUBE_PROFILE="${MINIKUBE_PROFILE:-minikube-auth}"
 KUBE_NAMESPACE="${KUBE_NAMESPACE:-default}"
 INGRESS_NODEPORT="${INGRESS_NODEPORT:-30080}"
@@ -90,32 +93,8 @@ fi
 
 KUBECTL_NS=(kubectl -n "${KUBE_NAMESPACE}")
 
-log_info "Creating placeholder platform secrets in namespace ${KUBE_NAMESPACE}..."
-${KUBECTL_NS[@]} create secret generic ngc-api \
-  --from-literal=NGC_API_KEY="${NGC_API_KEY:-local-dev-placeholder}" \
-  --dry-run=client -o yaml | ${KUBECTL_NS[@]} apply -f -
-
-${KUBECTL_NS[@]} create secret docker-registry nvcrimagepullsecret \
-  --docker-server="${NVCI_DOCKER_SERVER:-docker.io}" \
-  --docker-username="${NVCI_DOCKER_USERNAME:-local}" \
-  --docker-password="${NVCI_DOCKER_PASSWORD:-local-dev-placeholder}" \
-  --dry-run=client -o yaml | ${KUBECTL_NS[@]} apply -f -
-
-if [ -n "${GITHUB_TOKEN:-}" ]; then
-    log_info "Creating GHCR image pull secret..."
-    ${KUBECTL_NS[@]} create secret docker-registry ghcr-pull \
-      --docker-server=ghcr.io \
-      --docker-username=x-access-token \
-      --docker-password="${GITHUB_TOKEN}" \
-      --dry-run=client -o yaml | ${KUBECTL_NS[@]} apply -f -
-fi
-
-if [ -n "${HF_TOKEN:-}" ]; then
-    log_info "Creating HuggingFace token secret..."
-    ${KUBECTL_NS[@]} create secret generic huggingface-token \
-      --from-literal=HF_TOKEN="${HF_TOKEN}" \
-      --dry-run=client -o yaml | ${KUBECTL_NS[@]} apply -f -
-fi
+log_info "Creating platform secrets in namespace ${KUBE_NAMESPACE}..."
+create_platform_secrets "${KUBE_NAMESPACE}"
 
 MINIKUBE_IP="$(minikube ip -p "${MINIKUBE_PROFILE}")"
 
