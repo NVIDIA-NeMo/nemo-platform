@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+import re
+
 from nemo_deployments_plugin.backends.docker.labels import (
     CONFIG_NAME_LABEL,
     DEPLOYMENT_NAME_LABEL,
@@ -13,13 +15,51 @@ from nemo_deployments_plugin.backends.docker.labels import (
     container_name,
     deployment_identity_labels,
     docker_volume_name,
+    k8s_safe_name,
 )
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
+
+_HASH8 = re.compile(r"-[0-9a-f]{8}$")
+
+
+def _assert_dns_label_safe(name: str) -> None:
+    assert len(name) <= 63
+    assert name[0].isalpha()
+    assert name[-1].isalnum()
+    assert _HASH8.search(name)
 
 
 def test_container_name_is_dns_safe() -> None:
     name = container_name("my-workspace", "my.deployment")
     assert name.startswith("dep-")
+    _assert_dns_label_safe(name)
+
+
+def test_k8s_safe_name_always_includes_hash_suffix() -> None:
+    name = k8s_safe_name("short-name")
+    assert _HASH8.search(name)
+    assert name == k8s_safe_name("short-name")
+
+
+def test_container_name_ambiguous_workspace_name_pairs_differ() -> None:
+    name_a = container_name("foo", "bar-baz")
+    name_b = container_name("foo-bar", "baz")
+    assert name_a != name_b
+    _assert_dns_label_safe(name_a)
+    _assert_dns_label_safe(name_b)
+
+
+def test_docker_volume_name_ambiguous_workspace_name_pairs_differ() -> None:
+    name_a = docker_volume_name("foo", "bar-baz")
+    name_b = docker_volume_name("foo-bar", "baz")
+    assert name_a != name_b
+    assert name_a.startswith("dep-vol-")
+    assert name_b.startswith("dep-vol-")
+
+
+def test_k8s_safe_name_empty_base_uses_fallback_prefix() -> None:
+    name = k8s_safe_name("")
+    assert name.startswith("x-")
     assert len(name) <= 63
 
 

@@ -46,3 +46,11 @@ deployments:
 
 Entity-level `backend_config.docker` accepts only deployment-specific overrides such
 as `network`.
+
+## Docker resource naming
+
+Docker container and volume names use a readable prefix plus a deterministic
+8-character hash suffix. The hash is computed from ``{workspace}/{name}``, not
+from the hyphen-joined string, so pairs like ``foo``/``bar-baz`` and
+``foo-bar``/``baz`` cannot collide. Orphan cleanup matches identity labels, not
+names alone; existing containers keep their old names after upgrade.

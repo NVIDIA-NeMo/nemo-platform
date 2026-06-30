@@ -260,21 +260,35 @@ def normalize_model_entity_name(model_name: str) -> str:
     return normalized
 
 
+_HASH_SUFFIX_LENGTH = 8
+_LORA_SIDECAR_SUFFIX = "-sidecar"
+# Primary Docker container names must leave room for an optional LoRA sidecar suffix.
+_DOCKER_CONTAINER_NAME_MAX_LENGTH = 63 - len(_LORA_SIDECAR_SUFFIX)
+
+
+def _workspace_name_identity(workspace: str, name: str) -> str:
+    """Canonical ``workspace/name`` identity used as ``hash_input`` for resource names."""
+    return f"{workspace}/{name}"
+
+
 def _get_k8s_safe_name(
     base_name: str,
     max_length: int = 63,
     suffix: str = "",
     name_type: Literal["label", "dns_subdomain"] = "label",
+    hash_input: str | None = None,
+    *,
+    include_hash: bool = True,
 ) -> str:
     """
     Generate a Kubernetes-compliant name from a base name.
 
     This function is deterministic - the same input will always produce the same output.
     It follows a logical order:
-    1. Generate deterministic hash (for uniqueness if truncation is needed)
+    1. Generate deterministic hash from hash_input (or base_name when omitted)
     2. Normalize characters to K8s-compatible format
-    3. Check length requirements (considering user-provided suffix)
-    4. Apply truncation with hash suffix only if necessary
+    3. Truncate if needed to fit max_length with hash and suffix
+    4. Always append an 8-char hash suffix for uniqueness
 
     Handles both RFC 1035 DNS labels (for Services, Pods, etc.) and RFC 1123 DNS subdomains (for Secrets).
 
@@ -296,105 +310,95 @@ def _get_k8s_safe_name(
         max_length: Maximum length for the K8s resource (63 for labels, 253 for DNS subdomains)
         suffix: Optional suffix to append (e.g., "-pvc", "-hf-token")
         name_type: Type of K8s name - "label" for RFC 1035, "dns_subdomain" for RFC 1123
+        hash_input: Optional distinct identity for hashing (defaults to base_name).
+            Resource builders pass ``workspace/name`` so ambiguous hyphen joins
+            (e.g. ``foo`` + ``bar-baz`` vs ``foo-bar`` + ``baz``) hash differently.
+        include_hash: When False, append ``suffix`` only without a second hash.
+            Used when deriving init/sidecar names from an already-hashed base.
 
     Returns:
         A Kubernetes-compliant name that fits within max_length
 
     Examples:
         >>> _get_k8s_safe_name("test-deployment", max_length=63, suffix="")
-        'test-deployment'
+        'test-deployment-5f363e0a'
 
         >>> _get_k8s_safe_name("llama-3.2-1b", max_length=63, name_type="label")
-        'llama-3-2-1b'
-
-        >>> _get_k8s_safe_name("my.secret.name", max_length=253, name_type="dns_subdomain")
-        'my.secret.name'
+        'llama-3-2-1b-...'
 
         >>> _get_k8s_safe_name("a" * 100, max_length=63, suffix="-pvc")
         'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-5f363e0a-pvc'
     """
-    # Step 1: Generate deterministic hash first (before any normalization)
-    # This ensures the same input always produces the same hash
-    hash_suffix = hashlib.sha256(base_name.encode()).hexdigest()[:8]
+    hash_source = hash_input if hash_input is not None else base_name
+    hash_suffix = hashlib.sha256(hash_source.encode()).hexdigest()[:_HASH_SUFFIX_LENGTH]
 
-    # Step 2: Normalize characters to K8s-compatible format
+    # Normalize characters to K8s-compatible format
     normalized = base_name.lower()
 
     # For DNS labels (Services, Pods, etc.), replace dots and invalid chars with hyphens
     # For DNS subdomains (Secrets), dots are allowed
     if name_type == "label":
-        # Replace any character that's not alphanumeric or hyphen with hyphen
         normalized = re.sub(r"[^a-z0-9-]", "-", normalized)
     else:  # dns_subdomain
-        # Replace any character that's not alphanumeric, hyphen, or dot with hyphen
         normalized = re.sub(r"[^a-z0-9.-]", "-", normalized)
 
-    # Remove consecutive hyphens/dots
     normalized = re.sub(r"[-]+", "-", normalized)
     if name_type == "dns_subdomain":
         normalized = re.sub(r"[.]+", ".", normalized)
 
-    # Ensure it starts correctly based on type
     if name_type == "label":
-        # Must start with a letter for RFC 1035
         if normalized and not normalized[0].isalpha():
-            # Prepend 'x' if it starts with digit or hyphen
             normalized = f"x{normalized}"
-    else:  # dns_subdomain
-        # Must start with alphanumeric for RFC 1123
+    else:
         normalized = normalized.lstrip("-.")
         if not normalized or not normalized[0].isalnum():
             normalized = f"x{normalized}"
 
-    # Ensure it ends with alphanumeric (both types)
     normalized = normalized.rstrip("-.")
     if not normalized or not normalized[-1].isalnum():
-        # If we've stripped everything, use 'x' as fallback
         normalized = "x" if not normalized else normalized.rstrip("-.")
         if not normalized:
             normalized = "x"
 
-    # Step 3: Analyze length with user-provided suffix
-    suffix_len = len(suffix)
-    total_length = len(normalized) + suffix_len
+    if not include_hash:
+        if len(normalized) + len(suffix) <= max_length:
+            return f"{normalized}{suffix}"
 
-    # If it fits, return it without modification
-    if total_length <= max_length:
-        return f"{normalized}{suffix}"
+        max_base_len = max_length - len(suffix)
+        if max_base_len < 1:
+            max_base_len = 1
+        truncated = normalized[:max_base_len].rstrip("-.")
+        if not truncated or not truncated[-1].isalnum():
+            while truncated and not truncated[-1].isalnum():
+                truncated = truncated[:-1]
+            if not truncated:
+                truncated = "x"
+        return f"{truncated}{suffix}"
 
-    # Step 4: Only apply truncation with hash if necessary
-    hash_len = 8
-    # Format: {truncated}-{hash}{suffix}
-    # Need room for: truncated + '-' + hash + suffix
-    max_base_len = max_length - hash_len - 1 - suffix_len
+    hash_len = _HASH_SUFFIX_LENGTH
+    reserved = hash_len + 1 + len(suffix)
+    if len(normalized) + reserved > max_length:
+        max_base_len = max_length - reserved
+        if max_base_len < 1:
+            max_base_len = max(1, max_length - hash_len - len(suffix))
 
-    if max_base_len < 1:
-        # Edge case: suffix is very long, just fit what we can
-        max_base_len = max(1, max_length - hash_len - suffix_len)
+        truncated = normalized[:max_base_len]
+        truncated = truncated.rstrip("-.")
+        if not truncated or not truncated[-1].isalnum():
+            while truncated and not truncated[-1].isalnum():
+                truncated = truncated[:-1]
+            if not truncated:
+                truncated = "x"
+        normalized = truncated
 
-    truncated = normalized[:max_base_len]
+    result = f"{normalized}-{hash_suffix}{suffix}"
 
-    # Ensure truncated part ends with alphanumeric
-    truncated = truncated.rstrip("-.")
-    if not truncated or not truncated[-1].isalnum():
-        # Keep going back until we find an alphanumeric char
-        while truncated and not truncated[-1].isalnum():
-            truncated = truncated[:-1]
-        if not truncated:
-            # If nothing left, use first char if valid, else 'x'
-            truncated = "x"
-
-    result = f"{truncated}-{hash_suffix}{suffix}"
-
-    # Final safety check: ensure we didn't exceed max_length
     if len(result) > max_length:
-        # Shouldn't happen, but be defensive
-        # Trim from the truncated part, not from hash or suffix
         excess = len(result) - max_length
-        truncated = truncated[: len(truncated) - excess].rstrip("-.")
-        if not truncated:
-            truncated = "x"
-        result = f"{truncated}-{hash_suffix}{suffix}"
+        normalized = normalized[: len(normalized) - excess].rstrip("-.")
+        if not normalized:
+            normalized = "x"
+        result = f"{normalized}-{hash_suffix}{suffix}"
 
     return result
 
@@ -404,7 +408,9 @@ def get_deployment_resource_name(workspace: str, name: str) -> str:
     Generate K8s resource name for ModelDeployment resources (NIMService/PVC).
 
     This is used for NIMService and standalone PVC resources which must follow
-    RFC 1035 DNS label rules (63 char limit).
+    RFC 1035 DNS label rules (63 char limit). The returned name is
+    ``md-{workspace}-{name}-{hash8}`` where the hash is derived from
+    ``workspace/name``, not the hyphen-joined prefix alone.
 
     For NIMCache resources, use `get_nimcache_resource_name` instead, which
     reserves 4 characters for the `-job` suffix appended by k8s-nim-operator.
@@ -418,10 +424,17 @@ def get_deployment_resource_name(workspace: str, name: str) -> str:
 
     Example:
         >>> get_deployment_resource_name("default", "llama-3.2-1b")
-        'md-default-llama-3-2-1b'
+        'md-default-llama-3-2-1b-<hash8>'
     """
     base = f"md-{workspace}-{name}"
-    return _get_k8s_safe_name(base, max_length=63, suffix="", name_type="label")
+    identity = _workspace_name_identity(workspace, name)
+    return _get_k8s_safe_name(
+        base,
+        max_length=63,
+        suffix="",
+        name_type="label",
+        hash_input=identity,
+    )
 
 
 def get_nimcache_resource_name(workspace: str, name: str) -> str:
@@ -436,11 +449,10 @@ def get_nimcache_resource_name(workspace: str, name: str) -> str:
         Job.batch "<nimcache-name>-job" is invalid:
           metadata.labels: Invalid value: "...": must be no more than 63 characters
 
-    The same `_get_k8s_safe_name` logic is used, so names that are already
-    ≤ 59 characters are returned unchanged and names that exceed the limit are
-    deterministically truncated with an 8-char hash suffix — ensuring GET/LIST/
-    DELETE operations on the same (workspace, name) pair always resolve to the
-    same NIMCache resource name.
+    The same `_get_k8s_safe_name` logic is used, so names always include an
+    8-char hash suffix. Names that exceed the 59-char limit are deterministically
+    truncated before the hash — ensuring GET/LIST/DELETE operations on the same
+    (workspace, name) pair always resolve to the same NIMCache resource name.
 
     Args:
         workspace: The deployment workspace
@@ -451,17 +463,26 @@ def get_nimcache_resource_name(workspace: str, name: str) -> str:
 
     Example:
         >>> get_nimcache_resource_name("default", "llama-3.2-1b")
-        'md-default-llama-3-2-1b'
+        'md-default-llama-3-2-1b-<hash8>'
     """
     base = f"md-{workspace}-{name}"
-    return _get_k8s_safe_name(base, max_length=59, suffix="", name_type="label")
+    identity = _workspace_name_identity(workspace, name)
+    return _get_k8s_safe_name(
+        base,
+        max_length=59,
+        suffix="",
+        name_type="label",
+        hash_input=identity,
+    )
 
 
 def get_deployment_secret_name(workspace: str, name: str, prefix: str = "md", suffix: str = "") -> str:
     """
     Generate K8s Secret name with configurable prefix and suffix.
 
-    Secrets use RFC 1123 DNS subdomain rules (253 char limit).
+    Secrets use RFC 1123 DNS subdomain rules (253 char limit). The hash is
+    derived from ``workspace/name``; the caller suffix (e.g. ``-hf-token``)
+    is appended after the hash: ``{base}-{hash8}{suffix}``.
 
     Args:
         workspace: The workspace
@@ -474,10 +495,17 @@ def get_deployment_secret_name(workspace: str, name: str, prefix: str = "md", su
 
     Examples:
         >>> get_deployment_secret_name("default", "test", prefix="md", suffix="-hf-token")
-        'md-default-test-hf-token'
+        'md-default-test-<hash8>-hf-token'
 
         >>> get_deployment_secret_name("default", "test", prefix="model-provider", suffix="-api-key")
-        'model-provider-default-test-api-key'
+        'model-provider-default-test-<hash8>-api-key'
     """
     base = f"{prefix}-{workspace}-{name}"
-    return _get_k8s_safe_name(base, max_length=253, suffix=suffix, name_type="dns_subdomain")
+    identity = _workspace_name_identity(workspace, name)
+    return _get_k8s_safe_name(
+        base,
+        max_length=253,
+        suffix=suffix,
+        name_type="dns_subdomain",
+        hash_input=identity,
+    )
