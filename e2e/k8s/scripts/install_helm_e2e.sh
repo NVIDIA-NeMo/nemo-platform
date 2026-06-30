@@ -242,6 +242,7 @@ fi
 if [ -n "${GITHUB_TOKEN:-}" ]; then
     HELM_ARGS+=(
         --set "imagePullSecrets[0].name=ghcr-pull"
+        --set "imagePullSecrets[1].name=nvcrimagepullsecret"
     )
 fi
 
