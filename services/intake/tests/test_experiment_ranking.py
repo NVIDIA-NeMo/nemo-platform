@@ -116,11 +116,13 @@ def test_default_order_floats_pinned_first(client: TestClient) -> None:
             EXPERIMENTS, json={"name": name, "experiment_group_id": group["id"], "dataset_name": "ds"}
         )
         assert created.status_code == 201, created.text
-    assert client.post(f"{EXPERIMENTS}/exp-b/pin").status_code == 200
+    # Pin the OLDER experiment (exp-a): by the -created_at fallback it would sort LAST, so seeing it
+    # first proves pinned-first actually overrides the fallback rather than coinciding with newest-first.
+    assert client.post(f"{EXPERIMENTS}/exp-a/pin").status_code == 200
     # No explicit sort -> default path floats pinned to top (entity-only, no rollups needed).
     listed = client.get(EXPERIMENTS, params={"filter[experiment_group_id]": group["id"]})
     assert listed.status_code == 200, listed.text
-    assert [r["name"] for r in listed.json()["data"]][0] == "exp-b"
+    assert [r["name"] for r in listed.json()["data"]] == ["exp-a", "exp-b"]
 
 
 def test_default_metric_ranking_degrades_without_rollups(client: TestClient) -> None:
