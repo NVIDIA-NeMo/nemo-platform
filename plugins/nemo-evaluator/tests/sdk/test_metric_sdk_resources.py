@@ -144,6 +144,20 @@ def test_sync_list_returns_data_items() -> None:
     assert {m.name for m in result.data} == {"a", "b"}
 
 
+def test_sync_list_encodes_metric_type_filter_and_sort() -> None:
+    # metric_type is a custom (data.*) field; the SDK sends it as the route's filter[...] param so a
+    # caller can narrow by type without hand-building query strings.
+    http_client = MagicMock()
+    http_client.get.return_value = _response({"data": []})
+    resource = EvaluatorMetricsResource(_platform(http_client))
+
+    resource.list(metric_type="exact-match", sort="-created_at")
+
+    params = http_client.get.call_args.kwargs["params"]
+    assert params["filter[metric_type]"] == "exact-match"
+    assert params["sort"] == "-created_at"
+
+
 def test_sync_delete_issues_delete_request() -> None:
     http_client = MagicMock()
     http_client.delete.return_value = _response({})

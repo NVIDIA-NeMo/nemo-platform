@@ -21,6 +21,7 @@ from nemo_evaluator.jobs.metric_resolution import (
     to_runtime_bundle,
     unresolved_model_refs,
 )
+from nemo_evaluator.jobs.result_persistence import persist_evaluate_result
 from nemo_evaluator.metric_refs import MetricRefOrInline
 from nemo_evaluator.shared.metric_bundles.bundles import unbundle_metric
 from nemo_evaluator_sdk import Evaluator
@@ -299,6 +300,18 @@ class EvaluateJob(NemoJob):
         ctx.results.save(AGGREGATE_SCORES_RESULT_NAME, result_files.aggregate_scores)
         ctx.results.save(ROW_SCORES_RESULT_NAME, result_files.row_scores)
         ctx.results.save(ARTIFACTS_RESULT_NAME, result_files.artifacts_dir, ignore_patterns=RESULT_IGNORE_PATTERNS)
+
+        # Persist the queryable result record (aggregate scores); per-row detail lives in the fileset
+        # bundle referenced by `artifact`.
+        persist_evaluate_result(
+            result,
+            target=spec.target,
+            dataset_ref=spec.dataset.root if isinstance(spec.dataset, FilesetRef) else None,
+            metric_types=[metric.type for metric in metrics],
+            ctx=ctx,
+            bundle_ref=artifact.artifact_url,
+            async_sdk=async_sdk,
+        )
 
         # TODO: Implement progress reporting hook in SDK - AALGO-149
         # self.report_progress(

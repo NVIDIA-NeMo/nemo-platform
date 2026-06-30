@@ -478,14 +478,17 @@ class TestAgentEvalTask:
 
     def test_main_dispatches_agent_eval_job_with_task_sdk(self, mocker: MockerFixture) -> None:
         sdk = object()
+        async_sdk = object()
         get_task_sdk = mocker.patch("nemo_evaluator.tasks.runner.get_task_sdk", return_value=sdk)
+        get_async_task_sdk = mocker.patch("nemo_evaluator.tasks.runner.get_async_task_sdk", return_value=async_sdk)
         run_task = mocker.patch("nemo_evaluator.tasks.runner.run_task", return_value=0)
 
         exit_code = agent_eval_task_main()
 
         assert exit_code == 0
         get_task_sdk.assert_called_once_with("evaluator")
-        run_task.assert_called_once_with(AgentEvalJob, sdk=sdk)
+        get_async_task_sdk.assert_called_once_with("evaluator")
+        run_task.assert_called_once_with(AgentEvalJob, sdk=sdk, async_sdk=async_sdk)
 
     def test_main_returns_setup_exit_code_when_task_sdk_fails(self, mocker: MockerFixture) -> None:
         get_task_sdk = mocker.patch("nemo_evaluator.tasks.runner.get_task_sdk", side_effect=RuntimeError("boom"))
