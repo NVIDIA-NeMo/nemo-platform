@@ -186,8 +186,14 @@ BOOTSTRAP_LOCAL_PLUGIN_DIRS ?=
 ensure-uv: ## Install uv if not present, using the version constraint from pyproject.toml.
 	@if ! command -v uv >/dev/null 2>&1; then \
 		uv_spec=$$(grep -E '"uv[>=<! ]' pyproject.toml | head -1 | sed 's/.*"\(uv[^"]*\)".*/\1/'); \
-		echo "uv not found — installing '$$uv_spec' via pip"; \
-		pip install "$$uv_spec"; \
+		echo "uv not found — installing '$$uv_spec'"; \
+		if pip install "$$uv_spec" 2>/dev/null; then :; \
+		elif pip install --break-system-packages "$$uv_spec" 2>/dev/null; then :; \
+		elif command -v pipx >/dev/null 2>&1 && pipx install "$$uv_spec" 2>/dev/null; then :; \
+		else \
+			echo "error: could not install uv — install it manually: https://docs.astral.sh/uv/getting-started/installation/"; \
+			exit 1; \
+		fi; \
 	fi
 
 .PHONY: bootstrap-python
