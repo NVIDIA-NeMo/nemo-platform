@@ -112,7 +112,7 @@ export const AddColumnPalette: FC<AddColumnPaletteProps> = ({ onAddColumn, class
       <Stack gap="density-xxs" className="shrink-0">
         <Text kind="body/bold/md">Add a column</Text>
         <Text kind="body/regular/xs" className="text-secondary">
-          Click or press Enter to add — no dragging
+          Click or press Enter to add
         </Text>
       </Stack>
 
