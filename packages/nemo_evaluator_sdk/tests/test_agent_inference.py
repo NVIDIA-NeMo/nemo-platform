@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+from jsonschema import Draft202012Validator
 from nemo_evaluator_sdk.agent_inference import (
     AgentInferenceFn,
     AgentInvocationStatus,
@@ -67,6 +68,29 @@ class TestAgentValidation:
         assert agent.body == {"query": "{{ prompt }}"}
         assert agent.response_path == "$.result.text"
         assert agent.trajectory_path is None
+
+    def test_agent_json_schema_rejects_nat_for_generic_agents(self):
+        validator = Draft202012Validator(Agent.model_json_schema())
+        generic_with_nat = {
+            "url": "http://agent.test",
+            "name": "generic-agent",
+            "format": "generic",
+            "body": {"prompt": "{{ prompt }}"},
+            "response_path": "$.answer",
+            "nat": {},
+        }
+
+        errors = list(validator.iter_errors(generic_with_nat))
+        assert any(error.validator == "not" for error in errors)
+
+        validator.validate(
+            {
+                "url": "http://nat.test",
+                "name": "nat-agent",
+                "format": "nemo_agent_toolkit",
+                "nat": {},
+            }
+        )
 
     def test_nat_agent_does_not_require_body_or_response_path(self):
         agent = Agent(url="http://nat.test", name="nat-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)

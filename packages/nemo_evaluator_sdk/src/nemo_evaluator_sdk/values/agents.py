@@ -60,15 +60,19 @@ class Agent(BaseModel):
     # the duplication can be removed by defining EndPoint class and reusing it across both model and agent.
     #
     # ``allOf``/``if``/``then`` mirrors the ``_validate_generic_fields`` validator into the OpenAPI
-    # schema: a generic-format agent must carry ``body`` + ``response_path`` (the generic HTTP path
-    # needs them), so the contract rejects a ``url``-only generic agent rather than only failing later.
+    # schema: a generic-format agent must carry ``body`` + ``response_path`` and cannot carry ``nat``
+    # (the generic HTTP path needs the former and does not consume the latter), so invalid contracts
+    # fail schema validation rather than only failing at runtime.
     model_config = ConfigDict(
         extra="forbid",
         json_schema_extra={
             "allOf": [
                 {
                     "if": {"properties": {"format": {"const": "generic"}}},
-                    "then": {"required": ["body", "response_path"]},
+                    "then": {
+                        "required": ["body", "response_path"],
+                        "not": {"required": ["nat"]},
+                    },
                 }
             ]
         },
