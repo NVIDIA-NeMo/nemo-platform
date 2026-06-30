@@ -367,7 +367,7 @@ def _trial_from_sample(task: AgentEvalTask, target: Model | Agent, sample: dict[
     if "trajectory" in sample:
         trace = EvidenceDescriptor(kind="trace", format="json", data=sample["trajectory"])
         descriptors = dict(evidence.descriptors) if evidence is not None else {}
-        descriptors["trace"] = trace
+        descriptors.setdefault("trace", trace)
         evidence = CandidateEvidence(
             descriptors=descriptors,
             metadata=dict(evidence.metadata) if evidence is not None else {},
@@ -414,10 +414,10 @@ def _trial_from_sample(task: AgentEvalTask, target: Model | Agent, sample: dict[
         ),
         evidence=evidence,
         metadata={
+            **invocation_metadata,
             "model_id": target.name,
             "target_name": target.name,
             "generated": True,
-            **invocation_metadata,
         },
     )
 

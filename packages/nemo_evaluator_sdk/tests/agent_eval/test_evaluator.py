@@ -42,6 +42,48 @@ def test_trial_from_sample_falls_back_to_reasoning_content() -> None:
     assert explicit.output.output_text == "final answer"
 
 
+def test_trial_from_sample_preserves_typed_trace_and_canonical_metadata() -> None:
+    task = AgentEvalTask(id="task-1", intent="Answer.", inputs={"prompt": "Q?"})
+    target = Model(name="canonical-target", url="https://example/v1/chat/completions")
+    typed_trace = {
+        "schema_version": "ATIF-v1.7",
+        "steps": [{"source": "user", "message": "Q?"}],
+    }
+
+    trial = _trial_from_sample(
+        task,
+        target,
+        {
+            "output_text": "answer",
+            "trajectory": [{"legacy": True}],
+            "evidence": CandidateEvidence(
+                descriptors={
+                    "trace": EvidenceDescriptor(
+                        kind="trace",
+                        format="atif",
+                        data=typed_trace,
+                    )
+                }
+            ),
+            "invocation_metadata": {
+                "endpoint": "/generate/stream",
+                "model_id": "spoofed-model",
+                "target_name": "spoofed-target",
+                "generated": False,
+            },
+        },
+    )
+
+    assert trial.evidence is not None
+    trace = trial.evidence.require("trace", kind="trace")
+    assert trace.format == "atif"
+    assert trace.data == typed_trace
+    assert trial.metadata["endpoint"] == "/generate/stream"
+    assert trial.metadata["model_id"] == "canonical-target"
+    assert trial.metadata["target_name"] == "canonical-target"
+    assert trial.metadata["generated"] is True
+
+
 def test_generated_run_ids_are_unique_within_the_same_second() -> None:
     with patch("nemo_evaluator_sdk.agent_eval.evaluator.datetime") as mock_datetime:
         mock_datetime.now.return_value.strftime.return_value = "20260628120000"
