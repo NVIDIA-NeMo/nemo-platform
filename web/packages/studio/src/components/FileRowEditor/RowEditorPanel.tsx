@@ -118,7 +118,6 @@ const FieldControl: FC<FieldControlProps> = ({ column, value, onChange }) => {
           items={BOOLEAN_OPTIONS}
           value={String(Boolean(value))}
           onValueChange={(next) => onChange(next === 'true')}
-          triggerKind="floating"
           attributes={{ SelectTrigger: { 'aria-label': column.key } }}
         />
       );
@@ -150,7 +149,6 @@ const FieldControl: FC<FieldControlProps> = ({ column, value, onChange }) => {
             items={items}
             value={current}
             onValueChange={onChange}
-            triggerKind="floating"
             attributes={{ SelectTrigger: { 'aria-label': column.key } }}
           />
         );
