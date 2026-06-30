@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { SamplerType } from '@nemo/sdk/generated/data-designer/schema';
+import type { DataDesignerConfig, SamplerType } from '@nemo/sdk/generated/data-designer/schema';
 import type { TagProps } from '@nvidia/foundations-react-core';
 import type { LucideIcon } from 'lucide-react';
 
@@ -10,18 +10,7 @@ import type { LucideIcon } from 'lucide-react';
  * schemas (`SamplerColumnConfig`, `LLMTextColumnConfig`, …). Kept as a local union so
  * the palette is self-contained; the literals are identical to the generated schemas.
  */
-export type DataDesignerColumnType =
-  | 'sampler'
-  | 'llm-text'
-  | 'llm-code'
-  | 'llm-structured'
-  | 'llm-judge'
-  | 'image'
-  | 'embedding'
-  | 'expression'
-  | 'validation'
-  | 'seed-dataset'
-  | 'custom';
+export type DataDesignerColumnType = DataDesignerConfig['columns'][number]['column_type'];
 
 /** Accent color shared with the design-system `Tag`, reused to tint an option's icon. */
 export type ColumnTypeColor = NonNullable<TagProps['color']>;
