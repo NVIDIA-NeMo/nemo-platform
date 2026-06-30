@@ -1588,7 +1588,7 @@ components:
       additionalProperties: false
       type: object
       title: CandidateEvidenceInput
-      description: Named evidence descriptors attached to an AgentEvalAttempt.
+      description: Named evidence descriptors attached to an AgentEvalTrial.
     CandidateEvidenceOutput:
       properties:
         descriptors:
@@ -1606,7 +1606,7 @@ components:
       additionalProperties: false
       type: object
       title: CandidateEvidenceOutput
-      description: Named evidence descriptors attached to an AgentEvalAttempt.
+      description: Named evidence descriptors attached to an AgentEvalTrial.
     CloudpickleMetricPayload:
       properties:
         kind:

@@ -204,6 +204,8 @@ class LocalFilesystemEvidence:
             workdir = (overlay / cwd).resolve()
             if workdir != overlay and overlay not in workdir.parents:
                 raise ValueError(f"verifier cwd {cwd!r} resolves outside evidence overlay")
+            # symlinks=True copies links as-is (no host deref); the ignore hook drops links whose
+            # target escapes the evidence root so the verifier can't read or write through them.
             await asyncio.to_thread(
                 shutil.copytree,
                 self._root,
@@ -359,7 +361,7 @@ class LogHandle:
 
 
 class CandidateEvidence(BaseModel):
-    """Named evidence descriptors attached to an AgentEvalAttempt."""
+    """Named evidence descriptors attached to an AgentEvalTrial."""
 
     model_config = ConfigDict(extra="forbid")
 
