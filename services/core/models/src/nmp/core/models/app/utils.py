@@ -339,17 +339,17 @@ def _get_k8s_safe_name(
     # For DNS subdomains (Secrets), dots are allowed
     if name_type == "label":
         normalized = re.sub(r"[^a-z0-9-]", "-", normalized)
-    else:  # dns_subdomain
-        normalized = re.sub(r"[^a-z0-9.-]", "-", normalized)
-
-    normalized = re.sub(r"[-]+", "-", normalized)
-    if name_type == "dns_subdomain":
-        normalized = re.sub(r"[.]+", ".", normalized)
-
-    if name_type == "label":
+        normalized = re.sub(r"-+", "-", normalized)
         if normalized and not normalized[0].isalpha():
             normalized = f"x{normalized}"
-    else:
+    else:  # dns_subdomain
+        normalized = re.sub(r"[^a-z0-9.-]", "-", normalized)
+        normalized = re.sub(r"[.]+", ".", normalized).strip(".")
+        labels = []
+        for label in normalized.split("."):
+            label = re.sub(r"-+", "-", label).strip("-")
+            labels.append(label or "x")
+        normalized = ".".join(labels)
         normalized = normalized.lstrip("-.")
         if not normalized or not normalized[0].isalnum():
             normalized = f"x{normalized}"
@@ -401,6 +401,39 @@ def _get_k8s_safe_name(
         result = f"{normalized}-{hash_suffix}{suffix}"
 
     return result
+
+
+def get_docker_container_name(workspace: str, name: str) -> str:
+    """Docker NIM container name (capped at 55 chars to leave room for ``-sidecar``)."""
+    label_name = f"md-{workspace}-{name}"
+    return _get_k8s_safe_name(
+        label_name,
+        max_length=_DOCKER_CONTAINER_NAME_MAX_LENGTH,
+        name_type="label",
+        hash_input=_workspace_name_identity(workspace, name),
+    )
+
+
+def get_docker_volume_name(workspace: str, name: str) -> str:
+    """Docker model-cache volume name for a deployment."""
+    label_name = f"nim-cache-{workspace}-{name}"
+    return _get_k8s_safe_name(
+        label_name,
+        max_length=63,
+        name_type="label",
+        hash_input=_workspace_name_identity(workspace, name),
+    )
+
+
+def get_docker_plugin_puller_container_name(workspace: str, name: str) -> str:
+    """Docker plugin fileset puller container name."""
+    label_name = f"md-plugin-{workspace}-{name}"
+    return _get_k8s_safe_name(
+        label_name,
+        max_length=63,
+        name_type="label",
+        hash_input=_workspace_name_identity(workspace, name),
+    )
 
 
 def get_deployment_resource_name(workspace: str, name: str) -> str:

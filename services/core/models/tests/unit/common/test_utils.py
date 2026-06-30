@@ -923,6 +923,14 @@ def test_k8s_safe_name_dots_preserved_in_dns_subdomain():
     assert result == f"my.secret.name-{_base_hash('my.secret.name')}"
 
 
+def test_k8s_safe_name_dns_subdomain_sanitizes_invalid_label_chars():
+    """Invalid characters within dot-delimited labels are sanitized per label."""
+    result = _get_k8s_safe_name("my..secret!.name", max_length=253, name_type="dns_subdomain")
+    assert "!" not in result
+    assert result.startswith("my.secret.name-")
+    assert result.endswith(f"-{_base_hash('my..secret!.name')}")
+
+
 def test_k8s_safe_name_starts_with_letter_for_labels():
     """Test that labels must start with a letter (RFC 1035)."""
     result = _get_k8s_safe_name("123-deployment", max_length=63, name_type="label")

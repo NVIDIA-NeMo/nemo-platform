@@ -12,6 +12,11 @@ from docker.errors import ImageNotFound, NotFound
 from nmp.common.config import PlatformConfig
 from nmp.core.models.app import ModelWeightsType
 from nmp.core.models.app.constants import MODEL_MANAGED_BY_LABEL, MODEL_MANAGED_BY_MODELS_CONTROLLER
+from nmp.core.models.app.utils import (
+    get_docker_container_name,
+    get_docker_plugin_puller_container_name,
+    get_docker_volume_name,
+)
 from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate
 from nmp.core.models.controllers.backends.docker import DockerServiceBackend
 from nmp.core.models.controllers.backends.docker.creation_reconciler import (
@@ -341,6 +346,7 @@ def sample_resource_names(docker_backend, sample_deployment):
         "volume": volume,
         "scratch_volume": f"{volume}-scratch",
         "puller": reconciler.get_puller_container_name(ws, name),
+        "plugin": reconciler.get_plugin_puller_container_name(ws, name),
         "sidecar": f"{container}-sidecar",
         "host_url": f"http://{container}:8000",
     }
@@ -942,6 +948,8 @@ def test_docker_backend_container_naming(docker_backend, sample_deployment, samp
     """Test container naming convention."""
     container_name = docker_backend._reconciler.get_container_name(sample_deployment.workspace, sample_deployment.name)
     assert container_name == sample_resource_names["container"]
+    assert container_name == get_docker_container_name("default", "test-deployment")
+    assert container_name == "md-default-test-deployment-a47830f1"
     assert container_name.startswith("md-default-test-deployment-")
     assert len(f"{container_name}-sidecar") <= 63
 
@@ -950,6 +958,8 @@ def test_docker_backend_volume_naming(docker_backend, sample_deployment, sample_
     """Test volume naming convention."""
     volume_name = docker_backend._reconciler.get_volume_name(sample_deployment.workspace, sample_deployment.name)
     assert volume_name == sample_resource_names["volume"]
+    assert volume_name == get_docker_volume_name("default", "test-deployment")
+    assert volume_name == "nim-cache-default-test-deployment-a47830f1"
     assert volume_name.startswith("nim-cache-default-test-deployment-")
 
 
@@ -966,6 +976,17 @@ def test_docker_backend_puller_container_naming(docker_backend, sample_deploymen
     )
     assert puller_name == sample_resource_names["puller"]
     assert puller_name.startswith("md-puller-default-test-deployment-")
+
+
+def test_docker_backend_plugin_puller_container_naming(docker_backend, sample_deployment, sample_resource_names):
+    """Test plugin puller container naming convention."""
+    plugin_name = docker_backend._reconciler.get_plugin_puller_container_name(
+        sample_deployment.workspace, sample_deployment.name
+    )
+    assert plugin_name == sample_resource_names["plugin"]
+    assert plugin_name == get_docker_plugin_puller_container_name("default", "test-deployment")
+    assert plugin_name == "md-plugin-default-test-deployment-a47830f1"
+    assert plugin_name.startswith("md-plugin-default-test-deployment-")
 
 
 # =============================================================================
@@ -3598,6 +3619,7 @@ async def test_plugin_puller_success(docker_backend, sample_deployment, mock_doc
         if c.kwargs.get("labels", {}).get("nmp.nvidia.com/container-type") == "plugin-puller"
     ]
     assert len(plugin_puller_calls) == 1
+    assert plugin_puller_calls[0].kwargs["name"] == sample_resource_names["plugin"]
     assert plugin_puller_calls[0].kwargs["entrypoint"] == ["hf"]
     assert plugin_puller_calls[0].kwargs["command"][0] == "download"
 
@@ -3629,6 +3651,14 @@ async def test_plugin_puller_no_py_files(docker_backend, sample_deployment, mock
     assert plugin_path is None
     assert "no .py files" in error
 
+    plugin_puller_calls = [
+        c
+        for c in mock_docker_client.containers.run.call_args_list
+        if c.kwargs.get("labels", {}).get("nmp.nvidia.com/container-type") == "plugin-puller"
+    ]
+    assert len(plugin_puller_calls) == 1
+    assert plugin_puller_calls[0].kwargs["name"] == sample_resource_names["plugin"]
+
 
 @pytest.mark.asyncio
 async def test_plugin_puller_multiple_py_files(
@@ -3659,6 +3689,14 @@ async def test_plugin_puller_multiple_py_files(
     assert plugin_path is None
     assert "2 .py files" in error
 
+    plugin_puller_calls = [
+        c
+        for c in mock_docker_client.containers.run.call_args_list
+        if c.kwargs.get("labels", {}).get("nmp.nvidia.com/container-type") == "plugin-puller"
+    ]
+    assert len(plugin_puller_calls) == 1
+    assert plugin_puller_calls[0].kwargs["name"] == sample_resource_names["plugin"]
+
 
 @pytest.mark.asyncio
 async def test_plugin_puller_container_fails(
@@ -3688,6 +3726,14 @@ async def test_plugin_puller_container_fails(
     assert plugin_path is None
     assert error is not None
     assert "exit code 1" in error.lower() or "failed" in error.lower()
+
+    plugin_puller_calls = [
+        c
+        for c in mock_docker_client.containers.run.call_args_list
+        if c.kwargs.get("labels", {}).get("nmp.nvidia.com/container-type") == "plugin-puller"
+    ]
+    assert len(plugin_puller_calls) == 1
+    assert plugin_puller_calls[0].kwargs["name"] == sample_resource_names["plugin"]
 
 
 # ============================================================================

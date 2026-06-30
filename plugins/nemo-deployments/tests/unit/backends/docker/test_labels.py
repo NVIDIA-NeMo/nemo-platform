@@ -20,12 +20,12 @@ from nemo_deployments_plugin.backends.docker.labels import (
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
 
 _HASH8 = re.compile(r"-[0-9a-f]{8}$")
+_DNS_LABEL = re.compile(r"^[a-z](?:[a-z0-9-]*[a-z0-9])?$")
 
 
 def _assert_dns_label_safe(name: str) -> None:
     assert len(name) <= 63
-    assert name[0].isalpha()
-    assert name[-1].isalnum()
+    assert _DNS_LABEL.fullmatch(name)
     assert _HASH8.search(name)
 
 
@@ -55,6 +55,8 @@ def test_docker_volume_name_ambiguous_workspace_name_pairs_differ() -> None:
     assert name_a != name_b
     assert name_a.startswith("dep-vol-")
     assert name_b.startswith("dep-vol-")
+    _assert_dns_label_safe(name_a)
+    _assert_dns_label_safe(name_b)
 
 
 def test_k8s_safe_name_empty_base_uses_fallback_prefix() -> None:
