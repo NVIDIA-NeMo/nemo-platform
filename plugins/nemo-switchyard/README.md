@@ -1,6 +1,6 @@
 # Switchyard Inference Middleware Plugin
 
-A NeMo Inference Middleware plugin wrapping [Switchyard](https://github.com/NVIDIA/switchyard) —
+A NeMo Inference Middleware plugin wrapping [Switchyard](https://github.com/NVIDIA-NeMo/Switchyard) —
 a protocol-agnostic request/response router for LLM backends.
 
 ## Features
