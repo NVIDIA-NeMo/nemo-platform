@@ -133,7 +133,8 @@ _KNOWN_PROVIDERS_BY_NAME: dict[str, KnownProvider] = {p.name: p for p in KNOWN_P
 # ---------------------------------------------------------------------------
 
 
-_NEMO_DOCS_URL = "https://docs.nvidia.com/nemo-platform"
+_NEMO_DOCS_ROOT_URL = "https://docs.nvidia.com/nemo-platform"
+_NEMO_DOCS_URL = f"{_NEMO_DOCS_ROOT_URL}/documentation"
 
 
 @dataclass(frozen=True)
