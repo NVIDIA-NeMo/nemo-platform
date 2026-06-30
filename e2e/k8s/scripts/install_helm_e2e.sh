@@ -224,11 +224,16 @@ if [ -n "${NMP_E2E_PULL_POLICY}" ]; then
     )
 fi
 
+IMAGE_PULL_SECRET_INDEX=0
+
+if [ -n "${NGC_API_KEY:-}" ]; then
+    HELM_ARGS+=(--set "imagePullSecrets[${IMAGE_PULL_SECRET_INDEX}].name=nvcrimagepullsecret")
+    IMAGE_PULL_SECRET_INDEX=$((IMAGE_PULL_SECRET_INDEX + 1))
+fi
+
 if [ -n "${GITHUB_TOKEN:-}" ]; then
-    HELM_ARGS+=(
-        --set "imagePullSecrets[0].name=ghcr-pull"
-        --set "imagePullSecrets[1].name=nvcrimagepullsecret"
-    )
+    HELM_ARGS+=(--set "imagePullSecrets[${IMAGE_PULL_SECRET_INDEX}].name=ghcr-pull")
+    IMAGE_PULL_SECRET_INDEX=$((IMAGE_PULL_SECRET_INDEX + 1))
 fi
 
 log_info "Helm install inputs:"
