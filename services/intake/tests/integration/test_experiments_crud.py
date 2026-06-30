@@ -80,12 +80,12 @@ def test_experiment_update_moves_between_groups_and_edits(client: TestClient) ->
     group_b = client.post(GROUPS, json={"name": "grp-b"}).json()
     client.post(EXPERIMENTS, json=_experiment_body(name="exp-a", experiment_group_id=group_a["id"]))
 
-    # Move the experiment from group_a to group_b and edit its summary.
-    body = _experiment_body(name="exp-a", experiment_group_id=group_b["id"], summary="looks good")
+    # Move the experiment from group_a to group_b and edit its description.
+    body = _experiment_body(name="exp-a", experiment_group_id=group_b["id"], description="looks good")
     updated = client.put(f"{EXPERIMENTS}/exp-a", json=body)
     assert updated.status_code == 200, updated.text
     assert updated.json()["experiment_group_id"] == group_b["id"]
-    assert updated.json()["summary"] == "looks good"
+    assert updated.json()["description"] == "looks good"
 
 
 def test_experiment_update_rejects_immutable_change(client: TestClient) -> None:

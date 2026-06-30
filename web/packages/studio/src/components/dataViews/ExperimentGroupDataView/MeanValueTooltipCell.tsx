@@ -31,14 +31,21 @@ export const MeanValueTooltipCell: FC<MeanValueTooltipCellProps> = ({
   count,
   runCount,
   children,
-}) => (
-  <Tooltip
-    slotContent={
-      <Text kind="body/regular/sm">{aggregateMetricTooltip(label, runNoun, count, runCount)}</Text>
-    }
-    className={tooltipClassName}
-    side="bottom"
-  >
-    <Text className="cursor-default border-b border-dotted border-brand">{children}</Text>
-  </Tooltip>
-);
+}) => {
+  if (count == null) {
+    return <Text>{children}</Text>;
+  }
+  return (
+    <Tooltip
+      slotContent={
+        <Text kind="body/regular/sm">
+          {aggregateMetricTooltip(label, runNoun, count, runCount)}
+        </Text>
+      }
+      className={tooltipClassName}
+      side="bottom"
+    >
+      <Text className="cursor-default border-b border-dotted border-brand">{children}</Text>
+    </Tooltip>
+  );
+};

@@ -3731,10 +3731,13 @@ paths:
         explode: true
         schema:
           $ref: '#/components/schemas/ExperimentFilter'
-        description: Filter experiments by name, experiment_group_id, dataset_name,
+        description: 'Filter experiments by name, experiment_group_id, dataset_name,
           dataset_version, created_by, created_at, or updated_at. Pass is_deleted=true
           to return only soft-deleted experiments; omit to see only live ones. Pass
           is_pinned=true (or false) to filter by pinned state; omit to return both.
+          Filter by a rollup metric with numeric range operators ($gte/$lte/$gt/$lt/$eq):
+          filter[run_count][$gte]=5, filter[cost_usd.mean][$lte]=0.5, filter[latency_ms.p95][$lte]=1000,
+          or filter[evaluators.<name>.mean][$gte]=0.8.'
       responses:
         '200':
           description: Successful Response
@@ -3743,11 +3746,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/ExperimentResponsesPage'
         '400':
-          description: Unsupported sort field
+          description: Unsupported sort or filter field
         '413':
           description: Too many experiments selected to sort in one request
         '503':
-          description: Telemetry store unavailable for a metric-based sort
+          description: Telemetry store unavailable for a metric-based sort or filter
         '422':
           description: Validation Error
           content:
@@ -10322,6 +10325,24 @@ components:
             only unpinned experiments. Omit to return both.
           title: Is Pinned
           type: boolean
+        run_count:
+          allOf:
+          - $ref: '#/components/schemas/NumberFilter'
+          description: Filter by run count, e.g. filter[run_count][$gte]=5.
+        cost_usd:
+          allOf:
+          - $ref: '#/components/schemas/MetricStatFilters'
+          description: Filter by a cost_usd rollup stat, e.g. filter[cost_usd.mean][$lte]=0.5.
+        latency_ms:
+          allOf:
+          - $ref: '#/components/schemas/MetricStatFilters'
+          description: Filter by a latency_ms rollup stat, e.g. filter[latency_ms.p95][$lte]=1000.
+        evaluators:
+          description: Filter by an evaluator rollup stat, e.g. filter[evaluators.<name>.mean][$gte]=0.8.
+          title: Evaluators
+          additionalProperties:
+            $ref: '#/components/schemas/MetricStatFilters'
+          type: object
       title: ExperimentFilter
       type: object
     ExperimentGroupFilter:
@@ -10447,10 +10468,6 @@ components:
           title: Description
           description: Human-readable description.
           type: string
-        summary:
-          title: Summary
-          description: Human-authored summary of results.
-          type: string
       additionalProperties: false
       type: object
       required:
@@ -10492,9 +10509,6 @@ components:
           title: Metadata
         description:
           title: Description
-          type: string
-        summary:
-          title: Summary
           type: string
         created_at:
           title: Created At
@@ -12911,6 +12925,38 @@ components:
       - metadata
       title: MetadataAnnotationInput
       description: Structured key/value metadata attached to a span or session.
+    MetricStatFilters:
+      additionalProperties: false
+      description: 'Numeric range filters keyed by rollup aggregate stat.
+
+
+        Declaring each stat explicitly (rather than an open ``dict[str, NumberFilter]``)
+        makes the valid
+
+        stats visible in the OpenAPI schema, e.g. ``filter[cost_usd.mean][$lte]=0.5``.
+        These stats must
+
+        stay in sync with the runtime sort/filter grammar (``_METRIC_STATS`` in the
+        experiments
+
+        endpoints); a unit test guards the parity.'
+      properties:
+        sum:
+          $ref: '#/components/schemas/NumberFilter'
+        mean:
+          $ref: '#/components/schemas/NumberFilter'
+        median:
+          $ref: '#/components/schemas/NumberFilter'
+        p90:
+          $ref: '#/components/schemas/NumberFilter'
+        p95:
+          $ref: '#/components/schemas/NumberFilter'
+        p99:
+          $ref: '#/components/schemas/NumberFilter'
+        count:
+          $ref: '#/components/schemas/NumberFilter'
+      title: MetricStatFilters
+      type: object
     MiddlewareCall:
       properties:
         name:
@@ -14225,6 +14271,32 @@ components:
       - text
       title: NoteAnnotationInput
       description: Free-text note attached to a span or session.
+    NumberFilter:
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        $gte:
+          description: Filter for results greater than or equal to this value.
+          title: $Gte
+          type: number
+        $lte:
+          description: Filter for results less than or equal to this value.
+          title: $Lte
+          type: number
+        $gt:
+          description: Filter for results greater than this value.
+          title: $Gt
+          type: number
+        $lt:
+          description: Filter for results less than this value.
+          title: $Lt
+          type: number
+        $eq:
+          description: Filter for results equal to this value.
+          title: $Eq
+          type: number
+      title: NumberFilter
+      type: object
     NumericFilter:
       additionalProperties: false
       description: "Range filter for numeric annotation values.\n\nAt least one of\

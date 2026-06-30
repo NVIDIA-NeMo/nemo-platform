@@ -57,7 +57,6 @@ DEFAULT_WORKSPACE = "default"
 class ExperimentSpec:
     name: str
     description: str
-    summary: str | None = None
     agent_name: str = "sample-agent"
     agent_version: str = "1.0.0"
     # Optional: sessions cycle through these instead of the scalar above, so a single
@@ -99,7 +98,6 @@ DEMO_GROUPS: list[GroupSpec] = [
             ExperimentSpec(
                 name="reranker-main-baseline",
                 description="Pre-reranker baseline on the production prompt.",
-                summary="Baseline. Solid grounding but answers are verbose.",
                 agent_name="codex-cli",
                 agent_version="1.2.3",
                 model_name="openai/gpt-4o-mini",
@@ -126,7 +124,6 @@ DEMO_GROUPS: list[GroupSpec] = [
             ExperimentSpec(
                 name="reranker-tightened-prompt",
                 description="Cross-encoder reranker + tightened system prompt.",
-                summary="Best so far. Refusal rate down, citations up.",
                 agent_name="codex-cli",
                 agent_version="1.2.3",
                 model_name="openai/gpt-4o-mini",
@@ -153,7 +150,6 @@ DEMO_GROUPS: list[GroupSpec] = [
             ExperimentSpec(
                 name="reranker-no-reranker",
                 description="Ablation: prompt change without the reranker.",
-                summary="Prompt change helps but the reranker is doing real work.",
                 agent_name="codex-cli",
                 agent_version="1.2.3",
                 model_name="openai/gpt-4o-mini",
@@ -190,7 +186,6 @@ DEMO_GROUPS: list[GroupSpec] = [
             ExperimentSpec(
                 name="tb2-claude-code-opus",
                 description="claude-code @ 0.125 with opus.",
-                summary="Strongest accuracy, highest cost.",
                 agent_name="claude-code",
                 agent_version="0.125.0",
                 model_name="anthropic/claude-opus-4-7",
@@ -252,7 +247,6 @@ DEMO_GROUPS: list[GroupSpec] = [
             ExperimentSpec(
                 name="claude-code-on-support",
                 description="claude-code on customer-support v2.",
-                summary="claude-code dominates short-horizon support flows.",
                 agent_name="claude-code",
                 agent_version="0.125.0",
                 model_name="anthropic/claude-opus-4-7",
@@ -444,8 +438,6 @@ def _experiment_body(spec: ExperimentSpec, group_id: str) -> dict[str, Any]:
             **spec.metadata,
         },
     }
-    if spec.summary:
-        body["summary"] = spec.summary
     if spec.source_link:
         body["source_link"] = spec.source_link
     return body

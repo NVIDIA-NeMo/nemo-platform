@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock
 import pytest
 from helpers import make_deployment, make_deployment_config
 from nemo_deployments_plugin.backends.base import BackendStatusUpdate
+from nemo_deployments_plugin.backends.registry import ExecutorRegistry
+from nemo_deployments_plugin.config import ControllerConfig
 from nemo_deployments_plugin.entities import Prerequisite, Volume
 from nemo_deployments_plugin.reconciler.deployment_reconciler import DeploymentReconciler
 from nemo_deployments_plugin.reconciler.orphan_cleanup import reconcile_orphans
@@ -90,6 +92,56 @@ async def test_ready_monitoring(
 
     assert mock_backend.read_calls == [("default", "dep1")]
     assert dep.status == "READY"
+
+
+@pytest.mark.asyncio
+async def test_unknown_status_retries_then_fails(
+    mock_entities: AsyncMock,
+    mock_backend: MockDeploymentBackend,
+) -> None:
+    reconciler = DeploymentReconciler(
+        mock_entities,
+        ExecutorRegistry({"default": mock_backend}, default_executor="default"),
+        ControllerConfig(
+            drift_recovery_max_attempts=3,
+            drift_recovery_initial_delay_seconds=0,
+            drift_recovery_max_delay_seconds=0,
+        ),
+    )
+    dep = make_deployment()
+    dep.status = "STARTING"
+    cfg = make_deployment_config()
+    reconciler.set_config_cache({("default", "cfg1"): cfg})
+    mock_backend.read_status_result = BackendStatusUpdate(
+        status="UNKNOWN",
+        status_message="Docker API error while checking container status: connection reset",
+    )
+
+    for _ in range(4):
+        await reconciler.reconcile_one(dep, deployments_by_name={}, volumes_by_name=NO_VOLUMES)
+
+    assert dep.status == "FAILED"
+    assert "Unable to communicate with backend after 3 attempts" in dep.status_message
+
+
+@pytest.mark.asyncio
+async def test_unknown_status_records_attempt_before_exhaustion(
+    deployment_reconciler: DeploymentReconciler,
+    mock_backend: MockDeploymentBackend,
+) -> None:
+    dep = make_deployment()
+    dep.status = "STARTING"
+    cfg = make_deployment_config()
+    deployment_reconciler.set_config_cache({("default", "cfg1"): cfg})
+    mock_backend.read_status_result = BackendStatusUpdate(
+        status="UNKNOWN",
+        status_message="Docker daemon unavailable",
+    )
+
+    await deployment_reconciler.reconcile_one(dep, deployments_by_name={}, volumes_by_name=NO_VOLUMES)
+
+    assert dep.status == "UNKNOWN"
+    assert "attempt 1/3" in dep.status_message
 
 
 @pytest.mark.asyncio

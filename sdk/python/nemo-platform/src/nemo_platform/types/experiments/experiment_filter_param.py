@@ -17,8 +17,11 @@
 
 from __future__ import annotations
 
+from typing import Dict
 from typing_extensions import TypedDict
 
+from .number_filter_param import NumberFilterParam
+from .metric_stat_filters_param import MetricStatFiltersParam
 from ..shared_params.datetime_filter import DatetimeFilter
 
 __all__ = ["ExperimentFilterParam"]
@@ -26,6 +29,16 @@ __all__ = ["ExperimentFilterParam"]
 
 class ExperimentFilterParam(TypedDict, total=False):
     """Filter for listing Experiments."""
+
+    cost_usd: MetricStatFiltersParam
+    """Numeric range filters keyed by rollup aggregate stat.
+
+    Declaring each stat explicitly (rather than an open `dict[str, NumberFilter]`)
+    makes the valid stats visible in the OpenAPI schema, e.g.
+    `filter[cost_usd.mean][$lte]=0.5`. These stats must stay in sync with the
+    runtime sort/filter grammar (`_METRIC_STATS` in the experiments endpoints); a
+    unit test guards the parity.
+    """
 
     created_at: DatetimeFilter
     """
@@ -40,6 +53,12 @@ class ExperimentFilterParam(TypedDict, total=False):
 
     dataset_version: str
     """Filter experiments by dataset version."""
+
+    evaluators: Dict[str, MetricStatFiltersParam]
+    """Filter by an evaluator rollup stat, e.g.
+
+    filter[evaluators.<name>.mean][$gte]=0.8.
+    """
 
     experiment_group_id: str
     """Filter experiments by owning group id."""
@@ -56,8 +75,21 @@ class ExperimentFilterParam(TypedDict, total=False):
     When false, returns only unpinned experiments. Omit to return both.
     """
 
+    latency_ms: MetricStatFiltersParam
+    """Numeric range filters keyed by rollup aggregate stat.
+
+    Declaring each stat explicitly (rather than an open `dict[str, NumberFilter]`)
+    makes the valid stats visible in the OpenAPI schema, e.g.
+    `filter[cost_usd.mean][$lte]=0.5`. These stats must stay in sync with the
+    runtime sort/filter grammar (`_METRIC_STATS` in the experiments endpoints); a
+    unit test guards the parity.
+    """
+
     name: str
     """Filter experiments by name."""
+
+    run_count: NumberFilterParam
+    """Filter by run count, e.g. filter[run_count][$gte]=5."""
 
     updated_at: DatetimeFilter
     """

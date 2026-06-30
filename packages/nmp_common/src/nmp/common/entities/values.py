@@ -269,3 +269,44 @@ class StringFilter(Filter):
         protected_namespaces=(),
         populate_by_name=True,  # Accept both "eq" and "$eq" as input
     )
+
+
+class NumberFilter(Filter):
+    gte: Optional[float] = Field(
+        None,
+        alias="$gte",
+        serialization_alias="$gte",
+        description="Filter for results greater than or equal to this value.",
+    )
+    lte: Optional[float] = Field(
+        None,
+        alias="$lte",
+        serialization_alias="$lte",
+        description="Filter for results less than or equal to this value.",
+    )
+    gt: Optional[float] = Field(
+        None,
+        alias="$gt",
+        serialization_alias="$gt",
+        description="Filter for results greater than this value.",
+    )
+    lt: Optional[float] = Field(
+        None,
+        alias="$lt",
+        serialization_alias="$lt",
+        description="Filter for results less than this value.",
+    )
+    eq: Optional[float] = Field(
+        None,
+        alias="$eq",
+        serialization_alias="$eq",
+        description="Filter for results equal to this value.",
+    )
+
+    model_config = ConfigDict(
+        extra="forbid",
+        protected_namespaces=(),
+        populate_by_name=True,  # Accept both "gte" and "$gte" as input
+        # Reject an empty predicate ({}) at the schema/contract level — it carries no comparison.
+        json_schema_extra={"minProperties": 1},
+    )

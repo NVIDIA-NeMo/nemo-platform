@@ -15,11 +15,11 @@ import logging
 import secrets
 import time
 from datetime import datetime, timezone
-from typing import Annotated, Any, Literal, TypeVar
+from typing import Annotated, Any, Literal, NamedTuple, TypeVar
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from nmp.common.api.common import Page, PaginationData
-from nmp.common.api.filter import ComparisonOperation, FilterOperator, LogicalOperation
+from nmp.common.api.filter import ComparisonOperation, FilterOperation, FilterOperator, LogicalOperation
 from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
 from nmp.common.api.utils import generate_openapi_extra_params
 from nmp.common.entities.client import EntityClient, EntityConflictError, EntityNotFoundError
@@ -319,7 +319,6 @@ async def create_experiment(
         source_link=body.source_link,
         metadata=body.metadata,
         description=body.description,
-        summary=body.summary,
     )
     try:
         created = await entity_client.create(entity)
@@ -336,9 +335,9 @@ async def create_experiment(
     response_model=Page[ExperimentResponse],
     tags=[EXPERIMENTS_TAG],
     responses={
-        400: {"description": "Unsupported sort field"},
+        400: {"description": "Unsupported sort or filter field"},
         413: {"description": "Too many experiments selected to sort in one request"},
-        503: {"description": "Telemetry store unavailable for a metric-based sort"},
+        503: {"description": "Telemetry store unavailable for a metric-based sort or filter"},
     },
     openapi_extra=generate_openapi_extra_params(
         filter_schema=ExperimentFilter,
@@ -346,7 +345,10 @@ async def create_experiment(
             "Filter experiments by name, experiment_group_id, "
             "dataset_name, dataset_version, created_by, created_at, or updated_at. "
             "Pass is_deleted=true to return only soft-deleted experiments; omit to see only live ones. "
-            "Pass is_pinned=true (or false) to filter by pinned state; omit to return both."
+            "Pass is_pinned=true (or false) to filter by pinned state; omit to return both. "
+            "Filter by a rollup metric with numeric range operators ($gte/$lte/$gt/$lt/$eq): "
+            "filter[run_count][$gte]=5, filter[cost_usd.mean][$lte]=0.5, "
+            "filter[latency_ms.p95][$lte]=1000, or filter[evaluators.<name>.mean][$gte]=0.8."
         ),
     ),
 )
@@ -374,13 +376,18 @@ async def list_experiments(
     _validate_sort_field(sort_field)
     _apply_is_deleted_filter(parsed)
     _apply_is_pinned_filter(parsed)
-    # Compute-on-read: fetch the whole (entity-filtered) group, hydrate every rollup, then sort and
-    # paginate in memory so a single request can sort by a ClickHouse metric that lives outside the
-    # entity store. Bounded to hundreds of experiments per group (see _MAX_GROUP_EXPERIMENTS).
+    # Rollup-metric predicates live in ClickHouse, not the entity store, so they can't be pushed to
+    # Postgres. Split them out of the filter tree: only the entity predicates go to entity_client.list;
+    # the metric ones are applied in memory after hydration. parsed (the full user filter) is left
+    # intact so the response still echoes it.
+    entity_operation, metric_predicates = _extract_metric_predicates(parsed.operation)
+    # Compute-on-read: fetch the whole (entity-filtered) group, hydrate every rollup, then filter, sort,
+    # and paginate in memory so a single request can sort/filter by a ClickHouse metric that lives
+    # outside the entity store. Bounded to hundreds of experiments per group (see _MAX_GROUP_EXPERIMENTS).
     result = await entity_client.list(
         Experiment,
         workspace=workspace,
-        filter_operation=parsed.operation,
+        filter_operation=entity_operation,
         page=1,
         page_size=_MAX_GROUP_EXPERIMENTS,
     )
@@ -405,15 +412,18 @@ async def list_experiments(
             ),
         )
     hydrated = await _hydrate_rollups(workspace=workspace, responses=responses, rollup_repository=rollup_repository)
-    # A metric-backed sort (anything other than an entity column) is meaningless without rollups: if
-    # hydration was skipped (ClickHouse disabled or down) every metric value would be unset and the
-    # result would silently collapse to name order. Reject the request instead of returning a
-    # misleading 200. Entity-column sorts still work and an empty group still hydrates fine.
-    if not hydrated and sort_field not in _ENTITY_SORT_FIELDS:
+    # A metric-backed sort or filter is meaningless without rollups: if hydration was skipped (ClickHouse
+    # disabled or down) every metric value would be unset, so a metric sort would silently collapse to
+    # name order and a metric filter would drop everything. Reject the request instead of returning a
+    # misleading 200. Entity-column sorts/filters still work and an empty group still hydrates fine.
+    metric_sort = sort_field not in _ENTITY_SORT_FIELDS
+    if not hydrated and (metric_sort or metric_predicates):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Cannot sort experiments by '{sort_field}': the telemetry store is unavailable.",
+            detail="Cannot sort or filter experiments by a rollup metric: the telemetry store is unavailable.",
         )
+    if metric_predicates:
+        responses = [r for r in responses if _matches_metric_predicates(r, metric_predicates)]
     ordered = _sort_experiments(responses, field=sort_field, descending=descending)
     start = (page - 1) * page_size
     page_items = ordered[start : start + page_size]
@@ -454,7 +464,7 @@ async def get_experiment(
 
 # Identity and the dataset it was run against are fixed for the life of an
 # Experiment (see the ingest invariants); changing them means it's a different
-# Experiment. PUT may only edit group membership, source link, summary, description, metadata.
+# Experiment. PUT may only edit group membership, source link, description, metadata.
 _IMMUTABLE_EXPERIMENT_FIELDS = ("name", "dataset_name", "dataset_version")
 
 
@@ -499,7 +509,6 @@ async def update_experiment(
     existing.source_link = body.source_link
     existing.metadata = body.metadata
     existing.description = body.description
-    existing.summary = body.summary
     updated = await entity_client.update(existing)
     response = ExperimentResponse.from_entity(updated)
     await _hydrate_rollups(workspace=workspace, responses=[response], rollup_repository=rollup_repository)
@@ -888,19 +897,139 @@ def _apply_is_pinned_filter(parsed: ParsedFilter) -> None:
         parsed.and_with(null_clause)
 
 
-def _validate_sort_field(field: str) -> None:
-    """Reject a sort field that isn't an entity column or a known rollup-metric path."""
-    if field in _ENTITY_SORT_FIELDS or field == "run_count":
-        return
+# Metric heads whose dotted sub-paths address a ClickHouse rollup (not an entity column). Declared as
+# self-mapping namespaces on ExperimentFilter so paths survive filter validation untranslated.
+_METRIC_NAMESPACES = frozenset({"cost_usd", "latency_ms", "evaluators"})
+_NUMERIC_FILTER_OPERATORS = frozenset(
+    {FilterOperator.GTE, FilterOperator.LTE, FilterOperator.GT, FilterOperator.LT, FilterOperator.EQ}
+)
+
+
+class _MetricPredicate(NamedTuple):
+    field: str
+    operator: FilterOperator
+    threshold: float
+
+
+def _is_valid_metric_path(field: str) -> bool:
+    """True if `field` is a rollup-metric path: run_count, <metric>.<stat>, or evaluators.<name>.<stat>."""
+    if field == "run_count":
+        return True
     head, _, rest = field.partition(".")
-    if head in ("cost_usd", "latency_ms") and rest in _METRIC_STATS:
-        return
+    if head in ("cost_usd", "latency_ms"):
+        return rest in _METRIC_STATS
     if head == "evaluators":
         # Evaluator names can contain dots (e.g. "harbor.verifier"); the stat is the last segment.
         name, _, stat = rest.rpartition(".")
-        if name and stat in _METRIC_STATS:
-            return
+        return bool(name) and stat in _METRIC_STATS
+    return False
+
+
+def _validate_sort_field(field: str) -> None:
+    """Reject a sort field that isn't an entity column or a known rollup-metric path."""
+    if field in _ENTITY_SORT_FIELDS or _is_valid_metric_path(field):
+        return
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported sort field: {field}")
+
+
+def _is_metric_field(field: str) -> bool:
+    """True if `field` is *intended* as a rollup metric (by head), valid path or not.
+
+    Looser than ``_is_valid_metric_path``: classifies e.g. ``cost_usd.bogus`` as a metric so it gets
+    extracted and rejected with a 400 rather than forwarded to the entity store. Entity fields (already
+    translated to ``data.*`` by the filter dep) never match.
+    """
+    return field == "run_count" or field.split(".", 1)[0] in _METRIC_NAMESPACES
+
+
+def _operation_references_metric(operation: FilterOperation | None) -> bool:
+    if isinstance(operation, ComparisonOperation):
+        return _is_metric_field(operation.field)
+    if isinstance(operation, LogicalOperation):
+        return any(_operation_references_metric(child) for child in operation.operations)
+    return False
+
+
+def _validated_metric_predicate(operation: ComparisonOperation) -> _MetricPredicate:
+    field = operation.field
+    if not _is_valid_metric_path(field):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported metric filter field: {field}")
+    if operation.operator not in _NUMERIC_FILTER_OPERATORS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Metric filter '{field}' supports only numeric operators ($gte/$lte/$gt/$lt/$eq).",
+        )
+    try:
+        threshold = float(operation.value)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Metric filter '{field}' requires a numeric value, got {operation.value!r}.",
+        ) from exc
+    return _MetricPredicate(field=field, operator=operation.operator, threshold=threshold)
+
+
+def _extract_metric_predicates(
+    operation: FilterOperation | None,
+) -> tuple[FilterOperation | None, list[_MetricPredicate]]:
+    """Split rollup-metric comparisons out of the filter tree.
+
+    Returns ``(entity_operation, metric_predicates)``: the entity operation is forwarded to the entity
+    store, the metric predicates are applied in memory after hydration. Metric filters must be AND-ed
+    (at any nesting depth) with entity filters; a metric field under OR/NOT raises 400, since we can't
+    evaluate half a boolean tree in SQL and half in the application layer. Nested ANDs are flattened by
+    recursion, so a metric comparison inside a sub-AND is accepted.
+    """
+    if operation is None:
+        return None, []
+    if isinstance(operation, ComparisonOperation):
+        if _is_metric_field(operation.field):
+            return None, [_validated_metric_predicate(operation)]
+        return operation, []
+    if isinstance(operation, LogicalOperation):
+        if operation.operator != FilterOperator.AND:
+            if _operation_references_metric(operation):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Metric filters can only be combined with AND, not OR/NOT.",
+                )
+            return operation, []
+        entity_ops: list[FilterOperation] = []
+        metric_predicates: list[_MetricPredicate] = []
+        for child in operation.operations:
+            # Recurse so metric comparisons nested inside sub-ANDs are extracted too (and OR/NOT
+            # children that reference a metric still raise inside this call).
+            child_entity, child_metrics = _extract_metric_predicates(child)
+            if child_entity is not None:
+                entity_ops.append(child_entity)
+            metric_predicates.extend(child_metrics)
+        if not entity_ops:
+            return None, metric_predicates
+        if len(entity_ops) == 1:
+            return entity_ops[0], metric_predicates
+        return LogicalOperation(operator=FilterOperator.AND, operations=entity_ops), metric_predicates
+    return operation, []
+
+
+def _matches_metric_predicates(response: ExperimentResponse, predicates: list[_MetricPredicate]) -> bool:
+    """True if the response satisfies every metric predicate. A missing metric never matches."""
+    for predicate in predicates:
+        value = _experiment_sort_value(response, predicate.field)
+        if value is None or not _compare_metric(value, predicate.operator, predicate.threshold):
+            return False
+    return True
+
+
+def _compare_metric(value: float, operator: FilterOperator, threshold: float) -> bool:
+    if operator == FilterOperator.GTE:
+        return value >= threshold
+    if operator == FilterOperator.LTE:
+        return value <= threshold
+    if operator == FilterOperator.GT:
+        return value > threshold
+    if operator == FilterOperator.LT:
+        return value < threshold
+    return value == threshold  # EQ
 
 
 def _experiment_sort_value(response: ExperimentResponse, field: str) -> Any:

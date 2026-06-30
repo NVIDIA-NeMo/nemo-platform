@@ -17,12 +17,17 @@ codex login
 codex login status
 ```
 
-Install the NeMo Relay CLI so `nemo-relay` is available on `PATH`:
+Install Rust so `cargo` is available on `PATH`, then install the NeMo Relay CLI.
+If `VIRTUAL_ENV` is set, the commands below install into that environment;
+otherwise they install into a local `.nemo-relay` directory. The `PATH` export
+makes the installed `nemo-relay` binary available for the smoke test:
 
 ```bash
 git clone git@github.com:NVIDIA/NeMo-Relay.git
 export NEMO_RELAY_ROOT="$PWD/NeMo-Relay"
-cargo install --path "$NEMO_RELAY_ROOT/crates/cli" --root "${VIRTUAL_ENV:-.venv}" --locked
+export NEMO_RELAY_INSTALL_ROOT="${VIRTUAL_ENV:-$PWD/.nemo-relay}"
+cargo install --path "$NEMO_RELAY_ROOT/crates/cli" --root "$NEMO_RELAY_INSTALL_ROOT" --locked
+export PATH="$NEMO_RELAY_INSTALL_ROOT/bin:$PATH"
 nemo-relay --help
 ```
 

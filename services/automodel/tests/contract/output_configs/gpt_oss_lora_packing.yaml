@@ -49,7 +49,6 @@ checkpoint:
   v4_compatible: true
 packed_sequence:
   packed_sequence_size: 816
-  split_across_pack: false
 dataset:
   _target_: nemo_automodel.components.datasets.llm.column_mapped_text_instruction_dataset.ColumnMappedTextInstructionDataset
   path_or_dataset_id: ./sample-datasets/prompt_completion/training.jsonl

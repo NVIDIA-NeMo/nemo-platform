@@ -126,7 +126,7 @@ async def list_deployments(
     if statuses:
         filter_operation = ComparisonOperation(
             operator=FilterOperator.IN,
-            field="status",
+            field="data.status",
             value=statuses,
         )
     result = await entity_client.list(

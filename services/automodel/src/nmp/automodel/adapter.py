@@ -38,6 +38,8 @@ def _build_peft(training: dict[str, Any]) -> LoRAParams | None:
         dropout=lora.get("dropout", 0.0),
         merge=ft == "lora_merged" or lora.get("merge", False),
         target_modules=lora.get("target_modules"),
+        exclude_modules=lora.get("exclude_modules"),
+        use_triton=lora.get("use_triton", True),
     )
 
 
@@ -55,6 +57,9 @@ def _build_training_block(spec: dict[str, Any]) -> SFTTraining | DistillationTra
         "weight_decay": optimizer.get("weight_decay", 0.01),
         "adam_beta1": optimizer.get("adam_beta1", 0.9),
         "adam_beta2": optimizer.get("adam_beta2", 0.999),
+        "adam_eps": optimizer.get("adam_eps", 1e-8),
+        "optimizer": optimizer.get("optimizer", "Adam"),
+        "lr_decay_style": optimizer.get("lr_decay_style", "cosine"),
         "warmup_steps": optimizer.get("warmup_steps", 0),
         "epochs": schedule.get("epochs", 1),
         "max_steps": schedule.get("max_steps"),
@@ -62,8 +67,10 @@ def _build_training_block(spec: dict[str, Any]) -> SFTTraining | DistillationTra
         "batch_size": batch.get("global_batch_size", 8),
         "micro_batch_size": batch.get("micro_batch_size", 1),
         "sequence_packing": batch.get("sequence_packing", False),
+        "sequence_packing_max_samples": batch.get("sequence_packing_max_samples", 1000),
         "max_seq_length": training.get("max_seq_length", 2048),
         "precision": training.get("precision"),
+        "attn_implementation": training.get("attn_implementation", "sdpa"),
         "seed": schedule.get("seed"),
         "parallelism": ParallelismParams(
             num_nodes=parallelism.get("num_nodes", 1),

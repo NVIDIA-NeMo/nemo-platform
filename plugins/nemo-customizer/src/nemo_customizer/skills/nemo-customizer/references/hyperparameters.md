@@ -117,10 +117,13 @@ Full template:
       "alpha": 32,
       "dropout": 0.0,
       "merge": false,
-      "target_modules": null
+      "target_modules": null,
+      "exclude_modules": null,
+      "use_triton": true
     },
     "max_seq_length": 2048,
     "precision": null,
+    "attn_implementation": "sdpa",
     "execution_profile": null
   },
   "schedule": {
@@ -132,7 +135,8 @@ Full template:
   "batch": {
     "global_batch_size": 4,
     "micro_batch_size": 1,
-    "sequence_packing": false
+    "sequence_packing": false,
+    "sequence_packing_max_samples": 1000
   },
   "optimizer": {
     "learning_rate": 5e-5,
@@ -140,6 +144,9 @@ Full template:
     "weight_decay": 0.01,
     "adam_beta1": 0.9,
     "adam_beta2": 0.999,
+    "adam_eps": 1e-8,
+    "optimizer": "Adam",
+    "lr_decay_style": "cosine",
     "warmup_steps": 0
   },
   "parallelism": {
@@ -171,8 +178,11 @@ Full template:
 | `lora.dropout` | `0.0` | LoRA dropout (0.0–1.0) for regularization |
 | `lora.merge` | `false` | If true with `lora_merged`, output is full weights not adapter |
 | `lora.target_modules` | `null` | e.g. `["q_proj","v_proj"]`; null = platform default targets |
+| `lora.exclude_modules` | `null` | Patterns to exclude from LoRA, e.g. `["*.out_proj"]` |
+| `lora.use_triton` | `true` | Use the optimized Triton LoRA kernel |
 | `max_seq_length` | `2048` | Truncate/pack to this length; lower if OOM |
 | `precision` | `null` | `bf16` \| `fp16` \| `fp32` \| `fp8`; null auto-detects from the checkpoint |
+| `attn_implementation` | `sdpa` | `sdpa` (PyTorch native) \| `flash_attention_2` \| `eager` |
 | `teacher_model` | — | **Model entity ref** (not HF id). Required for distillation; see below |
 | `distillation_ratio` | `0.5` | KD blend (0–1) |
 | `distillation_temperature` | `1.0` | KD temperature |
@@ -199,6 +209,7 @@ LoRA block is auto-created when `finetuning_type` is `lora` or `lora_merged`.
 | `global_batch_size` | `8` (schema) | Effective batch across all GPUs; **≥48 GB LoRA tables → `SKILL.md`** |
 | `micro_batch_size` | `1` (schema) | **Per GPU**; same SKILL tables for single- and multi-GPU (TP=1) |
 | `sequence_packing` | `false` | Pack short sequences for throughput (needs compatible data) |
+| `sequence_packing_max_samples` | `1000` | Samples analyzed to estimate the optimal pack size (only when packing) |
 
 **Validation:** `global_batch_size` must be divisible by `micro_batch_size × data_parallel_size`, where:
 
@@ -215,6 +226,9 @@ Example: 1 node, 2 GPUs, TP=1 → DP=2 → GBS must be a multiple of `2 × micro
 | `weight_decay` | `0.01` | L2-style regularization |
 | `adam_beta1` | `0.9` | Adam optimizer beta1 |
 | `adam_beta2` | `0.999` | Adam optimizer beta2 |
+| `adam_eps` | `1e-8` | Adam/AdamW epsilon for numerical stability |
+| `optimizer` | `Adam` | `Adam` \| `AdamW` |
+| `lr_decay_style` | `cosine` | `cosine` \| `linear` \| `constant` |
 | `warmup_steps` | `0` | Linear warmup; try ~10% of total steps for long runs |
 
 ### `parallelism`
@@ -403,7 +417,9 @@ Full template (every section, defaults inline):
     "load_in_4bit": true,
     "load_in_8bit": false,
     "dtype": "auto",
-    "trust_remote_code": false
+    "trust_remote_code": false,
+    "device_map": null,
+    "rope_scaling": null
   },
   "dataset": {
     "path": "default/<dataset-fileset>",
@@ -422,7 +438,13 @@ Full template (every section, defaults inline):
       "target_modules": ["q_proj","k_proj","v_proj","o_proj","gate_proj","up_proj","down_proj"],
       "bias": "none",
       "use_rslora": false,
-      "random_state": 3407
+      "random_state": 3407,
+      "use_dora": false,
+      "loftq_config": null,
+      "modules_to_save": null,
+      "layers_to_transform": null,
+      "layer_replication": null,
+      "init_lora_weights": true
     },
     "use_gradient_checkpointing": "unsloth"
   },
@@ -432,6 +454,7 @@ Full template (every section, defaults inline):
     "warmup_steps": 0,
     "warmup_ratio": null,
     "lr_scheduler_type": "linear",
+    "lr_scheduler_kwargs": null,
     "logging_steps": 1,
     "save_steps": null,
     "eval_steps": null,
@@ -444,7 +467,13 @@ Full template (every section, defaults inline):
   "optimizer": {
     "learning_rate": 5e-5,
     "weight_decay": 0.0,
-    "optim": "adamw_8bit"
+    "optim": "adamw_8bit",
+    "adam_beta1": 0.9,
+    "adam_beta2": 0.999,
+    "adam_epsilon": 1e-8,
+    "max_grad_norm": 1.0,
+    "label_smoothing_factor": 0.0,
+    "neftune_noise_alpha": null
   },
   "hardware": {
     "gpus": "0",
@@ -474,6 +503,7 @@ Full template (every section, defaults inline):
 | `dtype` | `"auto"` | One of `"auto"`, `"bfloat16"`, `"float16"`, `"float32"`. |
 | `trust_remote_code` | `false` | HF `trust_remote_code` flag for custom model code (required by some hybrid Mamba/MoE models, e.g. Nemotron-H). |
 | `device_map` | `null` | Placement for `FastLanguageModel.from_pretrained`. `null` pins the whole model to the single visible GPU (`{"": 0}`) — the right default for this single-GPU backend. Leave unset unless experimenting; `"auto"`/`"balanced"`/`"sequential"` can spill layers to CPU on unified-memory hosts (GB10 / DGX Spark) and abort 4-bit loads. |
+| `rope_scaling` | `null` | RoPE scaling for long-context extension, e.g. `{"type": "linear", "factor": 2.0}`. `null` uses the model's native context length. |
 
 **Mutex:** `load_in_4bit` xor `load_in_8bit`. Both quantization flags are also **incompatible with `training.finetuning_type: "all_weights"`** — full SFT must use a non-quantized base.
 
@@ -511,6 +541,12 @@ See `references/dataset-formats.md` § Unsloth for row-shape rules.
 | `bias` | `"none"` | `"none"` / `"all"` / `"lora_only"`. |
 | `use_rslora` | `false` | Rank-stabilized LoRA. |
 | `random_state` | `3407` | Reproducibility seed for the LoRA init. |
+| `use_dora` | `false` | DoRA (weight-decomposed LoRA). Better quality at low ranks; adds overhead. |
+| `loftq_config` | `null` | LoftQ init config for quantized bases. `null` disables. |
+| `modules_to_save` | `null` | Extra non-LoRA modules trained & saved in full, e.g. `["embed_tokens","lm_head"]` (vocab changes / continued pretraining). |
+| `layers_to_transform` | `null` | Restrict LoRA to specific layer index(es). `null` = all layers. |
+| `layer_replication` | `null` | Layer-replication ranges for stacking, e.g. `[[0,16],[8,24]]`. |
+| `init_lora_weights` | `true` | Init scheme. `true` = PEFT default; `"gaussian"`/`"pissa"`/`"olora"`/`"loftq"` for advanced inits. |
 
 `lora` is auto-filled with these defaults when `finetuning_type: "lora"` and the user omits the block. Must be `null` / omitted when `finetuning_type: "all_weights"`.
 
@@ -523,6 +559,7 @@ See `references/dataset-formats.md` § Unsloth for row-shape rules.
 | `warmup_steps` | `0` | Linear warmup. Mutex with `warmup_ratio`. |
 | `warmup_ratio` | `null` | Fractional warmup over total steps. Mutex with `warmup_steps`. |
 | `lr_scheduler_type` | `"linear"` | `"linear"`, `"cosine"`, `"constant"`, `"constant_with_warmup"`, `"cosine_with_restarts"`. |
+| `lr_scheduler_kwargs` | `null` | Extra scheduler kwargs, e.g. `{"num_cycles": 3}` for `cosine_with_restarts`. `null` uses defaults. |
 | `logging_steps` | `1` | Loss-log cadence. |
 | `save_steps` | `null` | If set, save checkpoint every N steps. |
 | `eval_steps` | `null` | If set with `validation_path`, eval every N steps. When `null` and `validation_path` is set, the training driver defaults to **one validation pass per effective epoch** at `max(1, effective_steps - 1)` (same effective-step cap as automodel's default `val_check_interval`). |
@@ -546,6 +583,12 @@ See `references/dataset-formats.md` § Unsloth for row-shape rules.
 | `learning_rate` | `2e-4` (schema default; skill uses `5e-5` for LoRA SFT) | See LR table below. |
 | `weight_decay` | `0.0` | L2-style regularization. |
 | `optim` | `"adamw_8bit"` | `"adamw_torch"`, `"adamw_torch_fused"` (Hopper+), `"adamw_8bit"`, `"paged_adamw_8bit"`, `"sgd"`. `adamw_8bit` has the smallest optimizer state and is Unsloth's notebook default. |
+| `adam_beta1` | `0.9` | Adam/AdamW beta1. |
+| `adam_beta2` | `0.999` | Adam/AdamW beta2. |
+| `adam_epsilon` | `1e-8` | Adam/AdamW epsilon. |
+| `max_grad_norm` | `1.0` | Gradient-clipping max norm (TRL default). |
+| `label_smoothing_factor` | `0.0` | Label smoothing for the CE loss. `0.0` disables. |
+| `neftune_noise_alpha` | `null` | NEFTune embedding-noise alpha (quality boost). `null` disables. |
 
 `warmup_steps` is on `schedule`, not on `optimizer` (different from the automodel schema).
 

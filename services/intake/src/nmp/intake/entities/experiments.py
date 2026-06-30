@@ -60,7 +60,6 @@ class Experiment(EntityBase):
     )
 
     description: str | None = Field(default=None, description="Human-readable description of the experiment.")
-    summary: str | None = Field(default=None, description="Human-authored summary of results.")
 
     is_deleted: bool = Field(
         default=False,

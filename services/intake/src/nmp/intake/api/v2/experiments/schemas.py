@@ -10,9 +10,9 @@ Response models are standalone: they translate from the stored entity via
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 
-from nmp.common.entities.values import DatetimeFilter, Filter
+from nmp.common.entities.values import DatetimeFilter, Filter, NumberFilter, map_entity_field
 from nmp.intake.entities.experiments import Experiment, ExperimentGroup
 from nmp.intake.spans.domain import SpanStatus
 from nmp.intake.spans.experiment_session_repository import ExperimentSessionRow
@@ -42,7 +42,6 @@ class ExperimentRequest(BaseModel):
     source_link: AnyUrl | None = Field(default=None, description="Optional URL for the source experiment.")
     metadata: dict[str, Any] = Field(default_factory=dict, description="Free-form producer metadata.")
     description: str | None = Field(default=None, description="Human-readable description.")
-    summary: str | None = Field(default=None, description="Human-authored summary of results.")
 
 
 class ExperimentGroupResponse(BaseModel):
@@ -97,7 +96,6 @@ class ExperimentResponse(BaseModel):
     source_link: AnyUrl | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     description: str | None = None
-    summary: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
     pinned_at: datetime | None = Field(
@@ -145,11 +143,30 @@ class ExperimentResponse(BaseModel):
             source_link=entity.source_link,
             metadata=entity.metadata,
             description=entity.description,
-            summary=entity.summary,
             created_at=entity.created_at,
             updated_at=entity.updated_at,
             pinned_at=entity.pinned_at,
         )
+
+
+class MetricStatFilters(BaseModel):
+    """Numeric range filters keyed by rollup aggregate stat.
+
+    Declaring each stat explicitly (rather than an open ``dict[str, NumberFilter]``) makes the valid
+    stats visible in the OpenAPI schema, e.g. ``filter[cost_usd.mean][$lte]=0.5``. These stats must
+    stay in sync with the runtime sort/filter grammar (``_METRIC_STATS`` in the experiments
+    endpoints); a unit test guards the parity.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    sum: NumberFilter | None = None
+    mean: NumberFilter | None = None
+    median: NumberFilter | None = None
+    p90: NumberFilter | None = None
+    p95: NumberFilter | None = None
+    p99: NumberFilter | None = None
+    count: NumberFilter | None = None
 
 
 class ExperimentGroupFilter(Filter):
@@ -188,6 +205,23 @@ class ExperimentFilter(Filter):
             "When true, returns only pinned experiments. When false, returns only unpinned experiments. "
             "Omit to return both."
         ),
+    )
+    # Rollup-metric filters. These live in ClickHouse, not the entity store, so they're declared as
+    # self-mapping namespaces (the path is left untranslated) and applied in the application layer
+    # after rollup hydration rather than forwarded to Postgres. Stat sub-paths mirror the sort grammar:
+    # filter[cost_usd.mean][gte]=0.8, filter[evaluators.<name>.mean][lte]=0.5, filter[run_count][gte]=5.
+    run_count: Annotated[NumberFilter | None, map_entity_field("run_count")] = Field(
+        default=None, description="Filter by run count, e.g. filter[run_count][$gte]=5."
+    )
+    cost_usd: Annotated[MetricStatFilters | None, map_entity_field("cost_usd", namespace=True)] = Field(
+        default=None, description="Filter by a cost_usd rollup stat, e.g. filter[cost_usd.mean][$lte]=0.5."
+    )
+    latency_ms: Annotated[MetricStatFilters | None, map_entity_field("latency_ms", namespace=True)] = Field(
+        default=None, description="Filter by a latency_ms rollup stat, e.g. filter[latency_ms.p95][$lte]=1000."
+    )
+    evaluators: Annotated[dict[str, MetricStatFilters] | None, map_entity_field("evaluators", namespace=True)] = Field(
+        default=None,
+        description="Filter by an evaluator rollup stat, e.g. filter[evaluators.<name>.mean][$gte]=0.8.",
     )
 
 
