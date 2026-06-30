@@ -37,7 +37,7 @@ from nmp.core.models.controllers.backends.common import (
     deployment_config_view,
     deployment_elapsed_seconds,
 )
-from nmp.core.models.controllers.backends.engine import ENGINE_GENERIC, ENGINE_VLLM, config_engine
+from nmp.core.models.controllers.backends.engine import ENGINE_GENERIC, ENGINE_NIM, ENGINE_VLLM, config_engine
 from nmp.core.models.controllers.backends.k8s_nim_operator.config import K8sNimOperatorConfig
 from nmp.core.models.controllers.backends.k8s_nim_operator.reconcilers.base import Reconciler, ResolvedDeployment
 from nmp.core.models.controllers.backends.k8s_nim_operator.reconcilers.k8s import K8sReconciler
@@ -235,22 +235,22 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
     def _select_reconciler(self, engine: str) -> Optional[Reconciler]:
         """Select the reconciler for an engine.
 
-        Returns the vLLM reconciler for ``vllm``, the NIM-operator reconciler for
-        any other engine (the default), and ``None`` for ``generic`` -- which the
-        callers treat as the "unsupported engine" rejection (see
-        :meth:`_unsupported_engine`).
+        The direct-emission :class:`K8sReconciler` handles ``vllm`` and
+        ``generic``; ``nim`` uses the NIM-operator reconciler. Any other value is
+        unsupported and yields ``None``, which the callers turn into the
+        "unsupported engine" rejection (see :meth:`_unsupported_engine`).
         """
-        if engine == ENGINE_VLLM:
+        if engine in (ENGINE_VLLM, ENGINE_GENERIC):
             return self._k8s_reconciler
-        if engine == ENGINE_GENERIC:
-            return None
-        return self._nim_reconciler
+        if engine == ENGINE_NIM:
+            return self._nim_reconciler
+        return None
 
     @staticmethod
     def _unsupported_engine(engine: str) -> DeploymentStatusUpdate:
         return DeploymentStatusUpdate(
             status="ERROR",
-            status_message="The 'generic' engine is not yet supported on the k8s backend.",
+            status_message=f"The '{engine}' engine is not supported on the k8s backend.",
             error_details={"error": "unsupported_engine", "engine": engine},
             host_url=None,
         )

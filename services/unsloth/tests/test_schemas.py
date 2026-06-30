@@ -82,8 +82,21 @@ class TestSubShapesIndependently:
         t = TrainingSpec()
         assert t.training_type == "sft"
         assert t.finetuning_type == "lora"
-        # Canonical shape doesn't auto-fill `lora` (that's the plugin's
-        # input validator's job).
+        # finetuning_type defaults to 'lora', so the schema auto-fills a default
+        # LoRAParams block — downstream (build_peft_kwargs) can rely on it.
+        assert t.lora == LoRAParams()
+
+    def test_lora_finetuning_autofills_lora(self) -> None:
+        # Explicit lora type with no block → default LoRAParams, never None.
+        t = TrainingSpec(finetuning_type="lora", lora=None)
+        assert t.lora == LoRAParams()
+
+    def test_all_weights_rejects_lora_block(self) -> None:
+        with pytest.raises(ValidationError, match="training.lora must be unset"):
+            TrainingSpec(finetuning_type="all_weights", lora=LoRAParams())
+
+    def test_all_weights_allows_no_lora(self) -> None:
+        t = TrainingSpec(finetuning_type="all_weights")
         assert t.lora is None
 
     def test_output_response_extras_forbidden(self) -> None:

@@ -6,6 +6,6 @@ import { type FC, type PropsWithChildren } from 'react';
 
 export const MarkdownParagraph: FC<PropsWithChildren> = ({ children }) => (
   <Text asChild kind="body/regular/md">
-    <p className="mb-density-xl text-sm leading-[160%] last:mb-0">{children}</p>
+    <p className="mb-density-md text-sm leading-6 last:mb-0">{children}</p>
   </Text>
 );

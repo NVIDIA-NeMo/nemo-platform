@@ -798,6 +798,7 @@ components:
           - SUCCEEDED
           - FAILED
           - LOST
+          - UNKNOWN
           - DELETING
           title: Status
           default: PENDING
@@ -990,14 +991,6 @@ components:
       description: Immutable PodSpec-shaped deployment template.
     DockerDeploymentConfig:
       properties:
-        port_range_start:
-          type: integer
-          title: Port Range Start
-          default: 9000
-        port_range_end:
-          type: integer
-          title: Port Range End
-          default: 9100
         network:
           title: Network
           type: string
@@ -1330,6 +1323,7 @@ components:
           - SUCCEEDED
           - FAILED
           - LOST
+          - UNKNOWN
           - DELETING
           title: Status
         message:
@@ -1393,6 +1387,7 @@ components:
           - SUCCEEDED
           - FAILED
           - LOST
+          - UNKNOWN
           - DELETING
           title: Status
         status_message:

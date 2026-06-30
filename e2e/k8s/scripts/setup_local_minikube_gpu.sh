@@ -10,24 +10,10 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib.sh"
+
 MINIKUBE_PROFILE="${MINIKUBE_PROFILE:-minikube}"
-
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m' # No Color
-
-log_info() {
-    echo -e "${GREEN}[INFO]${NC} $*"
-}
-
-log_warn() {
-    echo -e "${YELLOW}[WARN]${NC} $*"
-}
-
-log_error() {
-    echo -e "${RED}[ERROR]${NC} $*"
-}
 
 log_info "Validating environment..."
 
@@ -131,27 +117,7 @@ if [ "${KUBE_NAMESPACE}" != "default" ]; then
 fi
 
 log_info "Creating Kubernetes secrets in namespace '${KUBE_NAMESPACE}'..."
-
-log_info "Creating NGC API secret..."
-${KUBECTL_NS} create secret generic ngc-api \
-  --from-literal=NGC_API_KEY="$NGC_API_KEY" \
-  --dry-run=client -o yaml | ${KUBECTL_NS} apply -f -
-
-log_info "Creating NGC image pull secret..."
-${KUBECTL_NS} create secret docker-registry nvcrimagepullsecret \
-  --docker-server=nvcr.io \
-  --docker-username='$oauthtoken' \
-  --docker-password="$NGC_API_KEY" \
-  --dry-run=client -o yaml | ${KUBECTL_NS} apply -f -
-
-if [ -n "${HF_TOKEN:-}" ]; then
-    log_info "Creating HuggingFace token secret..."
-    ${KUBECTL_NS} create secret generic huggingface-token \
-      --from-literal=HF_TOKEN=$HF_TOKEN \
-      --dry-run=client -o yaml | ${KUBECTL_NS} apply -f -
-else
-    log_warn "HF_TOKEN not set, skipping HuggingFace token secret"
-fi
+create_platform_secrets "${KUBE_NAMESPACE}"
 
 MINIKUBE_IP=$(minikube ip -p "${MINIKUBE_PROFILE}")
 CLUSTER_URL="http://${MINIKUBE_IP}"

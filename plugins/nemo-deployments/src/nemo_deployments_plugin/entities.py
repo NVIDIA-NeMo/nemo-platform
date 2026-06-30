@@ -140,8 +140,6 @@ class Affinity(BaseModel):
 
 
 class DockerDeploymentConfig(BaseModel):
-    port_range_start: int = 9000
-    port_range_end: int = 9100
     network: str | None = None
 
 

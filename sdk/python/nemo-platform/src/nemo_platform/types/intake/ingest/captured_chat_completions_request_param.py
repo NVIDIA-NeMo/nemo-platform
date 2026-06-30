@@ -25,7 +25,11 @@ from .captured_chat_message_param import CapturedChatMessageParam
 __all__ = ["CapturedChatCompletionsRequestParam"]
 
 
-class CapturedChatCompletionsRequestParam(TypedDict, total=False, extra_items=object):  # type: ignore[call-arg]
+class CapturedChatCompletionsRequestParam(  # type: ignore[call-arg]
+    TypedDict,
+    total=False,
+    extra_items=object,  # pyright: ignore[reportGeneralTypeIssues]
+):
     """Flexible captured chat-completions request."""
 
     messages: Required[Iterable[CapturedChatMessageParam]]

@@ -45,6 +45,7 @@
 {"name": "data-designer", "license": "APACHE-2.0", "compatible": true}
 {"name": "data-designer-config", "license": "APACHE-2.0", "compatible": true}
 {"name": "data-designer-engine", "license": "APACHE-2.0", "compatible": true}
+{"name": "databricks-sdk", "license": "APACHE-2.0", "compatible": true}
 {"name": "dataclasses-json", "license": "MIT", "compatible": true}
 {"name": "datasets", "license": "APACHE-2.0", "compatible": true}
 {"name": "diff-cover", "license": "APACHE-2.0", "compatible": true}
@@ -73,6 +74,9 @@
 {"name": "flatbuffers", "license": "APACHE-2.0", "compatible": true}
 {"name": "frozenlist", "license": "APACHE-2.0", "compatible": true}
 {"name": "fsspec", "license": "BSD-3-CLAUSE", "compatible": true}
+{"name": "gitdb", "license": "BSD-3-CLAUSE", "compatible": true}
+{"name": "gitpython", "license": "BSD-3-CLAUSE", "compatible": true}
+{"name": "google-auth", "license": "APACHE-2.0", "compatible": true}
 {"name": "googleapis-common-protos", "license": "APACHE-2.0", "compatible": true}
 {"name": "greenlet", "license": "MIT", "compatible": true}
 {"name": "grpcio", "license": "APACHE-2.0", "compatible": true}
@@ -142,6 +146,7 @@
 {"name": "marshmallow", "license": "MIT", "compatible": true}
 {"name": "mcp", "license": "MIT", "compatible": true}
 {"name": "mdurl", "license": "MIT", "compatible": true}
+{"name": "mlflow-skinny", "license": "APACHE-2.0", "compatible": true}
 {"name": "mmh3", "license": "MIT", "compatible": true}
 {"name": "more-itertools", "license": "MIT", "compatible": true}
 {"name": "mpmath", "license": "BSD-3-CLAUSE", "compatible": true}
@@ -217,6 +222,8 @@
 {"name": "py-key-value-aio", "license": "APACHE-2.0", "compatible": true}
 {"name": "py-rust-stemmers", "license": "MIT", "compatible": true}
 {"name": "pyarrow", "license": "APACHE-2.0", "compatible": true}
+{"name": "pyasn1", "license": "BSD-2-CLAUSE", "compatible": true}
+{"name": "pyasn1-modules", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "pycparser", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "pydantic", "license": "MIT", "compatible": true}
 {"name": "pydantic-core", "license": "MIT", "compatible": true}
@@ -262,11 +269,13 @@
 {"name": "simpleeval", "license": "MIT", "compatible": true}
 {"name": "six", "license": "MIT", "compatible": true}
 {"name": "smart-open", "license": "MIT", "compatible": true}
+{"name": "smmap", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "sniffio", "license": "APACHE-2.0", "compatible": true}
 {"name": "soupsieve", "license": "MIT", "compatible": true}
 {"name": "sqlalchemy", "license": "MIT", "compatible": true}
 {"name": "sqlfluff", "license": "MIT", "compatible": true}
 {"name": "sqlmodel", "license": "MIT", "compatible": true}
+{"name": "sqlparse", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "sse-starlette", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "starlette", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "streaming-form-data", "license": "MIT", "compatible": true}
@@ -298,6 +307,7 @@
 {"name": "uvicorn", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "uvloop", "license": "MIT", "compatible": true}
 {"name": "validators", "license": "MIT", "compatible": true}
+{"name": "wandb", "license": "MIT", "compatible": true}
 {"name": "wasmtime", "license": "APACHE-2.0 WITH LLVM-EXCEPTION", "compatible": true}
 {"name": "watchdog", "license": "APACHE-2.0", "compatible": true}
 {"name": "watchfiles", "license": "MIT", "compatible": true}

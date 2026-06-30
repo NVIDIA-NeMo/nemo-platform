@@ -43,14 +43,21 @@ export const ExperimentDetailMetrics: FC<ExperimentDetailMetricsProps> = ({ expe
       <Flex align="stretch" gap="density-3xl">
         <KVPair
           label="Dataset Name"
-          value={experiment?.dataset_name || undefined}
-          loading={isLoading}
-          orientation="vertical"
-        />
-        <Divider orientation="vertical" className="grow-0 self-stretch" />
-        <KVPair
-          label="Dataset Version"
-          value={experiment?.dataset_version || undefined}
+          value={
+            experiment?.dataset_name ? (
+              experiment.dataset_version ? (
+                <Tooltip
+                  slotContent={`Version: ${experiment.dataset_version}`}
+                  className={tooltipClassName}
+                  side="bottom"
+                >
+                  <span className="cursor-default">{experiment.dataset_name}</span>
+                </Tooltip>
+              ) : (
+                experiment.dataset_name
+              )
+            ) : undefined
+          }
           loading={isLoading}
           orientation="vertical"
         />

@@ -207,8 +207,6 @@ def _build_ctx_from_env(sdk: Any) -> JobContext:
     if not workspace:
         raise RuntimeError(f"{NEMO_JOB_WORKSPACE_ENVVAR} not set; running outside the platform?")
     persistent_str = os.environ.get(PERSISTENT_JOB_STORAGE_PATH_ENVVAR)
-    if not persistent_str:
-        raise RuntimeError(f"{PERSISTENT_JOB_STORAGE_PATH_ENVVAR} not set; running outside the platform?")
     ephemeral_str = os.environ.get(EPHEMERAL_TASK_STORAGE_PATH_ENVVAR)
     if not ephemeral_str:
         raise RuntimeError(f"{EPHEMERAL_TASK_STORAGE_PATH_ENVVAR} not set; running outside the platform?")
@@ -217,7 +215,10 @@ def _build_ctx_from_env(sdk: Any) -> JobContext:
         raise RuntimeError(f"{NEMO_JOB_ID_ENVVAR} not set; running outside the platform?")
     return JobContext(
         workspace=workspace,
-        storage=StoragePaths(ephemeral=Path(ephemeral_str), persistent=Path(persistent_str)),
+        storage=StoragePaths(
+            ephemeral=Path(ephemeral_str),
+            persistent=Path(persistent_str) if persistent_str else None,
+        ),
         results=PlatformJobResults(job_name=job_id, workspace=workspace, sdk=sdk),
         job_id=job_id,
     )

@@ -45,6 +45,7 @@ export const AssistantChatThread = ({
   composerOverride,
   messageContentProps,
   enableImageAttachments,
+  minInputRows,
 }: AssistantChatThreadProps) => {
   const { className: threadViewportClassName, ...threadViewportAttributes } =
     attributes?.ThreadViewport ?? {};
@@ -95,7 +96,10 @@ export const AssistantChatThread = ({
             threadViewportClassName
           )}
         >
-          <Stack gap="density-sm" className={cn('min-h-full w-full', contentClassName)}>
+          <Stack
+            gap="density-lg"
+            className={cn('min-h-full w-full py-density-md', contentClassName)}
+          >
             <ThreadPrimitive.Empty>
               <ChatEmptyState
                 className="h-full min-h-[250px] w-full"
@@ -112,7 +116,7 @@ export const AssistantChatThread = ({
       </div>
       {composerMode !== ComposerMode.BROADCAST_ALL && (
         <Flex
-          className={cn('w-full pt-density-xl', composerContainerClassName)}
+          className={cn('w-full pt-density-lg', composerContainerClassName)}
           data-testid="assistant-chat-composer-container"
         >
           {composerOverride ?? (
@@ -122,6 +126,7 @@ export const AssistantChatThread = ({
               onReset={onReset}
               slotComposerStart={slotComposerStart}
               enableImageAttachments={enableImageAttachments}
+              minInputRows={minInputRows}
             />
           )}
         </Flex>

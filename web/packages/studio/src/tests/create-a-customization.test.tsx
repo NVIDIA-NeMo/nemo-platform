@@ -118,8 +118,7 @@ describe('Creating a new customization', () => {
       await user.clear(outputModelInput);
       await user.type(outputModelInput, 'test-customization-model');
 
-      const form = screen.getByRole('form');
-      fireEvent.submit(form);
+      fireEvent.submit(screen.getByRole('form'));
 
       // Assert the correct request was made
       await waitFor(() => {

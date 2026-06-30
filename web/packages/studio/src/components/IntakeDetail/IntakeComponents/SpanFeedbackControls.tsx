@@ -3,7 +3,7 @@
 
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { FeedbackAnnotationInputValue } from '@nemo/sdk/generated/platform/schema';
-import { Badge, Button, Divider, Flex, Tooltip } from '@nvidia/foundations-react-core';
+import { Button, Divider, Flex, Tooltip } from '@nvidia/foundations-react-core';
 import { useSpanAnnotationActions } from '@studio/components/IntakeDetail/IntakeComponents/useSpanAnnotationActions';
 import { NotebookPen, ThumbsDown, ThumbsUp } from 'lucide-react';
 import { type FC, type MouseEvent, useEffect } from 'react';
@@ -14,8 +14,8 @@ interface SpanFeedbackControlsProps {
   sessionId: string;
   /** Current feedback sentiment for the span, to highlight the active thumb. */
   activeFeedback?: FeedbackAnnotationInputValue;
-  /** Total annotations on the span, shown as a count badge beside the thumbs. */
-  annotationCount?: number;
+  /** Whether the span has any note annotations, to highlight the note icon. */
+  hasNotes?: boolean;
   /** Open the span and focus its annotations note field (handled by the parent). */
   onAddNote: () => void;
 }
@@ -32,7 +32,7 @@ export const SpanFeedbackControls: FC<SpanFeedbackControlsProps> = ({
   spanId,
   sessionId,
   activeFeedback,
-  annotationCount,
+  hasNotes,
   onAddNote,
 }) => {
   const { submitFeedback, isMutating, error, clearError } = useSpanAnnotationActions(
@@ -65,13 +65,6 @@ export const SpanFeedbackControls: FC<SpanFeedbackControlsProps> = ({
       {/* Separate the span metadata (tokens/cost/duration) from the annotation
           controls. */}
       <Divider orientation="vertical" className="mr-density-xs h-4 self-center" />
-      {annotationCount !== undefined && annotationCount > 0 && (
-        <Tooltip slotContent="Number of annotations" side="top">
-          <Badge color="gray" kind="solid" aria-label={`${annotationCount} annotations`}>
-            {annotationCount}
-          </Badge>
-        </Tooltip>
-      )}
       <Tooltip slotContent="Positive feedback" side="top">
         <Button
           type="button"
@@ -108,15 +101,20 @@ export const SpanFeedbackControls: FC<SpanFeedbackControlsProps> = ({
           />
         </Button>
       </Tooltip>
-      <Tooltip slotContent="Add note" side="top">
+      <Tooltip slotContent={hasNotes ? 'Notes added' : 'Add note'} side="top">
         <Button
           type="button"
           size="tiny"
           kind="tertiary"
-          aria-label="Add note"
+          aria-label={hasNotes ? 'Add note (this span has notes)' : 'Add note'}
           onClick={withoutToggle(onAddNote)}
         >
-          <NotebookPen size={14} aria-hidden />
+          {/* Tinted to match the Guardrail kind accent (var --text-color-accent-yellow). */}
+          <NotebookPen
+            size={14}
+            aria-hidden
+            className={hasNotes ? 'text-[color:var(--text-color-accent-yellow)]' : undefined}
+          />
         </Button>
       </Tooltip>
     </Flex>

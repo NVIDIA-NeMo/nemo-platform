@@ -10,6 +10,7 @@ def test_controller_config_defaults() -> None:
     assert cfg.controller.interval_seconds == 5
     assert cfg.controller.drift_recovery_max_attempts == 5
     assert cfg.controller.orphan_cleanup_interval_seconds == 30
+    assert cfg.controller.starting_timeout_seconds == 3600
 
 
 def test_controller_config_custom_orphan_interval() -> None:
@@ -30,3 +31,8 @@ def test_controller_config_rejects_inverted_backoff() -> None:
 def test_controller_config_allows_zero_orphan_interval_to_disable() -> None:
     cfg = ControllerConfig(orphan_cleanup_interval_seconds=0)
     assert cfg.orphan_cleanup_interval_seconds == 0
+
+
+def test_controller_config_allows_zero_starting_timeout_to_disable() -> None:
+    cfg = ControllerConfig(starting_timeout_seconds=0)
+    assert cfg.starting_timeout_seconds == 0

@@ -9,6 +9,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib.sh"
 REPO_ROOT="$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel)"
 
 NAMESPACE="${NAMESPACE:-${KUBE_NAMESPACE:-default}}"
@@ -31,22 +32,6 @@ RUSTFS_SECRET_KEY="${RUSTFS_SECRET_KEY:-rustfsadmin}"
 MINIKUBE_PROFILE="${MINIKUBE_PROFILE:-minikube}"
 EXTRA_HELM_ARGS=()
 
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m'
-
-log_info() {
-    echo -e "${GREEN}[INFO]${NC} $*"
-}
-
-log_warn() {
-    echo -e "${YELLOW}[WARN]${NC} $*"
-}
-
-log_error() {
-    echo -e "${RED}[ERROR]${NC} $*"
-}
 
 require_non_empty() {
     local name="$1"
@@ -237,6 +222,18 @@ if [ -n "${NMP_E2E_PULL_POLICY}" ]; then
         --set api.image.pullPolicy="${NMP_E2E_PULL_POLICY}"
         --set core.image.pullPolicy="${NMP_E2E_PULL_POLICY}"
     )
+fi
+
+IMAGE_PULL_SECRET_INDEX=0
+
+if [ -n "${NGC_API_KEY:-}" ]; then
+    HELM_ARGS+=(--set "imagePullSecrets[${IMAGE_PULL_SECRET_INDEX}].name=nvcrimagepullsecret")
+    IMAGE_PULL_SECRET_INDEX=$((IMAGE_PULL_SECRET_INDEX + 1))
+fi
+
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+    HELM_ARGS+=(--set "imagePullSecrets[${IMAGE_PULL_SECRET_INDEX}].name=ghcr-pull")
+    IMAGE_PULL_SECRET_INDEX=$((IMAGE_PULL_SECRET_INDEX + 1))
 fi
 
 log_info "Helm install inputs:"

@@ -6,7 +6,7 @@ import { Tooltip } from '@nvidia/foundations-react-core';
 import { Check, Copy } from 'lucide-react';
 
 export const ACTION_BUTTON_CLASS =
-  'flex cursor-pointer size-8 items-center justify-center rounded text-base bg-surface-raised hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-50';
+  'flex cursor-pointer size-7 items-center justify-center rounded border border-transparent text-base bg-transparent text-secondary hover:border-base hover:bg-surface-raised hover:text-primary disabled:cursor-not-allowed disabled:opacity-50';
 
 export const MESSAGE_ACTIONS_CLASS =
   'flex gap-density-xs opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 [@media(hover:none)]:opacity-100';

@@ -10,7 +10,8 @@ import subprocess
 import tempfile
 import time
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -362,6 +363,32 @@ def grant_workspace_role(
         roles=list(roles),
         wait_role_propagation=wait_role_propagation,
     )
+
+
+@contextmanager
+def igw_mock_provider_mode(prefix: str = "igw-mock-") -> Iterator[None]:
+    """Enable IGW mock-provider mode in *this* process for the duration of the ``with`` block.
+
+    Overrides ``InferenceGatewayConfig.mock_provider_prefix`` so :func:`add_mock_provider` can name
+    and resolve mock providers. Use this when driving a *real* platform subprocess (where
+    :func:`create_test_client` isn't in play) but the in-process config still has to recognize the
+    mock prefix.
+
+    Implemented as a ``Configuration`` override, which ``get_service_config`` honors ahead of the
+    env-derived config — so it works regardless of whether the IGW config was already read/cached
+    (an env var would lose that race) — and is scoped to the block, so it can't leak into unrelated
+    suites. The prior ``InferenceGatewayConfig`` override (if any) is restored on exit.
+    """
+    from nmp.common.config import Configuration
+    from nmp.core.inference_gateway.config import InferenceGatewayConfig
+
+    current = Configuration.get_service_config(InferenceGatewayConfig)
+    merged = InferenceGatewayConfig(**{**current.model_dump(), "mock_provider_prefix": prefix})
+    Configuration.set_overrides({InferenceGatewayConfig: merged})
+    try:
+        yield
+    finally:
+        Configuration.clear_override(InferenceGatewayConfig)
 
 
 def add_mock_provider(

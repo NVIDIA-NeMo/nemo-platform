@@ -104,7 +104,7 @@ def test_list_deployments_status_in(client: TestClient, mock_entity_client: Asyn
     assert len(resp.json()["data"]) == 1
     call_kwargs = mock_entity_client.list.await_args.kwargs
     assert call_kwargs["filter_operation"].operator.value == "$in"
-    assert call_kwargs["filter_operation"].field == "status"
+    assert call_kwargs["filter_operation"].field == "data.status"
 
 
 def test_list_deployments_invalid_status_in_400(client: TestClient) -> None:

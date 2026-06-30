@@ -24,18 +24,27 @@ See [Target Schema](/documentation/vulnerability-scanning/targets/schema) for th
 Audit a NIM (or any OpenAI-compatible chat endpoint) routed through a NeMo Platform provider:
 
 ```python
+# List providers registered in your deployment and pick one.
+providers = client.inference.providers.list(workspace="default")
+for provider in providers["data"]:
+    print(provider["name"], provider.get("host_url"))
+```
+
+Use a `provider` name from this output in the target below. The model identifier format depends on the provider — check the provider's API documentation or served-model list if unsure.
+
+```python
 target = client.auditor.targets.create(
     workspace="default",
     name="llama-31-8b",
     type="nim.NVOpenAIChat",
-    model="meta/llama-3.1-8b-instruct",
+    model="nvidia/meta/llama-3.1-8b-instruct",
     options={
         "nim": {
             "max_tokens": 1024,
             "nmp_uri_spec": {
                 "inference_gateway": {
                     "workspace": "default",
-                    "provider": "nvidia-build",
+                    "provider": "nvidia-inference-api",
                 },
             },
         },
@@ -110,12 +119,12 @@ updated = client.auditor.targets.update(
     workspace="default",
     name="llama-31-8b",
     type="nim.NVOpenAIChat",
-    model="meta/llama-3.3-70b-instruct",
+    model="nvidia/meta/llama-3.3-70b-instruct",
     options={
         "nim": {
             "max_tokens": 2048,
             "nmp_uri_spec": {
-                "inference_gateway": {"workspace": "default", "provider": "nvidia-build"},
+                "inference_gateway": {"workspace": "default", "provider": "nvidia-inference-api"},
             },
         },
     },

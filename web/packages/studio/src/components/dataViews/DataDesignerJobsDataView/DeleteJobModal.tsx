@@ -6,20 +6,20 @@ import {
   useDataDesignerDeleteCreateJob,
 } from '@nemo/sdk/generated/data-designer/api';
 import type { CreateJob as DataDesignerJob } from '@nemo/sdk/generated/data-designer/schema';
-import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
+import { BulkDeleteModal } from '@studio/components/BulkDeleteModal';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useQueryClient } from '@tanstack/react-query';
-import { FC, useState } from 'react';
+import { FC } from 'react';
 
 interface DeleteJobModalProps {
   jobs: DataDesignerJob[];
   onClose: () => void;
+  onDeleted?: () => void;
 }
 
-export const DeleteJobModal: FC<DeleteJobModalProps> = ({ jobs, onClose }) => {
+export const DeleteJobModal: FC<DeleteJobModalProps> = ({ jobs, onClose, onDeleted }) => {
   const queryClient = useQueryClient();
   const workspace = useWorkspaceFromPath();
-  const [deleteError, setDeleteError] = useState<string | undefined>(undefined);
 
   const deleteJobMutation = useDataDesignerDeleteCreateJob({
     mutation: {
@@ -30,52 +30,30 @@ export const DeleteJobModal: FC<DeleteJobModalProps> = ({ jobs, onClose }) => {
     },
   });
 
-  const handleDelete = async () => {
-    const jobsToDelete = jobs.filter((job) => job.workspace && job.name);
-
-    if (jobsToDelete.length === 0) {
-      return false;
-    }
-
-    try {
-      setDeleteError(undefined);
-
-      const deletePromises = jobsToDelete.map(async (job) => {
-        try {
-          await deleteJobMutation.mutateAsync({ workspace: job.workspace!, name: job.name });
-        } catch (error) {
-          throw new Error(
-            `Failed to delete job "${job.name}": ${error instanceof Error ? error.message : 'Unknown error'}`
-          );
-        }
-      });
-
-      await Promise.all(deletePromises);
-      onClose();
-      return true;
-    } catch (error) {
-      setDeleteError(
-        error instanceof Error
-          ? error.message
-          : `Failed to delete ${jobs.length > 1 ? 'some jobs' : 'job'}`
-      );
-      return false;
-    }
-  };
-
-  const handleClose = () => {
-    setDeleteError(undefined);
-    onClose();
+  const handleDelete = async (jobsToDelete: DataDesignerJob[]) => {
+    await Promise.all(
+      jobsToDelete
+        .filter((job) => job.workspace && job.name)
+        .map(async (job) => {
+          try {
+            await deleteJobMutation.mutateAsync({ workspace: job.workspace!, name: job.name });
+          } catch (error) {
+            throw new Error(
+              `Failed to delete job "${job.name}": ${error instanceof Error ? error.message : 'Unknown error'}`
+            );
+          }
+        })
+    );
+    onDeleted?.();
   };
 
   return (
-    <DeleteConfirmationModal
+    <BulkDeleteModal
+      items={jobs}
       open={jobs.length > 0}
       onDelete={handleDelete}
-      simpleConfirm
-      title={`Delete ${jobs.length} Data Designer Job${jobs.length !== 1 ? 's' : ''}`}
-      errorText={deleteError}
-      onClose={handleClose}
+      title={(count) => `Delete ${count} Data Designer Job${count !== 1 ? 's' : ''}`}
+      onClose={onClose}
     />
   );
 };

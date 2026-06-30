@@ -307,6 +307,7 @@ def compile_deployment(
     init_containers: Optional[list[k8s_client.V1Container]] = None,
     sidecar_containers: Optional[list[k8s_client.V1Container]] = None,
     extra_labels: Optional[dict[str, str]] = None,
+    mount_model_store: bool = True,
 ) -> k8s_client.V1Deployment:
     """Compile the inference-server Deployment.
 
@@ -316,6 +317,11 @@ def compile_deployment(
     startup/readiness probes. A ``dshm`` emptyDir is always mounted at
     ``/dev/shm`` (vLLM uses it for tensor-parallel NCCL); ``scratch`` is mounted
     for the LoRA cache dir.
+
+    ``mount_model_store`` controls whether the ``model-store`` PVC volume + mount
+    are attached. The vLLM/NIM weight-pull paths set it ``True`` (the PVC holds
+    the pulled weights). The ``generic`` engine pulls no weights and has no PVC,
+    so it passes ``False`` -- the container runs purely from its image.
     """
     selector_labels = {"app": resource_name}
     pod_labels = {
@@ -330,10 +336,13 @@ def compile_deployment(
     failure_threshold = max(1, -(-startup_grace_seconds // period))  # ceil
 
     volume_mounts = [
-        k8s_client.V1VolumeMount(name="model-store", mount_path=MODEL_STORE_PATH, read_only=True),
         k8s_client.V1VolumeMount(name="scratch", mount_path=SCRATCH_PATH),
         k8s_client.V1VolumeMount(name="dshm", mount_path=DSHM_PATH),
     ]
+    if mount_model_store:
+        volume_mounts.insert(
+            0, k8s_client.V1VolumeMount(name="model-store", mount_path=MODEL_STORE_PATH, read_only=True)
+        )
 
     container = k8s_client.V1Container(
         name=f"{resource_name}-ctr",
@@ -352,19 +361,23 @@ def compile_deployment(
         containers.extend(sidecar_containers)
 
     volumes = [
-        k8s_client.V1Volume(
-            name="model-store",
-            persistent_volume_claim=k8s_client.V1PersistentVolumeClaimVolumeSource(
-                claim_name=pvc_name(resource_name),
-                read_only=True,
-            ),
-        ),
         k8s_client.V1Volume(name="scratch", empty_dir=k8s_client.V1EmptyDirVolumeSource()),
         k8s_client.V1Volume(
             name="dshm",
             empty_dir=k8s_client.V1EmptyDirVolumeSource(medium="Memory", size_limit=shared_memory_size_limit),
         ),
     ]
+    if mount_model_store:
+        volumes.insert(
+            0,
+            k8s_client.V1Volume(
+                name="model-store",
+                persistent_volume_claim=k8s_client.V1PersistentVolumeClaimVolumeSource(
+                    claim_name=pvc_name(resource_name),
+                    read_only=True,
+                ),
+            ),
+        )
 
     pod_spec = k8s_client.V1PodSpec(
         service_account_name=service_account_name,

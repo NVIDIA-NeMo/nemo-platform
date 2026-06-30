@@ -69,6 +69,8 @@ class TestDeploymentConfigs:
                     "tolerations": [{"foo": "bar"}],
                 },
                 "override_config": {"foo": "bar"},
+                "run_as_group": 0,
+                "run_as_user": 0,
             },
             model_spec={
                 "chat_template": "chat_template",
@@ -222,6 +224,8 @@ class TestDeploymentConfigs:
                     "tolerations": [{"foo": "bar"}],
                 },
                 "override_config": {"foo": "bar"},
+                "run_as_group": 0,
+                "run_as_user": 0,
             },
             model_spec={
                 "chat_template": "chat_template",
@@ -465,6 +469,8 @@ class TestAsyncDeploymentConfigs:
                     "tolerations": [{"foo": "bar"}],
                 },
                 "override_config": {"foo": "bar"},
+                "run_as_group": 0,
+                "run_as_user": 0,
             },
             model_spec={
                 "chat_template": "chat_template",
@@ -618,6 +624,8 @@ class TestAsyncDeploymentConfigs:
                     "tolerations": [{"foo": "bar"}],
                 },
                 "override_config": {"foo": "bar"},
+                "run_as_group": 0,
+                "run_as_user": 0,
             },
             model_spec={
                 "chat_template": "chat_template",

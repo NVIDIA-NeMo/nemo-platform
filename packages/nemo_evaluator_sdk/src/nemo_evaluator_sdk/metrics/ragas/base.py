@@ -69,6 +69,21 @@ RAGAS_OUTPUT_NAME_TO_SDK_OUTPUT_NAME: dict[str, str] = {
 }
 
 
+def _strip_ragas_mode_suffix(name: str) -> str:
+    """Strip RAGAS's ``(mode=<mode>)`` suffix from a score name.
+
+    RAGAS keys mode-bearing metrics (e.g. ``NoiseSensitivity`` with mode
+    relevant/irrelevant, ``TopicAdherence`` with mode precision/recall/f1) as
+    ``"<name>(mode=<mode>)"`` (see ``ragas.evaluation``). The SDK declares the bare
+    metric-type name in ``output_spec``, so the suffix is removed before mapping the
+    RAGAS output name back to the declared SDK output name.
+    """
+    base, separator, remainder = name.partition("(mode=")
+    if separator and remainder.endswith(")"):
+        return base
+    return name
+
+
 # Lazy loaders for langchain classes (cached to avoid repeated imports)
 @cache
 def _get_langchain_chat_openai():
@@ -265,9 +280,10 @@ class BaseRAGASMetric(MetricBase):
         if not declared or not scores:
             return scores
 
-        translated_scores = {
-            RAGAS_OUTPUT_NAME_TO_SDK_OUTPUT_NAME.get(name, name): value for name, value in scores.items()
-        }
+        translated_scores = {}
+        for name, value in scores.items():
+            base_name = _strip_ragas_mode_suffix(name)
+            translated_scores[RAGAS_OUTPUT_NAME_TO_SDK_OUTPUT_NAME.get(base_name, base_name)] = value
         aligned = {
             name: scores[name] if name in scores else translated_scores[name]
             for name in declared

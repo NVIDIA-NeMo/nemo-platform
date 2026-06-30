@@ -6,6 +6,7 @@ import type { ClaudeCodeChatArtifacts } from '@studio/routes/agents/ClaudeCodeCh
 export interface ClaudeCodeHistoryPanelProps {
   activeSessionId?: string;
   artifacts?: ClaudeCodeChatArtifacts;
+  hideArtifacts?: boolean;
   onNewChat: () => void;
   onSelectSession: (sessionId: string) => void;
 }

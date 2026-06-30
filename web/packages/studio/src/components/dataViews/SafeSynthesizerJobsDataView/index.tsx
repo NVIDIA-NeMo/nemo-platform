@@ -16,7 +16,7 @@ import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { JOB_POLLING_INTERVAL_MS } from '@nemo/common/src/constants';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { getSortParam } from '@nemo/common/src/utils/query';
-import { useJobsCancelJob } from '@nemo/sdk/generated/platform/api';
+import { useJobsCancelJob, useJobsDeleteJob } from '@nemo/sdk/generated/platform/api';
 import {
   getSafeSynthesizerDownloadJobResultSummaryQueryOptions as getDownloadJobResultSummaryQueryOptions,
   getSafeSynthesizerListJobsQueryKey,
@@ -28,7 +28,7 @@ import {
   SafeSynthesizerJobsSortField,
 } from '@nemo/sdk/generated/safe-synthesizer/schema';
 import { Banner, Button, Stack } from '@nvidia/foundations-react-core';
-import { DeleteJobModal } from '@studio/components/dataViews/SafeSynthesizerJobsDataView/DeleteJobModal';
+import { BulkDeleteModal } from '@studio/components/BulkDeleteModal';
 import { isCancellableJob } from '@studio/components/dataViews/SafeSynthesizerJobsDataView/utils';
 import { DocumentationButton } from '@studio/components/DocumentationButton';
 import { QuickActionsMenuRoot } from '@studio/components/QuickActionsMenu/QuickActionsMenuRoot';
@@ -59,6 +59,35 @@ export const SafeSynthesizerJobsDataView: FC = () => {
 
   const [deleteJobs, setDeleteJobs] = useState<SafeSynthesizerJob[]>([]);
   const [cancelError, setCancelError] = useState<string | undefined>(undefined);
+
+  const deleteJobMutation = useJobsDeleteJob({
+    mutation: {
+      onSuccess: () =>
+        queryClient.resetQueries({
+          queryKey: getSafeSynthesizerListJobsQueryKey(workspace),
+        }),
+    },
+  });
+
+  const handleDeleteJobs = async (jobsToDelete: SafeSynthesizerJob[]) => {
+    const invalid = jobsToDelete.filter((job) => !job.workspace || !job.name);
+    if (invalid.length > 0) {
+      throw new Error(
+        `Cannot delete ${invalid.length} job${invalid.length !== 1 ? 's' : ''}: missing workspace or name.`
+      );
+    }
+    await Promise.all(
+      jobsToDelete.map(async (job) => {
+        try {
+          await deleteJobMutation.mutateAsync({ workspace: job.workspace!, name: job.name });
+        } catch (error) {
+          throw new Error(
+            `Failed to delete job "${job.name}": ${error instanceof Error ? error.message : 'Unknown error'}`
+          );
+        }
+      })
+    );
+  };
 
   // Cancel job mutation
   const cancelJobMutation = useJobsCancelJob({
@@ -389,15 +418,16 @@ export const SafeSynthesizerJobsDataView: FC = () => {
         }}
       />
 
-      {deleteJobs.length > 0 && (
-        <DeleteJobModal
-          jobs={deleteJobs}
-          onClose={() => {
-            setDeleteJobs([]);
-            dataViewState.rowSelection.set({});
-          }}
-        />
-      )}
+      <BulkDeleteModal
+        items={deleteJobs}
+        open={deleteJobs.length > 0}
+        onDelete={handleDeleteJobs}
+        title={(count) => `Delete ${count} Safe Synthesizer Job${count !== 1 ? 's' : ''}`}
+        onClose={() => {
+          setDeleteJobs([]);
+          dataViewState.rowSelection.set({});
+        }}
+      />
     </Stack>
   );
 };

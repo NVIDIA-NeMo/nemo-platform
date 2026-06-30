@@ -2372,6 +2372,15 @@ class TestRenderOnboardingCard:
         panel = mock_console.print.call_args_list[0].args[0]
         assert "agent's project directory" in panel.renderable
 
+    def test_optimize_card_uses_published_agents_docs_url(self):
+        with patch(f"{SETUP_MOD}.console") as mock_console:
+            _render_onboarding_card("optimize")
+
+        panel = mock_console.print.call_args_list[0].args[0]
+        content = panel.renderable
+        assert "https://docs.nvidia.com/nemo-platform/documentation/agents" in content
+        assert "https://docs.nvidia.com/nemo-platform/agents" not in content
+
     def test_explore_card_contains_skill_prompt_and_docs(self):
         with patch(f"{SETUP_MOD}.console") as mock_console:
             _render_onboarding_card("explore")

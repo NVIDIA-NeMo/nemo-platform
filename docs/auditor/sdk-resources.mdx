@@ -115,11 +115,11 @@ target = auditor.targets.create(
     workspace="default",
     name="llama-31-8b",
     type="nim.NVOpenAIChat",
-    model="meta/llama-3.1-8b-instruct",
+    model="nvidia/meta/llama-3.1-8b-instruct",
     options={
         "nim": {
             "nmp_uri_spec": {
-                "inference_gateway": {"workspace": "default", "provider": "nvidia-build"},
+                "inference_gateway": {"workspace": "default", "provider": "nvidia-inference-api"},
             },
         },
     },

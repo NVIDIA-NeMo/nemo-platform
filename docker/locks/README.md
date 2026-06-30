@@ -5,7 +5,7 @@ reproducible Python build environments.
 
 ## Mamba wheel builder lockfiles
 
-`docker/base/Dockerfile.mamba-wheel` uses these lock projects:
+`docker/base/Dockerfile.python-wheels` uses these lock projects:
 
 - `mamba-wheel-build-py311`
 - `mamba-wheel-build-py312`

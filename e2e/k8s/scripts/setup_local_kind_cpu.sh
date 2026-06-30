@@ -4,6 +4,9 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib.sh"
+
 KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME:-nmp-e2e}"
 KIND_NODE_IMAGE="${KIND_NODE_IMAGE:-kindest/node:v1.33.7@sha256:d26ef333bdb2cbe9862a0f7c3803ecc7b4303d8cea8e814b481b09949d353040}"
 KUBE_NAMESPACE="${KUBE_NAMESPACE:-default}"
@@ -11,23 +14,6 @@ KUBE_GATEWAY_NAME="${KUBE_GATEWAY_NAME:-nmp-e2e-gateway}"
 CLOUD_PROVIDER_KIND_VERSION="${CLOUD_PROVIDER_KIND_VERSION:-v0.10.0}"
 GATEWAY_API_VERSION="${GATEWAY_API_VERSION:-v1.4.1}"
 CLOUD_PROVIDER_KIND_CONTAINER="cloud-provider-kind-${KIND_CLUSTER_NAME}"
-
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m'
-
-log_info() {
-    echo -e "${GREEN}[INFO]${NC} $*"
-}
-
-log_warn() {
-    echo -e "${YELLOW}[WARN]${NC} $*"
-}
-
-log_error() {
-    echo -e "${RED}[ERROR]${NC} $*"
-}
 
 for tool in kind docker kubectl helm; do
     if ! command -v "$tool" >/dev/null 2>&1; then
@@ -93,24 +79,7 @@ fi
 KUBECTL_NS=(kubectl -n "${KUBE_NAMESPACE}")
 
 log_info "Creating Kubernetes secrets in namespace ${KUBE_NAMESPACE}..."
-"${KUBECTL_NS[@]}" create secret generic ngc-api \
-  --from-literal=NGC_API_KEY="${NGC_API_KEY}" \
-  --dry-run=client -o yaml | "${KUBECTL_NS[@]}" apply -f -
-
-"${KUBECTL_NS[@]}" create secret docker-registry nvcrimagepullsecret \
-  --docker-server=nvcr.io \
-  --docker-username="\$oauthtoken" \
-  --docker-password="${NGC_API_KEY}" \
-  --dry-run=client -o yaml | "${KUBECTL_NS[@]}" apply -f -
-
-if [ -n "${HF_TOKEN:-}" ]; then
-    log_info "Creating HuggingFace token secret..."
-    "${KUBECTL_NS[@]}" create secret generic huggingface-token \
-      --from-literal=HF_TOKEN="${HF_TOKEN}" \
-      --dry-run=client -o yaml | "${KUBECTL_NS[@]}" apply -f -
-else
-    log_warn "HF_TOKEN not set, skipping HuggingFace token secret"
-fi
+create_platform_secrets "${KUBE_NAMESPACE}"
 
 log_info "Creating Gateway ${KUBE_NAMESPACE}/${KUBE_GATEWAY_NAME}..."
 kubectl apply -f - <<EOF
