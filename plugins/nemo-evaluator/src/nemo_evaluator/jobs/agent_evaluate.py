@@ -189,9 +189,7 @@ class AgentEvalJob(NemoJob):
         return (target.hostname, target.port) == (base.hostname, base.port)
 
     @staticmethod
-    def _build_evaluator(
-        platform: NeMoPlatform | AsyncNeMoPlatform | None, target: Target | None
-    ) -> AgentEvaluator:
+    def _build_evaluator(platform: NeMoPlatform | AsyncNeMoPlatform | None, target: Target | None) -> AgentEvaluator:
         """Construct the evaluator, forwarding the job's platform identity to online inference.
 
         Online generation against a *platform-routed* Model/Agent target must act as the job's
