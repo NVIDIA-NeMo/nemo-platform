@@ -110,16 +110,14 @@ allow_request if {
 	has_permissions(principal, workspace, required_permissions)
 }
 
-# IAM APIs under /apis/auth/v2/iam/ — patterns have no {workspace} placeholder, so
-# extract_workspace_from_path is undefined and workspace-scoped rules do not apply.
-# Check permissions against the system workspace (PlatformAdmin, ServiceSystem *, etc.).
+# Workspace-less endpoints with required permissions: check against the system workspace.
+# Covers IAM APIs, workspace creation, and any future workspace-less permission-gated
+# endpoint without needing path-specific rules.
 allow_request if {
 	applicable_principals := get_applicable_principals
 	count(applicable_principals) > 0
 	scope_check_passed
 	path := extract_path
-	base_path := split(path, "?")[0]
-	startswith(base_path, "/apis/auth/v2/iam/")
 	method := extract_method
 	required_permissions := req_permissions
 	count(required_permissions) > 0
@@ -204,12 +202,12 @@ allow_request if {
 	workspace == "-"
 }
 
-# Allow if endpoint explicitly has no required permissions (e.g., workspace creation)
+# Allow if endpoint explicitly has no required permissions
 # but still require authentication (at least one principal).
 #
 # SECURITY: We check the endpoint config directly instead of using get_required_permissions,
 # because we need to distinguish between:
-#   - endpoints explicitly configured with `permissions: []` → allow (e.g., workspace creation)
+#   - endpoints explicitly configured with `permissions: []` → allow
 #   - endpoints not in the config at all (unknown) → deny (fail-closed)
 # If normalize_endpoint cannot match the path, it is undefined, the rule body fails,
 # and access is denied.

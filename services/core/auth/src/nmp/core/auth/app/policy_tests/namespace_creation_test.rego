@@ -9,6 +9,9 @@ workspace_test_data := {
         "Viewer": {
             "permissions": ["workspaces.read", "workspaces.list"]
         },
+        "WorkspaceCreator": {
+            "permissions": ["workspaces.create"]
+        },
         "Editor": {
             "includes": ["Viewer"],
             "permissions": ["workspaces.update"]
@@ -21,7 +24,10 @@ workspace_test_data := {
     "endpoints": {
         "/apis/entities/v2/workspaces": {
             "get": {"permissions": ["workspaces.list"]},
-            "post": {"permissions": []}  # Empty permissions - any authenticated user can create
+            "post": {
+                "permissions": ["workspaces.create"],
+                "scopes": ["entities:write", "platform:write"]
+            }
         },
         "/apis/entities/v2/workspaces/{name}": {
             "get": {"permissions": ["workspaces.read"]},
@@ -33,23 +39,27 @@ workspace_test_data := {
         "existing-ns": {}
     },
     "principals": {
-        "new-user@test.com": {
-            "workspaces": {}  # User has no workspace permissions yet
+        "*": {
+            "workspaces": {"system": ["WorkspaceCreator"]}
         },
         "existing-user@test.com": {
             # Viewer of existing-ns plus a system Viewer grant — listing workspaces now requires
             # workspaces.list in the system workspace.
             "workspaces": {"existing-ns": ["Viewer"], "system": ["Viewer"]}
+        },
+        "group:ml-leads": {
+            "workspaces": {"system": ["WorkspaceCreator"]}
         }
     }
 }
 
-# Test that any authenticated user can create a workspace
-test_authenticated_user_can_create_workspace if {
+# Test that wildcard WorkspaceCreator preserves current default behavior
+test_workspace_creation_allowed_via_wildcard_binding if {
     result := authz.allow with input as {
-        "principal_id": "new-user@test.com",
+        "principal_id": "plain@test.com",
         "method": "POST",
-        "path": "/apis/entities/v2/workspaces"
+        "path": "/apis/entities/v2/workspaces",
+        "scopes": ["entities:write", "platform:write"]
     }
     with data.authz.roles as workspace_test_data.roles
     with data.authz.endpoints as workspace_test_data.endpoints
@@ -59,19 +69,20 @@ test_authenticated_user_can_create_workspace if {
     result.allowed == true
 }
 
-# Test that authenticated user without any permissions can still create workspace
-test_user_without_permissions_can_create_workspace if {
+# Test that a plain user is denied once the wildcard binding is removed
+test_workspace_creation_denied_without_creator_binding if {
     result := authz.allow with input as {
-        "principal_id": "random-user@test.com",  # Not even in principals list
+        "principal_id": "plain@test.com",
         "method": "POST",
-        "path": "/apis/entities/v2/workspaces"
+        "path": "/apis/entities/v2/workspaces",
+        "scopes": ["entities:write", "platform:write"]
     }
     with data.authz.roles as workspace_test_data.roles
     with data.authz.endpoints as workspace_test_data.endpoints
     with data.authz.workspaces as workspace_test_data.workspaces
-    with data.authz.principals as workspace_test_data.principals
+    with data.authz.principals as {}
     
-    result.allowed == true
+    result.allowed == false
 }
 
 # Test that unauthenticated users cannot create workspaces
@@ -79,7 +90,8 @@ test_unauthenticated_user_cannot_create_workspace if {
     result := authz.allow with input as {
         "principal_id": "",  # Empty principal ID
         "method": "POST",
-        "path": "/apis/entities/v2/workspaces"
+        "path": "/apis/entities/v2/workspaces",
+        "scopes": ["entities:write", "platform:write"]
     }
     with data.authz.roles as workspace_test_data.roles
     with data.authz.endpoints as workspace_test_data.endpoints
@@ -121,12 +133,14 @@ test_listing_workspaces_without_permission_denied if {
     result.allowed == false
 }
 
-# Test allow for workspace creation
-test_allow_workspace_creation if {
+# Test workspace creation allowed via group binding in system workspace
+test_workspace_creation_allowed_via_group_binding if {
     result := authz.allow with input as {
-        "principal_id": "new-user@test.com",
+        "principal_id": "lead@test.com",
+        "principal_groups": ["group:ml-leads"],
         "method": "POST",
-        "path": "/apis/entities/v2/workspaces"
+        "path": "/apis/entities/v2/workspaces",
+        "scopes": ["entities:write", "platform:write"]
     }
     with data.authz.roles as workspace_test_data.roles
     with data.authz.endpoints as workspace_test_data.endpoints
@@ -136,9 +150,9 @@ test_allow_workspace_creation if {
     result.allowed == true
 }
 
-# Test that get_required_permissions returns empty array for workspace creation
-test_workspace_creation_has_no_required_permissions if {
+# Test that get_required_permissions returns workspaces.create for workspace creation
+test_workspace_creation_requires_permission if {
     perms := common.get_required_permissions("/apis/entities/v2/workspaces", "POST")
         with data.authz.endpoints as workspace_test_data.endpoints
-    perms == []
+    perms == ["workspaces.create"]
 }

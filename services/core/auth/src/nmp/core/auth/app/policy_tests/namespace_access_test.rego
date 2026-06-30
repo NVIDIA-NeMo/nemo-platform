@@ -11,7 +11,10 @@ workspace_access_test_data := {
         },
         "Editor": {
             "includes": ["Viewer"],
-            "permissions": ["workspaces.update", "workspaces.create"]
+            "permissions": ["workspaces.update"]
+        },
+        "WorkspaceCreator": {
+            "permissions": ["workspaces.create"]
         },
         "Admin": {
             "includes": ["Editor"],
@@ -36,8 +39,8 @@ workspace_access_test_data := {
                 "scopes": ["platform:read"]
             },
             "post": {
-                "permissions": [],
-                "scopes": []
+                "permissions": ["workspaces.create"],
+                "scopes": ["entities:write", "platform:write"]
             }
         },
         "/apis/entities/v2/workspaces/{name}": {
@@ -101,19 +104,21 @@ test_list_workspaces_without_system_permission_denied if {
 # ============================================================================
 
 test_create_workspace_allowed if {
-    # Any authenticated user should be allowed to create a workspace
+    # Workspace creation is authorized through a system-scoped role binding.
     result := authz.allow 
         with input as {
             "principal_id": "user123",
             "principal_email": "creator@example.com",
             "method": "POST",
             "path": "/apis/entities/v2/workspaces",
-            "scopes": []
+            "scopes": ["entities:write", "platform:write"]
         }
         with data.authz.roles as workspace_access_test_data.roles
         with data.authz.endpoints as workspace_access_test_data.endpoints
         with data.authz.workspaces as {}  # Empty initially
-        with data.authz.principals as {}
+        with data.authz.principals as {
+            "*": {"workspaces": {"system": ["WorkspaceCreator"]}}
+        }
     
     result.allowed == true
 }

@@ -73,7 +73,6 @@ Rows are operations; columns are roles. Read the hierarchy above first: each rol
 | Operation | Viewer | Editor | Admin | PlatformAdmin |
 |-----------|:------:|:------:|:-----:|:-------------:|
 | List workspaces (visible to user) | ✓ | ✓ | ✓ | ✓ |
-| Create workspace | ✓ | ✓ | ✓ | ✓ |
 | Delete workspace | | | ✓ | ✓ |
 | List workspace members | ✓ | ✓ | ✓ | ✓ |
 | Add / remove members | | | ✓ | ✓ |
@@ -81,7 +80,7 @@ Rows are operations; columns are roles. Read the hierarchy above first: each rol
 
 <Note>
 
-All authenticated users can create workspaces. The creator automatically becomes Admin.
+Workspace creation is controlled by the `WorkspaceCreator` permission in the `system` workspace rather than by the workspace roles in the table above. By default, platform seed grants `WorkspaceCreator` to the wildcard principal `*`, so all authenticated users can still create workspaces until operators change that binding. The creator automatically becomes Admin.
 
 </Note>
 ### Resource Operations (Models, Datasets, Projects)
@@ -138,6 +137,7 @@ NeMo Platform automatically provisions wildcard bindings on built-in workspaces:
 |-----------|--------------|--------|
 | `default` | Editor for `*` | All authenticated users can create and manage resources |
 | `system` | Viewer for `*` | All authenticated users have read-only access to system resources |
+| `system` | WorkspaceCreator for `*` | All authenticated users can create workspaces until operators rebind the role |
 
 ## Admin Protection
 

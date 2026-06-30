@@ -39,6 +39,8 @@ auth:
 
 The binding is created by `platform-seed`, not by auth service startup alone. Helm deployments run the platform-seed Job by default. For source installs, set `platform.seed_on_startup: true`, export `NMP_SEED_ON_STARTUP=true` before `nemo services run`, or run `uv run python -m nmp.platform_seed` after services are healthy. If platform seed has not run, `admin_email` users can authenticate but still receive `403 Forbidden` because their PlatformAdmin binding does not exist.
 
+Platform seed also creates the default wildcard workspace bindings: `Editor` on the default workspace, `Viewer` on `system`, and `WorkspaceCreator` on `system`. That last binding is what preserves open workspace creation by default. Remove or replace it if you want workspace creation restricted to designated users or groups.
+
 This page covers the auth-specific configuration fields you need to enable and operate authorization. Auth-related values are found under `platformConfig.auth` in the values file.
 
 For OIDC-specific fields (`auth.oidc`), see [OIDC Setup](/documentation/access-control/authentication/oidc-setup).
