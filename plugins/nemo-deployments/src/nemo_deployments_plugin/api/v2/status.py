@@ -18,7 +18,8 @@ router = APIRouter()
 
 
 @router.put("/deployments/{name}/status", response_model=Deployment, tags=["Deployment Status"])
-@path_rule(callers=[CallerKind.SERVICE_PRINCIPAL], permissions=[DeploymentPerms.STATUS_UPDATE], scopes=SCOPE.write())
+@SCOPE.write
+@path_rule(callers=[CallerKind.SERVICE_PRINCIPAL], permissions=[DeploymentPerms.STATUS_UPDATE])
 async def update_deployment_status(
     workspace: str,
     name: str,
@@ -51,7 +52,8 @@ async def update_deployment_status(
 
 
 @router.put("/volumes/{name}/status", response_model=Volume, tags=["Volume Status"])
-@path_rule(callers=[CallerKind.SERVICE_PRINCIPAL], permissions=[VolumePerms.STATUS_UPDATE], scopes=SCOPE.write())
+@SCOPE.write
+@path_rule(callers=[CallerKind.SERVICE_PRINCIPAL], permissions=[VolumePerms.STATUS_UPDATE])
 async def update_volume_status(
     workspace: str,
     name: str,

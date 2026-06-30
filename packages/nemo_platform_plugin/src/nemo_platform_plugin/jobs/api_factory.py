@@ -774,11 +774,9 @@ def job_route_factory(
                 perm,
                 description=_JOB_PERMISSION_DESCRIPTIONS[perm].format(ns=authz.namespace),
             )
-            path_rule(
-                callers=[CallerKind.PRINCIPAL],
-                permissions=[permission],
-                scopes=authz.write() if write else authz.read(),
-            )(endpoint)
+            path_rule(callers=[CallerKind.PRINCIPAL], permissions=[permission])(endpoint)
+            # Scope is declared separately from the permission rule (see authz.AuthzScope).
+            (authz.write if write else authz.read)(endpoint)
         return endpoint
 
     # These lines dynamically create new classes, named for the client microservice

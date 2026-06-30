@@ -89,10 +89,10 @@ def build_middleware_config_router() -> APIRouter:
         status_code=status.HTTP_201_CREATED,
         summary="Create ExampleMiddlewareConfig",
     )
+    @SCOPE.write
     @path_rule(
         callers=[CallerKind.PRINCIPAL],
         permissions=[ExampleMiddlewareConfigPerms.CREATE],
-        scopes=SCOPE.write(),
     )
     async def create_config(
         workspace: str,
@@ -133,10 +133,10 @@ def build_middleware_config_router() -> APIRouter:
         response_model=list[ExampleMiddlewareConfig],
         summary="List ExampleMiddlewareConfigs",
     )
+    @SCOPE.read
     @path_rule(
         callers=[CallerKind.PRINCIPAL],
         permissions=[ExampleMiddlewareConfigPerms.LIST],
-        scopes=SCOPE.read(),
     )
     async def list_configs(
         workspace: str,
@@ -164,10 +164,10 @@ def build_middleware_config_router() -> APIRouter:
         response_model=ExampleMiddlewareConfig,
         summary="Get ExampleMiddlewareConfig",
     )
+    @SCOPE.read
     @path_rule(
         callers=[CallerKind.PRINCIPAL],
         permissions=[ExampleMiddlewareConfigPerms.READ],
-        scopes=SCOPE.read(),
     )
     async def get_config(
         workspace: str,
@@ -191,10 +191,10 @@ def build_middleware_config_router() -> APIRouter:
         response_model=ExampleMiddlewareConfig,
         summary="Update ExampleMiddlewareConfig",
     )
+    @SCOPE.write
     @path_rule(
         callers=[CallerKind.PRINCIPAL],
         permissions=[ExampleMiddlewareConfigPerms.UPDATE],
-        scopes=SCOPE.write(),
     )
     async def update_config(
         workspace: str,
@@ -233,10 +233,10 @@ def build_middleware_config_router() -> APIRouter:
         status_code=status.HTTP_204_NO_CONTENT,
         summary="Delete ExampleMiddlewareConfig",
     )
+    @SCOPE.write
     @path_rule(
         callers=[CallerKind.PRINCIPAL],
         permissions=[ExampleMiddlewareConfigPerms.DELETE],
-        scopes=SCOPE.write(),
     )
     async def delete_config(
         workspace: str,

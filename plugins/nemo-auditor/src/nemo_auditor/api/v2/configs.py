@@ -34,10 +34,10 @@ _config_filter_dep = make_filter_dep(ConfigFilter)
 
 
 @router.post("/configs", response_model=AuditConfig, status_code=201, tags=["Auditor Configs"])
+@SCOPE.write
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[AuditConfigPerms.CREATE],
-    scopes=SCOPE.write(),
 )
 async def create_config(
     workspace: str,
@@ -71,10 +71,10 @@ async def create_config(
     tags=["Auditor Configs"],
     openapi_extra=generate_openapi_extra_params(filter_schema=ConfigFilter),
 )
+@SCOPE.read
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[AuditConfigPerms.LIST],
-    scopes=SCOPE.read(),
 )
 async def list_configs(
     workspace: str,
@@ -107,10 +107,10 @@ async def list_configs(
 
 
 @router.get("/configs/{name}", response_model=AuditConfig, tags=["Auditor Configs"])
+@SCOPE.read
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[AuditConfigPerms.READ],
-    scopes=SCOPE.read(),
 )
 async def get_config(
     workspace: str,
@@ -131,10 +131,10 @@ async def get_config(
 
 
 @router.put("/configs/{name}", response_model=AuditConfig, tags=["Auditor Configs"])
+@SCOPE.write
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[AuditConfigPerms.UPDATE],
-    scopes=SCOPE.write(),
 )
 async def update_config(
     workspace: str,
@@ -172,10 +172,10 @@ async def update_config(
 
 
 @router.delete("/configs/{name}", status_code=204, tags=["Auditor Configs"])
+@SCOPE.write
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[AuditConfigPerms.DELETE],
-    scopes=SCOPE.write(),
 )
 async def delete_config(
     workspace: str,

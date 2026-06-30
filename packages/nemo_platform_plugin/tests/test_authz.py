@@ -48,13 +48,13 @@ class _FakeEntryPoint:
 def test_authz_scope_mints_scopes_from_oauth_area() -> None:
     """Scope helpers mirror scopes_for(self.scope, ...); .child() keeps the parent area."""
     agents = AuthzScope("agents")
-    assert agents.read() == scopes_for("agents", write=False) == ["agents:read", "platform:read"]
-    assert agents.write() == scopes_for("agents", write=True) == ["agents:write", "platform:write"]
+    assert agents.read_scopes() == scopes_for("agents", write=False) == ["agents:read", "platform:read"]
+    assert agents.write_scopes() == scopes_for("agents", write=True) == ["agents:write", "platform:write"]
     # child() deepens the permission namespace but the scope area (hence the scopes) is unchanged.
     nested = agents.child("deployments")
     assert nested.namespace == "agents.deployments"
     assert nested.scope == "agents"
-    assert nested.write() == scopes_for("agents", write=True)
+    assert nested.write_scopes() == scopes_for("agents", write=True)
 
 
 def test_derive_contribution_composes_mounted_path(monkeypatch) -> None:
@@ -64,12 +64,13 @@ def test_derive_contribution_composes_mounted_path(monkeypatch) -> None:
     routes — there is no separate declaration.
     """
     router = APIRouter()
+    scope = AuthzScope("example")
 
     @router.get("/v2/workspaces/{workspace}/items/{name}")
+    @scope.read
     @path_rule(
         callers=[CallerKind.PRINCIPAL],
         permissions=[Permission("example.items.read", "Read example items")],
-        scopes=["example:read"],
     )
     async def get_item(workspace: str, name: str) -> dict[str, str]:
         return {"name": name}
@@ -102,7 +103,7 @@ def test_derive_contribution_composes_mounted_path(monkeypatch) -> None:
     assert set(contrib.endpoints[path]) == {"get"}
     binding = contrib.endpoints[path]["get"]
     assert binding.permissions == ["example.items.read"]
-    assert binding.scopes == ["example:read"]
+    assert binding.scopes == ["example:read", "platform:read"]
     assert binding.callers == ["principal"]
 
 

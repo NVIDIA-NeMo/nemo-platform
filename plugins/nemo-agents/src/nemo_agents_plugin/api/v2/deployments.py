@@ -43,10 +43,10 @@ _deployment_filter_dep = make_filter_obj_dep(DeploymentFilter)
 
 
 @router.post("/deployments", response_model=AgentDeployment, status_code=201, tags=["Agent Deployments"])
+@SCOPE.write
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[DeploymentPerms.CREATE],
-    scopes=SCOPE.write(),
 )
 async def create_deployment(
     workspace: str,
@@ -101,10 +101,10 @@ async def create_deployment(
 
 
 @router.get("/deployments", response_model=DeploymentPage, tags=["Agent Deployments"])
+@SCOPE.read
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[DeploymentPerms.LIST],
-    scopes=SCOPE.read(),
 )
 async def list_deployments(
     workspace: str,
@@ -139,10 +139,10 @@ async def list_deployments(
 
 
 @router.get("/deployments/{name}", response_model=AgentDeployment, tags=["Agent Deployments"])
+@SCOPE.read
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[DeploymentPerms.READ],
-    scopes=SCOPE.read(),
 )
 async def get_deployment(
     workspace: str,
@@ -164,10 +164,10 @@ async def get_deployment(
 
 
 @router.delete("/deployments/{name}", status_code=204, tags=["Agent Deployments"])
+@SCOPE.write
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[DeploymentPerms.DELETE],
-    scopes=SCOPE.write(),
 )
 async def delete_deployment(
     workspace: str,

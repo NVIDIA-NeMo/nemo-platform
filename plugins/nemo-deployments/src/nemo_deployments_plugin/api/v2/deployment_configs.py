@@ -31,7 +31,8 @@ _config_filter_dep = make_filter_obj_dep(DeploymentConfigFilter)
 
 
 @router.post("/deployment-configs", response_model=DeploymentConfig, status_code=201, tags=["Deployment Configs"])
-@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[DeploymentConfigPerms.CREATE], scopes=SCOPE.write())
+@SCOPE.write
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[DeploymentConfigPerms.CREATE])
 async def create_deployment_config(
     workspace: str,
     body: CreateDeploymentConfigRequest,
@@ -52,7 +53,8 @@ async def create_deployment_config(
 
 
 @router.get("/deployment-configs", response_model=DeploymentConfigPage, tags=["Deployment Configs"])
-@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[DeploymentConfigPerms.LIST], scopes=SCOPE.read())
+@SCOPE.read
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[DeploymentConfigPerms.LIST])
 async def list_deployment_configs(
     workspace: str,
     page: int = Query(default=1, ge=1),
@@ -75,7 +77,8 @@ async def list_deployment_configs(
 
 
 @router.get("/deployment-configs/{name}", response_model=DeploymentConfig, tags=["Deployment Configs"])
-@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[DeploymentConfigPerms.READ], scopes=SCOPE.read())
+@SCOPE.read
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[DeploymentConfigPerms.READ])
 async def get_deployment_config(
     workspace: str,
     name: str,
@@ -91,7 +94,8 @@ async def get_deployment_config(
 
 
 @router.delete("/deployment-configs/{name}", status_code=204, tags=["Deployment Configs"])
-@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[DeploymentConfigPerms.DELETE], scopes=SCOPE.write())
+@SCOPE.write
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[DeploymentConfigPerms.DELETE])
 async def delete_deployment_config(
     workspace: str,
     name: str,

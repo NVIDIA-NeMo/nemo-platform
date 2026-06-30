@@ -66,7 +66,8 @@ def _parse_deployment_config_ref(ref: str, default_workspace: str) -> tuple[str,
 
 
 @router.post("/deployments", response_model=Deployment, status_code=201, tags=["Deployments"])
-@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[DeploymentPerms.CREATE], scopes=SCOPE.write())
+@SCOPE.write
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[DeploymentPerms.CREATE])
 async def create_deployment(
     workspace: str,
     body: CreateDeploymentRequest,
@@ -112,7 +113,8 @@ async def create_deployment(
 
 
 @router.get("/deployments", response_model=DeploymentPage, tags=["Deployments"])
-@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[DeploymentPerms.LIST], scopes=SCOPE.read())
+@SCOPE.read
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[DeploymentPerms.LIST])
 async def list_deployments(
     workspace: str,
     page: int = Query(default=1, ge=1),
@@ -148,7 +150,8 @@ async def list_deployments(
 
 
 @router.get("/deployments/{name}", response_model=Deployment, tags=["Deployments"])
-@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[DeploymentPerms.READ], scopes=SCOPE.read())
+@SCOPE.read
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[DeploymentPerms.READ])
 async def get_deployment(
     workspace: str,
     name: str,
@@ -164,7 +167,8 @@ async def get_deployment(
 
 
 @router.delete("/deployments/{name}", status_code=204, tags=["Deployments"])
-@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[DeploymentPerms.DELETE], scopes=SCOPE.write())
+@SCOPE.write
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[DeploymentPerms.DELETE])
 async def delete_deployment(
     workspace: str,
     name: str,

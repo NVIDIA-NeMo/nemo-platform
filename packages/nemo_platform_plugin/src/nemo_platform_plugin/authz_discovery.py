@@ -40,6 +40,7 @@ from nemo_platform_plugin.authz import (
     PathRule,
     Permission,
     get_path_rules,
+    get_path_scope,
 )
 from nemo_platform_plugin.authz_format import is_valid_permission_id
 from nemo_platform_plugin.service import NemoService
@@ -75,20 +76,24 @@ def _wire_callers(rules: list[PathRule]) -> list[str] | None:
 
 def _collapse_rules(
     rules: list[PathRule], *, path: str, method: str, service: str
-) -> tuple[list[Permission], list[str] | None, list[str] | None]:
+) -> tuple[list[Permission], list[str] | None]:
     """Collapse the (OR'd) ``PathRule``\\ s on one ``(path, method)`` into one binding.
 
     v1 supports OR across rules only in the **caller** dimension: caller kinds are unioned,
-    but ``permissions`` and ``scopes`` must agree across rules. The single-slot wire format
-    (one AND'd ``permissions`` list per method) and the Rego permission check cannot
-    represent an OR of *distinct* permission sets, so that case is rejected loudly rather
-    than silently mis-authorized.
+    but ``permissions`` must agree across rules. The single-slot wire format (one AND'd
+    ``permissions`` list per method) and the Rego permission check cannot represent an OR of
+    *distinct* permission sets, so that case is rejected loudly rather than silently
+    mis-authorized.
 
-    Returns ``(permissions, scopes, callers)`` for the representative rule.
+    Scope is not a rule dimension — it is declared once per route with ``@AuthzScope.read`` /
+    ``.write`` and read separately via :func:`~nemo_platform_plugin.authz.get_path_scope`, so
+    there is nothing to reconcile across rules here.
+
+    Returns ``(permissions, callers)`` for the representative rule.
     """
-    # Only callers are OR'd across rules (unioned below); their permissions and scopes must
-    # match, since the wire format holds one permissions/scopes list per (path, method). Reject
-    # a mismatch rather than silently picking one rule's.
+    # Only callers are OR'd across rules (unioned below); their permissions must match, since
+    # the wire format holds one permissions list per (path, method). Reject a mismatch rather
+    # than silently picking one rule's.
     distinct_permission_sets = {frozenset(p.id for p in rule.permissions) for rule in rules}
     if len(distinct_permission_sets) > 1:
         raise ValueError(
@@ -97,19 +102,9 @@ def _collapse_rules(
             f"distinct permission sets — use one rule with shared permissions, or a single "
             f"rule listing multiple callers."
         )
-    distinct_scope_sets = {None if rule.scopes is None else frozenset(rule.scopes) for rule in rules}
-    if len(distinct_scope_sets) > 1:
-        raise ValueError(
-            f"{service}: {method.upper()} {path} has @path_rule rules with differing scopes — "
-            f"all rules on one endpoint must declare the same scopes."
-        )
 
     representative = rules[0]
-    return (
-        list(representative.permissions),
-        list(representative.scopes) if representative.scopes is not None else None,
-        _wire_callers(rules),
-    )
+    return list(representative.permissions), _wire_callers(rules)
 
 
 @dataclass
@@ -268,7 +263,7 @@ def _derive_service_contribution(service: NemoService) -> tuple[AuthzContributio
             errors.append(f"{route.path} ({', '.join(methods) or 'no methods'}) has no @path_rule")
         else:
             try:
-                permissions, scopes, callers = _collapse_rules(
+                permissions, callers = _collapse_rules(
                     rules, path=route.path, method=methods[0] if methods else "", service=service.name
                 )
             except (ValueError, AttributeError, TypeError) as exc:
@@ -281,6 +276,9 @@ def _derive_service_contribution(service: NemoService) -> tuple[AuthzContributio
             else:
                 for perm in permissions:
                     _register_permission(catalog, perm, warnings)
+                # Scope is declared on the route by @AuthzScope.read/.write, independent of the
+                # permission rules, and read straight off the (identity-preserved) endpoint.
+                scopes = get_path_scope(route.endpoint)
                 binding = AuthzEndpointMethod(
                     permissions=[perm.id for perm in permissions], scopes=scopes, callers=callers
                 )

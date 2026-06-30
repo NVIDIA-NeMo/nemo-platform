@@ -4,11 +4,17 @@
 """Authorization policy for NeMo Platform plugins.
 
 A plugin attaches :func:`path_rule` rules to its route handlers, referencing
-:class:`Permission` objects from a typed :class:`PermissionSet`. The platform derives
+:class:`Permission` objects from a typed :class:`PermissionSet`, and declares the route's
+OAuth scope with ``@AuthzScope.read`` / ``@AuthzScope.write``. The platform derives
 the normalized policy — the permission catalog (id + description), the per-endpoint
 bindings, and the namespace — *entirely from the routes* (see
 :mod:`nemo_platform_plugin.authz_discovery`) when the OPA bundle is built; it can also be
 materialized into ``static-authz.yaml`` via ``auth-tools sync-plugins``.
+
+The permission rule (callers + permissions) and the OAuth scope gate are independent
+concerns, so they ride on the handler as two separate decorators: :func:`path_rule` and
+``@AuthzScope.read``/``.write``. That keeps each declaration single-purpose and lets the
+scope be read back and verified on its own (:func:`get_path_scope`).
 
 There is no separate permission declaration to keep in sync: the permission *is* the
 object referenced on the route, and it carries its own description. The only thing a
@@ -19,8 +25,10 @@ service declares apart from its routes is the optional escape hatch
 Example::
 
     from fastapi import APIRouter
-    from nemo_platform_plugin.authz import CallerKind, PermissionSet, path_rule, perm
+    from nemo_platform_plugin.authz import AuthzScope, CallerKind, PermissionSet, path_rule, perm
     from nemo_platform_plugin.service import NemoService, RouterSpec
+
+    SCOPE = AuthzScope("example")
 
     class ExamplePerms(PermissionSet, namespace="example"):
         READ = perm("Read example items")  # -> Permission("example.read", ...)
@@ -28,6 +36,7 @@ Example::
     router = APIRouter()
 
     @router.get("/v2/workspaces/{workspace}/items/{name}")
+    @SCOPE.read
     @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[ExamplePerms.READ])
     async def get_item(workspace: str, name: str) -> dict: ...
 
@@ -126,17 +135,33 @@ class AuthzScope:
         """
         return Permission(".".join((self.namespace, *segments)), description)
 
-    def read(self) -> list[str]:
-        """Read scopes for this area, e.g. ``["agents:read", "platform:read"]``.
+    def read_scopes(self) -> list[str]:
+        """The read scope strings for this area, e.g. ``["agents:read", "platform:read"]``.
 
         Built from :attr:`scope`, not :attr:`namespace`, so a :meth:`child` scope keeps the
-        parent area.
+        parent area. This is the raw list; :attr:`read` is the route decorator built from it.
         """
         return scopes_for(self.scope, write=False)
 
-    def write(self) -> list[str]:
-        """Write scopes for this area, e.g. ``["agents:write", "platform:write"]``."""
+    def write_scopes(self) -> list[str]:
+        """The write scope strings for this area, e.g. ``["agents:write", "platform:write"]``."""
         return scopes_for(self.scope, write=True)
+
+    @property
+    def read(self) -> Callable[[_F], _F]:
+        """Route decorator stamping this area's **read** scope requirement (``@SCOPE.read``).
+
+        The scope gate is declared separately from :func:`path_rule`: the permission/caller
+        rule and the OAuth scope are orthogonal, so each is attached, read back, and verified
+        on its own (the scope via :func:`get_path_scope`). Order relative to ``@path_rule`` is
+        irrelevant — both only stamp attributes on the handler and return it unchanged.
+        """
+        return _attach_scope(self.read_scopes())
+
+    @property
+    def write(self) -> Callable[[_F], _F]:
+        """Route decorator stamping this area's **write** scope requirement (``@SCOPE.write``)."""
+        return _attach_scope(self.write_scopes())
 
 
 @dataclass(frozen=True)
@@ -205,7 +230,6 @@ class PathRule:
 
     callers: list[CallerKind]
     permissions: list[Permission] = field(default_factory=list)
-    scopes: list[str] | None = None
     method: str | None = None
     path: str | None = None
 
@@ -223,19 +247,22 @@ def path_rule(
     *,
     callers: list[CallerKind],
     permissions: list[Permission] | None = None,
-    scopes: list[str] | None = None,
 ) -> Callable[[_F], _F]:
-    """Attach an authorization rule to a route handler.
+    """Attach an authorization rule (callers + permissions) to a route handler.
 
     Stacking ``@path_rule`` on the same handler adds alternative (OR) rules. The
     handler is returned **unchanged** (same object, same signature): the rule is
     stored on the function itself so it survives router rebasing.
 
+    The route's OAuth **scope** is declared separately, with ``@AuthzScope.read`` /
+    ``@AuthzScope.write`` (see :meth:`AuthzScope.read`) — the scope gate is orthogonal to
+    the permission rule, so it lives in its own decorator and is read back independently
+    via :func:`get_path_scope`.
+
     Args:
         callers: Non-empty list of caller kinds this rule applies to (OR'd).
         permissions: :class:`Permission` objects the caller must hold (AND'd). May be
             empty for authenticated-but-permissionless routes.
-        scopes: Optional normalized NeMo scopes (``area:verb``).
 
     Raises:
         ValueError: if *callers* is empty or contains an unknown caller kind.
@@ -252,11 +279,7 @@ def path_rule(
                 f"@path_rule permissions must be Permission objects, got {type(p).__name__} ({p!r}). "
                 f"Reference a PermissionSet member (e.g. MyPerms.READ) rather than a bare string."
             )
-    rule = PathRule(
-        callers=resolved_callers,
-        permissions=resolved_permissions,
-        scopes=list(scopes) if scopes is not None else None,
-    )
+    rule = PathRule(callers=resolved_callers, permissions=resolved_permissions)
 
     def decorate(func: _F) -> _F:
         rules = func.__dict__.get(PATH_RULES_ATTR)
@@ -272,6 +295,42 @@ def path_rule(
 def get_path_rules(func: Callable[..., Any]) -> list[PathRule]:
     """Return the ``PathRule``s attached to *func* by :func:`path_rule` (empty if none)."""
     return list(getattr(func, PATH_RULES_ATTR, []))
+
+
+# Attribute used to stash a route's required OAuth scope (an ``area:verb`` list) on its
+# handler. Like ``PATH_RULES_ATTR`` it is set in place so the endpoint identity survives
+# FastAPI ``include_router(prefix=...)`` rebasing.
+PATH_SCOPE_ATTR = "__nemo_path_scope__"
+
+
+def _attach_scope(scopes: list[str]) -> Callable[[_F], _F]:
+    """Stamp a route's required OAuth scopes (``area:verb`` list) onto its handler.
+
+    Backs ``@AuthzScope.read`` / ``@AuthzScope.write``. A route has a single scope
+    requirement (the wire format and the Rego scope check hold one scope list per
+    ``(path, method)``), so re-stamping the same scopes is idempotent but a *different*
+    scope on the same handler is a :class:`ValueError`, surfaced at decoration rather than
+    silently letting one win.
+    """
+    resolved = list(scopes)
+
+    def decorate(func: _F) -> _F:
+        existing = func.__dict__.get(PATH_SCOPE_ATTR)
+        if existing is not None and existing != resolved:
+            raise ValueError(
+                f"conflicting scope on {getattr(func, '__name__', func)!r}: {existing} vs {resolved}; "
+                f"a route declares a single scope (one @AuthzScope.read/.write)."
+            )
+        setattr(func, PATH_SCOPE_ATTR, resolved)
+        return func
+
+    return decorate
+
+
+def get_path_scope(func: Callable[..., Any]) -> list[str] | None:
+    """Return the OAuth scopes attached by ``@AuthzScope.read`` / ``.write`` (``None`` if unscoped)."""
+    scopes = getattr(func, PATH_SCOPE_ATTR, None)
+    return list(scopes) if scopes is not None else None
 
 
 def validate_caller_strings(callers: list[str] | None, *, context: str) -> None:

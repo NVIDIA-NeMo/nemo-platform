@@ -139,10 +139,10 @@ def _build_hello_router() -> APIRouter:
     router = APIRouter()
 
     @router.get("/hello/{name}", response_model=HelloResponse)
+    @SCOPE.read
     @path_rule(
         callers=[CallerKind.PRINCIPAL],
         permissions=[ExampleHelloPerms.READ],
-        scopes=SCOPE.read(),
     )
     async def hello(name: str) -> HelloResponse:
         """Greet a name.
@@ -178,7 +178,8 @@ def _build_binary_router() -> APIRouter:
     _store: dict[str, bytes] = {}
 
     @router.put("/blob/{name}", status_code=200, response_model=BlobUploadResponse)
-    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[], scopes=SCOPE.write())
+    @SCOPE.write
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[])
     async def upload_blob(name: str, request: Request) -> BlobUploadResponse:
         """Accept raw binary and store it. Returns byte count."""
         data = await request.body()
@@ -186,7 +187,8 @@ def _build_binary_router() -> APIRouter:
         return BlobUploadResponse(name=name, size=len(data))
 
     @router.get("/blob/{name}", response_class=Response)
-    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[], scopes=SCOPE.read())
+    @SCOPE.read
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[])
     async def download_blob(name: str) -> Response:
         """Return stored binary content."""
         if name not in _store:
@@ -244,10 +246,10 @@ def _build_items_router() -> APIRouter:
         status_code=201,
         tags=["Example Items"],
     )
+    @SCOPE.write
     @path_rule(
         callers=[CallerKind.PRINCIPAL],
         permissions=[ExampleItemPerms.CREATE],
-        scopes=SCOPE.write(),
     )
     async def create_item(
         workspace: str,
@@ -289,10 +291,10 @@ def _build_items_router() -> APIRouter:
         response_model=ExampleItemPage,
         tags=["Example Items"],
     )
+    @SCOPE.read
     @path_rule(
         callers=[CallerKind.PRINCIPAL],
         permissions=[ExampleItemPerms.LIST],
-        scopes=SCOPE.read(),
     )
     async def list_items(
         workspace: str,
@@ -379,10 +381,10 @@ def _build_items_router() -> APIRouter:
         response_model=ExampleItem,
         tags=["Example Items"],
     )
+    @SCOPE.read
     @path_rule(
         callers=[CallerKind.PRINCIPAL],
         permissions=[ExampleItemPerms.READ],
-        scopes=SCOPE.read(),
     )
     async def get_item(
         workspace: str,
@@ -412,10 +414,10 @@ def _build_items_router() -> APIRouter:
         response_model=ExampleItem,
         tags=["Example Items"],
     )
+    @SCOPE.write
     @path_rule(
         callers=[CallerKind.PRINCIPAL],
         permissions=[ExampleItemPerms.UPDATE],
-        scopes=SCOPE.write(),
     )
     async def update_item(
         workspace: str,
@@ -465,10 +467,10 @@ def _build_items_router() -> APIRouter:
         status_code=204,
         tags=["Example Items"],
     )
+    @SCOPE.write
     @path_rule(
         callers=[CallerKind.PRINCIPAL],
         permissions=[ExampleItemPerms.DELETE],
-        scopes=SCOPE.write(),
     )
     async def delete_item(
         workspace: str,

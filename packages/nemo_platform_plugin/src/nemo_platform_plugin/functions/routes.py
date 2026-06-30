@@ -189,11 +189,9 @@ def add_function_routes(
             or function_cls.description
             or f"Invoke the {function_cls.name} function",
         )
-        path_rule(
-            callers=[CallerKind.PRINCIPAL],
-            permissions=[permission],
-            scopes=authz.write(),
-        )(handler)
+        path_rule(callers=[CallerKind.PRINCIPAL], permissions=[permission])(handler)
+        # Invoking a function is a write action; the scope rides on the route via @AuthzScope.write.
+        authz.write(handler)
 
     router.post(
         path,

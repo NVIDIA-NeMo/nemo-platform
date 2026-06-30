@@ -12,6 +12,7 @@ from nemo_platform_plugin.authz import (
     AuthzScope,
     CallerKind,
     get_path_rules,
+    get_path_scope,
 )
 from nemo_platform_plugin.authz_discovery import _derive_service_contribution
 from nemo_platform_plugin.function import NemoFunction
@@ -38,26 +39,32 @@ async def _compiler(*args: object, **kwargs: object) -> object:  # never called 
     raise NotImplementedError
 
 
-def _rules_by_path_method(router: APIRouter) -> dict[tuple[str, str], list]:
-    """Map (composed-path, lower-method) -> attached PathRules for every APIRoute in *router*.
+def _rules_by_path_method(router: APIRouter) -> dict[tuple[str, str], tuple[list, list[str] | None]]:
+    """Map (composed-path, lower-method) -> (attached PathRules, attached scope) per APIRoute.
 
     fastapi 0.138.0 makes ``include_router(prefix=...)`` lazy: rebased ``APIRoute``\\ s live
     behind a ``_IncludedRouter`` proxy rather than in ``.routes``. Descend the proxy via
     ``effective_route_contexts()`` to read each route's composed path/methods and original
     endpoint (which still carries the ``@path_rule`` metadata).
     """
-    out: dict[tuple[str, str], list] = {}
+    out: dict[tuple[str, str], tuple[list, list[str] | None]] = {}
     for route in router.routes:
         contexts = getattr(route, "effective_route_contexts", None)
         if contexts is None:
             if isinstance(route, APIRoute):
                 for method in route.methods or set():
-                    out[(route.path, method.lower())] = get_path_rules(route.endpoint)
+                    out[(route.path, method.lower())] = (
+                        get_path_rules(route.endpoint),
+                        get_path_scope(route.endpoint),
+                    )
             continue
         for ctx in contexts():
             if isinstance(ctx.original_route, APIRoute):
                 for method in ctx.methods or set():
-                    out[(ctx.path, method.lower())] = get_path_rules(ctx.original_route.endpoint)
+                    out[(ctx.path, method.lower())] = (
+                        get_path_rules(ctx.original_route.endpoint),
+                        get_path_scope(ctx.original_route.endpoint),
+                    )
     return out
 
 
@@ -77,12 +84,14 @@ def _mounted_customization_jobs(**factory_kwargs) -> APIRouter:
     return mounted
 
 
-def _assert_single_rule(rules: list, perm: str, scopes: list[str]) -> None:
+def _assert_single_rule(entry: tuple[list, list[str] | None], perm: str, scopes: list[str]) -> None:
+    """Assert *entry* (rules, scope) has exactly one PRINCIPAL rule for *perm* and scope *scopes*."""
+    rules, scope = entry
     assert len(rules) == 1
     rule = rules[0]
     assert rule.callers == [CallerKind.PRINCIPAL]
     assert [p.id for p in rule.permissions] == [perm]
-    assert rule.scopes == scopes
+    assert scope == scopes
 
 
 def test_job_factory_stamps_every_core_route_exactly() -> None:
@@ -196,7 +205,7 @@ def test_add_function_routes_stamps_invoke_permission() -> None:
     routes = [r for r in router.routes if isinstance(r, APIRoute)]
     assert len(routes) == 1
     _assert_single_rule(
-        get_path_rules(routes[0].endpoint),
+        (get_path_rules(routes[0].endpoint), get_path_scope(routes[0].endpoint)),
         "example.greet",
         ["example:write", "platform:write"],
     )

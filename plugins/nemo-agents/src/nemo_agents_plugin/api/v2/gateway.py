@@ -91,10 +91,10 @@ async def _serve_agent_proxy(
     tags=["Agent Gateway"],
     include_in_schema=False,
 )
+@SCOPE.read
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[GatewayPerms.INVOKE],
-    scopes=SCOPE.read(),
 )
 async def proxy_by_agent_name_read(
     workspace: str,
@@ -113,10 +113,10 @@ async def proxy_by_agent_name_read(
     tags=["Agent Gateway"],
     include_in_schema=False,
 )
+@SCOPE.write
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[GatewayPerms.INVOKE],
-    scopes=SCOPE.write(),
 )
 async def proxy_by_agent_name_write(
     workspace: str,
@@ -165,10 +165,10 @@ async def _serve_deployment_proxy(
     tags=["Agent Gateway"],
     include_in_schema=False,
 )
+@SCOPE.read
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[GatewayPerms.INVOKE],
-    scopes=SCOPE.read(),
 )
 async def proxy_by_deployment_name_read(
     workspace: str,
@@ -187,10 +187,10 @@ async def proxy_by_deployment_name_read(
     tags=["Agent Gateway"],
     include_in_schema=False,
 )
+@SCOPE.write
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[GatewayPerms.INVOKE],
-    scopes=SCOPE.write(),
 )
 async def proxy_by_deployment_name_write(
     workspace: str,

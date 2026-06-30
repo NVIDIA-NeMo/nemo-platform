@@ -33,10 +33,10 @@ _target_filter_dep = make_filter_dep(TargetFilter)
 
 
 @router.post("/targets", response_model=AuditTarget, status_code=201, tags=["Auditor Targets"])
+@SCOPE.write
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[AuditTargetPerms.CREATE],
-    scopes=SCOPE.write(),
 )
 async def create_target(
     workspace: str,
@@ -69,10 +69,10 @@ async def create_target(
     tags=["Auditor Targets"],
     openapi_extra=generate_openapi_extra_params(filter_schema=TargetFilter),
 )
+@SCOPE.read
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[AuditTargetPerms.LIST],
-    scopes=SCOPE.read(),
 )
 async def list_targets(
     workspace: str,
@@ -105,10 +105,10 @@ async def list_targets(
 
 
 @router.get("/targets/{name}", response_model=AuditTarget, tags=["Auditor Targets"])
+@SCOPE.read
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[AuditTargetPerms.READ],
-    scopes=SCOPE.read(),
 )
 async def get_target(
     workspace: str,
@@ -129,10 +129,10 @@ async def get_target(
 
 
 @router.put("/targets/{name}", response_model=AuditTarget, tags=["Auditor Targets"])
+@SCOPE.write
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[AuditTargetPerms.UPDATE],
-    scopes=SCOPE.write(),
 )
 async def update_target(
     workspace: str,
@@ -169,10 +169,10 @@ async def update_target(
 
 
 @router.delete("/targets/{name}", status_code=204, tags=["Auditor Targets"])
+@SCOPE.write
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[AuditTargetPerms.DELETE],
-    scopes=SCOPE.write(),
 )
 async def delete_target(
     workspace: str,

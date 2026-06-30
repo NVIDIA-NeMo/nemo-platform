@@ -40,10 +40,10 @@ _agent_filter_dep = make_filter_obj_dep(AgentFilter)
 
 
 @router.post("/agents", response_model=Agent, status_code=201, tags=["Agents"])
+@SCOPE.write
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[AgentPerms.CREATE],
-    scopes=SCOPE.write(),
 )
 async def create_agent(
     workspace: str,
@@ -72,10 +72,10 @@ async def create_agent(
 
 
 @router.get("/agents", response_model=AgentPage, tags=["Agents"])
+@SCOPE.read
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[AgentPerms.LIST],
-    scopes=SCOPE.read(),
 )
 async def list_agents(
     workspace: str,
@@ -110,10 +110,10 @@ async def list_agents(
 
 
 @router.get("/agents/{name}", response_model=Agent, tags=["Agents"])
+@SCOPE.read
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[AgentPerms.READ],
-    scopes=SCOPE.read(),
 )
 async def get_agent(
     workspace: str,
@@ -135,10 +135,10 @@ async def get_agent(
 
 
 @router.delete("/agents/{name}", status_code=204, tags=["Agents"])
+@SCOPE.write
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[AgentPerms.DELETE],
-    scopes=SCOPE.write(),
 )
 async def delete_agent(
     workspace: str,

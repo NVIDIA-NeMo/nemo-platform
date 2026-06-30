@@ -13,11 +13,13 @@ from fastapi.routing import APIRoute
 from nemo_platform_plugin.authz import (
     AuthzContribution,
     AuthzEndpointMethod,
+    AuthzScope,
     CallerKind,
     PathRule,
     Permission,
     PermissionSet,
     get_path_rules,
+    get_path_scope,
     path_rule,
     perm,
     validate_caller_strings,
@@ -68,13 +70,96 @@ def test_path_rule_returns_identical_function_and_signature() -> None:
 
 
 def test_path_rule_attaches_rule() -> None:
-    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[_READ], scopes=["x:read"])
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[_READ])
     async def handler() -> None: ...
 
     rules = get_path_rules(handler)
-    assert rules == [
-        PathRule(callers=[CallerKind.PRINCIPAL], permissions=[_READ], scopes=["x:read"]),
-    ]
+    assert rules == [PathRule(callers=[CallerKind.PRINCIPAL], permissions=[_READ])]
+
+
+def test_scope_decorator_attaches_scope_independent_of_rule() -> None:
+    """@AuthzScope.read stamps the OAuth scope on its own, separate from @path_rule."""
+    scope = AuthzScope("x")
+
+    @scope.read
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[_READ])
+    async def handler() -> None: ...
+
+    # The scope is read back independently of the permission rule.
+    assert get_path_scope(handler) == ["x:read", "platform:read"]
+    assert get_path_rules(handler) == [PathRule(callers=[CallerKind.PRINCIPAL], permissions=[_READ])]
+
+
+def test_scope_decorator_returns_same_function() -> None:
+    scope = AuthzScope("x")
+
+    async def handler() -> None: ...
+
+    # The decorator never wraps — same object back, scope stamped on it.
+    assert scope.write(handler) is handler
+    assert get_path_scope(handler) == ["x:write", "platform:write"]
+
+
+def test_scope_decorator_order_relative_to_path_rule_is_irrelevant() -> None:
+    """Both decorators only stamp attributes, so stacking order doesn't change the result."""
+    scope = AuthzScope("x")
+
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[_READ])
+    @scope.read
+    async def handler() -> None: ...
+
+    assert get_path_scope(handler) == ["x:read", "platform:read"]
+    assert get_path_rules(handler)[0].permissions == [_READ]
+
+
+def test_get_path_scope_none_when_unscoped() -> None:
+    async def handler() -> None: ...
+
+    assert get_path_scope(handler) is None
+
+
+def test_same_scope_reattached_is_idempotent() -> None:
+    scope = AuthzScope("x")
+
+    async def handler() -> None: ...
+
+    scope.read(handler)
+    scope.read(handler)  # idempotent — same scope, no error
+    assert get_path_scope(handler) == ["x:read", "platform:read"]
+
+
+def test_conflicting_scope_on_one_handler_raises() -> None:
+    """A handler declares a single scope; a second, different one is caught at decoration."""
+
+    async def handler() -> None: ...
+
+    AuthzScope("x").read(handler)
+    with pytest.raises(ValueError, match="conflicting scope"):
+        AuthzScope("y").read(handler)
+
+
+def test_read_and_write_scope_on_one_endpoint_is_rejected() -> None:
+    """An endpoint has a single scope: stacking @SCOPE.read and @SCOPE.write is rejected.
+
+    Read and write of the same area are different scope lists, so attaching both to one handler
+    trips the conflict guard at decoration (import) time — never silently last-writer-wins. Both
+    stacking orders are checked, since decorators apply bottom-up.
+    """
+    scope = AuthzScope("x")
+
+    with pytest.raises(ValueError, match="conflicting scope"):
+
+        @scope.write
+        @scope.read
+        @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[_READ])
+        async def read_then_write() -> None: ...
+
+    with pytest.raises(ValueError, match="conflicting scope"):
+
+        @scope.read
+        @scope.write
+        @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[_READ])
+        async def write_then_read() -> None: ...
 
 
 def test_path_rule_stacks_as_or() -> None:

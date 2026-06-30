@@ -42,7 +42,7 @@ class EvaluatorPluginService(NemoService):
         agent_jobs_router = add_job_routes(AgentEvalJob, authz=SCOPE)
 
         @router.get("/healthz")
-        @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[], scopes=[])
+        @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[])
         async def healthz() -> dict[str, object]:
             return {
                 "plugin": self.name,
@@ -93,10 +93,10 @@ def _build_hello_router() -> APIRouter:
     router = APIRouter()
 
     @router.get("/hello/{name}", response_model=HelloResponse)
+    @SCOPE.read
     @path_rule(
         callers=[CallerKind.PRINCIPAL],
         permissions=[EvaluatorPerms.HELLO_READ],
-        scopes=SCOPE.read(),
     )
     async def hello(name: str) -> HelloResponse:
         """Greet a name."""

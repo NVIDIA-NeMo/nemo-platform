@@ -24,7 +24,7 @@ class AuditorPluginService(NemoService):
         healthz_router = APIRouter()
 
         @healthz_router.get("/healthz")
-        @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[], scopes=[])
+        @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[])
         async def healthz() -> dict[str, object]:
             return {
                 "plugin": self.name,

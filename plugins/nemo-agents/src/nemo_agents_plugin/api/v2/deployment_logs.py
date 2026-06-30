@@ -151,10 +151,10 @@ _TAIL_LINE_CAP = 10_000
     response_model=DeploymentLogsResponse,
     tags=["Agent Deployments"],
 )
+@SCOPE.read
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[DeploymentPerms.READ],
-    scopes=SCOPE.read(),
 )
 async def get_deployment_logs(
     workspace: str,
@@ -249,10 +249,10 @@ async def _stream_log_lines(
 
 
 @router.get("/deployments/{name}/logs/stream", tags=["Agent Deployments"])
+@SCOPE.read
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[DeploymentPerms.READ],
-    scopes=SCOPE.read(),
 )
 async def stream_deployment_logs(
     workspace: str,

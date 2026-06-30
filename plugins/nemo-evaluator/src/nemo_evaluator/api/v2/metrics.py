@@ -57,7 +57,8 @@ router = APIRouter()
         filter_description="Filter metrics by workspace, name, metric_type, description, created_at, and updated_at.",
     ),
 )
-@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[MetricPerms.LIST], scopes=SCOPE.read())
+@SCOPE.read
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[MetricPerms.LIST])
 async def list_metrics(
     workspace: str,
     page: int = Query(default=1, ge=1, description="Page number."),
@@ -92,7 +93,8 @@ async def list_metrics(
     status_code=status.HTTP_201_CREATED,
     responses={status.HTTP_409_CONFLICT: {"description": "Metric already exists"}},
 )
-@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[MetricPerms.CREATE], scopes=SCOPE.write())
+@SCOPE.write
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[MetricPerms.CREATE])
 async def create_metric(
     workspace: str,
     name: Annotated[str, Path(max_length=MAX_NAME_LENGTH, pattern=NAME_PATTERN)],
@@ -132,7 +134,8 @@ async def create_metric(
     status_code=status.HTTP_200_OK,
     responses={status.HTTP_404_NOT_FOUND: {"description": "Metric not found"}},
 )
-@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[MetricPerms.READ], scopes=SCOPE.read())
+@SCOPE.read
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[MetricPerms.READ])
 async def get_metric(
     workspace: str,
     name: str,
@@ -162,7 +165,8 @@ async def get_metric(
     status_code=status.HTTP_204_NO_CONTENT,
     responses={status.HTTP_404_NOT_FOUND: {"description": "Metric not found"}},
 )
-@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[MetricPerms.DELETE], scopes=SCOPE.write())
+@SCOPE.write
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[MetricPerms.DELETE])
 async def delete_metric(
     workspace: str,
     name: str,
