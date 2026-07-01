@@ -1,0 +1,59 @@
+# Safe Research Agent guardrails PoC.
+#
+# This agent intentionally exposes two tools and behaves like a normal research
+# assistant. Its LLM is routed through a guardrailed VirtualModel where the
+# Guardrails plugin centrally controls which tool calls may execute.
+#
+# Setup:
+#   agents/agentic-guardrails-poc/setup.sh
+#
+# Direct invocation after setup:
+#   uv run nemo agents invoke \
+#     --agent-config agents/agentic-guardrails-poc/agentic-guardrails-poc.yml \
+#     --input "What time is it?"
+#
+# Managed deployment after setup:
+#   DEPLOY_AGENT=1 agents/agentic-guardrails-poc/setup.sh
+#   uv run nemo agents invoke --agent agentic-guardrails-poc \
+#     --input "What time is it?"
+
+functions:
+  wiki:
+    _type: wiki_search
+  clock:
+    _type: current_datetime
+
+llms:
+  llm:
+    _type: openai
+    # Platform-managed runs inject the IGW base_url. The model name points at
+    # the guarded VirtualModel created by setup.sh.
+    api_key: not-used
+    model_name: default/agentic-guardrails-poc-model
+    temperature: 0.0
+    max_tokens: 1024
+    disable_streaming: true
+
+workflow:
+  _type: react_agent
+  tool_names: [clock, wiki]
+  llm_name: llm
+  verbose: true
+  parse_agent_response_max_retries: 3
+  # Required for this PoC: tool rails fire on OpenAI-style `tool_calls`, not on
+  # text-mode ReAct parser output.
+  use_native_tool_calling: true
+  system_prompt: |
+    You are a concise research assistant.
+
+    Your job is to answer simple user questions by calling tools when needed.
+    Use `clock` for current date or time questions. Use `wiki` for encyclopedia
+    lookups.
+
+    If a tool call is unavailable or cannot be completed, explain briefly what
+    happened and offer a helpful next step.
+
+    You have access to the following tools:
+    {tools}
+
+    Tool names: {tool_names}

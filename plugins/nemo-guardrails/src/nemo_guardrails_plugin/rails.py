@@ -18,9 +18,8 @@ Source introspection, stabilization, and the pool itself live in
 
 import asyncio
 import logging
-from typing import Any
+from typing import Any, TypeVar
 
-from langchain_core.language_models.base import BaseLanguageModel
 from nemo_guardrails_plugin.constants import DEFAULT_MAIN_ENGINE, W3C_TRACE_CONTEXT_HEADERS
 from nemo_guardrails_plugin.llmrails_cache import InferenceTargetResolver
 from nemo_guardrails_plugin.transforms import GenerationResponseMapper
@@ -32,9 +31,20 @@ from nemo_platform.types.guardrail.guardrails_data import GuardrailsData
 from nemoguardrails.llm.models.initializer import init_llm_model
 from nemoguardrails.rails.llm.config import Model
 from nemoguardrails.rails.llm.llmrails import LLMRails
-from nemoguardrails.rails.llm.options import GenerationOptions, GenerationResponse
+from nemoguardrails.rails.llm.options import (
+    GenerationLog as LibraryGenerationLog,
+)
+from nemoguardrails.rails.llm.options import (
+    GenerationOptions,
+    GenerationResponse,
+)
+from nemoguardrails.rails.llm.options import (
+    GenerationStats as LibraryGenerationStats,
+)
+from nemoguardrails.types import LLMModel
 
 logger = logging.getLogger(__name__)
+T = TypeVar("T")
 
 
 # ---------------------------------------------------------------------------
@@ -82,6 +92,71 @@ def run_generate_in_new_loop(
         finally:
             loop.close()
             asyncio.set_event_loop(None)
+
+
+def build_generation_response_logs(*generation_responses: GenerationResponse) -> list[LibraryGenerationLog]:
+    """Return the logs present on completed rail generation responses."""
+    return [response.log for response in generation_responses if response.log is not None]
+
+
+def _merge_generation_logs(*logs: LibraryGenerationLog | None) -> LibraryGenerationLog | None:
+    present_logs = [log for log in logs if log is not None]
+    if not present_logs:
+        return None
+
+    return LibraryGenerationLog(
+        activated_rails=[rail for log in present_logs for rail in log.activated_rails],
+        stats=_merge_generation_stats(*(log.stats for log in present_logs)),
+        llm_calls=_merge_optional_lists(*(log.llm_calls for log in present_logs)),
+        internal_events=_merge_optional_lists(*(log.internal_events for log in present_logs)),
+        colang_history=_merge_colang_history(*(log.colang_history for log in present_logs)),
+    )
+
+
+def _merge_generation_stats(*stats: LibraryGenerationStats | None) -> LibraryGenerationStats:
+    present_stats = [stat for stat in stats if stat is not None]
+    if not present_stats:
+        return LibraryGenerationStats()
+
+    stats_dicts = [stat.model_dump() for stat in present_stats]
+
+    def _sum_float(key: str) -> float | None:
+        values = [stat.get(key) for stat in stats_dicts]
+        if not any(value is not None for value in values):
+            return None
+        return float(sum(value or 0 for value in values))
+
+    def _sum_int(key: str) -> int | None:
+        values = [stat.get(key) for stat in stats_dicts]
+        if not any(value is not None for value in values):
+            return None
+        return int(sum(value or 0 for value in values))
+
+    return LibraryGenerationStats(
+        input_rails_duration=_sum_float("input_rails_duration"),
+        dialog_rails_duration=_sum_float("dialog_rails_duration"),
+        generation_rails_duration=_sum_float("generation_rails_duration"),
+        output_rails_duration=_sum_float("output_rails_duration"),
+        total_duration=_sum_float("total_duration"),
+        llm_calls_duration=_sum_float("llm_calls_duration"),
+        llm_calls_count=_sum_int("llm_calls_count"),
+        llm_calls_total_prompt_tokens=_sum_int("llm_calls_total_prompt_tokens"),
+        llm_calls_total_completion_tokens=_sum_int("llm_calls_total_completion_tokens"),
+        llm_calls_total_tokens=_sum_int("llm_calls_total_tokens"),
+    )
+
+
+def _merge_optional_lists(*lists: list[T] | None) -> list[T] | None:
+    if not any(items is not None for items in lists):
+        return None
+    return [item for items in lists if items is not None for item in items]
+
+
+def _merge_colang_history(*histories: str | None) -> str | None:
+    present = [history for history in histories if history]
+    if not present:
+        return None
+    return "\n".join(present)
 
 
 def build_generate_async_options(
@@ -135,7 +210,7 @@ def _build_generation_stats(
 
 def _build_generation_log(
     user_log_options: GenerationLogOptionsParam | None,
-    input_generation_response: GenerationResponse | None = None,
+    input_generation_logs: list[LibraryGenerationLog] | None = None,
     output_generation_response: GenerationResponse | None = None,
 ) -> GenerationLog | None:
     """Merge input and output rail logs into a :class:`GenerationLog`.
@@ -146,9 +221,7 @@ def _build_generation_log(
     if not user_log_options:
         return None
 
-    input_log = GenerationResponseMapper.to_platform_generation_log(
-        input_generation_response.log if input_generation_response else None
-    )
+    input_log = GenerationResponseMapper.to_platform_generation_log(_merge_generation_logs(*(input_generation_logs or [])))
     output_log = GenerationResponseMapper.to_platform_generation_log(
         output_generation_response.log if output_generation_response else None
     )
@@ -190,7 +263,7 @@ def _build_generation_log(
 
 def build_guardrails_data(
     config_id: str,
-    input_generation_response: GenerationResponse | None = None,
+    input_generation_logs: list[LibraryGenerationLog] | None = None,
     output_generation_response: GenerationResponse | None = None,
     user_log_options: GenerationLogOptionsParam | None = None,
 ) -> GuardrailsData:
@@ -199,13 +272,13 @@ def build_guardrails_data(
     ``log`` is only populated when the caller requested it and there is
     at least one rail response to report.
     """
-    if not input_generation_response and not output_generation_response:
+    if not input_generation_logs and not output_generation_response:
         return GuardrailsData(config_ids=[config_id])
 
     if not user_log_options or not any(user_log_options.values()):
         return GuardrailsData(config_ids=[config_id])
 
-    output_log = _build_generation_log(user_log_options, input_generation_response, output_generation_response)
+    output_log = _build_generation_log(user_log_options, input_generation_logs, output_generation_response)
 
     return GuardrailsData(config_ids=[config_id], log=output_log)
 
@@ -220,7 +293,7 @@ def build_main_llm(
     request_headers: dict[str, str],
     resolve_inference_target: InferenceTargetResolver,
     main_model_template: Model | None = None,
-) -> BaseLanguageModel:
+) -> LLMModel:
     """Construct the per-request main LangChain LLM client.
 
     Injected into the cached :class:`LLMRails` via ``rails.update_llm``.

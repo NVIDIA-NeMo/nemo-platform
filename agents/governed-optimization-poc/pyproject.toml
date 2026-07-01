@@ -1,0 +1,18 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "governed-optimization-agent"
+version = "0.1.0"
+description = "NAT function group for the governed optimization guardrails PoC."
+requires-python = ">=3.11"
+dependencies = [
+    "nvidia-nat-core>=1.7.0,<1.8",
+]
+
+[project.entry-points."nat.components"]
+governed_optimization_agent = "governed_optimization_agent.register"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/governed_optimization_agent"]

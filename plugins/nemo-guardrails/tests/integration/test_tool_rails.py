@@ -18,6 +18,7 @@ No mock LLM responses are needed for the rail itself.
 
 from typing import Any
 
+import httpx
 import pytest
 from nmp.core.inference_gateway.testing.harness import IGWPluginHarness
 from nmp.testing.mock_chat_completions import ChatCompletion, ChatCompletionStream
@@ -110,7 +111,7 @@ def _tool_call_stream_chunks(tool_name: str, arguments: str = "{}") -> list[dict
 
 
 class TestToolOutputRails:
-    """tool_output rails — verify allowed/blocked tool calls from the backend."""
+    """Tests for checking tool calls returned by the model before an agent runs them."""
 
     ALLOWED_TOOL = "get_weather"
     BLOCKED_TOOL = "get_secret_data"
@@ -132,7 +133,7 @@ class TestToolOutputRails:
         }
 
     def test_allowed_tool_passes_through(self, igw_plugin_harness: IGWPluginHarness) -> None:
-        """When the backend returns an allowed tool call, the response passes through unchanged."""
+        """If the model asks to call an allowed tool, we return that tool call unchanged."""
         harness = igw_plugin_harness
         names = make_guardrails_test_data_names(workspace=harness.workspace)
 
@@ -174,7 +175,7 @@ class TestToolOutputRails:
         assert tool_calls[0]["function"]["name"] == self.ALLOWED_TOOL
 
     def test_blocked_tool_returns_content_filter(self, igw_plugin_harness: IGWPluginHarness) -> None:
-        """When the backend returns a blocked tool call, the middleware returns content_filter."""
+        """If the model asks to call a disallowed tool, we return a refusal instead of the tool call."""
         harness = igw_plugin_harness
         names = make_guardrails_test_data_names(workspace=harness.workspace)
 
@@ -212,15 +213,14 @@ class TestToolOutputRails:
         assert response["choices"][0]["finish_reason"] == "content_filter"
         assert response["choices"][0]["message"]["content"] == BLOCKED_REFUSAL_TEXT
 
-    def test_streaming_allowed_tool_passes_through(self, igw_plugin_harness: IGWPluginHarness) -> None:
-        """A streamed allowed tool call is replayed after tool_output rails pass."""
+    def test_streaming_tool_output_rails_are_rejected(self, igw_plugin_harness: IGWPluginHarness) -> None:
+        """Streaming requests cannot use tool_output rails yet."""
         harness = igw_plugin_harness
         names = make_guardrails_test_data_names(workspace=harness.workspace)
 
-        upstream_chunks = _tool_call_stream_chunks(self.ALLOWED_TOOL)
         harness.mock_chat_completions(
             names.main_model_served_name,
-            responses=[ChatCompletionStream(chunks=upstream_chunks)],
+            responses=[ChatCompletionStream(chunks=_tool_call_stream_chunks(self.ALLOWED_TOOL))],
         )
         harness.add_provider(
             workspace=harness.workspace,
@@ -240,64 +240,22 @@ class TestToolOutputRails:
                 default_model_entity=names.main_model_entity_ref,
                 response_middleware=[make_middleware_call(config)],
             )
-            response = harness.stream_chat_completions(
-                workspace=harness.workspace,
-                body={
-                    "model": names.request_virtual_model_name,
-                    "messages": [{"role": "user", "content": self.USER_INPUT}],
-                },
-            )
+            with pytest.raises(httpx.HTTPStatusError) as exc_info:
+                harness.stream_chat_completions(
+                    workspace=harness.workspace,
+                    body={
+                        "model": names.request_virtual_model_name,
+                        "messages": [{"role": "user", "content": self.USER_INPUT}],
+                    },
+                )
 
-        assert isinstance(response, list)
-        harness.assert_called_once(names.main_model_served_name)
-        assert response[0]["choices"][0]["delta"]["tool_calls"][0]["function"]["name"] == self.ALLOWED_TOOL
-        assert response[-1]["choices"][0]["finish_reason"] == "tool_calls"
-
-    def test_streaming_blocked_tool_returns_content_filter(self, igw_plugin_harness: IGWPluginHarness) -> None:
-        """A streamed blocked tool call is buffered and replaced before the agent sees it."""
-        harness = igw_plugin_harness
-        names = make_guardrails_test_data_names(workspace=harness.workspace)
-
-        harness.mock_chat_completions(
-            names.main_model_served_name,
-            responses=[ChatCompletionStream(chunks=_tool_call_stream_chunks(self.BLOCKED_TOOL))],
-        )
-        harness.add_provider(
-            workspace=harness.workspace,
-            name=names.model_provider_name,
-            served_models={names.main_model_served_name: names.main_model_served_name},
-        )
-
-        config = make_guardrail_config(
-            harness.workspace,
-            names.guardrail_config_name,
-            data=self._config_data(harness.nim_base_url, allowed_tools=[self.ALLOWED_TOOL]),
-        )
-        with harness.load_plugin(GUARDRAILS_PLUGIN_NAME):
-            harness.add_virtual_model(
-                workspace=harness.workspace,
-                name=names.request_virtual_model_name,
-                default_model_entity=names.main_model_entity_ref,
-                response_middleware=[make_middleware_call(config)],
-            )
-            response = harness.stream_chat_completions(
-                workspace=harness.workspace,
-                body={
-                    "model": names.request_virtual_model_name,
-                    "messages": [{"role": "user", "content": self.USER_INPUT}],
-                },
-            )
-
-        assert isinstance(response, list)
-        harness.assert_called_once(names.main_model_served_name)
-        assert all("tool_calls" not in (chunk["choices"][0].get("delta") or {}) for chunk in response)
-        assert response[0]["choices"][0]["delta"]["content"] == BLOCKED_REFUSAL_TEXT
-        assert response[-1]["choices"][0]["finish_reason"] == "content_filter"
+        assert exc_info.value.response.status_code == 400
+        assert "Streaming tool_output rails are not supported" in exc_info.value.response.text
 
     def test_tool_calls_blocked_even_when_finish_reason_is_not_tool_calls(
         self, igw_plugin_harness: IGWPluginHarness
     ) -> None:
-        """Some providers include message.tool_calls without setting finish_reason='tool_calls'."""
+        """We check tool calls even when the provider sets the wrong finish_reason."""
         harness = igw_plugin_harness
         names = make_guardrails_test_data_names(workspace=harness.workspace)
 
@@ -338,7 +296,11 @@ class TestToolOutputRails:
     def test_blocked_tool_with_log_options_serializes_guardrails_data(
         self, igw_plugin_harness: IGWPluginHarness
     ) -> None:
-        """Blocked tool_output rails should not crash when log data is requested."""
+        """Blocked tool calls still include guardrails log data when the caller requests it.
+
+        This verifies the refusal response includes the guardrail config id and
+        the tool_output rail that blocked the call.
+        """
         harness = igw_plugin_harness
         names = make_guardrails_test_data_names(workspace=harness.workspace)
 
@@ -381,10 +343,10 @@ class TestToolOutputRails:
         assert any(rail["type"] == "tool_output" for rail in activated_rails)
 
     def test_non_tool_call_response_skips_tool_output_rails(self, igw_plugin_harness: IGWPluginHarness) -> None:
-        """A normal text response (finish_reason='stop') skips the tool_output rail entirely.
+        """Normal text responses do not run tool_output rails.
 
-        This pins the guard in process_response that skips tool rails when
-        is_tool_call_response is False — even when tool_output flows are configured.
+        The allowlist would block disallowed tool calls, but this response does
+        not contain a tool call, so it should pass through unchanged.
         """
         harness = igw_plugin_harness
         names = make_guardrails_test_data_names(workspace=harness.workspace)
@@ -442,7 +404,7 @@ class TestToolOutputRails:
         assert response["choices"][0]["message"]["content"] == backend_text
 
     def test_check_tool_arguments_blocks_on_keyword(self, igw_plugin_harness: IGWPluginHarness) -> None:
-        """check_tool_arguments blocks a tool call whose argument contains a blocked keyword."""
+        """If a tool argument contains a blocked keyword, we replace the tool call with a refusal."""
         harness = igw_plugin_harness
         names = make_guardrails_test_data_names(workspace=harness.workspace)
 
@@ -502,7 +464,7 @@ class TestToolOutputRails:
 
 
 class TestToolSchemaRails:
-    """tool_output rails — check_tool_schema validates arguments against declared JSON Schema."""
+    """Tests for checking model tool calls against the tools declared in the request."""
 
     USER_INPUT = "What's the weather in Paris?"
 
@@ -538,7 +500,7 @@ class TestToolSchemaRails:
         }
 
     def test_valid_schema_arguments_pass_through(self, igw_plugin_harness: IGWPluginHarness) -> None:
-        """When tool call arguments match the declared schema, the response passes through."""
+        """If the model calls a declared tool with valid arguments, we return the tool call unchanged."""
         harness = igw_plugin_harness
         names = make_guardrails_test_data_names(workspace=harness.workspace)
 
@@ -580,7 +542,7 @@ class TestToolSchemaRails:
         assert response["choices"][0]["message"]["tool_calls"][0]["function"]["name"] == "get_weather"
 
     def test_invalid_schema_arguments_blocked(self, igw_plugin_harness: IGWPluginHarness) -> None:
-        """When tool call arguments violate the declared schema, the middleware returns content_filter."""
+        """If the model calls a declared tool with invalid arguments, we return a refusal."""
         harness = igw_plugin_harness
         names = make_guardrails_test_data_names(workspace=harness.workspace)
 
@@ -621,7 +583,7 @@ class TestToolSchemaRails:
         assert response["choices"][0]["message"]["content"] == BLOCKED_REFUSAL_TEXT
 
     def test_no_tools_in_request_blocks_tool_call(self, igw_plugin_harness: IGWPluginHarness) -> None:
-        """When no tools are declared in the request, check_tool_schema blocks tool calls."""
+        """If the request declares no tools, any model tool call is blocked."""
         harness = igw_plugin_harness
         names = make_guardrails_test_data_names(workspace=harness.workspace)
 
@@ -662,11 +624,10 @@ class TestToolSchemaRails:
 
 
 class TestToolInputRails:
-    """tool_input rails — verify that tool result messages trigger the rail.
+    """Tests for checking tool result messages before they are sent back to the model.
 
-    The request contains role="tool" messages (tool results from a previous
-    agentic turn). The middleware routes these through tool_input rails before
-    forwarding to the backend.
+    These requests contain role="tool" messages, which are the results from
+    tools the agent already ran.
     """
 
     ALLOWED_TOOL = "get_weather"
@@ -712,7 +673,7 @@ class TestToolInputRails:
         }
 
     def test_allowed_tool_result_reaches_backend(self, igw_plugin_harness: IGWPluginHarness) -> None:
-        """When a tool result passes the rail, the request is forwarded to the backend."""
+        """If a tool result is from an allowed tool, we send it back to the model."""
         harness = igw_plugin_harness
         names = make_guardrails_test_data_names(workspace=harness.workspace)
 
@@ -766,10 +727,63 @@ class TestToolInputRails:
         harness.assert_called_once(names.main_model_served_name)
         assert response["choices"][0]["message"]["content"] == self.BACKEND_RESPONSE
 
-    def test_blocked_tool_result_returns_immediate_response(self, igw_plugin_harness: IGWPluginHarness) -> None:
-        """When a tool result is blocked by the rail, an ImmediateResponse is returned.
+    def test_tool_input_and_tool_output_logs_both_reported(self, igw_plugin_harness: IGWPluginHarness) -> None:
+        """If both request and response rails run, guardrails_data reports both of them."""
+        harness = igw_plugin_harness
+        names = make_guardrails_test_data_names(workspace=harness.workspace)
 
-        The backend is never called — the rail blocks in process_request.
+        harness.mock_chat_completions(
+            names.main_model_served_name,
+            responses=[ChatCompletion(body=_tool_call_response_body(self.ALLOWED_TOOL))],
+        )
+        harness.add_provider(
+            workspace=harness.workspace,
+            name=names.model_provider_name,
+            served_models={names.main_model_served_name: names.main_model_served_name},
+        )
+
+        config = make_guardrail_config(
+            harness.workspace,
+            names.guardrail_config_name,
+            data={
+                **self._config_data(harness.nim_base_url, allowed_tools=[self.ALLOWED_TOOL]),
+                "rails": {
+                    "tool_input": {"flows": ["check tool allowlist"]},
+                    "tool_output": {"flows": ["check tool allowlist"]},
+                },
+            },
+        )
+        with harness.load_plugin(GUARDRAILS_PLUGIN_NAME):
+            harness.add_virtual_model(
+                workspace=harness.workspace,
+                name=names.request_virtual_model_name,
+                default_model_entity=names.main_model_entity_ref,
+                request_middleware=[make_middleware_call(config)],
+                response_middleware=[make_middleware_call(config)],
+            )
+            response = harness.chat_completions(
+                workspace=harness.workspace,
+                body={
+                    "model": names.request_virtual_model_name,
+                    "messages": self._messages_with_tool_result(self.ALLOWED_TOOL, "Sunny, 25°C"),
+                    "guardrails": {"options": {"log": {"activated_rails": True}}},
+                },
+            )
+
+        harness.assert_called_once(names.main_model_served_name)
+        assert response["choices"][0]["finish_reason"] == "tool_calls"
+
+        guardrails_data = response.get("guardrails_data") or {}
+        activated_rails = guardrails_data["log"]["activated_rails"]
+        assert [(rail["type"], rail["name"]) for rail in activated_rails] == [
+            ("tool_input", "check tool allowlist"),
+            ("tool_output", "check tool allowlist"),
+        ]
+
+    def test_blocked_tool_result_returns_immediate_response(self, igw_plugin_harness: IGWPluginHarness) -> None:
+        """If a tool result is from a disallowed tool, we refuse before calling the model.
+
+        The model should never see the blocked tool result.
         """
         harness = igw_plugin_harness
         names = make_guardrails_test_data_names(workspace=harness.workspace)
@@ -806,7 +820,7 @@ class TestToolInputRails:
         assert response["choices"][0]["message"]["content"] == BLOCKED_REFUSAL_TEXT
 
     def test_non_tool_messages_skip_tool_input_rails(self, igw_plugin_harness: IGWPluginHarness) -> None:
-        """A request without role='tool' messages skips the tool_input rail entirely."""
+        """If the request has no tool results, tool_input rails do not run."""
         harness = igw_plugin_harness
         names = make_guardrails_test_data_names(workspace=harness.workspace)
         backend_text = "The weather in Paris is sunny."
@@ -864,7 +878,7 @@ class TestToolInputRails:
 
 
 class TestToolResultLinkageRails:
-    """tool_input rails — check_tool_result_linkage validates call_id linkage."""
+    """Tests for checking that tool results match tool calls from the same request."""
 
     TOOL_NAME = "get_weather"
     BACKEND_RESPONSE = "The weather in Paris is sunny."
@@ -909,7 +923,7 @@ class TestToolResultLinkageRails:
         ]
 
     def test_valid_linkage_passes_to_backend(self, igw_plugin_harness: IGWPluginHarness) -> None:
-        """When tool_call_id matches a real prior call, the request reaches the backend."""
+        """If a tool result matches a prior assistant tool call, we send it back to the model."""
         harness = igw_plugin_harness
         names = make_guardrails_test_data_names(workspace=harness.workspace)
 
@@ -963,7 +977,7 @@ class TestToolResultLinkageRails:
         assert response["choices"][0]["message"]["content"] == self.BACKEND_RESPONSE
 
     def test_orphaned_call_id_blocked(self, igw_plugin_harness: IGWPluginHarness) -> None:
-        """When tool_call_id doesn't match any prior call, the middleware returns ImmediateResponse."""
+        """If a tool result has no matching assistant tool call, we refuse before calling the model."""
         harness = igw_plugin_harness
         names = make_guardrails_test_data_names(workspace=harness.workspace)
 

@@ -1,0 +1,64 @@
+{
+  "rails": {
+    "tool_output": {
+      "flows": [
+        "check tool allowlist",
+        "check tool arguments",
+        "check tool schema"
+      ]
+    },
+    "tool_input": {
+      "flows": [
+        "check tool result linkage"
+      ]
+    }
+  },
+  "custom_data": {
+    "tool_allowlist": {
+      "allowed_tools": [
+          "governed_optimization_tools__search_internal_knowledge",
+          "governed_optimization_tools__estimate_cost",
+          "governed_optimization_tools__run_eval",
+          "governed_optimization_tools__propose_update"
+      ]
+    },
+    "tool_arguments": {
+      "governed_optimization_tools__run_eval": {
+        "dataset": {
+          "blocked_keywords": [
+            "customer_pii",
+            "production",
+            "confidential"
+          ],
+          "max_length": 120
+        }
+      },
+      "governed_optimization_tools__search_internal_knowledge": {
+        "source": {
+          "blocked_keywords": [
+            "external_web",
+            "public_internet"
+          ],
+          "max_length": 80
+        }
+      },
+      "governed_optimization_tools__propose_update": {
+        "target": {
+          "blocked_keywords": [
+            "production"
+          ],
+          "max_length": 120
+        },
+        "change_summary": {
+          "max_length": 500
+        }
+      }
+    }
+  },
+  "instructions": [
+    {
+      "type": "general",
+      "content": "Governed optimization PoC: allow cost, knowledge, eval, and draft-update tools; block production deployment and unsafe arguments before tool execution."
+    }
+  ]
+}

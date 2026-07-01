@@ -359,7 +359,7 @@ nmp-testing = { workspace = true }
 nmp-build-tools = { workspace = true }
 nemo-platform-plugin = { workspace = true }
 
-nemoguardrails = { path = "/Users/jgulabrai/Projects/NeMo-Guardrails", editable = true }
+nemoguardrails = { git = "https://github.com/JashG/NeMo-Guardrails.git", rev = "0d4084eda60d22464c6d8eb7520015c2dd8ca886" }
 
 nemo-evaluator-plugin = { workspace = true }
 nemo-guardrails-plugin = { workspace = true }

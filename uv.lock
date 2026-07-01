@@ -4252,7 +4252,7 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'bench'", specifier = ">=0.27" },
     { name = "nemo-platform", editable = "packages/nemo_platform" },
     { name = "nemo-platform-plugin", editable = "packages/nemo_platform_plugin" },
-    { name = "nemoguardrails", extras = ["tracing"], editable = "../NeMo-Guardrails" },
+    { name = "nemoguardrails", extras = ["tracing"], git = "https://github.com/JashG/NeMo-Guardrails.git?rev=0d4084eda60d22464c6d8eb7520015c2dd8ca886" },
     { name = "pyyaml", marker = "extra == 'bench'", specifier = ">=6.0" },
 ]
 provides-extras = ["bench"]
@@ -5077,11 +5077,11 @@ requires-dist = [
     { name = "nemo-safe-synthesizer", marker = "extra == 'nemo-safe-synthesizer-plugin'", specifier = "==0.1.2" },
     { name = "nemo-safe-synthesizer", marker = "extra == 'plugins'", specifier = "==0.1.2" },
     { name = "nemo-safe-synthesizer", marker = "extra == 'services'", specifier = "==0.1.2" },
-    { name = "nemoguardrails", extras = ["tracing"], marker = "extra == 'all'", editable = "../NeMo-Guardrails" },
-    { name = "nemoguardrails", extras = ["tracing"], marker = "extra == 'guardrails-service'", editable = "../NeMo-Guardrails" },
-    { name = "nemoguardrails", extras = ["tracing"], marker = "extra == 'nemo-guardrails-plugin'", editable = "../NeMo-Guardrails" },
-    { name = "nemoguardrails", extras = ["tracing"], marker = "extra == 'plugins'", editable = "../NeMo-Guardrails" },
-    { name = "nemoguardrails", extras = ["tracing"], marker = "extra == 'services'", editable = "../NeMo-Guardrails" },
+    { name = "nemoguardrails", extras = ["tracing"], marker = "extra == 'all'", git = "https://github.com/JashG/NeMo-Guardrails.git?rev=0d4084eda60d22464c6d8eb7520015c2dd8ca886" },
+    { name = "nemoguardrails", extras = ["tracing"], marker = "extra == 'guardrails-service'", git = "https://github.com/JashG/NeMo-Guardrails.git?rev=0d4084eda60d22464c6d8eb7520015c2dd8ca886" },
+    { name = "nemoguardrails", extras = ["tracing"], marker = "extra == 'nemo-guardrails-plugin'", git = "https://github.com/JashG/NeMo-Guardrails.git?rev=0d4084eda60d22464c6d8eb7520015c2dd8ca886" },
+    { name = "nemoguardrails", extras = ["tracing"], marker = "extra == 'plugins'", git = "https://github.com/JashG/NeMo-Guardrails.git?rev=0d4084eda60d22464c6d8eb7520015c2dd8ca886" },
+    { name = "nemoguardrails", extras = ["tracing"], marker = "extra == 'services'", git = "https://github.com/JashG/NeMo-Guardrails.git?rev=0d4084eda60d22464c6d8eb7520015c2dd8ca886" },
     { name = "ngcsdk", marker = "extra == 'all'", specifier = ">=4.9.10" },
     { name = "ngcsdk", marker = "extra == 'core-service'", specifier = ">=4.9.10" },
     { name = "ngcsdk", marker = "extra == 'files-service'", specifier = ">=4.9.10" },
@@ -5818,7 +5818,7 @@ dev = [
 [[package]]
 name = "nemoguardrails"
 version = "0.23.0.dev0"
-source = { editable = "../NeMo-Guardrails" }
+source = { git = "https://github.com/JashG/NeMo-Guardrails.git?rev=0d4084eda60d22464c6d8eb7520015c2dd8ca886#0d4084eda60d22464c6d8eb7520015c2dd8ca886" }
 dependencies = [
     { name = "aiohttp", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "aiohttp-retry", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -5846,52 +5846,6 @@ tracing = [
     { name = "aiofiles", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "opentelemetry-api", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiofiles", marker = "extra == 'all' or extra == 'server' or extra == 'tracing'", specifier = ">=24.1.0" },
-    { name = "aiohttp", specifier = ">=3.10.11" },
-    { name = "aiohttp-retry", specifier = ">=2.9.0" },
-    { name = "chainlit", marker = "extra == 'all' or extra == 'chat-ui'", specifier = ">=2.11.0,<3.0.0" },
-    { name = "dataclasses-json", specifier = ">=0.6.7,<0.7.0" },
-    { name = "fast-langdetect", marker = "extra == 'all' or extra == 'multilingual'", specifier = ">=1.0.0" },
-    { name = "fastapi", marker = "extra == 'all' or extra == 'server'", specifier = ">=0.103.0" },
-    { name = "fastembed", marker = "python_full_version >= '3.10' and python_full_version < '3.14'", specifier = ">=0.2.2" },
-    { name = "google-cloud-language", marker = "extra == 'all' or extra == 'gcp'", specifier = ">=2.14.0" },
-    { name = "httpx", specifier = ">=0.24.1" },
-    { name = "jinja2", specifier = ">=3.1.6" },
-    { name = "jsonschema", specifier = ">=4.26.0,<5.0.0" },
-    { name = "lark", specifier = ">=1.1.7" },
-    { name = "nest-asyncio", specifier = ">=1.5.6" },
-    { name = "numpy", marker = "(python_full_version >= '3.10' and python_full_version < '3.12' and extra == 'all') or (python_full_version >= '3.10' and python_full_version < '3.12' and extra == 'eval')", specifier = ">=1.21" },
-    { name = "numpy", marker = "(python_full_version < '3.10' and extra == 'all') or (python_full_version < '3.10' and extra == 'eval')", specifier = ">=1.21,<2.1.0" },
-    { name = "numpy", marker = "(python_full_version == '3.12.*' and extra == 'all') or (python_full_version == '3.12.*' and extra == 'eval')", specifier = ">=1.26" },
-    { name = "numpy", marker = "(python_full_version >= '3.13' and extra == 'all') or (python_full_version >= '3.13' and extra == 'eval')", specifier = ">=2.1.0" },
-    { name = "onnxruntime", marker = "python_full_version == '3.10.*'", specifier = ">=1.17.0,<1.24" },
-    { name = "onnxruntime", marker = "python_full_version >= '3.11'", specifier = ">=1.17.0" },
-    { name = "openai", marker = "extra == 'all' or extra == 'server'", specifier = ">=1.0.0,<3.0.0" },
-    { name = "opentelemetry-api", marker = "extra == 'all' or extra == 'tracing'", specifier = ">=1.27.0,<2.0.0" },
-    { name = "pandas", specifier = ">=1.4.0,<3" },
-    { name = "presidio-analyzer", marker = "(python_full_version < '3.13' and extra == 'all') or (python_full_version < '3.13' and extra == 'sdd')", specifier = ">=2.2" },
-    { name = "presidio-anonymizer", marker = "(python_full_version < '3.13' and extra == 'all') or (python_full_version < '3.13' and extra == 'sdd')", specifier = ">=2.2" },
-    { name = "prompt-toolkit", specifier = ">=3.0" },
-    { name = "protobuf", specifier = ">=5.29.5" },
-    { name = "pydantic", specifier = ">=2.5,<3.0" },
-    { name = "pyyaml", specifier = ">=6.0" },
-    { name = "rich", specifier = ">=13.5.2" },
-    { name = "simpleeval", specifier = ">=0.9.13" },
-    { name = "starlette", marker = "extra == 'all' or extra == 'server'", specifier = ">=0.49.1" },
-    { name = "streamlit", marker = "(python_full_version >= '3.10' and python_full_version < '3.14' and extra == 'all') or (python_full_version >= '3.10' and python_full_version < '3.14' and extra == 'eval')", specifier = ">=1.37.0,<2.0.0" },
-    { name = "torch", marker = "extra == 'all' or extra == 'hf-classifier'", specifier = ">=2.0.0" },
-    { name = "tornado", marker = "python_full_version >= '3.10' and python_full_version < '3.14' and extra == 'eval'", specifier = ">=6.5.0" },
-    { name = "tqdm", marker = "extra == 'all' or extra == 'eval'", specifier = ">=4.65,<5.0" },
-    { name = "transformers", marker = "extra == 'all' or extra == 'hf-classifier'", specifier = ">=4.35.0" },
-    { name = "typer", specifier = ">=0.8" },
-    { name = "uvicorn", marker = "extra == 'all' or extra == 'server'", specifier = ">=0.23" },
-    { name = "watchdog", marker = "extra == 'all' or extra == 'server'", specifier = ">=3.0.0" },
-    { name = "yara-python", marker = "extra == 'all' or extra == 'jailbreak'", specifier = ">=4.5.1,<5.0.0" },
-]
-provides-extras = ["all", "chat-ui", "eval", "gcp", "hf-classifier", "jailbreak", "multilingual", "sdd", "server", "tracing"]
 
 [[package]]
 name = "nemoplatform"
@@ -6801,7 +6755,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27.2" },
     { name = "langchain-nvidia-ai-endpoints", specifier = ">=1.0.0,<2.0.0" },
     { name = "langchain-openai", specifier = ">=1.0.0,<2.0.0" },
-    { name = "nemoguardrails", extras = ["tracing"], editable = "../NeMo-Guardrails" },
+    { name = "nemoguardrails", extras = ["tracing"], git = "https://github.com/JashG/NeMo-Guardrails.git?rev=0d4084eda60d22464c6d8eb7520015c2dd8ca886" },
     { name = "nmp-common", editable = "packages/nmp_common" },
     { name = "openai", specifier = ">=1.61.0" },
     { name = "opentelemetry-distro", specifier = ">=0.41b0" },

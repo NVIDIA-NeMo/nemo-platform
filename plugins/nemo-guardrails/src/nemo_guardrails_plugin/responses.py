@@ -8,7 +8,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from nemo_guardrails_plugin.constants import GUARDRAILS_DATA_MESSAGE_ROLE
-from nemo_guardrails_plugin.rails import build_guardrails_data
+from nemo_guardrails_plugin.rails import build_generation_response_logs, build_guardrails_data
 from nemo_platform.types.guardrail import GenerationLogOptionsParam
 from nemo_platform_plugin.inference_middleware import (
     ImmediateResponse,
@@ -16,6 +16,7 @@ from nemo_platform_plugin.inference_middleware import (
     InferenceResponse,
     ResponseResult,
 )
+from nemoguardrails.rails.llm.options import GenerationLog as LibraryGenerationLog
 from nemoguardrails.rails.llm.options import GenerationResponse
 
 logger = logging.getLogger(__name__)
@@ -142,6 +143,7 @@ def build_blocked_immediate_response_body(
     request_body: dict[str, Any],
     generation_response: GenerationResponse,
     user_log_options: GenerationLogOptionsParam | None,
+    input_generation_logs: list[LibraryGenerationLog] | None = None,
 ) -> dict[str, Any]:
     """
     Build the response body to return when an input or output rail blocks the request.
@@ -162,7 +164,9 @@ def build_blocked_immediate_response_body(
 
     guardrails_data = build_guardrails_data(
         config_id,
-        input_generation_response=generation_response,
+        input_generation_logs=input_generation_logs
+        if input_generation_logs is not None
+        else build_generation_response_logs(generation_response),
         user_log_options=user_log_options,
     )
     if guardrails_data is not None:
@@ -193,7 +197,7 @@ def build_blocked_output_response_body(
     config_id: str,
     original_response: dict[str, Any],
     generation_response: GenerationResponse,
-    input_generation_response: GenerationResponse | None,
+    input_generation_logs: list[LibraryGenerationLog] | None,
     user_log_options: GenerationLogOptionsParam | None,
     return_guardrails_data_as_choice: bool = False,
 ) -> dict[str, Any]:
@@ -216,7 +220,7 @@ def build_blocked_output_response_body(
 
     guardrails_data = build_guardrails_data(
         config_id,
-        input_generation_response=input_generation_response,
+        input_generation_logs=input_generation_logs,
         output_generation_response=generation_response,
         user_log_options=user_log_options,
     )
@@ -241,7 +245,7 @@ def build_output_response_body(
     config_id: str,
     original_response: dict[str, Any],
     generation_response: GenerationResponse | None,
-    input_generation_response: GenerationResponse | None,
+    input_generation_logs: list[LibraryGenerationLog] | None,
     user_log_options: GenerationLogOptionsParam | None,
     return_guardrails_data_as_choice: bool = False,
 ) -> dict[str, Any]:
@@ -263,7 +267,7 @@ def build_output_response_body(
 
     guardrails_data = build_guardrails_data(
         config_id,
-        input_generation_response=input_generation_response,
+        input_generation_logs=input_generation_logs,
         output_generation_response=generation_response,
         user_log_options=user_log_options,
     )

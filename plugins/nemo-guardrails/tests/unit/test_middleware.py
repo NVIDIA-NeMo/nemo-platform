@@ -34,7 +34,7 @@ from nemo_guardrails_plugin.middleware import (
     GUARDRAILS_LIBRARY_LOGGER_NAME,
     PLUGIN_NAME,
     STATE_KEY_GUARDRAILS_REQUEST_BODY,
-    STATE_KEY_INPUT_GENERATION_RESPONSE,
+    STATE_KEY_INPUT_GENERATION_LOGS,
     GuardrailsMiddleware,
     handle_streaming_output_check,
 )
@@ -173,11 +173,16 @@ def _make_entity(
     )
 
 
-def _make_generation_response(*, is_blocked: bool = False) -> GenerationResponse:
+def _make_generation_response(
+    *,
+    is_blocked: bool = False,
+    rail_type: str = "input",
+    rail_name: str = "self check input",
+) -> GenerationResponse:
     return GenerationResponse(
         response=[{"role": "assistant", "content": "I'm sorry, I can't help with that."}],
         log=GenerationLog(
-            activated_rails=[ActivatedRail(type="input", name="self check input", stop=is_blocked)],
+            activated_rails=[ActivatedRail(type=rail_type, name=rail_name, stop=is_blocked)],
             stats=GenerationStats(input_rails_duration=0.1, total_duration=0.1),
         ),
     )
@@ -632,12 +637,14 @@ class TestProcessRequest:
         with patch.object(middleware, "_run_rails", new=AsyncMock(return_value=generation_response)):
             result = await _process_request(middleware, request_body, {}, _entity_source(), ctx=ctx)
 
-        assert result == request_body
+        assert result == {
+            "model": request_body["model"],
+            "messages": request_body["messages"],
+        }
         assert result is not request_body
-        # Successful input rails must hand off the GenerationResponse via
-        # ``ctx.state`` so ``process_response`` can fold it into the final
-        # ``guardrails_data`` payload.
-        assert ctx.state(PLUGIN_NAME).get(STATE_KEY_INPUT_GENERATION_RESPONSE) is generation_response
+        # Successful input rails hand off only their logs via ``ctx.state`` so
+        # ``process_response`` can fold them into the final ``guardrails_data``.
+        assert ctx.state(PLUGIN_NAME).get(STATE_KEY_INPUT_GENERATION_LOGS) == [generation_response.log]
         assert ctx.response_body_annotations["guardrails_data"]["config_ids"] == ["my-workspace/my-config"]
 
     async def test_tool_input_passes_then_input_rails_still_run(self, middleware: GuardrailsMiddleware) -> None:
@@ -654,17 +661,29 @@ class TestProcessRequest:
                 },
                 {"role": "tool", "tool_call_id": "call_1", "name": "get_weather", "content": "Sunny"},
             ],
+            "guardrails": {"options": {"log": {"activated_rails": True, "stats": True}}},
         }
         source = _entity_source(input_flows=["self check input"], tool_input_flows=["check tool result linkage"])
-        tool_input_response = _make_generation_response(is_blocked=False)
-        input_response = _make_generation_response(is_blocked=False)
+        tool_input_response = _make_generation_response(
+            is_blocked=False,
+            rail_type="tool_input",
+            rail_name="check tool result linkage",
+        )
+        input_response = _make_generation_response(
+            is_blocked=False,
+            rail_type="input",
+            rail_name="self check input",
+        )
         run_rails_mock = AsyncMock(side_effect=[tool_input_response, input_response])
         ctx = _make_ctx(request_body)
 
         with patch.object(middleware, "_run_rails", new=run_rails_mock):
             result = await _process_request(middleware, request_body, {}, source, ctx=ctx)
 
-        assert result == request_body
+        assert result == {
+            "model": request_body["model"],
+            "messages": request_body["messages"],
+        }
         assert run_rails_mock.call_count == 2
 
         first_call = run_rails_mock.call_args_list[0]
@@ -676,7 +695,53 @@ class TestProcessRequest:
         assert second_call.kwargs["rail_types"] == ["input"]
         assert second_call.kwargs.get("context_vars") is None
 
-        assert ctx.state(PLUGIN_NAME).get(STATE_KEY_INPUT_GENERATION_RESPONSE) is input_response
+        stored_logs = ctx.state(PLUGIN_NAME).get(STATE_KEY_INPUT_GENERATION_LOGS)
+        assert stored_logs == [tool_input_response.log, input_response.log]
+        assert [rail.type for log in stored_logs for rail in log.activated_rails] == ["tool_input", "input"]
+        assert [rail.name for log in stored_logs for rail in log.activated_rails] == [
+            "check tool result linkage",
+            "self check input",
+        ]
+
+        guardrails_data = ctx.response_body_annotations["guardrails_data"]
+        assert [rail["type"] for rail in guardrails_data["log"]["activated_rails"]] == ["tool_input", "input"]
+        assert guardrails_data["log"]["stats"]["input_rails_duration"] == 0.2
+
+    async def test_tool_input_pass_without_input_rails_is_stored(self, middleware: GuardrailsMiddleware) -> None:
+        request_body = {
+            "model": "ws/llama",
+            "messages": [
+                {"role": "user", "content": "What's the weather?"},
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {"id": "call_1", "type": "function", "function": {"name": "get_weather", "arguments": "{}"}}
+                    ],
+                },
+                {"role": "tool", "tool_call_id": "call_1", "name": "get_weather", "content": "Sunny"},
+            ],
+            "guardrails": {"options": {"log": {"activated_rails": True}}},
+        }
+        source = _entity_source(input_flows=[], tool_input_flows=["check tool result linkage"])
+        tool_input_response = _make_generation_response(
+            is_blocked=False,
+            rail_type="tool_input",
+            rail_name="check tool result linkage",
+        )
+        ctx = _make_ctx(request_body)
+
+        with patch.object(middleware, "_run_rails", new=AsyncMock(return_value=tool_input_response)):
+            result = await _process_request(middleware, request_body, {}, source, ctx=ctx)
+
+        assert result == {
+            "model": request_body["model"],
+            "messages": request_body["messages"],
+        }
+        assert ctx.state(PLUGIN_NAME).get(STATE_KEY_INPUT_GENERATION_LOGS) == [tool_input_response.log]
+
+        guardrails_data = ctx.response_body_annotations["guardrails_data"]
+        assert [rail["type"] for rail in guardrails_data["log"]["activated_rails"]] == ["tool_input"]
 
     async def test_user_log_options_forwarded_to_run_rails(self, middleware: GuardrailsMiddleware) -> None:
         request_body = {
@@ -733,7 +798,7 @@ class TestProcessRequest:
         assert isinstance(result, ImmediateResponse)
         assert not isinstance(result.data, AsyncIterator)
 
-        data: dict[str, Any] = result.data  # type: ignore[assignment]
+        data: dict[str, Any] = result.data
         assert data["id"].startswith("chatcmpl-")
         assert data["model"] == "ws/llama"
         assert data["choices"] == [
@@ -1117,7 +1182,7 @@ class TestProcessResponse:
         # Mimic ``process_request`` having stashed its GenerationResponse
         # so ``process_response`` of the same request can fold it into the
         # final ``guardrails_data`` payload.
-        ctx.state(PLUGIN_NAME).set(STATE_KEY_INPUT_GENERATION_RESPONSE, input_response)
+        ctx.state(PLUGIN_NAME).set(STATE_KEY_INPUT_GENERATION_LOGS, [input_response.log])
         mock_middleware_response: dict[str, Any] = {
             **response_result,
             "guardrails_data": {"config_ids": ["my-workspace/my-config"]},
@@ -1139,7 +1204,7 @@ class TestProcessResponse:
         assert result == response_result
         call_kwargs = mock_build.call_args.kwargs
         assert call_kwargs["generation_response"] is None
-        assert call_kwargs["input_generation_response"] is input_response
+        assert call_kwargs["input_generation_logs"] == [input_response.log]
 
     async def test_response_middleware_clears_request_guardrails_annotation_for_return_choice(
         self, middleware: GuardrailsMiddleware
@@ -1152,7 +1217,7 @@ class TestProcessResponse:
         response = _make_response(response_result)
         response.response_body_annotations["guardrails_data"] = {"config_ids": ["request/fallback"]}
         ctx = _make_ctx(request_body)
-        ctx.state(PLUGIN_NAME).set(STATE_KEY_INPUT_GENERATION_RESPONSE, _make_generation_response())
+        ctx.state(PLUGIN_NAME).set(STATE_KEY_INPUT_GENERATION_LOGS, [_make_generation_response().log])
         ctx.state(PLUGIN_NAME).set(STATE_KEY_GUARDRAILS_REQUEST_BODY, parse_guardrails_request({"return_choice": True}))
 
         result = await middleware.process_response(ctx, response, _entity_source())
@@ -1380,7 +1445,7 @@ class TestProcessResponse:
         output_response = _make_generation_response(is_blocked=is_blocked)
         input_response = _make_generation_response()
         ctx = _make_ctx(request_body)
-        ctx.state(PLUGIN_NAME).set(STATE_KEY_INPUT_GENERATION_RESPONSE, input_response)
+        ctx.state(PLUGIN_NAME).set(STATE_KEY_INPUT_GENERATION_LOGS, [input_response.log])
 
         build_response_path = (
             "nemo_guardrails_plugin.middleware.build_blocked_output_response_body"
@@ -1405,7 +1470,7 @@ class TestProcessResponse:
                     ctx=ctx,
                 )
 
-        assert mock_build.call_args.kwargs["input_generation_response"] is input_response
+        assert mock_build.call_args.kwargs["input_generation_logs"] == [input_response.log]
 
     # -------------------------------------------------------------------
     # The returned ``InferenceResponse`` must have ``typed_body=None``.

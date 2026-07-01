@@ -36,15 +36,15 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol, cast
+from typing import Any, Protocol
 
-from langchain_core.language_models.base import BaseLanguageModel
 from nemo_platform.types.guardrail import OutputRailsStreamingConfig
 from nemo_platform.types.guardrail import RailsConfig as PlatformRailsConfig
 from nemo_platform_plugin.inference_middleware import OpenAICompatibleInferenceTarget
 from nemoguardrails import RailsConfig as LibraryRailsConfig
 from nemoguardrails.rails.llm.config import Model
 from nemoguardrails.rails.llm.llmrails import LLMRails
+from nemoguardrails.types import LLMModel
 from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
@@ -716,7 +716,7 @@ class LLMRailsCache:
         self,
         stable: StableRailsConfig,
         *,
-        main_llm: BaseLanguageModel | None = None,
+        main_llm: LLMModel | None = None,
         provenance: Provenance | None = None,
     ) -> AsyncIterator[LLMRails]:
         """Lease one :class:`LLMRails` for one logical operation.
@@ -876,14 +876,14 @@ class LLMRailsCache:
             )
 
     @staticmethod
-    def _reset(rails: LLMRails, main_llm: BaseLanguageModel | None) -> None:
+    def _reset(rails: LLMRails, main_llm: LLMModel | None) -> None:
         """Wipe per-request shared state and apply this request's main LLM."""
         # Prevent leaks by clearing shared state inside a LLMRails instance.
         rails.events_history_cache.clear()
         rails._explain_info = None
-        # Inject main_llm. Even if main_llm is None, we want this to persist
-        # to prevent subsequent leases without main_llms from reusing the wrong model.
-        # LLMRails.update_llm accepts raw LangChain models at runtime via its
-        # legacy adapter path, but its type signature only advertises LLMModel.
-        # Keep the cast localized to this boundary between IGW and LLMRails.
-        rails.update_llm(cast(Any, main_llm))
+        # Even when no main LLM is provided, clear the previous lease's model
+        # so a warmed or reused instance cannot leak routing across requests.
+        if main_llm is None:
+            rails.llm = None
+            return
+        rails.update_llm(main_llm)

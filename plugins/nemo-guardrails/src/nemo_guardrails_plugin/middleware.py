@@ -5,10 +5,9 @@ import asyncio
 import copy
 import logging
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, TypeGuard
 
 import nemo_platform
-from langchain_core.language_models.base import BaseLanguageModel
 from nemo_guardrails_plugin.constants import (
     GUARDRAILS_PLUGIN_CONFIG_TYPE,
     PROCESS_REQUEST_RAIL_TYPES,
@@ -60,12 +59,9 @@ from nemo_guardrails_plugin.responses import (
 from nemo_guardrails_plugin.schemas import GuardrailsRequest
 from nemo_guardrails_plugin.streaming import (
     ChatCompletionChunkMetadata,
-    buffer_chat_completion_stream,
     build_streaming_error_response,
     chunks_to_strings,
     close_async_iterator,
-    replay_chunks,
-    response_body_to_streaming_chunks,
     strings_to_chunks,
 )
 from nemo_guardrails_plugin.transforms import GenerationResponseMapper
@@ -87,7 +83,9 @@ from nemo_platform_plugin.inference_middleware import (
 from nemo_platform_plugin.refs import parse_entity_ref
 from nemo_platform_plugin.sdk_provider import get_async_platform_sdk
 from nemoguardrails.rails.llm.llmrails import LLMRails
+from nemoguardrails.rails.llm.options import GenerationLog as LibraryGenerationLog
 from nemoguardrails.rails.llm.options import GenerationResponse
+from nemoguardrails.types import LLMModel
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +100,15 @@ GUARDRAILS_LIBRARY_LOGGER_NAME = "nemoguardrails"
 # request; ``ctx.state`` already namespaces by ``PLUGIN_NAME`` so the bare keys
 # below are safe.
 STATE_KEY_GUARDRAILS_REQUEST_BODY = "guardrails"
-STATE_KEY_INPUT_GENERATION_RESPONSE = "input_generation_response"
+STATE_KEY_INPUT_GENERATION_LOGS = "input_generation_logs"
+
+
+def _is_response_body(value: object) -> TypeGuard[dict[str, Any]]:
+    return isinstance(value, dict)
+
+
+def _is_streaming_response(value: object) -> TypeGuard[AsyncIterator[dict[str, Any]]]:
+    return isinstance(value, AsyncIterator)
 
 
 def set_guardrails_library_log_level() -> None:
@@ -349,6 +355,7 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
         sanitized_body = sanitize_request_body_for_proxy(request.body)
         request = InferenceRequest(body=sanitized_body, headers=request.headers, path=request.path)
 
+        # Return early if no request-side rails are configured.
         has_input_flows = source_has_input_flows(source)
         has_tool_input_flows = source_has_tool_input_flows(source)
         if not has_input_flows and not has_tool_input_flows:
@@ -359,11 +366,16 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
             logger.warning("Request body is missing 'messages' key. Skipping input rails.")
             return request
 
-        has_tool_results = any(m.get("role") == "tool" for m in messages)
+        # User-requested log detail. Controls how much of each rail run is
+        # returned under ``guardrails_data.log``.
         user_log_options = extract_log_options_from_request(guardrails)
+        # Logs for request-side rails that the response hook will merge later.
+        request_generation_logs: list[LibraryGenerationLog] = []
 
+        # Execute tool input rails if the request contains a tool message.
+        has_tool_results = any(m.get("role") == "tool" for m in messages)
         if has_tool_results and has_tool_input_flows:
-            generation_response = await self._run_rails(
+            tool_input_generation_response = await self._run_rails(
                 source,
                 request.body,
                 request.headers,
@@ -373,50 +385,62 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
                 error_msg="Failed to run tool input rails",
                 context_vars={"messages": messages},
             )
-            if is_blocked_generation_response(generation_response):
+
+            if tool_input_generation_response.log is not None:
+                request_generation_logs.append(tool_input_generation_response.log)
+
+            if is_blocked_generation_response(tool_input_generation_response):
                 return build_immediate_response(
                     response_body=build_blocked_immediate_response_body(
                         config_id,
                         request.body,
-                        generation_response,
+                        tool_input_generation_response,
                         user_log_options,
+                        input_generation_logs=request_generation_logs,
                     )
                 )
 
-        if not has_input_flows:
-            return request
-
-        generation_response = await self._run_rails(
-            source,
-            request.body,
-            request.headers,
-            messages=messages,
-            rail_types=PROCESS_REQUEST_RAIL_TYPES,
-            user_log_options=user_log_options,
-            error_msg="Failed to run input rails",
-        )
-
-        if is_blocked_generation_response(generation_response):
-            return build_immediate_response(
-                response_body=build_blocked_immediate_response_body(
-                    config_id,
-                    request.body,
-                    generation_response,
-                    user_log_options,
-                )
+        # Always execute input rails if one if configured.
+        if has_input_flows:
+            input_generation_response = await self._run_rails(
+                source,
+                request.body,
+                request.headers,
+                messages=messages,
+                rail_types=PROCESS_REQUEST_RAIL_TYPES,
+                user_log_options=user_log_options,
+                error_msg="Failed to run input rails",
             )
 
-        # Store the generation_response in plugin state so it can be used by the response middleware
-        # to build the `guardrails_data` for the input and output rails.
-        logger.debug("Storing process_request GenerationResponse for %s", provenance.label)
-        plugin_state.set(STATE_KEY_INPUT_GENERATION_RESPONSE, generation_response)
+            if input_generation_response.log is not None:
+                request_generation_logs.append(input_generation_response.log)
+
+            if is_blocked_generation_response(input_generation_response):
+                return build_immediate_response(
+                    response_body=build_blocked_immediate_response_body(
+                        config_id,
+                        request.body,
+                        input_generation_response,
+                        user_log_options,
+                        input_generation_logs=request_generation_logs,
+                    )
+                )
+
+        # Return early if no request-side rail logs were produced.
+        if not request_generation_logs:
+            return request
+
+        # Store request-side rail logs so response middleware can merge them
+        # into the final `guardrails_data`.
+        logger.debug("Storing process_request GenerationLogs for %s", provenance.label)
+        plugin_state.set(STATE_KEY_INPUT_GENERATION_LOGS, request_generation_logs)
 
         # If this request does not contain a response middleware call, we need to inject the input rails'
         # `guardrails_data` into the response body. IGW's proxy handles merging `response_body_annotations`
         # into the final response body before returning to the caller.
         guardrails_data = build_guardrails_data(
             config_id,
-            input_generation_response=generation_response,
+            input_generation_logs=request_generation_logs,
             user_log_options=user_log_options,
         )
         if guardrails_data is not None:
@@ -437,6 +461,8 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
         request_body = ctx.original_request.body
         request_headers = ctx.original_request.headers
         response_result = response.result
+        streaming_response = response_result if _is_streaming_response(response_result) else None
+        is_streaming_response = streaming_response is not None
 
         messages = request_body.get("messages")
         if not isinstance(messages, list):
@@ -450,7 +476,8 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
         logger.info("Processing response with guardrail %s", provenance.label)
 
         plugin_state = ctx.state(PLUGIN_NAME)
-        input_generation_response: GenerationResponse | None = plugin_state.get(STATE_KEY_INPUT_GENERATION_RESPONSE)
+        input_generation_logs: list[LibraryGenerationLog] | None = plugin_state.get(STATE_KEY_INPUT_GENERATION_LOGS)
+
         # Get `guardrails` field from the incoming request body, stored in `ctx.state` by
         # `process_request`. If no request middleware ran, parse the field directly from the
         # request body.
@@ -460,12 +487,17 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
             else parse_guardrails_request(request_body.get("guardrails", None))
         )
 
+        # User-requested log detail. Controls how much of each rail run is
+        # returned under ``guardrails_data.log``.
         user_log_options = extract_log_options_from_request(guardrails_request)
+        # User-requested guardrails data format. Controls the field in which the
+        # final guardrails data is returned in the response body.
         return_guardrails_data_as_choice = extract_return_choice_from_request(guardrails_request)
 
         has_output_flows = source_has_output_flows(source)
         has_tool_output_flows = source_has_tool_output_flows(source)
 
+        # Return early if no response-side rails are configured.
         if not has_output_flows and not has_tool_output_flows:
             logger.debug("No output or tool_output flows configured for %s. Skipping output rails.", provenance.label)
             if isinstance(response_result, AsyncIterator):
@@ -477,7 +509,7 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
                     config_id=config_id,
                     original_response=response_result,
                     generation_response=None,
-                    input_generation_response=input_generation_response,
+                    input_generation_logs=input_generation_logs,
                     user_log_options=user_log_options,
                     return_guardrails_data_as_choice=return_guardrails_data_as_choice,
                 ),
@@ -492,48 +524,40 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
                 status_code=400,
             )
 
-        if isinstance(response_result, AsyncIterator) and has_tool_output_flows:
-            if has_output_flows:
-                streaming_config = extract_output_rails_streaming_config(source)
-                if streaming_config is not None and streaming_config.enabled is False:
-                    raise InferenceMiddlewareError(
-                        f"Streaming output rails are disabled for config {provenance.label}. "
-                        "Set rails.output.streaming.enabled=true to use output rails with streaming responses.",
-                        status_code=400,
-                    )
-            return InferenceResponse(
-                self._handle_streaming_tool_output_check(
-                    response_result=response_result,
-                    response=response,
-                    source=source,
-                    request_body=request_body,
-                    request_headers=request_headers,
-                    messages=messages,
-                    config_id=config_id,
-                    input_generation_response=input_generation_response,
-                    user_log_options=user_log_options,
-                    return_guardrails_data_as_choice=return_guardrails_data_as_choice,
-                    has_output_flows=has_output_flows,
-                ),
-                response.headers,
-                None,
-                dict(response.response_body_annotations),
+        # If given a streaming result and an output rail to run, ensure streaming output rails are enabled
+        if is_streaming_response and has_output_flows:
+            streaming_config = extract_output_rails_streaming_config(source)
+            if streaming_config is not None and streaming_config.enabled is False:
+                raise InferenceMiddlewareError(
+                    f"Streaming output rails are disabled for config {provenance.label}. "
+                    "Set rails.output.streaming.enabled=true to use output rails with streaming responses.",
+                    status_code=400,
+                )
+
+        if is_streaming_response and has_tool_output_flows:
+            await close_async_iterator(streaming_response)
+            # TODO: Support streaming tool-call rails by buffering the stream,
+            # reconstructing complete tool_calls, and only then replaying or
+            # replacing the chunks.
+            raise InferenceMiddlewareError(
+                f"Streaming tool_output rails are not supported for config {provenance.label}. "
+                "Set stream=false in the request body to use tool_output rails.",
+                status_code=400,
             )
 
-        finish_reason = (
-            response_result.get("choices", [{}])[0].get("finish_reason") if isinstance(response_result, dict) else None
-        )
+        response_body = response_result if _is_response_body(response_result) else None
+        finish_reason = None
         tool_calls = []
-        if isinstance(response_result, dict):
-            choices = response_result.get("choices") or []
-            if choices and isinstance(choices[0], dict):
+        if response_body is not None:
+            choices = response_body.get("choices")
+            if isinstance(choices, list) and choices and isinstance(choices[0], dict):
+                finish_reason = choices[0].get("finish_reason")
                 message = choices[0].get("message") or {}
                 if isinstance(message, dict):
                     tool_calls = message.get("tool_calls") or []
         is_tool_call_response = finish_reason == "tool_calls" or bool(tool_calls)
 
-        if is_tool_call_response and has_tool_output_flows:
-            assert isinstance(response_result, dict)
+        if response_body is not None and is_tool_call_response and has_tool_output_flows:
             declared_tools = request_body.get("tools") or []
             logger.debug(
                 "Running tool_output rails for %s: finish_reason=%r tool_names=%s declared_tool_names=%s",
@@ -546,7 +570,7 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
                 source,
                 request_body,
                 request_headers,
-                messages=messages + [build_assistant_message_from_response_result(response_result)],
+                messages=messages + [build_assistant_message_from_response_result(response_body)],
                 rail_types=PROCESS_TOOL_OUTPUT_RAIL_TYPES,
                 user_log_options=user_log_options,
                 error_msg="Failed to run tool output rails",
@@ -560,9 +584,9 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
                     response=response,
                     response_body=build_blocked_output_response_body(
                         config_id=config_id,
-                        original_response=response_result,
+                        original_response=response_body,
                         generation_response=generation_response,
-                        input_generation_response=input_generation_response,
+                        input_generation_logs=input_generation_logs,
                         user_log_options=user_log_options,
                         return_guardrails_data_as_choice=return_guardrails_data_as_choice,
                     ),
@@ -572,9 +596,9 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
                 response=response,
                 response_body=build_output_response_body(
                     config_id=config_id,
-                    original_response=response_result,
-                    generation_response=None,
-                    input_generation_response=input_generation_response,
+                    original_response=response_body,
+                    generation_response=generation_response,
+                    input_generation_logs=input_generation_logs,
                     user_log_options=user_log_options,
                     return_guardrails_data_as_choice=return_guardrails_data_as_choice,
                 ),
@@ -589,15 +613,17 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
                 finish_reason,
                 len(tool_calls),
             )
-            if isinstance(response_result, AsyncIterator):
+            if streaming_response is not None:
+                return response
+            if response_body is None:
                 return response
             return build_inference_response(
                 response=response,
                 response_body=build_output_response_body(
                     config_id=config_id,
-                    original_response=response_result,
+                    original_response=response_body,
                     generation_response=None,
-                    input_generation_response=input_generation_response,
+                    input_generation_logs=input_generation_logs,
                     user_log_options=user_log_options,
                     return_guardrails_data_as_choice=return_guardrails_data_as_choice,
                 ),
@@ -605,15 +631,7 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
             )
 
         # Streaming: the lease must stay held for the life of the iterator.
-        if isinstance(response_result, AsyncIterator):
-            streaming_config = extract_output_rails_streaming_config(source)
-            if streaming_config is not None and streaming_config.enabled is False:
-                raise InferenceMiddlewareError(
-                    f"Streaming output rails are disabled for config {provenance.label}. "
-                    "Set rails.output.streaming.enabled=true to use output rails with streaming responses.",
-                    status_code=400,
-                )
-
+        if streaming_response is not None:
             # Lease setup is split eager vs lazy.
             #
             # Eager: cache null-check, stabilize, build_main_llm. Failures
@@ -649,7 +667,7 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
                         async with cache.lease(stable, main_llm=main_llm, provenance=lease_provenance) as llm_rails:
                             inner = handle_streaming_output_check(
                                 llm_rails,
-                                response_result,
+                                streaming_response,
                                 captured_request_body,
                                 captured_messages,
                             )
@@ -681,11 +699,14 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
 
             return InferenceResponse(_streaming_with_lease(), response.headers, None, dict(response.response_body_annotations))
 
+        if response_body is None:
+            return response
+
         generation_response = await self._run_rails(
             source,
             request_body,
             request_headers,
-            messages=messages + [build_assistant_message_from_response_result(response_result)],
+            messages=messages + [build_assistant_message_from_response_result(response_body)],
             rail_types=PROCESS_RESPONSE_RAIL_TYPES,
             user_log_options=user_log_options,
             error_msg="Failed to run output rails",
@@ -701,9 +722,9 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
             response=response,
             response_body=response_body_builder(
                 config_id=config_id,
-                original_response=response_result,
+                original_response=response_body,
                 generation_response=generation_response,
-                input_generation_response=input_generation_response,
+                input_generation_logs=input_generation_logs,
                 user_log_options=user_log_options,
                 return_guardrails_data_as_choice=return_guardrails_data_as_choice,
             ),
@@ -719,103 +740,6 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
         if sdk is None:
             raise RuntimeError("NeMo Platform SDK is not initialized. Was on_startup() called?")
         return sdk
-
-    async def _handle_streaming_tool_output_check(
-        self,
-        *,
-        response_result: AsyncIterator[dict[str, Any]],
-        response: InferenceResponse,
-        source: GuardrailConfigSource,
-        request_body: dict[str, Any],
-        request_headers: dict[str, str],
-        messages: list[dict[str, Any]],
-        config_id: str,
-        input_generation_response: GenerationResponse | None,
-        user_log_options: GenerationLogOptionsParam | None,
-        return_guardrails_data_as_choice: bool,
-        has_output_flows: bool,
-    ) -> AsyncIterator[dict[str, Any]]:
-        """Buffer streamed responses so tool calls can be checked before execution."""
-        try:
-            buffered = await buffer_chat_completion_stream(response_result)
-
-            if buffered.is_tool_call_response:
-                declared_tools = request_body.get("tools") or []
-                try:
-                    buffered_finish_reason = buffered.response_body["choices"][0].get("finish_reason")
-                except (KeyError, IndexError, TypeError):
-                    buffered_finish_reason = None
-                logger.debug(
-                    "Running streaming tool_output rails for %s: finish_reason=%r tool_names=%s declared_tool_names=%s",
-                    provenance_of(source).label,
-                    buffered_finish_reason,
-                    [tc.get("function", {}).get("name") for tc in buffered.tool_calls],
-                    [tool.get("function", {}).get("name") for tool in declared_tools if isinstance(tool, dict)],
-                )
-                generation_response = await self._run_rails(
-                    source,
-                    request_body,
-                    request_headers,
-                    messages=messages + [build_assistant_message_from_response_result(buffered.response_body)],
-                    rail_types=PROCESS_TOOL_OUTPUT_RAIL_TYPES,
-                    user_log_options=user_log_options,
-                    error_msg="Failed to run streaming tool output rails",
-                    context_vars={
-                        "tool_calls": buffered.tool_calls,
-                        "declared_tools": declared_tools,
-                    },
-                )
-                if is_blocked_generation_response(generation_response):
-                    blocked_body = build_blocked_output_response_body(
-                        config_id=config_id,
-                        original_response=buffered.response_body,
-                        generation_response=generation_response,
-                        input_generation_response=input_generation_response,
-                        user_log_options=user_log_options,
-                        return_guardrails_data_as_choice=return_guardrails_data_as_choice,
-                    )
-                    async for chunk in response_body_to_streaming_chunks(
-                        blocked_body,
-                        fallback_model=str(request_body.get("model", "")),
-                    ):
-                        yield chunk
-                    return
-
-                async for chunk in replay_chunks(buffered.chunks):
-                    yield chunk
-                return
-
-            if has_output_flows:
-                cache, stable, lease_provenance, main_llm = await self._prepare_lease_with_503(
-                    source, request_body, request_headers, "Failed to run streaming output rails"
-                )
-                with platform_headers_context(self._require_sdk()):
-                    async with cache.lease(stable, main_llm=main_llm, provenance=lease_provenance) as llm_rails:
-                        inner = handle_streaming_output_check(
-                            llm_rails,
-                            replay_chunks(buffered.chunks),
-                            dict(request_body),
-                            copy.deepcopy(messages),
-                        )
-                        try:
-                            async for chunk in inner:
-                                yield chunk
-                        finally:
-                            try:
-                                await close_async_iterator(inner)
-                            except (asyncio.CancelledError, GeneratorExit):
-                                raise
-                            except Exception:
-                                logger.exception("Failed to close streaming output rails iterator")
-                return
-
-            async for chunk in replay_chunks(buffered.chunks):
-                yield chunk
-        except Exception as exc:
-            logger.exception("Streaming tool output rails failed")
-            yield build_streaming_error_response(exc)
-        finally:
-            await close_async_iterator(response_result)
 
     @staticmethod
     def _require_supported_config_type(config_type: str) -> None:
@@ -935,7 +859,7 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
         request_body: dict[str, Any],
         request_headers: dict[str, str],
         error_msg: str,
-    ) -> tuple[LLMRailsCache, StableRailsConfig, Provenance, BaseLanguageModel]:
+    ) -> tuple[LLMRailsCache, StableRailsConfig, Provenance, LLMModel]:
         """Run :meth:`_prepare_lease` with the plugin's error-mapping policy.
 
         Single source of truth for "lease setup → HTTP status" so non-streaming
@@ -961,7 +885,7 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
         source: GuardrailConfigSource,
         request_body: dict[str, Any],
         request_headers: dict[str, str],
-    ) -> tuple[LLMRailsCache, StableRailsConfig, Provenance, BaseLanguageModel]:
+    ) -> tuple[LLMRailsCache, StableRailsConfig, Provenance, LLMModel]:
         """Run the eager portion of lease setup; return what ``cache.lease`` needs.
 
         Eager stabilize + :func:`build_main_llm` (lease itself is deferred to

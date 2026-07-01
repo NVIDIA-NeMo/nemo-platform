@@ -25,6 +25,7 @@ from nemo_guardrails_plugin.llmrails_cache import (
 )
 from nemo_guardrails_plugin.rails import (
     build_generate_async_options,
+    build_generation_response_logs,
     build_guardrails_data,
     build_main_llm,
 )
@@ -306,7 +307,7 @@ class TestBuildGuardrailsData:
                 internal_events=True,
                 colang_history=True,
             ),
-            input_generation_response=input_response if include_input else None,
+            input_generation_logs=build_generation_response_logs(input_response) if include_input else None,
             output_generation_response=output_response if include_output else None,
         )
 
@@ -328,7 +329,7 @@ class TestBuildGuardrailsData:
         result = build_guardrails_data(
             config_id="ws/my-config",
             user_log_options={"activated_rails": True},
-            input_generation_response=_response(),
+            input_generation_logs=build_generation_response_logs(_response()),
             output_generation_response=None,
         )
 
@@ -356,7 +357,7 @@ class TestBuildGuardrailsData:
         result = build_guardrails_data(
             config_id="ws/my-config",
             user_log_options={"stats": True},
-            input_generation_response=input_response,
+            input_generation_logs=build_generation_response_logs(input_response),
             output_generation_response=output_response,
         )
 
