@@ -556,29 +556,42 @@ class TestIntakeAuthorization:
         assert read_scoped["allowed"] is False
 
 
-class TestGenericEntitiesApiBlocked:
-    """Verify that Viewer/Editor roles cannot access the generic Entities API.
+class TestGenericEntitiesApiPermissions:
+    """Verify entity RBAC: Viewer can read, Editor can CRUD, Admin and services can do everything.
 
-    The entities.* permissions are intentionally not assigned to any role,
-    so only PlatformAdmin and service principals can access these endpoints.
+    entities.read is granted to Viewer; entities.create/update/delete to Editor.
     """
 
-    # /apis/entities/v2/entities/{id} is excluded because it has no workspace segment,
-    # so the cross-workspace GET rule allows any authenticated user (tracked in #3992).
-    ENTITY_ENDPOINTS: ClassVar[list[tuple[str, str]]] = [
+    ENTITY_READ_ENDPOINTS: ClassVar[list[tuple[str, str]]] = [
         ("GET", "/apis/entities/v2/workspaces/my-ws/entities/evaluation_config"),
-        ("POST", "/apis/entities/v2/workspaces/my-ws/entities/evaluation_config"),
         ("GET", "/apis/entities/v2/workspaces/my-ws/entities/guardrail_config/cfg-1"),
+    ]
+
+    ENTITY_WRITE_ENDPOINTS: ClassVar[list[tuple[str, str]]] = [
+        ("POST", "/apis/entities/v2/workspaces/my-ws/entities/evaluation_config"),
         ("PUT", "/apis/entities/v2/workspaces/my-ws/entities/role_binding/rb-1"),
         ("DELETE", "/apis/entities/v2/workspaces/my-ws/entities/evaluation_config/eval-1"),
     ]
+
+    ENTITY_ENDPOINTS: ClassVar[list[tuple[str, str]]] = ENTITY_READ_ENDPOINTS + ENTITY_WRITE_ENDPOINTS
 
     def _setup_principals(self, static_authz_data, principals):
         static_authz_data["authz"]["principals"] = principals
         set_policy_data(static_authz_data)
 
-    @pytest.mark.parametrize("method,path", ENTITY_ENDPOINTS)
-    def test_viewer_denied(self, static_authz_data, method, path):
+    @pytest.mark.parametrize("method,path", ENTITY_READ_ENDPOINTS)
+    def test_viewer_can_read(self, static_authz_data, method, path):
+        self._setup_principals(
+            static_authz_data,
+            {
+                "viewer@test.com": {"workspaces": {"my-ws": ["Viewer"]}},
+            },
+        )
+        result = evaluate("allow", {"principal_id": "viewer@test.com", "method": method, "path": path})
+        assert result["allowed"] is True, f"Viewer should be allowed {method} {path}"
+
+    @pytest.mark.parametrize("method,path", ENTITY_WRITE_ENDPOINTS)
+    def test_viewer_cannot_write(self, static_authz_data, method, path):
         self._setup_principals(
             static_authz_data,
             {
@@ -589,7 +602,7 @@ class TestGenericEntitiesApiBlocked:
         assert result["allowed"] is False, f"Viewer should be denied {method} {path}"
 
     @pytest.mark.parametrize("method,path", ENTITY_ENDPOINTS)
-    def test_editor_denied(self, static_authz_data, method, path):
+    def test_editor_allowed(self, static_authz_data, method, path):
         self._setup_principals(
             static_authz_data,
             {
@@ -597,7 +610,7 @@ class TestGenericEntitiesApiBlocked:
             },
         )
         result = evaluate("allow", {"principal_id": "editor@test.com", "method": method, "path": path})
-        assert result["allowed"] is False, f"Editor should be denied {method} {path}"
+        assert result["allowed"] is True, f"Editor should be allowed {method} {path}"
 
     @pytest.mark.parametrize("method,path", ENTITY_ENDPOINTS)
     def test_admin_allowed(self, static_authz_data, method, path):
