@@ -41,6 +41,11 @@ class ControllerConfig(BaseModel):
             "orphan cleanup for this many seconds after the terminal status transition (0 disables)."
         ),
     )
+    starting_timeout_seconds: int = Field(
+        default=3600,
+        ge=0,
+        description="Max seconds in STARTING before FAILED (0 disables).",
+    )
 
     @model_validator(mode="after")
     def _validate_backoff(self) -> ControllerConfig:

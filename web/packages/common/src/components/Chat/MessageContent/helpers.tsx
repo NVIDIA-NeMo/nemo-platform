@@ -44,7 +44,7 @@ export const renderListItemChildren = (children: ReactNode): ReactNode => {
 
   return [
     <Text asChild kind="body/regular/md" key="leading-list-paragraph">
-      <span className="text-sm leading-[160%]">{getChildNodes(firstContent)}</span>
+      <span className="text-sm leading-6">{getChildNodes(firstContent)}</span>
     </Text>,
     ...childNodes.slice(firstContentIndex + 1),
   ];

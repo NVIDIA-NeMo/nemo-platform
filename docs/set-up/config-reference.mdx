@@ -75,6 +75,8 @@ auth:
   propagation_poll_interval_seconds: 1.0
   # Allow unsigned JWTs (`alg=none`) for local development/testing. Disabled by default and should not be enabled in production. | default: False
   allow_unsigned_jwt: false
+  # When auth is enabled with the embedded PDP and policy.wasm is missing, build it automatically from a local NeMo Platform source checkout. Packaged deployments should include policy.wasm at build time and can disable this for fail-fast startup. | default: True
+  embedded_pdp_auto_build_wasm: true
   # OIDC configuration for native token validation.
   oidc:
     # Enable native OIDC token validation. | default: False
@@ -188,6 +190,12 @@ files:
   file_lock_ttl_seconds: 300
   # Maximum concurrent downloads during cache warming | default: 3
   cache_warming_max_concurrent: 3
+  # Maximum Hugging Face request attempts for transient failures. | default: 4
+  hf_retry_attempts: 4
+  # Initial Hugging Face retry delay in seconds before exponential backoff. | default: 0.5
+  hf_retry_initial_delay_seconds: 0.5
+  # Maximum Hugging Face retry delay in seconds. | default: 5.0
+  hf_retry_max_delay_seconds: 5.0
 ```
 
 ### `inference_gateway`
@@ -473,6 +481,8 @@ models:
         models_docker_port_range_end: 49652
         # Image used to pull model weights. Its entrypoint is overridden to the Hugging Face CLI ('hf download ...'), so any image with the 'hf' CLI on PATH works. Defaults to the platform's nmp-api image (registry/tag from platform config); override to use a different puller image.
         huggingface_model_puller: my-registry/nmp-api:local
+        # Extra environment variables for the model puller container. Values override the reconciler defaults (HF_ENDPOINT, HF_TOKEN). E.g. set HF_HUB_ENABLE_HF_TRANSFER='0' to disable the hf_transfer download path.
+        huggingface_model_puller_env: {}
         # Timeout in seconds for the model puller container to complete (default: 30 minutes) | default: 1800
         model_puller_timeout: 1800
         # Per-file HTTP download timeout in seconds for the model puller (HF_HUB_DOWNLOAD_TIMEOUT). Increase if large model files fail with IncompleteRead/ChunkedEncodingError (default: 2 hours). | default: 7200

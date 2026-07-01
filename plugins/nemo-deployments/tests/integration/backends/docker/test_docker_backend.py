@@ -12,16 +12,14 @@ import pytest
 from docker_availability import skip_without_docker
 from integration_helpers import force_remove_container
 from nemo_deployments_plugin.backends.docker.backend import DockerDeploymentBackend
-from nemo_deployments_plugin.backends.docker.labels import container_name
+from nemo_deployments_plugin.backends.labels import container_name
 from nemo_deployments_plugin.backends.registry import BACKEND_CLASSES
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
 from nemo_deployments_plugin.entities import (
     Container,
     ContainerPort,
     Deployment,
-    DeploymentBackendConfig,
     DeploymentConfig,
-    DockerDeploymentConfig,
 )
 
 import docker
@@ -67,9 +65,6 @@ def _always_http_config() -> DeploymentConfig:
                 ports=[ContainerPort(containerPort=80, protocol="TCP", name="http")],
             )
         ],
-        backend_config=DeploymentBackendConfig(
-            docker=DockerDeploymentConfig(port_range_start=9050, port_range_end=9060)
-        ),
     )
 
 

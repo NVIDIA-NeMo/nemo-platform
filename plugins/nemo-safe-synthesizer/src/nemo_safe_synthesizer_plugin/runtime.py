@@ -20,6 +20,7 @@ RUNTIME_BUILD_REQUIREMENTS = [
     "setuptools",
     "uv-dynamic-versioning",
 ]
+RUNTIME_CONSTRAINTS_FILE = Path("plugins/nemo-safe-synthesizer/constraints.txt")
 FLASHINFER_CU129_INDEX_URL = "https://flashinfer.ai/whl/cu129"
 PYTORCH_CU129_INDEX_URL = "https://download.pytorch.org/whl/cu129"
 VLLM_CU129_VERSION = "0.20.0"
@@ -138,6 +139,8 @@ def setup_runtime(
             "--python",
             str(runtime_python),
             "--no-build-isolation",
+            "-c",
+            str(root / RUNTIME_CONSTRAINTS_FILE),
             *runtime_package_index_options(runtime_package),
             "-e",
             str(root / "sdk/python/nemo-platform"),
@@ -164,6 +167,17 @@ def setup_runtime(
             "--no-deps",
             "-e",
             str(root / "plugins/nemo-safe-synthesizer"),
+        ],
+        cwd=root,
+        check=True,
+    )
+    subprocess.run(
+        [
+            "uv",
+            "pip",
+            "check",
+            "--python",
+            str(runtime_python),
         ],
         cwd=root,
         check=True,

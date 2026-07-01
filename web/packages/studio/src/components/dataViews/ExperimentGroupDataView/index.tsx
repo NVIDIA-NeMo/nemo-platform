@@ -56,7 +56,7 @@ const getExperimentSortParam = (
     if (evaluatorMatch) field = `evaluators.${evaluatorMatch[1]}.mean`;
   }
   if (!field) return DEFAULT_SORT;
-  return `${first.desc ? '-' : ''}${field}`;
+  return `${first.desc ? '-' : ''}${field}` as ListExperimentsSortParam;
 };
 
 interface ExperimentGroupDataViewProps {

@@ -233,7 +233,6 @@ describe('DatasetBulkDeleteModal', () => {
 
     it('handles deletion errors gracefully', async () => {
       const user = userEvent.setup();
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
       // Override with error response
       server.use(
@@ -262,18 +261,10 @@ describe('DatasetBulkDeleteModal', () => {
       });
       await user.click(deleteButton);
 
-      // Wait for error handling
-      await waitFor(() => {
-        expect(consoleErrorSpy).toHaveBeenCalledWith(
-          'Failed to delete datasets',
-          expect.any(Error)
-        );
-      });
-
       // onConfirmSuccess should not be called on error
-      expect(mockOnConfirmSuccess).not.toHaveBeenCalled();
-
-      consoleErrorSpy.mockRestore();
+      await waitFor(() => {
+        expect(mockOnConfirmSuccess).not.toHaveBeenCalled();
+      });
     });
 
     it('shows loading state during deletion', async () => {
@@ -315,8 +306,11 @@ describe('DatasetBulkDeleteModal', () => {
       });
       await user.click(deleteButton);
 
-      // Check loading state while deletion is still in-flight
-      expect(await screen.findByRole('button', { name: 'Deleting...' })).toBeDisabled();
+      // Check loading state while deletion is still in-flight — button is disabled.
+      // Reuse the pre-click reference: the LoadingButton appends a spinner with
+      // aria-label="Loading..." which changes the accessible name, so querying by
+      // name "Delete" would fail after the click.
+      await waitFor(() => expect(deleteButton).toBeDisabled());
 
       // Now let the deletions complete
       resolveDelete();

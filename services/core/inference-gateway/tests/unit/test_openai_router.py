@@ -1123,9 +1123,18 @@ def test_virtual_model_proxy_mock_provider_keeps_qualified_body_model(app: FastA
         MOCK_RESPONSE_MAP_HEADER,
         MOCK_SERVED_MODELS_HEADER,
     )
-    from nmp.core.inference_gateway.config import config as igw_config
 
-    mocker.patch.object(igw_config, "mock_provider_prefix", "igw-mock-")
+    # Patch the function that is actually called at dispatch time.  Patching the
+    # module-level ``config`` instance is unreliable: if the module was first
+    # imported while a ``create_test_client`` context was active, ``config``
+    # captures that transient override instance; once the context exits and
+    # ``Configuration.clear_overrides()`` runs, ``_get_mock_provider_prefix``
+    # resolves through ``Configuration.get_service_config`` to the @cache-d
+    # baseline instance (a *different* object), so the attribute patch is lost.
+    mocker.patch(
+        "nmp.core.inference_gateway.api.mock_provider.utils._get_mock_provider_prefix",
+        return_value="igw-mock-",
+    )
 
     workspace = "vm-mock-ws"
     served_name = "echo-model"
@@ -1175,9 +1184,11 @@ def test_virtual_model_proxy_streaming_mock_provider_runs_response_middleware(ap
         MOCK_RESPONSE_MAP_HEADER,
         MOCK_SERVED_MODELS_HEADER,
     )
-    from nmp.core.inference_gateway.config import config as igw_config
 
-    mocker.patch.object(igw_config, "mock_provider_prefix", "igw-mock-")
+    mocker.patch(
+        "nmp.core.inference_gateway.api.mock_provider.utils._get_mock_provider_prefix",
+        return_value="igw-mock-",
+    )
 
     workspace = "vm-mock-ws"
     served_name = "stream-model"

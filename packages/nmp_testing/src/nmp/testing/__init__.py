@@ -77,6 +77,7 @@ from .utils import (
     assert_exit_0,
     get_repo_root,
     grant_workspace_role,
+    igw_mock_provider_mode,
     run_nemo_local,
     short_unique_name,
     unique_email,
@@ -102,6 +103,7 @@ __all__ = [
     "as_user",
     "grant_workspace_role",
     "add_mock_provider",
+    "igw_mock_provider_mode",
     "MockProviderResponse",
     "wait_for_model_entity",
     # Task testing

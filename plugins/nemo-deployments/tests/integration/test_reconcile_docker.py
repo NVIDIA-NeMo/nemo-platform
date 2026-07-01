@@ -16,15 +16,13 @@ from docker.errors import NotFound
 from docker_availability import skip_without_docker
 from integration_helpers import force_remove_container
 from nemo_deployments_plugin.backends.docker.backend import DockerDeploymentBackend
-from nemo_deployments_plugin.backends.docker.labels import container_name, docker_volume_name
+from nemo_deployments_plugin.backends.labels import container_name, docker_volume_name
 from nemo_deployments_plugin.backends.registry import BACKEND_CLASSES, ExecutorRegistry
 from nemo_deployments_plugin.config import ControllerConfig
 from nemo_deployments_plugin.entities import (
     Container,
     Deployment,
-    DeploymentBackendConfig,
     DeploymentConfig,
-    DockerDeploymentConfig,
     Prerequisite,
     Volume,
     VolumeMount,
@@ -111,9 +109,6 @@ async def test_puller_server_prerequisite_chain(docker_registry: ExecutorRegistr
             )
         ],
         volumeMounts=[VolumeMount(name="weights", mountPath="/data")],
-        backend_config=DeploymentBackendConfig(
-            docker=DockerDeploymentConfig(port_range_start=9070, port_range_end=9080)
-        ),
     )
 
     config_cache = {

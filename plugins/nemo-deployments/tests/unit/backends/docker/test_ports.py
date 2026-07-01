@@ -9,7 +9,6 @@ from unittest.mock import MagicMock
 
 import pytest
 from nemo_deployments_plugin.backends.docker.ports import collect_used_host_ports, is_port_free
-from nemo_deployments_plugin.entities import DockerDeploymentConfig
 
 
 def test_collect_used_host_ports() -> None:
@@ -78,8 +77,7 @@ async def test_find_available_port_skips_used(mock_docker_client: MagicMock, mon
     mock_docker_client.containers.list.return_value = [used]
     monkeypatch.setattr(ports_mod, "is_port_free", lambda port: port != 9001)
 
-    cfg = DockerDeploymentConfig(port_range_start=9000, port_range_end=9002)
-    port = await find_available_port(mock_docker_client, cfg)
+    port = await find_available_port(mock_docker_client, 9000, 9002)
     assert port == 9002
 
 
@@ -88,11 +86,10 @@ async def test_find_available_port_excludes_pending_assignments(mock_docker_clie
     from nemo_deployments_plugin.backends.docker.ports import find_available_port
 
     mock_docker_client.containers.list.return_value = []
-    cfg = DockerDeploymentConfig(port_range_start=9000, port_range_end=9002)
 
-    first = await find_available_port(mock_docker_client, cfg)
+    first = await find_available_port(mock_docker_client, 9000, 9002)
     assert first == 9000
-    second = await find_available_port(mock_docker_client, cfg, exclude_ports={first})
+    second = await find_available_port(mock_docker_client, 9000, 9002, exclude_ports={first})
 
     assert first == 9000
     assert second == 9001

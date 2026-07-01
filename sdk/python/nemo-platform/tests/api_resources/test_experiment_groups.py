@@ -50,6 +50,12 @@ class TestExperimentGroups:
         experiment_group = client.experiment_groups.create(
             workspace="workspace",
             name="name",
+            default_sort=[
+                {
+                    "direction": "asc",
+                    "field": "field",
+                }
+            ],
             description="description",
         )
         assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
@@ -160,6 +166,12 @@ class TestExperimentGroups:
             path_name="name",
             workspace="workspace",
             body_name="name",
+            default_sort=[
+                {
+                    "direction": "asc",
+                    "field": "field",
+                }
+            ],
             description="description",
         )
         assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
@@ -341,6 +353,12 @@ class TestAsyncExperimentGroups:
         experiment_group = await async_client.experiment_groups.create(
             workspace="workspace",
             name="name",
+            default_sort=[
+                {
+                    "direction": "asc",
+                    "field": "field",
+                }
+            ],
             description="description",
         )
         assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
@@ -451,6 +469,12 @@ class TestAsyncExperimentGroups:
             path_name="name",
             workspace="workspace",
             body_name="name",
+            default_sort=[
+                {
+                    "direction": "asc",
+                    "field": "field",
+                }
+            ],
             description="description",
         )
         assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])

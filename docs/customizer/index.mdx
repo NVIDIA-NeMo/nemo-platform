@@ -22,6 +22,28 @@ At a high level, the fine-tuning workflow consists of the following steps:
 
 ---
 
+## Container Images
+
+Fine-tuning jobs run in container images published to NVIDIA NGC. For NeMo Platform `0.2.0`, the fine-tuning images are:
+
+| Image | Purpose |
+|-------|---------|
+| `nvcr.io/nvidia/nemo-platform/nmp-automodel-tasks:0.2.0` | Automodel file transfer and model entity task steps |
+| `nvcr.io/nvidia/nemo-platform/nmp-automodel-training:0.2.0` | Automodel GPU training step |
+| `nvcr.io/nvidia/nemo-platform/nmp-unsloth-training:0.2.0` | Unsloth training and task steps |
+
+These public images can be pulled directly from `nvcr.io`:
+
+```bash
+docker pull nvcr.io/nvidia/nemo-platform/nmp-automodel-tasks:0.2.0
+docker pull nvcr.io/nvidia/nemo-platform/nmp-automodel-training:0.2.0
+docker pull nvcr.io/nvidia/nemo-platform/nmp-unsloth-training:0.2.0
+```
+
+Most users do not need to pull these images manually. NeMo Platform resolves them from the configured platform image registry and tag. Pull or mirror them when you are operating a self-managed deployment, preloading an air-gapped environment, or validating registry access. If your environment requires authenticated registry pulls, authenticate to `nvcr.io` with an NGC API key before pulling or mirroring the images.
+
+---
+
 ## Model Catalog
 
 Explore the model families and sizes supported by NVIDIA NeMo Customizer.

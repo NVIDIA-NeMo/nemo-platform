@@ -31,7 +31,15 @@ from nemo_deployments_plugin.backends.docker.containers import (
     validate_config_for_docker,
 )
 from nemo_deployments_plugin.backends.docker.gpu import GPUAllocationError, get_shared_gpu_pool
-from nemo_deployments_plugin.backends.docker.labels import (
+from nemo_deployments_plugin.backends.docker.ports import find_available_port
+from nemo_deployments_plugin.backends.docker.probes import check_readiness_probe, host_url_for_port
+from nemo_deployments_plugin.backends.docker.status import (
+    LOG_MAX_CHARS,
+    map_docker_state_to_starting,
+    map_exited_status,
+    missing_container_status,
+)
+from nemo_deployments_plugin.backends.labels import (
     BACKOFF_LIMIT_LABEL,
     CONFIG_NAME_LABEL,
     DEPLOYMENT_NAME_LABEL,
@@ -42,14 +50,6 @@ from nemo_deployments_plugin.backends.docker.labels import (
     deployment_identity_labels,
     deployment_key,
     managed_by_filter,
-)
-from nemo_deployments_plugin.backends.docker.ports import find_available_port
-from nemo_deployments_plugin.backends.docker.probes import check_readiness_probe, host_url_for_port
-from nemo_deployments_plugin.backends.docker.status import (
-    LOG_MAX_CHARS,
-    map_docker_state_to_starting,
-    map_exited_status,
-    missing_container_status,
 )
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
 from nemo_deployments_plugin.entities import Container, Deployment, DeploymentConfig
@@ -163,7 +163,8 @@ class DockerDeploymentBackend(DeploymentBackend):
         for port_spec in container_spec.ports:
             host_port = await find_available_port(
                 self._client,
-                docker_cfg,
+                self._executor_config.port_range_start,
+                self._executor_config.port_range_end,
                 exclude_ports=set(host_ports.values()),
             )
             if host_port is None:

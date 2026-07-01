@@ -35,7 +35,7 @@ from nmp.intake.api.v2.experiments.schemas import (
     ExperimentSessionFilter,
     ExperimentSessionResponse,
 )
-from nmp.intake.entities.experiments import Experiment, ExperimentGroup
+from nmp.intake.entities.experiments import Experiment, ExperimentGroup, SortCriterion
 from nmp.intake.spans.api.dependencies import require_workspace_access, validate_list_query_params
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 from nmp.intake.spans.domain import SpanStatus
@@ -118,7 +118,10 @@ async def create_experiment_group(
     body: ExperimentGroupRequest,
     entity_client: EntityClientDep,
 ) -> ExperimentGroupResponse:
-    entity = ExperimentGroup(workspace=workspace, name=body.name, description=body.description)
+    _validate_default_sort(body.default_sort)
+    entity = ExperimentGroup(
+        workspace=workspace, name=body.name, description=body.description, default_sort=body.default_sort
+    )
     try:
         created = await entity_client.create(entity)
     except EntityConflictError as e:
@@ -227,7 +230,9 @@ async def update_experiment_group(
             status_code=status.HTTP_409_CONFLICT,
             detail="Cannot rename an experiment group; the name is its identity.",
         )
+    _validate_default_sort(body.default_sort)
     existing.description = body.description
+    existing.default_sort = body.default_sort
     updated = await entity_client.update(existing)
     response = ExperimentGroupResponse.from_entity(updated)
     response.experiment_count = await _count_live_experiments_in_group(
@@ -360,22 +365,33 @@ async def list_experiments(
     parsed: ExperimentFilterDep,
     page: int = Query(default=1, ge=1, description="Page number."),
     page_size: int = Query(default=100, ge=1, le=1000, description="Page size."),
-    sort: str = Query(
-        default="-created_at",
+    sort: str | None = Query(
+        default=None,
         description=(
             "Field to sort by; prefix with '-' for descending. Sort by an experiment attribute "
             "(name, created_at, updated_at, pinned_at) or by an aggregate metric: run_count, "
             "cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>, where <stat> is one of "
-            "mean, median, p90, p95, p99, sum, count."
+            "mean, median, p90, p95, p99, sum, count. When omitted, the group's configured default sort "
+            "is used (falling back to -created_at), with pinned experiments first."
         ),
     ),
 ) -> Page[ExperimentResponse]:
     validate_list_query_params(request)
-    descending = sort.startswith("-")
-    sort_field = sort[1:] if descending else sort
-    _validate_sort_field(sort_field)
     _apply_is_deleted_filter(parsed)
     _apply_is_pinned_filter(parsed)
+    # An explicit `sort` overrides the group's default sort. When omitted, fall back to that default
+    # sort (then -created_at), with pinned experiments floated to the top.
+    if sort is not None:
+        descending = sort.startswith("-")
+        sort_field = sort[1:] if descending else sort
+        _validate_sort_field(sort_field)
+        sort_keys = [(sort_field, descending)]
+        pinned_first = False
+        explicit_metric_sort = sort_field not in _ENTITY_SORT_FIELDS
+    else:
+        sort_keys = await _default_sort_keys(entity_client, parsed)
+        pinned_first = True
+        explicit_metric_sort = False
     # Rollup-metric predicates live in ClickHouse, not the entity store, so they can't be pushed to
     # Postgres. Split them out of the filter tree: only the entity predicates go to entity_client.list;
     # the metric ones are applied in memory after hydration. parsed (the full user filter) is left
@@ -416,15 +432,17 @@ async def list_experiments(
     # disabled or down) every metric value would be unset, so a metric sort would silently collapse to
     # name order and a metric filter would drop everything. Reject the request instead of returning a
     # misleading 200. Entity-column sorts/filters still work and an empty group still hydrates fine.
-    metric_sort = sort_field not in _ENTITY_SORT_FIELDS
-    if not hydrated and (metric_sort or metric_predicates):
+    # An explicit metric sort or metric filter genuinely can't be served without rollups → 503. A
+    # default sort degrades gracefully instead: its metric values come back unset, so the appended
+    # -created_at key orders the list (the documented fallback), no error.
+    if not hydrated and (explicit_metric_sort or metric_predicates):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Cannot sort or filter experiments by a rollup metric: the telemetry store is unavailable.",
         )
     if metric_predicates:
         responses = [r for r in responses if _matches_metric_predicates(r, metric_predicates)]
-    ordered = _sort_experiments(responses, field=sort_field, descending=descending)
+    ordered = _sort_experiments(responses, keys=sort_keys, pinned_first=pinned_first)
     start = (page - 1) * page_size
     page_items = ordered[start : start + page_size]
     return Page(
@@ -1048,14 +1066,61 @@ def _experiment_sort_value(response: ExperimentResponse, field: str) -> Any:
     return getattr(score, stat, None) if score is not None else None
 
 
-def _sort_experiments(responses: list[ExperimentResponse], *, field: str, descending: bool) -> list[ExperimentResponse]:
-    """Sort by an entity column or rollup metric; missing values sort last, ties broken by name."""
-    by_name = sorted(responses, key=lambda r: r.name)  # deterministic tiebreak under the stable sort below
-    valued = [(_experiment_sort_value(r, field), r) for r in by_name]
-    present = [(value, r) for value, r in valued if value is not None]
-    missing = [r for value, r in valued if value is None]
-    present.sort(key=lambda pair: pair[0], reverse=descending)
-    return [r for _, r in present] + missing
+def _validate_default_sort(default_sort: list[SortCriterion] | None) -> None:
+    """Reject a default sort whose fields aren't numeric rollup metrics (run_count / `<metric>.<stat>`)."""
+    for entry in default_sort or []:
+        if not _is_valid_metric_path(entry.field):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Unsupported sort field: {entry.field}. Use a numeric rollup metric "
+                    "(run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>)."
+                ),
+            )
+
+
+async def _default_sort_keys(entity_client: EntityClient, parsed: ParsedFilter) -> list[tuple[str, bool]]:
+    """Resolve the default sort keys when no explicit ``sort`` is passed.
+
+    When the query is scoped to a single experiment_group_id and that group has a default sort, use it
+    in priority order. ``-created_at`` is always appended as the final key so ordering falls back
+    gracefully when sort values are missing/unresolved (or no default sort is set).
+    """
+    keys: list[tuple[str, bool]] = []
+    group_id = parsed.extract("experiment_group_id")
+    if isinstance(group_id, str):
+        try:
+            group = await entity_client.get_by_id(ExperimentGroup, entity_id=group_id)
+        except EntityNotFoundError:
+            group = None
+        if group is not None and group.default_sort:
+            keys = [(entry.field, entry.direction == "desc") for entry in group.default_sort]
+    keys.append(("created_at", True))
+    return keys
+
+
+def _sort_experiments(
+    responses: list[ExperimentResponse],
+    *,
+    keys: list[tuple[str, bool]],
+    pinned_first: bool = False,
+) -> list[ExperimentResponse]:
+    """Sort by an ordered list of ``(field, descending)`` keys.
+
+    Missing values sort last per key; ties break by name. Keys are applied from lowest to highest
+    priority via successive stable sorts, so the first key dominates. With ``pinned_first``, pinned
+    experiments float to the top while preserving key order within the pinned and unpinned groups.
+    """
+    ordered = sorted(responses, key=lambda r: r.name)  # stable base tiebreak
+    for field, descending in reversed(keys):
+        present = [r for r in ordered if _experiment_sort_value(r, field) is not None]
+        missing = [r for r in ordered if _experiment_sort_value(r, field) is None]
+        present.sort(key=lambda r, f=field: _experiment_sort_value(r, f), reverse=descending)
+        ordered = present + missing
+    if pinned_first:
+        # Stable: pinned (False sorts before True) float up, key order preserved within each group.
+        ordered = sorted(ordered, key=lambda r: r.pinned_at is None)
+    return ordered
 
 
 async def _hydrate_rollups(

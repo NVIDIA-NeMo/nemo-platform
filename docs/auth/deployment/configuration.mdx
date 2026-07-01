@@ -75,6 +75,7 @@ NMP_AUTH_ENABLED=true
 NMP_AUTH_POLICY_DECISION_POINT_BASE_URL=http://auth:8000
 NMP_AUTH_POLICY_DECISION_POINT_PROVIDER=embedded
 NMP_AUTH_ADMIN_EMAIL=admin@example.com
+NMP_AUTH_EMBEDDED_PDP_AUTO_BUILD_WASM=true
 ```
 
 Nested keys (e.g., OIDC) use double underscore: `NMP_AUTH_OIDC__ISSUER`, `NMP_AUTH_OIDC__CLIENT_ID`.
@@ -95,7 +96,29 @@ auth:
  enabled: true
  policy_decision_point_provider: embedded
  policy_decision_point_base_url: "http://localhost:8080"
+ embedded_pdp_auto_build_wasm: true
  admin_email: "admin@example.com"
+```
+
+When running from a source checkout, embedded PDP startup can automatically build
+a missing `policy.wasm` with the pinned OPA version used by `make build-policy`.
+Packaged deployments should include `policy.wasm` at image or wheel build time;
+set `embedded_pdp_auto_build_wasm: false` to fail fast if that artifact is missing.
+After changing policy source files, run `make build-policy` to refresh the
+artifact.
+
+In offline development environments, provide the pinned OPA binary explicitly:
+
+```bash
+OPA_BIN=/path/to/opa_linux_amd64_static uv run nemo services run --host 127.0.0.1 --port 8080
+```
+
+Or seed the local cache used by `script/build_policy_wasm.sh`:
+
+```bash
+mkdir -p .cache/opa/v1.8.0
+cp /path/to/opa_linux_amd64_static .cache/opa/v1.8.0/opa_linux_amd64_static
+chmod +x .cache/opa/v1.8.0/opa_linux_amd64_static
 ```
 
 ### Production with embedded PDP
@@ -105,6 +128,7 @@ auth:
  enabled: true
  policy_decision_point_base_url: "http://auth:8000"
  policy_decision_point_provider: embedded
+ embedded_pdp_auto_build_wasm: false
  policy_data_refresh_interval: 30
  admin_email: "platform-admin@company.com"
  oidc:

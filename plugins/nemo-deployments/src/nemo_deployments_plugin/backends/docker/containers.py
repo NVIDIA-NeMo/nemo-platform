@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from nemo_deployments_plugin.backends.docker.labels import docker_volume_name
+from nemo_deployments_plugin.backends.labels import docker_volume_name
 from nemo_deployments_plugin.entities import Container, DeploymentConfig, DockerDeploymentConfig, VolumeMount
 from nemo_deployments_plugin.types import RestartPolicy
 

@@ -11,7 +11,7 @@ import pytest
 from backends.docker.docker_helpers import container_attrs, sample_config
 from docker.errors import APIError, NotFound
 from nemo_deployments_plugin.backends.docker.backend import DockerDeploymentBackend
-from nemo_deployments_plugin.backends.docker.labels import (
+from nemo_deployments_plugin.backends.labels import (
     CONFIG_NAME_LABEL,
     DEPLOYMENT_NAME_LABEL,
     DEPLOYMENT_WORKSPACE_LABEL,
@@ -36,7 +36,7 @@ async def test_create_deployment_starts_container(
         name="srv",
         config_name="cfg1",
         labels={"managed-by": MANAGED_BY_LABEL},
-        backend_config={"docker": {"port_range_start": 9000, "port_range_end": 9100}},
+        backend_config={},
     )
 
     assert update.status == "STARTING"

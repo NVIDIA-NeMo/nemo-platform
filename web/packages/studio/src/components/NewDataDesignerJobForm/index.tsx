@@ -3,27 +3,20 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
-import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { LoadingButton } from '@nemo/common/src/components/LoadingButton';
 import { useDataDesignerCreateJob } from '@nemo/sdk/generated/data-designer/api';
 import type { CreateJobRequest as DataDesignerJobRequest } from '@nemo/sdk/generated/data-designer/schema';
 import { useModelsListProviders } from '@nemo/sdk/generated/platform/api';
-import {
-  Button,
-  CodeSnippet,
-  Divider,
-  Flex,
-  Grid,
-  Panel,
-  Stack,
-  Text,
-} from '@nvidia/foundations-react-core';
+import { Button, CodeSnippet, Flex, Panel, Stack, Text } from '@nvidia/foundations-react-core';
+import { JobBasics } from '@studio/components/NewDataDesignerJobForm/JobBasics';
 import { JobRequestGenerator } from '@studio/components/NewDataDesignerJobForm/JobRequestGenerator';
 import { formatPreviewLogsForDisplay } from '@studio/components/NewDataDesignerJobForm/previewApi';
 import { usePreview } from '@studio/components/NewDataDesignerJobForm/usePreview';
 import {
   type DataDesignerModelOption,
+  getCloneJobRequestFromState,
   modelsFromProviders,
+  parseJsonContentToJobRequest,
   sanitizeJobRequestName,
 } from '@studio/components/NewDataDesignerJobForm/utils';
 import { DEFAULT_BUILD_MODEL_NAME, DEFAULT_LARGE_PAGE_SIZE } from '@studio/constants/constants';
@@ -33,15 +26,15 @@ import {
   getDataDesignerJobListRoute,
   getWorkspaceInferenceProvidersRoute,
 } from '@studio/routes/utils';
-import { type FC, useCallback, useMemo, useRef, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { type FC, useCallback, useEffect, useMemo } from 'react';
+import { useForm, useWatch } from 'react-hook-form';
 import { useAuth } from 'react-oidc-context';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 
 export type { DataDesignerModelOption };
 
-const newDataDesignerJobFormSchema = z.object({
+const sharedFields = {
   name: z
     .string()
     .refine(
@@ -49,6 +42,20 @@ const newDataDesignerJobFormSchema = z.object({
       'Name must not contain spaces. Use hyphens or underscores (e.g. my-data-job).'
     ),
   jobDescription: z.string(),
+  modelRef: z.string().min(1, 'Please select a model'),
+  rows: z.number({ required_error: 'Rows is required' }).min(1, 'Must be at least 1'),
+  inferenceSecret: z.string().optional(),
+  // Editable job request JSON. Must contain a valid config before submit.
+  jsonContent: z
+    .string()
+    .refine(
+      (value) => !!parseJsonContentToJobRequest(value).jobRequest?.spec?.config,
+      'Generate or provide valid job JSON before creating.'
+    ),
+};
+
+const newDataDesignerJobFormSchema = z.object({
+  ...sharedFields,
   description: z
     .string()
     .min(1, 'Description is required')
@@ -56,9 +63,13 @@ const newDataDesignerJobFormSchema = z.object({
       10,
       'Please provide at least a short description (e.g. "100 rows of product reviews with sentiment")'
     ),
-  modelRef: z.string().min(1, 'Please select a model'),
-  rows: z.number({ required_error: 'Rows is required' }).min(1, 'Must be at least 1'),
-  inferenceSecret: z.string().optional(),
+});
+
+// When cloning, the JSON config is pre-filled, so the natural-language description used for
+// generation is optional — the user can submit the cloned config without describing it again.
+const cloneDataDesignerJobFormSchema = z.object({
+  ...sharedFields,
+  description: z.string(),
 });
 
 export type NewDataDesignerJobFormFields = z.infer<typeof newDataDesignerJobFormSchema>;
@@ -66,18 +77,33 @@ export type NewDataDesignerJobFormFields = z.infer<typeof newDataDesignerJobForm
 export const NewDataDesignerJobForm: FC = () => {
   const workspace = useWorkspaceFromPath();
   const navigate = useNavigate();
+  const { state } = useLocation();
   const { user } = useAuth();
 
   const modelRef = `${workspace}/${DEFAULT_BUILD_MODEL_NAME}`;
 
-  const { control, handleSubmit, setValue } = useForm<NewDataDesignerJobFormFields>({
-    resolver: zodResolver(newDataDesignerJobFormSchema),
+  const clonedJobRequest = useMemo(() => getCloneJobRequestFromState(state), [state]);
+  const isClone = clonedJobRequest != null;
+  const initialJsonContent = useMemo(
+    () => (clonedJobRequest ? JSON.stringify(clonedJobRequest, null, 2) : ''),
+    [clonedJobRequest]
+  );
+
+  const {
+    control,
+    handleSubmit,
+    setValue,
+    getValues,
+    formState: { errors },
+  } = useForm<NewDataDesignerJobFormFields>({
+    resolver: zodResolver(isClone ? cloneDataDesignerJobFormSchema : newDataDesignerJobFormSchema),
     defaultValues: {
-      name: '',
-      jobDescription: '',
+      name: clonedJobRequest?.name ?? '',
+      jobDescription: clonedJobRequest?.description ?? '',
       description: '',
       modelRef,
-      rows: 100,
+      rows: clonedJobRequest?.spec?.num_records ?? 100,
+      jsonContent: initialJsonContent,
     },
   });
 
@@ -93,22 +119,24 @@ export const NewDataDesignerJobForm: FC = () => {
   const selectedModel = models?.find((m) => m.id === modelRef);
   const modelNotFound = !isLoadingModels && !selectedModel;
 
-  const [jobRequest, setJobRequest] = useState<DataDesignerJobRequest | null>(null);
-  const jobRequestRef = useRef<DataDesignerJobRequest | null>(null);
-  jobRequestRef.current = jobRequest; // keep ref in sync so usePreview's getCurrentConfig() sees latest
-
-  const handleJobRequestChange = useCallback(
-    (next: DataDesignerJobRequest | null) => {
-      jobRequestRef.current = next;
-      setJobRequest(next);
-      if (next?.spec?.num_records != null) {
-        setValue('rows', next.spec.num_records);
-      }
-    },
+  const setJsonContent = useCallback(
+    (value: string) => setValue('jsonContent', value, { shouldDirty: true }),
     [setValue]
   );
 
-  const getCurrentConfig = useCallback(() => jobRequestRef.current?.spec?.config, []);
+  const watchedJsonContent = useWatch({ control, name: 'jsonContent' });
+  useEffect(() => {
+    const numRecords = parseJsonContentToJobRequest(watchedJsonContent ?? '').jobRequest?.spec
+      ?.num_records;
+    if (numRecords != null) {
+      setValue('rows', numRecords);
+    }
+  }, [watchedJsonContent, setValue]);
+
+  const getCurrentConfig = useCallback(
+    () => parseJsonContentToJobRequest(getValues('jsonContent')).jobRequest?.spec?.config,
+    [getValues]
+  );
   const { previewLogs, isPreviewing, runPreview } = usePreview({
     workspace,
     accessToken: user?.access_token ?? undefined,
@@ -121,7 +149,7 @@ export const NewDataDesignerJobForm: FC = () => {
 
   const onSubmit = useCallback(
     async (fields: NewDataDesignerJobFormFields) => {
-      const current = jobRequestRef.current;
+      const current = parseJsonContentToJobRequest(fields.jsonContent).jobRequest;
       if (!current?.spec?.config) return;
 
       const fromSpec = current.spec.num_records;
@@ -185,6 +213,14 @@ export const NewDataDesignerJobForm: FC = () => {
   return (
     <form onSubmit={handleSubmit(onSubmit)}>
       <Stack gap="density-2xl">
+        <JobBasics
+          control={control}
+          nameName="name"
+          rowsName="rows"
+          descriptionName="jobDescription"
+          disabled={isPreviewing || isSubmitting}
+        />
+
         <Panel
           elevation="high"
           density="standard"
@@ -214,86 +250,34 @@ export const NewDataDesignerJobForm: FC = () => {
             </Flex>
           }
         >
-          <Stack gap="density-2xl">
-            {/* Job Details */}
-            <Flex gap="density-2xl" align="start">
-              <Stack className="w-2/5 shrink-0" gap="density-xs">
-                <Text kind="label/bold/lg">Job Details</Text>
-                <Text kind="body/regular/sm">
-                  Give this job a name and description to identify it later.
-                </Text>
-              </Stack>
-              <Stack className="flex-1" gap="density-md">
-                <Grid cols={2} gap="density-md">
-                  <ControlledTextInput
-                    label="Name (optional)"
-                    formFieldProps={{
-                      slotHelp:
-                        'No spaces — use hyphens or underscores. Overrides the name from the generated config.',
-                    }}
-                    useControllerProps={{ name: 'name', control }}
-                  />
-                  <ControlledTextInput
-                    label="Description (optional)"
-                    useControllerProps={{
-                      name: 'jobDescription',
-                      control,
-                    }}
-                  />
-                </Grid>
-              </Stack>
-            </Flex>
-
-            <Divider />
-
-            {/* Configuration */}
-            <Flex gap="density-2xl" align="start">
-              <Stack className="w-2/5 shrink-0" gap="density-xs">
-                <Text kind="label/bold/lg">Configuration</Text>
-                <Text kind="body/regular/sm">Set the number of records to produce.</Text>
-              </Stack>
-              <Stack className="flex-1" gap="density-md">
-                <ControlledTextInput
-                  label="Rows"
-                  type="number"
-                  min={1}
-                  step={1}
-                  required
-                  formFieldProps={{
-                    slotHelp: 'Number of records to generate.',
-                  }}
-                  useControllerProps={{
-                    name: 'rows',
-                    control,
-                  }}
-                />
-              </Stack>
-            </Flex>
-
-            <Divider />
-
-            {/* Data Specification */}
-            <Stack gap="density-lg">
-              <Stack gap="density-xs">
-                <Text kind="label/bold/lg">Data Specification</Text>
-                <Text kind="body/regular/sm">
-                  Describe the type of data you want to generate. The selected model will convert
-                  this into a job specification, which you can review and edit before submitting.
-                </Text>
-              </Stack>
-              <JobRequestGenerator
-                workspace={workspace}
-                modelRef={modelRef}
-                provider={selectedModel?.model_providers?.[0] ?? ''}
-                servedModelName={selectedModel?.served_model_name ?? ''}
-                control={control}
-                descriptionName="description"
-                onJobRequestChange={handleJobRequestChange}
-                disabled={isPreviewing || isSubmitting}
-              />
+          {/* Data Specification */}
+          <Stack gap="density-lg">
+            <Stack gap="density-xs">
+              <Text kind="label/bold/lg">Data Specification</Text>
+              <Text kind="body/regular/sm">
+                Describe the type of data you want to generate. The selected model will convert this
+                into a job specification, which you can review and edit before submitting.
+              </Text>
             </Stack>
+            <JobRequestGenerator
+              workspace={workspace}
+              modelRef={modelRef}
+              provider={selectedModel?.model_providers?.[0] ?? ''}
+              servedModelName={selectedModel?.served_model_name ?? ''}
+              control={control}
+              descriptionName="description"
+              jsonContentName="jsonContent"
+              setJsonContent={setJsonContent}
+              disabled={isPreviewing || isSubmitting}
+            />
           </Stack>
         </Panel>
+
+        {errors.jsonContent && (
+          <Text kind="body/regular/sm" className="text-danger">
+            {errors.jsonContent.message}
+          </Text>
+        )}
 
         {submitError && (
           <Text kind="body/regular/sm" className="text-danger">

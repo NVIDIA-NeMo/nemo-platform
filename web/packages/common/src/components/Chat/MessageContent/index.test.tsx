@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { MessageContent } from '@nemo/common/src/components/Chat/MessageContent';
+import { renderListItemChildren } from '@nemo/common/src/components/Chat/MessageContent/helpers';
+import { MarkdownParagraph } from '@nemo/common/src/components/Chat/MessageContent/MarkdownParagraph';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Components } from 'react-markdown';
@@ -10,6 +12,11 @@ const expectNoDirectParagraphChild = (listItem: HTMLElement): void => {
   // The list marker alignment depends on the first paragraph being unwrapped inside list items.
   // eslint-disable-next-line testing-library/no-node-access
   expect(listItem.querySelector(':scope > p')).not.toBeInTheDocument();
+};
+
+const expectListParagraphDensity = (paragraph: HTMLElement): void => {
+  expect(paragraph).toHaveClass('text-sm', 'leading-6');
+  expect(paragraph).not.toHaveClass('leading-[160%]');
 };
 
 describe('MessageContent', () => {
@@ -24,35 +31,32 @@ describe('MessageContent', () => {
 
     expect(screen.getByRole('heading', { level: 1, name: 'Overview' })).toHaveClass(
       'mb-density-sm',
-      'mt-density-3xl',
+      'mt-density-2xl',
       'first:mt-0'
     );
     expect(screen.getByRole('heading', { level: 2, name: 'Plan' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 2, name: 'Plan' })).toHaveClass(
       'mb-density-sm',
-      'mt-density-3xl'
+      'mt-density-xl'
     );
     expect(screen.getByRole('heading', { level: 3, name: 'Details' })).toHaveClass(
-      'mb-density-sm',
-      'mt-density-2xl'
+      'mb-density-xs',
+      'mt-density-lg'
     );
-    expect(screen.getByTestId('chat-message-content-text')).toHaveClass(
-      'text-sm',
-      'leading-[160%]'
-    );
+    expect(screen.getByTestId('chat-message-content-text')).toHaveClass('text-sm', 'leading-6');
     expect(screen.getByTestId('chat-message-content-text')).not.toHaveClass('text-base');
-    expect(screen.getByText('Read the route carefully.')).toHaveClass('mb-density-xl');
-    expect(screen.getByRole('list')).toHaveClass('my-density-xl', 'list-disc');
+    expect(screen.getByText('Read the route carefully.')).toHaveClass('mb-density-md');
+    expect(screen.getByRole('list')).toHaveClass('my-density-md', 'list-disc');
     expect(screen.getByRole('list')).not.toHaveClass('space-y-0.5');
     const listItems = screen.getAllByRole('listitem');
     expect(listItems).toHaveLength(2);
     expect(listItems[0]).toHaveTextContent('Read the route');
     expect(listItems[0]).toHaveClass(
-      'mb-density-sm',
+      'mb-density-xs',
       'whitespace-normal',
       'pl-density-xs',
       'text-sm',
-      'leading-[160%]',
+      'leading-6',
       'last:mb-0',
       '[&>p]:my-0'
     );
@@ -77,7 +81,7 @@ describe('MessageContent', () => {
     expect(screen.getByTestId('chat-message-content-text')).toHaveClass('whitespace-normal');
     expect(orderedList.tagName).toBe('OL');
     expect(orderedList).toHaveAttribute('start', '2');
-    expect(orderedList).toHaveClass('my-density-xl', 'list-decimal', 'pl-density-2xl');
+    expect(orderedList).toHaveClass('my-density-md', 'list-decimal', 'pl-density-2xl');
     expect(orderedList).not.toHaveClass('pl-density-lg');
 
     const listItems = within(orderedList).getAllByRole('listitem');
@@ -86,6 +90,16 @@ describe('MessageContent', () => {
     expect(listItems[0]).toHaveTextContent('First item with a paragraph.');
     expectNoDirectParagraphChild(listItems[1]);
     expect(listItems[1]).toHaveTextContent('Second item with a paragraph.');
+  });
+
+  it('keeps unwrapped list item paragraphs at list item density', () => {
+    render(
+      <ul>
+        <li>{renderListItemChildren(<MarkdownParagraph>Wrapped item</MarkdownParagraph>)}</li>
+      </ul>
+    );
+
+    expectListParagraphDensity(screen.getByText('Wrapped item'));
   });
 
   it('keeps indented loose ordered list content aligned with the number marker', () => {
