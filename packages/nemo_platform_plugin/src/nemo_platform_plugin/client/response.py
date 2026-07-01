@@ -15,7 +15,22 @@ from nemo_platform_plugin.client.errors import raise_for_status
 from nemo_platform_plugin.client.types import OffsetPagination, PaginationStrategy, PreparedRequest
 from pydantic import BaseModel
 
-_SSE_CONTENT_TYPE = "text/event-stream"
+
+def _parse_stream_line(line: str, headers: httpx.Headers) -> str | None:
+    """Extract a JSON payload from a stream line, or ``None`` to skip.
+
+    Handles both NDJSON (pass-through) and SSE framing (strips ``data:``
+    prefix, skips non-data fields like ``event:``, ``id:``, comments).
+    """
+    line = line.strip()
+    if not line:
+        return None
+    if "text/event-stream" in headers.get("content-type", ""):
+        if line.startswith("data:"):
+            return line[5:].strip()
+        return None
+    return line
+
 
 ResponseT = TypeVar("ResponseT")
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -116,20 +131,12 @@ class NemoStreamResponse(Generic[ModelT]):
         """Yield an iterator of parsed model objects."""
         with self._stream_ctx as raw:
             raise_for_status(raw)
-            is_sse = _SSE_CONTENT_TYPE in (raw.headers.get("content-type") or "")
 
             def _iter() -> Iterator[ModelT]:
                 for line in raw.iter_lines():
-                    line = line.strip()
-                    if not line:
-                        continue
-                    if is_sse:
-                        if line.startswith("data:"):
-                            line = line[5:].strip()
-                        else:
-                            # Skip non-data SSE fields (event:, id:, retry:, comments)
-                            continue
-                    yield self._model_type.model_validate_json(line)
+                    payload = _parse_stream_line(line, raw.headers)
+                    if payload is not None:
+                        yield self._model_type.model_validate_json(payload)
 
             yield _iter()
 
@@ -201,19 +208,12 @@ class AsyncNemoStreamResponse(Generic[ModelT]):
         """Yield an async iterator of parsed model objects."""
         async with self._stream_ctx as raw:
             raise_for_status(raw)
-            is_sse = _SSE_CONTENT_TYPE in (raw.headers.get("content-type") or "")
 
             async def _iter() -> AsyncIterator[ModelT]:
                 async for line in raw.aiter_lines():
-                    line = line.strip()
-                    if not line:
-                        continue
-                    if is_sse:
-                        if line.startswith("data:"):
-                            line = line[5:].strip()
-                        else:
-                            continue
-                    yield self._model_type.model_validate_json(line)
+                    payload = _parse_stream_line(line, raw.headers)
+                    if payload is not None:
+                        yield self._model_type.model_validate_json(payload)
 
             yield _iter()
 
