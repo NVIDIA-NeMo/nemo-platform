@@ -155,7 +155,7 @@ def test_conflicting_scope_on_one_handler_raises() -> None:
 
 
 def test_read_and_write_scope_on_one_endpoint_is_rejected() -> None:
-    """An endpoint has a single scope: stacking @SCOPE.read and @SCOPE.write is rejected.
+    """An endpoint has a single scope: stacking @scope.read and @scope.write is rejected.
 
     Read and write of the same area are different scope lists, so attaching both to one handler
     trips the conflict guard at decoration (import) time — never silently last-writer-wins. Both

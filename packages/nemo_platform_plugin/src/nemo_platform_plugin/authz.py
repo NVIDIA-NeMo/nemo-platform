@@ -28,7 +28,7 @@ Example::
     from nemo_platform_plugin.authz import AuthzScope, CallerKind, PermissionSet, path_rule, perm
     from nemo_platform_plugin.service import NemoService, RouterSpec
 
-    SCOPE = AuthzScope("example")
+    scope = AuthzScope("example")
 
     class ExamplePerms(PermissionSet, namespace="example"):
         READ = perm("Read example items")  # -> Permission("example.read", ...)
@@ -36,7 +36,7 @@ Example::
     router = APIRouter()
 
     @router.get("/v2/workspaces/{workspace}/items/{name}")
-    @SCOPE.read
+    @scope.read
     @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[ExamplePerms.READ])
     async def get_item(workspace: str, name: str) -> dict: ...
 
@@ -190,7 +190,7 @@ class AuthzScope:
 
     @property
     def read(self) -> Callable[[_F], _F]:
-        """Route decorator stamping this area's **read** scope requirement (``@SCOPE.read``).
+        """Route decorator stamping this area's **read** scope requirement (``@scope.read``).
 
         The scope gate is declared separately from :func:`path_rule`: the permission/caller
         rule and the OAuth scope are orthogonal, so each is attached, read back, and verified
@@ -201,7 +201,7 @@ class AuthzScope:
 
     @property
     def write(self) -> Callable[[_F], _F]:
-        """Route decorator stamping this area's **write** scope requirement (``@SCOPE.write``)."""
+        """Route decorator stamping this area's **write** scope requirement (``@scope.write``)."""
         return _attach_scope(self.write_scopes())
 
 

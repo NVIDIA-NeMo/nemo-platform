@@ -15,7 +15,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from nemo_agents_plugin.api.v2._perms import AgentPerms
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
-from nemo_agents_plugin.authz import SCOPE
+from nemo_agents_plugin.authz import scope
 from nemo_agents_plugin.entities import Agent, AgentDeployment
 from nemo_agents_plugin.schema import (
     AgentFilter,
@@ -40,7 +40,7 @@ _agent_filter_dep = make_filter_obj_dep(AgentFilter)
 
 
 @router.post("/agents", response_model=Agent, status_code=201, tags=["Agents"])
-@SCOPE.write
+@scope.write
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[AgentPerms.CREATE],
@@ -72,7 +72,7 @@ async def create_agent(
 
 
 @router.get("/agents", response_model=AgentPage, tags=["Agents"])
-@SCOPE.read
+@scope.read
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[AgentPerms.LIST],
@@ -110,7 +110,7 @@ async def list_agents(
 
 
 @router.get("/agents/{name}", response_model=Agent, tags=["Agents"])
-@SCOPE.read
+@scope.read
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[AgentPerms.READ],
@@ -135,7 +135,7 @@ async def get_agent(
 
 
 @router.delete("/agents/{name}", status_code=204, tags=["Agents"])
-@SCOPE.write
+@scope.write
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[AgentPerms.DELETE],

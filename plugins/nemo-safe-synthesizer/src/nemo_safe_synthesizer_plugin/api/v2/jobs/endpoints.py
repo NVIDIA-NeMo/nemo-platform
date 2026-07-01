@@ -186,12 +186,13 @@ async def job_config_compiler(
     return PlatformJobSpec(steps=steps)
 
 
+scope = AuthzScope("safe-synthesizer")
 router = job_route_factory(
     service_name="safe-synthesizer",
     job_type="SafeSynthesizer",
     job_input=SafeSynthesizerJobConfig,
     platform_job_config_compiler=job_config_compiler,
-    authz=AuthzScope("safe-synthesizer"),
+    authz=scope,
     job_result_routes=[
         PlatformJobResultRoute(
             name="summary",

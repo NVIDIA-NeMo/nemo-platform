@@ -26,7 +26,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from nemo_example_plugin._perms import ExampleMiddlewareConfigPerms
-from nemo_example_plugin.authz import SCOPE
+from nemo_example_plugin.authz import scope
 from nemo_example_plugin.middleware_config import ExampleMiddlewareConfig
 from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.entity_client import (
@@ -89,7 +89,7 @@ def build_middleware_config_router() -> APIRouter:
         status_code=status.HTTP_201_CREATED,
         summary="Create ExampleMiddlewareConfig",
     )
-    @SCOPE.write
+    @scope.write
     @path_rule(
         callers=[CallerKind.PRINCIPAL],
         permissions=[ExampleMiddlewareConfigPerms.CREATE],
@@ -133,7 +133,7 @@ def build_middleware_config_router() -> APIRouter:
         response_model=list[ExampleMiddlewareConfig],
         summary="List ExampleMiddlewareConfigs",
     )
-    @SCOPE.read
+    @scope.read
     @path_rule(
         callers=[CallerKind.PRINCIPAL],
         permissions=[ExampleMiddlewareConfigPerms.LIST],
@@ -164,7 +164,7 @@ def build_middleware_config_router() -> APIRouter:
         response_model=ExampleMiddlewareConfig,
         summary="Get ExampleMiddlewareConfig",
     )
-    @SCOPE.read
+    @scope.read
     @path_rule(
         callers=[CallerKind.PRINCIPAL],
         permissions=[ExampleMiddlewareConfigPerms.READ],
@@ -191,7 +191,7 @@ def build_middleware_config_router() -> APIRouter:
         response_model=ExampleMiddlewareConfig,
         summary="Update ExampleMiddlewareConfig",
     )
-    @SCOPE.write
+    @scope.write
     @path_rule(
         callers=[CallerKind.PRINCIPAL],
         permissions=[ExampleMiddlewareConfigPerms.UPDATE],
@@ -233,7 +233,7 @@ def build_middleware_config_router() -> APIRouter:
         status_code=status.HTTP_204_NO_CONTENT,
         summary="Delete ExampleMiddlewareConfig",
     )
-    @SCOPE.write
+    @scope.write
     @path_rule(
         callers=[CallerKind.PRINCIPAL],
         permissions=[ExampleMiddlewareConfigPerms.DELETE],

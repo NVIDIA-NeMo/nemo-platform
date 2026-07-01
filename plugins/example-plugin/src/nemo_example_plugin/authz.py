@@ -3,7 +3,7 @@
 
 """The example plugin's authz scope.
 
-The service and middleware route modules import :data:`SCOPE` so the plugin shares one
+The service and middleware route modules import :data:`scope` so the plugin shares one
 ``AuthzScope("example")``. A dedicated module also avoids a service ↔ middleware import cycle.
 """
 
@@ -11,4 +11,4 @@ from __future__ import annotations
 
 from nemo_platform_plugin.authz import AuthzScope
 
-SCOPE = AuthzScope("example")
+scope = AuthzScope("example")

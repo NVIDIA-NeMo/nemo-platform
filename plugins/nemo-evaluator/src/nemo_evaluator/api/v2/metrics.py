@@ -17,7 +17,7 @@ from nemo_evaluator.api.schemas import (
     MetricSort,
 )
 from nemo_evaluator.api.service.metric_service import MetricService
-from nemo_evaluator.authz import SCOPE
+from nemo_evaluator.authz import scope
 from nemo_evaluator.entities import MAX_NAME_LENGTH, NAME_PATTERN
 from nemo_platform_plugin.api.parsed_filter import ParsedFilter, make_filter_dep
 from nemo_platform_plugin.authz import CallerKind, PermissionSet, path_rule, perm
@@ -57,7 +57,7 @@ router = APIRouter()
         filter_description="Filter metrics by workspace, name, metric_type, description, created_at, and updated_at.",
     ),
 )
-@SCOPE.read
+@scope.read
 @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[MetricPerms.LIST])
 async def list_metrics(
     workspace: str,
@@ -93,7 +93,7 @@ async def list_metrics(
     status_code=status.HTTP_201_CREATED,
     responses={status.HTTP_409_CONFLICT: {"description": "Metric already exists"}},
 )
-@SCOPE.write
+@scope.write
 @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[MetricPerms.CREATE])
 async def create_metric(
     workspace: str,
@@ -134,7 +134,7 @@ async def create_metric(
     status_code=status.HTTP_200_OK,
     responses={status.HTTP_404_NOT_FOUND: {"description": "Metric not found"}},
 )
-@SCOPE.read
+@scope.read
 @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[MetricPerms.READ])
 async def get_metric(
     workspace: str,
@@ -165,7 +165,7 @@ async def get_metric(
     status_code=status.HTTP_204_NO_CONTENT,
     responses={status.HTTP_404_NOT_FOUND: {"description": "Metric not found"}},
 )
-@SCOPE.write
+@scope.write
 @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[MetricPerms.DELETE])
 async def delete_metric(
     workspace: str,

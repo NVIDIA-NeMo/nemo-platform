@@ -3,11 +3,11 @@
 
 """The deployments plugin's authz scope.
 
-The route modules import :data:`SCOPE` so the plugin shares one ``AuthzScope("deployments")``.
+The route modules import :data:`scope` so the plugin shares one ``AuthzScope("deployments")``.
 """
 
 from __future__ import annotations
 
 from nemo_platform_plugin.authz import AuthzScope
 
-SCOPE = AuthzScope("deployments")
+scope = AuthzScope("deployments")

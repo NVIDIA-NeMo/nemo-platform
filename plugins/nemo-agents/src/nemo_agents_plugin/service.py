@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 from typing import ClassVar, NamedTuple
 
-from nemo_agents_plugin.authz import SCOPE
+from nemo_agents_plugin.authz import scope
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.jobs.routes import add_job_routes
 from nemo_platform_plugin.service import NemoService, RouterSpec
@@ -117,7 +117,7 @@ class AgentsService(NemoService):
                     add_job_routes(
                         collection.job_cls,
                         service_name=collection.service_name,
-                        authz=SCOPE.child(collection.subname),
+                        authz=scope.child(collection.subname),
                     ),
                     tag="Agents",
                     description=collection.description,

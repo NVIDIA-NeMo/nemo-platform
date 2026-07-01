@@ -9,7 +9,7 @@ from typing import ClassVar
 
 from fastapi import APIRouter
 from nemo_evaluator.api.v2 import metrics as metrics_routes
-from nemo_evaluator.authz import SCOPE
+from nemo_evaluator.authz import scope
 from nemo_evaluator.core import say_hello
 from nemo_evaluator.jobs.agent_evaluate import AgentEvalJob
 from nemo_evaluator.jobs.evaluate import EvaluateJob
@@ -38,8 +38,8 @@ class EvaluatorPluginService(NemoService):
 
     def get_routers(self) -> list[RouterSpec]:
         router = APIRouter()
-        jobs_router = add_job_routes(EvaluateJob, authz=SCOPE)
-        agent_jobs_router = add_job_routes(AgentEvalJob, authz=SCOPE)
+        jobs_router = add_job_routes(EvaluateJob, authz=scope)
+        agent_jobs_router = add_job_routes(AgentEvalJob, authz=scope)
 
         @router.get("/healthz")
         @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[])
@@ -93,7 +93,7 @@ def _build_hello_router() -> APIRouter:
     router = APIRouter()
 
     @router.get("/hello/{name}", response_model=HelloResponse)
-    @SCOPE.read
+    @scope.read
     @path_rule(
         callers=[CallerKind.PRINCIPAL],
         permissions=[EvaluatorPerms.HELLO_READ],

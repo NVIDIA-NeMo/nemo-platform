@@ -3,7 +3,7 @@
 
 """The evaluator plugin's authz scope.
 
-The service and the metrics route module import :data:`SCOPE` so the plugin shares one
+The service and the metrics route module import :data:`scope` so the plugin shares one
 ``AuthzScope("evaluator")``.
 """
 
@@ -11,4 +11,4 @@ from __future__ import annotations
 
 from nemo_platform_plugin.authz import AuthzScope
 
-SCOPE = AuthzScope("evaluator")
+scope = AuthzScope("evaluator")

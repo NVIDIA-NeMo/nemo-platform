@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from nemo_auditor.api.v2._filters import make_filter_dep
 from nemo_auditor.api.v2._perms import AuditConfigPerms
 from nemo_auditor.api.v2.schemas import ConfigFilter, CreateAuditConfigRequest, UpdateAuditConfigRequest
-from nemo_auditor.authz import SCOPE
+from nemo_auditor.authz import scope
 from nemo_auditor.entities import AuditConfig
 from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.entity_client import (
@@ -34,7 +34,7 @@ _config_filter_dep = make_filter_dep(ConfigFilter)
 
 
 @router.post("/configs", response_model=AuditConfig, status_code=201, tags=["Auditor Configs"])
-@SCOPE.write
+@scope.write
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[AuditConfigPerms.CREATE],
@@ -71,7 +71,7 @@ async def create_config(
     tags=["Auditor Configs"],
     openapi_extra=generate_openapi_extra_params(filter_schema=ConfigFilter),
 )
-@SCOPE.read
+@scope.read
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[AuditConfigPerms.LIST],
@@ -107,7 +107,7 @@ async def list_configs(
 
 
 @router.get("/configs/{name}", response_model=AuditConfig, tags=["Auditor Configs"])
-@SCOPE.read
+@scope.read
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[AuditConfigPerms.READ],
@@ -131,7 +131,7 @@ async def get_config(
 
 
 @router.put("/configs/{name}", response_model=AuditConfig, tags=["Auditor Configs"])
-@SCOPE.write
+@scope.write
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[AuditConfigPerms.UPDATE],
@@ -172,7 +172,7 @@ async def update_config(
 
 
 @router.delete("/configs/{name}", status_code=204, tags=["Auditor Configs"])
-@SCOPE.write
+@scope.write
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[AuditConfigPerms.DELETE],

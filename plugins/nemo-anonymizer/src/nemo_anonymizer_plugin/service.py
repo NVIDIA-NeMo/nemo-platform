@@ -37,12 +37,12 @@ class AnonymizerService(NemoService):
         from nemo_platform_plugin.functions.routes import add_function_routes
         from nemo_platform_plugin.jobs.routes import add_job_routes
 
-        anonymizer = AuthzScope("anonymizer")
+        scope = AuthzScope("anonymizer")
         return [
             RouterSpec(
                 add_function_routes(
                     PreviewFunction,
-                    authz=anonymizer,
+                    authz=scope,
                     permission_description="Preview an Anonymizer config",
                 ),
                 prefix="/v2/workspaces/{workspace}",
@@ -50,7 +50,7 @@ class AnonymizerService(NemoService):
                 description="Streaming preview of an Anonymizer config.",
             ),
             RouterSpec(
-                add_job_routes(RunJob, authz=anonymizer),
+                add_job_routes(RunJob, authz=scope),
                 prefix="/v2/workspaces/{workspace}",
                 tag="Anonymizer",
                 description="Job endpoints",

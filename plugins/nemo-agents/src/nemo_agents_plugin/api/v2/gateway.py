@@ -35,7 +35,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from nemo_agents_plugin.api.v2._perms import GatewayPerms
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
-from nemo_agents_plugin.authz import SCOPE
+from nemo_agents_plugin.authz import scope
 from nemo_agents_plugin.entities import Agent, AgentDeployment
 from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
@@ -91,7 +91,7 @@ async def _serve_agent_proxy(
     tags=["Agent Gateway"],
     include_in_schema=False,
 )
-@SCOPE.read
+@scope.read
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[GatewayPerms.INVOKE],
@@ -113,7 +113,7 @@ async def proxy_by_agent_name_read(
     tags=["Agent Gateway"],
     include_in_schema=False,
 )
-@SCOPE.write
+@scope.write
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[GatewayPerms.INVOKE],
@@ -165,7 +165,7 @@ async def _serve_deployment_proxy(
     tags=["Agent Gateway"],
     include_in_schema=False,
 )
-@SCOPE.read
+@scope.read
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[GatewayPerms.INVOKE],
@@ -187,7 +187,7 @@ async def proxy_by_deployment_name_read(
     tags=["Agent Gateway"],
     include_in_schema=False,
 )
-@SCOPE.write
+@scope.write
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[GatewayPerms.INVOKE],

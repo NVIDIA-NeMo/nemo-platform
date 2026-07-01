@@ -11,7 +11,7 @@ from typing import cast
 from fastapi import APIRouter, Depends, HTTPException, Query
 from nemo_deployments_plugin.api.v2._perms import DeploymentPerms
 from nemo_deployments_plugin.api.v2.dependencies import get_entity_client
-from nemo_deployments_plugin.authz import SCOPE
+from nemo_deployments_plugin.authz import scope
 from nemo_deployments_plugin.entities import Deployment, DeploymentConfig, DeploymentStatus
 from nemo_deployments_plugin.reconciler.entity_client import list_all_pages
 from nemo_deployments_plugin.schema import CreateDeploymentRequest, DeploymentFilter, DeploymentPage
@@ -66,7 +66,7 @@ def _parse_deployment_config_ref(ref: str, default_workspace: str) -> tuple[str,
 
 
 @router.post("/deployments", response_model=Deployment, status_code=201, tags=["Deployments"])
-@SCOPE.write
+@scope.write
 @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[DeploymentPerms.CREATE])
 async def create_deployment(
     workspace: str,
@@ -113,7 +113,7 @@ async def create_deployment(
 
 
 @router.get("/deployments", response_model=DeploymentPage, tags=["Deployments"])
-@SCOPE.read
+@scope.read
 @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[DeploymentPerms.LIST])
 async def list_deployments(
     workspace: str,
@@ -150,7 +150,7 @@ async def list_deployments(
 
 
 @router.get("/deployments/{name}", response_model=Deployment, tags=["Deployments"])
-@SCOPE.read
+@scope.read
 @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[DeploymentPerms.READ])
 async def get_deployment(
     workspace: str,
@@ -167,7 +167,7 @@ async def get_deployment(
 
 
 @router.delete("/deployments/{name}", status_code=204, tags=["Deployments"])
-@SCOPE.write
+@scope.write
 @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[DeploymentPerms.DELETE])
 async def delete_deployment(
     workspace: str,

@@ -3,11 +3,11 @@
 
 """The auditor plugin's authz scope.
 
-The route modules import :data:`SCOPE` so the plugin shares one ``AuthzScope("auditor")``.
+The route modules import :data:`scope` so the plugin shares one ``AuthzScope("auditor")``.
 """
 
 from __future__ import annotations
 
 from nemo_platform_plugin.authz import AuthzScope
 
-SCOPE = AuthzScope("auditor")
+scope = AuthzScope("auditor")

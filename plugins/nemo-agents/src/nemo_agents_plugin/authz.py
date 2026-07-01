@@ -3,7 +3,7 @@
 
 """The agents plugin's authz scope.
 
-Route modules and the service import :data:`SCOPE` so the plugin shares one
+Route modules and the service import :data:`scope` so the plugin shares one
 ``AuthzScope("agents")``.
 """
 
@@ -11,4 +11,4 @@ from __future__ import annotations
 
 from nemo_platform_plugin.authz import AuthzScope
 
-SCOPE = AuthzScope("agents")
+scope = AuthzScope("agents")

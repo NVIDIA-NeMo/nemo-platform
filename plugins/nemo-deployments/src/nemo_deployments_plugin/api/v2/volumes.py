@@ -10,7 +10,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from nemo_deployments_plugin.api.v2._perms import VolumePerms
 from nemo_deployments_plugin.api.v2.dependencies import get_entity_client
-from nemo_deployments_plugin.authz import SCOPE
+from nemo_deployments_plugin.authz import scope
 from nemo_deployments_plugin.entities import Volume
 from nemo_deployments_plugin.references import deployment_config_names_referencing_volume
 from nemo_deployments_plugin.schema import CreateVolumeRequest, VolumeFilter, VolumePage
@@ -27,7 +27,7 @@ _volume_filter_dep = make_filter_obj_dep(VolumeFilter)
 
 
 @router.post("/volumes", response_model=Volume, status_code=201, tags=["Volumes"])
-@SCOPE.write
+@scope.write
 @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[VolumePerms.CREATE])
 async def create_volume(
     workspace: str,
@@ -50,7 +50,7 @@ async def create_volume(
 
 
 @router.get("/volumes", response_model=VolumePage, tags=["Volumes"])
-@SCOPE.read
+@scope.read
 @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[VolumePerms.LIST])
 async def list_volumes(
     workspace: str,
@@ -74,7 +74,7 @@ async def list_volumes(
 
 
 @router.get("/volumes/{name}", response_model=Volume, tags=["Volumes"])
-@SCOPE.read
+@scope.read
 @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[VolumePerms.READ])
 async def get_volume(
     workspace: str,
@@ -91,7 +91,7 @@ async def get_volume(
 
 
 @router.delete("/volumes/{name}", status_code=204, tags=["Volumes"])
-@SCOPE.write
+@scope.write
 @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[VolumePerms.DELETE])
 async def delete_volume(
     workspace: str,

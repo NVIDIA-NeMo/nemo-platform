@@ -30,12 +30,12 @@ class DataDesignerService(NemoService):
         from nemo_platform_plugin.functions.routes import add_function_routes
         from nemo_platform_plugin.jobs.routes import add_job_routes
 
-        data_designer = AuthzScope("data-designer")
+        scope = AuthzScope("data-designer")
         return [
             RouterSpec(
                 add_function_routes(
                     PreviewFunction,
-                    authz=data_designer,
+                    authz=scope,
                     permission_description="Preview a Data Designer config",
                 ),
                 prefix="/v2/workspaces/{workspace}",
@@ -43,7 +43,7 @@ class DataDesignerService(NemoService):
                 description="Streaming preview of a Data Designer config.",
             ),
             RouterSpec(
-                add_job_routes(CreateJob, authz=data_designer),
+                add_job_routes(CreateJob, authz=scope),
                 prefix="/v2/workspaces/{workspace}",
                 tag="Data Designer",
                 description="Job endpoints",

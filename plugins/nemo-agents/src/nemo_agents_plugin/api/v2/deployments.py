@@ -22,7 +22,7 @@ import secrets
 from fastapi import APIRouter, Depends, HTTPException, Query
 from nemo_agents_plugin.api.v2._perms import DeploymentPerms
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
-from nemo_agents_plugin.authz import SCOPE
+from nemo_agents_plugin.authz import scope
 from nemo_agents_plugin.entities import Agent, AgentDeployment
 from nemo_agents_plugin.schema import (
     CreateDeploymentRequest,
@@ -43,7 +43,7 @@ _deployment_filter_dep = make_filter_obj_dep(DeploymentFilter)
 
 
 @router.post("/deployments", response_model=AgentDeployment, status_code=201, tags=["Agent Deployments"])
-@SCOPE.write
+@scope.write
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[DeploymentPerms.CREATE],
@@ -101,7 +101,7 @@ async def create_deployment(
 
 
 @router.get("/deployments", response_model=DeploymentPage, tags=["Agent Deployments"])
-@SCOPE.read
+@scope.read
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[DeploymentPerms.LIST],
@@ -139,7 +139,7 @@ async def list_deployments(
 
 
 @router.get("/deployments/{name}", response_model=AgentDeployment, tags=["Agent Deployments"])
-@SCOPE.read
+@scope.read
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[DeploymentPerms.READ],
@@ -164,7 +164,7 @@ async def get_deployment(
 
 
 @router.delete("/deployments/{name}", status_code=204, tags=["Agent Deployments"])
-@SCOPE.write
+@scope.write
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[DeploymentPerms.DELETE],

@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from nemo_auditor.api.v2._filters import make_filter_dep
 from nemo_auditor.api.v2._perms import AuditTargetPerms
 from nemo_auditor.api.v2.schemas import CreateAuditTargetRequest, TargetFilter, UpdateAuditTargetRequest
-from nemo_auditor.authz import SCOPE
+from nemo_auditor.authz import scope
 from nemo_auditor.entities import AuditTarget
 from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.entity_client import (
@@ -33,7 +33,7 @@ _target_filter_dep = make_filter_dep(TargetFilter)
 
 
 @router.post("/targets", response_model=AuditTarget, status_code=201, tags=["Auditor Targets"])
-@SCOPE.write
+@scope.write
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[AuditTargetPerms.CREATE],
@@ -69,7 +69,7 @@ async def create_target(
     tags=["Auditor Targets"],
     openapi_extra=generate_openapi_extra_params(filter_schema=TargetFilter),
 )
-@SCOPE.read
+@scope.read
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[AuditTargetPerms.LIST],
@@ -105,7 +105,7 @@ async def list_targets(
 
 
 @router.get("/targets/{name}", response_model=AuditTarget, tags=["Auditor Targets"])
-@SCOPE.read
+@scope.read
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[AuditTargetPerms.READ],
@@ -129,7 +129,7 @@ async def get_target(
 
 
 @router.put("/targets/{name}", response_model=AuditTarget, tags=["Auditor Targets"])
-@SCOPE.write
+@scope.write
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[AuditTargetPerms.UPDATE],
@@ -169,7 +169,7 @@ async def update_target(
 
 
 @router.delete("/targets/{name}", status_code=204, tags=["Auditor Targets"])
-@SCOPE.write
+@scope.write
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
     permissions=[AuditTargetPerms.DELETE],

@@ -32,7 +32,7 @@ from typing import ClassVar
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 from nemo_example_plugin._perms import ExampleHelloPerms, ExampleItemPerms
-from nemo_example_plugin.authz import SCOPE
+from nemo_example_plugin.authz import scope
 from nemo_example_plugin.config import ExampleConfig
 from nemo_example_plugin.core import say_hello
 from nemo_example_plugin.entities import ExampleItem
@@ -105,7 +105,7 @@ class ExampleService(NemoService):
             RouterSpec(
                 add_function_routes(
                     GreetFunction,
-                    authz=SCOPE,
+                    authz=scope,
                     permission_description="Invoke the greet function",
                 ),
                 tag="Example Functions",
@@ -115,7 +115,7 @@ class ExampleService(NemoService):
             RouterSpec(
                 add_function_routes(
                     CountFunction,
-                    authz=SCOPE,
+                    authz=scope,
                     permission_description="Invoke the count function",
                 ),
                 tag="Example Functions",
@@ -139,7 +139,7 @@ def _build_hello_router() -> APIRouter:
     router = APIRouter()
 
     @router.get("/hello/{name}", response_model=HelloResponse)
-    @SCOPE.read
+    @scope.read
     @path_rule(
         callers=[CallerKind.PRINCIPAL],
         permissions=[ExampleHelloPerms.READ],
@@ -178,7 +178,7 @@ def _build_binary_router() -> APIRouter:
     _store: dict[str, bytes] = {}
 
     @router.put("/blob/{name}", status_code=200, response_model=BlobUploadResponse)
-    @SCOPE.write
+    @scope.write
     @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[])
     async def upload_blob(name: str, request: Request) -> BlobUploadResponse:
         """Accept raw binary and store it. Returns byte count."""
@@ -187,7 +187,7 @@ def _build_binary_router() -> APIRouter:
         return BlobUploadResponse(name=name, size=len(data))
 
     @router.get("/blob/{name}", response_class=Response)
-    @SCOPE.read
+    @scope.read
     @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[])
     async def download_blob(name: str) -> Response:
         """Return stored binary content."""
@@ -246,7 +246,7 @@ def _build_items_router() -> APIRouter:
         status_code=201,
         tags=["Example Items"],
     )
-    @SCOPE.write
+    @scope.write
     @path_rule(
         callers=[CallerKind.PRINCIPAL],
         permissions=[ExampleItemPerms.CREATE],
@@ -291,7 +291,7 @@ def _build_items_router() -> APIRouter:
         response_model=ExampleItemPage,
         tags=["Example Items"],
     )
-    @SCOPE.read
+    @scope.read
     @path_rule(
         callers=[CallerKind.PRINCIPAL],
         permissions=[ExampleItemPerms.LIST],
@@ -381,7 +381,7 @@ def _build_items_router() -> APIRouter:
         response_model=ExampleItem,
         tags=["Example Items"],
     )
-    @SCOPE.read
+    @scope.read
     @path_rule(
         callers=[CallerKind.PRINCIPAL],
         permissions=[ExampleItemPerms.READ],
@@ -414,7 +414,7 @@ def _build_items_router() -> APIRouter:
         response_model=ExampleItem,
         tags=["Example Items"],
     )
-    @SCOPE.write
+    @scope.write
     @path_rule(
         callers=[CallerKind.PRINCIPAL],
         permissions=[ExampleItemPerms.UPDATE],
@@ -467,7 +467,7 @@ def _build_items_router() -> APIRouter:
         status_code=204,
         tags=["Example Items"],
     )
-    @SCOPE.write
+    @scope.write
     @path_rule(
         callers=[CallerKind.PRINCIPAL],
         permissions=[ExampleItemPerms.DELETE],
