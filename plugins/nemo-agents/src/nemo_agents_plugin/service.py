@@ -8,7 +8,9 @@ from __future__ import annotations
 import logging
 from typing import ClassVar, NamedTuple
 
+from nemo_agents_plugin.api.v2._perms import GatewayPerms
 from nemo_agents_plugin.authz import scope
+from nemo_platform_plugin.authz import Permission
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.jobs.routes import add_job_routes
 from nemo_platform_plugin.service import NemoService, RouterSpec
@@ -125,3 +127,10 @@ class AgentsService(NemoService):
                 )
             )
         return specs
+
+    def extra_role_permissions(self) -> dict[str, list[Permission]]:
+        # A Viewer must be able to invoke a deployed agent through the gateway proxy — the grant
+        # the pre-derivation authz gave Viewer explicitly. The permission's suffix (`invoke`)
+        # isn't `read`/`list`, so the default heuristic assigns it to Editor only; grant Viewer
+        # here. (Editor still gets it via that same default suffix heuristic.)
+        return {"Viewer": [GatewayPerms.INVOKE]}

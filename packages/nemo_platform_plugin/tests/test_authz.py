@@ -188,6 +188,62 @@ def test_derive_emits_deny_for_unruled_route() -> None:
     assert any("no @path_rule" in p for p in problems)
 
 
+def test_extra_role_permissions_threaded_into_contribution() -> None:
+    """A service can grant a role a permission the suffix heuristic wouldn't (e.g. ``.invoke`` to
+    Viewer). The grant is registered in the catalog and threaded into ``role_permissions``."""
+
+    class _Svc(NemoService):
+        name = "svc"
+
+        def get_routers(self) -> list[RouterSpec]:
+            return []
+
+        def extra_role_permissions(self) -> dict[str, list[Permission]]:
+            return {"Viewer": [Permission("svc", "gateway", "invoke", "Invoke")]}
+
+    contrib, problems, _warnings = _derive_service_contribution(_Svc())
+    assert problems == []
+    assert contrib.role_permissions == {"Viewer": ["svc.gateway.invoke"]}
+    # Registered in the catalog with its description even though no route references it.
+    assert contrib.permissions == {"svc.gateway.invoke": "Invoke"}
+
+
+def test_extra_role_permissions_outside_namespace_fails_closed() -> None:
+    """Granting a role another service's permission is namespace squatting: the whole plugin
+    fails closed (no permissions, no role grants) — the same fence applied to the route catalog."""
+
+    class _Svc(NemoService):
+        name = "svc"
+
+        def get_routers(self) -> list[RouterSpec]:
+            return []
+
+        def extra_role_permissions(self) -> dict[str, list[Permission]]:
+            return {"Viewer": [Permission("other", "", "read", "Read other")]}
+
+    contrib, problems, _warnings = _derive_service_contribution(_Svc())
+    assert any("outside the service namespace" in p for p in problems)
+    assert contrib.permissions == {}
+    assert contrib.role_permissions == {}
+
+
+def test_extra_role_permissions_hook_failure_recorded_not_raised() -> None:
+    """A broken ``extra_role_permissions()`` is recorded as a problem, never raised — raising would
+    drop the route bindings and let them fall through the ``service:`` no-match bypass."""
+
+    class _Svc(NemoService):
+        name = "svc"
+
+        def get_routers(self) -> list[RouterSpec]:
+            return []
+
+        def extra_role_permissions(self) -> dict[str, list[Permission]]:
+            raise RuntimeError("boom")
+
+    _contrib, problems, _warnings = _derive_service_contribution(_Svc())
+    assert any("extra_role_permissions() raised" in p for p in problems)
+
+
 def test_submit_remote_forwards_authorization_header() -> None:
     """Authenticated CLI submit passes Authorization to the protected job route."""
     captured: dict[str, str] = {}

@@ -129,6 +129,22 @@ class NemoService(_NamedPlugin):
         """
         return []
 
+    def extra_role_permissions(self) -> dict[str, list[Permission]]:
+        """Extra ``role -> [permission]`` grants beyond the suffix-based defaults.
+
+        The derivation grants each catalog permission to roles by a suffix heuristic
+        (``.list``/``.read`` → Viewer + Editor; everything else → Editor only). Override this
+        to grant a permission to a role that heuristic wouldn't reach — e.g. the agent gateway's
+        ``.invoke`` permission, which a Viewer must hold to call a deployed agent even though its
+        suffix isn't ``read``. Grants are **unioned** with the suffix defaults (never subtractive),
+        and every permission must live in this service's own namespace or the whole plugin fails
+        closed. Each granted permission is also registered in the catalog, so it need not also
+        appear in :meth:`extra_permissions`.
+
+        Default: none.
+        """
+        return {}
+
     def get_exception_handlers(self) -> dict[type[Exception], ExceptionHandler]:
         """Return a mapping of exception types to handler functions.
 

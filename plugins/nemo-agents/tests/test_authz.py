@@ -89,6 +89,34 @@ def test_gateway_proxy_binding() -> None:
     assert "agents.gateway.invoke" in contrib.permissions
 
 
+def test_gateway_invoke_granted_to_viewer() -> None:
+    # Regression (P1): pre-derivation authz granted the gateway permission to Viewer + Editor
+    # explicitly. Its suffix (`invoke`) isn't read/list, so the default role heuristic assigns it
+    # to Editor only; AgentsService.extra_role_permissions() restores the Viewer grant so a Viewer
+    # can still invoke a deployed agent through the proxy.
+    contrib = _contribution()
+    assert contrib.role_permissions == {"Viewer": ["agents.gateway.invoke"]}
+
+
+def test_gateway_invoke_reaches_both_roles_after_merge() -> None:
+    # End-to-end: merging the derived contribution into static authz lands the gateway permission
+    # on BOTH roles — Viewer via the explicit extra_role_permissions grant, Editor via the default
+    # suffix heuristic. This is the actual user-facing guarantee the P1 regression broke.
+    from nemo_platform_plugin.authz_merge import merge_authz_contributions
+
+    base = {
+        "authz": {
+            "permissions": {},
+            "roles": {"Viewer": {"permissions": []}, "Editor": {"permissions": []}},
+            "endpoints": {},
+        }
+    }
+    merged = merge_authz_contributions(base, [_contribution().to_dict()])
+    roles = merged["authz"]["roles"]
+    assert "agents.gateway.invoke" in roles["Viewer"]["permissions"]
+    assert "agents.gateway.invoke" in roles["Editor"]["permissions"]
+
+
 def test_job_factory_binding() -> None:
     contrib = _contribution()
     # evaluate-suite maps to the ``agents.suite`` sub-namespace; its collection

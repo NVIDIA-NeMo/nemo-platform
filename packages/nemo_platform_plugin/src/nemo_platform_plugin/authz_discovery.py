@@ -311,12 +311,33 @@ def _derive_service_contribution(service: NemoService) -> tuple[AuthzContributio
     for perm in extra:
         _register_permission(catalog, perm, warnings)
 
+    # Extra role grants: permissions the suffix heuristic (.list/.read → Viewer+Editor, else
+    # Editor) wouldn't assign to a role — e.g. the gateway .invoke permission a Viewer needs.
+    # Register each in the catalog (so it carries a registry entry + description) and thread
+    # role -> [id] into the contribution; merge_authz_contributions unions these with the
+    # suffix-derived defaults. A broken hook must NOT abort derivation (that would drop the
+    # route bindings and let them fall through the service: bypass), so it's recorded, not raised.
+    role_grants: dict[str, list[str]] = {}
+    try:
+        extra_roles = service.extra_role_permissions()
+    except Exception as exc:
+        extra_roles = {}
+        errors.append(f"extra_role_permissions() raised {exc!r}")
+    for role_name, perms in extra_roles.items():
+        for perm in perms:
+            _register_permission(catalog, perm, warnings)
+        granted = sorted({perm.id for perm in perms})
+        if granted:
+            role_grants[role_name] = granted
+
     # Pass 2: validate the catalog. A malformed permission id would 500 the bundle's
     # ``validate_static_authz_data`` if it reached the wire; a permission whose first segment
     # isn't the service's own name is namespace squatting (it would silently widen the
     # Viewer/Editor role grants for another service's namespace). Either is a fail-closed
     # error: deny every route and contribute no permissions, so nothing malformed or
     # cross-namespace can reach the merged policy.
+    # Role-granted permissions are registered in the catalog above, so the ownership fence below
+    # covers them too: a plugin cannot grant a role a permission outside its own namespace.
     owner = service.name
     malformed = sorted(pid for pid in catalog if not is_valid_permission_id(pid))
     out_of_namespace = sorted(p.id for p in catalog.values() if p.service != owner)
@@ -333,7 +354,11 @@ def _derive_service_contribution(service: NemoService) -> tuple[AuthzContributio
         for path, methods in bindings.items()
     }
     permissions = {perm.id: perm.description for perm in catalog.values()}
-    return AuthzContribution(permissions=permissions, endpoints=endpoints), errors, warnings
+    return (
+        AuthzContribution(permissions=permissions, endpoints=endpoints, role_permissions=role_grants),
+        errors,
+        warnings,
+    )
 
 
 _plugin_authz_cache: list[PluginAuthzResult] | None = None
