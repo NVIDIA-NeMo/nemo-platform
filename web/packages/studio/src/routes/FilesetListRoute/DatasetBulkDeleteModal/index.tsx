@@ -2,13 +2,24 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useFilesDeleteFileset } from '@nemo/sdk/generated/platform/api';
-import { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
-import { Button, Flex, Modal } from '@nvidia/foundations-react-core';
+import type { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
+import { Button } from '@nvidia/foundations-react-core';
 import { useMutateMany } from '@studio/api/common/useMutateMany';
 import { invalidateDatasetCaches } from '@studio/api/datasets/invalidateDatasetCaches';
-import { logger } from '@studio/util/logger';
+import { BulkDeleteModal as GenericBulkDeleteModal } from '@studio/components/BulkDeleteModal';
 import { Trash } from 'lucide-react';
-import { FC, ReactNode, useState } from 'react';
+import {
+  cloneElement,
+  isValidElement,
+  type FC,
+  type MouseEventHandler,
+  type ReactNode,
+  useState,
+} from 'react';
+
+interface TriggerProps {
+  onClick?: MouseEventHandler;
+}
 
 interface DatasetBulkDeleteModalProps {
   selectedDatasets: FilesetOutput[];
@@ -22,7 +33,7 @@ export const DatasetBulkDeleteModal: FC<DatasetBulkDeleteModalProps> = ({
   onConfirmSuccess,
   slotTrigger,
 }) => {
-  const [open, setOpen] = useState<boolean>(false);
+  const [open, setOpen] = useState(false);
 
   const { mutateAsync: deleteDataset } = useFilesDeleteFileset({
     mutation: {
@@ -31,52 +42,48 @@ export const DatasetBulkDeleteModal: FC<DatasetBulkDeleteModalProps> = ({
       },
     },
   });
-  const { mutateAsync: deleteDatasets, isPending } = useMutateMany(deleteDataset);
+  const { mutateAsync: deleteDatasets } = useMutateMany(deleteDataset, { action: 'delete' });
 
-  const handleDelete = async () => {
-    try {
-      const datasetsToDelete = selectedDatasets.filter(
-        (dataset) => dataset.workspace && dataset.name
-      );
-      await deleteDatasets(
-        datasetsToDelete.map((dataset) => ({
-          workspace: dataset.workspace,
-          name: dataset.name,
-        }))
-      );
-
-      onConfirmSuccess();
-      setOpen(false);
-    } catch (error) {
-      logger.error('Failed to delete datasets', error);
+  const handleDelete = async (datasets: FilesetOutput[]) => {
+    const datasetsToDelete = datasets.filter(
+      (dataset): dataset is FilesetOutput & { workspace: string; name: string } =>
+        !!(dataset.workspace && dataset.name)
+    );
+    if (datasetsToDelete.length !== datasets.length) {
+      throw new Error('Cannot delete datasets without workspace and name.');
     }
+    await deleteDatasets(
+      datasetsToDelete.map((dataset) => ({ workspace: dataset.workspace, name: dataset.name }))
+    );
+    onConfirmSuccess();
   };
 
+  const openTrigger = () => setOpen(true);
+
+  const trigger = isValidElement<TriggerProps>(slotTrigger) ? (
+    cloneElement(slotTrigger, {
+      onClick: (e: Parameters<MouseEventHandler>[0]) => {
+        slotTrigger.props.onClick?.(e);
+        openTrigger();
+      },
+    })
+  ) : (
+    <Button kind="secondary" data-testid="bulk-delete-modal-trigger-button" onClick={openTrigger}>
+      <Trash />
+      Delete
+    </Button>
+  );
+
   return (
-    <Modal
-      open={open}
-      onOpenChange={setOpen}
-      slotTrigger={
-        slotTrigger ?? (
-          <Button kind="secondary" data-testid="bulk-delete-modal-trigger-button">
-            <Trash />
-            Delete
-          </Button>
-        )
-      }
-      slotHeading={`Delete ${selectedDatasets.length} Dataset${selectedDatasets.length > 1 ? 's' : ''}`}
-      slotFooter={
-        <Flex justify="end" gap="density-xs" align="center" className="w-full">
-          <Button onClick={() => setOpen(false)} kind="tertiary" color="neutral">
-            Cancel
-          </Button>
-          <Button color="danger" onClick={handleDelete} disabled={isPending}>
-            {isPending ? 'Deleting...' : 'Delete'}
-          </Button>
-        </Flex>
-      }
-    >
-      Are you sure you want to delete this?
-    </Modal>
+    <>
+      {trigger}
+      <GenericBulkDeleteModal
+        items={selectedDatasets}
+        open={open}
+        onDelete={handleDelete}
+        title={(count) => `Delete ${count} Dataset${count !== 1 ? 's' : ''}`}
+        onClose={() => setOpen(false)}
+      />
+    </>
   );
 };

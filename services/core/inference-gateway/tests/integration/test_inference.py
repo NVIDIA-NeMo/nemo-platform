@@ -24,6 +24,7 @@ from nemo_platform.types.inference.model_provider import ModelProvider
 from nemo_platform.types.inference.virtual_model import VirtualModel as SDKVirtualModel
 from nmp.core.inference_gateway.api.dependencies import global_virtual_model_cache
 from nmp.core.inference_gateway.api.model_cache import ModelCache, ModelProviderInfo
+from nmp.core.models.app.utils import get_docker_container_name, get_docker_volume_name
 from nmp.core.models.controllers.models_controller import ModelsController
 from tenacity import retry, stop_after_delay, wait_fixed
 
@@ -245,11 +246,11 @@ def test_igw_routes_to_deployed_mock_nim(
     test_uuid = uuid.uuid4().hex[:8]
     config_name = f"test-igw-e2e-{test_uuid}"
     deployment_name = f"test-igw-e2e-{test_uuid}"
-    container_name = f"md-{DEFAULT_WORKSPACE}-{deployment_name}"
+    container_name = get_docker_container_name(DEFAULT_WORKSPACE, deployment_name)
 
     # Register for cleanup
     ctx.register_container(container_name)
-    ctx.register_volume(f"nim-cache-{DEFAULT_WORKSPACE}-{deployment_name}")
+    ctx.register_volume(get_docker_volume_name(DEFAULT_WORKSPACE, deployment_name))
 
     # === Phase 1: Create deployment config and deployment ===
     config, deployment = _create_deployment_with_config(sdk, config_name, deployment_name, mock_nim_image)
@@ -410,10 +411,10 @@ def test_igw_cache_removes_deleted_deployment_provider(
     test_uuid = uuid.uuid4().hex[:8]
     config_name = f"test-igw-delete-{test_uuid}"
     deployment_name = f"test-igw-delete-{test_uuid}"
-    container_name = f"md-{DEFAULT_WORKSPACE}-{deployment_name}"
+    container_name = get_docker_container_name(DEFAULT_WORKSPACE, deployment_name)
 
     ctx.register_container(container_name)
-    ctx.register_volume(f"nim-cache-{DEFAULT_WORKSPACE}-{deployment_name}")
+    ctx.register_volume(get_docker_volume_name(DEFAULT_WORKSPACE, deployment_name))
 
     # Create deployment
     config, deployment = _create_deployment_with_config(sdk, config_name, deployment_name, mock_nim_image)

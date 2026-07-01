@@ -49,6 +49,7 @@ from nmp.core.inference_gateway.api.middleware_registry import (
 )
 from nmp.core.inference_gateway.api.model_cache import ModelProviderInfo
 from nmp.core.inference_gateway.api.virtual_model_cache import VirtualModelCache
+from nmp.core.models.app.utils import get_docker_container_name, get_docker_volume_name
 from tenacity import retry, stop_after_delay, wait_fixed
 
 DEFAULT_WORKSPACE = "default"
@@ -393,10 +394,10 @@ def test_middleware_request_and_response_mutation_through_backend(
     vm_name = f"test-mw-alias-{test_uuid}"
     router_key = f"test-router-{test_uuid}"
     marker_key = f"test-marker-{test_uuid}"
-    container_name = f"md-{DEFAULT_WORKSPACE}-{deployment_name}"
+    container_name = get_docker_container_name(DEFAULT_WORKSPACE, deployment_name)
 
     ctx.register_container(container_name)
-    ctx.register_volume(f"nim-cache-{DEFAULT_WORKSPACE}-{deployment_name}")
+    ctx.register_volume(get_docker_volume_name(DEFAULT_WORKSPACE, deployment_name))
 
     # ---- Phase 1: Deploy mock NIM ----------------------------------------
     image_name, image_tag = mock_nim_image.rsplit(":", 1)
@@ -515,10 +516,10 @@ def test_model_endpoint_request_and_response_mutation_through_backend(
     vm_name = f"test-mep-alias-{test_uuid}"
     router_key = f"test-mep-router-{test_uuid}"
     marker_key = f"test-mep-marker-{test_uuid}"
-    container_name = f"md-{DEFAULT_WORKSPACE}-{deployment_name}"
+    container_name = get_docker_container_name(DEFAULT_WORKSPACE, deployment_name)
 
     ctx.register_container(container_name)
-    ctx.register_volume(f"nim-cache-{DEFAULT_WORKSPACE}-{deployment_name}")
+    ctx.register_volume(get_docker_volume_name(DEFAULT_WORKSPACE, deployment_name))
 
     # ---- Phase 1: Deploy mock NIM ----------------------------------------
     image_name, image_tag = mock_nim_image.rsplit(":", 1)
@@ -634,10 +635,10 @@ def test_model_endpoint_non_model_body_mutation_regression(
     vm_name = f"test-mep-reg-alias-{test_uuid}"
     router_key = f"test-mep-reg-router-{test_uuid}"
     echo_key = f"test-mep-reg-echo-{test_uuid}"
-    container_name = f"md-{DEFAULT_WORKSPACE}-{deployment_name}"
+    container_name = get_docker_container_name(DEFAULT_WORKSPACE, deployment_name)
 
     ctx.register_container(container_name)
-    ctx.register_volume(f"nim-cache-{DEFAULT_WORKSPACE}-{deployment_name}")
+    ctx.register_volume(get_docker_volume_name(DEFAULT_WORKSPACE, deployment_name))
 
     # ---- Phase 1: Deploy mock NIM ----------------------------------------
     image_name, image_tag = mock_nim_image.rsplit(":", 1)

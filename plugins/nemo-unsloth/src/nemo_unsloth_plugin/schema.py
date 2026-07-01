@@ -100,18 +100,14 @@ class UnslothJobInput(BaseModel):
         # 4bit / 8bit mutex (bitsandbytes — they really are exclusive)
         if self.model.load_in_4bit and self.model.load_in_8bit:
             raise ValueError("model.load_in_4bit and model.load_in_8bit are mutually exclusive")
-        # all-weights (full) FT cannot quantize
+        # all-weights (full) FT cannot quantize. The lora/finetuning_type invariant
+        # (auto-fill for lora, reject lora for all_weights) is enforced in TrainingSpec.
         if self.training.finetuning_type == "all_weights":
             if self.model.load_in_4bit or self.model.load_in_8bit:
                 raise ValueError(
                     "training.finetuning_type='all_weights' is incompatible with 4-bit/8-bit loading; "
                     "set model.load_in_4bit=false and model.load_in_8bit=false"
                 )
-            if self.training.lora is not None:
-                raise ValueError("training.lora must be unset when training.finetuning_type='all_weights'")
-        # auto-fill LoRA when implied but not provided
-        if self.training.finetuning_type == "lora" and self.training.lora is None:
-            self.training.lora = LoRAParams()
         # warmup_steps and warmup_ratio mutex (transformers also enforces this
         # at runtime; we surface it earlier with a clearer message)
         if self.schedule.warmup_steps and self.schedule.warmup_ratio is not None:

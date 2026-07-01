@@ -34,7 +34,12 @@ from nmp.common.docker.gpu_pool import DockerGPUPool, GPUAllocationError
 from nmp.common.sdk_factory import get_sdk_on_behalf_of
 from nmp.core.models.app import ModelWeightsType, get_model_weights_type, is_multi_llm_image, parse_model_name_revision
 from nmp.core.models.app.constants import MODEL_MANAGED_BY_LABEL, MODEL_MANAGED_BY_MODELS_CONTROLLER
-from nmp.core.models.app.utils import _get_k8s_safe_name
+from nmp.core.models.app.utils import (
+    get_docker_container_name,
+    get_docker_plugin_puller_container_name,
+    get_docker_puller_container_name,
+    get_docker_volume_name,
+)
 from nmp.core.models.controllers.backends import generic_compiler, vllm_compiler
 from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate
 from nmp.core.models.controllers.backends.common import deployment_config_view
@@ -241,16 +246,20 @@ class DockerDeploymentCreationReconciler:
     # ======================================================================
 
     def get_container_name(self, workspace: str, name: str) -> str:
-        label_name = f"md-{workspace}-{name}"
-        return _get_k8s_safe_name(label_name, max_length=63, name_type="label")
+        """Primary NIM container name; capped at 55 chars to leave room for ``-sidecar``."""
+        return get_docker_container_name(workspace, name)
 
     def get_volume_name(self, workspace: str, name: str) -> str:
-        label_name = f"nim-cache-{workspace}-{name}"
-        return _get_k8s_safe_name(label_name, max_length=63, name_type="label")
+        """Model cache volume name (hashed ``workspace/name`` identity)."""
+        return get_docker_volume_name(workspace, name)
 
     def get_puller_container_name(self, workspace: str, name: str) -> str:
-        label_name = f"md-puller-{workspace}-{name}"
-        return _get_k8s_safe_name(label_name, max_length=63, name_type="label")
+        """SFT/model puller container name (hashed ``workspace/name`` identity)."""
+        return get_docker_puller_container_name(workspace, name)
+
+    def get_plugin_puller_container_name(self, workspace: str, name: str) -> str:
+        """Tool-call plugin fileset puller container name."""
+        return get_docker_plugin_puller_container_name(workspace, name)
 
     def get_deployment_key(self, workspace: str, name: str) -> str:
         return f"{workspace}/{name}"
@@ -1316,8 +1325,7 @@ class DockerDeploymentCreationReconciler:
         Returns ``(container_path_to_py_file, None)`` on success,
         or ``(None, error_message)`` on failure.
         """
-        container_name = f"md-plugin-{deployment.workspace}-{deployment.name}"
-        container_name = _get_k8s_safe_name(container_name, max_length=63, name_type="label")
+        container_name = self.get_plugin_puller_container_name(deployment.workspace, deployment.name)
         puller_image = self._backend_config.huggingface_model_puller
         target_path = f"/model-store/{target_subdir}"
 

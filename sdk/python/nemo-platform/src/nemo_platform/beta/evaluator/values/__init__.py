@@ -4,6 +4,13 @@
 """Public value types for evaluator SDK runtime."""
 
 from nemo_platform.beta.evaluator.values.agents import Agent
+from nemo_platform.beta.evaluator.values.atif import (
+    FinalMetrics,
+    Metrics,
+    Step,
+    ToolCall,
+    Trajectory,
+)
 from nemo_platform.beta.evaluator.values.common import SecretRef, SupportedJobTypes
 from nemo_platform.beta.evaluator.values.dataset_schemas import (
     FieldMapping,
@@ -17,6 +24,10 @@ from nemo_platform.beta.evaluator.values.evidence import (
     FilesystemDiff,
     FilesystemEntry,
     LocalFilesystemEvidence,
+    LogHandle,
+    TraceHandle,
+    WellKnownEvidenceKey,
+    parse_atif,
 )
 from nemo_platform.beta.evaluator.values.metrics import (
     BLEU,
@@ -109,6 +120,15 @@ __all__ = [
     "ContinuousScore",
     "FilesystemDiff",
     "FilesystemEntry",
+    "FinalMetrics",
+    "LogHandle",
+    "Metrics",
+    "Step",
+    "ToolCall",
+    "Trajectory",
+    "TraceHandle",
+    "WellKnownEvidenceKey",
+    "parse_atif",
     "DatasetRow",
     "DatasetRows",
     "DefaultAggregateFieldName",

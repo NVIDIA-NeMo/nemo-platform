@@ -15,7 +15,7 @@ from typing import Any, Protocol, runtime_checkable
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_evaluator_sdk.values import Agent, Model
 from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
 
 # Well-known evidence keys produced by ``standard_evidence_descriptors``. Harness
 # code may import these to tag evidence consistently; callers may still add
@@ -44,9 +44,10 @@ class AgentOutput(BaseModel):
         default=None,
         description="User-visible final text produced by the agent, if any.",
     )
-    response: Any | None = Field(
+    response: JsonValue | None = Field(
         default=None,
-        description="Structured final response payload produced by the agent, if any.",
+        description="Final response payload produced by the agent, if any. Any JSON value — a "
+        "structured object, or a raw JSON string/array for agents that don't return an object.",
     )
     metadata: dict[str, Any] = Field(
         default_factory=dict,

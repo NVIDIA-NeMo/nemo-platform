@@ -49,6 +49,3 @@ class ExperimentCreateParams(TypedDict, total=False):
 
     source_link: str
     """Optional URL for the source experiment."""
-
-    summary: str
-    """Human-authored summary of results."""

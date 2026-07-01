@@ -23,7 +23,11 @@ from typing_extensions import TypedDict
 __all__ = ["ModelParametersParam"]
 
 
-class ModelParametersParam(TypedDict, total=False, extra_items=object):  # type: ignore[call-arg]
+class ModelParametersParam(  # type: ignore[call-arg]
+    TypedDict,
+    total=False,
+    extra_items=object,  # pyright: ignore[reportGeneralTypeIssues]
+):
     """Parameters for configuring how to interact with a model in a guardrails config."""
 
     base_url: str

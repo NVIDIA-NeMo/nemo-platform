@@ -44,6 +44,22 @@ const createWrapper = (
 describe('SimpleFilesTable', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // @tanstack/react-virtual measures elements via getBoundingClientRect to determine
+    // the visible row range. JSDOM returns 0 for all dimensions, causing the virtualizer
+    // to compute an empty visible range and render no rows. Return a fixed 56px height
+    // (matching VirtualizedTableContent's default rowHeight) so the virtualizer renders
+    // all rows within the overscan window.
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+      height: 56,
+      width: 560,
+      top: 0,
+      left: 0,
+      bottom: 56,
+      right: 560,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
   });
 
   const mockNewFiles: UploadFile[] = [

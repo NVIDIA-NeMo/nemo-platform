@@ -23,8 +23,8 @@ import {
   sanitizeJobRequestName,
 } from '@studio/components/NewDataDesignerJobForm/utils';
 import type { ChatCompletion } from 'openai/resources/index.mjs';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { type Control, type FieldValues, type Path, useForm, useWatch } from 'react-hook-form';
+import { useCallback, useMemo, useState } from 'react';
+import { type Control, type FieldValues, type Path, useWatch } from 'react-hook-form';
 
 const ERROR_NO_TOOL_CALL =
   'Model did not return a tool call. Try again or choose a different model.';
@@ -55,13 +55,11 @@ function getJobRequestFromChatResponse(
   return { jobRequest: sanitizeJobRequestName(applied) };
 }
 
-interface JobRequestGeneratorFormFields {
-  jsonContent: string;
-}
-
 export interface JobRequestGeneratorProps<T extends FieldValues = FieldValues> {
   control: Control<T>;
   descriptionName: Path<T>;
+  /** Form field holding the (editable) job request JSON. Owned by the parent form. */
+  jsonContentName: Path<T>;
   descriptionRules?: object;
   descriptionFormFieldProps?: { slotInfo?: string };
   /** Current workspace (used when modelRef is just a model name with no slash). */
@@ -69,45 +67,36 @@ export interface JobRequestGeneratorProps<T extends FieldValues = FieldValues> {
   modelRef: string;
   provider: string;
   servedModelName: string;
-  onJobRequestChange: (jobRequest: DataDesignerJobRequest | null) => void;
+  /** Write generated JSON back into the parent's jsonContent field. */
+  setJsonContent: (value: string) => void;
   disabled?: boolean;
 }
 
 /**
  * Generates a Data Designer job request JSON via LLM tool use. Renders the description
  * textarea with Generate button below it, and the JSON editor next to it (side by side).
- * Reports the current (parsed) job request to the parent via onJobRequestChange.
+ * The JSON lives in the parent form's `jsonContentName` field — read here via `useWatch` and
+ * written back through `setJsonContent` — so the parent form stays the single source of truth.
  */
 export function JobRequestGenerator<T extends FieldValues>({
-  control: parentControl,
+  control,
   descriptionName,
+  jsonContentName,
   descriptionRules,
   descriptionFormFieldProps,
   workspace,
   modelRef,
   provider,
   servedModelName,
-  onJobRequestChange,
+  setJsonContent,
   disabled = false,
 }: JobRequestGeneratorProps<T>) {
-  const description = useWatch({ control: parentControl, name: descriptionName }) as string;
+  const description = useWatch({ control, name: descriptionName }) as string;
+  const jsonContent = (useWatch({ control, name: jsonContentName }) as string) ?? '';
   const chatCompletion = useChatCompletion();
   const [generationError, setGenerationError] = useState<string | null>(null);
-  const [parseError, setParseError] = useState<string | null>(null);
 
-  const { control, watch, setValue } = useForm<JobRequestGeneratorFormFields>({
-    defaultValues: { jsonContent: '' },
-  });
-  const jsonContent = watch('jsonContent') ?? '';
-  const onJobRequestChangeRef = useRef(onJobRequestChange);
-  onJobRequestChangeRef.current = onJobRequestChange;
-
-  // Sync parsed job request to parent when JSON or model context changes
-  useEffect(() => {
-    const result = parseJsonContentToJobRequest(jsonContent);
-    setParseError(result.error ?? null);
-    onJobRequestChangeRef.current(result.jobRequest);
-  }, [jsonContent]);
+  const parseError = useMemo(() => parseJsonContentToJobRequest(jsonContent).error, [jsonContent]);
 
   const runGeneration = useCallback(async () => {
     setGenerationError(null);
@@ -133,13 +122,11 @@ export function JobRequestGenerator<T extends FieldValues>({
         return;
       }
 
-      setValue('jsonContent', JSON.stringify(result.jobRequest, null, 2));
-      onJobRequestChangeRef.current(result.jobRequest);
+      setJsonContent(JSON.stringify(result.jobRequest, null, 2));
     } catch (err) {
       setGenerationError(getErrorMessage(err, 'Generation failed.'));
-      onJobRequestChangeRef.current(null);
     }
-  }, [modelRef, provider, servedModelName, workspace, description, chatCompletion, setValue]);
+  }, [modelRef, provider, servedModelName, workspace, description, chatCompletion, setJsonContent]);
 
   const hasContent = !!jsonContent.trim();
   const isGenerating = chatCompletion.isPending;
@@ -155,7 +142,7 @@ export function JobRequestGenerator<T extends FieldValues>({
           className="w-full"
           useControllerProps={{
             name: descriptionName,
-            control: parentControl,
+            control,
             rules: descriptionRules,
           }}
           formFieldProps={descriptionFormFieldProps}
@@ -182,7 +169,7 @@ export function JobRequestGenerator<T extends FieldValues>({
           rows={16}
           className="w-full font-mono text-sm"
           useControllerProps={{
-            name: 'jsonContent',
+            name: jsonContentName,
             control,
           }}
           formFieldProps={{

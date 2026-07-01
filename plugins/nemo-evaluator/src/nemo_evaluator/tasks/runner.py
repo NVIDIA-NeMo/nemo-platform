@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+"""Shared container/subprocess task entrypoint for evaluator plugin jobs.
+
+Each job's ``tasks/<job>.py`` is a thin ``python -m`` target that calls :func:`run_task_main` with
+its job class. The lifecycle — SIGTERM handling, building the task SDK, and dispatching to the job
+— is identical across jobs and lives here.
+"""
+
+from __future__ import annotations
+
+import logging
+import signal
+from types import FrameType
+
+from nemo_platform_plugin.job import NemoJob
+from nemo_platform_plugin.sdk_provider import get_task_sdk
+from nemo_platform_plugin.tasks.dispatcher import run_task
+
+logger = logging.getLogger(__name__)
+
+#: Process exit code when the task SDK can't be built (setup failure, before the job runs).
+SDK_INITIALIZATION_EXIT_CODE = 2
+
+
+def _shutdown_handler(signum: int, frame: FrameType | None) -> None:
+    logger.warning("Received shutdown signal (%d). Exiting.", signum)
+    raise SystemExit(128 + signum)
+
+
+def run_task_main(job_cls: type[NemoJob], *, service_name: str) -> int:
+    """Build the task SDK and dispatch to ``job_cls``; return a process exit code.
+
+    Returns :data:`SDK_INITIALIZATION_EXIT_CODE` if the task SDK can't be built.
+    """
+    signal.signal(signal.SIGTERM, _shutdown_handler)
+    try:
+        sdk = get_task_sdk(service_name)
+    except Exception:
+        logger.exception("Failed to build task SDK for %s", service_name)
+        return SDK_INITIALIZATION_EXIT_CODE
+    return run_task(job_cls, sdk=sdk)

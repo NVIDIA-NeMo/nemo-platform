@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { getPartsFromReference } from '@nemo/common/src/namedEntity';
-import type { CreateJobRequest as DataDesignerJobRequest } from '@nemo/sdk/generated/data-designer/schema';
+import type {
+  CreateJob as DataDesignerJob,
+  CreateJobRequest as DataDesignerJobRequest,
+} from '@nemo/sdk/generated/data-designer/schema';
 import type { ModelEntity, ModelProvider } from '@nemo/sdk/generated/platform/schema';
 
 /** Model option for the form: entity plus display name used in job requests */
@@ -125,6 +128,41 @@ export function parseJsonContentToJobRequest(content: string): ParseJsonContentR
     return { jobRequest: null, error: PARSE_ERROR_MISSING_CONFIG };
   }
   return { jobRequest: sanitizeJobRequestName(parsed), error: null };
+}
+
+/** Suffix appended to a cloned job's name to distinguish it from the original. */
+export const CLONE_NAME_SUFFIX = '-copy';
+
+/**
+ * Build a create-job request from an existing job so it can pre-fill the new-job form.
+ * A job's `spec.job_config` is already the `DataDesignerJobConfig` shape a request expects,
+ * so cloning is a direct copy of the config plus a "-copy" name. Returns null when the job
+ * has no usable config (e.g. a partially-loaded list row).
+ */
+export function buildClonedJobRequest(job: DataDesignerJob): DataDesignerJobRequest | null {
+  const jobConfig = job.spec?.job_config;
+  if (!jobConfig?.config) return null;
+  return {
+    name: job.name ? `${job.name}${CLONE_NAME_SUFFIX}` : undefined,
+    description: job.description,
+    spec: jobConfig,
+  };
+}
+
+/** Navigation state passed to the new-job route to pre-fill the form from an existing job. */
+export interface DataDesignerCloneState {
+  cloneJobRequest: DataDesignerJobRequest;
+}
+
+/**
+ * Narrow an unknown router location state to the cloned job request, if present.
+ * Returns null when the state is absent or not shaped like a clone payload.
+ */
+export function getCloneJobRequestFromState(state: unknown): DataDesignerJobRequest | null {
+  if (!state || typeof state !== 'object' || !('cloneJobRequest' in state)) return null;
+  const request = (state as { cloneJobRequest: unknown }).cloneJobRequest;
+  if (!request || typeof request !== 'object' || !('spec' in request)) return null;
+  return request as DataDesignerJobRequest;
 }
 
 /**

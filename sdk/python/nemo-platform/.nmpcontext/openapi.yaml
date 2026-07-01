@@ -3712,18 +3712,20 @@ paths:
         in: query
         required: false
         schema:
-          type: string
           description: 'Field to sort by; prefix with ''-'' for descending. Sort by
             an experiment attribute (name, created_at, updated_at, pinned_at) or by
             an aggregate metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or
             evaluators.<name>.<stat>, where <stat> is one of mean, median, p90, p95,
-            p99, sum, count.'
-          default: -created_at
+            p99, sum, count. When omitted, the group''s configured default sort is
+            used (falling back to -created_at), with pinned experiments first.'
           title: Sort
+          type: string
         description: 'Field to sort by; prefix with ''-'' for descending. Sort by
           an experiment attribute (name, created_at, updated_at, pinned_at) or by
           an aggregate metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>,
-          where <stat> is one of mean, median, p90, p95, p99, sum, count.'
+          where <stat> is one of mean, median, p90, p95, p99, sum, count. When omitted,
+          the group''s configured default sort is used (falling back to -created_at),
+          with pinned experiments first.'
       - in: query
         name: filter
         style: deepObject
@@ -3731,10 +3733,13 @@ paths:
         explode: true
         schema:
           $ref: '#/components/schemas/ExperimentFilter'
-        description: Filter experiments by name, experiment_group_id, dataset_name,
+        description: 'Filter experiments by name, experiment_group_id, dataset_name,
           dataset_version, created_by, created_at, or updated_at. Pass is_deleted=true
           to return only soft-deleted experiments; omit to see only live ones. Pass
           is_pinned=true (or false) to filter by pinned state; omit to return both.
+          Filter by a rollup metric with numeric range operators ($gte/$lte/$gt/$lt/$eq):
+          filter[run_count][$gte]=5, filter[cost_usd.mean][$lte]=0.5, filter[latency_ms.p95][$lte]=1000,
+          or filter[evaluators.<name>.mean][$gte]=0.8.'
       responses:
         '200':
           description: Successful Response
@@ -3743,11 +3748,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/ExperimentResponsesPage'
         '400':
-          description: Unsupported sort field
+          description: Unsupported sort or filter field
         '413':
           description: Too many experiments selected to sort in one request
         '503':
-          description: Telemetry store unavailable for a metric-based sort
+          description: Telemetry store unavailable for a metric-based sort or filter
         '422':
           description: Validation Error
           content:
@@ -8856,6 +8861,21 @@ components:
             that expose a non-standard health endpoint.
           type: string
           maxLength: 255
+        run_as_user:
+          title: Run As User
+          description: Pod securityContext runAsUser (uid) for the serving container
+            (k8s backend only). If unset, the engine default applies (vLLM pins its
+            image's user; generic uses the image's own user). Ignored by the docker
+            backend.
+          type: integer
+          minimum: 0.0
+        run_as_group:
+          title: Run As Group
+          description: Pod securityContext runAsGroup (gid) for the serving container
+            (k8s backend only). If unset, the engine default applies. Ignored by the
+            docker backend.
+          type: integer
+          minimum: 0.0
         additional_envs:
           title: Additional Envs
           description: Additional environment variables for the deployment
@@ -10322,6 +10342,24 @@ components:
             only unpinned experiments. Omit to return both.
           title: Is Pinned
           type: boolean
+        run_count:
+          allOf:
+          - $ref: '#/components/schemas/NumberFilter'
+          description: Filter by run count, e.g. filter[run_count][$gte]=5.
+        cost_usd:
+          allOf:
+          - $ref: '#/components/schemas/MetricStatFilters'
+          description: Filter by a cost_usd rollup stat, e.g. filter[cost_usd.mean][$lte]=0.5.
+        latency_ms:
+          allOf:
+          - $ref: '#/components/schemas/MetricStatFilters'
+          description: Filter by a latency_ms rollup stat, e.g. filter[latency_ms.p95][$lte]=1000.
+        evaluators:
+          description: Filter by an evaluator rollup stat, e.g. filter[evaluators.<name>.mean][$gte]=0.8.
+          title: Evaluators
+          additionalProperties:
+            $ref: '#/components/schemas/MetricStatFilters'
+          type: object
       title: ExperimentFilter
       type: object
     ExperimentGroupFilter:
@@ -10349,6 +10387,15 @@ components:
           title: Description
           description: Human-readable purpose of the group.
           type: string
+        default_sort:
+          title: Default Sort
+          description: 'Ordered default sort (priority order; first is primary, rest
+            are tiebreakers) for this group''s experiments list. Each field must be
+            a numeric rollup metric: run_count, cost_usd.<stat>, latency_ms.<stat>,
+            or evaluators.<name>.<stat>.'
+          items:
+            $ref: '#/components/schemas/SortCriterion'
+          type: array
       additionalProperties: false
       type: object
       required:
@@ -10369,6 +10416,11 @@ components:
         description:
           title: Description
           type: string
+        default_sort:
+          title: Default Sort
+          items:
+            $ref: '#/components/schemas/SortCriterion'
+          type: array
         created_at:
           title: Created At
           type: string
@@ -10447,10 +10499,6 @@ components:
           title: Description
           description: Human-readable description.
           type: string
-        summary:
-          title: Summary
-          description: Human-authored summary of results.
-          type: string
       additionalProperties: false
       type: object
       required:
@@ -10492,9 +10540,6 @@ components:
           title: Metadata
         description:
           title: Description
-          type: string
-        summary:
-          title: Summary
           type: string
         created_at:
           title: Created At
@@ -12911,6 +12956,38 @@ components:
       - metadata
       title: MetadataAnnotationInput
       description: Structured key/value metadata attached to a span or session.
+    MetricStatFilters:
+      additionalProperties: false
+      description: 'Numeric range filters keyed by rollup aggregate stat.
+
+
+        Declaring each stat explicitly (rather than an open ``dict[str, NumberFilter]``)
+        makes the valid
+
+        stats visible in the OpenAPI schema, e.g. ``filter[cost_usd.mean][$lte]=0.5``.
+        These stats must
+
+        stay in sync with the runtime sort/filter grammar (``_METRIC_STATS`` in the
+        experiments
+
+        endpoints); a unit test guards the parity.'
+      properties:
+        sum:
+          $ref: '#/components/schemas/NumberFilter'
+        mean:
+          $ref: '#/components/schemas/NumberFilter'
+        median:
+          $ref: '#/components/schemas/NumberFilter'
+        p90:
+          $ref: '#/components/schemas/NumberFilter'
+        p95:
+          $ref: '#/components/schemas/NumberFilter'
+        p99:
+          $ref: '#/components/schemas/NumberFilter'
+        count:
+          $ref: '#/components/schemas/NumberFilter'
+      title: MetricStatFilters
+      type: object
     MiddlewareCall:
       properties:
         name:
@@ -14225,6 +14302,32 @@ components:
       - text
       title: NoteAnnotationInput
       description: Free-text note attached to a span or session.
+    NumberFilter:
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        $gte:
+          description: Filter for results greater than or equal to this value.
+          title: $Gte
+          type: number
+        $lte:
+          description: Filter for results less than or equal to this value.
+          title: $Lte
+          type: number
+        $gt:
+          description: Filter for results greater than this value.
+          title: $Gt
+          type: number
+        $lt:
+          description: Filter for results less than this value.
+          title: $Lt
+          type: number
+        $eq:
+          description: Filter for results equal to this value.
+          title: $Eq
+          type: number
+      title: NumberFilter
+      type: object
     NumericFilter:
       additionalProperties: false
       description: "Range filter for numeric annotation values.\n\nAt least one of\
@@ -16694,6 +16797,27 @@ components:
       - window_size
       title: SlidingWindowConfig
       description: Sliding window attention configuration.
+    SortCriterion:
+      properties:
+        field:
+          type: string
+          title: Field
+          description: Rollup-metric sort path, e.g. cost_usd.mean, latency_ms.p95,
+            or evaluators.<name>.mean.
+        direction:
+          type: string
+          enum:
+          - asc
+          - desc
+          title: Direction
+          description: Sort direction for this field.
+      type: object
+      required:
+      - field
+      - direction
+      title: SortCriterion
+      description: 'One criterion in a group''s default sort: a sortable rollup-metric
+        path and its direction.'
     Span:
       properties:
         span_id:

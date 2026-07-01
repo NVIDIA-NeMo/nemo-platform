@@ -42,7 +42,7 @@ Create a Model Entity for this embedding model:
 
 <Note>
 
-Embedding models only support **merged LoRA** (`peft` with `merge=True`). Unmerged LoRA adapters are not supported because the embedding NIM requires ONNX format, which cannot represent standalone adapters.
+Embedding models only support **merged LoRA** by setting `training.finetuning_type` to `"lora_merged"` in the Automodel job input. Unmerged LoRA adapters are not supported because the embedding NIM requires ONNX format, which cannot represent standalone adapters.
 
 </Note>
 ### Resource Requirements

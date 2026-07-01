@@ -39,12 +39,13 @@ const pin = (name: string): Row => ({ id: name, name, pinned_at: '2026-01-01T00:
 const unp = (name: string): Row => ({ id: name, name, pinned_at: null });
 
 // Minimal stand-in for the SDK query result; the hook only reads `data`, `pagination.total_results`,
-// and the loading/fetching/error flags.
+// and the loading/fetching/success/error flags.
 const queryResult = (rows: Row[], total: number) =>
   ({
     data: { data: rows, pagination: { total_results: total } },
     isLoading: false,
     isFetching: false,
+    isSuccess: true,
     error: null,
   }) as unknown as ReturnType<typeof useListExperiments>;
 
@@ -160,6 +161,52 @@ describe('useExperimentGroupExperiments', () => {
     const { result } = renderHook(() => useExperimentGroupExperiments(baseParams));
 
     expect(result.current.isLoading).toBe(false);
+  });
+
+  it('reports isSuccess from the unpinned (sortable) query, not the pinned one', () => {
+    // Pinned has loaded; the unpinned query (which carries the sort) is still fetching its sort.
+    mockUseListExperiments.mockImplementation(((_workspace, params) =>
+      (params?.filter as { is_pinned?: boolean } | undefined)?.is_pinned
+        ? queryResult([pin('p')], 1)
+        : ({
+            data: undefined,
+            isLoading: false,
+            isFetching: true,
+            isSuccess: false,
+            error: null,
+          } as unknown as ReturnType<typeof useListExperiments>)) as typeof useListExperiments);
+
+    const { result } = renderHook(() => useExperimentGroupExperiments(baseParams));
+
+    expect(result.current.isSuccess).toBe(false);
+  });
+
+  it('reports isSuccess once the unpinned query has loaded the current sort', () => {
+    mockLists({ rows: [pin('p')], total: 1 }, { rows: [unp('u')], total: 1 });
+
+    const { result } = renderHook(() => useExperimentGroupExperiments(baseParams));
+
+    expect(result.current.isSuccess).toBe(true);
+  });
+
+  it('does not report isSuccess while a new sort is in flight and the previous page is shown as placeholder', () => {
+    // The `keepPreviousData` window: status 'success' but isPlaceholderData true. isSuccess must stay
+    // false, else sort-error recovery banks the about-to-fail sort and the next 413/503 isn't recovered.
+    mockUseListExperiments.mockImplementation(((_workspace, params) =>
+      (params?.filter as { is_pinned?: boolean } | undefined)?.is_pinned
+        ? queryResult([pin('p')], 1)
+        : ({
+            data: { data: [unp('u')], pagination: { total_results: 1 } },
+            isLoading: false,
+            isFetching: true,
+            isSuccess: true,
+            isPlaceholderData: true,
+            error: null,
+          } as unknown as ReturnType<typeof useListExperiments>)) as typeof useListExperiments);
+
+    const { result } = renderHook(() => useExperimentGroupExperiments(baseParams));
+
+    expect(result.current.isSuccess).toBe(false);
   });
 
   it('scopes pin/unpin invalidation to this group, not the whole workspace', () => {

@@ -36,7 +36,7 @@ describe('CodeDisplay', () => {
   it('uses the chat code block light and dark grey backgrounds', () => {
     render(<CodeDisplay>{multiLineString}</CodeDisplay>);
 
-    expect(screen.getByTestId('code-display')).toHaveClass('my-density-xs');
+    expect(screen.getByTestId('code-display')).toHaveClass('my-density-md');
     expect(screen.getByTestId('nv-code-snippet-code')).toHaveClass(
       '[&&]:bg-gray-050',
       '[&&]:py-density-xs',

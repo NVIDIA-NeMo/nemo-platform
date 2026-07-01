@@ -7,6 +7,7 @@ import {
   FilesetPurpose,
   type FilesetFileOutput,
   type FilesetOutput,
+  type ModelEntityFilter,
 } from '@nemo/sdk/generated/platform/schema';
 import { Stack } from '@nvidia/foundations-react-core';
 import { useDatasetFileContent } from '@studio/api/datasets/useDatasetFileContent';
@@ -42,7 +43,12 @@ export const FilesetCard: FC<FilesetCardProps> = ({
 
   const { data: modelEntitiesResponse } = useModelsListModels(
     workspace,
-    { filter: { fileset: getEntityReference({ workspace, name: filesetName }) } },
+    // fileset filter is valid on the backend but missing from the generated SDK type (stale SDK)
+    {
+      filter: {
+        fileset: getEntityReference({ workspace, name: filesetName }),
+      } as ModelEntityFilter,
+    },
     { query: { enabled: isModel } }
   );
   const modelEntities = modelEntitiesResponse?.data ?? [];

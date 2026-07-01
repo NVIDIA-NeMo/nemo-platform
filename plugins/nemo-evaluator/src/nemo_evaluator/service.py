@@ -10,6 +10,7 @@ from typing import ClassVar
 from fastapi import APIRouter
 from nemo_evaluator.api.v2 import metrics as metrics_routes
 from nemo_evaluator.core import say_hello
+from nemo_evaluator.jobs.agent_evaluate import AgentEvalJob
 from nemo_evaluator.jobs.evaluate import EvaluateJob
 from nemo_evaluator.schema import HelloResponse
 from nemo_platform_plugin.authz import (
@@ -71,6 +72,11 @@ class EvaluatorPluginService(NemoService):
                 collection_suffix="/evaluate/jobs",
                 permission_prefix=f"{cls.name}.jobs",
             ),
+            authz_for_workspace_job_collection(
+                api_area=cls.name,
+                collection_suffix="/agent-evaluate/jobs",
+                permission_prefix=f"{cls.name}.jobs",
+            ),
             _authz_for_metrics_collection(
                 api_area=cls.name,
                 permission_prefix=f"{cls.name}.metrics",
@@ -80,6 +86,7 @@ class EvaluatorPluginService(NemoService):
     def get_routers(self) -> list[RouterSpec]:
         router = APIRouter()
         jobs_router = add_job_routes(EvaluateJob)
+        agent_jobs_router = add_job_routes(AgentEvalJob)
 
         @router.get("/healthz")
         async def healthz() -> dict[str, object]:
@@ -87,7 +94,7 @@ class EvaluatorPluginService(NemoService):
                 "plugin": self.name,
                 "status": "ok",
                 "mode": "sdk-backed-job-scaffold",
-                "jobs": ["evaluator.evaluate"],
+                "jobs": ["evaluator.evaluate", "evaluator.agent-evaluate"],
             }
 
         return [
@@ -109,6 +116,13 @@ class EvaluatorPluginService(NemoService):
                 router=jobs_router,
                 tag="Evaluator Plugin Jobs Routes",
                 description="Evaluator plugin jobs routes.",
+                prefix="/v2/workspaces/{workspace}",
+            ),
+            RouterSpec(
+                # POST /apis/evaluator/v2/workspaces/{workspace}/agent-evaluate/jobs.
+                router=agent_jobs_router,
+                tag="Evaluator Plugin Agent Eval Jobs Routes",
+                description="Evaluator plugin agent-evaluation job routes.",
                 prefix="/v2/workspaces/{workspace}",
             ),
             RouterSpec(

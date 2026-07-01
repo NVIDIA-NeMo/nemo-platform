@@ -77,3 +77,17 @@ class ContainerExecutorConfig(BaseModel):
     (NIM engine on k8s). Allows advanced configuration options directly. Ignored by
     non-NIM engines.
     """
+
+    run_as_group: Optional[int] = None
+    """
+    Pod securityContext runAsGroup (gid) for the serving container (k8s backend
+    only). If unset, the engine default applies. Ignored by the docker backend.
+    """
+
+    run_as_user: Optional[int] = None
+    """Pod securityContext runAsUser (uid) for the serving container (k8s backend
+    only).
+
+    If unset, the engine default applies (vLLM pins its image's user; generic uses
+    the image's own user). Ignored by the docker backend.
+    """

@@ -4,29 +4,15 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib.sh"
+
 MINIKUBE_PROFILE="${MINIKUBE_PROFILE:-minikube-auth}"
 KUBE_NAMESPACE="${KUBE_NAMESPACE:-default}"
 INGRESS_NODEPORT="${INGRESS_NODEPORT:-30080}"
 INGRESS_HOST_PORT="${INGRESS_HOST_PORT:-30080}"
 MINIKUBE_CPUS="${MINIKUBE_CPUS:-4}"
 MINIKUBE_MEMORY_MB="${MINIKUBE_MEMORY_MB:-6144}"
-
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m'
-
-log_info() {
-    echo -e "${GREEN}[INFO]${NC} $*"
-}
-
-log_warn() {
-    echo -e "${YELLOW}[WARN]${NC} $*"
-}
-
-log_error() {
-    echo -e "${RED}[ERROR]${NC} $*"
-}
 
 for tool in minikube docker kubectl helm; do
     if ! command -v "$tool" >/dev/null 2>&1; then
@@ -90,23 +76,8 @@ fi
 
 KUBECTL_NS=(kubectl -n "${KUBE_NAMESPACE}")
 
-log_info "Creating placeholder platform secrets in namespace ${KUBE_NAMESPACE}..."
-${KUBECTL_NS[@]} create secret generic ngc-api \
-  --from-literal=NGC_API_KEY="${NGC_API_KEY:-local-dev-placeholder}" \
-  --dry-run=client -o yaml | ${KUBECTL_NS[@]} apply -f -
-
-${KUBECTL_NS[@]} create secret docker-registry nvcrimagepullsecret \
-  --docker-server="${NVCI_DOCKER_SERVER:-docker.io}" \
-  --docker-username="${NVCI_DOCKER_USERNAME:-local}" \
-  --docker-password="${NVCI_DOCKER_PASSWORD:-local-dev-placeholder}" \
-  --dry-run=client -o yaml | ${KUBECTL_NS[@]} apply -f -
-
-if [ -n "${HF_TOKEN:-}" ]; then
-    log_info "Creating HuggingFace token secret..."
-    ${KUBECTL_NS[@]} create secret generic huggingface-token \
-      --from-literal=HF_TOKEN="${HF_TOKEN}" \
-      --dry-run=client -o yaml | ${KUBECTL_NS[@]} apply -f -
-fi
+log_info "Creating platform secrets in namespace ${KUBE_NAMESPACE}..."
+create_platform_secrets "${KUBE_NAMESPACE}"
 
 MINIKUBE_IP="$(minikube ip -p "${MINIKUBE_PROFILE}")"
 
