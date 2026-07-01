@@ -14,6 +14,7 @@ from nemo_deployments_plugin.backends.k8s.jobs import job_backoff_limit, validat
 from nemo_deployments_plugin.backends.labels import MANAGED_BY_KEY
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
 from nemo_deployments_plugin.types import RestartPolicy
+from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 
 
 @pytest.fixture
@@ -189,14 +190,29 @@ async def test_create_job_malformed_backend_config_returns_failed(job_ops_client
 
 
 @pytest.mark.asyncio
-async def test_create_deployment_always_not_implemented(k8s_backend, mock_entities: AsyncMock) -> None:
+async def test_delete_deployment_still_deletes_job_when_entity_missing(
+    k8s_backend, mock_k8s_clients: MagicMock, mock_entities: AsyncMock
+) -> None:
+    mock_entities.get.side_effect = NemoEntityNotFoundError("missing")
+    mock_k8s_clients.batch_v1.delete_namespaced_job.return_value = MagicMock()
+
+    update = await k8s_backend.delete_deployment("default", "task")
+
+    assert update.status == "SUCCEEDED"
+    mock_k8s_clients.batch_v1.delete_namespaced_job.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_always_returns_failed(k8s_backend, mock_entities: AsyncMock) -> None:
     mock_entities.get.return_value = sample_config(restart_policy="Always")
 
-    with pytest.raises(NotImplementedError, match="phase 4"):
-        await k8s_backend.create_deployment(
-            workspace="default",
-            name="task",
-            config_name="cfg1",
-            labels={},
-            backend_config={},
-        )
+    update = await k8s_backend.create_deployment(
+        workspace="default",
+        name="task",
+        config_name="cfg1",
+        labels={},
+        backend_config={},
+    )
+
+    assert update.status == "FAILED"
+    assert "phase 4" in update.status_message

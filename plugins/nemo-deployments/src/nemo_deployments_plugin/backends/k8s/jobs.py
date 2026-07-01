@@ -370,6 +370,11 @@ async def delete_job(
 
 
 async def list_managed_job_names(clients: KubernetesClients, *, default_namespace: str) -> list[str]:
+    """List plugin-managed Jobs in the executor default namespace.
+
+    Per-deployment namespaces from ``backend_config.k8s.namespace`` are not scanned
+    here; phase 4 will extend listing when Deployment resources land.
+    """
     timeout = clients.request_timeout
     batch_v1 = clients.batch_v1
     label_selector = managed_by_label_selector()
@@ -421,7 +426,7 @@ async def get_job_logs(
             )
             if not pods.items:
                 return ""
-            pod_name = pods.items[0].metadata.name
+            pod_name = pods.items[-1].metadata.name
             raw = core_v1.read_namespaced_pod_log(
                 name=pod_name,
                 namespace=namespace,

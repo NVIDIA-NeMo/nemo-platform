@@ -28,6 +28,7 @@ _K8S_INSTALL_HINT = (
     "kubernetes package is required for K8sDeploymentBackend. "
     "Install with: uv sync --package nemo-deployments-plugin --extra k8s"
 )
+_ALWAYS_POLICY_MESSAGE = "restart_policy Always requires Deployment+Service support (AIRCORE-757 phase 4)"
 
 
 class K8sDeploymentBackend(DeploymentBackend):
@@ -102,7 +103,7 @@ class K8sDeploymentBackend(DeploymentBackend):
             return BackendStatusUpdate(status="FAILED", status_message=f"Failed to load deployment config: {exc}")
 
         if config.restart_policy == "Always":
-            raise NotImplementedError("K8s Deployment+Service for restart_policy Always is implemented in phase 4.")
+            return BackendStatusUpdate(status="FAILED", status_message=_ALWAYS_POLICY_MESSAGE)
 
         return await job_ops.create_job(
             self._clients,
@@ -127,7 +128,7 @@ class K8sDeploymentBackend(DeploymentBackend):
             return BackendStatusUpdate(status="FAILED", status_message=f"Failed to load deployment: {exc}")
 
         if config.restart_policy == "Always":
-            raise NotImplementedError("K8s read_status for restart_policy Always is implemented in phase 4.")
+            return BackendStatusUpdate(status="FAILED", status_message=_ALWAYS_POLICY_MESSAGE)
 
         return await job_ops.read_job_status(
             self._clients,
@@ -141,15 +142,18 @@ class K8sDeploymentBackend(DeploymentBackend):
         try:
             _, config, backend_config = await self._load_deployment_context(workspace, name)
         except NemoEntityNotFoundError:
-            return BackendStatusUpdate(
-                status="SUCCEEDED",
-                status_message=f"Deployment '{name}' entity already removed",
+            return await job_ops.delete_job(
+                self._clients,
+                default_namespace=self._executor_config.default_namespace,
+                workspace=workspace,
+                name=name,
+                backend_config={},
             )
         except Exception as exc:
             return BackendStatusUpdate(status="FAILED", status_message=f"Failed to load deployment: {exc}")
 
         if config.restart_policy == "Always":
-            raise NotImplementedError("K8s delete_deployment for restart_policy Always is implemented in phase 4.")
+            return BackendStatusUpdate(status="FAILED", status_message=_ALWAYS_POLICY_MESSAGE)
 
         return await job_ops.delete_job(
             self._clients,
@@ -180,7 +184,7 @@ class K8sDeploymentBackend(DeploymentBackend):
             return LogResult(lines=[f"Failed to load deployment: {exc}"])
 
         if config.restart_policy == "Always":
-            raise NotImplementedError("K8s get_logs for restart_policy Always is implemented in phase 4.")
+            return LogResult(lines=[_ALWAYS_POLICY_MESSAGE])
 
         return await job_ops.get_job_logs(
             self._clients,
