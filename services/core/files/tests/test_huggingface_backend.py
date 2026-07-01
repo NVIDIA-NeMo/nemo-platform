@@ -19,6 +19,7 @@ from nmp.core.files.app.backends.huggingface import (
     HuggingfaceStorageConfig,
     HuggingfaceStorageImpl,
     HuggingfaceUnavailableError,
+    _retry_after_seconds,
     raise_for_hf_status,
 )
 from nmp.core.files.config import FilesConfig, files_config
@@ -733,6 +734,50 @@ async def test_get_file_rate_limit_uses_retry_env_override(hf_config, hf_secrets
 
         assert mock_metadata.call_count == 3
         mock_sleep.assert_has_awaits([call(2.0), call(3.0)])
+    finally:
+        _clear_files_config_cache()
+
+
+def test_retry_after_seconds_uses_hf_ratelimit_header_for_429():
+    """HF's RateLimit header exposes t=<seconds-until-reset> for 429s."""
+    assert _retry_after_seconds({"RateLimit": '"resolvers";r=0;t=7'}, status_code=429) == 7.0
+
+
+def test_retry_after_seconds_ignores_hf_ratelimit_header_for_non_429():
+    """RateLimit headers can appear on non-429 responses, so don't sleep on t=."""
+    assert _retry_after_seconds({"RateLimit": '"resolvers";r=0;t=7'}, status_code=503) is None
+
+
+def test_retry_after_seconds_prefers_retry_after_header():
+    assert (
+        _retry_after_seconds(
+            {"Retry-After": "2", "RateLimit": '"resolvers";r=0;t=7'},
+            status_code=429,
+        )
+        == 2.0
+    )
+
+
+async def test_get_file_rate_limit_uses_hf_ratelimit_delay(hf_config, hf_secrets_empty, monkeypatch):
+    """429 retries use HF's RateLimit reset when Retry-After is absent."""
+    monkeypatch.setenv("NMP_FILES_HF_RETRY_ATTEMPTS", "2")
+    monkeypatch.setenv("NMP_FILES_HF_RETRY_MAX_DELAY_SECONDS", "10")
+    _clear_files_config_cache()
+
+    try:
+        mock_error = _hf_http_error(429, "Rate limited", headers={"RateLimit": '"resolvers";r=0;t=7'})
+
+        with patch("nmp.core.files.app.backends.huggingface.get_hf_file_metadata") as mock_metadata:
+            mock_metadata.side_effect = [mock_error, Mock(size=1234)]
+
+            impl = HuggingfaceStorageImpl(hf_config, hf_secrets_empty)
+
+            with patch("nmp.core.files.app.backends.huggingface.sleep", new_callable=AsyncMock) as mock_sleep:
+                file_info = await impl.get_file("test.txt")
+
+        assert file_info.path == "test.txt"
+        assert file_info.size == 1234
+        mock_sleep.assert_awaited_once_with(7.0)
     finally:
         _clear_files_config_cache()
 

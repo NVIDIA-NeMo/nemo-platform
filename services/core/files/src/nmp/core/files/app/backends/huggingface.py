@@ -125,27 +125,47 @@ def _map_hf_http_error(exc: HfHubHTTPError) -> Exception:
     return HuggingfaceBackendError(f"HuggingFace API error: {exc}")
 
 
-def _retry_after_seconds(headers: dict[str, str] | None) -> float | None:
-    """Parse a Retry-After header into seconds when HuggingFace provides one."""
+def _ratelimit_reset_seconds(headers: dict[str, str]) -> float | None:
+    """Parse HuggingFace's RateLimit t=<seconds-until-reset> field."""
+    raw_value = headers.get("RateLimit") or headers.get("ratelimit")
+    if not raw_value:
+        return None
+
+    for part in raw_value.split(";"):
+        key, separator, value = part.strip().partition("=")
+        if key != "t" or not separator:
+            continue
+        try:
+            return max(0.0, float(value.split(",", 1)[0].strip().strip('"')))
+        except ValueError:
+            continue
+    return None
+
+
+def _retry_after_seconds(headers: dict[str, str] | None, status_code: int | None = None) -> float | None:
+    """Parse Retry-After, or HF's 429 RateLimit reset, into seconds."""
     if not headers:
         return None
 
     raw_value = headers.get("Retry-After") or headers.get("retry-after")
-    if not raw_value:
-        return None
+    if raw_value:
+        try:
+            return max(0.0, float(raw_value))
+        except ValueError:
+            pass
 
-    try:
-        return max(0.0, float(raw_value))
-    except ValueError:
-        pass
+        try:
+            retry_at = parsedate_to_datetime(raw_value)
+        except (TypeError, ValueError):
+            pass
+        else:
+            if retry_at.tzinfo is None:
+                retry_at = retry_at.replace(tzinfo=timezone.utc)
+            return max(0.0, (retry_at - datetime.now(timezone.utc)).total_seconds())
 
-    try:
-        retry_at = parsedate_to_datetime(raw_value)
-    except (TypeError, ValueError):
-        return None
-    if retry_at.tzinfo is None:
-        retry_at = retry_at.replace(tzinfo=timezone.utc)
-    return max(0.0, (retry_at - datetime.now(timezone.utc)).total_seconds())
+    if status_code == 429:
+        return _ratelimit_reset_seconds(headers)
+    return None
 
 
 async def _sleep_before_retry(
@@ -154,10 +174,11 @@ async def _sleep_before_retry(
     attempt: int,
     retry_config: FilesConfig,
     headers: dict[str, str] | None,
+    status_code: int | None = None,
     error: Exception,
 ) -> None:
     """Sleep according to Retry-After or exponential backoff before retrying."""
-    retry_after = _retry_after_seconds(headers)
+    retry_after = _retry_after_seconds(headers, status_code=status_code)
     delay = (
         min(retry_after, retry_config.hf_retry_max_delay_seconds)
         if retry_after is not None
@@ -189,11 +210,13 @@ async def _run_hf_request(operation: str, request: Callable[[], _T]) -> _T:
             mapped = _map_hf_http_error(exc)
             if isinstance(mapped, HuggingfaceUnavailableError) and attempt < retry_config.hf_retry_attempts:
                 headers = dict(exc.response.headers) if exc.response is not None else None
+                status_code = exc.response.status_code if exc.response is not None else None
                 await _sleep_before_retry(
                     operation=operation,
                     attempt=attempt,
                     retry_config=retry_config,
                     headers=headers,
+                    status_code=status_code,
                     error=mapped,
                 )
                 continue
@@ -206,6 +229,7 @@ async def _run_hf_request(operation: str, request: Callable[[], _T]) -> _T:
                     attempt=attempt,
                     retry_config=retry_config,
                     headers=None,
+                    status_code=None,
                     error=mapped,
                 )
                 continue
@@ -279,11 +303,13 @@ async def _stream_hf_download_with_retries(
         except aiohttp.ClientError as exc:
             mapped, response_headers = _map_hf_download_error(path=path, download_url=download_url, exc=exc)
             if isinstance(mapped, HuggingfaceUnavailableError) and attempt < retry_config.hf_retry_attempts:
+                status_code = exc.status if isinstance(exc, aiohttp.ClientResponseError) else None
                 await _sleep_before_retry(
                     operation="download file",
                     attempt=attempt,
                     retry_config=retry_config,
                     headers=response_headers,
+                    status_code=status_code,
                     error=mapped,
                 )
                 continue
