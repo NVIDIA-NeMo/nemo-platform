@@ -8,6 +8,8 @@ import {
   type NumberRangeFilterValue,
 } from '@nemo/common/src/components/DataView/FilterPanel/NumberRangeFilter/util';
 import type { DataViewColumn } from '@nemo/common/src/components/DataView/FilterPanel/types';
+import * as DataView from '@nemo/common/src/components/DataView/internal';
+import { StudioAppliedFilters } from '@nemo/common/src/components/DataView/StudioAppliedFilters';
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { Stack, Text } from '@nvidia/foundations-react-core';
@@ -182,6 +184,72 @@ export const InDataView: StoryObj = {
           },
         }}
       />
+    );
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Applied Filters — how StudioAppliedFilters renders a range value as a chip
+// ---------------------------------------------------------------------------
+
+interface RangeRow {
+  durationMinutes: number;
+  costUsd: number;
+  accuracyPct: number;
+}
+
+/**
+ * Renders StudioAppliedFilters inside a headless DataView.Root seeded with
+ * pre-applied numeric range filters, so you can see how each committed
+ * `{ $gte, $lte }` value is formatted into a chip via `formatNumberRange`:
+ * both bounds ("30 – 480"), lower-only ("≥ 10"), and upper-only ("≤ 90").
+ * Click a chip to clear that filter, or "Clear Filters" to clear all.
+ */
+export const AppliedFilters: StoryObj = {
+  name: 'Applied Filter Chips',
+  render: function AppliedFiltersStory() {
+    const dataViewState = DataView.useDataViewState({
+      columnFilters: [
+        { id: 'durationMinutes', value: { $gte: 30, $lte: 480 } }, // both bounds
+        { id: 'costUsd', value: { $gte: 10 } }, // lower bound only
+        { id: 'accuracyPct', value: { $lte: 90 } }, // upper bound only
+      ],
+    });
+
+    const makeColumns: ComponentProps<typeof DataView.Root<RangeRow>>['makeColumns'] = useCallback(
+      ({ accessor }) => [
+        accessor('durationMinutes', {
+          header: 'Duration',
+          meta: { filter: numberRangeFilter('Duration (minutes)', { min: 0, max: 600, step: 15 }) },
+        }),
+        accessor('costUsd', {
+          header: 'Cost',
+          meta: { filter: numberRangeFilter('Cost (USD)', { min: 0, max: 50, step: 1 }) },
+        }),
+        accessor('accuracyPct', {
+          header: 'Accuracy',
+          meta: { filter: numberRangeFilter('Accuracy (%)', { min: 0, max: 100, step: 1 }) },
+        }),
+      ],
+      []
+    );
+
+    return (
+      <DataView.Root
+        dataMode="manual"
+        state={dataViewState}
+        data={[]}
+        totalCount={0}
+        makeColumns={makeColumns}
+      >
+        <Stack gap="density-lg" className="max-w-[640px]">
+          <Text kind="body/regular/sm" className="text-secondary">
+            StudioAppliedFilters formats each committed range into a chip — both bounds ("30 –
+            480"), lower-only ("≥ 10"), and upper-only ("≤ 90"). Click a chip to clear that filter.
+          </Text>
+          <StudioAppliedFilters />
+        </Stack>
+      </DataView.Root>
     );
   },
 };
