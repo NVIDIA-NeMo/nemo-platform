@@ -20,7 +20,9 @@ import logging
 import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from nemo_agents_plugin.api.v2._perms import DeploymentPerms
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
+from nemo_agents_plugin.authz import scope
 from nemo_agents_plugin.entities import Agent, AgentDeployment
 from nemo_agents_plugin.schema import (
     CreateDeploymentRequest,
@@ -29,6 +31,7 @@ from nemo_agents_plugin.schema import (
 )
 from nemo_agents_plugin.utils import inject_default_model, inject_gateway_url, inject_nemo_trace_fields
 from nemo_platform_plugin.api.filters import make_filter_obj_dep
+from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError, NemoEntityNotFoundError
 from nemo_platform_plugin.schema import PaginationData
 
@@ -40,6 +43,11 @@ _deployment_filter_dep = make_filter_obj_dep(DeploymentFilter)
 
 
 @router.post("/deployments", response_model=AgentDeployment, status_code=201, tags=["Agent Deployments"])
+@scope.write
+@path_rule(
+    callers=[CallerKind.PRINCIPAL],
+    permissions=[DeploymentPerms.CREATE],
+)
 async def create_deployment(
     workspace: str,
     body: CreateDeploymentRequest,
@@ -93,6 +101,11 @@ async def create_deployment(
 
 
 @router.get("/deployments", response_model=DeploymentPage, tags=["Agent Deployments"])
+@scope.read
+@path_rule(
+    callers=[CallerKind.PRINCIPAL],
+    permissions=[DeploymentPerms.LIST],
+)
 async def list_deployments(
     workspace: str,
     page: int = Query(default=1, ge=1),
@@ -126,6 +139,11 @@ async def list_deployments(
 
 
 @router.get("/deployments/{name}", response_model=AgentDeployment, tags=["Agent Deployments"])
+@scope.read
+@path_rule(
+    callers=[CallerKind.PRINCIPAL],
+    permissions=[DeploymentPerms.READ],
+)
 async def get_deployment(
     workspace: str,
     name: str,
@@ -146,6 +164,11 @@ async def get_deployment(
 
 
 @router.delete("/deployments/{name}", status_code=204, tags=["Agent Deployments"])
+@scope.write
+@path_rule(
+    callers=[CallerKind.PRINCIPAL],
+    permissions=[DeploymentPerms.DELETE],
+)
 async def delete_deployment(
     workspace: str,
     name: str,

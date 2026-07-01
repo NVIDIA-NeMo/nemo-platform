@@ -167,6 +167,9 @@ class FilesetsSubResource:
             custom_fields=custom_fields or {},
             cache=cache,
         )
+        # The server returns an error body on 409, not the entity, so
+        # exist_ok is handled here with a follow-up GET rather than at
+        # the endpoint/client level.
         try:
             return self._client.send(endpoints.create_fileset(workspace=workspace, body=body)).data()
         except NemoHTTPError as e:
@@ -259,6 +262,9 @@ class AsyncFilesetsSubResource:
             custom_fields=custom_fields or {},
             cache=cache,
         )
+        # The server returns an error body on 409, not the entity, so
+        # exist_ok is handled here with a follow-up GET rather than at
+        # the endpoint/client level.
         try:
             return (await self._client.send(endpoints.create_fileset(workspace=workspace, body=body))).data()
         except NemoHTTPError as e:

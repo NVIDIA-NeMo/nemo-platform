@@ -437,26 +437,6 @@ def test_send_raises_on_non_2xx() -> None:
     assert exc_info.value.status_code == 403
 
 
-def test_path_params_are_percent_encoded() -> None:
-    """Reserved characters in path params (#, ?) must be percent-encoded."""
-    mock_http = MagicMock(spec=httpx.Client)
-    mock_http.request.return_value = httpx.Response(
-        200,
-        request=httpx.Request("GET", f"{BASE}/apis/test/v2/items/a%23b"),
-        json={"id": 1, "name": "a#b"},
-    )
-
-    client = NemoClient(base_url=BASE, http_client=mock_http)
-    client.send(GET_ITEM(name="a#b?c"))
-
-    args, kwargs = mock_http.request.call_args
-    # URL is the second positional arg (method, url, ...)
-    url = args[1] if len(args) > 1 else kwargs.get("url", "")
-    assert "%23" in url, f"# should be encoded: {url}"
-    assert "%3F" in url, f"? should be encoded: {url}"
-    assert "#" not in url.split("//", 1)[1], f"Raw # in URL would create fragment: {url}"
-
-
 def test_query_param_dicts_are_json_serialized() -> None:
     """Dict query params must be JSON-serialized, not Python repr."""
     from abc import abstractmethod

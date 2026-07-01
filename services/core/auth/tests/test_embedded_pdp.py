@@ -646,10 +646,13 @@ class TestGenericEntitiesApiBlocked:
 
     def test_viewer_can_still_list_workspaces(self, static_authz_data):
         """Non-entity endpoints under /apis/entities/ are unaffected."""
+        # Listing workspaces is a no-{workspace} GET, so its permission is checked in the
+        # system workspace. A viewer holds workspaces.list there via a system binding (on a
+        # real platform that's the seeded wildcard Viewer@system).
         self._setup_principals(
             static_authz_data,
             {
-                "viewer@test.com": {"workspaces": {"my-ws": ["Viewer"]}},
+                "viewer@test.com": {"workspaces": {"my-ws": ["Viewer"], "system": ["Viewer"]}},
             },
         )
         result = evaluate(
@@ -820,3 +823,36 @@ class TestPerAreaScopes:
                     missing.append(f"{method.upper()} {path}")
 
         assert not missing, "Workspace audit endpoints missing audit:* scope:\n" + "\n".join(missing)
+
+
+class TestWasmNativeBuiltins:
+    """The embedded engine stubs host-provided builtins (env::opa_builtin*) to return 0.
+
+    Any rego that calls an SDK-dependent builtin (sprintf, glob.match, ...) therefore
+    silently evaluates to undefined in production: allow rules fail closed, but DENY
+    rules fail OPEN — and ``opa test`` cannot catch it because the Go evaluator
+    implements every builtin. These tests pin the policy to wasm-native builtins only.
+    """
+
+    def test_policy_wasm_requires_no_host_builtins(self):
+        """The compiled policy must not depend on any host-provided builtin."""
+        policy = get_policy()
+        required = policy._read_json(policy.exports["builtins"](policy.store))
+        assert required == {}, (
+            f"policy.wasm requires host builtins {list(required)} which the embedded "
+            "engine stubs out — rewrite the policy using wasm-native builtins only "
+            "(a deny rule depending on a stubbed builtin silently never fires)."
+        )
+
+    def test_namespace_fence_denies_subpaths_in_wasm(self, static_authz_data):
+        """Regression: the fence's subpath arm was written with sprintf and never fired in WASM."""
+        static_authz_data["authz"].setdefault("config", {})["denied_plugin_prefixes"] = ["/apis/brokenplugin"]
+        set_policy_data(static_authz_data)
+        cases = [
+            ("/apis/brokenplugin/sub/route", False),  # subpath fenced (the bug: this was allowed)
+            ("/apis/brokenplugin", False),  # bare prefix fenced
+            ("/apis/brokenplugin-extra/x", True),  # sibling prefix not collaterally fenced
+        ]
+        for path, expect in cases:
+            result = evaluate("allow", {"principal_id": "service:probe", "method": "GET", "path": path})
+            assert result["allowed"] is expect, f"GET {path} as service:probe: expected allowed={expect}"

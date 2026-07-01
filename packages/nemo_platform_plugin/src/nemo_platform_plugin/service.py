@@ -41,7 +41,7 @@ from typing import ClassVar
 
 from fastapi import APIRouter
 from nemo_platform_plugin._base import _NamedPlugin
-from nemo_platform_plugin.authz import AuthzContribution
+from nemo_platform_plugin.authz import Permission
 from starlette.requests import Request
 from starlette.responses import Response
 
@@ -116,16 +116,34 @@ class NemoService(_NamedPlugin):
         The default implementation does nothing.
         """
 
-    @classmethod
-    def get_authz_contribution(cls) -> AuthzContribution | None:
-        """Optional authorization policy for routes under ``/apis/<name>/``.
+    def extra_permissions(self) -> list[Permission]:
+        """Permissions this service owns that are *not* attached to a route.
 
-        Override as a **classmethod** on the :class:`NemoService` subclass (``discover_services``
-        loads classes, not instances). Return
-        :class:`~nemo_platform_plugin.authz.AuthzContribution` or register a ``nemo.authz``
-        entry point. Default: no plugin-specific authz.
+        The permission catalog is normally derived entirely from the
+        :func:`~nemo_platform_plugin.authz.path_rule` rules on ``get_routers()``. Override
+        this only for permissions with no 1:1 route — e.g. ones checked in middleware, or
+        declared ahead of the route that will reference them. These are merged into the
+        derived catalog (and its default role grants) alongside the route-derived ones.
+
+        Default: none.
         """
-        return None
+        return []
+
+    def extra_role_permissions(self) -> dict[str, list[Permission]]:
+        """Extra ``role -> [permission]`` grants beyond the suffix-based defaults.
+
+        The derivation grants each catalog permission to roles by a suffix heuristic
+        (``.list``/``.read`` → Viewer + Editor; everything else → Editor only). Override this
+        to grant a permission to a role that heuristic wouldn't reach — e.g. the agent gateway's
+        ``.invoke`` permission, which a Viewer must hold to call a deployed agent even though its
+        suffix isn't ``read``. Grants are **unioned** with the suffix defaults (never subtractive),
+        and every permission must live in this service's own namespace or the whole plugin fails
+        closed. Each granted permission is also registered in the catalog, so it need not also
+        appear in :meth:`extra_permissions`.
+
+        Default: none.
+        """
+        return {}
 
     def get_exception_handlers(self) -> dict[type[Exception], ExceptionHandler]:
         """Return a mapping of exception types to handler functions.

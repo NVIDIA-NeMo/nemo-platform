@@ -430,10 +430,24 @@ class DockerDeploymentBackend(DeploymentBackend):
             driver=driver,
         )
 
-    async def read_volume_status(self, *, workspace: str, name: str) -> VolumeStatusUpdate:
+    async def read_volume_status(
+        self,
+        *,
+        workspace: str,
+        name: str,
+        backend_config: dict[str, Any] | None = None,
+    ) -> VolumeStatusUpdate:
+        # backend_config is part of the DeploymentBackend ABC so the reconciler can pass
+        # K8s namespace overrides; Docker volume names are global to the daemon.
         return await volume_ops.read_volume_status(self._client, workspace=workspace, name=name)
 
-    async def delete_volume(self, workspace: str, name: str) -> VolumeStatusUpdate:
+    async def delete_volume(
+        self,
+        workspace: str,
+        name: str,
+        *,
+        backend_config: dict[str, Any] | None = None,
+    ) -> VolumeStatusUpdate:
         return await volume_ops.delete_volume(self._client, workspace=workspace, name=name)
 
     def _container_matches_deployment(

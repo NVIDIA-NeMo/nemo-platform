@@ -220,12 +220,15 @@ test_allow_with_empty_scopes if {
 # Test LIST operations with scopes
 
 test_list_allow_with_valid_scopes if {
+    # Valid scopes AND workspaces.list in the system workspace together allow listing.
     result := allow with input as {
         "principal_id": "user1",
         "method": "GET",
         "path": "/apis/entities/v2/workspaces",
         "scopes": ["entities:read"]
     }
+    with data.authz.principals as {"user1": {"workspaces": {"system": ["Viewer"]}}}
+    with data.authz.roles as {"Viewer": {"permissions": ["workspaces.list"]}}
     with data.authz.endpoints as {
         "/apis/entities/v2/workspaces": {
             "get": {

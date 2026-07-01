@@ -3,12 +3,9 @@
 
 """HTTP error hierarchy for the NemoClient.
 
-Status-code-specific subclasses also inherit from the corresponding
-Stainless SDK exception so that existing ``except ConflictError``
-(imported from ``nemo_platform``) catches our exceptions too.
-
-TODO: Once all consumers import from ``nemo_platform_plugin.client.errors``,
-remove the Stainless base classes.
+Provides :class:`NemoHTTPError` and status-code-specific subclasses
+(e.g. :class:`NotFoundError`, :class:`ConflictError`) raised by
+:func:`raise_for_status` on non-2xx responses.
 """
 
 from __future__ import annotations
@@ -33,10 +30,7 @@ class NemoHTTPError(Exception):
         self.status_code = http_response.status_code
         self.detail = self._extract_detail(http_response)
         self.body = self._extract_body(http_response)
-        # Call Exception.__init__ directly to avoid Stainless APIStatusError.__init__
-        # which expects different arguments.  Our subclasses inherit from both
-        # NemoHTTPError and the Stainless exception for isinstance() compatibility.
-        Exception.__init__(self, f"HTTP {self.status_code}: {self.detail}")
+        super().__init__(f"HTTP {self.status_code}: {self.detail}")
 
     @staticmethod
     def _extract_body(resp: httpx.Response) -> object | None:
@@ -64,45 +58,35 @@ class NemoHTTPError(Exception):
 # ---------------------------------------------------------------------------
 
 
-def _stainless_base(name: str) -> type:
-    """Import a Stainless SDK exception by name, falling back to NemoHTTPError."""
-    try:
-        import nemo_platform._exceptions as exc
-
-        return getattr(exc, name)
-    except (ImportError, AttributeError):
-        return NemoHTTPError
-
-
-class BadRequestError(NemoHTTPError, _stainless_base("BadRequestError")):  # type: ignore[misc]
+class BadRequestError(NemoHTTPError):
     """HTTP 400"""
 
 
-class AuthenticationError(NemoHTTPError, _stainless_base("AuthenticationError")):  # type: ignore[misc]
+class AuthenticationError(NemoHTTPError):
     """HTTP 401"""
 
 
-class PermissionDeniedError(NemoHTTPError, _stainless_base("PermissionDeniedError")):  # type: ignore[misc]
+class PermissionDeniedError(NemoHTTPError):
     """HTTP 403"""
 
 
-class NotFoundError(NemoHTTPError, _stainless_base("NotFoundError")):  # type: ignore[misc]
+class NotFoundError(NemoHTTPError):
     """HTTP 404"""
 
 
-class ConflictError(NemoHTTPError, _stainless_base("ConflictError")):  # type: ignore[misc]
+class ConflictError(NemoHTTPError):
     """HTTP 409"""
 
 
-class UnprocessableEntityError(NemoHTTPError, _stainless_base("UnprocessableEntityError")):  # type: ignore[misc]
+class UnprocessableEntityError(NemoHTTPError):
     """HTTP 422"""
 
 
-class RateLimitError(NemoHTTPError, _stainless_base("RateLimitError")):  # type: ignore[misc]
+class RateLimitError(NemoHTTPError):
     """HTTP 429"""
 
 
-class InternalServerError(NemoHTTPError, _stainless_base("InternalServerError")):  # type: ignore[misc]
+class InternalServerError(NemoHTTPError):
     """HTTP 500+"""
 
 

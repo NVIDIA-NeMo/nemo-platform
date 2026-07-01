@@ -14,6 +14,7 @@ from nemo_deployments_plugin.backends.base import (
     LogResult,
     VolumeStatusUpdate,
 )
+from nemo_deployments_plugin.backends.k8s import volumes as volume_ops
 from nemo_deployments_plugin.backends.k8s.client import KubernetesClients
 from nemo_deployments_plugin.backends.k8s.config import K8sExecutorConfig
 
@@ -101,10 +102,42 @@ class K8sDeploymentBackend(DeploymentBackend):
         access_modes: list[str],
         backend_config: dict[str, Any],
     ) -> VolumeStatusUpdate:
-        raise NotImplementedError("K8s create_volume is implemented in a later phase.")
+        return await volume_ops.create_volume(
+            self._clients,
+            default_namespace=self._executor_config.default_namespace,
+            workspace=workspace,
+            name=name,
+            size=size,
+            access_modes=access_modes,
+            backend_config=backend_config,
+        )
 
-    async def read_volume_status(self, *, workspace: str, name: str) -> VolumeStatusUpdate:
-        raise NotImplementedError("K8s read_volume_status is implemented in a later phase.")
+    async def read_volume_status(
+        self,
+        *,
+        workspace: str,
+        name: str,
+        backend_config: dict[str, Any] | None = None,
+    ) -> VolumeStatusUpdate:
+        return await volume_ops.read_volume_status(
+            self._clients,
+            default_namespace=self._executor_config.default_namespace,
+            workspace=workspace,
+            name=name,
+            backend_config=backend_config,
+        )
 
-    async def delete_volume(self, workspace: str, name: str) -> VolumeStatusUpdate:
-        raise NotImplementedError("K8s delete_volume is implemented in a later phase.")
+    async def delete_volume(
+        self,
+        workspace: str,
+        name: str,
+        *,
+        backend_config: dict[str, Any] | None = None,
+    ) -> VolumeStatusUpdate:
+        return await volume_ops.delete_volume(
+            self._clients,
+            default_namespace=self._executor_config.default_namespace,
+            workspace=workspace,
+            name=name,
+            backend_config=backend_config,
+        )

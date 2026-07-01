@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from typing import Any, ClassVar, Protocol, runtime_checkable
 
 import typer
-from nemo_platform_plugin.authz import AuthzContribution
 from nemo_platform_plugin.service import RouterSpec
 
 
@@ -40,17 +39,12 @@ class CustomizationContributor(Protocol):
         """HTTP routes for this backend (workspace-scoped prefix per backend)."""
 
     def get_cli(self) -> typer.Typer | None:
-        """CLI subgroup mounted at ``nemo customization <name>``."""
+        """CLI subgroup mounted at ``nemo customization <name>``.
 
-    def get_authz_contribution(self) -> AuthzContribution | None:
-        """Optional authorization policy (endpoints + permissions) for this contributor.
-
-        Return :class:`~nemo_platform_plugin.authz.AuthzContribution`. Policy is
-        aggregated by :class:`~nemo_customizer.router.CustomizationRouterService`
-        (``nemo.services``) at discovery time — do not register a separate
-        ``nemo.authz`` entry point for customization backends.
+        HTTP authorization is **not** declared here: it is derived from the
+        ``@path_rule``-decorated routes returned by :meth:`get_routers`, which the
+        customization hub aggregates into its own ``nemo.services`` route surface.
         """
-        ...
 
     def get_sdk_resources(self) -> CustomizationContributorSDKResources | None:
         """Return SDK resource classes for ``client.customization.<name>``.

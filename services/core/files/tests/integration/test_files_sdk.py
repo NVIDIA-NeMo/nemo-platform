@@ -23,7 +23,8 @@ from io import BytesIO
 from pathlib import Path
 
 import pytest
-from nemo_platform import NeMoPlatform, NotFoundError, PermissionDeniedError
+from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.errors import NotFoundError, PermissionDeniedError
 from nemo_platform.types.files import FilesetFile
 from nemo_platform.types.files.fileset import Fileset
 from nmp.core.files.testing.utils import create_fileset, test_fileset_name

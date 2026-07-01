@@ -123,6 +123,8 @@ auth:
   embedded_pdp_cpu_limit: 200
   # Maximum linear memory (MB) the embedded PDP WASM runtime can consume. | default: 32
   embedded_pdp_memory_limit_mb: 32
+  # Fail-mode for a plugin that contributes invalid HTTP authz. | default: 'hard_fail' | values: 'deny_route' | 'quarantine' | 'hard_fail'
+  on_invalid_plugin: hard_fail
 ```
 
 ### `entities`

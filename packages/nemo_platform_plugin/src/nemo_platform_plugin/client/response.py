@@ -6,15 +6,31 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Callable, Coroutine, Iterator
-from contextlib import AbstractAsyncContextManager, AbstractContextManager
+from contextlib import AbstractAsyncContextManager, AbstractContextManager, asynccontextmanager, contextmanager
 from dataclasses import dataclass
-from types import TracebackType
 from typing import Any, Generic, TypeVar
 
 import httpx
 from nemo_platform_plugin.client.errors import raise_for_status
 from nemo_platform_plugin.client.types import OffsetPagination, PaginationStrategy, PreparedRequest
 from pydantic import BaseModel
+
+
+def _parse_stream_line(line: str, headers: httpx.Headers) -> str | None:
+    """Extract a JSON payload from a stream line, or ``None`` to skip.
+
+    Handles both NDJSON (pass-through) and SSE framing (strips ``data:``
+    prefix, skips non-data fields like ``event:``, ``id:``, comments).
+    """
+    line = line.strip()
+    if not line:
+        return None
+    if "text/event-stream" in headers.get("content-type", ""):
+        if line.startswith("data:"):
+            return line[5:].strip()
+        return None
+    return line
+
 
 ResponseT = TypeVar("ResponseT")
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -54,59 +70,49 @@ class NemoResponse(Generic[ResponseT]):
 class NemoBinaryResponse:
     """Sync response for binary download endpoints.
 
-    ``read()`` auto-enters the stream context — no context manager needed::
+    For simple reads::
 
         resp = client.send(endpoints.download(...))
         data = resp.read()
 
-    For streaming chunks, use as a context manager::
+    For streaming chunks::
 
-        with client.send(endpoints.download(...)) as resp:
-            for chunk in resp:
+        with resp.stream() as chunks:
+            for chunk in chunks:
                 f.write(chunk)
     """
 
     def __init__(self, stream_ctx: AbstractContextManager[httpx.Response], request: PreparedRequest) -> None:
         self._stream_ctx = stream_ctx
-        self._response: httpx.Response | None = None
         self.request = request
 
-    @property
-    def http_response(self) -> httpx.Response:
-        assert self._response is not None, "Must call read() or enter context manager before accessing http_response"
-        return self._response
-
     def read(self) -> bytes:
-        """Read and return the entire response body as bytes.
+        """Read and return the entire response body as bytes."""
+        with self._stream_ctx as raw:
+            data = raw.read()
+            raise_for_status(raw)
+            return data
 
-        Auto-enters and exits the stream context if not already entered.
-        """
-        if self._response is None:
-            with self:
-                return self._response.read()
-        return self._response.read()
-
-    def __iter__(self) -> Iterator[bytes]:
-        return self.http_response.iter_bytes()
-
-    def __enter__(self) -> NemoBinaryResponse:
-        self._response = self._stream_ctx.__enter__()
-        raise_for_status(self._response)
-        return self
-
-    def __exit__(
-        self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: TracebackType | None
-    ) -> None:
-        self._stream_ctx.__exit__(exc_type, exc_val, exc_tb)
+    @contextmanager
+    def stream(self) -> Iterator[Iterator[bytes]]:
+        """Yield an iterator of byte chunks."""
+        with self._stream_ctx as raw:
+            raise_for_status(raw)
+            yield raw.iter_bytes()
 
 
 class NemoStreamResponse(Generic[ModelT]):
     """Sync response for SSE/NDJSON streaming endpoints.
 
-    Use as a context manager::
+    Handles both NDJSON (``application/x-ndjson``) and SSE
+    (``text/event-stream``) framing automatically based on the
+    response ``Content-Type``.  SSE ``data:`` prefixes are stripped
+    before JSON parsing.
 
-        with client.send(ChatEndpoint(...)) as resp:
-            for chunk in resp:
+    Use via :meth:`stream`::
+
+        with client.send(ChatEndpoint(...)).stream() as chunks:
+            for chunk in chunks:
                 print(chunk.text)
     """
 
@@ -118,29 +124,21 @@ class NemoStreamResponse(Generic[ModelT]):
     ) -> None:
         self._stream_ctx = stream_ctx
         self._model_type = model_type
-        self._response: httpx.Response | None = None
         self.request = request
 
-    @property
-    def http_response(self) -> httpx.Response:
-        assert self._response is not None, "Must enter context manager before accessing response"
-        return self._response
+    @contextmanager
+    def stream(self) -> Iterator[Iterator[ModelT]]:
+        """Yield an iterator of parsed model objects."""
+        with self._stream_ctx as raw:
+            raise_for_status(raw)
 
-    def __iter__(self) -> Iterator[ModelT]:
-        for line in self.http_response.iter_lines():
-            line = line.strip()
-            if line:
-                yield self._model_type.model_validate_json(line)
+            def _iter() -> Iterator[ModelT]:
+                for line in raw.iter_lines():
+                    payload = _parse_stream_line(line, raw.headers)
+                    if payload is not None:
+                        yield self._model_type.model_validate_json(payload)
 
-    def __enter__(self) -> NemoStreamResponse[ModelT]:
-        self._response = self._stream_ctx.__enter__()
-        raise_for_status(self._response)
-        return self
-
-    def __exit__(
-        self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: TracebackType | None
-    ) -> None:
-        self._stream_ctx.__exit__(exc_type, exc_val, exc_tb)
+            yield _iter()
 
 
 # ---------------------------------------------------------------------------
@@ -151,60 +149,47 @@ class NemoStreamResponse(Generic[ModelT]):
 class AsyncNemoBinaryResponse:
     """Async response for binary download endpoints.
 
-    ``read()`` auto-enters the stream context — no context manager needed::
+    For simple reads::
 
         resp = await client.send(endpoints.download(...))
         data = await resp.read()
 
-    For streaming chunks, use as an async context manager::
+    For streaming chunks::
 
-        async with await client.send(endpoints.download(...)) as resp:
-            async for chunk in resp:
+        async with resp.stream() as chunks:
+            async for chunk in chunks:
                 f.write(chunk)
     """
 
     def __init__(self, stream_ctx: AbstractAsyncContextManager[httpx.Response], request: PreparedRequest) -> None:
         self._stream_ctx = stream_ctx
-        self._response: httpx.Response | None = None
         self.request = request
 
-    @property
-    def http_response(self) -> httpx.Response:
-        assert self._response is not None, "Must await read() or enter context manager before accessing http_response"
-        return self._response
-
     async def read(self) -> bytes:
-        """Read and return the entire response body as bytes.
+        """Read and return the entire response body as bytes."""
+        async with self._stream_ctx as raw:
+            data = await raw.aread()
+            raise_for_status(raw)
+            return data
 
-        Auto-enters and exits the stream context if not already entered.
-        """
-        if self._response is None:
-            async with self:
-                return await self._response.aread()
-        return await self._response.aread()
-
-    async def __aiter__(self) -> AsyncIterator[bytes]:
-        async for chunk in self.http_response.aiter_bytes():
-            yield chunk
-
-    async def __aenter__(self) -> AsyncNemoBinaryResponse:
-        self._response = await self._stream_ctx.__aenter__()
-        raise_for_status(self._response)
-        return self
-
-    async def __aexit__(
-        self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: TracebackType | None
-    ) -> None:
-        await self._stream_ctx.__aexit__(exc_type, exc_val, exc_tb)
+    @asynccontextmanager
+    async def stream(self) -> AsyncIterator[AsyncIterator[bytes]]:
+        """Yield an async iterator of byte chunks."""
+        async with self._stream_ctx as raw:
+            raise_for_status(raw)
+            yield raw.aiter_bytes()
 
 
 class AsyncNemoStreamResponse(Generic[ModelT]):
     """Async response for SSE/NDJSON streaming endpoints.
 
-    Use as an async context manager::
+    Handles both NDJSON and SSE framing automatically based on the
+    response ``Content-Type``.  See :class:`NemoStreamResponse` for details.
 
-        async with client.send(ChatEndpoint(...)) as resp:
-            async for chunk in resp:
+    Use via :meth:`stream`::
+
+        async with (await client.send(ChatEndpoint(...))).stream() as chunks:
+            async for chunk in chunks:
                 print(chunk.text)
     """
 
@@ -216,29 +201,21 @@ class AsyncNemoStreamResponse(Generic[ModelT]):
     ) -> None:
         self._stream_ctx = stream_ctx
         self._model_type = model_type
-        self._response: httpx.Response | None = None
         self.request = request
 
-    @property
-    def http_response(self) -> httpx.Response:
-        assert self._response is not None, "Must enter async context manager before accessing response"
-        return self._response
+    @asynccontextmanager
+    async def stream(self) -> AsyncIterator[AsyncIterator[ModelT]]:
+        """Yield an async iterator of parsed model objects."""
+        async with self._stream_ctx as raw:
+            raise_for_status(raw)
 
-    async def __aiter__(self) -> AsyncIterator[ModelT]:
-        async for line in self.http_response.aiter_lines():
-            line = line.strip()
-            if line:
-                yield self._model_type.model_validate_json(line)
+            async def _iter() -> AsyncIterator[ModelT]:
+                async for line in raw.aiter_lines():
+                    payload = _parse_stream_line(line, raw.headers)
+                    if payload is not None:
+                        yield self._model_type.model_validate_json(payload)
 
-    async def __aenter__(self) -> AsyncNemoStreamResponse[ModelT]:
-        self._response = await self._stream_ctx.__aenter__()
-        raise_for_status(self._response)
-        return self
-
-    async def __aexit__(
-        self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: TracebackType | None
-    ) -> None:
-        await self._stream_ctx.__aexit__(exc_type, exc_val, exc_tb)
+            yield _iter()
 
 
 # ---------------------------------------------------------------------------
@@ -385,8 +362,3 @@ class AsyncNemoPaginatedResponse(Generic[ModelT]):
                 yield item
             current = next_page
             next_page = self._strategy.next_page(body, current)
-
-
-# ---------------------------------------------------------------------------
-# Errors
-# ---------------------------------------------------------------------------

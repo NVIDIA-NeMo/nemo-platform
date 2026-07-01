@@ -31,6 +31,8 @@ from typing import ClassVar
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
+from nemo_example_plugin._perms import ExampleHelloPerms, ExampleItemPerms
+from nemo_example_plugin.authz import scope
 from nemo_example_plugin.config import ExampleConfig
 from nemo_example_plugin.core import say_hello
 from nemo_example_plugin.entities import ExampleItem
@@ -45,6 +47,7 @@ from nemo_example_plugin.types.payloads import (
     UpdateExampleItemRequest,
 )
 from nemo_platform_plugin.api.filters import make_filter_obj_dep
+from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.entity_client import (
     NemoEntitiesClient,
     NemoEntityConflictError,
@@ -100,13 +103,21 @@ class ExampleService(NemoService):
                 prefix="/v2/workspaces/{workspace}",
             ),
             RouterSpec(
-                add_function_routes(GreetFunction),
+                add_function_routes(
+                    GreetFunction,
+                    authz=scope,
+                    permission_description="Invoke the greet function",
+                ),
                 tag="Example Functions",
                 description="Non-streaming NemoFunction example.",
                 prefix="/v2/workspaces/{workspace}",
             ),
             RouterSpec(
-                add_function_routes(CountFunction),
+                add_function_routes(
+                    CountFunction,
+                    authz=scope,
+                    permission_description="Invoke the count function",
+                ),
                 tag="Example Functions",
                 description="Streaming NDJSON NemoFunction example.",
                 prefix="/v2/workspaces/{workspace}",
@@ -128,6 +139,11 @@ def _build_hello_router() -> APIRouter:
     router = APIRouter()
 
     @router.get("/hello/{name}", response_model=HelloResponse)
+    @scope.read
+    @path_rule(
+        callers=[CallerKind.PRINCIPAL],
+        permissions=[ExampleHelloPerms.READ],
+    )
     async def hello(name: str) -> HelloResponse:
         """Greet a name.
 
@@ -162,6 +178,8 @@ def _build_binary_router() -> APIRouter:
     _store: dict[str, bytes] = {}
 
     @router.put("/blob/{name}", status_code=200, response_model=BlobUploadResponse)
+    @scope.write
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[])
     async def upload_blob(name: str, request: Request) -> BlobUploadResponse:
         """Accept raw binary and store it. Returns byte count."""
         data = await request.body()
@@ -169,6 +187,8 @@ def _build_binary_router() -> APIRouter:
         return BlobUploadResponse(name=name, size=len(data))
 
     @router.get("/blob/{name}", response_class=Response)
+    @scope.read
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[])
     async def download_blob(name: str) -> Response:
         """Return stored binary content."""
         if name not in _store:
@@ -226,6 +246,11 @@ def _build_items_router() -> APIRouter:
         status_code=201,
         tags=["Example Items"],
     )
+    @scope.write
+    @path_rule(
+        callers=[CallerKind.PRINCIPAL],
+        permissions=[ExampleItemPerms.CREATE],
+    )
     async def create_item(
         workspace: str,
         body: CreateExampleItemRequest,
@@ -265,6 +290,11 @@ def _build_items_router() -> APIRouter:
         "/items",
         response_model=ExampleItemPage,
         tags=["Example Items"],
+    )
+    @scope.read
+    @path_rule(
+        callers=[CallerKind.PRINCIPAL],
+        permissions=[ExampleItemPerms.LIST],
     )
     async def list_items(
         workspace: str,
@@ -351,6 +381,11 @@ def _build_items_router() -> APIRouter:
         response_model=ExampleItem,
         tags=["Example Items"],
     )
+    @scope.read
+    @path_rule(
+        callers=[CallerKind.PRINCIPAL],
+        permissions=[ExampleItemPerms.READ],
+    )
     async def get_item(
         workspace: str,
         name: str,
@@ -378,6 +413,11 @@ def _build_items_router() -> APIRouter:
         "/items/{name}",
         response_model=ExampleItem,
         tags=["Example Items"],
+    )
+    @scope.write
+    @path_rule(
+        callers=[CallerKind.PRINCIPAL],
+        permissions=[ExampleItemPerms.UPDATE],
     )
     async def update_item(
         workspace: str,
@@ -426,6 +466,11 @@ def _build_items_router() -> APIRouter:
         "/items/{name}",
         status_code=204,
         tags=["Example Items"],
+    )
+    @scope.write
+    @path_rule(
+        callers=[CallerKind.PRINCIPAL],
+        permissions=[ExampleItemPerms.DELETE],
     )
     async def delete_item(
         workspace: str,

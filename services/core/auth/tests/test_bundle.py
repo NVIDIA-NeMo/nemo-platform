@@ -13,25 +13,37 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_authorization_data_merges_plugin_authz_contributions(monkeypatch):
-    """Plugin authz contributions are included before validation and bundle build."""
+    """Plugin authz contributions are included before validation and bundle build.
+
+    The bundle derives contributions via ``discover_plugin_authz`` (routes-derived model),
+    so the stub returns a clean ``PluginAuthzResult`` rather than a raw contribution dict.
+    """
+    from nemo_platform_plugin.authz import AuthzContribution, AuthzEndpointMethod
+    from nemo_platform_plugin.authz_discovery import PluginAuthzResult
     from nmp.core.auth.app.bundle import _build_authorization_data_internal
 
     plugin_path = "/apis/example-plugin/v2/workspaces/{workspace}/jobs"
-    contribution = {
-        "permissions": {"example-plugin.jobs.read": "Read example plugin jobs"},
-        "endpoints": {
-            plugin_path: {
-                "get": {
-                    "permissions": ["example-plugin.jobs.read"],
-                    "scopes": ["example-plugin:read", "platform:read"],
+    result = PluginAuthzResult(
+        key="example-plugin",
+        contribution=AuthzContribution(
+            permissions={"example-plugin.jobs.read": "Read example plugin jobs"},
+            endpoints={
+                plugin_path: {
+                    "get": AuthzEndpointMethod(
+                        permissions=["example-plugin.jobs.read"],
+                        scopes=["example-plugin:read", "platform:read"],
+                    )
                 }
-            }
-        },
-    }
+            },
+        ),
+        problems=[],
+        warnings=[],
+        mount_name="example-plugin",
+    )
 
     monkeypatch.setattr(
-        "nemo_platform_plugin.authz_discovery.discover_authz_contribution_dicts",
-        lambda: [contribution],
+        "nemo_platform_plugin.authz_discovery.discover_plugin_authz",
+        lambda: [result],
     )
 
     data = await _build_authorization_data_internal(entities_client=None)
@@ -122,3 +134,115 @@ async def test_bundle_etag_stability():
 
     # E-Tag should be the same for same data
     assert etag1 == etag2
+
+
+# --- Plugin authz fail-mode (authz.on_invalid_plugin) ---
+
+
+def _problem_result():
+    """A plugin result with one valid route and one unruled (deny) route + a problem."""
+    from nemo_platform_plugin.authz import AuthzContribution, AuthzEndpointMethod
+    from nemo_platform_plugin.authz_discovery import PluginAuthzResult
+
+    contribution = AuthzContribution(
+        permissions={"p.read": "Read"},
+        endpoints={
+            "/apis/p/v2/ok": {"get": AuthzEndpointMethod(permissions=["p.read"])},
+            "/apis/p/v2/bad": {"get": AuthzEndpointMethod(permissions=[], deny=True)},
+        },
+    )
+    return PluginAuthzResult(key="p", contribution=contribution, problems=["/apis/p/v2/bad (GET) has no @path_rule"])
+
+
+def _patch_failmode(monkeypatch, results, on_invalid):
+    from types import SimpleNamespace
+
+    import nmp.core.auth.app.bundle as bundle
+
+    monkeypatch.setattr("nemo_platform_plugin.authz_discovery.discover_plugin_authz", lambda: results)
+    monkeypatch.setattr(
+        bundle,
+        "get_service_config",
+        lambda _cls: SimpleNamespace(on_invalid_plugin=on_invalid),
+    )
+    return bundle
+
+
+def test_on_invalid_plugin_deny_route_keeps_valid_routes(monkeypatch):
+    bundle = _patch_failmode(monkeypatch, [_problem_result()], "deny_route")
+    merged = bundle.merge_plugin_authz_contributions({"authz": {}})
+    endpoints = merged["authz"]["endpoints"]
+    assert "deny" not in endpoints["/apis/p/v2/ok"]["get"]  # valid route preserved
+    assert endpoints["/apis/p/v2/bad"]["get"]["deny"] is True  # only the bad route denied
+    assert "p" in bundle.get_degraded_plugins()
+
+
+def test_on_invalid_plugin_quarantine_denies_whole_plugin(monkeypatch):
+    bundle = _patch_failmode(monkeypatch, [_problem_result()], "quarantine")
+    merged = bundle.merge_plugin_authz_contributions({"authz": {}})
+    endpoints = merged["authz"]["endpoints"]
+    # The previously-valid route is now denied too — the whole plugin is quarantined.
+    assert endpoints["/apis/p/v2/ok"]["get"]["deny"] is True
+    assert endpoints["/apis/p/v2/bad"]["get"]["deny"] is True
+    # quarantine also fences the whole namespace, so a route the runner mounts that
+    # derivation never saw (quarantine only rewrites the routes it did see) can't fall through.
+    assert merged["authz"]["config"]["denied_plugin_prefixes"] == ["/apis/p"]
+
+
+def test_on_invalid_plugin_hard_fail_raises(monkeypatch):
+    bundle = _patch_failmode(monkeypatch, [_problem_result()], "hard_fail")
+    with pytest.raises(RuntimeError, match="hard_fail"):
+        bundle.merge_plugin_authz_contributions({"authz": {}})
+
+
+def test_clean_plugin_merges_without_degraded(monkeypatch):
+    from nemo_platform_plugin.authz import AuthzContribution, AuthzEndpointMethod
+    from nemo_platform_plugin.authz_discovery import PluginAuthzResult
+
+    clean = PluginAuthzResult(
+        key="c",
+        contribution=AuthzContribution(
+            permissions={"c.read": "Read"},
+            endpoints={"/apis/c/v2/x": {"get": AuthzEndpointMethod(permissions=["c.read"])}},
+        ),
+        problems=[],
+    )
+    bundle = _patch_failmode(monkeypatch, [clean], "deny_route")
+    merged = bundle.merge_plugin_authz_contributions({"authz": {}})
+    assert "/apis/c/v2/x" in merged["authz"]["endpoints"]
+    assert bundle.get_degraded_plugins() == {}
+
+
+def test_degraded_plugin_with_no_routes_is_namespace_fenced(monkeypatch):
+    """A plugin that couldn't be enumerated (empty contribution) fences its whole namespace,
+    so any route it still mounts can't fall through the service: no-match bypass."""
+    from nemo_platform_plugin.authz import AuthzContribution
+    from nemo_platform_plugin.authz_discovery import PluginAuthzResult
+
+    degraded = PluginAuthzResult(
+        key="bad",
+        contribution=AuthzContribution(),  # no endpoints — could not enumerate
+        problems=["failed to load plugin: RuntimeError('boom')"],
+    )
+    bundle = _patch_failmode(monkeypatch, [degraded], "deny_route")
+    merged = bundle.merge_plugin_authz_contributions({"authz": {}})
+    assert merged["authz"]["config"]["denied_plugin_prefixes"] == ["/apis/bad"]
+    assert "bad" in bundle.get_degraded_plugins()
+
+
+def test_degraded_plugin_fences_both_key_and_mount_name(monkeypatch):
+    """When a degraded plugin's declared mount name diverges from its entry-point key (the
+    name==key invariant is only warned, not enforced), the fence must cover both /apis/<key>
+    and /apis/<name> — the runner mounts the plugin's real routes at /apis/<name>."""
+    from nemo_platform_plugin.authz import AuthzContribution
+    from nemo_platform_plugin.authz_discovery import PluginAuthzResult
+
+    degraded = PluginAuthzResult(
+        key="bad",
+        contribution=AuthzContribution(),  # no endpoints — could not enumerate
+        problems=["failed to load plugin: RuntimeError('boom')"],
+        mount_name="bad-actual",
+    )
+    bundle = _patch_failmode(monkeypatch, [degraded], "deny_route")
+    merged = bundle.merge_plugin_authz_contributions({"authz": {}})
+    assert merged["authz"]["config"]["denied_plugin_prefixes"] == ["/apis/bad", "/apis/bad-actual"]

@@ -23,6 +23,7 @@ def mock_k8s_clients() -> MagicMock:
     clients.core_v1 = MagicMock()
     clients.apps_v1 = MagicMock()
     clients.batch_v1 = MagicMock()
+    clients.request_timeout = 30
     return clients
 
 

@@ -23,11 +23,9 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 from nemo_platform import (
-    APIStatusError,
-    ConflictError,
     NeMoPlatform,
-    NotFoundError,
 )
+from nemo_platform_plugin.client.errors import ConflictError, NemoHTTPError, NotFoundError
 from nemo_platform.types.files.fileset import Fileset
 from nmp.core.files.testing.utils import (
     DEFAULT_WORKSPACE_ID,
@@ -396,8 +394,8 @@ class TestFilesBasic:
                 name="reject-local-storage",
                 storage={"type": "local", "path": "/etc"},
             )
-            assert False, "Should have raised APIStatusError for local storage"
-        except APIStatusError as exc:
+            assert False, "Should have raised NemoHTTPError for local storage"
+        except NemoHTTPError as exc:
             assert exc.status_code == 400
             assert "local storage is not allowed" in str(exc.body).lower()
 
@@ -413,8 +411,8 @@ class TestFilesBasic:
                     "use_sdk_auth": True,
                 },
             )
-            assert False, "Should have raised APIStatusError for S3 with use_sdk_auth=True"
-        except APIStatusError as exc:
+            assert False, "Should have raised NemoHTTPError for S3 with use_sdk_auth=True"
+        except NemoHTTPError as exc:
             assert exc.status_code == 400
             assert "use_sdk_auth=true is not allowed" in str(exc.body).lower()
 
@@ -575,7 +573,7 @@ class TestFilesBasic:
 
     def test_fileset_create_rejects_invalid_dataset_schema_metadata(self, sdk: NeMoPlatform):
         """Test invalid JSON Schema metadata is rejected at fileset create time."""
-        with pytest.raises((APIStatusError, ValidationError), match="definitely-not-a-valid-json-schema-type"):
+        with pytest.raises((NemoHTTPError, ValidationError), match="definitely-not-a-valid-json-schema-type"):
             with create_fileset(
                 sdk,
                 purpose="dataset",

@@ -23,14 +23,13 @@ import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, TypeVar, get_args, get_origin, overload
-from urllib.parse import quote
 
 import httpx
 from nemo_platform_plugin.client.auth import (
     StaticToken,
     TokenProvider,
 )
-from nemo_platform_plugin.client.errors import ConflictError, raise_for_status
+from nemo_platform_plugin.client.errors import raise_for_status
 from nemo_platform_plugin.client.response import (
     AsyncNemoBinaryResponse,
     AsyncNemoPaginatedResponse,
@@ -148,17 +147,13 @@ class BaseNemoClient:
         """Resolve path template with client defaults and explicit params.
 
         Client-level defaults (e.g. workspace) are merged under explicit
-        params — explicit always wins.  Path parameter values are
-        percent-encoded so reserved characters (``#``, ``?``, etc.) in
-        file paths don't break the URL.  Raises ``ValueError`` if any
+        params — explicit always wins.  Raises ``ValueError`` if any
         placeholders remain unresolved.
         """
         params: dict[str, str] = {}
         if self._workspace:
             params["workspace"] = self._workspace
-        # Percent-encode values so reserved chars in file paths don't break URLs.
-        # safe="/" preserves path separators within {path} placeholders.
-        params.update({k: quote(v, safe="/") for k, v in request.path_params.items()})
+        params.update(request.path_params)
         try:
             path = request.path_template.format_map(params)
         except KeyError as exc:
@@ -197,18 +192,6 @@ class BaseNemoClient:
             else:
                 filtered[k] = v
         return filtered or None
-
-    def _raise_for_status(self, raw: httpx.Response, request: PreparedRequest) -> None:
-        """Raise on non-2xx, unless a client option suppresses the error.
-
-        For example, ``exist_ok=True`` swallows 409 Conflict.
-        """
-        try:
-            raise_for_status(raw)
-        except ConflictError:
-            if request.client_options and request.client_options.get("exist_ok"):
-                return
-            raise
 
 
 class NemoClient(BaseNemoClient):
@@ -350,7 +333,10 @@ class NemoClient(BaseNemoClient):
             )
 
         raw = self._request_with_retry(request, url, req_headers, params, resolved_retry)
-        self._raise_for_status(raw, request)
+        # NOTE: client_options (e.g. exist_ok) from PreparedRequest are not
+        # acted on here yet — see AIRCORE-866 for the planned server-side
+        # fix that would let the client handle them properly.
+        raise_for_status(raw)
         body = None
         if request.response_type is not None:
             body = request.response_type.model_validate(raw.json())
@@ -536,7 +522,10 @@ class AsyncNemoClient(BaseNemoClient):
             )
 
         raw = await self._request_with_retry(request, url, req_headers, params, resolved_retry)
-        self._raise_for_status(raw, request)
+        # NOTE: client_options (e.g. exist_ok) from PreparedRequest are not
+        # acted on here yet — see AIRCORE-866 for the planned server-side
+        # fix that would let the client handle them properly.
+        raise_for_status(raw)
         body = None
         if request.response_type is not None:
             body = request.response_type.model_validate(raw.json())
