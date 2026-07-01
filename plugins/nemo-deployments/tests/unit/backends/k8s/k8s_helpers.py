@@ -12,6 +12,7 @@ from nemo_deployments_plugin.backends.labels import (
     CONFIG_NAME_LABEL,
     DEPLOYMENT_NAME_LABEL,
     DEPLOYMENT_WORKSPACE_LABEL,
+    MANAGED_BY_KEY,
     RESTART_POLICY_LABEL,
     deployment_identity_labels,
 )
@@ -103,7 +104,7 @@ def mock_job(
 def job_list_item(*, workspace: str, name: str) -> MagicMock:
     item = MagicMock()
     item.metadata.labels = {
-        "managed-by": MANAGED_BY_LABEL,
+        MANAGED_BY_KEY: MANAGED_BY_LABEL,
         DEPLOYMENT_WORKSPACE_LABEL: workspace,
         DEPLOYMENT_NAME_LABEL: name,
         RESTART_POLICY_LABEL: "Never",

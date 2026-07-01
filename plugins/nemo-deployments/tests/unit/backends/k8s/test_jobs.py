@@ -6,11 +6,11 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from backends.k8s.k8s_helpers import job_list_item, mock_job, sample_config, sample_deployment
+from backends.k8s.k8s_helpers import job_identity_labels, job_list_item, mock_job, sample_config, sample_deployment
 from kubernetes.client.rest import ApiException
 from nemo_deployments_plugin.backends.k8s import jobs as job_ops
 from nemo_deployments_plugin.backends.k8s.client import KubernetesClients
-from nemo_deployments_plugin.backends.k8s.jobs import job_backoff_limit, validate_config_for_job
+from nemo_deployments_plugin.backends.k8s.jobs import job_backoff_limit, trim_log_text, validate_config_for_job
 from nemo_deployments_plugin.backends.labels import MANAGED_BY_KEY
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
 from nemo_deployments_plugin.types import RestartPolicy
@@ -41,6 +41,51 @@ def test_job_backoff_limit(restart_policy: RestartPolicy, expected: int) -> None
 def test_validate_config_for_job_rejects_always() -> None:
     with pytest.raises(job_ops.DeploymentConfigError, match="Always"):
         validate_config_for_job(sample_config(restart_policy="Always"))
+
+
+@pytest.mark.asyncio
+async def test_create_job_on_failure_uses_requested_restart_policy(
+    k8s_backend, mock_k8s_clients: MagicMock, mock_entities: AsyncMock
+) -> None:
+    mock_entities.get.return_value = sample_config(restart_policy="OnFailure")
+    mock_k8s_clients.batch_v1.create_namespaced_job.return_value = mock_job(restart_policy="OnFailure", active=1)
+
+    await k8s_backend.create_deployment(
+        workspace="default",
+        name="task",
+        config_name="cfg1",
+        labels={},
+        backend_config={},
+    )
+
+    body = mock_k8s_clients.batch_v1.create_namespaced_job.call_args.kwargs["body"]
+    assert body.spec.template.spec.restart_policy == "OnFailure"
+    assert body.spec.backoff_limit == 6
+
+
+@pytest.mark.asyncio
+async def test_create_job_emits_separate_command_and_args(
+    k8s_backend, mock_k8s_clients: MagicMock, mock_entities: AsyncMock
+) -> None:
+    config = sample_config(restart_policy="Never")
+    config.containers[0].command = ["echo"]
+    config.containers[0].args = ["hello"]
+    mock_entities.get.return_value = config
+    mock_k8s_clients.batch_v1.create_namespaced_job.return_value = mock_job(active=1)
+
+    await k8s_backend.create_deployment(
+        workspace="default",
+        name="task",
+        config_name="cfg1",
+        labels={},
+        backend_config={},
+    )
+
+    container = mock_k8s_clients.batch_v1.create_namespaced_job.call_args.kwargs["body"].spec.template.spec.containers[
+        0
+    ]
+    assert container.command == ["echo"]
+    assert container.args == ["hello"]
 
 
 @pytest.mark.asyncio
@@ -110,6 +155,20 @@ async def test_create_job_conflict_rejects_foreign(job_ops_clients: MagicMock, m
 
 
 @pytest.mark.asyncio
+async def test_read_job_status_rejects_stale_identity(
+    k8s_backend, mock_k8s_clients: MagicMock, mock_entities: AsyncMock
+) -> None:
+    mock_entities.get.side_effect = [sample_deployment(), sample_config(restart_policy="Never")]
+    stale = mock_job(config_name="old-config", complete=True)
+    mock_k8s_clients.batch_v1.read_namespaced_job.return_value = stale
+
+    update = await k8s_backend.read_status(workspace="default", name="task")
+
+    assert update.status == "FAILED"
+    assert "not managed" in update.status_message
+
+
+@pytest.mark.asyncio
 async def test_read_job_status_complete(k8s_backend, mock_k8s_clients: MagicMock, mock_entities: AsyncMock) -> None:
     mock_entities.get.side_effect = [sample_deployment(), sample_config(restart_policy="Never")]
     mock_k8s_clients.batch_v1.read_namespaced_job.return_value = mock_job(complete=True)
@@ -124,11 +183,31 @@ async def test_delete_job_missing_is_success(
     k8s_backend, mock_k8s_clients: MagicMock, mock_entities: AsyncMock
 ) -> None:
     mock_entities.get.side_effect = [sample_deployment(), sample_config(restart_policy="Never")]
-    mock_k8s_clients.batch_v1.delete_namespaced_job.side_effect = ApiException(status=404)
+    mock_k8s_clients.batch_v1.read_namespaced_job.side_effect = ApiException(status=404)
 
     update = await k8s_backend.delete_deployment("default", "task")
 
     assert update.status == "SUCCEEDED"
+    mock_k8s_clients.batch_v1.delete_namespaced_job.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_delete_job_rejects_foreign(job_ops_clients: MagicMock, mock_k8s_clients: MagicMock) -> None:
+    foreign = mock_job(complete=True)
+    foreign.metadata.labels = {MANAGED_BY_KEY: "other-plugin"}
+    mock_k8s_clients.batch_v1.read_namespaced_job.return_value = foreign
+
+    update = await job_ops.delete_job(
+        job_ops_clients,
+        default_namespace="default",
+        workspace="default",
+        name="task",
+        backend_config={},
+        expected_labels=job_identity_labels(),
+    )
+
+    assert update.status == "FAILED"
+    mock_k8s_clients.batch_v1.delete_namespaced_job.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -142,11 +221,19 @@ async def test_list_managed_deployment_names(k8s_backend, mock_k8s_clients: Magi
     assert names == ["default/task", "ws/other"]
 
 
+def test_trim_log_text_caps_payload() -> None:
+    text = "x" * 9000
+    lines, truncated = trim_log_text(text)
+    assert truncated is True
+    assert sum(len(line) for line in lines) <= 8000
+
+
 @pytest.mark.asyncio
 async def test_get_job_logs(k8s_backend, mock_k8s_clients: MagicMock, mock_entities: AsyncMock) -> None:
     mock_entities.get.side_effect = [sample_deployment(), sample_config(restart_policy="Never")]
     pod = MagicMock()
     pod.metadata.name = "task-pod"
+    pod.metadata.creation_timestamp = "2026-01-02T00:00:00Z"
     mock_k8s_clients.core_v1.list_namespaced_pod.return_value = MagicMock(items=[pod])
     mock_k8s_clients.core_v1.read_namespaced_pod_log.return_value = "hello\nworld\n"
 
@@ -162,6 +249,8 @@ async def test_read_job_status_includes_exit_code(
     mock_entities.get.side_effect = [sample_deployment(), sample_config(restart_policy="Never")]
     mock_k8s_clients.batch_v1.read_namespaced_job.return_value = mock_job(complete=True)
     pod = MagicMock()
+    pod.metadata.name = "task-pod"
+    pod.metadata.creation_timestamp = "2026-01-02T00:00:00Z"
     pod.status.container_statuses = [MagicMock()]
     pod.status.container_statuses[0].state.terminated.exit_code = 0
     mock_k8s_clients.core_v1.list_namespaced_pod.return_value = MagicMock(items=[pod])
@@ -194,7 +283,7 @@ async def test_delete_deployment_still_deletes_job_when_entity_missing(
     k8s_backend, mock_k8s_clients: MagicMock, mock_entities: AsyncMock
 ) -> None:
     mock_entities.get.side_effect = NemoEntityNotFoundError("missing")
-    mock_k8s_clients.batch_v1.delete_namespaced_job.return_value = MagicMock()
+    mock_k8s_clients.batch_v1.read_namespaced_job.return_value = mock_job(complete=True)
 
     update = await k8s_backend.delete_deployment("default", "task")
 

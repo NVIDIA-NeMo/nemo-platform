@@ -15,19 +15,20 @@ from nemo_deployments_plugin.backends.k8s.client import KubernetesClients, _kube
 from nemo_deployments_plugin.backends.k8s.status import (
     LOG_MAX_CHARS,
     missing_job_status,
+    resource_labels_match,
     status_from_job,
 )
 from nemo_deployments_plugin.backends.labels import (
-    BACKOFF_LIMIT_LABEL,
     CONFIG_NAME_LABEL,
     DEPLOYMENT_NAME_LABEL,
     DEPLOYMENT_WORKSPACE_LABEL,
-    RESTART_POLICY_LABEL,
+    MANAGED_BY_KEY,
     deployment_identity_labels,
     k8s_deployment_resource_name,
     k8s_volume_resource_name,
     managed_by_label_selector,
 )
+from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
 from nemo_deployments_plugin.entities import Container, DeploymentConfig, K8sDeploymentConfig, VolumeMount
 from nemo_deployments_plugin.types import RestartPolicy
 
@@ -53,15 +54,35 @@ def resolve_deployment_namespace(*, default_namespace: str, k8s_config: K8sDeplo
     return k8s_config.namespace
 
 
-def restart_policy_from_labels(job_labels: dict[str, str], *, default: RestartPolicy = "Never") -> RestartPolicy:
-    value = job_labels.get(RESTART_POLICY_LABEL, default)
-    if value == "Never":
-        return "Never"
-    if value == "OnFailure":
-        return "OnFailure"
-    if value == "Always":
-        return "Always"
-    return default
+def deployment_scope_labels(workspace: str, name: str) -> dict[str, str]:
+    """Minimum identity labels for orphan delete when the Deployment entity is gone."""
+    return {
+        MANAGED_BY_KEY: MANAGED_BY_LABEL,
+        DEPLOYMENT_WORKSPACE_LABEL: workspace,
+        DEPLOYMENT_NAME_LABEL: name,
+    }
+
+
+def newest_pod(pods: list[Any]) -> Any | None:
+    """Return the pod with the latest metadata.creation_timestamp."""
+    if not pods:
+        return None
+
+    def creation_timestamp(pod: Any) -> str:
+        metadata = getattr(pod, "metadata", None)
+        if metadata is None:
+            return ""
+        return getattr(metadata, "creation_timestamp", None) or ""
+
+    return max(pods, key=creation_timestamp)
+
+
+def trim_log_text(text: str) -> tuple[list[str], bool]:
+    truncated = len(text) > LOG_MAX_CHARS
+    if truncated:
+        text = text[-LOG_MAX_CHARS:]
+    lines = text.splitlines() if text else []
+    return lines, truncated
 
 
 def validate_config_for_job(config: DeploymentConfig) -> Container:
@@ -136,17 +157,16 @@ def build_volume_mounts(mounts: list[VolumeMount]) -> list[Any]:
 
 def build_container_spec(container: Container, *, volume_mounts: list[VolumeMount] | None = None) -> Any:
     client, _ = _kubernetes_modules()
-    command: list[str] | None = None
-    if container.command or container.args:
-        command = list(container.command) + list(container.args)
     kwargs: dict[str, Any] = {
         "name": container.name,
         "image": container.image,
         "env": build_env_vars(container) or None,
         "resources": build_resource_requirements(container),
     }
-    if command:
-        kwargs["command"] = command
+    if container.command:
+        kwargs["command"] = list(container.command)
+    if container.args:
+        kwargs["args"] = list(container.args)
     if volume_mounts:
         kwargs["volume_mounts"] = build_volume_mounts(volume_mounts)
     return client.V1Container(**kwargs)
@@ -164,7 +184,7 @@ def build_job_body(
     client, _ = _kubernetes_modules()
     mounts = merged_volume_mounts(config, container)
     pod_spec_kwargs: dict[str, Any] = {
-        "restart_policy": "Never",
+        "restart_policy": config.restart_policy,
         "containers": [build_container_spec(container, volume_mounts=mounts or None)],
     }
     volumes = build_pod_volumes(workspace=workspace, mounts=mounts)
@@ -203,8 +223,8 @@ async def read_pod_exit_code(
         )
         if not pods.items:
             return None
-        pod = pods.items[-1]
-        if pod.status is None or not pod.status.container_statuses:
+        pod = newest_pod(list(pods.items))
+        if pod is None or pod.status is None or not pod.status.container_statuses:
             return None
         for container_status in pod.status.container_statuses:
             terminated = container_status.state.terminated if container_status.state else None
@@ -290,8 +310,18 @@ async def read_job_status(
     workspace: str,
     name: str,
     backend_config: dict[str, Any],
+    config_name: str,
+    restart_policy: RestartPolicy,
+    backoff_limit: int,
 ) -> BackendStatusUpdate:
     job_name = k8s_deployment_resource_name(workspace, name)
+    expected_labels = deployment_identity_labels(
+        workspace,
+        name,
+        restart_policy,
+        config_name=config_name,
+        backoff_limit=backoff_limit,
+    )
     try:
         k8s_config = resolve_k8s_deployment_config(backend_config)
         namespace = resolve_deployment_namespace(default_namespace=default_namespace, k8s_config=k8s_config)
@@ -307,21 +337,12 @@ async def read_job_status(
 
         job = await asyncio.to_thread(_read)
         job_labels = (job.metadata.labels or {}) if job.metadata else {}
-        config_name = job_labels.get(CONFIG_NAME_LABEL)
-        if not config_name:
+        if not job_labels.get(CONFIG_NAME_LABEL):
             return BackendStatusUpdate(
                 status="FAILED",
                 status_message=f"Job {job_name} is missing deployment config identity labels",
             )
-        restart_policy = restart_policy_from_labels(job_labels)
-        read_expected = deployment_identity_labels(
-            workspace,
-            name,
-            restart_policy,
-            config_name=config_name,
-            backoff_limit=int(job_labels.get(BACKOFF_LIMIT_LABEL, "6")),
-        )
-        update = status_from_job(job=job, job_name=job_name, expected_labels=read_expected)
+        update = status_from_job(job=job, job_name=job_name, expected_labels=expected_labels)
         if update.status in ("SUCCEEDED", "FAILED"):
             exit_code = await read_pod_exit_code(clients, namespace=namespace, job_name=job_name)
             if exit_code is not None:
@@ -342,6 +363,7 @@ async def delete_job(
     workspace: str,
     name: str,
     backend_config: dict[str, Any],
+    expected_labels: dict[str, str],
 ) -> BackendStatusUpdate:
     job_name = k8s_deployment_resource_name(workspace, name)
     try:
@@ -350,20 +372,33 @@ async def delete_job(
         timeout = clients.request_timeout
         batch_v1 = clients.batch_v1
 
-        def _delete() -> None:
+        def _delete() -> str | None:
             try:
-                batch_v1.delete_namespaced_job(
+                job = batch_v1.read_namespaced_job(
                     name=job_name,
                     namespace=namespace,
-                    propagation_policy="Background",
                     _request_timeout=timeout,
                 )
             except ApiException as exc:
                 if exc.status == 404:
-                    return
+                    return None
                 raise
+            if not resource_labels_match(job, expected_labels):
+                return "foreign"
+            batch_v1.delete_namespaced_job(
+                name=job_name,
+                namespace=namespace,
+                propagation_policy="Background",
+                _request_timeout=timeout,
+            )
+            return "deleted"
 
-        await asyncio.to_thread(_delete)
+        result = await asyncio.to_thread(_delete)
+        if result == "foreign":
+            return BackendStatusUpdate(
+                status="FAILED",
+                status_message=f"Job {job_name} exists but is not managed by this plugin",
+            )
         return BackendStatusUpdate(status="SUCCEEDED", status_message=f"Job {job_name} deleted")
     except Exception as exc:
         return BackendStatusUpdate(status="FAILED", status_message=f"Failed to delete Job: {exc}")
@@ -426,7 +461,10 @@ async def get_job_logs(
             )
             if not pods.items:
                 return ""
-            pod_name = pods.items[-1].metadata.name
+            pod = newest_pod(list(pods.items))
+            if pod is None or pod.metadata is None:
+                return ""
+            pod_name = pod.metadata.name
             raw = core_v1.read_namespaced_pod_log(
                 name=pod_name,
                 namespace=namespace,
@@ -437,10 +475,7 @@ async def get_job_logs(
             return raw
 
         text = await asyncio.to_thread(_logs)
-        lines = text.splitlines() if text else []
-        truncated = len(text) > LOG_MAX_CHARS
-        if truncated:
-            lines = lines[-tail:]
+        lines, truncated = trim_log_text(text)
         return LogResult(lines=lines, truncated=truncated)
     except ApiException as exc:
         if exc.status == 404:

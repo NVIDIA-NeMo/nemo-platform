@@ -17,11 +17,15 @@ def _job_is_deleting(job: Any) -> bool:
     return bool(metadata and getattr(metadata, "deletion_timestamp", None))
 
 
-def _job_labels_match(job: Any, expected_labels: dict[str, str]) -> bool:
-    metadata = getattr(job, "metadata", None)
+def resource_labels_match(resource: Any, expected_labels: dict[str, str]) -> bool:
+    metadata = getattr(resource, "metadata", None)
     if metadata is None or not metadata.labels:
         return False
     return all(metadata.labels.get(key) == value for key, value in expected_labels.items())
+
+
+def _job_labels_match(job: Any, expected_labels: dict[str, str]) -> bool:
+    return resource_labels_match(job, expected_labels)
 
 
 def _job_condition(job: Any, condition_type: str) -> Any | None:

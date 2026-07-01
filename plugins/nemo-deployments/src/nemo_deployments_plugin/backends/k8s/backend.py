@@ -18,6 +18,7 @@ from nemo_deployments_plugin.backends.k8s import jobs as job_ops
 from nemo_deployments_plugin.backends.k8s import volumes as volume_ops
 from nemo_deployments_plugin.backends.k8s.client import KubernetesClients
 from nemo_deployments_plugin.backends.k8s.config import K8sExecutorConfig
+from nemo_deployments_plugin.backends.labels import deployment_identity_labels
 from nemo_deployments_plugin.entities import Deployment, DeploymentConfig
 from nemo_platform.resources.entities import AsyncEntitiesResource
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
@@ -136,6 +137,9 @@ class K8sDeploymentBackend(DeploymentBackend):
             workspace=workspace,
             name=name,
             backend_config=backend_config,
+            config_name=config.name,
+            restart_policy=config.restart_policy,
+            backoff_limit=config.backoff_limit,
         )
 
     async def delete_deployment(self, workspace: str, name: str) -> BackendStatusUpdate:
@@ -148,6 +152,7 @@ class K8sDeploymentBackend(DeploymentBackend):
                 workspace=workspace,
                 name=name,
                 backend_config={},
+                expected_labels=job_ops.deployment_scope_labels(workspace, name),
             )
         except Exception as exc:
             return BackendStatusUpdate(status="FAILED", status_message=f"Failed to load deployment: {exc}")
@@ -161,6 +166,13 @@ class K8sDeploymentBackend(DeploymentBackend):
             workspace=workspace,
             name=name,
             backend_config=backend_config,
+            expected_labels=deployment_identity_labels(
+                workspace,
+                name,
+                config.restart_policy,
+                config_name=config.name,
+                backoff_limit=config.backoff_limit,
+            ),
         )
 
     async def list_managed_deployment_names(self) -> list[str]:
