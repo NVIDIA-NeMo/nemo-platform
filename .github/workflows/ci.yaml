@@ -501,7 +501,7 @@ jobs:
           export NMP_BASE_URL="${NMP_E2E_CLUSTER_URL}"
           uv run --frozen pytest \
             e2e \
-            --ignore=e2e/test_jobs_auth.py \
+            --deselect=e2e/test_jobs_auth.py \
             -v \
             --run-e2e \
             --no-cov \
