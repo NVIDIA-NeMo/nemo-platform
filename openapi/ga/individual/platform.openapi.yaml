@@ -10389,8 +10389,8 @@ components:
           type: string
         insight_id:
           title: Insight Id
-          description: Entity id of the NeMo Evaluator insight that seeded this group,
-            if any.
+          description: Reference to an external insight that seeded this group, if
+            any.
           type: string
         summary:
           title: Summary
@@ -10529,9 +10529,9 @@ components:
             a variant of a baseline), if any.
           type: string
         status:
-          allOf:
-          - $ref: '#/components/schemas/ExperimentStatus'
-          description: Lifecycle status in the NeMo Evaluator flow.
+          title: Status
+          description: Producer-defined lifecycle status of the experiment.
+          type: string
         root_cause:
           title: Root Cause
           description: Human- or agent-authored explanation of the experiment's outcome
@@ -10583,7 +10583,8 @@ components:
           title: Parent Experiment Id
           type: string
         status:
-          $ref: '#/components/schemas/ExperimentStatus'
+          title: Status
+          type: string
         root_cause:
           title: Root Cause
           type: string
@@ -10796,19 +10797,6 @@ components:
       required:
       - data
       title: ExperimentSessionResponsesPage
-    ExperimentStatus:
-      type: string
-      enum:
-      - baseline
-      - running
-      - evaluated
-      - survived
-      - killed
-      - winner
-      - deployed
-      - rejected
-      title: ExperimentStatus
-      description: Lifecycle status of an Experiment in the NeMo Evaluator flow.
     FactCheckingRailConfig:
       properties:
         parameters:

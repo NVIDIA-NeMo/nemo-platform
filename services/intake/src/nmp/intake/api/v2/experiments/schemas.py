@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Annotated, Any
 
 from nmp.common.entities.values import DatetimeFilter, Filter, NumberFilter, map_entity_field
-from nmp.intake.entities.experiments import Experiment, ExperimentGroup, ExperimentStatus, SortCriterion
+from nmp.intake.entities.experiments import Experiment, ExperimentGroup, SortCriterion
 from nmp.intake.spans.domain import SpanStatus
 from nmp.intake.spans.experiment_session_repository import ExperimentSessionRow
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field
@@ -27,7 +27,7 @@ class ExperimentGroupRequest(BaseModel):
     name: str = Field(description="Workspace-unique group name.")
     description: str | None = Field(default=None, description="Human-readable purpose of the group.")
     insight_id: str | None = Field(
-        default=None, description="Entity id of the NeMo Evaluator insight that seeded this group, if any."
+        default=None, description="Reference to an external insight that seeded this group, if any."
     )
     summary: str | None = Field(default=None, description="Human- or agent-authored summary of the group's findings.")
     metadata: dict[str, Any] | None = Field(default=None, description="Free-form producer metadata for the group.")
@@ -59,7 +59,7 @@ class ExperimentRequest(BaseModel):
         default=None,
         description="Entity id of the experiment this one was derived from (e.g. a variant of a baseline), if any.",
     )
-    status: ExperimentStatus | None = Field(default=None, description="Lifecycle status in the NeMo Evaluator flow.")
+    status: str | None = Field(default=None, description="Producer-defined lifecycle status of the experiment.")
     root_cause: str | None = Field(
         default=None,
         description="Human- or agent-authored explanation of the experiment's outcome (e.g. why it was killed).",
@@ -127,7 +127,7 @@ class ExperimentResponse(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     description: str | None = None
     parent_experiment_id: str | None = None
-    status: ExperimentStatus | None = None
+    status: str | None = None
     root_cause: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
