@@ -80,23 +80,53 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
-def _ensure_fixture_plugins_installed() -> None:
-    """Editable-install the three fixture plugins into the active venv (idempotent)."""
+def _install_missing_fixture_plugins() -> list[str]:
+    """Editable-install any not-yet-present fixture plugins into the active venv.
+
+    Returns the names actually installed (empty if all were already present), so the session
+    teardown removes exactly what this run added.
+    """
     from importlib.metadata import entry_points
 
     installed = {ep.name for ep in entry_points(group="nemo.services")}
     missing = [p for p in _FIXTURE_PLUGINS if p not in installed]
     if not missing:
-        return
-    pip_specs = [str(_HERE / "fixtures" / p) for p in missing]
+        return []
+    pip_specs = [f"-e{_HERE / 'fixtures' / p}" for p in missing]
     subprocess.run(
-        ["uv", "pip", "install", "--python", sys.executable, *[f"-e{spec}" for spec in pip_specs]],
+        ["uv", "pip", "install", "--python", sys.executable, *pip_specs],
         check=True,
         capture_output=True,
         timeout=300,
         cwd=_REPO_ROOT,
     )
     logger.info("Installed fixture plugins: %s", ", ".join(missing))
+    return missing
+
+
+def _uninstall_fixture_plugins(names: list[str]) -> None:
+    """Best-effort removal of fixture plugins from the active venv.
+
+    Teardown must never fail the session, but a leak must stay visible — so a non-zero uninstall
+    is warned, not raised.
+    """
+    if not names:
+        return
+    result = subprocess.run(
+        ["uv", "pip", "uninstall", "--python", sys.executable, *names],
+        capture_output=True,
+        timeout=300,
+        cwd=_REPO_ROOT,
+    )
+    if result.returncode != 0:
+        logger.warning(
+            "Failed to uninstall fixture plugins %s (rc=%s): %s",
+            ", ".join(names),
+            result.returncode,
+            result.stderr.decode(errors="replace")[:500],
+        )
+    else:
+        logger.info("Uninstalled fixture plugins: %s", ", ".join(names))
 
 
 def _platform_env(issuer_url: str, data_dir: Path, extra: dict[str, str]) -> dict[str, str]:
@@ -137,7 +167,6 @@ def _spawn_platform(
     label: str,
     extra_env: dict[str, str],
 ) -> Generator[Platform, None, None]:
-    _ensure_fixture_plugins_installed()
     port = _free_port()
     base_url = f"http://127.0.0.1:{port}"
     work = tmp_path_factory.mktemp(f"authz-e2e-{label}")
@@ -273,7 +302,32 @@ def _provision(platform: Platform) -> None:
 
 
 @pytest.fixture(scope="session")
-def platform(issuer: MiniOIDCIssuer, tmp_path_factory: pytest.TempPathFactory) -> Iterator[Platform]:
+def fixture_plugins() -> Iterator[None]:
+    """Install the harness fixture plugins for the session, then remove them.
+
+    The fixtures register deliberately broken/unruled ``nemo.services`` entry points. Left
+    installed in the shared venv, a later ordinary ``nemo services run`` in this checkout would
+    discover them and — under the ``on_invalid_plugin=hard_fail`` default — refuse to build the
+    OPA bundle, wedging the platform for unrelated work (``e2e/services_pool.py`` fences its own
+    children against exactly this, but a plain CLI run has no such fence). So we uninstall on
+    teardown: both what we installed and any stragglers a previously-aborted run leaked, enforcing
+    the invariant that the fixtures never outlive this suite.
+    """
+    from importlib.metadata import entry_points
+
+    installed = _install_missing_fixture_plugins()
+    try:
+        yield
+    finally:
+        present = {ep.name for ep in entry_points(group="nemo.services")}
+        to_remove = sorted(set(installed) | {p for p in _FIXTURE_PLUGINS if p in present})
+        _uninstall_fixture_plugins(to_remove)
+
+
+@pytest.fixture(scope="session")
+def platform(
+    issuer: MiniOIDCIssuer, tmp_path_factory: pytest.TempPathFactory, fixture_plugins: None
+) -> Iterator[Platform]:
     """deny_route-knob platform, fully provisioned.
 
     Pins ``deny_route`` explicitly: the harness installs broken/unruled fixture
@@ -289,7 +343,9 @@ def platform(issuer: MiniOIDCIssuer, tmp_path_factory: pytest.TempPathFactory) -
 
 
 @pytest.fixture(scope="session")
-def platform_knobs(issuer: MiniOIDCIssuer, tmp_path_factory: pytest.TempPathFactory) -> Iterator[Platform]:
+def platform_knobs(
+    issuer: MiniOIDCIssuer, tmp_path_factory: pytest.TempPathFactory, fixture_plugins: None
+) -> Iterator[Platform]:
     """Quarantine-knob platform (no extra provisioning)."""
     gen = _spawn_platform(
         issuer,
