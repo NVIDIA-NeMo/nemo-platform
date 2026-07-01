@@ -73,6 +73,30 @@ def _phase_from_pvc(pvc: Any) -> str | None:
     return pvc.status.phase
 
 
+def _pvc_is_deleting(pvc: Any) -> bool:
+    metadata = getattr(pvc, "metadata", None)
+    return bool(metadata and getattr(metadata, "deletion_timestamp", None))
+
+
+def _pvc_labels_match(pvc: Any, expected_labels: dict[str, str]) -> bool:
+    metadata = getattr(pvc, "metadata", None)
+    if metadata is None or not metadata.labels:
+        return False
+    return all(metadata.labels.get(key) == value for key, value in expected_labels.items())
+
+
+def status_from_pvc(*, pvc: Any, pvc_name: str, expected_labels: dict[str, str]) -> VolumeStatusUpdate:
+    """Map a PVC object to plugin status, enforcing identity labels and delete propagation."""
+    if not _pvc_labels_match(pvc, expected_labels):
+        return VolumeStatusUpdate(
+            status="FAILED",
+            status_message=f"PVC {pvc_name} exists but is not managed by this plugin",
+        )
+    if _pvc_is_deleting(pvc):
+        return VolumeStatusUpdate(status="DELETING", status_message=f"PVC {pvc_name} is terminating")
+    return map_pvc_phase_to_status(pvc_name=pvc_name, phase=_phase_from_pvc(pvc))
+
+
 async def create_volume(
     clients: KubernetesClients,
     *,
@@ -115,7 +139,7 @@ async def create_volume(
 
     try:
         pvc = await asyncio.to_thread(_create)
-        return map_pvc_phase_to_status(pvc_name=pvc_name, phase=_phase_from_pvc(pvc))
+        return status_from_pvc(pvc=pvc, pvc_name=pvc_name, expected_labels=labels)
     except Exception as exc:
         logger.exception("Failed to create PVC %s in namespace %s", pvc_name, namespace)
         return VolumeStatusUpdate(status="FAILED", status_message=f"Failed to create PVC: {exc}")
@@ -136,6 +160,7 @@ async def read_volume_status(
     )
     timeout = clients.request_timeout
     core_v1 = clients.core_v1
+    expected_labels = volume_identity_labels(workspace, name)
 
     def _read() -> Any:
         return core_v1.read_namespaced_persistent_volume_claim(
@@ -146,7 +171,7 @@ async def read_volume_status(
 
     try:
         pvc = await asyncio.to_thread(_read)
-        return map_pvc_phase_to_status(pvc_name=pvc_name, phase=_phase_from_pvc(pvc))
+        return status_from_pvc(pvc=pvc, pvc_name=pvc_name, expected_labels=expected_labels)
     except ApiException as exc:
         if exc.status == 404:
             return VolumeStatusUpdate(status="FAILED", status_message=f"PVC {pvc_name} not found")

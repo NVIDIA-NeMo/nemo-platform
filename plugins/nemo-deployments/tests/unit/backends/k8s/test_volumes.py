@@ -9,8 +9,13 @@ import pytest
 from kubernetes.client.rest import ApiException
 from nemo_deployments_plugin.backends.k8s import volumes as volume_ops
 from nemo_deployments_plugin.backends.k8s.client import KubernetesClients
-from nemo_deployments_plugin.backends.k8s.volumes import map_pvc_phase_to_status
-from nemo_deployments_plugin.backends.labels import VOLUME_NAME_LABEL, VOLUME_WORKSPACE_LABEL
+from nemo_deployments_plugin.backends.k8s.volumes import map_pvc_phase_to_status, status_from_pvc
+from nemo_deployments_plugin.backends.labels import (
+    MANAGED_BY_KEY,
+    VOLUME_NAME_LABEL,
+    VOLUME_WORKSPACE_LABEL,
+    volume_identity_labels,
+)
 
 
 @pytest.mark.parametrize(
@@ -31,6 +36,8 @@ def test_map_pvc_phase_to_status(phase: str | None, expected_status: str) -> Non
 async def test_create_volume_emits_pvc_with_storage_class_and_size(k8s_backend, mock_k8s_clients: MagicMock) -> None:
     mock_pvc = MagicMock()
     mock_pvc.status.phase = "Pending"
+    mock_pvc.metadata.labels = volume_identity_labels("default", "weights")
+    mock_pvc.metadata.deletion_timestamp = None
     mock_k8s_clients.core_v1.create_namespaced_persistent_volume_claim.return_value = mock_pvc
     mock_k8s_clients.request_timeout = 30
 
@@ -60,6 +67,8 @@ async def test_create_volume_conflict_reads_existing_pvc(mock_k8s_clients: Magic
     mock_k8s_clients.request_timeout = 60
     existing = MagicMock()
     existing.status.phase = "Bound"
+    existing.metadata.labels = volume_identity_labels("default", "data")
+    existing.metadata.deletion_timestamp = None
     mock_k8s_clients.core_v1.create_namespaced_persistent_volume_claim.side_effect = ApiException(status=409)
     mock_k8s_clients.core_v1.read_namespaced_persistent_volume_claim.return_value = existing
     clients = MagicMock(spec=KubernetesClients)
@@ -81,9 +90,49 @@ async def test_create_volume_conflict_reads_existing_pvc(mock_k8s_clients: Magic
 
 
 @pytest.mark.asyncio
+async def test_create_volume_conflict_rejects_foreign_pvc(mock_k8s_clients: MagicMock) -> None:
+    mock_k8s_clients.request_timeout = 60
+    foreign = MagicMock()
+    foreign.metadata.labels = {MANAGED_BY_KEY: "other-plugin"}
+    foreign.status.phase = "Bound"
+    mock_k8s_clients.core_v1.create_namespaced_persistent_volume_claim.side_effect = ApiException(status=409)
+    mock_k8s_clients.core_v1.read_namespaced_persistent_volume_claim.return_value = foreign
+    clients = MagicMock(spec=KubernetesClients)
+    clients.core_v1 = mock_k8s_clients.core_v1
+    clients.request_timeout = 60
+
+    update = await volume_ops.create_volume(
+        clients,
+        default_namespace="default",
+        workspace="default",
+        name="data",
+        size="1Gi",
+        access_modes=["ReadWriteOnce"],
+        backend_config={},
+    )
+
+    assert update.status == "FAILED"
+    assert "not managed" in update.status_message
+
+
+def test_status_from_pvc_deleting_reports_deleting() -> None:
+    labels = volume_identity_labels("default", "data")
+    pvc = MagicMock()
+    pvc.metadata.labels = {MANAGED_BY_KEY: labels[MANAGED_BY_KEY], **labels}
+    pvc.metadata.deletion_timestamp = "2026-01-01T00:00:00Z"
+    pvc.status.phase = "Bound"
+
+    update = status_from_pvc(pvc=pvc, pvc_name="dep-vol-default-data-abc12345", expected_labels=labels)
+
+    assert update.status == "DELETING"
+
+
+@pytest.mark.asyncio
 async def test_read_volume_status_uses_entity_namespace(k8s_backend, mock_k8s_clients: MagicMock) -> None:
     mock_pvc = MagicMock()
     mock_pvc.status.phase = "Bound"
+    mock_pvc.metadata.labels = volume_identity_labels("default", "weights")
+    mock_pvc.metadata.deletion_timestamp = None
     mock_k8s_clients.core_v1.read_namespaced_persistent_volume_claim.return_value = mock_pvc
 
     update = await k8s_backend.read_volume_status(
