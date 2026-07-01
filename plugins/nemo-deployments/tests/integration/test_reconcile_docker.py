@@ -16,7 +16,7 @@ from docker.errors import NotFound
 from docker_availability import skip_without_docker
 from integration_helpers import force_remove_container
 from nemo_deployments_plugin.backends.docker.backend import DockerDeploymentBackend
-from nemo_deployments_plugin.backends.docker.labels import container_name, docker_volume_name
+from nemo_deployments_plugin.backends.labels import container_name, docker_volume_name
 from nemo_deployments_plugin.backends.registry import BACKEND_CLASSES, ExecutorRegistry
 from nemo_deployments_plugin.config import ControllerConfig
 from nemo_deployments_plugin.entities import (

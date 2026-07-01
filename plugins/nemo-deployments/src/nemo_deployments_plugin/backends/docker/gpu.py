@@ -131,7 +131,7 @@ def parse_gpu_device_ids(device_requests: list[Any] | None) -> list[int]:
 
 def discover_managed_gpu_allocations(client: docker.DockerClient) -> dict[str, list[int]]:
     """Return workload_id -> GPU IDs for running deployment-managed containers."""
-    from nemo_deployments_plugin.backends.docker.labels import (
+    from nemo_deployments_plugin.backends.labels import (
         DEPLOYMENT_NAME_LABEL,
         DEPLOYMENT_WORKSPACE_LABEL,
         MANAGED_BY_KEY,

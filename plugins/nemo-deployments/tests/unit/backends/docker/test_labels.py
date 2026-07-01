@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 
-from nemo_deployments_plugin.backends.docker.labels import (
+from nemo_deployments_plugin.backends.labels import (
     CONFIG_NAME_LABEL,
     DEPLOYMENT_NAME_LABEL,
     DEPLOYMENT_WORKSPACE_LABEL,

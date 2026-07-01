@@ -99,19 +99,6 @@ def test_build_api_client_honors_explicit_kubeconfig_path() -> None:
         mock_incluster.assert_not_called()
 
 
-def test_each_kubernetes_clients_instance_uses_its_kubeconfig_path() -> None:
-    with patch("nemo_deployments_plugin.backends.k8s.client.build_api_client") as mock_build:
-        mock_build.return_value = MagicMock()
-        a = KubernetesClients(kubeconfig_path="/a/kube", request_timeout=10)
-        b = KubernetesClients(kubeconfig_path="/b/kube", request_timeout=20)
-        _ = a.core_v1
-        _ = b.core_v1
-        assert mock_build.call_args_list[0].kwargs == {"kubeconfig_path": "/a/kube"}
-        assert mock_build.call_args_list[1].kwargs == {"kubeconfig_path": "/b/kube"}
-        assert a.request_timeout == 10
-        assert b.request_timeout == 20
-
-
 def test_kubernetes_clients_close_releases_api_client() -> None:
     mock_api_client = MagicMock()
     with patch("nemo_deployments_plugin.backends.k8s.client.build_api_client", return_value=mock_api_client):

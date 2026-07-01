@@ -5,6 +5,13 @@
 
 Naming uses ``nemo_platform_plugin.k8s_naming`` (plugins cannot import ``nmp_common``).
 Identity labels drive orphan cleanup and idempotency across docker and k8s backends.
+
+Label domain is ``nemo.nvidia.com/*`` (deployments plugin scope). Core services such as
+jobs and models use ``nmp.nvidia.com/*`` today; converging prefixes is out of scope for 757.
+
+Deployment and volume resources use separate workspace label keys
+(``deployment-workspace`` vs ``volume-workspace``) so list/watch queries can target one
+resource kind without ambiguous selectors, even though the workspace value is the same string.
 """
 
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL

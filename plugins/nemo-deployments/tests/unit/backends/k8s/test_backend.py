@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from nemo_deployments_plugin.backends.k8s.backend import K8sDeploymentBackend
+from nemo_deployments_plugin.backends.k8s.config import K8sExecutorConfig
 
 
 @pytest.mark.asyncio
@@ -31,3 +32,8 @@ def test_shutdown_closes_kubernetes_clients(k8s_backend: K8sDeploymentBackend) -
     k8s_backend._clients = mock_clients
     k8s_backend.shutdown()
     mock_clients.close.assert_called_once()
+
+
+def test_default_namespace_rejects_invalid_dns_label() -> None:
+    with pytest.raises(ValueError, match="default_namespace must be a lowercase DNS-1123 label"):
+        K8sExecutorConfig(default_namespace="X")

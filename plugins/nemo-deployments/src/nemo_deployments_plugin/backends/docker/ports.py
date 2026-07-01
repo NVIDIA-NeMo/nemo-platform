@@ -11,7 +11,7 @@ import os
 import socket
 from typing import TYPE_CHECKING
 
-from nemo_deployments_plugin.backends.docker.labels import managed_by_filter
+from nemo_deployments_plugin.backends.labels import managed_by_filter
 
 import docker
 

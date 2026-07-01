@@ -95,7 +95,11 @@ class KubernetesClients:
         return self._batch_v1
 
     def close(self) -> None:
-        """Release the underlying ``ApiClient`` connection pool, if created."""
+        """Release the underlying ``ApiClient`` connection pool, if created.
+
+        ``CoreV1Api`` / ``AppsV1Api`` / ``BatchV1Api`` share the same ``ApiClient`` instance;
+        closing it invalidates the cached API wrappers (reset below).
+        """
         if self._api_client is not None:
             self._api_client.close()
             self._api_client = None

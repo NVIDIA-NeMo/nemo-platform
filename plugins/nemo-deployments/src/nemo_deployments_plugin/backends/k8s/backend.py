@@ -26,7 +26,12 @@ _K8S_INSTALL_HINT = (
 
 
 class K8sDeploymentBackend(DeploymentBackend):
-    """Manage deployments and volumes as native Kubernetes objects."""
+    """Manage deployments and volumes as native Kubernetes objects.
+
+    Lifecycle methods not yet implemented raise ``NotImplementedError`` (not ``...``) so
+    accidental calls fail loudly during phased rollout; ``...`` is for ``@abstractmethod``
+    stubs on the ABC itself.
+    """
 
     _clients: KubernetesClients
 
