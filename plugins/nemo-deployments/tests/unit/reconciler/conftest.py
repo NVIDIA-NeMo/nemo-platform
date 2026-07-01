@@ -73,7 +73,6 @@ class MockDeploymentBackend(DeploymentBackend):
         name: str,
         backend_config: dict[str, Any] | None = None,
     ) -> VolumeStatusUpdate:
-        del backend_config
         return VolumeStatusUpdate(status="BOUND")
 
     async def delete_volume(
@@ -83,7 +82,6 @@ class MockDeploymentBackend(DeploymentBackend):
         *,
         backend_config: dict[str, Any] | None = None,
     ) -> VolumeStatusUpdate:
-        del backend_config
         self.volume_delete_calls.append((workspace, name))
         return VolumeStatusUpdate(status="RELEASED")
 

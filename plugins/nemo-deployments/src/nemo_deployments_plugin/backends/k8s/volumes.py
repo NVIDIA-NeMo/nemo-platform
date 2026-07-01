@@ -28,9 +28,9 @@ def resolve_volume_config(backend_config: dict[str, Any]) -> K8sVolumeConfig | N
 
 def resolve_volume_namespace(*, default_namespace: str, volume_config: K8sVolumeConfig | None) -> str:
     """Resolve target namespace from parsed volume config with executor default fallback."""
-    if volume_config is None or not volume_config.namespace:
-        return default_namespace
-    return volume_config.namespace
+    if volume_config is not None and volume_config.namespace:
+        return volume_config.namespace
+    return default_namespace
 
 
 def build_pvc_body(
