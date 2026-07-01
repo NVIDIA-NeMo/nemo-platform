@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+from .experiment_status import ExperimentStatus as ExperimentStatus
 from .evaluator_aggregate import EvaluatorAggregate as EvaluatorAggregate
 from .experiment_response import ExperimentResponse as ExperimentResponse
 from .number_filter_param import NumberFilterParam as NumberFilterParam

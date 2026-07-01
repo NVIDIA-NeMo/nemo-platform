@@ -10387,6 +10387,20 @@ components:
           title: Description
           description: Human-readable purpose of the group.
           type: string
+        insight_id:
+          title: Insight Id
+          description: Entity id of the NeMo Evaluator insight that seeded this group,
+            if any.
+          type: string
+        summary:
+          title: Summary
+          description: Human- or agent-authored summary of the group's findings.
+          type: string
+        metadata:
+          title: Metadata
+          description: Free-form producer metadata for the group.
+          additionalProperties: true
+          type: object
         default_sort:
           title: Default Sort
           description: 'Ordered default sort (priority order; first is primary, rest
@@ -10416,6 +10430,16 @@ components:
         description:
           title: Description
           type: string
+        insight_id:
+          title: Insight Id
+          type: string
+        summary:
+          title: Summary
+          type: string
+        metadata:
+          title: Metadata
+          additionalProperties: true
+          type: object
         default_sort:
           title: Default Sort
           items:
@@ -10499,6 +10523,20 @@ components:
           title: Description
           description: Human-readable description.
           type: string
+        parent_experiment_id:
+          title: Parent Experiment Id
+          description: Entity id of the experiment this one was derived from (e.g.
+            a variant of a baseline), if any.
+          type: string
+        status:
+          allOf:
+          - $ref: '#/components/schemas/ExperimentStatus'
+          description: Lifecycle status in the NeMo Evaluator flow.
+        root_cause:
+          title: Root Cause
+          description: Human- or agent-authored explanation of the experiment's outcome
+            (e.g. why it was killed).
+          type: string
       additionalProperties: false
       type: object
       required:
@@ -10540,6 +10578,14 @@ components:
           title: Metadata
         description:
           title: Description
+          type: string
+        parent_experiment_id:
+          title: Parent Experiment Id
+          type: string
+        status:
+          $ref: '#/components/schemas/ExperimentStatus'
+        root_cause:
+          title: Root Cause
           type: string
         created_at:
           title: Created At
@@ -10750,6 +10796,19 @@ components:
       required:
       - data
       title: ExperimentSessionResponsesPage
+    ExperimentStatus:
+      type: string
+      enum:
+      - baseline
+      - running
+      - evaluated
+      - survived
+      - killed
+      - winner
+      - deployed
+      - rejected
+      title: ExperimentStatus
+      description: Lifecycle status of an Experiment in the NeMo Evaluator flow.
     FactCheckingRailConfig:
       properties:
         parameters:

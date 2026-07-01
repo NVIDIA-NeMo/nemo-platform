@@ -20,6 +20,7 @@ from datetime import datetime
 
 from ..._compat import PYDANTIC_V1, ConfigDict
 from ..._models import BaseModel
+from .experiment_status import ExperimentStatus
 from .evaluator_aggregate import EvaluatorAggregate
 
 __all__ = ["ExperimentResponse"]
@@ -66,11 +67,15 @@ class ExperimentResponse(BaseModel):
     model_names: Optional[List[str]] = None
     """Distinct model names observed across ingested sessions for this experiment."""
 
+    parent_experiment_id: Optional[str] = None
+
     pinned_at: Optional[datetime] = None
     """Timestamp at which the experiment was pinned, or null if unpinned.
 
     Managed via POST/DELETE /experiments/{name}/pin.
     """
+
+    root_cause: Optional[str] = None
 
     run_count: Optional[int] = None
     """
@@ -79,6 +84,9 @@ class ExperimentResponse(BaseModel):
     """
 
     source_link: Optional[str] = None
+
+    status: Optional[ExperimentStatus] = None
+    """Lifecycle status of an Experiment in the NeMo Evaluator flow."""
 
     updated_at: Optional[datetime] = None
 

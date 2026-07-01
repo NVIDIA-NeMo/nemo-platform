@@ -20,6 +20,8 @@ from __future__ import annotations
 from typing import Dict
 from typing_extensions import Required, TypedDict
 
+from .experiment_status import ExperimentStatus
+
 __all__ = ["ExperimentCreateParams"]
 
 
@@ -47,5 +49,20 @@ class ExperimentCreateParams(TypedDict, total=False):
     metadata: Dict[str, object]
     """Free-form producer metadata."""
 
+    parent_experiment_id: str
+    """Entity id of the experiment this one was derived from (e.g.
+
+    a variant of a baseline), if any.
+    """
+
+    root_cause: str
+    """Human- or agent-authored explanation of the experiment's outcome (e.g.
+
+    why it was killed).
+    """
+
     source_link: str
     """Optional URL for the source experiment."""
+
+    status: ExperimentStatus
+    """Lifecycle status of an Experiment in the NeMo Evaluator flow."""

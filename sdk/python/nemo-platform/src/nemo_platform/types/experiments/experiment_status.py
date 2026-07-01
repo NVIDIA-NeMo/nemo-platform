@@ -15,37 +15,10 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from typing import Dict, List, Optional
-from datetime import datetime
+from typing_extensions import Literal, TypeAlias
 
-from ..._models import BaseModel
-from .sort_criterion import SortCriterion
+__all__ = ["ExperimentStatus"]
 
-__all__ = ["ExperimentGroupResponse"]
-
-
-class ExperimentGroupResponse(BaseModel):
-    """ExperimentGroup as served by the API."""
-
-    id: str
-
-    name: str
-
-    workspace: str
-
-    created_at: Optional[datetime] = None
-
-    default_sort: Optional[List[SortCriterion]] = None
-
-    description: Optional[str] = None
-
-    experiment_count: Optional[int] = None
-    """Number of live (non-soft-deleted) experiments in this group."""
-
-    insight_id: Optional[str] = None
-
-    metadata: Optional[Dict[str, object]] = None
-
-    summary: Optional[str] = None
-
-    updated_at: Optional[datetime] = None
+ExperimentStatus: TypeAlias = Literal[
+    "baseline", "running", "evaluated", "survived", "killed", "winner", "deployed", "rejected"
+]

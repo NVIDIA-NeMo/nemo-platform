@@ -57,6 +57,9 @@ class TestExperimentGroups:
                 }
             ],
             description="description",
+            insight_id="insight_id",
+            metadata={"foo": "bar"},
+            summary="summary",
         )
         assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
 
@@ -173,6 +176,9 @@ class TestExperimentGroups:
                 }
             ],
             description="description",
+            insight_id="insight_id",
+            metadata={"foo": "bar"},
+            summary="summary",
         )
         assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
 
@@ -360,6 +366,9 @@ class TestAsyncExperimentGroups:
                 }
             ],
             description="description",
+            insight_id="insight_id",
+            metadata={"foo": "bar"},
+            summary="summary",
         )
         assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
 
@@ -476,6 +485,9 @@ class TestAsyncExperimentGroups:
                 }
             ],
             description="description",
+            insight_id="insight_id",
+            metadata={"foo": "bar"},
+            summary="summary",
         )
         assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
 

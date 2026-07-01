@@ -120,7 +120,13 @@ async def create_experiment_group(
 ) -> ExperimentGroupResponse:
     _validate_default_sort(body.default_sort)
     entity = ExperimentGroup(
-        workspace=workspace, name=body.name, description=body.description, default_sort=body.default_sort
+        workspace=workspace,
+        name=body.name,
+        description=body.description,
+        insight_id=body.insight_id,
+        summary=body.summary,
+        metadata=body.metadata,
+        default_sort=body.default_sort,
     )
     try:
         created = await entity_client.create(entity)
@@ -232,6 +238,9 @@ async def update_experiment_group(
         )
     _validate_default_sort(body.default_sort)
     existing.description = body.description
+    existing.insight_id = body.insight_id
+    existing.summary = body.summary
+    existing.metadata = body.metadata
     existing.default_sort = body.default_sort
     updated = await entity_client.update(existing)
     response = ExperimentGroupResponse.from_entity(updated)
@@ -324,6 +333,9 @@ async def create_experiment(
         source_link=body.source_link,
         metadata=body.metadata,
         description=body.description,
+        parent_experiment_id=body.parent_experiment_id,
+        status=body.status,
+        root_cause=body.root_cause,
     )
     try:
         created = await entity_client.create(entity)
@@ -527,6 +539,9 @@ async def update_experiment(
     existing.source_link = body.source_link
     existing.metadata = body.metadata
     existing.description = body.description
+    existing.parent_experiment_id = body.parent_experiment_id
+    existing.status = body.status
+    existing.root_cause = body.root_cause
     updated = await entity_client.update(existing)
     response = ExperimentResponse.from_entity(updated)
     await _hydrate_rollups(workspace=workspace, responses=[response], rollup_repository=rollup_repository)

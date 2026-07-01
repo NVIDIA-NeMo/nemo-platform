@@ -11,6 +11,7 @@ views. Rollups are derived from ClickHouse at read time.
 from __future__ import annotations
 
 from datetime import datetime
+from enum import Enum
 from typing import Any, ClassVar, Literal
 
 from nmp.common.entities.client import EntityBase
@@ -26,6 +27,19 @@ class SortCriterion(BaseModel):
     direction: Literal["asc", "desc"] = Field(description="Sort direction for this field.")
 
 
+class ExperimentStatus(str, Enum):
+    """Lifecycle status of an Experiment in the NeMo Evaluator flow."""
+
+    baseline = "baseline"
+    running = "running"
+    evaluated = "evaluated"
+    survived = "survived"
+    killed = "killed"
+    winner = "winner"
+    deployed = "deployed"
+    rejected = "rejected"
+
+
 class ExperimentGroup(EntityBase):
     """A named container of Experiments pursuing a single optimization goal.
 
@@ -35,6 +49,12 @@ class ExperimentGroup(EntityBase):
     __entity_type__: ClassVar[str] = "experiment_group"
 
     description: str | None = Field(default=None, description="Human-readable purpose of the group.")
+    insight_id: str | None = Field(
+        default=None,
+        description="Entity id of the NeMo Evaluator insight that seeded this group, if any.",
+    )
+    summary: str | None = Field(default=None, description="Human- or agent-authored summary of the group's findings.")
+    metadata: dict[str, Any] | None = Field(default=None, description="Free-form producer metadata for the group.")
     default_sort: list[SortCriterion] | None = Field(
         default=None,
         description=(
@@ -77,6 +97,19 @@ class Experiment(EntityBase):
     )
 
     description: str | None = Field(default=None, description="Human-readable description of the experiment.")
+
+    parent_experiment_id: str | None = Field(
+        default=None,
+        description="Entity id of the experiment this one was derived from (e.g. a variant of a baseline), if any.",
+    )
+    status: ExperimentStatus | None = Field(
+        default=None,
+        description="Lifecycle status in the NeMo Evaluator flow.",
+    )
+    root_cause: str | None = Field(
+        default=None,
+        description="Human- or agent-authored explanation of the experiment's outcome (e.g. why it was killed).",
+    )
 
     is_deleted: bool = Field(
         default=False,
