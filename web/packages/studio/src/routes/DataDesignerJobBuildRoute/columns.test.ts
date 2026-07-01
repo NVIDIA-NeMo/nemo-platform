@@ -6,11 +6,13 @@ import type { ColumnTypeOption } from '@studio/components/AddColumnPalette/types
 import {
   type BuilderColumn,
   buildColumnsFromTemplate,
+  buildDataDesignerConfig,
   buildGraph,
   defaultColumnName,
   extractJinjaReferences,
   findColumnOption,
   validateColumnName,
+  validateColumns,
 } from '@studio/routes/DataDesignerJobBuildRoute/columns';
 
 const optionFor = (columnType: string, samplerType?: string): ColumnTypeOption => {
@@ -23,8 +25,9 @@ const column = (
   id: string,
   name: string,
   columnType: string,
-  values: Record<string, string>
-): BuilderColumn => ({ id, name, option: optionFor(columnType), values });
+  values: Record<string, string>,
+  samplerType?: string
+): BuilderColumn => ({ id, name, option: optionFor(columnType, samplerType), values });
 
 describe('extractJinjaReferences', () => {
   it('pulls identifiers out of {{ }} tokens, including filters and whitespace variants', () => {
@@ -146,6 +149,38 @@ describe('buildGraph', () => {
     expect(edges).toContainEqual({ source: 'a', target: 'd' });
     expect(edges).toContainEqual({ source: 'b', target: 'd' });
     expect(edges).toHaveLength(3);
+  });
+});
+
+describe('sampler columns', () => {
+  it('nests category values under the required params object', () => {
+    const columns = [
+      column('a', 'domain', 'sampler', { values: 'science, history, , arts' }, 'category'),
+    ];
+
+    expect(buildDataDesignerConfig(columns).columns[0]).toEqual({
+      name: 'domain',
+      column_type: 'sampler',
+      sampler_type: 'category',
+      params: { values: ['science', 'history', 'arts'] },
+    });
+  });
+
+  it('keeps convert_to at the top level alongside params', () => {
+    const columns = [
+      column('a', 'domain', 'sampler', { values: 'a, b', convert_to: 'str' }, 'category'),
+    ];
+
+    expect(buildDataDesignerConfig(columns).columns[0]).toMatchObject({
+      params: { values: ['a', 'b'] },
+      convert_to: 'str',
+    });
+  });
+
+  it('requires category values', () => {
+    const columns = [column('a', 'domain', 'sampler', {}, 'category')];
+
+    expect(validateColumns(columns)).toContainEqual(expect.stringContaining('Categories'));
   });
 });
 

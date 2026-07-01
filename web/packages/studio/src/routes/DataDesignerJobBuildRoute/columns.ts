@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { type DataDesignerConfig, SamplerType } from '@nemo/sdk/generated/data-designer/schema';
 import { COLUMN_TYPE_GROUPS } from '@studio/components/AddColumnPalette/constants';
 import type {
   AddColumnSelection,
@@ -10,6 +11,10 @@ import type {
 } from '@studio/components/AddColumnPalette/types';
 import type { TemplateColumnSpec } from '@studio/components/CreateFilesetStart/types';
 import type { DagEdge, DagNode } from '@studio/components/DagCanvas/types';
+import {
+  type BuilderModel,
+  buildModelConfigs,
+} from '@studio/routes/DataDesignerJobBuildRoute/models';
 
 export type FieldReference =
   /** Value is a Jinja2 template; `{{ column_name }}` tokens are dependencies. */
@@ -32,6 +37,11 @@ export interface ColumnField {
   options?: readonly { label: string; value: string }[];
   /** If set, values in this field create dependency edges to other columns. */
   reference?: FieldReference;
+  /**
+   * Serialize the value as a comma-separated list (e.g. sampler category values). Unlike
+   * `reference: 'list'`, this does not treat the entries as column names / dependencies.
+   */
+  list?: boolean;
 }
 
 /**
@@ -194,6 +204,8 @@ const FIELDS_BY_COLUMN_TYPE: Record<NonNullable<DataDesignerColumnType>, ColumnF
       options: asOptions(['cell_by_cell', 'full_column']),
     },
   ],
+  // Shared across all sampler sub-types, emitted at the top level of the sampler config.
+  // Sub-type-specific fields (collected into `params`) come from PARAM_FIELDS_BY_SAMPLER_TYPE.
   sampler: [
     {
       key: 'convert_to',
@@ -205,8 +217,42 @@ const FIELDS_BY_COLUMN_TYPE: Record<NonNullable<DataDesignerColumnType>, ColumnF
   ],
 };
 
-export const getColumnFields = (columnType: DataDesignerColumnType): ColumnField[] =>
-  columnType ? (FIELDS_BY_COLUMN_TYPE[columnType] ?? []) : [];
+/**
+ * Sampler sub-type-specific fields, collected into the sampler config's required `params`
+ * object (see `SamplerColumnConfig`). Only the sub-types with builder-editable params are
+ * listed; others fall back to an empty `params` object.
+ */
+const PARAM_FIELDS_BY_SAMPLER_TYPE: Partial<Record<SamplerType, ColumnField[]>> = {
+  [SamplerType.category]: [
+    {
+      key: 'values',
+      label: 'Categories',
+      kind: 'textarea',
+      required: true,
+      list: true,
+      placeholder: 'science, technology, history, arts, business',
+      helperText: 'Comma-separated values to sample from.',
+    },
+  ],
+};
+
+/** The sampler `params` fields for a sampler sub-type (empty for sub-types without any). */
+const getSamplerParamFields = (samplerType: SamplerType | undefined): ColumnField[] =>
+  samplerType ? (PARAM_FIELDS_BY_SAMPLER_TYPE[samplerType] ?? []) : [];
+
+/**
+ * Returns the config fields for a column option (excluding the always-present `name`).
+ * For sampler columns, the sub-type's `params` fields precede the shared sampler fields.
+ */
+export const getColumnFields = (
+  option: Pick<ColumnTypeOption, 'columnType' | 'samplerType'>
+): ColumnField[] => {
+  const { columnType, samplerType } = option;
+  if (!columnType) return [];
+  const base = FIELDS_BY_COLUMN_TYPE[columnType] ?? [];
+  if (columnType === 'sampler') return [...getSamplerParamFields(samplerType), ...base];
+  return base;
+};
 
 /** Accent color → NVIDIA Foundations text token, matching `CardNode`'s idle styling. */
 const ACCENT_VAR_CLASS: Record<ColumnTypeColor, string> = {
@@ -272,7 +318,7 @@ const columnDependencies = (column: BuilderColumn, knownNames: Set<string>): Set
     const name = candidate.trim();
     if (name && name !== column.name && knownNames.has(name)) deps.add(name);
   };
-  for (const field of getColumnFields(column.option.columnType)) {
+  for (const field of getColumnFields(column.option)) {
     const value = column.values[field.key]?.trim();
     if (!value) continue;
     switch (field.reference) {
@@ -346,4 +392,112 @@ export const validateColumnName = (name: string, takenNames: Set<string>): strin
   }
   if (takenNames.has(trimmed)) return 'A column with this name already exists.';
   return null;
+};
+
+/**
+ * Validates every column is ready to submit: unique, well-formed names; every field
+ * marked `required` in {@link getColumnFields} filled in; and JSON-shaped fields (e.g.
+ * `output_format`) parse. Returns one human-readable message per problem found, or an
+ * empty array if the recipe is submittable.
+ */
+export const validateColumns = (columns: BuilderColumn[]): string[] => {
+  if (columns.length === 0) return ['Add at least one column before creating the job.'];
+
+  const errors: string[] = [];
+  for (const column of columns) {
+    const label = column.name || column.option.label;
+    const takenNames = new Set(
+      columns.filter((other) => other.id !== column.id).map((other) => other.name)
+    );
+    const nameError = validateColumnName(column.name, takenNames);
+    if (nameError) errors.push(`${label}: ${nameError}`);
+
+    for (const field of getColumnFields(column.option)) {
+      const value = column.values[field.key]?.trim();
+      if (field.required && !value) {
+        errors.push(`${label}: ${field.label} is required.`);
+        continue;
+      }
+      if (field.key === 'output_format' && value) {
+        try {
+          JSON.parse(value);
+        } catch {
+          errors.push(`${label}: ${field.label} must be valid JSON.`);
+        }
+      }
+    }
+  }
+  return errors;
+};
+
+/** Splits a comma-separated field value into trimmed, non-empty entries. */
+const splitList = (value: string): string[] =>
+  value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+/**
+ * Converts a sampler column into the SDK's `SamplerColumnConfig` shape. Sub-type params
+ * are nested under the required `params` object; `convert_to` stays at the top level.
+ */
+const toSamplerConfig = (column: BuilderColumn): Record<string, unknown> => {
+  const params: Record<string, unknown> = {};
+  for (const field of getSamplerParamFields(column.option.samplerType)) {
+    const value = column.values[field.key]?.trim();
+    if (!value) continue;
+    params[field.key] = field.list ? splitList(value) : value;
+  }
+
+  const config: Record<string, unknown> = {
+    name: column.name,
+    column_type: 'sampler',
+    sampler_type: column.option.samplerType,
+    params,
+  };
+  const convertTo = column.values.convert_to?.trim();
+  if (convertTo) config.convert_to = convertTo;
+  return config;
+};
+
+/** Converts one builder column's string field values into the SDK's column config shape. */
+const toColumnConfig = (column: BuilderColumn): Record<string, unknown> => {
+  if (column.option.columnType === 'sampler') return toSamplerConfig(column);
+
+  const config: Record<string, unknown> = {
+    name: column.name,
+    column_type: column.option.columnType,
+  };
+
+  for (const field of getColumnFields(column.option)) {
+    const value = column.values[field.key]?.trim();
+    if (!value) continue;
+    if (field.key === 'output_format') {
+      config[field.key] = JSON.parse(value);
+    } else if (field.reference === 'list' || field.list) {
+      config[field.key] = splitList(value);
+    } else {
+      config[field.key] = value;
+    }
+  }
+  return config;
+};
+
+/**
+ * Builds the Data Designer job config from the canvas columns and the configured models,
+ * ready to submit via `useDataDesignerCreateJob`. Columns reference models by their alias
+ * (the `model_alias` field), so the two live in the same config. Call
+ * {@link validateColumns} / {@link validateModels} first — this assumes both are valid and
+ * does not re-check them.
+ */
+export const buildDataDesignerConfig = (
+  columns: BuilderColumn[],
+  models: BuilderModel[] = []
+): DataDesignerConfig => {
+  const config: DataDesignerConfig = {
+    columns: columns.map(toColumnConfig) as unknown as DataDesignerConfig['columns'],
+  };
+  const modelConfigs = buildModelConfigs(models);
+  if (modelConfigs) config.model_configs = modelConfigs;
+  return config;
 };

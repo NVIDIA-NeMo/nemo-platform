@@ -3,6 +3,7 @@
 
 import { SamplerType } from '@nemo/sdk/generated/data-designer/schema';
 import type { FilesetTemplate } from '@studio/components/CreateFilesetStart/types';
+import { DEFAULT_BUILD_MODEL_NAME } from '@studio/constants/constants';
 import { GraduationCap } from 'lucide-react';
 
 /**
@@ -23,6 +24,10 @@ export const FILESET_TEMPLATES: FilesetTemplate[] = [
         columnType: 'sampler',
         samplerType: SamplerType.category,
         name: 'domain',
+        values: {
+          values:
+            'science, technology, history, arts, business, health, education, sports, travel, cooking',
+        },
       },
       {
         columnType: 'llm-text',
@@ -43,6 +48,10 @@ export const FILESET_TEMPLATES: FilesetTemplate[] = [
         },
       },
     ],
+    // The `default` alias the columns above reference. Prefers the Nemotron build model
+    // when it's in the workspace; the build route falls back to the first available model
+    // otherwise, so the recipe can be previewed immediately either way.
+    models: [{ alias: 'default', model: DEFAULT_BUILD_MODEL_NAME }],
   },
 ];
 
