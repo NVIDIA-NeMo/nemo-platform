@@ -47,9 +47,21 @@ def resolve_k8s_deployment_config(backend_config: dict[str, Any]) -> K8sDeployme
 
 
 def resolve_deployment_namespace(*, default_namespace: str, k8s_config: K8sDeploymentConfig | None) -> str:
+    """Resolve target namespace from parsed k8s deployment config."""
     if k8s_config is None or not k8s_config.namespace:
         return default_namespace
     return k8s_config.namespace
+
+
+def restart_policy_from_labels(job_labels: dict[str, str], *, default: RestartPolicy = "Never") -> RestartPolicy:
+    value = job_labels.get(RESTART_POLICY_LABEL, default)
+    if value == "Never":
+        return "Never"
+    if value == "OnFailure":
+        return "OnFailure"
+    if value == "Always":
+        return "Always"
+    return default
 
 
 def validate_config_for_job(config: DeploymentConfig) -> Container:
@@ -173,6 +185,40 @@ def build_job_body(
     )
 
 
+async def read_pod_exit_code(
+    clients: KubernetesClients,
+    *,
+    namespace: str,
+    job_name: str,
+) -> int | None:
+    """Best-effort container exit code from the Job's most recent pod."""
+    timeout = clients.request_timeout
+    core_v1 = clients.core_v1
+
+    def _read() -> int | None:
+        pods = core_v1.list_namespaced_pod(
+            namespace=namespace,
+            label_selector=f"job-name={job_name}",
+            _request_timeout=timeout,
+        )
+        if not pods.items:
+            return None
+        pod = pods.items[-1]
+        if pod.status is None or not pod.status.container_statuses:
+            return None
+        for container_status in pod.status.container_statuses:
+            terminated = container_status.state.terminated if container_status.state else None
+            if terminated is not None:
+                return int(terminated.exit_code)
+        return None
+
+    try:
+        return await asyncio.to_thread(_read)
+    except Exception:
+        logger.debug("Could not read exit code for Job %s", job_name, exc_info=True)
+        return None
+
+
 async def create_job(
     clients: KubernetesClients,
     *,
@@ -224,12 +270,12 @@ async def create_job(
                 raise
 
         job = await asyncio.to_thread(_create)
-        return status_from_job(
-            job=job,
-            job_name=job_name,
-            expected_labels=identity_labels,
-            restart_policy=config.restart_policy,
-        )
+        update = status_from_job(job=job, job_name=job_name, expected_labels=identity_labels)
+        if update.status in ("SUCCEEDED", "FAILED"):
+            exit_code = await read_pod_exit_code(clients, namespace=namespace, job_name=job_name)
+            if exit_code is not None:
+                update = update.model_copy(update={"exit_code": exit_code})
+        return update
     except DeploymentConfigError as exc:
         return BackendStatusUpdate(status="FAILED", status_message=str(exc))
     except Exception as exc:
@@ -267,7 +313,7 @@ async def read_job_status(
                 status="FAILED",
                 status_message=f"Job {job_name} is missing deployment config identity labels",
             )
-        restart_policy: RestartPolicy = job_labels.get(RESTART_POLICY_LABEL, "Never")  # type: ignore[assignment]
+        restart_policy = restart_policy_from_labels(job_labels)
         read_expected = deployment_identity_labels(
             workspace,
             name,
@@ -275,12 +321,12 @@ async def read_job_status(
             config_name=config_name,
             backoff_limit=int(job_labels.get(BACKOFF_LIMIT_LABEL, "6")),
         )
-        return status_from_job(
-            job=job,
-            job_name=job_name,
-            expected_labels=read_expected,
-            restart_policy=restart_policy,
-        )
+        update = status_from_job(job=job, job_name=job_name, expected_labels=read_expected)
+        if update.status in ("SUCCEEDED", "FAILED"):
+            exit_code = await read_pod_exit_code(clients, namespace=namespace, job_name=job_name)
+            if exit_code is not None:
+                update = update.model_copy(update={"exit_code": exit_code})
+        return update
     except ApiException as exc:
         if exc.status == 404:
             return missing_job_status(job_name=job_name)

@@ -3,54 +3,31 @@
 
 from __future__ import annotations
 
+import pytest
 from backends.k8s.k8s_helpers import job_identity_labels, mock_job
 from nemo_deployments_plugin.backends.k8s.status import missing_job_status, status_from_job
 
 
-def test_status_from_job_complete() -> None:
+@pytest.mark.parametrize(
+    ("job", "expected_status", "message_substring"),
+    [
+        (lambda: mock_job(complete=True), "SUCCEEDED", "completed successfully"),
+        (lambda: mock_job(restart_policy="OnFailure", failed=True), "FAILED", "BackoffLimitExceeded"),
+        (lambda: mock_job(active=1), "STARTING", "active pod"),
+        (lambda: mock_job(deleting=True), "DELETING", "terminating"),
+    ],
+)
+def test_status_from_job(job, expected_status: str, message_substring: str) -> None:
     labels = job_identity_labels()
+    if expected_status == "FAILED":
+        labels = job_identity_labels(restart_policy="OnFailure")
     update = status_from_job(
-        job=mock_job(complete=True),
+        job=job(),
         job_name="dep-default-task-abc12345",
         expected_labels=labels,
-        restart_policy="Never",
     )
-    assert update.status == "SUCCEEDED"
-
-
-def test_status_from_job_failed() -> None:
-    labels = job_identity_labels(restart_policy="OnFailure")
-    update = status_from_job(
-        job=mock_job(restart_policy="OnFailure", failed=True),
-        job_name="dep-default-task-abc12345",
-        expected_labels=labels,
-        restart_policy="OnFailure",
-    )
-    assert update.status == "FAILED"
-    assert "BackoffLimitExceeded" in update.status_message
-
-
-def test_status_from_job_active_is_starting() -> None:
-    labels = job_identity_labels()
-    update = status_from_job(
-        job=mock_job(active=1),
-        job_name="dep-default-task-abc12345",
-        expected_labels=labels,
-        restart_policy="Never",
-    )
-    assert update.status == "STARTING"
-    assert "active pod" in update.status_message
-
-
-def test_status_from_job_deleting() -> None:
-    labels = job_identity_labels()
-    update = status_from_job(
-        job=mock_job(deleting=True),
-        job_name="dep-default-task-abc12345",
-        expected_labels=labels,
-        restart_policy="Never",
-    )
-    assert update.status == "DELETING"
+    assert update.status == expected_status
+    assert message_substring in update.status_message
 
 
 def test_missing_job_status() -> None:

@@ -8,9 +8,7 @@ from __future__ import annotations
 from typing import Any
 
 from nemo_deployments_plugin.backends.base import BackendStatusUpdate
-from nemo_deployments_plugin.types import RestartPolicy
 
-LOG_TAIL_LINES = 80
 LOG_MAX_CHARS = 8000
 
 
@@ -49,10 +47,8 @@ def status_from_job(
     job: Any,
     job_name: str,
     expected_labels: dict[str, str],
-    restart_policy: RestartPolicy,
 ) -> BackendStatusUpdate:
     """Map a Job object to plugin status, enforcing identity labels and delete propagation."""
-    del restart_policy
     if not _job_labels_match(job, expected_labels):
         return BackendStatusUpdate(
             status="FAILED",
