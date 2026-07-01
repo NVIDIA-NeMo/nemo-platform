@@ -1,80 +1,38 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Docker resource naming and identity labels for orphan cleanup.
+"""Docker resource naming and identity labels (re-exported from shared ``backends.labels``)."""
 
-Resource names are derived from a human-readable prefix plus a deterministic
-8-character hash. The hash is computed from ``{workspace}/{name}`` (see
-``deployment_key``), not from the hyphen-joined display string, so ambiguous
-pairs like ``("foo", "bar-baz")`` and ``("foo-bar", "baz")`` produce distinct
-names even when their joined prefixes collide.
+from nemo_deployments_plugin.backends.labels import (
+    BACKOFF_LIMIT_LABEL,
+    CONFIG_NAME_LABEL,
+    DEPLOYMENT_NAME_LABEL,
+    DEPLOYMENT_WORKSPACE_LABEL,
+    MANAGED_BY_KEY,
+    RESTART_POLICY_LABEL,
+    VOLUME_NAME_LABEL,
+    VOLUME_WORKSPACE_LABEL,
+    container_name,
+    deployment_identity_labels,
+    deployment_key,
+    docker_volume_name,
+    managed_by_filter,
+    volume_identity_labels,
+)
 
-Naming logic is shared via ``nemo_platform_plugin.k8s_naming`` (plugins cannot
-import ``nmp_common``). Orphan cleanup and idempotency rely on identity labels,
-not container names alone.
-"""
-
-from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
-from nemo_platform_plugin.k8s_naming import k8s_safe_name, workspace_name_identity
-
-MANAGED_BY_KEY = "managed-by"
-DEPLOYMENT_WORKSPACE_LABEL = "nemo.nvidia.com/deployment-workspace"
-DEPLOYMENT_NAME_LABEL = "nemo.nvidia.com/deployment-name"
-RESTART_POLICY_LABEL = "nemo.nvidia.com/restart-policy"
-CONFIG_NAME_LABEL = "nemo.nvidia.com/deployment-config"
-VOLUME_WORKSPACE_LABEL = "nemo.nvidia.com/volume-workspace"
-VOLUME_NAME_LABEL = "nemo.nvidia.com/volume-name"
-
-
-def deployment_key(workspace: str, name: str) -> str:
-    """Return the canonical identity string used for hashing and label keys."""
-    return workspace_name_identity(workspace, name)
-
-
-def container_name(workspace: str, deployment_name: str) -> str:
-    """Docker container name for a deployment (``dep-`` prefix, hashed identity)."""
-    return k8s_safe_name(
-        f"dep-{workspace}-{deployment_name}",
-        hash_input=deployment_key(workspace, deployment_name),
-    )
-
-
-def docker_volume_name(workspace: str, volume_name: str) -> str:
-    """Docker volume name for a deployment volume (``dep-vol-`` prefix, hashed identity)."""
-    return k8s_safe_name(
-        f"dep-vol-{workspace}-{volume_name}",
-        hash_input=deployment_key(workspace, volume_name),
-    )
-
-
-BACKOFF_LIMIT_LABEL = "nemo.nvidia.com/backoff-limit"
-
-
-def deployment_identity_labels(
-    workspace: str,
-    name: str,
-    restart_policy: str,
-    *,
-    config_name: str,
-    backoff_limit: int = 6,
-) -> dict[str, str]:
-    return {
-        MANAGED_BY_KEY: MANAGED_BY_LABEL,
-        DEPLOYMENT_WORKSPACE_LABEL: workspace,
-        DEPLOYMENT_NAME_LABEL: name,
-        RESTART_POLICY_LABEL: restart_policy,
-        CONFIG_NAME_LABEL: config_name,
-        BACKOFF_LIMIT_LABEL: str(backoff_limit),
-    }
-
-
-def volume_identity_labels(workspace: str, name: str) -> dict[str, str]:
-    return {
-        MANAGED_BY_KEY: MANAGED_BY_LABEL,
-        VOLUME_WORKSPACE_LABEL: workspace,
-        VOLUME_NAME_LABEL: name,
-    }
-
-
-def managed_by_filter() -> dict[str, str | bool]:
-    return {"label": f"{MANAGED_BY_KEY}={MANAGED_BY_LABEL}"}
+__all__ = [
+    "BACKOFF_LIMIT_LABEL",
+    "CONFIG_NAME_LABEL",
+    "DEPLOYMENT_NAME_LABEL",
+    "DEPLOYMENT_WORKSPACE_LABEL",
+    "MANAGED_BY_KEY",
+    "RESTART_POLICY_LABEL",
+    "VOLUME_NAME_LABEL",
+    "VOLUME_WORKSPACE_LABEL",
+    "container_name",
+    "deployment_identity_labels",
+    "deployment_key",
+    "docker_volume_name",
+    "managed_by_filter",
+    "volume_identity_labels",
+]
