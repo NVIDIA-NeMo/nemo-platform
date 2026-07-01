@@ -138,8 +138,8 @@ class TestAuthorizationMiddleware:
         response = http_client.get("/apis/auth/v2/iam/role-bindings", headers=headers)
         assert response.status_code == 403, f"Expected 403, got {response.status_code}: {response.text}"
 
-    def test_nested_entities_forbidden_for_user_principal(self, http_client: TestClient):
-        """Workspace-scoped entity APIs are internal; end users must not call them directly."""
+    def test_nested_entities_allowed_for_user_principal(self, http_client: TestClient):
+        """Workspace-scoped entity read is allowed for authenticated users (entities.read in Viewer role)."""
         headers = {
             "X-NMP-Principal-Id": TEST_USER_EMAIL,
             "X-NMP-Principal-Email": TEST_USER_EMAIL,
@@ -148,4 +148,4 @@ class TestAuthorizationMiddleware:
             "/apis/entities/v2/workspaces/default/entities/evaluation_config",
             headers=headers,
         )
-        assert response.status_code == 403, f"Expected 403, got {response.status_code}: {response.text}"
+        assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
