@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
 from nemo_deployments_plugin.backends.k8s.backend import K8sDeploymentBackend
 
@@ -22,3 +24,10 @@ async def test_create_deployment_not_implemented_yet(k8s_backend: K8sDeploymentB
 def test_executor_config_parsed_from_dict(k8s_backend: K8sDeploymentBackend) -> None:
     assert k8s_backend.executor_config.default_namespace == "nemo-deployments"
     assert k8s_backend.executor_config.request_timeout == 30
+
+
+def test_shutdown_closes_kubernetes_clients(k8s_backend: K8sDeploymentBackend) -> None:
+    mock_clients = MagicMock()
+    k8s_backend._clients = mock_clients
+    k8s_backend.shutdown()
+    mock_clients.close.assert_called_once()

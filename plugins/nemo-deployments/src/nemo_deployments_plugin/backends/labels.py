@@ -59,6 +59,7 @@ def deployment_identity_labels(
     config_name: str,
     backoff_limit: int = 6,
 ) -> dict[str, str]:
+    """Return identity labels attached to deployment backend resources."""
     return {
         MANAGED_BY_KEY: MANAGED_BY_LABEL,
         DEPLOYMENT_WORKSPACE_LABEL: workspace,
@@ -70,6 +71,7 @@ def deployment_identity_labels(
 
 
 def volume_identity_labels(workspace: str, name: str) -> dict[str, str]:
+    """Return identity labels attached to volume backend resources."""
     return {
         MANAGED_BY_KEY: MANAGED_BY_LABEL,
         VOLUME_WORKSPACE_LABEL: workspace,
@@ -77,7 +79,8 @@ def volume_identity_labels(workspace: str, name: str) -> dict[str, str]:
     }
 
 
-def managed_by_filter() -> dict[str, str | bool]:
+def managed_by_filter() -> dict[str, str]:
+    """Return a Docker SDK filter dict for plugin-managed resources."""
     return {"label": f"{MANAGED_BY_KEY}={MANAGED_BY_LABEL}"}
 
 

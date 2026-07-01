@@ -47,7 +47,8 @@ class K8sDeploymentBackend(DeploymentBackend):
         )
 
     def shutdown(self) -> None:
-        pass
+        if hasattr(self, "_clients"):
+            self._clients.close()
 
     @property
     def executor_config(self) -> K8sExecutorConfig:

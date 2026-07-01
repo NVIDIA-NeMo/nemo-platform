@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -10,6 +11,15 @@ from nemo_deployments_plugin.backends.k8s.backend import K8sDeploymentBackend
 from nemo_deployments_plugin.backends.k8s.client import KubernetesClients, build_api_client
 from nemo_deployments_plugin.backends.registry import BACKEND_CLASSES, ExecutorRegistry, ExecutorSpec
 from nemo_platform import AsyncNeMoPlatform
+
+
+@pytest.fixture(autouse=True)
+def _reset_kubernetes_modules_cache() -> Iterator[None]:
+    import nemo_deployments_plugin.backends.k8s.client as k8s_client
+
+    k8s_client._kubernetes_modules_cache = None
+    yield
+    k8s_client._kubernetes_modules_cache = None
 
 
 def test_k8s_backend_registered() -> None:
@@ -70,10 +80,10 @@ def test_build_api_client_falls_back_to_kubeconfig() -> None:
         patch("kubernetes.config.load_incluster_config", side_effect=config.ConfigException("not in cluster")),
         patch("kubernetes.config.load_kube_config") as mock_kube,
         patch("kubernetes.client.ApiClient"),
-        patch("kubernetes.client.Configuration"),
+        patch("kubernetes.client.Configuration") as mock_configuration,
     ):
         build_api_client()
-        mock_kube.assert_called_once_with(client_configuration=mock_kube.call_args.kwargs["client_configuration"])
+        mock_kube.assert_called_once_with(client_configuration=mock_configuration.return_value)
 
 
 def test_build_api_client_honors_explicit_kubeconfig_path() -> None:
@@ -100,3 +110,14 @@ def test_each_kubernetes_clients_instance_uses_its_kubeconfig_path() -> None:
         assert mock_build.call_args_list[1].kwargs == {"kubeconfig_path": "/b/kube"}
         assert a.request_timeout == 10
         assert b.request_timeout == 20
+
+
+def test_kubernetes_clients_close_releases_api_client() -> None:
+    mock_api_client = MagicMock()
+    with patch("nemo_deployments_plugin.backends.k8s.client.build_api_client", return_value=mock_api_client):
+        clients = KubernetesClients()
+        _ = clients.core_v1
+        clients.close()
+        mock_api_client.close.assert_called_once()
+        assert clients._api_client is None
+        assert clients._core_v1 is None
