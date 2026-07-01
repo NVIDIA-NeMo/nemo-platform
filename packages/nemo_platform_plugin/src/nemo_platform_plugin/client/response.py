@@ -15,6 +15,8 @@ from nemo_platform_plugin.client.errors import raise_for_status
 from nemo_platform_plugin.client.types import OffsetPagination, PaginationStrategy, PreparedRequest
 from pydantic import BaseModel
 
+_SSE_CONTENT_TYPE = "text/event-stream"
+
 ResponseT = TypeVar("ResponseT")
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
@@ -72,8 +74,9 @@ class NemoBinaryResponse:
     def read(self) -> bytes:
         """Read and return the entire response body as bytes."""
         with self._stream_ctx as raw:
+            data = raw.read()
             raise_for_status(raw)
-            return raw.read()
+            return data
 
     @contextmanager
     def stream(self) -> Iterator[Iterator[bytes]]:
@@ -85,6 +88,11 @@ class NemoBinaryResponse:
 
 class NemoStreamResponse(Generic[ModelT]):
     """Sync response for SSE/NDJSON streaming endpoints.
+
+    Handles both NDJSON (``application/x-ndjson``) and SSE
+    (``text/event-stream``) framing automatically based on the
+    response ``Content-Type``.  SSE ``data:`` prefixes are stripped
+    before JSON parsing.
 
     Use via :meth:`stream`::
 
@@ -108,12 +116,20 @@ class NemoStreamResponse(Generic[ModelT]):
         """Yield an iterator of parsed model objects."""
         with self._stream_ctx as raw:
             raise_for_status(raw)
+            is_sse = _SSE_CONTENT_TYPE in (raw.headers.get("content-type") or "")
 
             def _iter() -> Iterator[ModelT]:
                 for line in raw.iter_lines():
                     line = line.strip()
-                    if line:
-                        yield self._model_type.model_validate_json(line)
+                    if not line:
+                        continue
+                    if is_sse:
+                        if line.startswith("data:"):
+                            line = line[5:].strip()
+                        else:
+                            # Skip non-data SSE fields (event:, id:, retry:, comments)
+                            continue
+                    yield self._model_type.model_validate_json(line)
 
             yield _iter()
 
@@ -145,8 +161,9 @@ class AsyncNemoBinaryResponse:
     async def read(self) -> bytes:
         """Read and return the entire response body as bytes."""
         async with self._stream_ctx as raw:
+            data = await raw.aread()
             raise_for_status(raw)
-            return await raw.aread()
+            return data
 
     @asynccontextmanager
     async def stream(self) -> AsyncIterator[AsyncIterator[bytes]]:
@@ -158,6 +175,9 @@ class AsyncNemoBinaryResponse:
 
 class AsyncNemoStreamResponse(Generic[ModelT]):
     """Async response for SSE/NDJSON streaming endpoints.
+
+    Handles both NDJSON and SSE framing automatically based on the
+    response ``Content-Type``.  See :class:`NemoStreamResponse` for details.
 
     Use via :meth:`stream`::
 
@@ -181,12 +201,19 @@ class AsyncNemoStreamResponse(Generic[ModelT]):
         """Yield an async iterator of parsed model objects."""
         async with self._stream_ctx as raw:
             raise_for_status(raw)
+            is_sse = _SSE_CONTENT_TYPE in (raw.headers.get("content-type") or "")
 
             async def _iter() -> AsyncIterator[ModelT]:
                 async for line in raw.aiter_lines():
                     line = line.strip()
-                    if line:
-                        yield self._model_type.model_validate_json(line)
+                    if not line:
+                        continue
+                    if is_sse:
+                        if line.startswith("data:"):
+                            line = line[5:].strip()
+                        else:
+                            continue
+                    yield self._model_type.model_validate_json(line)
 
             yield _iter()
 

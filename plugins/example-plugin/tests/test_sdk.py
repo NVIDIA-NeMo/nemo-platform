@@ -18,6 +18,7 @@ from nemo_example_plugin.types.payloads import (
     UpdateExampleItemRequest,
 )
 from nemo_platform_plugin.client.client import NemoClient
+from nemo_platform_plugin.client.errors import NemoHTTPError
 
 BASE = "http://test:8000"
 WS = "default"
@@ -334,3 +335,95 @@ async def test_async_count_stream() -> None:
     assert len(items) == 2
     assert items[0].kind == "tick"
     assert items[1].kind == "done"
+
+
+# ---------------------------------------------------------------------------
+# SSE framing support
+# ---------------------------------------------------------------------------
+
+
+def test_sync_stream_sse_framing() -> None:
+    """SSE data: prefixes are stripped when Content-Type is text/event-stream."""
+    client, mock_http = _sync_client()
+    body = 'data: {"kind":"tick","n":1}\ndata: {"kind":"done","n":null}\n\n'
+    raw = httpx.Response(
+        200,
+        content=body.encode(),
+        headers={"content-type": "text/event-stream"},
+        request=httpx.Request("POST", BASE),
+    )
+    mock_http.stream = _stream_ctx(raw)
+
+    resp = client.count(body=CountRequest(upto=1))
+    with resp.stream() as ticks:
+        items = list(ticks)
+
+    assert len(items) == 2
+    assert items[0].kind == "tick"
+    assert items[1].kind == "done"
+
+
+def test_sync_stream_sse_skips_non_data_fields() -> None:
+    """SSE event:, id:, and comment lines are skipped."""
+    client, mock_http = _sync_client()
+    body = 'event: tick\ndata: {"kind":"tick","n":1}\n: comment\nid: 42\ndata: {"kind":"done","n":null}\n\n'
+    raw = httpx.Response(
+        200,
+        content=body.encode(),
+        headers={"content-type": "text/event-stream"},
+        request=httpx.Request("POST", BASE),
+    )
+    mock_http.stream = _stream_ctx(raw)
+
+    resp = client.count(body=CountRequest(upto=1))
+    with resp.stream() as ticks:
+        items = list(ticks)
+
+    assert len(items) == 2
+    assert items[0].kind == "tick"
+    assert items[1].kind == "done"
+
+
+@pytest.mark.asyncio
+async def test_async_stream_sse_framing() -> None:
+    """Async SSE data: prefixes are stripped."""
+    client, mock_http = _async_client()
+    body = 'data: {"kind":"tick","n":1}\ndata: {"kind":"done","n":null}\n\n'
+    raw = httpx.Response(
+        200,
+        content=body.encode(),
+        headers={"content-type": "text/event-stream"},
+        request=httpx.Request("POST", BASE),
+    )
+    mock_http.stream = _async_stream_ctx(raw)
+
+    resp = await client.count(body=CountRequest(upto=1))
+    async with resp.stream() as ticks:
+        items = [t async for t in ticks]
+
+    assert len(items) == 2
+    assert items[0].kind == "tick"
+    assert items[1].kind == "done"
+
+
+# ---------------------------------------------------------------------------
+# Error detail extraction from streaming responses
+# ---------------------------------------------------------------------------
+
+
+def test_binary_read_error_has_detail() -> None:
+    """Binary read() on error response should extract JSON detail."""
+    client, mock_http = _sync_client()
+    raw = httpx.Response(
+        404,
+        content=b'{"detail": "File not found"}',
+        request=httpx.Request("GET", BASE),
+    )
+    mock_http.stream = _stream_ctx(raw)
+
+    resp = client.download_blob(name="missing.png")
+    with pytest.raises(NemoHTTPError) as exc_info:
+        resp.read()
+
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "File not found"
