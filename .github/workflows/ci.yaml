@@ -544,6 +544,76 @@ jobs:
           docker rm -f "cloud-provider-kind-${KIND_CLUSTER_NAME}" || true
           kind delete cluster --name "${KIND_CLUSTER_NAME}" || true
 
+  kind-cpu-auth-e2e:
+    name: Kind CPU auth e2e
+    needs: [changes, build-cpu-smoke-images]
+    if: >
+      !cancelled() &&
+      needs.build-cpu-smoke-images.result == 'success' &&
+      needs.build-cpu-smoke-images.outputs.publish_images == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: read
+    env:
+      KIND_CLUSTER_NAME: gha-${{ github.run_id }}-${{ github.run_attempt }}-kind-auth-e2e
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Setup Kind cluster with NeMo Platform (auth enabled)
+        uses: ./.github/actions/setup-kind-cluster
+        with:
+          kind_cluster_name: ${{ env.KIND_CLUSTER_NAME }}
+          image_registry: ${{ needs.build-cpu-smoke-images.outputs.image_registry }}
+          image_tag: ${{ needs.build-cpu-smoke-images.outputs.image_tag }}
+          kind_image_pull_token: ${{ github.token }}
+          kind_image_pull_user: ${{ github.actor }}
+          helm_values: e2e/k8s/values/kind-auth.yaml
+
+      - name: Run auth e2e tests
+        shell: bash
+        env:
+          _TYPER_FORCE_DISABLE_TERMINAL: "1"
+          E2E_SERVICES_LOG_DIR: ${{ runner.temp }}/e2e-services-logs
+          NGC_API_KEY: not-used-for-ghcr-cpu-auth-e2e
+        run: |
+          test -n "${NMP_E2E_CLUSTER_URL}"
+          export NMP_BASE_URL="${NMP_E2E_CLUSTER_URL}"
+          uv run --frozen pytest \
+            e2e/test_jobs_auth.py \
+            -v \
+            --run-e2e \
+            --no-cov \
+            --junitxml=report-kubernetes-auth-e2e.xml
+
+      - name: Collect Kubernetes logs
+        if: always()
+        shell: bash
+        run: e2e/k8s/scripts/collect_k8s_logs.sh
+
+      - name: Upload Kubernetes artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: kind-auth-e2e-kubernetes-artifacts
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            k8s-logs/
+            report-kubernetes-auth-e2e.xml
+            ${{ runner.temp }}/e2e-services-logs/
+
+      - name: Delete kind cluster
+        if: always()
+        shell: bash
+        run: |
+          docker rm -f "cloud-provider-kind-${KIND_CLUSTER_NAME}" || true
+          kind delete cluster --name "${KIND_CLUSTER_NAME}" || true
+
   helm-lint:
     name: Helm lint
     needs: [changes]
