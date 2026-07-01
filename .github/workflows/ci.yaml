@@ -895,6 +895,9 @@ jobs:
         env:
           EXTRA: cpu
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          NMP_FILES_HF_RETRY_ATTEMPTS: "7"
+          NMP_FILES_HF_RETRY_INITIAL_DELAY_SECONDS: "1"
+          NMP_FILES_HF_RETRY_MAX_DELAY_SECONDS: "30"
           PYTEST_WORKERS: "4"
           _TYPER_FORCE_DISABLE_TERMINAL: "1"
       - name: Upload test artifacts
@@ -1059,6 +1062,9 @@ jobs:
           E2E_SERVICES_LOG_DIR: ${{ runner.temp }}/e2e-services-logs
           NGC_API_KEY: ${{ secrets.NGC_REGISTRY_READ_TOKEN }}
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          NMP_FILES_HF_RETRY_ATTEMPTS: "7"
+          NMP_FILES_HF_RETRY_INITIAL_DELAY_SECONDS: "1"
+          NMP_FILES_HF_RETRY_MAX_DELAY_SECONDS: "30"
       - name: Dump server logs
         if: always()
         run: |

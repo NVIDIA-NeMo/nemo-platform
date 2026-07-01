@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 from typing import ClassVar
@@ -13,6 +14,9 @@ import typer
 from nemo_platform_plugin.cli import NemoCLI
 from nemo_safe_synthesizer_plugin.config import config
 from nemo_safe_synthesizer_plugin.runtime import runtime_info, runtime_task_command, setup_runtime
+
+NEMO_DEPLOYMENT_TYPE_ENVVAR = "NEMO_DEPLOYMENT_TYPE"
+NMP_DEPLOYMENT_TYPE = "nmp"
 
 
 class SafeSynthesizerCLI(NemoCLI):
@@ -100,7 +104,9 @@ class SafeSynthesizerCLI(NemoCLI):
                 typer.echo(str(e), err=True)
                 raise typer.Exit(1) from e
 
-            result = subprocess.run(command, check=False)
+            runtime_env = os.environ.copy()
+            runtime_env[NEMO_DEPLOYMENT_TYPE_ENVVAR] = NMP_DEPLOYMENT_TYPE
+            result = subprocess.run(command, check=False, env=runtime_env)
             if result.returncode != 0:
                 raise typer.Exit(result.returncode)
             typer.echo(f"Wrote Safe Synthesizer results to {output_dir}")

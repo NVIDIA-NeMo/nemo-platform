@@ -111,6 +111,34 @@ class TestPolicyLoading:
         policy2 = get_policy()
         assert policy1 is policy2
 
+    def test_policy_load_forwards_auto_build_config(self, monkeypatch: pytest.MonkeyPatch):
+        import nmp.core.auth.app.embedded_pdp.engine as pe
+        from nmp.common.config import Configuration
+        from nmp.core.auth.config import AuthServiceConfig
+
+        calls: list[bool] = []
+
+        class FakePolicy:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def set_data(self, _data):
+                pass
+
+        monkeypatch.setattr(
+            pe,
+            "ensure_embedded_policy_wasm",
+            lambda *, auto_build: calls.append(auto_build) or Path("/tmp/policy.wasm"),
+        )
+        monkeypatch.setattr(pe, "OPAPolicy", FakePolicy)
+        Configuration.set_override(AuthServiceConfig(embedded_pdp_auto_build_wasm=False))
+        try:
+            pe.get_policy()
+        finally:
+            Configuration.clear_override(AuthServiceConfig)
+
+        assert calls == [False]
+
     def test_reload_policy(self):
         policy1 = get_policy()
         reload_policy()

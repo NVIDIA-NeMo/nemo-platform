@@ -6,9 +6,9 @@
 import json
 import logging
 import threading
-from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
 
+from nmp.core.auth.app.embedded_pdp.policy_wasm import ensure_embedded_policy_wasm
 from wasmtime import Config, Engine, Func, FuncType, Instance, Limits, Memory, MemoryType, Module, Store, ValType
 
 logger = logging.getLogger(__name__)
@@ -134,14 +134,11 @@ def get_policy() -> OPAPolicy:
     if _policy is None:
         with _policy_lock:
             if _policy is None:
-                path = Path(__file__).parent.parent.parent / "assets" / "policy.wasm"
-                if not path.exists():
-                    raise PolicyEngineError(f"policy.wasm not found at {path}. Run 'make build-policy'.")
-
                 from nmp.common.config import get_service_config
                 from nmp.core.auth.config import AuthServiceConfig
 
                 cfg = get_service_config(AuthServiceConfig)
+                path = ensure_embedded_policy_wasm(auto_build=cfg.embedded_pdp_auto_build_wasm)
                 _policy = OPAPolicy(
                     str(path),
                     fuel_limit=cfg.embedded_pdp_cpu_limit * 1_000_000,
