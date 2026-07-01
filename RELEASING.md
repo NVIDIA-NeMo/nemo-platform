@@ -37,7 +37,7 @@ All other first-party workspace packages use static stub versions, normally `0.0
 
 ## Step 1 — Choose the source SHA and release version
 
-Pick the full 40-character commit SHA on `main` that should be released, plus the SemVer core version to publish, for example `0.1.2`. There is no version bump PR to merge first: the stable workflow creates the release tag at `source_sha`, and the wheel build receives the package version from the workflow input.
+Pick the full 40-character commit SHA on `main` that should be released, plus the SemVer core version to publish, for example `0.1.2`. The stable workflow creates the release tag at `source_sha`, and the wheel build receives the package version from the workflow input.
 
 If the API surface changed since the last SDK update, regenerate the OpenAPI spec and SDKs before releasing:
 
@@ -77,9 +77,9 @@ The workflow runs from the **`main` branch** by default. The `source_sha` must b
 3. Creates and pushes a git tag (e.g. `0.1.2`) at `source_sha`.
 4. Builds Python wheels for each SDK in `release/assets.yaml` using `.github/actions/build-nemo-platform-wheel`.
 5. Assembles a release bundle with checksums and metadata.
-6. Dispatches a `release-bundle-produced` event to the **Platform-Deploy** repository (`CI_DISPATCH_REPO` secret), which handles the actual Kitmaker/PyPI publish.
+6. Dispatches a `release-bundle-produced` event to the **Platform-Deploy** repository (`CI_DISPATCH_REPO` secret), which handles the actual PyPI publish.
 
-> If Kitmaker is returning 5xx errors, the publish step in Platform-Deploy will fail. Wait for Kitmaker to recover and re-run the workflow with the same `source_sha` and `version` — the stable tag is already reserved so re-running is safe.
+> If the PyPI publishing service is returning 5xx errors, the publish step in Platform-Deploy will fail. Wait for the service to recover and re-run the workflow with the same `source_sha` and `version` — the stable tag is already reserved so re-running is safe.
 
 ---
 
