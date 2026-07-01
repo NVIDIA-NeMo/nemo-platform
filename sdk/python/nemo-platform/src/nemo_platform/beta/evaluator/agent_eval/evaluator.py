@@ -54,6 +54,17 @@ from openai import AsyncOpenAI
 
 log = getLogger(__name__)
 
+_SAMPLE_KEYS_EXCLUDED_FROM_OUTPUT_METADATA = frozenset(
+    {
+        "evidence",
+        "invocation_metadata",
+        "invocation_status",
+        "output_text",
+        "response",
+        "trajectory",
+    }
+)
+
 
 class AgentEvaluator:
     """Run stored-trial or live-target agent evaluations.
@@ -265,12 +276,10 @@ class AgentEvaluator:
                             inference_fn=self.inference_fn,
                             client=client,
                             default_headers=self.default_headers,
-                            template_context={
-                                "agent_eval": {
-                                    "run_id": config.run_id,
-                                    "task_id": task.id,
-                                    "invocation_id": f"{config.run_id}:{task.id}:{target.name}",
-                                }
+                            agent_eval_context={
+                                "run_id": config.run_id,
+                                "task_id": task.id,
+                                "invocation_id": f"{config.run_id}:{task.id}:{target.name}",
                             },
                             evidence_dir=(
                                 _task_evidence_dir(Path(config.output_dir), index=index, task_id=task.id)
@@ -301,7 +310,7 @@ async def _generate_sample(
     inference_fn: InferenceFn | AgentInferenceFn | None,
     client: AsyncOpenAI | httpx.AsyncClient | None,
     default_headers: dict[str, str] | None,
-    template_context: dict[str, Any] | None,
+    agent_eval_context: dict[str, Any],
     evidence_dir: Path | None,
     nat_stream_translator: NatStreamTranslator | None,
 ) -> dict[str, Any]:
@@ -325,7 +334,7 @@ async def _generate_sample(
             preprocess_hooks=preprocess_hooks,
             postprocess_hooks=postprocess_hooks,
             default_headers=default_headers,
-            template_context=template_context,
+            template_context={"agent_eval": agent_eval_context},
         )
 
     agent_inference_fn = (
@@ -337,7 +346,7 @@ async def _generate_sample(
                 invoke_agent,
                 evidence_dir=evidence_dir,
                 nat_stream_translator=nat_stream_translator,
-                invocation_context=(template_context or {}).get("agent_eval"),
+                invocation_context=agent_eval_context,
             ),
         )
     )
@@ -350,7 +359,7 @@ async def _generate_sample(
         inference_fn=agent_inference_fn,
         client=client if isinstance(client, httpx.AsyncClient) else None,
         default_headers=default_headers,
-        template_context=template_context,
+        template_context={"agent_eval": agent_eval_context},
     )
 
 
@@ -364,6 +373,10 @@ def _trial_from_sample(task: AgentEvalTask, target: Model | Agent, sample: dict[
     evidence = sample.get("evidence")
     if evidence is not None and not isinstance(evidence, CandidateEvidence):
         evidence = CandidateEvidence.model_validate(evidence)
+
+    # Preserve the strongest available evidence: merge a legacy trajectory without
+    # replacing a typed trace, retain typed evidence when no trajectory exists, and
+    # synthesize a fallback trace only when the sample provides neither.
     if "trajectory" in sample:
         trace = EvidenceDescriptor(kind="trace", format="json", data=sample["trajectory"])
         descriptors = dict(evidence.descriptors) if evidence is not None else {}
@@ -400,15 +413,7 @@ def _trial_from_sample(task: AgentEvalTask, target: Model | Agent, sample: dict[
                 **{
                     key: value
                     for key, value in sample.items()
-                    if key
-                    not in {
-                        "evidence",
-                        "invocation_metadata",
-                        "invocation_status",
-                        "output_text",
-                        "response",
-                        "trajectory",
-                    }
+                    if key not in _SAMPLE_KEYS_EXCLUDED_FROM_OUTPUT_METADATA
                 },
             },
         ),

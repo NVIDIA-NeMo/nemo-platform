@@ -545,6 +545,38 @@ async def test_live_agent_typed_failed_invocation_retains_output_and_evidence() 
 
 
 @pytest.mark.asyncio
+async def test_generation_boundary_names_agent_eval_context() -> None:
+    agent = Agent(url="https://agent.test", name="target-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
+    sample = {
+        "output_text": "answer",
+        "response": {"choices": [{"message": {"role": "assistant", "content": "answer"}}]},
+    }
+
+    with patch(
+        "nemo_evaluator_sdk.agent_eval.evaluator._generate_sample",
+        new_callable=AsyncMock,
+        return_value=sample,
+    ) as mock_generate:
+        await AgentEvaluator(inference_fn=AsyncMock()).run(
+            tasks=[_task()],
+            target=agent,
+            config=AgentEvalRunConfig(
+                run_id="run-123",
+                params=RunConfigOnline(parallelism=1),
+                write_dashboard=False,
+            ),
+        )
+
+    assert mock_generate.await_args is not None
+    assert mock_generate.await_args.kwargs["agent_eval_context"] == {
+        "run_id": "run-123",
+        "task_id": "task-1",
+        "invocation_id": "run-123:task-1:target-agent",
+    }
+    assert "template_context" not in mock_generate.await_args.kwargs
+
+
+@pytest.mark.asyncio
 async def test_default_agent_invocation_receives_run_context_and_evidence_dir(tmp_path: Path) -> None:
     invocation = AgentInvocationResult(
         status=AgentInvocationStatus.COMPLETED,
