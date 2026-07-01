@@ -55,8 +55,8 @@ class NemoHTTPError(Exception):
             pass
         try:
             return resp.text
-        except httpx.ResponseNotRead:
-            return f"HTTP {resp.status_code}"
+        except Exception:
+            return resp.reason_phrase or f"HTTP {resp.status_code}"
 
 
 # ---------------------------------------------------------------------------

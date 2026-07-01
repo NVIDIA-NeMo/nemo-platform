@@ -12,7 +12,6 @@ from types import TracebackType
 from typing import Any, Generic, TypeVar
 
 import httpx
-from nemo_platform_plugin.client.errors import NemoHTTPError as NemoHTTPError  # noqa: F401
 from nemo_platform_plugin.client.errors import raise_for_status
 from nemo_platform_plugin.client.types import OffsetPagination, PaginationStrategy, PreparedRequest
 from pydantic import BaseModel
