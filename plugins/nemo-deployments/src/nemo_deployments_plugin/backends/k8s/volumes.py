@@ -1,0 +1,190 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+"""Kubernetes PVC lifecycle helpers for the deployments plugin."""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from typing import Any
+
+from kubernetes.client.rest import ApiException
+from nemo_deployments_plugin.backends.base import VolumeStatusUpdate
+from nemo_deployments_plugin.backends.k8s.client import KubernetesClients, _kubernetes_modules
+from nemo_deployments_plugin.backends.labels import k8s_volume_resource_name, volume_identity_labels
+from nemo_deployments_plugin.entities import K8sVolumeConfig
+
+logger = logging.getLogger(__name__)
+
+
+def resolve_volume_namespace(*, default_namespace: str, backend_config: dict[str, Any]) -> str:
+    """Resolve target namespace from entity backend_config with executor default fallback."""
+    k8s_section = backend_config.get("k8s")
+    if not k8s_section:
+        return default_namespace
+    return K8sVolumeConfig.model_validate(k8s_section).namespace or default_namespace
+
+
+def resolve_storage_class(backend_config: dict[str, Any]) -> str | None:
+    """Return optional storage class from entity backend_config."""
+    k8s_section = backend_config.get("k8s")
+    if not k8s_section:
+        return None
+    return K8sVolumeConfig.model_validate(k8s_section).storage_class
+
+
+def build_pvc_body(
+    *,
+    pvc_name: str,
+    labels: dict[str, str],
+    size: str,
+    access_modes: list[str],
+    storage_class: str | None,
+) -> Any:
+    """Build a ``V1PersistentVolumeClaim`` for create."""
+    client, _ = _kubernetes_modules()
+    spec_kwargs: dict[str, Any] = {
+        "access_modes": list(access_modes),
+        "resources": client.V1VolumeResourceRequirements(requests={"storage": size}),
+    }
+    if storage_class is not None:
+        spec_kwargs["storage_class_name"] = storage_class
+    return client.V1PersistentVolumeClaim(
+        api_version="v1",
+        kind="PersistentVolumeClaim",
+        metadata=client.V1ObjectMeta(name=pvc_name, labels=labels),
+        spec=client.V1PersistentVolumeClaimSpec(**spec_kwargs),
+    )
+
+
+def map_pvc_phase_to_status(*, pvc_name: str, phase: str | None) -> VolumeStatusUpdate:
+    """Map Kubernetes PVC phase to plugin ``VolumeStatus``."""
+    if phase == "Bound":
+        return VolumeStatusUpdate(status="BOUND", status_message=f"PVC {pvc_name} is bound")
+    if phase == "Lost":
+        return VolumeStatusUpdate(status="FAILED", status_message=f"PVC {pvc_name} is lost")
+    return VolumeStatusUpdate(status="PENDING", status_message=f"PVC {pvc_name} is pending")
+
+
+def _phase_from_pvc(pvc: Any) -> str | None:
+    if pvc.status is None:
+        return None
+    return pvc.status.phase
+
+
+async def create_volume(
+    clients: KubernetesClients,
+    *,
+    default_namespace: str,
+    workspace: str,
+    name: str,
+    size: str,
+    access_modes: list[str],
+    backend_config: dict[str, Any],
+) -> VolumeStatusUpdate:
+    pvc_name = k8s_volume_resource_name(workspace, name)
+    namespace = resolve_volume_namespace(default_namespace=default_namespace, backend_config=backend_config)
+    storage_class = resolve_storage_class(backend_config)
+    labels = volume_identity_labels(workspace, name)
+    body = build_pvc_body(
+        pvc_name=pvc_name,
+        labels=labels,
+        size=size,
+        access_modes=access_modes,
+        storage_class=storage_class,
+    )
+    timeout = clients.request_timeout
+    core_v1 = clients.core_v1
+
+    def _create() -> Any:
+        try:
+            return core_v1.create_namespaced_persistent_volume_claim(
+                namespace=namespace,
+                body=body,
+                _request_timeout=timeout,
+            )
+        except ApiException as exc:
+            if exc.status == 409:
+                return core_v1.read_namespaced_persistent_volume_claim(
+                    name=pvc_name,
+                    namespace=namespace,
+                    _request_timeout=timeout,
+                )
+            raise
+
+    try:
+        pvc = await asyncio.to_thread(_create)
+        return map_pvc_phase_to_status(pvc_name=pvc_name, phase=_phase_from_pvc(pvc))
+    except Exception as exc:
+        logger.exception("Failed to create PVC %s in namespace %s", pvc_name, namespace)
+        return VolumeStatusUpdate(status="FAILED", status_message=f"Failed to create PVC: {exc}")
+
+
+async def read_volume_status(
+    clients: KubernetesClients,
+    *,
+    default_namespace: str,
+    workspace: str,
+    name: str,
+    backend_config: dict[str, Any] | None = None,
+) -> VolumeStatusUpdate:
+    pvc_name = k8s_volume_resource_name(workspace, name)
+    namespace = resolve_volume_namespace(
+        default_namespace=default_namespace,
+        backend_config=backend_config or {},
+    )
+    timeout = clients.request_timeout
+    core_v1 = clients.core_v1
+
+    def _read() -> Any:
+        return core_v1.read_namespaced_persistent_volume_claim(
+            name=pvc_name,
+            namespace=namespace,
+            _request_timeout=timeout,
+        )
+
+    try:
+        pvc = await asyncio.to_thread(_read)
+        return map_pvc_phase_to_status(pvc_name=pvc_name, phase=_phase_from_pvc(pvc))
+    except ApiException as exc:
+        if exc.status == 404:
+            return VolumeStatusUpdate(status="FAILED", status_message=f"PVC {pvc_name} not found")
+        return VolumeStatusUpdate(status="FAILED", status_message=f"Failed to read PVC: {exc}")
+    except Exception as exc:
+        return VolumeStatusUpdate(status="FAILED", status_message=f"Failed to read PVC: {exc}")
+
+
+async def delete_volume(
+    clients: KubernetesClients,
+    *,
+    default_namespace: str,
+    workspace: str,
+    name: str,
+    backend_config: dict[str, Any] | None = None,
+) -> VolumeStatusUpdate:
+    pvc_name = k8s_volume_resource_name(workspace, name)
+    namespace = resolve_volume_namespace(
+        default_namespace=default_namespace,
+        backend_config=backend_config or {},
+    )
+    timeout = clients.request_timeout
+    core_v1 = clients.core_v1
+
+    def _delete() -> None:
+        try:
+            core_v1.delete_namespaced_persistent_volume_claim(
+                name=pvc_name,
+                namespace=namespace,
+                _request_timeout=timeout,
+            )
+        except ApiException as exc:
+            if exc.status == 404:
+                return
+            raise
+
+    try:
+        await asyncio.to_thread(_delete)
+        return VolumeStatusUpdate(status="RELEASED", status_message=f"PVC {pvc_name} released")
+    except Exception as exc:
+        return VolumeStatusUpdate(status="FAILED", status_message=f"Failed to delete PVC: {exc}")
