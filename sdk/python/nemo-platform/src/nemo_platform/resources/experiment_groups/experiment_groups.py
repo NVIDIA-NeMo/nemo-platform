@@ -97,7 +97,7 @@ class ExperimentGroupsResource(SyncAPIResource):
 
           description: Human-readable purpose of the group.
 
-          insight_id: Entity id of the NeMo Evaluator insight that seeded this group, if any.
+          insight_id: Reference to an external insight that seeded this group, if any.
 
           metadata: Free-form producer metadata for the group.
 
@@ -213,7 +213,7 @@ class ExperimentGroupsResource(SyncAPIResource):
 
           description: Human-readable purpose of the group.
 
-          insight_id: Entity id of the NeMo Evaluator insight that seeded this group, if any.
+          insight_id: Reference to an external insight that seeded this group, if any.
 
           metadata: Free-form producer metadata for the group.
 
@@ -408,7 +408,7 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
 
           description: Human-readable purpose of the group.
 
-          insight_id: Entity id of the NeMo Evaluator insight that seeded this group, if any.
+          insight_id: Reference to an external insight that seeded this group, if any.
 
           metadata: Free-form producer metadata for the group.
 
@@ -524,7 +524,7 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
 
           description: Human-readable purpose of the group.
 
-          insight_id: Entity id of the NeMo Evaluator insight that seeded this group, if any.
+          insight_id: Reference to an external insight that seeded this group, if any.
 
           metadata: Free-form producer metadata for the group.
 

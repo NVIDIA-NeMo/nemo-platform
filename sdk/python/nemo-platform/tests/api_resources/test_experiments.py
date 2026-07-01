@@ -61,7 +61,7 @@ class TestExperiments:
             parent_experiment_id="parent_experiment_id",
             root_cause="root_cause",
             source_link="https://example.com",
-            status="baseline",
+            status="status",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
@@ -187,7 +187,7 @@ class TestExperiments:
             parent_experiment_id="parent_experiment_id",
             root_cause="root_cause",
             source_link="https://example.com",
-            status="baseline",
+            status="status",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
@@ -665,7 +665,7 @@ class TestAsyncExperiments:
             parent_experiment_id="parent_experiment_id",
             root_cause="root_cause",
             source_link="https://example.com",
-            status="baseline",
+            status="status",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
@@ -791,7 +791,7 @@ class TestAsyncExperiments:
             parent_experiment_id="parent_experiment_id",
             root_cause="root_cause",
             source_link="https://example.com",
-            status="baseline",
+            status="status",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
 

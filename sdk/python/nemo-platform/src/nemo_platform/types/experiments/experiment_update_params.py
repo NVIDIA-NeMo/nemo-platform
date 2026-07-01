@@ -21,7 +21,6 @@ from typing import Dict
 from typing_extensions import Required, Annotated, TypedDict
 
 from ..._utils import PropertyInfo
-from .experiment_status import ExperimentStatus
 
 __all__ = ["ExperimentUpdateParams"]
 
@@ -65,5 +64,5 @@ class ExperimentUpdateParams(TypedDict, total=False):
     source_link: str
     """Optional URL for the source experiment."""
 
-    status: ExperimentStatus
-    """Lifecycle status of an Experiment in the NeMo Evaluator flow."""
+    status: str
+    """Producer-defined lifecycle status of the experiment."""

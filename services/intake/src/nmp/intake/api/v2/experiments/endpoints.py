@@ -861,9 +861,7 @@ async def _count_live_experiments_by_group(
     return counts
 
 
-async def _validate_parent_experiment_exists(
-    entity_client: EntityClient, *, parent_experiment_id: str | None
-) -> None:
+async def _validate_parent_experiment_exists(entity_client: EntityClient, *, parent_experiment_id: str | None) -> None:
     """Reject with 400 if ``parent_experiment_id`` is set but doesn't reference an existing experiment."""
     if parent_experiment_id is None:
         return

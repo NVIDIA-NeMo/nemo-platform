@@ -914,7 +914,6 @@ resources:
       experiment_request: ExperimentRequest
       experiment_response: ExperimentResponse
       experiment_responses_page: ExperimentResponsesPage
-      experiment_status: ExperimentStatus
       metric_stat_filters: MetricStatFilters
       number_filter: NumberFilter
     methods:

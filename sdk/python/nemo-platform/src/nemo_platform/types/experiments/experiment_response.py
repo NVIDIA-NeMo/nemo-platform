@@ -20,7 +20,6 @@ from datetime import datetime
 
 from ..._compat import PYDANTIC_V1, ConfigDict
 from ..._models import BaseModel
-from .experiment_status import ExperimentStatus
 from .evaluator_aggregate import EvaluatorAggregate
 
 __all__ = ["ExperimentResponse"]
@@ -85,8 +84,7 @@ class ExperimentResponse(BaseModel):
 
     source_link: Optional[str] = None
 
-    status: Optional[ExperimentStatus] = None
-    """Lifecycle status of an Experiment in the NeMo Evaluator flow."""
+    status: Optional[str] = None
 
     updated_at: Optional[datetime] = None
 

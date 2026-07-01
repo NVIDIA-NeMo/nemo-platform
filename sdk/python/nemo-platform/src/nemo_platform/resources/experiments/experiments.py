@@ -42,12 +42,10 @@ from ..._response import (
 from ...pagination import SyncDefaultPagination, AsyncDefaultPagination
 from ..._base_client import AsyncPaginator, make_request_options
 from ...types.experiments import (
-    ExperimentStatus,
     experiment_list_params,
     experiment_create_params,
     experiment_update_params,
 )
-from ...types.experiments.experiment_status import ExperimentStatus
 from ...types.experiments.experiment_response import ExperimentResponse
 from ...types.experiments.experiment_filter_param import ExperimentFilterParam
 from ..._exceptions import ConflictError
@@ -92,7 +90,7 @@ class ExperimentsResource(SyncAPIResource):
         parent_experiment_id: str | Omit = omit,
         root_cause: str | Omit = omit,
         source_link: str | Omit = omit,
-        status: ExperimentStatus | Omit = omit,
+        status: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         exist_ok: bool = False,
@@ -126,7 +124,7 @@ class ExperimentsResource(SyncAPIResource):
 
           source_link: Optional URL for the source experiment.
 
-          status: Lifecycle status of an Experiment in the NeMo Evaluator flow.
+          status: Producer-defined lifecycle status of the experiment.
 
 
           exist_ok: Do not raise an error if the resource already exists. Returns the existing resource.
@@ -224,7 +222,7 @@ class ExperimentsResource(SyncAPIResource):
         parent_experiment_id: str | Omit = omit,
         root_cause: str | Omit = omit,
         source_link: str | Omit = omit,
-        status: ExperimentStatus | Omit = omit,
+        status: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -257,7 +255,7 @@ class ExperimentsResource(SyncAPIResource):
 
           source_link: Optional URL for the source experiment.
 
-          status: Lifecycle status of an Experiment in the NeMo Evaluator flow.
+          status: Producer-defined lifecycle status of the experiment.
 
           extra_headers: Send extra headers
 
@@ -533,7 +531,7 @@ class AsyncExperimentsResource(AsyncAPIResource):
         parent_experiment_id: str | Omit = omit,
         root_cause: str | Omit = omit,
         source_link: str | Omit = omit,
-        status: ExperimentStatus | Omit = omit,
+        status: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         exist_ok: bool = False,
@@ -567,7 +565,7 @@ class AsyncExperimentsResource(AsyncAPIResource):
 
           source_link: Optional URL for the source experiment.
 
-          status: Lifecycle status of an Experiment in the NeMo Evaluator flow.
+          status: Producer-defined lifecycle status of the experiment.
 
 
           exist_ok: Do not raise an error if the resource already exists. Returns the existing resource.
@@ -665,7 +663,7 @@ class AsyncExperimentsResource(AsyncAPIResource):
         parent_experiment_id: str | Omit = omit,
         root_cause: str | Omit = omit,
         source_link: str | Omit = omit,
-        status: ExperimentStatus | Omit = omit,
+        status: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -698,7 +696,7 @@ class AsyncExperimentsResource(AsyncAPIResource):
 
           source_link: Optional URL for the source experiment.
 
-          status: Lifecycle status of an Experiment in the NeMo Evaluator flow.
+          status: Producer-defined lifecycle status of the experiment.
 
           extra_headers: Send extra headers
 

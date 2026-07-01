@@ -43,7 +43,7 @@ class ExperimentGroupUpdateParams(TypedDict, total=False):
     """Human-readable purpose of the group."""
 
     insight_id: str
-    """Entity id of the NeMo Evaluator insight that seeded this group, if any."""
+    """Reference to an external insight that seeded this group, if any."""
 
     metadata: Dict[str, object]
     """Free-form producer metadata for the group."""
