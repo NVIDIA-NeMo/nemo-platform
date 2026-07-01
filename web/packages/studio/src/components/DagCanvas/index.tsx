@@ -18,7 +18,9 @@ import {
   MarkerType,
   ReactFlow,
   useEdgesState,
+  useNodes,
   useNodesState,
+  useReactFlow,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { type FC, useEffect, useMemo, useRef } from 'react';
@@ -27,6 +29,26 @@ const NODE_TYPES = { card: CardNode };
 
 /** Stable id for an edge; falls back to a source/target pair when none is given. */
 const edgeId = (edge: DagEdge): string => edge.id ?? `${edge.source}->${edge.target}`;
+/**
+ * Pans/zooms the viewport to center `focusNodeId` whenever it changes to a node present
+ * on the canvas. Rendered inside `ReactFlow` so it can use the flow hooks. Tracks the
+ * last-focused id so live edits to a focused node don't re-center it, and defers focus
+ * until a just-added node has actually landed in the store.
+ */
+const FocusController: FC<{ focusNodeId?: string | null }> = ({ focusNodeId }) => {
+  const { fitView } = useReactFlow();
+  const nodes = useNodes();
+  const lastFocused = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!focusNodeId || focusNodeId === lastFocused.current) return;
+    if (!nodes.some((node) => node.id === focusNodeId)) return;
+    lastFocused.current = focusNodeId;
+    fitView({ nodes: [{ id: focusNodeId }], duration: 500, padding: 0.4, maxZoom: 1.2 });
+  }, [focusNodeId, nodes, fitView]);
+
+  return null;
+};
 
 export interface DagCanvasProps {
   /** Graph nodes; positions are computed automatically. */
@@ -35,6 +57,10 @@ export interface DagCanvasProps {
   edges: DagEdge[];
   /** Fired with the node id and its data when a card is clicked or keyboard-activated. */
   onNodeClick?: (id: string, data: DagNodeData) => void;
+  /** When set (or changed), the viewport animates to center this node. */
+  focusNodeId?: string | null;
+  /** Fired for each node removed via the canvas (e.g. Backspace on a selected node). */
+  onNodeDelete?: (id: string) => void;
   /** Layout flow direction; defaults to `'TB'` (top-to-bottom). */
   direction?: DagDirection;
   /**
@@ -58,6 +84,8 @@ export const DagCanvas: FC<DagCanvasProps> = ({
   nodes,
   edges,
   onNodeClick,
+  focusNodeId,
+  onNodeDelete,
   direction = 'TB',
   colorMode,
   className,
@@ -69,11 +97,20 @@ export const DagCanvas: FC<DagCanvasProps> = ({
   }, [onNodeClick]);
 
   const laidOutNodes = useMemo<CardNodeType[]>(() => {
+    // A node only shows the handle for a side that actually has an edge, so
+    // fully-unconnected nodes render no handles.
+    const targets = new Set(edges.map((edge) => edge.target));
+    const sources = new Set(edges.map((edge) => edge.source));
     const rfNodes: CardNodeType[] = nodes.map((node) => ({
       id: node.id,
       type: 'card',
       position: { x: 0, y: 0 },
-      data: { ...node.data, onActivate: () => onNodeClickRef.current?.(node.id, node.data) },
+      data: {
+        ...node.data,
+        onActivate: () => onNodeClick?.(node.id, node.data),
+        hasIncoming: targets.has(node.id),
+        hasOutgoing: sources.has(node.id),
+      },
     }));
     const rfEdges: Edge[] = edges.map((edge) => ({
       id: edgeId(edge),
@@ -114,6 +151,7 @@ export const DagCanvas: FC<DagCanvasProps> = ({
         colorMode={colorMode ?? themeColorMode}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onNodesDelete={(deleted) => deleted.forEach((node) => onNodeDelete?.(node.id))}
         nodesDraggable={false}
         fitView
         minZoom={0.2}
@@ -122,6 +160,7 @@ export const DagCanvas: FC<DagCanvasProps> = ({
       >
         <Background />
         <Controls />
+        <FocusController focusNodeId={focusNodeId} />
       </ReactFlow>
     </div>
   );

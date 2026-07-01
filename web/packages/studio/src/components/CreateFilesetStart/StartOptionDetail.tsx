@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Divider, Flex, Stack, Text } from '@nvidia/foundations-react-core';
+import { TemplateCard } from '@studio/components/CreateFilesetStart/TemplateCard';
+import { FILESET_TEMPLATES } from '@studio/components/CreateFilesetStart/templates';
 import type { StartOption } from '@studio/components/CreateFilesetStart/types';
 import { Layers, Sparkles, Wand2 } from 'lucide-react';
 import type { FC, ReactNode } from 'react';
@@ -62,15 +64,38 @@ const DETAIL_CONTENT: Partial<Record<StartOption['id'], ReactNode>> = {
 
 export interface StartOptionDetailProps {
   option: StartOption;
+  /** Id of the currently-chosen template, when {@link option} is "template". */
+  selectedTemplateId: string | null;
+  /** Fired when a template card is chosen. */
+  onSelectTemplate: (templateId: string) => void;
 }
 
 /**
- * The lower half of the new-fileset view. Its content changes based on the selected
- * tile. Today only "Build from scratch" is wired up; selecting it shows what the empty
- * canvas offers.
+ * The secondary area of the new-fileset view, below the start tiles. Its content changes
+ * based on the selected tile: "Start from a template" shows the recipe cards, "Build from
+ * scratch" shows what the empty canvas offers.
  */
-export const StartOptionDetail: FC<StartOptionDetailProps> = ({ option }) => {
-  const content = DETAIL_CONTENT[option.id];
+export const StartOptionDetail: FC<StartOptionDetailProps> = ({
+  option,
+  selectedTemplateId,
+  onSelectTemplate,
+}) => {
+  const content =
+    option.id === 'template' ? (
+      <Flex gap="density-md" className="w-full flex-wrap">
+        {FILESET_TEMPLATES.map((template) => (
+          <TemplateCard
+            key={template.id}
+            template={template}
+            selected={selectedTemplateId === template.id}
+            onSelect={() => onSelectTemplate(template.id)}
+          />
+        ))}
+      </Flex>
+    ) : (
+      DETAIL_CONTENT[option.id]
+    );
+
   if (!content) {
     return null;
   }

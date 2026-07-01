@@ -22,6 +22,7 @@ export const ColumnTypeCard: FC<ColumnTypeCardProps> = ({ option, onSelect }) =>
   const { icon: Icon, label, description, color, columnType, samplerType } = option;
   return (
     <SelectableCard
+      className="w-full"
       title={label}
       subtitle={description}
       onActivate={() => onSelect({ columnType, samplerType })}

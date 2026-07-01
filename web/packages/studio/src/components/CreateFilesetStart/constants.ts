@@ -23,7 +23,7 @@ export const START_OPTIONS: StartOption[] = [
     description: 'Pick a ready-made recipe for SFT, classification, RAG eval, tool-use and more.',
     icon: LayoutGrid,
     tag: { label: '8 recipes', color: 'blue', kind: 'outline' },
-    enabled: false,
+    enabled: true,
   },
   {
     id: 'scratch',

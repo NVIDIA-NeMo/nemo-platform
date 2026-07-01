@@ -19,18 +19,41 @@ import { ArrowRight } from 'lucide-react';
 import { useState, type FC } from 'react';
 
 export interface CreateFilesetStartProps {
-  /** Fired when the user confirms a selected start option via the Continue footer. */
-  onContinue: (optionId: StartOptionId) => void;
+  /**
+   * Fired when the user confirms a selected start option via the Continue footer. For
+   * the "template" option, the chosen template id is passed as the second argument.
+   */
+  onContinue: (optionId: StartOptionId, templateId?: string) => void;
 }
 
 /**
  * The Data Designer "Create a fileset" landing view: a row of start-option tiles whose
- * lower half changes with the selection, plus a bottom-anchored footer with a Continue
- * action that appears once a (selectable) tile is chosen.
+ * secondary area changes with the selection, plus a bottom-anchored footer with a Continue
+ * action that appears once the selection is complete (a tile, and — for "template" — a
+ * template card).
  */
 export const CreateFilesetStart: FC<CreateFilesetStartProps> = ({ onContinue }) => {
   const [selectedId, setSelectedId] = useState<StartOptionId | null>(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const selectedOption = START_OPTIONS.find((option) => option.id === selectedId) ?? null;
+
+  const selectOption = (optionId: StartOptionId) => {
+    setSelectedId(optionId);
+    setSelectedTemplateId(null);
+  };
+
+  // Ready to continue once a tile is chosen — and, for "template", a template card too.
+  const canContinue =
+    selectedOption !== null && (selectedOption.id !== 'template' || selectedTemplateId !== null);
+
+  const handleContinue = () => {
+    if (!selectedOption) return;
+    if (selectedOption.id === 'template' && selectedTemplateId) {
+      onContinue(selectedOption.id, selectedTemplateId);
+    } else {
+      onContinue(selectedOption.id);
+    }
+  };
 
   return (
     <Stack className="h-full">
@@ -45,30 +68,36 @@ export const CreateFilesetStart: FC<CreateFilesetStartProps> = ({ onContinue }) 
             <Text kind="label/bold/sm" className="text-secondary">
               How do you want to start?
             </Text>
-            <Grid cols={START_OPTIONS.length} gap="density-md">
+            <Grid colMinWidth="200px" gap="density-md">
               {START_OPTIONS.map((option) => (
                 <GridItem key={option.id}>
                   <StartOptionCard
                     option={option}
                     selected={selectedId === option.id}
-                    onSelect={() => setSelectedId(option.id)}
+                    onSelect={() => selectOption(option.id)}
                   />
                 </GridItem>
               ))}
             </Grid>
           </Stack>
 
-          {selectedOption ? <StartOptionDetail option={selectedOption} /> : null}
+          {selectedOption ? (
+            <StartOptionDetail
+              option={selectedOption}
+              selectedTemplateId={selectedTemplateId}
+              onSelectTemplate={setSelectedTemplateId}
+            />
+          ) : null}
         </Stack>
       </Block>
 
-      {selectedOption ? (
+      {canContinue ? (
         <Flex
           align="center"
           justify="end"
           className="shrink-0 gap-4 border-t border-base bg-surface-base px-10 py-4"
         >
-          <Button color="brand" kind="primary" onClick={() => onContinue(selectedOption.id)}>
+          <Button color="brand" kind="primary" onClick={handleContinue}>
             Continue
             <ArrowRight size={16} aria-hidden />
           </Button>
