@@ -29,7 +29,7 @@ from nemo_platform_plugin.client.auth import (
     StaticToken,
     TokenProvider,
 )
-from nemo_platform_plugin.client.errors import ConflictError, raise_for_status
+from nemo_platform_plugin.client.errors import raise_for_status
 from nemo_platform_plugin.client.response import (
     AsyncNemoBinaryResponse,
     AsyncNemoPaginatedResponse,
@@ -193,18 +193,6 @@ class BaseNemoClient:
                 filtered[k] = v
         return filtered or None
 
-    def _raise_for_status(self, raw: httpx.Response, request: PreparedRequest) -> None:
-        """Raise on non-2xx, unless a client option suppresses the error.
-
-        For example, ``exist_ok=True`` swallows 409 Conflict.
-        """
-        try:
-            raise_for_status(raw)
-        except ConflictError:
-            if request.client_options and request.client_options.get("exist_ok"):
-                return
-            raise
-
 
 class NemoClient(BaseNemoClient):
     """Sync HTTP client for NeMo Platform APIs."""
@@ -345,7 +333,10 @@ class NemoClient(BaseNemoClient):
             )
 
         raw = self._request_with_retry(request, url, req_headers, params, resolved_retry)
-        self._raise_for_status(raw, request)
+        # NOTE: client_options (e.g. exist_ok) from PreparedRequest are not
+        # acted on here yet — see AIRCORE-866 for the planned server-side
+        # fix that would let the client handle them properly.
+        raise_for_status(raw)
         body = None
         if request.response_type is not None:
             body = request.response_type.model_validate(raw.json())
@@ -531,7 +522,10 @@ class AsyncNemoClient(BaseNemoClient):
             )
 
         raw = await self._request_with_retry(request, url, req_headers, params, resolved_retry)
-        self._raise_for_status(raw, request)
+        # NOTE: client_options (e.g. exist_ok) from PreparedRequest are not
+        # acted on here yet — see AIRCORE-866 for the planned server-side
+        # fix that would let the client handle them properly.
+        raise_for_status(raw)
         body = None
         if request.response_type is not None:
             body = request.response_type.model_validate(raw.json())
