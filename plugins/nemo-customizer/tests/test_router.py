@@ -161,7 +161,7 @@ def test_authz_derives_from_contributor_routes(monkeypatch: pytest.MonkeyPatch) 
 
             def get_routers(self) -> list[RouterSpec]:
                 router = APIRouter()
-                create_perm = Permission(f"customization.{backend}.jobs.create", f"Create {backend} jobs")
+                create_perm = Permission("customization", f"{backend}.jobs", "create", f"Create {backend} jobs")
 
                 @router.post(f"/{backend}/jobs")
                 @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[create_perm])

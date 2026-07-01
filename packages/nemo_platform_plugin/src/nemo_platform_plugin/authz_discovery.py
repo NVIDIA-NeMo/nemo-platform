@@ -92,8 +92,10 @@ def _collapse_rules(
     Returns ``(permissions, callers)`` for the representative rule.
     """
     # Only callers are OR'd across rules (unioned below); their permissions must match, since
-    # the wire format holds one permissions list per (path, method). Reject a mismatch rather
-    # than silently picking one rule's.
+    # the wire format holds one permissions list per (path, method). Compare by Permission.id —
+    # the ``service.resource.action`` wire key joined from each Permission's structured parts —
+    # not by object, so a description-only difference isn't read as a distinct set. Reject a
+    # mismatch rather than silently picking one rule's.
     distinct_permission_sets = {frozenset(p.id for p in rule.permissions) for rule in rules}
     if len(distinct_permission_sets) > 1:
         raise ValueError(
@@ -317,7 +319,7 @@ def _derive_service_contribution(service: NemoService) -> tuple[AuthzContributio
     # cross-namespace can reach the merged policy.
     owner = service.name
     malformed = sorted(pid for pid in catalog if not is_valid_permission_id(pid))
-    out_of_namespace = sorted(pid for pid in catalog if pid.split(".", 1)[0] != owner)
+    out_of_namespace = sorted(p.id for p in catalog.values() if p.service != owner)
     if malformed:
         errors.append(f"malformed permission id(s) (fail-closed): {malformed}")
     if out_of_namespace:

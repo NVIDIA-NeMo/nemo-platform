@@ -80,16 +80,41 @@ class CallerKind(StrEnum):
 
 @dataclass(frozen=True)
 class Permission:
-    """A service-owned permission: a stable id and a required human description.
+    """A service-owned permission, structured as ``service.resource.action``.
 
-    The id is the wire value (what path rules and roles reference); the description is
-    the one piece of authz data that cannot be derived from anything else, so it rides
-    on the permission itself rather than in a parallel list. ``str(permission)`` is the
-    id, so a ``Permission`` can be used wherever the wire string is expected.
+    The permission is authored as its parts, and the canonical wire id (:attr:`id`) is
+    *derived* from them by joining — never the other way around. So reading a part is a
+    field access, not a string split, and the id is computed exactly once (the object is
+    frozen). Every id follows the same grammar:
+
+    - ``service`` — the owning plugin (the first id segment; equals ``NemoService.name`` —
+      the fail-closed namespace check enforces it).
+    - ``resource`` — the collection / sub-resource acted on. ``""`` for a service-level
+      action; may itself be dotted (e.g. ``deployment-configs.status``).
+    - ``action`` — the operation (the final segment, e.g. ``create`` / ``read`` / ``update``).
+
+    ``description`` is the one piece of authz data that cannot be derived from anything else,
+    so it rides on the permission itself rather than in a parallel list. ``str(permission)``
+    and :attr:`id` are the dotted wire value, so a ``Permission`` can be used wherever the id
+    string is expected.
     """
 
-    id: str
+    service: str
+    resource: str
+    action: str
     description: str
+    id: str = field(init=False, compare=False, default="")
+    """Canonical dotted wire id, joined from ``service.resource.action`` at construction.
+    ``compare=False``: equality is over the structured parts, and the id is just their cached
+    view (an empty ``resource`` drops out, so a service-level action is ``service.action``)."""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "id", ".".join(seg for seg in (self.service, self.resource, self.action) if seg))
+
+    @property
+    def namespace(self) -> str:
+        """The dotted prefix (``service.resource``) — the id with the action removed."""
+        return ".".join(seg for seg in (self.service, self.resource) if seg)
 
     def __str__(self) -> str:
         return self.id
@@ -127,13 +152,29 @@ class AuthzScope:
         """Return a scope whose permission namespace is deepened by *segments*; scope unchanged."""
         return AuthzScope(self.scope, ".".join((self.namespace, *segments)))
 
-    def permission(self, *segments: str, description: str) -> Permission:
-        """Build the :class:`Permission` for an action under this namespace.
+    @property
+    def resource(self) -> str:
+        """The permission ``resource`` path this scope mints under — its namespace beyond the service.
 
-        ``AuthzScope("agents").permission("create", description="Create agents")`` →
-        ``Permission("agents.create", "Create agents")``.
+        ``""`` for a bare service-level scope; deepened by :meth:`child` (an ``agents`` scope
+        with a ``deployments`` child has resource ``"deployments"``).
         """
-        return Permission(".".join((self.namespace, *segments)), description)
+        return self.namespace[len(self.scope) + 1 :] if self.namespace != self.scope else ""
+
+    def permission(self, *segments: str, description: str) -> Permission:
+        """Build the :class:`Permission` for an action under this scope.
+
+        The final segment is the ``action``; any leading segments extend the ``resource`` path.
+
+        ``AuthzScope("agents").child("deployments").permission("create", description="...")`` →
+        ``Permission(service="agents", resource="deployments", action="create", ...)`` (id
+        ``agents.deployments.create``).
+        """
+        if not segments:
+            raise ValueError("AuthzScope.permission() requires at least one segment (the action)")
+        *lead, action = segments
+        resource = ".".join(seg for seg in (self.resource, *lead) if seg)
+        return Permission(self.scope, resource, action, description)
 
     def read_scopes(self) -> list[str]:
         """The read scope strings for this area, e.g. ``["agents:read", "platform:read"]``.
@@ -203,11 +244,17 @@ class PermissionSet:
     def __init_subclass__(cls, *, namespace: str, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
         cls.namespace = namespace
+        # The declared namespace is ``service`` + an optional resource prefix; the member's
+        # suffix contributes any further resource segments plus the trailing action. Split
+        # here, once, so each Permission is stored as structured parts (never re-split).
+        service, _, namespace_resource = namespace.partition(".")
         cls._members = {}
         for name, value in list(vars(cls).items()):
             if isinstance(value, _PendingPermission):
                 suffix = value.suffix or name.lower()
-                resolved = Permission(f"{namespace}.{suffix}", value.description)
+                *lead, action = suffix.split(".")
+                resource = ".".join(seg for seg in (namespace_resource, *lead) if seg)
+                resolved = Permission(service, resource, action, value.description)
                 setattr(cls, name, resolved)
                 cls._members[name] = resolved
 

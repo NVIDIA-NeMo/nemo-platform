@@ -27,7 +27,7 @@ from nemo_platform_plugin.authz import (
 from nemo_platform_plugin.authz_discovery import _iter_composed_routes, _method_from_dict
 from nemo_platform_plugin.service import NemoService, RouterSpec
 
-_READ = Permission("x.read", "Read x")
+_READ = Permission("x", "", "read", "Read x")
 
 
 def test_caller_kind_values_and_no_anon() -> None:
@@ -37,12 +37,22 @@ def test_caller_kind_values_and_no_anon() -> None:
     assert not hasattr(CallerKind, "ANON")
 
 
-def test_permission_is_frozen_and_stringifies_to_id() -> None:
-    permission = Permission(id="agents.deployments.read", description="Read deployments")
+def test_permission_id_is_joined_from_structured_parts() -> None:
+    permission = Permission(service="agents", resource="deployments", action="read", description="Read deployments")
+    # id (and str) are the dotted wire value joined from the parts — never split back out.
+    assert (permission.service, permission.resource, permission.action) == ("agents", "deployments", "read")
     assert permission.id == "agents.deployments.read"
+    assert permission.namespace == "agents.deployments"
     assert str(permission) == "agents.deployments.read"
     with pytest.raises(Exception):  # frozen dataclass: FrozenInstanceError
         permission.id = "other"  # type: ignore[misc]
+
+
+def test_service_level_permission_has_no_resource_segment() -> None:
+    # An empty resource drops out of the id: a service-level action is just ``service.action``.
+    permission = Permission(service="evaluator", resource="", action="create", description="Create")
+    assert permission.id == "evaluator.create"
+    assert permission.namespace == "evaluator"
 
 
 def test_permission_set_derives_ids_from_namespace_and_member_name() -> None:
@@ -50,8 +60,14 @@ def test_permission_set_derives_ids_from_namespace_and_member_name() -> None:
         CREATE = perm("Create a widget")
         BULK = perm("Bulk export", suffix="bulk.export")
 
-    assert WidgetPerms.CREATE == Permission("widget.create", "Create a widget")
-    assert WidgetPerms.BULK == Permission("widget.bulk.export", "Bulk export")
+    assert WidgetPerms.CREATE == Permission("widget", "", "create", "Create a widget")
+    # A dotted suffix contributes resource segments; the final segment is the action.
+    assert WidgetPerms.BULK == Permission("widget", "bulk", "export", "Bulk export")
+    assert (WidgetPerms.BULK.service, WidgetPerms.BULK.resource, WidgetPerms.BULK.action) == (
+        "widget",
+        "bulk",
+        "export",
+    )
     assert set(WidgetPerms.all()) == {WidgetPerms.CREATE, WidgetPerms.BULK}
     # A typo'd member doesn't exist — caught at access time, not at the policy layer.
     assert not hasattr(WidgetPerms, "CRAETE")
@@ -213,7 +229,7 @@ def test_path_rule_survives_router_prefix_rebasing() -> None:
     derivation's composed-route enumeration rather than by scanning raw ``.routes``.
     """
     router = APIRouter()
-    items_read = Permission("items.read", "Read items")
+    items_read = Permission("items", "", "read", "Read items")
 
     @router.get("/items/{name}")
     @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[items_read])

@@ -72,11 +72,11 @@ def test_permissions_outside_service_namespace_fail_closed() -> None:
     router = APIRouter()
 
     @router.get("/v2/x")
-    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[Permission("svc.x.read", "Read x")])
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[Permission("svc", "x", "read", "Read x")])
     async def x() -> None: ...
 
     @router.get("/v2/y")
-    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[Permission("other.y.read", "Read y")])
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[Permission("other", "y", "read", "Read y")])
     async def y() -> None: ...
 
     class _Svc(NemoService):
@@ -98,7 +98,7 @@ def test_malformed_permission_id_fails_closed() -> None:
     router = APIRouter()
 
     @router.get("/v2/x")
-    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[Permission("svc.bad_segment", "Read x")])
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[Permission("svc", "", "bad_segment", "Read x")])
     async def x() -> None: ...
 
     class _Svc(NemoService):
@@ -119,11 +119,11 @@ def test_duplicate_path_method_binding_fails_closed() -> None:
     router = APIRouter()
 
     @router.get("/v2/dup")
-    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[Permission("svc.read", "Read")])
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[Permission("svc", "", "read", "Read")])
     async def first() -> None: ...
 
     @router.get("/v2/dup")
-    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[Permission("svc.read", "Read")])
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[Permission("svc", "", "read", "Read")])
     async def second() -> None: ...
 
     class _Svc(NemoService):
@@ -146,7 +146,7 @@ def test_websocket_route_is_warned_not_denied() -> None:
     router = APIRouter()
 
     @router.get("/v2/x")
-    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[Permission("svc.read", "Read")])
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[Permission("svc", "", "read", "Read")])
     async def x() -> None: ...
 
     @router.websocket("/v2/stream")
@@ -168,7 +168,7 @@ def test_missing_permission_description_is_warning_not_deny() -> None:
     router = APIRouter()
 
     @router.get("/v2/x")
-    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[Permission("svc.x.read", "")])
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[Permission("svc", "x", "read", "")])
     async def x() -> None: ...
 
     class _Svc(NemoService):
@@ -189,11 +189,11 @@ def test_conflicting_descriptions_for_same_id_is_warning() -> None:
     router = APIRouter()
 
     @router.get("/v2/a")
-    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[Permission("svc.read", "Read")])
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[Permission("svc", "", "read", "Read")])
     async def a() -> None: ...
 
     @router.get("/v2/b")
-    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[Permission("svc.read", "Totally different")])
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[Permission("svc", "", "read", "Totally different")])
     async def b() -> None: ...
 
     class _Svc(NemoService):
@@ -215,7 +215,7 @@ def test_extra_permissions_adds_non_route_permission_to_catalog() -> None:
     router = APIRouter()
 
     @router.get("/v2/x")
-    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[Permission("svc.read", "Read")])
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[Permission("svc", "", "read", "Read")])
     async def x() -> None: ...
 
     class _Svc(NemoService):
@@ -225,7 +225,7 @@ def test_extra_permissions_adds_non_route_permission_to_catalog() -> None:
             return [RouterSpec(router)]
 
         def extra_permissions(self) -> list[Permission]:
-            return [Permission("svc.admin", "Administer svc")]
+            return [Permission("svc", "", "admin", "Administer svc")]
 
     contrib, errors, _warnings = _derive_service_contribution(_Svc())
     assert errors == []
@@ -238,7 +238,7 @@ def test_extra_permissions_failure_is_reported_routes_survive() -> None:
     router = APIRouter()
 
     @router.get("/v2/x")
-    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[Permission("svc.read", "Read")])
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[Permission("svc", "", "read", "Read")])
     async def x() -> None: ...
 
     class _Svc(NemoService):
@@ -343,7 +343,7 @@ def test_degraded_result_is_not_cached_but_clean_is(monkeypatch: pytest.MonkeyPa
             router = APIRouter()
 
             @router.get("/v2/x")
-            @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[Permission("flaky.read", "Read")])
+            @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[Permission("flaky", "", "read", "Read")])
             async def x() -> None: ...
 
             return [RouterSpec(router)]
@@ -371,7 +371,7 @@ def test_clean_plugin_has_no_problems(monkeypatch: pytest.MonkeyPatch) -> None:
     router = APIRouter()
 
     @router.get("/v2/items/{name}")
-    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[Permission("svc.items.read", "Read items")])
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[Permission("svc", "items", "read", "Read items")])
     async def get_item(name: str) -> None: ...
 
     class _Svc(NemoService):
@@ -395,11 +395,11 @@ def test_clean_plugin_has_no_problems(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_malformed_route_denies_only_itself_not_the_plugin() -> None:
     """A route whose rules can't collapse denies only itself — the plugin's other routes survive."""
     router = APIRouter()
-    svc_read = Permission("svc.read", "Read")
+    svc_read = Permission("svc", "", "read", "Read")
 
     @router.get("/v2/bad")
     @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[svc_read])
-    @path_rule(callers=[CallerKind.SERVICE_PRINCIPAL], permissions=[Permission("svc.internal", "Internal")])
+    @path_rule(callers=[CallerKind.SERVICE_PRINCIPAL], permissions=[Permission("svc", "", "internal", "Internal")])
     async def bad() -> None: ...
 
     @router.get("/v2/good")

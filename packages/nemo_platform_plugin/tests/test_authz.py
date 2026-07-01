@@ -70,7 +70,7 @@ def test_derive_contribution_composes_mounted_path(monkeypatch) -> None:
     @scope.read
     @path_rule(
         callers=[CallerKind.PRINCIPAL],
-        permissions=[Permission("example.items.read", "Read example items")],
+        permissions=[Permission("example", "items", "read", "Read example items")],
     )
     async def get_item(workspace: str, name: str) -> dict[str, str]:
         return {"name": name}
@@ -129,7 +129,7 @@ def test_derive_service_only_route_emits_service_principal_callers() -> None:
 
 def test_derive_unions_callers_across_rules_with_shared_permissions() -> None:
     router = APIRouter()
-    svc_read = Permission("svc.read", "Read")
+    svc_read = Permission("svc", "", "read", "Read")
 
     @router.get("/v2/y")
     @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[svc_read])
@@ -155,8 +155,8 @@ def test_derive_denies_route_with_or_of_distinct_permission_sets() -> None:
     router = APIRouter()
 
     @router.get("/v2/z")
-    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[Permission("svc.read", "Read svc")])
-    @path_rule(callers=[CallerKind.SERVICE_PRINCIPAL], permissions=[Permission("svc.internal", "Internal svc")])
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[Permission("svc", "", "read", "Read svc")])
+    @path_rule(callers=[CallerKind.SERVICE_PRINCIPAL], permissions=[Permission("svc", "", "internal", "Internal svc")])
     async def z() -> None: ...
 
     class _Svc(NemoService):
