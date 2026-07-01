@@ -473,6 +473,8 @@ models:
         models_docker_port_range_end: 49652
         # Image used to pull model weights. Its entrypoint is overridden to the Hugging Face CLI ('hf download ...'), so any image with the 'hf' CLI on PATH works. Defaults to the platform's nmp-api image (registry/tag from platform config); override to use a different puller image.
         huggingface_model_puller: my-registry/nmp-api:local
+        # Extra environment variables for the model puller container. Values override the reconciler defaults (HF_ENDPOINT, HF_TOKEN). E.g. set HF_HUB_ENABLE_HF_TRANSFER='0' to disable the hf_transfer download path.
+        huggingface_model_puller_env: {}
         # Timeout in seconds for the model puller container to complete (default: 30 minutes) | default: 1800
         model_puller_timeout: 1800
         # Per-file HTTP download timeout in seconds for the model puller (HF_HUB_DOWNLOAD_TIMEOUT). Increase if large model files fail with IncompleteRead/ChunkedEncodingError (default: 2 hours). | default: 7200

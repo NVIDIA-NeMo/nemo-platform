@@ -1227,6 +1227,10 @@ class DockerDeploymentCreationReconciler:
         else:
             raise ValueError(f"Unsupported model weights type for puller: {model_weights_type}")
 
+        # Operator-provided overrides win over the defaults set above (e.g. HF_ENDPOINT/HF_TOKEN).
+        if self._backend_config.huggingface_model_puller_env:
+            env_vars = {**env_vars, **self._backend_config.huggingface_model_puller_env}
+
         logger.info(
             "Running model puller for %s (container: %s, image: %s)",
             model_repo,

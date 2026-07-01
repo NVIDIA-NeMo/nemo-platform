@@ -16,6 +16,7 @@ from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate
 from nmp.core.models.controllers.backends.docker import DockerServiceBackend
 from nmp.core.models.controllers.backends.docker.creation_reconciler import (
     CreationStage,
+    CreationState,
     _compute_multi_gpu_shm_size,
 )
 from nmp.core.models.controllers.context import ModelContext
@@ -2710,6 +2711,65 @@ async def test_multi_llm_files_service_deployment_succeeds(
     puller_env = puller_calls[0][1]["environment"]
     assert "HF_ENDPOINT" in puller_env
     assert "/apis/files/v2/hf" in puller_env["HF_ENDPOINT"]
+
+
+def _puller_state(deployment, config):
+    """Build a minimal CreationState for exercising _start_model_puller_container directly."""
+    return CreationState(
+        stage=CreationStage.RUNNING_PULLER,
+        deployment=deployment,
+        config=config,
+        model_entity=None,
+        model_weights_type=ModelWeightsType.FILES_SERVICE,
+        volume_name="vol-test",
+    )
+
+
+@pytest.mark.asyncio
+async def test_model_puller_env_override_merged(docker_backend, sample_deployment, sample_config, mock_docker_client):
+    """huggingface_model_puller_env is merged into the puller env, with operator values winning."""
+    reconciler = docker_backend._reconciler
+    reconciler._backend_config.huggingface_model_puller_env = {
+        "HF_HUB_ENABLE_HF_TRANSFER": "0",
+        "HF_ENDPOINT": "https://override.example",  # must win over the hardcoded default
+    }
+
+    puller_container = MagicMock()
+    puller_container.id = "puller123456789"
+    reconciler.run_container = MagicMock(return_value=puller_container)
+    reconciler._get_model_repo_from_entity = MagicMock(return_value="nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16")
+
+    await reconciler._start_model_puller_container(_puller_state(sample_deployment, sample_config))
+
+    reconciler.run_container.assert_called_once()
+    env = reconciler.run_container.call_args[1]["environment"]
+    # Operator-provided override is applied
+    assert env["HF_HUB_ENABLE_HF_TRANSFER"] == "0"
+    # Operator value wins over the hardcoded HF_ENDPOINT default
+    assert env["HF_ENDPOINT"] == "https://override.example"
+    # Untouched default remains
+    assert env["HF_TOKEN"] == "service:models"
+
+
+@pytest.mark.asyncio
+async def test_model_puller_env_no_override_uses_defaults(
+    docker_backend, sample_deployment, sample_config, mock_docker_client
+):
+    """With no huggingface_model_puller_env configured, the puller env keeps only its defaults."""
+    reconciler = docker_backend._reconciler
+    assert reconciler._backend_config.huggingface_model_puller_env == {}
+
+    puller_container = MagicMock()
+    puller_container.id = "puller123456789"
+    reconciler.run_container = MagicMock(return_value=puller_container)
+    reconciler._get_model_repo_from_entity = MagicMock(return_value="nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16")
+
+    await reconciler._start_model_puller_container(_puller_state(sample_deployment, sample_config))
+
+    reconciler.run_container.assert_called_once()
+    env = reconciler.run_container.call_args[1]["environment"]
+    assert "HF_HUB_ENABLE_HF_TRANSFER" not in env
+    assert env["HF_TOKEN"] == "service:models"
 
 
 @pytest.mark.asyncio
