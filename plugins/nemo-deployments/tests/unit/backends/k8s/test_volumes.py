@@ -64,7 +64,6 @@ async def test_create_volume_emits_pvc_with_storage_class_and_size(k8s_backend, 
 
 @pytest.mark.asyncio
 async def test_create_volume_conflict_reads_existing_pvc(mock_k8s_clients: MagicMock) -> None:
-    mock_k8s_clients.request_timeout = 60
     existing = MagicMock()
     existing.status.phase = "Bound"
     existing.metadata.labels = volume_identity_labels("default", "data")
@@ -91,7 +90,6 @@ async def test_create_volume_conflict_reads_existing_pvc(mock_k8s_clients: Magic
 
 @pytest.mark.asyncio
 async def test_create_volume_conflict_rejects_foreign_pvc(mock_k8s_clients: MagicMock) -> None:
-    mock_k8s_clients.request_timeout = 60
     foreign = MagicMock()
     foreign.metadata.labels = {MANAGED_BY_KEY: "other-plugin"}
     foreign.status.phase = "Bound"
@@ -118,7 +116,7 @@ async def test_create_volume_conflict_rejects_foreign_pvc(mock_k8s_clients: Magi
 def test_status_from_pvc_deleting_reports_deleting() -> None:
     labels = volume_identity_labels("default", "data")
     pvc = MagicMock()
-    pvc.metadata.labels = {MANAGED_BY_KEY: labels[MANAGED_BY_KEY], **labels}
+    pvc.metadata.labels = labels
     pvc.metadata.deletion_timestamp = "2026-01-01T00:00:00Z"
     pvc.status.phase = "Bound"
 
@@ -144,6 +142,37 @@ async def test_read_volume_status_uses_entity_namespace(k8s_backend, mock_k8s_cl
     assert update.status == "BOUND"
     call = mock_k8s_clients.core_v1.read_namespaced_persistent_volume_claim
     assert call.call_args.kwargs["namespace"] == "models"
+
+
+@pytest.mark.asyncio
+async def test_create_volume_malformed_backend_config_returns_failed(mock_k8s_clients: MagicMock) -> None:
+    clients = MagicMock(spec=KubernetesClients)
+    clients.core_v1 = mock_k8s_clients.core_v1
+    clients.request_timeout = 60
+
+    update = await volume_ops.create_volume(
+        clients,
+        default_namespace="default",
+        workspace="default",
+        name="data",
+        size="1Gi",
+        access_modes=["ReadWriteOnce"],
+        backend_config={"k8s": {"storageClass": 123}},
+    )
+
+    assert update.status == "FAILED"
+    mock_k8s_clients.core_v1.create_namespaced_persistent_volume_claim.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_read_volume_status_malformed_backend_config_returns_failed(k8s_backend) -> None:
+    update = await k8s_backend.read_volume_status(
+        workspace="default",
+        name="weights",
+        backend_config={"k8s": {"namespace": 42}},
+    )
+
+    assert update.status == "FAILED"
 
 
 @pytest.mark.asyncio
