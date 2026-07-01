@@ -18,10 +18,12 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import json
 import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, TypeVar, get_args, get_origin, overload
+from urllib.parse import quote
 
 import httpx
 from nemo_platform_plugin.client.auth import (
@@ -151,8 +153,6 @@ class BaseNemoClient:
         file paths don't break the URL.  Raises ``ValueError`` if any
         placeholders remain unresolved.
         """
-        from urllib.parse import quote
-
         params: dict[str, str] = {}
         if self._workspace:
             params["workspace"] = self._workspace
@@ -188,8 +188,6 @@ class BaseNemoClient:
         """Filter out None values and JSON-serialize dicts/lists in query params."""
         if request.query_params is None:
             return None
-        import json
-
         filtered = {}
         for k, v in request.query_params.items():
             if v is None:

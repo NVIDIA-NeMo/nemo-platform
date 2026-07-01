@@ -23,7 +23,7 @@ from io import BytesIO
 from pathlib import Path
 
 import pytest
-from nemo_platform import NeMoPlatform, NotFoundError
+from nemo_platform import NeMoPlatform, NotFoundError, PermissionDeniedError
 from nemo_platform.types.files import FilesetFile
 from nemo_platform.types.files.fileset import Fileset
 from nmp.core.files.testing.utils import create_fileset, test_fileset_name
@@ -1099,7 +1099,7 @@ class TestFilesetImmutabilityForNonServicePrincipals:
         assert len(files.data) == 1
         assert files.data[0].path == "data.txt"
         # Non-service principal must not be able to upload (fileset is immutable for them).
-        with pytest.raises(Exception):
+        with pytest.raises(PermissionDeniedError):
             sdk_user.files.upload_content(
                 content=b"from user",
                 remote_path="user.txt",
