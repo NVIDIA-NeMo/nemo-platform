@@ -60,6 +60,11 @@ export const ClaudeCodeChatRoute: FC = () => {
   const selectedSessionId = getSelectedClaudeCodeSessionId(location.search);
   const initialPrompt = getInitialPrompt(location.state);
 
+  const [displayedSessionId, setDisplayedSessionId] = useState<string | null>(sessionId);
+  useEffect(() => {
+    setDisplayedSessionId(sessionId);
+  }, [sessionId]);
+
   useBreadcrumbs({
     items: [
       { slotLabel: 'Dashboard', href: getWorkspaceDashboardRoute(workspace) },
@@ -110,9 +115,9 @@ export const ClaudeCodeChatRoute: FC = () => {
   }, [navigate, selectedSessionId, workspace]);
 
   const isLoadingSelectedSession =
-    selectedSessionId !== undefined && selectedSessionId !== sessionId;
+    selectedSessionId !== undefined && selectedSessionId !== displayedSessionId;
 
-  if (isLoadingSelectedSession && loadStatus === 'loading') {
+  if (isLoadingSelectedSession && loadStatus !== 'error') {
     return <ClaudeCodeChatLoadingState selectedSessionId={selectedSessionId} />;
   }
 

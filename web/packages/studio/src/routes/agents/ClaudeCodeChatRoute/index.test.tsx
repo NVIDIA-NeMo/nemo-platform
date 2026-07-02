@@ -128,7 +128,18 @@ describe('ClaudeCodeChatRoute', () => {
     expect(mocks.chat.submitPrompt).not.toHaveBeenCalled();
   });
 
-  it('shows the loading state while the selected session is still loading', () => {
+  it('shows the loading state immediately when a session is selected but not yet loaded', () => {
+    // loadStatus starts 'idle' — the effect hasn't fired yet. The old chat must not
+    // flash before the spinner appears.
+    mocks.loadStatus = 'idle';
+    mocks.chat.sessionId = null;
+
+    renderClaudeCodeChatRoute({ search: '?session=session-existing' });
+
+    expect(screen.getByText('Loading chat...')).toBeInTheDocument();
+  });
+
+  it('shows the loading state while the selected session is loading', () => {
     mocks.loadStatus = 'loading';
     mocks.chat.sessionId = null;
 
