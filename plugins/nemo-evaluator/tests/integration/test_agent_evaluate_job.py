@@ -163,7 +163,7 @@ def test_run_local_model_target_scores_a_real_trial(subprocess_platform: str) ->
             AgentEvalTaskInput(
                 id="ask",
                 intent="Obtain a one-word reply from the model.",
-                inputs={"prompt": "Reply with the single word DONE and nothing else."},
+                inputs={"instruction": "Reply with the single word DONE and nothing else."},
                 metrics=[_output_contains_metric("DONE")],
             )
         ],
@@ -207,7 +207,7 @@ def test_run_local_agent_target_scores_a_real_trial(subprocess_platform: str) ->
             AgentEvalTaskInput(
                 id="ask",
                 intent="Obtain a one-word reply from the agent.",
-                inputs={"prompt": "Reply with the single word DONE and nothing else."},
+                inputs={"instruction": "Reply with the single word DONE and nothing else."},
                 metrics=[_output_contains_metric("DONE")],
             )
         ],
@@ -395,7 +395,7 @@ def test_submit_model_target_under_auth_forwards_identity_to_igw(auth_subprocess
             AgentEvalTaskInput(
                 id="ask",
                 intent="Obtain a one-word reply from the model.",
-                inputs={"prompt": "Reply with the single word DONE and nothing else."},
+                inputs={"instruction": "Reply with the single word DONE and nothing else."},
                 metrics=[_output_contains_metric("DONE")],
             )
         ],

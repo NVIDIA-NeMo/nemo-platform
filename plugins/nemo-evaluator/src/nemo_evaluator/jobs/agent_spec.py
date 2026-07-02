@@ -18,7 +18,7 @@ from typing import Any, Literal, Self, TypeAlias
 # payload kind so MetricBundle payloads round-trip through validation.
 import nemo_evaluator.shared.metric_bundles.cloudpickle  # noqa: F401
 import nemo_evaluator.shared.metric_bundles.inline  # noqa: F401
-from nemo_evaluator.api.schemas import MetricInline
+from nemo_evaluator.api.schemas import MetricInline, TaskInputs, TaskMetadataList
 from nemo_evaluator.jobs.metric_resolution import to_runtime_bundle, unresolved_model_refs
 from nemo_evaluator.metric_refs import MetricRefOrInline
 from nemo_evaluator.shared.metric_bundles.bundles import unbundle_metric
@@ -97,12 +97,12 @@ class _AgentEvalTaskCommon(BaseModel):
 
     id: str = Field(description="Stable task identifier, unique within the task collection.")
     intent: str = Field(description="Human-readable description of the desired agent behavior.")
-    inputs: dict[str, Any] = Field(description="What the agent receives or starts from (instruction, seed, refs).")
+    inputs: TaskInputs = Field(default_factory=TaskInputs, description="The task's recognized input fields.")
     views: dict[str, SemanticView] = Field(
         default_factory=dict,
         description="Optional reporting views mapping this task's metric outputs into named semantic scores.",
     )
-    metadata: dict[str, Any] = Field(default_factory=dict, description="Free-form metadata associated with the task.")
+    metadata: TaskMetadataList = Field(default_factory=list, description="Key/value annotations for the task.")
 
 
 class AgentEvalTaskInput(_AgentEvalTaskCommon):

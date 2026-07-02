@@ -1099,6 +1099,17 @@ paths:
           default: created_at
         description: The field to sort by. To sort in decreasing order, use `-` in
           front of the field name.
+      - name: include_derived
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Include derived (task-internal) metrics, which are hidden from
+            the listing by default.
+          default: false
+          title: Include Derived
+        description: Include derived (task-internal) metrics, which are hidden from
+          the listing by default.
       - in: query
         name: filter
         style: deepObject
@@ -1230,6 +1241,188 @@ paths:
           description: Delete a stored metric
         '404':
           description: Metric not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/evaluator/v2/workspaces/{workspace}/tasks:
+    get:
+      tags:
+      - Evaluator Plugin Tasks Routes
+      summary: List Tasks By Workspace
+      description: List stored tasks for a specific workspace.
+      operationId: list_tasks_apis_evaluator_v2_workspaces__workspace__tasks_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          description: Page size.
+          default: 100
+          title: Page Size
+        description: Page size.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/TaskSort'
+          description: The field to sort by. To sort in decreasing order, use `-`
+            in front of the field name.
+          default: created_at
+        description: The field to sort by. To sort in decreasing order, use `-` in
+          front of the field name.
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/TaskFilter'
+        description: Filter tasks by workspace, name, created_at, and updated_at.
+      responses:
+        '200':
+          description: Return stored tasks for a workspace
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TasksPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/evaluator/v2/workspaces/{workspace}/tasks/{name}:
+    post:
+      tags:
+      - Evaluator Plugin Tasks Routes
+      summary: Create Task
+      description: Store a new task, addressed by workspace/name.
+      operationId: create_task_apis_evaluator_v2_workspaces__workspace__tasks__name__post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 255
+          pattern: ^[\w\-\.]+$
+          title: Name
+      - name: project
+        in: query
+        required: false
+        schema:
+          description: Optional project to associate with the task.
+          title: Project
+          type: string
+        description: Optional project to associate with the task.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskInput'
+      responses:
+        '201':
+          description: Store a new task
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '409':
+          description: Task already exists
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Evaluator Plugin Tasks Routes
+      summary: Get Task
+      description: Get a stored task by workspace and name.
+      operationId: get_task_apis_evaluator_v2_workspaces__workspace__tasks__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Return stored task details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '404':
+          description: Task not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Evaluator Plugin Tasks Routes
+      summary: Delete Task
+      description: Delete a stored task by workspace and name.
+      operationId: delete_task_apis_evaluator_v2_workspaces__workspace__tasks__name__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '204':
+          description: Delete a stored task
+        '404':
+          description: Task not found
         '422':
           description: Validation Error
           content:
@@ -1523,11 +1716,9 @@ components:
           title: Intent
           description: Human-readable description of the desired agent behavior.
         inputs:
-          additionalProperties: true
-          type: object
-          title: Inputs
-          description: What the agent receives or starts from (instruction, seed,
-            refs).
+          allOf:
+          - $ref: '#/components/schemas/TaskInputs'
+          description: The task's recognized input fields.
         views:
           additionalProperties:
             $ref: '#/components/schemas/SemanticView'
@@ -1536,10 +1727,11 @@ components:
           description: Optional reporting views mapping this task's metric outputs
             into named semantic scores.
         metadata:
-          additionalProperties: true
-          type: object
+          items:
+            $ref: '#/components/schemas/MetadataItem'
+          type: array
           title: Metadata
-          description: Free-form metadata associated with the task.
+          description: Key/value annotations for the task.
         metrics:
           items:
             anyOf:
@@ -1554,7 +1746,6 @@ components:
       required:
       - id
       - intent
-      - inputs
       title: AgentEvalTaskInput
       description: 'Submitter-facing task DTO: metrics may be inline bundles or stored-metric
         references.'
@@ -1569,11 +1760,9 @@ components:
           title: Intent
           description: Human-readable description of the desired agent behavior.
         inputs:
-          additionalProperties: true
-          type: object
-          title: Inputs
-          description: What the agent receives or starts from (instruction, seed,
-            refs).
+          allOf:
+          - $ref: '#/components/schemas/TaskInputs'
+          description: The task's recognized input fields.
         views:
           additionalProperties:
             $ref: '#/components/schemas/SemanticView'
@@ -1582,10 +1771,11 @@ components:
           description: Optional reporting views mapping this task's metric outputs
             into named semantic scores.
         metadata:
-          additionalProperties: true
-          type: object
+          items:
+            $ref: '#/components/schemas/MetadataItem'
+          type: array
           title: Metadata
-          description: Free-form metadata associated with the task.
+          description: Key/value annotations for the task.
         metrics:
           items:
             $ref: '#/components/schemas/MetricInline'
@@ -1598,7 +1788,6 @@ components:
       required:
       - id
       - intent
-      - inputs
       title: AgentEvalTaskSpec
       description: 'Canonical task DTO: metrics fully resolved to inline bundles,
         reconstructed at run time.'
@@ -2801,6 +2990,23 @@ components:
         built-in metric types.'
     JsonValue:
       title: JsonValue
+    MetadataItem:
+      properties:
+        key:
+          type: string
+          title: Key
+          description: Annotation key.
+        value:
+          type: string
+          title: Value
+          description: Annotation value.
+      additionalProperties: false
+      type: object
+      required:
+      - key
+      - value
+      title: MetadataItem
+      description: A single key/value annotation on a task.
     Metric:
       properties:
         id:
@@ -2857,6 +3063,12 @@ components:
           type: string
           title: Bundle Ref
           description: Files reference to the canonical serialized bundle.
+        derived:
+          type: boolean
+          title: Derived
+          description: True for a content-addressed metric auto-stored from an inline
+            task metric (excluded from the default metric listing).
+          default: false
         created_at:
           type: string
           format: date-time
@@ -2908,6 +3120,10 @@ components:
           description: Filter by description.
           title: Description
           type: string
+        derived:
+          description: Filter by derived flag.
+          title: Derived
+          type: boolean
         created_at:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
@@ -3733,6 +3949,192 @@ components:
           type: array
       title: StringFilter
       type: object
+    Task:
+      properties:
+        id:
+          type: string
+          title: Id
+          description: Unique identifier for the stored task record.
+        name:
+          type: string
+          title: Name
+          description: "Task name \u2014 the stable task id, unique within its workspace."
+        workspace:
+          type: string
+          title: Workspace
+          description: Workspace the task belongs to.
+        project:
+          title: Project
+          description: The project associated with this task.
+          type: string
+        intent:
+          type: string
+          title: Intent
+          description: Human-readable description of the desired agent behavior.
+        inputs:
+          allOf:
+          - $ref: '#/components/schemas/TaskInputs'
+          description: The task's recognized input fields.
+        metrics:
+          items:
+            $ref: '#/components/schemas/MetricRef'
+          type: array
+          title: Metrics
+          description: References to the metrics that score this task; inline metrics
+            submitted on create are normalized to (derived) stored metrics, so a stored
+            task holds refs only.
+        views:
+          additionalProperties:
+            $ref: '#/components/schemas/SemanticView'
+          type: object
+          title: Views
+          description: Optional reporting views mapping metric outputs into named
+            semantic scores.
+        metadata:
+          items:
+            $ref: '#/components/schemas/MetadataItem'
+          type: array
+          title: Metadata
+          description: Key/value annotations for the task.
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+          description: Timestamp the task was created.
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+          description: Timestamp the task was last updated.
+      type: object
+      required:
+      - id
+      - name
+      - workspace
+      - intent
+      - created_at
+      - updated_at
+      title: Task
+      description: "API representation of a stored agent-eval task.\n\nMaps to the\
+        \ SDK :class:`~nemo_evaluator_sdk.agent_eval.tasks.AgentEvalTask` \u2014 the\
+        \ task's stable\n``id`` is the record ``name`` (unique within its workspace).\
+        \ Metrics are stored in their wire form\n(inline bundles and/or references\
+        \ to stored metrics); references resolve to inline at run time."
+    TaskFilter:
+      additionalProperties: false
+      description: Filter for task queries (top-level entity columns only; custom-field
+        filtering is a follow-up).
+      properties:
+        workspace:
+          description: Filter by workspace.
+          title: Workspace
+          type: string
+        name:
+          description: Filter by name.
+          title: Name
+          type: string
+        created_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Filter by creation date.
+        updated_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Filter by update date.
+      title: TaskFilter
+      type: object
+    TaskInput:
+      properties:
+        intent:
+          type: string
+          title: Intent
+          description: Human-readable description of the desired agent behavior.
+        inputs:
+          allOf:
+          - $ref: '#/components/schemas/TaskInputs'
+          description: The task's recognized input fields.
+        metrics:
+          items:
+            anyOf:
+            - $ref: '#/components/schemas/MetricInline'
+            - $ref: '#/components/schemas/MetricRef'
+          type: array
+          title: Metrics
+          description: "Metrics that score this task \u2014 inline bundles and/or\
+            \ stored-metric refs."
+        views:
+          additionalProperties:
+            $ref: '#/components/schemas/SemanticView'
+          type: object
+          title: Views
+          description: Optional reporting views mapping metric outputs into named
+            semantic scores.
+        metadata:
+          items:
+            $ref: '#/components/schemas/MetadataItem'
+          type: array
+          title: Metadata
+          description: Key/value annotations for the task.
+      additionalProperties: false
+      type: object
+      required:
+      - intent
+      title: TaskInput
+      description: "Create/replace body for a stored task (the name comes from the\
+        \ path).\n\nThe authorable subset of :class:`Task` \u2014 the SDK ``AgentEvalTask``\
+        \ shape minus server-owned\nfields (id, name, workspace, timestamps)."
+    TaskInputs:
+      properties:
+        instruction:
+          title: Instruction
+          description: The agent's instruction (its prompt). Falls back to the task
+            `intent` when unset.
+          type: string
+      additionalProperties: false
+      type: object
+      title: TaskInputs
+      description: 'A task''s recognized input fields.
+
+
+        ``extra="forbid"``: only the field below is accepted. ``instruction`` is the
+        agent''s prompt; the
+
+        runtime falls back to the task ``intent`` when it is unset.'
+    TaskSort:
+      type: string
+      enum:
+      - name
+      - -name
+      - created_at
+      - -created_at
+      - updated_at
+      - -updated_at
+      title: TaskSort
+      description: Sort fields for task queries.
+    TasksPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/Task'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: TasksPage
     ValidationError:
       properties:
         loc:

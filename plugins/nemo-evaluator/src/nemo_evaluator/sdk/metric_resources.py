@@ -26,13 +26,17 @@ from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.schema import Page
 
 
-def _list_params(page: int, page_size: int, sort: str | None, metric_type: str | None) -> dict[str, str | int]:
+def _list_params(
+    page: int, page_size: int, sort: str | None, metric_type: str | None, include_derived: bool
+) -> dict[str, str | int | bool]:
     """Build the list query string: paging/sort + the route's ``filter[metric_type]`` trait filter."""
-    params: dict[str, str | int] = {"page": page, "page_size": page_size}
+    params: dict[str, str | int | bool] = {"page": page, "page_size": page_size}
     if sort is not None:
         params["sort"] = sort
     if metric_type is not None:
         params["filter[metric_type]"] = metric_type
+    if include_derived:
+        params["include_derived"] = True
     return params
 
 
@@ -109,11 +113,15 @@ class EvaluatorMetricsResource:
         page_size: int = 100,
         sort: str | None = None,
         metric_type: str | None = None,
+        include_derived: bool = False,
     ) -> Page[Metric]:
-        """List stored metrics in a workspace, optionally filtered by metric type."""
+        """List stored metrics in a workspace, optionally filtered by metric type.
+
+        Derived (task-internal) metrics are hidden unless ``include_derived`` is set.
+        """
         response = self._http_client.get(
             self._collection_url(workspace),
-            params=_list_params(page, page_size, sort, metric_type),
+            params=_list_params(page, page_size, sort, metric_type, include_derived),
             headers=self._headers(),
             timeout=self._platform.timeout,
         )
@@ -185,11 +193,15 @@ class AsyncEvaluatorMetricsResource:
         page_size: int = 100,
         sort: str | None = None,
         metric_type: str | None = None,
+        include_derived: bool = False,
     ) -> Page[Metric]:
-        """List stored metrics in a workspace, optionally filtered by metric type."""
+        """List stored metrics in a workspace, optionally filtered by metric type.
+
+        Derived (task-internal) metrics are hidden unless ``include_derived`` is set.
+        """
         response = await self._http_client.get(
             self._collection_url(workspace),
-            params=_list_params(page, page_size, sort, metric_type),
+            params=_list_params(page, page_size, sort, metric_type, include_derived),
             headers=self._headers(),
             timeout=self._platform.timeout,
         )

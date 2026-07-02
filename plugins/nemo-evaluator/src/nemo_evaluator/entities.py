@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Stored metric entity for the evaluator plugin.
+"""Stored entities for the evaluator plugin (metrics and agent-eval tasks).
 
 A :class:`MetricBundleEntity` is the persisted, queryable index for a metric.
 The full executable :class:`~nemo_evaluator.shared.metric_bundles.bundles.MetricBundle`
@@ -9,13 +9,19 @@ The full executable :class:`~nemo_evaluator.shared.metric_bundles.bundles.Metric
 service; the entity stores only the lightweight, searchable projection plus a
 reference (``bundle_ref``) and integrity digest (``payload_digest``) that point
 back at the canonical copy.
+
+A :class:`TaskEntity` is the persisted form of an agent-eval task — the SDK
+:class:`~nemo_evaluator_sdk.agent_eval.tasks.AgentEvalTask`, addressed by
+``workspace/name`` (the task's stable id is the record name) and reusable across runs.
 """
 
 from __future__ import annotations
 
 from typing import ClassVar
 
+from nemo_evaluator.api.schemas import MetricRef, TaskInputs, TaskMetadataList
 from nemo_evaluator.shared.metric_bundles.bundles import BundledMetricOutputSpec
+from nemo_evaluator_sdk.agent_eval.tasks import SemanticView
 from nemo_evaluator_sdk.values.common import SecretRef
 from nemo_evaluator_sdk.values.results import AggregatedMetricResult
 from nemo_platform_plugin.entities import EntityBase
@@ -70,6 +76,12 @@ class MetricBundleEntity(EntityBase):
         default=None,
         description="Description captured from the bundled metric's metadata.",
         max_length=MAX_DESCRIPTION_LENGTH,
+    )
+    derived: bool = Field(
+        default=False,
+        description="True for a content-addressed metric auto-stored from an inline task metric. "
+        "Derived metrics are excluded from the default metric listing (they're task internals, not "
+        "curated metrics), but are addressable by reference.",
     )
 
 
@@ -150,3 +162,28 @@ class EvaluateResultEntity(_EvalResultCommon, EntityBase):
         description="Runtime metric type names applied in the run (e.g. 'exact_match'). Not metric refs: "
         "by run time the submitted refs are resolved to inline bundles, so the originals aren't available."
     )
+
+
+class TaskEntity(EntityBase):
+    """Persisted, queryable agent-eval task, addressed by workspace/name.
+
+    Maps to the SDK :class:`~nemo_evaluator_sdk.agent_eval.tasks.AgentEvalTask`: the task's stable
+    ``id`` is the record ``name``, and ``metrics`` are stored in their wire form (inline bundles
+    and/or references to stored metrics) so a task can reference curated metrics or carry its own;
+    references resolve to inline runtime metrics when the task is run.
+    """
+
+    __entity_type__: ClassVar[str] = "task"
+
+    intent: str = Field(description="Human-readable description of the desired agent behavior.")
+    inputs: TaskInputs = Field(default_factory=TaskInputs, description="The task's recognized input fields.")
+    metrics: list[MetricRef] = Field(
+        default_factory=list,
+        description="References to the metrics that score this task. Inline metrics submitted with the "
+        "task are normalized to (derived) stored metrics, so a persisted task only ever holds refs.",
+    )
+    views: dict[str, SemanticView] = Field(
+        default_factory=dict,
+        description="Optional reporting views mapping this task's metric outputs into named semantic scores.",
+    )
+    metadata: TaskMetadataList = Field(default_factory=list, description="Key/value annotations for the task.")

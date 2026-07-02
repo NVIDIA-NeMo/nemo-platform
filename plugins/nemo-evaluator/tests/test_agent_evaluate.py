@@ -66,7 +66,7 @@ def _task_spec() -> AgentEvalTaskSpec:
     return AgentEvalTaskSpec(
         id="task-1",
         intent="Answer the question.",
-        inputs={"prompt": "What is 2+2?"},
+        inputs={"instruction": "What is 2+2?"},
         metrics=[_inline_metric()],
     )
 
@@ -301,7 +301,7 @@ async def test_to_spec_resolves_inline_task_metrics_without_a_platform() -> None
             AgentEvalTaskInput(
                 id="task-1",
                 intent="Answer the question.",
-                inputs={"prompt": "What is 2+2?"},
+                inputs={"instruction": "What is 2+2?"},
                 metrics=[_inline_metric()],
             )
         ],
@@ -439,7 +439,7 @@ def test_run_local_executes_each_target_type(target: Target, mocker: MockerFixtu
     input_spec = AgentEvalInputSpec(
         tasks=[
             AgentEvalTaskInput(
-                id="task-1", intent="Answer.", inputs={"prompt": "What is 2+2?"}, metrics=[_inline_metric()]
+                id="task-1", intent="Answer.", inputs={"instruction": "What is 2+2?"}, metrics=[_inline_metric()]
             )
         ],
         target=target,
