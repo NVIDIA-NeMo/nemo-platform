@@ -12,6 +12,7 @@ from e2e.guardrails.utils import (
     ChatOutcome,
     ConfigMode,
     GuardrailsChatTestCase,
+    RailType,
     content_safety_config,
     create_guarded_virtual_model,
     setup_mock_provider,
@@ -30,6 +31,7 @@ def guardrails_chat_test_case(
         *,
         config_mode: ConfigMode,
         outcome: ChatOutcome,
+        rail_types: tuple[RailType, ...],
         streaming: bool = False,
     ) -> GuardrailsChatTestCase:
         test_case = GuardrailsChatTestCase(
@@ -41,9 +43,11 @@ def guardrails_chat_test_case(
             config_name=unique_name("gr-config"),
             config_mode=config_mode,
             outcome=outcome,
+            rail_types=rail_types,
         )
         config_data = content_safety_config(
             content_safety_model_ref=test_case.content_safety_model_ref,
+            rail_types=rail_types,
             streaming=streaming,
         )
         setup_mock_provider(sdk, test_case)

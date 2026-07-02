@@ -63,7 +63,7 @@ def _activated_rails_by_name(response: dict[str, Any]) -> dict[str, dict[str, An
 def test_chat_completions_blocks_unsafe_input(
     guardrails_chat_test_case: Callable[..., Any],
 ) -> None:
-    test_case = guardrails_chat_test_case(config_mode="referenced", outcome="unsafe_input")
+    test_case = guardrails_chat_test_case(config_mode="referenced", outcome="unsafe_input", rail_types=("input",))
 
     response = post_chat_completion(test_case)
 
@@ -73,7 +73,7 @@ def test_chat_completions_blocks_unsafe_input(
 def test_chat_completions_blocks_unsafe_llm_output(
     guardrails_chat_test_case: Callable[..., Any],
 ) -> None:
-    test_case = guardrails_chat_test_case(config_mode="referenced", outcome="unsafe_output")
+    test_case = guardrails_chat_test_case(config_mode="referenced", outcome="unsafe_output", rail_types=("output",))
 
     response = post_chat_completion(test_case)
 
@@ -83,7 +83,7 @@ def test_chat_completions_blocks_unsafe_llm_output(
 def test_chat_completions_allows_safe_request(
     guardrails_chat_test_case: Callable[..., Any],
 ) -> None:
-    test_case = guardrails_chat_test_case(config_mode="referenced", outcome="safe")
+    test_case = guardrails_chat_test_case(config_mode="referenced", outcome="safe", rail_types=("input", "output"))
 
     response = post_chat_completion(test_case)
 
@@ -93,7 +93,7 @@ def test_chat_completions_allows_safe_request(
 def test_chat_completions_blocks_unsafe_input_with_inline_config(
     guardrails_chat_test_case: Callable[..., Any],
 ) -> None:
-    test_case = guardrails_chat_test_case(config_mode="inline", outcome="unsafe_input")
+    test_case = guardrails_chat_test_case(config_mode="inline", outcome="unsafe_input", rail_types=("input",))
 
     response = post_chat_completion(test_case)
 
@@ -103,7 +103,7 @@ def test_chat_completions_blocks_unsafe_input_with_inline_config(
 def test_chat_completions_blocks_unsafe_llm_output_with_inline_config(
     guardrails_chat_test_case: Callable[..., Any],
 ) -> None:
-    test_case = guardrails_chat_test_case(config_mode="inline", outcome="unsafe_output")
+    test_case = guardrails_chat_test_case(config_mode="inline", outcome="unsafe_output", rail_types=("output",))
 
     response = post_chat_completion(test_case)
 
@@ -113,7 +113,7 @@ def test_chat_completions_blocks_unsafe_llm_output_with_inline_config(
 def test_chat_completions_allows_safe_request_with_inline_config(
     guardrails_chat_test_case: Callable[..., Any],
 ) -> None:
-    test_case = guardrails_chat_test_case(config_mode="inline", outcome="safe")
+    test_case = guardrails_chat_test_case(config_mode="inline", outcome="safe", rail_types=("input", "output"))
 
     response = post_chat_completion(test_case)
 
@@ -128,7 +128,9 @@ def test_chat_completions_allows_safe_request_with_inline_config(
 def test_streaming_chat_completions_blocks_unsafe_input(
     guardrails_chat_test_case: Callable[..., Any],
 ) -> None:
-    test_case = guardrails_chat_test_case(config_mode="referenced", outcome="unsafe_input", streaming=True)
+    test_case = guardrails_chat_test_case(
+        config_mode="referenced", outcome="unsafe_input", rail_types=("input",), streaming=True
+    )
 
     response = post_streaming_chat_completion(test_case)
 
@@ -138,7 +140,9 @@ def test_streaming_chat_completions_blocks_unsafe_input(
 def test_streaming_chat_completions_blocks_unsafe_llm_output(
     guardrails_chat_test_case: Callable[..., Any],
 ) -> None:
-    test_case = guardrails_chat_test_case(config_mode="referenced", outcome="unsafe_output", streaming=True)
+    test_case = guardrails_chat_test_case(
+        config_mode="referenced", outcome="unsafe_output", rail_types=("output",), streaming=True
+    )
 
     response = post_streaming_chat_completion(test_case)
 
@@ -148,7 +152,9 @@ def test_streaming_chat_completions_blocks_unsafe_llm_output(
 def test_streaming_chat_completions_allows_safe_request(
     guardrails_chat_test_case: Callable[..., Any],
 ) -> None:
-    test_case = guardrails_chat_test_case(config_mode="referenced", outcome="safe", streaming=True)
+    test_case = guardrails_chat_test_case(
+        config_mode="referenced", outcome="safe", rail_types=("input", "output"), streaming=True
+    )
 
     response = post_streaming_chat_completion(test_case)
 
@@ -158,7 +164,9 @@ def test_streaming_chat_completions_allows_safe_request(
 def test_streaming_chat_completions_blocks_unsafe_input_with_inline_config(
     guardrails_chat_test_case: Callable[..., Any],
 ) -> None:
-    test_case = guardrails_chat_test_case(config_mode="inline", outcome="unsafe_input", streaming=True)
+    test_case = guardrails_chat_test_case(
+        config_mode="inline", outcome="unsafe_input", rail_types=("input",), streaming=True
+    )
 
     response = post_streaming_chat_completion(test_case)
 
@@ -168,7 +176,9 @@ def test_streaming_chat_completions_blocks_unsafe_input_with_inline_config(
 def test_streaming_chat_completions_blocks_unsafe_llm_output_with_inline_config(
     guardrails_chat_test_case: Callable[..., Any],
 ) -> None:
-    test_case = guardrails_chat_test_case(config_mode="inline", outcome="unsafe_output", streaming=True)
+    test_case = guardrails_chat_test_case(
+        config_mode="inline", outcome="unsafe_output", rail_types=("output",), streaming=True
+    )
 
     response = post_streaming_chat_completion(test_case)
 
@@ -178,7 +188,9 @@ def test_streaming_chat_completions_blocks_unsafe_llm_output_with_inline_config(
 def test_streaming_chat_completions_allows_safe_request_with_inline_config(
     guardrails_chat_test_case: Callable[..., Any],
 ) -> None:
-    test_case = guardrails_chat_test_case(config_mode="inline", outcome="safe", streaming=True)
+    test_case = guardrails_chat_test_case(
+        config_mode="inline", outcome="safe", rail_types=("input", "output"), streaming=True
+    )
 
     response = post_streaming_chat_completion(test_case)
 
@@ -193,7 +205,9 @@ def test_streaming_chat_completions_allows_safe_request_with_inline_config(
 def test_chat_completions_reports_guardrails_metadata_when_blocked(
     guardrails_chat_test_case: Callable[..., Any],
 ) -> None:
-    test_case = guardrails_chat_test_case(config_mode="referenced", outcome="unsafe_input")
+    test_case = guardrails_chat_test_case(
+        config_mode="referenced", outcome="unsafe_output", rail_types=("input", "output")
+    )
 
     response = post_chat_completion(
         test_case,
@@ -203,14 +217,14 @@ def test_chat_completions_reports_guardrails_metadata_when_blocked(
     guardrails_data = response.get("guardrails_data") or {}
     assert guardrails_data.get("config_ids") == [test_case.config_ref]
     activated_rails = _activated_rails_by_name(response)
-    assert activated_rails[CONTENT_SAFETY_INPUT_FLOW]["stop"] is True
-    assert activated_rails[CONTENT_SAFETY_OUTPUT_FLOW]["stop"] is False
+    assert activated_rails[CONTENT_SAFETY_INPUT_FLOW]["stop"] is False
+    assert activated_rails[CONTENT_SAFETY_OUTPUT_FLOW]["stop"] is True
 
 
 def test_chat_completions_rejects_unsupported_body_guardrails_config(
     guardrails_chat_test_case: Callable[..., Any],
 ) -> None:
-    test_case = guardrails_chat_test_case(config_mode="referenced", outcome="safe")
+    test_case = guardrails_chat_test_case(config_mode="referenced", outcome="safe", rail_types=("input",))
 
     with pytest.raises(nemo_platform.APIStatusError) as exc_info:
         post_chat_completion(
