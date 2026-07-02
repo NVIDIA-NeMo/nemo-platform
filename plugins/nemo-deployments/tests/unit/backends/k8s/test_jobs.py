@@ -283,6 +283,7 @@ async def test_delete_deployment_still_deletes_job_when_entity_missing(
     k8s_backend, mock_k8s_clients: MagicMock, mock_entities: AsyncMock
 ) -> None:
     mock_entities.get.side_effect = NemoEntityNotFoundError("missing")
+    mock_k8s_clients.apps_v1.read_namespaced_deployment.side_effect = ApiException(status=404)
     mock_k8s_clients.batch_v1.read_namespaced_job.return_value = mock_job(complete=True)
 
     update = await k8s_backend.delete_deployment("default", "task")

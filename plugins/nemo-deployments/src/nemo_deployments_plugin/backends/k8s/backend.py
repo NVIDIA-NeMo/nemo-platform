@@ -32,6 +32,13 @@ _K8S_INSTALL_HINT = (
 )
 
 
+def _prefer_failed_delete_result(*results: BackendStatusUpdate) -> BackendStatusUpdate:
+    for result in results:
+        if result.status == "FAILED":
+            return result
+    return results[-1]
+
+
 class K8sDeploymentBackend(DeploymentBackend):
     """Manage deployments and volumes as native Kubernetes objects.
 
@@ -138,7 +145,10 @@ class K8sDeploymentBackend(DeploymentBackend):
             return BackendStatusUpdate(status="FAILED", status_message=f"Failed to load deployment: {exc}")
 
         if config.restart_policy == "Always":
-            container = deployment_ops.validate_config_for_deployment(config)
+            try:
+                container = deployment_ops.validate_config_for_deployment(config)
+            except job_ops.DeploymentConfigError as exc:
+                return BackendStatusUpdate(status="FAILED", status_message=str(exc))
             return await deployment_ops.read_deployment_status(
                 self._clients,
                 default_namespace=self._executor_config.default_namespace,
@@ -167,7 +177,7 @@ class K8sDeploymentBackend(DeploymentBackend):
             _, config, backend_config = await self._load_deployment_context(workspace, name)
         except NemoEntityNotFoundError:
             scope_labels = job_ops.deployment_scope_labels(workspace, name)
-            await deployment_ops.delete_deployment(
+            deployment_result = await deployment_ops.delete_deployment(
                 self._clients,
                 default_namespace=self._executor_config.default_namespace,
                 workspace=workspace,
@@ -175,7 +185,7 @@ class K8sDeploymentBackend(DeploymentBackend):
                 backend_config={},
                 expected_labels=scope_labels,
             )
-            return await job_ops.delete_job(
+            job_result = await job_ops.delete_job(
                 self._clients,
                 default_namespace=self._executor_config.default_namespace,
                 workspace=workspace,
@@ -183,6 +193,7 @@ class K8sDeploymentBackend(DeploymentBackend):
                 backend_config={},
                 expected_labels=scope_labels,
             )
+            return _prefer_failed_delete_result(deployment_result, job_result)
         except Exception as exc:
             return BackendStatusUpdate(status="FAILED", status_message=f"Failed to load deployment: {exc}")
 

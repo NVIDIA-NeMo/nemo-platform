@@ -14,6 +14,9 @@ from nemo_deployments_plugin.backends.base import BackendStatusUpdate, LogResult
 from nemo_deployments_plugin.backends.k8s.client import KubernetesClients, k8s_client_module
 from nemo_deployments_plugin.backends.k8s.jobs import (
     DeploymentConfigError,
+    build_container_spec,
+    build_pod_volumes,
+    build_volume_mounts,
     merged_volume_mounts,
     newest_pod,
     resolve_deployment_namespace,
@@ -40,6 +43,7 @@ from nemo_deployments_plugin.types import Endpoint, RestartPolicy
 logger = logging.getLogger(__name__)
 
 APP_LABEL = "app"
+DEFAULT_SERVICE_PORT = 8080
 
 
 def app_selector_labels(resource_name: str) -> dict[str, str]:
@@ -99,11 +103,6 @@ def _build_container_ports(ports: list[ContainerPort]) -> list[Any]:
 
 
 def build_deployment_container_spec(container: Container, *, volume_mounts: list[VolumeMount] | None = None) -> Any:
-    from nemo_deployments_plugin.backends.k8s.jobs import (
-        build_container_spec,
-        build_volume_mounts,
-    )
-
     k8s = k8s_client_module()
     base = build_container_spec(container, volume_mounts=volume_mounts)
     ports = _build_container_ports(container.ports)
@@ -131,8 +130,6 @@ def build_deployment_body(
     workspace: str,
 ) -> Any:
     """Build an ``apps/v1.Deployment`` for create."""
-    from nemo_deployments_plugin.backends.k8s.jobs import build_pod_volumes
-
     k8s = k8s_client_module()
     selector_labels = app_selector_labels(resource_name)
     pod_labels = {**selector_labels, **labels}
@@ -178,8 +175,8 @@ def build_service_body(*, resource_name: str, labels: dict[str, str], container:
         service_ports.append(
             k8s.client.V1ServicePort(
                 name="http",
-                port=8080,
-                target_port=8080,
+                port=DEFAULT_SERVICE_PORT,
+                target_port=DEFAULT_SERVICE_PORT,
                 protocol="TCP",
             )
         )
@@ -212,7 +209,7 @@ def build_in_cluster_endpoints(*, resource_name: str, namespace: str, container:
                 )
             )
         return endpoints
-    endpoints.append(Endpoint(name="http", url=f"http://{host}:8080", protocol="http"))
+    endpoints.append(Endpoint(name="http", url=f"http://{host}:{DEFAULT_SERVICE_PORT}", protocol="http"))
     return endpoints
 
 
@@ -283,15 +280,36 @@ async def create_deployment(
         core_v1 = clients.core_v1
 
         def _create() -> Any:
+            deployment_created = False
             try:
                 apps_v1.create_namespaced_deployment(
                     namespace=namespace,
                     body=deployment_body,
                     _request_timeout=timeout,
                 )
+                deployment_created = True
             except ApiException as exc:
                 if exc.status != 409:
                     raise
+
+            deployment = apps_v1.read_namespaced_deployment(
+                name=resource_name,
+                namespace=namespace,
+                _request_timeout=timeout,
+            )
+            if not resource_labels_match(deployment, identity_labels):
+                if deployment_created:
+                    try:
+                        apps_v1.delete_namespaced_deployment(
+                            name=resource_name,
+                            namespace=namespace,
+                            propagation_policy="Background",
+                            _request_timeout=timeout,
+                        )
+                    except ApiException:
+                        pass
+                return deployment
+
             try:
                 core_v1.create_namespaced_service(
                     namespace=namespace,
@@ -299,13 +317,20 @@ async def create_deployment(
                     _request_timeout=timeout,
                 )
             except ApiException as exc:
-                if exc.status != 409:
-                    raise
-            return apps_v1.read_namespaced_deployment(
-                name=resource_name,
-                namespace=namespace,
-                _request_timeout=timeout,
-            )
+                if exc.status == 409:
+                    return deployment
+                if deployment_created:
+                    try:
+                        apps_v1.delete_namespaced_deployment(
+                            name=resource_name,
+                            namespace=namespace,
+                            propagation_policy="Background",
+                            _request_timeout=timeout,
+                        )
+                    except ApiException:
+                        pass
+                raise
+            return deployment
 
         deployment = await asyncio.to_thread(_create)
         endpoints = build_in_cluster_endpoints(resource_name=resource_name, namespace=namespace, container=container)
