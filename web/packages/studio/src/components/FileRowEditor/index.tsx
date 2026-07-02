@@ -4,9 +4,10 @@
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import { Button, Flex, Stack, Tag, Text } from '@nvidia/foundations-react-core';
+import { Button, Stack } from '@nvidia/foundations-react-core';
 import { makeDataFileColumns } from '@studio/components/FileRowEditor/columns';
-import { FILE_FORMAT_TAG_COLOR } from '@studio/components/FileRowEditor/constants';
+import { COLUMN_PINNING, DEFAULT_SORT } from '@studio/components/FileRowEditor/constants';
+import { FileHeader } from '@studio/components/FileRowEditor/FileHeader';
 import {
   formatFromFileName,
   parseDataFile,
@@ -16,118 +17,22 @@ import {
 } from '@studio/components/FileRowEditor/parse';
 import { RowEditorPanel } from '@studio/components/FileRowEditor/RowEditorPanel';
 import {
-  compareValues,
-  defaultValueForType,
-  inferColumns,
-} from '@studio/components/FileRowEditor/schema';
+  assignRowIds,
+  cloneRow,
+  deriveRows,
+  emptyRow,
+  formatBytes,
+  nextId,
+  rowId,
+} from '@studio/components/FileRowEditor/rows';
+import { inferColumns } from '@studio/components/FileRowEditor/schema';
 import {
   ROW_ID_KEY,
   type DataFileColumn,
   type DataFileRow,
 } from '@studio/components/FileRowEditor/types';
-import { Download, FileSpreadsheet, FolderOpen, Plus, Trash } from 'lucide-react';
+import { Trash } from 'lucide-react';
 import { type ChangeEvent, type FC, useCallback, useMemo, useRef, useState } from 'react';
-
-// Stable references so the data-view hook's memoized state doesn't churn each render.
-// Sort by the synthetic row id by default to preserve load order regardless of schema.
-const DEFAULT_SORT = { id: ROW_ID_KEY, desc: false };
-const COLUMN_PINNING = { left: ['row-selection'], right: ['row-actions'] };
-
-/** Reads a row's stable identity. */
-const rowId = (row: DataFileRow): number => row[ROW_ID_KEY] as number;
-
-/** Assigns stable, sequential identities to freshly-loaded rows. */
-const assignRowIds = (rows: DataFileRow[]): DataFileRow[] =>
-  rows.map((row, index) => ({ ...row, [ROW_ID_KEY]: index + 1 }));
-
-const cloneRow = (row: DataFileRow): DataFileRow => {
-  try {
-    return structuredClone(row);
-  } catch {
-    return JSON.parse(JSON.stringify(row)) as DataFileRow;
-  }
-};
-
-const nextId = (rows: DataFileRow[]): number =>
-  rows.reduce((max, row) => Math.max(max, rowId(row) || 0), 0) + 1;
-
-/** Builds a blank row from the schema, with type-appropriate empty values. */
-const emptyRow = (id: number, columns: DataFileColumn[]): DataFileRow => {
-  const row: DataFileRow = { [ROW_ID_KEY]: id };
-  for (const column of columns) {
-    // Enum columns start on their first allowed value so the select isn't blank.
-    row[column.key] =
-      column.type === 'string' && column.options?.length
-        ? column.options[0]
-        : defaultValueForType(column.type);
-  }
-  return row;
-};
-
-/**
- * StudioDataView runs in `manual` mode (manual filtering/sorting/pagination), so the
- * consumer must derive the page slice itself. This applies the data view's search,
- * column filters, and sorting to in-memory rows — generically, across whatever columns
- * the data happens to have.
- */
-const deriveRows = (
-  rows: DataFileRow[],
-  {
-    search,
-    columnFilters,
-    sorting,
-  }: {
-    search: string;
-    columnFilters: { id: string; value: unknown }[];
-    sorting: { id: string; desc: boolean }[];
-  }
-): DataFileRow[] => {
-  let result = rows;
-
-  const query = search.trim().toLowerCase();
-  if (query) {
-    result = result.filter((row) =>
-      Object.keys(row).some(
-        (key) =>
-          key !== ROW_ID_KEY &&
-          String(row[key] ?? '')
-            .toLowerCase()
-            .includes(query)
-      )
-    );
-  }
-
-  for (const { id, value } of columnFilters) {
-    if (value === undefined || value === null || value === '') {
-      continue;
-    }
-    result = result.filter((row) => String(row[id] ?? '') === String(value));
-  }
-
-  if (sorting.length > 0) {
-    const { id, desc } = sorting[0];
-    result = [...result].sort((a, b) => {
-      const cmp = compareValues(a[id], b[id]);
-      return desc ? -cmp : cmp;
-    });
-  }
-
-  return result;
-};
-
-const formatBytes = (bytes: number): string => {
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-  const units = ['KB', 'MB', 'GB'];
-  let size = bytes / 1024;
-  let unit = 0;
-  while (size >= 1024 && unit < units.length - 1) {
-    size /= 1024;
-    unit++;
-  }
-  return `${size.toFixed(1)} ${units[unit]}`;
-};
 
 export interface FileRowEditorProps {
   /** File name shown in the header. Its extension drives the format chip. */
@@ -336,75 +241,21 @@ export const FileRowEditor: FC<FileRowEditorProps> = ({
 
   return (
     <Stack gap="density-xl" className={`h-full w-full min-w-0 ${className ?? ''}`}>
-      {/* File header */}
-      <Flex align="center" gap="density-md" className="w-full shrink-0">
-        <Flex
-          align="center"
-          justify="center"
-          className="size-10 shrink-0 rounded-md bg-surface-sunken"
-        >
-          <FileSpreadsheet size={20} className="text-secondary" />
-        </Flex>
-        <Stack gap="density-xs" className="min-w-0 flex-1">
-          <Flex align="center" gap="density-sm">
-            <Text kind="title/xs" className="truncate">
-              {fileName}
-            </Text>
-            <Tag kind="solid" color={FILE_FORMAT_TAG_COLOR[fileFormat]} readOnly>
-              {fileFormat === 'unknown' ? 'FILE' : fileFormat.toUpperCase()}
-            </Tag>
-          </Flex>
-          <Flex align="center" gap="density-sm" className="text-secondary">
-            <Text kind="body/regular/sm" className="text-secondary">
-              {rows.length.toLocaleString()} rows · {columns.length} columns · {fileSizeLabel}
-            </Text>
-            <Text kind="body/regular/sm" className="text-secondary">
-              ·
-            </Text>
-            {loadError ? (
-              <Text kind="body/regular/sm" className="text-danger">
-                {loadError}
-              </Text>
-            ) : (
-              <Text kind="body/regular/sm" className="text-secondary">
-                Schema inferred
-              </Text>
-            )}
-          </Flex>
-        </Stack>
-        <Flex align="center" gap="density-sm" className="shrink-0">
-          {showOpenFile && (
-            <>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".json,.jsonl,.ndjson,.csv"
-                className="hidden"
-                aria-hidden="true"
-                tabIndex={-1}
-                onChange={handleFileSelected}
-              />
-              <Button kind="secondary" color="neutral" onClick={handleOpenFileClick}>
-                <FolderOpen size={16} />
-                Open File
-              </Button>
-            </>
-          )}
-          <Button
-            kind="secondary"
-            color="neutral"
-            onClick={handleDownload}
-            disabled={rows.length === 0}
-          >
-            <Download size={16} />
-            Download
-          </Button>
-          <Button kind="primary" color="brand" onClick={handleAddRow}>
-            <Plus size={16} />
-            Add Row
-          </Button>
-        </Flex>
-      </Flex>
+      <FileHeader
+        fileName={fileName}
+        fileFormat={fileFormat}
+        rowCount={rows.length}
+        columnCount={columns.length}
+        fileSizeLabel={fileSizeLabel}
+        loadError={loadError}
+        showOpenFile={showOpenFile}
+        fileInputRef={fileInputRef}
+        onFileSelected={handleFileSelected}
+        onOpenFileClick={handleOpenFileClick}
+        onDownload={handleDownload}
+        onAddRow={handleAddRow}
+        downloadDisabled={rows.length === 0}
+      />
 
       {/* Table */}
       <Stack className="min-h-0 min-w-0 w-full flex-1">
