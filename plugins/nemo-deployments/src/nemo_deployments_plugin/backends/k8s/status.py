@@ -87,7 +87,7 @@ def status_from_job(
     return BackendStatusUpdate(status="STARTING", status_message=f"Job {job_name} is pending")
 
 
-def _deployment_is_deleting(deployment: Any) -> bool:
+def _is_deployment_deleting(deployment: Any) -> bool:
     metadata = getattr(deployment, "metadata", None)
     return bool(metadata and getattr(metadata, "deletion_timestamp", None))
 
@@ -168,7 +168,7 @@ def status_from_deployment(
             status="FAILED",
             status_message=f"Deployment {deployment_name} exists but is not managed by this plugin",
         )
-    if _deployment_is_deleting(deployment):
+    if _is_deployment_deleting(deployment):
         return BackendStatusUpdate(
             status="DELETING",
             status_message=f"Deployment {deployment_name} is terminating",

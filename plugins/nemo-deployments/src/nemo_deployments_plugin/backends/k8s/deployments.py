@@ -1,7 +1,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Kubernetes Deployment + Service lifecycle for long-running workloads (Always)."""
+"""Kubernetes Deployment + Service lifecycle for long-running workloads (Always).
+
+The official kubernetes-client is synchronous; ``asyncio.to_thread`` matches the
+Job backend (``jobs.py``). Async client support is not in scope for this phase.
+"""
 
 from __future__ import annotations
 
@@ -53,6 +57,8 @@ def app_selector_labels(resource_name: str) -> dict[str, str]:
 def validate_config_for_deployment(config: DeploymentConfig) -> Container:
     """Return the sole container spec for a Deployment-backed deployment."""
     if config.init_containers:
+        # User-specified initContainers are deferred to phase 5. Mesh sidecars (Istio,
+        # Linkerd) inject at admission time and do not appear in DeploymentConfig.
         raise DeploymentConfigError("init_containers are not supported by the k8s Deployment backend in this phase")
     if len(config.containers) != 1:
         raise DeploymentConfigError(
@@ -132,7 +138,7 @@ def build_deployment_body(
     """Build an ``apps/v1.Deployment`` for create."""
     k8s = k8s_client_module()
     selector_labels = app_selector_labels(resource_name)
-    pod_labels = {**selector_labels, **labels}
+    pod_labels = selector_labels | labels
     mounts = merged_volume_mounts(config, container)
     pod_spec_kwargs: dict[str, Any] = {
         "containers": [build_deployment_container_spec(container, volume_mounts=mounts or None)],
@@ -244,6 +250,14 @@ async def _read_newest_pod(
         return None
 
 
+def _log_cleanup_ignored(resource_name: str, exc: ApiException) -> None:
+    logger.debug(
+        "Best-effort cleanup of %s failed (resource may already be deleted)",
+        resource_name,
+        exc_info=exc,
+    )
+
+
 async def create_deployment(
     clients: KubernetesClients,
     *,
@@ -307,8 +321,8 @@ async def create_deployment(
                             propagation_policy="Background",
                             _request_timeout=timeout,
                         )
-                    except ApiException:
-                        pass
+                    except ApiException as cleanup_exc:
+                        _log_cleanup_ignored(resource_name, cleanup_exc)
                 return deployment
 
             try:
@@ -333,8 +347,8 @@ async def create_deployment(
                                     propagation_policy="Background",
                                     _request_timeout=timeout,
                                 )
-                            except ApiException:
-                                pass
+                            except ApiException as cleanup_exc:
+                                _log_cleanup_ignored(resource_name, cleanup_exc)
                         raise
                     return deployment
                 if deployment_created:
@@ -345,8 +359,8 @@ async def create_deployment(
                             propagation_policy="Background",
                             _request_timeout=timeout,
                         )
-                    except ApiException:
-                        pass
+                    except ApiException as cleanup_exc:
+                        _log_cleanup_ignored(resource_name, cleanup_exc)
                 raise
             return deployment
 

@@ -83,7 +83,7 @@ async def test_create_deployment_emits_deployment_and_service(
     await k8s_backend.create_deployment(
         workspace="default",
         name="task",
-        config_name="cfg1",
+        config_name="config1",
         labels={},
         backend_config={},
     )
@@ -110,7 +110,7 @@ async def test_create_deployment_ready_reports_endpoints(
     update = await k8s_backend.create_deployment(
         workspace="default",
         name="task",
-        config_name="cfg1",
+        config_name="config1",
         labels={},
         backend_config={},
     )
@@ -134,7 +134,7 @@ async def test_create_deployment_conflict_rejects_foreign(
         default_namespace="default",
         workspace="default",
         name="task",
-        config_name="cfg1",
+        config_name="config1",
         labels={},
         backend_config={},
         config=sample_always_config(),
@@ -161,7 +161,7 @@ async def test_create_deployment_service_conflict_rejects_foreign(
         default_namespace="default",
         workspace="default",
         name="task",
-        config_name="cfg1",
+        config_name="config1",
         labels={},
         backend_config={},
         config=sample_always_config(),
@@ -184,7 +184,7 @@ async def test_create_deployment_rolls_back_when_service_create_fails(
         default_namespace="default",
         workspace="default",
         name="task",
-        config_name="cfg1",
+        config_name="config1",
         labels={},
         backend_config={},
         config=sample_always_config(),

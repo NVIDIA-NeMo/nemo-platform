@@ -24,7 +24,7 @@ from nemo_deployments_plugin.types import RestartPolicy
 
 def sample_config(*, restart_policy: RestartPolicy = "Never") -> DeploymentConfig:
     return DeploymentConfig(
-        name="cfg1",
+        name="config1",
         workspace="default",
         containers=[
             Container(
@@ -37,7 +37,7 @@ def sample_config(*, restart_policy: RestartPolicy = "Never") -> DeploymentConfi
     ).model_copy(update={"restart_policy": restart_policy})
 
 
-def sample_deployment(*, config_name: str = "cfg1") -> Deployment:
+def sample_deployment(*, config_name: str = "config1") -> Deployment:
     return Deployment(
         name="task",
         workspace="default",
@@ -48,7 +48,7 @@ def sample_deployment(*, config_name: str = "cfg1") -> Deployment:
 def sample_always_config(*, with_port: bool = True) -> DeploymentConfig:
     ports = [ContainerPort(name="http", containerPort=8080)] if with_port else []
     return DeploymentConfig(
-        name="cfg1",
+        name="config1",
         workspace="default",
         containers=[
             Container(
@@ -64,7 +64,7 @@ def always_identity_labels(
     workspace: str = "default",
     name: str = "task",
     *,
-    config_name: str = "cfg1",
+    config_name: str = "config1",
     backoff_limit: int = 6,
 ) -> dict[str, str]:
     return deployment_identity_labels(
@@ -123,7 +123,7 @@ def deployment_list_item(*, workspace: str, name: str) -> MagicMock:
         DEPLOYMENT_WORKSPACE_LABEL: workspace,
         DEPLOYMENT_NAME_LABEL: name,
         RESTART_POLICY_LABEL: "Always",
-        CONFIG_NAME_LABEL: "cfg1",
+        CONFIG_NAME_LABEL: "config1",
         BACKOFF_LIMIT_LABEL: "6",
     }
     return item
@@ -134,7 +134,7 @@ def job_identity_labels(
     name: str = "task",
     *,
     restart_policy: RestartPolicy = "Never",
-    config_name: str = "cfg1",
+    config_name: str = "config1",
     backoff_limit: int = 6,
 ) -> dict[str, str]:
     return deployment_identity_labels(
@@ -151,7 +151,7 @@ def mock_job(
     workspace: str = "default",
     name: str = "task",
     restart_policy: RestartPolicy = "Never",
-    config_name: str = "cfg1",
+    config_name: str = "config1",
     active: int = 0,
     complete: bool = False,
     failed: bool = False,
@@ -192,7 +192,7 @@ def job_list_item(*, workspace: str, name: str) -> MagicMock:
         DEPLOYMENT_WORKSPACE_LABEL: workspace,
         DEPLOYMENT_NAME_LABEL: name,
         RESTART_POLICY_LABEL: "Never",
-        CONFIG_NAME_LABEL: "cfg1",
+        CONFIG_NAME_LABEL: "config1",
         BACKOFF_LIMIT_LABEL: "0",
     }
     return item

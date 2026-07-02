@@ -53,7 +53,7 @@ async def test_create_job_on_failure_uses_requested_restart_policy(
     await k8s_backend.create_deployment(
         workspace="default",
         name="task",
-        config_name="cfg1",
+        config_name="config1",
         labels={},
         backend_config={},
     )
@@ -76,7 +76,7 @@ async def test_create_job_emits_separate_command_and_args(
     await k8s_backend.create_deployment(
         workspace="default",
         name="task",
-        config_name="cfg1",
+        config_name="config1",
         labels={},
         backend_config={},
     )
@@ -97,7 +97,7 @@ async def test_create_job_emits_batch_job(k8s_backend, mock_k8s_clients: MagicMo
     update = await k8s_backend.create_deployment(
         workspace="default",
         name="task",
-        config_name="cfg1",
+        config_name="config1",
         labels={"managed-by": MANAGED_BY_LABEL},
         backend_config={},
     )
@@ -123,7 +123,7 @@ async def test_create_job_conflict_reads_existing(
     update = await k8s_backend.create_deployment(
         workspace="default",
         name="task",
-        config_name="cfg1",
+        config_name="config1",
         labels={},
         backend_config={},
     )
@@ -144,7 +144,7 @@ async def test_create_job_conflict_rejects_foreign(job_ops_clients: MagicMock, m
         default_namespace="default",
         workspace="default",
         name="task",
-        config_name="cfg1",
+        config_name="config1",
         labels={},
         backend_config={},
         config=sample_config(restart_policy="Never"),
@@ -268,7 +268,7 @@ async def test_create_job_malformed_backend_config_returns_failed(job_ops_client
         default_namespace="default",
         workspace="default",
         name="task",
-        config_name="cfg1",
+        config_name="config1",
         labels={},
         backend_config={"k8s": {"namespace": 42}},
         config=sample_config(restart_policy="Never"),
