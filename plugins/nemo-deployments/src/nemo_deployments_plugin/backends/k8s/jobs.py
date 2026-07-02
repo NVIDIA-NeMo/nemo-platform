@@ -7,12 +7,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 from kubernetes.client.rest import ApiException
 from nemo_deployments_plugin.backends.base import BackendStatusUpdate, LogResult
 from nemo_deployments_plugin.backends.k8s.client import KubernetesClients, k8s_client_module
 from nemo_deployments_plugin.backends.k8s.compiler import (
+    CompiledWorkload,
     DeploymentConfigError,
     compile_workload,
     create_configmap,
@@ -41,6 +43,14 @@ from nemo_deployments_plugin.entities import DeploymentConfig, K8sDeploymentConf
 from nemo_deployments_plugin.types import RestartPolicy
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class BuiltJob:
+    """A batch/v1.Job plus the compiled workload used to build its pod template."""
+
+    job: Any
+    compiled: CompiledWorkload
 
 
 def resolve_k8s_deployment_config(backend_config: dict[str, Any]) -> K8sDeploymentConfig | None:
@@ -103,7 +113,7 @@ def build_job_body(
     workspace: str,
     deployment_name: str,
     k8s_config: K8sDeploymentConfig | None,
-) -> Any:
+) -> BuiltJob:
     """Build a ``batch/v1.Job`` for create."""
     k8s = k8s_client_module()
     compiled = compile_workload(
@@ -114,7 +124,7 @@ def build_job_body(
         k8s_config=k8s_config,
         pod_restart_policy=config.restart_policy,
     )
-    return k8s.client.V1Job(
+    job = k8s.client.V1Job(
         api_version="batch/v1",
         kind="Job",
         metadata=k8s.client.V1ObjectMeta(name=job_name, labels=labels),
@@ -125,7 +135,8 @@ def build_job_body(
                 spec=k8s.client.V1PodSpec(**compiled.pod_spec_kwargs),
             ),
         ),
-    ), compiled
+    )
+    return BuiltJob(job=job, compiled=compiled)
 
 
 async def read_pod_exit_code(
@@ -186,7 +197,7 @@ async def create_job(
             backoff_limit=config.backoff_limit,
         )
         all_labels = {**labels, **config.labels, **identity_labels}
-        body, compiled = build_job_body(
+        built = build_job_body(
             job_name=job_name,
             labels=all_labels,
             config=config,
@@ -194,6 +205,8 @@ async def create_job(
             deployment_name=name,
             k8s_config=k8s_config,
         )
+        body = built.job
+        compiled = built.compiled
         timeout = clients.request_timeout
         batch_v1 = clients.batch_v1
         core_v1 = clients.core_v1

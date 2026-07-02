@@ -83,14 +83,41 @@ def test_compile_deployment_includes_init_and_sidecar() -> None:
         pod_restart_policy="Always",
     )
     pod_spec = _serialized(compiled.pod_spec_kwargs)
-    assert pod_spec["restart_policy"] == "Always"
-    assert [item["name"] for item in pod_spec["init_containers"]] == ["bootstrap", "sidecar"]
-    sidecar = compiled.pod_spec_kwargs["init_containers"][1]
-    assert sidecar.restart_policy == "Always"
-    assert sidecar.liveness_probe is not None
-    bootstrap = compiled.pod_spec_kwargs["init_containers"][0]
-    assert bootstrap.liveness_probe is None
-    assert [item["name"] for item in pod_spec["containers"]] == ["main", "metrics"]
+    assert pod_spec == {
+        "restart_policy": "Always",
+        "init_containers": [
+            {
+                "name": "bootstrap",
+                "image": "busybox",
+                "command": ["sh", "-c", "echo hi"],
+            },
+            {
+                "name": "sidecar",
+                "image": "nginx:alpine",
+                "restartPolicy": "Always",
+                "ports": [{"name": "proxy", "containerPort": 8081, "protocol": "TCP"}],
+                "livenessProbe": {
+                    "httpGet": {"path": "/healthz", "port": 8081, "scheme": "HTTP"},
+                    "initialDelaySeconds": 0,
+                    "timeoutSeconds": 1,
+                    "periodSeconds": 10,
+                    "failureThreshold": 3,
+                },
+            },
+        ],
+        "containers": [
+            {
+                "name": "main",
+                "image": "nginx:alpine",
+                "ports": [{"name": "http", "containerPort": 8080, "protocol": "TCP"}],
+            },
+            {
+                "name": "metrics",
+                "image": "prom/node-exporter",
+                "ports": [{"name": "metrics", "containerPort": 9100, "protocol": "TCP"}],
+            },
+        ],
+    }
     assert len(compiled.service_containers) == 2
 
 
@@ -146,7 +173,7 @@ def test_compile_config_files_emit_configmap_and_mounts() -> None:
 
 def test_build_job_body_returns_compiled_workload() -> None:
     config = sample_config(restart_policy="OnFailure")
-    job, compiled = build_job_body(
+    built = build_job_body(
         job_name="dep-default-task-abc",
         labels={"managed-by": "nemo-deployments"},
         config=config,
@@ -154,13 +181,13 @@ def test_build_job_body_returns_compiled_workload() -> None:
         deployment_name="task",
         k8s_config=None,
     )
-    assert job.kind == "Job"
-    assert compiled.pod_spec_kwargs["restart_policy"] == "OnFailure"
+    assert built.job.kind == "Job"
+    assert built.compiled.pod_spec_kwargs["restart_policy"] == "OnFailure"
 
 
 def test_build_deployment_body_returns_compiled_workload() -> None:
     config = sample_always_config()
-    deployment, compiled = build_deployment_body(
+    built = build_deployment_body(
         resource_name="dep-default-task-abc",
         labels={"managed-by": "nemo-deployments"},
         config=config,
@@ -168,8 +195,8 @@ def test_build_deployment_body_returns_compiled_workload() -> None:
         deployment_name="task",
         k8s_config=None,
     )
-    assert deployment.kind == "Deployment"
-    assert compiled.service_containers[0].name == "main"
+    assert built.deployment.kind == "Deployment"
+    assert built.compiled.service_containers[0].name == "main"
 
 
 def test_validate_rejects_main_container_restart_policy() -> None:

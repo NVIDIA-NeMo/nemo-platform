@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any
 
 from kubernetes.client.rest import ApiException
@@ -122,6 +123,11 @@ class CompiledWorkload:
     service_containers: tuple[Container, ...]
 
 
+def _reraise_api_unless(exc: ApiException, *allowed_statuses: int) -> None:
+    if exc.status not in allowed_statuses:
+        raise exc
+
+
 def _validate_port_names(config: DeploymentConfig) -> None:
     seen_names: set[str] = set()
     seen_ports: set[tuple[int, str]] = set()
@@ -160,7 +166,7 @@ def validate_workload_config(config: DeploymentConfig) -> None:
 def validate_config_for_job(config: DeploymentConfig) -> None:
     validate_workload_config(config)
     if config.restart_policy == "Always":
-        raise DeploymentConfigError("restart_policy Always uses Deployment, not Job")
+        raise DeploymentConfigError("restart_policy Always requires a Deployment workload, not a Job")
 
 
 def validate_config_for_deployment(config: DeploymentConfig) -> None:
@@ -177,13 +183,8 @@ def configmap_data_key(path: str) -> str:
 
 def _deserialize_k8s(data: dict[str, Any], klass: str) -> Any:
     k8s = k8s_client_module()
-
-    class _Resp:
-        data: str | None = None
-
-    resp = _Resp()
-    resp.data = json.dumps(data)
-    return k8s.client.ApiClient().deserialize(response=resp, response_type=klass)
+    response = SimpleNamespace(data=json.dumps(data))
+    return k8s.client.ApiClient().deserialize(response=response, response_type=klass)
 
 
 def _build_probe(probe: Probe | None) -> Any | None:
@@ -419,8 +420,7 @@ def create_configmap(
     try:
         core_v1.create_namespaced_config_map(namespace=namespace, body=body, _request_timeout=timeout)
     except ApiException as exc:
-        if exc.status != 409:
-            raise
+        _reraise_api_unless(exc, 409)
         existing = core_v1.read_namespaced_config_map(
             name=body.metadata.name,
             namespace=namespace,
@@ -463,13 +463,11 @@ def delete_configmap(
     try:
         configmap = core_v1.read_namespaced_config_map(name=name, namespace=namespace, _request_timeout=timeout)
     except ApiException as exc:
-        if exc.status == 404:
-            return
-        raise
+        _reraise_api_unless(exc, 404)
+        return
     if not resource_labels_match(configmap, expected_labels):
         return
     try:
         core_v1.delete_namespaced_config_map(name=name, namespace=namespace, _request_timeout=timeout)
     except ApiException as exc:
-        if exc.status != 404:
-            raise
+        _reraise_api_unless(exc, 404)

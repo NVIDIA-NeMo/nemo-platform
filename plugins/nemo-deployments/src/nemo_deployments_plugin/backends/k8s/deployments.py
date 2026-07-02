@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 from kubernetes.client.rest import ApiException
@@ -51,6 +52,15 @@ from nemo_deployments_plugin.types import Endpoint, RestartPolicy
 
 logger = logging.getLogger(__name__)
 
+
+@dataclass(frozen=True)
+class BuiltDeployment:
+    """An apps/v1.Deployment plus the compiled workload used to build its pod template."""
+
+    deployment: Any
+    compiled: CompiledWorkload
+
+
 APP_LABEL = "app"
 DEFAULT_SERVICE_PORT = 8080
 
@@ -67,7 +77,7 @@ def build_deployment_body(
     workspace: str,
     deployment_name: str,
     k8s_config: K8sDeploymentConfig | None,
-) -> tuple[Any, CompiledWorkload]:
+) -> BuiltDeployment:
     """Build an ``apps/v1.Deployment`` for create and its compiled workload."""
     k8s = k8s_client_module()
     selector_labels = app_selector_labels(resource_name)
@@ -93,7 +103,7 @@ def build_deployment_body(
             ),
         ),
     )
-    return deployment, compiled
+    return BuiltDeployment(deployment=deployment, compiled=compiled)
 
 
 def build_service_body(*, resource_name: str, labels: dict[str, str], containers: tuple[Container, ...]) -> Any:
@@ -228,7 +238,7 @@ async def create_deployment(
             backoff_limit=config.backoff_limit,
         )
         all_labels = {**labels, **config.labels, **identity_labels}
-        deployment_body, compiled = build_deployment_body(
+        built = build_deployment_body(
             resource_name=resource_name,
             labels=all_labels,
             config=config,
@@ -236,6 +246,8 @@ async def create_deployment(
             deployment_name=name,
             k8s_config=k8s_config,
         )
+        deployment_body = built.deployment
+        compiled = built.compiled
         service_body = build_service_body(
             resource_name=resource_name,
             labels=all_labels,
