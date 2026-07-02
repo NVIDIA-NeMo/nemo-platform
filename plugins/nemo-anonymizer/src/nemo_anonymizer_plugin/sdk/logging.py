@@ -10,7 +10,7 @@ import logging
 import threading
 from contextlib import contextmanager
 from functools import wraps
-from typing import Generator
+from typing import Generator, TypeVar
 
 _LOGGER_NAME = "nemo_platform.anonymizer"
 _HANDLER_MARKER = "_nemo_anonymizer_sdk_handler"
@@ -68,7 +68,10 @@ def _ensure_logging_handler() -> Generator[None, None, None]:
                 _saved_propagate = None
 
 
-def with_logging(cls: type) -> type:
+_ClsT = TypeVar("_ClsT", bound=type)
+
+
+def with_logging(cls: _ClsT) -> _ClsT:
     """Wrap public methods so SDK logging is configured on demand."""
     for name, method in vars(cls).items():
         if name.startswith("_") or isinstance(method, (staticmethod, classmethod)):

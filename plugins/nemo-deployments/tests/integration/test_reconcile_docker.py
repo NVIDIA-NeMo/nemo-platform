@@ -83,7 +83,7 @@ async def test_puller_server_prerequisite_chain(docker_registry: ExecutorRegistr
     puller_cfg = DeploymentConfig(
         name="puller-cfg",
         workspace="itest",
-        restart_policy="OnFailure",
+        restart_policy="OnFailure",  # ty: ignore[unknown-argument]
         containers=[
             Container(
                 name="puller",
@@ -98,14 +98,14 @@ async def test_puller_server_prerequisite_chain(docker_registry: ExecutorRegistr
     server_cfg = DeploymentConfig(
         name="server-cfg",
         workspace="itest",
-        restart_policy="Always",
+        restart_policy="Always",  # ty: ignore[unknown-argument]
         containers=[
             Container(
                 name="server",
                 image="alpine:3.20",
                 command=["sleep"],
                 args=["3600"],
-                volumeMounts=[VolumeMount(name="weights", mountPath="/data", read_only=True)],
+                volumeMounts=[VolumeMount(name="weights", mountPath="/data", read_only=True)],  # ty: ignore[unknown-argument]
             )
         ],
         volumeMounts=[VolumeMount(name="weights", mountPath="/data")],

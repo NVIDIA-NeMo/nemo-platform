@@ -17,17 +17,6 @@ ci_ignored_rules=(
   invalid-method-override  # 18
   no-matching-overload     # 2
   unsupported-operator     # 2
-  # New in ty 0.0.56 — pre-existing violations, fix incrementally:
-  invalid-type-form        # 23
-  unknown-argument         # 9
-  unresolved-import        # 4
-  missing-argument         # 4
-  invalid-yield            # 3
-  invalid-paramspec        # 3
-  call-non-callable        # 3
-  too-many-positional-arguments # 1
-  invalid-attribute-override    # 1
-  empty-body               # 1
 )
 
 ignore_args=()

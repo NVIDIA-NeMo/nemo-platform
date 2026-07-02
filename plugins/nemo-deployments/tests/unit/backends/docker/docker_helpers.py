@@ -23,7 +23,7 @@ def sample_config(*, restart_policy: RestartPolicy = "Always") -> DeploymentConf
                 args=["hello"],
             )
         ],
-        restart_policy=restart_policy,
+        restart_policy=restart_policy,  # ty: ignore[unknown-argument]
     )
 
 

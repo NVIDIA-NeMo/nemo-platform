@@ -15,7 +15,7 @@ from nemo_deployments_plugin.entities import HTTPGetAction, Probe, TCPSocketActi
 @pytest.mark.asyncio
 async def test_http_probe_without_host_url_not_ready() -> None:
     container = MagicMock()
-    probe = Probe(http_get=HTTPGetAction(path="/health", port=8080))
+    probe = Probe(http_get=HTTPGetAction(path="/health", port=8080))  # ty: ignore[unknown-argument]
 
     ready, reason = await check_readiness_probe(
         container=container,
@@ -30,7 +30,7 @@ async def test_http_probe_without_host_url_not_ready() -> None:
 @pytest.mark.asyncio
 async def test_tcp_probe_without_host_url_not_ready() -> None:
     container = MagicMock()
-    probe = Probe(tcp_socket=TCPSocketAction(port=8080))
+    probe = Probe(tcp_socket=TCPSocketAction(port=8080))  # ty: ignore[unknown-argument]
 
     ready, reason = await check_readiness_probe(
         container=container,

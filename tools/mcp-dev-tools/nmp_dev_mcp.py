@@ -21,7 +21,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from fastmcp import FastMCP
+from fastmcp import FastMCP  # ty: ignore[unresolved-import]
 
 # Configure logging
 logging.basicConfig(

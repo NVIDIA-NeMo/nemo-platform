@@ -7,7 +7,7 @@ import logging
 from collections.abc import Mapping
 from html import escape
 from pathlib import Path
-from typing import List
+from typing import ClassVar, List
 
 from fastapi import FastAPI, Request, status
 from fastapi.responses import HTMLResponse
@@ -51,7 +51,7 @@ class StudioService(Service[StudioConfig]):
     - env_replacements: Runtime values to inject into the UI bundle (cached)
     """
 
-    dependencies: list[str] = []
+    dependencies: ClassVar[list[str]] = []
 
     def __init__(self):
         """Initialize the studio service."""
