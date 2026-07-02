@@ -12,12 +12,12 @@ from typing import Any, Literal, TypedDict, TypeVar, overload
 
 import anyio
 import fsspec.asyn
+import httpx
 from anyio import to_thread
 from fsspec.asyn import AbstractAsyncStreamedFile, AsyncFileSystem, _get_batch_size
 from fsspec.callbacks import DEFAULT_CALLBACK, Callback
 from fsspec.spec import AbstractBufferedFile
-from nemo_platform_plugin.client.client import AsyncNemoClient
-from nemo_platform_plugin.files.client import AsyncFilesClient
+from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 from nemo_platform_plugin.files.types import FilesetFileOutput, ListFilesQueryParams
 
 T = TypeVar("T")
@@ -97,6 +97,18 @@ async def run_coros_in_chunks(
 # limiter-based AnyIO runner. This is intentionally semantics-different from
 # upstream chunking because we prefer continuous refill over wave-based batches.
 fsspec.asyn._run_coros_in_chunks = run_coros_in_chunks
+
+
+def _detect_async_transport(sync_client: Any) -> httpx.AsyncBaseTransport | None:
+    """Detect if a sync httpx client wraps a TestClient and return ASGITransport."""
+    try:
+        from starlette.testclient import TestClient
+
+        if isinstance(sync_client, TestClient):
+            return httpx.ASGITransport(app=sync_client.app)
+    except ImportError:
+        pass
+    return None
 
 
 class FileInfo(TypedDict):
@@ -302,8 +314,8 @@ class FilesetFileSystem(AsyncFileSystem):
     uses the client's default workspace.
 
     Examples:
-        >>> from nemo_platform_plugin.client.client import AsyncNemoClient
-        >>> client = AsyncNemoClient(base_url="http://localhost:8000", workspace="default")
+        >>> from nemo_platform_plugin.files.client import AsyncFilesClient
+        >>> client = AsyncFilesClient(base_url="http://localhost:8000", workspace="default")
         >>> fs = FilesetFileSystem(client=client)
         >>> fs.ls("my-fileset")  # root of fileset, workspace from client default
         >>> fs.ls("my-fileset#data/")  # specific path within fileset
@@ -336,32 +348,21 @@ class FilesetFileSystem(AsyncFileSystem):
 
     def __init__(
         self,
-        client: AsyncFilesClient | AsyncNemoClient | None = None,
+        *,
+        client: FilesClient | AsyncFilesClient | None = None,
+        sdk: Any | None = None,
         batch_size: int | None = None,
         blocksize: int | None = None,
-        *,
-        sdk: Any | None = None,
         asynchronous: bool = True,
         **kwargs,
     ):
-        # Backward compat: accept NeMoPlatform passed as positional arg
-        if client is not None and not isinstance(client, (AsyncFilesClient, AsyncNemoClient)):
-            sdk = client
-            client = None
-
         if client is None and sdk is None:
             raise TypeError("Either 'client' or 'sdk' must be provided")
 
-        if client is None:
-            # Backward compat: detect sync vs async SDK to set fsspec's event loop mode
-            from nemo_platform import AsyncNeMoPlatform
-
-            asynchronous = isinstance(sdk, AsyncNeMoPlatform)
-            client = self._client_from_sdk(sdk)
-
-        # Wrap plain AsyncNemoClient in AsyncFilesClient for method access
-        if isinstance(client, AsyncNemoClient) and not isinstance(client, AsyncFilesClient):
-            client = AsyncFilesClient.from_client(client)
+        if client is not None:
+            async_client, asynchronous = self._to_async_client(client)
+        else:
+            async_client, asynchronous = self._client_from_sdk(sdk)
 
         if batch_size is None:
             batch_size = self.default_batch_size
@@ -370,14 +371,40 @@ class FilesetFileSystem(AsyncFileSystem):
             blocksize = self.blocksize
 
         super().__init__(asynchronous=asynchronous, batch_size=batch_size, blocksize=blocksize, **kwargs)
-        self._client = client
+        self._client = async_client
 
     @staticmethod
-    def _client_from_sdk(sdk: Any) -> AsyncFilesClient:
+    def _to_async_client(client: FilesClient | AsyncFilesClient) -> tuple[AsyncFilesClient, bool]:
+        """Convert a sync or async FilesClient to an AsyncFilesClient.
+
+        Returns (async_client, asynchronous) where asynchronous indicates
+        whether fsspec should use async mode.
+        """
+        if isinstance(client, AsyncFilesClient):
+            return client, True
+
+        import httpx
+
+        transport = _detect_async_transport(client._http)
+        return AsyncFilesClient(
+            base_url=client.base_url,
+            workspace=client.workspace,
+            auth=client._auth,
+            default_headers=client._default_headers or None,
+            retry=client._retry,
+            http_client=httpx.AsyncClient(
+                transport=transport,
+                base_url=client.base_url,
+                headers=dict(client._default_headers) if client._default_headers else None,
+            ),
+        ), False
+
+    @staticmethod
+    def _client_from_sdk(sdk: Any) -> tuple[AsyncFilesClient, bool]:
         """Convert a NeMoPlatform SDK instance to an AsyncFilesClient.
 
-        Handles both sync and async SDK instances. For sync SDKs, creates
-        a new AsyncFilesClient with a fresh httpx.AsyncClient.
+        Returns (async_client, asynchronous) where asynchronous indicates
+        whether fsspec should use async mode.
         """
         import httpx
         from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
@@ -388,20 +415,12 @@ class FilesetFileSystem(AsyncFileSystem):
                 workspace=sdk.workspace,
                 default_headers=sdk._custom_headers,
                 http_client=sdk._client,
-            )
+            ), True
 
         if not isinstance(sdk, NeMoPlatform):
             raise TypeError(f"Expected NeMoPlatform or AsyncNeMoPlatform, got {type(sdk).__name__}")
 
-        # Convert sync SDK to async client with a fresh httpx.AsyncClient
-        transport: httpx.AsyncBaseTransport | None = None
-        try:
-            from starlette.testclient import TestClient
-
-            if isinstance(sdk._client, TestClient):
-                transport = httpx.ASGITransport(app=sdk._client.app)
-        except ImportError:
-            pass
+        transport = _detect_async_transport(sdk._client)
 
         # Prefer _custom_headers (set via with_options/set_default_headers),
         # fall back to the httpx client's actual headers (set at construction,
@@ -421,7 +440,7 @@ class FilesetFileSystem(AsyncFileSystem):
                 base_url=str(sdk.base_url).rstrip("/"),
                 headers=custom_headers,
             ),
-        )
+        ), False
 
     @property
     def _workspace(self) -> str | None:

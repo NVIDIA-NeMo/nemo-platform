@@ -369,9 +369,7 @@ class FilesResource:
     @cached_property
     def fsspec(self) -> FilesetFileSystem:
         """Access the underlying fsspec filesystem."""
-        # FilesetFileSystem._client_from_sdk handles NeMoPlatform → AsyncNemoClient
-        # conversion with proper transport detection (e.g. TestClient → ASGITransport).
-        return FilesetFileSystem(sdk=self._raw_client, asynchronous=False)
+        return FilesetFileSystem(client=self._client)
 
     def _ensure_fileset_exists(self, workspace: str, fileset: str) -> None:
         """Create fileset if it doesn't exist (idempotent)."""
