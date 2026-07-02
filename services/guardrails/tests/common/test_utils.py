@@ -86,8 +86,6 @@ class TestLLMRailsInitializationErrors:
         from nemoguardrails import LLMRails, RailsConfig
         from pydantic_core import ValidationError
 
-        import nmp.guardrails.app.services.rails  # noqa: F401
-
         config = RailsConfig.from_content(
             yaml_content="""
             models:
