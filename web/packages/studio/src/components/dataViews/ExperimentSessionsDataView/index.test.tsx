@@ -6,7 +6,7 @@ import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { server } from '@studio/mocks/node';
 import { getExperimentDetailRoute } from '@studio/routes/utils';
-import { renderRoute, screen } from '@studio/tests/util/render';
+import { renderRoute, screen, waitFor } from '@studio/tests/util/render';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 
@@ -67,10 +67,16 @@ const renderDataView = () =>
   });
 
 describe('ExperimentSessionsDataView', () => {
+  let sessionRequestModes: Array<string | null>;
+
   beforeEach(() => {
+    sessionRequestModes = [];
     server.use(
       http.get(EXPERIMENT_URL, () => HttpResponse.json(mockExperiment)),
-      http.get(SESSIONS_URL, () => HttpResponse.json(mockSessionsPage))
+      http.get(SESSIONS_URL, ({ request }) => {
+        sessionRequestModes.push(new URL(request.url).searchParams.get('mode'));
+        return HttpResponse.json(mockSessionsPage);
+      })
     );
   });
 
@@ -83,6 +89,37 @@ describe('ExperimentSessionsDataView', () => {
     // The Tooltip renders both a trigger and a hidden popover — getAllByText handles both.
     const matches = await screen.findAllByText('case-1');
     expect(matches.length).toBeGreaterThan(0);
+  });
+
+  it('requests experiment sessions in summary mode', async () => {
+    renderDataView();
+
+    await screen.findAllByText('case-1');
+
+    await waitFor(() => expect(sessionRequestModes).toContain('summary'));
+    expect(sessionRequestModes).not.toContain('detailed');
+  });
+
+  it('falls back without mode when the backend rejects the summary query parameter', async () => {
+    server.use(
+      http.get(SESSIONS_URL, ({ request }) => {
+        const mode = new URL(request.url).searchParams.get('mode');
+        sessionRequestModes.push(mode);
+        if (mode === 'summary') {
+          return HttpResponse.json(
+            { detail: 'Unsupported query parameter(s): mode' },
+            { status: 400 }
+          );
+        }
+        return HttpResponse.json(mockSessionsPage);
+      })
+    );
+
+    renderDataView();
+
+    await screen.findAllByText('case-1');
+
+    await waitFor(() => expect(sessionRequestModes).toEqual(['summary', null]));
   });
 
   it('navigates to the experiment trace route when a row is clicked', async () => {

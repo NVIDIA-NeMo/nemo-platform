@@ -675,7 +675,6 @@ def test_studio_link_destinations_cover_registered_workspace_routes():
         "index": "workspace",
         "inferenceProviders": "inference_providers",
         "intake": "intake",
-        "intakeSpan": "intake_span",
         "intakeSpans": "intake_spans",
         "intakeTrace": "intake_trace",
         "intakeTraces": "intake_traces",
@@ -995,6 +994,38 @@ def test_mcp_studio_link_returns_fileset_file_markdown(service_client: TestClien
         "path": "/workspaces/default/filesets/training%20data/file/nested%2Fexamples.jsonl",
         "url": None,
         "markdown": "[File nested/examples.jsonl](/workspaces/default/filesets/training%20data/file/nested%2Fexamples.jsonl)",
+    }
+
+
+def test_mcp_studio_link_returns_intake_span_markdown(monkeypatch: pytest.MonkeyPatch):
+    service_client = service_client_with_feature_flags(monkeypatch, {"intake_enabled": True})
+    session_id = str(uuid.uuid4())
+
+    response = service_client.post(
+        f"/v2/coding-agents/mcp/{session_id}?workspace=default",
+        json={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "studio_link",
+                "arguments": {
+                    "destination": "intake_span",
+                    "trace_id": "trace 01",
+                    "span_id": "span 02",
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    result_text = response.json()["result"]["content"][0]["text"]
+    assert json.loads(result_text) == {
+        "workspace": "default",
+        "destination": "intake_span",
+        "path": "/workspaces/default/intake/traces/trace%2001?spanId=span%2002",
+        "url": None,
+        "markdown": "[Span span 02](/workspaces/default/intake/traces/trace%2001?spanId=span%2002)",
     }
 
 

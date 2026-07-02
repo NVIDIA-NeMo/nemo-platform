@@ -8,7 +8,7 @@ from __future__ import annotations
 import pytest
 from nemo_evaluator_sdk.enums import AgentFormat
 from nemo_evaluator_sdk.execution.config import resolve_params
-from nemo_evaluator_sdk.values import Agent, Model, RunConfig, RunConfigOnline, RunConfigOnlineModel
+from nemo_evaluator_sdk.values import Agent, GenericAgent, Model, RunConfig, RunConfigOnline, RunConfigOnlineModel
 
 
 class TestResolveParams:
@@ -19,7 +19,7 @@ class TestResolveParams:
         [
             pytest.param(Model(url="http://example.test/v1", name="test-model"), RunConfigOnlineModel, id="model"),
             pytest.param(
-                Agent(
+                GenericAgent(
                     url="http://agent.test",
                     name="test-agent",
                     format=AgentFormat.GENERIC,
@@ -62,7 +62,7 @@ class TestResolveParams:
 
     def test_accepts_agent_online_params(self) -> None:
         """Agent targets require RunConfigOnline-compatible params."""
-        target = Agent(
+        target = GenericAgent(
             url="http://agent.test",
             name="test-agent",
             format=AgentFormat.GENERIC,
@@ -75,7 +75,7 @@ class TestResolveParams:
 
     def test_rejects_model_online_params_for_agent(self) -> None:
         """Agent targets should not accept model-only online params."""
-        target = Agent(
+        target = GenericAgent(
             url="http://agent.test",
             name="test-agent",
             format=AgentFormat.GENERIC,

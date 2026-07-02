@@ -49,10 +49,10 @@ class ModelTarget(BaseModel):
 
 
 class AgentTarget(BaseModel):
-    """Generate trials by calling an Agent (generic HTTP) endpoint.
+    """Generate trials by calling a generic HTTP or NeMo Agent Toolkit target.
 
-    The agent shapes its own request via its ``body`` / ``response_path``, so there is no separate
-    prompt template here.
+    The selected agent variant owns its request and response profile, so there is no
+    separate prompt template here.
     """
 
     model_config = ConfigDict(extra="forbid")

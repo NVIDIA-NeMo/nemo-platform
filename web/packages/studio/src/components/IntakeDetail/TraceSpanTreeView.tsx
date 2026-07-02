@@ -28,6 +28,7 @@ interface SpanTreeViewProps {
   hasNotes?: boolean;
   focusNoteNonce?: number;
   onAddNote: () => void;
+  emptyContent?: ReactNode;
 }
 
 /** Tree view: trajectory tree on the left, the selected span on the right. */
@@ -48,6 +49,7 @@ export const SpanTreeView: FC<SpanTreeViewProps> = ({
   hasNotes,
   focusNoteNonce,
   onAddNote,
+  emptyContent,
 }) => (
   <Flex align="start" gap="density-md" className="min-w-0">
     <nav
@@ -102,9 +104,11 @@ export const SpanTreeView: FC<SpanTreeViewProps> = ({
             </div>
           </>
         ) : (
-          <Text kind="body/regular/sm" className="text-secondary p-density-lg">
-            Select a span from the tree to view its details.
-          </Text>
+          (emptyContent ?? (
+            <Text kind="body/regular/sm" className="text-secondary p-density-lg">
+              Select a span from the tree to view its details.
+            </Text>
+          ))
         )}
       </div>
     </Stack>

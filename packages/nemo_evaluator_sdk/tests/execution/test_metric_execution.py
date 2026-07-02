@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, Mock
 import nemo_evaluator_sdk.inference as inference
 import pyarrow as pa
 import pytest
+from nemo_evaluator_sdk.agent_inference import AgentInvocationResult, AgentInvocationStatus
 from nemo_evaluator_sdk.datasets.loader import discover_files, normalize_dataset, rows_from_dataset, split_glob_path
 from nemo_evaluator_sdk.enums import AgentFormat, MetricType, ModelFormat
 from nemo_evaluator_sdk.execution.backends.local.backend import LocalBackend
@@ -42,7 +43,7 @@ from nemo_evaluator_sdk.metrics.protocol import Metric, MetricInput, MetricOutpu
 from nemo_evaluator_sdk.metrics.utils import metric_type_name
 from nemo_evaluator_sdk.resolvers import LocalSecretResolver, _candidate_env_names
 from nemo_evaluator_sdk.structured_output import StructuredOutputMode
-from nemo_evaluator_sdk.values.agents import Agent
+from nemo_evaluator_sdk.values.agents import Agent, GenericAgent
 from nemo_evaluator_sdk.values.common import SecretRef
 from nemo_evaluator_sdk.values.datasets import DatasetRows
 from nemo_evaluator_sdk.values.models import Model, ReasoningParams
@@ -136,7 +137,7 @@ def _make_model(
 
 
 def _make_agent() -> Agent:
-    return Agent(
+    return GenericAgent(
         url="http://agent.test:8080",
         name="test-agent",
         format=AgentFormat.GENERIC,
@@ -670,8 +671,82 @@ class TestGenerateOnlineSample:
         }
         hook.postprocess.assert_called_once_with(response, id="0")
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("invocation_output_text", ["raw", None])
+    async def test_typed_agent_invocation_uses_postprocessed_output_text(
+        self,
+        mocker: MockerFixture,
+        invocation_output_text: str | None,
+    ) -> None:
+        raw_response = {"choices": [{"message": {"content": "raw"}}]}
+        processed_response = {"choices": [{"message": {"content": "processed"}}]}
+        hook = mocker.Mock()
+        hook.postprocess.return_value = processed_response
+        inference_fn = mocker.AsyncMock(
+            return_value=AgentInvocationResult(
+                status=AgentInvocationStatus.COMPLETED,
+                response=raw_response,
+                output_text=invocation_output_text,
+            )
+        )
+
+        sample = await generate_online_sample(
+            target=_make_agent(),
+            row={"prompt": "hello"},
+            index=0,
+            prompt_template={"prompt": "{{item.prompt}}"},
+            postprocess_hooks=[hook],
+            inference_fn=inference_fn,
+        )
+
+        assert sample["output_text"] == "processed"
+        assert sample["response"] == processed_response
+        assert sample["invocation_status"] == "completed"
+        hook.postprocess.assert_called_once_with(raw_response, id="0")
+
 
 class TestGenerateOnlineSampleAgent:
+    @pytest.mark.asyncio
+    async def test_defaults_to_typed_invoke_agent(self, mocker: MockerFixture):
+        from nemo_evaluator_sdk.agent_inference import invoke_agent
+
+        helper = mocker.patch(
+            "nemo_evaluator_sdk.execution.metric_execution.generate_online_sample",
+            new_callable=AsyncMock,
+            return_value={"invocation_status": "completed"},
+        )
+
+        result = await generate_online_sample_agent(
+            agent=_make_agent(),
+            row={"prompt": "hello"},
+            index=0,
+            prompt_template={"prompt": "{{item.prompt}}"},
+        )
+
+        assert result == {"invocation_status": "completed"}
+        assert helper.await_args is not None
+        assert helper.await_args.kwargs["inference_fn"] is invoke_agent
+
+    @pytest.mark.asyncio
+    async def test_uses_preconfigured_agent_inference_fn(self, mocker: MockerFixture):
+        helper = mocker.patch(
+            "nemo_evaluator_sdk.execution.metric_execution.generate_online_sample",
+            new_callable=AsyncMock,
+            return_value={},
+        )
+        inference_fn = mocker.AsyncMock()
+
+        await generate_online_sample_agent(
+            agent=_make_agent(),
+            row={"prompt": "hello"},
+            index=0,
+            prompt_template={"prompt": "{{item.prompt}}"},
+            agent_inference_fn=inference_fn,
+        )
+
+        assert helper.await_args is not None
+        assert helper.await_args.kwargs["inference_fn"] is inference_fn
+
     @pytest.mark.asyncio
     async def test_delegates_to_unified_online_sample_helper(self, mocker: MockerFixture):
         sample = {"output_text": "agent-response"}

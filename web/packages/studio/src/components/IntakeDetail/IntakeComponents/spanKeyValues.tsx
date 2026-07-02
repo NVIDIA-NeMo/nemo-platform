@@ -15,7 +15,7 @@ import {
 import type { KeyValueEntry } from '@studio/components/IntakeDetail/IntakeComponents/keyValueTypes';
 import { parseRawAttributes } from '@studio/components/IntakeDetail/SpanTemplates/rawAttributes';
 import { getSpanTemplate } from '@studio/components/IntakeDetail/SpanTemplates/registry';
-import { getIntakeSpanRoute, getIntakeTraceRoute } from '@studio/routes/utils';
+import { getIntakeTraceRoute, getIntakeTraceSpanRoute } from '@studio/routes/utils';
 import {
   EMPTY_VALUE,
   formatCost,
@@ -197,12 +197,16 @@ const SPAN_SUMMARY_DESCRIPTORS: readonly SpanFieldDescriptor[] = [
   {
     key: 'parent_span_id',
     label: 'Parent Span',
-    resolve: (span, { workspace }) =>
-      span.parent_span_id ? (
-        <Link to={getIntakeSpanRoute(workspace, span.parent_span_id)}>{span.parent_span_id}</Link>
+    resolve: (span, { workspace }) => {
+      if (!span.parent_span_id) return EMPTY_VALUE;
+      return span.trace_id ? (
+        <Link to={getIntakeTraceSpanRoute(workspace, span.trace_id, span.parent_span_id)}>
+          {span.parent_span_id}
+        </Link>
       ) : (
-        EMPTY_VALUE
-      ),
+        span.parent_span_id
+      );
+    },
     include: (span) => isMeaningfulValue(span.parent_span_id),
   },
   {

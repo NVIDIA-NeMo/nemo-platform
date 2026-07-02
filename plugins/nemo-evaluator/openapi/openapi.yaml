@@ -1238,66 +1238,6 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
-    Agent:
-      allOf:
-      - if:
-          properties:
-            format:
-              const: generic
-        then:
-          required:
-          - body
-          - response_path
-      properties:
-        url:
-          type: string
-          title: Url
-          description: Base URL of the agent endpoint.
-        name:
-          type: string
-          title: Name
-          description: Agent name / identifier.
-        format:
-          type: string
-          enum:
-          - generic
-          - nemo_agent_toolkit
-          title: Format
-          description: Agent format that determines the execution path.
-          default: generic
-        api_key_secret:
-          allOf:
-          - $ref: '#/components/schemas/SecretRef'
-          description: 'API key secret reference for the agent. Format: workspace/secret_name
-            or secret_name within the job workspace.'
-        body:
-          title: Body
-          description: Jinja template for the request payload. Required for generic
-            agents.
-          additionalProperties: true
-          type: object
-        response_path:
-          title: Response Path
-          description: JSONPath expression to extract the response text from the agent's
-            response body. Required for generic agents.
-          type: string
-        trajectory_path:
-          title: Trajectory Path
-          description: JSONPath expression to extract the trajectory from the agent's
-            response body. Optional.
-          type: string
-      additionalProperties: false
-      type: object
-      required:
-      - url
-      - name
-      title: Agent
-      description: "Agent definition for inference in online evaluation jobs.\n\n\
-        An agent is an endpoint that accepts a request and returns a response,\npotentially\
-        \ with a trajectory. Two formats are supported:\n\n- ``generic``: configurable\
-        \ HTTP POST with Jinja-templated body and\n  JSONPath extraction for response\
-        \ and trajectory.\n- ``nemo_agent_toolkit``: NeMo Agent Toolkit SSE streaming\
-        \ protocol\n  (``/generate/full?filter_steps=none``)."
     AgentEvalInputSpec:
       oneOf:
       - properties:
@@ -1854,9 +1794,16 @@ components:
           title: Kind
           default: agent
         agent:
-          allOf:
-          - $ref: '#/components/schemas/Agent'
+          oneOf:
+          - $ref: '#/components/schemas/GenericAgent'
+          - $ref: '#/components/schemas/NemoAgentToolkitAgent'
+          title: Agent
           description: The agent endpoint to generate trials against.
+          discriminator:
+            propertyName: format
+            mapping:
+              generic: '#/components/schemas/GenericAgent'
+              nemo_agent_toolkit: '#/components/schemas/NemoAgentToolkitAgent'
         params:
           allOf:
           - $ref: '#/components/schemas/RunConfigOnline'
@@ -1866,13 +1813,14 @@ components:
       required:
       - agent
       title: AgentTargetInput
-      description: 'Generate trials by calling an Agent (generic HTTP) endpoint.
+      description: 'Generate trials by calling a generic HTTP or NeMo Agent Toolkit
+        target.
 
 
-        The agent shapes its own request via its ``body`` / ``response_path``, so
-        there is no separate
+        The selected agent variant owns its request and response profile, so there
+        is no
 
-        prompt template here.'
+        separate prompt template here.'
     AgentTargetOutput:
       properties:
         kind:
@@ -1881,9 +1829,16 @@ components:
           title: Kind
           default: agent
         agent:
-          allOf:
-          - $ref: '#/components/schemas/Agent'
+          oneOf:
+          - $ref: '#/components/schemas/GenericAgent'
+          - $ref: '#/components/schemas/NemoAgentToolkitAgent'
+          title: Agent
           description: The agent endpoint to generate trials against.
+          discriminator:
+            propertyName: format
+            mapping:
+              generic: '#/components/schemas/GenericAgent'
+              nemo_agent_toolkit: '#/components/schemas/NemoAgentToolkitAgent'
         params:
           allOf:
           - $ref: '#/components/schemas/RunConfigOnline'
@@ -1893,13 +1848,14 @@ components:
       required:
       - agent
       title: AgentTargetOutput
-      description: 'Generate trials by calling an Agent (generic HTTP) endpoint.
+      description: 'Generate trials by calling a generic HTTP or NeMo Agent Toolkit
+        target.
 
 
-        The agent shapes its own request via its ``body`` / ``response_path``, so
-        there is no separate
+        The selected agent variant owns its request and response profile, so there
+        is no
 
-        prompt template here.'
+        separate prompt template here.'
     AggregateRangeScore:
       properties:
         name:
@@ -2203,7 +2159,14 @@ components:
         target:
           anyOf:
           - $ref: '#/components/schemas/Model'
-          - $ref: '#/components/schemas/Agent'
+          - oneOf:
+            - $ref: '#/components/schemas/GenericAgent'
+            - $ref: '#/components/schemas/NemoAgentToolkitAgent'
+            discriminator:
+              propertyName: format
+              mapping:
+                generic: '#/components/schemas/GenericAgent'
+                nemo_agent_toolkit: '#/components/schemas/NemoAgentToolkitAgent'
           title: Target
           description: Optional model or agent target for online evaluation.
         prompt_template:
@@ -2524,7 +2487,14 @@ components:
         target:
           anyOf:
           - $ref: '#/components/schemas/Model'
-          - $ref: '#/components/schemas/Agent'
+          - oneOf:
+            - $ref: '#/components/schemas/GenericAgent'
+            - $ref: '#/components/schemas/NemoAgentToolkitAgent'
+            discriminator:
+              propertyName: format
+              mapping:
+                generic: '#/components/schemas/GenericAgent'
+                nemo_agent_toolkit: '#/components/schemas/NemoAgentToolkitAgent'
           title: Target
           description: Optional model or agent target for online evaluation.
         prompt_template:
@@ -2668,6 +2638,55 @@ components:
       title: FilesetRef
       description: Reference to a persisted platform fileset, optionally with a file
         fragment.
+    GenericAgent:
+      properties:
+        url:
+          type: string
+          title: Url
+          description: Base URL of the agent endpoint.
+        name:
+          type: string
+          title: Name
+          description: Agent name / identifier.
+        api_key_secret:
+          allOf:
+          - $ref: '#/components/schemas/SecretRef'
+          description: 'API key secret reference for the agent. Format: workspace/secret_name
+            or secret_name within the job workspace.'
+        format:
+          type: string
+          const: generic
+          title: Format
+          default: generic
+        body:
+          additionalProperties: true
+          type: object
+          title: Body
+          description: Jinja template for the request payload.
+        response_path:
+          type: string
+          title: Response Path
+          description: JSONPath expression used to extract the response value.
+        trajectory_path:
+          title: Trajectory Path
+          description: Optional JSONPath expression used to extract trajectory data.
+          type: string
+        stream:
+          type: boolean
+          title: Stream
+          description: Read JSON SSE data frames instead of a single JSON response
+            body.
+          default: false
+      additionalProperties: false
+      type: object
+      required:
+      - url
+      - name
+      - body
+      - response_path
+      - format
+      title: GenericAgent
+      description: Configurable HTTP agent with optional JSON SSE response handling.
     HTTPValidationError:
       properties:
         detail:
@@ -3126,6 +3145,72 @@ components:
 
         The prompt template *is* the request sent to the model, so it lives here with
         the endpoint.'
+    NatAgentConfig:
+      properties:
+        endpoint:
+          type: string
+          title: Endpoint
+          description: Relative path below agent.url, or an absolute NAT endpoint
+            URL.
+          default: /generate/full
+        request_mode:
+          type: string
+          enum:
+          - input_message
+          - passthrough
+          title: Request Mode
+          description: Derive the legacy input_message payload or send the rendered
+            request unchanged.
+          default: input_message
+        query_params:
+          additionalProperties:
+            type: string
+          type: object
+          title: Query Params
+          description: Query parameters sent to the NAT endpoint.
+        response_path:
+          type: string
+          title: Response Path
+          description: JSONPath applied to data-channel payloads; the last match is
+            the final output.
+          default: $.value
+      additionalProperties: false
+      type: object
+      title: NatAgentConfig
+      description: NeMo Agent Toolkit request and stream handling configuration.
+    NemoAgentToolkitAgent:
+      properties:
+        url:
+          type: string
+          title: Url
+          description: Base URL of the agent endpoint.
+        name:
+          type: string
+          title: Name
+          description: Agent name / identifier.
+        api_key_secret:
+          allOf:
+          - $ref: '#/components/schemas/SecretRef'
+          description: 'API key secret reference for the agent. Format: workspace/secret_name
+            or secret_name within the job workspace.'
+        format:
+          type: string
+          const: nemo_agent_toolkit
+          title: Format
+          default: nemo_agent_toolkit
+        nat:
+          allOf:
+          - $ref: '#/components/schemas/NatAgentConfig'
+          description: Optional NAT endpoint and stream configuration; defaults preserve
+            /generate/full behavior.
+      additionalProperties: false
+      type: object
+      required:
+      - url
+      - name
+      - format
+      title: NemoAgentToolkitAgent
+      description: NeMo Agent Toolkit target normalized to the shared streaming transport.
     PaginationData:
       properties:
         page:

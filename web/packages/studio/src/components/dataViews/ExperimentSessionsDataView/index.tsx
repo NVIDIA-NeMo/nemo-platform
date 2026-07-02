@@ -11,10 +11,16 @@ import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
-import { useGetExperiment, useListExperimentSessions } from '@nemo/sdk/generated/platform/api';
+import {
+  listExperimentSessions,
+  useGetExperiment,
+  useListExperimentSessions,
+} from '@nemo/sdk/generated/platform/api';
 import type {
+  ExperimentSessionResponsesPage,
   ExperimentSessionFilter,
   ExperimentSessionResponse,
+  ListExperimentSessionsParams,
 } from '@nemo/sdk/generated/platform/schema';
 import { Text, Tooltip } from '@nvidia/foundations-react-core';
 import { Empty } from '@studio/components/dataViews/ExperimentSessionsDataView/Empty';
@@ -22,6 +28,7 @@ import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getExperimentTraceDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
 import { keepPreviousData } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
 import { Columns3 } from 'lucide-react';
 import { type ComponentProps, type FC, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -38,6 +45,31 @@ const mapStatusForBadge = (status: ExperimentSessionResponse['status']) =>
 
 const formatScore = (value: number): string => `${(value * 100).toFixed(1)}%`;
 
+const isUnsupportedModeError = (error: unknown): boolean => {
+  if (!isAxiosError(error)) return false;
+  if (error.response?.status !== 400 && error.response?.status !== 422) return false;
+  const detail = (error.response.data as { detail?: unknown } | undefined)?.detail;
+  return typeof detail === 'string' && detail === 'Unsupported query parameter(s): mode';
+};
+
+const listExperimentSessionsWithModeFallback = async (
+  workspace: string,
+  experimentName: string,
+  params: ListExperimentSessionsParams,
+  signal: AbortSignal
+): Promise<ExperimentSessionResponsesPage> => {
+  try {
+    return await listExperimentSessions(workspace, experimentName, params, signal);
+  } catch (error) {
+    if (params.mode !== 'summary' || !isUnsupportedModeError(error)) {
+      throw error;
+    }
+    const fallbackParams = { ...params };
+    delete fallbackParams.mode;
+    return listExperimentSessions(workspace, experimentName, fallbackParams, signal);
+  }
+};
+
 export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = ({
   experimentName,
   experimentGroupName,
@@ -49,21 +81,32 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
 
   const page = dataViewState.pagination.state.pageIndex + 1;
   const pageSize = dataViewState.pagination.state.pageSize;
-
-  const { data: sessionsResponse, isLoading } = useListExperimentSessions(
-    workspace,
-    experimentName,
-    {
+  const sessionParams = useMemo<ListExperimentSessionsParams>(
+    () => ({
       page,
       page_size: pageSize,
+      mode: 'summary',
       filter: {
         ...dataViewState.apiFilter.filter,
         ...(dataViewState.debouncedSearchBar && {
           test_case_id: dataViewState.debouncedSearchBar,
         }),
       },
-    },
-    { query: { placeholderData: keepPreviousData } }
+    }),
+    [dataViewState.apiFilter.filter, dataViewState.debouncedSearchBar, page, pageSize]
+  );
+
+  const { data: sessionsResponse, isLoading } = useListExperimentSessions(
+    workspace,
+    experimentName,
+    sessionParams,
+    {
+      query: {
+        placeholderData: keepPreviousData,
+        queryFn: ({ signal }) =>
+          listExperimentSessionsWithModeFallback(workspace, experimentName, sessionParams, signal),
+      },
+    }
   );
 
   const sessionsData = sessionsResponse?.data;

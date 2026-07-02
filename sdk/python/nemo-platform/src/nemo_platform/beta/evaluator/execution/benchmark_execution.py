@@ -65,6 +65,7 @@ from nemo_platform.beta.evaluator.resilience.api import use_resilience_session
 from nemo_platform.beta.evaluator.resilience.errors import first_failure_cause, iter_leaf_causes
 from nemo_platform.beta.evaluator.values import (
     Agent,
+    AgentBase,
     AggregatedMetricResult,
     AggregateFieldName,
     EvaluationResult,
@@ -313,9 +314,10 @@ async def _run_producer_workers(
                     assert target is not None
                     if prompt_template is None:
                         raise ValueError("prompt_template is required for online benchmark evaluation")
-                    if isinstance(target, Agent):
+                    if isinstance(target, AgentBase):
+                        agent_target = cast(Agent, target)
                         sample = await generate_online_sample_agent(
-                            agent=target,
+                            agent=agent_target,
                             row=item,
                             index=idx,
                             prompt_template=prompt_template,
@@ -594,7 +596,7 @@ async def evaluate_benchmark(
     if isinstance(target, Model):
         client = new_inference_client(target)
         client_close_fn = client.close
-    elif isinstance(target, Agent):
+    elif isinstance(target, AgentBase):
         client = new_agent_inference_client()
         client_close_fn = client.aclose
 

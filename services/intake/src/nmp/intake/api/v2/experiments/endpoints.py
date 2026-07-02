@@ -25,6 +25,7 @@ from nmp.common.api.utils import generate_openapi_extra_params
 from nmp.common.entities.client import EntityClient, EntityConflictError, EntityNotFoundError
 from nmp.common.service.dependencies import get_entity_client
 from nmp.intake.api.v2.experiments.schemas import (
+    EXPERIMENT_SESSION_SUMMARY_INPUT_CHAR_LIMIT,
     EvaluatorAggregate,
     ExperimentFilter,
     ExperimentGroupFilter,
@@ -33,6 +34,7 @@ from nmp.intake.api.v2.experiments.schemas import (
     ExperimentRequest,
     ExperimentResponse,
     ExperimentSessionFilter,
+    ExperimentSessionMode,
     ExperimentSessionResponse,
 )
 from nmp.intake.entities.experiments import Experiment, ExperimentGroup, SortCriterion
@@ -654,6 +656,13 @@ async def list_experiment_sessions(
     parsed: ExperimentSessionFilterDep,
     page: int = Query(default=1, ge=1, description="Page number."),
     page_size: int = Query(default=100, ge=1, le=1000, description="Page size."),
+    mode: ExperimentSessionMode = Query(
+        default="detailed",
+        description=(
+            "Response payload mode. summary keeps the same session row fields but truncates root-span input "
+            "to 1000 characters; detailed returns the full root-span input."
+        ),
+    ),
 ) -> Page[ExperimentSessionResponse]:
     validate_list_query_params(request)
     experiment = await _get_or_404(
@@ -686,6 +695,7 @@ async def list_experiment_sessions(
             test_case_id=test_case_id,
             page=page,
             page_size=page_size,
+            input_char_limit=EXPERIMENT_SESSION_SUMMARY_INPUT_CHAR_LIMIT if mode == "summary" else None,
         )
     except Exception as exc:
         # Sessions are the response payload (not enrichment), so we can't silently degrade like

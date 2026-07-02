@@ -51,7 +51,7 @@ from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBu
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
 from nemo_evaluator_sdk.enums import AgentFormat, ModelFormat
 from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
-from nemo_evaluator_sdk.values import Agent, Model, RunConfigOnline, RunConfigOnlineModel
+from nemo_evaluator_sdk.values import GenericAgent, Model, RunConfigOnline, RunConfigOnlineModel
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.scheduler import NemoJobScheduler
 from nmp.testing import add_mock_provider
@@ -195,7 +195,7 @@ def test_run_local_agent_target_scores_a_real_trial(subprocess_platform: str) ->
     agent_name = _unique("agent-judge")
     add_mock_provider(sdk, workspace=WORKSPACE, name=agent_name, mock_response_body=_chat_completion("DONE"))
 
-    agent = Agent(
+    agent = GenericAgent(
         url=_igw_chat_url(subprocess_platform, agent_name),
         name=agent_name,
         format=AgentFormat.GENERIC,

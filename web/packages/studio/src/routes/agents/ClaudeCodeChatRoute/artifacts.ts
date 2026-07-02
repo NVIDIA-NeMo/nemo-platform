@@ -86,7 +86,7 @@ const STUDIO_LINK_PATH_TEMPLATES: Record<string, string> = {
   intake_traces: '/workspaces/{workspace}/intake/traces',
   intake_spans: '/workspaces/{workspace}/intake/spans',
   intake_trace: '/workspaces/{workspace}/intake/traces/{name}',
-  intake_span: '/workspaces/{workspace}/intake/spans/{name}',
+  intake_span: '/workspaces/{workspace}/intake/traces/{trace_id}?spanId={span_id}',
   data_designer: '/workspaces/{workspace}/data-designer',
   data_designer_new: '/workspaces/{workspace}/data-designer/new',
   data_designer_job: '/workspaces/{workspace}/data-designer/{name}',
@@ -126,7 +126,12 @@ const STUDIO_LINK_ARGUMENT_ALIASES = {
   ],
   experiment_name: ['experimentName', 'experiment_id', 'experimentId'],
   file_path: ['file', 'filePath', 'file_path_encoded', 'filePathEncoded', 'path'],
-} satisfies Record<'name' | 'experiment_name' | 'file_path', readonly string[]>;
+  trace_id: ['traceId'],
+  span_id: ['spanId', 'name'],
+} satisfies Record<
+  'name' | 'experiment_name' | 'file_path' | 'trace_id' | 'span_id',
+  readonly string[]
+>;
 
 export const createEmptyClaudeCodeChatArtifacts = (): ClaudeCodeChatArtifacts => ({
   selections: [],
@@ -207,7 +212,13 @@ const buildStudioLinkHrefFromInput = (
     workspace: encodeURIComponent(workspaceValue),
   };
 
-  for (const argumentName of ['name', 'experiment_name', 'file_path'] as const) {
+  for (const argumentName of [
+    'name',
+    'experiment_name',
+    'file_path',
+    'trace_id',
+    'span_id',
+  ] as const) {
     if (!template.includes(`{${argumentName}}`)) continue;
 
     const value = getStudioLinkArgument(input, argumentName);
@@ -217,7 +228,7 @@ const buildStudioLinkHrefFromInput = (
   }
 
   return template.replace(
-    /\{(workspace|name|experiment_name|file_path)\}/g,
+    /\{(workspace|name|experiment_name|file_path|trace_id|span_id)\}/g,
     (_match, key: string) => values[key] ?? ''
   );
 };
