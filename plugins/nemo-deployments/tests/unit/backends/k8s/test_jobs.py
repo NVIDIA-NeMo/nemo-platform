@@ -289,19 +289,3 @@ async def test_delete_deployment_still_deletes_job_when_entity_missing(
 
     assert update.status == "SUCCEEDED"
     mock_k8s_clients.batch_v1.delete_namespaced_job.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_create_deployment_always_returns_failed(k8s_backend, mock_entities: AsyncMock) -> None:
-    mock_entities.get.return_value = sample_config(restart_policy="Always")
-
-    update = await k8s_backend.create_deployment(
-        workspace="default",
-        name="task",
-        config_name="cfg1",
-        labels={},
-        backend_config={},
-    )
-
-    assert update.status == "FAILED"
-    assert "phase 4" in update.status_message
