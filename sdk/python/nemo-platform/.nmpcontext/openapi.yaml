@@ -16749,8 +16749,7 @@ components:
       type: string
       pattern: ^[a-z0-9_-]+(/[a-z0-9_-]+)?$
       title: SecretRef
-      description: 'Reference to a secret. Format: ''secret_name'' (uses request workspace)
-        or ''workspace/secret_name'' (explicit workspace).'
+      description: Reference to a platform secret by name.
     SensitiveDataDetection:
       properties:
         recognizers:
