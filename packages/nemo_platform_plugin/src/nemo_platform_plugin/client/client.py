@@ -125,6 +125,7 @@ class BaseNemoClient:
         self._auth: TokenProvider | None = StaticToken(auth) if isinstance(auth, str) else auth
         self._retry = retry
         self._default_headers = dict(default_headers) if default_headers else {}
+        self._timeout: float | None = None
 
     @property
     def base_url(self) -> str:
@@ -185,20 +186,24 @@ class BaseNemoClient:
         *,
         headers: Mapping[str, str] | None = None,
         retry: RetryPolicy | None = None,
+        timeout: float | None = None,
     ) -> Self:
         """Return a copy of this client with the given options merged in.
 
         The returned client shares the underlying HTTP transport, so it is
-        cheap to create.  Useful for one-off header or retry overrides when
-        calling ``method()``-bound endpoints::
+        cheap to create.  Useful for one-off header, retry, or timeout
+        overrides when calling ``method()``-bound endpoints::
 
             client.with_headers({"Range": "bytes=0-99"}).download_file(...)
+            client.with_options(timeout=300).update_fileset(...)
         """
         clone = copy.copy(self)
         if headers:
             clone._default_headers = {**self._default_headers, **headers}
         if retry is not None:
             clone._retry = retry
+        if timeout is not None:
+            clone._timeout = timeout
         return clone
 
     def with_headers(self, headers: Mapping[str, str]) -> Self:
@@ -396,7 +401,10 @@ class NemoClient(BaseNemoClient):
         last_response: httpx.Response | None = None
         for attempt in range(retry.max_retries + 1 if retry else 1):
             try:
-                raw = self._http.request(request.method, url, content=request.content, headers=headers, params=params)
+                kwargs: dict = {"content": request.content, "headers": headers, "params": params}
+                if self._timeout is not None:
+                    kwargs["timeout"] = self._timeout
+                raw = self._http.request(request.method, url, **kwargs)
             except httpx.TransportError as exc:
                 backoff = _should_retry(None, exc, attempt, retry) if retry else None
                 if backoff is not None:
@@ -597,9 +605,10 @@ class AsyncNemoClient(BaseNemoClient):
         last_response: httpx.Response | None = None
         for attempt in range(retry.max_retries + 1 if retry else 1):
             try:
-                raw = await self._http.request(
-                    request.method, url, content=request.content, headers=headers, params=params
-                )
+                kwargs: dict = {"content": request.content, "headers": headers, "params": params}
+                if self._timeout is not None:
+                    kwargs["timeout"] = self._timeout
+                raw = await self._http.request(request.method, url, **kwargs)
             except httpx.TransportError as exc:
                 backoff = _should_retry(None, exc, attempt, retry) if retry else None
                 if backoff is not None:

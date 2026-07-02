@@ -9,6 +9,7 @@ backed by the NemoClient typed HTTP client and fsspec filesystem access.
 
 import uuid
 from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import PurePath
@@ -35,6 +36,73 @@ from nemo_platform.filesets.filesystem.filesystem import (
     build_fileset_ref,
     parse_fileset_path,
 )
+
+
+def _build_error_map() -> dict[type[NemoHTTPError], type[Exception]]:
+    """Build a mapping from NemoClient errors to Stainless SDK errors.
+
+    Lazy import to avoid hard-coding the Stainless error classes at module level.
+    This mapping is temporary — remove when all consumers import errors from
+    nemo_platform_plugin.client.errors instead of nemo_platform (AIRCORE-840).
+    """
+    import nemo_platform
+    from nemo_platform_plugin.client import errors
+
+    return {
+        errors.BadRequestError: nemo_platform.BadRequestError,
+        errors.AuthenticationError: nemo_platform.AuthenticationError,
+        errors.PermissionDeniedError: nemo_platform.PermissionDeniedError,
+        errors.NotFoundError: nemo_platform.NotFoundError,
+        errors.ConflictError: nemo_platform.ConflictError,
+        errors.UnprocessableEntityError: nemo_platform.UnprocessableEntityError,
+        errors.RateLimitError: nemo_platform.RateLimitError,
+        errors.InternalServerError: nemo_platform.InternalServerError,
+    }
+
+
+_ERROR_MAP: dict[type[NemoHTTPError], type[Exception]] | None = None
+
+
+def _get_error_map() -> dict[type[NemoHTTPError], type[Exception]]:
+    global _ERROR_MAP
+    if _ERROR_MAP is None:
+        _ERROR_MAP = _build_error_map()
+    return _ERROR_MAP
+
+
+def _raise_as_stainless(e: NemoHTTPError) -> None:
+    """Re-raise a NemoClient error as its Stainless SDK equivalent.
+
+    Preserves backward compatibility for consumers that catch
+    ``nemo_platform.NotFoundError`` etc. Remove with AIRCORE-840.
+    """
+    error_map = _get_error_map()
+    stainless_cls = error_map.get(type(e))
+    if stainless_cls is not None:
+        raise stainless_cls(
+            message=str(e),
+            response=e.http_response,
+            body=e.body,
+        ) from e
+    raise
+
+
+@contextmanager
+def _remap_errors():
+    """Catch NemoClient errors and re-raise as Stainless SDK errors (sync)."""
+    try:
+        yield
+    except NemoHTTPError as e:
+        _raise_as_stainless(e)
+
+
+@asynccontextmanager
+async def _remap_errors_async():
+    """Catch NemoClient errors and re-raise as Stainless SDK errors (async)."""
+    try:
+        yield
+    except NemoHTTPError as e:
+        _raise_as_stainless(e)
 
 
 @dataclass
@@ -178,15 +246,17 @@ class FilesetsSubResource:
         # The server returns an error body on 409, not the entity, so
         # exist_ok is handled here with a follow-up GET rather than at
         # the endpoint/client level.
-        try:
-            return self._client.create_fileset(workspace=workspace, body=body).data()
-        except NemoHTTPError as e:
-            if e.status_code == 409 and exist_ok:
-                return self.retrieve(name=name, workspace=workspace)
-            raise
+        with _remap_errors():
+            try:
+                return self._client.create_fileset(workspace=workspace, body=body).data()
+            except NemoHTTPError as e:
+                if e.status_code == 409 and exist_ok:
+                    return self.retrieve(name=name, workspace=workspace)
+                raise
 
     def retrieve(self, name: str, *, workspace: str | None = None) -> FilesetOutput:
-        return self._client.get_fileset(workspace=workspace, name=name).data()
+        with _remap_errors():
+            return self._client.get_fileset(workspace=workspace, name=name).data()
 
     def update(
         self,
@@ -198,6 +268,7 @@ class FilesetsSubResource:
         purpose: FilesetPurpose | None = None,
         metadata: FilesetMetadata | None = None,
         custom_fields: dict[str, Any] | None = None,
+        timeout: float | None = None,
     ) -> FilesetOutput:
         # Only include explicitly provided fields so exclude_unset works correctly
         kwargs = {
@@ -212,7 +283,9 @@ class FilesetsSubResource:
             if v is not None
         }
         body = UpdateFilesetRequest(**kwargs)
-        return self._client.update_fileset(workspace=workspace, name=name, body=body).data()
+        client = self._client.with_options(timeout=timeout) if timeout is not None else self._client
+        with _remap_errors():
+            return client.update_fileset(workspace=workspace, name=name, body=body).data()
 
     def list(
         self,
@@ -233,10 +306,12 @@ class FilesetsSubResource:
             ).items()
             if v is not None
         }
-        return self._client.list_filesets(workspace=workspace, query_params=query_params or None)
+        with _remap_errors():
+            return self._client.list_filesets(workspace=workspace, query_params=query_params or None)
 
     def delete(self, name: str, *, workspace: str | None = None) -> FilesetOutput:
-        return self._client.delete_fileset(workspace=workspace, name=name).data()
+        with _remap_errors():
+            return self._client.delete_fileset(workspace=workspace, name=name).data()
 
 
 class AsyncFilesetsSubResource:
@@ -281,15 +356,17 @@ class AsyncFilesetsSubResource:
         # The server returns an error body on 409, not the entity, so
         # exist_ok is handled here with a follow-up GET rather than at
         # the endpoint/client level.
-        try:
-            return (await self._client.create_fileset(workspace=workspace, body=body)).data()
-        except NemoHTTPError as e:
-            if e.status_code == 409 and exist_ok:
-                return await self.retrieve(name=name, workspace=workspace)
-            raise
+        async with _remap_errors_async():
+            try:
+                return (await self._client.create_fileset(workspace=workspace, body=body)).data()
+            except NemoHTTPError as e:
+                if e.status_code == 409 and exist_ok:
+                    return await self.retrieve(name=name, workspace=workspace)
+                raise
 
     async def retrieve(self, name: str, *, workspace: str | None = None) -> FilesetOutput:
-        return (await self._client.get_fileset(workspace=workspace, name=name)).data()
+        async with _remap_errors_async():
+            return (await self._client.get_fileset(workspace=workspace, name=name)).data()
 
     async def update(
         self,
@@ -301,6 +378,7 @@ class AsyncFilesetsSubResource:
         purpose: FilesetPurpose | None = None,
         metadata: FilesetMetadata | None = None,
         custom_fields: dict[str, Any] | None = None,
+        timeout: float | None = None,
     ) -> FilesetOutput:
         kwargs = {
             k: v
@@ -314,7 +392,9 @@ class AsyncFilesetsSubResource:
             if v is not None
         }
         body = UpdateFilesetRequest(**kwargs)
-        return (await self._client.update_fileset(workspace=workspace, name=name, body=body)).data()
+        client = self._client.with_options(timeout=timeout) if timeout is not None else self._client
+        async with _remap_errors_async():
+            return (await client.update_fileset(workspace=workspace, name=name, body=body)).data()
 
     async def list(
         self,
@@ -335,10 +415,12 @@ class AsyncFilesetsSubResource:
             ).items()
             if v is not None
         }
-        return await self._client.list_filesets(workspace=workspace, query_params=query_params or None)
+        async with _remap_errors_async():
+            return await self._client.list_filesets(workspace=workspace, query_params=query_params or None)
 
     async def delete(self, name: str, *, workspace: str | None = None) -> FilesetOutput:
-        return (await self._client.delete_fileset(workspace=workspace, name=name)).data()
+        async with _remap_errors_async():
+            return (await self._client.delete_fileset(workspace=workspace, name=name)).data()
 
 
 class FilesResource:
