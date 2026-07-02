@@ -123,6 +123,10 @@ export const TraceSpanAccordions: FC<TraceSpanAccordionsProps> = ({ workspace, t
   );
   const selectedSpan = selectedSpanFromPage ?? linkedSpanFromDetail;
   const selectedSpanId = selectedSpan?.span_id ?? null;
+  const listSpanRows = useMemo(
+    () => (linkedSpanFromDetail ? [linkedSpanFromDetail, ...spanRows] : spanRows),
+    [linkedSpanFromDetail, spanRows]
+  );
   // The trace's own error lives on its root span (the trace status derives from
   // it); used to decide whether to surface a trace-level error banner.
   const rootSpan = useMemo(
@@ -203,9 +207,9 @@ export const TraceSpanAccordions: FC<TraceSpanAccordionsProps> = ({ workspace, t
   // In list view, expand/collapse opens every span row; in tree view it opens
   // every section of the one selected span.
   const expandAll = useCallback(() => {
-    if (viewMode === 'list') setOpenSpanIds(spanRows.map((span) => span.span_id));
+    if (viewMode === 'list') setOpenSpanIds(listSpanRows.map((span) => span.span_id));
     else setSectionExpandToken((token) => token + 1);
-  }, [viewMode, spanRows]);
+  }, [viewMode, listSpanRows]);
   const collapseAll = useCallback(() => {
     if (viewMode === 'list') setOpenSpanIds([]);
     else setSectionCollapseToken((token) => token + 1);
@@ -261,19 +265,20 @@ export const TraceSpanAccordions: FC<TraceSpanAccordionsProps> = ({ workspace, t
     />
   ) : null;
 
-  const linkedSpanEmptyContent = shouldFetchLinkedSpan ? (
-    <div className="p-density-lg">
-      {isLinkedSpanLoading ? (
-        <Flex align="center" justify="center" className="min-h-[200px]">
-          <Spinner size="medium" aria-label="Loading linked span" />
-        </Flex>
-      ) : linkedSpanError ? (
-        <ErrorMessage message={getErrorMessage(linkedSpanError)} />
-      ) : !linkedSpanMatchesTrace ? (
-        <ErrorMessage message="The linked span does not belong to this trace." />
-      ) : null}
-    </div>
-  ) : undefined;
+  const linkedSpanStatusContent =
+    shouldFetchLinkedSpan && (isLinkedSpanLoading || linkedSpanError || !linkedSpanMatchesTrace) ? (
+      <div className="p-density-lg">
+        {isLinkedSpanLoading ? (
+          <Flex align="center" justify="center" className="min-h-[200px]">
+            <Spinner size="medium" aria-label="Loading linked span" />
+          </Flex>
+        ) : linkedSpanError ? (
+          <ErrorMessage message={getErrorMessage(linkedSpanError)} />
+        ) : !linkedSpanMatchesTrace ? (
+          <ErrorMessage message="The linked span does not belong to this trace." />
+        ) : null}
+      </div>
+    ) : undefined;
 
   if (error) {
     return <ErrorMessage message={getErrorMessage(error)} />;
@@ -355,15 +360,20 @@ export const TraceSpanAccordions: FC<TraceSpanAccordionsProps> = ({ workspace, t
             selectedSpan ? noteFocusNonce(noteRequest, selectedSpan.span_id) : undefined
           }
           onAddNote={() => selectedSpan && handleAddNote(selectedSpan.span_id)}
-          emptyContent={linkedSpanEmptyContent}
+          emptyContent={linkedSpanStatusContent}
         />
       ) : (
         <SpanListView
-          spanRows={spanRows}
+          spanRows={listSpanRows}
           workspace={workspace}
           openSpanIds={openSpanIds}
           onValueChange={handleAccordionChange}
-          banner={banner}
+          banner={
+            <>
+              {banner}
+              {linkedSpanStatusContent}
+            </>
+          }
           feedbackBySpan={feedbackBySpan}
           annotationCountBySpan={annotationCountBySpan}
           notesBySpan={notesBySpan}

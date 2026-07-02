@@ -119,6 +119,7 @@ describe('IntakeTraceDetailRoute', () => {
   });
 
   it('preserves a linked span outside the loaded summary page', async () => {
+    const user = userEvent.setup();
     const detailSpanIds: string[] = [];
     const outsidePageSpan = {
       ...mockSpanById('span-llm-001')!,
@@ -148,11 +149,12 @@ describe('IntakeTraceDetailRoute', () => {
       }),
       http.get('*/apis/intake/v2/workspaces/:workspace/spans/:spanId', async ({ params }) => {
         const spanId = String(params['spanId']);
-        detailSpanIds.push(spanId);
         if (spanId === outsidePageSpan.span_id) {
-          await delay(100);
+          await delay(250);
+          detailSpanIds.push(spanId);
           return HttpResponse.json(outsidePageSpan);
         }
+        detailSpanIds.push(spanId);
         const span = mockSpanById(spanId);
         return span ? HttpResponse.json(span) : new HttpResponse(null, { status: 404 });
       })
@@ -161,6 +163,7 @@ describe('IntakeTraceDetailRoute', () => {
     renderTraceDetail('trace-agent-run-001', '?spanId=span-outside-page-001');
 
     expect(await screen.findByText('Trace Answer customer policy question')).toBeInTheDocument();
+    await user.click(screen.getByText('List'));
     expect(await screen.findByLabelText('Loading linked span')).toBeInTheDocument();
     await waitFor(() => expect(detailSpanIds).toContain('span-outside-page-001'));
     expect((await screen.findAllByText('Outside page span')).length).toBeGreaterThan(0);
