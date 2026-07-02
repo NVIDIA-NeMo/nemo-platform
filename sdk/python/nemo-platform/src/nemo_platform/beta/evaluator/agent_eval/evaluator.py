@@ -14,7 +14,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
 from logging import getLogger
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, cast, overload
 from urllib.parse import urlparse
 
 import httpx
@@ -80,6 +80,26 @@ class AgentEvaluator:
     single ``inference_fn``/``client`` pair serves both model and agent targets; leave them
     unset to let the evaluator build a default client for the resolved target type.
     """
+
+    @overload
+    def __init__(
+        self,
+        *,
+        inference_fn: InferenceFn | AgentInferenceFn | None = None,
+        agent_inference_fn_factory: None = None,
+        client: AsyncOpenAI | httpx.AsyncClient | None = None,
+        default_headers: dict[str, str] | None = None,
+    ) -> None: ...
+
+    @overload
+    def __init__(
+        self,
+        *,
+        inference_fn: None = None,
+        agent_inference_fn_factory: AgentInferenceFnFactory,
+        client: AsyncOpenAI | httpx.AsyncClient | None = None,
+        default_headers: dict[str, str] | None = None,
+    ) -> None: ...
 
     def __init__(
         self,
@@ -411,7 +431,8 @@ def _trial_from_sample(task: AgentEvalTask, target: Model | Agent, sample: dict[
         evidence = CandidateEvidence(
             descriptors={
                 EVIDENCE_TRACE: EvidenceDescriptor(
-                    kind="sdk_online_generation",
+                    kind=EVIDENCE_TRACE,
+                    format=EVIDENCE_FORMAT_JSON,
                     data={"task_id": task.id, "target": target.name},
                 )
             }

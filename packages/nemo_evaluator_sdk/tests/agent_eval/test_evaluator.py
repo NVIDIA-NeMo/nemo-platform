@@ -49,6 +49,16 @@ def test_trial_from_sample_falls_back_to_reasoning_content() -> None:
     assert explicit.output.output_text == "final answer"
 
 
+def test_trial_from_sample_fallback_trace_has_trace_kind() -> None:
+    task = AgentEvalTask(id="task-1", intent="Answer.", inputs={"prompt": "Q?"})
+    target = Model(name="target", url="https://example/v1/chat/completions")
+
+    trial = _trial_from_sample(task, target, {"output_text": "answer"})
+
+    assert trial.evidence is not None
+    trace = trial.evidence.require("trace", kind="trace")
+    assert trace.format == "json"
+
 def test_trial_from_sample_preserves_typed_trace_and_canonical_metadata() -> None:
     task = AgentEvalTask(id="task-1", intent="Answer.", inputs={"prompt": "Q?"})
     target = Model(name="canonical-target", url="https://example/v1/chat/completions")
@@ -710,11 +720,14 @@ def test_agent_evaluator_rejects_direct_inference_and_factory() -> None:
         del agent, request, kwargs
         return {}
 
+    invalid_kwargs: Any = {
+        "inference_fn": inference_fn,
+        "agent_inference_fn_factory": lambda context: inference_fn,
+    }
     with pytest.raises(ValueError, match="inference_fn.*agent_inference_fn_factory"):
-        AgentEvaluator(
-            inference_fn=inference_fn,
-            agent_inference_fn_factory=lambda context: inference_fn,
-        )
+        # Deliberately bypass the overload contract to verify the runtime guard for
+        # dynamically typed callers.
+        AgentEvaluator(**invalid_kwargs)  # ty: ignore[no-matching-overload]
 
 
 @pytest.mark.asyncio

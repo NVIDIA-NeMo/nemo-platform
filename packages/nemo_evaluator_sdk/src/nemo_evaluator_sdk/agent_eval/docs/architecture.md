@@ -1,5 +1,5 @@
 
-## Generic vs NemoAgentToolkitAgent
+## GenericAgent vs NemoAgentToolkitAgent
 The central mental model is:
 
 > BugNeMo and a generic application select different public agent variants, but both become the same internal HTTP invocation. BugNeMo adds domain-specific interpretation through a translator; the transport remains shared.

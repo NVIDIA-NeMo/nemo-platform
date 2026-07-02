@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
+import nemo_evaluator_sdk.agent_inference as agent_inference
 import pytest
 from jsonschema import Draft202012Validator
 from nemo_evaluator_sdk.agent_inference import (
@@ -89,6 +90,8 @@ class TestAgentValidation:
         assert "oneOf" in schema
         assert schema["discriminator"]["propertyName"] == "format"
         assert "allOf" not in schema
+        assert "format" in schema["$defs"]["GenericAgent"]["required"]
+        assert "format" in schema["$defs"]["NemoAgentToolkitAgent"]["required"]
 
     def test_agent_union_requires_discriminator_and_rejects_cross_variant_fields(self):
         adapter = TypeAdapter(Agent)
@@ -428,6 +431,41 @@ class TestGenericAgentExecutor:
         assert result.output_text == "final"
         assert result.response["choices"][0]["message"]["content"] == "final"
         assert result.response["trajectory"] == [{"id": 1}, {"id": 2}]
+
+    @pytest.mark.asyncio
+    async def test_stream_without_capture_or_translator_does_not_retain_raw_events(self):
+        agent = GenericAgent(
+            url="http://agent.test/invoke",
+            name="streaming-generic",
+            body={"question": "{{ prompt }}"},
+            response_path="$.answer",
+            stream=True,
+        )
+        captures: list[agent_inference._StreamCapture] = []
+        capture_type = agent_inference._StreamCapture
+
+        def create_capture() -> agent_inference._StreamCapture:
+            capture = capture_type()
+            captures.append(capture)
+            return capture
+
+        transport = httpx.MockTransport(
+            lambda request: httpx.Response(
+                200,
+                content=('intermediate_data: {"name":"tool"}\ndata: {"answer":"final"}\ndata: [DONE]\n'),
+                headers={"content-type": "text/event-stream"},
+            )
+        )
+        with patch.object(agent_inference, "_StreamCapture", side_effect=create_capture):
+            async with httpx.AsyncClient(transport=transport) as client:
+                result = await invoke_agent(agent, {"prompt": "question"}, client=client)
+
+        assert result.status is AgentInvocationStatus.COMPLETED
+        assert result.output_text == "final"
+        assert result.metadata["event_count"] == 3
+        assert result.evidence is None
+        assert captures[0].raw_lines == []
+        assert captures[0].frames == []
 
     @pytest.mark.asyncio
     async def test_posts_rendered_body_and_extracts_response(self):

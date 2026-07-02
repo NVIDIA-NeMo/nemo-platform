@@ -17,6 +17,13 @@ from nemo_platform.beta.evaluator.enums import AgentFormat
 from nemo_platform.beta.evaluator.values.common import SecretRef
 
 
+def _require_format_in_json_schema(schema: dict[str, Any]) -> None:
+    """Require the discriminator in serialized agent payloads."""
+    required = schema.setdefault("required", [])
+    if "format" not in required:
+        required.append("format")
+
+
 class NatAgentConfig(BaseModel):
     """NeMo Agent Toolkit request and stream handling configuration."""
 
@@ -72,6 +79,8 @@ class AgentBase(BaseModel):
 class GenericAgent(AgentBase):
     """Configurable HTTP agent with optional JSON SSE response handling."""
 
+    model_config = ConfigDict(json_schema_extra=_require_format_in_json_schema)
+
     format: Literal[AgentFormat.GENERIC] = AgentFormat.GENERIC
     body: dict[str, Any] = Field(description="Jinja template for the request payload.")
     response_path: str = Field(description="JSONPath expression used to extract the response value.")
@@ -87,6 +96,8 @@ class GenericAgent(AgentBase):
 
 class NemoAgentToolkitAgent(AgentBase):
     """NeMo Agent Toolkit target normalized to the shared streaming transport."""
+
+    model_config = ConfigDict(json_schema_extra=_require_format_in_json_schema)
 
     format: Literal[AgentFormat.NEMO_AGENT_TOOLKIT] = AgentFormat.NEMO_AGENT_TOOLKIT
     nat: NatAgentConfig | None = Field(

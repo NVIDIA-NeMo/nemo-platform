@@ -22,7 +22,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from enum import Enum
 from functools import partial
 from pathlib import Path
-from typing import Any, Protocol, TypeAlias, cast, runtime_checkable
+from typing import Any, Protocol, TypeAlias, runtime_checkable
 from urllib.parse import urlparse
 
 import httpx
@@ -112,6 +112,7 @@ _SSE_CHANNEL_PATTERN = re.compile(r"^[A-Za-z_][\w-]*$")
 class _StreamCapture(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    event_count: int = 0
     raw_lines: list[str] = Field(default_factory=list)
     frames: list[SseFrame] = Field(default_factory=list)
     final_payload: Any | None = None
@@ -152,15 +153,12 @@ def make_agent_inference_fn(
     capture_evidence: bool = False,
 ) -> AgentInferenceFn:
     """Bind evaluator-owned context and stream policy to ``invoke_agent``."""
-    return cast(
-        AgentInferenceFn,
-        partial(
-            invoke_agent,
-            evidence_dir=context.evidence_dir,
-            invocation_context=dict(context.metadata),
-            stream_translator=stream_translator,
-            capture_evidence=capture_evidence,
-        ),
+    return partial(
+        invoke_agent,
+        evidence_dir=context.evidence_dir,
+        invocation_context=dict(context.metadata),
+        stream_translator=stream_translator,
+        capture_evidence=capture_evidence,
     )
 
 
@@ -332,6 +330,7 @@ async def _invoke_http_agent(
     endpoint_key = endpoint_identity(invocation.endpoint, model_id=agent.name, auth_identity=resolved_api_key)
     max_attempts = max(1, (max_retries if max_retries is not None else 0) + 1)
     inference_client = client or new_agent_inference_client(timeout=effective_timeout)
+    retain_stream_details = capture_evidence or stream_translator is not None
 
     if not invocation.stream:
 
@@ -394,11 +393,14 @@ async def _invoke_http_agent(
                 capture.response_headers = _string_headers(response.headers)
                 response.raise_for_status()
                 async for raw_line in response.aiter_lines():
-                    capture.raw_lines.append(raw_line)
+                    if retain_stream_details:
+                        capture.raw_lines.append(raw_line)
                     frame = _parse_sse_frame(raw_line)
                     if frame is None:
                         continue
-                    capture.frames.append(frame)
+                    capture.event_count += 1
+                    if retain_stream_details:
+                        capture.frames.append(frame)
                     if frame.channel != "data" or frame.payload == "[DONE]":
                         continue
                     capture.final_payload = frame.payload
@@ -424,7 +426,7 @@ async def _invoke_http_agent(
                             capture.final_trajectory = trajectory
                     capture.error = capture.error or _stream_error(frame.payload)
         except Exception as exc:
-            if not capture.frames:
+            if capture.event_count == 0:
                 raise
             capture.error = f"{type(exc).__name__}: {exc}"
         return capture
@@ -542,7 +544,7 @@ async def _invoke_http_agent(
         evidence=evidence,
         metadata={
             "endpoint": invocation.endpoint,
-            "event_count": len(capture.frames),
+            "event_count": capture.event_count,
             "final_payload": capture.final_payload,
             "http_status": capture.status_code,
             "stream_error": capture.error,
