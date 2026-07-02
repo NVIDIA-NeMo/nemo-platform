@@ -89,7 +89,7 @@ def _load_pyproject(pyproject: Path | None) -> dict:
     try:
         import tomllib
     except ModuleNotFoundError:
-        import tomli as tomllib  # type: ignore[no-redef]  # ty: ignore[unresolved-import]
+        import tomli as tomllib  # type: ignore
     # Only swallow the *parse* failure: a malformed ``pyproject.toml`` should
     # not stop a build that is otherwise valid (we fall back to filename-based
     # name resolution, env-var version, etc.).  ``OSError`` (permission /
