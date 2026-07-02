@@ -10,6 +10,7 @@ from tests.auth_idp.compose import (
     collect_compose_diagnostics,
     compose_published_port,
     compose_up,
+    wait_for_healthchecks,
     wait_for_token_endpoint,
 )
 from tests.auth_idp.providers import ProviderConfig
@@ -176,6 +177,51 @@ def test_wait_for_token_endpoint_retries_request_errors_until_machine_grant_succ
 
     token = wait_for_token_endpoint(provider, timeout=1)
     assert token == "ok"
+
+
+def test_wait_for_healthchecks_gives_each_http_check_its_own_deadline(monkeypatch):
+    provider = ProviderConfig(
+        name="authentik",
+        mode="compose-ci",
+        compose_file=None,
+        gateway_base_url="http://127.0.0.1:18080",
+        issuer_url="http://127.0.0.1:19000/application/o/nemo/",
+        discovery_url="http://127.0.0.1:19000/application/o/nemo/.well-known/openid-configuration",
+        nemo_config=None,  # type: ignore[arg-type]
+        machine_principal_id="svc-nemo-ci",
+        machine_expected_groups=["nemo-editors"],
+        token_endpoint="http://127.0.0.1:19000/application/o/token/",
+        human_grant={"grant_type": "password"},
+        machine_grant={"grant_type": "client_credentials"},
+        healthchecks=[
+            {"kind": "http", "url": "http://127.0.0.1:19000/first"},
+            {"kind": "http", "url": "http://127.0.0.1:19000/second"},
+        ],
+        startup_timeouts={},
+    )
+
+    now = 100.0
+    responses = {
+        "http://127.0.0.1:19000/first": [503, 200],
+        "http://127.0.0.1:19000/second": [503, 200],
+    }
+
+    def fake_monotonic():
+        return now
+
+    def fake_sleep(seconds):
+        nonlocal now
+        now += seconds
+
+    def fake_get(url, timeout):
+        status_code = responses[url].pop(0)
+        return httpx.Response(status_code, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr("tests.auth_idp.compose.time.monotonic", fake_monotonic)
+    monkeypatch.setattr("tests.auth_idp.compose.time.sleep", fake_sleep)
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    wait_for_healthchecks(provider, timeout=3)
 
 
 def test_collect_compose_diagnostics_writes_ps_and_logs(monkeypatch, tmp_path):

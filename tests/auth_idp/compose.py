@@ -149,10 +149,10 @@ def compose_published_port(
 
 
 def wait_for_healthchecks(provider: ProviderConfig, timeout: float = 120) -> None:
-    deadline = time.monotonic() + timeout
     for check in provider.healthchecks:
         if check.get("kind") != "http":
             continue
+        deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             try:
                 response = httpx.get(check["url"], timeout=5)

@@ -870,6 +870,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
       - name: Free disk space
         uses: ./.github/actions/free-disk-space
       - name: Download policy WASM
@@ -923,6 +925,7 @@ jobs:
         needs.changes.outputs.cpu-smoke == 'true' ||
         needs.changes.outputs.auth-idp == 'true'
       ) &&
+      needs.policy-wasm.result == 'success' &&
       needs.build-cpu-smoke-images.result == 'success'
     runs-on: ubuntu-latest
     permissions:
@@ -931,6 +934,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
       - name: Free disk space
         uses: ./.github/actions/free-disk-space
       - name: Download policy WASM
