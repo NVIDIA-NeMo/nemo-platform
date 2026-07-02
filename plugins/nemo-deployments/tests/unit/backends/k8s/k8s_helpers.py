@@ -33,8 +33,7 @@ def sample_config(*, restart_policy: RestartPolicy = "Never") -> DeploymentConfi
                 args=["hello"],
             )
         ],
-        restart_policy=restart_policy,
-    )
+    ).model_copy(update={"restart_policy": restart_policy})
 
 
 def sample_deployment(*, config_name: str = "cfg1") -> Deployment:
