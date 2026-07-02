@@ -52,7 +52,7 @@ Match the user's intent to one downstream skill. Pick exactly one.
 | "optimize my agent", "make it cheaper", "reduce latency", "smaller model", "switchyard", "routing split", "compare against a newer model" | `agents-optimize` (plugin-owned, in `plugins/nemo-agents`) | Cost / latency / quality optimization for a **deployed** agent. Routing splits, skill tuning, prompt tuning, new-model scans. |
 | "secure my agent", "harden my agent", "check for PII", "leaked secrets", "guardrail coverage" | `agents-secure` (plugin-owned, in `plugins/nemo-agents`) | Safety and security audit for a **deployed** agent. Guardrails, PII, secrets scan. |
 | "evaluate my agent", "run a benchmark", "eval suite" | `nemo-evaluator` (plugin-owned, in `plugins/nemo-evaluator`) | Evaluation metrics, LLM-judge, benchmark jobs against a deployed agent or model. |
-| "show my traces", "where are my agent traces", "what did my agent do", "send traces to nemo", "annotate this session" | `nemo-intake` | Ingest agent telemetry (OTLP, chat-completions, ATIF) and query spans, traces, annotations, and evaluator results back. |
+| "show my traces", "show me spans", "query my spans", "where are my agent traces", "what did my agent do", "send traces to nemo", "annotate this session" | `nemo-intake` | Ingest agent telemetry (OTLP, chat-completions, ATIF) and query spans, traces, annotations, and evaluator results back. |
 
 **Optimize vs build:** Do NOT route optimize asks to `nemo-build-agent`. Build is for creating new agents from a spec; optimize is for tuning **already deployed** agents. If the user says "make my agent faster" or "use a cheaper model," that is `agents-optimize`, not `nemo-build-agent`.
 
