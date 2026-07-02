@@ -8,7 +8,6 @@ from typing import Any
 CLAUDE_MCP_SERVER_NAME = "nemo_studio"
 
 APPROVAL_TOOL_NAME = "approval_prompt"
-ASK_USER_QUESTION_TOOL_NAME = "ask_user_question"
 STUDIO_LINK_TOOL_NAME = "studio_link"
 SELECT_AGENT_TOOL_NAME = "select_agent"
 SELECT_EVAL_CONFIG_TOOL_NAME = "select_eval_config"
@@ -27,47 +26,6 @@ APPROVAL_TOOL: dict[str, Any] = {
             "tool_use_id": {"type": "string"},
         },
         "required": ["tool_name", "input"],
-    },
-}
-
-ASK_USER_QUESTION_TOOL: dict[str, Any] = {
-    "name": ASK_USER_QUESTION_TOOL_NAME,
-    "description": (
-        "Ask the Studio user one or more questions and wait for their response. "
-        "This is the required question tool in Studio; use it instead of Claude Code's built-in "
-        "AskUserQuestion tool so the run remains blocked until the user answers or explicitly skips."
-    ),
-    "inputSchema": {
-        "type": "object",
-        "properties": {
-            "questions": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "header": {"type": "string"},
-                        "question": {"type": "string"},
-                        "options": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "label": {"type": "string"},
-                                    "description": {"type": "string"},
-                                },
-                                "required": ["label"],
-                                "additionalProperties": False,
-                            },
-                        },
-                    },
-                    "required": ["question"],
-                    "additionalProperties": False,
-                },
-                "minItems": 1,
-            },
-        },
-        "required": ["questions"],
-        "additionalProperties": False,
     },
 }
 
@@ -203,7 +161,6 @@ JOB_PROGRESS_TOOL: dict[str, Any] = {
 
 MCP_TOOLS: list[dict[str, Any]] = [
     APPROVAL_TOOL,
-    ASK_USER_QUESTION_TOOL,
     SELECT_AGENT_TOOL,
     SELECT_EVAL_CONFIG_TOOL,
     SELECT_DATASET_FILE_TOOL,
@@ -212,7 +169,6 @@ MCP_TOOLS: list[dict[str, Any]] = [
 ]
 
 STUDIO_UI_TOOL_NAMES = (
-    ASK_USER_QUESTION_TOOL_NAME,
     SELECT_AGENT_TOOL_NAME,
     SELECT_EVAL_CONFIG_TOOL_NAME,
     SELECT_DATASET_FILE_TOOL_NAME,
@@ -270,8 +226,8 @@ STUDIO_CODING_AGENT_CONTEXT = "\n".join(
         ),
         (
             "For clarification, multiple-choice, yes/no, or freeform questions that do NOT map to one of "
-            "the select_* tools, use mcp__nemo_studio__ask_user_question rather than Claude Code's "
-            "built-in AskUserQuestion tool or a questionnaire in markdown."
+            "the select_* tools, use Claude Code's AskUserQuestion tool rather than a questionnaire "
+            "in markdown."
         ),
         (
             "Only fall back to plain chat questions when no suitable UI tool exists, the user already "

@@ -127,14 +127,13 @@ def test_build_claude_argv_uses_new_session_then_resume_flag():
     }
     assert "--allowedTools" in argv
     allowed_tools = argv[argv.index("--allowedTools") + 1].split(",")
-    assert f"mcp__{coding_agents.CLAUDE_MCP_SERVER_NAME}__ask_user_question" in allowed_tools
     assert f"mcp__{coding_agents.CLAUDE_MCP_SERVER_NAME}__select_agent" in allowed_tools
     assert f"mcp__{coding_agents.CLAUDE_MCP_SERVER_NAME}__select_eval_config" in allowed_tools
     assert f"mcp__{coding_agents.CLAUDE_MCP_SERVER_NAME}__select_dataset_file" in allowed_tools
     assert f"mcp__{coding_agents.CLAUDE_MCP_SERVER_NAME}__select_model" in allowed_tools
     assert f"mcp__{coding_agents.CLAUDE_MCP_SERVER_NAME}__job_progress" in allowed_tools
     assert f"mcp__{coding_agents.CLAUDE_MCP_SERVER_NAME}__studio_link" in allowed_tools
-    assert argv[argv.index("--disallowedTools") + 1] == "AskUserQuestion"
+    assert "--disallowedTools" not in argv
     assert "--append-system-prompt" in argv
     assert argv[argv.index("--append-system-prompt") + 1] == coding_agents.STUDIO_CODING_AGENT_CONTEXT
     assert "--permission-prompt-tool" in argv
@@ -582,7 +581,6 @@ def test_mcp_initialize_and_tools_list(service_client: TestClient):
     assert tools[0]["name"] == "approval_prompt"
     assert {tool["name"] for tool in tools} == {
         "approval_prompt",
-        "ask_user_question",
         "select_agent",
         "select_eval_config",
         "select_dataset_file",
@@ -658,8 +656,8 @@ def test_build_studio_system_prompt_includes_message_summary_contract():
     assert "behind a 'worked for <time>' accordion" in prompt
     assert "Never end a message with only a plain-text question" in prompt
     assert "call the matching select_* tool before completing the message" in prompt
-    assert "call mcp__nemo_studio__ask_user_question" in prompt
-    assert "never call Claude Code's built-in AskUserQuestion" in prompt
+    assert "use Claude Code's AskUserQuestion tool" in prompt
+    assert "For AskUserQuestion, provide input shaped as" in prompt
     assert "A timeout, disconnect, or other interactive-tool error is not permission to continue" in prompt
     assert "summary's final sentence MUST state the exact unresolved selection or action" in prompt
     assert "Never show only the investigation result" in prompt
@@ -1325,43 +1323,6 @@ async def test_agent_input_request_cleans_up_when_wait_is_cancelled():
     assert request_id not in coding_agents._pending_agent_inputs
 
 
-async def test_studio_question_waits_for_and_returns_the_user_answer():
-    session_id = str(uuid.uuid4())
-    coding_agents._session_streams[session_id] = asyncio.Queue()
-    args = {
-        "questions": [
-            {
-                "header": "Next step",
-                "question": "How should we proceed?",
-                "options": [{"label": "Continue", "description": "Keep going."}],
-            }
-        ]
-    }
-
-    request_task = asyncio.create_task(coding_agents._request_studio_question(session_id, args))
-    event_type, payload = await coding_agents._session_streams[session_id].get()
-    request = json.loads(payload)
-
-    assert event_type == "permission_request"
-    assert request["tool_name"] == "AskUserQuestion"
-    assert request["input"] == args
-    assert not request_task.done()
-
-    await coding_agents.resolve_permission(
-        session_id,
-        request["request_id"],
-        coding_agents.PermissionDecision(
-            approved=False,
-            reason='Your question has been answered: "How should we proceed?"="Continue".',
-        ),
-    )
-
-    assert await request_task == {
-        "status": "answered",
-        "response": 'Your question has been answered: "How should we proceed?"="Continue".',
-    }
-
-
 async def test_blocking_mcp_tool_response_streams_keepalives_until_user_responds():
     session_id = str(uuid.uuid4())
     coding_agents._session_streams[session_id] = asyncio.Queue()
@@ -1445,14 +1406,11 @@ def test_platform_route_stream_uses_public_mcp_callback(monkeypatch: pytest.Monk
     assert "Current Studio workspace: default" in captured["studio_system_prompt"]
     assert "Studio UI base URL: https://studio.test/studio" in captured["studio_system_prompt"]
     assert "Current Studio route path: /workspaces/default/dashboard/code-agent" in captured["studio_system_prompt"]
-    assert "call mcp__nemo_studio__ask_user_question" in captured["studio_system_prompt"]
+    assert "use Claude Code's AskUserQuestion tool" in captured["studio_system_prompt"]
     assert "you MUST call mcp__nemo_studio__select_agent" in captured["studio_system_prompt"]
     assert "never use AskUserQuestion for an agent choice" in captured["studio_system_prompt"]
     assert "you MUST call mcp__nemo_studio__select_model" in captured["studio_system_prompt"]
-    assert (
-        "ask multiple questions in the same mcp__nemo_studio__ask_user_question call"
-        in captured["studio_system_prompt"]
-    )
+    assert "ask multiple AskUserQuestion questions" in captured["studio_system_prompt"]
     assert "no dedicated Studio picker" in captured["studio_system_prompt"]
     assert "Prefer NeMo Studio MCP tools and Studio views over CLI commands" in captured["studio_system_prompt"]
     assert "Do not tell the user to run nemo CLI commands" in captured["studio_system_prompt"]
@@ -1547,7 +1505,6 @@ def test_public_mcp_route_is_mounted_before_static_fallback():
     assert response.status_code == 200
     assert [tool["name"] for tool in response.json()["result"]["tools"]] == [
         "approval_prompt",
-        "ask_user_question",
         "select_agent",
         "select_eval_config",
         "select_dataset_file",

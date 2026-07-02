@@ -32,7 +32,6 @@ from nmp.studio.coding_agent_artifacts import (
 )
 from nmp.studio.coding_agent_mcp_tools import (
     APPROVAL_TOOL_NAME,
-    ASK_USER_QUESTION_TOOL_NAME,
     CLAUDE_MCP_SERVER_NAME,
     JOB_PROGRESS_TOOL_NAME,
     MCP_TOOLS,
@@ -307,10 +306,9 @@ def _build_studio_system_prompt(
         "A timeout, disconnect, or other interactive-tool error is not permission to continue or repeat the question in plain text. Leave the input unresolved and tell the user the interactive request must be retried.",
         "A message that needs user input is not complete until you call the matching Studio input tool. Never end a message with only a plain-text question when an interactive tool applies.",
         "In particular, if you need an agent, model, dataset file, or evaluation config, call the matching select_* tool before completing the message; mentioning the needed selection in prose is not a substitute for the tool call.",
-        "For finite choices that have no dedicated Studio picker (for example deployments, jobs, or next actions) and for yes/no or multiple-choice clarifications, use Studio's ask_user_question tool so Studio can render clickable options instead of asking the user to type.",
-        "For those questions, call mcp__nemo_studio__ask_user_question; never call Claude Code's built-in AskUserQuestion tool because it cannot wait for the Studio user in non-interactive mode.",
-        "For mcp__nemo_studio__ask_user_question, provide input shaped as {'questions': [{'header': '<short title>', 'question': '<what should the user choose?>', 'options': [{'label': '<option>', 'description': '<short impact/details>'}]}]}.",
-        "If you need both a finite choice and free-form text, ask multiple questions in the same mcp__nemo_studio__ask_user_question call: first the finite options, then a text question without options.",
+        "For finite choices that have no dedicated Studio picker (for example deployments, jobs, or next actions) and for yes/no or multiple-choice clarifications, use Claude Code's AskUserQuestion tool so Studio can render clickable options instead of asking the user to type.",
+        "For AskUserQuestion, provide input shaped as {'questions': [{'header': '<short title>', 'question': '<what should the user choose?>', 'options': [{'label': '<option>', 'description': '<short impact/details>'}]}]}.",
+        "If you need both a finite choice and free-form text, ask multiple AskUserQuestion questions: first the finite options, then a text question without options.",
         "Required message-summary behavior:",
         "At the end of every assistant message to the user, include a short Studio summary block after your normal detailed work.",
         f"Start the summary block on its own line with {STUDIO_MESSAGE_SUMMARY_START} and end it on its own line with {STUDIO_MESSAGE_SUMMARY_END}.",
@@ -699,8 +697,6 @@ def _build_claude_argv(
         mcp_config,
         "--allowedTools",
         ",".join(allowed_mcp_tools(CLAUDE_MCP_SERVER_NAME)),
-        "--disallowedTools",
-        "AskUserQuestion",
         "--append-system-prompt",
         STUDIO_CODING_AGENT_CONTEXT,
         "--permission-prompt-tool",
@@ -851,19 +847,6 @@ async def _request_agent_input(session_id: str, kind: str, args: dict[str, Any])
         return {"status": "submitted", **value}
 
     return {"status": "error", "message": "input request resolved without a value"}
-
-
-async def _request_studio_question(session_id: str, args: dict[str, Any]) -> dict[str, Any]:
-    result = await _request_permission(
-        session_id,
-        {"tool_name": "AskUserQuestion", "input": args},
-    )
-    message = result.get("message")
-    if message == "no active Studio coding-agent session":
-        return {"status": "error", "message": message}
-    if isinstance(message, str) and message:
-        return {"status": "answered", "response": message}
-    return {"status": "error", "message": "question completed without a user response"}
 
 
 async def _pump_stdout(
@@ -1087,13 +1070,6 @@ async def mcp_endpoint(session_id: str, request: Request) -> Response:
         args = params.get("arguments") or {}
         if not isinstance(args, dict):
             return JSONResponse(status_code=400, content={"detail": "tool arguments must be an object"})
-
-        if name == ASK_USER_QUESTION_TOOL_NAME:
-            return await _blocking_mcp_tool_response(
-                sid,
-                request_id,
-                _request_studio_question(sid, args),
-            )
 
         if name == SELECT_AGENT_TOOL_NAME:
             return await _blocking_mcp_tool_response(
