@@ -57,6 +57,75 @@ describe('Claude Code tool parts', () => {
     ]);
   });
 
+  it('preserves non-text parts interleaved across a streamed Studio summary block', () => {
+    const interleavedToolPart: ThreadAssistantMessagePart = {
+      type: 'tool-call',
+      toolCallId: 'toolu_interleaved',
+      toolName: 'Bash',
+      args: { command: 'pwd' },
+      argsText: '{"command":"pwd"}',
+    };
+    const parts: readonly ThreadAssistantMessagePart[] = [
+      { type: 'text', text: 'Detailed work that should be collapsed.' },
+      {
+        type: 'text',
+        text: [
+          STUDIO_MESSAGE_SUMMARY_START,
+          'worked_for: 8s',
+          'summary: Finished the streamed work.',
+        ].join('\n'),
+      },
+      interleavedToolPart,
+      {
+        type: 'text',
+        text: ['details_label: worked for 8s', STUDIO_MESSAGE_SUMMARY_END].join('\n'),
+      },
+    ];
+
+    expect(getClaudeCodeCompletedMessageParts(parts)).toMatchObject([
+      {
+        type: 'tool-call',
+        toolName: CLAUDE_CODE_COLLAPSED_STUDIO_DETAILS_TOOL_NAME,
+        args: {
+          parts: [
+            { type: 'text', text: 'Detailed work that should be collapsed.' },
+            { type: 'tool-call', toolCallId: 'toolu_interleaved', toolName: 'Bash' },
+          ],
+        },
+      },
+      { type: 'text', text: 'Finished the streamed work.' },
+    ]);
+  });
+
+  it('hides a raw Studio summary marker when the streamed block is truncated', () => {
+    const parts: readonly ThreadAssistantMessagePart[] = [
+      { type: 'text', text: 'I finished the available repository analysis.' },
+      {
+        type: 'text',
+        text: [
+          STUDIO_MESSAGE_SUMMARY_START,
+          'worked_for: 8s',
+          'summary: This partial field must not expose its sentinel.',
+        ].join('\n'),
+      },
+    ];
+
+    const completedParts = getClaudeCodeCompletedMessageParts(parts, { elapsedMs: 8_000 });
+
+    expect(completedParts).toMatchObject([
+      {
+        type: 'tool-call',
+        toolName: CLAUDE_CODE_COLLAPSED_STUDIO_DETAILS_TOOL_NAME,
+        args: {
+          label: 'worked for 8s',
+          parts: [{ type: 'text', text: 'I finished the available repository analysis.' }],
+        },
+      },
+      { type: 'text', text: 'I finished the available repository analysis.' },
+    ]);
+    expect(JSON.stringify(completedParts)).not.toContain(STUDIO_MESSAGE_SUMMARY_START);
+  });
+
   it('removes the Studio summary markers when there are no details to collapse', () => {
     const parts: readonly ThreadAssistantMessagePart[] = [
       {

@@ -341,6 +341,23 @@ const splitTrailingQuestion = (
   };
 };
 
+const getTruncatedStudioSummaryText = (
+  detailParts: readonly ThreadAssistantMessagePart[],
+  question: string | undefined
+): string => {
+  const detailText = detailParts
+    .filter(
+      (part): part is Extract<ThreadAssistantMessagePart, { type: 'text' }> => part.type === 'text'
+    )
+    .map((part) => part.text)
+    .join('\n\n');
+  const detailSummary = splitTextParagraphs(detailText).at(-1);
+  const baseSummary = detailSummary ?? 'The response ended before its summary was complete.';
+  return question && !baseSummary.includes(question)
+    ? `${baseSummary}\n\n${question}`
+    : baseSummary;
+};
+
 const getStudioSummaryBlock = (
   parts: readonly ThreadAssistantMessagePart[],
   options: ClaudeCodeCompletedMessageOptions
@@ -366,15 +383,26 @@ const getStudioSummaryBlock = (
       detailParts.push({ type: 'text', text: detailText });
     }
 
-    const summarySource = [
-      part.text.slice(summaryStartIndex),
-      ...parts.slice(index + 1).map((remainingPart) => {
-        if (remainingPart.type !== 'text') return '';
-        return remainingPart.text;
-      }),
-    ].join('\n');
+    const summarySourceParts = [part.text.slice(summaryStartIndex)];
+    for (const remainingPart of parts.slice(index + 1)) {
+      if (remainingPart.type === 'text') {
+        summarySourceParts.push(remainingPart.text);
+      } else {
+        detailParts.push(remainingPart);
+      }
+    }
+    const summarySource = summarySourceParts.join('\n');
     const summaryEndIndex = summarySource.indexOf(STUDIO_MESSAGE_SUMMARY_END);
-    if (summaryEndIndex < 0) return undefined;
+    if (summaryEndIndex < 0) {
+      return {
+        detailsLabel: getStudioDetailsLabel({
+          elapsedMs: options.elapsedMs,
+          summaryFields: getStudioSummaryFields(''),
+        }),
+        detailParts,
+        summaryText: getTruncatedStudioSummaryText(detailParts, question),
+      };
+    }
 
     const summaryBlockText = summarySource
       .slice(STUDIO_MESSAGE_SUMMARY_START.length, summaryEndIndex)

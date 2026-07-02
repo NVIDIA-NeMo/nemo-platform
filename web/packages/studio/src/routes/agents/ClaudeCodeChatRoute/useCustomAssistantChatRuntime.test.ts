@@ -4,8 +4,11 @@
 import type { ThreadAssistantMessagePart, ThreadMessageLike } from '@assistant-ui/react';
 import { getMessageText } from '@nemo/common/src/components/AssistantChat/messageUtils';
 import {
+  CLAUDE_CODE_COLLAPSED_STUDIO_DETAILS_TOOL_NAME,
   CLAUDE_CODE_COLLAPSED_THINKING_TOOL_NAME,
   CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME,
+  STUDIO_MESSAGE_SUMMARY_END,
+  STUDIO_MESSAGE_SUMMARY_START,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
 import {
   type CustomAssistantBeforeRunContext,
@@ -186,6 +189,61 @@ describe('useCustomAssistantChatRuntime', () => {
       ]);
       expect(runtime.messages[1]?.status).toEqual({ type: 'complete', reason: 'stop' });
     });
+  });
+
+  it('excludes time waiting for user input from the completed work duration', async () => {
+    let now = 1_000;
+    const dateNow = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    let resumeRun!: () => void;
+    const onRun = vi.fn(async (context: CustomAssistantRunContext) => {
+      now = 2_000;
+      context.appendAssistantParts([{ type: 'text', text: 'I inspected the repository.' }]);
+      now = 3_000;
+      context.prepareForUserInput();
+      await new Promise<void>((resolve) => {
+        resumeRun = resolve;
+      });
+      now = 303_000;
+      context.appendAssistantParts([
+        {
+          type: 'text',
+          text: [
+            STUDIO_MESSAGE_SUMMARY_START,
+            'worked_for: unknown',
+            'summary: Finished after receiving the answer.',
+            'details_label: worked for unknown',
+            STUDIO_MESSAGE_SUMMARY_END,
+          ].join('\n'),
+        },
+      ]);
+      now = 305_000;
+    });
+    const { result } = renderHook(() => useCustomAssistantChatRuntime({ onRun }));
+
+    act(() => {
+      void result.current.submitPrompt('Inspect the repository');
+    });
+
+    await waitFor(() => {
+      expect(resumeRun).toBeDefined();
+    });
+
+    await act(async () => {
+      resumeRun();
+    });
+
+    await waitFor(() => {
+      expect(getAssistantContent(getMockRuntime(result.current.runtime).messages)).toMatchObject([
+        {
+          type: 'tool-call',
+          toolName: CLAUDE_CODE_COLLAPSED_STUDIO_DETAILS_TOOL_NAME,
+          args: { label: 'worked for 4s' },
+        },
+        { type: 'text', text: 'Finished after receiving the answer.' },
+      ]);
+    });
+
+    dateNow.mockRestore();
   });
 
   it('preserves resumed assistant parts when setting assistant text', async () => {
