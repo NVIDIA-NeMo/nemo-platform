@@ -60,6 +60,7 @@ def test_compile_deployment_includes_init_and_sidecar() -> None:
                         "image": "nginx:alpine",
                         "restartPolicy": "Always",
                         "ports": [{"name": "proxy", "containerPort": 8081}],
+                        "livenessProbe": {"httpGet": {"path": "/healthz", "port": 8081}},
                     }
                 ),
             ],
@@ -86,6 +87,9 @@ def test_compile_deployment_includes_init_and_sidecar() -> None:
     assert [item["name"] for item in pod_spec["init_containers"]] == ["bootstrap", "sidecar"]
     sidecar = compiled.pod_spec_kwargs["init_containers"][1]
     assert sidecar.restart_policy == "Always"
+    assert sidecar.liveness_probe is not None
+    bootstrap = compiled.pod_spec_kwargs["init_containers"][0]
+    assert bootstrap.liveness_probe is None
     assert [item["name"] for item in pod_spec["containers"]] == ["main", "metrics"]
     assert len(compiled.service_containers) == 2
 

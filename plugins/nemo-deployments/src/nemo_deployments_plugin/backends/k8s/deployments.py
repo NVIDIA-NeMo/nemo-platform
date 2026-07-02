@@ -17,6 +17,7 @@ from kubernetes.client.rest import ApiException
 from nemo_deployments_plugin.backends.base import BackendStatusUpdate, LogResult
 from nemo_deployments_plugin.backends.k8s.client import KubernetesClients, k8s_client_module
 from nemo_deployments_plugin.backends.k8s.compiler import (
+    CompiledWorkload,
     DeploymentConfigError,
     compile_workload,
     create_configmap,
@@ -45,7 +46,7 @@ from nemo_deployments_plugin.backends.labels import (
     k8s_deployment_resource_name,
     managed_by_label_selector,
 )
-from nemo_deployments_plugin.entities import Container, DeploymentConfig
+from nemo_deployments_plugin.entities import Container, DeploymentConfig, K8sDeploymentConfig
 from nemo_deployments_plugin.types import Endpoint, RestartPolicy
 
 logger = logging.getLogger(__name__)
@@ -65,8 +66,8 @@ def build_deployment_body(
     config: DeploymentConfig,
     workspace: str,
     deployment_name: str,
-    k8s_config: Any,
-) -> tuple[Any, Any]:
+    k8s_config: K8sDeploymentConfig | None,
+) -> tuple[Any, CompiledWorkload]:
     """Build an ``apps/v1.Deployment`` for create and its compiled workload."""
     k8s = k8s_client_module()
     selector_labels = app_selector_labels(resource_name)

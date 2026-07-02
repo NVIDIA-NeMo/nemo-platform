@@ -367,7 +367,11 @@ def compile_workload(
         volumes = [*volumes, _build_config_file_volume(configmap_name, config.config_files)]
 
     init_containers = [
-        build_container(container, config=config, include_probes=False)
+        build_container(
+            container,
+            config=config,
+            include_probes=container.restart_policy == NATIVE_SIDECAR_RESTART_POLICY,
+        )
         for container in _ordered_init_containers(config)
     ]
     main_containers = [
