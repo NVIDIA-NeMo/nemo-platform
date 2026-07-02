@@ -218,6 +218,80 @@ describe('Claude Code API helpers', () => {
     );
   });
 
+  it('calls onPermissionExpired when a permission_expired event arrives', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          [
+            'event: permission_expired',
+            'data: {"request_id":"request-1"}',
+            '',
+            'event: done',
+            'data: ',
+            '',
+          ].join('\n'),
+          { status: 200 }
+        )
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const onPermissionExpired = vi.fn();
+
+    await streamClaudeCodeMessage({
+      sessionId: 'session-1',
+      message: 'list files',
+      signal: new AbortController().signal,
+      handlers: {
+        onClaudeEvent: vi.fn(),
+        onInputRequest: vi.fn(),
+        onPermissionRequest: vi.fn(),
+        onPermissionExpired,
+        onDone: vi.fn(),
+        onError: vi.fn(),
+      },
+    });
+
+    expect(onPermissionExpired).toHaveBeenCalledWith('request-1');
+  });
+
+  it('calls onInputExpired when an input_expired event arrives', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          [
+            'event: input_expired',
+            'data: {"request_id":"request-2"}',
+            '',
+            'event: done',
+            'data: ',
+            '',
+          ].join('\n'),
+          { status: 200 }
+        )
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const onInputExpired = vi.fn();
+
+    await streamClaudeCodeMessage({
+      sessionId: 'session-1',
+      message: 'list files',
+      signal: new AbortController().signal,
+      handlers: {
+        onClaudeEvent: vi.fn(),
+        onInputRequest: vi.fn(),
+        onPermissionRequest: vi.fn(),
+        onInputExpired,
+        onDone: vi.fn(),
+        onError: vi.fn(),
+      },
+    });
+
+    expect(onInputExpired).toHaveBeenCalledWith('request-2');
+  });
+
   it('posts approval decisions using the backend permission shape', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);

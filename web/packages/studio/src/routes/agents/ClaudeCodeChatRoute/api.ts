@@ -389,6 +389,22 @@ const handleSseEvent = (
     return true;
   }
 
+  if (event.event === 'permission_expired') {
+    const payload = parseJsonObject(event.data);
+    if (isRecord(payload) && typeof payload.request_id === 'string') {
+      handlers.onPermissionExpired?.(payload.request_id);
+    }
+    return true;
+  }
+
+  if (event.event === 'input_expired') {
+    const payload = parseJsonObject(event.data);
+    if (isRecord(payload) && typeof payload.request_id === 'string') {
+      handlers.onInputExpired?.(payload.request_id);
+    }
+    return true;
+  }
+
   handlers.onClaudeEvent(parseJsonObject(event.data));
   return true;
 };

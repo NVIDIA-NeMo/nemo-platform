@@ -35,6 +35,12 @@ class ExperimentGroup(EntityBase):
     __entity_type__: ClassVar[str] = "experiment_group"
 
     description: str | None = Field(default=None, description="Human-readable purpose of the group.")
+    insight_id: str | None = Field(
+        default=None,
+        description="Reference to an external insight that seeded this group, if any.",
+    )
+    summary: str | None = Field(default=None, description="Human- or agent-authored summary of the group's findings.")
+    metadata: dict[str, Any] | None = Field(default=None, description="Free-form producer metadata for the group.")
     default_sort: list[SortCriterion] | None = Field(
         default=None,
         description=(
@@ -77,6 +83,19 @@ class Experiment(EntityBase):
     )
 
     description: str | None = Field(default=None, description="Human-readable description of the experiment.")
+
+    parent_experiment_id: str | None = Field(
+        default=None,
+        description="Entity id of the experiment this one was derived from (e.g. a variant of a baseline), if any.",
+    )
+    status: str | None = Field(
+        default=None,
+        description="Producer-defined lifecycle status of the experiment.",
+    )
+    root_cause: str | None = Field(
+        default=None,
+        description="Human- or agent-authored explanation of the experiment's outcome (e.g. why it was killed).",
+    )
 
     is_deleted: bool = Field(
         default=False,

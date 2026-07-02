@@ -106,7 +106,7 @@ class TestAgentValidation:
 
     def test_extra_fields_forbidden(self):
         with pytest.raises(ValueError):
-            Agent(url="http://agent.test", name="test", format=AgentFormat.NEMO_AGENT_TOOLKIT, extra_field="bad")  # type: ignore[call-arg]
+            Agent(url="http://agent.test", name="test", format=AgentFormat.NEMO_AGENT_TOOLKIT, extra_field="bad")  # ty: ignore[unknown-argument]
 
     def test_generic_with_trajectory_path(self):
         agent = Agent(

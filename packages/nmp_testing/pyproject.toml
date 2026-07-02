@@ -1,6 +1,5 @@
 [project]
 name = "nmp-testing"
-version = "0.0.0"
 description = "Testing utilities for NeMo Platform services"
 readme = "README.md"
 requires-python = ">=3.11,<3.15"
@@ -20,12 +19,14 @@ dependencies = [
     "testcontainers>=4.0.0",
     "tenacity>=9.0.0",  # Retry logic for integration tests
 ]
+version = "0.0.0"
 
 [tool.uv.sources]
 nmp-common = { workspace = true }
 nmp-auth = { workspace = true }
 nmp-entities = { workspace = true }
 nemo-nb = { workspace = true }
+
 
 [build-system]
 requires = ["hatchling"]

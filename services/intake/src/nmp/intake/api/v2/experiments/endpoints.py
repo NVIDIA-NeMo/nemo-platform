@@ -120,7 +120,13 @@ async def create_experiment_group(
 ) -> ExperimentGroupResponse:
     _validate_default_sort(body.default_sort)
     entity = ExperimentGroup(
-        workspace=workspace, name=body.name, description=body.description, default_sort=body.default_sort
+        workspace=workspace,
+        name=body.name,
+        description=body.description,
+        insight_id=body.insight_id,
+        summary=body.summary,
+        metadata=body.metadata,
+        default_sort=body.default_sort,
     )
     try:
         created = await entity_client.create(entity)
@@ -232,6 +238,9 @@ async def update_experiment_group(
         )
     _validate_default_sort(body.default_sort)
     existing.description = body.description
+    existing.insight_id = body.insight_id
+    existing.summary = body.summary
+    existing.metadata = body.metadata
     existing.default_sort = body.default_sort
     updated = await entity_client.update(existing)
     response = ExperimentGroupResponse.from_entity(updated)
@@ -315,6 +324,7 @@ async def create_experiment(
     entity_client: EntityClientDep,
 ) -> ExperimentResponse:
     await _validate_group_exists(entity_client, group_id=body.experiment_group_id)
+    await _validate_parent_experiment_exists(entity_client, parent_experiment_id=body.parent_experiment_id)
     entity = Experiment(
         workspace=workspace,
         name=body.name,
@@ -324,6 +334,9 @@ async def create_experiment(
         source_link=body.source_link,
         metadata=body.metadata,
         description=body.description,
+        parent_experiment_id=body.parent_experiment_id,
+        status=body.status,
+        root_cause=body.root_cause,
     )
     try:
         created = await entity_client.create(entity)
@@ -512,6 +525,7 @@ async def update_experiment(
     _reject_if_deleted(existing, workspace=workspace, name=name, label="Experiment")
     if body.experiment_group_id != existing.experiment_group_id:
         await _validate_group_exists(entity_client, group_id=body.experiment_group_id)
+    await _validate_parent_experiment_exists(entity_client, parent_experiment_id=body.parent_experiment_id)
 
     changed = [f for f in _IMMUTABLE_EXPERIMENT_FIELDS if getattr(body, f) != getattr(existing, f)]
     if changed:
@@ -527,6 +541,9 @@ async def update_experiment(
     existing.source_link = body.source_link
     existing.metadata = body.metadata
     existing.description = body.description
+    existing.parent_experiment_id = body.parent_experiment_id
+    existing.status = body.status
+    existing.root_cause = body.root_cause
     updated = await entity_client.update(existing)
     response = ExperimentResponse.from_entity(updated)
     await _hydrate_rollups(workspace=workspace, responses=[response], rollup_repository=rollup_repository)
@@ -842,6 +859,19 @@ async def _count_live_experiments_by_group(
             break
         page += 1
     return counts
+
+
+async def _validate_parent_experiment_exists(entity_client: EntityClient, *, parent_experiment_id: str | None) -> None:
+    """Reject with 400 if ``parent_experiment_id`` is set but doesn't reference an existing experiment."""
+    if parent_experiment_id is None:
+        return
+    try:
+        await entity_client.get_by_id(Experiment, entity_id=parent_experiment_id)
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"parent_experiment_id '{parent_experiment_id}' does not reference an existing experiment.",
+        ) from e
 
 
 async def _validate_group_exists(entity_client: EntityClient, *, group_id: str) -> None:

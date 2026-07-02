@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import Iterable
+from typing import Dict, Iterable
 from typing_extensions import Required, Annotated, TypedDict
 
 from ..._utils import PropertyInfo
@@ -41,3 +41,12 @@ class ExperimentGroupUpdateParams(TypedDict, total=False):
 
     description: str
     """Human-readable purpose of the group."""
+
+    insight_id: str
+    """Reference to an external insight that seeded this group, if any."""
+
+    metadata: Dict[str, object]
+    """Free-form producer metadata for the group."""
+
+    summary: str
+    """Human- or agent-authored summary of the group's findings."""

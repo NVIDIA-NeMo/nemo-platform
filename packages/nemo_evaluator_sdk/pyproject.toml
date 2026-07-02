@@ -1,6 +1,5 @@
 [project]
 name = "nemo-evaluator-sdk"
-version = "0.0.0"
 description = "NeMo Evaluator SDK"
 readme = "README.md"
 authors = [{ name = "NVIDIA", email = "nemo@nvidia.com" }]
@@ -32,6 +31,7 @@ dependencies = [
   "langchain-openai>=1.3.3",
   "langchain-nvidia-ai-endpoints>=1.4.1,<2.0.0",
 ]
+version = "0.0.0"
 
 [dependency-groups]
 dev = ["nemo-evaluator-plugin", "nemo-platform-sdk"]
@@ -49,9 +49,6 @@ nemo-platform = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.uv]
-cache-keys = [{ file = "pyproject.toml" }]
-
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 addopts = ["--import-mode=importlib"]
@@ -63,3 +60,4 @@ source_module = "nemo_evaluator_sdk"
 target_sdk_module = "beta.evaluator"
 sdk_optional_dependencies_name = "nemo-evaluator-sdk"
 included_paths = ["**/*.py"]
+

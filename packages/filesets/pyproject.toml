@@ -1,6 +1,5 @@
 [project]
 name = "filesets"
-version = "0.0.0"
 description = "Extended FilesetsResource with fsspec filesystem support"
 readme = "README.md"
 authors = [{ name = "NVIDIA", email = "nemo@nvidia.com" }]
@@ -9,6 +8,7 @@ dependencies = [
     "anyio>=4.0.0",
     "fsspec>=2023.1.0",
 ]
+version = "0.0.0"
 
 [dependency-groups]
 dev = [
@@ -23,6 +23,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/filesets"]
+
 
 [tool.vendor-package]
 package = "filesets"

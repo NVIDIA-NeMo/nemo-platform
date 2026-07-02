@@ -180,7 +180,7 @@ class NemoFunction(_NamedPlugin, Generic[SpecT]):
     # ``spec_schema`` to ``type[GreetSpec]`` for type-checkers and IDEs.
     # PEP 526 forbids type variables inside ``ClassVar``, so the suppression
     # here is the standard escape hatch for the otherwise-correct shape.
-    spec_schema: ClassVar[type[SpecT]]  # type: ignore[misc]
+    spec_schema: ClassVar[type[SpecT]]  # ty: ignore[invalid-type-form]
 
     # ------------------------------------------------------------------ #
     # Endpoint override                                                  #

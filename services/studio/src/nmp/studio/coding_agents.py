@@ -711,6 +711,7 @@ async def _request_permission(session_id: str, args: dict[str, Any]) -> dict[str
     try:
         decision = await asyncio.wait_for(future, timeout=300)
     except asyncio.TimeoutError:
+        await queue.put(("permission_expired", json.dumps({"request_id": request_id})))
         return {"behavior": "deny", "message": "permission request timed out"}
     finally:
         _pending_permissions.pop(request_id, None)
@@ -745,6 +746,7 @@ async def _request_agent_input(session_id: str, kind: str, args: dict[str, Any])
     try:
         decision = await asyncio.wait_for(future, timeout=300)
     except asyncio.TimeoutError:
+        await queue.put(("input_expired", json.dumps({"request_id": request_id})))
         return {"status": "error", "message": "input request timed out"}
     finally:
         _pending_agent_inputs.pop(request_id, None)
@@ -864,6 +866,10 @@ async def _stream_claude(
                 yield _sse(payload, event="permission_request")
             elif event_type == "input_request":
                 yield _sse(payload, event="input_request")
+            elif event_type == "permission_expired":
+                yield _sse(payload, event="permission_expired")
+            elif event_type == "input_expired":
+                yield _sse(payload, event="input_expired")
 
         returncode = await proc.wait()
         if stderr_task is not None:

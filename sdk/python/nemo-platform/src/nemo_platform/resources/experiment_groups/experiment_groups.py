@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import Iterable
+from typing import Dict, Iterable
 from typing_extensions import Literal
 
 import httpx
@@ -74,6 +74,9 @@ class ExperimentGroupsResource(SyncAPIResource):
         name: str,
         default_sort: Iterable[SortCriterionParam] | Omit = omit,
         description: str | Omit = omit,
+        insight_id: str | Omit = omit,
+        metadata: Dict[str, object] | Omit = omit,
+        summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         exist_ok: bool = False,
@@ -93,6 +96,12 @@ class ExperimentGroupsResource(SyncAPIResource):
               run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>.
 
           description: Human-readable purpose of the group.
+
+          insight_id: Reference to an external insight that seeded this group, if any.
+
+          metadata: Free-form producer metadata for the group.
+
+          summary: Human- or agent-authored summary of the group's findings.
 
 
           exist_ok: Do not raise an error if the resource already exists. Returns the existing resource.
@@ -118,6 +127,9 @@ class ExperimentGroupsResource(SyncAPIResource):
                         "name": name,
                         "default_sort": default_sort,
                         "description": description,
+                        "insight_id": insight_id,
+                        "metadata": metadata,
+                        "summary": summary,
                     },
                     experiment_group_create_params.ExperimentGroupCreateParams,
                 ),
@@ -179,6 +191,9 @@ class ExperimentGroupsResource(SyncAPIResource):
         body_name: str,
         default_sort: Iterable[SortCriterionParam] | Omit = omit,
         description: str | Omit = omit,
+        insight_id: str | Omit = omit,
+        metadata: Dict[str, object] | Omit = omit,
+        summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -197,6 +212,12 @@ class ExperimentGroupsResource(SyncAPIResource):
               run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>.
 
           description: Human-readable purpose of the group.
+
+          insight_id: Reference to an external insight that seeded this group, if any.
+
+          metadata: Free-form producer metadata for the group.
+
+          summary: Human- or agent-authored summary of the group's findings.
 
           extra_headers: Send extra headers
 
@@ -223,6 +244,9 @@ class ExperimentGroupsResource(SyncAPIResource):
                     "body_name": body_name,
                     "default_sort": default_sort,
                     "description": description,
+                    "insight_id": insight_id,
+                    "metadata": metadata,
+                    "summary": summary,
                 },
                 experiment_group_update_params.ExperimentGroupUpdateParams,
             ),
@@ -361,6 +385,9 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
         name: str,
         default_sort: Iterable[SortCriterionParam] | Omit = omit,
         description: str | Omit = omit,
+        insight_id: str | Omit = omit,
+        metadata: Dict[str, object] | Omit = omit,
+        summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         exist_ok: bool = False,
@@ -380,6 +407,12 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
               run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>.
 
           description: Human-readable purpose of the group.
+
+          insight_id: Reference to an external insight that seeded this group, if any.
+
+          metadata: Free-form producer metadata for the group.
+
+          summary: Human- or agent-authored summary of the group's findings.
 
 
           exist_ok: Do not raise an error if the resource already exists. Returns the existing resource.
@@ -405,6 +438,9 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
                         "name": name,
                         "default_sort": default_sort,
                         "description": description,
+                        "insight_id": insight_id,
+                        "metadata": metadata,
+                        "summary": summary,
                     },
                     experiment_group_create_params.ExperimentGroupCreateParams,
                 ),
@@ -466,6 +502,9 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
         body_name: str,
         default_sort: Iterable[SortCriterionParam] | Omit = omit,
         description: str | Omit = omit,
+        insight_id: str | Omit = omit,
+        metadata: Dict[str, object] | Omit = omit,
+        summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -484,6 +523,12 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
               run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>.
 
           description: Human-readable purpose of the group.
+
+          insight_id: Reference to an external insight that seeded this group, if any.
+
+          metadata: Free-form producer metadata for the group.
+
+          summary: Human- or agent-authored summary of the group's findings.
 
           extra_headers: Send extra headers
 
@@ -510,6 +555,9 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
                     "body_name": body_name,
                     "default_sort": default_sort,
                     "description": description,
+                    "insight_id": insight_id,
+                    "metadata": metadata,
+                    "summary": summary,
                 },
                 experiment_group_update_params.ExperimentGroupUpdateParams,
             ),

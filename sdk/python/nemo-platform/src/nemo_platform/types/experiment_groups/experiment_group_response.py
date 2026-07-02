@@ -15,7 +15,7 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from typing import List, Optional
+from typing import Dict, List, Optional
 from datetime import datetime
 
 from ..._models import BaseModel
@@ -41,5 +41,11 @@ class ExperimentGroupResponse(BaseModel):
 
     experiment_count: Optional[int] = None
     """Number of live (non-soft-deleted) experiments in this group."""
+
+    insight_id: Optional[str] = None
+
+    metadata: Optional[Dict[str, object]] = None
+
+    summary: Optional[str] = None
 
     updated_at: Optional[datetime] = None

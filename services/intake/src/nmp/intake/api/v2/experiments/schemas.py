@@ -26,6 +26,11 @@ class ExperimentGroupRequest(BaseModel):
 
     name: str = Field(description="Workspace-unique group name.")
     description: str | None = Field(default=None, description="Human-readable purpose of the group.")
+    insight_id: str | None = Field(
+        default=None, description="Reference to an external insight that seeded this group, if any."
+    )
+    summary: str | None = Field(default=None, description="Human- or agent-authored summary of the group's findings.")
+    metadata: dict[str, Any] | None = Field(default=None, description="Free-form producer metadata for the group.")
     default_sort: list[SortCriterion] | None = Field(
         default=None,
         description=(
@@ -50,6 +55,15 @@ class ExperimentRequest(BaseModel):
     source_link: AnyUrl | None = Field(default=None, description="Optional URL for the source experiment.")
     metadata: dict[str, Any] = Field(default_factory=dict, description="Free-form producer metadata.")
     description: str | None = Field(default=None, description="Human-readable description.")
+    parent_experiment_id: str | None = Field(
+        default=None,
+        description="Entity id of the experiment this one was derived from (e.g. a variant of a baseline), if any.",
+    )
+    status: str | None = Field(default=None, description="Producer-defined lifecycle status of the experiment.")
+    root_cause: str | None = Field(
+        default=None,
+        description="Human- or agent-authored explanation of the experiment's outcome (e.g. why it was killed).",
+    )
 
 
 class ExperimentGroupResponse(BaseModel):
@@ -59,6 +73,9 @@ class ExperimentGroupResponse(BaseModel):
     name: str
     workspace: str
     description: str | None = None
+    insight_id: str | None = None
+    summary: str | None = None
+    metadata: dict[str, Any] | None = None
     default_sort: list[SortCriterion] | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
@@ -74,6 +91,9 @@ class ExperimentGroupResponse(BaseModel):
             name=entity.name,
             workspace=entity.workspace,
             description=entity.description,
+            insight_id=entity.insight_id,
+            summary=entity.summary,
+            metadata=entity.metadata,
             default_sort=entity.default_sort,
             created_at=entity.created_at,
             updated_at=entity.updated_at,
@@ -106,6 +126,9 @@ class ExperimentResponse(BaseModel):
     source_link: AnyUrl | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     description: str | None = None
+    parent_experiment_id: str | None = None
+    status: str | None = None
+    root_cause: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
     pinned_at: datetime | None = Field(
@@ -153,6 +176,9 @@ class ExperimentResponse(BaseModel):
             source_link=entity.source_link,
             metadata=entity.metadata,
             description=entity.description,
+            parent_experiment_id=entity.parent_experiment_id,
+            status=entity.status,
+            root_cause=entity.root_cause,
             created_at=entity.created_at,
             updated_at=entity.updated_at,
             pinned_at=entity.pinned_at,

@@ -545,9 +545,9 @@ def create_test_client(
             if client_type is TestClient:
                 yield client
             elif client_type is AsyncNeMoPlatform:
-                yield async_sdk
+                yield async_sdk  # ty: ignore[invalid-yield]
             elif client_type is EntityClient:
-                yield entity_client
+                yield entity_client  # ty: ignore[invalid-yield]
             elif client_type is ClientContext:
                 yield ClientContext(
                     sdk=sdk,
@@ -557,6 +557,6 @@ def create_test_client(
                     access_log=access_log_instance,
                 )
             else:
-                yield sdk
+                yield sdk  # ty: ignore[invalid-yield]
 
         app.dependency_overrides.clear()

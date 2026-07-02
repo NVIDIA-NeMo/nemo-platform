@@ -6,12 +6,11 @@ import subprocess
 import tempfile
 
 from nemo_platform_sdk_tools.sdk.core.common import SdkInfo
-from nmp.common.version import platform_sdk_version
 from packaging.version import Version
 
 
 def get_sdk_version():
-    return platform_sdk_version
+    return os.environ.get("UV_DYNAMIC_VERSIONING_BYPASS", "0.0.0")
 
 
 def validate_version(version: str) -> None:

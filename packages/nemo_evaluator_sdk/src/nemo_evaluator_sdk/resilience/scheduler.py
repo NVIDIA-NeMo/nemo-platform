@@ -105,7 +105,7 @@ class ResilienceScheduler:
         endpoint_key: str,
         operation: Callable[_P, Awaitable[_T]],
         *args: _P.args,
-        max_attempts: int,
+        max_attempts: int,  # ty: ignore[invalid-paramspec]
         deadline_at: float | None,
         **kwargs: _P.kwargs,
     ) -> _T:
@@ -202,7 +202,7 @@ class ResilienceScheduler:
         endpoint_key: str,
         operation: Callable[_P, Awaitable[_T]],
         *args: _P.args,
-        attempt: int,
+        attempt: int,  # ty: ignore[invalid-paramspec]
         **kwargs: _P.kwargs,
     ) -> _T:
         controller = await self._get_controller(endpoint_key)
