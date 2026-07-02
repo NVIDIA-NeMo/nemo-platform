@@ -98,7 +98,7 @@ class NemoBinaryResponse:
         """Yield an iterator of raw byte chunks."""
         with self._stream_ctx as raw:
             raise_for_status(raw)
-            yield raw.iter_bytes()
+            yield raw.iter_raw()
 
 
 class NemoStreamResponse(Generic[ModelT]):
@@ -177,7 +177,7 @@ class AsyncNemoBinaryResponse:
         """Yield an async iterator of raw byte chunks."""
         async with self._stream_ctx as raw:
             raise_for_status(raw)
-            yield raw.aiter_bytes()
+            yield raw.aiter_raw()
 
 
 class AsyncNemoStreamResponse(Generic[ModelT]):
