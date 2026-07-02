@@ -93,4 +93,4 @@ def test_shared_fields_are_required() -> None:
     # A result is only persisted once the run produced all of it — no schema defaults papering over
     # missing data. job_id (and the rest of the shared record) must be supplied by the caller.
     with pytest.raises(ValidationError):
-        AgentEvalResultEntity(name="x", workspace="default", scores=_scores())  # type: ignore[call-arg]
+        AgentEvalResultEntity(name="x", workspace="default", scores=_scores())  # ty: ignore[missing-argument]
