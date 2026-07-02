@@ -21,10 +21,14 @@ from typing import Any
 import nemo_platform
 import pytest
 
-from .conftest import post_chat_completion, post_streaming_chat_completion
-
-BACKEND_RESPONSE = "Paris is the capital of France."
-REFUSAL_TEXT = "I'm sorry, I can't respond to that."
+from e2e.guardrails.utils import (
+    BACKEND_RESPONSE,
+    CONTENT_SAFETY_INPUT_FLOW,
+    CONTENT_SAFETY_OUTPUT_FLOW,
+    REFUSAL_TEXT,
+    post_chat_completion,
+    post_streaming_chat_completion,
+)
 
 
 def _assert_blocked(response: dict[str, Any]) -> None:
@@ -42,6 +46,13 @@ def _assert_streaming_blocked(response: dict[str, Any]) -> None:
 
 def _assert_allowed(response: dict[str, Any]) -> None:
     assert response["choices"][0]["message"]["content"] == BACKEND_RESPONSE
+
+
+def _activated_rails_by_name(response: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    guardrails_data = response.get("guardrails_data") or {}
+    log = guardrails_data.get("log") or {}
+    activated_rails = log.get("activated_rails") or []
+    return {rail["name"]: rail for rail in activated_rails}
 
 
 # ---------------------------------------------------------------------------
@@ -191,7 +202,9 @@ def test_chat_completions_reports_guardrails_metadata_when_blocked(
 
     guardrails_data = response.get("guardrails_data") or {}
     assert guardrails_data.get("config_ids") == [test_case.config_ref]
-    assert guardrails_data.get("log", {}).get("activated_rails")
+    activated_rails = _activated_rails_by_name(response)
+    assert activated_rails[CONTENT_SAFETY_INPUT_FLOW]["stop"] is True
+    assert activated_rails[CONTENT_SAFETY_OUTPUT_FLOW]["stop"] is False
 
 
 def test_chat_completions_rejects_unsupported_body_guardrails_config(
