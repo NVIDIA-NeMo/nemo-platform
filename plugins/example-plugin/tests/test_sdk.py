@@ -268,7 +268,7 @@ def test_sync_download_blob_read() -> None:
 
 def test_sync_download_blob_stream() -> None:
     client, mock_http = _sync_client()
-    raw = httpx.Response(200, content=b"chunk1chunk2", request=httpx.Request("GET", BASE))
+    raw = httpx.Response(200, stream=httpx.ByteStream(b"chunk1chunk2"), request=httpx.Request("GET", BASE))
     mock_http.stream = _stream_ctx(raw)
 
     resp = client.download_blob(name="pic.png")

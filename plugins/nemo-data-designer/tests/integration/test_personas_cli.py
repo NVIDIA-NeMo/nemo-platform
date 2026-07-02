@@ -76,7 +76,7 @@ def test_make_fileset_creates_requested_locale_with_existing_secret(cli_sdk: NeM
 
     assert result.exit_code == 0, result.output
     filesets = cli_sdk.files.filesets.list(workspace=WORKSPACE)
-    assert [fileset.name for fileset in filesets.data] == [get_resource_name_for_locale("en_US")]
+    assert [fileset.name for fileset in filesets] == [get_resource_name_for_locale("en_US")]
 
     fileset = cli_sdk.files.filesets.retrieve(name=get_resource_name_for_locale("en_US"), workspace=WORKSPACE)
     assert isinstance(fileset.storage, NGCStorageConfig)
@@ -184,7 +184,7 @@ def test_make_fileset_create_secret_conflict_does_not_create_fileset(
     assert result.exit_code == 1
     assert "already exists" in result.output
     filesets = cli_sdk.files.filesets.list(workspace=WORKSPACE)
-    assert filesets.data == []
+    assert list(filesets) == []
 
 
 def test_make_fileset_create_secret_internal_error_surfaces_clearly(
@@ -213,7 +213,7 @@ def test_make_fileset_create_secret_internal_error_surfaces_clearly(
     assert "Failed to create secret" in result.output
     assert "secrets backend exploded" in result.output
     filesets = cli_sdk.files.filesets.list(workspace=WORKSPACE)
-    assert filesets.data == []
+    assert list(filesets) == []
 
 
 def test_make_fileset_is_idempotent_when_fileset_already_exists(cli_sdk: NeMoPlatform) -> None:
@@ -248,7 +248,7 @@ def test_make_fileset_is_idempotent_when_fileset_already_exists(cli_sdk: NeMoPla
     assert "already exists" in second.output
 
     filesets = cli_sdk.files.filesets.list(workspace=WORKSPACE)
-    assert [fileset.name for fileset in filesets.data] == [get_resource_name_for_locale("en_US")]
+    assert [fileset.name for fileset in filesets] == [get_resource_name_for_locale("en_US")]
 
 
 def test_make_fileset_create_fileset_internal_error_surfaces_clearly(cli_sdk: NeMoPlatform) -> None:
@@ -273,4 +273,4 @@ def test_make_fileset_create_fileset_internal_error_surfaces_clearly(cli_sdk: Ne
     assert "Failed to create fileset" in result.output
     assert error_message in result.output
     filesets = cli_sdk.files.filesets.list(workspace=WORKSPACE)
-    assert filesets.data == []
+    assert list(filesets) == []
