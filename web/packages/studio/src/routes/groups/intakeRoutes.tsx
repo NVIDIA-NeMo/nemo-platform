@@ -39,11 +39,6 @@ const IntakeTraceDetailRoute = lazy(() =>
     default: module.IntakeTraceDetailRoute,
   }))
 );
-const IntakeSpanDetailRoute = lazy(() =>
-  import('@studio/routes/IntakeSpanDetailRoute').then((module) => ({
-    default: module.IntakeSpanDetailRoute,
-  }))
-);
 
 export const intakeRoutes: RouteObject[] = gateIntakeRoutes([
   {
@@ -68,11 +63,6 @@ export const intakeRoutes: RouteObject[] = gateIntakeRoutes([
   {
     path: ROUTES.workspace.intakeTrace,
     element: <IntakeTraceDetailRoute />,
-    errorElement: <ErrorPanel title="Intake" />,
-  },
-  {
-    path: ROUTES.workspace.intakeSpan,
-    element: <IntakeSpanDetailRoute />,
     errorElement: <ErrorPanel title="Intake" />,
   },
 ]);

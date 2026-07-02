@@ -242,10 +242,10 @@ STUDIO_LINK_DESTINATIONS: dict[str, StudioLinkDestination] = {
         requires_name=True,
     ),
     "intake_span": StudioLinkDestination(
-        "Span {name}",
-        "/workspaces/{workspace}/intake/spans/{name}",
+        "Span {span_id}",
+        "/workspaces/{workspace}/intake/traces/{trace_id}?spanId={span_id}",
         aliases=("span", "span_detail"),
-        requires_name=True,
+        required_args=("trace_id", "span_id"),
     ),
     "data_designer": StudioLinkDestination(
         "Data Designer",
@@ -340,6 +340,8 @@ _STUDIO_LINK_ARGUMENT_ALIASES: dict[str, tuple[str, ...]] = {
     ),
     "experiment_name": ("experimentName", "experiment_id", "experimentId"),
     "file_path": ("file", "filePath", "file_path_encoded", "filePathEncoded", "path"),
+    "trace_id": ("traceId",),
+    "span_id": ("spanId", "name"),
 }
 
 _STUDIO_LINK_DESTINATION_FEATURE_FLAGS: dict[str, tuple[str, ...]] = {
@@ -446,6 +448,14 @@ _STUDIO_LINK_TOOL: dict[str, Any] = {
                 "type": "string",
                 "description": "File path for file-specific fileset destinations.",
             },
+            "trace_id": {
+                "type": "string",
+                "description": "Trace ID for span-specific intake destinations.",
+            },
+            "span_id": {
+                "type": "string",
+                "description": "Span ID for span-specific intake destinations.",
+            },
             "label": {
                 "type": "string",
                 "description": "Optional markdown link label. Defaults to the destination label.",
@@ -539,6 +549,8 @@ def tool_for_destinations(destinations: Mapping[str, StudioLinkDestination]) -> 
         )
     if "model_chat" in destinations:
         description_parts.append("When the user wants to chat with or try a model, use destination='model_chat'.")
+    if "intake_span" in destinations:
+        description_parts.append("For an intake span link, use destination='intake_span' with trace_id and span_id.")
     description_parts.append("Include the returned markdown link exactly in your final response.")
     tool["description"] = " ".join(description_parts)
     destination_schema = tool["inputSchema"]["properties"]["destination"]

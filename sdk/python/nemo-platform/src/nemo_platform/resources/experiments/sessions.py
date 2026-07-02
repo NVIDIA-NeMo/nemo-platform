@@ -17,6 +17,8 @@
 
 from __future__ import annotations
 
+from typing_extensions import Literal
+
 import httpx
 
 from ..._types import Body, Omit, Query, Headers, NotGiven, omit, not_given
@@ -64,6 +66,7 @@ class SessionsResource(SyncAPIResource):
         *,
         workspace: str | None = None,
         filter: ExperimentSessionFilterParam | Omit = omit,
+        mode: Literal["summary", "detailed"] | Omit = omit,
         page: int | Omit = omit,
         page_size: int | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
@@ -78,6 +81,9 @@ class SessionsResource(SyncAPIResource):
 
         Args:
           filter: Filter sessions by test_case_id and status.
+
+          mode: Response payload mode. summary keeps the same session row fields but truncates
+              root-span input to 1000 characters; detailed returns the full root-span input.
 
           page: Page number.
 
@@ -110,6 +116,7 @@ class SessionsResource(SyncAPIResource):
                 query=maybe_transform(
                     {
                         "filter": filter,
+                        "mode": mode,
                         "page": page,
                         "page_size": page_size,
                     },
@@ -146,6 +153,7 @@ class AsyncSessionsResource(AsyncAPIResource):
         *,
         workspace: str | None = None,
         filter: ExperimentSessionFilterParam | Omit = omit,
+        mode: Literal["summary", "detailed"] | Omit = omit,
         page: int | Omit = omit,
         page_size: int | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
@@ -160,6 +168,9 @@ class AsyncSessionsResource(AsyncAPIResource):
 
         Args:
           filter: Filter sessions by test_case_id and status.
+
+          mode: Response payload mode. summary keeps the same session row fields but truncates
+              root-span input to 1000 characters; detailed returns the full root-span input.
 
           page: Page number.
 
@@ -192,6 +203,7 @@ class AsyncSessionsResource(AsyncAPIResource):
                 query=maybe_transform(
                     {
                         "filter": filter,
+                        "mode": mode,
                         "page": page,
                         "page_size": page_size,
                     },

@@ -38,14 +38,14 @@ export const TraceSpanAccordionContent: FC<TraceSpanAccordionContentProps> = ({
     [detailSpan, summarySpan]
   );
 
-  if (!span && isLoading) {
+  if (isLoading && !detailSpan) {
     return (
       <Stack
         gap="density-md"
         padding="density-xl"
         className="items-center justify-center min-h-[200px]"
       >
-        <Spinner size="medium" aria-label="Loading span" />
+        <Spinner size="medium" aria-label="Loading span details" />
       </Stack>
     );
   }

@@ -14,7 +14,7 @@ import type {
   HighlightMetric,
   KeyValueEntry,
 } from '@studio/components/IntakeDetail/IntakeComponents/keyValueTypes';
-import { getIntakeSpanRoute } from '@studio/routes/utils';
+import { getIntakeTraceSpanRoute } from '@studio/routes/utils';
 import {
   EMPTY_VALUE,
   formatCost,
@@ -99,7 +99,10 @@ const TRACE_SUMMARY_DESCRIPTORS: readonly TraceFieldDescriptor[] = [
     label: 'Root Span',
     resolve: (trace, { workspace }) =>
       trace.root_span_id ? (
-        <Link to={getIntakeSpanRoute(workspace, trace.root_span_id)} className="break-all">
+        <Link
+          to={getIntakeTraceSpanRoute(workspace, trace.id, trace.root_span_id)}
+          className="break-all"
+        >
           {trace.root_span_id}
         </Link>
       ) : (

@@ -141,6 +141,37 @@ describe('Claude Code chat artifacts', () => {
     ]);
   });
 
+  it('links intake spans through the trace detail route', () => {
+    const artifacts = updateClaudeCodeChatArtifactsFromEvent(
+      { ...createEmptyClaudeCodeChatArtifacts(), workspace: 'default' },
+      {
+        type: 'assistant',
+        message: {
+          content: [
+            {
+              type: 'tool_use',
+              name: 'mcp__nemo_studio__studio_link',
+              input: {
+                destination: 'intake_span',
+                label: 'Span',
+                trace_id: 'trace-agent-run-001',
+                span_id: 'span-root-001',
+              },
+            },
+          ],
+        },
+      }
+    );
+
+    expect(artifacts.links).toEqual([
+      {
+        label: 'Span',
+        destination: 'intake_span',
+        href: '/workspaces/default/intake/traces/trace-agent-run-001?spanId=span-root-001',
+      },
+    ]);
+  });
+
   it('promotes draft spec name and model over the coding-agent model', () => {
     const withCodingModel = updateClaudeCodeChatArtifactsFromEvent(
       createEmptyClaudeCodeChatArtifacts(),

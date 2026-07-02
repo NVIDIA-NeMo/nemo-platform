@@ -52,6 +52,7 @@ class TestSessions:
                 "status": "status",
                 "test_case_id": "test_case_id",
             },
+            mode="summary",
             page=1,
             page_size=1,
         )
@@ -125,6 +126,7 @@ class TestAsyncSessions:
                 "status": "status",
                 "test_case_id": "test_case_id",
             },
+            mode="summary",
             page=1,
             page_size=1,
         )
