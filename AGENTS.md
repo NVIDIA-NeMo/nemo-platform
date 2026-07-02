@@ -50,7 +50,7 @@ NeMo Platform brings together NVIDIA NeMo libraries under one CLI, Python SDK, a
 
 - **Harden agents**: guardrails (content safety, jailbreak detection, PII redaction), auditor (red-teaming via garak), anonymizer (PII handling for training data).
 - **Evaluate agents**: evaluator (LLM-as-judge, deterministic, agentic, RAG benchmarks), Harbor-backed eval suites.
-- **Tune agents**: skill optimization, prompt/hyperparameter tuning, Switchyard model routing. Fine-tuning coming soon.
+- **Tune agents and models**: skill optimization, prompt/hyperparameter tuning, Switchyard model routing, and fine-tuning through Customizer.
 - **Build agents**: NeMo Agent Toolkit (NAT) for LangGraph-based agents. Broader framework support on the roadmap.
 
 NeMo Platform optimizes LangGraph agents wrapped in NAT today. Other frameworks require a user-written NAT wrapper. Be honest about this when users ask.
