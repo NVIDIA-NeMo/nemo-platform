@@ -199,8 +199,9 @@ def build_in_cluster_endpoints(*, resource_name: str, namespace: str, container:
     if container.ports:
         for port in container.ports:
             endpoint_name = port.name or f"port-{port.container_port}"
-            protocol = "tcp" if port.protocol == "UDP" else "http"
-            scheme = "http"
+            is_udp = port.protocol == "UDP"
+            protocol = "tcp" if is_udp else "http"
+            scheme = "tcp" if is_udp else "http"
             endpoints.append(
                 Endpoint(
                     name=endpoint_name,
@@ -318,6 +319,23 @@ async def create_deployment(
                 )
             except ApiException as exc:
                 if exc.status == 409:
+                    existing_service = core_v1.read_namespaced_service(
+                        name=resource_name,
+                        namespace=namespace,
+                        _request_timeout=timeout,
+                    )
+                    if not resource_labels_match(existing_service, identity_labels):
+                        if deployment_created:
+                            try:
+                                apps_v1.delete_namespaced_deployment(
+                                    name=resource_name,
+                                    namespace=namespace,
+                                    propagation_policy="Background",
+                                    _request_timeout=timeout,
+                                )
+                            except ApiException:
+                                pass
+                        raise
                     return deployment
                 if deployment_created:
                     try:
@@ -433,14 +451,25 @@ async def delete_deployment(
             except ApiException as exc:
                 if exc.status == 404:
                     try:
-                        core_v1.delete_namespaced_service(
+                        service = core_v1.read_namespaced_service(
                             name=resource_name,
                             namespace=namespace,
                             _request_timeout=timeout,
                         )
-                    except ApiException as service_exc:
-                        if service_exc.status != 404:
+                    except ApiException as service_read_exc:
+                        if service_read_exc.status != 404:
                             raise
+                        return None
+                    if resource_labels_match(service, expected_labels):
+                        try:
+                            core_v1.delete_namespaced_service(
+                                name=resource_name,
+                                namespace=namespace,
+                                _request_timeout=timeout,
+                            )
+                        except ApiException as service_exc:
+                            if service_exc.status != 404:
+                                raise
                     return None
                 raise
             if not resource_labels_match(deployment, expected_labels):

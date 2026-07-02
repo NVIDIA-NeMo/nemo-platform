@@ -114,7 +114,6 @@ def status_message_from_pod(pod: Any) -> str | None:
         phase = getattr(status, "phase", None) if status is not None else None
         return f"Pod phase is {phase}" if phase else None
 
-    restart_count = _pod_restart_count(pod)
     for container_status in status.container_statuses:
         state = container_status.state
         if state is None:
@@ -125,8 +124,6 @@ def status_message_from_pod(pod: Any) -> str | None:
         reason = waiting.reason or "Waiting"
         message = waiting.message or ""
         detail = f"{reason}: {message}" if message else reason
-        if reason == "CrashLoopBackOff" and restart_count >= CRASH_LOOP_RESTART_THRESHOLD:
-            return detail
         if reason in _TRANSIENT_WAITING_REASONS or reason == "CrashLoopBackOff":
             return detail
     phase = status.phase or "Unknown"
@@ -135,13 +132,24 @@ def status_message_from_pod(pod: Any) -> str | None:
 
 def pod_failure_status(*, deployment_name: str, pod: Any) -> BackendStatusUpdate | None:
     """Return FAILED when a pod is in a sustained crash loop."""
-    message = status_message_from_pod(pod)
-    if message is None:
+    status = getattr(pod, "status", None)
+    if status is None or not status.container_statuses:
         return None
-    if message.startswith("CrashLoopBackOff") and _pod_restart_count(pod) >= CRASH_LOOP_RESTART_THRESHOLD:
+    restart_count = _pod_restart_count(pod)
+    if restart_count < CRASH_LOOP_RESTART_THRESHOLD:
+        return None
+    for container_status in status.container_statuses:
+        state = container_status.state
+        if state is None or state.waiting is None:
+            continue
+        reason = state.waiting.reason or ""
+        if reason != "CrashLoopBackOff":
+            continue
+        message = state.waiting.message or ""
+        detail = f"{reason}: {message}" if message else reason
         return BackendStatusUpdate(
             status="FAILED",
-            status_message=f"Deployment {deployment_name} pod crash loop: {message}",
+            status_message=f"Deployment {deployment_name} pod crash loop: {detail}",
         )
     return None
 

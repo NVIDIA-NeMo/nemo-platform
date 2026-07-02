@@ -22,7 +22,7 @@ from nemo_deployments_plugin.backends.k8s.deployments import (
     validate_config_for_deployment,
 )
 from nemo_deployments_plugin.backends.labels import MANAGED_BY_KEY, k8s_deployment_resource_name
-from nemo_deployments_plugin.entities import Container
+from nemo_deployments_plugin.entities import Container, ContainerPort
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 
 
@@ -53,6 +53,22 @@ def test_build_in_cluster_endpoints_uses_cluster_dns() -> None:
         container=sample_always_config().containers[0],
     )
     assert endpoints[0].url == f"http://{resource_name}.nemo-deployments.svc.cluster.local:8080"
+
+
+def test_build_in_cluster_endpoints_uses_tcp_scheme_for_udp() -> None:
+    resource_name = k8s_deployment_resource_name("default", "task")
+    container = (
+        sample_always_config()
+        .containers[0]
+        .model_copy(update={"ports": [ContainerPort(name="metrics", containerPort=9090, protocol="UDP")]})
+    )
+    endpoints = build_in_cluster_endpoints(
+        resource_name=resource_name,
+        namespace="nemo-deployments",
+        container=container,
+    )
+    assert endpoints[0].protocol == "tcp"
+    assert endpoints[0].url == f"tcp://{resource_name}.nemo-deployments.svc.cluster.local:9090"
 
 
 @pytest.mark.asyncio
@@ -127,6 +143,32 @@ async def test_create_deployment_conflict_rejects_foreign(
     assert update.status == "FAILED"
     assert "not managed" in update.status_message
     mock_k8s_clients.core_v1.create_namespaced_service.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_service_conflict_rejects_foreign(
+    deployment_ops_clients: MagicMock, mock_k8s_clients: MagicMock
+) -> None:
+    mock_k8s_clients.apps_v1.create_namespaced_deployment.return_value = mock_deployment()
+    mock_k8s_clients.apps_v1.read_namespaced_deployment.return_value = mock_deployment()
+    foreign_service = MagicMock()
+    foreign_service.metadata.labels = {MANAGED_BY_KEY: "other-plugin"}
+    mock_k8s_clients.core_v1.create_namespaced_service.side_effect = ApiException(status=409)
+    mock_k8s_clients.core_v1.read_namespaced_service.return_value = foreign_service
+
+    update = await deployment_ops.create_deployment(
+        deployment_ops_clients,
+        default_namespace="default",
+        workspace="default",
+        name="task",
+        config_name="cfg1",
+        labels={},
+        backend_config={},
+        config=sample_always_config(),
+    )
+
+    assert update.status == "FAILED"
+    mock_k8s_clients.apps_v1.delete_namespaced_deployment.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -277,6 +319,28 @@ async def test_delete_deployment_orphan_returns_deployment_failure(
     assert update.status == "FAILED"
     assert "not managed" in update.status_message
     mock_k8s_clients.apps_v1.delete_namespaced_deployment.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_delete_deployment_orphan_skips_foreign_service(
+    deployment_ops_clients: MagicMock, mock_k8s_clients: MagicMock
+) -> None:
+    foreign_service = MagicMock()
+    foreign_service.metadata.labels = {MANAGED_BY_KEY: "other-plugin"}
+    mock_k8s_clients.apps_v1.read_namespaced_deployment.side_effect = ApiException(status=404)
+    mock_k8s_clients.core_v1.read_namespaced_service.return_value = foreign_service
+
+    update = await deployment_ops.delete_deployment(
+        deployment_ops_clients,
+        default_namespace="default",
+        workspace="default",
+        name="task",
+        backend_config={},
+        expected_labels=always_identity_labels(),
+    )
+
+    assert update.status == "SUCCEEDED"
+    mock_k8s_clients.core_v1.delete_namespaced_service.assert_not_called()
 
 
 @pytest.mark.asyncio

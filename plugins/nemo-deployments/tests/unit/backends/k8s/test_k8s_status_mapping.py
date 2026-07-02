@@ -60,6 +60,7 @@ def test_missing_deployment_status_is_lost() -> None:
     [
         (1, False, None, "READY", "ready"),
         (0, False, mock_pod(waiting_reason="ImagePullBackOff"), "STARTING", "ImagePullBackOff"),
+        (0, False, mock_pod(waiting_reason="CrashLoopBackOff", restart_count=1), "STARTING", "CrashLoopBackOff"),
         (0, False, mock_pod(waiting_reason="CrashLoopBackOff", restart_count=3), "FAILED", "CrashLoopBackOff"),
         (0, True, None, "DELETING", "terminating"),
     ],
