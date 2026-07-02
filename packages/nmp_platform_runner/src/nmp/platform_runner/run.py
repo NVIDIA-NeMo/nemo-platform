@@ -16,12 +16,12 @@ from nmp.common.config import get_auth_config, get_common_service_config, get_se
 from nmp.common.observability import initialize_obs, setup_global_instrumentations
 from nmp.common.observability.otel import settings as otel_settings
 from nmp.common.service import CircularDependencyError, Service
-from nmp.common.version import platform_api_version
 from nmp.platform_runner.config import apply_run_environment, resolve_run_configuration
 from nmp.platform_runner.health import get_platform_resource_attributes
 from nmp.platform_runner.loader import load_controller_run_func, load_service, order_services_by_dependencies
 from nmp.platform_runner.registry import AVAILABLE_SIDECARS
 from nmp.platform_runner.server import run_server, run_server_with_reload
+from nmp.platform_runner.version import get_platform_version
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
@@ -241,11 +241,12 @@ def _display_banner(
 ) -> None:
     service_names = [service.name for service in services]
     url = f"http://{host}:{port}"
+    platform_version = get_platform_version()
     if otel_settings.log_format != "plain":
         logger.info(
             "Nemo Platform starting",
             extra={
-                "version": platform_api_version,
+                "version": platform_version,
                 "url": url,
                 "host": host,
                 "port": port,
@@ -267,7 +268,7 @@ def _display_banner(
 
     banner_text = Text()
     banner_text.append("Nemo Platform\n", style="bold cyan")
-    banner_text.append(f"v{platform_api_version}\n\n", style="dim")
+    banner_text.append(f"v{platform_version}\n\n", style="dim")
     banner_text.append("URL: ", style="bold")
     banner_text.append(f"{url}\n", style=f"green link {url}")
     banner_text.append("Database: ", style="bold")

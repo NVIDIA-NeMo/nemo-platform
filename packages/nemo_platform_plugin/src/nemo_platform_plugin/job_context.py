@@ -45,7 +45,6 @@ from pathlib import Path
 from nemo_platform_plugin.job_results import JobResults
 
 
-@dataclass
 class StoragePaths:
     """Filesystem locations a job can read and write during execution.
 
@@ -53,13 +52,29 @@ class StoragePaths:
         ephemeral: Scratch directory for working files and intermediate
             artifacts. No guarantees across steps or retries. Maps to
             ``NEMO_JOB_EPHEMERAL_TASK_STORAGE_PATH``.
-        persistent: Directory whose contents are preserved after the job
-            ends. Writes are slower than to ``ephemeral`` — keep final
-            outputs only. Maps to ``NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH``.
+        persistent: PVC-backed directory shared across steps within the
+            same job. Only available when the job step declares
+            ``NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH`` in its compile()
+            environment. Raises ``RuntimeError`` if accessed without
+            being provisioned. Maps to
+            ``NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH``.
     """
 
-    ephemeral: Path
-    persistent: Path
+    def __init__(self, ephemeral: Path, persistent: Path | None = None) -> None:
+        self.ephemeral = ephemeral
+        self._persistent = persistent
+
+    @property
+    def persistent(self) -> Path:
+        """Return the persistent storage path, or raise if not provisioned."""
+        if self._persistent is None:
+            raise RuntimeError(
+                "This job did not request persistent storage. "
+                "Add NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH to the step's "
+                "environment list in compile() to enable it, or use "
+                "ctx.storage.ephemeral for scratch data."
+            )
+        return self._persistent
 
 
 @dataclass(kw_only=True)

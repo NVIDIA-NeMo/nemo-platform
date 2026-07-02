@@ -112,7 +112,7 @@ export const IntakeTraceDetailView: FC<IntakeTraceDetailViewProps> = ({
           items={[
             {
               value: TRACE_SUMMARY_SECTION,
-              slotLabel: <Text kind="body/semibold/sm">Metadata</Text>,
+              slotLabel: <Text kind="body/semibold/sm">Attributes</Text>,
               slotContent: (
                 <Stack className="min-w-0">
                   <KeyValueRows entries={summaryEntries} />

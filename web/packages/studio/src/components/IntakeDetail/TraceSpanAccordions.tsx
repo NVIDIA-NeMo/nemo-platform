@@ -94,6 +94,12 @@ export const TraceSpanAccordions: FC<TraceSpanAccordionsProps> = ({ workspace, t
     () => spanRows.find((span) => span.span_id === activeSpanId) ?? spanRows[0],
     [spanRows, activeSpanId]
   );
+  // The trace's own error lives on its root span (the trace status derives from
+  // it); used to decide whether to surface a trace-level error banner.
+  const rootSpan = useMemo(
+    () => spanRows.find((span) => span.span_id === trace.root_span_id) ?? spanRows[0],
+    [spanRows, trace.root_span_id]
+  );
 
   // One query for the whole trace's annotations (rather than per row) so each
   // header can show its feedback sentiment and annotation count. Sorted
@@ -104,17 +110,19 @@ export const TraceSpanAccordions: FC<TraceSpanAccordionsProps> = ({ workspace, t
     sort: AnnotationSortField['-created_at'],
     filter: { session_id: trace.session_id },
   });
-  const { feedbackBySpan, annotationCountBySpan } = useMemo(() => {
+  const { feedbackBySpan, annotationCountBySpan, notesBySpan } = useMemo(() => {
     const feedback = new Map<string, FeedbackAnnotationInputValue>();
     const counts = new Map<string, number>();
+    const notes = new Set<string>();
     for (const annotation of annotationsResponse?.data ?? []) {
       if (!annotation.span_id) continue;
       counts.set(annotation.span_id, (counts.get(annotation.span_id) ?? 0) + 1);
+      if (annotation.kind === 'note') notes.add(annotation.span_id);
       if (annotation.kind === 'feedback' && !feedback.has(annotation.span_id)) {
         feedback.set(annotation.span_id, annotation.value);
       }
     }
-    return { feedbackBySpan: feedback, annotationCountBySpan: counts };
+    return { feedbackBySpan: feedback, annotationCountBySpan: counts, notesBySpan: notes };
   }, [annotationsResponse]);
 
   const handleSelectSpan = useCallback((spanId: string) => {
@@ -176,17 +184,15 @@ export const TraceSpanAccordions: FC<TraceSpanAccordionsProps> = ({ workspace, t
     trace.span_count !== null &&
     trace.span_count > TRACE_SPANS_PAGE_SIZE;
 
-  const banner =
-    trace.status === SpanStatus.error ? (
-      <IntakeErrorBanner
-        heading="Error"
-        message={
-          trace.error_count
-            ? `${trace.error_count} error span${trace.error_count === 1 ? '' : 's'} in this trace.`
-            : 'This trace ended with an error.'
-        }
-      />
-    ) : null;
+  // Only surface a trace-level error banner when the trace itself has an error
+  // message (carried on its root span). A child-span error alone no longer
+  // raises a banner here — it shows on that span's own detail instead.
+  const banner = rootSpan?.error_message?.trim() ? (
+    <IntakeErrorBanner
+      heading={rootSpan.error_type?.trim() || 'Error'}
+      message={rootSpan.error_message}
+    />
+  ) : null;
 
   if (error) {
     return <ErrorMessage message={getErrorMessage(error)} />;
@@ -263,6 +269,7 @@ export const TraceSpanAccordions: FC<TraceSpanAccordionsProps> = ({ workspace, t
           annotationCount={
             selectedSpan ? annotationCountBySpan.get(selectedSpan.span_id) : undefined
           }
+          hasNotes={selectedSpan ? notesBySpan.has(selectedSpan.span_id) : false}
           focusNoteNonce={
             selectedSpan ? noteFocusNonce(noteRequest, selectedSpan.span_id) : undefined
           }
@@ -277,6 +284,7 @@ export const TraceSpanAccordions: FC<TraceSpanAccordionsProps> = ({ workspace, t
           banner={banner}
           feedbackBySpan={feedbackBySpan}
           annotationCountBySpan={annotationCountBySpan}
+          notesBySpan={notesBySpan}
           noteRequest={noteRequest}
           onAddNote={handleAddNote}
         />

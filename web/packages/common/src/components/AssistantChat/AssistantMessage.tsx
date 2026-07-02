@@ -1,7 +1,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { ActionBarPrimitive, MessagePrimitive, ThreadPrimitive } from '@assistant-ui/react';
+import {
+  ActionBarPrimitive,
+  MessagePrimitive,
+  ThreadPrimitive,
+  useAuiState,
+} from '@assistant-ui/react';
 import { AssistantChatMessageContent } from '@nemo/common/src/components/AssistantChat/AssistantChatMessageContent';
 import {
   ACTION_BUTTON_CLASS,
@@ -20,45 +25,64 @@ export const AssistantMessage = ({
 }: MessageRenderProps & {
   hideAssistantMessageActions?: boolean;
   showRunningIndicator?: boolean;
-}) => (
-  <MessagePrimitive.Root
-    data-testid="assistant-chat-message"
-    data-testspeaker="assistant"
-    className="group/message self-stretch whitespace-normal"
-  >
-    <AssistantChatMessageContent
-      messageContentProps={messageContentProps}
-      toolCallPartComponent={toolCallPartComponent}
-    />
-    {showRunningIndicator ? (
-      <MessagePrimitive.If last>
-        <ThreadPrimitive.If running>
-          <div
-            className="mt-density-xs flex h-6 items-center"
-            data-testid="assistant-chat-running-indicator"
-          >
-            <Skeleton className="h-density-4 w-full" data-testid="assistant-chat-skeleton" />
-          </div>
-        </ThreadPrimitive.If>
-      </MessagePrimitive.If>
-    ) : null}
-    {!hideAssistantMessageActions ? (
-      <div
-        className="mt-density-xs flex h-8 items-center"
-        data-testid="assistant-chat-message-actions"
-      >
-        <ActionBarPrimitive.Root hideWhenRunning className={MESSAGE_ACTIONS_CLASS}>
-          <Tooltip slotContent="Regenerate response">
-            <ActionBarPrimitive.Reload
-              aria-label="Regenerate response"
-              className={ACTION_BUTTON_CLASS}
+}) => {
+  const isToolOnlyMessage = useAuiState((state) => {
+    const { parts } = state.message;
+    return parts.length > 0 && parts.every((part) => part.type === 'tool-call');
+  });
+
+  return (
+    <MessagePrimitive.Root
+      data-testid="assistant-chat-message"
+      data-testspeaker="assistant"
+      className="group/message flex w-full flex-col items-start gap-density-xs whitespace-normal"
+    >
+      {isToolOnlyMessage ? (
+        <AssistantChatMessageContent
+          messageContentProps={messageContentProps}
+          toolCallPartComponent={toolCallPartComponent}
+        />
+      ) : (
+        <div
+          className="w-full max-w-full rounded-lg border border-base border-l-4 border-l-[var(--border-color-brand)] bg-surface-base px-density-lg py-density-md shadow ring-1 ring-black/5 dark:ring-white/10"
+          data-testid="assistant-chat-message-surface"
+        >
+          <AssistantChatMessageContent
+            messageContentProps={messageContentProps}
+            toolCallPartComponent={toolCallPartComponent}
+          />
+        </div>
+      )}
+      {showRunningIndicator ? (
+        <MessagePrimitive.If last>
+          <ThreadPrimitive.If running>
+            <div
+              className="flex h-6 w-full items-center"
+              data-testid="assistant-chat-running-indicator"
             >
-              <RefreshCw size={16} />
-            </ActionBarPrimitive.Reload>
-          </Tooltip>
-          <CopyAction />
-        </ActionBarPrimitive.Root>
-      </div>
-    ) : null}
-  </MessagePrimitive.Root>
-);
+              <Skeleton className="h-density-4 w-full" data-testid="assistant-chat-skeleton" />
+            </div>
+          </ThreadPrimitive.If>
+        </MessagePrimitive.If>
+      ) : null}
+      {!hideAssistantMessageActions ? (
+        <div
+          className="flex h-7 items-center pl-density-xs"
+          data-testid="assistant-chat-message-actions"
+        >
+          <ActionBarPrimitive.Root hideWhenRunning className={MESSAGE_ACTIONS_CLASS}>
+            <Tooltip slotContent="Regenerate response">
+              <ActionBarPrimitive.Reload
+                aria-label="Regenerate response"
+                className={ACTION_BUTTON_CLASS}
+              >
+                <RefreshCw size={16} />
+              </ActionBarPrimitive.Reload>
+            </Tooltip>
+            <CopyAction />
+          </ActionBarPrimitive.Root>
+        </div>
+      ) : null}
+    </MessagePrimitive.Root>
+  );
+};

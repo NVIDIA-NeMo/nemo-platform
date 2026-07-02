@@ -210,6 +210,15 @@ class AuthConfig(create_service_config_class("auth")):
         ),
     )
 
+    embedded_pdp_auto_build_wasm: bool = Field(
+        default=True,
+        description=(
+            "When auth is enabled with the embedded PDP and policy.wasm is missing, "
+            "build it automatically from a local NeMo Platform source checkout. Packaged deployments "
+            "should include policy.wasm at build time and can disable this for fail-fast startup."
+        ),
+    )
+
     oidc: OIDCConfig = Field(
         default_factory=OIDCConfig,
         description="OIDC configuration for native token validation.",

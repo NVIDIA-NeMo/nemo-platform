@@ -72,6 +72,61 @@ def test_create_default_app_uses_plugin_services_and_controllers(monkeypatch):
     assert captured["controller_run_funcs"] == {"agents-deployment": plugin_controller}
 
 
+def test_embedded_auth_preflight_invokes_policy_wasm_helper(monkeypatch):
+    calls: list[bool] = []
+    auth_cfg = AuthConfig(
+        enabled=True,
+        policy_decision_point_provider="embedded",
+        embedded_pdp_auto_build_wasm=False,
+    )
+
+    from nmp.core.auth.app.embedded_pdp import policy_wasm
+
+    monkeypatch.setattr(policy_wasm, "ensure_embedded_policy_wasm", lambda *, auto_build: calls.append(auto_build))
+
+    server.preflight_embedded_auth_policy_wasm(auth_cfg)
+
+    assert calls == [False]
+
+
+@pytest.mark.parametrize(
+    "auth_cfg",
+    [
+        AuthConfig(enabled=False, policy_decision_point_provider="embedded"),
+        AuthConfig(enabled=True, policy_decision_point_provider="opa"),
+    ],
+)
+def test_embedded_auth_preflight_skips_when_not_needed(auth_cfg, monkeypatch):
+    calls: list[bool] = []
+
+    from nmp.core.auth.app.embedded_pdp import policy_wasm
+
+    monkeypatch.setattr(policy_wasm, "ensure_embedded_policy_wasm", lambda *, auto_build: calls.append(auto_build))
+
+    server.preflight_embedded_auth_policy_wasm(auth_cfg)
+
+    assert calls == []
+
+
+def test_run_server_runs_embedded_auth_preflight():
+    auth_cfg = _make_auth_config(enabled=True)
+    calls: list[AuthConfig] = []
+    with (
+        patch("nmp.platform_runner.server.get_auth_config", return_value=auth_cfg),
+        patch(
+            "nmp.platform_runner.server.preflight_embedded_auth_policy_wasm", side_effect=lambda cfg: calls.append(cfg)
+        ),
+        patch("nmp.platform_runner.server.create_app", return_value=FastAPI()) as create_app,
+        patch("nmp.platform_runner.server.setup_fastapi_instrumentations"),
+        patch("nmp.platform_runner.server.uvicorn.run") as uvicorn_run,
+    ):
+        server.run_server(services=[], host="127.0.0.1", port=9999)
+
+    assert calls == [auth_cfg]
+    create_app.assert_called_once_with([])
+    uvicorn_run.assert_called_once()
+
+
 def test_create_default_app_raises_for_unknown_service_from_env(monkeypatch):
     monkeypatch.setattr(server, "_obs_initialized", True)
     monkeypatch.setenv("NMP_SERVICES", "missing-service")

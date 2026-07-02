@@ -4,12 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nemo-agents-example-calculator"
-version = "0.1.0"
 description = "NAT ``calculator`` function group for the nemo-agents calculator ReAct example."
 requires-python = ">=3.11"
 dependencies = [
     "nvidia-nat-core>=1.8.0,<1.9",
 ]
+version = "0.0.0"
 
 [project.entry-points."nat.components"]
 nemo_agents_example_calculator = "calculator_agent.register"

@@ -106,7 +106,7 @@ node, a CI cluster runner, or a customer's air-gapped lab.
 ### 0. Prereqs on the host
 
 - NVIDIA driver compatible with the NGC PyTorch base (CUDA 13.1 at the
-  time of writing; check `Dockerfile.nmp-automodel-base` for the latest
+  time of writing; check `docker/automodel/Dockerfile.nmp-automodel-base` for the latest
   pin if unsure).
 - `nvidia-container-toolkit` installed so Docker can mount GPUs.
 - Network access to your image registry (`nvcr.io` by default).

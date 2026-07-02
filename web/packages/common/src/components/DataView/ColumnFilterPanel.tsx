@@ -8,8 +8,10 @@ import {
   SingleSelectFilterControl,
   MultiSelectFilterControl,
   DateTimeFilterControl,
+  NumberRangeFilterControl,
   CustomFilterControl,
 } from '@nemo/common/src/components/DataView/FilterPanel';
+import { isNumberRangeFilter } from '@nemo/common/src/components/DataView/FilterPanel/NumberRangeFilter/util';
 import type { DataViewColumn } from '@nemo/common/src/components/DataView/FilterPanel/types';
 import { useInnerDataViewContext } from '@nemo/common/src/components/DataView/internal';
 import { Accordion, Flex, Spinner } from '@nvidia/foundations-react-core';
@@ -53,6 +55,8 @@ export const ColumnFilterPanel = ({ defaultExpanded }: ColumnFilterPanelProps) =
     custom: (column, filter) =>
       isDateTimeFilter(filter) ? (
         <DateTimeFilterControl column={column} />
+      ) : isNumberRangeFilter(filter) ? (
+        <NumberRangeFilterControl column={column} />
       ) : (
         <CustomFilterControl column={column} />
       ),

@@ -72,6 +72,55 @@ def test_adapter_new_fields_default_when_omitted() -> None:
     assert spec.training.peft.dropout == 0.0
 
 
+def test_adapter_plumbs_pass2_hyperparameters() -> None:
+    """Pass-2 hyperparameters set on the plugin spec must reach the v2 SFTTraining."""
+    spec = automodel_spec_to_compiler_output(
+        {
+            "model": "meta/llama",
+            "dataset": {"training": "default/train"},
+            "training": {
+                "training_type": "sft",
+                "finetuning_type": "lora",
+                "attn_implementation": "flash_attention_2",
+                "lora": {"rank": 8, "exclude_modules": ["*.out_proj"], "use_triton": False},
+            },
+            "optimizer": {"adam_eps": 1e-6, "optimizer": "AdamW", "lr_decay_style": "linear"},
+            "batch": {"sequence_packing": True, "sequence_packing_max_samples": 256},
+            "output": {"name": "out", "type": "adapter", "fileset": "out-fs"},
+        },
+    )
+    assert isinstance(spec.training, SFTTraining)
+    assert spec.training.adam_eps == 1e-6
+    assert spec.training.optimizer == "AdamW"
+    assert spec.training.lr_decay_style == "linear"
+    assert spec.training.attn_implementation == "flash_attention_2"
+    assert spec.training.sequence_packing_max_samples == 256
+    assert spec.training.peft is not None
+    assert spec.training.peft.exclude_modules == ["*.out_proj"]
+    assert spec.training.peft.use_triton is False
+
+
+def test_adapter_pass2_defaults_when_omitted() -> None:
+    """Omitting pass-2 fields preserves the historical hardcoded defaults."""
+    spec = automodel_spec_to_compiler_output(
+        {
+            "model": "meta/llama",
+            "dataset": {"training": "default/train"},
+            "training": {"training_type": "sft", "finetuning_type": "lora"},
+            "output": {"name": "out", "type": "adapter", "fileset": "out-fs"},
+        },
+    )
+    assert isinstance(spec.training, SFTTraining)
+    assert spec.training.adam_eps == 1e-8
+    assert spec.training.optimizer == "Adam"
+    assert spec.training.lr_decay_style == "cosine"
+    assert spec.training.attn_implementation == "sdpa"
+    assert spec.training.sequence_packing_max_samples == 1000
+    assert spec.training.peft is not None
+    assert spec.training.peft.exclude_modules is None
+    assert spec.training.peft.use_triton is True
+
+
 def test_adapter_distillation() -> None:
     spec = automodel_spec_to_compiler_output(
         {

@@ -65,15 +65,22 @@ const subtleToolCases: SubtleToolCase[] = [
 
 const expectSubtleToolBlock = (subtleBlock: HTMLElement) => {
   expect(subtleBlock).toHaveClass(
-    'my-0.5',
+    'my-density-xs',
     'flex',
     'max-w-full',
     'flex-wrap',
     'items-center',
     'gap-x-density-sm',
-    'gap-y-0',
-    'text-gray-400',
-    'dark:text-gray-400'
+    'gap-y-density-xs',
+    'rounded',
+    'border',
+    'border-base',
+    'border-l-2',
+    'border-l-[var(--border-color-accent-blue)]',
+    'bg-[color-mix(in_srgb,var(--background-color-accent-blue-subtle)_38%,var(--background-color-surface-base))]',
+    'px-density-sm',
+    'py-density-xs',
+    'text-secondary'
   );
   expect(subtleBlock).not.toHaveClass('claude-code-tool-call-running');
   expect(subtleBlock).not.toHaveClass('bg-gray-050', 'dark:bg-gray-900');
@@ -94,6 +101,13 @@ const expectLineChangeColors = ({
   for (const deletion of screen.getAllByText(deletions)) {
     expect(deletion).toHaveClass('text-feedback-danger');
   }
+};
+
+const expectFileChangeBlockFullWidth = () => {
+  expect(screen.getByTestId('claude-code-tool-call-file-change')).toHaveClass(
+    'w-full',
+    'max-w-full'
+  );
 };
 
 describe('ClaudeCodeToolCallPart', () => {
@@ -334,7 +348,7 @@ describe('ClaudeCodeToolCallPart', () => {
       />
     );
 
-    expect(screen.getByTestId('claude-code-tool-call-file-change')).toBeInTheDocument();
+    expectFileChangeBlockFullWidth();
     const details = screen.getByTestId('claude-code-tool-call-file-change-details');
 
     expect(screen.getByText('Wrote 1 file')).toBeInTheDocument();
@@ -396,7 +410,7 @@ describe('ClaudeCodeToolCallPart', () => {
       />
     );
 
-    expect(screen.getByTestId('claude-code-tool-call-file-change')).toBeInTheDocument();
+    expectFileChangeBlockFullWidth();
     expect(screen.getByText('Edited 1 file')).toBeInTheDocument();
     expect(
       screen.getByText('web/packages/studio/src/routes/agents/ExistingFile.tsx')

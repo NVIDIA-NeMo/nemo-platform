@@ -83,21 +83,113 @@ async def get_opa_bundle_with_etag(entities_client: Optional[EntityClient] = Non
         return bundle_bytes, etag
 
 
-def _merge_plugin_authz_contributions(static_data: dict) -> dict:
-    """Overlay authorization rules from installed NeMo Platform plugins."""
+# Plugins whose authz failed validation at the most recent bundle build (key -> problems).
+# Surfaced for a status/health endpoint; refreshed on every build.
+_degraded_plugins: dict[str, list[str]] = {}
+
+
+def get_degraded_plugins() -> dict[str, list[str]]:
+    """Return plugins with invalid authz at the last bundle build (key -> list of problems)."""
+    return dict(_degraded_plugins)
+
+
+def _quarantine_contribution(contribution_dict: dict) -> dict:
+    """Deny every route of a plugin and drop its permissions (quarantine fail-mode)."""
+    return {
+        "permissions": {},
+        "endpoints": {
+            path: {method: {"permissions": [], "deny": True} for method in methods}
+            for path, methods in contribution_dict.get("endpoints", {}).items()
+        },
+        "role_permissions": {},
+    }
+
+
+def merge_plugin_authz_contributions(static_data: dict) -> dict:
+    """Overlay authorization rules from installed NeMo Platform plugins.
+
+    Applies the configured fail-mode (``authz.on_invalid_plugin``) to any plugin with
+    derived authz **errors** (``PluginAuthzResult.problems``: unruled routes, malformed or
+    cross-namespace permission ids, duplicate bindings, load failures). The offending routes
+    are already explicit denies in the derived contribution; this only controls blast radius
+    — ``deny_route`` keeps just those denies, ``quarantine`` denies the whole plugin,
+    ``hard_fail`` refuses to build the bundle. Plugins with errors are recorded for the
+    status endpoint.
+
+    Plugin *warnings* (``PluginAuthzResult.warnings``: missing or conflicting permission
+    descriptions) are metadata-only — the route still requires the right permission — so they
+    are logged but never escalate the fail-mode and never mark the plugin degraded. This is
+    what keeps a cosmetic description typo from quarantining a whole plugin.
+    """
+    global _degraded_plugins
     try:
-        from nemo_platform_plugin.authz_discovery import discover_authz_contribution_dicts
+        from nemo_platform_plugin.authz_discovery import discover_plugin_authz
         from nmp.common.auth.authz_merge import merge_authz_contributions
     except ImportError:
         logger.debug("Plugin authz discovery unavailable; using static authz only")
+        _degraded_plugins = {}
         return static_data
 
-    contributions = discover_authz_contribution_dicts()
-    if not contributions:
-        return static_data
+    results = discover_plugin_authz()
+    on_invalid = get_service_config(AuthServiceConfig).on_invalid_plugin
+    degraded: dict[str, list[str]] = {}
+    contributions: list[dict] = []
 
-    logger.debug("Merging %d plugin authz contribution(s)", len(contributions))
-    return merge_authz_contributions(static_data, contributions)
+    denied_prefixes: list[str] = []
+    for result in results:
+        contribution_dict = result.contribution.to_dict()
+        if result.problems:
+            degraded[result.key] = result.problems
+            logger.error(
+                "Plugin %r contributed invalid authz (%d problem(s)); on_invalid_plugin=%s: %s",
+                result.key,
+                len(result.problems),
+                on_invalid,
+                "; ".join(result.problems),
+            )
+            if on_invalid == "hard_fail":
+                raise RuntimeError(
+                    f"Plugin {result.key!r} contributed invalid authz and "
+                    f"authz.on_invalid_plugin=hard_fail: {'; '.join(result.problems)}"
+                )
+            # Fence the plugin's whole /apis/<name> namespace (deny-all) whenever per-route
+            # coverage can't be trusted:
+            #   * no route enumerated at all (load/derivation failure) — the runner may still
+            #     mount this plugin via a separate instantiation; OR
+            #   * quarantine — _quarantine_contribution only rewrites the routes derivation SAW,
+            #     so any runner-mounted-but-unseen route would otherwise stay open.
+            # deny_route keeps just the per-route denies already in the contribution. The
+            # runner mounts at /apis/<service.name>; the name==key invariant is only warned, not
+            # enforced, so fence both the entry-point key and the declared mount name.
+            no_endpoints = not contribution_dict.get("endpoints")
+            if on_invalid == "quarantine":
+                contribution_dict = _quarantine_contribution(contribution_dict)
+            if no_endpoints or on_invalid == "quarantine":
+                denied_prefixes.append(f"/apis/{result.key}")
+                if result.mount_name and result.mount_name != result.key:
+                    denied_prefixes.append(f"/apis/{result.mount_name}")
+        if result.warnings:
+            logger.warning(
+                "Plugin %r has %d authz warning(s) (non-deny — e.g. missing or conflicting "
+                "permission descriptions): %s",
+                result.key,
+                len(result.warnings),
+                "; ".join(result.warnings),
+            )
+        contributions.append(contribution_dict)
+
+    _degraded_plugins = degraded
+    contributions = [c for c in contributions if c.get("permissions") or c.get("endpoints")]
+    if contributions:
+        logger.debug("Merging %d plugin authz contribution(s)", len(contributions))
+    merged = merge_authz_contributions(static_data, contributions) if contributions else static_data
+    if denied_prefixes:
+        logger.error("Fencing degraded plugin namespace(s) (deny-all): %s", ", ".join(sorted(set(denied_prefixes))))
+        config = merged.setdefault("authz", {}).setdefault("config", {})
+        existing = config.get("denied_plugin_prefixes") or []
+        existing_prefixes = existing if isinstance(existing, list) else []
+        config["denied_plugin_prefixes"] = sorted(set(existing_prefixes) | set(denied_prefixes))
+    return merged
 
 
 async def _build_authorization_data_internal(entities_client: Optional[EntityClient] = None) -> dict:
@@ -122,7 +214,7 @@ async def _build_authorization_data_internal(entities_client: Optional[EntityCli
     with open(static_data_path, "r") as f:
         static_data = yaml.safe_load(f)
 
-    static_data = _merge_plugin_authz_contributions(static_data)
+    static_data = merge_plugin_authz_contributions(static_data)
     validate_static_authz_data(static_data)
 
     # Initialize workspaces and principals if not present

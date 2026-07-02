@@ -69,7 +69,7 @@ async def run_with_resilience(
     endpoint_key: str,
     operation: Callable[_P, Awaitable[_T]],
     *args: _P.args,
-    max_attempts: int,
+    max_attempts: int,  # ty: ignore[invalid-paramspec]
     deadline_at: float | None = None,
     **kwargs: _P.kwargs,
 ) -> _T:

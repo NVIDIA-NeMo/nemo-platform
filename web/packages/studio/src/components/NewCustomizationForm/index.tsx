@@ -206,7 +206,11 @@ export const NewCustomizationForm: FC = () => {
         slotDescription="Select a model, choose your data, set your parameters and start training in seconds."
       />
       <FormProvider {...form}>
-        <form className="w-full" role="form" onSubmit={handleSubmit(trainCustomModel)}>
+        <form
+          className="w-full"
+          aria-label="Fine-tune a Model"
+          onSubmit={handleSubmit(trainCustomModel)}
+        >
           <Stack className="overflow-auto" gap="density-2xl" padding="density-2xl">
             <Flex align="center" justify="center" className="w-full">
               <Panel

@@ -140,6 +140,13 @@ class DockerBackendConfig(BaseModel):
         "to use a different puller image.",
     )
 
+    huggingface_model_puller_env: dict[str, str] = Field(
+        default_factory=dict,
+        description="Extra environment variables for the model puller container. Values override the "
+        "reconciler defaults (HF_ENDPOINT, HF_TOKEN). E.g. set HF_HUB_ENABLE_HF_TRANSFER='0' to "
+        "disable the hf_transfer download path.",
+    )
+
     model_puller_timeout: int = Field(
         default=1800,
         description="Timeout in seconds for the model puller container to complete (default: 30 minutes)",

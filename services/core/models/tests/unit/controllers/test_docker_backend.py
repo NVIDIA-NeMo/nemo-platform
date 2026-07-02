@@ -12,10 +12,16 @@ from docker.errors import ImageNotFound, NotFound
 from nmp.common.config import PlatformConfig
 from nmp.core.models.app import ModelWeightsType
 from nmp.core.models.app.constants import MODEL_MANAGED_BY_LABEL, MODEL_MANAGED_BY_MODELS_CONTROLLER
+from nmp.core.models.app.utils import (
+    get_docker_container_name,
+    get_docker_plugin_puller_container_name,
+    get_docker_volume_name,
+)
 from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate
 from nmp.core.models.controllers.backends.docker import DockerServiceBackend
 from nmp.core.models.controllers.backends.docker.creation_reconciler import (
     CreationStage,
+    CreationState,
     _compute_multi_gpu_shm_size,
 )
 from nmp.core.models.controllers.context import ModelContext
@@ -40,6 +46,7 @@ _EXECUTOR_FIELDS = {
     "disk_size",
     "image_name",
     "image_tag",
+    "health_check_path",
     "additional_envs",
     "additional_args",
     "k8s_nim_operator_config",
@@ -328,9 +335,27 @@ def sample_config():
     return config
 
 
+@pytest.fixture
+def sample_resource_names(docker_backend, sample_deployment):
+    """Computed Docker resource names for the default sample deployment."""
+    reconciler = docker_backend._reconciler
+    ws, name = sample_deployment.workspace, sample_deployment.name
+    container = reconciler.get_container_name(ws, name)
+    volume = reconciler.get_volume_name(ws, name)
+    return {
+        "container": container,
+        "volume": volume,
+        "scratch_volume": f"{volume}-scratch",
+        "puller": reconciler.get_puller_container_name(ws, name),
+        "plugin": reconciler.get_plugin_puller_container_name(ws, name),
+        "sidecar": f"{container}-sidecar",
+        "host_url": f"http://{container}:8000",
+    }
+
+
 @pytest.mark.asyncio
 async def test_docker_backend_create_model_deployment(
-    docker_backend, sample_deployment, sample_config, mock_docker_client
+    docker_backend, sample_deployment, sample_config, mock_docker_client, sample_resource_names
 ):
     """Test creating a model deployment with Docker backend."""
     # Setup mock container
@@ -363,20 +388,20 @@ async def test_docker_backend_create_model_deployment(
     assert status_update is not None
     assert status_update.status == "PENDING"
     assert "container created" in status_update.status_message.lower()
-    assert status_update.host_url == "http://md-default-test-deployment:8000"
+    assert status_update.host_url == sample_resource_names["host_url"]
 
     # Verify Docker calls (image check + pull for both NIM and sidecar images)
     assert mock_docker_client.images.get.call_count >= 2
     assert mock_docker_client.images.pull.call_count >= 2
     assert mock_docker_client.volumes.create.call_count == 2
-    assert mock_docker_client.volumes.create.call_args_list[0][0][0] == "nim-cache-default-test-deployment"
-    assert mock_docker_client.volumes.create.call_args_list[1][0][0] == "nim-cache-default-test-deployment-scratch"
+    assert mock_docker_client.volumes.create.call_args_list[0][0][0] == sample_resource_names["volume"]
+    assert mock_docker_client.volumes.create.call_args_list[1][0][0] == sample_resource_names["scratch_volume"]
 
     assert mock_docker_client.containers.create.call_count == 2
     nim_create_args = mock_docker_client.containers.create.call_args_list[0][1]
     sidecar_create_args = mock_docker_client.containers.create.call_args_list[1][1]
-    assert nim_create_args["name"] == "md-default-test-deployment"
-    assert sidecar_create_args["name"] == "md-default-test-deployment-sidecar"
+    assert nim_create_args["name"] == sample_resource_names["container"]
+    assert sidecar_create_args["name"] == sample_resource_names["sidecar"]
     assert nim_create_args["labels"][MODEL_MANAGED_BY_LABEL] == MODEL_MANAGED_BY_MODELS_CONTROLLER
     assert sidecar_create_args["labels"][MODEL_MANAGED_BY_LABEL] == MODEL_MANAGED_BY_MODELS_CONTROLLER
     assert mock_container.start.call_count == 2
@@ -449,13 +474,15 @@ async def _drive_vllm_with_puller(docker_backend, sample_deployment, mock_docker
 
 
 @pytest.mark.asyncio
-async def test_docker_backend_create_vllm_deployment(docker_backend, sample_deployment, mock_docker_client):
+async def test_docker_backend_create_vllm_deployment(
+    docker_backend, sample_deployment, mock_docker_client, sample_resource_names
+):
     """Engine=vllm produces a vLLM container with serve args, engine label, and default image."""
     config = _make_vllm_config()
     status_update = await _drive_vllm_with_puller(docker_backend, sample_deployment, mock_docker_client, config)
 
     assert status_update.status == "PENDING"
-    assert status_update.host_url == "http://md-default-test-deployment:8000"
+    assert status_update.host_url == sample_resource_names["host_url"]
 
     create_args = mock_docker_client.containers.create.call_args_list[0][1]
     # Default vLLM image is used when none specified (exact version is config-driven).
@@ -472,7 +499,9 @@ async def test_docker_backend_create_vllm_deployment(docker_backend, sample_depl
 
 
 @pytest.mark.asyncio
-async def test_docker_backend_create_vllm_lora_sidecar(docker_backend, sample_deployment, mock_docker_client):
+async def test_docker_backend_create_vllm_lora_sidecar(
+    docker_backend, sample_deployment, mock_docker_client, sample_resource_names
+):
     """Engine=vllm with lora_enabled wires the adapter sidecar and vLLM LoRA env/args."""
     config = _make_vllm_config(lora_enabled=True)
     await _drive_vllm_with_puller(docker_backend, sample_deployment, mock_docker_client, config)
@@ -481,8 +510,8 @@ async def test_docker_backend_create_vllm_lora_sidecar(docker_backend, sample_de
     assert mock_docker_client.containers.create.call_count == 2
     vllm_args = mock_docker_client.containers.create.call_args_list[0][1]
     sidecar_args = mock_docker_client.containers.create.call_args_list[1][1]
-    assert vllm_args["name"] == "md-default-test-deployment"
-    assert sidecar_args["name"] == "md-default-test-deployment-sidecar"
+    assert vllm_args["name"] == sample_resource_names["container"]
+    assert sidecar_args["name"] == sample_resource_names["sidecar"]
     # vLLM LoRA hot-reload env + serve flag.
     env = vllm_args["environment"]
     assert env["VLLM_PLUGINS"] == "lora_filesystem_resolver"
@@ -509,6 +538,96 @@ async def test_docker_backend_create_vllm_lora_sidecar(docker_backend, sample_de
     assert any(isinstance(cmd, list) and "mkdir -p /scratch/loras" in " ".join(cmd) for cmd in run_commands), (
         f"expected a busybox mkdir for the LoRA cache dir, got run commands: {run_commands}"
     )
+
+
+@pytest.mark.asyncio
+async def test_docker_backend_create_generic_deployment(docker_backend, sample_deployment, mock_docker_client):
+    """Engine=generic runs the user's image + raw args/env verbatim, no puller, no LoRA sidecar."""
+    config = MagicMock()
+    set_deployment_config(
+        config,
+        engine="generic",
+        gpu=0,
+        image_name="nvcr.io/nim/nvidia/nemoguard-jailbreak-detect",
+        image_tag="1.10.1",
+        health_check_path="/v1/health/ready",
+        additional_args=["--port", "8000"],
+        additional_envs={"FOO": "bar"},
+    )
+
+    mock_container = MagicMock()
+    mock_container.id = "generic12345678"
+    mock_container.start = MagicMock()
+    mock_docker_client.containers.create.return_value = mock_container
+    mock_docker_client.images.get.return_value = MagicMock()
+    mock_docker_client.containers.list.return_value = []
+
+    status_update = await drive_creation_to_completion_after_create(
+        docker_backend, sample_deployment, config, mock_docker_client
+    )
+
+    assert status_update.status == "PENDING"
+
+    # Self-contained image: no model puller ran (generic has no model weights).
+    run_commands = [c.kwargs.get("command") for c in mock_docker_client.containers.run.call_args_list]
+    assert not any(isinstance(cmd, list) and any("download" in str(p) for p in cmd) for cmd in run_commands)
+
+    # Exactly one container (no LoRA sidecar).
+    assert mock_docker_client.containers.create.call_count == 1
+    create_args = mock_docker_client.containers.create.call_args_list[0][1]
+    assert create_args["image"] == "nvcr.io/nim/nvidia/nemoguard-jailbreak-detect:1.10.1"
+    # Raw additional_args become the container command verbatim.
+    assert create_args["command"] == ["--port", "8000"]
+    # Raw additional_envs become the env verbatim.
+    assert create_args["environment"]["FOO"] == "bar"
+    # Engine + explicit health-path labels recorded for status-time probe selection.
+    assert create_args["labels"]["nmp.nvidia.com/engine"] == "generic"
+    assert create_args["labels"]["nmp.nvidia.com/health-path"] == "/v1/health/ready"
+    # Weightless generic runs raw: no platform volumes mounted (they'd shadow the image).
+    assert create_args["volumes"] == {}
+
+
+async def drive_creation_to_completion_after_create(docker_backend, sample_deployment, config, mock_docker_client):
+    """Start creation for a no-puller config and drive it to completion."""
+    await docker_backend.create_model_deployment(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=config, model_entity=None)
+    )
+    mock_docker_client.containers.get.side_effect = NotFound("Container not found")
+    return await drive_creation_to_completion(docker_backend, sample_deployment)
+
+
+@pytest.mark.asyncio
+async def test_docker_backend_create_generic_with_fileset_pulls_and_mounts(
+    docker_backend, sample_deployment, mock_docker_client
+):
+    """Engine=generic with a fileset-backed model runs the puller and mounts platform volumes."""
+    config = MagicMock()
+    set_deployment_config(
+        config,
+        engine="generic",
+        gpu=0,
+        image_name="my/custom-server",
+        image_tag="1.0",
+        health_check_path="/healthz",
+        model_namespace="default",
+        model_name="qwen-2-5-1-5b",
+        additional_args=["--model-dir", "/model-store"],
+    )
+
+    status_update = await _drive_vllm_with_puller(docker_backend, sample_deployment, mock_docker_client, config)
+    assert status_update.status == "PENDING"
+
+    # Generic + fileset => the puller ran and the platform volumes are mounted so
+    # the pulled weights are available to the user's container at /model-store.
+    create_args = mock_docker_client.containers.create.call_args_list[0][1]
+    assert create_args["image"] == "my/custom-server:1.0"
+    assert create_args["command"] == ["--model-dir", "/model-store"]
+    assert create_args["volumes"][docker_backend._reconciler.get_volume_name("default", "test-deployment")] == {
+        "bind": "/model-store",
+        "mode": "rw",
+    }
+    assert create_args["labels"]["nmp.nvidia.com/engine"] == "generic"
+    assert create_args["labels"]["nmp.nvidia.com/health-path"] == "/healthz"
 
 
 def test_get_health_path_from_container_vllm(docker_backend):
@@ -648,7 +767,7 @@ async def test_docker_backend_create_sft_model_success(
 
 @pytest.mark.asyncio
 async def test_docker_backend_create_sft_model_puller_fails(
-    docker_backend, sample_deployment, sample_config, mock_docker_client
+    docker_backend, sample_deployment, sample_config, mock_docker_client, sample_resource_names
 ):
     """Test that SFT model deployment fails gracefully when puller fails."""
     # Mock model entity with SFT full weights and artifact
@@ -667,7 +786,7 @@ async def test_docker_backend_create_sft_model_puller_fails(
     # Setup mock puller container that fails
     mock_puller_container = MagicMock()
     mock_puller_container.id = "puller123456789"
-    mock_puller_container.name = "md-puller-default-test-deployment"
+    mock_puller_container.name = sample_resource_names["puller"]
     mock_puller_container.logs.return_value = b"Error: Failed to download model"
     mock_puller_container.status = "exited"
     mock_puller_container.attrs = {"State": {"ExitCode": 1}}
@@ -709,7 +828,7 @@ async def test_docker_backend_create_sft_model_puller_fails(
 
 @pytest.mark.asyncio
 async def test_docker_backend_get_model_deployment_status_running(
-    docker_backend, sample_deployment, mock_docker_client
+    docker_backend, sample_deployment, mock_docker_client, sample_resource_names
 ):
     """Test getting status of a running deployment."""
     # Setup mock container in running state
@@ -726,7 +845,7 @@ async def test_docker_backend_get_model_deployment_status_running(
     assert status_update is not None
     assert status_update.status == "READY"
     assert "running" in status_update.status_message.lower()
-    assert status_update.host_url == "http://md-default-test-deployment:8000"
+    assert status_update.host_url == sample_resource_names["host_url"]
 
 
 @pytest.mark.asyncio
@@ -826,16 +945,23 @@ def test_docker_backend_initialization(mock_nmp_sdk, mock_docker_client):
         assert backend._nmp_sdk == mock_nmp_sdk
 
 
-def test_docker_backend_container_naming(docker_backend, sample_deployment):
+def test_docker_backend_container_naming(docker_backend, sample_deployment, sample_resource_names):
     """Test container naming convention."""
     container_name = docker_backend._reconciler.get_container_name(sample_deployment.workspace, sample_deployment.name)
-    assert container_name == "md-default-test-deployment"
+    assert container_name == sample_resource_names["container"]
+    assert container_name == get_docker_container_name("default", "test-deployment")
+    assert container_name == "md-default-test-deployment-a47830f1"
+    assert container_name.startswith("md-default-test-deployment-")
+    assert len(f"{container_name}-sidecar") <= 63
 
 
-def test_docker_backend_volume_naming(docker_backend, sample_deployment):
+def test_docker_backend_volume_naming(docker_backend, sample_deployment, sample_resource_names):
     """Test volume naming convention."""
     volume_name = docker_backend._reconciler.get_volume_name(sample_deployment.workspace, sample_deployment.name)
-    assert volume_name == "nim-cache-default-test-deployment"
+    assert volume_name == sample_resource_names["volume"]
+    assert volume_name == get_docker_volume_name("default", "test-deployment")
+    assert volume_name == "nim-cache-default-test-deployment-a47830f1"
+    assert volume_name.startswith("nim-cache-default-test-deployment-")
 
 
 def test_docker_backend_deployment_key(docker_backend, sample_deployment):
@@ -844,12 +970,24 @@ def test_docker_backend_deployment_key(docker_backend, sample_deployment):
     assert deployment_key == "default/test-deployment"
 
 
-def test_docker_backend_puller_container_naming(docker_backend, sample_deployment):
+def test_docker_backend_puller_container_naming(docker_backend, sample_deployment, sample_resource_names):
     """Test puller container naming convention."""
     puller_name = docker_backend._reconciler.get_puller_container_name(
         sample_deployment.workspace, sample_deployment.name
     )
-    assert puller_name == "md-puller-default-test-deployment"
+    assert puller_name == sample_resource_names["puller"]
+    assert puller_name.startswith("md-puller-default-test-deployment-")
+
+
+def test_docker_backend_plugin_puller_container_naming(docker_backend, sample_deployment, sample_resource_names):
+    """Test plugin puller container naming convention."""
+    plugin_name = docker_backend._reconciler.get_plugin_puller_container_name(
+        sample_deployment.workspace, sample_deployment.name
+    )
+    assert plugin_name == sample_resource_names["plugin"]
+    assert plugin_name == get_docker_plugin_puller_container_name("default", "test-deployment")
+    assert plugin_name == "md-plugin-default-test-deployment-a47830f1"
+    assert plugin_name.startswith("md-plugin-default-test-deployment-")
 
 
 # =============================================================================
@@ -1959,7 +2097,7 @@ def test_should_attach_network_with_dind_mode(docker_backend_with_dind_mode):
 
 @pytest.mark.asyncio
 async def test_docker_backend_create_with_dond_mode_uses_container_name_url(
-    docker_backend_with_dond_mode, sample_deployment, sample_config, mock_docker_client
+    docker_backend_with_dond_mode, sample_deployment, sample_config, mock_docker_client, sample_resource_names
 ):
     """Test that create_model_deployment uses container name URL when using DonD mode.
 
@@ -1987,7 +2125,7 @@ async def test_docker_backend_create_with_dond_mode_uses_container_name_url(
     assert status_update.status == "PENDING"
 
     # Host URL should use container name (DonD mode uses container names)
-    assert status_update.host_url == "http://md-default-test-deployment:8000"
+    assert status_update.host_url == sample_resource_names["host_url"]
 
     # Verify container was created with the network
     call_args = mock_docker_client.containers.create.call_args_list[0]
@@ -1996,7 +2134,7 @@ async def test_docker_backend_create_with_dond_mode_uses_container_name_url(
 
 @pytest.mark.asyncio
 async def test_docker_backend_get_status_with_dond_mode_uses_container_name_url(
-    docker_backend_with_dond_mode, sample_deployment, mock_docker_client
+    docker_backend_with_dond_mode, sample_deployment, mock_docker_client, sample_resource_names
 ):
     """Test that get_model_deployment_status uses container name URL when using DonD mode."""
     # Mock a running container with port mapping (should be ignored for URL in DonD mode)
@@ -2017,7 +2155,7 @@ async def test_docker_backend_get_status_with_dond_mode_uses_container_name_url(
 
     # Verify status and URL uses container name (DonD mode ignores port bindings)
     assert status_update.status == "READY"
-    assert status_update.host_url == "http://md-default-test-deployment:8000"
+    assert status_update.host_url == sample_resource_names["host_url"]
 
 
 @pytest.mark.asyncio
@@ -2619,6 +2757,65 @@ async def test_multi_llm_files_service_deployment_succeeds(
     puller_env = puller_calls[0][1]["environment"]
     assert "HF_ENDPOINT" in puller_env
     assert "/apis/files/v2/hf" in puller_env["HF_ENDPOINT"]
+
+
+def _puller_state(deployment, config):
+    """Build a minimal CreationState for exercising _start_model_puller_container directly."""
+    return CreationState(
+        stage=CreationStage.RUNNING_PULLER,
+        deployment=deployment,
+        config=config,
+        model_entity=None,
+        model_weights_type=ModelWeightsType.FILES_SERVICE,
+        volume_name="vol-test",
+    )
+
+
+@pytest.mark.asyncio
+async def test_model_puller_env_override_merged(docker_backend, sample_deployment, sample_config, mock_docker_client):
+    """huggingface_model_puller_env is merged into the puller env, with operator values winning."""
+    reconciler = docker_backend._reconciler
+    reconciler._backend_config.huggingface_model_puller_env = {
+        "HF_HUB_ENABLE_HF_TRANSFER": "0",
+        "HF_ENDPOINT": "https://override.example",  # must win over the hardcoded default
+    }
+
+    puller_container = MagicMock()
+    puller_container.id = "puller123456789"
+    reconciler.run_container = MagicMock(return_value=puller_container)
+    reconciler._get_model_repo_from_entity = MagicMock(return_value="nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16")
+
+    await reconciler._start_model_puller_container(_puller_state(sample_deployment, sample_config))
+
+    reconciler.run_container.assert_called_once()
+    env = reconciler.run_container.call_args[1]["environment"]
+    # Operator-provided override is applied
+    assert env["HF_HUB_ENABLE_HF_TRANSFER"] == "0"
+    # Operator value wins over the hardcoded HF_ENDPOINT default
+    assert env["HF_ENDPOINT"] == "https://override.example"
+    # Untouched default remains
+    assert env["HF_TOKEN"] == "service:models"
+
+
+@pytest.mark.asyncio
+async def test_model_puller_env_no_override_uses_defaults(
+    docker_backend, sample_deployment, sample_config, mock_docker_client
+):
+    """With no huggingface_model_puller_env configured, the puller env keeps only its defaults."""
+    reconciler = docker_backend._reconciler
+    assert reconciler._backend_config.huggingface_model_puller_env == {}
+
+    puller_container = MagicMock()
+    puller_container.id = "puller123456789"
+    reconciler.run_container = MagicMock(return_value=puller_container)
+    reconciler._get_model_repo_from_entity = MagicMock(return_value="nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16")
+
+    await reconciler._start_model_puller_container(_puller_state(sample_deployment, sample_config))
+
+    reconciler.run_container.assert_called_once()
+    env = reconciler.run_container.call_args[1]["environment"]
+    assert "HF_HUB_ENABLE_HF_TRANSFER" not in env
+    assert env["HF_TOKEN"] == "service:models"
 
 
 @pytest.mark.asyncio
@@ -3445,9 +3642,9 @@ async def test_scenario7_plugin_from_deployment_config(docker_backend, sample_de
 
 
 @pytest.mark.asyncio
-async def test_plugin_puller_success(docker_backend, sample_deployment, mock_docker_client):
+async def test_plugin_puller_success(docker_backend, sample_deployment, mock_docker_client, sample_resource_names):
     """Test _run_plugin_puller discovers a single .py file and returns its path."""
-    volume_name = "nim-cache-default-test-deployment"
+    volume_name = sample_resource_names["volume"]
 
     # Mock puller container
     mock_puller_container = MagicMock()
@@ -3482,14 +3679,15 @@ async def test_plugin_puller_success(docker_backend, sample_deployment, mock_doc
         if c.kwargs.get("labels", {}).get("nmp.nvidia.com/container-type") == "plugin-puller"
     ]
     assert len(plugin_puller_calls) == 1
+    assert plugin_puller_calls[0].kwargs["name"] == sample_resource_names["plugin"]
     assert plugin_puller_calls[0].kwargs["entrypoint"] == ["hf"]
     assert plugin_puller_calls[0].kwargs["command"][0] == "download"
 
 
 @pytest.mark.asyncio
-async def test_plugin_puller_no_py_files(docker_backend, sample_deployment, mock_docker_client):
+async def test_plugin_puller_no_py_files(docker_backend, sample_deployment, mock_docker_client, sample_resource_names):
     """Test _run_plugin_puller returns error when no .py files found."""
-    volume_name = "nim-cache-default-test-deployment"
+    volume_name = sample_resource_names["volume"]
 
     mock_puller_container = MagicMock()
     mock_puller_container.id = "pluginpuller1234"
@@ -3513,11 +3711,21 @@ async def test_plugin_puller_no_py_files(docker_backend, sample_deployment, mock
     assert plugin_path is None
     assert "no .py files" in error
 
+    plugin_puller_calls = [
+        c
+        for c in mock_docker_client.containers.run.call_args_list
+        if c.kwargs.get("labels", {}).get("nmp.nvidia.com/container-type") == "plugin-puller"
+    ]
+    assert len(plugin_puller_calls) == 1
+    assert plugin_puller_calls[0].kwargs["name"] == sample_resource_names["plugin"]
+
 
 @pytest.mark.asyncio
-async def test_plugin_puller_multiple_py_files(docker_backend, sample_deployment, mock_docker_client):
+async def test_plugin_puller_multiple_py_files(
+    docker_backend, sample_deployment, mock_docker_client, sample_resource_names
+):
     """Test _run_plugin_puller returns error when multiple .py files found."""
-    volume_name = "nim-cache-default-test-deployment"
+    volume_name = sample_resource_names["volume"]
 
     mock_puller_container = MagicMock()
     mock_puller_container.id = "pluginpuller1234"
@@ -3541,11 +3749,21 @@ async def test_plugin_puller_multiple_py_files(docker_backend, sample_deployment
     assert plugin_path is None
     assert "2 .py files" in error
 
+    plugin_puller_calls = [
+        c
+        for c in mock_docker_client.containers.run.call_args_list
+        if c.kwargs.get("labels", {}).get("nmp.nvidia.com/container-type") == "plugin-puller"
+    ]
+    assert len(plugin_puller_calls) == 1
+    assert plugin_puller_calls[0].kwargs["name"] == sample_resource_names["plugin"]
+
 
 @pytest.mark.asyncio
-async def test_plugin_puller_container_fails(docker_backend, sample_deployment, mock_docker_client):
+async def test_plugin_puller_container_fails(
+    docker_backend, sample_deployment, mock_docker_client, sample_resource_names
+):
     """Test _run_plugin_puller returns error when puller container exits with non-zero."""
-    volume_name = "nim-cache-default-test-deployment"
+    volume_name = sample_resource_names["volume"]
 
     mock_puller_container = MagicMock()
     mock_puller_container.id = "pluginpuller1234"
@@ -3568,6 +3786,14 @@ async def test_plugin_puller_container_fails(docker_backend, sample_deployment, 
     assert plugin_path is None
     assert error is not None
     assert "exit code 1" in error.lower() or "failed" in error.lower()
+
+    plugin_puller_calls = [
+        c
+        for c in mock_docker_client.containers.run.call_args_list
+        if c.kwargs.get("labels", {}).get("nmp.nvidia.com/container-type") == "plugin-puller"
+    ]
+    assert len(plugin_puller_calls) == 1
+    assert plugin_puller_calls[0].kwargs["name"] == sample_resource_names["plugin"]
 
 
 # ============================================================================
@@ -3709,7 +3935,7 @@ class TestPendingTimeoutStatusTransition:
 
     @pytest.mark.asyncio
     async def test_running_not_healthy_exceeds_timeout_returns_error(
-        self, docker_backend, sample_deployment, make_mock_container
+        self, docker_backend, sample_deployment, make_mock_container, sample_resource_names
     ):
         """A running container that isn't healthy and exceeds timeout should transition to ERROR."""
         make_mock_container(status="running", logs=b"NIM failed to start: model not supported")
@@ -3723,9 +3949,9 @@ class TestPendingTimeoutStatusTransition:
         assert status.status == "ERROR"
         assert "timed out" in status.status_message
         assert "docker logs" in status.status_message
-        assert "md-default-test-deployment" in status.status_message
+        assert sample_resource_names["container"] in status.status_message
         assert status.error_details["reason"] == "pending_timeout"
-        assert status.error_details["container_name"] == "md-default-test-deployment"
+        assert status.error_details["container_name"] == sample_resource_names["container"]
 
     @pytest.mark.asyncio
     async def test_created_state_within_timeout_returns_pending(
@@ -3803,7 +4029,7 @@ class TestPendingTimeoutErrorMessage:
 
     @pytest.mark.asyncio
     async def test_error_message_includes_docker_logs_command(
-        self, docker_backend, sample_deployment, make_mock_container
+        self, docker_backend, sample_deployment, make_mock_container, sample_resource_names
     ):
         """Timeout error message includes a runnable docker logs command."""
         make_mock_container(status="running", logs=b"Error: model architecture not supported")
@@ -3815,7 +4041,7 @@ class TestPendingTimeoutErrorMessage:
             status = await docker_backend.get_model_deployment_status(ModelContext(model_deployment=sample_deployment))
 
         assert status.status == "ERROR"
-        assert "docker logs md-default-test-deployment" in status.status_message
+        assert f"docker logs {sample_resource_names['container']}" in status.status_message
 
     @pytest.mark.asyncio
     async def test_error_details_contain_container_logs(self, docker_backend, sample_deployment, make_mock_container):

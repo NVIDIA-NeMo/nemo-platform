@@ -899,6 +899,7 @@ resources:
       experiment_group_request: ExperimentGroupRequest
       experiment_group_response: ExperimentGroupResponse
       experiment_group_responses_page: ExperimentGroupResponsesPage
+      sort_criterion: SortCriterion
     methods:
       create: post /apis/intake/v2/workspaces/{workspace}/experiment-groups
       list: get /apis/intake/v2/workspaces/{workspace}/experiment-groups
@@ -913,6 +914,8 @@ resources:
       experiment_request: ExperimentRequest
       experiment_response: ExperimentResponse
       experiment_responses_page: ExperimentResponsesPage
+      metric_stat_filters: MetricStatFilters
+      number_filter: NumberFilter
     methods:
       create: post /apis/intake/v2/workspaces/{workspace}/experiments
       list: get /apis/intake/v2/workspaces/{workspace}/experiments

@@ -129,7 +129,7 @@ def _build_prepared_request(
         elif name == "body":
             if not isinstance(value, BaseModel):
                 raise TypeError(f"body must be a BaseModel instance, got {type(value).__name__}")
-            content = value.model_dump_json().encode()
+            content = value.model_dump_json(exclude_unset=True).encode()
             content_type = "application/json"
         elif name == "content":
             content = value

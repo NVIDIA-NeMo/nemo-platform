@@ -49,8 +49,9 @@ class VolumeReconciler:
             logger.warning("No executor for volume delete of %s — will retry", volume_id, exc_info=True)
             return
 
+        backend_config = volume.backend_config.model_dump(by_alias=True, exclude_none=True)
         try:
-            await backend.delete_volume(volume.workspace, volume.name)
+            await backend.delete_volume(volume.workspace, volume.name, backend_config=backend_config)
         except Exception:
             logger.warning("Backend delete failed for volume %s — will retry", volume_id, exc_info=True)
             return
@@ -87,8 +88,13 @@ class VolumeReconciler:
             )
 
     async def _reconcile_read(self, volume: Volume, backend: DeploymentBackend) -> None:
+        backend_config = volume.backend_config.model_dump(by_alias=True, exclude_none=True)
         try:
-            update = await backend.read_volume_status(workspace=volume.workspace, name=volume.name)
+            update = await backend.read_volume_status(
+                workspace=volume.workspace,
+                name=volume.name,
+                backend_config=backend_config,
+            )
             await self._update_volume_status(volume, update)
         except NemoEntityConflictError:
             raise

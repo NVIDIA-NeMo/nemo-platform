@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { extractFilePathsFromDirectory } from '@studio/components/filesets/FilesetFileExplorer/BulkDeleteModal/utils';
+import { extractFilePathsFromDirectory } from '@studio/components/filesets/FilesetFileExplorer/extractFilePathsFromDirectory';
 import { FileSystemNode } from '@studio/components/FilesTable/utils';
 import { render } from '@studio/tests/util/render';
 import { screen, waitFor, within } from '@testing-library/react';
@@ -11,12 +11,10 @@ import { BulkDeleteModal } from '.';
 
 // Mock the mutation hook
 const mockMutateAsync = vi.fn();
-const mockIsPending = vi.fn().mockReturnValue(false);
 
 vi.mock('@studio/api/datasets/useDatasetFilesDelete', () => ({
   useDatasetFilesDelete: () => ({
     mutateAsync: mockMutateAsync,
-    isPending: mockIsPending(),
   }),
 }));
 
@@ -286,6 +284,32 @@ describe('BulkDeleteModal', () => {
       });
     });
 
+    it('disables Cancel and Delete buttons while deletion is in progress', async () => {
+      let resolveDelete!: () => void;
+      mockMutateAsync.mockReturnValue(
+        new Promise<void>((resolve) => {
+          resolveDelete = resolve;
+        })
+      );
+
+      render(<BulkDeleteModal {...defaultProps} />);
+      await user.click(getTriggerButton());
+
+      const dialog = getDialog();
+
+      // Don't await — the delete is intentionally left pending
+      const clickPromise = user.click(within(dialog).getByRole('button', { name: /^delete$/i }));
+
+      await waitFor(() => {
+        expect(within(dialog).getByRole('button', { name: /cancel/i })).toBeDisabled();
+        expect(within(dialog).getByRole('button', { name: /delete/i })).toBeDisabled();
+      });
+
+      // Resolve to allow the modal to close and avoid act() warnings
+      resolveDelete();
+      await clickPromise;
+    });
+
     it('closes modal after successful deletion', async () => {
       render(<BulkDeleteModal {...defaultProps} />);
 
@@ -301,45 +325,6 @@ describe('BulkDeleteModal', () => {
       await waitFor(() => {
         expect(screen.queryByText('Delete 3 Items')).not.toBeInTheDocument();
       });
-    });
-  });
-
-  describe('Loading States', () => {
-    it('shows loading text when deletion is pending', async () => {
-      mockIsPending.mockReturnValue(true);
-
-      render(<BulkDeleteModal {...defaultProps} />);
-
-      const triggerButton = getTriggerButton();
-      await user.click(triggerButton);
-
-      const deleteButton = within(getDialog()).getByRole('button', { name: /deleting/i });
-      expect(deleteButton).toBeInTheDocument();
-      expect(deleteButton).toHaveTextContent('Deleting...');
-    });
-
-    it('disables delete button when deletion is pending', async () => {
-      mockIsPending.mockReturnValue(true);
-
-      render(<BulkDeleteModal {...defaultProps} />);
-
-      const triggerButton = getTriggerButton();
-      await user.click(triggerButton);
-
-      const deleteButton = within(getDialog()).getByRole('button', { name: /deleting/i });
-      expect(deleteButton).toBeDisabled();
-    });
-
-    it('enables delete button when not pending', async () => {
-      mockIsPending.mockReturnValue(false);
-
-      render(<BulkDeleteModal {...defaultProps} />);
-
-      const triggerButton = getTriggerButton();
-      await user.click(triggerButton);
-
-      const deleteButton = within(getDialog()).getByRole('button', { name: /^delete$/i });
-      expect(deleteButton).not.toBeDisabled();
     });
   });
 });

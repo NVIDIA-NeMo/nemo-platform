@@ -72,6 +72,22 @@ class PyleakMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
 
+def preflight_embedded_auth_policy_wasm(auth_config) -> None:
+    """Ensure local embedded auth PDP has a loadable policy.wasm before serving traffic."""
+    if not auth_config.enabled or auth_config.policy_decision_point_provider != "embedded":
+        return
+
+    try:
+        from nmp.core.auth.app.embedded_pdp.policy_wasm import ensure_embedded_policy_wasm
+    except ImportError as exc:
+        raise RuntimeError(
+            "Auth is enabled with the embedded PDP, but the nmp-auth package is not installed. "
+            "Install nmp-auth or set auth.policy_decision_point_provider='opa'."
+        ) from exc
+
+    ensure_embedded_policy_wasm(auto_build=getattr(auth_config, "embedded_pdp_auto_build_wasm", True))
+
+
 def create_platform_openapi_app() -> FastAPI:
     """Create the platform app used for aggregate OpenAPI generation."""
     services = []
@@ -196,6 +212,7 @@ def create_app(
 
 def run_server(services: list[Service] | None = None, host: str = "0.0.0.0", port: int = 8080) -> None:
     """Run the platform API server."""
+    preflight_embedded_auth_policy_wasm(get_auth_config())
     app = create_app(services or [])
     setup_fastapi_instrumentations(app)
     uvicorn.run(app, host=host, port=port, log_config=None)
@@ -203,6 +220,7 @@ def run_server(services: list[Service] | None = None, host: str = "0.0.0.0", por
 
 def run_server_with_reload(app_factory: str, host: str = "0.0.0.0", port: int = 8080) -> None:
     """Run the platform API server with uvicorn reload enabled."""
+    preflight_embedded_auth_policy_wasm(get_auth_config())
     reload_dirs = [
         "packages/nmp_platform/src",
         "services/core",

@@ -44,6 +44,7 @@ vi.mock('@nemo/common/src/components/CodeEditor', () => ({
   CodeEditor: ({ content, onChange }: { content: string; onChange?: (next: string) => void }) => (
     <textarea
       data-testid="code-editor"
+      aria-label="code editor"
       value={content}
       onChange={(e) => onChange?.(e.target.value)}
     />

@@ -1,6 +1,5 @@
 [project]
 name = "nmp-platform-runner"
-version = "0.0.1"
 description = "Headless local platform runner for Nemo Platform services"
 requires-python = ">=3.11,<3.15"
 dependencies = [
@@ -11,11 +10,13 @@ dependencies = [
     "pyleak>=0.1.0",
     "rich>=14.1.0",
 ]
+version = "0.0.0"
 
 [tool.uv.sources]
 nemo-platform-plugin = { workspace = true }
 nmp-common = { workspace = true }
 nmp-testing = { workspace = true }
+
 
 [dependency-groups]
 dev = [

@@ -100,9 +100,21 @@ class DeploymentBackend(abc.ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def read_volume_status(self, *, workspace: str, name: str) -> VolumeStatusUpdate:
+    async def read_volume_status(
+        self,
+        *,
+        workspace: str,
+        name: str,
+        backend_config: dict[str, Any] | None = None,
+    ) -> VolumeStatusUpdate:
         raise NotImplementedError
 
     @abstractmethod
-    async def delete_volume(self, workspace: str, name: str) -> VolumeStatusUpdate:
+    async def delete_volume(
+        self,
+        workspace: str,
+        name: str,
+        *,
+        backend_config: dict[str, Any] | None = None,
+    ) -> VolumeStatusUpdate:
         raise NotImplementedError

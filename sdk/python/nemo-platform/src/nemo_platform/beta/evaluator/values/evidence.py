@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import difflib
 import hashlib
+import json
 import os
 import shutil
 import signal
@@ -16,7 +17,12 @@ from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, PrivateAttr, model_validator
+
+from nemo_platform.beta.evaluator.values.atif import FinalMetrics, Step, ToolCall, Trajectory
+
+# Well-known evidence keys (mirrored by the ``EVIDENCE_*`` constants in ``agent_eval.trials``).
+WellKnownEvidenceKey = Literal["initial_state", "trace", "logs", "final_state", "verifier_logs"]
 
 
 class FilesystemEntry(BaseModel):
@@ -100,11 +106,7 @@ class LocalFilesystemEvidence:
         return await asyncio.to_thread(path.read_text, encoding=encoding)
 
     async def iter_paths(self, relative_path: str | Path = ".", *, recursive: bool = False) -> list[str]:
-        """List entries (files *and* directories) rooted at ``relative_path``.
-
-        Use this to walk a subtree or test for (non-)emptiness. For a flat,
-        files-only listing matched by a glob pattern, use :meth:`list_files`.
-        """
+        """List entries (files and directories) rooted at ``relative_path``."""
         base = self.path(relative_path)
         return await asyncio.to_thread(self._iter_paths_sync, base, recursive)
 
@@ -120,11 +122,7 @@ class LocalFilesystemEvidence:
         return await asyncio.to_thread(path.read_bytes)
 
     async def list_files(self, pattern: str = "**/*") -> list[str]:
-        """List relative posix paths of files (not directories) matching ``pattern``.
-
-        Complements :meth:`iter_paths`: this is the flat, glob-filtered,
-        files-only view; ``iter_paths`` walks a subtree and includes directories.
-        """
+        """List relative posix paths of files (not directories) matching ``pattern``."""
         return await asyncio.to_thread(self._list_sync, pattern)
 
     def _list_sync(self, pattern: str) -> list[str]:
@@ -135,12 +133,7 @@ class LocalFilesystemEvidence:
         )
 
     async def diff(self, other: LocalFilesystemEvidence) -> FilesystemDiff:
-        """Diff this snapshot (before) against ``other`` (after) by file content hash.
-
-        Cost note: this hashes every file in both trees by reading each fully, so
-        it is O(total bytes). Fine for task-sized evidence; revisit (streamed
-        hashing / size+mtime prefilter) if used on large artifact trees.
-        """
+        """Diff this snapshot (before) against ``other`` (after) by file content hash."""
         return await asyncio.to_thread(self._diff_sync, other)
 
     def _diff_sync(self, other: LocalFilesystemEvidence) -> FilesystemDiff:
@@ -162,12 +155,7 @@ class LocalFilesystemEvidence:
         *,
         context: int = 3,
     ) -> str:
-        """Unified diff of one path between this snapshot (before) and ``other`` (after).
-
-        Opt-in, per-path companion to :meth:`diff` (which reports only which paths
-        changed). Returns ``""`` when the two versions are identical or binary
-        (non-UTF-8). Path access is traversal-guarded like the rest of the handle.
-        """
+        """Unified diff of one path between this snapshot (before) and ``other`` (after); ``""`` if identical or binary."""
         return await asyncio.to_thread(self._unified_diff_sync, other, relative_path, context)
 
     def _unified_diff_sync(self, other: LocalFilesystemEvidence, relative_path: str | Path, context: int) -> str:
@@ -193,12 +181,7 @@ class LocalFilesystemEvidence:
         return hashes
 
     def _safe_files(self) -> list[Path]:
-        """Regular files under the root, never descending into or reading symlinks that escape it.
-
-        ``os.walk(followlinks=False)`` keeps a ``vendor -> /`` style dir symlink from
-        exploding the walk, and escaping file symlinks (``leak -> /etc/passwd``) are
-        dropped so their target is never hashed.
-        """
+        """Regular files under the root, skipping symlinks whose target escapes it."""
         files: list[Path] = []
         for dirpath, _dirnames, filenames in os.walk(self._root, followlinks=False):
             for name in filenames:
@@ -215,24 +198,14 @@ class LocalFilesystemEvidence:
         cwd: str = ".",
         timeout_s: float | None = None,
     ) -> CommandResult:
-        """Run ``command`` (no shell) against a throwaway copy of the evidence.
-
-        The evidence is copied to a temp overlay so the command can never mutate
-        stored evidence (pytest caches, build artifacts, ...). ``command`` is a
-        list passed straight to exec, so there is no shell parsing of it.
-
-        This is NOT a sandbox: the command runs with the host's privileges and
-        full filesystem/network access. ``command`` is supplied by the (trusted)
-        metric author, never by the agent under test. Cost note: the whole tree
-        is copied on every call, so verifying large evidence repeatedly is heavy.
-        """
+        """Run ``command`` (no shell) against a throwaway copy of the evidence; not a sandbox (host privileges)."""
         overlay = Path(tempfile.mkdtemp(prefix="evidence-verify-")).resolve()
         try:
             workdir = (overlay / cwd).resolve()
             if workdir != overlay and overlay not in workdir.parents:
                 raise ValueError(f"verifier cwd {cwd!r} resolves outside evidence overlay")
-            # symlinks=True copies links as-is (no host deref); the ignore hook drops
-            # links whose target escapes the evidence root so the verifier can't read them.
+            # symlinks=True copies links as-is (no host deref); the ignore hook drops links whose
+            # target escapes the evidence root so the verifier can't read or write through them.
             await asyncio.to_thread(
                 shutil.copytree,
                 self._root,
@@ -246,13 +219,7 @@ class LocalFilesystemEvidence:
             await asyncio.to_thread(shutil.rmtree, overlay, True)
 
     def _ignore_escaping_symlinks(self, directory: str, names: list[str]) -> set[str]:
-        """copytree ignore hook: skip symlinks that can't be safely preserved in the overlay.
-
-        Drops links whose resolved target escapes the evidence root (host-file reads)
-        and absolute links: ``symlinks=True`` would recreate the latter verbatim, so a
-        verifier write through ``link -> /real/evidence/answer.txt`` would mutate the
-        stored evidence instead of the throwaway copy.
-        """
+        """copytree ignore hook: drop absolute symlinks and links whose target escapes the evidence root."""
         ignored: set[str] = set()
         for name in names:
             full = Path(directory) / name
@@ -264,8 +231,7 @@ class LocalFilesystemEvidence:
 
     @staticmethod
     async def _exec(command: list[str], cwd: Path, timeout_s: float | None) -> CommandResult:
-        # start_new_session makes the child its own process-group leader, so a timeout
-        # can reap the whole tree (grandchildren it spawned) rather than just the child.
+        # start_new_session: child leads its own process group so a timeout can reap the whole tree.
         process = await asyncio.create_subprocess_exec(
             *command,
             cwd=str(cwd),
@@ -276,11 +242,11 @@ class LocalFilesystemEvidence:
         try:
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout_s)
         except TimeoutError:
-            # wait_for cancels communicate() but leaves the tree running; kill the group.
+            # wait_for leaves the tree running; kill the whole process group.
             try:
                 os.killpg(os.getpgid(process.pid), signal.SIGKILL)
             except ProcessLookupError:
-                pass  # already exited between the timeout and the kill
+                pass
             await process.wait()
             return CommandResult(exit_code=-1, timed_out=True)
         return CommandResult(
@@ -293,7 +259,12 @@ class LocalFilesystemEvidence:
 class EvidenceDescriptor(BaseModel):
     """Descriptor for a candidate trace, source, or artifact."""
 
-    model_config = ConfigDict(extra="forbid")
+    # ``anyOf`` mirrors the ``_requires_ref_or_data`` validator into the OpenAPI schema, so a payload
+    # with neither ``ref`` nor ``data`` is rejected by the contract, not just at runtime.
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={"anyOf": [{"required": ["ref"]}, {"required": ["data"]}]},
+    )
 
     kind: str = Field(description="Evidence type, e.g. 'filesystem', 'trace', 'log_bundle', or 'review'.")
     ref: str | None = Field(
@@ -304,7 +275,7 @@ class EvidenceDescriptor(BaseModel):
         default=None,
         description="Parser hint for the evidence payload, e.g. 'atif' for normalized traces.",
     )
-    data: Any | None = Field(
+    data: JsonValue | None = Field(
         default=None,
         description="Small inline evidence payload; at least one of ref or data must be set.",
     )
@@ -320,8 +291,77 @@ class EvidenceDescriptor(BaseModel):
         return self
 
 
+# ATIF ingest: producers emit conformant ATIF (see values/atif.py, RFC 0001); we validate on read, not normalize.
+def parse_atif(payload: Any) -> Trajectory:
+    """Validate a payload as a canonical ATIF :class:`Trajectory` (raises ``ValidationError`` if non-conformant)."""
+    return payload if isinstance(payload, Trajectory) else Trajectory.model_validate(payload)
+
+
+class TraceHandle:
+    """Lazily validated read handle exposing a trace descriptor as an ATIF :class:`Trajectory`."""
+
+    def __init__(self, descriptor: EvidenceDescriptor) -> None:
+        self._descriptor = descriptor
+        self._trajectory: Trajectory | None = None
+
+    async def trace(self) -> Trajectory:
+        """Return the ATIF trajectory, reading and validating on first access."""
+        if self._trajectory is None:
+            payload = await asyncio.to_thread(self._load_payload)
+            self._trajectory = parse_atif(payload)
+        return self._trajectory
+
+    def _load_payload(self) -> Any:
+        descriptor = self._descriptor
+        if descriptor.data is not None:
+            return descriptor.data
+        if descriptor.ref is None:
+            raise ValueError("trace evidence descriptor requires ref or data")
+        return json.loads(_local_filesystem_ref(descriptor.ref).read_text(encoding="utf-8"))
+
+    async def steps(self) -> list[Step]:
+        """Return the ATIF steps in order."""
+        return (await self.trace()).steps
+
+    async def tool_calls(self) -> list[ToolCall]:
+        """Return all tool calls flattened across agent steps, in order."""
+        calls: list[ToolCall] = []
+        for step in await self.steps():
+            calls.extend(step.tool_calls or [])
+        return calls
+
+    async def token_usage(self) -> FinalMetrics:
+        """Return aggregate token usage (trajectory ``final_metrics``, else summed per step)."""
+        trajectory = await self.trace()
+        if trajectory.final_metrics is not None:
+            return trajectory.final_metrics
+        prompt = sum((step.metrics.prompt_tokens or 0) for step in trajectory.steps if step.metrics is not None)
+        completion = sum((step.metrics.completion_tokens or 0) for step in trajectory.steps if step.metrics is not None)
+        return FinalMetrics(total_prompt_tokens=prompt or None, total_completion_tokens=completion or None)
+
+
+class LogHandle:
+    """Read handle over a log-bundle directory."""
+
+    def __init__(self, root: str | Path) -> None:
+        self._fs = LocalFilesystemEvidence(root)
+
+    async def list_files(self) -> list[str]:
+        """Return relative paths of log files in the bundle."""
+        return await self._fs.list_files("**/*")
+
+    async def read_text(self, name: str) -> str:
+        """Read one log file's full text."""
+        return await self._fs.read_text(name)
+
+    async def tail(self, name: str, lines: int = 50) -> str:
+        """Return the last ``lines`` lines of a log file."""
+        text = await self._fs.read_text(name)
+        return "\n".join(text.splitlines()[-lines:])
+
+
 class CandidateEvidence(BaseModel):
-    """Named evidence descriptors attached to an AgentEvalAttempt."""
+    """Named evidence descriptors attached to an AgentEvalTrial."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -334,6 +374,8 @@ class CandidateEvidence(BaseModel):
         description="Free-form metadata associated with the evidence collection.",
     )
     _filesystem_cache: dict[str, LocalFilesystemEvidence] = PrivateAttr(default_factory=dict)
+    _trace_cache: dict[str, TraceHandle] = PrivateAttr(default_factory=dict)
+    _log_cache: dict[str, LogHandle] = PrivateAttr(default_factory=dict)
 
     @model_validator(mode="before")
     @classmethod
@@ -378,13 +420,30 @@ class CandidateEvidence(BaseModel):
         self._filesystem_cache[name] = handle
         return handle
 
+    async def trace(self, name: str = "trace") -> TraceHandle:
+        """Return a cached trace handle for a named trace descriptor (read lazily on first access)."""
+        cached = self._trace_cache.get(name)
+        if cached is not None:
+            return cached
+        handle = TraceHandle(self.require(name, kind="trace"))
+        self._trace_cache[name] = handle
+        return handle
+
+    async def logs(self, name: str = "logs") -> LogHandle:
+        """Return a cached log-bundle handle for a named logs descriptor."""
+        cached = self._log_cache.get(name)
+        if cached is not None:
+            return cached
+        descriptor = self.require(name, kind="logs")
+        if descriptor.ref is None:
+            raise ValueError(f"logs evidence descriptor {name!r} requires a local ref")
+        handle = LogHandle(_local_filesystem_ref(descriptor.ref))
+        self._log_cache[name] = handle
+        return handle
+
 
 def _local_filesystem_ref(ref: str) -> Path:
-    """Resolve a local filesystem ref to a Path.
-
-    Accepts POSIX paths, ``file://`` URIs, and Windows drive paths (e.g. ``C:\\dir``).
-    Network and cloud URI schemes (http, https, s3, gs, ...) are rejected.
-    """
+    """Resolve a local ref (POSIX path, ``file://`` URI, or Windows drive path) to a Path; reject network/cloud URIs."""
     parsed = urlparse(ref)
     # A single-letter scheme is a Windows drive letter (e.g. "C:\\dir"), not a URI scheme.
     if len(parsed.scheme) == 1 and parsed.scheme.isalpha():
