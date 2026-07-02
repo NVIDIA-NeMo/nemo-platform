@@ -9,10 +9,10 @@ from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _package_version
 
 from nemo_platform.beta.evaluator.agent_stream_translation import (
-    NatSSEFrame,
-    NatStreamTranslation,
-    NatStreamTranslationContext,
-    NatStreamTranslator,
+    AgentStreamTranslation,
+    AgentStreamTranslationContext,
+    AgentStreamTranslator,
+    SseFrame,
 )
 from nemo_platform.beta.evaluator.datasets import DatasetLoadError, load_dataset, load_dataset_as_dicts
 from nemo_platform.beta.evaluator.execution.backends.local.backend import LocalBackend
@@ -47,6 +47,7 @@ from nemo_platform.beta.evaluator.structured_output import (
 )
 from nemo_platform.beta.evaluator.values import (
     Agent,
+    AgentBase,
     BooleanValue,
     CandidateOutput,
     ContinuousScore,
@@ -65,7 +66,9 @@ from nemo_platform.beta.evaluator.values import (
     MetricResult,
     Model,
     ModelRef,
+    GenericAgent,
     NatAgentConfig,
+    NemoAgentToolkitAgent,
     RangeScore,
     ReasoningParams,
     RemoteScore,
@@ -84,6 +87,7 @@ except PackageNotFoundError:
 __all__ = [
     "BLEUMetric",
     "Agent",
+    "AgentBase",
     "EvaluationError",
     "EvaluationPhase",
     "DatasetLoadError",
@@ -119,12 +123,13 @@ __all__ = [
     "LocalSecretResolver",
     "Model",
     "ModelRef",
+    "GenericAgent",
     "ModelResolver",
     "NatAgentConfig",
-    "NatSSEFrame",
-    "NatStreamTranslation",
-    "NatStreamTranslationContext",
-    "NatStreamTranslator",
+    "NemoAgentToolkitAgent",
+    "AgentStreamTranslation",
+    "AgentStreamTranslationContext",
+    "AgentStreamTranslator",
     "NemoAgentToolkitRemoteMetric",
     "NumberCheckMetric",
     "RangeScore",
@@ -135,6 +140,7 @@ __all__ = [
     "RubricScore",
     "SecretRef",
     "SecretResolver",
+    "SseFrame",
     "StringCheckMetric",
     "StructuredOutput",
     "StructuredOutputMode",

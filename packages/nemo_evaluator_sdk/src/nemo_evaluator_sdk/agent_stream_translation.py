@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Typed extension point for translating NAT stream frames into ATIF evidence."""
+"""Typed extension point for translating agent stream frames into ATIF evidence."""
 
 # ruff: noqa: I001 - the vendored SDK mirror uses different import-order settings.
 
@@ -16,8 +16,8 @@ from nemo_evaluator_sdk.values.atif import Trajectory
 from nemo_evaluator_sdk.values.evidence import EvidenceDescriptor
 
 
-class NatSSEFrame(BaseModel):
-    """One parsed line from a NeMo Agent Toolkit streaming response."""
+class SseFrame(BaseModel):
+    """One parsed field from an agent's JSON SSE response."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -26,8 +26,8 @@ class NatSSEFrame(BaseModel):
     raw: str
 
 
-class NatStreamTranslationContext(BaseModel):
-    """Non-secret invocation context supplied to a NAT stream translator."""
+class AgentStreamTranslationContext(BaseModel):
+    """Non-secret invocation context supplied to an agent stream translator."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -44,7 +44,7 @@ class NatStreamTranslationContext(BaseModel):
     stream_error: str | None = None
 
 
-class NatStreamTranslation(BaseModel):
+class AgentStreamTranslation(BaseModel):
     """Canonical ATIF plus optional client-owned derived evidence.
 
     The trajectory stays as the producer-emitted dictionary so fields outside
@@ -65,12 +65,12 @@ class NatStreamTranslation(BaseModel):
 
 
 @runtime_checkable
-class NatStreamTranslator(Protocol):
-    """Translate captured NAT frames into canonical ATIF evidence."""
+class AgentStreamTranslator(Protocol):
+    """Translate captured agent stream frames into canonical ATIF evidence."""
 
     def __call__(
         self,
-        frames: Sequence[NatSSEFrame],
+        frames: Sequence[SseFrame],
         *,
-        context: NatStreamTranslationContext,
-    ) -> NatStreamTranslation: ...
+        context: AgentStreamTranslationContext,
+    ) -> AgentStreamTranslation: ...

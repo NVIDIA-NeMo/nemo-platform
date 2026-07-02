@@ -19,10 +19,17 @@ from nemo_evaluator_sdk.agent_eval.tasks import (
     ViewSignal,
 )
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
-from nemo_evaluator_sdk.agent_inference import AgentInvocationResult, AgentInvocationStatus
+from nemo_evaluator_sdk.agent_inference import AgentInferenceContext, AgentInvocationResult, AgentInvocationStatus
 from nemo_evaluator_sdk.enums import AgentFormat, ModelFormat
 from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
-from nemo_evaluator_sdk.values import Agent, Model, RunConfigOnline, RunConfigOnlineModel
+from nemo_evaluator_sdk.values import (
+    Agent,
+    GenericAgent,
+    Model,
+    NemoAgentToolkitAgent,
+    RunConfigOnline,
+    RunConfigOnlineModel,
+)
 from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
 from nemo_evaluator_sdk.values.results import AggregateScore
 
@@ -435,7 +442,7 @@ async def test_live_agent_generation_preserves_trace_evidence_for_metrics() -> N
             "trajectory": [{"tool": "search", "line": 3}],
         }
 
-    agent = Agent(
+    agent = GenericAgent(
         url="https://agent.test",
         name="target-agent",
         format=AgentFormat.GENERIC,
@@ -480,7 +487,7 @@ async def test_live_agent_typed_partial_invocation_preserves_non_trace_evidence(
             metadata={"stream_error": "auth required"},
         )
 
-    agent = Agent(url="https://agent.test", name="target-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
+    agent = NemoAgentToolkitAgent(url="https://agent.test", name="target-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
     result = await AgentEvaluator(inference_fn=fake_agent_inference).run(
         tasks=[_task(metric)],
         target=agent,
@@ -524,7 +531,7 @@ async def test_live_agent_typed_failed_invocation_retains_output_and_evidence() 
             ),
         )
 
-    agent = Agent(
+    agent = NemoAgentToolkitAgent(
         url="https://agent.test",
         name="target-agent",
         format=AgentFormat.NEMO_AGENT_TOOLKIT,
@@ -546,7 +553,7 @@ async def test_live_agent_typed_failed_invocation_retains_output_and_evidence() 
 
 @pytest.mark.asyncio
 async def test_generation_boundary_names_agent_eval_context() -> None:
-    agent = Agent(url="https://agent.test", name="target-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
+    agent = NemoAgentToolkitAgent(url="https://agent.test", name="target-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
     sample = {
         "output_text": "answer",
         "response": {"choices": [{"message": {"role": "assistant", "content": "answer"}}]},
@@ -583,14 +590,14 @@ async def test_default_agent_invocation_receives_run_context_and_evidence_dir(tm
         response={"choices": [{"message": {"role": "assistant", "content": "answer"}}]},
         output_text="answer",
     )
-    agent = Agent(url="https://agent.test", name="target-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
+    agent = NemoAgentToolkitAgent(url="https://agent.test", name="target-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
     prompt_template = {
         "input_message": "{{ item.prompt }}",
         "conversation_id": ("{{ agent_eval.run_id }}-{{ agent_eval.task_id }}-{{ agent_eval.invocation_id }}"),
     }
 
     with patch(
-        "nemo_evaluator_sdk.agent_eval.evaluator.invoke_agent",
+        "nemo_evaluator_sdk.agent_inference.invoke_agent",
         new_callable=AsyncMock,
         return_value=invocation,
     ) as mock_invoke:
@@ -635,9 +642,9 @@ async def test_default_agent_evidence_dirs_are_confined_and_unique(tmp_path: Pat
         _task(task_id="a/b"),
         _task(task_id="a?b"),
     ]
-    agent = Agent(url="https://agent.test", name="target-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
+    agent = NemoAgentToolkitAgent(url="https://agent.test", name="target-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
 
-    with patch("nemo_evaluator_sdk.agent_eval.evaluator.invoke_agent", side_effect=fake_invoke):
+    with patch("nemo_evaluator_sdk.agent_inference.invoke_agent", side_effect=fake_invoke):
         await AgentEvaluator().run(
             tasks=tasks,
             target=agent,
@@ -660,40 +667,54 @@ async def test_default_agent_evidence_dirs_are_confined_and_unique(tmp_path: Pat
 
 
 @pytest.mark.asyncio
-async def test_default_agent_invocation_forwards_nat_stream_translator(tmp_path: Path) -> None:
+async def test_agent_inference_factory_receives_per_task_context(tmp_path: Path) -> None:
     invocation = AgentInvocationResult(
         status=AgentInvocationStatus.COMPLETED,
         response={"choices": [{"message": {"role": "assistant", "content": "answer"}}]},
         output_text="answer",
     )
-    agent = Agent(url="https://agent.test", name="target-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
+    agent = NemoAgentToolkitAgent(url="https://agent.test", name="target-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
 
-    def translator(frames, *, context):
-        raise AssertionError("invoke_agent is patched in this forwarding test")
+    contexts: list[AgentInferenceContext] = []
 
-    with patch(
-        "nemo_evaluator_sdk.agent_eval.evaluator.invoke_agent",
-        new_callable=AsyncMock,
-        return_value=invocation,
-    ) as mock_invoke:
-        await AgentEvaluator(nat_stream_translator=translator).run(
-            tasks=[_task()],
-            target=agent,
-            config=AgentEvalRunConfig(
-                run_id="run-123",
-                output_dir=tmp_path,
-                params=RunConfigOnline(parallelism=1),
-                write_dashboard=False,
-            ),
-        )
+    async def inference_fn(agent, request, **kwargs):
+        del agent, request, kwargs
+        return invocation
 
-    assert mock_invoke.await_args is not None
-    assert mock_invoke.await_args.kwargs["nat_stream_translator"] is translator
-    assert mock_invoke.await_args.kwargs["invocation_context"] == {
+    def factory(context: AgentInferenceContext):
+        contexts.append(context)
+        return inference_fn
+
+    await AgentEvaluator(agent_inference_fn_factory=factory).run(
+        tasks=[_task()],
+        target=agent,
+        config=AgentEvalRunConfig(
+            run_id="run-123",
+            output_dir=tmp_path,
+            params=RunConfigOnline(parallelism=1),
+            write_dashboard=False,
+        ),
+    )
+
+    assert len(contexts) == 1
+    assert contexts[0].metadata == {
         "run_id": "run-123",
         "task_id": "task-1",
         "invocation_id": "run-123:task-1:target-agent",
     }
+    assert contexts[0].evidence_dir == tmp_path / "evidence" / "000000-task-1"
+
+
+def test_agent_evaluator_rejects_direct_inference_and_factory() -> None:
+    async def inference_fn(agent, request, **kwargs):
+        del agent, request, kwargs
+        return {}
+
+    with pytest.raises(ValueError, match="inference_fn.*agent_inference_fn_factory"):
+        AgentEvaluator(
+            inference_fn=inference_fn,
+            agent_inference_fn_factory=lambda context: inference_fn,
+        )
 
 
 @pytest.mark.asyncio

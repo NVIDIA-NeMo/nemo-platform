@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import os
 from functools import cached_property
-from typing import Literal
+from typing import Any, Annotated, Literal, TypeAlias
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from nemo_platform.beta.evaluator.enums import AgentFormat
 from nemo_platform.beta.evaluator.values.common import SecretRef
@@ -38,85 +38,21 @@ class NatAgentConfig(BaseModel):
         default="$.value",
         description="JSONPath applied to data-channel payloads; the last match is the final output.",
     )
-    capture_evidence: bool = Field(
-        default=False,
-        description="Capture raw and parsed stream evidence for agent-eval trials.",
-    )
 
 
-class Agent(BaseModel):
-    """Agent definition for inference in online evaluation jobs.
-
-    An agent is an endpoint that accepts a request and returns a response,
-    potentially with a trajectory. Two formats are supported:
-
-    - ``generic``: configurable HTTP POST with Jinja-templated body and
-      JSONPath extraction for response and trajectory.
-    - ``nemo_agent_toolkit``: NeMo Agent Toolkit SSE streaming protocol
-      (``/generate/full?filter_steps=none``).
-    """
+class AgentBase(BaseModel):
+    """Fields shared by every inference agent target."""
 
     # TODO: Much of this is duplicated between agent and model. Once we have aligned on model defination.
     # the duplication can be removed by defining EndPoint class and reusing it across both model and agent.
-    #
-    # ``allOf``/``if``/``then`` mirrors the ``_validate_generic_fields`` validator into the OpenAPI
-    # schema: a generic-format agent must carry ``body`` + ``response_path`` and cannot carry ``nat``
-    # (the generic HTTP path needs the former and does not consume the latter), so invalid contracts
-    # fail schema validation rather than only failing at runtime.
-    model_config = ConfigDict(
-        extra="forbid",
-        json_schema_extra={
-            "allOf": [
-                {
-                    "if": {"properties": {"format": {"const": "generic"}}},
-                    "then": {
-                        "required": ["body", "response_path"],
-                        "not": {"required": ["nat"]},
-                    },
-                }
-            ]
-        },
-    )
+    model_config = ConfigDict(extra="forbid")
 
     url: str = Field(description="Base URL of the agent endpoint.")
     name: str = Field(description="Agent name / identifier.")
-    format: Literal[AgentFormat.GENERIC, AgentFormat.NEMO_AGENT_TOOLKIT] = Field(
-        default=AgentFormat.GENERIC, description="Agent format that determines the execution path."
-    )
     api_key_secret: SecretRef | None = Field(
         default=None,
         description="API key secret reference for the agent. Format: workspace/secret_name or secret_name within the job workspace.",
     )
-
-    # Generic agent fields
-    body: dict | None = Field(
-        default=None,
-        description="Jinja template for the request payload. Required for generic agents.",
-    )
-    response_path: str | None = Field(
-        default=None,
-        description="JSONPath expression to extract the response text from the agent's response body. Required for generic agents.",
-    )
-    trajectory_path: str | None = Field(
-        default=None,
-        description="JSONPath expression to extract the trajectory from the agent's response body. Optional.",
-    )
-    nat: NatAgentConfig | None = Field(
-        default=None,
-        description="Optional NAT endpoint and stream configuration; defaults preserve /generate/full behavior.",
-    )
-
-    # TODO: When agent is type NAT, prefill body, response_path and trajectory_path depending on url ends with generate or generate/full.
-    @model_validator(mode="after")
-    def _validate_generic_fields(self) -> Agent:
-        if self.format == AgentFormat.GENERIC:
-            if self.nat is not None:
-                raise ValueError("'nat' is only valid when agent format is 'nemo_agent_toolkit'.")
-            if self.body is None:
-                raise ValueError("'body' is required when agent format is 'generic'.")
-            if self.response_path is None:
-                raise ValueError("'response_path' is required when agent format is 'generic'.")
-        return self
 
     @cached_property
     def api_key_env(self) -> str | None:
@@ -129,9 +65,37 @@ class Agent(BaseModel):
 
     @cached_property
     def api_key(self) -> str | None:
-        if self.api_key_secret:
-            api_key_env = self.api_key_env
-            if api_key_env is None:
-                raise ValueError("api_key_env must be set when api_key_secret is provided")
-            return os.getenv(api_key_env)
-        return None
+        api_key_env = self.api_key_env
+        return os.getenv(api_key_env) if api_key_env is not None else None
+
+
+class GenericAgent(AgentBase):
+    """Configurable HTTP agent with optional JSON SSE response handling."""
+
+    format: Literal[AgentFormat.GENERIC] = AgentFormat.GENERIC
+    body: dict[str, Any] = Field(description="Jinja template for the request payload.")
+    response_path: str = Field(description="JSONPath expression used to extract the response value.")
+    trajectory_path: str | None = Field(
+        default=None,
+        description="Optional JSONPath expression used to extract trajectory data.",
+    )
+    stream: bool = Field(
+        default=False,
+        description="Read JSON SSE data frames instead of a single JSON response body.",
+    )
+
+
+class NemoAgentToolkitAgent(AgentBase):
+    """NeMo Agent Toolkit target normalized to the shared streaming transport."""
+
+    format: Literal[AgentFormat.NEMO_AGENT_TOOLKIT] = AgentFormat.NEMO_AGENT_TOOLKIT
+    nat: NatAgentConfig | None = Field(
+        default=None,
+        description="Optional NAT endpoint and stream configuration; defaults preserve /generate/full behavior.",
+    )
+
+
+Agent: TypeAlias = Annotated[
+    GenericAgent | NemoAgentToolkitAgent,
+    Field(discriminator="format"),
+]

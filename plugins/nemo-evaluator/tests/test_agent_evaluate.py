@@ -44,7 +44,7 @@ from nemo_evaluator_sdk.agent_eval.trials import (
 )
 from nemo_evaluator_sdk.enums import AgentFormat
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
-from nemo_evaluator_sdk.values import Agent, Model, RunConfigOnline, RunConfigOnlineModel, SecretRef
+from nemo_evaluator_sdk.values import Agent, GenericAgent, Model, RunConfigOnline, RunConfigOnlineModel, SecretRef
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform.types.jobs.platform_job_spec import PlatformJobSpec
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
@@ -174,7 +174,7 @@ def test_agent_eval_spec_requires_at_least_one_task() -> None:
 
 
 def _agent() -> Agent:
-    return Agent(
+    return GenericAgent(
         url="http://agent.test",
         name="test-agent",
         format=AgentFormat.GENERIC,

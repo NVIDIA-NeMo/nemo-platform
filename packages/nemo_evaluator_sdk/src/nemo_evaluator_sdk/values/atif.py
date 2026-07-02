@@ -80,7 +80,7 @@ class FinalMetrics(BaseModel):
 
 
 class Agent(BaseModel):
-    """Agent configuration recorded by an ATIF trajectory producer."""
+    """ATIF protocol producer recorded in a trajectory, not an inference target."""
 
     model_config = ConfigDict(extra="ignore")
 

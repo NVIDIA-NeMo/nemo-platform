@@ -43,7 +43,7 @@ from nemo_evaluator_sdk.metrics.protocol import Metric, MetricInput, MetricOutpu
 from nemo_evaluator_sdk.metrics.utils import metric_type_name
 from nemo_evaluator_sdk.resolvers import LocalSecretResolver, _candidate_env_names
 from nemo_evaluator_sdk.structured_output import StructuredOutputMode
-from nemo_evaluator_sdk.values.agents import Agent
+from nemo_evaluator_sdk.values.agents import Agent, GenericAgent
 from nemo_evaluator_sdk.values.common import SecretRef
 from nemo_evaluator_sdk.values.datasets import DatasetRows
 from nemo_evaluator_sdk.values.models import Model, ReasoningParams
@@ -137,7 +137,7 @@ def _make_model(
 
 
 def _make_agent() -> Agent:
-    return Agent(
+    return GenericAgent(
         url="http://agent.test:8080",
         name="test-agent",
         format=AgentFormat.GENERIC,
@@ -728,28 +728,24 @@ class TestGenerateOnlineSampleAgent:
         assert helper.await_args.kwargs["inference_fn"] is invoke_agent
 
     @pytest.mark.asyncio
-    async def test_binds_nat_stream_translator_to_typed_invocation(self, mocker: MockerFixture):
-        from nemo_evaluator_sdk.agent_inference import invoke_agent
-
+    async def test_uses_preconfigured_agent_inference_fn(self, mocker: MockerFixture):
         helper = mocker.patch(
             "nemo_evaluator_sdk.execution.metric_execution.generate_online_sample",
             new_callable=AsyncMock,
             return_value={},
         )
-        translator = mocker.Mock()
+        inference_fn = mocker.AsyncMock()
 
         await generate_online_sample_agent(
             agent=_make_agent(),
             row={"prompt": "hello"},
             index=0,
             prompt_template={"prompt": "{{item.prompt}}"},
-            nat_stream_translator=translator,
+            agent_inference_fn=inference_fn,
         )
 
         assert helper.await_args is not None
-        inference_fn = helper.await_args.kwargs["inference_fn"]
-        assert inference_fn.func is invoke_agent
-        assert inference_fn.keywords["nat_stream_translator"] is translator
+        assert helper.await_args.kwargs["inference_fn"] is inference_fn
 
     @pytest.mark.asyncio
     async def test_delegates_to_unified_online_sample_helper(self, mocker: MockerFixture):

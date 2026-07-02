@@ -26,7 +26,6 @@ from nemo_platform.beta.evaluator.agent_inference import (
     make_agent_inference_request,
     new_agent_inference_client,
 )
-from nemo_platform.beta.evaluator.agent_stream_translation import NatStreamTranslator
 from nemo_platform.beta.evaluator.enums import ModelFormat
 from nemo_platform.beta.evaluator.execution.config import fail_fast_from_params, resolve_params
 from nemo_platform.beta.evaluator.execution.pipeline import (
@@ -53,6 +52,7 @@ from nemo_platform.beta.evaluator.resilience.errors import get_evaluation_error
 from nemo_platform.beta.evaluator.templates import render_request
 from nemo_platform.beta.evaluator.values import (
     Agent,
+    AgentBase,
     EvaluationResult,
     Model,
     RowScore,
@@ -435,7 +435,6 @@ async def generate_online_sample_agent(
     agent_inference_fn: AgentInferenceFn | None = None,
     client: httpx.AsyncClient | None = None,
     default_headers: dict[str, str] | None = None,
-    nat_stream_translator: NatStreamTranslator | None = None,
 ) -> dict[str, Any]:
     """Generate one agent sample through the unified online sample helper."""
     return await generate_online_sample(
@@ -444,14 +443,7 @@ async def generate_online_sample_agent(
         index=index,
         prompt_template=prompt_template,
         params=params,
-        inference_fn=(
-            agent_inference_fn
-            or (
-                partial(invoke_agent, nat_stream_translator=nat_stream_translator)
-                if nat_stream_translator is not None
-                else invoke_agent
-            )
-        ),
+        inference_fn=agent_inference_fn or invoke_agent,
         client=client,
         preprocess_hooks=preprocess_hooks,
         postprocess_hooks=postprocess_hooks,
@@ -614,15 +606,16 @@ class ComputeMetricPipeline:
         # overloaded ``__init__`` pins the valid pairings statically, and this
         # guard makes the Agent-side contract fail loudly at runtime if a
         # caller bypasses those types.
-        if isinstance(self.target, Agent):
+        if isinstance(self.target, AgentBase):
             if self.inference_fn is None:
                 raise TypeError("expected AgentInferenceFn for Agent target")
 
             # Safe by the Agent↔AgentInferenceFn overload (see above).
+            agent_target = cast(Agent, self.target)
             agent_fn = cast(AgentInferenceFn, self.inference_fn)
             agent_params = self.params if isinstance(self.params, RunConfigOnline) else None
             return await generate_online_sample(
-                target=self.target,
+                target=agent_target,
                 row=row,
                 index=index,
                 prompt_template=self.prompt_template,
@@ -861,7 +854,7 @@ async def evaluate_metric(
             preprocess_hooks=merged_preprocess_hooks,
             postprocess_hooks=merged_postprocess_hooks,
         )
-    elif isinstance(target, Agent):
+    elif isinstance(target, AgentBase):
         params = cast(RunConfigOnline, params)
         if prompt_template is None:
             raise ValueError("prompt_template is required for agent online evaluation")

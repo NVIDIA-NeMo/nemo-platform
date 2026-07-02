@@ -1,17 +1,13 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Agent inference module.
+"""Shared HTTP inference for generic and NeMo Agent Toolkit targets.
 
-Provides ``make_agent_inference_request`` — the public entrypoint for running
-inference against agent endpoints. Routes by ``agent.format`` to format-specific
-executors:
-
-- ``generic``: HTTP POST with Jinja-templated body, JSONPath response extraction.
-- ``nemo_agent_toolkit``: SSE streaming via ``/generate/full?filter_steps=none``.
-
-Both executors normalise output into an OpenAI-like dict so existing downstream
-code (``process_output``, hooks, metrics) works unchanged.
+Public agent variants are normalized into one transport description and then
+executed as either a blocking JSON request or a JSON SSE stream. The typed
+``invoke_agent`` path preserves status and evidence, while
+``make_agent_inference_request`` retains the legacy OpenAI-like dictionary
+contract and failure behavior.
 """
 
 # ruff: noqa: I001 - the vendored SDK mirror uses different import-order settings.
@@ -22,10 +18,11 @@ import hashlib
 import json
 import re
 import shutil
-from collections.abc import Awaitable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from enum import Enum
+from functools import partial
 from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol, TypeAlias, cast, runtime_checkable
 from urllib.parse import urlparse
 
 import httpx
@@ -34,18 +31,30 @@ from jsonpath_ng import parse as jsonpath_parse
 from pydantic import BaseModel, ConfigDict, Field
 
 from nemo_platform.beta.evaluator.agent_stream_translation import (
-    NatSSEFrame,
-    NatStreamTranslation,
-    NatStreamTranslationContext,
-    NatStreamTranslator,
+    SseFrame,
+    AgentStreamTranslation,
+    AgentStreamTranslationContext,
+    AgentStreamTranslator,
 )
-from nemo_platform.beta.evaluator.enums import AgentFormat
 from nemo_platform.beta.evaluator.inference import get_logger, requests_log_var
 from nemo_platform.beta.evaluator.resilience.api import run_with_resilience
 from nemo_platform.beta.evaluator.resilience.classifier import endpoint_identity
 from nemo_platform.beta.evaluator.templates import render_template
-from nemo_platform.beta.evaluator.values.agents import Agent, NatAgentConfig
-from nemo_platform.beta.evaluator.values.evidence import CandidateEvidence, EvidenceDescriptor
+from nemo_platform.beta.evaluator.values.agents import Agent, GenericAgent, NatAgentConfig, NemoAgentToolkitAgent
+from nemo_platform.beta.evaluator.values.evidence import (
+    EVIDENCE_FORMAT_ATIF,
+    EVIDENCE_FORMAT_JSON,
+    EVIDENCE_FORMAT_TEXT,
+    EVIDENCE_HTTP_METADATA,
+    EVIDENCE_RAW_STREAM,
+    EVIDENCE_REQUEST_HEADERS,
+    EVIDENCE_REQUEST_PAYLOAD,
+    EVIDENCE_STREAM_EVENTS,
+    EVIDENCE_TRACE,
+    EVIDENCE_TRANSLATION_ERROR,
+    CandidateEvidence,
+    EvidenceDescriptor,
+)
 
 # Default timeout for agent requests (seconds).
 _DEFAULT_TIMEOUT = 120.0
@@ -71,21 +80,45 @@ class AgentInvocationResult(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class AgentInferenceContext(BaseModel):
+    """Per-invocation persistence and identity supplied by an evaluator."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    evidence_dir: Path | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class _HttpAgentInvocation(BaseModel):
+    """Resolved transport request shared by every HTTP agent variant."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    endpoint: str
+    payload: dict[str, Any]
+    query_params: dict[str, str] = Field(default_factory=dict)
+    response_path: str
+    trajectory_path: str | None = None
+    stream: bool = False
+    response_path_field: str = "response_path"
+
+
 # SSE field names look like ``data``, ``intermediate_data``, ``observability_trace``;
 # require the pre-colon token to match before treating a line as a frame, so a bare
 # JSON line (e.g. ``{"value": 1}``) is not mis-split at an interior colon.
-_NAT_CHANNEL_PATTERN = re.compile(r"^[A-Za-z_][\w-]*$")
+_SSE_CHANNEL_PATTERN = re.compile(r"^[A-Za-z_][\w-]*$")
 
 
-class _NatStreamCapture(BaseModel):
+class _StreamCapture(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     raw_lines: list[str] = Field(default_factory=list)
-    frames: list[NatSSEFrame] = Field(default_factory=list)
+    frames: list[SseFrame] = Field(default_factory=list)
     final_payload: Any | None = None
     # Raw extracted response value (any JSON type); preserved so the OpenAI-like
     # response keeps the original type instead of an unconditional ``str()`` cast.
     final_value: Any | None = None
+    final_trajectory: Any | None = None
     output_text: str | None = None
     status_code: int | None = None
     response_headers: dict[str, str] = Field(default_factory=dict)
@@ -109,6 +142,28 @@ class AgentInferenceFn(Protocol):
     ) -> Awaitable[dict | AgentInvocationResult]: ...
 
 
+AgentInferenceFnFactory: TypeAlias = Callable[[AgentInferenceContext], AgentInferenceFn]
+
+
+def make_agent_inference_fn(
+    context: AgentInferenceContext,
+    *,
+    stream_translator: AgentStreamTranslator | None = None,
+    capture_evidence: bool = False,
+) -> AgentInferenceFn:
+    """Bind evaluator-owned context and stream policy to ``invoke_agent``."""
+    return cast(
+        AgentInferenceFn,
+        partial(
+            invoke_agent,
+            evidence_dir=context.evidence_dir,
+            invocation_context=dict(context.metadata),
+            stream_translator=stream_translator,
+            capture_evidence=capture_evidence,
+        ),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Public entrypoint
 # ---------------------------------------------------------------------------
@@ -128,36 +183,23 @@ async def make_agent_inference_request(
     default_headers: dict[str, str] | None = None,
     timeout: float | None = None,
 ) -> dict:
-    """Run inference against an agent endpoint.
-
-    Routes to the appropriate executor based on ``agent.format``:
-
-    - ``generic`` — HTTP POST with templated body and JSONPath extraction.
-    - ``nemo_agent_toolkit`` — SSE streaming via ``/generate/full``.
-
-    Returns a normalised OpenAI-like response dict compatible with
-    ``process_output()`` and downstream hooks.
-    """
-    if agent.format == AgentFormat.NEMO_AGENT_TOOLKIT:
-        return await _make_nat_agent_request(
-            agent,
-            request,
-            client=client,
-            max_retries=max_retries,
-            api_key=api_key,
-            default_headers=default_headers,
-            timeout=timeout,
+    """Run inference and return the legacy OpenAI-like response dictionary."""
+    result = await invoke_agent(
+        agent,
+        request,
+        client=client,
+        max_retries=max_retries,
+        api_key=api_key,
+        default_headers=default_headers,
+        timeout=timeout,
+    )
+    if result.status is not AgentInvocationStatus.COMPLETED:
+        endpoint = result.metadata.get("endpoint", agent.url)
+        raise RuntimeError(
+            f"Agent at {endpoint} completed the SSE stream without producing a final value. "
+            "Verify that the agent endpoint is functioning correctly."
         )
-    else:
-        return await _make_generic_agent_request(
-            agent,
-            request,
-            client=client,
-            max_retries=max_retries,
-            api_key=api_key,
-            default_headers=default_headers,
-            timeout=timeout,
-        )
+    return result.response
 
 
 async def invoke_agent(
@@ -170,48 +212,34 @@ async def invoke_agent(
     default_headers: dict[str, str] | None = None,
     timeout: float | None = None,
     evidence_dir: str | Path | None = None,
-    nat_stream_translator: NatStreamTranslator | None = None,
+    stream_translator: AgentStreamTranslator | None = None,
     invocation_context: Mapping[str, Any] | None = None,
+    capture_evidence: bool = False,
 ) -> AgentInvocationResult:
     """Invoke an agent and preserve structured status and evidence."""
-    if agent.format == AgentFormat.NEMO_AGENT_TOOLKIT:
-        return await _invoke_nat_agent(
-            agent,
-            request,
-            client=client,
-            max_retries=max_retries,
-            api_key=api_key,
-            default_headers=default_headers,
-            timeout=timeout,
-            evidence_dir=evidence_dir,
-            nat_stream_translator=nat_stream_translator,
-            invocation_context=invocation_context,
-        )
-
-    response = await _make_generic_agent_request(
+    invocation = _resolve_http_agent_invocation(agent, request)
+    return await _invoke_http_agent(
         agent,
-        request,
+        invocation,
         client=client,
         max_retries=max_retries,
         api_key=api_key,
         default_headers=default_headers,
         timeout=timeout,
-    )
-    return AgentInvocationResult(
-        status=AgentInvocationStatus.COMPLETED,
-        response=response,
-        output_text=_openai_response_text(response),
+        evidence_dir=evidence_dir,
+        stream_translator=stream_translator,
+        invocation_context=invocation_context,
+        capture_evidence=capture_evidence,
     )
 
 
 # ---------------------------------------------------------------------------
-# Generic executor
+# Compatibility wrappers
 # ---------------------------------------------------------------------------
 
 
-# TODO: There need to be just one agent inference function, NAT is generic agent with certain fields pre-filled.
 async def _make_generic_agent_request(
-    agent: Agent,
+    agent: GenericAgent,
     request: dict,
     *,
     client: httpx.AsyncClient | None = None,
@@ -220,98 +248,19 @@ async def _make_generic_agent_request(
     default_headers: dict[str, str] | None = None,
     timeout: float | None = None,
 ) -> dict:
-    """Execute inference against a generic agent endpoint.
-
-    1. Render ``agent.body`` Jinja template with the request context.
-    2. POST to ``agent.url``.
-    3. Extract response text via ``agent.response_path`` JSONPath.
-    4. Optionally extract trajectory via ``agent.trajectory_path``.
-    """
-    log = get_logger()
-
-    resolved_api_key = api_key or agent.api_key
-    effective_timeout = timeout or _DEFAULT_TIMEOUT
-
-    # Build context from the incoming request for template rendering.
-    context: dict[str, Any] = {**request, "request": request}
-
-    if agent.body is None:
-        raise ValueError("body is required for generic agents")
-    if agent.response_path is None:
-        raise ValueError("response_path is required for generic agents")
-
-    rendered_body = render_template(agent.body, context=context)
-    payload = rendered_body if isinstance(rendered_body, dict) else {"args": rendered_body}
-
-    headers: dict[str, str] = {**(default_headers or {}), "Content-Type": "application/json"}
-    if resolved_api_key:
-        headers["Authorization"] = f"Bearer {resolved_api_key}"
-
-    endpoint_key = endpoint_identity(agent.url, model_id=agent.name, auth_identity=resolved_api_key)
-    max_attempts = max(1, (max_retries if max_retries is not None else 0) + 1)
-
-    log.info("Making generic agent request to %s", agent.url)
-
-    if client:
-        inference_client = client
-    else:
-        inference_client = new_agent_inference_client(timeout=effective_timeout)
-
-    async def _invoke_post() -> dict[str, Any]:
-        response = await inference_client.post(agent.url, json=payload, headers=headers, timeout=effective_timeout)
-        response.raise_for_status()
-        return response.json()
-
-    try:
-        result_data: dict[str, Any] = await run_with_resilience(
-            endpoint_key,
-            _invoke_post,
-            max_attempts=max_attempts,
-        )
-    except Exception:
-        log.exception("Generic agent request to %s failed after %d attempts", agent.url, max_attempts)
-        raise
-    finally:
-        if not client:
-            # Close instantiated client scoped to function
-            await inference_client.aclose()
-
-    # Record request/response for audit
-    requests_log = requests_log_var.get([])
-    requests_log.append({"request": payload, "response": result_data})
-
-    # Extract response text via JSONPath
-    response_text = _extract_jsonpath(result_data, agent.response_path, field_name="response_path")
-
-    # Build normalised response
-    normalised: dict[str, Any] = {
-        "choices": [
-            {
-                "message": {
-                    "role": "assistant",
-                    "content": str(response_text),
-                }
-            }
-        ]
-    }
-
-    # Optionally extract trajectory
-    if agent.trajectory_path:
-        trajectory = _extract_jsonpath(result_data, agent.trajectory_path, field_name="trajectory_path", required=False)
-        if trajectory is not None:
-            normalised["trajectory"] = trajectory
-
-    log.info("Generic agent request to %s completed", agent.url)
-    return normalised
-
-
-# ---------------------------------------------------------------------------
-# NeMo Agent Toolkit SSE executor
-# ---------------------------------------------------------------------------
+    return await make_agent_inference_request(
+        agent,
+        request,
+        client=client,
+        max_retries=max_retries,
+        api_key=api_key,
+        default_headers=default_headers,
+        timeout=timeout,
+    )
 
 
 async def _make_nat_agent_request(
-    agent: Agent,
+    agent: NemoAgentToolkitAgent,
     request: dict,
     *,
     client: httpx.AsyncClient | None = None,
@@ -320,14 +269,7 @@ async def _make_nat_agent_request(
     default_headers: dict[str, str] | None = None,
     timeout: float | None = None,
 ) -> dict:
-    """Execute inference against a NeMo Agent Toolkit endpoint.
-
-    1. Derive ``input_message`` from the request (``messages`` or ``prompt``).
-    2. POST to ``{agent.url}/generate/full?filter_steps=none``.
-    3. Stream SSE response, capture last ``value`` field.
-    4. Return normalised OpenAI-like dict.
-    """
-    result = await _invoke_nat_agent(
+    return await make_agent_inference_request(
         agent,
         request,
         client=client,
@@ -336,18 +278,38 @@ async def _make_nat_agent_request(
         default_headers=default_headers,
         timeout=timeout,
     )
-    if result.status is not AgentInvocationStatus.COMPLETED:
-        endpoint = _nat_endpoint(agent, agent.nat or NatAgentConfig())
-        raise RuntimeError(
-            f"NAT agent at {endpoint} completed the SSE stream without producing a final value. "
-            "Verify that the agent endpoint is functioning correctly."
+
+
+def _resolve_http_agent_invocation(agent: Agent, request: dict[str, Any]) -> _HttpAgentInvocation:
+    """Normalize a public agent target into one HTTP transport request."""
+    if isinstance(agent, GenericAgent):
+        context: dict[str, Any] = {**request, "request": request}
+        rendered_body = render_template(agent.body, context=context)
+        payload = rendered_body if isinstance(rendered_body, dict) else {"args": rendered_body}
+        return _HttpAgentInvocation(
+            endpoint=agent.url,
+            payload=payload,
+            response_path=agent.response_path,
+            trajectory_path=agent.trajectory_path,
+            stream=agent.stream,
         )
-    return result.response
+
+    config = agent.nat or NatAgentConfig()
+    endpoint = _nat_endpoint(agent, config)
+    payload = request if config.request_mode == "passthrough" else {"input_message": _derive_input_message(request)}
+    return _HttpAgentInvocation(
+        endpoint=endpoint,
+        payload=payload,
+        query_params=config.query_params,
+        response_path=config.response_path,
+        stream=True,
+        response_path_field="nat.response_path",
+    )
 
 
-async def _invoke_nat_agent(
+async def _invoke_http_agent(
     agent: Agent,
-    request: dict,
+    invocation: _HttpAgentInvocation,
     *,
     client: httpx.AsyncClient | None = None,
     max_retries: int | None = 3,
@@ -355,33 +317,77 @@ async def _invoke_nat_agent(
     default_headers: dict[str, str] | None = None,
     timeout: float | None = None,
     evidence_dir: str | Path | None = None,
-    nat_stream_translator: NatStreamTranslator | None = None,
+    stream_translator: AgentStreamTranslator | None = None,
     invocation_context: Mapping[str, Any] | None = None,
+    capture_evidence: bool = False,
 ) -> AgentInvocationResult:
     log = get_logger()
-    config = agent.nat or NatAgentConfig()
     resolved_api_key = api_key or agent.api_key
     effective_timeout = timeout or _DEFAULT_TIMEOUT
-    endpoint = _nat_endpoint(agent, config)
-    payload = request if config.request_mode == "passthrough" else {"input_message": _derive_input_message(request)}
 
     headers: dict[str, str] = {**(default_headers or {}), "Content-Type": "application/json"}
     if resolved_api_key:
         headers["Authorization"] = f"Bearer {resolved_api_key}"
 
-    endpoint_key = endpoint_identity(endpoint, model_id=agent.name, auth_identity=resolved_api_key)
+    endpoint_key = endpoint_identity(invocation.endpoint, model_id=agent.name, auth_identity=resolved_api_key)
     max_attempts = max(1, (max_retries if max_retries is not None else 0) + 1)
     inference_client = client or new_agent_inference_client(timeout=effective_timeout)
 
-    async def _invoke_stream() -> _NatStreamCapture:
-        capture = _NatStreamCapture()
+    if not invocation.stream:
+
+        async def _invoke_post() -> dict[str, Any]:
+            response = await inference_client.post(
+                invocation.endpoint,
+                json=invocation.payload,
+                headers=headers,
+                params=invocation.query_params,
+                timeout=effective_timeout,
+            )
+            response.raise_for_status()
+            return response.json()
+
+        log.info("Making agent request to %s", invocation.endpoint)
+        try:
+            result_data = await run_with_resilience(endpoint_key, _invoke_post, max_attempts=max_attempts)
+        except Exception:
+            log.exception("Agent request to %s failed after %d attempts", invocation.endpoint, max_attempts)
+            raise
+        finally:
+            if client is None:
+                await inference_client.aclose()
+
+        response_value = _extract_jsonpath(
+            result_data,
+            invocation.response_path,
+            field_name=invocation.response_path_field,
+        )
+        response = _openai_response(str(response_value))
+        if invocation.trajectory_path:
+            trajectory = _extract_jsonpath(
+                result_data,
+                invocation.trajectory_path,
+                field_name="trajectory_path",
+                required=False,
+            )
+            if trajectory is not None:
+                response["trajectory"] = trajectory
+        requests_log_var.get([]).append({"request": invocation.payload, "response": result_data})
+        log.info("Agent request to %s completed", invocation.endpoint)
+        return AgentInvocationResult(
+            status=AgentInvocationStatus.COMPLETED,
+            response=response,
+            output_text=_openai_response_text(response),
+        )
+
+    async def _invoke_stream() -> _StreamCapture:
+        capture = _StreamCapture()
         try:
             async with inference_client.stream(
                 "POST",
-                endpoint,
-                json=payload,
+                invocation.endpoint,
+                json=invocation.payload,
                 headers=headers,
-                params=config.query_params,
+                params=invocation.query_params,
                 timeout=effective_timeout,
             ) as response:
                 capture.status_code = response.status_code if isinstance(response.status_code, int) else None
@@ -389,7 +395,7 @@ async def _invoke_nat_agent(
                 response.raise_for_status()
                 async for raw_line in response.aiter_lines():
                     capture.raw_lines.append(raw_line)
-                    frame = _parse_nat_frame(raw_line)
+                    frame = _parse_sse_frame(raw_line)
                     if frame is None:
                         continue
                     capture.frames.append(frame)
@@ -398,8 +404,8 @@ async def _invoke_nat_agent(
                     capture.final_payload = frame.payload
                     value = _extract_jsonpath(
                         frame.payload,
-                        config.response_path,
-                        field_name="nat.response_path",
+                        invocation.response_path,
+                        field_name=invocation.response_path_field,
                         required=False,
                     )
                     if value is not None:
@@ -407,6 +413,15 @@ async def _invoke_nat_agent(
                         # Preserve the original type in the response; expose
                         # ``output_text`` only when the value is already textual.
                         capture.output_text = value if isinstance(value, str) else None
+                    if invocation.trajectory_path:
+                        trajectory = _extract_jsonpath(
+                            frame.payload,
+                            invocation.trajectory_path,
+                            field_name="trajectory_path",
+                            required=False,
+                        )
+                        if trajectory is not None:
+                            capture.final_trajectory = trajectory
                     capture.error = capture.error or _stream_error(frame.payload)
         except Exception as exc:
             if not capture.frames:
@@ -414,21 +429,20 @@ async def _invoke_nat_agent(
             capture.error = f"{type(exc).__name__}: {exc}"
         return capture
 
-    log.info("Making NAT agent request to %s", endpoint)
+    log.info("Making streaming agent request to %s", invocation.endpoint)
     try:
         capture = await run_with_resilience(endpoint_key, _invoke_stream, max_attempts=max_attempts)
     except Exception as exc:
-        log.exception("NAT agent request to %s failed after %d attempts", endpoint, max_attempts)
+        log.exception("Streaming agent request to %s failed after %d attempts", invocation.endpoint, max_attempts)
         # When evidence capture or a stream translator is enabled, surface an HTTP
         # failure that occurred before the first stream frame as a PARTIAL result
         # with http_metadata evidence instead of raising, so the trial stays
         # inspectable.
-        # The legacy ``_make_nat_agent_request`` path keeps capture disabled, so it
-        # still raises (it converts non-COMPLETED results into a RuntimeError).
-        http_error = _http_status_error(exc) if config.capture_evidence or nat_stream_translator is not None else None
+        # The legacy dict-returning path keeps capture disabled, so it still raises.
+        http_error = _http_status_error(exc) if capture_evidence or stream_translator is not None else None
         if http_error is None:
             raise
-        capture = _NatStreamCapture(
+        capture = _StreamCapture(
             status_code=http_error.response.status_code,
             response_headers=_string_headers(http_error.response.headers),
             error=f"HTTP {http_error.response.status_code}",
@@ -442,54 +456,56 @@ async def _invoke_nat_agent(
     has_output = capture.final_value is not None and capture.final_value != ""
     status = AgentInvocationStatus.COMPLETED if has_output and capture.error is None else AgentInvocationStatus.PARTIAL
     response = _openai_response(capture.final_value)
+    if capture.final_trajectory is not None:
+        response["trajectory"] = capture.final_trajectory
     evidence = (
-        _nat_evidence(capture, payload, headers)
-        if config.capture_evidence or nat_stream_translator is not None
+        _stream_evidence(capture, invocation.payload, headers)
+        if capture_evidence or stream_translator is not None
         else None
     )
     translation_metadata: dict[str, Any] = {}
-    if nat_stream_translator is not None and capture.frames:
+    if stream_translator is not None and capture.frames:
         values = dict(invocation_context or {})
-        context = NatStreamTranslationContext(
+        context = AgentStreamTranslationContext(
             agent_name=agent.name,
-            endpoint=endpoint,
-            request_payload=payload,
+            endpoint=invocation.endpoint,
+            request_payload=invocation.payload,
             final_payload=capture.final_payload,
             output_text=capture.output_text,
             run_id=_optional_string(values.get("run_id")),
             task_id=_optional_string(values.get("task_id")),
             invocation_id=_optional_string(values.get("invocation_id")),
-            conversation_id=_optional_string(payload.get("conversation_id")),
+            conversation_id=_optional_string(invocation.payload.get("conversation_id")),
             http_status=capture.status_code,
             stream_error=capture.error,
         )
         try:
-            raw_translation = nat_stream_translator(capture.frames, context=context)
-            translation = NatStreamTranslation.model_validate(
+            raw_translation = stream_translator(capture.frames, context=context)
+            translation = AgentStreamTranslation.model_validate(
                 raw_translation.model_dump(mode="python")
-                if isinstance(raw_translation, NatStreamTranslation)
+                if isinstance(raw_translation, AgentStreamTranslation)
                 else raw_translation
             )
             schema_version = translation.trajectory.get("schema_version")
             if schema_version != "ATIF-v1.7":
                 raise ValueError(
-                    f"NAT stream translators must return a canonical ATIF-v1.7 trajectory, got {schema_version}"
+                    f"Agent stream translators must return a canonical ATIF-v1.7 trajectory, got {schema_version}"
                 )
             reserved = {
-                "trace",
-                "raw_stream",
-                "stream_events",
-                "request_payload",
-                "request_headers",
-                "http_metadata",
+                EVIDENCE_TRACE,
+                EVIDENCE_RAW_STREAM,
+                EVIDENCE_STREAM_EVENTS,
+                EVIDENCE_REQUEST_PAYLOAD,
+                EVIDENCE_REQUEST_HEADERS,
+                EVIDENCE_HTTP_METADATA,
             }
             collisions = reserved.intersection(translation.evidence)
             if collisions:
                 raise ValueError(f"translator evidence uses reserved names: {sorted(collisions)}")
             descriptors = dict(evidence.descriptors) if evidence is not None else {}
-            descriptors["trace"] = EvidenceDescriptor(
-                kind="trace",
-                format="atif",
+            descriptors[EVIDENCE_TRACE] = EvidenceDescriptor(
+                kind=EVIDENCE_TRACE,
+                format=EVIDENCE_FORMAT_ATIF,
                 data=translation.trajectory,
             )
             descriptors.update(translation.evidence)
@@ -501,31 +517,31 @@ async def _invoke_nat_agent(
         except Exception as exc:
             status = AgentInvocationStatus.FAILED
             descriptors = dict(evidence.descriptors) if evidence is not None else {}
-            descriptors["translation_error"] = EvidenceDescriptor(
+            descriptors[EVIDENCE_TRANSLATION_ERROR] = EvidenceDescriptor(
                 kind="error",
-                format="json",
+                format=EVIDENCE_FORMAT_JSON,
                 data={"error_type": type(exc).__name__, "error": str(exc)},
             )
             evidence = CandidateEvidence(descriptors=descriptors)
             translation_metadata = {
-                "translation_error": str(exc),
-                "translation_error_type": type(exc).__name__,
+                EVIDENCE_TRANSLATION_ERROR: str(exc),
+                f"{EVIDENCE_TRANSLATION_ERROR}_type": type(exc).__name__,
             }
     if evidence is not None and evidence_dir is not None:
-        evidence = _persist_nat_evidence(evidence, Path(evidence_dir))
+        evidence = _persist_stream_evidence(evidence, Path(evidence_dir))
 
     # Record request/response for audit
     requests_log = requests_log_var.get([])
-    requests_log.append({"request": payload, "response": capture.final_payload})
+    requests_log.append({"request": invocation.payload, "response": capture.final_payload})
 
-    log.info("NAT agent request to %s completed", endpoint)
+    log.info("Streaming agent request to %s completed", invocation.endpoint)
     return AgentInvocationResult(
         status=status,
         response=response,
         output_text=capture.output_text,
         evidence=evidence,
         metadata={
-            "endpoint": endpoint,
+            "endpoint": invocation.endpoint,
             "event_count": len(capture.frames),
             "final_payload": capture.final_payload,
             "http_status": capture.status_code,
@@ -535,13 +551,13 @@ async def _invoke_nat_agent(
     )
 
 
-def _nat_endpoint(agent: Agent, config: NatAgentConfig) -> str:
+def _nat_endpoint(agent: NemoAgentToolkitAgent, config: NatAgentConfig) -> str:
     if urlparse(config.endpoint).scheme:
         return config.endpoint
     return f"{agent.url.rstrip('/')}/{config.endpoint.lstrip('/')}"
 
 
-def _parse_nat_frame(raw_line: str) -> NatSSEFrame | None:
+def _parse_sse_frame(raw_line: str) -> SseFrame | None:
     line = raw_line.strip()
     if not line or line.startswith("event:") or ":" not in line:
         return None
@@ -549,14 +565,14 @@ def _parse_nat_frame(raw_line: str) -> NatSSEFrame | None:
     channel = channel.strip()
     # Only treat the line as a frame when the pre-colon token is a valid SSE
     # field name; otherwise it is a bare payload line (e.g. raw JSON) and is skipped.
-    if not _NAT_CHANNEL_PATTERN.match(channel):
+    if not _SSE_CHANNEL_PATTERN.match(channel):
         return None
     payload_text = payload_text.strip()
     try:
         payload = json.loads(payload_text)
     except json.JSONDecodeError:
         payload = payload_text
-    return NatSSEFrame(channel=channel, payload=payload, raw=raw_line)
+    return SseFrame(channel=channel, payload=payload, raw=raw_line)
 
 
 def _http_status_error(exc: BaseException) -> httpx.HTTPStatusError | None:
@@ -618,24 +634,24 @@ def _redact_headers(headers: dict[str, str]) -> dict[str, str]:
     return {key: "<redacted>" if key.lower() in sensitive else value for key, value in headers.items()}
 
 
-def _nat_evidence(
-    capture: _NatStreamCapture,
+def _stream_evidence(
+    capture: _StreamCapture,
     payload: dict[str, Any],
     headers: dict[str, str],
 ) -> CandidateEvidence:
     raw_stream = "\n".join(capture.raw_lines) + ("\n" if capture.raw_lines else "")
     values: dict[str, tuple[str, str, Any]] = {
-        "raw_stream": ("agent_stream", "text", raw_stream),
-        "stream_events": (
+        EVIDENCE_RAW_STREAM: ("agent_stream", EVIDENCE_FORMAT_TEXT, raw_stream),
+        EVIDENCE_STREAM_EVENTS: (
             "agent_stream_events",
-            "json",
+            EVIDENCE_FORMAT_JSON,
             [frame.model_dump(mode="json") for frame in capture.frames],
         ),
-        "request_payload": ("request_payload", "json", payload),
-        "request_headers": ("request_headers", "json", _redact_headers(headers)),
-        "http_metadata": (
-            "http_metadata",
-            "json",
+        EVIDENCE_REQUEST_PAYLOAD: (EVIDENCE_REQUEST_PAYLOAD, EVIDENCE_FORMAT_JSON, payload),
+        EVIDENCE_REQUEST_HEADERS: (EVIDENCE_REQUEST_HEADERS, EVIDENCE_FORMAT_JSON, _redact_headers(headers)),
+        EVIDENCE_HTTP_METADATA: (
+            EVIDENCE_HTTP_METADATA,
+            EVIDENCE_FORMAT_JSON,
             {
                 "status_code": capture.status_code,
                 "headers": _redact_headers(capture.response_headers),
@@ -656,8 +672,8 @@ def _evidence_filename(
     reserved_filenames: set[str],
     used_filenames: set[str],
 ) -> str:
-    suffix = "txt" if descriptor.format in {"text", "txt"} else "json"
-    canonical_trace = name == "trace" and descriptor.format == "atif"
+    suffix = "txt" if descriptor.format in {EVIDENCE_FORMAT_TEXT, "txt"} else "json"
+    canonical_trace = name == EVIDENCE_TRACE and descriptor.format == EVIDENCE_FORMAT_ATIF
     if canonical_trace:
         filename = "atif_trace.json"
     else:
@@ -678,16 +694,18 @@ def _evidence_filename(
     return filename
 
 
-def _persist_nat_evidence(evidence: CandidateEvidence, root: Path) -> CandidateEvidence:
+def _persist_stream_evidence(evidence: CandidateEvidence, root: Path) -> CandidateEvidence:
     """Replace one SDK-owned invocation directory with file-backed evidence."""
     if root.exists():
         shutil.rmtree(root)
     root.mkdir(parents=True, exist_ok=True)
 
-    canonical_trace = evidence.descriptors.get("trace")
+    canonical_trace = evidence.descriptors.get(EVIDENCE_TRACE)
     reserved_filenames = (
         {"atif_trace.json"}
-        if canonical_trace is not None and canonical_trace.data is not None and canonical_trace.format == "atif"
+        if canonical_trace is not None
+        and canonical_trace.data is not None
+        and canonical_trace.format == EVIDENCE_FORMAT_ATIF
         else set()
     )
     used_filenames: set[str] = set()
@@ -703,7 +721,7 @@ def _persist_nat_evidence(evidence: CandidateEvidence, root: Path) -> CandidateE
             used_filenames=used_filenames,
         )
         path = root / filename
-        if descriptor.format in {"text", "txt"}:
+        if descriptor.format in {EVIDENCE_FORMAT_TEXT, "txt"}:
             path.write_text(str(descriptor.data), encoding="utf-8")
         else:
             path.write_text(

@@ -21,7 +21,24 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, PrivateAttr, model
 
 from nemo_platform.beta.evaluator.values.atif import FinalMetrics, Step, ToolCall, Trajectory
 
-# Well-known evidence keys (mirrored by the ``EVIDENCE_*`` constants in ``agent_eval.trials``).
+# Standard evidence keys shared by inference, persistence, and agent evaluation.
+EVIDENCE_INITIAL_STATE = "initial_state"
+EVIDENCE_TRACE = "trace"
+EVIDENCE_LOGS = "logs"
+EVIDENCE_FINAL_STATE = "final_state"
+EVIDENCE_VERIFIER_LOGS = "verifier_logs"
+EVIDENCE_RAW_STREAM = "raw_stream"
+EVIDENCE_STREAM_EVENTS = "stream_events"
+EVIDENCE_REQUEST_PAYLOAD = "request_payload"
+EVIDENCE_REQUEST_HEADERS = "request_headers"
+EVIDENCE_HTTP_METADATA = "http_metadata"
+EVIDENCE_TRANSLATION_ERROR = "translation_error"
+
+EVIDENCE_FORMAT_ATIF = "atif"
+EVIDENCE_FORMAT_JSON = "json"
+EVIDENCE_FORMAT_TEXT = "text"
+
+# Well-known evidence keys used by the core agent-eval artifact contract.
 WellKnownEvidenceKey = Literal["initial_state", "trace", "logs", "final_state", "verifier_logs"]
 
 

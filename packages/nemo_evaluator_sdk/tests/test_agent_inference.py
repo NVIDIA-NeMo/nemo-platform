@@ -4,6 +4,7 @@
 """Unit tests for Agent value type, AgentFormat enum, and agent_inference module."""
 
 import json
+from collections.abc import Sequence
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -12,20 +13,27 @@ import pytest
 from jsonschema import Draft202012Validator
 from nemo_evaluator_sdk.agent_inference import (
     AgentInferenceFn,
+    AgentInvocationResult,
     AgentInvocationStatus,
     _derive_input_message,
     _extract_jsonpath,
     _make_generic_agent_request,
     _make_nat_agent_request,
-    _parse_nat_frame,
-    _persist_nat_evidence,
+    _parse_sse_frame,
+    _persist_stream_evidence,
     invoke_agent,
     make_agent_inference_request,
 )
 from nemo_evaluator_sdk.enums import AgentFormat
-from nemo_evaluator_sdk.values.agents import Agent, NatAgentConfig
+from nemo_evaluator_sdk.values.agents import (
+    Agent,
+    GenericAgent,
+    NatAgentConfig,
+    NemoAgentToolkitAgent,
+)
 from nemo_evaluator_sdk.values.common import SecretRef
 from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
+from pydantic import TypeAdapter, ValidationError
 
 # ============================================================================
 # AgentFormat enum
@@ -48,16 +56,85 @@ class TestAgentFormat:
 
 
 class TestAgentValidation:
+    def test_nat_config_rejects_runtime_capture_policy(self):
+        with pytest.raises(ValidationError, match="capture_evidence"):
+            NatAgentConfig(capture_evidence=True)  # type: ignore[call-arg]
+
+    def test_agent_is_discriminated_union_of_concrete_variants(self):
+        adapter = TypeAdapter(Agent)
+
+        generic = adapter.validate_python(
+            {
+                "url": "http://agent.test",
+                "name": "generic-agent",
+                "format": "generic",
+                "body": {"prompt": "{{ prompt }}"},
+                "response_path": "$.answer",
+                "stream": True,
+            }
+        )
+        nat = adapter.validate_python(
+            {
+                "url": "http://nat.test",
+                "name": "nat-agent",
+                "format": "nemo_agent_toolkit",
+                "nat": {"endpoint": "/generate/stream"},
+            }
+        )
+
+        assert isinstance(generic, GenericAgent)
+        assert generic.stream is True
+        assert isinstance(nat, NemoAgentToolkitAgent)
+        schema = adapter.json_schema()
+        assert "oneOf" in schema
+        assert schema["discriminator"]["propertyName"] == "format"
+        assert "allOf" not in schema
+
+    def test_agent_union_requires_discriminator_and_rejects_cross_variant_fields(self):
+        adapter = TypeAdapter(Agent)
+
+        with pytest.raises(ValidationError, match="union_tag_not_found"):
+            adapter.validate_python(
+                {
+                    "url": "http://agent.test",
+                    "name": "agent",
+                    "body": {"prompt": "{{ prompt }}"},
+                    "response_path": "$.answer",
+                }
+            )
+
+        with pytest.raises(ValidationError, match="nat"):
+            adapter.validate_python(
+                {
+                    "url": "http://agent.test",
+                    "name": "generic-agent",
+                    "format": "generic",
+                    "body": {"prompt": "{{ prompt }}"},
+                    "response_path": "$.answer",
+                    "nat": {},
+                }
+            )
+
+        with pytest.raises(ValidationError, match="body"):
+            adapter.validate_python(
+                {
+                    "url": "http://nat.test",
+                    "name": "nat-agent",
+                    "format": "nemo_agent_toolkit",
+                    "body": {"prompt": "{{ prompt }}"},
+                }
+            )
+
     def test_generic_agent_requires_body_and_response_path(self):
         """Generic agents must supply body and response_path."""
         with pytest.raises(ValueError, match="body"):
-            Agent(url="http://agent.test", name="test", format=AgentFormat.GENERIC, response_path="$.answer")
+            GenericAgent(url="http://agent.test", name="test", response_path="$.answer")  # type: ignore[call-arg]
 
         with pytest.raises(ValueError, match="response_path"):
-            Agent(url="http://agent.test", name="test", format=AgentFormat.GENERIC, body={"query": "{{ prompt }}"})
+            GenericAgent(url="http://agent.test", name="test", body={"query": "{{ prompt }}"})  # type: ignore[call-arg]
 
     def test_generic_agent_valid(self):
-        agent = Agent(
+        agent = GenericAgent(
             url="http://agent.test",
             name="my-agent",
             format=AgentFormat.GENERIC,
@@ -70,7 +147,7 @@ class TestAgentValidation:
         assert agent.trajectory_path is None
 
     def test_agent_json_schema_rejects_nat_for_generic_agents(self):
-        validator = Draft202012Validator(Agent.model_json_schema())
+        validator = Draft202012Validator(TypeAdapter(Agent).json_schema())
         generic_with_nat = {
             "url": "http://agent.test",
             "name": "generic-agent",
@@ -81,7 +158,7 @@ class TestAgentValidation:
         }
 
         errors = list(validator.iter_errors(generic_with_nat))
-        assert any(error.validator == "not" for error in errors)
+        assert errors
 
         validator.validate(
             {
@@ -93,17 +170,17 @@ class TestAgentValidation:
         )
 
     def test_nat_agent_does_not_require_body_or_response_path(self):
-        agent = Agent(url="http://nat.test", name="nat-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
-        assert agent.body is None
-        assert agent.response_path is None
+        agent = NemoAgentToolkitAgent(url="http://nat.test", name="nat-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
+        assert not hasattr(agent, "body")
+        assert not hasattr(agent, "response_path")
 
     def test_default_format_is_generic(self):
         """Format defaults to 'generic' — so body + response_path are required."""
         with pytest.raises(ValueError, match="body"):
-            Agent(url="http://agent.test", name="test")
+            GenericAgent(url="http://agent.test", name="test")  # type: ignore[call-arg]
 
     def test_api_key_env_sanitisation(self):
-        agent = Agent(
+        agent = NemoAgentToolkitAgent(
             url="http://agent.test",
             name="test",
             format=AgentFormat.NEMO_AGENT_TOOLKIT,
@@ -113,7 +190,7 @@ class TestAgentValidation:
         assert agent.api_key_env == "my_workspace_my_secret_key"
 
     def test_api_key_env_digit_prefix(self):
-        agent = Agent(
+        agent = NemoAgentToolkitAgent(
             url="http://agent.test",
             name="test",
             format=AgentFormat.NEMO_AGENT_TOOLKIT,
@@ -123,7 +200,7 @@ class TestAgentValidation:
 
     def test_api_key_resolved_from_env(self, monkeypatch):
         monkeypatch.setenv("ws_my_key", "sk-test-value")
-        agent = Agent(
+        agent = NemoAgentToolkitAgent(
             url="http://agent.test",
             name="test",
             format=AgentFormat.NEMO_AGENT_TOOLKIT,
@@ -132,16 +209,23 @@ class TestAgentValidation:
         assert agent.api_key == "sk-test-value"
 
     def test_api_key_none_when_no_secret(self):
-        agent = Agent(url="http://nat.test", name="test", format=AgentFormat.NEMO_AGENT_TOOLKIT)
+        agent = NemoAgentToolkitAgent(url="http://nat.test", name="test", format=AgentFormat.NEMO_AGENT_TOOLKIT)
         assert agent.api_key is None
         assert agent.api_key_env is None
 
     def test_extra_fields_forbidden(self):
         with pytest.raises(ValueError):
-            Agent(url="http://agent.test", name="test", format=AgentFormat.NEMO_AGENT_TOOLKIT, extra_field="bad")  # ty: ignore[unknown-argument]
+            NemoAgentToolkitAgent.model_validate(
+                {
+                    "url": "http://agent.test",
+                    "name": "test",
+                    "format": AgentFormat.NEMO_AGENT_TOOLKIT,
+                    "extra_field": "bad",
+                }
+            )
 
     def test_generic_with_trajectory_path(self):
-        agent = Agent(
+        agent = GenericAgent(
             url="http://agent.test",
             name="test",
             format=AgentFormat.GENERIC,
@@ -207,8 +291,8 @@ class TestExtractJsonpath:
 
 class TestMakeAgentInferenceRequestRouting:
     @pytest.mark.asyncio
-    async def test_routes_to_generic_executor(self):
-        agent = Agent(
+    async def test_delegates_generic_agent_to_typed_invocation(self):
+        agent = GenericAgent(
             url="http://agent.test",
             name="test",
             format=AgentFormat.GENERIC,
@@ -216,24 +300,38 @@ class TestMakeAgentInferenceRequestRouting:
             response_path="$.answer",
         )
         with patch(
-            "nemo_evaluator_sdk.agent_inference._make_generic_agent_request",
+            "nemo_evaluator_sdk.agent_inference.invoke_agent",
             new_callable=AsyncMock,
-            return_value={"choices": [{"message": {"role": "assistant", "content": "ok"}}]},
-        ) as mock_generic:
+            return_value=AgentInvocationResult(
+                status=AgentInvocationStatus.COMPLETED,
+                response={"choices": [{"message": {"role": "assistant", "content": "ok"}}]},
+                output_text="ok",
+            ),
+        ) as mock_invoke:
             result = await make_agent_inference_request(agent, {"prompt": "hi"})
-            mock_generic.assert_awaited_once()
+            mock_invoke.assert_awaited_once()
+            await_args = mock_invoke.await_args
+            assert await_args is not None
+            assert await_args.args[:2] == (agent, {"prompt": "hi"})
             assert result["choices"][0]["message"]["content"] == "ok"
 
     @pytest.mark.asyncio
-    async def test_routes_to_nat_executor(self):
-        agent = Agent(url="http://nat.test", name="nat", format=AgentFormat.NEMO_AGENT_TOOLKIT)
+    async def test_delegates_nat_agent_to_typed_invocation(self):
+        agent = NemoAgentToolkitAgent(url="http://nat.test", name="nat", format=AgentFormat.NEMO_AGENT_TOOLKIT)
         with patch(
-            "nemo_evaluator_sdk.agent_inference._make_nat_agent_request",
+            "nemo_evaluator_sdk.agent_inference.invoke_agent",
             new_callable=AsyncMock,
-            return_value={"choices": [{"message": {"role": "assistant", "content": "nat-ok"}}]},
-        ) as mock_nat:
+            return_value=AgentInvocationResult(
+                status=AgentInvocationStatus.COMPLETED,
+                response={"choices": [{"message": {"role": "assistant", "content": "nat-ok"}}]},
+                output_text="nat-ok",
+            ),
+        ) as mock_invoke:
             result = await make_agent_inference_request(agent, {"prompt": "hi"})
-            mock_nat.assert_awaited_once()
+            mock_invoke.assert_awaited_once()
+            await_args = mock_invoke.await_args
+            assert await_args is not None
+            assert await_args.args[:2] == (agent, {"prompt": "hi"})
             assert result["choices"][0]["message"]["content"] == "nat-ok"
 
 
@@ -244,8 +342,96 @@ class TestMakeAgentInferenceRequestRouting:
 
 class TestGenericAgentExecutor:
     @pytest.mark.asyncio
+    async def test_stream_translator_receives_generic_agent_frames_and_context(self):
+        from nemo_evaluator_sdk.agent_stream_translation import (
+            AgentStreamTranslation,
+            AgentStreamTranslationContext,
+            SseFrame,
+        )
+
+        agent = GenericAgent(
+            url="http://agent.test/invoke",
+            name="streaming-generic",
+            body={"question": "{{ prompt }}"},
+            response_path="$.answer",
+            stream=True,
+        )
+        seen_frames: list[Sequence[SseFrame]] = []
+        seen_contexts: list[AgentStreamTranslationContext] = []
+
+        def translate(
+            frames: Sequence[SseFrame],
+            *,
+            context: AgentStreamTranslationContext,
+        ) -> AgentStreamTranslation:
+            seen_frames.append(frames)
+            seen_contexts.append(context)
+            return AgentStreamTranslation(
+                trajectory={
+                    "schema_version": "ATIF-v1.7",
+                    "agent": {"name": context.agent_name, "version": "0"},
+                    "steps": [{"step_id": 1, "source": "agent", "message": context.output_text}],
+                }
+            )
+
+        transport = httpx.MockTransport(
+            lambda request: httpx.Response(
+                200,
+                content='data: {"answer":"final"}\n',
+                headers={"content-type": "text/event-stream"},
+            )
+        )
+        async with httpx.AsyncClient(transport=transport) as client:
+            result = await invoke_agent(
+                agent,
+                {"prompt": "question"},
+                client=client,
+                stream_translator=translate,
+            )
+
+        assert result.status is AgentInvocationStatus.COMPLETED
+        assert result.evidence is not None
+        assert result.evidence.require("trace", kind="trace").format == "atif"
+        assert seen_frames[0][0].payload == {"answer": "final"}
+        assert seen_contexts[0].endpoint == "http://agent.test/invoke"
+
+    @pytest.mark.asyncio
+    async def test_streams_json_sse_and_extracts_last_output_and_trajectory(self):
+        agent = GenericAgent(
+            url="http://agent.test/invoke",
+            name="streaming-generic",
+            body={"question": "{{ prompt }}"},
+            response_path="$.answer",
+            trajectory_path="$.steps",
+            stream=True,
+        )
+        seen_payload: dict[str, object] = {}
+
+        def handle(request: httpx.Request) -> httpx.Response:
+            seen_payload.update(json.loads(request.content))
+            return httpx.Response(
+                200,
+                content=(
+                    'data: {"answer":"draft","steps":[{"id":1}]}\n'
+                    'intermediate_data: {"name":"tool"}\n'
+                    'data: {"answer":"final","steps":[{"id":1},{"id":2}]}\n'
+                    "data: [DONE]\n"
+                ),
+                headers={"content-type": "text/event-stream"},
+            )
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+            result = await invoke_agent(agent, {"prompt": "question"}, client=client)
+
+        assert seen_payload == {"question": "question"}
+        assert result.status is AgentInvocationStatus.COMPLETED
+        assert result.output_text == "final"
+        assert result.response["choices"][0]["message"]["content"] == "final"
+        assert result.response["trajectory"] == [{"id": 1}, {"id": 2}]
+
+    @pytest.mark.asyncio
     async def test_posts_rendered_body_and_extracts_response(self):
-        agent = Agent(
+        agent = GenericAgent(
             url="http://agent.test/invoke",
             name="gen",
             format=AgentFormat.GENERIC,
@@ -266,7 +452,7 @@ class TestGenericAgentExecutor:
 
     @pytest.mark.asyncio
     async def test_extracts_trajectory_when_configured(self):
-        agent = Agent(
+        agent = GenericAgent(
             url="http://agent.test/invoke",
             name="gen",
             format=AgentFormat.GENERIC,
@@ -287,7 +473,7 @@ class TestGenericAgentExecutor:
 
     @pytest.mark.asyncio
     async def test_includes_auth_header_when_api_key_provided(self):
-        agent = Agent(
+        agent = GenericAgent(
             url="http://agent.test/invoke",
             name="gen",
             format=AgentFormat.GENERIC,
@@ -312,7 +498,7 @@ class TestGenericAgentExecutor:
 
     @pytest.mark.asyncio
     async def test_generic_agent_request_includes_default_headers(self):
-        agent = Agent(
+        agent = GenericAgent(
             url="http://agent.test/invoke",
             name="gen",
             format=AgentFormat.GENERIC,
@@ -358,7 +544,7 @@ class TestGenericAgentExecutor:
 
 class TestNATAgentExecutor:
     def test_stream_translation_preserves_complete_original_trajectory(self):
-        from nemo_evaluator_sdk.agent_stream_translation import NatStreamTranslation
+        from nemo_evaluator_sdk.agent_stream_translation import AgentStreamTranslation
 
         raw_trajectory = {
             "schema_version": "ATIF-v1.7",
@@ -392,7 +578,7 @@ class TestNATAgentExecutor:
             "future_root_field": {"kept": True},
         }
 
-        translation = NatStreamTranslation(trajectory=raw_trajectory)
+        translation = AgentStreamTranslation(trajectory=raw_trajectory)
 
         assert translation.trajectory == raw_trajectory
         assert translation.trajectory["future_root_field"] == {"kept": True}
@@ -400,10 +586,10 @@ class TestNATAgentExecutor:
 
     @pytest.mark.asyncio
     async def test_custom_stream_translator_adds_canonical_trace_and_context(self):
-        from nemo_evaluator_sdk.agent_stream_translation import NatStreamTranslation
+        from nemo_evaluator_sdk.agent_stream_translation import AgentStreamTranslation
         from nemo_evaluator_sdk.values.evidence import EvidenceDescriptor
 
-        agent = Agent(
+        agent = NemoAgentToolkitAgent(
             url="http://nat.test",
             name="nat-agent",
             format=AgentFormat.NEMO_AGENT_TOOLKIT,
@@ -412,7 +598,6 @@ class TestNATAgentExecutor:
                 request_mode="passthrough",
                 query_params={},
                 response_path="$.value.value",
-                capture_evidence=True,
             ),
         )
         payload = {
@@ -424,7 +609,7 @@ class TestNATAgentExecutor:
         def translate(frames, *, context):
             seen["frames"] = frames
             seen["context"] = context
-            return NatStreamTranslation(
+            return AgentStreamTranslation(
                 trajectory={
                     "schema_version": "ATIF-v1.7",
                     "session_id": context.conversation_id,
@@ -467,7 +652,7 @@ class TestNATAgentExecutor:
                 agent,
                 payload,
                 client=mock_client,
-                nat_stream_translator=translate,
+                stream_translator=translate,
                 invocation_context={
                     "run_id": "run-1",
                     "task_id": "task-1",
@@ -499,7 +684,7 @@ class TestNATAgentExecutor:
         self,
         tmp_path,
     ):
-        from nemo_evaluator_sdk.agent_stream_translation import NatStreamTranslation
+        from nemo_evaluator_sdk.agent_stream_translation import AgentStreamTranslation
         from nemo_evaluator_sdk.values.evidence import EvidenceDescriptor
 
         evidence_dir = tmp_path / "task-1"
@@ -509,7 +694,7 @@ class TestNATAgentExecutor:
         outside = tmp_path / "keep.txt"
         outside.write_text("keep", encoding="utf-8")
 
-        agent = Agent(
+        agent = NemoAgentToolkitAgent(
             url="http://nat.test",
             name="nat-agent",
             format=AgentFormat.NEMO_AGENT_TOOLKIT,
@@ -518,13 +703,12 @@ class TestNATAgentExecutor:
                 request_mode="passthrough",
                 query_params={},
                 response_path="$.value.value",
-                capture_evidence=True,
             ),
         )
 
         def translate(frames, *, context):
             del frames
-            return NatStreamTranslation(
+            return AgentStreamTranslation(
                 trajectory={
                     "schema_version": "ATIF-v1.7",
                     "session_id": context.conversation_id,
@@ -552,7 +736,7 @@ class TestNATAgentExecutor:
                 agent,
                 {"input_message": "hi", "conversation_id": "conversation-1"},
                 client=client,
-                nat_stream_translator=translate,
+                stream_translator=translate,
                 evidence_dir=evidence_dir,
             )
 
@@ -588,7 +772,7 @@ class TestNATAgentExecutor:
             }
         )
 
-        persisted = _persist_nat_evidence(evidence, evidence_dir)
+        persisted = _persist_stream_evidence(evidence, evidence_dir)
         refs = {
             name: Path(descriptor.ref)
             for name, descriptor in persisted.descriptors.items()
@@ -608,7 +792,7 @@ class TestNATAgentExecutor:
         self,
         tmp_path,
     ):
-        agent = Agent(
+        agent = NemoAgentToolkitAgent(
             url="http://nat.test",
             name="nat-agent",
             format=AgentFormat.NEMO_AGENT_TOOLKIT,
@@ -617,7 +801,6 @@ class TestNATAgentExecutor:
                 request_mode="passthrough",
                 query_params={},
                 response_path="$.value.value",
-                capture_evidence=True,
             ),
         )
 
@@ -637,7 +820,7 @@ class TestNATAgentExecutor:
                 agent,
                 {"input_message": "hi"},
                 client=client,
-                nat_stream_translator=translate,
+                stream_translator=translate,
                 evidence_dir=tmp_path / "task-1",
             )
 
@@ -652,10 +835,10 @@ class TestNATAgentExecutor:
 
     @pytest.mark.asyncio
     async def test_translator_reserved_evidence_collision_fails_invocation(self):
-        from nemo_evaluator_sdk.agent_stream_translation import NatStreamTranslation
+        from nemo_evaluator_sdk.agent_stream_translation import AgentStreamTranslation
         from nemo_evaluator_sdk.values.evidence import EvidenceDescriptor
 
-        agent = Agent(
+        agent = NemoAgentToolkitAgent(
             url="http://nat.test",
             name="nat-agent",
             format=AgentFormat.NEMO_AGENT_TOOLKIT,
@@ -664,13 +847,12 @@ class TestNATAgentExecutor:
                 request_mode="passthrough",
                 query_params={},
                 response_path="$.value.value",
-                capture_evidence=True,
             ),
         )
 
         def translate(frames, *, context):
             del frames
-            return NatStreamTranslation(
+            return AgentStreamTranslation(
                 trajectory={
                     "schema_version": "ATIF-v1.7",
                     "agent": {"name": context.agent_name, "version": "0"},
@@ -696,7 +878,7 @@ class TestNATAgentExecutor:
                 agent,
                 {"input_message": "hi"},
                 client=client,
-                nat_stream_translator=translate,
+                stream_translator=translate,
             )
 
         assert result.status is AgentInvocationStatus.FAILED
@@ -707,9 +889,9 @@ class TestNATAgentExecutor:
 
     @pytest.mark.asyncio
     async def test_translator_must_return_canonical_atif_v1_7(self):
-        from nemo_evaluator_sdk.agent_stream_translation import NatStreamTranslation
+        from nemo_evaluator_sdk.agent_stream_translation import AgentStreamTranslation
 
-        agent = Agent(
+        agent = NemoAgentToolkitAgent(
             url="http://nat.test",
             name="nat-agent",
             format=AgentFormat.NEMO_AGENT_TOOLKIT,
@@ -718,13 +900,12 @@ class TestNATAgentExecutor:
                 request_mode="passthrough",
                 query_params={},
                 response_path="$.value.value",
-                capture_evidence=True,
             ),
         )
 
         def translate(frames, *, context):
             del frames, context
-            return NatStreamTranslation(
+            return AgentStreamTranslation(
                 trajectory={
                     "schema_version": "ATIF-v1.6",
                     "agent": {"name": "nat-agent", "version": "0"},
@@ -744,7 +925,7 @@ class TestNATAgentExecutor:
                 agent,
                 {"input_message": "hi"},
                 client=client,
-                nat_stream_translator=translate,
+                stream_translator=translate,
             )
 
         assert result.status is AgentInvocationStatus.FAILED
@@ -755,9 +936,9 @@ class TestNATAgentExecutor:
 
     @pytest.mark.asyncio
     async def test_translator_runs_for_partial_stream_and_preserves_partial_status(self):
-        from nemo_evaluator_sdk.agent_stream_translation import NatStreamTranslation
+        from nemo_evaluator_sdk.agent_stream_translation import AgentStreamTranslation
 
-        agent = Agent(
+        agent = NemoAgentToolkitAgent(
             url="http://nat.test",
             name="nat-agent",
             format=AgentFormat.NEMO_AGENT_TOOLKIT,
@@ -766,13 +947,12 @@ class TestNATAgentExecutor:
                 request_mode="passthrough",
                 query_params={},
                 response_path="$.value.value",
-                capture_evidence=True,
             ),
         )
 
         def translate(frames, *, context):
             assert len(frames) == 1
-            return NatStreamTranslation(
+            return AgentStreamTranslation(
                 trajectory={
                     "schema_version": "ATIF-v1.7",
                     "agent": {"name": context.agent_name, "version": "0"},
@@ -792,7 +972,7 @@ class TestNATAgentExecutor:
                 agent,
                 {"input_message": "hi"},
                 client=client,
-                nat_stream_translator=translate,
+                stream_translator=translate,
             )
 
         assert result.status is AgentInvocationStatus.PARTIAL
@@ -801,7 +981,7 @@ class TestNATAgentExecutor:
 
     @pytest.mark.asyncio
     async def test_pre_frame_http_error_with_translator_returns_partial_without_capture(self):
-        agent = Agent(
+        agent = NemoAgentToolkitAgent(
             url="http://nat.test",
             name="nat-agent",
             format=AgentFormat.NEMO_AGENT_TOOLKIT,
@@ -810,7 +990,6 @@ class TestNATAgentExecutor:
                 request_mode="passthrough",
                 query_params={},
                 response_path="$.value.value",
-                capture_evidence=False,
             ),
         )
         request = httpx.Request("POST", "http://nat.test/generate/stream")
@@ -830,7 +1009,7 @@ class TestNATAgentExecutor:
                 agent,
                 {"input_message": "hi"},
                 client=AsyncMock(),
-                nat_stream_translator=translator,
+                stream_translator=translator,
             )
 
         assert result.status is AgentInvocationStatus.PARTIAL
@@ -843,7 +1022,7 @@ class TestNATAgentExecutor:
 
     @pytest.mark.asyncio
     async def test_invokes_configured_stream_endpoint_with_passthrough_and_evidence(self):
-        agent = Agent(
+        agent = NemoAgentToolkitAgent(
             url="http://nat.test",
             name="nat-agent",
             format=AgentFormat.NEMO_AGENT_TOOLKIT,
@@ -852,7 +1031,6 @@ class TestNATAgentExecutor:
                 request_mode="passthrough",
                 query_params={},
                 response_path="$.value.value",
-                capture_evidence=True,
             ),
         )
         payload = {
@@ -888,7 +1066,7 @@ class TestNATAgentExecutor:
                 return await fn()
 
             mock_resilience.side_effect = call_fn
-            result = await invoke_agent(agent, payload, client=mock_client)
+            result = await invoke_agent(agent, payload, client=mock_client, capture_evidence=True)
 
         assert result.status is AgentInvocationStatus.COMPLETED
         assert result.output_text == "There are 12 bugs."
@@ -911,7 +1089,7 @@ class TestNATAgentExecutor:
 
     @pytest.mark.asyncio
     async def test_invocation_without_final_value_is_partial_and_keeps_stream_evidence(self):
-        agent = Agent(
+        agent = NemoAgentToolkitAgent(
             url="http://nat.test",
             name="nat-agent",
             format=AgentFormat.NEMO_AGENT_TOOLKIT,
@@ -920,7 +1098,6 @@ class TestNATAgentExecutor:
                 request_mode="passthrough",
                 query_params={},
                 response_path="$.value.value",
-                capture_evidence=True,
             ),
         )
 
@@ -946,7 +1123,12 @@ class TestNATAgentExecutor:
                 return await fn()
 
             mock_resilience.side_effect = call_fn
-            result = await invoke_agent(agent, {"input_message": "hi"}, client=mock_client)
+            result = await invoke_agent(
+                agent,
+                {"input_message": "hi"},
+                client=mock_client,
+                capture_evidence=True,
+            )
 
         assert result.status is AgentInvocationStatus.PARTIAL
         assert result.output_text is None
@@ -957,7 +1139,7 @@ class TestNATAgentExecutor:
 
     @pytest.mark.asyncio
     async def test_streams_sse_and_extracts_final_value(self):
-        agent = Agent(url="http://nat.test", name="nat-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
+        agent = NemoAgentToolkitAgent(url="http://nat.test", name="nat-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
 
         # Simulate SSE lines
         sse_lines = [
@@ -1010,7 +1192,7 @@ class TestNATAgentExecutor:
 
     @pytest.mark.asyncio
     async def test_raises_when_no_value_in_stream(self):
-        agent = Agent(url="http://nat.test", name="nat-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
+        agent = NemoAgentToolkitAgent(url="http://nat.test", name="nat-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
 
         sse_lines = [
             'data: {"step": "thinking", "content": "processing"}',
@@ -1052,7 +1234,7 @@ class TestNATAgentExecutor:
     @pytest.mark.asyncio
     async def test_uses_last_value_from_stream(self):
         """When multiple chunks have 'value', the last one wins."""
-        agent = Agent(url="http://nat.test", name="nat-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
+        agent = NemoAgentToolkitAgent(url="http://nat.test", name="nat-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
 
         sse_lines = [
             'data: {"value": "partial answer"}',
@@ -1092,7 +1274,7 @@ class TestNATAgentExecutor:
 
     @pytest.mark.asyncio
     async def test_nat_agent_request_includes_default_headers(self):
-        agent = Agent(url="http://nat.test", name="nat-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
+        agent = NemoAgentToolkitAgent(url="http://nat.test", name="nat-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
 
         async def fake_aiter_lines():
             yield 'data: {"value": "ok"}'
@@ -1141,7 +1323,7 @@ class TestNATAgentExecutor:
     )
     async def test_preserves_non_string_value_type(self, data_line, expected_content):
         """Default ``$.value`` path keeps the raw value type in OpenAI content."""
-        agent = Agent(url="http://nat.test", name="nat-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
+        agent = NemoAgentToolkitAgent(url="http://nat.test", name="nat-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
 
         async def fake_aiter_lines():
             yield data_line
@@ -1176,7 +1358,7 @@ class TestNATAgentExecutor:
     @pytest.mark.asyncio
     async def test_empty_string_final_value_is_partial(self):
         """An extracted-but-empty value stays PARTIAL while evidence is captured."""
-        agent = Agent(
+        agent = NemoAgentToolkitAgent(
             url="http://nat.test",
             name="nat-agent",
             format=AgentFormat.NEMO_AGENT_TOOLKIT,
@@ -1185,7 +1367,6 @@ class TestNATAgentExecutor:
                 request_mode="passthrough",
                 query_params={},
                 response_path="$.value.value",
-                capture_evidence=True,
             ),
         )
 
@@ -1211,7 +1392,12 @@ class TestNATAgentExecutor:
                 return await fn()
 
             mock_resilience.side_effect = call_fn
-            result = await invoke_agent(agent, {"input_message": "hi"}, client=mock_client)
+            result = await invoke_agent(
+                agent,
+                {"input_message": "hi"},
+                client=mock_client,
+                capture_evidence=True,
+            )
 
         assert result.status is AgentInvocationStatus.PARTIAL
         assert result.metadata["final_payload"] == {"value": {"value": ""}}
@@ -1221,7 +1407,7 @@ class TestNATAgentExecutor:
     @pytest.mark.asyncio
     async def test_pre_frame_http_error_with_evidence_returns_partial(self):
         """With evidence capture, an HTTP error before any frame is a PARTIAL result."""
-        agent = Agent(
+        agent = NemoAgentToolkitAgent(
             url="http://nat.test",
             name="nat-agent",
             format=AgentFormat.NEMO_AGENT_TOOLKIT,
@@ -1230,7 +1416,6 @@ class TestNATAgentExecutor:
                 request_mode="passthrough",
                 query_params={},
                 response_path="$.value.value",
-                capture_evidence=True,
             ),
         )
         request = httpx.Request("POST", "http://nat.test/generate/stream")
@@ -1242,7 +1427,12 @@ class TestNATAgentExecutor:
             patch("nemo_evaluator_sdk.agent_inference.run_with_resilience", side_effect=http_error),
             patch("nemo_evaluator_sdk.agent_inference.get_logger", return_value=MagicMock()),
         ):
-            result = await invoke_agent(agent, {"input_message": "hi"}, client=mock_client)
+            result = await invoke_agent(
+                agent,
+                {"input_message": "hi"},
+                client=mock_client,
+                capture_evidence=True,
+            )
 
         assert result.status is AgentInvocationStatus.PARTIAL
         assert result.metadata["http_status"] == 401
@@ -1255,7 +1445,7 @@ class TestNATAgentExecutor:
     @pytest.mark.asyncio
     async def test_pre_frame_http_error_without_evidence_raises(self):
         """The legacy path (no evidence capture) still raises on HTTP failure."""
-        agent = Agent(url="http://nat.test", name="nat-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
+        agent = NemoAgentToolkitAgent(url="http://nat.test", name="nat-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
         request = httpx.Request("POST", "http://nat.test/generate/full")
         response = httpx.Response(401, request=request)
         http_error = httpx.HTTPStatusError("unauthorized", request=request, response=response)
@@ -1287,7 +1477,7 @@ class TestParseNatFrame:
         ],
     )
     def test_parses_valid_channel_lines(self, channel, line):
-        frame = _parse_nat_frame(line)
+        frame = _parse_sse_frame(line)
         assert frame is not None
         assert frame.channel == channel
 
@@ -1301,7 +1491,7 @@ class TestParseNatFrame:
         ],
     )
     def test_skips_non_frame_lines(self, line):
-        assert _parse_nat_frame(line) is None
+        assert _parse_sse_frame(line) is None
 
 
 # ============================================================================
@@ -1310,13 +1500,85 @@ class TestParseNatFrame:
 
 
 class TestAgentInferenceFnProtocol:
+    def test_evidence_constants_have_stable_wire_values(self):
+        from nemo_evaluator_sdk.values.evidence import (
+            EVIDENCE_FORMAT_ATIF,
+            EVIDENCE_FORMAT_JSON,
+            EVIDENCE_FORMAT_TEXT,
+            EVIDENCE_HTTP_METADATA,
+            EVIDENCE_RAW_STREAM,
+            EVIDENCE_REQUEST_HEADERS,
+            EVIDENCE_REQUEST_PAYLOAD,
+            EVIDENCE_STREAM_EVENTS,
+            EVIDENCE_TRACE,
+            EVIDENCE_TRANSLATION_ERROR,
+        )
+
+        assert {
+            EVIDENCE_TRACE,
+            EVIDENCE_RAW_STREAM,
+            EVIDENCE_STREAM_EVENTS,
+            EVIDENCE_REQUEST_PAYLOAD,
+            EVIDENCE_REQUEST_HEADERS,
+            EVIDENCE_HTTP_METADATA,
+            EVIDENCE_TRANSLATION_ERROR,
+        } == {
+            "trace",
+            "raw_stream",
+            "stream_events",
+            "request_payload",
+            "request_headers",
+            "http_metadata",
+            "translation_error",
+        }
+        assert (EVIDENCE_FORMAT_ATIF, EVIDENCE_FORMAT_JSON, EVIDENCE_FORMAT_TEXT) == ("atif", "json", "text")
+
+    @pytest.mark.asyncio
+    async def test_factory_binds_context_translator_and_capture_policy(self, tmp_path: Path):
+        from nemo_evaluator_sdk.agent_inference import AgentInferenceContext, make_agent_inference_fn
+
+        context = AgentInferenceContext(
+            evidence_dir=tmp_path / "evidence",
+            metadata={"run_id": "run-1", "task_id": "task-1"},
+        )
+        translator = MagicMock()
+        agent = NemoAgentToolkitAgent(url="http://nat.test", name="nat-agent")
+        typed_result = AgentInvocationResult(
+            status=AgentInvocationStatus.COMPLETED,
+            response={"choices": [{"message": {"role": "assistant", "content": "answer"}}]},
+            output_text="answer",
+        )
+
+        with patch(
+            "nemo_evaluator_sdk.agent_inference.invoke_agent",
+            new_callable=AsyncMock,
+            return_value=typed_result,
+        ) as mock_invoke:
+            inference_fn = make_agent_inference_fn(
+                context,
+                stream_translator=translator,
+                capture_evidence=True,
+            )
+            result = await inference_fn(agent, {"prompt": "hi"}, max_retries=2)
+
+        assert result is typed_result
+        await_args = mock_invoke.await_args
+        assert await_args is not None
+        assert await_args.kwargs["evidence_dir"] == tmp_path / "evidence"
+        assert await_args.kwargs["invocation_context"] == {
+            "run_id": "run-1",
+            "task_id": "task-1",
+        }
+        assert await_args.kwargs["stream_translator"] is translator
+        assert await_args.kwargs["capture_evidence"] is True
+
     def test_stream_translation_types_are_exported_from_sdk_root(self):
         import nemo_evaluator_sdk as sdk
 
-        assert sdk.NatSSEFrame.__name__ == "NatSSEFrame"
-        assert sdk.NatStreamTranslation.__name__ == "NatStreamTranslation"
-        assert sdk.NatStreamTranslationContext.__name__ == "NatStreamTranslationContext"
-        assert sdk.NatStreamTranslator.__name__ == "NatStreamTranslator"
+        assert sdk.SseFrame.__name__ == "SseFrame"
+        assert sdk.AgentStreamTranslation.__name__ == "AgentStreamTranslation"
+        assert sdk.AgentStreamTranslationContext.__name__ == "AgentStreamTranslationContext"
+        assert sdk.AgentStreamTranslator.__name__ == "AgentStreamTranslator"
 
     def test_make_agent_inference_request_matches_protocol(self):
         """make_agent_inference_request should satisfy AgentInferenceFn protocol."""

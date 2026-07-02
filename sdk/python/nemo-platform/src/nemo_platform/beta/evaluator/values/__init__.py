@@ -5,7 +5,13 @@
 
 # ruff: noqa: I001 - the vendored SDK mirror uses different import-order settings.
 
-from nemo_platform.beta.evaluator.values.agents import Agent, NatAgentConfig
+from nemo_platform.beta.evaluator.values.agents import (
+    Agent,
+    AgentBase,
+    GenericAgent,
+    NatAgentConfig,
+    NemoAgentToolkitAgent,
+)
 from nemo_platform.beta.evaluator.values.atif import (
     FinalMetrics,
     Metrics,
@@ -111,7 +117,10 @@ from nemo_platform.beta.evaluator.values.scores import (
 
 __all__ = [
     "Agent",
+    "AgentBase",
+    "GenericAgent",
     "NatAgentConfig",
+    "NemoAgentToolkitAgent",
     "AggregateFieldName",
     "AggregatedMetricResult",
     "AggregateRangeScore",
