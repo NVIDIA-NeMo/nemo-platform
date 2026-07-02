@@ -16,7 +16,6 @@ from typing import Any, Protocol, runtime_checkable
 
 from fsspec.callbacks import Callback
 from fsspec.core import has_magic
-from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.errors import NemoHTTPError
 from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 from nemo_platform_plugin.files.types import (
@@ -199,7 +198,6 @@ class FilesetsSubResource:
         purpose: FilesetPurpose | None = None,
         metadata: FilesetMetadata | None = None,
         custom_fields: dict[str, Any] | None = None,
-        timeout: float | None = None,
     ) -> FilesetOutput:
         # Only include explicitly provided fields so exclude_unset works correctly
         kwargs = {
@@ -303,7 +301,6 @@ class AsyncFilesetsSubResource:
         purpose: FilesetPurpose | None = None,
         metadata: FilesetMetadata | None = None,
         custom_fields: dict[str, Any] | None = None,
-        timeout: float | None = None,
     ) -> FilesetOutput:
         kwargs = {
             k: v
@@ -352,17 +349,12 @@ class FilesResource:
     """
 
     def __init__(self, client) -> None:
-        # Keep the original client for fsspec, which needs NeMoPlatform → AsyncNemoClient
-        # conversion with transport detection (see FilesetFileSystem._client_from_sdk).
+        # _raw_client kept for otlp delegation (Stainless SDK), removed by AIRCORE-840.
         self._raw_client = client
-        if isinstance(client, FilesClient):
-            self._client = client
-        elif isinstance(client, NemoClient):
-            self._client = FilesClient.from_client(client)
-        else:
-            from nemo_platform_plugin.client.adapter import client_from_platform
 
-            self._client = client_from_platform(client, FilesClient)
+        from nemo_platform_plugin.client.adapter import client_from_platform
+
+        self._client = client_from_platform(client, FilesClient)
 
     @cached_property
     def filesets(self) -> FilesetsSubResource:
@@ -889,15 +881,12 @@ class AsyncFilesResource:
     """
 
     def __init__(self, client) -> None:
+        # _raw_client kept for otlp delegation (Stainless SDK), removed by AIRCORE-840.
         self._raw_client = client
-        if isinstance(client, AsyncFilesClient):
-            self._client = client
-        elif isinstance(client, AsyncNemoClient):
-            self._client = AsyncFilesClient.from_client(client)
-        else:
-            from nemo_platform_plugin.client.adapter import client_from_platform
 
-            self._client = client_from_platform(client, AsyncFilesClient)
+        from nemo_platform_plugin.client.adapter import client_from_platform
+
+        self._client = client_from_platform(client, AsyncFilesClient)
 
     @cached_property
     def filesets(self) -> AsyncFilesetsSubResource:

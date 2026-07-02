@@ -8,7 +8,7 @@ These tests verify:
 - sdk.files.upload_content() - Upload in-memory data
 - sdk.files.download() - Download files/directories
 - sdk.files.download_content() - Download file content to memory
-- sdk.files.list() - List files with FilesetFile objects
+- sdk.files.list() - List files with FilesetFileOutput objects
 - sdk.files.delete() - Delete files
 - fileset_auto_create parameter for upload operations
 
@@ -25,15 +25,14 @@ from pathlib import Path
 import pytest
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.errors import NotFoundError, PermissionDeniedError
-from nemo_platform.types.files import FilesetFile
-from nemo_platform.types.files.fileset import Fileset
+from nemo_platform_plugin.files.types import FilesetFileOutput, FilesetOutput
 from nmp.core.files.testing.utils import create_fileset, test_fileset_name
 
 
 class TestFilesUpload:
     """Tests for sdk.files.upload()."""
 
-    def test_upload_single_file(self, sdk: NeMoPlatform, fileset: Fileset, tmp_path: Path):
+    def test_upload_single_file(self, sdk: NeMoPlatform, fileset: FilesetOutput, tmp_path: Path):
         """Test uploading a single file."""
         local_file = tmp_path / "upload.txt"
         local_file.write_text("Hello, World!")
@@ -51,7 +50,7 @@ class TestFilesUpload:
         assert files.data[0].path == "test.txt"
         assert files.data[0].size == len("Hello, World!")
 
-    def test_upload_directory_contents_with_trailing_slash(self, sdk: NeMoPlatform, fileset: Fileset):
+    def test_upload_directory_contents_with_trailing_slash(self, sdk: NeMoPlatform, fileset: FilesetOutput):
         """Test uploading directory contents (trailing slash on local_path).
 
         With trailing slash: `upload("mydir/")` copies the CONTENTS of mydir.
@@ -82,7 +81,7 @@ class TestFilesUpload:
             # Should NOT have mydir/ prefix
             assert not any(p.startswith("mydir/") for p in paths), f"Files should not have 'mydir/' prefix: {paths}"
 
-    def test_upload_directory_itself_without_trailing_slash(self, sdk: NeMoPlatform, fileset: Fileset):
+    def test_upload_directory_itself_without_trailing_slash(self, sdk: NeMoPlatform, fileset: FilesetOutput):
         """Test uploading directory itself (no trailing slash on local_path).
 
         Without trailing slash: `upload("mydir")` copies the directory ITSELF.
@@ -113,7 +112,7 @@ class TestFilesUpload:
             # Should NOT have files at root
             assert "file1.txt" not in paths, f"'file1.txt' should not be at root: {paths}"
 
-    def test_upload_to_subdirectory(self, sdk: NeMoPlatform, fileset: Fileset, tmp_path: Path):
+    def test_upload_to_subdirectory(self, sdk: NeMoPlatform, fileset: FilesetOutput, tmp_path: Path):
         """Test uploading a file to a subdirectory."""
         local_file = tmp_path / "nested.txt"
         local_file.write_text("nested content")
@@ -133,7 +132,7 @@ class TestFilesUpload:
 class TestFilesDownload:
     """Tests for sdk.files.download()."""
 
-    def test_download_single_file(self, sdk: NeMoPlatform, fileset: Fileset):
+    def test_download_single_file(self, sdk: NeMoPlatform, fileset: FilesetOutput):
         """Test downloading a single file."""
         # First upload a file
         test_content = b"Download test content"
@@ -155,7 +154,7 @@ class TestFilesDownload:
             downloaded = Path(tmpdir, "downloaded.txt").read_bytes()
             assert downloaded == test_content
 
-    def test_download_directory(self, sdk: NeMoPlatform, fileset: Fileset):
+    def test_download_directory(self, sdk: NeMoPlatform, fileset: FilesetOutput):
         """Test downloading an entire directory."""
         # Upload multiple files
         sdk.files.upload_content(
@@ -190,7 +189,7 @@ class TestFilesDownload:
             assert Path(tmpdir, "file2.txt").read_bytes() == b"content2"
             assert Path(tmpdir, "nested/file3.txt").read_bytes() == b"content3"
 
-    def test_download_entire_fileset(self, sdk: NeMoPlatform, fileset: Fileset):
+    def test_download_entire_fileset(self, sdk: NeMoPlatform, fileset: FilesetOutput):
         """Test downloading all files from a fileset using default remote_path.
 
         Downloading a fileset copies contents directly. Users who want a subfolder
@@ -228,13 +227,13 @@ class TestFilesDownload:
 class TestFilesList:
     """Tests for sdk.files.list()."""
 
-    def test_list_empty_fileset(self, sdk: NeMoPlatform, fileset: Fileset):
+    def test_list_empty_fileset(self, sdk: NeMoPlatform, fileset: FilesetOutput):
         """Test listing files in an empty fileset."""
         files = sdk.files.list(fileset=fileset.name, workspace=fileset.workspace)
         assert files.data == []
 
-    def test_list_returns_fileset_file_objects(self, sdk: NeMoPlatform, fileset: Fileset):
-        """Test that list returns FilesetFile objects with correct attributes."""
+    def test_list_returns_fileset_file_objects(self, sdk: NeMoPlatform, fileset: FilesetOutput):
+        """Test that list returns FilesetFileOutput objects with correct attributes."""
         content = b"test content for size check"
         sdk.files.upload_content(
             content=content,
@@ -252,7 +251,7 @@ class TestFilesList:
         assert file.file_ref == f"{fileset.workspace}/{fileset.name}#test.txt"
         assert file.file_url == f"/apis/files/v2/workspaces/{fileset.workspace}/filesets/{fileset.name}/-/test.txt"
 
-    def test_list_multiple_files(self, sdk: NeMoPlatform, fileset: Fileset):
+    def test_list_multiple_files(self, sdk: NeMoPlatform, fileset: FilesetOutput):
         """Test listing multiple files."""
         sdk.files.upload_content(
             content=b"a",
@@ -284,7 +283,7 @@ class TestFilesList:
         assert sizes["file2.txt"] == 2
         assert sizes["dir/file3.txt"] == 3
 
-    def test_list_subdirectory(self, sdk: NeMoPlatform, fileset: Fileset):
+    def test_list_subdirectory(self, sdk: NeMoPlatform, fileset: FilesetOutput):
         """Test listing files in a subdirectory."""
         sdk.files.upload_content(
             content=b"root",
@@ -321,7 +320,7 @@ class TestFilesList:
         paths = {f.path for f in files.data}
         assert paths == {"data/file1.txt", "data/file2.txt"}
 
-    def test_list_with_path_format(self, sdk: NeMoPlatform, fileset: Fileset):
+    def test_list_with_path_format(self, sdk: NeMoPlatform, fileset: FilesetOutput):
         """Test listing using full path format instead of explicit fileset param."""
         sdk.files.upload_content(
             content=b"content",
@@ -338,7 +337,7 @@ class TestFilesList:
         assert len(files.data) == 1
         assert files.data[0].path == "test.txt"
 
-    def test_list_with_glob_pattern(self, sdk: NeMoPlatform, fileset: Fileset):
+    def test_list_with_glob_pattern(self, sdk: NeMoPlatform, fileset: FilesetOutput):
         """Test listing files matching a glob pattern."""
         sdk.files.upload_content(
             content=b"json",
@@ -375,7 +374,7 @@ class TestFilesList:
         paths = {f.path for f in files.data}
         assert paths == {"data.json", "config.json"}
 
-    def test_list_with_glob_pattern_in_subdirectory(self, sdk: NeMoPlatform, fileset: Fileset):
+    def test_list_with_glob_pattern_in_subdirectory(self, sdk: NeMoPlatform, fileset: FilesetOutput):
         """Test listing files matching a glob pattern in a subdirectory."""
         sdk.files.upload_content(
             content=b"train",
@@ -416,7 +415,7 @@ class TestFilesList:
 class TestFilesGlobDownload:
     """Tests for sdk.files.download() with glob patterns."""
 
-    def test_download_with_glob_pattern(self, sdk: NeMoPlatform, fileset: Fileset, tmp_path):
+    def test_download_with_glob_pattern(self, sdk: NeMoPlatform, fileset: FilesetOutput, tmp_path):
         """Test downloading files matching a glob pattern."""
         sdk.files.upload_content(
             content=b"json content",
@@ -454,7 +453,7 @@ class TestFilesGlobDownload:
         assert (tmp_path / "data.json").read_bytes() == b"json content"
         assert (tmp_path / "config.json").read_bytes() == b"config content"
 
-    def test_download_with_glob_pattern_preserves_structure(self, sdk: NeMoPlatform, fileset: Fileset, tmp_path):
+    def test_download_with_glob_pattern_preserves_structure(self, sdk: NeMoPlatform, fileset: FilesetOutput, tmp_path):
         """Test that downloading with glob pattern preserves directory structure."""
         sdk.files.upload_content(
             content=b"train data",
@@ -496,7 +495,7 @@ class TestFilesGlobDownload:
 class TestFilesDelete:
     """Tests for sdk.files.delete()."""
 
-    def test_delete_single_file(self, sdk: NeMoPlatform, fileset: Fileset):
+    def test_delete_single_file(self, sdk: NeMoPlatform, fileset: FilesetOutput):
         """Test deleting a single file."""
         sdk.files.upload_content(
             content=b"delete me",
@@ -520,7 +519,7 @@ class TestFilesDelete:
         files = sdk.files.list(fileset=fileset.name, workspace=fileset.workspace)
         assert len(files.data) == 0
 
-    def test_delete_nested_file(self, sdk: NeMoPlatform, fileset: Fileset):
+    def test_delete_nested_file(self, sdk: NeMoPlatform, fileset: FilesetOutput):
         """Test deleting a file in a nested directory."""
         sdk.files.upload_content(
             content=b"nested",
@@ -538,7 +537,7 @@ class TestFilesDelete:
         files = sdk.files.list(fileset=fileset.name, workspace=fileset.workspace)
         assert len(files.data) == 0
 
-    def test_delete_with_path_format(self, sdk: NeMoPlatform, fileset: Fileset):
+    def test_delete_with_path_format(self, sdk: NeMoPlatform, fileset: FilesetOutput):
         """Test deleting using full path format."""
         sdk.files.upload_content(
             content=b"content",
@@ -559,7 +558,7 @@ class TestFilesDelete:
 class TestFilesRoundTrip:
     """End-to-end tests combining multiple operations."""
 
-    def test_upload_list_download_delete_cycle(self, sdk: NeMoPlatform, fileset: Fileset):
+    def test_upload_list_download_delete_cycle(self, sdk: NeMoPlatform, fileset: FilesetOutput):
         """Test a complete cycle of file operations."""
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create local files
@@ -673,7 +672,7 @@ class TestFilesUploadContent:
             pytest.param(_chunk_generator(), b"chunk1chunk2chunk3", id="iterator"),
         ],
     )
-    def test_upload_content(self, sdk: NeMoPlatform, fileset: Fileset, content, expected_bytes: bytes):
+    def test_upload_content(self, sdk: NeMoPlatform, fileset: FilesetOutput, content, expected_bytes: bytes):
         """Test uploading different content types."""
         result = sdk.files.upload_content(
             content=content,
@@ -682,7 +681,7 @@ class TestFilesUploadContent:
             workspace=fileset.workspace,
         )
 
-        assert hasattr(result, "name") and hasattr(result, "workspace")
+        assert isinstance(result, FilesetOutput)
         assert result.name == fileset.name
         assert result.workspace == fileset.workspace
 
@@ -693,7 +692,7 @@ class TestFilesUploadContent:
         )
         assert downloaded == expected_bytes
 
-    def test_upload_content_to_subdirectory(self, sdk: NeMoPlatform, fileset: Fileset):
+    def test_upload_content_to_subdirectory(self, sdk: NeMoPlatform, fileset: FilesetOutput):
         """Test uploading data to a nested path."""
         sdk.files.upload_content(
             content=b"nested content",
@@ -726,7 +725,7 @@ class TestFilesDownloadContent:
             ),
         ],
     )
-    def test_download_content(self, sdk: NeMoPlatform, fileset: Fileset, upload_content, expected_bytes: bytes):
+    def test_download_content(self, sdk: NeMoPlatform, fileset: FilesetOutput, upload_content, expected_bytes: bytes):
         """Test download_content returns correct bytes for different content types."""
         sdk.files.upload_content(
             content=upload_content,
@@ -744,7 +743,7 @@ class TestFilesDownloadContent:
         assert isinstance(result, bytes)
         assert result == expected_bytes
 
-    def test_download_content_with_path_format(self, sdk: NeMoPlatform, fileset: Fileset):
+    def test_download_content_with_path_format(self, sdk: NeMoPlatform, fileset: FilesetOutput):
         """Test download_content using full path format."""
         sdk.files.upload_content(
             content=b"content",
@@ -780,8 +779,8 @@ class TestFilesUploadAutoCreate:
             fileset_auto_create=True,
         )
 
-        # Verify return type is Fileset with correct info
-        assert hasattr(result, "name") and hasattr(result, "workspace")
+        # Verify return type is FilesetOutput with correct info
+        assert isinstance(result, FilesetOutput)
         assert result.name == fileset_name
         assert result.workspace == workspace
 
@@ -804,8 +803,8 @@ class TestFilesUploadAutoCreate:
             fileset_auto_create=True,
         )
 
-        # Verify return type is Fileset with correct info
-        assert hasattr(result, "name") and hasattr(result, "workspace")
+        # Verify return type is FilesetOutput with correct info
+        assert isinstance(result, FilesetOutput)
         assert result.name == fileset_name
         assert result.workspace == workspace
 
@@ -828,7 +827,7 @@ class TestFilesUploadAutoCreate:
                 fileset_auto_create=False,
             )
 
-    def test_existing_fileset_with_flag_succeeds(self, sdk: NeMoPlatform, fileset: Fileset):
+    def test_existing_fileset_with_flag_succeeds(self, sdk: NeMoPlatform, fileset: FilesetOutput):
         """Test that fileset_auto_create works for existing filesets."""
         result = sdk.files.upload_content(
             content=b"test content",
@@ -838,14 +837,14 @@ class TestFilesUploadAutoCreate:
             fileset_auto_create=True,  # Should not fail even though fileset exists
         )
 
-        assert hasattr(result, "name") and hasattr(result, "workspace")
+        assert isinstance(result, FilesetOutput)
         assert result.name == fileset.name
 
         files = sdk.files.list(fileset=fileset.name, workspace=fileset.workspace)
         assert len(files.data) == 1
 
-    def test_upload_returns_fileset(self, sdk: NeMoPlatform, fileset: Fileset, tmp_path: Path):
-        """Test that upload() always returns the Fileset entity."""
+    def test_upload_returns_fileset(self, sdk: NeMoPlatform, fileset: FilesetOutput, tmp_path: Path):
+        """Test that upload() always returns the FilesetOutput entity."""
         local_file = tmp_path / "test.txt"
         local_file.write_text("content")
 
@@ -856,8 +855,8 @@ class TestFilesUploadAutoCreate:
             workspace=fileset.workspace,
         )
 
-        # Even without fileset_auto_create, upload now returns Fileset
-        assert hasattr(result, "name") and hasattr(result, "workspace")
+        # Even without fileset_auto_create, upload now returns FilesetOutput
+        assert isinstance(result, FilesetOutput)
         assert result.name == fileset.name
         assert result.workspace == fileset.workspace
 
@@ -878,8 +877,8 @@ class TestFilesUploadAutoCreate:
         # Register for cleanup now that we know the name
         fileset_cleanup(result.name)
 
-        # Should return a Fileset with a generated name
-        assert hasattr(result, "name") and hasattr(result, "workspace")
+        # Should return a FilesetOutput with a generated name
+        assert isinstance(result, FilesetOutput)
         assert result.name.startswith("fileset-")
         assert len(result.name) == len("fileset-") + 8  # "fileset-" + 8 hex chars
 
@@ -904,7 +903,7 @@ class TestFilesUploadAutoCreate:
         )
 
         # Should use the fileset from the path, not generate a new one
-        assert hasattr(result, "name") and hasattr(result, "workspace")
+        assert isinstance(result, FilesetOutput)
         assert result.name == fileset_name  # Should NOT be "fileset-..."
 
         # Verify file was uploaded to correct path
@@ -953,7 +952,7 @@ class TestListFilesResponseCacheStatus:
         from nemo_platform.filesets import ListFilesResponse
 
         files = [
-            FilesetFile(
+            FilesetFileOutput(
                 path=f"file{i}.txt",
                 size=100 * (i + 1),
                 file_ref=f"ws/fs#file{i}.txt",
@@ -969,7 +968,7 @@ class TestListFilesResponseCacheStatus:
 class TestFilesListCacheStatus:
     """Tests for sdk.files.list() with include_cache_status parameter."""
 
-    def test_list_with_include_cache_status(self, sdk: NeMoPlatform, fileset: Fileset):
+    def test_list_with_include_cache_status(self, sdk: NeMoPlatform, fileset: FilesetOutput):
         """Test listing files with cache status included."""
         sdk.files.upload_content(
             content=b"test content",
@@ -990,7 +989,7 @@ class TestFilesListCacheStatus:
         # The important thing is that the parameter is passed through correctly
         assert files.data[0].path == "test.txt"
 
-    def test_list_without_include_cache_status(self, sdk: NeMoPlatform, fileset: Fileset):
+    def test_list_without_include_cache_status(self, sdk: NeMoPlatform, fileset: FilesetOutput):
         """Test listing files without cache status (default)."""
         sdk.files.upload_content(
             content=b"test content",
@@ -1012,7 +1011,7 @@ class TestFilesListCacheStatus:
 class TestFilesDownloadEdgeCases:
     """Tests for sdk.files.download() edge cases."""
 
-    def test_download_glob_no_matches(self, sdk: NeMoPlatform, fileset: Fileset, tmp_path):
+    def test_download_glob_no_matches(self, sdk: NeMoPlatform, fileset: FilesetOutput, tmp_path):
         """Test downloading with glob pattern that matches no files."""
         # Upload a file that won't match the pattern
         sdk.files.upload_content(
@@ -1034,7 +1033,7 @@ class TestFilesDownloadEdgeCases:
         downloaded = list(tmp_path.rglob("*"))
         assert len([f for f in downloaded if f.is_file()]) == 0
 
-    def test_download_content_non_existent_file(self, sdk: NeMoPlatform, fileset: Fileset):
+    def test_download_content_non_existent_file(self, sdk: NeMoPlatform, fileset: FilesetOutput):
         """Test downloading content of a file that doesn't exist raises NotFoundError."""
         with pytest.raises(NotFoundError):
             sdk.files.download_content(
@@ -1047,7 +1046,7 @@ class TestFilesDownloadEdgeCases:
 class TestFilesDeleteEdgeCases:
     """Tests for sdk.files.delete() edge cases."""
 
-    def test_delete_non_existent_file(self, sdk: NeMoPlatform, fileset: Fileset):
+    def test_delete_non_existent_file(self, sdk: NeMoPlatform, fileset: FilesetOutput):
         """Test deleting a file that doesn't exist raises NotFoundError."""
         with pytest.raises(NotFoundError):
             sdk.files.delete(
