@@ -1,6 +1,5 @@
 [project]
 name = "nmp-files"
-version = "0.1.0"
 description = "NeMo Platform Files Service provides file management capabilities."
 readme = "README.md"
 requires-python = ">=3.11,<3.15"
@@ -32,6 +31,7 @@ dependencies = [
     "aioboto3>=15.5.0",
     "types-aioboto3[s3]>=15.5.0",
 ]
+version = "0.0.0"
 
 [project.scripts]
 files-server = "nmp.core.files.main:run_standalone"
@@ -41,12 +41,14 @@ nmp-common = { workspace = true }
 nmp-testing = { workspace = true }
 filesets = { workspace = true }
 
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/nmp"]
+
 
 [dependency-groups]
 # No task deps for files - all deps are in main dependencies

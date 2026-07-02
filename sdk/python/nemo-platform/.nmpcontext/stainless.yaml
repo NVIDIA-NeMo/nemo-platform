@@ -290,6 +290,7 @@ resources:
       clavata_rail_config: ClavataRailConfig
       clavata_rail_options: ClavataRailOptions
       content_safety_config: ContentSafetyConfig
+      context_bloat_detection_config: ContextBloatDetectionConfig
       crowd_strike_aidr_rail_config: CrowdStrikeAIDRRailConfig
       dialog_rails: DialogRails
       executed_action: ExecutedAction
@@ -317,6 +318,7 @@ resources:
       instruction: Instruction
       jailbreak_detection_config: JailbreakDetectionConfig
       llm_call_info: LLMCallInfo
+      local_hf_classifier_config: LocalHFClassifierConfig
       log_adapter_config: LogAdapterConfig
       message_template: MessageTemplate
       model: Model
@@ -333,6 +335,8 @@ resources:
       patronus_evaluation_success_strategy: PatronusEvaluationSuccessStrategy
       patronus_rail_config: PatronusRailConfigOutput
       patronus_rail_config_param: PatronusRailConfigInput
+      polygraf_detection: PolygrafDetection
+      polygraf_detection_options: PolygrafDetectionOptions
       private_ai_detection: PrivateAIDetection
       private_ai_detection_options: PrivateAIDetectionOptions
       rail_status: RailStatus
@@ -345,6 +349,7 @@ resources:
       reasoning_config: ReasoningConfig
       regex_detection: RegexDetection
       regex_detection_options: RegexDetectionOptions
+      remote_hf_classifier_config: RemoteHFClassifierConfig
       retrieval_rails: RetrievalRails
       sensitive_data_detection: SensitiveDataDetection
       sensitive_data_detection_options: SensitiveDataDetectionOptions
@@ -899,6 +904,7 @@ resources:
       experiment_group_request: ExperimentGroupRequest
       experiment_group_response: ExperimentGroupResponse
       experiment_group_responses_page: ExperimentGroupResponsesPage
+      sort_criterion: SortCriterion
     methods:
       create: post /apis/intake/v2/workspaces/{workspace}/experiment-groups
       list: get /apis/intake/v2/workspaces/{workspace}/experiment-groups
@@ -913,6 +919,8 @@ resources:
       experiment_request: ExperimentRequest
       experiment_response: ExperimentResponse
       experiment_responses_page: ExperimentResponsesPage
+      metric_stat_filters: MetricStatFilters
+      number_filter: NumberFilter
     methods:
       create: post /apis/intake/v2/workspaces/{workspace}/experiments
       list: get /apis/intake/v2/workspaces/{workspace}/experiments

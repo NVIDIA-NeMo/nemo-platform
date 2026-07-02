@@ -1,6 +1,5 @@
 [project]
 name = "nemo-unsloth-plugin"
-version = "0.1.0"
 description = "Unsloth GPU fine-tuning customization contributor for NeMo Platform (container submit)."
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
@@ -18,6 +17,7 @@ dependencies = [
 # into the nmp-unsloth-training container image. The plugin (and the
 # nmp-unsloth task package) only need the lightweight compile-side
 # imports in this process. Users do not install unsloth/torch locally.
+version = "0.0.0"
 
 [project.entry-points."nemo.customization.contributors"]
 unsloth = "nemo_unsloth_plugin.contributor:UnslothContributor"
@@ -32,12 +32,14 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/nemo_unsloth_plugin"]
 
+
 [tool.uv.sources]
 nemo-platform-plugin = { workspace = true }
 nemo-platform = { workspace = true }
 nemo-customizer-plugin = { workspace = true }
 nmp-unsloth = { workspace = true }
 nmp-customization-common = { workspace = true }
+
 
 [dependency-groups]
 dev = [

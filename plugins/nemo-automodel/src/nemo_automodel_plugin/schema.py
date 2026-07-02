@@ -38,6 +38,10 @@ class LoRAParams(BaseModel):
     dropout: float = Field(default=0.0, ge=0.0, le=1.0, description="LoRA dropout probability for regularization.")
     merge: bool = False
     target_modules: list[str] | None = None
+    exclude_modules: list[str] | None = Field(
+        default=None, description="Module name patterns to exclude from LoRA (e.g. ['*.out_proj'])."
+    )
+    use_triton: bool = Field(default=True, description="Use the optimized Triton LoRA kernel.")
 
 
 class DatasetSpec(BaseModel):
@@ -58,6 +62,10 @@ class TrainingSpec(BaseModel):
     precision: Literal["bf16", "fp16", "fp32", "fp8"] | None = Field(
         default=None,
         description="Model precision for training. Auto-detected from the checkpoint when unset.",
+    )
+    attn_implementation: Literal["sdpa", "flash_attention_2", "eager"] = Field(
+        default="sdpa",
+        description="Attention backend: 'sdpa' (PyTorch native), 'flash_attention_2', or 'eager'.",
     )
     execution_profile: str | None = Field(default=None, min_length=1)
     teacher_model: str | None = None
@@ -90,6 +98,9 @@ class BatchSpec(BaseModel):
     global_batch_size: int = Field(default=8, gt=0)
     micro_batch_size: int = Field(default=1, gt=0)
     sequence_packing: bool = False
+    sequence_packing_max_samples: int = Field(
+        default=1000, gt=0, description="Samples analyzed to estimate the optimal pack size when packing is enabled."
+    )
 
 
 class OptimizerSpec(BaseModel):
@@ -103,6 +114,11 @@ class OptimizerSpec(BaseModel):
     adam_beta1: float = Field(default=0.9, ge=0.0, lt=1.0, description="Adam optimizer beta1.")
     adam_beta2: float = Field(default=0.999, ge=0.0, lt=1.0, description="Adam optimizer beta2.")
     warmup_steps: int = Field(default=0, ge=0)
+    adam_eps: float = Field(default=1e-8, gt=0.0, description="Adam/AdamW epsilon for numerical stability.")
+    optimizer: Literal["Adam", "AdamW"] = Field(default="Adam", description="Optimizer algorithm.")
+    lr_decay_style: Literal["cosine", "linear", "constant"] = Field(
+        default="cosine", description="Learning-rate decay schedule."
+    )
 
 
 class ParallelismSpec(BaseModel):

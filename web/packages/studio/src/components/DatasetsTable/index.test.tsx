@@ -14,32 +14,41 @@ import { TestProviders } from '@studio/tests/util/TestProviders';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import type { ComponentProps, ReactNode } from 'react';
+import type { ComponentProps } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('use-debounce', () => ({
   useDebounce: (value: unknown) => [value, () => {}],
 }));
 
-vi.mock('@studio/routes/FilesetListRoute/DatasetBulkDeleteModal', () => ({
-  DatasetBulkDeleteModal: vi.fn(
+vi.mock('@studio/components/BulkDeleteModal', () => ({
+  BulkDeleteModal: vi.fn(
     ({
-      selectedDatasets,
-      onConfirmSuccess,
-      slotTrigger,
+      items,
+      open,
+      onDelete,
+      onClose,
     }: {
-      selectedDatasets: FilesetOutput[];
-      onConfirmSuccess?: () => void;
-      slotTrigger?: ReactNode;
-    }) => (
-      <div data-testid="bulk-delete-modal">
-        <span data-testid="bulk-modal-count">{selectedDatasets.length}</span>
-        {slotTrigger}
-        <button type="button" data-testid="bulk-confirm" onClick={() => onConfirmSuccess?.()}>
-          Confirm
-        </button>
-      </div>
-    )
+      items: FilesetOutput[];
+      open: boolean;
+      onDelete: (items: FilesetOutput[]) => Promise<void>;
+      onClose: () => void;
+    }) =>
+      open ? (
+        <div data-testid="bulk-delete-modal">
+          <span data-testid="bulk-modal-count">{items.length}</span>
+          <button
+            type="button"
+            data-testid="bulk-confirm"
+            onClick={async () => {
+              await onDelete(items);
+              onClose();
+            }}
+          >
+            Confirm
+          </button>
+        </div>
+      ) : null
   ),
 }));
 
@@ -676,7 +685,12 @@ describe('DatasetsTable', () => {
   });
 
   describe('Bulk delete', () => {
-    it('does not render DatasetBulkDeleteModal when enableBulkDelete is false', async () => {
+    const clickBulkDeleteTrigger = async () => {
+      const trigger = await screen.findByRole('button', { name: /delete selected datasets/i });
+      await user.click(trigger);
+    };
+
+    it('does not render BulkDeleteModal when enableBulkDelete is false', async () => {
       installListHandler();
       renderTable({ enableSelection: true, enableBulkDelete: false });
 
@@ -684,11 +698,12 @@ describe('DatasetsTable', () => {
       expect(screen.queryByTestId('bulk-delete-modal')).not.toBeInTheDocument();
     });
 
-    it('renders DatasetBulkDeleteModal with the selected datasets when enableBulkDelete is true', async () => {
+    it('renders BulkDeleteModal with the selected datasets when enableBulkDelete is true', async () => {
       installListHandler();
       renderTable({ enableSelection: true, enableBulkDelete: true });
 
       await selectRow(0);
+      await clickBulkDeleteTrigger();
 
       const modal = await screen.findByTestId('bulk-delete-modal');
       expect(within(modal).getByTestId('bulk-modal-count')).toHaveTextContent('1');
@@ -705,6 +720,8 @@ describe('DatasetsTable', () => {
 
       await selectRow(0);
       await waitFor(() => expect(onDatasetsSelected.mock.calls.at(-1)?.[0]).toHaveLength(1));
+
+      await clickBulkDeleteTrigger();
 
       const countBeforeConfirm = state.requestCount;
       await user.click(screen.getByTestId('bulk-confirm'));

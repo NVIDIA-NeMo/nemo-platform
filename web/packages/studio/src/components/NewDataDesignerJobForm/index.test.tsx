@@ -24,11 +24,11 @@ vi.mock('@studio/components/NewDataDesignerJobForm/JobRequestGenerator', async (
   const { Controller } = await import('react-hook-form');
   return {
     JobRequestGenerator: ({
-      onJobRequestChange,
+      setJsonContent,
       control,
       descriptionName,
     }: {
-      onJobRequestChange: (req: DataDesignerJobRequest | null) => void;
+      setJsonContent: (value: string) => void;
       control: Parameters<typeof Controller>[0]['control'];
       descriptionName: string;
       [key: string]: unknown;
@@ -42,13 +42,15 @@ vi.mock('@studio/components/NewDataDesignerJobForm/JobRequestGenerator', async (
         <button
           type="button"
           onClick={() =>
-            onJobRequestChange({
-              name: 'generated-job',
-              spec: {
-                num_records: 50,
-                config: { columns: [], model_configs: [] },
-              },
-            } as DataDesignerJobRequest)
+            setJsonContent(
+              JSON.stringify({
+                name: 'generated-job',
+                spec: {
+                  num_records: 50,
+                  config: { columns: [], model_configs: [] },
+                },
+              } satisfies DataDesignerJobRequest)
+            )
           }
         >
           Simulate Generate
@@ -130,7 +132,9 @@ describe('NewDataDesignerJobForm', () => {
 
       // Generated config set num_records=50, which also synced rows field to 50.
       // User overrides rows to 25.
-      const rowsInput = screen.getByRole('spinbutton', { name: /rows/i });
+      const rowsInput = screen.getByRole('spinbutton', {
+        name: /records to generate/i,
+      });
       fireEvent.change(rowsInput, { target: { value: '25' } });
 
       await user.click(screen.getByRole('button', { name: 'Create Job' }));
@@ -151,7 +155,7 @@ describe('NewDataDesignerJobForm', () => {
 
       // Generated config set num_records=50 and synced rows field to 50.
       // User does not change rows.
-      expect(screen.getByRole('spinbutton', { name: /rows/i })).toHaveValue(50);
+      expect(screen.getByRole('spinbutton', { name: /records to generate/i })).toHaveValue(50);
 
       await user.click(screen.getByRole('button', { name: 'Create Job' }));
 
@@ -170,7 +174,7 @@ describe('NewDataDesignerJobForm', () => {
 
       render(<NewDataDesignerJobForm />);
       await screen.findByRole('button', { name: 'Create Job' });
-      await user.type(screen.getByRole('textbox', { name: /^name/i }), 'my-custom-name');
+      await user.type(screen.getByRole('textbox', { name: /fileset name/i }), 'my-custom-name');
       await user.type(screen.getByLabelText('Data description'), 'At least ten characters');
       await user.click(screen.getByRole('button', { name: 'Simulate Generate' }));
 

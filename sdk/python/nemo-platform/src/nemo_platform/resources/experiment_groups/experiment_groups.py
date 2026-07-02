@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+from typing import Dict, Iterable
 from typing_extensions import Literal
 
 import httpx
@@ -38,6 +39,7 @@ from ...types.experiment_groups import (
     experiment_group_create_params,
     experiment_group_update_params,
 )
+from ...types.experiment_groups.sort_criterion_param import SortCriterionParam
 from ...types.experiment_groups.experiment_group_response import ExperimentGroupResponse
 from ...types.experiment_groups.experiment_group_filter_param import ExperimentGroupFilterParam
 from ..._exceptions import ConflictError
@@ -70,7 +72,11 @@ class ExperimentGroupsResource(SyncAPIResource):
         *,
         workspace: str | None = None,
         name: str,
+        default_sort: Iterable[SortCriterionParam] | Omit = omit,
         description: str | Omit = omit,
+        insight_id: str | Omit = omit,
+        metadata: Dict[str, object] | Omit = omit,
+        summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         exist_ok: bool = False,
@@ -85,7 +91,17 @@ class ExperimentGroupsResource(SyncAPIResource):
         Args:
           name: Workspace-unique group name.
 
+          default_sort: Ordered default sort (priority order; first is primary, rest are tiebreakers)
+              for this group's experiments list. Each field must be a numeric rollup metric:
+              run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>.
+
           description: Human-readable purpose of the group.
+
+          insight_id: Reference to an external insight that seeded this group, if any.
+
+          metadata: Free-form producer metadata for the group.
+
+          summary: Human- or agent-authored summary of the group's findings.
 
 
           exist_ok: Do not raise an error if the resource already exists. Returns the existing resource.
@@ -109,7 +125,11 @@ class ExperimentGroupsResource(SyncAPIResource):
                 body=maybe_transform(
                     {
                         "name": name,
+                        "default_sort": default_sort,
                         "description": description,
+                        "insight_id": insight_id,
+                        "metadata": metadata,
+                        "summary": summary,
                     },
                     experiment_group_create_params.ExperimentGroupCreateParams,
                 ),
@@ -169,7 +189,11 @@ class ExperimentGroupsResource(SyncAPIResource):
         *,
         workspace: str | None = None,
         body_name: str,
+        default_sort: Iterable[SortCriterionParam] | Omit = omit,
         description: str | Omit = omit,
+        insight_id: str | Omit = omit,
+        metadata: Dict[str, object] | Omit = omit,
+        summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -183,7 +207,17 @@ class ExperimentGroupsResource(SyncAPIResource):
         Args:
           body_name: Workspace-unique group name.
 
+          default_sort: Ordered default sort (priority order; first is primary, rest are tiebreakers)
+              for this group's experiments list. Each field must be a numeric rollup metric:
+              run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>.
+
           description: Human-readable purpose of the group.
+
+          insight_id: Reference to an external insight that seeded this group, if any.
+
+          metadata: Free-form producer metadata for the group.
+
+          summary: Human- or agent-authored summary of the group's findings.
 
           extra_headers: Send extra headers
 
@@ -208,7 +242,11 @@ class ExperimentGroupsResource(SyncAPIResource):
             body=maybe_transform(
                 {
                     "body_name": body_name,
+                    "default_sort": default_sort,
                     "description": description,
+                    "insight_id": insight_id,
+                    "metadata": metadata,
+                    "summary": summary,
                 },
                 experiment_group_update_params.ExperimentGroupUpdateParams,
             ),
@@ -345,7 +383,11 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
         *,
         workspace: str | None = None,
         name: str,
+        default_sort: Iterable[SortCriterionParam] | Omit = omit,
         description: str | Omit = omit,
+        insight_id: str | Omit = omit,
+        metadata: Dict[str, object] | Omit = omit,
+        summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         exist_ok: bool = False,
@@ -360,7 +402,17 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
         Args:
           name: Workspace-unique group name.
 
+          default_sort: Ordered default sort (priority order; first is primary, rest are tiebreakers)
+              for this group's experiments list. Each field must be a numeric rollup metric:
+              run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>.
+
           description: Human-readable purpose of the group.
+
+          insight_id: Reference to an external insight that seeded this group, if any.
+
+          metadata: Free-form producer metadata for the group.
+
+          summary: Human- or agent-authored summary of the group's findings.
 
 
           exist_ok: Do not raise an error if the resource already exists. Returns the existing resource.
@@ -384,7 +436,11 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
                 body=await async_maybe_transform(
                     {
                         "name": name,
+                        "default_sort": default_sort,
                         "description": description,
+                        "insight_id": insight_id,
+                        "metadata": metadata,
+                        "summary": summary,
                     },
                     experiment_group_create_params.ExperimentGroupCreateParams,
                 ),
@@ -444,7 +500,11 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
         *,
         workspace: str | None = None,
         body_name: str,
+        default_sort: Iterable[SortCriterionParam] | Omit = omit,
         description: str | Omit = omit,
+        insight_id: str | Omit = omit,
+        metadata: Dict[str, object] | Omit = omit,
+        summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -458,7 +518,17 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
         Args:
           body_name: Workspace-unique group name.
 
+          default_sort: Ordered default sort (priority order; first is primary, rest are tiebreakers)
+              for this group's experiments list. Each field must be a numeric rollup metric:
+              run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>.
+
           description: Human-readable purpose of the group.
+
+          insight_id: Reference to an external insight that seeded this group, if any.
+
+          metadata: Free-form producer metadata for the group.
+
+          summary: Human- or agent-authored summary of the group's findings.
 
           extra_headers: Send extra headers
 
@@ -483,7 +553,11 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
             body=await async_maybe_transform(
                 {
                     "body_name": body_name,
+                    "default_sort": default_sort,
                     "description": description,
+                    "insight_id": insight_id,
+                    "metadata": metadata,
+                    "summary": summary,
                 },
                 experiment_group_update_params.ExperimentGroupUpdateParams,
             ),

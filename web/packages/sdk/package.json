@@ -8,6 +8,7 @@
     "gen": "tsx ./orval/generate.ts",
     "gen:all": "tsx ./generateAll.ts",
     "gen:all-force": "tsx ./generateAll.ts --force",
+    "gen:capabilities": "tsx ./orval/generate-capabilities.ts",
     "gen:agents": "tsx ./orval/generate.ts agents",
     "gen:agents-zod": "ORVAL_CLIENT=zod tsx ./orval/generate.ts agents",
     "gen:customizer": "tsx ./orval/generate.ts customizer",
@@ -38,14 +39,15 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@types/node": "catalog:",
     "@types/qs": "catalog:",
     "concurrently": "catalog:",
     "orval": "catalog:",
     "prettier": "catalog:",
-    "@types/node": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "yaml": "^2.8.3"
   }
 }

@@ -10,12 +10,16 @@ from dataclasses import dataclass
 from typing import Any, Self
 
 from nemo_deployments_plugin.backends.base import DeploymentBackend
+from nemo_deployments_plugin.backends.docker.backend import DockerDeploymentBackend
+from nemo_deployments_plugin.backends.k8s.backend import K8sDeploymentBackend
 from nemo_platform import AsyncNeMoPlatform
 
 logger = logging.getLogger(__name__)
 
-BACKEND_CLASSES: dict[str, type[DeploymentBackend]] = {}
-"""Backend type → class map. Populated when docker/k8s backends land (756/757)."""
+BACKEND_CLASSES: dict[str, type[DeploymentBackend]] = {
+    "docker": DockerDeploymentBackend,
+    "k8s": K8sDeploymentBackend,
+}
 
 
 @dataclass(frozen=True)

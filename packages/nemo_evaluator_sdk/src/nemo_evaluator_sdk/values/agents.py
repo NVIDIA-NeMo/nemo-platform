@@ -29,7 +29,21 @@ class Agent(BaseModel):
 
     # TODO: Much of this is duplicated between agent and model. Once we have aligned on model defination.
     # the duplication can be removed by defining EndPoint class and reusing it across both model and agent.
-    model_config = ConfigDict(extra="forbid")
+    #
+    # ``allOf``/``if``/``then`` mirrors the ``_validate_generic_fields`` validator into the OpenAPI
+    # schema: a generic-format agent must carry ``body`` + ``response_path`` (the generic HTTP path
+    # needs them), so the contract rejects a ``url``-only generic agent rather than only failing later.
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "allOf": [
+                {
+                    "if": {"properties": {"format": {"const": "generic"}}},
+                    "then": {"required": ["body", "response_path"]},
+                }
+            ]
+        },
+    )
 
     url: str = Field(description="Base URL of the agent endpoint.")
     name: str = Field(description="Agent name / identifier.")

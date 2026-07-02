@@ -67,7 +67,7 @@ def build_model_load_kwargs(spec: UnslothJobOutput, resolved_model: str) -> dict
     takes its default LoRA-optimized load path and warns that full finetuning
     was not requested, leaving the all-weights run mis-configured.
     """
-    return {
+    kwargs: dict[str, Any] = {
         "model_name": resolved_model,
         "max_seq_length": spec.model.max_seq_length,
         "load_in_4bit": spec.model.load_in_4bit,
@@ -76,6 +76,45 @@ def build_model_load_kwargs(spec: UnslothJobOutput, resolved_model: str) -> dict
         "trust_remote_code": spec.model.trust_remote_code,
         "device_map": spec.model.device_map if spec.model.device_map is not None else {"": 0},
     }
+    # Only pass rope_scaling when set — None lets Unsloth use the model's native context length.
+    if spec.model.rope_scaling is not None:
+        kwargs["rope_scaling"] = spec.model.rope_scaling
+    return kwargs
+
+
+def build_peft_kwargs(spec: UnslothJobOutput, *, gradient_checkpointing: bool | str) -> dict[str, Any]:
+    """Assemble ``FastLanguageModel.get_peft_model`` kwargs for a LoRA run.
+
+    Torch-free (unit-testable). Caller resolves ``gradient_checkpointing`` from
+    ``spec.training.use_gradient_checkpointing`` (the JSON literal → ``True`` /
+    ``False`` / ``"unsloth"`` mapping). Optional knobs (``loftq_config``,
+    ``modules_to_save``, ``layers_to_transform``, ``layer_replication``) are only
+    emitted when set so PEFT/Unsloth see absence, not ``None``.
+    """
+    lora = spec.training.lora
+    assert lora is not None  # guaranteed by TrainingSpec._enforce_lora_invariant
+    kwargs: dict[str, Any] = {
+        "r": lora.rank,
+        "lora_alpha": lora.alpha,
+        "lora_dropout": lora.dropout,
+        "target_modules": list(lora.target_modules),
+        "bias": lora.bias,
+        "use_rslora": lora.use_rslora,
+        "random_state": lora.random_state,
+        "use_dora": lora.use_dora,
+        "init_lora_weights": lora.init_lora_weights,
+        "use_gradient_checkpointing": gradient_checkpointing,
+        "max_seq_length": spec.model.max_seq_length,
+    }
+    if lora.loftq_config is not None:
+        kwargs["loftq_config"] = lora.loftq_config
+    if lora.modules_to_save is not None:
+        kwargs["modules_to_save"] = lora.modules_to_save
+    if lora.layers_to_transform is not None:
+        kwargs["layers_to_transform"] = lora.layers_to_transform
+    if lora.layer_replication is not None:
+        kwargs["layer_replication"] = lora.layer_replication
+    return kwargs
 
 
 def train_sft(
@@ -183,15 +222,7 @@ def train_sft(
             gc_value = False
         model = FastLanguageModel.get_peft_model(
             model,
-            r=spec.training.lora.rank,
-            lora_alpha=spec.training.lora.alpha,
-            lora_dropout=spec.training.lora.dropout,
-            target_modules=list(spec.training.lora.target_modules),
-            bias=spec.training.lora.bias,
-            use_rslora=spec.training.lora.use_rslora,
-            random_state=spec.training.lora.random_state,
-            use_gradient_checkpointing=gc_value,
-            max_seq_length=spec.model.max_seq_length,
+            **build_peft_kwargs(spec, gradient_checkpointing=gc_value),
         )
     # All-weights FT: leave `model` as-is. `build_model_load_kwargs` passed
     # `full_finetuning=True`, so `from_pretrained` routed through Unsloth's
@@ -251,6 +282,11 @@ def train_sft(
         "learning_rate": spec.optimizer.learning_rate,
         "weight_decay": spec.optimizer.weight_decay,
         "optim": spec.optimizer.optim,
+        "adam_beta1": spec.optimizer.adam_beta1,
+        "adam_beta2": spec.optimizer.adam_beta2,
+        "adam_epsilon": spec.optimizer.adam_epsilon,
+        "max_grad_norm": spec.optimizer.max_grad_norm,
+        "label_smoothing_factor": spec.optimizer.label_smoothing_factor,
         "lr_scheduler_type": spec.schedule.lr_scheduler_type,
         "warmup_steps": spec.schedule.warmup_steps,
         "logging_steps": spec.schedule.logging_steps,
@@ -263,6 +299,11 @@ def train_sft(
         "max_length": spec.model.max_seq_length,
         "packing": spec.dataset.packing,
     }
+    # Optional knobs: only set when provided so trl/transformers keep their defaults.
+    if spec.optimizer.neftune_noise_alpha is not None:
+        args_kwargs["neftune_noise_alpha"] = spec.optimizer.neftune_noise_alpha
+    if spec.schedule.lr_scheduler_kwargs is not None:
+        args_kwargs["lr_scheduler_kwargs"] = spec.schedule.lr_scheduler_kwargs
     if spec.schedule.warmup_ratio is not None:
         args_kwargs["warmup_ratio"] = spec.schedule.warmup_ratio
     # epochs always set (defaults to 1); max_steps, when present, caps/overrides it (trl semantics).

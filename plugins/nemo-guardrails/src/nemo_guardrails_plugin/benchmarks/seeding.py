@@ -28,6 +28,7 @@ from nemo_guardrails_plugin.benchmarks.constants import (
     GUARDRAIL_CONFIG,
     GUARDRAILS_MIDDLEWARE_CONFIG_TYPE,
     GUARDRAILS_MIDDLEWARE_NAME,
+    NO_GUARDRAILS_VM_NAME,
     VM_NAME,
     WORKSPACE,
 )
@@ -52,10 +53,16 @@ class SeededResources:
     cs_model_entity: str
     guardrail_config_name: str
     vm_name: str
+    # Control VM with no middleware; otherwise identical to the guardrails VM.
+    no_guardrails_vm_name: str
 
     @property
     def vm_ref(self) -> str:
         return f"{self.workspace}/{self.vm_name}"
+
+    @property
+    def no_guardrails_vm_ref(self) -> str:
+        return f"{self.workspace}/{self.no_guardrails_vm_name}"
 
     @property
     def guardrail_config_ref(self) -> str:
@@ -171,6 +178,20 @@ def seed_benchmark(
     )
     _dump_model(generated_dir / "virtual_model.json", vm)
 
+    # Control VM: identical to the guardrails VM but no middleware, so the
+    # with-vs-without delta isolates middleware overhead.
+    log.info("Creating control VirtualModel %s/%s", WORKSPACE, NO_GUARDRAILS_VM_NAME)
+    no_guardrails_vm = client.inference.virtual_models.create(
+        workspace=WORKSPACE,
+        name=NO_GUARDRAILS_VM_NAME,
+        default_model_entity=app_entity,
+        models=vm_models,
+        request_middleware=[],
+        response_middleware=[],
+        exist_ok=True,
+    )
+    _dump_model(generated_dir / "virtual_model_no_guardrails.json", no_guardrails_vm)
+
     return SeededResources(
         workspace=WORKSPACE,
         app_provider_name=APP_PROVIDER,
@@ -179,6 +200,7 @@ def seed_benchmark(
         cs_model_entity=cs_entity,
         guardrail_config_name=GUARDRAIL_CONFIG,
         vm_name=VM_NAME,
+        no_guardrails_vm_name=NO_GUARDRAILS_VM_NAME,
     )
 
 

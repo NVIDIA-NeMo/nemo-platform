@@ -4,6 +4,7 @@
 import {
   AssistantRuntimeProvider,
   type ThreadMessageLike,
+  type ToolCallMessagePartComponent,
   useExternalStoreRuntime,
 } from '@assistant-ui/react';
 import { AssistantChatThread } from '@nemo/common/src/components/AssistantChat/AssistantChatThread';
@@ -86,6 +87,17 @@ const createHangingStream = (content: string): Stream<ChatCompletionChunk> => {
 
 const completion = createCompletion('Hello from inference gateway.');
 const interactionTimeoutMs = 10_000;
+const defaultStaticMessages: readonly ThreadMessageLike[] = [
+  {
+    role: 'user',
+    content: [{ type: 'text', text: 'Existing prompt' }],
+  },
+  {
+    role: 'assistant',
+    content: [{ type: 'text', text: 'Existing response' }],
+    status: { type: 'complete', reason: 'stop' },
+  },
+];
 
 interface CompletionRequestWithSignal {
   signal?: AbortSignal;
@@ -100,20 +112,14 @@ const renderAssistantChat = (element: ReactElement) =>
 
 const StaticAssistantChatThread = ({
   hideAssistantMessageActions,
+  messages: initialMessages = defaultStaticMessages,
+  toolCallPartComponent,
 }: {
   hideAssistantMessageActions?: boolean;
+  messages?: readonly ThreadMessageLike[];
+  toolCallPartComponent?: ToolCallMessagePartComponent;
 }) => {
-  const [messages, setMessages] = useState<readonly ThreadMessageLike[]>([
-    {
-      role: 'user',
-      content: [{ type: 'text', text: 'Existing prompt' }],
-    },
-    {
-      role: 'assistant',
-      content: [{ type: 'text', text: 'Existing response' }],
-      status: { type: 'complete', reason: 'stop' },
-    },
-  ]);
+  const [messages, setMessages] = useState<readonly ThreadMessageLike[]>(initialMessages);
   const runtime = useExternalStoreRuntime<ThreadMessageLike>({
     messages,
     setMessages,
@@ -134,6 +140,7 @@ const StaticAssistantChatThread = ({
         hideAssistantMessageActions={hideAssistantMessageActions}
         placeholder="Task prompt"
         onReset={() => undefined}
+        toolCallPartComponent={toolCallPartComponent}
       />
     </AssistantRuntimeProvider>
   );
@@ -252,6 +259,40 @@ describe('AssistantChat', () => {
       within(assistantMessage).queryByTestId('assistant-chat-running-indicator')
     ).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Edit message/i })).toBeInTheDocument();
+  });
+
+  it('renders tool-only assistant messages without the assistant response surface', () => {
+    renderAssistantChat(
+      <StaticAssistantChatThread
+        hideAssistantMessageActions
+        messages={[
+          {
+            role: 'assistant',
+            content: [
+              {
+                type: 'tool-call',
+                toolCallId: 'toolu_read',
+                toolName: 'Read',
+                args: { file_path: 'README.md' },
+              },
+            ],
+            status: { type: 'complete', reason: 'stop' },
+          },
+        ]}
+        toolCallPartComponent={({ toolName }) => (
+          <div data-testid="assistant-chat-tool-pill">{toolName}</div>
+        )}
+      />
+    );
+
+    const assistantMessage = screen.getByTestId('assistant-chat-message');
+
+    expect(within(assistantMessage).getByTestId('assistant-chat-tool-pill')).toHaveTextContent(
+      'Read'
+    );
+    expect(
+      within(assistantMessage).queryByTestId('assistant-chat-message-surface')
+    ).not.toBeInTheDocument();
   });
 
   it('offers an enabled add-image affordance for a vision model when enabled', () => {

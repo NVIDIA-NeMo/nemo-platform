@@ -11,7 +11,7 @@ import httpx
 import pytest
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.endpoint import delete, get, post
-from nemo_platform_plugin.client.method import method
+from nemo_platform_plugin.client.errors import NemoHTTPError
 from nemo_platform_plugin.client.types import PreparedRequest, RetryPolicy
 from pydantic import BaseModel
 
@@ -70,97 +70,6 @@ class TestExistOkOption:
     def test_endpoint_without_options_has_none(self) -> None:
         prepared = GET_ITEM(name="alice")
         assert prepared.client_options is None
-
-
-# ---------------------------------------------------------------------------
-# exist_ok: applied via send()
-# ---------------------------------------------------------------------------
-
-
-class TestExistOkViaSend:
-    def test_exist_ok_via_send_swallows_409(self) -> None:
-        """exist_ok should work when calling client.send() directly."""
-        mock_http = MagicMock(spec=httpx.Client)
-        mock_http.request.return_value = httpx.Response(
-            409,
-            request=httpx.Request("POST", f"{BASE}/apis/test/v2/items"),
-            json={"id": 1, "name": "alice"},
-        )
-
-        client = NemoClient(base_url=BASE, http_client=mock_http)
-        resp = client.send(CREATE_ITEM(ItemRequest(name="alice"), exist_ok=True))
-
-        assert resp.http_response.status_code == 409
-        assert resp.body is not None
-        assert resp.body.name == "alice"
-
-
-# ---------------------------------------------------------------------------
-# exist_ok: applied via EndpointMethod
-# ---------------------------------------------------------------------------
-
-
-class TestExistOkViaMethod:
-    def test_exist_ok_true_swallows_409(self) -> None:
-        mock_http = MagicMock(spec=httpx.Client)
-        mock_http.request.return_value = httpx.Response(
-            409,
-            request=httpx.Request("POST", f"{BASE}/apis/test/v2/items"),
-            json={"id": 1, "name": "alice"},
-        )
-
-        class _Methods:
-            create_item = method(CREATE_ITEM)
-
-        class TestClient(_Methods, NemoClient):
-            pass
-
-        client = TestClient(base_url=BASE, http_client=mock_http)
-        resp = client.create_item(body=ItemRequest(name="alice"), exist_ok=True)
-
-        assert resp.http_response.status_code == 409
-        assert resp.body is not None
-        assert resp.body.name == "alice"
-
-    def test_exist_ok_false_returns_409_as_is(self) -> None:
-        mock_http = MagicMock(spec=httpx.Client)
-        mock_http.request.return_value = httpx.Response(
-            409,
-            request=httpx.Request("POST", f"{BASE}/apis/test/v2/items"),
-            json={"detail": "Already exists"},
-        )
-
-        class _Methods:
-            create_item = method(CREATE_ITEM)
-
-        class TestClient(_Methods, NemoClient):
-            pass
-
-        client = TestClient(base_url=BASE, http_client=mock_http)
-        resp = client.create_item(body=ItemRequest(name="alice"))
-
-        assert resp.http_response.status_code == 409
-        assert resp.body is None
-
-    def test_exist_ok_true_non_409_passes_through(self) -> None:
-        mock_http = MagicMock(spec=httpx.Client)
-        mock_http.request.return_value = httpx.Response(
-            201,
-            request=httpx.Request("POST", f"{BASE}/apis/test/v2/items"),
-            json={"id": 1, "name": "alice"},
-        )
-
-        class _Methods:
-            create_item = method(CREATE_ITEM)
-
-        class TestClient(_Methods, NemoClient):
-            pass
-
-        client = TestClient(base_url=BASE, http_client=mock_http)
-        resp = client.create_item(body=ItemRequest(name="alice"), exist_ok=True)
-
-        assert resp.http_response.status_code == 201
-        assert resp.body.name == "alice"
 
 
 # ---------------------------------------------------------------------------
@@ -225,7 +134,7 @@ class TestRetryPolicy:
         assert resp.body.name == "alice"
         assert mock_http.request.call_count == 2
 
-    def test_retry_exhausted_returns_last_response(self) -> None:
+    def test_retry_exhausted_raises(self) -> None:
         mock_http = MagicMock(spec=httpx.Client)
         mock_http.request.return_value = httpx.Response(
             503,
@@ -238,9 +147,11 @@ class TestRetryPolicy:
             http_client=mock_http,
             retry=RetryPolicy(max_retries=2, backoff_base=0.0),
         )
-        resp = client.send(GET_ITEM(name="alice"))
 
-        assert resp.http_response.status_code == 503
+        with pytest.raises(NemoHTTPError) as exc_info:
+            client.send(GET_ITEM(name="alice"))
+
+        assert exc_info.value.status_code == 503
         assert mock_http.request.call_count == 3
 
     def test_no_retry_on_non_retryable_status(self) -> None:
@@ -256,9 +167,11 @@ class TestRetryPolicy:
             http_client=mock_http,
             retry=RetryPolicy(max_retries=2, backoff_base=0.0),
         )
-        resp = client.send(GET_ITEM(name="alice"))
 
-        assert resp.http_response.status_code == 404
+        with pytest.raises(NemoHTTPError) as exc_info:
+            client.send(GET_ITEM(name="alice"))
+
+        assert exc_info.value.status_code == 404
         assert mock_http.request.call_count == 1
 
     def test_retry_on_transport_error(self) -> None:
@@ -295,7 +208,9 @@ class TestRetryPolicy:
             http_client=mock_http,
             retry=RetryPolicy(max_retries=5, backoff_base=0.0),
         )
-        client.send(GET_ITEM(name="alice"), retry=RetryPolicy(max_retries=1, backoff_base=0.0))
+
+        with pytest.raises(NemoHTTPError):
+            client.send(GET_ITEM(name="alice"), retry=RetryPolicy(max_retries=1, backoff_base=0.0))
 
         assert mock_http.request.call_count == 2
 
@@ -308,39 +223,17 @@ class TestRetryPolicy:
         )
 
         client = NemoClient(base_url=BASE, http_client=mock_http)
-        resp = client.send(GET_ITEM(name="alice"))
 
-        assert resp.http_response.status_code == 503
+        with pytest.raises(NemoHTTPError) as exc_info:
+            client.send(GET_ITEM(name="alice"))
+
+        assert exc_info.value.status_code == 503
         assert mock_http.request.call_count == 1
 
 
 # ---------------------------------------------------------------------------
 # Async: exist_ok
 # ---------------------------------------------------------------------------
-
-
-class TestAsyncExistOk:
-    @pytest.mark.asyncio
-    async def test_exist_ok_true_swallows_409_async(self) -> None:
-        mock_http = AsyncMock(spec=httpx.AsyncClient)
-        mock_http.request.return_value = httpx.Response(
-            409,
-            request=httpx.Request("POST", f"{BASE}/apis/test/v2/items"),
-            json={"id": 1, "name": "alice"},
-        )
-
-        class _Methods:
-            create_item = method(CREATE_ITEM)
-
-        class TestAsyncClient(_Methods, AsyncNemoClient):
-            pass
-
-        client = TestAsyncClient(base_url=BASE, http_client=mock_http)
-        resp = await client.create_item(body=ItemRequest(name="alice"), exist_ok=True)
-
-        assert resp.http_response.status_code == 409
-        assert resp.body is not None
-        assert resp.body.name == "alice"
 
 
 # ---------------------------------------------------------------------------

@@ -14,7 +14,13 @@ Features:
 - Multi-cell grouping and conditional content
 """
 
-__version__ = "0.5.0"
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _package_version
+
+try:
+    __version__ = _package_version("nemo-nb")
+except PackageNotFoundError:
+    __version__ = "0.0.0"
 
 # Import converter for CLI usage
 from .converter import NotebookConverter

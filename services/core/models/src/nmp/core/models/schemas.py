@@ -1421,6 +1421,25 @@ class ContainerExecutorConfig(BaseModel):
         max_length=constants.MAX_LENGTH_255,
     )
 
+    # Pod securityContext user override (k8s backend only). When unset, the engine
+    # picks an appropriate default (vLLM pins its image's user; generic runs as the
+    # image's own user). Set these to run an arbitrary container as a specific
+    # uid/gid -- e.g. a generic image that requires a particular user. Ignored by
+    # the docker backend, which does not set a container user.
+    run_as_user: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description="Pod securityContext runAsUser (uid) for the serving container (k8s backend only). "
+        "If unset, the engine default applies (vLLM pins its image's user; generic uses the image's "
+        "own user). Ignored by the docker backend.",
+    )
+    run_as_group: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description="Pod securityContext runAsGroup (gid) for the serving container (k8s backend only). "
+        "If unset, the engine default applies. Ignored by the docker backend.",
+    )
+
     # Escape hatches -- for anything not surfaced as a first-class field above
     additional_envs: Optional[Dict[str, str]] = Field(
         default=None, description="Additional environment variables for the deployment"

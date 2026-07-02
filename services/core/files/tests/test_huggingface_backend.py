@@ -3,12 +3,13 @@
 
 """Tests for Huggingface storage backend."""
 
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, call, patch
 
 import aiohttp
 import httpx
 import pytest
 from nmp.common.api.common import SecretRef
+from nmp.common.config import Configuration
 from nmp.core.files.app.backends.base import ByteRange
 from nmp.core.files.app.backends.factory import storage_impl_factory
 from nmp.core.files.app.backends.huggingface import (
@@ -18,8 +19,15 @@ from nmp.core.files.app.backends.huggingface import (
     HuggingfaceStorageConfig,
     HuggingfaceStorageImpl,
     HuggingfaceUnavailableError,
+    _retry_after_seconds,
     raise_for_hf_status,
 )
+from nmp.core.files.config import FilesConfig, files_config
+
+
+def _clear_files_config_cache() -> None:
+    Configuration.clear_cache()
+    files_config.cache_clear()
 
 
 def _hf_http_error_without_response(message: str):
@@ -30,6 +38,17 @@ def _hf_http_error_without_response(message: str):
     Exception.__init__(error, message)
     error.response = None
     return error
+
+
+def _hf_http_error(status_code: int, message: str = "HuggingFace error", headers: dict[str, str] | None = None):
+    """Create a Hugging Face HTTP error with a mock response."""
+    from huggingface_hub.utils import HfHubHTTPError
+
+    response = Mock()
+    response.status_code = status_code
+    response.headers = headers or {}
+    response.url = "https://huggingface.co/test-org/test-repo"
+    return HfHubHTTPError(message, response=response)
 
 
 @pytest.fixture
@@ -149,6 +168,26 @@ async def test_list_files_no_filter(hf_config, mock_hf_api, hf_secrets_empty):
         path_in_repo=None,
         recursive=True,
     )
+
+
+async def test_list_files_network_error_retries_then_succeeds(hf_config, mock_hf_api, hf_secrets_empty):
+    """Transient HuggingFace transport errors are retried."""
+    mock_file = Mock()
+    mock_file.path = "file1.txt"
+    mock_file.size = 100
+    mock_hf_api.list_repo_tree.side_effect = [
+        httpx.ConnectError("Connection reset by peer"),
+        [mock_file],
+    ]
+
+    impl = HuggingfaceStorageImpl(hf_config, hf_secrets_empty)
+
+    with patch("nmp.core.files.app.backends.huggingface.sleep", new_callable=AsyncMock) as mock_sleep:
+        files = await impl.list_files()
+
+    assert files[0].path == "file1.txt"
+    assert mock_hf_api.list_repo_tree.call_count == 2
+    mock_sleep.assert_awaited_once_with(0.5)
 
 
 async def test_list_files_with_path_filter(hf_config, mock_hf_api, hf_secrets_empty):
@@ -424,16 +463,84 @@ async def test_download_network_error(hf_config, hf_secrets_empty):
             raise aiohttp.ClientError("Connection failed")
             yield  # pragma: no cover
 
-        mock_stream.return_value = mock_chunks()
+        mock_stream.side_effect = lambda *args, **kwargs: mock_chunks()
 
         impl = HuggingfaceStorageImpl(hf_config, hf_secrets_empty)
         download_iter = await impl.download("test.txt", None)
 
-        with pytest.raises(HuggingfaceBackendError) as exc_info:
+        with (
+            patch("nmp.core.files.app.backends.huggingface.sleep", new_callable=AsyncMock) as mock_sleep,
+            pytest.raises(HuggingfaceUnavailableError) as exc_info,
+        ):
             async for _ in download_iter:
                 pass
 
         assert "Network error" in str(exc_info.value)
+        retry_attempts = FilesConfig().hf_retry_attempts
+        assert mock_stream.call_count == retry_attempts
+        assert mock_sleep.await_count == retry_attempts - 1
+
+
+async def test_download_retries_reuse_http_session(hf_config, hf_secrets_empty):
+    """Retry attempts reuse the backend's pooled HTTP session."""
+    with (
+        patch("nmp.core.files.app.backends.huggingface.hf_hub_url") as mock_url,
+        patch("nmp.core.files.app.backends.huggingface.get_http_session") as mock_get_session,
+        patch("nmp.core.files.app.backends.huggingface.download_url_streaming") as mock_stream,
+    ):
+        mock_url.return_value = "https://huggingface.co/test-org/test-repo/resolve/main/test.txt"
+        session = Mock()
+        mock_get_session.return_value = session
+
+        async def failing_chunks():
+            raise aiohttp.ClientError("Connection failed")
+            yield  # pragma: no cover
+
+        mock_stream.side_effect = lambda *args, **kwargs: failing_chunks()
+
+        impl = HuggingfaceStorageImpl(hf_config, hf_secrets_empty)
+        download_iter = await impl.download("test.txt", None)
+
+        with (
+            patch("nmp.core.files.app.backends.huggingface.sleep", new_callable=AsyncMock),
+            pytest.raises(HuggingfaceUnavailableError),
+        ):
+            async for _ in download_iter:
+                pass
+
+    assert mock_get_session.call_count == 1
+    assert {call.kwargs["session"] for call in mock_stream.call_args_list} == {session}
+
+
+async def test_download_does_not_retry_after_yielding_chunk(hf_config, hf_secrets_empty):
+    """A streaming failure after yielding bytes is propagated without replaying content."""
+    with (
+        patch("nmp.core.files.app.backends.huggingface.hf_hub_url") as mock_url,
+        patch("nmp.core.files.app.backends.huggingface.download_url_streaming") as mock_stream,
+    ):
+        mock_url.return_value = "https://huggingface.co/test-org/test-repo/resolve/main/test.txt"
+
+        async def chunks_then_error():
+            yield b"chunk1"
+            raise aiohttp.ClientError("Connection dropped")
+
+        mock_stream.side_effect = lambda *args, **kwargs: chunks_then_error()
+
+        impl = HuggingfaceStorageImpl(hf_config, hf_secrets_empty)
+        download_iter = await impl.download("test.txt", None)
+
+        chunks = []
+        with (
+            patch("nmp.core.files.app.backends.huggingface.sleep", new_callable=AsyncMock) as mock_sleep,
+            pytest.raises(HuggingfaceUnavailableError) as exc_info,
+        ):
+            async for chunk in download_iter:
+                chunks.append(chunk)
+
+    assert "Network error" in str(exc_info.value)
+    assert chunks == [b"chunk1"]
+    mock_stream.assert_called_once()
+    mock_sleep.assert_not_awaited()
 
 
 async def test_validate_storage_success(hf_config, mock_hf_api, hf_secrets_empty):
@@ -585,25 +692,94 @@ async def test_get_file_gated_repo_error(hf_config, mock_httpx_response, hf_secr
 
 async def test_get_file_rate_limit_error(hf_config, hf_secrets_empty):
     """Test get_file when rate limited by HuggingFace."""
-    from huggingface_hub.utils import HfHubHTTPError
-
-    # Create a mock response with 429 status code
-    mock_response = Mock()
-    mock_response.status_code = 429
-    mock_response.headers = {}
-    mock_response.url = "https://huggingface.co/test-org/test-repo/test.txt"
-
-    mock_error = HfHubHTTPError("Rate limited", response=mock_response)
+    mock_error = _hf_http_error(429, "Rate limited", headers={"Retry-After": "0"})
 
     with patch("nmp.core.files.app.backends.huggingface.get_hf_file_metadata") as mock_metadata:
         mock_metadata.side_effect = mock_error
 
         impl = HuggingfaceStorageImpl(hf_config, hf_secrets_empty)
 
-        with pytest.raises(HuggingfaceUnavailableError) as exc_info:
+        with (
+            patch("nmp.core.files.app.backends.huggingface.sleep", new_callable=AsyncMock) as mock_sleep,
+            pytest.raises(HuggingfaceUnavailableError) as exc_info,
+        ):
             await impl.get_file("test.txt")
 
     assert "Rate limited" in str(exc_info.value)
+    retry_attempts = FilesConfig().hf_retry_attempts
+    assert mock_metadata.call_count == retry_attempts
+    assert mock_sleep.await_count == retry_attempts - 1
+
+
+async def test_get_file_rate_limit_uses_retry_env_override(hf_config, hf_secrets_empty, monkeypatch):
+    """HF retry attempts and exponential delays can be increased by environment."""
+    monkeypatch.setenv("NMP_FILES_HF_RETRY_ATTEMPTS", "3")
+    monkeypatch.setenv("NMP_FILES_HF_RETRY_INITIAL_DELAY_SECONDS", "2")
+    monkeypatch.setenv("NMP_FILES_HF_RETRY_MAX_DELAY_SECONDS", "3")
+    _clear_files_config_cache()
+
+    try:
+        mock_error = _hf_http_error(429, "Rate limited")
+
+        with patch("nmp.core.files.app.backends.huggingface.get_hf_file_metadata") as mock_metadata:
+            mock_metadata.side_effect = mock_error
+
+            impl = HuggingfaceStorageImpl(hf_config, hf_secrets_empty)
+
+            with (
+                patch("nmp.core.files.app.backends.huggingface.sleep", new_callable=AsyncMock) as mock_sleep,
+                pytest.raises(HuggingfaceUnavailableError),
+            ):
+                await impl.get_file("test.txt")
+
+        assert mock_metadata.call_count == 3
+        mock_sleep.assert_has_awaits([call(2.0), call(3.0)])
+    finally:
+        _clear_files_config_cache()
+
+
+def test_retry_after_seconds_uses_hf_ratelimit_header_for_429():
+    """HF's RateLimit header exposes t=<seconds-until-reset> for 429s."""
+    assert _retry_after_seconds({"RateLimit": '"resolvers";r=0;t=7'}, status_code=429) == 7.0
+
+
+def test_retry_after_seconds_ignores_hf_ratelimit_header_for_non_429():
+    """RateLimit headers can appear on non-429 responses, so don't sleep on t=."""
+    assert _retry_after_seconds({"RateLimit": '"resolvers";r=0;t=7'}, status_code=503) is None
+
+
+def test_retry_after_seconds_prefers_retry_after_header():
+    assert (
+        _retry_after_seconds(
+            {"Retry-After": "2", "RateLimit": '"resolvers";r=0;t=7'},
+            status_code=429,
+        )
+        == 2.0
+    )
+
+
+async def test_get_file_rate_limit_uses_hf_ratelimit_delay(hf_config, hf_secrets_empty, monkeypatch):
+    """429 retries use HF's RateLimit reset when Retry-After is absent."""
+    monkeypatch.setenv("NMP_FILES_HF_RETRY_ATTEMPTS", "2")
+    monkeypatch.setenv("NMP_FILES_HF_RETRY_MAX_DELAY_SECONDS", "10")
+    _clear_files_config_cache()
+
+    try:
+        mock_error = _hf_http_error(429, "Rate limited", headers={"RateLimit": '"resolvers";r=0;t=7'})
+
+        with patch("nmp.core.files.app.backends.huggingface.get_hf_file_metadata") as mock_metadata:
+            mock_metadata.side_effect = [mock_error, Mock(size=1234)]
+
+            impl = HuggingfaceStorageImpl(hf_config, hf_secrets_empty)
+
+            with patch("nmp.core.files.app.backends.huggingface.sleep", new_callable=AsyncMock) as mock_sleep:
+                file_info = await impl.get_file("test.txt")
+
+        assert file_info.path == "test.txt"
+        assert file_info.size == 1234
+        mock_sleep.assert_awaited_once_with(7.0)
+    finally:
+        _clear_files_config_cache()
 
 
 async def test_validate_storage_gated_repo_error(hf_config, mock_hf_api, mock_httpx_response, hf_secrets_empty):
@@ -748,6 +924,29 @@ async def test_resolve_config_tag_to_sha(mock_hf_api, hf_secrets_empty):
 
     assert resolved_config.original_revision == "v1.0"
     assert resolved_config.revision == "def789abc123456"
+
+
+async def test_resolve_config_retries_rate_limit_then_succeeds(mock_hf_api, hf_secrets_empty):
+    """Transient HuggingFace rate limits are retried during revision resolution."""
+    mock_repo_info = Mock()
+    mock_repo_info.sha = "abc123def456789"
+    mock_hf_api.repo_info.side_effect = [
+        _hf_http_error(429, "Rate limited", headers={"Retry-After": "0"}),
+        mock_repo_info,
+    ]
+
+    impl = HuggingfaceStorageImpl(
+        HuggingfaceStorageConfig(repo_id="test-org/test-repo", repo_type="model", revision="main"),
+        hf_secrets_empty,
+    )
+
+    with patch("nmp.core.files.app.backends.huggingface.sleep", new_callable=AsyncMock) as mock_sleep:
+        resolved_config = await impl.resolve_config()
+
+    assert resolved_config.original_revision == "main"
+    assert resolved_config.revision == "abc123def456789"
+    assert mock_hf_api.repo_info.call_count == 2
+    mock_sleep.assert_awaited_once_with(0.0)
 
 
 async def test_resolve_config_repo_not_found(hf_config, mock_hf_api, mock_httpx_response, hf_secrets_empty):

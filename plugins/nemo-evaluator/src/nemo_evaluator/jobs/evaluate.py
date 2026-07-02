@@ -5,8 +5,8 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any, ClassVar, Self, TypeAlias
@@ -17,18 +17,17 @@ import nemo_evaluator.shared.metric_bundles.cloudpickle  # noqa: F401
 import nemo_evaluator.shared.metric_bundles.inline  # noqa: F401
 from nemo_evaluator.api.schemas import MetricInline
 from nemo_evaluator.filesets import FilesetRef, download_dataset, download_dataset_sync
-from nemo_evaluator.metric_refs import MetricRef, resolve_metric_specs
-from nemo_evaluator.resolvers import PlatformModelResolver
-from nemo_evaluator.shared.metric_bundles.bundles import (
-    MetricBundle,
-    bundle_metric,
-    metric_bundle_packager_for_payload,
-    unbundle_metric,
+from nemo_evaluator.jobs.metric_resolution import (
+    resolve_metrics_to_inline,
+    to_runtime_bundle,
+    unresolved_model_refs,
 )
+from nemo_evaluator.jobs.result_persistence import persist_evaluate_result
+from nemo_evaluator.metric_refs import MetricRefOrInline
+from nemo_evaluator.shared.metric_bundles.bundles import unbundle_metric
 from nemo_evaluator_sdk import Evaluator
 from nemo_evaluator_sdk.execution.config import resolve_params
 from nemo_evaluator_sdk.execution.metric_execution import run_sync
-from nemo_evaluator_sdk.metrics.protocol import Metric, MetricWithModels
 from nemo_evaluator_sdk.values import (
     Agent,
     FieldMapping,
@@ -45,8 +44,10 @@ from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+logger = logging.getLogger(__name__)
+
 TargetSpec = Model | Agent
-MetricSpec: TypeAlias = Annotated[list[MetricInline | MetricRef], Field(min_length=1)]
+MetricSpec: TypeAlias = Annotated[list[MetricRefOrInline], Field(min_length=1)]
 # Canonical spec carries inline metrics only (refs resolved) — still the wire DTO,
 # so the runtime MetricBundle never surfaces as a public schema.
 ResolvedMetricSpec: TypeAlias = Annotated[list[MetricInline], Field(min_length=1)]
@@ -72,32 +73,6 @@ class EvaluationResultFiles:
     aggregate_scores: Path
     row_scores: Path
     artifacts_dir: Path
-
-
-def _unresolved_model_refs(metrics: list[Metric]) -> list[str]:
-    refs = [
-        model_ref.root
-        for item in metrics
-        if isinstance(item, MetricWithModels)
-        for model_ref in item.model_refs().values()
-    ]
-    return sorted(refs)
-
-
-def _bundle_resolved_metric(metric: Metric, source_bundle: MetricBundle) -> MetricBundle:
-    packager = metric_bundle_packager_for_payload(source_bundle.payload)
-    resolved_bundle = bundle_metric(metric, packager)
-    return resolved_bundle.model_copy(update={"metadata": source_bundle.metadata})
-
-
-def _to_inline(bundle: MetricBundle) -> MetricInline:
-    """Project a runtime bundle onto the wire DTO (JSON round-trip keeps base64 consistent)."""
-    return MetricInline.model_validate_json(bundle.model_dump_json())
-
-
-def _to_runtime_bundle(metric: MetricInline) -> MetricBundle:
-    """Reconstruct the runtime bundle from a wire DTO for execution."""
-    return MetricBundle.model_validate_json(metric.model_dump_json())
 
 
 def _resolve_run_dataset(
@@ -175,9 +150,7 @@ class EvaluateSpec(_EvaluateSpecCommon):
 
     @model_validator(mode="after")
     def reject_unresolved_metric_model_refs(self) -> Self:
-        unresolved_refs = _unresolved_model_refs(
-            [unbundle_metric(_to_runtime_bundle(metric)) for metric in self.metrics]
-        )
+        unresolved_refs = unresolved_model_refs([unbundle_metric(to_runtime_bundle(metric)) for metric in self.metrics])
         if unresolved_refs:
             raise ValueError(
                 "EvaluateSpec metric models must be resolved before compile/run: " + ", ".join(unresolved_refs)
@@ -203,7 +176,7 @@ class EvaluateJob(NemoJob):
         spec: BaseModel,
         entity_client: object,
         job_name: str | None,
-        async_sdk: object,
+        async_sdk: AsyncNeMoPlatform | None,
         profile: str | None = None,
         options: dict | None = None,
     ) -> PlatformJobSpec:
@@ -245,7 +218,7 @@ class EvaluateJob(NemoJob):
         *,
         workspace: str,
         entity_client: object,
-        async_sdk: AsyncNeMoPlatform | NeMoPlatform | None,
+        async_sdk: AsyncNeMoPlatform | None,
         is_local: bool,
     ) -> BaseModel:
         """Resolve submitter-facing model and metric references into the canonical evaluation spec."""
@@ -255,34 +228,16 @@ class EvaluateJob(NemoJob):
             if isinstance(input_spec, EvaluateInputSpec)
             else EvaluateInputSpec.model_validate_json(input_spec.model_dump_json())
         )
-        resolved_async_sdk = async_sdk if isinstance(async_sdk, AsyncNeMoPlatform) else None
-        resolved_metrics = await resolve_metric_specs(
+        metrics = await resolve_metrics_to_inline(
             submit_spec.metrics,
             workspace=workspace,
             entity_client=entity_client,
-            async_sdk=resolved_async_sdk,
+            async_sdk=async_sdk,
         )
-        metrics = [unbundle_metric(bundle) for bundle in resolved_metrics]
-        params = resolve_params(submit_spec.params, submit_spec.target)
-        final_bundles = resolved_metrics
-        unresolved_refs = _unresolved_model_refs(metrics)
-        if unresolved_refs:
-            if async_sdk is None:
-                raise ValueError(
-                    "ModelRef metrics require `async_sdk` for spec resolution: " + ", ".join(unresolved_refs)
-                )
-            resolver = PlatformModelResolver(async_sdk)
-            await asyncio.gather(
-                *(metric.resolve_models(resolver) for metric in metrics if isinstance(metric, MetricWithModels))
-            )
-            final_bundles = [
-                _bundle_resolved_metric(metric, bundle)
-                for metric, bundle in zip(metrics, resolved_metrics, strict=True)
-            ]
         return EvaluateSpec(
-            metrics=[_to_inline(bundle) for bundle in final_bundles],
+            metrics=metrics,
             dataset=submit_spec.dataset,
-            params=params,
+            params=resolve_params(submit_spec.params, submit_spec.target),
             target=submit_spec.target,
             prompt_template=submit_spec.prompt_template,
             field_mapping=submit_spec.field_mapping,
@@ -300,7 +255,7 @@ class EvaluateJob(NemoJob):
         spec = EvaluateSpec.model_validate(config)
         evaluator = Evaluator()
         params = resolve_params(spec.params, spec.target)
-        metrics = [unbundle_metric(_to_runtime_bundle(metric)) for metric in spec.metrics]
+        metrics = [unbundle_metric(to_runtime_bundle(metric)) for metric in spec.metrics]
         dataset = _resolve_run_dataset(
             spec.dataset,
             ctx=ctx,
@@ -348,6 +303,26 @@ class EvaluateJob(NemoJob):
         ctx.results.save(AGGREGATE_SCORES_RESULT_NAME, result_files.aggregate_scores)
         ctx.results.save(ROW_SCORES_RESULT_NAME, result_files.row_scores)
         ctx.results.save(ARTIFACTS_RESULT_NAME, result_files.artifacts_dir, ignore_patterns=RESULT_IGNORE_PATTERNS)
+
+        # Persist the queryable result record (aggregate scores); per-row detail lives in the fileset
+        # bundle referenced by `artifact`. Best-effort: the authoritative output (result artifacts) is
+        # already saved above, so a persistence failure must not fail an otherwise-successful eval —
+        # log and continue.
+        try:
+            persist_evaluate_result(
+                result,
+                target=spec.target,
+                dataset_ref=spec.dataset.root if isinstance(spec.dataset, FilesetRef) else None,
+                metric_types=[metric.type for metric in metrics],
+                ctx=ctx,
+                bundle_ref=artifact.artifact_url,
+                async_sdk=async_sdk,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to persist evaluate result record; the result artifacts are unaffected",
+                exc_info=True,
+            )
 
         # TODO: Implement progress reporting hook in SDK - AALGO-149
         # self.report_progress(

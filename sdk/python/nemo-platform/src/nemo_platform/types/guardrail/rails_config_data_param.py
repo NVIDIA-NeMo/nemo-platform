@@ -17,12 +17,14 @@
 
 from __future__ import annotations
 
-from typing_extensions import TypedDict
+from typing import Dict, Union
+from typing_extensions import TypeAlias, TypedDict
 
 from .regex_detection_param import RegexDetectionParam
 from .fiddler_guardrails_param import FiddlerGuardrailsParam
 from .g_li_ner_detection_param import GLiNERDetectionParam
 from .pangea_rail_config_param import PangeaRailConfigParam
+from .polygraf_detection_param import PolygrafDetectionParam
 from .clavata_rail_config_param import ClavataRailConfigParam
 from .injection_detection_param import InjectionDetectionParam
 from .patronus_rail_config_param import PatronusRailConfigParam
@@ -35,9 +37,14 @@ from .sensitive_data_detection_param import SensitiveDataDetectionParam
 from .fact_checking_rail_config_param import FactCheckingRailConfigParam
 from .guardrails_ai_rail_config_param import GuardrailsAIRailConfigParam
 from .jailbreak_detection_config_param import JailbreakDetectionConfigParam
+from .local_hf_classifier_config_param import LocalHfClassifierConfigParam
+from .remote_hf_classifier_config_param import RemoteHfClassifierConfigParam
 from .crowd_strike_aidr_rail_config_param import CrowdStrikeAidrRailConfigParam
+from .context_bloat_detection_config_param import ContextBloatDetectionConfigParam
 
-__all__ = ["RailsConfigDataParam"]
+__all__ = ["RailsConfigDataParam", "HfClassifier"]
+
+HfClassifier: TypeAlias = Union[LocalHfClassifierConfigParam, RemoteHfClassifierConfigParam]
 
 
 class RailsConfigDataParam(TypedDict, total=False):
@@ -55,6 +62,9 @@ class RailsConfigDataParam(TypedDict, total=False):
     content_safety: ContentSafetyConfigParam
     """Configuration data for content safety rails."""
 
+    context_bloat_detection: ContextBloatDetectionConfigParam
+    """Configuration for context bloat / context manipulation detection."""
+
     crowdstrike_aidr: CrowdStrikeAidrRailConfigParam
     """Configuration data for the CrowdStrike AIDR API"""
 
@@ -70,6 +80,12 @@ class RailsConfigDataParam(TypedDict, total=False):
     guardrails_ai: GuardrailsAIRailConfigParam
     """Configuration data for Guardrails AI integration."""
 
+    hf_classifier: Dict[str, HfClassifier]
+    """Named HF classifier configurations.
+
+    Keys are classifier names referenced by flows.
+    """
+
     injection_detection: InjectionDetectionParam
     """Configuration for injection detection."""
 
@@ -81,6 +97,9 @@ class RailsConfigDataParam(TypedDict, total=False):
 
     patronus: PatronusRailConfigParam
     """Configuration data for the Patronus Evaluate API"""
+
+    polygraf: PolygrafDetectionParam
+    """Configuration for Polygraf PII detection."""
 
     privateai: PrivateAIDetectionParam
     """Configuration for Private AI."""

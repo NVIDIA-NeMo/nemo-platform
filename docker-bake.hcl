@@ -327,6 +327,67 @@ group "nmp-unsloth" {
   ]
 }
 
+group "nmp-rl" {
+  targets = [
+    "nmp-rl-base-builder",
+    "nmp-rl-tasks",
+    "nmp-rl-training",
+  ]
+}
+
+# Pruned workspace slice for nmp-rl images (keep in sync with
+# docker/rl/pyproject.workspace.toml + Dockerfile.platform-workspace members).
+target "rl-platform-workspace" {
+  target     = "platform-workspace"
+  context    = "."
+  dockerfile = "docker/rl/Dockerfile.platform-workspace"
+  output     = ["type=cacheonly"]
+  platforms  = get_platforms()
+}
+
+# Heavy base: NGC torch/CUDA + NeMo-RL v0.4.0 + Ray.
+target "nmp-rl-base-builder" {
+  target     = "nmp-rl-base"
+  context    = "."
+  dockerfile = "docker/Dockerfile.nmp-rl-base"
+  cache-to   = maybe_registry_cache_to("nmp-rl-base")
+  cache-from = maybe_registry_cache_from("nmp-rl-base")
+  tags       = base_tags("nmp-rl-base")
+  output     = image_output()
+  platforms  = get_platforms()
+}
+
+# GPU DPO training image: base + platform glue. Bootstraps Ray at runtime.
+target "nmp-rl-training" {
+  target     = "runtime"
+  context    = "."
+  dockerfile = "docker/Dockerfile.nmp-rl-training"
+  contexts = {
+    platform-workspace = "target:rl-platform-workspace"
+    nmp-rl-base        = "target:nmp-rl-base-builder"
+  }
+  cache-to   = maybe_registry_cache_to("nmp-rl-training")
+  cache-from = maybe_registry_cache_from("nmp-rl-training")
+  tags       = sha_and_maybe_latest_tags("nmp-rl-training")
+  output     = image_output()
+  platforms  = get_platforms()
+}
+
+# Lighter CPU image for the file_io / model_entity steps (no NeMo-RL/Ray).
+target "nmp-rl-tasks" {
+  target     = "runtime"
+  context    = "."
+  dockerfile = "docker/Dockerfile.nmp-rl-tasks"
+  contexts = {
+    platform-workspace = "target:rl-platform-workspace"
+  }
+  cache-to   = maybe_registry_cache_to("nmp-rl-tasks")
+  cache-from = maybe_registry_cache_from("nmp-rl-tasks")
+  tags       = sha_and_maybe_latest_tags("nmp-rl-tasks")
+  output     = image_output()
+  platforms  = get_platforms()
+}
+
 # Base images for consolidated containers
 target "nmp-python-base" {
   target     = python_base_target()

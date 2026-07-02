@@ -30,7 +30,7 @@ def test_with_request_id() -> None:
 def test_kw_only_construction() -> None:
     """Workspace must be passed by keyword — the dataclass is ``kw_only``."""
     with pytest.raises(TypeError):
-        FunctionContext("default")  # type: ignore[misc] — intentional misuse
+        FunctionContext("default")  # ty: ignore[missing-argument,too-many-positional-arguments]  — intentional misuse
 
 
 def test_field_set_is_minimal() -> None:

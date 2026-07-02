@@ -26,14 +26,16 @@ from typing import Any, cast
 from langchain_core.language_models import BaseChatModel
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.sdk_provider import get_forwarding_headers
-from nemoguardrails.llm.models import langchain_initializer
+from nemoguardrails.integrations.langchain.llm_adapter import LangChainLLMAdapter
+from nemoguardrails.llm.providers import register_provider
+from nemoguardrails.types import LLMModel
 
 NIM_PROVIDER_NAME = "nim"
 """NeMo Guardrails provider name for NVIDIA NIM chat models."""
 
 _HEADER_AWARE_INITIALIZER_INSTALLED = False
-"""Process-local guard so repeated middleware startups do not re-patch the
-private NeMo Guardrails NIM initializer table."""
+"""Process-local guard so repeated middleware startups do not re-register the
+NeMo Guardrails NIM provider."""
 
 RequestHeaders = Mapping[str, str]
 _request_headers_ctx: ContextVar[RequestHeaders] = ContextVar(
@@ -117,18 +119,18 @@ def build_header_aware_chat_nvidia(*, model_name: str, kwargs: dict[str, Any]) -
     return cast(BaseChatModel, header_aware_cls(model=model_name, **kwargs))
 
 
-def _init_header_aware_nim_model(model_name: str, _provider_name: str, kwargs: dict[str, Any]) -> BaseChatModel:
-    """Adapter matching NeMo Guardrails' private provider-initializer shape."""
-    return build_header_aware_chat_nvidia(model_name=model_name, kwargs=kwargs)
+def _init_header_aware_nim_model(*, model: str, **kwargs: Any) -> LLMModel:
+    """Adapter matching NeMo Guardrails' provider factory shape."""
+    model_name = model
+    return LangChainLLMAdapter(build_header_aware_chat_nvidia(model_name=model_name, kwargs=kwargs))
 
 
 def register_header_aware_nim_provider() -> None:
     """Install the header-aware client for NeMo Guardrails ``engine: nim``.
 
-    In ``nemoguardrails==0.21.0``, ``engine: nim`` bypasses the public
-    chat-provider registry and uses a private initializer table. Replacing that
-    one entry preserves the existing config surface while ensuring cached NIM
-    clients read request-scoped platform headers at call time.
+    Registering the provider preserves the existing ``engine: nim`` config
+    surface while ensuring cached NIM clients read request-scoped platform
+    headers at call time.
 
     The process-local guard makes repeated middleware startup calls idempotent
     and avoids rewriting the private table once the replacement is installed.
@@ -137,11 +139,5 @@ def register_header_aware_nim_provider() -> None:
     if _HEADER_AWARE_INITIALIZER_INSTALLED:
         return
 
-    provider_initializers = getattr(langchain_initializer, "_PROVIDER_INITIALIZERS", None)
-    if not isinstance(provider_initializers, dict) or NIM_PROVIDER_NAME not in provider_initializers:
-        raise RuntimeError(
-            "NeMo Guardrails 'nim' provider initializer is unavailable; cannot install header-aware client."
-        )
-
-    provider_initializers[NIM_PROVIDER_NAME] = _init_header_aware_nim_model
+    register_provider(NIM_PROVIDER_NAME, _init_header_aware_nim_model)
     _HEADER_AWARE_INITIALIZER_INSTALLED = True

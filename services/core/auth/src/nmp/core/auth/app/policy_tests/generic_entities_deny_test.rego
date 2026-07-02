@@ -173,7 +173,9 @@ test_service_principal_allowed_entities if {
 }
 
 # Viewer CAN still list workspaces (non-entity endpoint unaffected)
-test_viewer_can_list_workspaces if {
+test_workspace_viewer_cannot_list_workspaces if {
+	# viewer@test.com is a Viewer of test-ws only, so it lacks workspaces.list in the system
+	# workspace — listing workspaces now requires that system-level grant.
 	result := authz.allow
 		with input as {
 			"principal_id": "viewer@test.com",
@@ -185,5 +187,5 @@ test_viewer_can_list_workspaces if {
 		with data.authz.workspaces as entities_deny_test_data.workspaces
 		with data.authz.principals as entities_deny_test_data.principals
 
-	result.allowed == true
+	result.allowed == false
 }

@@ -58,8 +58,10 @@ class TestExperiments:
             dataset_version="dataset_version",
             description="description",
             metadata={"foo": "bar"},
+            parent_experiment_id="parent_experiment_id",
+            root_cause="root_cause",
             source_link="https://example.com",
-            summary="summary",
+            status="status",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
@@ -182,8 +184,10 @@ class TestExperiments:
             dataset_version="dataset_version",
             description="description",
             metadata={"foo": "bar"},
+            parent_experiment_id="parent_experiment_id",
+            root_cause="root_cause",
             source_link="https://example.com",
-            summary="summary",
+            status="status",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
@@ -256,6 +260,57 @@ class TestExperiments:
         experiment = client.experiments.list(
             workspace="workspace",
             filter={
+                "cost_usd": {
+                    "count": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "mean": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "median": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p90": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p95": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p99": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "sum": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                },
                 "created_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
                     "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
@@ -263,10 +318,121 @@ class TestExperiments:
                 "created_by": "created_by",
                 "dataset_name": "dataset_name",
                 "dataset_version": "dataset_version",
+                "evaluators": {
+                    "foo": {
+                        "count": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                        "mean": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                        "median": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                        "p90": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                        "p95": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                        "p99": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                        "sum": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                    }
+                },
                 "experiment_group_id": "experiment_group_id",
                 "is_deleted": True,
                 "is_pinned": True,
+                "latency_ms": {
+                    "count": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "mean": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "median": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p90": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p95": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p99": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "sum": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                },
                 "name": "name",
+                "run_count": {
+                    "eq": 0,
+                    "gt": 0,
+                    "gte": 0,
+                    "lt": 0,
+                    "lte": 0,
+                },
                 "updated_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
                     "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
@@ -496,8 +662,10 @@ class TestAsyncExperiments:
             dataset_version="dataset_version",
             description="description",
             metadata={"foo": "bar"},
+            parent_experiment_id="parent_experiment_id",
+            root_cause="root_cause",
             source_link="https://example.com",
-            summary="summary",
+            status="status",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
@@ -620,8 +788,10 @@ class TestAsyncExperiments:
             dataset_version="dataset_version",
             description="description",
             metadata={"foo": "bar"},
+            parent_experiment_id="parent_experiment_id",
+            root_cause="root_cause",
             source_link="https://example.com",
-            summary="summary",
+            status="status",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
@@ -694,6 +864,57 @@ class TestAsyncExperiments:
         experiment = await async_client.experiments.list(
             workspace="workspace",
             filter={
+                "cost_usd": {
+                    "count": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "mean": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "median": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p90": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p95": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p99": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "sum": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                },
                 "created_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
                     "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
@@ -701,10 +922,121 @@ class TestAsyncExperiments:
                 "created_by": "created_by",
                 "dataset_name": "dataset_name",
                 "dataset_version": "dataset_version",
+                "evaluators": {
+                    "foo": {
+                        "count": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                        "mean": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                        "median": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                        "p90": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                        "p95": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                        "p99": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                        "sum": {
+                            "eq": 0,
+                            "gt": 0,
+                            "gte": 0,
+                            "lt": 0,
+                            "lte": 0,
+                        },
+                    }
+                },
                 "experiment_group_id": "experiment_group_id",
                 "is_deleted": True,
                 "is_pinned": True,
+                "latency_ms": {
+                    "count": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "mean": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "median": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p90": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p95": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "p99": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                    "sum": {
+                        "eq": 0,
+                        "gt": 0,
+                        "gte": 0,
+                        "lt": 0,
+                        "lte": 0,
+                    },
+                },
                 "name": "name",
+                "run_count": {
+                    "eq": 0,
+                    "gt": 0,
+                    "gte": 0,
+                    "lt": 0,
+                    "lte": 0,
+                },
                 "updated_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
                     "lte": parse_datetime("2019-12-27T18:11:19.117Z"),

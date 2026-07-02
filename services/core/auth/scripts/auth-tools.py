@@ -1346,7 +1346,7 @@ def sync_plugins(
     ),
     dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show what would change without writing"),
 ):
-    """Merge plugin ``nemo.authz`` / ``get_authz_contribution`` data into static-authz.yaml.
+    """Merge derived plugin authz (``@path_rule``-decorated routes) into static-authz.yaml.
 
     Run from the repo root with workspace plugins installed (``uv sync``). This
     materializes runtime plugin policy into the committed bundle for CI and
@@ -1370,25 +1370,29 @@ def sync_plugins(
         auth_path = project_root / auth_path
 
     try:
-        from nemo_platform_plugin.authz_discovery import discover_authz_contribution_dicts
-        from nmp.common.auth.authz_merge import merge_authz_contributions
+        from nmp.core.auth.app.bundle import get_degraded_plugins, merge_plugin_authz_contributions
     except ImportError as exc:
-        console.print(f"[red]Cannot import plugin authz discovery: {exc}[/red]")
+        console.print(f"[red]Cannot import plugin authz merge: {exc}[/red]")
         console.print("[yellow]Run from repo root with workspace packages installed (uv sync).[/yellow]")
         raise typer.Exit(code=1) from exc
 
-    contributions = discover_authz_contribution_dicts()
-    if not contributions:
-        console.print("[yellow]No plugin authz contributions discovered.[/yellow]")
-        raise typer.Exit(code=0)
-
     auth_config = load_yaml(auth_path)
     before_endpoints = set(auth_config.get("authz", {}).get("endpoints", {}).keys())
-    merged = merge_authz_contributions(auth_config, contributions)
+    # Route through the SAME fail-mode merge the running auth service uses (discover →
+    # on_invalid_plugin fencing/quarantine → merge), so the committed static-authz.yaml cannot
+    # diverge from runtime and fail-open for a plugin that can't be enumerated (a raw
+    # discover_authz_contribution_dicts() pass would skip denied_plugin_prefixes).
+    merged = merge_plugin_authz_contributions(auth_config)
     after_endpoints = set(merged.get("authz", {}).get("endpoints", {}).keys())
     added_paths = sorted(after_endpoints - before_endpoints)
 
-    console.print(f"[bold]Merging {len(contributions)} plugin authz contribution(s)...[/bold]")
+    degraded = get_degraded_plugins()
+    if degraded:
+        console.print(f"[yellow]⚠ {len(degraded)} plugin(s) contributed invalid authz (denied / fenced):[/yellow]")
+        for key, problems in sorted(degraded.items()):
+            console.print(f"  [yellow]![/yellow] {key}: {'; '.join(problems)}")
+
+    console.print("[bold]Merging plugin authz contributions...[/bold]")
     for path in added_paths:
         methods = sorted(merged["authz"]["endpoints"][path].keys())
         console.print(f"  [green]+[/green] {path} ({', '.join(methods)})")

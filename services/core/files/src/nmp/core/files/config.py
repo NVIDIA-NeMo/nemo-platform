@@ -61,6 +61,24 @@ class FilesConfig(create_service_config_class("files")):  # type: ignore
         description="Maximum concurrent downloads during cache warming",
     )
 
+    hf_retry_attempts: int = Field(
+        default=4,
+        ge=1,
+        description="Maximum Hugging Face request attempts for transient failures.",
+    )
+
+    hf_retry_initial_delay_seconds: float = Field(
+        default=0.5,
+        ge=0.0,
+        description="Initial Hugging Face retry delay in seconds before exponential backoff.",
+    )
+
+    hf_retry_max_delay_seconds: float = Field(
+        default=5.0,
+        ge=0.0,
+        description="Maximum Hugging Face retry delay in seconds.",
+    )
+
 
 # TODO(v2): CONFIG
 @cache

@@ -24,7 +24,11 @@ from ..._types import SequenceNotStr
 __all__ = ["InferenceParams"]
 
 
-class InferenceParams(TypedDict, total=False, extra_items=object):  # type: ignore[call-arg]
+class InferenceParams(  # type: ignore[call-arg]
+    TypedDict,
+    total=False,
+    extra_items=object,  # pyright: ignore[reportGeneralTypeIssues]
+):
     """Parameters for model inference.
 
     Extra fields can be supplied for additional options applied to the inference request directly. Fields not supported by the model may cause inference errors during evaluation.

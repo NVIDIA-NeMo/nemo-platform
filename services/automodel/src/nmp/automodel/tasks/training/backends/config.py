@@ -233,8 +233,14 @@ def compile_automodel_config(
             )
 
     # === Optimizer ===
+    # Map the optimizer choice to its torch class. Reject unknown names instead of
+    # silently falling back to Adam, which would mask a misconfigured optimizer.
+    optimizer_targets = {"Adam": "torch.optim.Adam", "AdamW": "torch.optim.AdamW"}
+    optimizer_name = customizer_config.optimizer.optimizer_name
+    if optimizer_name not in optimizer_targets:
+        raise ValueError(f"Unsupported optimizer_name {optimizer_name!r}; expected one of {sorted(optimizer_targets)}.")
     cfg["optimizer"] = {
-        "_target_": "torch.optim.Adam",
+        "_target_": optimizer_targets[optimizer_name],
         "lr": customizer_config.optimizer.learning_rate,
         "weight_decay": customizer_config.optimizer.weight_decay,
         "betas": [customizer_config.optimizer.beta1, customizer_config.optimizer.beta2],
@@ -242,7 +248,7 @@ def compile_automodel_config(
     }
 
     cfg["lr_scheduler"] = {
-        "lr_decay_style": "cosine",
+        "lr_decay_style": customizer_config.optimizer.lr_decay_style,
         "lr_warmup_steps": customizer_config.optimizer.warmup_steps,
     }
     if customizer_config.optimizer.min_learning_rate:
@@ -289,7 +295,6 @@ def compile_automodel_config(
 
             cfg["packed_sequence"] = {
                 "packed_sequence_size": optimal_pack_size,
-                "split_across_pack": False,
             }
 
             # Use pack size as the effective sequence length for datasets
@@ -335,9 +340,8 @@ def compile_automodel_config(
             "use_triton": lora.use_triton,
             "target_modules": lora.target_modules,
         }
-        # TODO: Support exclude_modules via the API
-        # if lora.exclude_modules:
-        #     peft_cfg["exclude_modules"] = lora.exclude_modules
+        if lora.exclude_modules:
+            peft_cfg["exclude_modules"] = lora.exclude_modules
         cfg["peft"] = peft_cfg
 
     # === Loss ===

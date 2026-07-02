@@ -61,7 +61,11 @@ workspace_access_test_data := {
     "principals": {
         "user123": {
             "workspaces": {
-                "test-workspace": ["Admin"]
+                # Admin of test-workspace, plus a system Viewer grant. Listing workspaces now
+                # requires workspaces.list in the SYSTEM workspace, so a system-level
+                # role is what lets this user list.
+                "test-workspace": ["Admin"],
+                "system": ["Viewer"]
             }
         }
     }
@@ -71,9 +75,10 @@ workspace_access_test_data := {
 # Test 1: List workspaces with no access
 # ============================================================================
 
-test_list_workspaces_no_access_allowed if {
-    # User with no workspace access should still be allowed to list (but gets empty results)
-    result := authz.allow 
+test_list_workspaces_without_system_permission_denied if {
+    # Listing workspaces now requires workspaces.list in the SYSTEM workspace. A user
+    # with no such grant is denied — previously this rule allowed any authenticated user.
+    result := authz.allow
         with input as {
             "principal_id": "test-user",
             "principal_email": "test@example.com",
@@ -85,10 +90,10 @@ test_list_workspaces_no_access_allowed if {
         with data.authz.endpoints as workspace_access_test_data.endpoints
         with data.authz.workspaces as workspace_access_test_data.workspaces
         with data.authz.principals as {
-            "test-user": {"workspaces": {}}  # No workspace access
+            "test-user": {"workspaces": {}}  # No system workspaces.list grant
         }
-    
-    result.allowed == true
+
+    result.allowed == false
 }
 
 # ============================================================================
@@ -249,9 +254,10 @@ test_creator_list_workspaces_allowed if {
 # Test 8: Other user list workspaces
 # ============================================================================
 
-test_other_user_list_workspaces_allowed if {
-    # Other user should be allowed to list (but gets empty results)
-    result := authz.allow 
+test_other_user_list_workspaces_denied if {
+    # A user with only workspace-scoped (or no) roles lacks workspaces.list in the system
+    # workspace, so they can no longer list workspaces.
+    result := authz.allow
         with input as {
             "principal_id": "user456",
             "principal_email": "other@example.com",
@@ -265,8 +271,8 @@ test_other_user_list_workspaces_allowed if {
         with data.authz.principals as {
             "user456": {"workspaces": {}}
         }
-    
-    result.allowed == true
+
+    result.allowed == false
 }
 
 # ============================================================================
@@ -317,11 +323,14 @@ test_list_multiple_workspaces if {
                 "workspaces": {
                     "ns1": ["Viewer"],
                     "ns2": ["Editor"],
-                    "ns3": ["Admin"]
+                    "ns3": ["Admin"],
+                    # system Viewer carries workspaces.list, the system-workspace grant that
+                    # listing now requires; the multi-workspace setup is otherwise unchanged.
+                    "system": ["Viewer"]
                 }
             }
         }
-    
+
     result.allowed == true
 }
 

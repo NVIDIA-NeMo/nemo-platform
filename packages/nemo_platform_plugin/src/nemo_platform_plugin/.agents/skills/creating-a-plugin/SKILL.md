@@ -42,7 +42,10 @@ packages = ["src/nemo_my_plugin"]
 # src/nemo_my_plugin/service.py
 from typing import ClassVar
 from fastapi import APIRouter
+from nemo_platform_plugin.authz import AuthzScope, CallerKind, path_rule
 from nemo_platform_plugin.service import NemoService, RouterSpec
+
+scope = AuthzScope("my-plugin")
 
 class MyService(NemoService):
     name: ClassVar[str] = "my-plugin"
@@ -52,11 +55,15 @@ class MyService(NemoService):
         router = APIRouter()
 
         @router.get("/hello")
+        @scope.read
+        @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[])
         async def hello() -> dict:
             return {"message": "Hello from my plugin!"}
 
         return [RouterSpec(router, tag="My Plugin")]
 ```
+
+Every plugin route needs an authz rule — the `@scope.read`/`.write` scope gate plus a `@path_rule` (here authenticated but permissionless, `permissions=[]`); see the `plugin-authz` skill for permissions and caller-kinds.
 
 **Step 4: Install editable**
 
@@ -166,7 +173,7 @@ class SayHelloJob(NemoJob):
         ...
 ```
 
-Entry-point key uses dot: `"my-plugin.say-hello"` under the `nemo.jobs` group. The platform auto-generates `nemo my-plugin say-hello run / submit / explain`. Mount server routes with `add_job_routes(SayHelloJob)` from `nemo_platform_plugin.jobs.routes`. See the `plugin-job` skill for the full pattern.
+Entry-point key uses dot: `"my-plugin.say-hello"` under the `nemo.jobs` group. The platform auto-generates `nemo my-plugin say-hello run / submit / explain`. Mount server routes with `add_job_routes(SayHelloJob, authz=AuthzScope("my-plugin"))` from `nemo_platform_plugin.jobs.routes` — the `authz=` kwarg is required, or the generated routes are unruled and fail the OPA bundle build. See the `plugin-job` skill for the full pattern.
 
 **Add a function:**
 
@@ -194,7 +201,7 @@ class GreetFunction(NemoFunction[GreetSpec]):
         return GreetResponse(message=f"Hello, {spec.name}!")
 ```
 
-Entry-point key uses dot: `"my-plugin.greet"` under the `nemo.functions` group. The platform auto-generates `nemo my-plugin greet run / submit` (two verbs — no `explain`). Mount the HTTP route inside your `NemoService` with `add_function_routes(GreetFunction)` from `nemo_platform_plugin.functions.routes`. Streaming functions return an `AsyncIterator` (one NDJSON frame per line); non-streaming ones return a value. `run` **must be `async def`** — sync work goes through `await asyncio.to_thread(...)`. See the `plugin-function` skill for the full pattern.
+Entry-point key uses dot: `"my-plugin.greet"` under the `nemo.functions` group. The platform auto-generates `nemo my-plugin greet run / submit` (two verbs — no `explain`). Mount the HTTP route inside your `NemoService` with `add_function_routes(GreetFunction, authz=AuthzScope("my-plugin"), permission_description="Invoke the greet function")` from `nemo_platform_plugin.functions.routes` — the `authz=` kwarg is required, or the route is unruled and fails the OPA bundle build. Streaming functions return an `AsyncIterator` (one NDJSON frame per line); non-streaming ones return a value. `run` **must be `async def`** — sync work goes through `await asyncio.to_thread(...)`. See the `plugin-function` skill for the full pattern.
 
 **Add a controller:**
 
@@ -273,3 +280,4 @@ discover_entry_points.cache_clear()
 - **Install with `-e` (editable)**: `uv pip install -e .` — non-editable installs require reinstall on every change.
 - **`discover.cache_clear()` in tests**: Any test that mocks entry-points must call both `discover.cache_clear()` and `discover_entry_points.cache_clear()` to avoid stale caches between tests.
 - **`packages = ["src/nemo_my_plugin"]` in hatchling config**: Without this, the wheel will not include the `nmp` namespace package correctly.
+- **Every route needs an authz rule**: an unruled route fails the OPA bundle build under `on_invalid_plugin=hard_fail` (the platform 502s rather than silently fencing the route). Attach `@scope.read`/`.write` + `@path_rule` to hand-written handlers, or pass `authz=` to `add_job_routes` / `add_function_routes`. See the `plugin-authz` skill.

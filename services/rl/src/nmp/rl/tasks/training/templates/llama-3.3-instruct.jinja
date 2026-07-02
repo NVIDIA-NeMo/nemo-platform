@@ -1,0 +1,61 @@
+{{- bos_token }}
+{%- if not date_string is defined %}
+    {%- if strftime_now is defined %}
+        {%- set date_string = strftime_now("%d %b %Y") %}
+    {%- else %}
+        {%- set date_string = "26 Jul 2024" %}
+    {%- endif %}
+{%- endif %}
+{%- set loop_messages = messages %}
+{%- if tools is not none and tool_choice is not none %}
+    {{- '<|start_header_id|>system<|end_header_id|>\n\n' }}
+    {{- "Environment: ipython\n\n" }}
+    {{- "Cutting Knowledge Date: December 2023\n" }}
+    {{- "Today Date: " + date_string + "\n\n" }}
+    {{- "You are a helpful assistant.\n" }}
+    {{- '<|eot_id|>' }}
+    {{- '<|start_header_id|>user<|end_header_id|>\n\n' }}
+    {{- 'You have access to the following functions to supplement your existing knowledge:\n\n' }}
+    {%- for t in tools %}
+        {%- set tname = t.function.name %}
+        {%- set tdesc = t.function.description %}
+        {%- set tparams = t.function.parameters | tojson %}
+        {{- "Use the function '" + tname + "' to '" + tdesc + "':\n" }}
+        {{- '{"name": "' + tname + '", "description": "' + tdesc + '", "parameters": ' + tparams + '}\n\n' }}
+    {%- endfor %}
+    {{- 'Think very carefully before calling functions.\n' }}
+    {{- 'Only call them if they are relevant to the prompt.\n' }}
+    {{- 'If you choose to call a function ONLY reply in the following format with no natural language surrounding it:\n\n' }}
+    {{- '<function=example_function_name>{"example_name": "example_value"}</function>\n\n' }}
+    {{- 'Reminder:\n' }}
+    {{- '- Function calls MUST follow the specified format, start with <function= and end with </function>\n' }}
+    {{- '- Required parameters MUST be specified\n' }}
+    {{- '- Only call one function at a time\n' }}
+    {{- '- Put the entire function call reply on one line\n' }}
+    {{- '- Do not call functions if they are not relevant to the prompt' }}
+    {{- '<|eot_id|>' }}
+{%- endif %}
+{%- for message in loop_messages %}
+    {%- if message['role'] in ['ipython', 'tool'] %}
+        {{- "<|start_header_id|>ipython<|end_header_id|>\n\n" }}
+        {{- "[stdout]" + message['content'] | trim  + "[/stdout]\n<|eot_id|>" }}
+    {%- elif message['role'] == 'assistant'%}
+        {{- '<|start_header_id|>assistant<|end_header_id|>\n\n' }}
+        {%- if message.get('tool_calls') is not none %}
+            {%- set tool_call = message['tool_calls'][0] %}
+            {%- generation %}
+                {{- '<function=' + tool_call.function.name + '>' + tool_call.function.arguments | tojson + '</function>\n<|eot_id|>' }}
+            {%- endgeneration %}
+        {%- else %}
+            {%- generation %}
+                {{- message['content'] | trim + '<|eot_id|>' }}
+            {%- endgeneration %}
+        {%- endif %}
+    {%- else %}
+        {{- '<|start_header_id|>' + message['role'] + '<|end_header_id|>\n\n' }}
+        {{- message['content'] | trim + '<|eot_id|>' }}
+    {%- endif %}
+{%- endfor %}
+{%- if add_generation_prompt %}
+    {{- '<|start_header_id|>assistant<|end_header_id|>\n\n' }}
+{%- endif %}

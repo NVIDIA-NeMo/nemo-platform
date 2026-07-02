@@ -217,15 +217,64 @@ test_known_endpoint_denied_without_permission if {
 
 # A known cross-workspace LIST endpoint still works for authenticated users.
 test_known_cross_workspace_list_still_allowed if {
+	# Control for the fail-closed unknown-endpoint tests above: a KNOWN no-workspace list
+	# endpoint is still allowed for a user holding the permission. lister@test.com has Viewer
+	# (→ workspaces.list) in the system workspace, which listing now requires.
 	result := authz.allow with input as {
-		"principal_id": "user@test.com",
+		"principal_id": "lister@test.com",
 		"method": "GET",
 		"path": "/apis/entities/v2/workspaces",
 	}
 		with data.authz.roles as unknown_endpoint_test_data.roles
 		with data.authz.endpoints as unknown_endpoint_test_data.endpoints
 		with data.authz.workspaces as unknown_endpoint_test_data.workspaces
-		with data.authz.principals as unknown_endpoint_test_data.principals
+		with data.authz.principals as {"lister@test.com": {"workspaces": {"system": ["Viewer"]}}}
+
+	result.allowed == true
+}
+
+# --- permission enforcement on permission-stamped no-workspace GETs ---
+
+# A permissionless no-workspace GET stays open to any authenticated user (the cross-workspace
+# list path is unchanged for endpoints declaring no permissions).
+test_permissionless_no_workspace_get_allows_any_authenticated_user if {
+	result := authz.allow with input as {
+		"principal_id": "anyone@test.com",
+		"method": "GET",
+		"path": "/apis/example/v1/ping",
+	}
+		with data.authz.endpoints as {"/apis/example/v1/ping": {"get": {"permissions": []}}}
+		with data.authz.principals as {"anyone@test.com": {"workspaces": {}}}
+		with data.authz.roles as {}
+
+	result.allowed == true
+}
+
+# A permission-stamped no-workspace GET is DENIED without the declared permission in the system
+# workspace — the stamped permission is enforced rather than decorative.
+test_permissioned_no_workspace_get_denied_without_permission if {
+	result := authz.allow with input as {
+		"principal_id": "nobody@test.com",
+		"method": "GET",
+		"path": "/apis/example/v1/hello/world",
+	}
+		with data.authz.endpoints as {"/apis/example/v1/hello/{name}": {"get": {"permissions": ["example.hello.read"]}}}
+		with data.authz.principals as {"nobody@test.com": {"workspaces": {}}}
+		with data.authz.roles as {}
+
+	result.allowed == false
+}
+
+# ...and ALLOWED when the caller holds that permission in the system workspace.
+test_permissioned_no_workspace_get_allowed_with_system_permission if {
+	result := authz.allow with input as {
+		"principal_id": "reader@test.com",
+		"method": "GET",
+		"path": "/apis/example/v1/hello/world",
+	}
+		with data.authz.endpoints as {"/apis/example/v1/hello/{name}": {"get": {"permissions": ["example.hello.read"]}}}
+		with data.authz.principals as {"reader@test.com": {"workspaces": {"system": ["HelloReader"]}}}
+		with data.authz.roles as {"HelloReader": {"permissions": ["example.hello.read"]}}
 
 	result.allowed == true
 }

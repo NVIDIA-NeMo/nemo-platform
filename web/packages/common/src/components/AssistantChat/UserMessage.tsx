@@ -18,13 +18,13 @@ export const UserMessage = ({ messageContentProps, toolCallPartComponent }: Mess
     data-testspeaker="user"
     className="group/message flex w-full flex-col items-end gap-density-xs whitespace-normal"
   >
-    <div className="max-w-[80%] rounded-xl rounded-br-none bg-surface-overlay px-3 py-2">
+    <div className="max-w-[min(76%,44rem)] rounded-lg rounded-br-sm border border-[var(--border-color-accent-teal)] bg-[var(--background-color-accent-teal-subtle)] px-density-md py-density-sm shadow ring-1 ring-black/5 dark:ring-white/10">
       <AssistantChatMessageContent
         messageContentProps={messageContentProps}
         toolCallPartComponent={toolCallPartComponent}
       />
     </div>
-    <div className="flex h-8 shrink-0 items-center">
+    <div className="flex h-7 shrink-0 items-center pr-density-xs">
       <ActionBarPrimitive.Root hideWhenRunning className={MESSAGE_ACTIONS_CLASS}>
         <Tooltip slotContent="Edit message">
           <ActionBarPrimitive.Edit aria-label="Edit message" className={ACTION_BUTTON_CLASS}>

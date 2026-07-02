@@ -37,7 +37,7 @@ def test_service_health_route_mounts_with_valid_prefix() -> None:
         "plugin": "evaluator",
         "status": "ok",
         "mode": "sdk-backed-job-scaffold",
-        "jobs": ["evaluator.evaluate"],
+        "jobs": ["evaluator.evaluate", "evaluator.agent-evaluate"],
     }
 
 

@@ -13,7 +13,19 @@ NeMo Platform brings NVIDIA NeMo libraries together under one CLI, Python SDK, a
 
 ## Get started
 
-**Prerequisites:** Python 3.11-3.14, uv, and an API key for an inference provider (NVIDIA Build, OpenAI, Anthropic, Google Gemini, or a local Ollama instance). Node.js 22.18.x with `pnpm` only if you want the web UI.
+**Prerequisites:** Python 3.11-3.14 and an API key for an inference provider (NVIDIA Build, OpenAI, Anthropic, Google Gemini, or a local Ollama instance). For source development, you also need Git, GNU Make, uv, and Node.js 22.18.x with `pnpm` if you want the web UI.
+
+Quick install from PyPI:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install "nemo-platform[all]"
+
+nemo setup
+```
+
+Source checkout for development:
 
 ```bash
 git clone https://github.com/NVIDIA-NeMo/nemo-platform.git
@@ -27,7 +39,7 @@ nemo setup
 
 `nemo setup` starts local services, registers your LLM provider, discovers available models, installs agent skills, and deploys a sample agent (see more below).
 
-See **[SETUP.md](SETUP.md)** for the full setup playbook (local data dir, DB reset, manual service start, troubleshooting).
+See **[SETUP.md](SETUP.md)** for the full source setup playbook (local data dir, DB reset, manual service start, troubleshooting).
 
 Verify:
 
@@ -102,11 +114,9 @@ Things you can ask it to do, once the platform is running:
 - **Generate synthetic data.** Generate synthetic data for training or evaluation purposes using Data Designer.
 - **NeMo Studio (alpha).** Installed automatically with the platform. Browser UI for chat, monitoring, and reviewing optimization suggestions. Studio's agent-focused features are still a work in progress; the CLI is the primary surface today.
 
-## What's coming soon
+## Release notes
 
-- Fine-tuning
-- Safe Synthesizer (synthetic data with privacy guarantees)
-- Broader agent framework support. Today NeMo Platform optimizes LangGraph agents wrapped in NAT. If your agent is in another framework, you need to write the NAT wrapper.
+See the [current release notes](https://docs.nvidia.com/nemo-platform/documentation/reference/release-notes/current-release) for the latest features, improvements, and known limitations.
 
 ## Skills
 

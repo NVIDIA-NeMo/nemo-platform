@@ -100,6 +100,13 @@ const getAssistantPartsText = (parts: readonly ThreadAssistantMessagePart[]): st
     })
     .join('');
 
+const getAssistantMessageParts = (
+  message: ThreadMessageLike
+): readonly ThreadAssistantMessagePart[] => {
+  if (typeof message.content === 'string') return [{ type: 'text', text: message.content }];
+  return message.content as readonly ThreadAssistantMessagePart[];
+};
+
 const hasVisibleAssistantContent = (content: ThreadMessageLike['content']): boolean => {
   if (typeof content === 'string') return content.trim().length > 0;
 
@@ -194,8 +201,26 @@ export const useCustomAssistantChatRuntime = ({
         setThreadMessages([...messagesRef.current, assistantMessage]);
       };
 
+      const resumeLastAssistantMessage = (): boolean => {
+        const lastMessage = messagesRef.current.at(-1);
+        if (
+          !lastMessage?.id ||
+          lastMessage.role !== 'assistant' ||
+          lastMessage.status?.type !== 'complete'
+        ) {
+          return false;
+        }
+
+        assistantMessageId = lastMessage.id;
+        responseContent = getAssistantMessageParts(lastMessage);
+        responseText = getAssistantPartsText(responseContent);
+        updateAssistantMessageContent(assistantMessageId, responseContent, RUNNING_STATUS);
+        return true;
+      };
+
       const ensureAssistantMessage = () => {
         if (assistantMessageId) return;
+        if (resumeLastAssistantMessage()) return;
         createAssistantMessage();
       };
 
@@ -224,6 +249,18 @@ export const useCustomAssistantChatRuntime = ({
 
       const setAssistantText = (text: string) => {
         ensureAssistantMessage();
+        if (responseContent) {
+          const textToAppend = text.startsWith(responseText)
+            ? text.slice(responseText.length)
+            : text;
+          responseContent = textToAppend
+            ? mergeAssistantParts(responseContent, [{ type: 'text', text: textToAppend }])
+            : responseContent;
+          responseText = getAssistantPartsText(responseContent);
+          updateAssistantMessageContent(assistantMessageId!, responseContent, RUNNING_STATUS);
+          return;
+        }
+
         responseText = text;
         responseContent = undefined;
         updateAssistantMessageText(assistantMessageId!, responseText, RUNNING_STATUS);
@@ -231,6 +268,13 @@ export const useCustomAssistantChatRuntime = ({
 
       const appendAssistantText = (text: string) => {
         ensureAssistantMessage();
+        if (responseContent) {
+          responseContent = mergeAssistantParts(responseContent, [{ type: 'text', text }]);
+          responseText = getAssistantPartsText(responseContent);
+          updateAssistantMessageContent(assistantMessageId!, responseContent, RUNNING_STATUS);
+          return;
+        }
+
         responseText += text;
         responseContent = undefined;
         updateAssistantMessageText(assistantMessageId!, responseText, RUNNING_STATUS);

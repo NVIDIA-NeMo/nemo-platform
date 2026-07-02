@@ -6,7 +6,6 @@
 from typing import Any, Protocol, cast
 from unittest.mock import MagicMock
 
-import pytest
 from nemo_guardrails_plugin import llm_clients
 from nemo_guardrails_plugin.llm_clients import (
     build_header_aware_chat_nvidia,
@@ -15,7 +14,8 @@ from nemo_guardrails_plugin.llm_clients import (
     register_header_aware_nim_provider,
 )
 from nemo_platform_plugin.sdk_provider import get_forwarding_headers
-from nemoguardrails.llm.models import langchain_initializer
+from nemoguardrails.integrations.langchain.llm_adapter import LangChainLLMAdapter
+from nemoguardrails.llm.models.initializer import init_llm_model
 
 
 class HeaderAwareClientForTest(Protocol):
@@ -176,33 +176,53 @@ class TestHeaderAwareChatNVIDIA:
 
 
 class TestRegisterHeaderAwareNimProvider:
-    def test_overrides_nemoguardrails_nim_initializer(self, monkeypatch) -> None:
-        initializers = {"nim": object(), "nvidia_ai_endpoints": object()}
-        monkeypatch.setattr(langchain_initializer, "_PROVIDER_INITIALIZERS", initializers)
+    def test_registers_provider_used_by_nemoguardrails_initializer(self, monkeypatch) -> None:
+        class FakeChatNVIDIA:
+            def __init__(self, *, model: str, **kwargs) -> None:
+                self.model = model
+                self.default_headers = kwargs.get("default_headers")
+
+            def _prepare_inputs_and_payload(self, *args, **kwargs) -> tuple[None, None, dict[str, str] | None]:
+                return None, None, self.default_headers
+
+        monkeypatch.setattr("nemo_guardrails_plugin.llm_clients._load_chat_nvidia_class", lambda: FakeChatNVIDIA)
         monkeypatch.setattr(llm_clients, "_HEADER_AWARE_INITIALIZER_INSTALLED", False)
 
         register_header_aware_nim_provider()
 
-        assert initializers["nim"] is llm_clients._init_header_aware_nim_model
+        # Exercise NeMo Guardrails' real provider lookup for `engine: nim`.
+        model = init_llm_model(
+            model_name="default/safety",
+            provider_name="nim",
+            kwargs={"default_headers": {"X-Static": "yes"}},
+        )
+        assert isinstance(model, LangChainLLMAdapter)
+
+        # NeMo Guardrails 0.23 expects providers to return its LLMModel
+        # interface, so our LangChain client is wrapped in LangChainLLMAdapter.
+        # Inspect the wrapped client to confirm it is the header-aware subclass.
+        client = assert_and_get_header_aware_client(model._llm)
+        assert client.model == "default/safety"
+        assert client.default_headers == {"X-Static": "yes"}
+
+        sdk = _make_fake_sdk(traceparent="00-platform")
+        with platform_headers_context(sdk):
+            # The registered client must keep static config headers and merge
+            # request-scoped platform headers at call time.
+            _inputs, _payload, headers = client._prepare_inputs_and_payload([])
+
+        assert headers == {"X-Static": "yes", "traceparent": "00-platform"}
 
     def test_is_idempotent(self, monkeypatch) -> None:
-        first = {"nim": object()}
-        second = {"nim": object()}
-        monkeypatch.setattr(langchain_initializer, "_PROVIDER_INITIALIZERS", first)
+        calls = []
+
+        def register_provider(name: str, provider) -> None:
+            calls.append((name, provider))
+
+        monkeypatch.setattr(llm_clients, "register_provider", register_provider)
         monkeypatch.setattr(llm_clients, "_HEADER_AWARE_INITIALIZER_INSTALLED", False)
 
         register_header_aware_nim_provider()
-        monkeypatch.setattr(langchain_initializer, "_PROVIDER_INITIALIZERS", second)
         register_header_aware_nim_provider()
 
-        assert first["nim"] is llm_clients._init_header_aware_nim_model
-        assert second["nim"] is not llm_clients._init_header_aware_nim_model
-
-    def test_raises_if_nim_initializer_is_missing(self, monkeypatch) -> None:
-        monkeypatch.setattr(langchain_initializer, "_PROVIDER_INITIALIZERS", {})
-        monkeypatch.setattr(llm_clients, "_HEADER_AWARE_INITIALIZER_INSTALLED", False)
-
-        with pytest.raises(RuntimeError) as excinfo:
-            register_header_aware_nim_provider()
-
-        assert "nim" in str(excinfo.value)
+        assert calls == [("nim", llm_clients._init_header_aware_nim_model)]

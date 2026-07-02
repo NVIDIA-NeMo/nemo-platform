@@ -1,6 +1,5 @@
 [project]
 name = "nmp-guardrails"
-version = "0.0.1"
 description = "NeMo Guardrails Microservice - programmable guardrails for LLM endpoints"
 readme = "README.md"
 authors = [{ name = "NVIDIA", email = "nemoguardrails@nvidia.com" }]
@@ -25,10 +24,7 @@ dependencies = [
   # Guardrails has no separate task containers - all deps are API deps
   "fastapi>=0.109.0",
   "fsspec>=2024.10.0",
-  "nemoguardrails[tracing]~=0.21.0",
-  # Workaround: nemoguardrails 0.21.0 imports `dataclasses_json` but doesn't declare it
-  # as a dependency.
-  "dataclasses-json>=0.6.7",
+  "nemoguardrails[tracing]==0.23.0",
   "openai>=1.61.0",
   "opentelemetry-distro>=0.64b0",
   "opentelemetry-exporter-otlp>=1.22.0",
@@ -48,6 +44,7 @@ dependencies = [
   "opentelemetry-instrumentation-requests>=0.64b0",
   "opentelemetry-instrumentation-httpx>=0.64b0",
 ]
+version = "0.0.0"
 
 [project.scripts]
 guardrails-server = "nmp.guardrails.main:run_standalone"
@@ -60,6 +57,7 @@ asyncio_default_fixture_loop_scope = "session"
 
 [tool.uv.sources]
 nmp-common = { workspace = true }
+
 
 [dependency-groups]
 # No task deps for guardrails - all deps are in main dependencies
@@ -75,9 +73,6 @@ dev = [
   "nmp-testing",
   "nmp-platform-seed",
 ]
-
-[tool.uv]
-cache-keys = [{ file = "pyproject.toml" }]
 
 [build-system]
 requires = ["hatchling"]

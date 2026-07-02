@@ -1934,7 +1934,9 @@ async def test_delete_model_deployment_by_id_calls_delete_resources(mock_nmp_sdk
 # ===========================================================================
 
 
-def _vllm_config(*, gpu: int = 1, lora_enabled: bool = False):
+def _vllm_config(
+    *, gpu: int = 1, lora_enabled: bool = False, run_as_user: int | None = None, run_as_group: int | None = None
+):
     """A minimal vLLM ModelDeploymentConfig-like object for dispatch/compile."""
     return SimpleNamespace(
         engine="vllm",
@@ -1953,6 +1955,8 @@ def _vllm_config(*, gpu: int = 1, lora_enabled: bool = False):
             image_name=None,
             image_tag=None,
             health_check_path=None,
+            run_as_user=run_as_user,
+            run_as_group=run_as_group,
             additional_envs=None,
             additional_args=[],
             k8s_nim_operator_config=None,
@@ -2000,7 +2004,14 @@ async def test_vllm_create_emits_pvc_and_job_only(k8s_backend, sample_deployment
     assert job.spec.template.spec.containers[0].resources.requests["nvidia.com/gpu"] == "2"
 
 
-def _generic_config(*, gpu: int = 0, image="nvcr.io/nim/nvidia/nemoguard-jailbreak-detect", tag="1.10.1"):
+def _generic_config(
+    *,
+    gpu: int = 0,
+    image="nvcr.io/nim/nvidia/nemoguard-jailbreak-detect",
+    tag="1.10.1",
+    run_as_user: int | None = None,
+    run_as_group: int | None = None,
+):
     """A minimal generic ModelDeploymentConfig-like object (no model weights)."""
     return SimpleNamespace(
         engine="generic",
@@ -2019,6 +2030,8 @@ def _generic_config(*, gpu: int = 0, image="nvcr.io/nim/nvidia/nemoguard-jailbre
             image_name=image,
             image_tag=tag,
             health_check_path="/v1/health/ready",
+            run_as_user=run_as_user,
+            run_as_group=run_as_group,
             additional_envs={"FOO": "bar"},
             additional_args=["--port", "8000"],
             k8s_nim_operator_config=None,
@@ -2063,6 +2076,53 @@ async def test_generic_create_emits_deployment_and_service_no_pvc(k8s_backend, s
     assert "model-store" not in mount_names
     # Readiness/startup probes use the explicit health_check_path.
     assert container.readiness_probe.http_get.path == "/v1/health/ready"
+    # No uid/gid override -> generic runs as the image's own user (no securityContext).
+    assert dep_obj.spec.template.spec.security_context is None
+
+
+@pytest.mark.asyncio
+async def test_generic_create_applies_run_as_user_override(k8s_backend, sample_deployment):
+    """executor_config.run_as_user/run_as_group set the pod securityContext for generic."""
+    backend = _vllm_backend(k8s_backend)
+    config = _generic_config(run_as_user=1234, run_as_group=5678)
+
+    created_dep = MagicMock()
+    created_dep.metadata.name = backend._get_resource_name(sample_deployment)
+    created_dep.metadata.uid = "dep-uid"
+    backend._apps_v1.create_namespaced_deployment.return_value = created_dep
+
+    _sync_reconcilers(backend)
+    result = await backend.create_model_deployment(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=config, model_entity=None)
+    )
+
+    assert result.status == "PENDING"
+    dep_obj = backend._apps_v1.create_namespaced_deployment.call_args.kwargs["body"]
+    sec = dep_obj.spec.template.spec.security_context
+    assert sec is not None
+    assert sec.run_as_user == 1234
+    assert sec.run_as_group == 5678
+
+
+@pytest.mark.asyncio
+async def test_vllm_run_as_user_override_beats_engine_default(k8s_backend, sample_deployment):
+    """An explicit run_as_user overrides vLLM's default uid on the serving pod + puller."""
+    backend = _vllm_backend(k8s_backend)
+    config = _vllm_config(gpu=1, run_as_user=4321)
+
+    with patch.object(backend, "_resolve_model_source", return_value=("default", "qwen", None)):
+        _sync_reconcilers(backend)
+        result = await backend.create_model_deployment(
+            ModelContext(model_deployment=sample_deployment, model_deployment_config=config, model_entity=None)
+        )
+
+    assert result.status == "PENDING"
+    # Puller Job runs as the overridden uid (so it writes the PVC as that user);
+    # group falls back to the vLLM default since run_as_group was not set.
+    job = backend._batch_v1.create_namespaced_job.call_args.kwargs["body"]
+    job_sec = job.spec.template.spec.security_context
+    assert job_sec.run_as_user == 4321
+    assert job_sec.run_as_group == backend._backend_config.default_vllm_group_id
 
 
 @pytest.mark.asyncio
@@ -2451,6 +2511,113 @@ async def test_vllm_update_changed_source_repulls(k8s_backend, sample_deployment
     backend._core_v1.create_namespaced_persistent_volume_claim.assert_called_once()
     backend._batch_v1.create_namespaced_job.assert_called_once()
     assert result.status == "PENDING"
+
+
+@pytest.mark.asyncio
+async def test_vllm_update_changed_source_repulls_after_job_deleted(k8s_backend, sample_deployment):
+    """Changed source is detected via the PVC annotation once the puller Job is gone.
+
+    At P3 the puller Job is deleted, so an already-serving deployment has no Job.
+    The model source must still be read (from the PVC) so a revision change
+    re-pulls instead of serving stale weights.
+    """
+    backend = _vllm_backend(k8s_backend)
+    config = _vllm_config()
+
+    # Puller Job has been deleted (P3 completed).
+    backend._batch_v1.read_namespaced_job.side_effect = _api_exception(404)
+    # PVC survives and carries the original model source.
+    existing_pvc = MagicMock()
+    existing_pvc.metadata.annotations = {"nmp.nvidia.com/model-source": "default/old-model"}
+    backend._core_v1.read_namespaced_persistent_volume_claim.return_value = existing_pvc
+
+    with patch.object(backend, "_resolve_model_source", return_value=("default", "qwen", "v2")):
+        with patch.object(backend._k8s_reconciler, "_delete_serving_resources") as mock_delete:
+            _sync_reconcilers(backend)
+            result = await backend.update_model_deployment(
+                ModelContext(model_deployment=sample_deployment, model_deployment_config=config, model_entity=None)
+            )
+
+    # Source change detected from the PVC -> re-pull.
+    mock_delete.assert_called_once()
+    backend._core_v1.create_namespaced_persistent_volume_claim.assert_called_once()
+    backend._batch_v1.create_namespaced_job.assert_called_once()
+    assert result.status == "PENDING"
+
+
+@pytest.mark.asyncio
+async def test_vllm_update_unchanged_source_via_pvc_does_not_repull(k8s_backend, sample_deployment):
+    """Unchanged source read from the PVC (Job gone) patches in place, no re-pull."""
+    backend = _vllm_backend(k8s_backend)
+    config = _vllm_config()
+
+    backend._batch_v1.read_namespaced_job.side_effect = _api_exception(404)
+    existing_pvc = MagicMock()
+    existing_pvc.metadata.annotations = {"nmp.nvidia.com/model-source": "default/qwen"}
+    backend._core_v1.read_namespaced_persistent_volume_claim.return_value = existing_pvc
+    # Serving Deployment exists -> patch path.
+    backend._apps_v1.read_namespaced_deployment.return_value = MagicMock()
+
+    with patch.object(backend, "_resolve_model_source", return_value=("default", "qwen", None)):
+        with patch.object(backend._k8s_reconciler, "_delete_serving_resources") as mock_delete:
+            _sync_reconcilers(backend)
+            result = await backend.update_model_deployment(
+                ModelContext(model_deployment=sample_deployment, model_deployment_config=config, model_entity=None)
+            )
+
+    mock_delete.assert_not_called()
+    backend._batch_v1.create_namespaced_job.assert_not_called()
+    backend._apps_v1.patch_namespaced_deployment.assert_called_once()
+    assert result.status == "PENDING"
+
+
+@pytest.mark.asyncio
+async def test_existing_model_source_reads_pvc_when_job_absent(k8s_backend):
+    """_existing_model_source falls back to the PVC annotation when the Job is gone."""
+    backend = _vllm_backend(k8s_backend)
+    backend._batch_v1.read_namespaced_job.side_effect = _api_exception(404)
+    pvc = MagicMock()
+    pvc.metadata.annotations = {"nmp.nvidia.com/model-source": "default/qwen@v3"}
+    backend._core_v1.read_namespaced_persistent_volume_claim.return_value = pvc
+
+    _sync_reconcilers(backend)
+    assert backend._k8s_reconciler._existing_model_source("md-default-qwen") == "default/qwen@v3"
+
+
+@pytest.mark.asyncio
+async def test_existing_model_source_none_when_job_and_pvc_absent(k8s_backend):
+    """_existing_model_source returns None when neither Job nor PVC exists."""
+    backend = _vllm_backend(k8s_backend)
+    backend._batch_v1.read_namespaced_job.side_effect = _api_exception(404)
+    backend._core_v1.read_namespaced_persistent_volume_claim.side_effect = _api_exception(404)
+
+    _sync_reconcilers(backend)
+    assert backend._k8s_reconciler._existing_model_source("md-default-qwen") is None
+
+
+@pytest.mark.asyncio
+async def test_existing_model_source_reraises_job_api_errors(k8s_backend):
+    """A non-404 error reading the Job propagates (not swallowed / no PVC fallback)."""
+    backend = _vllm_backend(k8s_backend)
+    backend._batch_v1.read_namespaced_job.side_effect = _api_exception(500)
+
+    _sync_reconcilers(backend)
+    with pytest.raises(k8s_client.exceptions.ApiException):
+        backend._k8s_reconciler._existing_model_source("md-default-qwen")
+    # The PVC fallback must not be consulted when the Job read fails hard.
+    backend._core_v1.read_namespaced_persistent_volume_claim.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_existing_model_source_reraises_pvc_api_errors(k8s_backend):
+    """A non-404 error reading the PVC propagates (not swallowed / not None)."""
+    backend = _vllm_backend(k8s_backend)
+    backend._batch_v1.read_namespaced_job.side_effect = _api_exception(404)
+    backend._core_v1.read_namespaced_persistent_volume_claim.side_effect = _api_exception(500)
+
+    _sync_reconcilers(backend)
+    with pytest.raises(k8s_client.exceptions.ApiException):
+        backend._k8s_reconciler._existing_model_source("md-default-qwen")
 
 
 @pytest.mark.asyncio

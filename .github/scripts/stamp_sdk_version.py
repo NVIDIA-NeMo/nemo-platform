@@ -1,21 +1,22 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Stamp the selected SDK version before building a release wheel."""
+"""Resolve the package version to inject into dynamic-versioned wheel builds."""
 
 import argparse
-import ast
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Literal
 
 Cadence = Literal["nightly", "rc", "release"]
 SEMVER_CORE_PATTERN = r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
+RELEASE_CORE_TAG_PATTERN = re.compile(rf"^({SEMVER_CORE_PATTERN})(?:-rc\d+)?$")
 
 
 class StampError(Exception):
-    """Raised when the SDK version cannot be stamped safely."""
+    """Raised when the SDK version cannot be resolved safely."""
 
 
 def safe_sdk_id(sdk_id: str) -> str:
@@ -24,52 +25,40 @@ def safe_sdk_id(sdk_id: str) -> str:
     return sdk_id
 
 
-def read_assignment(path: Path, name: str) -> str:
-    if not path.is_file():
-        raise StampError(f"version file is missing: {path}")
-
-    prefix = f"{name} = "
-    values: list[object] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if line.startswith(prefix):
-            try:
-                values.append(ast.literal_eval(line.removeprefix(prefix).strip()))
-            except (SyntaxError, ValueError) as error:
-                raise StampError(f"{name} in {path} must be a string literal") from error
-
-    if len(values) != 1:
-        raise StampError(f"expected exactly one {name} assignment in {path}, found {len(values)}")
-    if not isinstance(values[0], str) or not values[0]:
-        raise StampError(f"{name} in {path} must be a non-empty string")
-    return values[0]
+def _semver_key(version: str) -> tuple[int, int, int]:
+    major, minor, patch = version.split(".")
+    return int(major), int(minor), int(patch)
 
 
-def replace_assignment(path: Path, name: str, value: str) -> None:
-    if not path.is_file():
-        raise StampError(f"version file is missing: {path}")
+def latest_release_core(source_root: Path) -> str | None:
+    result = subprocess.run(
+        ["git", "-C", str(source_root), "tag", "--merged", "HEAD", "--list"],
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if result.returncode != 0:
+        return None
 
-    prefix = f"{name} = "
-    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
-    matches = [index for index, line in enumerate(lines) if line.startswith(prefix)]
-    if len(matches) != 1:
-        raise StampError(f"expected exactly one {name} assignment in {path}, found {len(matches)}")
-
-    index = matches[0]
-    newline = "\n" if lines[index].endswith("\n") else ""
-    lines[index] = f'{name} = "{value}"{newline}'
-    path.write_text("".join(lines), encoding="utf-8")
+    release_cores = []
+    for tag in result.stdout.splitlines():
+        match = RELEASE_CORE_TAG_PATTERN.fullmatch(tag)
+        if match:
+            release_cores.append(match.group(1))
+    if not release_cores:
+        return None
+    return max(release_cores, key=_semver_key)
 
 
 def resolve_sdk_version(
     cadence: Cadence,
     release_label: str,
     nightly_timestamp: str,
-    shared_sdk_version_path: Path,
+    source_root: Path,
 ) -> str:
     if cadence == "nightly":
-        base_version = read_assignment(shared_sdk_version_path, "platform_sdk_version")
-        if not re.fullmatch(SEMVER_CORE_PATTERN, base_version):
-            raise StampError(f"nightly base SDK version must be SemVer core MAJOR.MINOR.PATCH: {base_version}")
+        base_version = latest_release_core(source_root) or "0.0.0"
         if not re.fullmatch(r"\d{14}", nightly_timestamp):
             raise StampError("nightly timestamp must be YYYYMMDDHHMMSS")
         return f"{base_version}.dev{nightly_timestamp}"
@@ -96,13 +85,12 @@ def stamp_sdk_version(
     nightly_timestamp: str,
 ) -> str:
     safe_sdk_id(sdk_id)
-    shared_sdk_version_path = source_root / "packages/nmp_common/src/nmp/common/version.py"
-    generated_sdk_version_path = source_root / "sdk/python/nemo-platform/src/nemo_platform/_version.py"
-    sdk_version = resolve_sdk_version(cadence, release_label, nightly_timestamp, shared_sdk_version_path)
-
-    replace_assignment(shared_sdk_version_path, "platform_sdk_version", sdk_version)
-    replace_assignment(generated_sdk_version_path, "__version__", sdk_version)
-    return sdk_version
+    return resolve_sdk_version(
+        cadence=cadence,
+        release_label=release_label,
+        nightly_timestamp=nightly_timestamp,
+        source_root=source_root,
+    )
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -138,10 +126,10 @@ def main(argv: list[str]) -> int:
 
     if args.print_version:
         # Machine-readable mode: human banner to stderr, just the version on stdout.
-        print(f"Stamped sdk:{args.sdk_id} version {sdk_version}.", file=sys.stderr)
+        print(f"Resolved sdk:{args.sdk_id} version {sdk_version}.", file=sys.stderr)
         print(sdk_version)
     else:
-        print(f"Stamped sdk:{args.sdk_id} version {sdk_version}.")
+        print(f"Resolved sdk:{args.sdk_id} version {sdk_version}.")
     return 0
 
 

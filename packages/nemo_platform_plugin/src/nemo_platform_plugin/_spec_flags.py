@@ -326,7 +326,7 @@ def _extract_default(info: FieldInfo) -> Any:
         return info.default
     if info.default_factory is not None:
         try:
-            return info.default_factory()  # type: ignore[call-arg]
+            return info.default_factory()  # ty: ignore[missing-argument]
         except TypeError:
             # Pydantic supports validated_data-aware factories; we can't
             # safely call those at CLI-build time. Treat as required so
@@ -451,7 +451,7 @@ def _optional_of(tp: object) -> Any:
     runtime value. Delegating to ``__getitem__`` here keeps the annotation
     correct without tripping static type checkers.
     """
-    return Optional[tp]  # type: ignore[valid-type]
+    return Optional[tp]  # ty: ignore[invalid-type-form]
 
 
 def make_field_param(

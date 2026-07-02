@@ -82,6 +82,39 @@ def test_list_sorts_by_cost_metric_missing_last(client: TestClient) -> None:
     assert names == [pricey, mid, cheap, norun]
 
 
+def test_list_filters_by_cost_metric(client: TestClient) -> None:
+    # Same shape as the sort test, but filtering. Combine an entity filter (group) with two metric
+    # filters on different fields: cost_usd.mean <= 0.50 excludes pricey; run_count >= 1 excludes the
+    # never-ingested experiment (whose cost rollup is also missing). Sort by cost so the order is
+    # deterministic by value rather than by creation time.
+    suffix = uuid.uuid4().hex
+    group_id = _ensure_group(client, name=f"metric-filter-group-{suffix}")
+    started_at = datetime.now(timezone.utc).replace(microsecond=0)
+    cheap, pricey, mid = f"exp-cheap-{suffix}", f"exp-pricey-{suffix}", f"exp-mid-{suffix}"
+    for index, (name, cost) in enumerate([(cheap, 0.10), (pricey, 0.90), (mid, 0.50)]):
+        _create_experiment(client, group_id, name)
+        response = client.post(
+            ATIF_INGEST,
+            json=_atif_body(started_at=started_at, experiment_id=name, cost_usd=cost, offset_seconds=index * 10),
+        )
+        assert response.status_code == 201, response.text
+    _create_experiment(client, group_id, f"exp-norun-{suffix}")  # no ingest -> excluded by both predicates
+
+    listed = client.get(
+        EXPERIMENTS,
+        params={
+            "filter[experiment_group_id]": group_id,
+            "filter[cost_usd.mean][lte]": "0.50",
+            "filter[run_count][gte]": "1",
+            "sort": "cost_usd.mean",
+            "page_size": 50,
+        },
+    )
+    assert listed.status_code == 200, listed.text
+    names = [row["name"] for row in listed.json()["data"]]
+    assert names == [cheap, mid]
+
+
 def test_list_rejects_unknown_sort_field(client: TestClient) -> None:
     response = client.get(EXPERIMENTS, params={"sort": "bogus.field"})
     assert response.status_code == 400, response.text

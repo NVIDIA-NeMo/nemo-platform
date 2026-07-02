@@ -170,7 +170,7 @@ class TestExitCodes:
         class _Job(NemoJob):
             name = "forgot-return"
 
-            def run(self, config: dict) -> dict:  # type: ignore[return]
+            def run(self, config: dict) -> dict:  # ty: ignore[empty-body]
                 # Intentionally no return — most plausible failure mode.
                 pass
 

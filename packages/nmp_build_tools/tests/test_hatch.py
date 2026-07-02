@@ -4,7 +4,44 @@
 from pathlib import Path
 
 import pytest
-from nmp_build_tools.hatch import _rewrite_metadata, read_bundle_force_include
+from nmp_build_tools.hatch import (
+    DEFAULT_DYNAMIC_VERSION,
+    NmpDynamicVersionSource,
+    _rewrite_metadata,
+    nmp_dynamic_versioning_config,
+    read_bundle_force_include,
+)
+
+
+def test_nmp_dynamic_versioning_config_uses_repo_defaults() -> None:
+    config = nmp_dynamic_versioning_config()
+
+    assert config.fallback_version == DEFAULT_DYNAMIC_VERSION
+    assert config.vcs.value == "git"
+    assert config.style.value == "pep440"
+    assert config.pattern == "default-unprefixed"
+
+
+def test_nmp_dynamic_versioning_config_allows_hatch_version_overrides() -> None:
+    config = nmp_dynamic_versioning_config(
+        {
+            "source": "nmp-dynamic-versioning",
+            "fallback-version": "9.9.9",
+        }
+    )
+
+    assert config.fallback_version == "9.9.9"
+
+
+def test_nmp_dynamic_version_source_honors_bypass(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("UV_DYNAMIC_VERSIONING_BYPASS", "1.2.3")
+
+    version_source = NmpDynamicVersionSource(
+        str(tmp_path),
+        {"source": "nmp-dynamic-versioning"},
+    )
+
+    assert version_source.get_version_data() == {"version": "1.2.3"}
 
 
 def test_read_bundle_force_include_adds_package_extra_includes(tmp_path: Path) -> None:

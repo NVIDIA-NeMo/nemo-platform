@@ -58,4 +58,4 @@ class TestJobContext:
         # Omitting ``results`` raises at construction; the dataclass
         # enforces it (no silent ``None`` handed to the job).
         with pytest.raises(TypeError, match="results"):
-            JobContext(workspace="ws", storage=_make_storage(tmp_path))  # type: ignore[call-arg]
+            JobContext(workspace="ws", storage=_make_storage(tmp_path))  # ty: ignore[missing-argument]

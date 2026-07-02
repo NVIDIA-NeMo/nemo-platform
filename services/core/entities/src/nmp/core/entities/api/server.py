@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from nmp.common.version import platform_api_version
+from nmp.common.version import OPENAPI_SPEC_VERSION
 from nmp.core.entities.api.v2.entities import router as entities_router
 from nmp.core.entities.api.v2.projects import router as projects_router
 from nmp.core.entities.api.v2.workspaces import router as workspaces_router
@@ -38,7 +38,7 @@ app = FastAPI(
     title="NeMo Platform Entities Microservice",
     description="Generic entity storage service with schema-agnostic design.",
     openapi_tags=tags_metadata,
-    version=platform_api_version,
+    version=OPENAPI_SPEC_VERSION,
     lifespan=lifespan,
 )
 

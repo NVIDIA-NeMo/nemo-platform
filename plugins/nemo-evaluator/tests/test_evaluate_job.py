@@ -36,8 +36,8 @@ from nemo_evaluator.shared.metric_bundles.bundles import (
     unbundle_metric,
 )
 from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
-from nemo_evaluator.tasks.evaluate import EvaluateTaskExitCode
 from nemo_evaluator.tasks.evaluate import main as evaluate_task_main
+from nemo_evaluator.tasks.runner import SDK_INITIALIZATION_EXIT_CODE
 from nemo_evaluator_sdk.enums import AgentFormat
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_evaluator_sdk.metrics.f1 import F1Metric
@@ -451,6 +451,22 @@ def test_evaluate_job_runs_inline_exact_match_metric() -> None:
     assert aggregate_scores[0]["mean"] == 0.5
 
 
+def test_evaluate_job_survives_result_persistence_failure(mocker: MockerFixture) -> None:
+    # Mirror of the agent-eval job: the queryable result record is a best-effort convenience index;
+    # a persistence failure must not fail an otherwise-successful eval (its artifacts are already saved).
+    persist = mocker.patch(
+        "nemo_evaluator.jobs.evaluate.persist_evaluate_result",
+        side_effect=RuntimeError("entity store unavailable"),
+    )
+
+    result = NemoJobScheduler().run_local(EvaluateJob, _exact_match_spec())
+
+    persist.assert_called_once()
+    assert result["status"] == "completed"
+    aggregate_scores = _load_artifact_payload(result)["aggregate_scores"]["scores"]
+    assert aggregate_scores[0]["name"] == "exact-match.exact-match"
+
+
 def test_evaluate_job_applies_metric_job_params_once() -> None:
     spec = {
         "metrics": [_bundle_payload(_CountingJobParamsMetric())],
@@ -672,7 +688,7 @@ async def test_evaluate_job_compile_produces_cpu_task_step() -> None:
         spec=spec,
         entity_client=object(),
         job_name=None,
-        async_sdk=object(),
+        async_sdk=None,
     )
     job_spec = PlatformJobSpec.model_validate(compiled)
     assert len(job_spec.steps) == 1
@@ -722,7 +738,7 @@ async def test_evaluate_job_to_spec_resolves_bundled_metric_model_refs_before_co
         spec=canonical,
         entity_client=object(),
         job_name=None,
-        async_sdk=object(),
+        async_sdk=None,
     )
 
     job_spec = PlatformJobSpec.model_validate(compiled)
@@ -784,7 +800,7 @@ async def test_evaluate_job_compile_produces_online_model_job() -> None:
         spec=spec,
         entity_client=object(),
         job_name=None,
-        async_sdk=object(),
+        async_sdk=None,
     )
 
     job_spec = PlatformJobSpec.model_validate(compiled)
@@ -811,7 +827,7 @@ async def test_evaluate_job_compile_normalizes_generic_online_model_params() -> 
         spec=spec,
         entity_client=object(),
         job_name=None,
-        async_sdk=object(),
+        async_sdk=None,
     )
 
     job_spec = PlatformJobSpec.model_validate(compiled)
@@ -841,7 +857,7 @@ async def test_evaluate_job_compile_produces_online_agent_job() -> None:
         spec=spec,
         entity_client=object(),
         job_name=None,
-        async_sdk=object(),
+        async_sdk=None,
     )
 
     job_spec = PlatformJobSpec.model_validate(compiled)
@@ -891,7 +907,7 @@ async def test_evaluate_job_compile_injects_metric_and_target_secrets() -> None:
         spec=spec,
         entity_client=object(),
         job_name=None,
-        async_sdk=object(),
+        async_sdk=None,
     )
 
     step = PlatformJobSpec.model_validate(compiled).steps[0]
@@ -923,7 +939,7 @@ async def test_evaluate_job_compile_rejects_secret_reserved_env_names() -> None:
             spec=spec,
             entity_client=object(),
             job_name=None,
-            async_sdk=object(),
+            async_sdk=None,
         )
 
 
@@ -1057,7 +1073,7 @@ class TestEvaluateJobCompile:
             spec=EquivalentSpec.model_validate(_exact_match_spec()),
             entity_client=object(),
             job_name=None,
-            async_sdk=object(),
+            async_sdk=None,
         )
 
         job_spec = PlatformJobSpec.model_validate(compiled)
@@ -1084,7 +1100,7 @@ class TestEvaluateJobCompile:
             spec=spec,
             entity_client=object(),
             job_name=None,
-            async_sdk=object(),
+            async_sdk=None,
         )
 
         config = cast(dict[str, Any], PlatformJobSpec.model_validate(compiled).steps[0].config)
@@ -1126,7 +1142,7 @@ class TestEvaluateJobCompile:
                 spec=spec,
                 entity_client=object(),
                 job_name=None,
-                async_sdk=object(),
+                async_sdk=None,
             )
 
     @pytest.mark.parametrize(
@@ -1174,7 +1190,7 @@ class TestEvaluateJobCompile:
             spec=EvaluateSpec.model_validate({**_exact_match_spec(), "dataset": dataset}),
             entity_client=object(),
             job_name=None,
-            async_sdk=object(),
+            async_sdk=None,
         )
 
         job_spec = PlatformJobSpec.model_validate(compiled)
@@ -1361,24 +1377,27 @@ class TestEvaluateTask:
 
     def test_main_dispatches_evaluate_job_with_task_sdk(self, mocker: MockerFixture) -> None:
         sdk = object()
-        get_task_sdk = mocker.patch("nemo_evaluator.tasks.evaluate.get_task_sdk", return_value=sdk)
-        run_task = mocker.patch("nemo_evaluator.tasks.evaluate.run_task", return_value=0)
+        async_sdk = object()
+        get_task_sdk = mocker.patch("nemo_evaluator.tasks.runner.get_task_sdk", return_value=sdk)
+        get_async_task_sdk = mocker.patch("nemo_evaluator.tasks.runner.get_async_task_sdk", return_value=async_sdk)
+        run_task = mocker.patch("nemo_evaluator.tasks.runner.run_task", return_value=0)
 
         exit_code = evaluate_task_main()
 
         assert exit_code == 0
         get_task_sdk.assert_called_once_with("evaluator")
-        run_task.assert_called_once_with(EvaluateJob, sdk=sdk)
+        get_async_task_sdk.assert_called_once_with("evaluator")
+        run_task.assert_called_once_with(EvaluateJob, sdk=sdk, async_sdk=async_sdk)
 
     def test_main_returns_setup_exit_code_when_task_sdk_fails(self, mocker: MockerFixture) -> None:
         get_task_sdk = mocker.patch(
-            "nemo_evaluator.tasks.evaluate.get_task_sdk",
+            "nemo_evaluator.tasks.runner.get_task_sdk",
             side_effect=RuntimeError("boom"),
         )
-        run_task = mocker.patch("nemo_evaluator.tasks.evaluate.run_task")
+        run_task = mocker.patch("nemo_evaluator.tasks.runner.run_task")
 
         exit_code = evaluate_task_main()
 
-        assert exit_code == EvaluateTaskExitCode.SDK_INITIALIZATION_FAILED
+        assert exit_code == SDK_INITIALIZATION_EXIT_CODE
         get_task_sdk.assert_called_once_with("evaluator")
         run_task.assert_not_called()

@@ -60,17 +60,15 @@ def prepare_runtime_aiperf_config(
     template_path: Path,
     runtime_config_path: Path,
     aiperf_output_dir: Path,
+    model_ref: str | None = None,
 ) -> dict[str, Any]:
     """Materialize the AIPerf config this run will use.
 
-    Reads the checked-in ``template_path`` config, overrides its
-    ``output_base_dir`` to point inside the current run's directory, and writes
-    the result to ``runtime_config_path``. AIPerf is later invoked with
-    ``--config-file <runtime_config_path>`` so every artifact lands under a
-    separate per-run directory.
-
-    Returns the parsed config dict so callers can log fields (sweep params,
-    benchmark_duration) without re-reading the file.
+    Reads ``template_path``, overrides ``output_base_dir`` (so AIPerf
+    artifacts nest under this run) and optionally ``base_config.model``
+    (so one template can target multiple VirtualModels), and writes the
+    result to ``runtime_config_path``. Returns the parsed config so
+    callers can log sweep params without re-reading the file.
     """
     if not template_path.is_file():
         raise FileNotFoundError(f"AIPerf template not found: {template_path}")
@@ -82,6 +80,11 @@ def prepare_runtime_aiperf_config(
     # Point AIPerf's output_base_dir at this run's directory so its results
     # nest under our per-run artifacts tree.
     config["output_base_dir"] = str(aiperf_output_dir)
+    if model_ref is not None:
+        base_config = config.get("base_config")
+        if not isinstance(base_config, dict):
+            raise ValueError(f"Expected `base_config` mapping in {template_path}, got {type(base_config).__name__}")
+        base_config["model"] = model_ref
     runtime_config_path.parent.mkdir(parents=True, exist_ok=True)
     runtime_config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
 

@@ -1,6 +1,5 @@
 [project]
 name = "nmp-unsloth"
-version = "0.1.0"
 description = "NeMo Unsloth task package — container SFT driver and compile glue. No HTTP server."
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
@@ -21,6 +20,8 @@ dependencies = [
 # importable without these (e.g. compile.py + schemas), so the API
 # process / plugin discovery doesn't pay the install cost. The extra is
 # for the training container image and local development against train_sft.
+version = "0.0.0"
+
 [project.optional-dependencies]
 # We deliberately don't pin transformers / trl / peft / accelerate / bitsandbytes
 # here. Unsloth's own pyproject.toml has *precise* constraints for these
@@ -47,11 +48,13 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/nmp"]
 
+
 [tool.uv.sources]
 nmp-common = { workspace = true }
 nmp-customization-common = { workspace = true }
 nemo-platform-plugin = { workspace = true }
 nemo-platform-sdk = { workspace = true }
+
 
 [dependency-groups]
 dev = [

@@ -87,8 +87,10 @@ class ExperimentsResource(SyncAPIResource):
         dataset_version: str | Omit = omit,
         description: str | Omit = omit,
         metadata: Dict[str, object] | Omit = omit,
+        parent_experiment_id: str | Omit = omit,
+        root_cause: str | Omit = omit,
         source_link: str | Omit = omit,
-        summary: str | Omit = omit,
+        status: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         exist_ok: bool = False,
@@ -114,9 +116,15 @@ class ExperimentsResource(SyncAPIResource):
 
           metadata: Free-form producer metadata.
 
+          parent_experiment_id: Entity id of the experiment this one was derived from (e.g. a variant of a
+              baseline), if any.
+
+          root_cause: Human- or agent-authored explanation of the experiment's outcome (e.g. why it
+              was killed).
+
           source_link: Optional URL for the source experiment.
 
-          summary: Human-authored summary of results.
+          status: Producer-defined lifecycle status of the experiment.
 
 
           exist_ok: Do not raise an error if the resource already exists. Returns the existing resource.
@@ -145,8 +153,10 @@ class ExperimentsResource(SyncAPIResource):
                         "dataset_version": dataset_version,
                         "description": description,
                         "metadata": metadata,
+                        "parent_experiment_id": parent_experiment_id,
+                        "root_cause": root_cause,
                         "source_link": source_link,
-                        "summary": summary,
+                        "status": status,
                     },
                     experiment_create_params.ExperimentCreateParams,
                 ),
@@ -209,8 +219,10 @@ class ExperimentsResource(SyncAPIResource):
         dataset_version: str | Omit = omit,
         description: str | Omit = omit,
         metadata: Dict[str, object] | Omit = omit,
+        parent_experiment_id: str | Omit = omit,
+        root_cause: str | Omit = omit,
         source_link: str | Omit = omit,
-        summary: str | Omit = omit,
+        status: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -235,9 +247,15 @@ class ExperimentsResource(SyncAPIResource):
 
           metadata: Free-form producer metadata.
 
+          parent_experiment_id: Entity id of the experiment this one was derived from (e.g. a variant of a
+              baseline), if any.
+
+          root_cause: Human- or agent-authored explanation of the experiment's outcome (e.g. why it
+              was killed).
+
           source_link: Optional URL for the source experiment.
 
-          summary: Human-authored summary of results.
+          status: Producer-defined lifecycle status of the experiment.
 
           extra_headers: Send extra headers
 
@@ -267,8 +285,10 @@ class ExperimentsResource(SyncAPIResource):
                     "dataset_version": dataset_version,
                     "description": description,
                     "metadata": metadata,
+                    "parent_experiment_id": parent_experiment_id,
+                    "root_cause": root_cause,
                     "source_link": source_link,
-                    "summary": summary,
+                    "status": status,
                 },
                 experiment_update_params.ExperimentUpdateParams,
             ),
@@ -300,7 +320,10 @@ class ExperimentsResource(SyncAPIResource):
           filter: Filter experiments by name, experiment_group_id, dataset_name, dataset_version,
               created_by, created_at, or updated_at. Pass is_deleted=true to return only
               soft-deleted experiments; omit to see only live ones. Pass is_pinned=true (or
-              false) to filter by pinned state; omit to return both.
+              false) to filter by pinned state; omit to return both. Filter by a rollup metric
+              with numeric range operators ($gte/$lte/$gt/$lt/$eq): filter[run_count][$gte]=5,
+              filter[cost_usd.mean][$lte]=0.5, filter[latency_ms.p95][$lte]=1000, or
+              filter[evaluators.<name>.mean][$gte]=0.8.
 
           page: Page number.
 
@@ -309,7 +332,9 @@ class ExperimentsResource(SyncAPIResource):
           sort: Field to sort by; prefix with '-' for descending. Sort by an experiment
               attribute (name, created_at, updated_at, pinned_at) or by an aggregate metric:
               run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>,
-              where <stat> is one of mean, median, p90, p95, p99, sum, count.
+              where <stat> is one of mean, median, p90, p95, p99, sum, count. When omitted,
+              the group's configured default sort is used (falling back to -created_at), with
+              pinned experiments first.
 
           extra_headers: Send extra headers
 
@@ -503,8 +528,10 @@ class AsyncExperimentsResource(AsyncAPIResource):
         dataset_version: str | Omit = omit,
         description: str | Omit = omit,
         metadata: Dict[str, object] | Omit = omit,
+        parent_experiment_id: str | Omit = omit,
+        root_cause: str | Omit = omit,
         source_link: str | Omit = omit,
-        summary: str | Omit = omit,
+        status: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         exist_ok: bool = False,
@@ -530,9 +557,15 @@ class AsyncExperimentsResource(AsyncAPIResource):
 
           metadata: Free-form producer metadata.
 
+          parent_experiment_id: Entity id of the experiment this one was derived from (e.g. a variant of a
+              baseline), if any.
+
+          root_cause: Human- or agent-authored explanation of the experiment's outcome (e.g. why it
+              was killed).
+
           source_link: Optional URL for the source experiment.
 
-          summary: Human-authored summary of results.
+          status: Producer-defined lifecycle status of the experiment.
 
 
           exist_ok: Do not raise an error if the resource already exists. Returns the existing resource.
@@ -561,8 +594,10 @@ class AsyncExperimentsResource(AsyncAPIResource):
                         "dataset_version": dataset_version,
                         "description": description,
                         "metadata": metadata,
+                        "parent_experiment_id": parent_experiment_id,
+                        "root_cause": root_cause,
                         "source_link": source_link,
-                        "summary": summary,
+                        "status": status,
                     },
                     experiment_create_params.ExperimentCreateParams,
                 ),
@@ -625,8 +660,10 @@ class AsyncExperimentsResource(AsyncAPIResource):
         dataset_version: str | Omit = omit,
         description: str | Omit = omit,
         metadata: Dict[str, object] | Omit = omit,
+        parent_experiment_id: str | Omit = omit,
+        root_cause: str | Omit = omit,
         source_link: str | Omit = omit,
-        summary: str | Omit = omit,
+        status: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -651,9 +688,15 @@ class AsyncExperimentsResource(AsyncAPIResource):
 
           metadata: Free-form producer metadata.
 
+          parent_experiment_id: Entity id of the experiment this one was derived from (e.g. a variant of a
+              baseline), if any.
+
+          root_cause: Human- or agent-authored explanation of the experiment's outcome (e.g. why it
+              was killed).
+
           source_link: Optional URL for the source experiment.
 
-          summary: Human-authored summary of results.
+          status: Producer-defined lifecycle status of the experiment.
 
           extra_headers: Send extra headers
 
@@ -683,8 +726,10 @@ class AsyncExperimentsResource(AsyncAPIResource):
                     "dataset_version": dataset_version,
                     "description": description,
                     "metadata": metadata,
+                    "parent_experiment_id": parent_experiment_id,
+                    "root_cause": root_cause,
                     "source_link": source_link,
-                    "summary": summary,
+                    "status": status,
                 },
                 experiment_update_params.ExperimentUpdateParams,
             ),
@@ -716,7 +761,10 @@ class AsyncExperimentsResource(AsyncAPIResource):
           filter: Filter experiments by name, experiment_group_id, dataset_name, dataset_version,
               created_by, created_at, or updated_at. Pass is_deleted=true to return only
               soft-deleted experiments; omit to see only live ones. Pass is_pinned=true (or
-              false) to filter by pinned state; omit to return both.
+              false) to filter by pinned state; omit to return both. Filter by a rollup metric
+              with numeric range operators ($gte/$lte/$gt/$lt/$eq): filter[run_count][$gte]=5,
+              filter[cost_usd.mean][$lte]=0.5, filter[latency_ms.p95][$lte]=1000, or
+              filter[evaluators.<name>.mean][$gte]=0.8.
 
           page: Page number.
 
@@ -725,7 +773,9 @@ class AsyncExperimentsResource(AsyncAPIResource):
           sort: Field to sort by; prefix with '-' for descending. Sort by an experiment
               attribute (name, created_at, updated_at, pinned_at) or by an aggregate metric:
               run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>,
-              where <stat> is one of mean, median, p90, p95, p99, sum, count.
+              where <stat> is one of mean, median, p90, p95, p99, sum, count. When omitted,
+              the group's configured default sort is used (falling back to -created_at), with
+              pinned experiments first.
 
           extra_headers: Send extra headers
 

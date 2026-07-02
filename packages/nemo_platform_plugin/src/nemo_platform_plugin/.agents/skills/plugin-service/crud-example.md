@@ -54,6 +54,7 @@ import logging
 from typing import ClassVar
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from nemo_platform_plugin.authz import AuthzScope, CallerKind, PermissionSet, path_rule, perm
 from nemo_platform_plugin.entity_client import (
     NemoEntitiesClient,
     NemoEntityConflictError,
@@ -73,6 +74,16 @@ from .schema import (
 )
 
 logger = logging.getLogger(__name__)
+
+scope = AuthzScope("my-plugin")
+
+
+class WidgetPerms(PermissionSet, namespace="my-plugin.widgets"):
+    CREATE = perm("Create a widget")   # -> Permission("my-plugin.widgets.create", ...)
+    LIST = perm("List widgets")
+    READ = perm("Read a widget")
+    UPDATE = perm("Update a widget")
+    DELETE = perm("Delete a widget")
 
 
 class MyService(NemoService):
@@ -99,6 +110,8 @@ def _build_router() -> APIRouter:
     # ------------------------------------------------------------------
 
     @router.post("/widgets", response_model=Widget, status_code=201)
+    @scope.write
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[WidgetPerms.CREATE])
     async def create_widget(
         workspace: str,
         body: CreateWidgetRequest,
@@ -128,6 +141,8 @@ def _build_router() -> APIRouter:
     # ------------------------------------------------------------------
 
     @router.get("/widgets", response_model=WidgetPage)
+    @scope.read
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[WidgetPerms.LIST])
     async def list_widgets(
         workspace: str,
         page: int = Query(default=1, ge=1),
@@ -165,6 +180,8 @@ def _build_router() -> APIRouter:
     # ------------------------------------------------------------------
 
     @router.get("/widgets/{name}", response_model=Widget)
+    @scope.read
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[WidgetPerms.READ])
     async def get_widget(
         workspace: str,
         name: str,
@@ -187,6 +204,8 @@ def _build_router() -> APIRouter:
     # ------------------------------------------------------------------
 
     @router.patch("/widgets/{name}", response_model=Widget)
+    @scope.write
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[WidgetPerms.UPDATE])
     async def update_widget(
         workspace: str,
         name: str,
@@ -233,6 +252,8 @@ def _build_router() -> APIRouter:
     # ------------------------------------------------------------------
 
     @router.delete("/widgets/{name}", status_code=204)
+    @scope.write
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[WidgetPerms.DELETE])
     async def delete_widget(
         workspace: str,
         name: str,

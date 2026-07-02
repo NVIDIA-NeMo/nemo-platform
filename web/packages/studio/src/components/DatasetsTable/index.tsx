@@ -119,7 +119,7 @@ export const DatasetsTable: FC<DatasetsTableProps> = ({
                   selectedDatasets={selectedRows}
                   onConfirmSuccess={handleBulkDeleteSuccess}
                   slotTrigger={
-                    <Button kind="tertiary">
+                    <Button kind="tertiary" aria-label="Delete selected datasets">
                       <Trash />
                       Delete
                     </Button>

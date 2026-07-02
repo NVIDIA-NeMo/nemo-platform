@@ -9,7 +9,8 @@ import httpx
 import pytest
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.endpoint import delete, get, post
-from nemo_platform_plugin.client.response import NemoHTTPError, NemoResponse
+from nemo_platform_plugin.client.errors import NemoHTTPError, NotFoundError
+from nemo_platform_plugin.client.response import NemoResponse
 from pydantic import BaseModel
 
 BASE = "http://test:8000"
@@ -302,6 +303,7 @@ def test_query_params_all_none_becomes_none() -> None:
 
 
 def test_error_response_extracts_detail() -> None:
+    """send() raises NemoHTTPError with detail extracted from response body."""
     mock_http = MagicMock(spec=httpx.Client)
     mock_http.request.return_value = httpx.Response(
         422,
@@ -310,10 +312,9 @@ def test_error_response_extracts_detail() -> None:
     )
 
     client = NemoClient(base_url=BASE, http_client=mock_http)
-    resp = client.send(CREATE_ITEM(ItemRequest(name="")))
 
     with pytest.raises(NemoHTTPError) as exc_info:
-        resp.data()
+        client.send(CREATE_ITEM(ItemRequest(name="")))
 
     assert exc_info.value.status_code == 422
     assert exc_info.value.detail == "Validation failed: name is required"
@@ -322,6 +323,7 @@ def test_error_response_extracts_detail() -> None:
 
 
 def test_error_response_fallback_to_text() -> None:
+    """send() raises NemoHTTPError with raw text when no JSON detail."""
     mock_http = MagicMock(spec=httpx.Client)
     mock_http.request.return_value = httpx.Response(
         500,
@@ -330,17 +332,16 @@ def test_error_response_fallback_to_text() -> None:
     )
 
     client = NemoClient(base_url=BASE, http_client=mock_http)
-    resp = client.send(GET_ITEM(name="x"))
 
     with pytest.raises(NemoHTTPError) as exc_info:
-        resp.data()
+        client.send(GET_ITEM(name="x"))
 
     assert exc_info.value.status_code == 500
     assert exc_info.value.detail == "Internal Server Error"
 
 
-def test_error_response_body_is_none() -> None:
-    """On error, body should be None (not deserialized as the response type)."""
+def test_error_response_raises_specific_subclass() -> None:
+    """send() raises status-code-specific NemoHTTPError subclass."""
     mock_http = MagicMock(spec=httpx.Client)
     mock_http.request.return_value = httpx.Response(
         404,
@@ -349,10 +350,12 @@ def test_error_response_body_is_none() -> None:
     )
 
     client = NemoClient(base_url=BASE, http_client=mock_http)
-    resp = client.send(GET_ITEM(name="missing"))
 
-    assert resp.body is None
-    assert resp.http_response.status_code == 404
+    with pytest.raises(NotFoundError) as exc_info:
+        client.send(GET_ITEM(name="missing"))
+
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Not found"
 
 
 # ---------------------------------------------------------------------------
@@ -410,3 +413,50 @@ def test_response_carries_prepared_request() -> None:
     assert resp.request is not None
     assert resp.request.method == "GET"
     assert resp.request.path_params == {"name": "alice"}
+
+
+# ---------------------------------------------------------------------------
+# Regression tests
+# ---------------------------------------------------------------------------
+
+
+def test_send_raises_on_non_2xx() -> None:
+    """send() must raise immediately on non-2xx."""
+    mock_http = MagicMock(spec=httpx.Client)
+    mock_http.request.return_value = httpx.Response(
+        403,
+        request=httpx.Request("PUT", f"{BASE}/apis/test/upload"),
+        json={"detail": "Access denied"},
+    )
+
+    client = NemoClient(base_url=BASE, http_client=mock_http)
+
+    with pytest.raises(NemoHTTPError) as exc_info:
+        client.send(CREATE_ITEM(ItemRequest(name="x")))
+
+    assert exc_info.value.status_code == 403
+
+
+def test_query_param_dicts_are_json_serialized() -> None:
+    """Dict query params must be JSON-serialized, not Python repr."""
+    from abc import abstractmethod
+
+    from nemo_platform_plugin.client.endpoint import get
+
+    @get("/apis/test/v2/items")
+    @abstractmethod
+    def list_items(*, query_params: dict | None = None) -> ItemResponse: ...
+
+    mock_http = MagicMock(spec=httpx.Client)
+    mock_http.request.return_value = httpx.Response(
+        200,
+        request=httpx.Request("GET", f"{BASE}/apis/test/v2/items"),
+        json={"id": 1, "name": "x"},
+    )
+
+    client = NemoClient(base_url=BASE, http_client=mock_http)
+    client.send(list_items(query_params={"filter": {"name": "test"}}))
+
+    _, kwargs = mock_http.request.call_args
+    filter_value = kwargs["params"]["filter"]
+    assert filter_value == '{"name": "test"}', f"Expected JSON string, got: {filter_value}"

@@ -11,5 +11,6 @@ export { BooleanFilterControl } from '@nemo/common/src/components/DataView/Filte
 export { SingleSelectFilterControl } from '@nemo/common/src/components/DataView/FilterPanel/SingleSelectFilter';
 export { MultiSelectFilterControl } from '@nemo/common/src/components/DataView/FilterPanel/MultiSelectFilter';
 export { DateTimeFilterControl } from '@nemo/common/src/components/DataView/FilterPanel/DateRangeFilter';
+export { NumberRangeFilterControl } from '@nemo/common/src/components/DataView/FilterPanel/NumberRangeFilter';
 export { CustomFilterControl } from '@nemo/common/src/components/DataView/FilterPanel/CustomFilter';
 export { FilterPanel } from '@nemo/common/src/components/DataView/FilterPanel/FilterPanel';

@@ -243,6 +243,8 @@ type BlockingAction =
   | { type: 'set_input_status'; status: AgentDecisionInputStatus }
   | { type: 'clear_permission'; requestId?: string; dequeueNext?: boolean }
   | { type: 'clear_input'; requestId?: string; dequeueNext?: boolean }
+  | { type: 'expire_permission'; requestId: string }
+  | { type: 'expire_input'; requestId: string }
   | { type: 'reset' };
 
 const INITIAL_BLOCKING_STATE: BlockingState = {
@@ -326,6 +328,39 @@ function blockingReducer(state: BlockingState, action: BlockingAction): Blocking
       if (action.requestId && state.activeInput?.requestId !== action.requestId) return state;
       const cleared: BlockingState = { ...state, activeInput: null, inputStatus: 'pending' };
       return action.dequeueNext ? withNextDequeued(cleared) : cleared;
+    }
+
+    case 'expire_permission': {
+      const withoutQueued = {
+        ...state,
+        queue: state.queue.filter(
+          (q) => !(q.kind === 'permission' && q.request.requestId === action.requestId)
+        ),
+      };
+      if (state.activePermission?.requestId !== action.requestId) return withoutQueued;
+      const cleared: BlockingState = {
+        ...withoutQueued,
+        activePermission: null,
+        activeDecision: null,
+        decisionStatus: 'pending',
+      };
+      return withNextDequeued(cleared);
+    }
+
+    case 'expire_input': {
+      const withoutQueued = {
+        ...state,
+        queue: state.queue.filter(
+          (q) => !(q.kind === 'input' && q.request.requestId === action.requestId)
+        ),
+      };
+      if (state.activeInput?.requestId !== action.requestId) return withoutQueued;
+      const cleared: BlockingState = {
+        ...withoutQueued,
+        activeInput: null,
+        inputStatus: 'pending',
+      };
+      return withNextDequeued(cleared);
     }
 
     case 'reset':
@@ -527,6 +562,14 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
               if (signal.aborted || !isCurrentRun()) return;
               prepareForUserInput();
               handleInputRequest(request);
+            },
+            onPermissionExpired: (requestId) => {
+              if (signal.aborted || !isCurrentRun()) return;
+              dispatchBlocking({ type: 'expire_permission', requestId });
+            },
+            onInputExpired: (requestId) => {
+              if (signal.aborted || !isCurrentRun()) return;
+              dispatchBlocking({ type: 'expire_input', requestId });
             },
             onDone: () => {
               doneReceived = true;

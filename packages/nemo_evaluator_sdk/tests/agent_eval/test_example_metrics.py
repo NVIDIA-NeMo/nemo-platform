@@ -4,6 +4,7 @@
 """Exercise the example's reference metrics-over-evidence."""
 
 import importlib.util
+import json
 from pathlib import Path
 
 import pytest
@@ -55,3 +56,36 @@ async def test_tests_pass_and_no_test_cheating(tmp_path: Path) -> None:
     )
     cheated = await example_metrics.NoTestCheatingMetric().compute_scores(_input_with_evidence(evidence_cheated))
     assert cheated.outputs[0].value is False
+
+
+@pytest.mark.asyncio
+async def test_inefficient_retry_loop(tmp_path: Path) -> None:
+    def trajectory(repeats: int) -> dict:
+        calls = [
+            {"tool_call_id": f"c{i}", "function_name": "search", "arguments": {"q": "same"}} for i in range(repeats)
+        ]
+        return {
+            "schema_version": "ATIF-v1.7",
+            "agent": {"name": "demo", "version": "1.0"},
+            "steps": [{"step_id": 1, "source": "agent", "message": "", "tool_calls": calls}],
+        }
+
+    looping = tmp_path / "loop.json"
+    looping.write_text(json.dumps(trajectory(5)), encoding="utf-8")
+    clean = tmp_path / "clean.json"
+    clean.write_text(json.dumps(trajectory(1)), encoding="utf-8")
+
+    metric = example_metrics.InefficientRetryLoopMetric(threshold=2)
+
+    loop_result = await metric.compute_scores(
+        _input_with_evidence(
+            CandidateEvidence(descriptors={"trace": EvidenceDescriptor(kind="trace", ref=str(looping))})
+        )
+    )
+    assert loop_result.outputs[0].value is False
+    assert loop_result.outputs[1].value == 5
+
+    clean_result = await metric.compute_scores(
+        _input_with_evidence(CandidateEvidence(descriptors={"trace": EvidenceDescriptor(kind="trace", ref=str(clean))}))
+    )
+    assert clean_result.outputs[0].value is True

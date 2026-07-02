@@ -6,14 +6,13 @@ import future.keywords.in
 
 import data.authz.extract_method
 import data.authz.extract_path
-import data.authz.extract_scopes
-import data.authz.extract_workspace_from_path
 import data.authz.scope_check_passed
+import data.common.endpoint_scan
 import data.common.get_applicable_principals
-import data.common.get_required_permissions
 import data.common.has_permissions
-import data.common.normalize_endpoint
-import data.common.path_matches_pattern
+import data.common.req_callers
+import data.common.req_deny
+import data.common.req_permissions
 
 # Main entry point - returns result with X-NMP-Authorized header
 #
@@ -59,13 +58,7 @@ allow_request if {
 allow_request if {
 	principal_id := extract_principal_id
 	startswith(principal_id, "service:")
-	path := extract_path
-	base_path := split(path, "?")[0]
-	matching_patterns := {p |
-		some p in object.keys(data.authz.endpoints)
-		path_matches_pattern(base_path, p)
-	}
-	count(matching_patterns) == 0
+	endpoint_scan == ""
 }
 
 # Allow if any applicable principal has required permissions and scopes (if provided)
@@ -78,10 +71,11 @@ allow_request if {
 
 	path := extract_path
 	method := extract_method
-	required_permissions := get_required_permissions(path, method)
+	required_permissions := req_permissions
 	count(required_permissions) > 0
 
-	workspace := extract_workspace_from_path(path)
+	workspace_scan != ""
+	workspace := workspace_scan
 
 	# Skip this rule for wildcard workspace - use cross-workspace rule instead
 	workspace != "-"
@@ -103,10 +97,11 @@ allow_request if {
 
 	path := extract_path
 	method := extract_method
-	required_permissions := get_required_permissions(path, method)
+	required_permissions := req_permissions
 	count(required_permissions) > 0
 
-	workspace := extract_workspace_from_path(path)
+	workspace_scan != ""
+	workspace := workspace_scan
 	workspace == "-"
 	method in ["POST", "PUT", "PATCH", "DELETE"]
 
@@ -126,16 +121,19 @@ allow_request if {
 	base_path := split(path, "?")[0]
 	startswith(base_path, "/apis/auth/v2/iam/")
 	method := extract_method
-	required_permissions := get_required_permissions(path, method)
+	required_permissions := req_permissions
 	count(required_permissions) > 0
-	not extract_workspace_from_path(path)
+	workspace_scan == ""
 	some principal in applicable_principals
 	has_permissions(principal, "system", required_permissions)
 }
 
-# Allow cross-workspace LIST operations (GET/HEAD without workspace in path)
-# for authenticated users.
-# If the user has no accessible workspaces, they will get empty list.
+# Allow cross-workspace LIST operations (GET/HEAD without workspace in path) for authenticated
+# users — the workspace-filtered list case (results scoped to the caller's accessible
+# workspaces; an empty list when they have none).
+# Only applies when the endpoint declares NO required permissions. A permission-stamped
+# no-workspace GET must instead satisfy its permission (rule below); otherwise the stamped
+# permission is decorative, which is how the bundle-download endpoint had to be special-cased.
 allow_request if {
 	applicable_principals := get_applicable_principals
 	count(applicable_principals) > 0
@@ -149,10 +147,43 @@ allow_request if {
 
 	# Ensure the path matches a known endpoint pattern.
 	# normalize_endpoint is undefined for unknown paths, failing the rule (deny by default).
-	normalize_endpoint(path)
+	endpoint_scan != ""
 
 	# Match if no workspace can be extracted from path (undefined = no workspace placeholder)
-	not extract_workspace_from_path(path)
+	workspace_scan == ""
+
+	# Permissionless only: an endpoint with no `permissions` (empty or absent) keeps the
+	# "any authenticated user" behavior; a permissioned one falls through to the rule below.
+	not req_has_permissions
+}
+
+# A permission-stamped no-workspace GET/HEAD must satisfy its declared permission in the system
+# workspace (the home for non-workspace-scoped resources, matching the IAM rule above), so the
+# permission is enforced rather than decorative.
+allow_request if {
+	applicable_principals := get_applicable_principals
+	count(applicable_principals) > 0
+
+	scope_check_passed
+
+	method := extract_method
+	method in ["GET", "HEAD"]
+	path := extract_path
+	endpoint_scan != ""
+	workspace_scan == ""
+
+	required_permissions := req_permissions
+	count(required_permissions) > 0
+
+	some principal in applicable_principals
+	has_permissions(principal, "system", required_permissions)
+}
+
+# True when the matched endpoint declares one or more required permissions for this method.
+# Undefined required-permissions (an endpoint with no `permissions` key) makes count() undefined,
+# so this is false there — absent/empty permissions are treated alike (no permission required).
+req_has_permissions if {
+	count(req_permissions) > 0
 }
 
 # Allow cross-workspace LIST operations with "-" wildcard workspace
@@ -168,7 +199,8 @@ allow_request if {
 	path := extract_path
 
 	# Match if workspace is "-" wildcard
-	workspace := extract_workspace_from_path(path)
+	workspace_scan != ""
+	workspace := workspace_scan
 	workspace == "-"
 }
 
@@ -189,15 +221,44 @@ allow_request if {
 	scope_check_passed
 	path := extract_path
 	method := extract_method
-	endpoint := normalize_endpoint(path)
-	method_lower := lower(method)
-	data.authz.endpoints[endpoint][method_lower].permissions == []
+	req_permissions == []
 }
 
 # DENY REQUEST RULES
 
 # Default allow (deny_request overrides allow_request when true)
 default deny_request := false
+
+# Explicit deny marker (data.authz.endpoints[...].deny == true) — the fail-closed signal for
+# unruled or invalid plugin routes. As a deny_request it overrides every allow rule, including
+# the ServiceSystem "*" wildcard and the PlatformAdmin bypass, so an un-annotated plugin route
+# can never fall through to the service: no-match bypass and become accessible.
+deny_request if {
+	req_deny
+}
+
+# Fence a degraded plugin's entire namespace. The bundle records /apis/<plugin> prefixes for
+# plugins whose authz could not be derived at all (load / enumeration failure) — their routes
+# may still be mounted by the runner, so deny every path under the prefix rather than let it
+# fall through the service: no-match bypass. Undefined config key ⇒ no prefixes ⇒ inert.
+deny_request if {
+	some prefix in object.get(data.authz.config, "denied_plugin_prefixes", [])
+	path_under_denied_prefix(split(extract_path, "?")[0], prefix)
+}
+
+# A path is fenced if it sits under the prefix (/apis/<plugin>/...) OR equals it exactly
+# (the bare /apis/<plugin> route). The trailing-slash form alone misses the bare prefix.
+#
+# WASM constraint: only natively-compiled builtins may be used here. The embedded PDP
+# stubs SDK-provided builtins (env::opa_builtin*) to return 0, so a deny arm written with
+# e.g. sprintf silently never fires in production while `opa test` (full Go evaluator)
+# still passes. Boundary check via startswith + substring/count, all wasm-native.
+path_under_denied_prefix(path, prefix) if path == prefix
+
+path_under_denied_prefix(path, prefix) if {
+	startswith(path, prefix)
+	substring(path, count(prefix), 1) == "/"
+}
 
 # Deny direct secret value access for non-service principals (including PlatformAdmin).
 # Secret values must only be accessed through the service delegation pattern, where a
@@ -251,6 +312,60 @@ deny_request if {
 	principal_id := extract_principal_id
 	not startswith(principal_id, "service:")
 	not platform_admin_in_system
+}
+
+# Caller-kind enforcement for service-only routes.
+#
+# A route declares allowed caller kinds via the optional `callers` list on its
+# endpoint config (see endpoint_callers). A route is "service-only" iff it allows
+# service principals but NOT principals:
+#   callers: ["service_principal"]
+# When `callers` is absent, endpoint_callers is undefined and service_only_route is
+# false — the route keeps today's PRINCIPAL-default semantics (no new restriction).
+# Routes that list "principal" (alone or with "service_principal") are NOT service-only,
+# so human callers remain allowed there.
+default service_only_route := false
+
+service_only_route if {
+	callers := req_callers
+	"service_principal" in callers
+	not "principal" in callers
+}
+
+# Deny a human (non-service) caller on a service-only route. This is a deny_request so it
+# overrides the allow rules — including the ServiceSystem "*" wildcard — otherwise humans
+# would leak onto service-only routes. Service principals (id starts with "service:") are
+# unaffected and stay allowed. A human PlatformAdmin keeps its global bypass here: an admin
+# retains access to every route, service-only routes included.
+deny_request if {
+	service_only_route
+	principal_id := extract_principal_id
+	not startswith(principal_id, "service:")
+	not platform_admin_in_system
+}
+
+# Caller-kind enforcement for principal-only routes — the symmetric counterpart of the
+# service-only deny above. A route is "principal-only" iff it allows principals but NOT service
+# principals:
+#   callers: ["principal"]
+# When `callers` is absent, endpoint_callers is undefined and this is false: a route with no
+# `callers` keeps the PRINCIPAL-default semantics and imposes no new restriction on service
+# principals. Routes listing "service_principal" (alone or with "principal") are NOT principal-only.
+default principal_only_route := false
+
+principal_only_route if {
+	callers := req_callers
+	"principal" in callers
+	not "service_principal" in callers
+}
+
+# Deny a service principal on a principal-only route. Without this, callers=["principal"] was
+# one-directional — it kept humans in but never kept service principals out (they passed via the
+# ServiceSystem "*" wildcard), so `callers` could not actually scope a route to human users.
+deny_request if {
+	principal_only_route
+	principal_id := extract_principal_id
+	startswith(principal_id, "service:")
 }
 
 # True when any applicable principal has PlatformAdmin in the system workspace (see allow_request).

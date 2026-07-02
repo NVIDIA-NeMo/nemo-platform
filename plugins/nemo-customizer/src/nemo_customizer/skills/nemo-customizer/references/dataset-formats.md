@@ -1,8 +1,11 @@
 # Dataset formats
 
-Both backends read JSONL from a platform fileset, but the **row shape and the job-JSON dataset block differ**. Pick the section that matches your plugin.
+All three backends read JSONL from a platform fileset, but the **row shape and the job-JSON dataset block differ**. Pick the section that matches your plugin (automodel, unsloth, or rl/DPO).
 
-Upload `train.jsonl` and optional `validation.jsonl` at the **fileset root**. For automodel use the same fileset for `dataset.training` and `dataset.validation`. For unsloth use `dataset.path` (and `dataset.validation_path`).
+Upload the JSONL files at the **fileset root**, then reference the fileset from the job JSON `dataset` block. The filenames differ by backend, so keep the two contracts separate:
+
+- **SFT (automodel, unsloth):** upload `train.jsonl` and optional `validation.jsonl`. Automodel points `dataset.training` / `dataset.validation` at the fileset; unsloth uses `dataset.path` (and `dataset.validation_path`).
+- **rl (DPO):** upload both `training.jsonl` **and** `validation.jsonl` to a single fileset, referenced by one `dataset` string (no separate validation ref) — see § NeMo-RL.
 
 ## Automodel
 
@@ -63,6 +66,53 @@ Eval rows must use the **same CHAT `messages` shape** as training. Do not flatte
 |----------------|--------------|------------------------|------------------|
 | `messages` (single- or multi-turn) | Same fileset split (`validation.jsonl`) | `messages[:-1]` — exclude final assistant label — see `post-training-eval.md` | `{{ item.messages[-1].content }}` |
 
-LoRA inference and eval use the **provider** gateway on the **base** entity (`/provider/<name>/-/v1`, `model: default--<adapter>`). Base model uses the model-entity path. Full SFT / merged checkpoints use the **output** model entity's model-entity URL — deploy first. See `post-training-eval.md` and the **Using the adapter** / **Using the fine-tuned model** sections in `SKILL.md`.
+LoRA inference and eval use the **provider** gateway on the **base** entity (`/provider/<name>/-/v1`, `model: default--<adapter>`). Base model uses the model-entity path. Full SFT / merged checkpoints use the **output** model entity's model-entity URL — deploy first. See `post-training-eval.md` and the **Using the adapter** / **Using the fine-tuned model** sections in `reporting.md`.
 
 Shared helpers and compare CLI: `references/eval_helpers.py`. Full workflow: `references/post-training-eval.md`.
+## NeMo-RL (DPO) — preference data
+
+DPO trains on **preference pairs**, not prompt→completion examples. The `rl` backend takes a **single** dataset fileset that must contain **both** `training.jsonl` **and** `validation.jsonl` at the fileset root (unlike automodel/unsloth, the dataset block in the job JSON is a single ref — there is no separate validation ref).
+
+The dataset-preparation step **auto-detects the row schema from the first line** and selects the matching NeMo-RL loader. **Three preference formats are supported** (platform schemas `BinaryPreferenceDatasetItemSchema` / `HelpSteer3DatasetItemSchema` / `Tulu3PreferenceDatasetItemSchema`):
+
+### Binary preference (`BinaryPreferenceDataset`)
+
+Simple `prompt` / `chosen` / `rejected` — the `prompt` may be a plain string **or** a list of chat messages:
+
+```json
+{"prompt": "What is the capital of France?", "chosen": "The capital of France is Paris.", "rejected": "I'm not sure."}
+```
+
+| Key | Meaning |
+|-----|---------|
+| `prompt` | The input/context shown to the model (string or list of chat messages). |
+| `chosen` | The preferred (higher-reward) response. |
+| `rejected` | The dispreferred response. |
+
+### HelpSteer3 (`HelpSteer3`)
+
+A conversation `context` (string or chat messages), two candidate responses, and a signed `overall_preference` in **-3..3** — **negative** means `response1` is preferred, **positive** means `response2`, **0** is a tie. This is the **raw** schema of `nvidia/HelpSteer3` (the `preference` subset), so no conversion is needed:
+
+```json
+{"context": [{"role": "user", "content": "Explain how to use git rebase"}], "response1": "...", "response2": "...", "overall_preference": -2}
+```
+
+### Tulu3 preference (`Tulu3Preference`)
+
+Full chat conversations for both branches — `chosen` and `rejected` are each a **list of messages** ending with the assistant turn:
+
+```json
+{"chosen": [{"role": "user", "content": "..."}, {"role": "assistant", "content": "preferred"}], "rejected": [{"role": "user", "content": "..."}, {"role": "assistant", "content": "dispreferred"}]}
+```
+
+Whichever format you upload, the job JSON dataset block is just the single fileset ref:
+
+```json
+"dataset": "default/<preference-fileset>"
+```
+
+**Notes**
+- Upload both files to the **same** fileset (`--remote-path training.jsonl` and `--remote-path validation.jsonl`).
+- `prompt` may be a plain string; the model's chat template is applied at training time (override with `training.chat_template` only when needed).
+- DPO is **full-weight** — there is no LoRA/adapter dataset variant. The output is a full model checkpoint.
+
