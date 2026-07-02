@@ -16,6 +16,8 @@ platformless local run (no async SDK) simply skips persistence.
 from __future__ import annotations
 
 import logging
+import re
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from nemo_evaluator.entities import AgentEvalResultEntity, EvaluateResultEntity
 from nemo_evaluator.jobs.agent_spec import AgentTarget, CodexRunnerTarget, ModelTarget, Target
@@ -42,12 +44,42 @@ def _entity_client(async_sdk: AsyncNeMoPlatform | None) -> EntityClient | None:
     return EntityClient(AsyncEntitiesResource(async_sdk))
 
 
+#: Query-parameter keys whose values are redacted before a target URL is persisted/returned.
+_SENSITIVE_QUERY_KEY = re.compile(r"token|key|secret|password|passwd|pwd|auth|credential|sig", re.IGNORECASE)
+
+
+def _safe_target_url(url: object) -> str | None:
+    """Render a target endpoint URL for persistence with credentials stripped.
+
+    ``target_url`` is stored on the result entity and returned by the read APIs, so any userinfo
+    (``user:pass@``) or sensitive query values (api keys/tokens) the endpoint URL carries would leak.
+    Drop userinfo, redact sensitive query values, and omit the URL entirely when it has no host (i.e.
+    can't be safely normalized).
+    """
+    if url is None:
+        return None
+    try:
+        parts = urlsplit(str(url))
+    except ValueError:
+        return None
+    if not parts.hostname:
+        return None
+    netloc = parts.hostname if parts.port is None else f"{parts.hostname}:{parts.port}"
+    query = urlencode(
+        [
+            (key, "REDACTED" if _SENSITIVE_QUERY_KEY.search(key) else value)
+            for key, value in parse_qsl(parts.query, keep_blank_values=True)
+        ]
+    )
+    return urlunsplit((parts.scheme, netloc, parts.path, query, parts.fragment))
+
+
 def _agent_target_fields(target: Target | None) -> tuple[str | None, str | None, str | None]:
     """(kind, name, url) flat target traits for an agent-eval target."""
     if isinstance(target, ModelTarget):
-        return "model", target.model.name, str(target.model.url) if target.model.url else None
+        return "model", target.model.name, _safe_target_url(target.model.url)
     if isinstance(target, AgentTarget):
-        return "agent", getattr(target.agent, "name", None), str(target.agent.url)
+        return "agent", getattr(target.agent, "name", None), _safe_target_url(target.agent.url)
     if isinstance(target, CodexRunnerTarget):
         return "codex", target.model, None
     return None, None, None
@@ -56,9 +88,9 @@ def _agent_target_fields(target: Target | None) -> tuple[str | None, str | None,
 def _row_target_fields(target: Model | Agent | None) -> tuple[str | None, str | None, str | None]:
     """(kind, name, url) flat target traits for a row-eval target."""
     if isinstance(target, Model):
-        return "model", target.name, str(target.url) if target.url else None
+        return "model", target.name, _safe_target_url(target.url)
     if isinstance(target, Agent):
-        return "agent", getattr(target, "name", None), str(target.url)
+        return "agent", getattr(target, "name", None), _safe_target_url(target.url)
     return None, None, None
 
 

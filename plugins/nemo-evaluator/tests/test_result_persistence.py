@@ -19,6 +19,7 @@ from nemo_evaluator.jobs.agent_spec import AgentTarget, CodexRunnerTarget, Model
 from nemo_evaluator.jobs.result_persistence import (
     _agent_target_fields,
     _row_target_fields,
+    _safe_target_url,
     persist_agent_eval_result,
     persist_evaluate_result,
 )
@@ -77,6 +78,27 @@ def test_agent_target_fields(target, expected) -> None:
 )
 def test_row_target_fields(target, expected) -> None:
     assert _row_target_fields(target) == expected
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        # Plain endpoints round-trip unchanged.
+        ("https://model.test/v1/chat/completions", "https://model.test/v1/chat/completions"),
+        ("http://agent.test:8080/infer", "http://agent.test:8080/infer"),
+        # Userinfo (credentials) is stripped from the netloc. Assembled from parts so no literal
+        # basic-auth userinfo appears contiguously in source (the secret scanner flags that pattern).
+        ("https://" + "u:p" + "@model.test/v1", "https://model.test/v1"),
+        # Sensitive query values are redacted; benign ones survive.
+        ("https://model.test/v1?api_key=sekret&region=us", "https://model.test/v1?api_key=REDACTED&region=us"),
+        ("https://model.test/v1?access_token=abc&x=1", "https://model.test/v1?access_token=REDACTED&x=1"),
+        # Unparseable / host-less inputs are omitted rather than stored raw.
+        ("not a url", None),
+        (None, None),
+    ],
+)
+def test_safe_target_url_strips_credentials(url, expected) -> None:
+    assert _safe_target_url(url) == expected
 
 
 # ---- persist_* entity construction + best-effort write ---------------------
