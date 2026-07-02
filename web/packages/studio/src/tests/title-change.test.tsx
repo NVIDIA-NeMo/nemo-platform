@@ -26,7 +26,6 @@ const pathParams = {
   [RP.safeSynthesizerJobName]: '',
   [RP.dataDesignerJobName]: '',
   [RP.traceId]: 'trace-1',
-  [RP.spanId]: 'span-1',
   [RP.deploymentName]: '',
   [RP.deploymentPanelView]: '',
   [RP.agentName]: '',

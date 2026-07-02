@@ -3979,6 +3979,22 @@ paths:
           default: 100
           title: Page Size
         description: Page size.
+      - name: mode
+        in: query
+        required: false
+        schema:
+          enum:
+          - summary
+          - detailed
+          type: string
+          description: Response payload mode. summary keeps the same session row fields
+            but truncates root-span input to 1000 characters; detailed returns the
+            full root-span input.
+          default: detailed
+          title: Mode
+        description: Response payload mode. summary keeps the same session row fields
+          but truncates root-span input to 1000 characters; detailed returns the full
+          root-span input.
       - in: query
         name: filter
         style: deepObject
@@ -10788,7 +10804,8 @@ components:
           description: 'Root-span status: success, error, cancelled, or unknown.'
         input:
           title: Input
-          description: Root-span input text (the query).
+          description: Root-span input text. In summary mode this is truncated to
+            1000 characters.
           type: string
         input_tokens:
           title: Input Tokens
@@ -17162,6 +17179,8 @@ components:
           type: string
         error_message:
           title: Error Message
+          description: Normalized error message. In summary mode this is truncated
+            to 1000 characters.
           type: string
         provider:
           title: Provider

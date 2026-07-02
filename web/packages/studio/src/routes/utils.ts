@@ -440,8 +440,9 @@ export const getIntakeTraceRoute = (workspace: string, traceId: string) => {
   return generatePath(ROUTES.workspace.intakeTrace, { workspace, traceId });
 };
 
-export const getIntakeSpanRoute = (workspace: string, spanId: string) => {
-  return generatePath(ROUTES.workspace.intakeSpan, { workspace, spanId });
+export const getIntakeTraceSpanRoute = (workspace: string, traceId: string, spanId: string) => {
+  const searchParams = new URLSearchParams({ [QUERY_PARAMETERS.spanId]: spanId });
+  return `${getIntakeTraceRoute(workspace, traceId)}?${searchParams.toString()}`;
 };
 
 export const getSafeSynthesizerRoute = (workspace: string) => {
