@@ -54,23 +54,18 @@ def _assert_http_status(exc_info: pytest.ExceptionInfo[httpx.HTTPStatusError], s
     assert exc_info.value.response.status_code == status_code
 
 
-def _agents_url(sdk: NeMoPlatform, workspace: str, suffix: str = "") -> str:
-    base_url = str(sdk.base_url).rstrip("/")
-    suffix = suffix.lstrip("/")
-    url = f"{base_url}/apis/agents/v2/workspaces/{workspace}/agents"
-    return f"{url}/{suffix}" if suffix else url
-
-
 def _get_agents_page(
     sdk: NeMoPlatform,
     workspace: str,
     *,
     params: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    with httpx.Client(timeout=30) as client:
-        response = client.get(_agents_url(sdk, workspace), params=params)
-        response.raise_for_status()
-        return response.json()
+    response = sdk._client.get(
+        f"/apis/agents/v2/workspaces/{workspace}/agents",
+        params=params,
+    )
+    response.raise_for_status()
+    return response.json()
 
 
 def _delete_agent_if_exists(sdk: NeMoPlatform, *, workspace: str, name: str) -> None:
