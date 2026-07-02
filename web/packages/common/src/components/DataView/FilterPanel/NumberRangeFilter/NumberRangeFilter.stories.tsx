@@ -22,8 +22,9 @@ import { ComponentProps, FC, useCallback, useState } from 'react';
 
 interface SandboxArgs {
   label: string;
-  min: number;
-  max: number;
+  /** Omit `min`/`max` to render the unbounded (slider-less) variant. */
+  min?: number;
+  max?: number;
   step: number;
 }
 
@@ -84,6 +85,26 @@ export default meta;
  * (or press Enter), and watch the emitted `{ $gte, $lte }` value update below.
  */
 export const Sandbox: StoryObj<SandboxArgs> = {
+  render: (args) => <SandboxHarness {...args} />,
+};
+
+/**
+ * Bounded variant — both `min` and `max` are supplied, so the RangeSlider
+ * renders and its bounds seed the min/max inputs (they start at 0 and 100).
+ */
+export const Bounded: StoryObj<SandboxArgs> = {
+  name: 'Bounded (with slider)',
+  args: { label: 'Score', min: 0, max: 100, step: 1 },
+  render: (args) => <SandboxHarness {...args} />,
+};
+
+/**
+ * Unbounded variant — no `min`/`max`, so the slider is hidden and the inputs
+ * start empty (placeholders shown); typing emits an open-ended `{ $gte }` / `{ $lte }`.
+ */
+export const Unbounded: StoryObj<SandboxArgs> = {
+  name: 'Unbounded (no slider)',
+  args: { label: 'Tokens', min: undefined, max: undefined, step: 1 },
   render: (args) => <SandboxHarness {...args} />,
 };
 

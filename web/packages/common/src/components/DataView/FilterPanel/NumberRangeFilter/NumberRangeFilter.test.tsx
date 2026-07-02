@@ -6,17 +6,20 @@ import {
   formatNumberRange,
   isNumberRangeFilter,
   numberRangeFilter,
+  type NumberRangeFilterConfig,
   type NumberRangeFilterValue,
 } from '@nemo/common/src/components/DataView/FilterPanel/NumberRangeFilter/util';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 
 /**
- * Renders the control inside a stateful harness so committed filter changes
- * persist across edits (the way a real DataView column would), and spies on
- * every emitted value.
+ * Renders the control in a stateful harness (like a real DataView column) and spies
+ * on emitted values. Defaults to a bounded 0–100 track; omit min/max for unbounded.
  */
-function renderControl(initial?: NumberRangeFilterValue) {
+function renderControl(
+  initial?: NumberRangeFilterValue,
+  config: NumberRangeFilterConfig = { min: 0, max: 100, step: 1 }
+) {
   const setFilterValue = vi.fn();
 
   function Harness() {
@@ -30,7 +33,7 @@ function renderControl(initial?: NumberRangeFilterValue) {
       },
       columnDef: {
         header: 'Score',
-        meta: { filter: numberRangeFilter('Score', { min: 0, max: 100, step: 1 }) },
+        meta: { filter: numberRangeFilter('Score', config) },
       },
     };
     return <NumberRangeFilterControl column={column as never} />;
@@ -41,15 +44,17 @@ function renderControl(initial?: NumberRangeFilterValue) {
 }
 
 describe('numberRangeFilter', () => {
-  it('builds a custom filter def with the numberRange variant and bounds', () => {
-    expect(numberRangeFilter('Score')).toMatchObject({
+  it('builds a custom filter def with the numberRange variant; bounds are optional', () => {
+    const def = numberRangeFilter('Score');
+    expect(def).toMatchObject({
       label: 'Score',
       type: 'custom',
       filterVariant: 'numberRange',
-      min: 0,
-      max: 100,
       step: 1,
     });
+    // Bounds default to undefined (unbounded / slider-less) unless supplied.
+    expect(def.min).toBeUndefined();
+    expect(def.max).toBeUndefined();
     expect(numberRangeFilter('Price', { min: 10, max: 500, step: 25 })).toMatchObject({
       min: 10,
       max: 500,
@@ -148,5 +153,48 @@ describe('NumberRangeFilterControl', () => {
     // ...and the inputs settle to the ordered values, matching the slider.
     expect(min).toHaveValue(30);
     expect(max).toHaveValue(80);
+  });
+});
+
+describe('NumberRangeFilterControl (unbounded)', () => {
+  // A config without min/max renders the slider-less variant with empty inputs.
+  const UNBOUNDED: NumberRangeFilterConfig = { step: 1 };
+
+  it('hides the slider and starts the inputs empty so placeholders show', () => {
+    renderControl(undefined, UNBOUNDED);
+
+    expect(screen.queryByRole('slider')).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Min')).toHaveValue(null);
+    expect(screen.getByPlaceholderText('Max')).toHaveValue(null);
+  });
+
+  it('emits the typed lower bound verbatim (no track to narrow against)', () => {
+    const { setFilterValue } = renderControl(undefined, UNBOUNDED);
+
+    const min = screen.getByPlaceholderText('Min');
+    fireEvent.change(min, { target: { value: '5' } });
+    fireEvent.blur(min);
+
+    expect(setFilterValue).toHaveBeenLastCalledWith({ $gte: 5, $lte: undefined });
+  });
+
+  it('emits the typed upper bound verbatim', () => {
+    const { setFilterValue } = renderControl(undefined, UNBOUNDED);
+
+    const max = screen.getByPlaceholderText('Max');
+    fireEvent.change(max, { target: { value: '250' } });
+    fireEvent.blur(max);
+
+    expect(setFilterValue).toHaveBeenLastCalledWith({ $gte: undefined, $lte: 250 });
+  });
+
+  it('opens an end of the range when its field is cleared', () => {
+    const { setFilterValue } = renderControl({ $gte: 5, $lte: 250 }, UNBOUNDED);
+
+    const min = screen.getByPlaceholderText('Min');
+    fireEvent.change(min, { target: { value: '' } });
+    fireEvent.blur(min);
+
+    expect(setFilterValue).toHaveBeenLastCalledWith({ $gte: undefined, $lte: 250 });
   });
 });
