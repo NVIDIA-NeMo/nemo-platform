@@ -20,28 +20,21 @@ from nemo_platform_plugin.client.method import method
 from nemo_platform_plugin.files import endpoints
 
 
-class _FilesetMethods:
+class _FilesMethods:
     create_fileset = method(endpoints.create_fileset)
     list_filesets = method(endpoints.list_filesets)
     get_fileset = method(endpoints.get_fileset)
     update_fileset = method(endpoints.update_fileset)
     delete_fileset = method(endpoints.delete_fileset)
-
-
-class _FileMethods:
     list_files = method(endpoints.list_files)
     upload_file = method(endpoints.upload_file)
     download_file = method(endpoints.download_file)
     delete_file = method(endpoints.delete_file)
 
 
-class _AllFilesMethods(_FilesetMethods, _FileMethods):
-    pass
-
-
-class FilesClient(_AllFilesMethods, NemoClient):
+class FilesClient(_FilesMethods, NemoClient):
     """Sync client for the Files service API."""
 
 
-class AsyncFilesClient(_AllFilesMethods, AsyncNemoClient):
+class AsyncFilesClient(_FilesMethods, AsyncNemoClient):
     """Async client for the Files service API."""
