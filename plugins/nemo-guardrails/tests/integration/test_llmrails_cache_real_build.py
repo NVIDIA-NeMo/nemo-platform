@@ -33,6 +33,7 @@ from nemo_guardrails_plugin.llmrails_cache import (
 )
 from nemo_platform.types.guardrail import RailsConfig as PlatformRailsConfig
 from nemo_platform_plugin.inference_middleware import OpenAICompatibleInferenceTarget
+from nemoguardrails.integrations.langchain.llm_adapter import LangChainLLMAdapter
 from nemoguardrails.rails.llm.llmrails import LLMRails
 
 pytestmark = [pytest.mark.integration]
@@ -53,6 +54,11 @@ def _platform_rails(models: list[dict[str, Any]] | None = None) -> PlatformRails
             "models": models if models is not None else [],
         }
     )
+
+
+def _assert_wraps_langchain_llm(actual: object, expected: BaseLanguageModel) -> None:
+    assert isinstance(actual, LangChainLLMAdapter)
+    assert actual._llm is expected
 
 
 # ---------------------------------------------------------------------------
@@ -110,9 +116,9 @@ class TestRealLLMRailsBuildFromStableConfig:
         main_llm = MagicMock(spec=BaseLanguageModel, name="main_llm")
         rails.update_llm(main_llm)
 
-        assert rails.llm is main_llm
-        assert rails.llm_generation_actions.llm is main_llm
-        assert rails.runtime.registered_action_params["llm"] is main_llm
+        _assert_wraps_langchain_llm(rails.llm, main_llm)
+        _assert_wraps_langchain_llm(rails.llm_generation_actions.llm, main_llm)
+        _assert_wraps_langchain_llm(rails.runtime.registered_action_params["llm"], main_llm)
 
 
 # ---------------------------------------------------------------------------
@@ -135,8 +141,8 @@ class TestCacheWithRealBuilder:
         try:
             async with cache.lease(stable, main_llm=main_llm, provenance=Provenance("test")) as rails:
                 assert isinstance(rails, LLMRails)
-                assert rails.llm is main_llm
-                assert rails.llm_generation_actions.llm is main_llm
+                _assert_wraps_langchain_llm(rails.llm, main_llm)
+                _assert_wraps_langchain_llm(rails.llm_generation_actions.llm, main_llm)
                 # lease's reset path wiped these.
                 assert rails.events_history_cache == {}
                 assert rails.explain_info is None
@@ -158,9 +164,9 @@ class TestCacheWithRealBuilder:
 
             async with cache.lease(stable, main_llm=second_llm) as rails_b:
                 assert id(rails_b) == first_id, "cache should reuse the pooled instance"
-                assert rails_b.llm is second_llm
-                assert rails_b.llm_generation_actions.llm is second_llm
-                assert rails_b.runtime.registered_action_params["llm"] is second_llm
+                _assert_wraps_langchain_llm(rails_b.llm, second_llm)
+                _assert_wraps_langchain_llm(rails_b.llm_generation_actions.llm, second_llm)
+                _assert_wraps_langchain_llm(rails_b.runtime.registered_action_params["llm"], second_llm)
         finally:
             await cache.close()
 
