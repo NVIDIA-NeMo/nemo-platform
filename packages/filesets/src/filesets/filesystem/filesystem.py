@@ -797,6 +797,9 @@ class FilesetFileSystem(AsyncFileSystem):
         )
 
         async with response.stream() as chunks:
+            content_length = response.http_response.headers.get("content-length")
+            if content_length:
+                callback.set_size(int(content_length))
             await anyio.Path(lpath).parent.mkdir(parents=True, exist_ok=True)
             async with await anyio.open_file(lpath, "wb") as f:
                 async for chunk in chunks:

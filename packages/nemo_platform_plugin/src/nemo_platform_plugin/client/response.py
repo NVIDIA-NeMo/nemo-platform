@@ -84,7 +84,15 @@ class NemoBinaryResponse:
 
     def __init__(self, stream_ctx: AbstractContextManager[httpx.Response], request: PreparedRequest) -> None:
         self._stream_ctx = stream_ctx
+        self._http_response: httpx.Response | None = None
         self.request = request
+
+    @property
+    def http_response(self) -> httpx.Response:
+        """The underlying httpx response. Available after entering ``stream()``."""
+        if self._http_response is None:
+            raise RuntimeError("http_response is only available inside a stream() context")
+        return self._http_response
 
     def read(self) -> bytes:
         """Read and return the entire response body as bytes."""
@@ -95,8 +103,18 @@ class NemoBinaryResponse:
 
     @contextmanager
     def stream(self) -> Iterator[Iterator[bytes]]:
-        """Yield an iterator of raw byte chunks."""
+        """Yield an iterator of raw byte chunks.
+
+        The underlying httpx response is available as ``http_response``
+        after entering the context, e.g. for reading ``Content-Length``::
+
+            with resp.stream() as chunks:
+                size = resp.http_response.headers.get("content-length")
+                for chunk in chunks:
+                    ...
+        """
         with self._stream_ctx as raw:
+            self._http_response = raw
             raise_for_status(raw)
             yield raw.iter_raw()
 
@@ -163,7 +181,15 @@ class AsyncNemoBinaryResponse:
 
     def __init__(self, stream_ctx: AbstractAsyncContextManager[httpx.Response], request: PreparedRequest) -> None:
         self._stream_ctx = stream_ctx
+        self._http_response: httpx.Response | None = None
         self.request = request
+
+    @property
+    def http_response(self) -> httpx.Response:
+        """The underlying httpx response. Available after entering ``stream()``."""
+        if self._http_response is None:
+            raise RuntimeError("http_response is only available inside a stream() context")
+        return self._http_response
 
     async def read(self) -> bytes:
         """Read and return the entire response body as bytes."""
@@ -174,8 +200,18 @@ class AsyncNemoBinaryResponse:
 
     @asynccontextmanager
     async def stream(self) -> AsyncIterator[AsyncIterator[bytes]]:
-        """Yield an async iterator of raw byte chunks."""
+        """Yield an async iterator of raw byte chunks.
+
+        The underlying httpx response is available as ``http_response``
+        after entering the context, e.g. for reading ``Content-Length``::
+
+            async with resp.stream() as chunks:
+                size = resp.http_response.headers.get("content-length")
+                async for chunk in chunks:
+                    ...
+        """
         async with self._stream_ctx as raw:
+            self._http_response = raw
             raise_for_status(raw)
             yield raw.aiter_raw()
 

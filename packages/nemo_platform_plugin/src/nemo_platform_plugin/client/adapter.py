@@ -43,6 +43,8 @@ def client_from_platform(
     # Prefer _custom_headers (set via with_options/set_default_headers),
     # fall back to the httpx client's actual headers (set at construction,
     # e.g. TestClient(headers={...})), filtering out httpx defaults.
+    # _custom_headers and _client are private Stainless SDK attrs present on both
+    # NeMoPlatform and AsyncNeMoPlatform but not visible to the type checker.
     headers = platform._custom_headers  # type: ignore[union-attr]
     if not headers:
         _skip = {"accept", "accept-encoding", "connection", "user-agent", "host"}
