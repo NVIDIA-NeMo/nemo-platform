@@ -66,10 +66,22 @@ class MockDeploymentBackend(DeploymentBackend):
     async def create_volume(self, **kwargs: Any) -> VolumeStatusUpdate:
         return self.volume_create_status
 
-    async def read_volume_status(self, *, workspace: str, name: str) -> VolumeStatusUpdate:
+    async def read_volume_status(
+        self,
+        *,
+        workspace: str,
+        name: str,
+        backend_config: dict[str, Any] | None = None,
+    ) -> VolumeStatusUpdate:
         return VolumeStatusUpdate(status="BOUND")
 
-    async def delete_volume(self, workspace: str, name: str) -> VolumeStatusUpdate:
+    async def delete_volume(
+        self,
+        workspace: str,
+        name: str,
+        *,
+        backend_config: dict[str, Any] | None = None,
+    ) -> VolumeStatusUpdate:
         self.volume_delete_calls.append((workspace, name))
         return VolumeStatusUpdate(status="RELEASED")
 

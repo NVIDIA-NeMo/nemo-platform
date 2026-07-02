@@ -73,6 +73,15 @@ nmp = "nemo_platform.cli.app:cli"
 managed = true
 required-version = ">=0.9"
 
+[[tool.uv.cache-keys]]
+file = "pyproject.toml"
+
+[[tool.uv.cache-keys]]
+[tool.uv.cache-keys.git]
+commit = true
+tags = true
+[tool.uv.sources]
+nmp-build-tools = {workspace = true}
 [dependency-groups]
 # version pins are in uv.lock
 dev = [
@@ -94,7 +103,7 @@ pydantic-v2 = [
 ]
 
 [build-system]
-requires = ["hatchling==1.26.3", "hatch-fancy-pypi-readme"]
+requires = ["hatchling==1.26.3", "hatch-fancy-pypi-readme", "nmp-build-tools"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build]
@@ -135,7 +144,7 @@ replacement = '[\1](https://github.com/stainless-sdks/nemo-platform-python/tree/
 
 
 [tool.hatch.version]
-path = "src/nemo_platform/_version.py"
+source = "nmp-dynamic-versioning"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--tb=short -n auto -k 'not aiohttp' -Wdefault"

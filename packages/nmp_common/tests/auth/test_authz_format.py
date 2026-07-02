@@ -123,6 +123,35 @@ class TestValidateStaticAuthzData:
         with pytest.raises(InvalidPermissionFormatError):
             validate_static_authz_data(data)
 
+    def test_valid_caller_kinds_pass(self) -> None:
+        data = {
+            "authz": {
+                "roles": {},
+                "endpoints": {
+                    "/apis/x/v2/thing": {
+                        "get": {"permissions": ["x.read"], "callers": ["principal", "service_principal"]},
+                    }
+                },
+            }
+        }
+        validate_static_authz_data(data)
+
+    def test_invalid_caller_kind_raises(self) -> None:
+        # A hand-edited static-authz.yaml with an unknown caller kind is caught at load/build,
+        # rather than failing silently in policy checks (the caller validator is now wired in).
+        data = {
+            "authz": {
+                "roles": {},
+                "endpoints": {
+                    "/apis/x/v2/thing": {
+                        "get": {"permissions": ["x.read"], "callers": ["anon"]},
+                    }
+                },
+            }
+        }
+        with pytest.raises(ValueError, match="Invalid caller kind"):
+            validate_static_authz_data(data)
+
 
 def test_shipped_static_authz_yaml_passes_validation() -> None:
     """Regression: real static-authz.yaml must satisfy format checks."""

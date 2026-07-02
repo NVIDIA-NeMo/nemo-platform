@@ -560,11 +560,11 @@ safe-synthesizer = "nemo_safe_synthesizer_plugin.skills:get_skills_path"
 nemo-platform-sdk = { workspace = true }
 nemo-platform-ext = { workspace = true }
 nemo-evaluator-sdk = { workspace = true }
+nmp-build-tools = { workspace = true }
 
 [tool.hatch.version]
-source = "regex"
-path = "../nmp_common/src/nmp/common/version.py"
-pattern = '^platform_sdk_version = "(?P<version>[^"]+)"'
+source = "nmp-dynamic-versioning"
+
 
 [build-system]
 requires = ["hatchling", "nmp-build-tools"]

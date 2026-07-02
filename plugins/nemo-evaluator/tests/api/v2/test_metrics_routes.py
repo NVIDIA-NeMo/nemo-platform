@@ -166,3 +166,25 @@ def test_create_then_delete(client: TestClient) -> None:
 
 def test_delete_missing_returns_404(client: TestClient) -> None:
     assert client.delete(f"{_BASE}/nope").status_code == 404
+
+
+def test_metric_filter_translates_custom_fields_to_data_namespace() -> None:
+    # metric_type/description are custom (data.*) fields; base columns (name) pass through. Without
+    # this translation the entity store can't resolve the field and 500s (matches the result filters).
+    from nemo_evaluator.api.schemas import MetricFilter
+    from nemo_platform_plugin.api.filter import ComparisonOperation, FilterOperator, LogicalOperation
+
+    assert MetricFilter._get_entity_field_map() == {
+        "metric_type": "data.metric_type",
+        "description": "data.description",
+    }
+    op = LogicalOperation(
+        operator=FilterOperator.AND,
+        operations=[
+            ComparisonOperation(field="metric_type", operator=FilterOperator.EQ, value="exact-match"),
+            ComparisonOperation(field="name", operator=FilterOperator.EQ, value="m"),
+        ],
+    )
+    assert MetricFilter.translate_operation(op).to_dict() == {
+        "$and": [{"data.metric_type": {"$eq": "exact-match"}}, {"name": {"$eq": "m"}}]
+    }

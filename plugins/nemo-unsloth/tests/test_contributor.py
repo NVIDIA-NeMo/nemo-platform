@@ -5,10 +5,10 @@
 
 Pin the contract the customization-router hub depends on:
 
-- ``name`` and ``dependencies`` (used by the hub's authz / dep merger).
-- ``get_authz_contribution`` produces an authz block for the unsloth jobs
-  collection + healthz.
-- ``get_routers`` returns the healthz + jobs routers under the right prefix.
+- ``name`` and ``dependencies`` (used by the hub's dep merger).
+- ``get_routers`` returns the healthz + jobs routers under the right prefix,
+  with ``@path_rule`` authz stamped on the generated job routes (the platform
+  derives the policy from those rules — there is no ``get_authz_contribution``).
 - ``get_cli`` exposes ``run`` / ``submit`` / ``explain`` and the submit
   group accepts the ``JOB_JSON`` positional. ``run`` hard-fails.
 """
@@ -46,10 +46,31 @@ class TestIdentity:
 
 
 class TestAuthz:
-    def test_authz_contribution_targets_unsloth_collection(self, contributor: object) -> None:
-        ac = contributor.get_authz_contribution()
-        repr_ = repr(ac)
-        assert "unsloth" in repr_
+    def test_job_routes_carry_unsloth_path_rules(self, contributor: object) -> None:
+        """Authz is derived from ``@path_rule`` on the generated job routes
+        (permission namespace ``customization.unsloth.jobs`` from
+        ``AuthzScope("customization").child(name, "jobs")``), not a separate
+        ``get_authz_contribution`` declaration."""
+        from fastapi.routing import APIRoute
+        from nemo_platform_plugin.authz import get_path_rules
+
+        try:
+            specs = contributor.get_routers()
+        except ImportError as exc:
+            pytest.skip(f"router deps unavailable in this env: {exc}")
+
+        route_rules = [
+            (route.path, get_path_rules(route.endpoint))
+            for spec in specs
+            for route in spec.router.routes
+            if isinstance(route, APIRoute)
+        ]
+        assert route_rules
+        unruled = [path for path, rules in route_rules if not rules]
+        assert not unruled, f"routes without a @path_rule (would be denied fail-closed): {unruled}"
+
+        perm_ids = {perm.id for _path, rules in route_rules for rule in rules for perm in rule.permissions}
+        assert "customization.unsloth.jobs.create" in perm_ids
 
 
 class TestRouters:

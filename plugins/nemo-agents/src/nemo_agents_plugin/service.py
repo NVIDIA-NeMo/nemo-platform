@@ -6,37 +6,71 @@
 from __future__ import annotations
 
 import logging
-from typing import ClassVar
+from typing import ClassVar, NamedTuple
 
-from nemo_platform_plugin.authz import AuthzContribution, AuthzEndpointMethod
+from nemo_agents_plugin.api.v2._perms import GatewayPerms
+from nemo_agents_plugin.authz import scope
+from nemo_platform_plugin.authz import Permission
+from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.jobs.routes import add_job_routes
 from nemo_platform_plugin.service import NemoService, RouterSpec
 
 logger = logging.getLogger(__name__)
 
-_SERVICE_NAME = "agents"
-_READ_SCOPES = [f"{_SERVICE_NAME}:read", "platform:read"]
-_WRITE_SCOPES = [f"{_SERVICE_NAME}:write", "platform:write"]
+
+class _JobCollection(NamedTuple):
+    """One agents job collection — the single source of truth for both its permission
+    sub-namespace and its mounted router, so the two can't drift."""
+
+    job_cls: type[NemoJob]
+    subname: str  # permission sub-namespace suffix -> agents.<subname>.{create,...}
+    service_name: str | None  # distinct jobs source (None ⇒ add_job_routes default)
+    description: str
 
 
-def _read_method(permission: str) -> AuthzEndpointMethod:
-    return AuthzEndpointMethod(permissions=[permission], scopes=list(_READ_SCOPES))
+# Sub-names are concise and stable and need not match the job's URL path segment:
+#   EvaluateAgentJob   /jobs/evaluate        -> agents.evaluate
+#   EvaluateSuiteJob   /jobs/evaluate-suite  -> agents.suite
+#   OptimizeSkillsJob  /jobs/optimize-skills -> agents.optimize-skills
+#   AnalyzeBatchJob    /jobs/analyze         -> agents.analyze
+#   OptimizeAgentJob   /jobs/optimize        -> agents.optimize
+# Distinct service_name per job type so each list endpoint filters to rows of its own type only
+# (add_job_routes filters source=service_name); sharing the default would let /jobs/<x> pull in
+# sibling-type rows and 500 on the wrong schema.
+def _job_collections() -> list[_JobCollection]:
+    from nemo_agents_plugin.jobs.analyze_batch import AnalyzeBatchJob
+    from nemo_agents_plugin.jobs.evaluate_agent import EvaluateAgentJob
+    from nemo_agents_plugin.jobs.evaluate_suite import EvaluateSuiteJob
+    from nemo_agents_plugin.jobs.optimize_agent import OptimizeAgentJob
+    from nemo_agents_plugin.jobs.optimize_skills import OptimizeSkillsJob
 
-
-def _write_method(permission: str) -> AuthzEndpointMethod:
-    return AuthzEndpointMethod(permissions=[permission], scopes=list(_WRITE_SCOPES))
-
-
-def _read_methods(permission: str) -> dict[str, AuthzEndpointMethod]:
-    return {method: _read_method(permission) for method in ("get", "head")}
-
-
-def _gateway_methods(permission: str) -> dict[str, AuthzEndpointMethod]:
-    read_methods = {"get", "head", "options"}
-    return {
-        method: _read_method(permission) if method in read_methods else _write_method(permission)
-        for method in ("delete", "get", "head", "options", "patch", "post", "put")
-    }
+    return [
+        _JobCollection(EvaluateAgentJob, "evaluate", None, "Submit and track agent evaluation jobs"),
+        _JobCollection(
+            EvaluateSuiteJob,
+            "suite",
+            "nemo-agents-plugin-evaluate-suite",
+            "Submit and track evaluate-suite jobs (Harbor / NAT eval runner).",
+        ),
+        _JobCollection(
+            OptimizeSkillsJob,
+            "optimize-skills",
+            "nemo-agents-plugin-optimize-skills",
+            "Submit and track optimize-skills jobs (skills-improvement loop).",
+        ),
+        _JobCollection(
+            AnalyzeBatchJob,
+            "analyze",
+            "nemo-agents-plugin-analyze",
+            "Submit and track analyze jobs (eval-suite batch analysis).",
+        ),
+        _JobCollection(
+            OptimizeAgentJob,
+            "optimize",
+            "nemo-agents-plugin-optimize",
+            "Submit and track optimize jobs (prompt tuning, HPO).",
+        ),
+    ]
 
 
 class AgentsService(NemoService):
@@ -52,98 +86,8 @@ class AgentsService(NemoService):
     not own the controller lifecycle.
     """
 
-    name: ClassVar[str] = _SERVICE_NAME
+    name: ClassVar[str] = "agents"
     dependencies: ClassVar[list[str]] = ["entities", "auth", "secrets", "jobs", "files", "inference-gateway"]
-
-    @classmethod
-    def get_authz_contribution(cls) -> AuthzContribution:
-        """Authorization policy for agents plugin routes."""
-        base = f"/apis/{cls.name}/v2/workspaces/{{workspace}}"
-
-        agent_create = f"{cls.name}.agents.create"
-        agent_delete = f"{cls.name}.agents.delete"
-        agent_list = f"{cls.name}.agents.list"
-        agent_read = f"{cls.name}.agents.read"
-        deployment_create = f"{cls.name}.deployments.create"
-        deployment_delete = f"{cls.name}.deployments.delete"
-        deployment_list = f"{cls.name}.deployments.list"
-        deployment_read = f"{cls.name}.deployments.read"
-        gateway_exec = f"{cls.name}.gateway.exec"
-        job_cancel = f"{cls.name}.jobs.cancel"
-        job_create = f"{cls.name}.jobs.create"
-        job_delete = f"{cls.name}.jobs.delete"
-        job_list = f"{cls.name}.jobs.list"
-        job_read = f"{cls.name}.jobs.read"
-
-        endpoints: dict[str, dict[str, AuthzEndpointMethod]] = {
-            f"{base}/agents": {
-                **_read_methods(agent_list),
-                "post": _write_method(agent_create),
-            },
-            f"{base}/agents/{{name}}": {
-                "delete": _write_method(agent_delete),
-                **_read_methods(agent_read),
-            },
-            f"{base}/agents/{{name}}/-/{{trailing_uri}}": _gateway_methods(gateway_exec),
-            f"{base}/deployments": {
-                **_read_methods(deployment_list),
-                "post": _write_method(deployment_create),
-            },
-            f"{base}/deployments/{{name}}": {
-                "delete": _write_method(deployment_delete),
-                **_read_methods(deployment_read),
-            },
-            f"{base}/deployments/{{name}}/-/{{trailing_uri}}": _gateway_methods(gateway_exec),
-            f"{base}/deployments/{{name}}/logs": _read_methods(deployment_read),
-            f"{base}/deployments/{{name}}/logs/stream": _read_methods(deployment_read),
-        }
-
-        for job_name in ("evaluate", "evaluate-suite", "optimize-skills", "analyze", "optimize"):
-            jobs_base = f"{base}/jobs/{job_name}"
-            endpoints.update(
-                {
-                    jobs_base: {
-                        **_read_methods(job_list),
-                        "post": _write_method(job_create),
-                    },
-                    f"{jobs_base}/{{name}}": {
-                        "delete": _write_method(job_delete),
-                        **_read_methods(job_read),
-                    },
-                    f"{jobs_base}/{{name}}/cancel": {
-                        "post": _write_method(job_cancel),
-                    },
-                    f"{jobs_base}/{{name}}/logs": _read_methods(job_read),
-                    f"{jobs_base}/{{name}}/results": _read_methods(job_read),
-                    f"{jobs_base}/{{name}}/status": _read_methods(job_read),
-                    f"{jobs_base}/{{job}}/results/{{name}}": _read_methods(job_read),
-                    f"{jobs_base}/{{job}}/results/{{name}}/download": _read_methods(job_read),
-                }
-            )
-
-        return AuthzContribution(
-            permissions={
-                agent_create: "Create agents",
-                agent_delete: "Delete agents",
-                agent_list: "List agents",
-                agent_read: "Read agents",
-                deployment_create: "Create agent deployments",
-                deployment_delete: "Delete agent deployments",
-                deployment_list: "List agent deployments",
-                deployment_read: "Read agent deployments",
-                gateway_exec: "Execute agent gateway requests",
-                job_cancel: "Cancel agent jobs",
-                job_create: "Create agent jobs",
-                job_delete: "Delete agent jobs",
-                job_list: "List agent jobs",
-                job_read: "Read agent jobs",
-            },
-            endpoints=endpoints,
-            role_permissions={
-                "Viewer": [gateway_exec],
-                "Editor": [gateway_exec],
-            },
-        )
 
     def get_routers(self) -> list[RouterSpec]:
         from nemo_agents_plugin.api.v2 import (
@@ -152,14 +96,9 @@ class AgentsService(NemoService):
             deployments,
             gateway,
         )
-        from nemo_agents_plugin.jobs.analyze_batch import AnalyzeBatchJob
-        from nemo_agents_plugin.jobs.evaluate_agent import EvaluateAgentJob
-        from nemo_agents_plugin.jobs.evaluate_suite import EvaluateSuiteJob
-        from nemo_agents_plugin.jobs.optimize_agent import OptimizeAgentJob
-        from nemo_agents_plugin.jobs.optimize_skills import OptimizeSkillsJob
 
         _prefix = "/v2/workspaces/{workspace}"
-        return [
+        specs: list[RouterSpec] = [
             RouterSpec(agents.router, tag="Agents", description="Agent CRUD", prefix=_prefix),
             RouterSpec(deployments.router, tag="Agent Deployments", description="Deployment lifecycle", prefix=_prefix),
             RouterSpec(
@@ -171,40 +110,27 @@ class AgentsService(NemoService):
             RouterSpec(
                 gateway.router, tag="Agent Gateway", description="Proxy to running agent deployments", prefix=_prefix
             ),
-            RouterSpec(
-                add_job_routes(EvaluateAgentJob),
-                tag="Agents",
-                description="Submit and track agent evaluation jobs",
-                prefix=_prefix,
-            ),
-            # Distinct service_name per job type so each list endpoint filters
-            # to rows of its own type only.  add_job_routes filters by
-            # source=service_name; if all jobs shared the default service_name
-            # ("nemo-agents-plugin"), listing /jobs/evaluate would pull in rows
-            # from sibling types and 500 on Pydantic validation against the
-            # wrong schema.
-            RouterSpec(
-                add_job_routes(EvaluateSuiteJob, service_name="nemo-agents-plugin-evaluate-suite"),
-                tag="Agents",
-                description="Submit and track evaluate-suite jobs (Harbor / NAT eval runner).",
-                prefix=_prefix,
-            ),
-            RouterSpec(
-                add_job_routes(OptimizeSkillsJob, service_name="nemo-agents-plugin-optimize-skills"),
-                tag="Agents",
-                description="Submit and track optimize-skills jobs (skills-improvement loop).",
-                prefix=_prefix,
-            ),
-            RouterSpec(
-                add_job_routes(AnalyzeBatchJob, service_name="nemo-agents-plugin-analyze"),
-                tag="Agents",
-                description="Submit and track analyze jobs (eval-suite batch analysis).",
-                prefix=_prefix,
-            ),
-            RouterSpec(
-                add_job_routes(OptimizeAgentJob, service_name="nemo-agents-plugin-optimize"),
-                tag="Agents",
-                description="Submit and track optimize jobs (prompt tuning, HPO).",
-                prefix=_prefix,
-            ),
         ]
+        # Job-collection routers, derived from the single _job_collections() source so a new job
+        # can't be wired here but missed in the permission map (or vice versa).
+        for collection in _job_collections():
+            specs.append(
+                RouterSpec(
+                    add_job_routes(
+                        collection.job_cls,
+                        service_name=collection.service_name,
+                        authz=scope.child(collection.subname),
+                    ),
+                    tag="Agents",
+                    description=collection.description,
+                    prefix=_prefix,
+                )
+            )
+        return specs
+
+    def extra_role_permissions(self) -> dict[str, list[Permission]]:
+        # A Viewer must be able to invoke a deployed agent through the gateway proxy — the grant
+        # the pre-derivation authz gave Viewer explicitly. The permission's suffix (`invoke`)
+        # isn't `read`/`list`, so the default heuristic assigns it to Editor only; grant Viewer
+        # here. (Editor still gets it via that same default suffix heuristic.)
+        return {"Viewer": [GatewayPerms.INVOKE]}

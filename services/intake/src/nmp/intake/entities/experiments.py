@@ -11,10 +11,19 @@ views. Rollups are derived from ClickHouse at read time.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal
 
 from nmp.common.entities.client import EntityBase
-from pydantic import AnyUrl, Field
+from pydantic import AnyUrl, BaseModel, Field
+
+
+class SortCriterion(BaseModel):
+    """One criterion in a group's default sort: a sortable rollup-metric path and its direction."""
+
+    field: str = Field(
+        description="Rollup-metric sort path, e.g. cost_usd.mean, latency_ms.p95, or evaluators.<name>.mean."
+    )
+    direction: Literal["asc", "desc"] = Field(description="Sort direction for this field.")
 
 
 class ExperimentGroup(EntityBase):
@@ -26,6 +35,20 @@ class ExperimentGroup(EntityBase):
     __entity_type__: ClassVar[str] = "experiment_group"
 
     description: str | None = Field(default=None, description="Human-readable purpose of the group.")
+    insight_id: str | None = Field(
+        default=None,
+        description="Reference to an external insight that seeded this group, if any.",
+    )
+    summary: str | None = Field(default=None, description="Human- or agent-authored summary of the group's findings.")
+    metadata: dict[str, Any] | None = Field(default=None, description="Free-form producer metadata for the group.")
+    default_sort: list[SortCriterion] | None = Field(
+        default=None,
+        description=(
+            "Ordered default sort in priority order (first is primary, the rest are tiebreakers). When "
+            "set, it is the default order for this group's experiments list. Each field must be a numeric "
+            "rollup metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>."
+        ),
+    )
     is_deleted: bool = Field(
         default=False,
         description=(
@@ -60,6 +83,19 @@ class Experiment(EntityBase):
     )
 
     description: str | None = Field(default=None, description="Human-readable description of the experiment.")
+
+    parent_experiment_id: str | None = Field(
+        default=None,
+        description="Entity id of the experiment this one was derived from (e.g. a variant of a baseline), if any.",
+    )
+    status: str | None = Field(
+        default=None,
+        description="Producer-defined lifecycle status of the experiment.",
+    )
+    root_cause: str | None = Field(
+        default=None,
+        description="Human- or agent-authored explanation of the experiment's outcome (e.g. why it was killed).",
+    )
 
     is_deleted: bool = Field(
         default=False,

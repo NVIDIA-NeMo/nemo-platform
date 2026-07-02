@@ -965,6 +965,10 @@ async def _stream_claude(
                 yield _sse(payload, event="permission_request")
             elif event_type == "input_request":
                 yield _sse(payload, event="input_request")
+            elif event_type == "permission_expired":
+                yield _sse(payload, event="permission_expired")
+            elif event_type == "input_expired":
+                yield _sse(payload, event="input_expired")
 
         returncode = await proc.wait()
         if stderr_task is not None:

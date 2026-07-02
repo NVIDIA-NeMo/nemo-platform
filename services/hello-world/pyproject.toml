@@ -1,6 +1,5 @@
 [project]
 name = "nmp-hello-world"
-version = "0.0.1"
 description = "Hello World service for NeMo Platform"
 requires-python = ">=3.11,<3.15"
 
@@ -10,6 +9,7 @@ dependencies = [
   "uvicorn[standard]>=0.12.0",
   "nmp-common",
 ]
+version = "0.0.0"
 
 [project.scripts]
 hello-world-server = "nmp.hello_world.main:run_standalone"
@@ -17,6 +17,7 @@ hello-world-server = "nmp.hello_world.main:run_standalone"
 [tool.uv.sources]
 nmp-common = { workspace = true }
 nmp-testing = { workspace = true }
+
 
 [dependency-groups]
 # Task execution dependencies (for nmp-cpu-tasks container - demo task)

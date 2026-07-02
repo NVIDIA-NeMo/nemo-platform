@@ -14,7 +14,7 @@ from nemo_deployments_plugin.backends.docker.gpu import (
     get_shared_gpu_pool,
     parse_gpu_device_ids,
 )
-from nemo_deployments_plugin.backends.docker.labels import DEPLOYMENT_NAME_LABEL, DEPLOYMENT_WORKSPACE_LABEL
+from nemo_deployments_plugin.backends.labels import DEPLOYMENT_NAME_LABEL, DEPLOYMENT_WORKSPACE_LABEL
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
 
 

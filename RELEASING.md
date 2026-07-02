@@ -2,16 +2,16 @@
 
 This document describes the end-to-end process for cutting and shipping a new version of NeMo Platform.
 
-> **Who can release?** Any team member can open the version bump PR and trigger the workflow. The `release-stable` GitHub Actions environment requires approval from a member of the `nmp_devops` team before the workflow proceeds.
+> **Who can release?** Any team member can trigger the workflow. The `release-stable` GitHub Actions environment requires approval from a member of the `nmp_devops` team before the workflow proceeds.
 
 ---
 
 ## Overview
 
-> The examples in this document use `0.1.2` as the version being released and `0.1.3` as the next development version.
+> The examples in this document use `0.1.2` as the version being released.
 
 ```
-merge version bump PR (0.1.3) → trigger release-stable.yaml at parent commit (0.1.2) → nmp_devops approval → Platform-Deploy publishes to PyPI
+trigger release-stable.yaml with source_sha + version → nmp_devops approval → workflow tags source_sha → Platform-Deploy publishes to PyPI
 ```
 
 Artifacts published on a stable release:
@@ -20,30 +20,39 @@ Artifacts published on a stable release:
 
 Nightly builds go to `pypi.nvidia.com` (NVIDIA's internal/public PyPI mirror), **not** public PyPI.
 
+## Versioning model
+
+Release and nightly wheel versions are resolved at build time. The release workflow runs `.github/scripts/stamp_sdk_version.py`, then passes the resolved version to Hatch through `UV_DYNAMIC_VERSIONING_BYPASS`.
+
+Dynamic versioning is intentionally limited to packages that need release/nightly wheel metadata:
+- `packages/nemo_platform` (`nemo-platform`)
+- `packages/nemo_platform_plugin` (`nemo-platform-plugin`)
+- `sdk/python/nemo-platform` (`nemo-platform-sdk`, consumed by the released wrappers and SDK tooling)
+
+All other first-party workspace packages use static stub versions, normally `0.0.0`, because they are implementation packages rather than independently released artifacts. Do not add `nmp-dynamic-versioning` to another package unless that package is added to the release catalog or otherwise needs published wheel metadata.
+
+`packages/nmp_build_tools` centralizes the Hatch version source and its defaults, but that package itself is also an internal stub-version package. The OpenAPI specs are schema inputs for SDK generation and intentionally keep a fixed `info.version: 0.0.0`; package release versions should not be copied into the specs.
+
 ---
 
-## Step 1 — Merge the version bump PR first
+## Step 1 — Choose the source SHA and release version
 
-Before triggering the release, merge a PR that bumps `version.py` to the *next* version (e.g. `0.1.2` → `0.1.3`). You will then release from the commit *just before* that merge — the last commit where `version.py` still reads `0.1.2`. This means:
-- The bump is already on `main` before you touch the release workflow — no race window.
-- Nightlies built after the bump PR merges will immediately produce `0.1.3.dev...` strings.
+Pick the full 40-character commit SHA on `main` that should be released, plus the SemVer core version to publish, for example `0.1.2`. The stable workflow creates the release tag at `source_sha`, and the wheel build receives the package version from the workflow input.
 
-The bump PR must also regenerate the OpenAPI spec and SDKs, since they embed the version:
+If the API surface changed since the last SDK update, regenerate the OpenAPI spec and SDKs before releasing:
 
 ```bash
 make update-sdk
 ```
 
-This runs `make refresh-openapi` (regenerates `openapi/openapi.yaml` and plugin specs) and then syncs the Python and web SDKs via Stainless. Requires `STAINLESS_API_KEY` to be set — see `sdk/README.md` for setup instructions.
+This runs `make refresh-openapi` (regenerates `openapi/openapi.yaml` and plugin specs) and then syncs the Python and web SDKs via Stainless. Requires `STAINLESS_API_KEY` to be set — see `sdk/README.md` for setup instructions. The generated OpenAPI specs should keep `info.version: 0.0.0`.
 
 To find the right SHA:
 
 ```bash
 git log --oneline main | head -5
-# The second line is the commit just before the bump PR
+# Pick the commit to release and copy its full 40-character SHA.
 ```
-
-Or find it in the GitHub commit history — it's the parent of the bump PR's merge commit.
 
 ---
 
@@ -54,9 +63,11 @@ Navigate to the [`release-stable.yaml` workflow](https://github.com/NVIDIA-NeMo/
 | Input | Required | Description |
 |---|---|---|
 | `source_sha` | Yes | The full 40-character commit SHA to release from (must be on `main`). |
-| `version` | Yes | SemVer core version string to release, e.g. `0.1.2`. Must match the value in `version.py` at `source_sha` (not the current `main`, which has already been bumped to `0.1.3`). |
+| `version` | Yes | SemVer core version string to release, e.g. `0.1.2`. This becomes the stable git tag and wheel version. |
 | `release_date` | No | `YYYY-MM-DD`. Provide only on the first run for a given version; leave blank on reruns. |
-| `release_scope` | No | `sdks` (default) — releases both `nemo-platform` and `nemo-platform-plugin`. Use `custom` + `sdk_ids` to release a subset. |
+| `release_scope` | No | `all` (default) releases every catalog SDK and container. Use `sdks`, `containers`, or `custom` for narrower releases. |
+| `sdk_ids` | No | Comma-separated SDK IDs for `release_scope: custom`; must exist in `release/assets.yaml`. |
+| `container_ids` | No | Comma-separated container IDs for `release_scope: custom`; must exist in `release/assets.yaml`. |
 
 The workflow runs from the **`main` branch** by default. The `source_sha` must be reachable from that branch.
 
@@ -66,9 +77,9 @@ The workflow runs from the **`main` branch** by default. The `source_sha` must b
 3. Creates and pushes a git tag (e.g. `0.1.2`) at `source_sha`.
 4. Builds Python wheels for each SDK in `release/assets.yaml` using `.github/actions/build-nemo-platform-wheel`.
 5. Assembles a release bundle with checksums and metadata.
-6. Dispatches a `release-bundle-produced` event to the **Platform-Deploy** repository (`CI_DISPATCH_REPO` secret), which handles the actual Kitmaker/PyPI publish.
+6. Dispatches a `release-bundle-produced` event to the **Platform-Deploy** repository (`CI_DISPATCH_REPO` secret), which handles the actual PyPI publish.
 
-> If Kitmaker is returning 5xx errors, the publish step in Platform-Deploy will fail. Wait for Kitmaker to recover and re-run the workflow with the same `source_sha` and `version` — the stable tag is already reserved so re-running is safe.
+> If the PyPI publishing service is returning 5xx errors, the publish step in Platform-Deploy will fail. Wait for the service to recover and re-run the workflow with the same `source_sha` and `version` — the stable tag is already reserved so re-running is safe.
 
 ---
 

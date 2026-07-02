@@ -394,7 +394,7 @@ class TestMiddlewareCall:
 
     def test_config_type_required(self):
         with pytest.raises(ValidationError):
-            MiddlewareCall(name="nemo-switchyard")  # type: ignore[call-arg]
+            MiddlewareCall(name="nemo-switchyard")  # ty: ignore[missing-argument]
 
 
 # ---------------------------------------------------------------------------

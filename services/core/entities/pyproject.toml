@@ -1,6 +1,5 @@
 [project]
 name = "nmp-entities"
-version = "0.1.0"
 description = "Generic entity storage service with schema-agnostic design"
 readme = "README.md"
 requires-python = ">=3.11,<3.15"
@@ -23,6 +22,7 @@ dependencies = [
   "nemo-platform-sdk",
   "alembic>=1.13.1",
 ]
+version = "0.0.0"
 
 [project.scripts]
 entities-server = "nmp.core.entities.main:run_standalone"
@@ -37,6 +37,7 @@ packages = ["src/nmp"]
 [tool.hatch.build.targets.wheel.force-include]
 "alembic.ini" = "nmp/core/entities/alembic.ini"
 "alembic" = "nmp/core/entities/alembic"
+
 
 [dependency-groups]
 # No task deps for entities - all deps are in main dependencies

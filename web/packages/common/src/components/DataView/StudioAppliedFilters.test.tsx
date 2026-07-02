@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { dateTimeFilter } from '@nemo/common/src/components/DataView/dateTimeFilter';
+import { numberRangeFilter } from '@nemo/common/src/components/DataView/FilterPanel/NumberRangeFilter/util';
 import { StudioAppliedFilters } from '@nemo/common/src/components/DataView/StudioAppliedFilters';
 import { render, screen, fireEvent } from '@testing-library/react';
 
@@ -160,6 +161,34 @@ describe('StudioAppliedFilters', () => {
     expect(screen.getByText('Created At:')).toBeInTheDocument();
     // formatDateRange produces locale-dependent output; verify the tag container includes a date
     expect(screen.getByRole('button', { name: /Created At:.*1\/1\/2024/ })).toBeInTheDocument();
+  });
+
+  it('renders a tag for a numeric range filter with formatted bounds', () => {
+    const { column } = makeColumn('duration', {
+      filterValue: { $gte: 30, $lte: 480 },
+      header: 'Duration',
+      meta: { filter: numberRangeFilter('Duration (minutes)', { min: 0, max: 600, step: 15 }) },
+    });
+    mockColumns.set('duration', column);
+
+    render(<StudioAppliedFilters />);
+
+    expect(screen.getByText('Duration (minutes):')).toBeInTheDocument();
+    expect(screen.getByText('30 – 480')).toBeInTheDocument();
+  });
+
+  it('renders a tag for an open-ended numeric range filter (lower bound only)', () => {
+    const { column } = makeColumn('cost', {
+      filterValue: { $gte: 10 },
+      header: 'Cost',
+      meta: { filter: numberRangeFilter('Cost (USD)', { min: 0, max: 50, step: 1 }) },
+    });
+    mockColumns.set('cost', column);
+
+    render(<StudioAppliedFilters />);
+
+    expect(screen.getByText('Cost (USD):')).toBeInTheDocument();
+    expect(screen.getByText('≥ 10')).toBeInTheDocument();
   });
 
   it('renders Clear Filters button that calls table.setColumnFilters([])', () => {

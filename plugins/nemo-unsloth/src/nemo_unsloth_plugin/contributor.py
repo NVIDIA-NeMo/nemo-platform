@@ -7,9 +7,9 @@ Registered under ``nemo.customization.contributors`` (key ``unsloth``).
 The customization router hub (``nemo-customizer-plugin``) discovers this
 class at startup and:
 
-- merges :meth:`get_routers` into ``/apis/customization/...``
+- merges :meth:`get_routers` into ``/apis/customization/...`` (HTTP authz is
+  derived from the ``@path_rule``-decorated routes those routers carry)
 - adds :meth:`get_cli` under ``nemo customization unsloth``
-- merges :meth:`get_authz_contribution` into the platform authz policy
 - composes :meth:`get_sdk_resources` under ``client.customization.unsloth``
 
 The shared shape lives in :class:`nmp.customization_common.contributor.base.BaseContributor`.

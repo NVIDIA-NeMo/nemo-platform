@@ -427,3 +427,10 @@ class TestMountValidation:
         )
         with pytest.raises(TypeError, match="spec_schema is None"):
             add_function_routes(cls)
+
+    def test_permission_description_without_authz_is_rejected(self) -> None:
+        # permission_description only takes effect when authz is set (it rides on the stamped
+        # permission); supplying it alone would be silently discarded and leave the route
+        # unruled (→ DENY at bundle time), so it must raise rather than fail open.
+        with pytest.raises(ValueError, match="permission_description requires authz"):
+            add_function_routes(_NonStreamingGreet, permission_description="Greet someone")

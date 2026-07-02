@@ -70,6 +70,7 @@ export const FilesetFileBlockingInput: FC<FilesetFileBlockingInputBaseProps> = (
     control,
     handleSubmit,
     setError,
+    watch,
     formState: { errors },
   } = useForm<FilesetFileFormData>({
     defaultValues: { datasetFile: null },
@@ -77,6 +78,7 @@ export const FilesetFileBlockingInput: FC<FilesetFileBlockingInputBaseProps> = (
     disabled: isSubmitting,
   });
   const acceptedFileTypes = getAcceptedFileTypes(input, defaultAcceptedFileTypes);
+  const datasetFile = watch('datasetFile');
 
   const submit = handleSubmit((data) => {
     const parsed =
@@ -98,6 +100,7 @@ export const FilesetFileBlockingInput: FC<FilesetFileBlockingInputBaseProps> = (
       request={request}
       secondaryActions={secondaryActions}
       secondaryActionLabel={secondaryActionLabel}
+      submitDisabled={!datasetFile}
       submitLabel={submitLabel}
     >
       <Stack className="max-h-[45vh] overflow-y-auto pr-density-sm">

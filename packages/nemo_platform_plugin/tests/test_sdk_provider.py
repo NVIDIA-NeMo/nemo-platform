@@ -9,7 +9,7 @@ import json
 from unittest.mock import patch
 
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.sdk_provider import (
     DefaultSDKProvider,
     SDKProvider,
@@ -18,6 +18,11 @@ from nemo_platform_plugin.sdk_provider import (
     get_task_sdk,
     set_sdk_provider,
 )
+
+
+def _xnmp(sdk) -> dict[str, str]:
+    return {k: v for k, v in sdk.default_headers.items() if k.startswith("X-NMP-")}
+
 
 # ---------------------------------------------------------------------------
 # _read_principal_from_env
@@ -140,6 +145,57 @@ class TestDefaultSDKProvider:
         sdk = provider.get_platform_sdk(as_service="svc", on_behalf_of="user@ex.com")
 
         assert sdk.default_headers["X-NMP-Principal-On-Behalf-Of"] == "user@ex.com"
+
+
+# ---------------------------------------------------------------------------
+# get_async_task_sdk — the async sibling of get_task_sdk
+# ---------------------------------------------------------------------------
+
+
+class TestAsyncTaskSdk:
+    def test_async_task_sdk_with_principal(self, monkeypatch):
+        monkeypatch.setenv("NMP_BASE_URL", "http://test:9090")
+        monkeypatch.setenv(
+            "NMP_PRINCIPAL",
+            json.dumps({"id": "creator@ex.com", "email": "creator@ex.com", "groups": ["team"]}),
+        )
+
+        sdk = DefaultSDKProvider().get_async_task_sdk("evaluator")
+
+        assert isinstance(sdk, AsyncNeMoPlatform)
+        assert sdk.base_url == "http://test:9090"
+        assert sdk.default_headers["X-NMP-Principal-Id"] == "service:evaluator"
+        assert sdk.default_headers["X-NMP-Internal"] == "true"
+        assert sdk.default_headers["X-NMP-Principal-On-Behalf-Of"] == "creator@ex.com"
+
+    def test_async_task_sdk_without_principal(self, monkeypatch):
+        monkeypatch.setenv("NMP_BASE_URL", "http://test:9090")
+        monkeypatch.delenv("NMP_PRINCIPAL", raising=False)
+
+        sdk = DefaultSDKProvider().get_async_task_sdk("evaluator")
+
+        assert sdk.default_headers["X-NMP-Principal-Id"] == "service:evaluator"
+        assert "X-NMP-Principal-On-Behalf-Of" not in sdk.default_headers
+
+    def test_parity_with_sync_task_sdk(self, monkeypatch):
+        # Regression guard: the async task SDK must carry the *full* delegated identity (on-behalf-of
+        # id, email, and groups) — wire-identical to get_task_sdk. A prior implementation built on
+        # get_async_platform_sdk dropped the -Email/-Groups headers.
+        monkeypatch.setenv("NMP_BASE_URL", "http://test:9090")
+        monkeypatch.setenv(
+            "NMP_PRINCIPAL",
+            json.dumps(
+                {
+                    "id": "service:evaluator",
+                    "on_behalf_of": "real-user@ex.com",
+                    "on_behalf_of_email": "real-user@ex.com",
+                    "on_behalf_of_groups": ["admin", "team"],
+                }
+            ),
+        )
+
+        provider = DefaultSDKProvider()
+        assert _xnmp(provider.get_async_task_sdk("evaluator")) == _xnmp(provider.get_task_sdk("evaluator"))
 
 
 # ---------------------------------------------------------------------------

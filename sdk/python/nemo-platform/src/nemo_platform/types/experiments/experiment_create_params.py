@@ -47,5 +47,20 @@ class ExperimentCreateParams(TypedDict, total=False):
     metadata: Dict[str, object]
     """Free-form producer metadata."""
 
+    parent_experiment_id: str
+    """Entity id of the experiment this one was derived from (e.g.
+
+    a variant of a baseline), if any.
+    """
+
+    root_cause: str
+    """Human- or agent-authored explanation of the experiment's outcome (e.g.
+
+    why it was killed).
+    """
+
     source_link: str
     """Optional URL for the source experiment."""
+
+    status: str
+    """Producer-defined lifecycle status of the experiment."""

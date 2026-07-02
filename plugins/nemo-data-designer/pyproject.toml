@@ -1,6 +1,5 @@
 [project]
 name = "nemo-data-designer-plugin"
-version = "0.1.0"
 description = "NeMo Data Designer plugin."
 readme = "README.md"
 requires-python = ">=3.11,<3.15"
@@ -14,6 +13,7 @@ dependencies = [
     "fastapi",
     "pandas",
 ]
+version = "0.0.0"
 
 [project.entry-points."nemo.services"]
 data-designer = "nemo_data_designer_plugin.service:DataDesignerService"
@@ -75,10 +75,12 @@ path = "hatch_build.py"
 [tool.hatch.build.targets.wheel]
 packages = ["src/nemo_data_designer_plugin"]
 
+
 [tool.uv.sources]
 nemo-platform = { workspace = true }
 nemo-platform-plugin = { workspace = true }
 data-designer-nemo = { workspace = true }
+nmp-build-tools = { workspace = true }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -94,3 +96,4 @@ nemo-platform-plugin = { source = "../../packages/nemo_platform_plugin/src/nemo_
 
 # Opt this plugin into OpenAPI spec generation
 [tool.nemo.openapi]
+

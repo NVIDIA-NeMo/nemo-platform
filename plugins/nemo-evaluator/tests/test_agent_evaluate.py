@@ -148,6 +148,26 @@ def test_agent_eval_job_reconstructs_tasks_and_persists_bundle(tmp_path: Path, m
     assert result["artifact"]["name"] == DEFAULT_RESULT_NAME
 
 
+def test_agent_eval_job_survives_result_persistence_failure(tmp_path: Path, mocker: MockerFixture) -> None:
+    # The queryable result record is a best-effort convenience index; the authoritative output (bundle
+    # + summary artifacts) is already saved. A persistence failure must not fail a successful eval.
+    mocker.patch.object(AgentEvalJob, "_build_evaluator", return_value=_FakeEvaluator())
+    persist = mocker.patch(
+        "nemo_evaluator.jobs.agent_evaluate.persist_agent_eval_result",
+        side_effect=RuntimeError("entity store unavailable"),
+    )
+    ctx = _job_context(tmp_path)
+
+    spec = AgentEvalSpec(tasks=[_task_spec()], target=CodexRunnerTarget(model="gpt-5.5"))
+    result = AgentEvalJob().run(spec.model_dump(), ctx=ctx)
+
+    # Persistence was attempted and raised, yet the job still completed with its artifacts intact.
+    persist.assert_called_once()
+    assert result["status"] == "completed"
+    assert result["artifact"]["name"] == DEFAULT_RESULT_NAME
+    assert (ctx.storage.persistent / "results" / DEFAULT_RESULT_NAME).exists()
+
+
 def test_agent_eval_spec_requires_at_least_one_task() -> None:
     with pytest.raises(ValueError, match="at least 1 item|too_short|min_length"):
         AgentEvalSpec(tasks=[])
@@ -478,14 +498,17 @@ class TestAgentEvalTask:
 
     def test_main_dispatches_agent_eval_job_with_task_sdk(self, mocker: MockerFixture) -> None:
         sdk = object()
+        async_sdk = object()
         get_task_sdk = mocker.patch("nemo_evaluator.tasks.runner.get_task_sdk", return_value=sdk)
+        get_async_task_sdk = mocker.patch("nemo_evaluator.tasks.runner.get_async_task_sdk", return_value=async_sdk)
         run_task = mocker.patch("nemo_evaluator.tasks.runner.run_task", return_value=0)
 
         exit_code = agent_eval_task_main()
 
         assert exit_code == 0
         get_task_sdk.assert_called_once_with("evaluator")
-        run_task.assert_called_once_with(AgentEvalJob, sdk=sdk)
+        get_async_task_sdk.assert_called_once_with("evaluator")
+        run_task.assert_called_once_with(AgentEvalJob, sdk=sdk, async_sdk=async_sdk)
 
     def test_main_returns_setup_exit_code_when_task_sdk_fails(self, mocker: MockerFixture) -> None:
         get_task_sdk = mocker.patch("nemo_evaluator.tasks.runner.get_task_sdk", side_effect=RuntimeError("boom"))

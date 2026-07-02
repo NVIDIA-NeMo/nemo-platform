@@ -19,6 +19,7 @@ from .engine import (
     set_policy_data,
     validate_entrypoint,
 )
+from .policy_wasm import ensure_embedded_policy_wasm, policy_wasm_needs_build
 
 __all__ = [
     # Engine
@@ -30,6 +31,8 @@ __all__ = [
     "reload_policy",
     "set_policy_data",
     "validate_entrypoint",
+    "ensure_embedded_policy_wasm",
+    "policy_wasm_needs_build",
     "load_policy_data",
     "apply_embedded_policy_document",
 ]

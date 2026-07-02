@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import ClassVar
 
 from fastapi import APIRouter
-from nemo_platform_plugin.authz import AuthzContribution, AuthzEndpointMethod, combine_authz_contributions
+from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.customization_contributor import CustomizationContributorDiscoveryError
 from nemo_platform_plugin.discovery import (
     CUSTOMIZATION_CONTRIBUTORS_GROUP,
@@ -60,32 +60,6 @@ def _assert_no_route_collisions(contributors: dict[str, object]) -> None:
                     seen[op] = key
 
 
-def _hub_authz_contribution() -> AuthzContribution:
-    """Authz for the customization router hub (authenticated health check only)."""
-    return AuthzContribution(
-        endpoints={
-            "/apis/customization/healthz": {
-                "get": AuthzEndpointMethod(permissions=[], scopes=[]),
-            },
-        },
-    )
-
-
-def _authz_from_contributors(contributors: dict[str, object]) -> AuthzContribution | None:
-    """Collect and merge authz from installed customization backends."""
-    backend_parts: list[AuthzContribution] = []
-    for contributor in contributors.values():
-        getter = getattr(contributor, "get_authz_contribution", None)
-        if not callable(getter):
-            continue
-        contrib = getter()
-        if contrib is not None:
-            backend_parts.append(contrib)
-    if not backend_parts:
-        return None
-    return combine_authz_contributions(_hub_authz_contribution(), *backend_parts)
-
-
 class CustomizationRouterService(NemoService):
     """Sole ``nemo.services`` owner for ``/apis/customization``."""
 
@@ -103,15 +77,11 @@ class CustomizationRouterService(NemoService):
         _assert_no_route_collisions(self._contributors)
         type(self).dependencies = merge_router_dependencies(self._contributors)
 
-    @classmethod
-    def get_authz_contribution(cls) -> AuthzContribution | None:
-        """Merge backend contributor authz (automodel, unsloth, …) for policy discovery."""
-        return _authz_from_contributors(discover_customization_contributors())
-
     def get_routers(self) -> list[RouterSpec]:
         router = APIRouter()
 
         @router.get("/healthz")
+        @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[])
         async def healthz() -> dict[str, object]:
             return {
                 "plugin": self.name,

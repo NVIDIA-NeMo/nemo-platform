@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import json
 import time
 from collections.abc import Mapping
 from pathlib import Path
@@ -28,6 +29,7 @@ from nemo_platform_plugin.client.auth import (
     StaticToken,
     TokenProvider,
 )
+from nemo_platform_plugin.client.errors import raise_for_status
 from nemo_platform_plugin.client.response import (
     AsyncNemoBinaryResponse,
     AsyncNemoPaginatedResponse,
@@ -115,11 +117,13 @@ class BaseNemoClient:
         workspace: str | None = None,
         auth: TokenProvider | str | None = None,
         retry: RetryPolicy | None = None,
+        default_headers: Mapping[str, str] | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._workspace = workspace
         self._auth: TokenProvider | None = StaticToken(auth) if isinstance(auth, str) else auth
         self._retry = retry
+        self._default_headers = dict(default_headers) if default_headers else {}
 
     @property
     def base_url(self) -> str:
@@ -158,6 +162,8 @@ class BaseNemoClient:
 
     def _request_headers(self, request: PreparedRequest) -> dict[str, str] | None:
         headers: dict[str, str] = {}
+        if self._default_headers:
+            headers.update(self._default_headers)
         if request.content_type is not None:
             headers["Content-Type"] = request.content_type
         if request.extra_headers:
@@ -174,32 +180,18 @@ class BaseNemoClient:
         return get_origin(request.response_type) is Paginated
 
     def _resolve_query_params(self, request: PreparedRequest) -> dict[str, str | int | bool] | None:
-        """Filter out None values from query params for httpx."""
+        """Filter out None values and JSON-serialize dicts/lists in query params."""
         if request.query_params is None:
             return None
-        filtered = {k: v for k, v in request.query_params.items() if v is not None}
+        filtered = {}
+        for k, v in request.query_params.items():
+            if v is None:
+                continue
+            if isinstance(v, (dict, list)):
+                filtered[k] = json.dumps(v)
+            else:
+                filtered[k] = v
         return filtered or None
-
-    def _apply_client_options(self, request: PreparedRequest, response: NemoResponse) -> NemoResponse:
-        """Apply blessed client options (e.g. ``exist_ok``) to the response.
-
-        Options are stashed on ``PreparedRequest.client_options`` by the
-        endpoint decorator and applied here after the HTTP call completes.
-        """
-        if not request.client_options:
-            return response
-
-        if request.client_options.get("exist_ok"):
-            if response.http_response.status_code == 409:
-                body = response.body
-                if body is None and request.response_type is not None:
-                    try:
-                        body = request.response_type.model_validate(response.http_response.json())
-                    except (ValueError, TypeError):
-                        pass
-                return NemoResponse(http_response=response.http_response, body=body, request=request)
-
-        return response
 
 
 class NemoClient(BaseNemoClient):
@@ -216,7 +208,9 @@ class NemoClient(BaseNemoClient):
         retry: RetryPolicy | None = None,
         http_client: httpx.Client | None = None,
     ) -> None:
-        super().__init__(base_url=base_url, workspace=workspace, auth=auth, retry=retry)
+        super().__init__(
+            base_url=base_url, workspace=workspace, auth=auth, retry=retry, default_headers=default_headers
+        )
         self._http = http_client or httpx.Client(
             headers=dict(default_headers) if default_headers else None,
             timeout=timeout,
@@ -339,11 +333,14 @@ class NemoClient(BaseNemoClient):
             )
 
         raw = self._request_with_retry(request, url, req_headers, params, resolved_retry)
+        # NOTE: client_options (e.g. exist_ok) from PreparedRequest are not
+        # acted on here yet — see AIRCORE-866 for the planned server-side
+        # fix that would let the client handle them properly.
+        raise_for_status(raw)
         body = None
-        if raw.is_success and request.response_type is not None:
+        if request.response_type is not None:
             body = request.response_type.model_validate(raw.json())
-        response = NemoResponse(http_response=raw, body=body, request=request)
-        return self._apply_client_options(request, response)
+        return NemoResponse(http_response=raw, body=body, request=request)
 
     def _request_with_retry(
         self,
@@ -408,7 +405,9 @@ class AsyncNemoClient(BaseNemoClient):
         retry: RetryPolicy | None = None,
         http_client: httpx.AsyncClient | None = None,
     ) -> None:
-        super().__init__(base_url=base_url, workspace=workspace, auth=auth, retry=retry)
+        super().__init__(
+            base_url=base_url, workspace=workspace, auth=auth, retry=retry, default_headers=default_headers
+        )
         self._http = http_client or httpx.AsyncClient(
             headers=dict(default_headers) if default_headers else None,
             timeout=timeout,
@@ -523,11 +522,14 @@ class AsyncNemoClient(BaseNemoClient):
             )
 
         raw = await self._request_with_retry(request, url, req_headers, params, resolved_retry)
+        # NOTE: client_options (e.g. exist_ok) from PreparedRequest are not
+        # acted on here yet — see AIRCORE-866 for the planned server-side
+        # fix that would let the client handle them properly.
+        raise_for_status(raw)
         body = None
-        if raw.is_success and request.response_type is not None:
+        if request.response_type is not None:
             body = request.response_type.model_validate(raw.json())
-        response = NemoResponse(http_response=raw, body=body, request=request)
-        return self._apply_client_options(request, response)
+        return NemoResponse(http_response=raw, body=body, request=request)
 
     async def _request_with_retry(
         self,

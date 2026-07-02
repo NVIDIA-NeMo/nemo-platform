@@ -58,7 +58,10 @@ class TestExperiments:
             dataset_version="dataset_version",
             description="description",
             metadata={"foo": "bar"},
+            parent_experiment_id="parent_experiment_id",
+            root_cause="root_cause",
             source_link="https://example.com",
+            status="status",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
@@ -181,7 +184,10 @@ class TestExperiments:
             dataset_version="dataset_version",
             description="description",
             metadata={"foo": "bar"},
+            parent_experiment_id="parent_experiment_id",
+            root_cause="root_cause",
             source_link="https://example.com",
+            status="status",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
@@ -656,7 +662,10 @@ class TestAsyncExperiments:
             dataset_version="dataset_version",
             description="description",
             metadata={"foo": "bar"},
+            parent_experiment_id="parent_experiment_id",
+            root_cause="root_cause",
             source_link="https://example.com",
+            status="status",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
 
@@ -779,7 +788,10 @@ class TestAsyncExperiments:
             dataset_version="dataset_version",
             description="description",
             metadata={"foo": "bar"},
+            parent_experiment_id="parent_experiment_id",
+            root_cause="root_cause",
             source_link="https://example.com",
+            status="status",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
 

@@ -4,8 +4,6 @@
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from nemo_platform_plugin.authz_format import validate_static_authz_data
-from nemo_platform_plugin.authz_merge import merge_authz_contributions
 from nemo_safe_synthesizer_plugin.service import SafeSynthesizerService
 
 
@@ -32,36 +30,27 @@ def test_service_routes_include_safe_synthesizer_jobs_path():
     assert "SafeSynthesizerJobRequest" in spec["components"]["schemas"]
 
 
-def test_service_authz_contribution_matches_legacy_job_policy():
-    contribution = SafeSynthesizerService.get_authz_contribution()
-    base_authz = {
-        "authz": {
-            "permissions": {},
-            "roles": {
-                "Viewer": {"permissions": []},
-                "Editor": {"permissions": []},
-            },
-            "endpoints": {},
-        }
-    }
+def test_service_authz_derives_from_job_routes():
+    """Authz is derived from the ``@path_rule``-stamped job-factory routes
+    (``AuthzScope("safe-synthesizer")``); there is no ``get_authz_contribution``.
 
-    merged = merge_authz_contributions(base_authz, [contribution.to_dict()])
+    Doubles as the Phase-0 derivation gate: the service must derive with no
+    problems and no fail-closed DENY bindings.
+    """
+    pytest.importorskip("nemo_safe_synthesizer.config.job")
+    from nemo_platform_plugin.authz_discovery import _derive_service_contribution
 
-    validate_static_authz_data(merged)
-    viewer_permissions = merged["authz"]["roles"]["Viewer"]["permissions"]
-    editor_permissions = merged["authz"]["roles"]["Editor"]["permissions"]
-    endpoints = merged["authz"]["endpoints"]
+    contribution, problems, _warnings = _derive_service_contribution(SafeSynthesizerService())
 
-    assert "safe-synthesizer.jobs.list" in viewer_permissions
-    assert "safe-synthesizer.jobs.read" in viewer_permissions
-    assert "safe-synthesizer.jobs.cancel" in editor_permissions
-    assert "safe-synthesizer.jobs.create" in editor_permissions
-    assert "safe-synthesizer.jobs.delete" in editor_permissions
+    assert problems == []
+    assert not any(spec.deny for methods in contribution.endpoints.values() for spec in methods.values())
+    for verb in ("create", "list", "read", "delete", "cancel"):
+        assert f"safe-synthesizer.{verb}" in contribution.permissions
 
     jobs_path = "/apis/safe-synthesizer/v2/workspaces/{workspace}/jobs"
-    assert endpoints[jobs_path]["get"]["permissions"] == ["safe-synthesizer.jobs.list"]
-    assert endpoints[jobs_path]["post"]["scopes"] == ["safe-synthesizer:write", "platform:write"]
-    assert endpoints[f"{jobs_path}/{{name}}/cancel"]["post"]["permissions"] == ["safe-synthesizer.jobs.cancel"]
-    assert endpoints[f"{jobs_path}/{{job}}/results/synthetic-data/download"]["get"]["permissions"] == [
-        "safe-synthesizer.jobs.read"
+    assert contribution.endpoints[jobs_path]["get"].permissions == ["safe-synthesizer.list"]
+    assert contribution.endpoints[jobs_path]["post"].scopes == ["safe-synthesizer:write", "platform:write"]
+    assert contribution.endpoints[f"{jobs_path}/{{name}}/cancel"]["post"].permissions == ["safe-synthesizer.cancel"]
+    assert contribution.endpoints[f"{jobs_path}/{{job}}/results/synthetic-data/download"]["get"].permissions == [
+        "safe-synthesizer.read"
     ]

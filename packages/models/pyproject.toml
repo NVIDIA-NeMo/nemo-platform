@@ -1,6 +1,5 @@
 [project]
 name = "models"
-version = "0.0.0"
 description = "Extended ModelsResource with high-level helper methods"
 readme = "README.md"
 authors = [{ name = "NVIDIA", email = "nemo@nvidia.com" }]
@@ -9,6 +8,7 @@ dependencies = [
   "nemo-platform-sdk",
   "openai",
 ]
+version = "0.0.0"
 
 [build-system]
 requires = ["hatchling"]
@@ -16,6 +16,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/models"]
+
 
 [dependency-groups]
 dev = []

@@ -1,12 +1,13 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Global version for the platform.
+"""OpenAPI metadata versions.
 
-For now, this needs to be updated manually, whenever we move to a new version (typically after release).
+Package release versions are derived from Git tags at build time. OpenAPI still
+requires an ``info.version`` value, so keep that field as a neutral placeholder.
 """
 
-platform_api_version = "0.2.0"
+OPENAPI_SPEC_VERSION = "0.0.0"
 
-# NOTE: the SDK version will follow the major.minor API version, with the patch version potentially differing.
-platform_sdk_version = "0.2.0"
+# Backward-compatible name used by existing service code.
+platform_api_version = OPENAPI_SPEC_VERSION

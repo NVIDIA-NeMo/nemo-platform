@@ -5,6 +5,8 @@ export interface ClaudeCodeStreamHandlers {
   onClaudeEvent: (event: unknown) => void;
   onInputRequest: (request: ClaudeCodeInputRequest) => void;
   onPermissionRequest: (request: ClaudeCodePermissionRequest) => void;
+  onInputExpired?: (requestId: string) => void;
+  onPermissionExpired?: (requestId: string) => void;
   onDone: () => void;
   onError: (error: Error) => void;
 }

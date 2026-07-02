@@ -1,6 +1,5 @@
 [project]
 name = "nmp-intake"
-version = "0.0.1"
 description = "Intake service for NeMo Platform - ingesting and reading spans, traces, annotations, and evaluator results"
 readme = "README.md"
 requires-python = ">=3.11,<3.15"
@@ -24,6 +23,7 @@ dependencies = [
     "clickhouse-connect>=0.7,<1.0",
     "opentelemetry-proto>=1.27.0",
 ]
+version = "0.0.0"
 
 [project.scripts]
 intake-server = "nmp.intake.main:run_standalone"
@@ -47,13 +47,12 @@ dev = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/nmp"]
 
+
 [tool.uv.sources]
 nmp-common = { workspace = true }
 nmp-testing = { workspace = true }
 
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-
-[tool.uv]
-cache-keys = [{ file = "pyproject.toml" }]

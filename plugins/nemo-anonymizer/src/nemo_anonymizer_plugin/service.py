@@ -11,12 +11,6 @@ from anonymizer.interface.errors import AnonymizerError, InvalidConfigError
 from data_designer_nemo.errors import NDDInternalError, NDDInvalidConfigError
 from fastapi import Request
 from nemo_anonymizer_plugin.app.errors import AnonymizerInternalError, AnonymizerInvalidConfigError
-from nemo_platform_plugin.authz import (
-    AuthzContribution,
-    authz_for_workspace_function,
-    authz_for_workspace_job_collection,
-    combine_authz_contributions,
-)
 from nemo_platform_plugin.service import NemoService, RouterSpec
 from pydantic import ValidationError
 from starlette import status
@@ -36,36 +30,27 @@ class AnonymizerService(NemoService):
         "inference-gateway",
     ]
 
-    @classmethod
-    def get_authz_contribution(cls) -> AuthzContribution:
-        return combine_authz_contributions(
-            authz_for_workspace_function(
-                api_area=cls.name,
-                function_suffix="/preview",
-                permission_prefix=f"{cls.name}.preview",
-            ),
-            authz_for_workspace_job_collection(
-                api_area=cls.name,
-                collection_suffix="/jobs/run",
-                permission_prefix=f"{cls.name}.jobs",
-            ),
-        )
-
     def get_routers(self) -> list[RouterSpec]:
         from nemo_anonymizer_plugin.functions.preview import PreviewFunction
         from nemo_anonymizer_plugin.jobs.run import RunJob
+        from nemo_platform_plugin.authz import AuthzScope
         from nemo_platform_plugin.functions.routes import add_function_routes
         from nemo_platform_plugin.jobs.routes import add_job_routes
 
+        scope = AuthzScope("anonymizer")
         return [
             RouterSpec(
-                add_function_routes(PreviewFunction),
+                add_function_routes(
+                    PreviewFunction,
+                    authz=scope,
+                    permission_description="Preview an Anonymizer config",
+                ),
                 prefix="/v2/workspaces/{workspace}",
                 tag="Anonymizer",
                 description="Streaming preview of an Anonymizer config.",
             ),
             RouterSpec(
-                add_job_routes(RunJob),
+                add_job_routes(RunJob, authz=scope),
                 prefix="/v2/workspaces/{workspace}",
                 tag="Anonymizer",
                 description="Job endpoints",

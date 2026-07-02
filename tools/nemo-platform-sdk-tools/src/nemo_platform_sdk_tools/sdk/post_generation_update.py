@@ -17,12 +17,27 @@ from typing import List, Literal, Tuple
 import tomlkit
 import typer
 from nemo_platform_sdk_tools.sdk.core.common import SdkInfo, get_sdk_info
-from nemo_platform_sdk_tools.sdk.core.version import update_sdk_version
 from nemo_platform_sdk_tools.sdk.post_generation_exist_ok import inject_exist_ok
 
 app = typer.Typer(
     name="post-generation", help="Post-generation update tool for NeMo Platform SDK.", no_args_is_help=True
 )
+
+
+def sdk_version_file_content(package_name: str) -> str:
+    return f'''# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+from importlib.metadata import PackageNotFoundError, version as _package_version
+
+__title__ = "nemo_platform"
+try:
+    __version__ = _package_version("{package_name}")
+except PackageNotFoundError:
+    __version__ = "0.0.0"
+# Injected at release time for non-production builds; None for RC and production releases.
+__image_tag__: str | None = None
+'''
 
 
 def merge_readme_files(readme_dir: Path) -> str:
@@ -203,9 +218,20 @@ def update_pyproject_toml(sdk_info: SdkInfo) -> bool:
     if "version" not in dynamic:
         dynamic.append("version")
 
-    hatch_version = pyproject.setdefault("tool", {}).setdefault("hatch", {}).setdefault("version", {})
-    sdk_version_path = f"src/{sdk_info.module_name}/_version.py"
-    hatch_version["path"] = sdk_version_path
+    tool = pyproject.setdefault("tool", {})
+    hatch_version = tool.setdefault("hatch", {}).setdefault("version", {})
+    hatch_version.clear()
+    hatch_version["source"] = "nmp-dynamic-versioning"
+
+    tool.pop("uv-dynamic-versioning", None)
+
+    build_requires = pyproject.setdefault("build-system", {}).setdefault("requires", [])
+    try:
+        build_requires.remove("uv-dynamic-versioning")
+    except ValueError:
+        pass
+    if "nmp-build-tools" not in build_requires:
+        build_requires.append("nmp-build-tools")
 
     # Tweak pytest options
     pytest = pyproject["tool"]["pytest"]["ini_options"]
@@ -218,6 +244,13 @@ def update_pyproject_toml(sdk_info: SdkInfo) -> bool:
     # Tweak uv config
     uv_config = pyproject["tool"]["uv"]
     uv_config.pop("conflicts", None)
+    uv_config["cache-keys"] = [
+        {"file": "pyproject.toml"},
+        {"git": {"commit": True, "tags": True}},
+    ]
+    nmp_build_tools_source = tomlkit.inline_table()
+    nmp_build_tools_source["workspace"] = True
+    uv_config.setdefault("sources", {})["nmp-build-tools"] = nmp_build_tools_source
 
     pyproject["dependency-groups"].pop("pydantic-v1", None)
 
@@ -242,8 +275,6 @@ def update_pyproject_toml(sdk_info: SdkInfo) -> bool:
         typer.echo(f"  - Updated {pyproject_path}")
     else:
         typer.echo(f"  - No changes needed for {pyproject_path}")
-
-    update_sdk_version(sdk_info)
 
     return True
 
@@ -581,29 +612,25 @@ def update_license_headers() -> None:
 
 @app.command()
 def ensure_api_image_field() -> None:
-    """Ensure ``__image_tag__`` is present in ``_version.py`` after Stainless regeneration.
+    """Ensure dynamic version metadata and ``__image_tag__`` are present in ``_version.py``.
 
-    Stainless rewrites ``_version.py`` and strips any custom fields we add.  This
-    command re-adds ``__image_tag__ = None`` (the development default) when the
-    field is missing, so the SDK always exports it.
+    Stainless rewrites ``_version.py`` with a literal version. This command
+    restores the dynamic package-metadata lookup and the development default
+    image tag field.
     """
     sdk_info = get_sdk_info()
 
-    typer.echo("Ensuring __image_tag__ field in _version.py...")
+    typer.echo("Ensuring dynamic version metadata in _version.py...")
 
     version_file = sdk_info.sdk_dir / "src" / sdk_info.module_name / "_version.py"
-    content = version_file.read_text()
-
-    if "__image_tag__" in content:
-        typer.echo("  - __image_tag__ already present, skipping.")
+    content = version_file.read_text(encoding="utf-8")
+    expected = sdk_version_file_content(sdk_info.package_name)
+    if content == expected:
+        typer.echo("  - Dynamic version metadata already present, skipping.")
         return
 
-    content = (
-        content.rstrip()
-        + "\n# Injected at release time for non-production builds; None for RC and production releases.\n__image_tag__: str | None = None\n"
-    )
-    version_file.write_text(content)
-    typer.echo(f"  - Added __image_tag__ to {version_file}")
+    version_file.write_text(expected, encoding="utf-8")
+    typer.echo(f"  - Updated {version_file}")
 
 
 @app.command()
