@@ -43,7 +43,7 @@ class K8sDeploymentBackend(DeploymentBackend):
     """Manage deployments and volumes as native Kubernetes objects.
 
     Job-backed deployments (``restart_policy`` Never/OnFailure) are implemented in phase 3.
-    Deployment + Service (Always) is implemented in phase 4; full PodSpec compilation lands in phase 5.
+    Deployment + Service (Always) is implemented in phase 4; full PodSpec compilation is phase 5.
     """
 
     _clients: KubernetesClients
@@ -146,7 +146,7 @@ class K8sDeploymentBackend(DeploymentBackend):
 
         if config.restart_policy == "Always":
             try:
-                container = deployment_ops.validate_config_for_deployment(config)
+                deployment_ops.validate_config_for_deployment(config)
             except job_ops.DeploymentConfigError as exc:
                 return BackendStatusUpdate(status="FAILED", status_message=str(exc))
             return await deployment_ops.read_deployment_status(
@@ -158,7 +158,7 @@ class K8sDeploymentBackend(DeploymentBackend):
                 config_name=config.name,
                 restart_policy=config.restart_policy,
                 backoff_limit=config.backoff_limit,
-                container=container,
+                containers=tuple(config.containers),
             )
 
         return await job_ops.read_job_status(

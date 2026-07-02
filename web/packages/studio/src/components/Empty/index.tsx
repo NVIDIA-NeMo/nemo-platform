@@ -14,7 +14,7 @@ interface EmptyProps {
 export const Empty: FC<EmptyProps> = ({
   title = 'No Content Available',
   description = 'There is currently no content to display.',
-  icon = <TriangleAlert size={48} />,
+  icon = <TriangleAlert className="size-12" />,
 }) => {
   return (
     <Stack

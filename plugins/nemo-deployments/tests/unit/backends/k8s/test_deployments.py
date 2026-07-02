@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -17,12 +18,16 @@ from backends.k8s.k8s_helpers import (
 from kubernetes.client.rest import ApiException
 from nemo_deployments_plugin.backends.k8s import deployments as deployment_ops
 from nemo_deployments_plugin.backends.k8s.client import KubernetesClients
+from nemo_deployments_plugin.backends.k8s.compiler import validate_config_for_deployment
 from nemo_deployments_plugin.backends.k8s.deployments import (
     build_in_cluster_endpoints,
-    validate_config_for_deployment,
 )
-from nemo_deployments_plugin.backends.labels import MANAGED_BY_KEY, k8s_deployment_resource_name
-from nemo_deployments_plugin.entities import Container, ContainerPort
+from nemo_deployments_plugin.backends.labels import (
+    MANAGED_BY_KEY,
+    k8s_deployment_configmap_name,
+    k8s_deployment_resource_name,
+)
+from nemo_deployments_plugin.entities import ConfigFile, Container, ContainerPort
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 
 
@@ -41,7 +46,9 @@ def deployment_ops_clients(mock_k8s_clients: MagicMock) -> MagicMock:
 
 
 def test_validate_config_for_deployment_rejects_never() -> None:
-    with pytest.raises(deployment_ops.DeploymentConfigError, match="Always"):
+    from nemo_deployments_plugin.backends.k8s.compiler import DeploymentConfigError
+
+    with pytest.raises(DeploymentConfigError, match="Always"):
         validate_config_for_deployment(sample_always_config().model_copy(update={"restart_policy": "Never"}))
 
 
@@ -50,7 +57,7 @@ def test_build_in_cluster_endpoints_uses_cluster_dns() -> None:
     endpoints = build_in_cluster_endpoints(
         resource_name=resource_name,
         namespace="nemo-deployments",
-        container=sample_always_config().containers[0],
+        containers=tuple(sample_always_config().containers),
     )
     assert endpoints[0].url == f"http://{resource_name}.nemo-deployments.svc.cluster.local:8080"
 
@@ -65,7 +72,7 @@ def test_build_in_cluster_endpoints_uses_tcp_scheme_for_udp() -> None:
     endpoints = build_in_cluster_endpoints(
         resource_name=resource_name,
         namespace="nemo-deployments",
-        container=container,
+        containers=(container,),
     )
     assert endpoints[0].protocol == "tcp"
     assert endpoints[0].url == f"tcp://{resource_name}.nemo-deployments.svc.cluster.local:9090"
@@ -195,14 +202,80 @@ async def test_create_deployment_rolls_back_when_service_create_fails(
 
 
 @pytest.mark.asyncio
-async def test_read_status_rejects_unsupported_always_config(k8s_backend, mock_entities: AsyncMock) -> None:
+async def test_create_deployment_rolls_back_configmap_when_service_create_fails(
+    deployment_ops_clients: MagicMock, mock_k8s_clients: MagicMock
+) -> None:
+    config = sample_always_config().model_copy(
+        update={"config_files": [ConfigFile(path="/etc/app/config.yaml", content="key: value")]}
+    )
+    mock_k8s_clients.apps_v1.create_namespaced_deployment.return_value = mock_deployment()
+    mock_k8s_clients.apps_v1.read_namespaced_deployment.return_value = mock_deployment()
+    mock_k8s_clients.core_v1.create_namespaced_service.side_effect = ApiException(status=500)
+    identity_labels = always_identity_labels(backoff_limit=config.backoff_limit)
+    mock_k8s_clients.core_v1.read_namespaced_config_map.return_value = SimpleNamespace(
+        metadata=SimpleNamespace(labels=identity_labels),
+    )
+
+    update = await deployment_ops.create_deployment(
+        deployment_ops_clients,
+        default_namespace="default",
+        workspace="default",
+        name="task",
+        config_name="config1",
+        labels={},
+        backend_config={},
+        config=config,
+    )
+
+    assert update.status == "FAILED"
+    mock_k8s_clients.core_v1.create_namespaced_config_map.assert_called_once()
+    mock_k8s_clients.core_v1.read_namespaced_config_map.assert_called_once_with(
+        name=k8s_deployment_configmap_name("default", "task"),
+        namespace="default",
+        _request_timeout=mock_k8s_clients.request_timeout,
+    )
+    mock_k8s_clients.core_v1.delete_namespaced_config_map.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_adopted_service_failure_keeps_configmap(
+    deployment_ops_clients: MagicMock, mock_k8s_clients: MagicMock
+) -> None:
+    config = sample_always_config().model_copy(
+        update={"config_files": [ConfigFile(path="/etc/app/config.yaml", content="key: value")]}
+    )
+    mock_k8s_clients.apps_v1.create_namespaced_deployment.side_effect = ApiException(status=409)
+    mock_k8s_clients.apps_v1.read_namespaced_deployment.return_value = mock_deployment()
+    mock_k8s_clients.core_v1.create_namespaced_service.side_effect = ApiException(status=500)
+
+    update = await deployment_ops.create_deployment(
+        deployment_ops_clients,
+        default_namespace="default",
+        workspace="default",
+        name="task",
+        config_name="config1",
+        labels={},
+        backend_config={},
+        config=config,
+    )
+
+    assert update.status == "FAILED"
+    mock_k8s_clients.apps_v1.delete_namespaced_deployment.assert_not_called()
+    mock_k8s_clients.core_v1.delete_namespaced_config_map.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_read_status_accepts_init_containers(
+    k8s_backend, mock_k8s_clients: MagicMock, mock_entities: AsyncMock
+) -> None:
     config = sample_always_config().model_copy(update={"init_containers": [Container(name="init", image="busybox")]})
     mock_entities.get.side_effect = [sample_deployment(), config]
+    mock_k8s_clients.apps_v1.read_namespaced_deployment.return_value = mock_deployment()
+    mock_k8s_clients.core_v1.list_namespaced_pod.return_value = MagicMock(items=[])
 
     update = await k8s_backend.read_status(workspace="default", name="task")
 
-    assert update.status == "FAILED"
-    assert "init_containers" in update.status_message
+    assert update.status == "STARTING"
 
 
 @pytest.mark.asyncio
@@ -267,6 +340,9 @@ async def test_delete_deployment_rejects_foreign(
     foreign = mock_deployment()
     foreign.metadata.labels = {MANAGED_BY_KEY: "other-plugin"}
     mock_k8s_clients.apps_v1.read_namespaced_deployment.return_value = foreign
+    mock_k8s_clients.core_v1.read_namespaced_config_map.return_value = SimpleNamespace(
+        metadata=SimpleNamespace(labels=always_identity_labels()),
+    )
 
     update = await deployment_ops.delete_deployment(
         deployment_ops_clients,
@@ -279,6 +355,11 @@ async def test_delete_deployment_rejects_foreign(
 
     assert update.status == "FAILED"
     mock_k8s_clients.apps_v1.delete_namespaced_deployment.assert_not_called()
+    mock_k8s_clients.core_v1.read_namespaced_config_map.assert_called_once_with(
+        name=k8s_deployment_configmap_name("default", "task"),
+        namespace="default",
+        _request_timeout=mock_k8s_clients.request_timeout,
+    )
 
 
 @pytest.mark.asyncio

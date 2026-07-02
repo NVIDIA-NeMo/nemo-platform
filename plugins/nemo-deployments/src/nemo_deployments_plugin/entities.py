@@ -93,6 +93,11 @@ class Container(BaseModel):
     volume_mounts: list[VolumeMount] = Field(default_factory=list, alias="volumeMounts")
     liveness_probe: Probe | None = Field(default=None, alias="livenessProbe")
     readiness_probe: Probe | None = Field(default=None, alias="readinessProbe")
+    restart_policy: RestartPolicy | None = Field(
+        default=None,
+        alias="restartPolicy",
+        description="Per-container restart policy for init containers; Always enables k8s native sidecar.",
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -263,11 +268,15 @@ class Deployment(NemoEntity, entity_type=ENTITY_TYPE_DEPLOYMENT):
     # Never → SUCCEEDED terminal; Always/OnFailure → READY while running.
 
 
+def _default_volume_access_modes() -> list[AccessMode]:
+    return ["ReadWriteOnce"]
+
+
 class Volume(NemoEntity, entity_type=ENTITY_TYPE_VOLUME):
     """Persistent volume request and observed state."""
 
     size: str = Field(default="1Gi", description="Requested storage size (Kubernetes quantity).")
-    access_modes: list[AccessMode] = Field(default_factory=lambda: ["ReadWriteOnce"])
+    access_modes: list[AccessMode] = Field(default_factory=_default_volume_access_modes)
     backend_config: VolumeBackendConfig = Field(default_factory=VolumeBackendConfig, alias="backendConfig")
     status: VolumeStatus = Field(default="PENDING")
     status_message: str = Field(default="")

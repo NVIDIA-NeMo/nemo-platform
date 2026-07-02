@@ -11,17 +11,22 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 from kubernetes.client.rest import ApiException
 from nemo_deployments_plugin.backends.base import BackendStatusUpdate, LogResult
 from nemo_deployments_plugin.backends.k8s.client import KubernetesClients, k8s_client_module
-from nemo_deployments_plugin.backends.k8s.jobs import (
+from nemo_deployments_plugin.backends.k8s.compiler import (
+    CompiledWorkload,
     DeploymentConfigError,
-    build_container_spec,
-    build_pod_volumes,
-    build_volume_mounts,
-    merged_volume_mounts,
+    compile_workload,
+    create_configmap,
+    delete_configmap,
+    delete_configmap_best_effort,
+    validate_config_for_deployment,
+)
+from nemo_deployments_plugin.backends.k8s.jobs import (
     newest_pod,
     resolve_deployment_namespace,
     resolve_k8s_deployment_config,
@@ -38,13 +43,23 @@ from nemo_deployments_plugin.backends.labels import (
     DEPLOYMENT_WORKSPACE_LABEL,
     RESTART_POLICY_LABEL,
     deployment_identity_labels,
+    k8s_deployment_configmap_name,
     k8s_deployment_resource_name,
     managed_by_label_selector,
 )
-from nemo_deployments_plugin.entities import Container, ContainerPort, DeploymentConfig, Probe, VolumeMount
+from nemo_deployments_plugin.entities import Container, DeploymentConfig, K8sDeploymentConfig
 from nemo_deployments_plugin.types import Endpoint, RestartPolicy
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class BuiltDeployment:
+    """An apps/v1.Deployment plus the compiled workload used to build its pod template."""
+
+    deployment: Any
+    compiled: CompiledWorkload
+
 
 APP_LABEL = "app"
 DEFAULT_SERVICE_PORT = 8080
@@ -54,100 +69,28 @@ def app_selector_labels(resource_name: str) -> dict[str, str]:
     return {APP_LABEL: resource_name}
 
 
-def validate_config_for_deployment(config: DeploymentConfig) -> Container:
-    """Return the sole container spec for a Deployment-backed deployment."""
-    if config.init_containers:
-        # User-specified initContainers are deferred to phase 5. Mesh sidecars (Istio,
-        # Linkerd) inject at admission time and do not appear in DeploymentConfig.
-        raise DeploymentConfigError("init_containers are not supported by the k8s Deployment backend in this phase")
-    if len(config.containers) != 1:
-        raise DeploymentConfigError(
-            f"k8s Deployment backend supports exactly one container; got {len(config.containers)}"
-        )
-    if config.restart_policy != "Always":
-        raise DeploymentConfigError("restart_policy Always is required for Deployment + Service")
-    return config.containers[0]
-
-
-def _build_probe(probe: Probe | None) -> Any | None:
-    if probe is None:
-        return None
-    k8s = k8s_client_module()
-    kwargs: dict[str, Any] = {
-        "initial_delay_seconds": probe.initial_delay_seconds,
-        "period_seconds": probe.period_seconds,
-        "timeout_seconds": probe.timeout_seconds,
-        "failure_threshold": probe.failure_threshold,
-    }
-    if probe.exec_action is not None:
-        kwargs["exec"] = k8s.client.V1ExecAction(command=list(probe.exec_action.command))
-    elif probe.http_get is not None:
-        kwargs["http_get"] = k8s.client.V1HTTPGetAction(
-            path=probe.http_get.path,
-            port=probe.http_get.port,
-            scheme=probe.http_get.scheme,
-        )
-    elif probe.tcp_socket is not None:
-        kwargs["tcp_socket"] = k8s.client.V1TCPSocketAction(port=probe.tcp_socket.port)
-    else:
-        return None
-    return k8s.client.V1Probe(**kwargs)
-
-
-def _build_container_ports(ports: list[ContainerPort]) -> list[Any]:
-    if not ports:
-        return []
-    k8s = k8s_client_module()
-    return [
-        k8s.client.V1ContainerPort(
-            name=port.name or f"port-{port.container_port}",
-            container_port=port.container_port,
-            protocol=port.protocol,
-        )
-        for port in ports
-    ]
-
-
-def build_deployment_container_spec(container: Container, *, volume_mounts: list[VolumeMount] | None = None) -> Any:
-    k8s = k8s_client_module()
-    base = build_container_spec(container, volume_mounts=volume_mounts)
-    ports = _build_container_ports(container.ports)
-    kwargs: dict[str, Any] = {
-        "name": base.name,
-        "image": base.image,
-        "command": base.command,
-        "args": base.args,
-        "env": base.env,
-        "resources": base.resources,
-        "volume_mounts": build_volume_mounts(volume_mounts) if volume_mounts else base.volume_mounts,
-        "ports": ports or None,
-        "liveness_probe": _build_probe(container.liveness_probe),
-        "readiness_probe": _build_probe(container.readiness_probe),
-    }
-    return k8s.client.V1Container(**{key: value for key, value in kwargs.items() if value is not None})
-
-
 def build_deployment_body(
     *,
     resource_name: str,
     labels: dict[str, str],
     config: DeploymentConfig,
-    container: Container,
     workspace: str,
-) -> Any:
-    """Build an ``apps/v1.Deployment`` for create."""
+    deployment_name: str,
+    k8s_config: K8sDeploymentConfig | None,
+) -> BuiltDeployment:
+    """Build an ``apps/v1.Deployment`` for create and its compiled workload."""
     k8s = k8s_client_module()
     selector_labels = app_selector_labels(resource_name)
     pod_labels = selector_labels | labels
-    mounts = merged_volume_mounts(config, container)
-    pod_spec_kwargs: dict[str, Any] = {
-        "containers": [build_deployment_container_spec(container, volume_mounts=mounts or None)],
-    }
-    volumes = build_pod_volumes(workspace=workspace, mounts=mounts)
-    if volumes:
-        pod_spec_kwargs["volumes"] = volumes
-
-    return k8s.client.V1Deployment(
+    compiled = compile_workload(
+        config=config,
+        workspace=workspace,
+        deployment_name=deployment_name,
+        labels=labels,
+        k8s_config=k8s_config,
+        pod_restart_policy="Always",
+    )
+    deployment = k8s.client.V1Deployment(
         api_version="apps/v1",
         kind="Deployment",
         metadata=k8s.client.V1ObjectMeta(name=resource_name, labels=labels),
@@ -156,27 +99,34 @@ def build_deployment_body(
             selector=k8s.client.V1LabelSelector(match_labels=selector_labels),
             template=k8s.client.V1PodTemplateSpec(
                 metadata=k8s.client.V1ObjectMeta(labels=pod_labels),
-                spec=k8s.client.V1PodSpec(**pod_spec_kwargs),
+                spec=k8s.client.V1PodSpec(**compiled.pod_spec_kwargs),
             ),
         ),
     )
+    return BuiltDeployment(deployment=deployment, compiled=compiled)
 
 
-def build_service_body(*, resource_name: str, labels: dict[str, str], container: Container) -> Any:
+def build_service_body(*, resource_name: str, labels: dict[str, str], containers: tuple[Container, ...]) -> Any:
     """Build a ClusterIP ``v1.Service`` exposing container ports in-cluster."""
     k8s = k8s_client_module()
     selector_labels = app_selector_labels(resource_name)
     service_ports: list[Any] = []
-    for port in container.ports:
-        port_name = port.name or f"port-{port.container_port}"
-        service_ports.append(
-            k8s.client.V1ServicePort(
-                name=port_name,
-                port=port.container_port,
-                target_port=port_name,
-                protocol=port.protocol,
+    seen_ports: set[tuple[int, str]] = set()
+    for container in containers:
+        for port in container.ports:
+            port_key = (port.container_port, port.protocol)
+            if port_key in seen_ports:
+                continue
+            seen_ports.add(port_key)
+            port_name = port.name or f"port-{port.container_port}"
+            service_ports.append(
+                k8s.client.V1ServicePort(
+                    name=port_name,
+                    port=port.container_port,
+                    target_port=port_name,
+                    protocol=port.protocol,
+                )
             )
-        )
     if not service_ports:
         service_ports.append(
             k8s.client.V1ServicePort(
@@ -198,11 +148,16 @@ def build_service_body(*, resource_name: str, labels: dict[str, str], container:
     )
 
 
-def build_in_cluster_endpoints(*, resource_name: str, namespace: str, container: Container) -> list[Endpoint]:
-    """Build in-cluster HTTP endpoints for exposed container ports."""
+def build_in_cluster_endpoints(
+    *,
+    resource_name: str,
+    namespace: str,
+    containers: tuple[Container, ...],
+) -> list[Endpoint]:
+    """Build in-cluster endpoints for exposed container ports."""
     endpoints: list[Endpoint] = []
     host = f"{resource_name}.{namespace}.svc.cluster.local"
-    if container.ports:
+    for container in containers:
         for port in container.ports:
             endpoint_name = port.name or f"port-{port.container_port}"
             is_udp = port.protocol == "UDP"
@@ -215,6 +170,7 @@ def build_in_cluster_endpoints(*, resource_name: str, namespace: str, container:
                     protocol=protocol,
                 )
             )
+    if endpoints:
         return endpoints
     endpoints.append(Endpoint(name="http", url=f"http://{host}:{DEFAULT_SERVICE_PORT}", protocol="http"))
     return endpoints
@@ -271,7 +227,7 @@ async def create_deployment(
 ) -> BackendStatusUpdate:
     resource_name = k8s_deployment_resource_name(workspace, name)
     try:
-        container = validate_config_for_deployment(config)
+        validate_config_for_deployment(config)
         k8s_config = resolve_k8s_deployment_config(backend_config)
         namespace = resolve_deployment_namespace(default_namespace=default_namespace, k8s_config=k8s_config)
         identity_labels = deployment_identity_labels(
@@ -282,20 +238,56 @@ async def create_deployment(
             backoff_limit=config.backoff_limit,
         )
         all_labels = {**labels, **config.labels, **identity_labels}
-        deployment_body = build_deployment_body(
+        built = build_deployment_body(
             resource_name=resource_name,
             labels=all_labels,
             config=config,
-            container=container,
             workspace=workspace,
+            deployment_name=name,
+            k8s_config=k8s_config,
         )
-        service_body = build_service_body(resource_name=resource_name, labels=all_labels, container=container)
+        deployment_body = built.deployment
+        compiled = built.compiled
+        service_body = build_service_body(
+            resource_name=resource_name,
+            labels=all_labels,
+            containers=compiled.service_containers,
+        )
         timeout = clients.request_timeout
         apps_v1 = clients.apps_v1
         core_v1 = clients.core_v1
 
+        def _rollback_partial_create(*, deployment_created: bool, delete_configmap: bool) -> None:
+            if deployment_created:
+                try:
+                    apps_v1.delete_namespaced_deployment(
+                        name=resource_name,
+                        namespace=namespace,
+                        propagation_policy="Background",
+                        _request_timeout=timeout,
+                    )
+                except ApiException as cleanup_exc:
+                    _log_cleanup_ignored(resource_name, cleanup_exc)
+            if delete_configmap:
+                delete_configmap_best_effort(
+                    core_v1,
+                    namespace=namespace,
+                    name=compiled.configmap_name,
+                    expected_labels=identity_labels,
+                    timeout=timeout,
+                )
+
         def _create() -> Any:
             deployment_created = False
+            configmap_written = compiled.configmap_body is not None
+            if configmap_written:
+                create_configmap(
+                    core_v1,
+                    namespace=namespace,
+                    body=compiled.configmap_body,
+                    expected_labels=identity_labels,
+                    timeout=timeout,
+                )
             try:
                 apps_v1.create_namespaced_deployment(
                     namespace=namespace,
@@ -305,6 +297,14 @@ async def create_deployment(
                 deployment_created = True
             except ApiException as exc:
                 if exc.status != 409:
+                    if configmap_written:
+                        delete_configmap_best_effort(
+                            core_v1,
+                            namespace=namespace,
+                            name=compiled.configmap_name,
+                            expected_labels=identity_labels,
+                            timeout=timeout,
+                        )
                     raise
 
             deployment = apps_v1.read_namespaced_deployment(
@@ -313,16 +313,7 @@ async def create_deployment(
                 _request_timeout=timeout,
             )
             if not resource_labels_match(deployment, identity_labels):
-                if deployment_created:
-                    try:
-                        apps_v1.delete_namespaced_deployment(
-                            name=resource_name,
-                            namespace=namespace,
-                            propagation_policy="Background",
-                            _request_timeout=timeout,
-                        )
-                    except ApiException as cleanup_exc:
-                        _log_cleanup_ignored(resource_name, cleanup_exc)
+                _rollback_partial_create(deployment_created=deployment_created, delete_configmap=configmap_written)
                 return deployment
 
             try:
@@ -339,33 +330,25 @@ async def create_deployment(
                         _request_timeout=timeout,
                     )
                     if not resource_labels_match(existing_service, identity_labels):
-                        if deployment_created:
-                            try:
-                                apps_v1.delete_namespaced_deployment(
-                                    name=resource_name,
-                                    namespace=namespace,
-                                    propagation_policy="Background",
-                                    _request_timeout=timeout,
-                                )
-                            except ApiException as cleanup_exc:
-                                _log_cleanup_ignored(resource_name, cleanup_exc)
+                        _rollback_partial_create(
+                            deployment_created=deployment_created,
+                            delete_configmap=deployment_created and configmap_written,
+                        )
                         raise
                     return deployment
-                if deployment_created:
-                    try:
-                        apps_v1.delete_namespaced_deployment(
-                            name=resource_name,
-                            namespace=namespace,
-                            propagation_policy="Background",
-                            _request_timeout=timeout,
-                        )
-                    except ApiException as cleanup_exc:
-                        _log_cleanup_ignored(resource_name, cleanup_exc)
+                _rollback_partial_create(
+                    deployment_created=deployment_created,
+                    delete_configmap=deployment_created and configmap_written,
+                )
                 raise
             return deployment
 
         deployment = await asyncio.to_thread(_create)
-        endpoints = build_in_cluster_endpoints(resource_name=resource_name, namespace=namespace, container=container)
+        endpoints = build_in_cluster_endpoints(
+            resource_name=resource_name,
+            namespace=namespace,
+            containers=compiled.service_containers,
+        )
         pod = await _read_newest_pod(clients, namespace=namespace, match_labels=app_selector_labels(resource_name))
         return status_from_deployment(
             deployment=deployment,
@@ -391,7 +374,7 @@ async def read_deployment_status(
     config_name: str,
     restart_policy: RestartPolicy,
     backoff_limit: int,
-    container: Container,
+    containers: tuple[Container, ...],
 ) -> BackendStatusUpdate:
     resource_name = k8s_deployment_resource_name(workspace, name)
     expected_labels = deployment_identity_labels(
@@ -421,7 +404,11 @@ async def read_deployment_status(
                 status="FAILED",
                 status_message=f"Deployment {resource_name} is missing deployment config identity labels",
             )
-        endpoints = build_in_cluster_endpoints(resource_name=resource_name, namespace=namespace, container=container)
+        endpoints = build_in_cluster_endpoints(
+            resource_name=resource_name,
+            namespace=namespace,
+            containers=containers,
+        )
         pod = await _read_newest_pod(clients, namespace=namespace, match_labels=app_selector_labels(resource_name))
         return status_from_deployment(
             deployment=deployment,
@@ -448,6 +435,7 @@ async def delete_deployment(
     expected_labels: dict[str, str],
 ) -> BackendStatusUpdate:
     resource_name = k8s_deployment_resource_name(workspace, name)
+    configmap_name = k8s_deployment_configmap_name(workspace, name)
     try:
         k8s_config = resolve_k8s_deployment_config(backend_config)
         namespace = resolve_deployment_namespace(default_namespace=default_namespace, k8s_config=k8s_config)
@@ -473,6 +461,13 @@ async def delete_deployment(
                     except ApiException as service_read_exc:
                         if service_read_exc.status != 404:
                             raise
+                        delete_configmap(
+                            core_v1,
+                            namespace=namespace,
+                            name=configmap_name,
+                            expected_labels=expected_labels,
+                            timeout=timeout,
+                        )
                         return None
                     if resource_labels_match(service, expected_labels):
                         try:
@@ -484,6 +479,13 @@ async def delete_deployment(
                         except ApiException as service_exc:
                             if service_exc.status != 404:
                                 raise
+                    delete_configmap(
+                        core_v1,
+                        namespace=namespace,
+                        name=configmap_name,
+                        expected_labels=expected_labels,
+                        timeout=timeout,
+                    )
                     return None
                 raise
             if not resource_labels_match(deployment, expected_labels):
@@ -503,10 +505,24 @@ async def delete_deployment(
             except ApiException as exc:
                 if exc.status != 404:
                     raise
+            delete_configmap(
+                core_v1,
+                namespace=namespace,
+                name=configmap_name,
+                expected_labels=expected_labels,
+                timeout=timeout,
+            )
             return "deleted"
 
         result = await asyncio.to_thread(_delete)
         if result == "foreign":
+            delete_configmap_best_effort(
+                core_v1,
+                namespace=namespace,
+                name=configmap_name,
+                expected_labels=expected_labels,
+                timeout=timeout,
+            )
             return BackendStatusUpdate(
                 status="FAILED",
                 status_message=f"Deployment {resource_name} exists but is not managed by this plugin",
