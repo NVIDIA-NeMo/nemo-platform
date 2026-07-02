@@ -181,8 +181,10 @@ def setup_mock_provider(sdk: NeMoPlatform, test_case: GuardrailsChatTestCase) ->
                 MockProviderResponse(response_body=_chat_completion(BACKEND_RESPONSE)),
             ],
             test_case.content_safety_model_ref: _content_safety_responses(test_case.outcome),
+            test_case.content_safety_model_name: _content_safety_responses(test_case.outcome),
         },
     )
+    _wait_for_virtual_model(sdk, test_case.workspace, test_case.content_safety_model_name)
 
 
 def create_guarded_virtual_model(
@@ -213,7 +215,7 @@ def create_guarded_virtual_model(
         request_middleware=[middleware_call],
         response_middleware=[middleware_call],
     )
-    _wait_for_guarded_virtual_model(sdk, test_case)
+    _wait_for_virtual_model(sdk, test_case.workspace, test_case.virtual_model_name)
 
 
 def post_chat_completion(
@@ -326,9 +328,10 @@ def _content_safety_responses(outcome: ChatOutcome) -> list[MockProviderResponse
     ]
 
 
-def _wait_for_guarded_virtual_model(
+def _wait_for_virtual_model(
     sdk: NeMoPlatform,
-    test_case: GuardrailsChatTestCase,
+    workspace: str,
+    name: str,
     timeout: float = 60,
     poll_interval: float = 0.5,
 ) -> None:
@@ -339,8 +342,8 @@ def _wait_for_guarded_virtual_model(
         try:
             sdk.inference.gateway.model.get(
                 "v1/models",
-                name=test_case.virtual_model_name,
-                workspace=test_case.workspace,
+                name=name,
+                workspace=workspace,
             )
             return
         except NotFoundError as exc:
@@ -348,8 +351,7 @@ def _wait_for_guarded_virtual_model(
             time.sleep(poll_interval)
 
     raise TimeoutError(
-        f"Guarded VirtualModel {test_case.workspace}/{test_case.virtual_model_name} "
-        f"was not visible to IGW after {timeout}s. Last error: {last_error}"
+        f"VirtualModel {workspace}/{name} was not visible to IGW after {timeout}s. Last error: {last_error}"
     )
 
 
