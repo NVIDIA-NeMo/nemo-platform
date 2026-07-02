@@ -8,6 +8,7 @@ from nemo_platform.types.experiment_groups import (
     ExperimentGroupRequest,
     ExperimentGroupResponse,
     ExperimentGroupResponsesPage,
+    SortCriterion,
 )
 ```
 

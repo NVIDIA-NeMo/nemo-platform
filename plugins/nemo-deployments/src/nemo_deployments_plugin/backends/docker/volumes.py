@@ -10,7 +10,7 @@ import logging
 from typing import Any
 
 from nemo_deployments_plugin.backends.base import VolumeStatusUpdate
-from nemo_deployments_plugin.backends.docker.labels import docker_volume_name, volume_identity_labels
+from nemo_deployments_plugin.backends.labels import docker_volume_name, volume_identity_labels
 
 import docker
 

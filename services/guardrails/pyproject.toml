@@ -1,6 +1,5 @@
 [project]
 name = "nmp-guardrails"
-version = "0.0.1"
 description = "NeMo Guardrails Microservice - programmable guardrails for LLM endpoints"
 readme = "README.md"
 authors = [{ name = "NVIDIA", email = "nemoguardrails@nvidia.com" }]
@@ -48,6 +47,7 @@ dependencies = [
   "opentelemetry-instrumentation-requests>=0.64b0",
   "opentelemetry-instrumentation-httpx>=0.64b0",
 ]
+version = "0.0.0"
 
 [project.scripts]
 guardrails-server = "nmp.guardrails.main:run_standalone"
@@ -60,6 +60,7 @@ asyncio_default_fixture_loop_scope = "session"
 
 [tool.uv.sources]
 nmp-common = { workspace = true }
+
 
 [dependency-groups]
 # No task deps for guardrails - all deps are in main dependencies
@@ -75,9 +76,6 @@ dev = [
   "nmp-testing",
   "nmp-platform-seed",
 ]
-
-[tool.uv]
-cache-keys = [{ file = "pyproject.toml" }]
 
 [build-system]
 requires = ["hatchling"]

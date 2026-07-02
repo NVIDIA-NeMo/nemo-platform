@@ -99,22 +99,26 @@ When `input_spec_schema` isn't declared, `to_spec()` defaults to the identity an
 This is the one-liner that mounts submit/list/get/delete endpoints on your plugin service:
 
 ```python
+from nemo_platform_plugin.authz import AuthzScope
 from nemo_platform_plugin.jobs.routes import add_job_routes
 from fastapi import FastAPI
 from .jobs.generate import GenerateJob
 
 app = FastAPI()
-router = add_job_routes(GenerateJob)
+router = add_job_routes(GenerateJob, authz=AuthzScope("data-designer"))
 app.include_router(
     router,
     prefix="/v2/workspaces/{workspace}",
 )
 ```
 
+> **Pass `authz=` — it is required.** Without it the job routes are *unruled*, and under the default `on_invalid_plugin=hard_fail` the auth service refuses to build the OPA bundle (the platform 502s) rather than silently fence them. Give it the plugin's `AuthzScope` — the same object the plugin's other routes use — and the factory mints the submit/list/get/delete permissions and scope gate from it. See the `plugin-authz` skill for the full rule model.
+
 `add_job_routes` derives `service_name` / `job_type` / `job_input` / `job_output` / `input_to_output` / `platform_job_config_compiler` from the `NemoJob` subclass. It also derives the job collection path from `job_collection_path` or `/jobs/{NemoJob.name}`, so `GenerateJob.name = "generate"` maps to `/jobs/generate`. Returns a standard `APIRouter` — same routes as the legacy `job_route_factory`.
 
 Passthrough kwargs:
 
+- `authz: AuthzScope` — the scope whose permissions and OAuth scope-gate are minted onto the job routes. Required in practice (see the note above); it defaults to `None`, which leaves the routes unruled.
 - `route_options: list[JobRouteOption]` — which standard routes to enable.
 - `job_result_routes: list[PlatformJobResultRoute]` — custom result download endpoints.
 - `generate_job_name: Callable[..., str]` — name generator for unnamed submissions.

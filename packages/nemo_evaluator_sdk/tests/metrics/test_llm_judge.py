@@ -522,7 +522,7 @@ class TestLLMJudgeMetric:
 
     def test_unique_scores_allows_empty_scores_for_constructed_model(self):
         metric = LLMJudgeMetric.model_construct(model=_make_model(), scores=[], _fields_set={"model", "scores"})
-        assert metric.unique_scores() is metric  # type: ignore[call-non-callable]  # Pydantic model_validator descriptor
+        assert metric.unique_scores() is metric  # ty: ignore[call-non-callable]  # Pydantic model_validator descriptor
 
     def test_string_prompt_template_bypasses_reserved_key_validation(self):
         metric = LLMJudgeMetric(

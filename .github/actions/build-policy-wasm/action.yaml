@@ -8,14 +8,6 @@ description: >
 runs:
   using: composite
   steps:
-    - name: Install OPA
-      shell: bash
-      env:
-        OPA_VERSION: v1.8.0
-      run: |
-        curl -fsSL -o /usr/local/bin/opa \
-          "https://github.com/open-policy-agent/opa/releases/download/${OPA_VERSION}/opa_linux_amd64_static"
-        chmod +x /usr/local/bin/opa
     - name: Build policy WASM
       shell: bash
       run: ./script/build_policy_wasm.sh

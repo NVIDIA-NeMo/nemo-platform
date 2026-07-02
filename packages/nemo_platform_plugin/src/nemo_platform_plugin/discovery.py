@@ -24,7 +24,11 @@ Entry-point groups and their wrappers
 ``nemo.inference_middleware``  → :func:`discover_inference_middleware`  — :class:`~nemo_platform_plugin.inference_middleware.NemoInferenceMiddleware` subclass  (typed, IGW instantiates)
 ``nemo.customization.contributors`` → :func:`discover_customization_contributors` — :class:`~nemo_platform_plugin.customization_contributor.CustomizationContributor` instance  (typed, customization router instantiates)
 ``nemo.seed``                  → :func:`discover_seed_jobs`             — :class:`~nemo_platform_plugin.seed.NemoSeedJob` subclass  (typed, platform instantiates)
-``nemo.authz``                 → :func:`~nemo_platform_plugin.authz_discovery.discover_authz_contributions` — policy endpoints/permissions (merged at runtime and via ``auth-tools sync-plugins``)
+
+Plugin HTTP authorization is **not** a discovery surface: it is derived from
+``nemo.services`` (each :class:`~nemo_platform_plugin.service.NemoService`'s
+``@path_rule``-decorated routes, plus the optional ``extra_permissions`` hatch) by
+:func:`~nemo_platform_plugin.authz_discovery.discover_authz_contributions`.
 
 Wrappers for surfaces whose types are not yet defined in this package return
 ``dict[str, Any]`` — callers cast as needed.
@@ -79,7 +83,6 @@ _ALL_SURFACE_GROUPS = (
     "nemo.inference_middleware",
     "nemo.customization.contributors",
     "nemo.seed",
-    "nemo.authz",
 )
 
 # Surface groups whose entry-point keys are dot-separated as
@@ -103,7 +106,6 @@ _SURFACE_ALLOWLIST_ENV_VARS: dict[str, str] = {
     "nemo.inference_middleware": "NEMO_PLUGIN_INFERENCE_MIDDLEWARE_ALLOWLIST",
     "nemo.customization.contributors": "NEMO_PLUGIN_CUSTOMIZATION_CONTRIBUTORS_ALLOWLIST",
     "nemo.seed": "NEMO_PLUGIN_SEED_ALLOWLIST",
-    "nemo.authz": "NEMO_PLUGIN_AUTHZ_ALLOWLIST",
 }
 
 CUSTOMIZATION_CONTRIBUTORS_GROUP = "nemo.customization.contributors"

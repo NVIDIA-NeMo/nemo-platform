@@ -6,15 +6,20 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
+from nemo_deployments_plugin.api.v2._perms import DeploymentPerms, VolumePerms
 from nemo_deployments_plugin.api.v2.dependencies import get_entity_client, require_service_principal
+from nemo_deployments_plugin.authz import scope
 from nemo_deployments_plugin.entities import Deployment, Volume
 from nemo_deployments_plugin.schema import UpdateDeploymentStatusRequest, UpdateVolumeStatusRequest
+from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError, NemoEntityNotFoundError
 
 router = APIRouter()
 
 
 @router.put("/deployments/{name}/status", response_model=Deployment, tags=["Deployment Status"])
+@scope.write
+@path_rule(callers=[CallerKind.SERVICE_PRINCIPAL], permissions=[DeploymentPerms.STATUS_UPDATE])
 async def update_deployment_status(
     workspace: str,
     name: str,
@@ -47,6 +52,8 @@ async def update_deployment_status(
 
 
 @router.put("/volumes/{name}/status", response_model=Volume, tags=["Volume Status"])
+@scope.write
+@path_rule(callers=[CallerKind.SERVICE_PRINCIPAL], permissions=[VolumePerms.STATUS_UPDATE])
 async def update_volume_status(
     workspace: str,
     name: str,

@@ -13,7 +13,7 @@ from typing import Optional, Tuple
 import typer
 import yaml
 from nmp.common.api.utils import tweak_spec
-from nmp.common.version import platform_api_version
+from nmp.common.version import OPENAPI_SPEC_VERSION
 from rich.console import Console
 from rich.table import Table
 
@@ -873,8 +873,8 @@ def fix_schema(
         # Make sure the version is set to 3.1.0
         spec["openapi"] = "3.1.0"
 
-        # Make sure the version is set to the right version
-        spec["info"]["version"] = platform_api_version
+        # OpenAPI requires info.version; package versions come from build metadata.
+        spec["info"]["version"] = OPENAPI_SPEC_VERSION
 
         # Reorder the top-level keys in the specification
         spec = reorder_spec(spec)

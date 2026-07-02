@@ -64,6 +64,7 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, Header
 from fastapi.responses import StreamingResponse
+from nemo_platform_plugin.authz import AuthzScope, CallerKind, path_rule
 from nemo_platform_plugin.dependencies import get_sdk_client
 from nemo_platform_plugin.function import NemoFunction, returns_async_iterator
 from nemo_platform_plugin.function_context import FunctionContext
@@ -103,6 +104,8 @@ def add_function_routes(
     function_cls: type[NemoFunction],
     *,
     heartbeat_interval_seconds: float = HEARTBEAT_INTERVAL_SECONDS,
+    authz: AuthzScope | None = None,
+    permission_description: str | None = None,
 ) -> APIRouter:
     """Mount a single ``POST`` route for *function_cls* on a fresh router.
 
@@ -115,6 +118,14 @@ def add_function_routes(
             responses. Defaults to :data:`HEARTBEAT_INTERVAL_SECONDS`.
             Lower values are useful in tests; production callers
             usually leave the default.
+        authz: The plugin's :class:`~nemo_platform_plugin.authz.AuthzScope`.
+            When set, a PRINCIPAL ``@path_rule`` is stamped on the route with
+            an invoke permission minted from it (``<namespace>.<function-name>``,
+            a write action). When omitted the route is left unruled — denied
+            fail-closed at bundle time.
+        permission_description: Optional human description for the invoke
+            permission. Defaults to ``function_cls.description`` or
+            ``"Invoke the <name> function"``. Requires ``authz``.
 
     Returns:
         An :class:`APIRouter` with one route. The caller mounts it
@@ -124,6 +135,9 @@ def add_function_routes(
     Raises:
         TypeError: If ``function_cls`` doesn't declare a
             ``spec_schema``.
+        ValueError: If ``permission_description`` is given without ``authz``
+            (the description rides on the permission stamped from ``authz``,
+            so alone it would be silently discarded).
     """
     spec_schema = getattr(function_cls, "spec_schema", None)
     if spec_schema is None:
@@ -131,6 +145,12 @@ def add_function_routes(
             f"{function_cls.__name__}.spec_schema is None; add_function_routes "
             f"requires a declared spec_schema. Set it to a Pydantic BaseModel "
             f"subclass on the NemoFunction class."
+        )
+
+    if permission_description is not None and authz is None:
+        raise ValueError(
+            "permission_description requires authz to be set (the description rides on the "
+            "permission stamped from authz); supplying it alone would be silently discarded."
         )
 
     router = APIRouter()
@@ -160,6 +180,18 @@ def add_function_routes(
     )
     handler.__name__ = f"{function_cls.__name__}__route"
     handler.__doc__ = function_cls.description or f"Invoke the {function_cls.name} function."
+
+    if authz is not None:
+        # Invoking a function is a write action; the permission id defaults to <namespace>.<function>.
+        permission = authz.permission(
+            function_cls.name,
+            description=permission_description
+            or function_cls.description
+            or f"Invoke the {function_cls.name} function",
+        )
+        path_rule(callers=[CallerKind.PRINCIPAL], permissions=[permission])(handler)
+        # Invoking a function is a write action; the scope rides on the route via @AuthzScope.write.
+        authz.write(handler)
 
     router.post(
         path,

@@ -13,7 +13,9 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from nemo_agents_plugin.api.v2._perms import AgentPerms
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
+from nemo_agents_plugin.authz import scope
 from nemo_agents_plugin.entities import Agent, AgentDeployment
 from nemo_agents_plugin.schema import (
     AgentFilter,
@@ -21,6 +23,7 @@ from nemo_agents_plugin.schema import (
     CreateAgentRequest,
 )
 from nemo_platform_plugin.api.filters import make_filter_obj_dep
+from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError, NemoEntityNotFoundError
 from nemo_platform_plugin.schema import PaginationData
 
@@ -37,6 +40,11 @@ _agent_filter_dep = make_filter_obj_dep(AgentFilter)
 
 
 @router.post("/agents", response_model=Agent, status_code=201, tags=["Agents"])
+@scope.write
+@path_rule(
+    callers=[CallerKind.PRINCIPAL],
+    permissions=[AgentPerms.CREATE],
+)
 async def create_agent(
     workspace: str,
     body: CreateAgentRequest,
@@ -64,6 +72,11 @@ async def create_agent(
 
 
 @router.get("/agents", response_model=AgentPage, tags=["Agents"])
+@scope.read
+@path_rule(
+    callers=[CallerKind.PRINCIPAL],
+    permissions=[AgentPerms.LIST],
+)
 async def list_agents(
     workspace: str,
     page: int = Query(default=1, ge=1),
@@ -97,6 +110,11 @@ async def list_agents(
 
 
 @router.get("/agents/{name}", response_model=Agent, tags=["Agents"])
+@scope.read
+@path_rule(
+    callers=[CallerKind.PRINCIPAL],
+    permissions=[AgentPerms.READ],
+)
 async def get_agent(
     workspace: str,
     name: str,
@@ -117,6 +135,11 @@ async def get_agent(
 
 
 @router.delete("/agents/{name}", status_code=204, tags=["Agents"])
+@scope.write
+@path_rule(
+    callers=[CallerKind.PRINCIPAL],
+    permissions=[AgentPerms.DELETE],
+)
 async def delete_agent(
     workspace: str,
     name: str,

@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from backends.docker.docker_helpers import container_attrs, sample_config
 from nemo_deployments_plugin.backends.docker.backend import DockerDeploymentBackend
-from nemo_deployments_plugin.backends.docker.labels import (
+from nemo_deployments_plugin.backends.labels import (
     CONFIG_NAME_LABEL,
     DEPLOYMENT_NAME_LABEL,
     DEPLOYMENT_WORKSPACE_LABEL,

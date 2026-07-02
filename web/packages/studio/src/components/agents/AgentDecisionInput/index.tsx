@@ -367,19 +367,17 @@ export const AgentDecisionInput = ({
                 <Text kind="label/regular/sm">{skipLabel}</Text>
               </Button>
             ) : null}
-            {selectedChoiceInput ? (
-              <Button
-                aria-label="Send alternative instruction"
-                type="button"
-                color="brand"
-                size="small"
-                disabled={isSubmitting || !trimmedChoiceInputValue}
-                className={subduedButtonFocusClassName}
-                onClick={() => void submitSelectedChoice()}
-              >
-                <Send size={16} />
-              </Button>
-            ) : null}
+            <Button
+              aria-label="Send"
+              type="button"
+              color="brand"
+              size="small"
+              disabled={isSubmitting || (!!selectedChoiceInput && !trimmedChoiceInputValue)}
+              className={subduedButtonFocusClassName}
+              onClick={() => void submitSelectedChoice()}
+            >
+              <Send size={16} />
+            </Button>
           </Flex>
         </Flex>
       </Flex>

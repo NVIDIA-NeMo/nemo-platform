@@ -1,6 +1,5 @@
 [project]
 name = "nmp-jobs"
-version = "0.1.0"
 description = "NeMo Platform Jobs provides job execution capabilities."
 readme = "README.md"
 requires-python = ">=3.11,<3.15"
@@ -30,6 +29,7 @@ dependencies = [
     "duckdb<2.0.0,>=1.1.3",
     "pandas>=1.5.3",
 ]
+version = "0.0.0"
 
 [project.scripts]
 jobs-server = "nmp.core.jobs.main:run_standalone"
@@ -38,12 +38,14 @@ jobs-server = "nmp.core.jobs.main:run_standalone"
 nmp-common = { workspace = true }
 
 
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/nmp"]
+
 
 [dependency-groups]
 # No task deps for jobs - all deps are in main dependencies

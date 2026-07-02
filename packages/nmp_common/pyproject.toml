@@ -1,6 +1,5 @@
 [project]
 name = "nmp-common"
-version = "0.0.0"
 description = "Add your description here"
 readme = "README.md"
 authors = [{ name = "Ryan Leary", email = "rleary@nvidia.com" }]
@@ -52,9 +51,7 @@ dependencies = [
     "nvidia-ml-py>=13.0.0",
     "pyjwt[crypto]>=2.13.0",
 ]
-
-[tool.uv]
-cache-keys = [{ file = "pyproject.toml" }]
+version = "0.0.0"
 
 [build-system]
 requires = ["hatchling"]

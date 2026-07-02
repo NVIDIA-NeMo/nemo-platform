@@ -430,6 +430,8 @@ jobs:
           repository: ${{ needs.plan-release.outputs.source_repo }}
           ref: ${{ needs.plan-release.outputs.source_sha }}
           path: source
+          fetch-depth: 0
+          fetch-tags: true
 
       # Toolchain setup + version stamp + `uv build` are factored into the
       # composite action, which ci.yaml's wheel-test job also calls so the

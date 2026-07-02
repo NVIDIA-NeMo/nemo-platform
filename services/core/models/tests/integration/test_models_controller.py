@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from docker.errors import NotFound
 from nemo_platform import NotFoundError
+from nmp.core.models.app.utils import get_docker_container_name, get_docker_volume_name
 from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate
 from nmp.core.models.controllers.backends.docker import DockerServiceBackend
 from nmp.core.models.controllers.backends.registry import BackendRegistry
@@ -496,11 +497,13 @@ def test_docker_deployment_lifecycle(controller_with_docker, docker_client):
     test_uuid = uuid.uuid4().hex[:8]
     config_name = f"test-docker-lifecycle-{test_uuid}"
     deployment_name = f"test-docker-lifecycle-{test_uuid}"
-    container_name = f"md-default-{deployment_name}"
+    workspace = "default"
+    container_name = get_docker_container_name(workspace, deployment_name)
+    volume_name = get_docker_volume_name(workspace, deployment_name)
 
     # Register container for cleanup
     ctx.register_container(container_name)
-    ctx.register_volume(f"nim-cache-default-{deployment_name}")
+    ctx.register_volume(volume_name)
 
     # === Phase 1: Create config and deployment ===
     # Parse image name and tag - use rsplit to handle registry URLs with port numbers

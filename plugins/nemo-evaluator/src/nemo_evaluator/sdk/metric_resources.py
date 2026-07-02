@@ -26,6 +26,16 @@ from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.schema import Page
 
 
+def _list_params(page: int, page_size: int, sort: str | None, metric_type: str | None) -> dict[str, str | int]:
+    """Build the list query string: paging/sort + the route's ``filter[metric_type]`` trait filter."""
+    params: dict[str, str | int] = {"page": page, "page_size": page_size}
+    if sort is not None:
+        params["sort"] = sort
+    if metric_type is not None:
+        params["filter[metric_type]"] = metric_type
+    return params
+
+
 def _metric_inline(
     metric: RuntimeMetric | MetricBundle,
     metric_bundle_packager: MetricBundlePackager | None,
@@ -91,11 +101,19 @@ class EvaluatorMetricsResource:
         response.raise_for_status()
         return Metric.model_validate(response.json())
 
-    def list(self, *, workspace: str | None = None, page: int = 1, page_size: int = 100) -> Page[Metric]:
-        """List stored metrics in a workspace."""
+    def list(
+        self,
+        *,
+        workspace: str | None = None,
+        page: int = 1,
+        page_size: int = 100,
+        sort: str | None = None,
+        metric_type: str | None = None,
+    ) -> Page[Metric]:
+        """List stored metrics in a workspace, optionally filtered by metric type."""
         response = self._http_client.get(
             self._collection_url(workspace),
-            params={"page": page, "page_size": page_size},
+            params=_list_params(page, page_size, sort, metric_type),
             headers=self._headers(),
             timeout=self._platform.timeout,
         )
@@ -159,11 +177,19 @@ class AsyncEvaluatorMetricsResource:
         response.raise_for_status()
         return Metric.model_validate(response.json())
 
-    async def list(self, *, workspace: str | None = None, page: int = 1, page_size: int = 100) -> Page[Metric]:
-        """List stored metrics in a workspace."""
+    async def list(
+        self,
+        *,
+        workspace: str | None = None,
+        page: int = 1,
+        page_size: int = 100,
+        sort: str | None = None,
+        metric_type: str | None = None,
+    ) -> Page[Metric]:
+        """List stored metrics in a workspace, optionally filtered by metric type."""
         response = await self._http_client.get(
             self._collection_url(workspace),
-            params={"page": page, "page_size": page_size},
+            params=_list_params(page, page_size, sort, metric_type),
             headers=self._headers(),
             timeout=self._platform.timeout,
         )

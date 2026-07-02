@@ -14,7 +14,6 @@ from nemo_customizer.router import (
     CustomizationRouterService,
     merge_router_dependencies,
 )
-from nemo_platform_plugin.authz import authz_for_workspace_job_collection
 from nemo_platform_plugin.service import RouterSpec
 
 
@@ -145,60 +144,54 @@ def test_shared_parent_prefix_with_disjoint_routes_is_ok(monkeypatch: pytest.Mon
     assert sorted(service._contributors.keys()) == ["automodel", "unsloth"]
 
 
-def test_get_authz_contribution_merges_backend_contributors(monkeypatch: pytest.MonkeyPatch) -> None:
-    class _AutomodelContributor:
-        name: ClassVar[str] = "automodel"
-        dependencies: ClassVar[list[str]] = []
+def test_authz_derives_from_contributor_routes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The hub's authz is derived from the ``@path_rule``-decorated routes its
+    contributors mount — there is no separate ``get_authz_contribution`` declaration.
 
-        def get_authz_contribution(self) -> object:
-            return authz_for_workspace_job_collection(
-                api_area="customization",
-                collection_suffix="/automodel/jobs",
-                permission_prefix="customization.automodel.jobs",
-                include_healthz=True,
-                healthz_suffix="/automodel/healthz",
-            )
+    Doubles as the Phase-0 derivation gate: the customization hub plus backends
+    must derive with no problems and no fail-closed DENY bindings.
+    """
+    from nemo_platform_plugin.authz import CallerKind, Permission, path_rule
+    from nemo_platform_plugin.authz_discovery import _derive_service_contribution
 
-        def get_routers(self) -> list[RouterSpec]:
-            return []
+    def _make_contributor(backend: str) -> object:
+        class _Contributor:
+            name: ClassVar[str] = backend
+            dependencies: ClassVar[list[str]] = []
 
-        def get_cli(self) -> typer.Typer:
-            return typer.Typer()
+            def get_routers(self) -> list[RouterSpec]:
+                router = APIRouter()
+                create_perm = Permission("customization", f"{backend}.jobs", "create", f"Create {backend} jobs")
 
-    class _UnslothContributor:
-        name: ClassVar[str] = "unsloth"
-        dependencies: ClassVar[list[str]] = []
+                @router.post(f"/{backend}/jobs")
+                @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[create_perm])
+                async def submit() -> dict[str, str]:
+                    return {"backend": backend}
 
-        def get_authz_contribution(self) -> object:
-            return authz_for_workspace_job_collection(
-                api_area="customization",
-                collection_suffix="/unsloth/jobs",
-                permission_prefix="customization.unsloth.jobs",
-            )
+                @router.get(f"/{backend}/healthz")
+                @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[])
+                async def healthz() -> dict[str, str]:
+                    return {"backend": backend}
 
-        def get_routers(self) -> list[RouterSpec]:
-            return []
+                return [RouterSpec(router=router, prefix="/v2/workspaces/{workspace}", tag=backend.title())]
 
-        def get_cli(self) -> typer.Typer:
-            return typer.Typer()
+            def get_cli(self) -> typer.Typer:
+                return typer.Typer()
+
+        return _Contributor()
 
     monkeypatch.setattr(
         "nemo_customizer.router.discover_customization_contributors",
-        lambda: {"automodel": _AutomodelContributor(), "unsloth": _UnslothContributor()},
+        lambda: {"automodel": _make_contributor("automodel"), "unsloth": _make_contributor("unsloth")},
     )
 
-    contrib = CustomizationRouterService.get_authz_contribution()
-    assert contrib is not None
-    assert "/apis/customization/healthz" in contrib.endpoints
-    assert "/apis/customization/v2/workspaces/{workspace}/automodel/jobs" in contrib.endpoints
-    assert "/apis/customization/v2/workspaces/{workspace}/unsloth/jobs" in contrib.endpoints
-    assert "customization.automodel.jobs.create" in contrib.permissions
-    assert "customization.unsloth.jobs.create" in contrib.permissions
+    service = CustomizationRouterService()
+    contribution, problems, _warnings = _derive_service_contribution(service)
 
-
-def test_get_authz_contribution_returns_none_without_backends(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        "nemo_customizer.router.discover_customization_contributors",
-        lambda: {},
-    )
-    assert CustomizationRouterService.get_authz_contribution() is None
+    assert problems == []
+    assert not any(spec.deny for methods in contribution.endpoints.values() for spec in methods.values())
+    assert "customization.automodel.jobs.create" in contribution.permissions
+    assert "customization.unsloth.jobs.create" in contribution.permissions
+    # The hub's own /healthz is authenticated-but-permissionless (ruled, not denied).
+    hub_healthz = contribution.endpoints["/apis/customization/healthz"]["get"]
+    assert hub_healthz.permissions == [] and not hub_healthz.deny

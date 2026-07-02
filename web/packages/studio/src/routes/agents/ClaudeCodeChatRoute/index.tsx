@@ -9,9 +9,12 @@ import { ClaudeCodeChatThread } from '@studio/routes/agents/ClaudeCodeChatRoute/
 import { ClaudeCodeLayout } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeLayout';
 import { useClaudeCodeChatContext } from '@studio/routes/agents/ClaudeCodeChatRoute/context/useClaudeCodeChatContext';
 import type { ClaudeCodeChatRouteState } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
-import { getSelectedClaudeCodeSessionId } from '@studio/routes/agents/ClaudeCodeChatRoute/util';
+import {
+  CLAUDE_CODE_SESSION_SEARCH_PARAM,
+  getSelectedClaudeCodeSessionId,
+} from '@studio/routes/agents/ClaudeCodeChatRoute/util';
 import { getClaudeCodeChatRoute, getWorkspaceDashboardRoute } from '@studio/routes/utils';
-import { type FC, useCallback, useEffect, useRef } from 'react';
+import { type FC, useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 const getInitialPrompt = (state: unknown): string | undefined => {
@@ -57,6 +60,11 @@ export const ClaudeCodeChatRoute: FC = () => {
   const selectedSessionId = getSelectedClaudeCodeSessionId(location.search);
   const initialPrompt = getInitialPrompt(location.state);
 
+  const [displayedSessionId, setDisplayedSessionId] = useState<string | null>(sessionId);
+  useEffect(() => {
+    setDisplayedSessionId(sessionId);
+  }, [sessionId]);
+
   useBreadcrumbs({
     items: [
       { slotLabel: 'Dashboard', href: getWorkspaceDashboardRoute(workspace) },
@@ -65,23 +73,40 @@ export const ClaudeCodeChatRoute: FC = () => {
   });
 
   // Point the shared runtime at the session selected via the URL.
+  // Skip when initialPrompt is set — that effect will clear the ?session= param
+  // and start a fresh chat; letting both effects run in parallel causes loadSession
+  // to race against startNewChat on the same render.
   useEffect(() => {
+    if (initialPrompt) return;
     if (selectedSessionId && selectedSessionId !== sessionId) {
       loadSession(selectedSessionId);
     }
-  }, [loadSession, selectedSessionId, sessionId]);
+  }, [initialPrompt, loadSession, selectedSessionId, sessionId]);
 
-  // Consume a dashboard-provided prompt exactly once: start fresh, fire it, and
-  // clear the navigation state immediately so a refresh does not resubmit.
-  const consumedInitialPromptRef = useRef<string | undefined>(undefined);
+  // Consume a dashboard-provided prompt exactly once: start fresh and defer
+  // submission until the session is actually cleared.
+  // submitPrompt cannot be called in the same synchronous block as startNewChat
+  // because setSessionId(null) is a scheduled React update — ensureSessionId
+  // would still close over the old ID and send the prompt to the wrong session.
+  const [deferredPrompt, setDeferredPrompt] = useState<string | undefined>(undefined);
+
   useEffect(() => {
-    if (!initialPrompt || consumedInitialPromptRef.current === initialPrompt) return;
-
-    consumedInitialPromptRef.current = initialPrompt;
-    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+    if (!initialPrompt) return;
+    const params = new URLSearchParams(location.search);
+    params.delete(CLAUDE_CODE_SESSION_SEARCH_PARAM);
+    const search = params.toString();
+    navigate(`${location.pathname}${search ? `?${search}` : ''}`, { replace: true, state: null });
     startNewChat();
-    void submitPrompt(initialPrompt);
-  }, [initialPrompt, location.pathname, location.search, navigate, startNewChat, submitPrompt]);
+    setDeferredPrompt(initialPrompt);
+  }, [initialPrompt, location.pathname, location.search, navigate, startNewChat]);
+
+  // Submit once sessionId is null (reset complete). Also handles the case where
+  // sessionId was already null when the prompt arrived.
+  useEffect(() => {
+    if (!deferredPrompt || sessionId !== null) return;
+    setDeferredPrompt(undefined);
+    void submitPrompt(deferredPrompt);
+  }, [deferredPrompt, sessionId, submitPrompt]);
 
   const handleChatReset = useCallback(() => {
     if (selectedSessionId) {
@@ -90,9 +115,9 @@ export const ClaudeCodeChatRoute: FC = () => {
   }, [navigate, selectedSessionId, workspace]);
 
   const isLoadingSelectedSession =
-    selectedSessionId !== undefined && selectedSessionId !== sessionId;
+    selectedSessionId !== undefined && selectedSessionId !== displayedSessionId;
 
-  if (isLoadingSelectedSession && loadStatus === 'loading') {
+  if (isLoadingSelectedSession && loadStatus !== 'error') {
     return <ClaudeCodeChatLoadingState selectedSessionId={selectedSessionId} />;
   }
 

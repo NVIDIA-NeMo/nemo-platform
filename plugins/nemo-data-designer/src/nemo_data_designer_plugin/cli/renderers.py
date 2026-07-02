@@ -170,7 +170,7 @@ class PreviewRenderer(CLIRenderer):
         if analysis is not None and hasattr(analysis, "to_report"):
             try:
                 console.print()
-                analysis.to_report()  # type: ignore[attr-defined]
+                analysis.to_report()  # ty: ignore[call-non-callable]
             except Exception as exc:  # pragma: no cover - defensive
                 console.print(f"[yellow]Could not render analysis report: {exc}[/yellow]")
 
@@ -202,7 +202,7 @@ class PreviewRenderer(CLIRenderer):
         analysis = self._analysis
         if analysis is not None and hasattr(analysis, "to_report"):
             try:
-                analysis.to_report(save_path=results_dir / "report.html")  # type: ignore[attr-defined]
+                analysis.to_report(save_path=results_dir / "report.html")  # ty: ignore[call-non-callable]
             except Exception as exc:  # pragma: no cover - defensive
                 console.print(f"[yellow]Could not save analysis report: {exc}[/yellow]")
 

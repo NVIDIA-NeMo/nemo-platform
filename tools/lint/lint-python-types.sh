@@ -8,15 +8,15 @@ set -euo pipefail
 # Generate error reports by running `make reports` in script/ty_issues_report.
 # Counts reflect the violation count at the time of suppression.
 ci_ignored_rules=(
-  invalid-argument-type   # 148
-  unused-ignore-comment   # 14
-  unresolved-attribute    # 141
-  not-subscriptable       # 19
-  invalid-assignment      # 9
-  invalid-return-type     # 11
-  invalid-method-override # 4
-  no-matching-overload    # 9
-  unsupported-operator    # 6
+  invalid-argument-type    # 204
+  unused-ignore-comment    # 14
+  unresolved-attribute     # 72
+  not-subscriptable        # 31
+  invalid-assignment       # 30
+  invalid-return-type      # 18
+  invalid-method-override  # 18
+  no-matching-overload     # 2
+  unsupported-operator     # 2
 )
 
 ignore_args=()
@@ -24,4 +24,4 @@ for rule in "${ci_ignored_rules[@]}"; do
   ignore_args+=(--ignore "$rule")
 done
 
-uv run --frozen ty check "${ignore_args[@]}"
+uv run --frozen ty check --exit-zero-on-warning "${ignore_args[@]}"

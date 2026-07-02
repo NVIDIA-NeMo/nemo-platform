@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Request/response schemas for the evaluator metrics API."""
+"""Request/response schemas for the evaluator API — metrics, eval results, and shared filters."""
 
 from __future__ import annotations
 
@@ -14,8 +14,39 @@ from nemo_evaluator.shared.metric_bundles.bundles import (
     MetricMetadata,
 )
 from nemo_evaluator_sdk.values.common import SecretRef
+from nemo_evaluator_sdk.values.results import AggregatedMetricResult
+from nemo_platform_plugin.api.filter import ComparisonOperation, FilterOperation, LogicalOperation
+from nemo_platform_plugin.api.parsed_filter import ENTITY_BASE_FIELDS
 from nemo_platform_plugin.schema import DatetimeFilter, Filter
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+class DataFilter(Filter):
+    """A ``Filter`` whose declared non-base fields are stored under the entity's ``data.*`` column.
+
+    Implements the duck-typed hooks ``make_filter_dep`` looks for, so a custom-field filter (e.g.
+    ``metric_type`` or ``job_id``) is rewritten to ``data.<field>`` for the entity store. The plain
+    ``Filter`` does no translation, so an un-prefixed custom field reaches the store unresolved and
+    500s. (The richer ``nmp.common`` filter does this, but plugins can't depend on it — minimal port.)
+    """
+
+    @classmethod
+    def _get_entity_field_map(cls) -> dict[str, str]:
+        return {name: f"data.{name}" for name in cls.model_fields if name not in ENTITY_BASE_FIELDS}
+
+    @classmethod
+    def translate_operation(cls, operation: FilterOperation) -> FilterOperation:
+        field_map = cls._get_entity_field_map()
+
+        def _walk(op: FilterOperation) -> FilterOperation:
+            if isinstance(op, ComparisonOperation):
+                mapped = field_map.get(op.field)
+                return op if mapped is None else op.model_copy(update={"field": mapped})
+            if isinstance(op, LogicalOperation):
+                return op.model_copy(update={"operations": [_walk(child) for child in op.operations]})
+            return op
+
+        return _walk(operation)
 
 
 class CloudpickleMetricPayload(BaseModel):
@@ -135,7 +166,7 @@ class MetricSort(StrEnum):
     UPDATED_AT_DESC = "-updated_at"
 
 
-class MetricFilter(Filter):
+class MetricFilter(DataFilter):
     """Filter for metric queries."""
 
     workspace: str | None = Field(None, description="Filter by workspace.")
@@ -144,3 +175,46 @@ class MetricFilter(Filter):
     description: str | None = Field(None, description="Filter by description.")
     created_at: DatetimeFilter | None = Field(None, description="Filter by creation date.")
     updated_at: DatetimeFilter | None = Field(None, description="Filter by update date.")
+
+
+# --- Eval result DTOs --------------------------------------------------------
+#
+# API representation of the persisted result records (the storage entities are
+# ``AgentEvalResultEntity`` / ``EvaluateResultEntity``). A separate DTO — like ``Metric`` for
+# ``MetricBundleEntity`` — so the wire/SDK contract round-trips cleanly: an ``EntityBase``'s
+# ``id`` / ``created_at`` / ``updated_at`` are computed/output-only and don't deserialize from
+# the entity's own serialized form, whereas these plain fields do.
+
+
+class _ResultBase(BaseModel):
+    """Fields common to both result DTOs (provenance + aggregated scores + target traits)."""
+
+    id: str = Field(description="Unique identifier for the stored result record.")
+    name: str = Field(description="Result record name (equals the producing job's id).")
+    workspace: str = Field(description="Workspace the result belongs to.")
+    project: str | None = Field(default=None, description="The project associated with this result.")
+    job_id: str = Field(description="Identifier of the job run that produced this result.")
+    # Nullable traits default to None so they round-trip when the list route serializes with
+    # response_model_exclude_none (which drops null values from the payload) — matching ``Metric``.
+    target_kind: str | None = Field(
+        default=None, description="Target discriminator: 'model', 'agent', or a runner kind."
+    )
+    target_name: str | None = Field(default=None, description="Model/agent entity name, or the runner's model.")
+    target_url: str | None = Field(default=None, description="Endpoint URL, when the target is an HTTP model/agent.")
+    scores: AggregatedMetricResult = Field(description="Aggregated metric scores for the run.")
+    bundle_ref: str = Field(description="Reference to the full result bundle in the Files service.")
+    created_at: datetime = Field(description="Timestamp the result was created.")
+    updated_at: datetime = Field(description="Timestamp the result was last updated.")
+
+
+class AgentEvalResult(_ResultBase):
+    """API representation of a persisted agent-evaluation result record."""
+
+
+class EvaluateResult(_ResultBase):
+    """API representation of a persisted (row) evaluation result record."""
+
+    dataset_ref: str | None = Field(
+        default=None, description="Reference to the dataset evaluated; None for an inline dataset."
+    )
+    metric_types: list[str] = Field(description="Runtime metric type names applied in the run.")

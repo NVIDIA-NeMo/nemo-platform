@@ -13,6 +13,7 @@ from nmp.core.auth.api.v2.bundle import endpoints as bundle
 from nmp.core.auth.api.v2.discovery import endpoints as discovery
 from nmp.core.auth.api.v2.iam import endpoints as iam
 from nmp.core.auth.app.embedded_pdp.data import apply_embedded_policy_document
+from nmp.core.auth.app.embedded_pdp.policy_wasm import ensure_embedded_policy_wasm
 from nmp.core.auth.config import AuthServiceConfig
 
 logger = logging.getLogger(__name__)
@@ -52,6 +53,8 @@ class AuthService(Service[AuthServiceConfig]):
         if not config.enabled:
             logger.info("Auth disabled - skipping embedded policy engine initialization")
             return
+        if config.policy_decision_point_provider == "embedded":
+            ensure_embedded_policy_wasm(auto_build=config.embedded_pdp_auto_build_wasm)
 
     async def _start_refresh_loop(self) -> asyncio.Task:
         """Start background task to periodically refresh policy data."""

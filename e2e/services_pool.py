@@ -14,6 +14,7 @@ import time
 import uuid
 from copy import deepcopy
 from dataclasses import dataclass
+from importlib.metadata import entry_points
 from pathlib import Path
 from typing import Any
 
@@ -379,6 +380,31 @@ def with_e2e_instance_paths(config_data: dict[str, Any], data_dir: Path) -> dict
     return rendered
 
 
+# The authz e2e suite (``e2e/authz_oidc``) editable-installs intentionally-broken
+# fixture plugins (named ``harness-*``) into the shared venv to exercise the authz
+# fail-modes. Their ``nemo.services`` entry points persist for the rest of the pytest
+# session, so a pool platform spawned afterward would otherwise discover them too — and
+# with the ``on_invalid_plugin=hard_fail`` default an unruled fixture aborts the whole OPA
+# bundle ("Policy data not loaded — refusing to evaluate"), 502-ing every request and
+# wedging unrelated auth tests (e.g. test_jobs_auth). Pool platforms therefore pin the
+# service-plugin allowlist to the real installed plugins, fencing the fixtures out.
+# (authz_oidc spawns its own platforms with their own env, opting into the fixtures with
+# deny_route/quarantine, so it is unaffected by this.)
+_HARNESS_FIXTURE_PREFIX = "harness-"
+
+
+def _real_service_plugin_allowlist() -> str | None:
+    """Comma-joined ``nemo.services`` plugin names minus the ``harness-*`` test fixtures.
+
+    Returns ``None`` (⇒ leave discovery unrestricted) when no real plugins are visible, so
+    a stripped-down environment never accidentally disables all plugin discovery.
+    """
+    names = sorted(
+        {ep.name for ep in entry_points(group="nemo.services") if not ep.name.startswith(_HARNESS_FIXTURE_PREFIX)}
+    )
+    return ",".join(names) if names else None
+
+
 def e2e_services_env(config_path: Path, data_dir: Path) -> dict[str, str]:
     """Environment for the ``nemo services run`` child process."""
     env = os.environ.copy()
@@ -387,6 +413,9 @@ def e2e_services_env(config_path: Path, data_dir: Path) -> dict[str, str]:
     env["NMP_CONFIG_FILE_PATH"] = str(config_path)
     env["NMP_CONFIG_WARNINGS_DISABLED"] = "1"
     env["NMP_DATA_DIR"] = str(data_dir)
+    allowlist = _real_service_plugin_allowlist()
+    if allowlist is not None:
+        env.setdefault("NEMO_PLUGIN_SERVICES_ALLOWLIST", allowlist)
     return env
 
 

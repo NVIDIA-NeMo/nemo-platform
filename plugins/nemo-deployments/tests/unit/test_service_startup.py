@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from fastapi.routing import APIRoute
 from nemo_deployments_plugin.service import DeploymentsService
+from nemo_platform_plugin.authz import get_path_rules
 
 
 def _mounted_paths() -> set[str]:
@@ -31,19 +32,17 @@ def test_service_name_matches_entry_point() -> None:
 
 
 def test_service_authz_covers_mounted_routes() -> None:
-    contribution = DeploymentsService.get_authz_contribution()
-    endpoint_paths = set(contribution.endpoints.keys())
-    for path in _mounted_paths():
-        assert path in endpoint_paths, f"missing authz entry for {path}"
-        route_methods = {
-            method.lower()
-            for spec in DeploymentsService().get_routers()
-            for route in spec.router.routes
-            if isinstance(route, APIRoute) and f"/apis/deployments{spec.prefix}{route.path}" == path
-            for method in route.methods or set()
-        }
-        for method in route_methods:
-            assert method in contribution.endpoints[path], f"missing authz method {method} for {path}"
+    """Every mounted route carries at least one ``@path_rule``.
+
+    Authz is derived from the routes (no separate contribution); an unruled route would be
+    treated as invalid and fenced/denied by the PDP, so coverage is the property to assert.
+    """
+    service = DeploymentsService()
+    for spec in service.get_routers():
+        for route in spec.router.routes:
+            if isinstance(route, APIRoute):
+                full = f"/apis/deployments{spec.prefix}{route.path}"
+                assert get_path_rules(route.endpoint), f"missing @path_rule for {full}"
 
 
 def test_controller_entry_point() -> None:

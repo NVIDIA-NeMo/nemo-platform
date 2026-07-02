@@ -53,7 +53,7 @@ def docker_build(
         typer.Exit: On build failure.
     """
     try:
-        from python_on_whales import docker  # type: ignore[unresolved-import]
+        from python_on_whales import docker  # ty: ignore[unresolved-import]
     except ImportError:
         typer.echo(
             "Error: 'python-on-whales' is required for building images.  "

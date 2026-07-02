@@ -5,7 +5,7 @@ import inspect
 import logging
 from contextlib import contextmanager
 from functools import wraps
-from typing import Generator
+from typing import Generator, TypeVar
 
 from data_designer.logging import _make_stream_formatter
 
@@ -34,7 +34,10 @@ def _ensure_logging_handler() -> Generator[None, None, None]:
             dd_logger.removeHandler(handler)
 
 
-def with_logging(cls: type) -> type:
+_ClsT = TypeVar("_ClsT", bound=type)
+
+
+def with_logging(cls: _ClsT) -> _ClsT:
     """Wrap public methods so SDK logging is configured on demand.
 
     This ensures logging is configured for every public method call without

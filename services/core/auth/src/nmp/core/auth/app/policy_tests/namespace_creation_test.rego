@@ -37,7 +37,9 @@ workspace_test_data := {
             "workspaces": {}  # User has no workspace permissions yet
         },
         "existing-user@test.com": {
-            "workspaces": {"existing-ns": ["Viewer"]}
+            # Viewer of existing-ns plus a system Viewer grant — listing workspaces now requires
+            # workspaces.list in the system workspace.
+            "workspaces": {"existing-ns": ["Viewer"], "system": ["Viewer"]}
         }
     }
 }
@@ -87,9 +89,9 @@ test_unauthenticated_user_cannot_create_workspace if {
     result.allowed == false
 }
 
-# Test that listing workspaces requires permissions
+# Test that listing workspaces requires the system-level workspaces.list permission.
 test_listing_workspaces_requires_permission if {
-    # User with permission can list
+    # existing-user@test.com holds workspaces.list in the system workspace, so it can list.
     result := authz.allow with input as {
         "principal_id": "existing-user@test.com",
         "method": "GET",
@@ -103,8 +105,9 @@ test_listing_workspaces_requires_permission if {
     result.allowed == true
 }
 
-test_listing_workspaces_allowed_with_empty_filters if {
-    # Authenticated user can list workspaces even without any accessible workspaces
+test_listing_workspaces_without_permission_denied if {
+    # new-user@test.com has no roles at all, so it lacks workspaces.list in the system
+    # workspace and can no longer list workspaces.
     result := authz.allow with input as {
         "principal_id": "new-user@test.com",
         "method": "GET",
@@ -114,8 +117,8 @@ test_listing_workspaces_allowed_with_empty_filters if {
     with data.authz.endpoints as workspace_test_data.endpoints
     with data.authz.workspaces as workspace_test_data.workspaces
     with data.authz.principals as workspace_test_data.principals
-    
-    result.allowed == true
+
+    result.allowed == false
 }
 
 # Test allow for workspace creation

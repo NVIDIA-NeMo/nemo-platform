@@ -13,7 +13,7 @@ from nemo_platform.types.models.model_entity import ModelEntity
 from nmp.common.config import get_platform_config
 from nmp.core.models.app import is_multi_llm_image, parse_model_name_revision
 from nmp.core.models.app.constants import MODEL_MANAGED_BY_LABEL, MODEL_MANAGED_BY_MODELS_CONTROLLER
-from nmp.core.models.app.utils import _get_k8s_safe_name
+from nmp.core.models.app.utils import _get_k8s_safe_name, get_docker_plugin_puller_container_name
 from nmp.core.models.controllers.backends.common import DeploymentConfigView, deployment_config_view
 from nmp.core.models.controllers.backends.k8s_nim_operator.config import K8sNimOperatorConfig
 from nmp.core.models.controllers.backends.k8s_nim_operator.types.nimcache import (
@@ -216,8 +216,7 @@ def _generate_tool_plugin_container(
 
     if plugin_fileset:
         logger.info(f"Pulling tool_call_plugin fileset '{plugin_fileset}' for {deployment.workspace}/{deployment.name}")
-        container_name = f"md-plugin-{deployment.workspace}-{deployment.name}"
-        container_name = _get_k8s_safe_name(container_name, max_length=63, name_type="label")
+        container_name = get_docker_plugin_puller_container_name(deployment.workspace, deployment.name)
         if not huggingface_model_puller:
             logger.warning(
                 "tool_call_plugin is configured but huggingface_model_puller image is unavailable; "
@@ -241,7 +240,9 @@ def _generate_tool_plugin_container(
 
         return [
             ContainerSpec(
-                name=_get_k8s_safe_name(container_name, max_length=63, suffix="-prepare", name_type="label"),
+                name=_get_k8s_safe_name(
+                    container_name, max_length=63, suffix="-prepare", name_type="label", include_hash=False
+                ),
                 image=Image(
                     repository=backend_config.busybox_image,
                     tag=backend_config.busybox_image_tag,
@@ -255,7 +256,9 @@ def _generate_tool_plugin_container(
                 ],
             ),
             ContainerSpec(
-                name=_get_k8s_safe_name(container_name, max_length=63, suffix="-pull", name_type="label"),
+                name=_get_k8s_safe_name(
+                    container_name, max_length=63, suffix="-pull", name_type="label", include_hash=False
+                ),
                 image=Image(
                     repository=puller_repo,
                     tag=puller_tag,
@@ -273,7 +276,9 @@ def _generate_tool_plugin_container(
                 ],
             ),
             ContainerSpec(
-                name=_get_k8s_safe_name(container_name, max_length=63, suffix="-finalize", name_type="label"),
+                name=_get_k8s_safe_name(
+                    container_name, max_length=63, suffix="-finalize", name_type="label", include_hash=False
+                ),
                 image=Image(
                     repository=backend_config.busybox_image,
                     tag=backend_config.busybox_image_tag,
@@ -360,7 +365,9 @@ def compile_nimservice(
     if nim_config.lora_enabled:
         sidecar_containers = [
             ContainerSpec(
-                name=_get_k8s_safe_name(resource_name, max_length=63, suffix="-lora-sidecar", name_type="label"),
+                name=_get_k8s_safe_name(
+                    resource_name, max_length=63, suffix="-lora-sidecar", name_type="label", include_hash=False
+                ),
                 image=Image(
                     repository=f"{platform_config.image_registry}/{backend_config.lora_sidecar_image_name}",
                     tag=platform_config.image_tag,

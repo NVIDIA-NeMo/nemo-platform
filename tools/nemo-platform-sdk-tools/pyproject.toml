@@ -1,6 +1,5 @@
 [project]
 name = "nemo-platform-sdk-tools"
-version = "0.1.0"
 description = "SDK and license maintenance tooling for NeMo Platform"
 requires-python = ">=3.11,<3.15"
 
@@ -32,6 +31,7 @@ dependencies = [
     "typer>=0.19.2",
     "urllib3>=2.6.3",
 ]
+version = "0.0.0"
 
 [project.scripts]
 nemo-platform-sdk-tools = "nemo_platform_sdk_tools.cli:app"
@@ -40,6 +40,7 @@ nemo-platform-sdk-tools = "nemo_platform_sdk_tools.cli:app"
 nemo-platform-ext = { workspace = true }
 nemo-platform-sdk = { workspace = true }
 nmp-common = { workspace = true }
+
 
 [dependency-groups]
 test = [

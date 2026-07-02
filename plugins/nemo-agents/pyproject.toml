@@ -1,6 +1,5 @@
 [project]
 name = "nemo-agents-plugin"
-version = "0.1.0"
 description = "NeMo Agents Plugin — agent lifecycle management on the NeMo Platform."
 requires-python = ">=3.11,<3.15"
 dependencies = [
@@ -20,6 +19,7 @@ dependencies = [
     "anthropic>=0.88.0",
     "rich>=13.7.1",
 ]
+version = "0.0.0"
 
 [project.entry-points."nemo.services"]
 agents = "nemo_agents_plugin.service:AgentsService"
@@ -83,6 +83,7 @@ packages = [
     "vendor/openclaw_agent_adapter/src/nat_openclaw_agent_adapter",
 ]
 
+
 [tool.uv.sources]
 nemo-platform = { workspace = true }
 nemo-platform-plugin = { workspace = true }
@@ -97,3 +98,4 @@ pythonpath = ["src"]
 
 # Opt this plugin into OpenAPI spec generation.
 [tool.nemo.openapi]
+

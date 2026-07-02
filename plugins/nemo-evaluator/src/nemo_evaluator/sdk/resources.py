@@ -23,6 +23,12 @@ from nemo_evaluator.sdk.metric_resources import (
     AsyncEvaluatorMetricsResource,
     EvaluatorMetricsResource,
 )
+from nemo_evaluator.sdk.result_resources import (
+    AsyncEvaluatorAgentEvalResultsResource,
+    AsyncEvaluatorEvalResultsResource,
+    EvaluatorAgentEvalResultsResource,
+    EvaluatorEvalResultsResource,
+)
 from nemo_evaluator.sdk.types import (
     PluginDatasetInput,
     RunConfig,
@@ -53,6 +59,8 @@ class Evaluator:
         self._http_client = platform._client
         self._executor = _SyncEvaluatorPluginExecutor(platform=platform)
         self.metrics = EvaluatorMetricsResource(platform)
+        self.agent_eval_results = EvaluatorAgentEvalResultsResource(platform)
+        self.eval_results = EvaluatorEvalResultsResource(platform)
 
     def plugin_status(self) -> dict[str, object]:
         """Return evaluator plugin health information from the service."""
@@ -219,6 +227,8 @@ class AsyncEvaluator:
         self._http_client = platform._client
         self._executor = _AsyncEvaluatorPluginExecutor(platform=platform)
         self.metrics = AsyncEvaluatorMetricsResource(platform)
+        self.agent_eval_results = AsyncEvaluatorAgentEvalResultsResource(platform)
+        self.eval_results = AsyncEvaluatorEvalResultsResource(platform)
 
     async def plugin_status(self) -> dict[str, object]:
         """Return evaluator plugin health information from the service."""

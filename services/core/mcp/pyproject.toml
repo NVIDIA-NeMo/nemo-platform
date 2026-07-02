@@ -1,6 +1,5 @@
 [project]
 name = "nmp-core-mcp"
-version = "0.1.0"
 description = "Model Context Protocol server for NeMo Platform"
 dependencies = [
     "nmp-common",
@@ -23,6 +22,7 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
   "Operating System :: OS Independent",
 ]
+version = "0.0.0"
 
 [project.scripts]
 nemo-mcp = "nmp.core.mcp.main:main"
@@ -31,6 +31,7 @@ nemo-mcp = "nmp.core.mcp.main:main"
 nmp-common = { workspace = true }
 nmp-entities = { workspace = true }
 nemo-platform-sdk = { workspace = true }
+
 
 [build-system]
 requires = ["hatchling==1.26.3"]

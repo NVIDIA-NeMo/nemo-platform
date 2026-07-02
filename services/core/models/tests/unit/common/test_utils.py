@@ -3,6 +3,8 @@
 
 """Unit tests for common utilities."""
 
+import hashlib
+import re
 from datetime import datetime
 
 import pytest
@@ -882,35 +884,59 @@ def test_normalize_model_entity_name_digit_leading_long_truncates():
 # Tests for Kubernetes-safe name generation
 # ============================================================================
 
+_HASH8 = re.compile(r"-[0-9a-f]{8}(?:-[a-z0-9-]+)?$")
 
-def test_k8s_safe_name_simple_unchanged():
-    """Test that a simple valid name passes through unchanged."""
+
+def _identity_hash(workspace: str, name: str) -> str:
+    return hashlib.sha256(f"{workspace}/{name}".encode()).hexdigest()[:8]
+
+
+def _base_hash(base_name: str) -> str:
+    return hashlib.sha256(base_name.encode()).hexdigest()[:8]
+
+
+def _assert_label_with_hash(name: str, *, prefix: str | None = None) -> None:
+    assert len(name) <= 63
+    assert name[0].isalpha()
+    assert name[-1].isalnum()
+    assert _HASH8.search(name)
+    if prefix is not None:
+        assert name.startswith(prefix)
+
+
+def test_k8s_safe_name_always_includes_hash_suffix():
+    """Test that a simple valid name always includes a hash suffix."""
     result = _get_k8s_safe_name("test-deployment", max_length=63, name_type="label")
-    assert result == "test-deployment"
+    assert result == f"test-deployment-{_base_hash('test-deployment')}"
 
 
 def test_k8s_safe_name_dots_replaced_in_labels():
     """Test that dots are replaced with hyphens for DNS labels (RFC 1035)."""
-    # This fixes the user's reported issue: llama-3.2-1b should become llama-3-2-1b
     result = _get_k8s_safe_name("llama-3.2-1b", max_length=63, name_type="label")
-    assert result == "llama-3-2-1b"
+    assert result == f"llama-3-2-1b-{_base_hash('llama-3.2-1b')}"
     assert "." not in result
 
 
 def test_k8s_safe_name_dots_preserved_in_dns_subdomain():
     """Test that dots are preserved for DNS subdomains (RFC 1123)."""
     result = _get_k8s_safe_name("my.secret.name", max_length=253, name_type="dns_subdomain")
-    assert result == "my.secret.name"
+    assert result == f"my.secret.name-{_base_hash('my.secret.name')}"
+
+
+def test_k8s_safe_name_dns_subdomain_sanitizes_invalid_label_chars():
+    """Invalid characters within dot-delimited labels are sanitized per label."""
+    result = _get_k8s_safe_name("my..secret!.name", max_length=253, name_type="dns_subdomain")
+    assert "!" not in result
+    assert result.startswith("my.secret.name-")
+    assert result.endswith(f"-{_base_hash('my..secret!.name')}")
 
 
 def test_k8s_safe_name_starts_with_letter_for_labels():
     """Test that labels must start with a letter (RFC 1035)."""
-    # Starts with digit - should prepend 'x'
     result = _get_k8s_safe_name("123-deployment", max_length=63, name_type="label")
     assert result[0].isalpha()
-    assert result == "x123-deployment"
+    assert result == f"x123-deployment-{_base_hash('123-deployment')}"
 
-    # Starts with hyphen - should prepend 'x'
     result = _get_k8s_safe_name("-deployment", max_length=63, name_type="label")
     assert result[0].isalpha()
 
@@ -919,13 +945,13 @@ def test_k8s_safe_name_ends_with_alphanumeric():
     """Test that names must end with alphanumeric."""
     result = _get_k8s_safe_name("deployment-", max_length=63, name_type="label")
     assert result[-1].isalnum()
-    assert result == "deployment"
+    assert result == f"deployment-{_base_hash('deployment-')}"
 
 
 def test_k8s_safe_name_lowercase_conversion():
     """Test that names are converted to lowercase."""
     result = _get_k8s_safe_name("MyDeployment", max_length=63, name_type="label")
-    assert result == "mydeployment"
+    assert result == f"mydeployment-{_base_hash('MyDeployment')}"
     assert result.islower()
 
 
@@ -958,19 +984,52 @@ def test_k8s_safe_name_deterministic():
     assert result1 == result2
 
 
+def test_k8s_safe_name_hash_input_differs_from_joined_base():
+    """Distinct workspace/name identities produce different hashes for the same joined base."""
+    base = "dep-foo-bar-baz"
+    name_a = _get_k8s_safe_name(base, hash_input="foo/bar-baz")
+    name_b = _get_k8s_safe_name(base, hash_input="foo-bar/baz")
+    assert name_a != name_b
+
+
+def test_plugin_puller_name_ambiguous_workspace_name_pairs_differ():
+    """Plugin puller container names use workspace/name identity, not joined hyphens alone."""
+    base = "md-plugin-foo-bar-baz"
+    name_a = _get_k8s_safe_name(base, hash_input="foo/bar-baz")
+    name_b = _get_k8s_safe_name(base, hash_input="foo-bar/baz")
+    assert name_a != name_b
+
+
+def test_get_deployment_secret_name_ambiguous_workspace_name_pairs_differ():
+    """Secret names must not collide on ambiguous workspace/name pairs."""
+    name_a = get_deployment_secret_name("foo", "bar-baz", prefix="md", suffix="-hf-token")
+    name_b = get_deployment_secret_name("foo-bar", "baz", prefix="md", suffix="-hf-token")
+    assert name_a != name_b
+    assert name_a.endswith("-hf-token")
+    assert name_b.endswith("-hf-token")
+
+
 def test_get_deployment_resource_name_simple():
     """Test simple deployment resource name."""
     result = get_deployment_resource_name("default", "test-deployment")
-    assert result == "md-default-test-deployment"
+    assert result == f"md-default-test-deployment-{_identity_hash('default', 'test-deployment')}"
     assert len(result) <= 63
+
+
+def test_get_deployment_resource_name_ambiguous_workspace_name_pairs_differ():
+    """Regression: hyphen-joined workspace/name pairs must not collide."""
+    name_a = get_deployment_resource_name("foo", "bar-baz")
+    name_b = get_deployment_resource_name("foo-bar", "baz")
+    assert name_a != name_b
+    _assert_label_with_hash(name_a, prefix="md-")
+    _assert_label_with_hash(name_b, prefix="md-")
 
 
 def test_get_deployment_resource_name_dots_replaced():
     """Test that dots in deployment name are replaced (DNS-1035 compliance)."""
-    # This is the exact issue from the user's error message
     result = get_deployment_resource_name("ben-test", "llama-3.2-1b-deployment")
     assert "." not in result
-    assert result == "md-ben-test-llama-3-2-1b-deployment"
+    assert result == f"md-ben-test-llama-3-2-1b-deployment-{_identity_hash('ben-test', 'llama-3.2-1b-deployment')}"
     assert len(result) <= 63
 
 
@@ -989,14 +1048,14 @@ def test_get_deployment_resource_name_long_names():
 def test_get_deployment_secret_name_simple():
     """Test simple secret name generation."""
     result = get_deployment_secret_name("default", "test", prefix="md", suffix="-hf-token")
-    assert result == "md-default-test-hf-token"
+    assert result == f"md-default-test-{_identity_hash('default', 'test')}-hf-token"
     assert len(result) <= 253
 
 
 def test_get_deployment_secret_name_provider():
     """Test provider secret name generation."""
     result = get_deployment_secret_name("default", "test", prefix="model-provider", suffix="-api-key")
-    assert result == "model-provider-default-test-api-key"
+    assert result == f"model-provider-default-test-{_identity_hash('default', 'test')}-api-key"
     assert len(result) <= 253
 
 
@@ -1043,8 +1102,8 @@ def test_real_invalid_k8s_name_issue():
     assert all(c.isalnum() or c == "-" for c in result)
     assert result.islower()
 
-    # Expected output
-    assert result == "md-ben-test-llama-3-2-1b-deployment"
+    # Expected output includes hash from unambiguous workspace/name identity
+    assert result == f"md-ben-test-llama-3-2-1b-deployment-{_identity_hash('ben-test', 'llama-3.2-1b-deployment')}"
 
 
 def test_maximum_length_deployment_resources():
@@ -1072,9 +1131,9 @@ def test_maximum_length_deployment_resources():
 
 
 def test_get_nimcache_resource_name_simple():
-    """Short names are unchanged and also valid for get_deployment_resource_name."""
+    """Short names include hash suffix and stay within the 59-char NIMCache limit."""
     result = get_nimcache_resource_name("default", "test-deployment")
-    assert result == "md-default-test-deployment"
+    assert result == f"md-default-test-deployment-{_identity_hash('default', 'test-deployment')}"
     assert len(result) <= 59
 
 
@@ -1082,7 +1141,7 @@ def test_get_nimcache_resource_name_dots_replaced():
     """Dots are replaced with hyphens (DNS-1035 compliance)."""
     result = get_nimcache_resource_name("ben-test", "llama-3.2-1b-deployment")
     assert "." not in result
-    assert result == "md-ben-test-llama-3-2-1b-deployment"
+    assert result == f"md-ben-test-llama-3-2-1b-deployment-{_identity_hash('ben-test', 'llama-3.2-1b-deployment')}"
     assert len(result) <= 59
 
 
@@ -1189,7 +1248,7 @@ def test_nimcache_and_nimservice_names_may_differ_for_long_inputs():
 def test_get_deployment_secret_name_hft_suffix():
     """Test secret name with -hft suffix (used for HuggingFace token secrets)."""
     result = get_deployment_secret_name("default", "my-deployment", prefix="md", suffix="-hft")
-    assert result == "md-default-my-deployment-hft"
+    assert result == f"md-default-my-deployment-{_identity_hash('default', 'my-deployment')}-hft"
     assert len(result) <= 253
 
 

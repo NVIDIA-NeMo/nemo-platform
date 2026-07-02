@@ -1,0 +1,231 @@
+---
+title: "Plugin Authorization"
+description: ""
+---
+Plugin authorization is derived *entirely from your routes*. You attach an authorization rule to each HTTP route handler — referencing typed permissions and declaring the route's OAuth scope — and the platform reads those rules back to build the permission catalog, the per-endpoint bindings, and the plugin's namespace when it compiles the OPA bundle. There is no separate permission list to keep in sync with your routes.
+
+This page is for plugin authors. For the platform-wide RBAC model see [Roles & Permissions](/documentation/access-control/authorization/roles-and-permissions); for how decisions are evaluated see [Policy Engine](/documentation/access-control/authorization/policy-engine); for token-level scopes see [API Scopes](/documentation/access-control/authorization/api-scopes).
+
+## How Plugin Authz Is Derived
+
+Every plugin HTTP route **must** carry an authorization rule — a `@path_rule` (attached directly, or via a route factory's `authz=`). A route with no rule is a validation error. Under the default fail-mode the auth service refuses to build the OPA bundle rather than silently fencing (or exposing) the route, so a missing rule fails the whole platform closed at startup instead of leaking at request time.
+
+The rule references `Permission` objects; the platform derives the normalized policy from the routes when the bundle is built:
+
+- the **permission catalog** (each permission's id and description),
+- the **per-endpoint bindings** (method + path → permissions, scope, caller kinds),
+- the plugin **namespace**.
+
+The permission *is* the object referenced on the route, and it carries its own description — so there is nothing to declare twice. The only authz a plugin declares apart from its routes is the optional escape hatch for permissions that have no 1:1 route (see [Permissions Without a Route](#permissions-without-a-route)).
+
+## The Authorization Model
+
+Three orthogonal pieces ride on a route: the **permissions** it requires, the **OAuth scope** it sits behind, and the **caller kinds** allowed to satisfy it.
+
+### Permissions — the `service.resource.action` grammar
+
+A permission id follows the grammar `<service>.<resource>.<action>`, joined from its parts:
+
+- `service` — the owning plugin. It **must** equal your `NemoService.name`; this namespace fence is enforced fail-closed (an out-of-namespace permission fails the whole plugin).
+- `resource` — the collection or sub-resource acted on. May be empty for a service-level action, and may itself be dotted.
+- `action` — the operation (`create` / `list` / `read` / `update` / `delete`, …).
+
+You never hand-build id strings. Declare permissions in a typed `PermissionSet` and reference the members:
+
+```python
+from nemo_platform_plugin.authz import PermissionSet, perm
+
+
+class ItemPerms(PermissionSet, namespace="myplugin.items"):
+    CREATE = perm("Create example items")   # -> id "myplugin.items.create"
+    LIST = perm("List example items")        # -> id "myplugin.items.list"
+    READ = perm("Read an example item")      # -> id "myplugin.items.read"
+```
+
+Inside a `PermissionSet(namespace="a.b")`, `perm("desc")` mints the id `a.b.<member-name-lowercased>`. For a compound id, pass `suffix=`:
+
+```python
+class DeploymentPerms(PermissionSet, namespace="deployments.deployments"):
+    STATUS_UPDATE = perm(
+        "Update deployment observed status (controller)",
+        suffix="status.update",  # -> id "deployments.deployments.status.update"
+    )
+```
+
+Referencing a `PermissionSet` member that doesn't exist is an `AttributeError` at import, and passing a bare string where a `Permission` is expected is a `TypeError` at decoration — a permission typo can never reach the policy layer.
+
+### OAuth scopes
+
+A plugin owns one `AuthzScope`, which mints both the coarse OAuth scope and the permission namespace beneath it. `AuthzScope("myplugin")` gives the route decorators `@scope.read` and `@scope.write`, which stamp the scope requirement `myplugin:read` / `myplugin:write` (plus the catch-all `platform:read` / `platform:write`). A route carries exactly one scope.
+
+When the permission namespace nests deeper than the OAuth scope, use `child()` — the scope stays put while the permission id deepens:
+
+```python
+from nemo_platform_plugin.authz import AuthzScope
+
+scope = AuthzScope("agents")
+scope.child("deployments").permission("create", description="Create a deployment")
+# -> Permission id "agents.deployments.create"; OAuth scope stays "agents"
+```
+
+### Caller kinds — PRINCIPAL and SERVICE_PRINCIPAL
+
+`CallerKind` is a subject attribute enforced in Rego, not a permission. A route is intended for a normal authenticated user (`CallerKind.PRINCIPAL`) or a caller whose id is prefixed `service:` — e.g. a controller writing observed status (`CallerKind.SERVICE_PRINCIPAL`). There is intentionally no anonymous kind; the only genuinely public routes are core infrastructure, hardcoded as a bypass in the enforcement point.
+
+## Declaring Authz on a Route
+
+For a hand-written route, `@router.<method>` is the **outermost** (top) decorator; `@scope.read`/`@scope.write` and `@path_rule` sit under it. The scope decorator and the path rule are independent, so their order relative to each other does not matter.
+
+```python
+from fastapi import APIRouter
+from nemo_platform_plugin.authz import AuthzScope, CallerKind, PermissionSet, path_rule, perm
+from nemo_platform_plugin.service import NemoService, RouterSpec
+
+scope = AuthzScope("example")
+
+
+class ExamplePerms(PermissionSet, namespace="example"):
+    READ = perm("Read example items")  # -> Permission("example.read", ...)
+
+
+router = APIRouter()
+
+
+@router.get("/v2/workspaces/{workspace}/items/{name}")
+@scope.read
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[ExamplePerms.READ])
+async def get_item(workspace: str, name: str) -> dict: ...
+
+
+class ExampleService(NemoService):
+    name = "example"
+
+    def get_routers(self) -> list[RouterSpec]:
+        return [RouterSpec(router)]
+```
+
+`@path_rule` takes:
+
+- `callers` — a required, non-empty list of caller kinds. They are **OR'd**.
+- `permissions` — `Permission` objects the caller must hold. They are **AND'd**, and may be `[]` for an authenticated-but-permissionless route (e.g. a health check or a raw blob `PUT`).
+
+Stacking `@path_rule` on the same handler adds OR-alternatives: any satisfied rule allows the request.
+
+A controller-only write route pins the caller kind to `SERVICE_PRINCIPAL` and requires the compound permission:
+
+```python
+from nemo_platform_plugin.authz import CallerKind, path_rule
+
+
+@router.put("/deployments/{name}/status", response_model=Deployment)
+@scope.write
+@path_rule(callers=[CallerKind.SERVICE_PRINCIPAL], permissions=[DeploymentPerms.STATUS_UPDATE])
+async def update_deployment_status(workspace: str, name: str, ...) -> Deployment: ...
+```
+
+An authenticated-but-permissionless route passes `permissions=[]`:
+
+```python
+@router.put("/blob/{name}")
+@scope.write
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[])
+async def upload_blob(name: str, request: Request) -> BlobUploadResponse: ...
+```
+
+## Job and Function Routes
+
+Jobs and functions are mounted through route factories rather than hand-written handlers. You **must** pass `authz=` — the kwarg defaults to `None`, and a factory called without it leaves its routes unruled, which fails closed at bundle time.
+
+```python
+from nemo_platform_plugin.authz import AuthzScope
+from nemo_platform_plugin.functions.routes import add_function_routes
+from nemo_platform_plugin.jobs.routes import add_job_routes
+
+scope = AuthzScope("myplugin")
+
+add_job_routes(MyJob, authz=scope)
+
+add_function_routes(
+    GreetFunction,
+    authz=scope,
+    permission_description="Invoke the greet function",
+)
+```
+
+When `authz=` is set, `add_function_routes` stamps a `PRINCIPAL` rule on the route and mints an invoke permission from the scope (`<namespace>.<function-name>`, a write action). `permission_description` is optional prose for that permission and requires `authz` — supplying it alone is a `ValueError`.
+
+## Permissions Without a Route
+
+Some permissions are not 1:1 with a route — they are checked in middleware, declared ahead of the route that will reference them, or need to be granted to a role the default heuristic misses. Declare these on your `NemoService` via two escape hatches; both are merged into the derived catalog.
+
+```python
+from nemo_platform_plugin.authz import Permission
+from nemo_platform_plugin.service import NemoService, RouterSpec
+
+
+class MyService(NemoService):
+    name = "myplugin"
+
+    def get_routers(self) -> list[RouterSpec]: ...
+
+    def extra_permissions(self) -> list[Permission]:
+        # Permissions with no 1:1 route (e.g. checked in middleware).
+        return MiddlewarePerms.all()
+
+    def extra_role_permissions(self) -> dict[str, list[Permission]]:
+        # Grant a permission to a role the suffix heuristic wouldn't reach.
+        return {"Viewer": [MyFunctionPerms.INVOKE]}
+```
+
+The derivation grants each catalog permission to roles by a suffix heuristic:
+
+| Permission id ends with | Granted to |
+|-------------------------|------------|
+| `.list` or `.read` | Viewer + Editor |
+| everything else | Editor only |
+
+Use `extra_role_permissions` when that heuristic is wrong — e.g. an agent gateway's `.invoke` permission that a Viewer must hold to call a deployed agent even though its suffix isn't `read`. Grants are **unioned** with the suffix defaults (never subtractive), every granted permission must live in this service's own namespace (or the whole plugin fails closed), and a permission granted here is registered in the catalog automatically, so it need not also appear in `extra_permissions`.
+
+## When a Plugin's Authz Is Invalid
+
+An unruled route, or a rule referencing an undeclared or out-of-namespace permission, makes a plugin's authz invalid. The offending routes are always emitted as explicit denies; the auth service's `on_invalid_plugin` fail-mode (env prefix `NMP_AUTH_`) controls the blast radius:
+
+| `NMP_AUTH_ON_INVALID_PLUGIN` | Behavior |
+|------------------------------|----------|
+| `hard_fail` (default) | Refuse to build the OPA bundle — fail closed at the platform level. |
+| `quarantine` | Deny the whole offending plugin, but keep the platform up. |
+| `deny_route` | Deny only the plugin's bad routes. |
+
+<Note>
+
+The default `hard_fail` matches the rule that a missing path rule is a validation error. A deployment that loads dynamically-discovered or third-party plugins CI never vetted can downgrade to `quarantine` or `deny_route` so one bad plugin can't wedge the platform.
+
+</Note>
+
+## Verifying Your Plugin's Authz
+
+From the repo root, with the workspace installed, check that every route is ruled:
+
+```bash
+uv run python services/core/auth/scripts/auth-tools.py sync-plugins --dry-run
+# -> reports 0 degraded plugins when every route is ruled
+```
+
+Then rebuild and test the compiled policy:
+
+```bash
+make build-policy && make test-policy
+```
+
+<Note>
+
+The compiled `policy.wasm` in the auth service is a gitignored build artifact. Run `make build-policy` after pulling authz or Rego changes — otherwise the embedded-PDP tests run against a stale copy and fail with misleading errors.
+
+</Note>
+
+## Related
+
+- [Roles & Permissions](/documentation/access-control/authorization/roles-and-permissions) — Predefined roles and how permissions map to them.
+- [Permissions Reference](/documentation/access-control/authorization/permissions-reference) — The full catalog of derived permissions across every API.
+- [Policy Engine](/documentation/access-control/authorization/policy-engine) — How the PDP evaluates permissions, scopes, and role bindings.
+- [API Scopes](/documentation/access-control/authorization/api-scopes) — Token-level scope restrictions layered on top of role permissions.

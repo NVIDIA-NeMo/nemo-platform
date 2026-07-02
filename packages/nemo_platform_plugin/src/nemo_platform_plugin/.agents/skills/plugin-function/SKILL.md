@@ -151,12 +151,17 @@ This is the one-liner that mounts the function as a `POST` route on your plugin 
 
 ```python
 from fastapi import FastAPI
+from nemo_platform_plugin.authz import AuthzScope
 from nemo_platform_plugin.functions.routes import add_function_routes
 
 from .functions.greet import GreetFunction
 
 app = FastAPI()
-router = add_function_routes(GreetFunction)
+router = add_function_routes(
+    GreetFunction,
+    authz=AuthzScope("my-plugin"),
+    permission_description="Invoke the greet function",
+)
 app.include_router(
     router,
     prefix="/apis/my-plugin/v2/workspaces/{workspace}",
@@ -164,12 +169,15 @@ app.include_router(
 # POST /apis/my-plugin/v2/workspaces/{workspace}/greet
 ```
 
+`authz=` is **required** — pass your plugin's `AuthzScope` or the route is left unruled, and under the default `on_invalid_plugin=hard_fail` the auth service refuses to build the OPA bundle (the platform 502s) rather than silently fencing the route. See the `plugin-authz` skill for the full path-rule model.
+
 `add_function_routes`:
 
 - Validates the body against `spec_schema` (422 on bad input).
 - Builds a `FunctionContext` from the workspace path parameter and the optional `X-Request-ID` header.
 - Resolves keyword-only DI parameters on `run` by name — `ctx`, `async_sdk` (sync `sdk` injection lands in a follow-up).
 - Awaits `run(spec, **resolved)` and serialises the result; returns `application/x-ndjson` with heartbeat injection if the return is an async iterator.
+- Stamps the route's authz from `authz=` — a `PRINCIPAL` `@path_rule` carrying a write-action invoke permission (`<namespace>.<function-name>`, e.g. `my-plugin.greet`) plus `@AuthzScope.write`. `permission_description` overrides that permission's description (it defaults to the function's `description`); passing it without `authz=` is a `ValueError`.
 
 Optional kwarg `heartbeat_interval_seconds` overrides the 5-second default — useful in tests.
 
@@ -256,13 +264,14 @@ Route-test with `TestClient` when you want to exercise validation, DI, and strea
 ```python
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from nemo_platform_plugin.authz import AuthzScope
 from nemo_platform_plugin.functions.routes import add_function_routes
 
 
 def test_greet_route_returns_json():
     app = FastAPI()
     app.include_router(
-        add_function_routes(GreetFunction),
+        add_function_routes(GreetFunction, authz=AuthzScope("my-plugin")),
         prefix="/apis/my-plugin/v2/workspaces/{workspace}",
     )
     client = TestClient(app)
@@ -277,7 +286,7 @@ def test_greet_route_returns_json():
 For streaming functions, set a low heartbeat interval so tests aren't flaky:
 
 ```python
-add_function_routes(CountFunction, heartbeat_interval_seconds=0)
+add_function_routes(CountFunction, heartbeat_interval_seconds=0, authz=AuthzScope("my-plugin"))
 ```
 
 ## Gotchas
@@ -285,6 +294,7 @@ add_function_routes(CountFunction, heartbeat_interval_seconds=0)
 - **`run` must be `async def`**: The class enforces this at definition time. Sync work uses `await asyncio.to_thread(...)`.
 - **`name` is the suffix only**: For entry-point key `"my-plugin.greet"`, `NemoFunction.name = "greet"`. The class declares the suffix; the dot-prefix lives in `pyproject.toml`.
 - **`spec_schema` is required**: `add_function_routes` raises `TypeError` if it's missing. Declare it before mounting.
+- **`authz=` is required**: pass your plugin's `AuthzScope` to `add_function_routes`, or the route is unruled and the OPA bundle build fails closed under `hard_fail`. See the `plugin-authz` skill.
 - **Streaming is detected from the return type, not declared**: An `async def` with `yield` is an async generator — the route emits NDJSON. An `async def` with `return` is a coroutine — the route emits JSON. Don't add a class-level streaming flag.
 - **`endpoint` is the trailing segment**: Setting `endpoint = "/{name}/v1"` mounts under the workspace prefix; you can't relocate the function to a different plugin's URL namespace.
 - **Reserved CLI flag**: `submit --workspace` controls the URL path segment — don't put a `workspace` field in your spec model with conflicting semantics.

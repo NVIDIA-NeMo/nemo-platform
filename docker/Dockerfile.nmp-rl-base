@@ -1,0 +1,56 @@
+# syntax=docker/dockerfile:1
+# nmp-rl base - NVIDIA NeMo-RL v0.6.0 NGC container + CVE hardening.
+#
+# Bases on the PUBLISHED NGC NeMo-RL container (amd64 + arm64 at v0.6.0), which
+# bundles the full RL stack on Python 3.13: PyTorch 2.10, Ray 2.54.0, vLLM
+# 0.17.1, Megatron-Core 0.18, Transformers 5.3.
+#
+# Publish target: nmp-rl-base.
+
+# Referenced by tag rather than a @sha256 digest pin: NGC publishes separate
+# per-architecture tags/digests for nemo-rl, so a single digest doesn't cleanly
+# cover the multi-arch (amd64 + arm64) base we build on. The :v0.6.0 tag is the
+# stable, arch-agnostic reference.
+ARG NEMO_RL_IMAGE=nvcr.io/nvidia/nemo-rl:v0.6.0
+
+FROM ${NEMO_RL_IMAGE} AS nmp-rl-base
+
+# NeMo-RL v0.6.0 ships its venv at /opt/nemo_rl_venv (Python 3.13).
+# VERIFY this path against the actual image if NeMo-RL relocates it in a future
+# tag — the training image's /opt/venv symlink and entrypoint depend on it.
+ENV VIRTUAL_ENV=/opt/nemo_rl_venv \
+    HF_HUB_ENABLE_HF_TRANSFER=1 \
+    OTEL_PYTHON_EXCLUDED_URLS="health"
+
+# The NGC base venv is built as root with locked-down cache dirs; relax them so
+# editable installs in the training image can write.
+RUN chmod 755 /root /root/.cache /root/.cache/uv /root/.local /root/.local/share /root/.local/share/uv 2>/dev/null || true
+
+# NeMo-RL is installed EDITABLE in this base: its source tree lives at
+# /opt/nemo-rl (root-owned, non-traversable) and the editable import finder
+# os.stat()s files under it at import time. The training image drops to
+# USER 1000, so `from nemo_rl... import ...` hits the finder and fails with
+# PermissionError on /opt/nemo-rl/nemo_rl/__init__.py. Make the source tree
+# world-readable + dir-traversable (a+rX) so the non-root runtime can import it.
+# Read-only is enough — nothing writes back into the editable tree at runtime.
+RUN chmod -R a+rX /opt/nemo-rl
+
+# CVE remediation: remove vLLM from the main venv and any pre-built Ray worker
+# venvs (NeMo-RL rebuilds those at runtime). vLLM is unused by DPO/SFT/LoRA.
+# Add it back when adding GRPO.
+RUN set -e; \
+    rm -rf ${VIRTUAL_ENV}/lib/python*/site-packages/vllm \
+           ${VIRTUAL_ENV}/lib/python*/site-packages/vllm-*.dist-info; \
+    for venv_dir in /opt/ray_venvs/*/; do \
+        [ -d "$venv_dir/lib" ] || continue; \
+        rm -rf "$venv_dir"/lib/python*/site-packages/vllm \
+               "$venv_dir"/lib/python*/site-packages/vllm-*.dist-info; \
+    done
+
+# Drop to a non-root user by default so DIRECT consumers of this published base do
+# not run with container root. The build steps above intentionally run as root (the
+# NGC base default — a USER directive only changes the final/default user, not the
+# RUNs preceding it). Derived images that need root for their own build steps
+# (e.g. Dockerfile.nmp-rl-training) re-assert `USER root` and then drop back to a
+# non-root UID at the end. UID 1000 is the NGC base's `ubuntu` user.
+USER 1000:1000

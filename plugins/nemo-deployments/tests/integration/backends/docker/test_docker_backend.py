@@ -12,7 +12,7 @@ import pytest
 from docker_availability import skip_without_docker
 from integration_helpers import force_remove_container
 from nemo_deployments_plugin.backends.docker.backend import DockerDeploymentBackend
-from nemo_deployments_plugin.backends.docker.labels import container_name
+from nemo_deployments_plugin.backends.labels import container_name
 from nemo_deployments_plugin.backends.registry import BACKEND_CLASSES
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
 from nemo_deployments_plugin.entities import (
@@ -48,7 +48,7 @@ def _never_config() -> DeploymentConfig:
     return DeploymentConfig(
         name="echo-cfg",
         workspace="itest",
-        restart_policy="Never",
+        restart_policy="Never",  # ty: ignore[unknown-argument]
         containers=[Container(name="main", image="alpine:3.20", command=["echo"], args=["hello"])],
     )
 
@@ -57,7 +57,7 @@ def _always_http_config() -> DeploymentConfig:
     return DeploymentConfig(
         name="http-cfg",
         workspace="itest",
-        restart_policy="Always",
+        restart_policy="Always",  # ty: ignore[unknown-argument]
         containers=[
             Container(
                 name="main",

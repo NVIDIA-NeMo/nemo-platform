@@ -1,17 +1,17 @@
 package authz
 
 import data.authz.allow
-import data.authz.has_role
 import data.authz.has_permissions
+import data.authz.has_role
 
 import future.keywords.contains
 import future.keywords.if
 import future.keywords.in
 
-import data.authz.extract_method
-import data.authz.extract_path
 import data.authz.extract_scopes
+import data.common.endpoint_scan
 import data.common.normalize_endpoint
+import data.common.req_method_lower
 
 # Scope Checking Helpers
 #
@@ -61,9 +61,7 @@ scope_check_passed if {
 	scopes := extract_scopes
 	platform_scopes := [s | s := scopes[_]; contains(s, ":")]
 	count(platform_scopes) > 0
-	path := extract_path
-	method := extract_method
-	has_required_scopes(path, method, platform_scopes)
+	req_has_required_scopes(platform_scopes)
 }
 
 # Get required scopes for an endpoint/method combination
@@ -92,5 +90,20 @@ has_required_scopes(path, method, provided_scopes) if {
 has_required_scopes(path, method, provided_scopes) if {
 	required_scopes := get_required_scopes(path, method)
 	some required_scope in required_scopes
+	required_scope in provided_scopes
+}
+
+# Cached required-scopes for the request endpoint (mirror of
+# get_required_scopes(extract_path, extract_method), but using the memoized endpoint).
+req_required_scopes := scopes if {
+	scopes := data.authz.endpoints[endpoint_scan][req_method_lower].scopes
+} else := []
+
+req_has_required_scopes(provided_scopes) if {
+	count(req_required_scopes) == 0
+}
+
+req_has_required_scopes(provided_scopes) if {
+	some required_scope in req_required_scopes
 	required_scope in provided_scopes
 }

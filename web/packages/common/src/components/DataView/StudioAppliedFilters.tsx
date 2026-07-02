@@ -6,6 +6,11 @@ import {
   type DatetimeFilterValue,
 } from '@nemo/common/src/components/DataView/dateTimeFilter';
 import {
+  formatNumberRange,
+  isNumberRangeFilter,
+  type NumberRangeFilterValue,
+} from '@nemo/common/src/components/DataView/FilterPanel/NumberRangeFilter/util';
+import {
   useInnerDataViewContext,
   type TanstackTable,
 } from '@nemo/common/src/components/DataView/internal';
@@ -28,6 +33,11 @@ function formatFilterValue(column: DataViewColumn): string {
   if (isDateTimeFilter(filter)) {
     const dt = value as DatetimeFilterValue | undefined;
     return formatDateRange(dt?.$gte, dt?.$lte);
+  }
+
+  if (isNumberRangeFilter(filter)) {
+    const range = value as NumberRangeFilterValue | undefined;
+    return formatNumberRange(range?.$gte, range?.$lte);
   }
 
   if (typeof value === 'string') {

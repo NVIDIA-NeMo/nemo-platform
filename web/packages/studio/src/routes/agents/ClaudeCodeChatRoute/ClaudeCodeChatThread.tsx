@@ -171,6 +171,7 @@ export const ClaudeCodeChatThread: FC<ClaudeCodeChatThreadProps> = ({
         composerOverride={
           studioNavigationRequest ? (
             <AgentDecisionInput
+              key={studioNavigationRequest.id}
               request={{
                 id: studioNavigationRequest.id,
                 title: 'Studio UI available',
@@ -183,6 +184,7 @@ export const ClaudeCodeChatThread: FC<ClaudeCodeChatThreadProps> = ({
             />
           ) : decisionRequest ? (
             <AgentDecisionInput
+              key={decisionRequest.id}
               request={decisionRequest}
               choices={decisionChoices}
               defaultChoiceId={decisionChoices[0]?.id}

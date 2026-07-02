@@ -57,6 +57,8 @@ navigation:
         path: ../../auth/authorization/managing-access.mdx
       - page: Permissions Reference
         path: ../../auth/authorization/permissions-reference.mdx
+      - page: Plugin Authorization
+        path: ../../auth/authorization/plugin-authorization.mdx
       - page: Policy Engine
         path: ../../auth/authorization/policy-engine.mdx
       - page: Roles and Permissions

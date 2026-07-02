@@ -1,0 +1,29 @@
+# Minimal uv workspace for nmp-rl container image builds only.
+# Keeps uv validation scoped to the partial source tree copied into the image.
+# Keep in sync with docker/rl/Dockerfile.platform-workspace members.
+
+[project]
+name = "nemo-platform-rl-image"
+version = "0.0.0"
+requires-python = ">=3.11,<3.14"
+
+[tool.uv]
+required-version = ">=0.9.14,<0.10.0"
+
+[tool.uv.workspace]
+members = [
+  "packages/nmp_build_tools",
+  "sdk/python/nemo-platform",
+  "packages/nemo_platform_plugin",
+  "packages/nmp_common",
+  "packages/nmp_customization_common",
+  "services/rl",
+]
+
+[tool.uv.sources]
+nmp-build-tools = { workspace = true }
+nemo-platform-sdk = { workspace = true }
+nemo-platform-plugin = { workspace = true }
+nmp-common = { workspace = true }
+nmp-customization-common = { workspace = true }
+nmp-rl = { workspace = true }

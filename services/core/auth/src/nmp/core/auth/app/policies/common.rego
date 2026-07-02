@@ -53,6 +53,24 @@ get_required_permissions(path, method) := perms if {
 	perms := data.authz.endpoints[endpoint][method_lower].permissions
 }
 
+# Get the allowed caller kinds for an endpoint/method combination.
+# Uses the same most-specific endpoint match as get_required_permissions.
+# Returns undefined (not []) when the matched endpoint has no `callers` key, so
+# callers can treat absence as the default (PRINCIPAL) semantics — no new restriction.
+endpoint_callers(path, method) := callers if {
+	endpoint := normalize_endpoint(path)
+	method_lower := lower(method)
+	callers := data.authz.endpoints[endpoint][method_lower].callers
+}
+
+# True when the matched endpoint carries an explicit `deny: true` marker — the fail-closed
+# signal emitted for unruled or invalid plugin routes. Undefined (not false) otherwise so it
+# only fires where the marker is present.
+endpoint_denied(path, method) if {
+	endpoint := normalize_endpoint(path)
+	data.authz.endpoints[endpoint][lower(method)].deny == true
+}
+
 # Check specific permission (for middleware to check special permissions)
 # Supports workspace-scoped permissions (format: "workspace/permission")
 # For permissions with format "workspace/permission":
@@ -325,6 +343,26 @@ normalize_endpoint(path) := pattern if {
 	some pattern in matching_patterns
 	pattern_scores[pattern] == min_score
 }
+
+# --- Request-scoped memoization -------------------------------------------------
+# extract_path and extract_method are 0-arg rules, and OPA caches complete-rule
+# results for the lifetime of a single query. normalize_endpoint scans every
+# configured endpoint pattern (O(endpoints)); binding it to a 0-arg rule here makes
+# that scan run ONCE per evaluation instead of once per call site. The allow/deny
+# rules reference these instead of re-calling the path/method helper functions.
+# The functions above are kept intact — the policy tests call them with explicit
+# paths/methods, which must not be tied to the live request path.
+endpoint_scan := e if {
+	e := normalize_endpoint(extract_path)
+} else := ""
+
+req_method_lower := lower(extract_method)
+
+req_permissions := data.authz.endpoints[endpoint_scan][req_method_lower].permissions
+
+req_callers := data.authz.endpoints[endpoint_scan][req_method_lower].callers
+
+req_deny if data.authz.endpoints[endpoint_scan][req_method_lower].deny == true
 
 # UTILITY HELPERS
 

@@ -1,0 +1,57 @@
+[project]
+name = "nemo-rl-plugin"
+version = "0.1.0"
+description = "NeMo-RL DPO customization contributor for NeMo Platform (Ray on Kubernetes)."
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "nemo-platform-plugin",
+    "nemo-platform",
+    "nmp-rl",
+    "nmp-customization-common",
+    "pydantic>=2.10.6",
+    "pydantic-settings>=2.6.1",
+    "typer>=0.12.5",
+]
+
+# Heavy ML deps (nemo-rl, ray, vllm) are baked into the nmp-rl-training container
+# image, not installed by the plugin. The plugin process only needs the
+# lightweight compile-side imports.
+
+[project.entry-points."nemo.customization.contributors"]
+rl = "nemo_rl_plugin.contributor:RlContributor"
+
+[project.entry-points."nemo.jobs"]
+"customization.rl.jobs" = "nemo_rl_plugin.jobs.jobs:RlJob"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nemo_rl_plugin"]
+
+[tool.uv.sources]
+nemo-platform-plugin = { workspace = true }
+nemo-platform = { workspace = true }
+nemo-customizer-plugin = { workspace = true }
+nmp-rl = { workspace = true }
+nmp-customization-common = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.4",
+    "pytest-asyncio>=0.25.3",
+    "ruff>=0.11.8",
+    "fastapi>=0.115.0",
+    "httpx>=0.27.0",
+    "nemo-customizer-plugin",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.pyright]
+extraPaths = ["src"]

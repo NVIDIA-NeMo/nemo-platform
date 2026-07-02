@@ -1,0 +1,105 @@
+# syntax=docker/dockerfile:1
+# nmp-rl training - GPU DPO step (NeMo-RL v0.6.0 + Ray + nmp-rl package).
+#
+# Built on nmp-rl-base (NGC NeMo-RL v0.6.0 venv at /opt/nemo_rl_venv, Python
+# 3.13). Adds the lightweight platform glue editably into that venv, using the
+# ported no_override_requirements.txt so the install does not clobber NeMo-RL's
+# pinned ML stack (ray / torch / mlflow / cryptography / starlette /
+# prometheus-client). The training step runs `python -m nmp.rl.tasks.training`,
+# which bootstraps a Ray cluster and runs the DPO driver against NeMo-RL.
+
+ARG SMOKE_MARKER=smoke_nmp_rl_training
+
+# Supplied by bake (target:nmp-rl-base-builder).
+FROM nmp-rl-base AS rl-base
+
+FROM rl-base AS runtime
+
+# nmp-rl-base now defaults to a non-root UID; re-assert root for the editable
+# installs, chowns and symlink below. The stage drops back to USER ${USER_UID} at
+# the end, so the published training image still runs non-root.
+USER root
+
+COPY --from=ghcr.io/astral-sh/uv:0.9.14 /uv /bin/uv
+ENV PATH="/bin:${PATH}"
+
+ARG USERNAME=ubuntu
+ARG USER_UID=1000
+ARG USER_GID=1000
+
+COPY --from=platform-workspace / /app
+WORKDIR /app
+
+RUN mkdir -p /home/${USERNAME}/.cache && \
+    chown -R ${USER_UID}:${USER_GID} /home/${USERNAME} /app/services/rl
+
+# NMP is pinned to Python 3.11, but the NeMo-RL base venv is 3.13. The glue is
+# pure-Python and installs into the 3.13 venv fine. Symlink /opt/venv ->
+# /opt/nemo_rl_venv so the single RL_PYTHON_ENTRYPOINT (/opt/venv/bin/python)
+# the compiler stamps onto every step resolves in this image too (the CPU tasks
+# image has a real /opt/venv).
+RUN ln -sfn /opt/nemo_rl_venv /opt/venv
+
+# The NeMo-RL base venv ships some packages with missing dist-info METADATA (a
+# known property of the image — the package code is present, only uv's metadata
+# file is gone). Normal `uv pip install` reads ALL installed metadata during
+# dependency resolution and dies ("Failed to read anyio==... METADATA"). So we
+# install with --no-deps, which skips resolution entirely and never touches the
+# corrupted metadata. The heavy ML stack already lives in the base venv,
+#so --no-deps leaves it intact.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache --no-deps \
+    -e /app/sdk/python/nemo-platform \
+    -e /app/packages/nemo_platform_plugin \
+    -e /app/packages/nmp_common \
+    -e /app/packages/nmp_customization_common \
+    -e /app/services/rl
+
+# Light PURE-PYTHON glue deps the NeMo-RL base lacks (or ships with corrupted
+# dist-info). Three rules:
+#   1. --reinstall: force a clean (re)install of each target. uv otherwise reads
+#      the installed copy's METADATA for its "already satisfied?" check, which
+#      fails on the base's missing-METADATA dist-info (e.g. idna, anyio). A
+#      version pin alone is NOT enough — when the pin matches the installed
+#      (corrupted) version, uv still tries to read it. --reinstall skips that
+#      check entirely and installs fresh from the index (also repairing metadata).
+#   2. --no-deps: never resolve/read OTHER packages' metadata.
+#   3. ONLY non-ML, version-stable packages. Base ML deps (pydantic, anyio,
+#      httpx, typing-extensions, …) are present + version-sensitive to the
+#      torch/transformers stack — we must NOT reinstall them, so they are omitted.
+# If the training step hits a runtime ImportError for another pure-python
+# package, add it here (pinned), NOT one of the ML deps above.
+# Discovered empirically via scripts/gpu-dpo-smoke/discover_deps.py against the
+# v0.6.0 base — the ONLY pure-python deps the training entrypoint imports that are
+# missing from /opt/nemo_rl_venv. base58 + lark are NeMo-RL's OWN deps (absent
+# from the main venv); distro is the SDK's; pydantic-settings is our glue's.
+# Re-run discover_deps.py after a base-image bump to refresh this list.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache --no-deps --reinstall \
+    "base58==2.1.1" \
+    "lark==1.3.1" \
+    "distro==1.9.0" \
+    "pydantic-settings==2.14.2"
+
+ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
+ENTRYPOINT ["/opt/venv/bin/python"]
+CMD ["-m", "nmp.rl.tasks.training", "--help"]
+
+USER ${USER_UID}:${USER_GID}
+
+# NOTE: this smoke-test stage is intentionally NOT wired into docker-bake.hcl
+# (unlike nmp-automodel-{tasks,training}-smoke-test). There are no RL smoke tests
+# yet — tests/smoke_gpu/ carries no tests marked `smoke_nmp_rl_training`, and that
+# marker isn't registered in its conftest.py. Wiring a bake target now would run
+# `pytest -m smoke_nmp_rl_training` against zero collected tests, which exits 5
+# ("no tests ran") and fails the bake. Add RL import smoke tests + register the
+# marker first, then add the bake target (see nmp-automodel-training-smoke-test
+# for the pattern). The stage is kept so it's ready to wire up once tests exist.
+FROM runtime AS smoke-test
+ARG SMOKE_MARKER
+USER 0
+COPY tests/smoke_gpu/ /smoke_test/
+RUN uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache --reinstall pytest && \
+    ${VIRTUAL_ENV}/bin/pytest /smoke_test/ -m ${SMOKE_MARKER} -v
+
+FROM runtime
