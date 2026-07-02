@@ -76,6 +76,67 @@ describe('Claude Code tool parts', () => {
     ]);
   });
 
+  it('uses a neutral details label when the work time is unknown', () => {
+    const parts: readonly ThreadAssistantMessagePart[] = [
+      { type: 'text', text: 'Detailed work that should be collapsed.' },
+      {
+        type: 'text',
+        text: [
+          STUDIO_MESSAGE_SUMMARY_START,
+          'worked_for: unknown',
+          'summary: Ready for the next step.',
+          'details_label: worked for unknown',
+          STUDIO_MESSAGE_SUMMARY_END,
+        ].join('\n'),
+      },
+    ];
+
+    expect(getClaudeCodeCompletedMessageParts(parts)).toMatchObject([
+      {
+        type: 'tool-call',
+        toolName: CLAUDE_CODE_COLLAPSED_STUDIO_DETAILS_TOOL_NAME,
+        args: { label: 'Work details' },
+      },
+      { type: 'text', text: 'Ready for the next step.' },
+    ]);
+  });
+
+  it('keeps an unanswered trailing question visible when the model omits it from the summary', () => {
+    const parts: readonly ThreadAssistantMessagePart[] = [
+      {
+        type: 'text',
+        text: [
+          'I found three deployed agents.',
+          '',
+          'Which agent do you want to optimize?',
+          STUDIO_MESSAGE_SUMMARY_START,
+          'worked_for: 20s',
+          'summary: I investigated the available optimization targets.',
+          'details_label: worked for 20s',
+          STUDIO_MESSAGE_SUMMARY_END,
+        ].join('\n'),
+      },
+    ];
+
+    expect(getClaudeCodeCompletedMessageParts(parts)).toMatchObject([
+      {
+        type: 'tool-call',
+        toolName: CLAUDE_CODE_COLLAPSED_STUDIO_DETAILS_TOOL_NAME,
+        args: {
+          parts: [{ type: 'text', text: 'I found three deployed agents.' }],
+        },
+      },
+      {
+        type: 'text',
+        text: [
+          'I investigated the available optimization targets.',
+          '',
+          'Which agent do you want to optimize?',
+        ].join('\n'),
+      },
+    ]);
+  });
+
   it('accepts an inline Studio summary block from the model', () => {
     const parts: readonly ThreadAssistantMessagePart[] = [
       { type: 'text', text: 'Detailed work that should be collapsed.' },
@@ -98,6 +159,41 @@ describe('Claude Code tool parts', () => {
         type: 'text',
         text: 'Analyzed calculator-agent and generated 3 optimization suggestions. Snapshot and suggestions persisted.',
       },
+    ]);
+  });
+
+  it('preserves markdown formatting in a Studio summary block', () => {
+    const markdownSummary = [
+      '## Completed',
+      '',
+      '- Preserved **emphasis**',
+      '- Preserved `inline code`',
+      '',
+      '```ts',
+      'const formatted = true;',
+      '```',
+    ].join('\n');
+    const parts: readonly ThreadAssistantMessagePart[] = [
+      { type: 'text', text: 'Detailed work that should be collapsed.' },
+      {
+        type: 'text',
+        text: [
+          STUDIO_MESSAGE_SUMMARY_START,
+          'worked_for: 12s',
+          'summary:',
+          markdownSummary,
+          'details_label: worked for 12s',
+          STUDIO_MESSAGE_SUMMARY_END,
+        ].join('\n'),
+      },
+    ];
+
+    expect(getClaudeCodeCompletedMessageParts(parts)).toMatchObject([
+      {
+        type: 'tool-call',
+        toolName: CLAUDE_CODE_COLLAPSED_STUDIO_DETAILS_TOOL_NAME,
+      },
+      { type: 'text', text: markdownSummary },
     ]);
   });
 });

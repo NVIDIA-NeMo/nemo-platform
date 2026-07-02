@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { ToolCallMessagePartComponent } from '@assistant-ui/react';
+import { MessageContent } from '@nemo/common/src/components/Chat/MessageContent';
 import { Text } from '@nvidia/foundations-react-core';
+import { ClaudeCodeStudioLink } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeStudioLink';
 import { JobProgressToolCall } from '@studio/routes/agents/ClaudeCodeChatRoute/JobProgressToolCall';
 import { CollapsedThinkingToolCall } from '@studio/routes/agents/ClaudeCodeChatRoute/toolCall/CollapsedThinkingToolCall';
 import { TOOL_LABELS } from '@studio/routes/agents/ClaudeCodeChatRoute/toolCall/constants';
@@ -22,6 +24,7 @@ import {
   CLAUDE_CODE_COLLAPSED_STUDIO_DETAILS_TOOL_NAME,
   CLAUDE_CODE_COLLAPSED_THINKING_TOOL_NAME,
   CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME,
+  CLAUDE_CODE_WORK_DETAILS_LABEL,
   isClaudeCodeJobProgressToolName,
   toClaudeCodeToolArgs,
   type ClaudeCodeToolArgs,
@@ -88,18 +91,7 @@ const getCollapsedStudioDetailsParts = (
 };
 
 const CollapsedStudioDetailsText = ({ text }: { readonly text: string }) => (
-  <>
-    {text
-      .trim()
-      .split(/\n\s*\n/)
-      .map((paragraph) => paragraph.trim())
-      .filter(Boolean)
-      .map((paragraph, index) => (
-        <p key={`${paragraph.slice(0, 24)}-${index}`} className="whitespace-pre-wrap">
-          {paragraph}
-        </p>
-      ))}
-  </>
+  <MessageContent content={text} markdownLinkComponent={ClaudeCodeStudioLink} />
 );
 
 const CollapsedStudioDetailsPartContent = ({
@@ -120,7 +112,11 @@ const CollapsedStudioDetailsPartContent = ({
 };
 
 const CollapsedStudioDetailsToolCall = ({ args }: { readonly args: ClaudeCodeToolArgs }) => {
-  const label = getStringArg(args, ['label']) ?? 'worked for unknown';
+  const storedLabel = getStringArg(args, ['label']);
+  const label =
+    !storedLabel || storedLabel.toLowerCase() === 'worked for unknown'
+      ? CLAUDE_CODE_WORK_DETAILS_LABEL
+      : storedLabel;
   const parts = getCollapsedStudioDetailsParts(args);
   if (!parts.length) return null;
 

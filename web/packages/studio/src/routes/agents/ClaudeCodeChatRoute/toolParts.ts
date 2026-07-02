@@ -14,6 +14,7 @@ type ClaudeCodeToolArgValue = ClaudeCodeToolArgs[string];
 export const CLAUDE_CODE_COLLAPSED_THINKING_TOOL_NAME = 'ClaudeCodeCollapsedThinking';
 export const CLAUDE_CODE_COLLAPSED_STUDIO_DETAILS_TOOL_NAME = 'ClaudeCodeCollapsedStudioDetails';
 export const CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME = 'ClaudeCodeSubtleToolGroup';
+export const CLAUDE_CODE_WORK_DETAILS_LABEL = 'Work details';
 export const STUDIO_MESSAGE_SUMMARY_START = '<<<NEMO_STUDIO_MESSAGE_SUMMARY_V1>>>';
 export const STUDIO_MESSAGE_SUMMARY_END = '<<<END_NEMO_STUDIO_MESSAGE_SUMMARY_V1>>>';
 
@@ -137,6 +138,11 @@ const normalizeSummaryField = (value: string | undefined): string | undefined =>
   return trimmed || undefined;
 };
 
+const normalizeMarkdownSummary = (value: string | undefined): string | undefined => {
+  const trimmed = value?.replace(/\r\n?/g, '\n').trim();
+  return trimmed || undefined;
+};
+
 const getStudioSummaryFields = (
   blockText: string
 ): {
@@ -159,7 +165,7 @@ const getStudioSummaryFields = (
 
   return {
     detailsLabel: normalizeSummaryField(fields.details_label?.join(' ')),
-    summaryText: normalizeSummaryField(fields.summary?.join(' ')),
+    summaryText: normalizeMarkdownSummary(fields.summary?.join('\n')),
     workedFor: normalizeSummaryField(fields.worked_for?.join(' ')),
   };
 };
@@ -175,10 +181,16 @@ const getStudioDetailsLabel = ({
   if (elapsedDuration) return `worked for ${elapsedDuration}`;
 
   if (summaryFields.detailsLabel?.toLowerCase().startsWith('worked for ')) {
-    return summaryFields.detailsLabel;
+    return summaryFields.detailsLabel.toLowerCase() === 'worked for unknown'
+      ? CLAUDE_CODE_WORK_DETAILS_LABEL
+      : summaryFields.detailsLabel;
   }
 
-  return `worked for ${summaryFields.workedFor ?? 'unknown'}`;
+  if (!summaryFields.workedFor || summaryFields.workedFor.toLowerCase() === 'unknown') {
+    return CLAUDE_CODE_WORK_DETAILS_LABEL;
+  }
+
+  return `worked for ${summaryFields.workedFor}`;
 };
 
 const serializeClaudeCodePart = (
@@ -316,6 +328,19 @@ const splitTextParagraphs = (text: string): readonly string[] =>
     .map((paragraph) => paragraph.trim())
     .filter(Boolean);
 
+const splitTrailingQuestion = (
+  text: string
+): { readonly detailText: string; readonly question?: string } => {
+  const lines = text.trim().split('\n');
+  const lastLine = lines.at(-1)?.trim();
+  if (!lastLine?.endsWith('?')) return { detailText: text.trim() };
+
+  return {
+    detailText: lines.slice(0, -1).join('\n').trim(),
+    question: lastLine,
+  };
+};
+
 const getStudioSummaryBlock = (
   parts: readonly ThreadAssistantMessagePart[],
   options: ClaudeCodeCompletedMessageOptions
@@ -336,8 +361,9 @@ const getStudioSummaryBlock = (
     }
 
     const textBeforeSummary = part.text.slice(0, summaryStartIndex).trim();
-    if (textBeforeSummary) {
-      detailParts.push({ type: 'text', text: textBeforeSummary });
+    const { detailText, question } = splitTrailingQuestion(textBeforeSummary);
+    if (detailText) {
+      detailParts.push({ type: 'text', text: detailText });
     }
 
     const summarySource = [
@@ -357,8 +383,13 @@ const getStudioSummaryBlock = (
       .slice(summaryEndIndex + STUDIO_MESSAGE_SUMMARY_END.length)
       .trim();
     const summaryFields = getStudioSummaryFields(summaryBlockText);
-    const summaryText = summaryFields.summaryText ?? normalizeSummaryField(trailingSummaryText);
-    if (!summaryText) return undefined;
+    const baseSummaryText =
+      summaryFields.summaryText ?? normalizeMarkdownSummary(trailingSummaryText);
+    if (!baseSummaryText) return undefined;
+    const summaryText =
+      question && !baseSummaryText.includes(question)
+        ? `${baseSummaryText}\n\n${question}`
+        : baseSummaryText;
 
     return {
       detailsLabel: getStudioDetailsLabel({

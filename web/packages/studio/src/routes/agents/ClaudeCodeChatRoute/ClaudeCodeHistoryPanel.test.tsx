@@ -107,10 +107,32 @@ describe('ClaudeCodeHistoryPanel', () => {
     );
 
     expect(screen.getByText('Jobs')).toBeInTheDocument();
+    expect(screen.queryByText('Workspace')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: /agent-eval-1/ })).toHaveAttribute(
       'href',
       '/workspaces/default/agents/evaluations/agent-eval-1'
     );
+  });
+
+  it('does not treat workspace metadata as a visible chat artifact', () => {
+    render(
+      <ClaudeCodeHistoryPanel
+        activeSessionId="session-1"
+        artifacts={{
+          workspace: 'default',
+          selections: [],
+          files: [],
+          links: [],
+          jobs: [],
+          tools: [],
+        }}
+        onNewChat={vi.fn()}
+        onSelectSession={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByText('Workspace')).not.toBeInTheDocument();
+    expect(screen.getByText('No artifacts yet')).toBeInTheDocument();
   });
 
   it('lists Claude Code skills in the skills tab', async () => {

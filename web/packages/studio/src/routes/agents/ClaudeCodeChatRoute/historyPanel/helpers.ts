@@ -46,7 +46,6 @@ export const hasArtifacts = (
   !!(
     artifacts.agent ||
     getSelectedArtifactModel(artifacts) ||
-    artifacts.workspace ||
     artifacts.selections.length ||
     artifacts.files.length ||
     artifacts.links.length ||

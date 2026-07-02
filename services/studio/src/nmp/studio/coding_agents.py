@@ -9,7 +9,7 @@ import logging
 import os
 import shutil
 import uuid
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Awaitable, Mapping
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from pathlib import Path
@@ -32,6 +32,7 @@ from nmp.studio.coding_agent_artifacts import (
 )
 from nmp.studio.coding_agent_mcp_tools import (
     APPROVAL_TOOL_NAME,
+    ASK_USER_QUESTION_TOOL_NAME,
     CLAUDE_MCP_SERVER_NAME,
     JOB_PROGRESS_TOOL_NAME,
     MCP_TOOLS,
@@ -54,7 +55,10 @@ router = APIRouter(prefix="/v2/coding-agents")
 
 MCP_ROUTE_NAME = "studio_coding_agent_mcp"
 PUBLIC_MCP_ROUTE_NAME = "studio_coding_agent_public_mcp"
+PUBLIC_MCP_UNSUPPORTED_METHOD_ROUTE_NAME = "studio_coding_agent_public_mcp_unsupported_method"
 PUBLIC_MCP_PATH = "/studio/api/coding-agents/mcp/{session_id}"
+CLAUDE_MCP_TOOL_TIMEOUT_MS = 2_147_483_647
+MCP_KEEPALIVE_INTERVAL_SECONDS = 15
 
 CLAUDE_PROJECTS_DIR = Path.home() / ".claude" / "projects"
 SERVER_CWD = Path(os.getcwd()).resolve()
@@ -148,6 +152,13 @@ def mount_public_mcp_route(app: FastAPI) -> None:
         mcp_endpoint,
         methods=["POST"],
         name=PUBLIC_MCP_ROUTE_NAME,
+        include_in_schema=False,
+    )
+    app.add_api_route(
+        PUBLIC_MCP_PATH,
+        mcp_unsupported_method,
+        methods=["GET", "DELETE"],
+        name=PUBLIC_MCP_UNSUPPORTED_METHOD_ROUTE_NAME,
         include_in_schema=False,
     )
 
@@ -292,10 +303,14 @@ def _build_studio_system_prompt(
         "Whenever you need a fileset, fileset reference, dataset, or input/source data file (including an anonymizer or evaluation input, or a CSV/Parquet file), you MUST call mcp__nemo_studio__select_dataset_file instead of asking for a fileset reference or '<workspace>/<fileset>#<file>' path in plain text; for an evaluation config file, you MUST call mcp__nemo_studio__select_eval_config.",
         "Treat 'which agent', 'pick an agent', 'choose a model', 'which fileset', and 'what is your fileset reference' as mandatory tool-use requests for the matching select_* tool, exactly like Studio link requests are mandatory studio_link requests.",
         "Set the picker title and description to match the current workflow, for example title='Select agent to audit'.",
-        "Only skip a picker when the user already gave the value, the value is already unambiguous from the conversation, or a previous picker call returned skipped or error.",
-        "For finite choices that have no dedicated Studio picker (for example deployments, jobs, or next actions) and for yes/no or multiple-choice clarifications, use Claude Code's AskUserQuestion tool so Studio can render clickable options instead of asking the user to type.",
-        "For AskUserQuestion, provide input shaped as {'questions': [{'header': '<short title>', 'question': '<what should the user choose?>', 'options': [{'label': '<option>', 'description': '<short impact/details>'}]}]}.",
-        "If you need both a finite choice and free-form text, ask multiple AskUserQuestion questions: first the finite options, then a text question without options.",
+        "Only skip a picker when the user already gave the value, the value is already unambiguous from the conversation, or the user explicitly skipped a previous picker.",
+        "A timeout, disconnect, or other interactive-tool error is not permission to continue or repeat the question in plain text. Leave the input unresolved and tell the user the interactive request must be retried.",
+        "A message that needs user input is not complete until you call the matching Studio input tool. Never end a message with only a plain-text question when an interactive tool applies.",
+        "In particular, if you need an agent, model, dataset file, or evaluation config, call the matching select_* tool before completing the message; mentioning the needed selection in prose is not a substitute for the tool call.",
+        "For finite choices that have no dedicated Studio picker (for example deployments, jobs, or next actions) and for yes/no or multiple-choice clarifications, use Studio's ask_user_question tool so Studio can render clickable options instead of asking the user to type.",
+        "For those questions, call mcp__nemo_studio__ask_user_question; never call Claude Code's built-in AskUserQuestion tool because it cannot wait for the Studio user in non-interactive mode.",
+        "For mcp__nemo_studio__ask_user_question, provide input shaped as {'questions': [{'header': '<short title>', 'question': '<what should the user choose?>', 'options': [{'label': '<option>', 'description': '<short impact/details>'}]}]}.",
+        "If you need both a finite choice and free-form text, ask multiple questions in the same mcp__nemo_studio__ask_user_question call: first the finite options, then a text question without options.",
         "Required message-summary behavior:",
         "At the end of every assistant message to the user, include a short Studio summary block after your normal detailed work.",
         f"Start the summary block on its own line with {STUDIO_MESSAGE_SUMMARY_START} and end it on its own line with {STUDIO_MESSAGE_SUMMARY_END}.",
@@ -309,6 +324,7 @@ def _build_studio_system_prompt(
         "Do not put raw command output, code diffs, tool logs, or long reasoning inside the summary block.",
         "Studio will use this block to collapse everything before it behind a 'worked for <time>' accordion and show only the short summary by default.",
         "When you are interrupted by a permission request, input request, or need to ask the user something, still include the summary block describing what happened so far and what you need next.",
+        "When user input is still required, the summary's final sentence MUST state the exact unresolved selection or action, for example 'Select an agent to continue.' Never show only the investigation result while hiding the request for input in the collapsed details.",
         "Do not omit the summary block because the message is short.",
         "Prefer NeMo Studio MCP tools and Studio views over CLI commands for user-facing follow-up actions, navigation, inspection, and status/result review.",
         "Do not tell the user to run nemo CLI commands, shell commands, curl commands, or status commands to inspect agents, jobs, evaluations, filesets, models, traces, logs, or results when a Studio view, Studio link, or Studio progress card is available for the same purpose.",
@@ -663,6 +679,10 @@ def _build_claude_argv(
                 CLAUDE_MCP_SERVER_NAME: {
                     "type": "http",
                     "url": mcp_url,
+                    # Studio input tools intentionally stay open until the user responds. Use the
+                    # largest safe JavaScript timer value so Claude Code does not apply its
+                    # otherwise-observed 60-second per-server tool timeout.
+                    "timeout": CLAUDE_MCP_TOOL_TIMEOUT_MS,
                 }
             }
         }
@@ -679,6 +699,8 @@ def _build_claude_argv(
         mcp_config,
         "--allowedTools",
         ",".join(allowed_mcp_tools(CLAUDE_MCP_SERVER_NAME)),
+        "--disallowedTools",
+        "AskUserQuestion",
         "--append-system-prompt",
         STUDIO_CODING_AGENT_CONTEXT,
         "--permission-prompt-tool",
@@ -704,6 +726,60 @@ def _sse(data: str, event: str | None = None) -> str:
     return f"{prefix}data: {data}\n\n"
 
 
+def _mcp_tool_result_payload(request_id: Any, result: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "jsonrpc": "2.0",
+        "id": request_id,
+        "result": {
+            "content": [{"type": "text", "text": json.dumps(result)}],
+        },
+    }
+
+
+async def _stream_mcp_tool_result(
+    request_id: Any,
+    result: Awaitable[dict[str, Any]],
+) -> AsyncIterator[str]:
+    """Keep a blocking MCP HTTP call alive until Studio receives user input."""
+    task = asyncio.ensure_future(result)
+    try:
+        # Flush the SSE response headers immediately, then send comments often enough to keep
+        # reverse proxies from treating the user-driven request as an idle connection.
+        yield ": keepalive\n\n"
+        while not task.done():
+            done, _ = await asyncio.wait({task}, timeout=MCP_KEEPALIVE_INTERVAL_SECONDS)
+            if not done:
+                yield ": keepalive\n\n"
+
+        payload = _mcp_tool_result_payload(request_id, await task)
+        yield _sse(json.dumps(payload, separators=(",", ":")), event="message")
+    finally:
+        if not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+
+async def _blocking_mcp_tool_response(
+    session_id: str,
+    request_id: Any,
+    result: Awaitable[dict[str, Any]],
+) -> Response:
+    if session_id not in _session_streams:
+        return JSONResponse(_mcp_tool_result_payload(request_id, await result))
+
+    return StreamingResponse(
+        _stream_mcp_tool_result(request_id, result),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 async def _request_permission(session_id: str, args: dict[str, Any]) -> dict[str, Any]:
     queue = _session_streams.get(session_id)
     if queue is None:
@@ -725,9 +801,7 @@ async def _request_permission(session_id: str, args: dict[str, Any]) -> dict[str
     await queue.put(("permission_request", payload))
 
     try:
-        decision = await asyncio.wait_for(future, timeout=300)
-    except asyncio.TimeoutError:
-        return {"behavior": "deny", "message": "permission request timed out"}
+        decision = await future
     finally:
         _pending_permissions.pop(request_id, None)
 
@@ -759,9 +833,7 @@ async def _request_agent_input(session_id: str, kind: str, args: dict[str, Any])
     await queue.put(("input_request", payload))
 
     try:
-        decision = await asyncio.wait_for(future, timeout=300)
-    except asyncio.TimeoutError:
-        return {"status": "error", "message": "input request timed out"}
+        decision = await future
     finally:
         _pending_agent_inputs.pop(request_id, None)
 
@@ -779,6 +851,19 @@ async def _request_agent_input(session_id: str, kind: str, args: dict[str, Any])
         return {"status": "submitted", **value}
 
     return {"status": "error", "message": "input request resolved without a value"}
+
+
+async def _request_studio_question(session_id: str, args: dict[str, Any]) -> dict[str, Any]:
+    result = await _request_permission(
+        session_id,
+        {"tool_name": "AskUserQuestion", "input": args},
+    )
+    message = result.get("message")
+    if message == "no active Studio coding-agent session":
+        return {"status": "error", "message": message}
+    if isinstance(message, str) and message:
+        return {"status": "answered", "response": message}
+    return {"status": "error", "message": "question completed without a user response"}
 
 
 async def _pump_stdout(
@@ -999,52 +1084,39 @@ async def mcp_endpoint(session_id: str, request: Request) -> Response:
         if not isinstance(args, dict):
             return JSONResponse(status_code=400, content={"detail": "tool arguments must be an object"})
 
+        if name == ASK_USER_QUESTION_TOOL_NAME:
+            return await _blocking_mcp_tool_response(
+                sid,
+                request_id,
+                _request_studio_question(sid, args),
+            )
+
         if name == SELECT_AGENT_TOOL_NAME:
-            result = await _request_agent_input(sid, "agent", args)
-            return JSONResponse(
-                {
-                    "jsonrpc": "2.0",
-                    "id": request_id,
-                    "result": {
-                        "content": [{"type": "text", "text": json.dumps(result)}],
-                    },
-                }
+            return await _blocking_mcp_tool_response(
+                sid,
+                request_id,
+                _request_agent_input(sid, "agent", args),
             )
 
         if name == SELECT_EVAL_CONFIG_TOOL_NAME:
-            result = await _request_agent_input(sid, "eval_config", args)
-            return JSONResponse(
-                {
-                    "jsonrpc": "2.0",
-                    "id": request_id,
-                    "result": {
-                        "content": [{"type": "text", "text": json.dumps(result)}],
-                    },
-                }
+            return await _blocking_mcp_tool_response(
+                sid,
+                request_id,
+                _request_agent_input(sid, "eval_config", args),
             )
 
         if name == SELECT_DATASET_FILE_TOOL_NAME:
-            result = await _request_agent_input(sid, "dataset_file", args)
-            return JSONResponse(
-                {
-                    "jsonrpc": "2.0",
-                    "id": request_id,
-                    "result": {
-                        "content": [{"type": "text", "text": json.dumps(result)}],
-                    },
-                }
+            return await _blocking_mcp_tool_response(
+                sid,
+                request_id,
+                _request_agent_input(sid, "dataset_file", args),
             )
 
         if name == SELECT_MODEL_TOOL_NAME:
-            result = await _request_agent_input(sid, "model", args)
-            return JSONResponse(
-                {
-                    "jsonrpc": "2.0",
-                    "id": request_id,
-                    "result": {
-                        "content": [{"type": "text", "text": json.dumps(result)}],
-                    },
-                }
+            return await _blocking_mcp_tool_response(
+                sid,
+                request_id,
+                _request_agent_input(sid, "model", args),
             )
 
         if name == JOB_PROGRESS_TOOL_NAME:
@@ -1059,15 +1131,10 @@ async def mcp_endpoint(session_id: str, request: Request) -> Response:
             )
 
         if name == APPROVAL_TOOL_NAME:
-            result = await _request_permission(sid, args)
-            return JSONResponse(
-                {
-                    "jsonrpc": "2.0",
-                    "id": request_id,
-                    "result": {
-                        "content": [{"type": "text", "text": json.dumps(result)}],
-                    },
-                }
+            return await _blocking_mcp_tool_response(
+                sid,
+                request_id,
+                _request_permission(sid, args),
             )
 
         if name == STUDIO_LINK_TOOL_NAME:
@@ -1100,3 +1167,10 @@ async def mcp_endpoint(session_id: str, request: Request) -> Response:
             "error": {"code": -32601, "message": f"method not found: {method}"},
         }
     )
+
+
+@router.api_route("/mcp/{session_id}", methods=["GET", "DELETE"], include_in_schema=False)
+async def mcp_unsupported_method(session_id: str) -> Response:
+    """Decline optional MCP SSE/session methods without falling through to Studio HTML."""
+    _validate_session_id(session_id)
+    return Response(status_code=405, headers={"Allow": "POST"})
