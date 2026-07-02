@@ -65,6 +65,8 @@ interface CompleteAssistantMessageOptions {
 const isAbortError = (error: unknown): boolean =>
   error instanceof DOMException && error.name === 'AbortError';
 
+const convertMessage = (message: ThreadMessageLike): ThreadMessageLike => message;
+
 const mergeAssistantParts = (
   currentParts: readonly ThreadAssistantMessagePart[],
   nextParts: readonly ThreadAssistantMessagePart[]
@@ -449,7 +451,7 @@ export const useCustomAssistantChatRuntime = ({
     isRunning,
     onNew: handleNewMessage,
     onCancel: handleCancel,
-    convertMessage: (message) => message,
+    convertMessage,
     unstable_capabilities: {
       copy: true,
     },

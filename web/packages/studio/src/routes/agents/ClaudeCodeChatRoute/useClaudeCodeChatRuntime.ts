@@ -41,7 +41,7 @@ import {
   type CustomAssistantRunResult,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/useCustomAssistantChatRuntime';
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 
 const ASK_USER_QUESTION_TOOL_NAME = 'AskUserQuestion';
 const CUSTOM_INSTRUCTION_LABEL = 'No, and tell the Agent what to do';
@@ -392,6 +392,8 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
   const onError = options?.onError;
   const onSessionIdChange = options?.onSessionIdChange;
   const studioPathname = options?.studioPathname;
+  const studioPathnameRef = useRef(studioPathname);
+  studioPathnameRef.current = studioPathname;
 
   // Derive from JSON so callers that create inline objects don't trigger
   // the effect on every render — identity is stable as long as content is unchanged.
@@ -544,7 +546,7 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
         await streamClaudeCodeMessage({
           sessionId: activeSessionId,
           message: prompt,
-          studioPathname,
+          studioPathname: studioPathnameRef.current,
           workspace,
           signal,
           handlers: {
@@ -580,6 +582,11 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
           },
         });
         void queryClient.invalidateQueries({ queryKey: CLAUDE_CODE_HISTORY_SESSIONS_QUERY_KEY });
+        if (!doneReceived && !signal.aborted) {
+          throw new Error(
+            'Connection to Claude was interrupted. Your response may still be processing — check History to see the result.'
+          );
+        }
       } finally {
         if (isCurrentRun()) dispatchBlocking({ type: 'reset' });
       }
@@ -593,7 +600,6 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
       handlePermissionRequest,
       queryClient,
       setArtifacts,
-      studioPathname,
       workspace,
     ]
   );
