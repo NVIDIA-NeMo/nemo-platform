@@ -360,7 +360,9 @@ class FilesetFileSystem(AsyncFileSystem):
             raise TypeError("Either 'client' or 'sdk' must be provided")
 
         # Normalize: convert sdk to a FilesClient so there's one code path.
-        if client is None:
+        # AsyncNeMoPlatform → AsyncFilesClient (already async, _ensure_async is a no-op).
+        # NeMoPlatform → FilesClient (sync, _ensure_async converts to async).
+        if sdk is not None:
             from nemo_platform_plugin.client.adapter import client_from_platform
 
             if isinstance(sdk, AsyncNeMoPlatform):
