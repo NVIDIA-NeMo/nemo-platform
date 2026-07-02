@@ -44,7 +44,7 @@ class TestFilesBasic:
         """Test listing filesets and filtering by workspace."""
         with create_fileset(sdk) as fileset1:
             with create_fileset(sdk) as fileset2:
-                filesets = list(sdk.files.filesets.list(workspace=DEFAULT_WORKSPACE_ID))
+                filesets = list(sdk.files.filesets.list(workspace=DEFAULT_WORKSPACE_ID).items())
                 assert any(fs.id == fileset1.id for fs in filesets)
                 assert any(fs.id == fileset2.id for fs in filesets)
 
@@ -57,7 +57,7 @@ class TestFilesBasic:
                     sdk.files.filesets.list(
                         workspace=DEFAULT_WORKSPACE_ID,
                         filter={"name": fileset1.name},
-                    )
+                    ).items()
                 )
                 assert len(filtered) == 1
                 assert filtered[0].id == fileset1.id
@@ -68,7 +68,7 @@ class TestFilesBasic:
                     sdk.files.filesets.list(
                         workspace=DEFAULT_WORKSPACE_ID,
                         filter={"name": fileset2.name},
-                    )
+                    ).items()
                 )
                 assert len(filtered2) == 1
                 assert filtered2[0].id == fileset2.id
@@ -78,7 +78,7 @@ class TestFilesBasic:
                     sdk.files.filesets.list(
                         workspace=DEFAULT_WORKSPACE_ID,
                         filter={"name": "non-existent-fileset-name"},
-                    )
+                    ).items()
                 )
                 assert len(filtered_none) == 0
 
@@ -91,7 +91,7 @@ class TestFilesBasic:
                     sdk.files.filesets.list(
                         workspace=DEFAULT_WORKSPACE_ID,
                         filter={"purpose": "dataset"},
-                    )
+                    ).items()
                 )
                 assert any(fs.id == dataset_fileset.id for fs in dataset_filesets)
                 assert not any(fs.id == generic_fileset.id for fs in dataset_filesets)
@@ -101,7 +101,7 @@ class TestFilesBasic:
                     sdk.files.filesets.list(
                         workspace=DEFAULT_WORKSPACE_ID,
                         filter={"purpose": "generic"},
-                    )
+                    ).items()
                 )
                 assert any(fs.id == generic_fileset.id for fs in generic_filesets)
                 assert not any(fs.id == dataset_fileset.id for fs in generic_filesets)
@@ -116,7 +116,7 @@ class TestFilesBasic:
                     sdk.files.filesets.list(
                         workspace=DEFAULT_WORKSPACE_ID,
                         filter={"storage_type": "local"},
-                    )
+                    ).items()
                 )
                 assert any(fs.id == local_fileset1.id for fs in local_filesets)
                 assert any(fs.id == local_fileset2.id for fs in local_filesets)
@@ -665,7 +665,7 @@ class TestFilesBasic:
                     sdk.files.filesets.list(
                         workspace=DEFAULT_WORKSPACE_ID,
                         filter={"created_at": {"$gte": before_create.isoformat(timespec="seconds")}},
-                    )
+                    ).items()
                 )
                 fileset_ids = {fs.id for fs in filtered}
                 assert fileset1.id in fileset_ids
@@ -688,7 +688,7 @@ class TestFilesBasic:
                     sdk.files.filesets.list(
                         workspace=DEFAULT_WORKSPACE_ID,
                         filter={"created_at": {"$lte": after_first.isoformat()}},
-                    )
+                    ).items()
                 )
                 fileset_ids = {fs.id for fs in filtered}
                 assert fileset1.id in fileset_ids
@@ -710,7 +710,7 @@ class TestFilesBasic:
                             "$lte": after_create.isoformat(),
                         }
                     },
-                )
+                ).items()
             )
             fileset_ids = {fs.id for fs in filtered}
             assert fileset.id in fileset_ids
@@ -732,7 +732,7 @@ class TestFilesBasic:
                     sdk.files.filesets.list(
                         workspace=DEFAULT_WORKSPACE_ID,
                         filter={"created_at": {"$gte": after_old.isoformat()}},
-                    )
+                    ).items()
                 )
                 fileset_ids = {fs.id for fs in filtered}
                 # New fileset should be included
@@ -750,7 +750,7 @@ class TestFilesBasic:
                 sdk.files.filesets.list(
                     workspace=DEFAULT_WORKSPACE_ID,
                     filter={"updated_at": {"$gte": before_create.isoformat()}},
-                )
+                ).items()
             )
             fileset_ids = {fs.id for fs in filtered}
             assert fileset.id in fileset_ids
@@ -769,7 +769,7 @@ class TestFilesBasic:
                             "purpose": "dataset",
                             "created_at": {"$gte": before_create.isoformat()},
                         },
-                    )
+                    ).items()
                 )
                 fileset_ids = {fs.id for fs in filtered}
                 # Should include dataset fileset

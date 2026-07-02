@@ -174,7 +174,7 @@ class WorkspaceCleanup(Controller):
         try:
             filesets_response = await self._nmp_sdk.files.filesets.list(workspace=workspace.name)
 
-            async for fileset in filesets_response:
+            async for fileset in filesets_response.items():
                 try:
                     logger.info(f"Deleting fileset: {fileset.name}")
                     await self._nmp_sdk.files.filesets.delete(

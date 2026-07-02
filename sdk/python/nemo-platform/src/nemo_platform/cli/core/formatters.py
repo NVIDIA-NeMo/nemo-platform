@@ -92,9 +92,9 @@ def _extract_items_from_response(data: Any) -> list[Any]:
     if isinstance(data, list):
         return data
 
-    # Handle iterables (e.g. NemoPaginatedResponse)
-    if hasattr(data, "__iter__"):
-        return list(data)
+    # Handle paginated responses (e.g. NemoPaginatedResponse)
+    if hasattr(data, "items") and callable(data.items):
+        return list(data.items())
 
     return []
 
