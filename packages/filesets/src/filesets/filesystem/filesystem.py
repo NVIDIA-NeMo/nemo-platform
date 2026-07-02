@@ -17,7 +17,7 @@ from fsspec.asyn import AbstractAsyncStreamedFile, AsyncFileSystem, _get_batch_s
 from fsspec.callbacks import DEFAULT_CALLBACK, Callback
 from fsspec.spec import AbstractBufferedFile
 from nemo_platform_plugin.client.client import AsyncNemoClient
-from nemo_platform_plugin.files import endpoints
+from nemo_platform_plugin.files.client import AsyncFilesClient
 from nemo_platform_plugin.files.types import FilesetFileOutput, ListFilesQueryParams
 
 T = TypeVar("T")
@@ -311,7 +311,7 @@ class FilesetFileSystem(AsyncFileSystem):
     """
 
     protocol = "fileset"
-    _client: AsyncNemoClient
+    _client: AsyncFilesClient
 
     @classmethod
     def register_fsspec(cls) -> None:
@@ -336,7 +336,7 @@ class FilesetFileSystem(AsyncFileSystem):
 
     def __init__(
         self,
-        client: AsyncNemoClient | None = None,
+        client: AsyncFilesClient | AsyncNemoClient | None = None,
         batch_size: int | None = None,
         blocksize: int | None = None,
         *,
@@ -345,7 +345,7 @@ class FilesetFileSystem(AsyncFileSystem):
         **kwargs,
     ):
         # Backward compat: accept NeMoPlatform passed as positional arg
-        if client is not None and not isinstance(client, AsyncNemoClient):
+        if client is not None and not isinstance(client, (AsyncFilesClient, AsyncNemoClient)):
             sdk = client
             client = None
 
@@ -359,6 +359,10 @@ class FilesetFileSystem(AsyncFileSystem):
             asynchronous = isinstance(sdk, AsyncNeMoPlatform)
             client = self._client_from_sdk(sdk)
 
+        # Wrap plain AsyncNemoClient in AsyncFilesClient for method access
+        if isinstance(client, AsyncNemoClient) and not isinstance(client, AsyncFilesClient):
+            client = AsyncFilesClient.from_client(client)
+
         if batch_size is None:
             batch_size = self.default_batch_size
 
@@ -369,17 +373,17 @@ class FilesetFileSystem(AsyncFileSystem):
         self._client = client
 
     @staticmethod
-    def _client_from_sdk(sdk: Any) -> AsyncNemoClient:
-        """Convert a NeMoPlatform SDK instance to an AsyncNemoClient.
+    def _client_from_sdk(sdk: Any) -> AsyncFilesClient:
+        """Convert a NeMoPlatform SDK instance to an AsyncFilesClient.
 
         Handles both sync and async SDK instances. For sync SDKs, creates
-        a new AsyncNemoClient with a fresh httpx.AsyncClient.
+        a new AsyncFilesClient with a fresh httpx.AsyncClient.
         """
         import httpx
         from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 
         if isinstance(sdk, AsyncNeMoPlatform):
-            return AsyncNemoClient(
+            return AsyncFilesClient(
                 base_url=str(sdk.base_url).rstrip("/"),
                 workspace=sdk.workspace,
                 default_headers=sdk._custom_headers,
@@ -407,7 +411,7 @@ class FilesetFileSystem(AsyncFileSystem):
             skip = {"accept", "accept-encoding", "connection", "user-agent", "host"}
             custom_headers = {k: v for k, v in sdk._client.headers.items() if k.lower() not in skip}
 
-        return AsyncNemoClient(
+        return AsyncFilesClient(
             base_url=str(sdk.base_url).rstrip("/"),
             workspace=sdk.workspace,
             default_headers=custom_headers,
@@ -567,14 +571,11 @@ class FilesetFileSystem(AsyncFileSystem):
         if not file_path:
             raise IsADirectoryError(path)
 
-        headers = None
+        client = self._client
         if start is not None or end is not None:
-            headers = {"Range": f"bytes={start or 0}-{(end - 1) if end else ''}"}
+            client = client.with_headers({"Range": f"bytes={start or 0}-{(end - 1) if end else ''}"})
 
-        response = await self._client.send(
-            endpoints.download_file(workspace=workspace, name=fileset, path=file_path),
-            headers=headers,
-        )
+        response = await client.download_file(workspace=workspace, name=fileset, path=file_path)
         return await response.read()
 
     @classmethod
@@ -620,8 +621,10 @@ class FilesetFileSystem(AsyncFileSystem):
 
         # Fetch from backend and populate cache for all directory levels
         query_params: ListFilesQueryParams | None = {"path": prefix} if prefix else None
-        response = await self._client.send(
-            endpoints.list_files(workspace=workspace, name=fileset, query_params=query_params),
+        response = await self._client.list_files(
+            workspace=workspace,
+            name=fileset,
+            query_params=query_params,
         )
         response = response.data()
         dir_contents = self._populate_dircache_from_response(response, workspace, fileset, prefix)
@@ -635,7 +638,7 @@ class FilesetFileSystem(AsyncFileSystem):
         workspace, fileset, file_path = parse_fileset_ref(path, workspace_fallback=self._workspace)
         if not file_path:
             raise ValueError("Cannot delete fileset root via rm")
-        await self._client.send(endpoints.delete_file(workspace=workspace, name=fileset, path=file_path))
+        await self._client.delete_file(workspace=workspace, name=fileset, path=file_path)
         # Invalidate parent directory's cache since file info is stored there
         self.invalidate_cache(self._parent(build_fileset_ref(path)))
 
@@ -644,7 +647,7 @@ class FilesetFileSystem(AsyncFileSystem):
         workspace, fileset, file_path = parse_fileset_ref(path, workspace_fallback=self._workspace)
         if not file_path:
             raise ValueError("File path required for upload")
-        await self._client.send(endpoints.upload_file(workspace=workspace, name=fileset, path=file_path, content=value))
+        await self._client.upload_file(workspace=workspace, name=fileset, path=file_path, content=value)
         # Invalidate parent directory's cache since file info is stored there
         self.invalidate_cache(self._parent(build_fileset_ref(path)))
 
@@ -676,12 +679,11 @@ class FilesetFileSystem(AsyncFileSystem):
         if not hasattr(stream, "__anext__"):
             stream = to_async_iterator(stream)
 
-        extra_headers = {"Content-Length": str(content_length)} if content_length is not None else None
+        client = self._client
+        if content_length is not None:
+            client = client.with_headers({"Content-Length": str(content_length)})
 
-        await self._client.send(
-            endpoints.upload_file(workspace=workspace, name=fileset, path=file_path, content=stream),
-            headers=extra_headers,
-        )
+        await client.upload_file(workspace=workspace, name=fileset, path=file_path, content=stream)
 
         # Invalidate parent directory's cache since file info is stored there
         self.invalidate_cache(self._parent(build_fileset_ref(path)))
@@ -710,15 +712,17 @@ class FilesetFileSystem(AsyncFileSystem):
         callback.set_size(file_size)
 
         # Create async generator that streams file content with progress
-        async def stream_file():
+        async def stream_file() -> AsyncIterator[bytes]:
             async with await anyio.open_file(lpath, "rb") as f:
                 while chunk := await f.read(self.blocksize):
                     callback.relative_update(len(chunk))
                     yield chunk
 
-        await self._client.send(
-            endpoints.upload_file(workspace=workspace, name=fileset, path=file_path, content=stream_file()),
-            headers={"Content-Length": str(file_size)},
+        await self._client.with_headers({"Content-Length": str(file_size)}).upload_file(
+            workspace=workspace,
+            name=fileset,
+            path=file_path,
+            content=stream_file(),
         )
         # Invalidate parent directory's cache since file info is stored there
         self.invalidate_cache(self._parent(build_fileset_ref(rpath)))
@@ -743,8 +747,10 @@ class FilesetFileSystem(AsyncFileSystem):
         workspace, fileset, prefix = parse_fileset_ref(path, workspace_fallback=self._workspace)
         prefix = prefix.rstrip("/")
         query_params: ListFilesQueryParams | None = {"path": prefix} if prefix else None
-        response = await self._client.send(
-            endpoints.list_files(workspace=workspace, name=fileset, query_params=query_params),
+        response = await self._client.list_files(
+            workspace=workspace,
+            name=fileset,
+            query_params=query_params,
         )
         response = response.data()
 
@@ -795,8 +801,10 @@ class FilesetFileSystem(AsyncFileSystem):
         if not file_path:
             return
 
-        response = await self._client.send(
-            endpoints.download_file(workspace=workspace, name=fileset, path=file_path),
+        response = await self._client.download_file(
+            workspace=workspace,
+            name=fileset,
+            path=file_path,
         )
 
         async with response.stream() as chunks:
