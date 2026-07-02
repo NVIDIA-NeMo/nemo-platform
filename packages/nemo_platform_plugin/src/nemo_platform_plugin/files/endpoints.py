@@ -12,12 +12,11 @@ from abc import abstractmethod
 from collections.abc import AsyncIterable, Iterable
 
 from nemo_platform_plugin.client.endpoint import delete, get, patch, post, put
-from nemo_platform_plugin.client.types import BinaryContent
+from nemo_platform_plugin.client.types import BinaryContent, Paginated
 from nemo_platform_plugin.files.types import (
     CreateFilesetRequest,
     FilesetFileOutput,
     FilesetOutput,
-    FilesetPage,
     ListFilesetFilesResponse,
     ListFilesetsQueryParams,
     ListFilesQueryParams,
@@ -38,7 +37,7 @@ def create_fileset(*, workspace: str | None = None, body: CreateFilesetRequest) 
 @abstractmethod
 def list_filesets(
     *, workspace: str | None = None, query_params: ListFilesetsQueryParams | None = None
-) -> FilesetPage: ...
+) -> Paginated[FilesetOutput]: ...
 
 
 @get("/apis/files/v2/workspaces/{workspace}/filesets/{name}")

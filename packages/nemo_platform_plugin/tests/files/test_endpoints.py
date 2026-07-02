@@ -5,13 +5,14 @@
 
 from __future__ import annotations
 
-from nemo_platform_plugin.client.types import BinaryContent, PreparedRequest
+from typing import get_origin
+
+from nemo_platform_plugin.client.types import BinaryContent, Paginated, PreparedRequest
 from nemo_platform_plugin.files import endpoints
 from nemo_platform_plugin.files.types import (
     CreateFilesetRequest,
     FilesetFileOutput,
     FilesetOutput,
-    FilesetPage,
     ListFilesetFilesResponse,
     UpdateFilesetRequest,
 )
@@ -43,7 +44,7 @@ def test_list_filesets() -> None:
     assert prepared.method == "GET"
     assert prepared.path_params == {"workspace": "default"}
     assert prepared.content is None
-    assert prepared.response_type is FilesetPage
+    assert get_origin(prepared.response_type) is Paginated
 
 
 def test_list_filesets_with_query_params() -> None:

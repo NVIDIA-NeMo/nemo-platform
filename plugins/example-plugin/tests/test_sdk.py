@@ -120,7 +120,7 @@ def test_sync_list_items() -> None:
     )
 
     resp = client.list_items()
-    page = resp.data()
+    page = resp.page()
 
     assert len(page.items) == 1
     assert page.items[0].name == "my-item"
@@ -193,7 +193,7 @@ async def test_async_list_items() -> None:
     )
 
     resp = await client.list_items()
-    page = resp.data()
+    page = resp.page()
 
     assert len(page.items) == 1
     assert page.items[0].name == "my-item"

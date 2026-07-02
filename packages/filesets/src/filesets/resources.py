@@ -17,6 +17,7 @@ from typing import Any, Protocol, runtime_checkable
 from fsspec.callbacks import Callback
 from fsspec.core import has_magic
 from nemo_platform_plugin.client.errors import NemoHTTPError
+from nemo_platform_plugin.client.response import AsyncNemoPaginatedResponse, NemoPaginatedResponse
 from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 from nemo_platform_plugin.files.types import (
     CacheStatus,
@@ -24,7 +25,6 @@ from nemo_platform_plugin.files.types import (
     FilesetFileOutput,
     FilesetMetadata,
     FilesetOutput,
-    FilesetPage,
     FilesetPurpose,
     StorageConfig,
     UpdateFilesetRequest,
@@ -222,7 +222,7 @@ class FilesetsSubResource:
         page_size: int | None = None,
         sort: str | None = None,
         filter: str | dict | None = None,
-    ) -> FilesetPage:
+    ) -> NemoPaginatedResponse[FilesetOutput]:
         query_params = {
             k: v
             for k, v in dict(
@@ -233,7 +233,7 @@ class FilesetsSubResource:
             ).items()
             if v is not None
         }
-        return self._client.list_filesets(workspace=workspace, query_params=query_params or None).data()
+        return self._client.list_filesets(workspace=workspace, query_params=query_params or None)
 
     def delete(self, name: str, *, workspace: str | None = None) -> FilesetOutput:
         return self._client.delete_fileset(workspace=workspace, name=name).data()
@@ -324,7 +324,7 @@ class AsyncFilesetsSubResource:
         page_size: int | None = None,
         sort: str | None = None,
         filter: str | dict | None = None,
-    ) -> FilesetPage:
+    ) -> AsyncNemoPaginatedResponse[FilesetOutput]:
         query_params = {
             k: v
             for k, v in dict(
@@ -335,7 +335,7 @@ class AsyncFilesetsSubResource:
             ).items()
             if v is not None
         }
-        return (await self._client.list_filesets(workspace=workspace, query_params=query_params or None)).data()
+        return await self._client.list_filesets(workspace=workspace, query_params=query_params or None)
 
     async def delete(self, name: str, *, workspace: str | None = None) -> FilesetOutput:
         return (await self._client.delete_fileset(workspace=workspace, name=name)).data()

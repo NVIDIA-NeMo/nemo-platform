@@ -233,11 +233,11 @@ AsyncPageFetcher = Callable[[PreparedRequest, Any], Coroutine[Any, Any, httpx.Re
 class PageResult(Generic[ModelT]):
     """A single page of results with pagination metadata.
 
-    Returned by :meth:`NemoPaginatedResponse.data` for callers who want
+    Returned by :meth:`NemoPaginatedResponse.page` for callers who want
     one page at a time rather than auto-iterating all pages::
 
         resp = client.send(list_items())
-        page = resp.data()
+        page = resp.page()
         print(f"Page {page.page} of {page.total_pages} ({page.total_results} total)")
         for item in page.items:
             print(item.name)
@@ -260,9 +260,9 @@ class NemoPaginatedResponse(Generic[ModelT]):
         for item in client.send(list_items()):
             print(item.name)
 
-    For single-page access with metadata, use :meth:`data`::
+    For single-page access with metadata, use :meth:`page`::
 
-        page = client.send(list_items()).data()
+        page = client.send(list_items()).page()
         print(f"{page.total_results} total across {page.total_pages} pages")
     """
 
@@ -291,7 +291,7 @@ class NemoPaginatedResponse(Generic[ModelT]):
         items = [self._model_type.model_validate(item) for item in self._strategy.extract_items(body)]
         return items, body
 
-    def data(self) -> PageResult[ModelT]:
+    def page(self) -> PageResult[ModelT]:
         """Return the first page as a :class:`PageResult` with metadata."""
         items, body = self._parse_page(self._first_response)
         metadata = self._strategy.extract_metadata(body)
@@ -343,7 +343,7 @@ class AsyncNemoPaginatedResponse(Generic[ModelT]):
         items = [self._model_type.model_validate(item) for item in self._strategy.extract_items(body)]
         return items, body
 
-    def data(self) -> PageResult[ModelT]:
+    def page(self) -> PageResult[ModelT]:
         """Return the first page as a :class:`PageResult` with metadata."""
         items, body = self._parse_page(self._first_response)
         metadata = self._strategy.extract_metadata(body)

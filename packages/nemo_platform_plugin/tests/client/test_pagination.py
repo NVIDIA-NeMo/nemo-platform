@@ -98,7 +98,7 @@ class TestPaginatedSync:
         client = NemoClient(base_url=BASE, workspace="default", http_client=mock_http)
         resp = client.send(LIST_ITEMS())
 
-        page = resp.data()
+        page = resp.page()
         assert len(page.items) == 1
         assert page.items[0].name == "a"
         assert page.page == 1
@@ -211,7 +211,7 @@ class TestPaginatedAsync:
         client = AsyncNemoClient(base_url=BASE, workspace="default", http_client=mock_http)
         resp = await client.send(LIST_ITEMS())
 
-        page = resp.data()
+        page = resp.page()
         assert len(page.items) == 1
         assert page.page == 1
         assert page.total_pages == 3
