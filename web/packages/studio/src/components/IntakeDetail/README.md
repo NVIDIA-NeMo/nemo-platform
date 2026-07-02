@@ -57,10 +57,10 @@ flowchart TB
 | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | **Routes**                      | Thin wrappers; resolve workspace + id, set breadcrumbs. `IntakeTraceDetailContent` is exported for experiment trace reuse. |
 | **IntakeTraceDetailView**       | Page header, trace summary header, span explorer, trace-level Attributes / Experiment Context accordions, raw JSON debug.  |
-| **TraceSpanAccordions**         | Fetches span summaries and trace annotations; Tree/List toggle; expand/collapse toolbar; row headers + feedback.          |
+| **TraceSpanAccordions**         | Fetches span summaries and trace annotations; Tree/List toggle; expand/collapse toolbar; row headers + feedback.           |
 | **SpanTreeView / SpanListView** | Layout shells for tree vs list modes; shared row chrome (`SpanTriggerLabel`, `SpanTriggerMeta`, `SpanFeedbackControls`).   |
 | **TraceSpanAccordionContent**   | Lazy `useGetSpan` when a span body is shown; merges list summary with full detail via `mergeSpanDetails`.                  |
-| **SpanMetadataAccordions**      | Single source of truth for span body inside the trace explorer.                                                           |
+| **SpanMetadataAccordions**      | Single source of truth for span body inside the trace explorer.                                                            |
 | **SpanTemplates/**              | Per-`SpanKind` descriptors + content components; registered in `registry.ts`.                                              |
 | **traceSpanShared.ts**          | Note-focus nonces and accordion DOM ids shared by the explorer views.                                                      |
 | **IntakeComponents/**           | Shared UI: key/value grids, payloads, status badges, feedback controls, `spanKeyValues` / `traceKeyValues`.                |

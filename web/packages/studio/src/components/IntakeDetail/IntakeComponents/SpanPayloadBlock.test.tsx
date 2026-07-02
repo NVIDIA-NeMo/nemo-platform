@@ -18,7 +18,9 @@ describe('SpanPayloadBlock', () => {
     renderRoute(<SpanPayloadBlock value={payload} emptyMessage="No payload" />);
 
     expect(screen.getByLabelText('Rendering payload')).toBeInTheDocument();
-    await waitFor(() => expect(screen.queryByLabelText('Rendering payload')).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByLabelText('Rendering payload')).not.toBeInTheDocument()
+    );
     expect(screen.getByTestId('nv-code-snippet-code')).toHaveTextContent(payload);
   });
 
