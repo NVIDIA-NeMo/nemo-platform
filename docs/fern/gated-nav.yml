@@ -51,6 +51,12 @@
     path: ../../auth/security-model.mdx
   - page: Troubleshooting
     path: ../../auth/troubleshooting.mdx
+- section: Intake
+  contents:
+  - page: Overview
+    path: ../../intake/index.mdx
+  - page: Getting Started
+    path: ../../intake/getting-started.mdx
 - section: Safe Synthesizer
   contents:
   - page: Data Synthesis

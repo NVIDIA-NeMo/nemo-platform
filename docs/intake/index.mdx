@@ -1,0 +1,73 @@
+---
+title: "Intake"
+description: Ingest, store, and query agent telemetry — traces, spans, annotations, and evaluator results — backed by ClickHouse.
+---
+
+<a id="about-intake"></a>
+
+<Warning>
+
+NVIDIA NeMo Intake is released with _early access_ availability and is subject to limited support and potential API changes in future releases.
+
+</Warning>
+
+Intake is the telemetry ingestion and read API for NeMo Platform. It captures what your agents actually did — every model call, tool invocation, and chain step — stores it in ClickHouse, and lets you query it back through the API, the `nemo` CLI, the Python SDK, and the Studio UI. On top of the raw telemetry, Intake supports post-hoc annotations (feedback, labels, notes) and evaluator-result lookup, so evaluation scores and human feedback live next to the traces they describe.
+
+---
+
+## Core Concepts
+
+### Sessions, traces, and spans
+
+Telemetry is organized in a three-level hierarchy:
+
+- A **span** is a single timed operation: one LLM call, one tool invocation, one retrieval. Spans carry a kind (`llm`, `chain`, `tool`, `retriever`, `embedding`, `agent`, `reranker`, `evaluator`, `guardrail`), a status, timing, typed attribute maps, and captured input/output payloads.
+- A **trace** is one end-to-end run of your agent — a tree of spans sharing a trace ID. The root span (the one with no parent) provides the trace summary: name, status, latency, and top-level input/output.
+- A **session** groups related traces, such as a multi-turn conversation or one evaluation run.
+
+### Annotations
+
+Annotations attach human or programmatic context to a span or a whole session after the fact: `feedback`, `label`, `note`, or `metadata`. Use them to record thumbs-up/down signals, triage labels, or reviewer notes without mutating the underlying telemetry.
+
+### Evaluator results
+
+Evaluator results are per-span scores — numeric, categorical, boolean, or text — written by evaluation runs (for example, an LLM-as-judge faithfulness score). NeMo Evaluator can write its results into Intake so you can query scores alongside the spans they measured.
+
+### Experiments
+
+Experiments and experiment groups organize evaluation runs into leaderboard views: an experiment represents one agent or configuration run against a dataset, and a group collects experiments for comparison. Experiment metadata lives in the platform entity store; the metrics rollups are derived from ClickHouse at read time. Experiments are exposed through the API and Python SDK (`client.experiments`, `client.experiment_groups`).
+
+## Ingest Formats
+
+Intake accepts telemetry in three formats:
+
+| Format | Endpoint | Use when |
+|---|---|---|
+| OTLP/HTTP (protobuf) | `POST .../ingest/otlp/v1/traces` | Your agent or framework already emits OpenTelemetry traces (OpenInference or OTel GenAI semantic conventions). Point the exporter at Intake. |
+| Chat completions | `POST .../ingest/chat-completions` | You capture raw OpenAI-compatible request/response pairs and want them recorded as LLM spans. |
+| ATIF | `POST .../ingest/atif` | You have Agent Trajectory Interchange Format trajectories (for example, from NeMo Agent Toolkit or evaluation runs). |
+
+All ingest and read endpoints are workspace-scoped under `/apis/intake/v2/workspaces/{workspace}/`.
+
+## Typical Workflow
+
+1. Start ClickHouse and run the platform with the `intake` service enabled. See [Getting Started](/documentation/intake/getting-started).
+2. Point your agent's OTLP trace exporter at the Intake ingest endpoint, or post captured chat-completions or ATIF payloads.
+3. Query traces and spans back with `nemo intake traces list` and `nemo intake spans list`, filtering by session, kind, status, model, agent, or evaluation context.
+4. Annotate interesting spans or sessions with `nemo intake annotations create`.
+5. Review evaluator results per span, or browse everything visually in the Studio Intake pages.
+
+## Architecture Notes
+
+- **ClickHouse is the datastore.** Span, trace-index, annotation, and evaluator-result tables live in a ClickHouse database (default name `intake`). The service manages its own schema migrations and bootstraps tables lazily on first request.
+- **Telemetry has a TTL.** Span and trace-index tables expire rows after 90 days.
+- **Experiments use the entity store.** Only experiment and experiment-group metadata lives in the platform's relational entity store; everything telemetry-shaped stays in ClickHouse.
+- **Read API returns 503 until ClickHouse is reachable.** The service starts without a ClickHouse connection and connects on first use.
+
+## Next Steps
+
+<Cards>
+<Card title="Getting Started" href="/documentation/intake/getting-started">
+Start ClickHouse, run the Intake service, send your first trace, and query it back.
+</Card>
+</Cards>

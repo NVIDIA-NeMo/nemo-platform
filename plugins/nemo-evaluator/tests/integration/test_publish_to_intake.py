@@ -46,7 +46,7 @@ EXPERIMENT_NAME = "intake-it-exp"
 RUN_ID = "intake-it-run"
 NAN_EXPERIMENT_NAME = "intake-it-nan-exp"
 NAN_RUN_ID = "intake-it-nan-run"
-CLICKHOUSE_CONTAINER = "nmp-intake-clickhouse"
+CLICKHOUSE_CONTAINER = "nemo-intake-clickhouse"
 
 
 def _docker_available() -> bool:

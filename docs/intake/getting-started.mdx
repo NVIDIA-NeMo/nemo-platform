@@ -1,0 +1,150 @@
+---
+title: "Getting Started with Intake"
+description: Start ClickHouse, run the Intake service, send a trace, and query it back with the CLI.
+---
+
+<Warning>
+
+NVIDIA NeMo Intake is released with _early access_ availability and is subject to limited support and potential API changes in future releases.
+
+</Warning>
+
+This guide takes you from nothing to a queryable trace: start ClickHouse, run the platform with the Intake service, send telemetry, and read it back.
+
+## Prerequisites
+
+- Docker installed and running (for the local ClickHouse container).
+- A NeMo Platform environment. Intake ships in the platform's API service group and depends on the `entities` and `auth` services.
+
+## 1. Start ClickHouse
+
+Intake stores all telemetry in ClickHouse. Start a local instance:
+
+```bash
+docker run -d --name nemo-intake-clickhouse \
+  -p 8123:8123 -p 9000:9000 \
+  clickhouse/clickhouse-server:26.3
+```
+
+If you are working from a source checkout, `services/intake/scripts/spans/run_clickhouse.sh` does the same thing with a persistent local data directory.
+
+Pin an explicit ClickHouse version rather than `latest` so schema migrations always run against a known server.
+
+Verify ClickHouse is answering:
+
+```bash
+curl -s http://localhost:8123/ping
+# Ok.
+```
+
+### Configuration
+
+Intake reads its ClickHouse connection from the environment. The defaults match the container above, so you only need these when pointing at a remote or secured server:
+
+| Environment variable | Default | Description |
+|---|---|---|
+| `NMP_INTAKE_CLICKHOUSE_URL` | `http://localhost:8123` | HTTP(S) URL of the ClickHouse server |
+| `NMP_INTAKE_CLICKHOUSE_USER` | `default` | ClickHouse username |
+| `NMP_INTAKE_CLICKHOUSE_PASSWORD` | (empty) | ClickHouse password |
+| `NMP_INTAKE_CLICKHOUSE_DATABASE` | `intake` | Database for Intake tables |
+| `NMP_INTAKE_OTLP_MAX_BODY_BYTES` | `5242880` (5 MiB) | Maximum accepted OTLP ingest request body |
+
+The service creates the database and tables itself — no manual schema setup. Tables are bootstrapped lazily on the first request, and Intake endpoints return `503` until ClickHouse is reachable.
+
+### Sizing
+
+For local development the container defaults are fine — a few GB of RAM handles a single developer's ingest and query volume. For production, follow [ClickHouse's sizing guidance](https://clickhouse.com/docs/guides/sizing-and-hardware-recommendations): start at 16 GB of RAM and 4+ cores on SSD-backed storage, then size memory against retained data — roughly a 1:100 memory-to-storage ratio for long-retention telemetry, moving toward 1:30–1:50 when the data is queried interactively (for example, dashboards over recent traces). Intake retains span data for 90 days, so estimate storage from your span volume over that window.
+
+## 2. Run the Intake service
+
+Intake is included when you run the full platform. To run a minimal subset:
+
+```bash
+nemo services run --services auth,entities,intake --host 127.0.0.1 --port 8000
+```
+
+Verify the route surface is up:
+
+```bash
+curl -i "http://127.0.0.1:8000/apis/intake/v2/workspaces/default/spans"
+```
+
+A `200` with an empty list means Intake and ClickHouse are both healthy. A `503` means Intake is up but cannot reach ClickHouse.
+
+## 3. Send a trace
+
+### From an OpenTelemetry exporter
+
+Point any OTLP/HTTP trace exporter — your agent framework's instrumentation, an OpenTelemetry collector, or the NeMo relay — at the workspace ingest endpoint:
+
+```bash
+export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://127.0.0.1:8000/apis/intake/v2/workspaces/default/ingest/otlp/v1/traces
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+```
+
+Then run your instrumented agent. Intake understands OpenInference and OpenTelemetry GenAI semantic conventions and maps them onto its span model.
+
+### From a captured chat completion
+
+If you capture OpenAI-compatible request/response pairs yourself, post them directly. Session IDs just need to be unique per session — a UUID works well (`uuidgen` ships with macOS and most Linux distributions):
+
+```bash
+SESSION_ID=$(uuidgen)
+nemo intake ingest chat-completions create \
+  --request '{"model": "meta/llama-3.1-8b-instruct", "messages": [{"role": "user", "content": "Hi"}]}' \
+  --response '{"choices": [{"message": {"role": "assistant", "content": "Hello!"}}]}' \
+  --session-id "$SESSION_ID"
+```
+
+ATIF trajectories work the same way through `nemo intake ingest atif create` (see `--help` for the payload fields, or pass a full document with `--input-file`).
+
+## 4. Query it back
+
+List recent traces:
+
+```bash
+nemo intake traces list
+```
+
+List the spans in one session, or drill into a single span:
+
+```bash
+nemo intake spans list --filter.session-id "$SESSION_ID"
+nemo intake spans get <span-id>
+```
+
+Spans support rich filters — by `kind`, `status`, `model`, `provider`, `tool-name`, `agent-name`, `project`, evaluation context, and time range. Aggregate with `nemo intake spans groups list`. All commands accept `--workspace`; they default to the workspace configured in your CLI context.
+
+## 5. Annotate
+
+Attach feedback, labels, or notes to a session or a specific span:
+
+```bash
+nemo intake annotations create thumbs-up \
+  --kind feedback \
+  --session-id "$SESSION_ID" \
+  --text "Correct answer, good tool use"
+```
+
+Read annotations back with `nemo intake annotations list --filter.session-id "$SESSION_ID"`. Evaluator results work the same way under `nemo intake evaluator-results`.
+
+## 6. Browse in Studio
+
+The Studio Intake pages (trace list, span list, and trace detail waterfall) are behind a preview feature flag. Run Studio with `VITE_FF_INTAKE_ENABLED=true` and open:
+
+```text
+/workspaces/default/intake/traces
+```
+
+## Data Retention
+
+Span and trace-index tables carry a 90-day TTL in ClickHouse. Annotations and evaluator results are retained indefinitely. Experiment and experiment-group metadata lives in the platform entity store, not ClickHouse.
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Intake endpoints return `503` | ClickHouse unreachable | Check `curl http://localhost:8123/ping` and the `NMP_INTAKE_CLICKHOUSE_*` variables |
+| OTLP ingest returns `413` | Payload exceeds the body limit | Raise `NMP_INTAKE_OTLP_MAX_BODY_BYTES` or batch smaller exports |
+| Traces ingest but the list is empty | Querying the wrong workspace | Ingest and read are workspace-scoped; make sure both use the same workspace |
+| Studio shows no Intake pages | Feature flag off | Start Studio with `VITE_FF_INTAKE_ENABLED=true` |

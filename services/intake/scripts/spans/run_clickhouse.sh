@@ -4,8 +4,9 @@
 
 set -euo pipefail
 
-container_name="nmp-intake-clickhouse"
-image="${CLICKHOUSE_IMAGE:-clickhouse/clickhouse-server:24.3}"
+container_name="nemo-intake-clickhouse"
+legacy_container_name="nmp-intake-clickhouse"
+image="${CLICKHOUSE_IMAGE:-clickhouse/clickhouse-server:26.3}"
 clickhouse_user="${CLICKHOUSE_USER:-default}"
 clickhouse_password="${CLICKHOUSE_PASSWORD:-}"
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,6 +21,12 @@ ensure_host_dirs() {
 ensure_tmp_dir() {
   docker exec "${container_name}" sh -c "mkdir -p /var/lib/clickhouse/tmp && chown clickhouse:clickhouse /var/lib/clickhouse/tmp" >/dev/null
 }
+
+if docker ps -a --filter "name=^/${legacy_container_name}$" --format "{{.Names}}" | grep -qx "${legacy_container_name}"; then
+  echo "Found legacy container ${legacy_container_name}; it binds the same ports as ${container_name}." >&2
+  echo "Remove it first: docker rm -f ${legacy_container_name} (data persists in ${data_dir})" >&2
+  exit 1
+fi
 
 if docker ps --filter "name=^/${container_name}$" --filter "status=running" --format "{{.Names}}" | grep -qx "${container_name}"; then
   ensure_tmp_dir

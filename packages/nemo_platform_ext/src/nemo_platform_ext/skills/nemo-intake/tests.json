@@ -1,0 +1,65 @@
+{
+  "skill": "nemo-intake",
+  "tests": [
+    {
+      "type": "explicit",
+      "prompt": "Run nemo-intake and show me my recent traces.",
+      "expected_skill": "nemo-intake"
+    },
+    {
+      "type": "explicit",
+      "prompt": "Use the nemo-intake skill to annotate this session.",
+      "expected_skill": "nemo-intake"
+    },
+    {
+      "type": "explicit",
+      "prompt": "Invoke nemo-intake to send this trajectory into the platform.",
+      "expected_skill": "nemo-intake"
+    },
+    {
+      "type": "implicit",
+      "prompt": "Where are the traces from my agent run? I want to see what it actually did.",
+      "expected_skill": "nemo-intake"
+    },
+    {
+      "type": "implicit",
+      "prompt": "Point my OpenTelemetry exporter at NeMo so my agent's spans get stored.",
+      "expected_skill": "nemo-intake"
+    },
+    {
+      "type": "implicit",
+      "prompt": "Add a thumbs-up annotation to session abc-123.",
+      "expected_skill": "nemo-intake"
+    },
+    {
+      "type": "contextual",
+      "prompt": "I just ran my agent against ten test questions. Show me the LLM spans that errored and how long the tool calls took.",
+      "expected_skill": "nemo-intake"
+    },
+    {
+      "type": "contextual",
+      "prompt": "The eval finished earlier today. Pull up the evaluator scores attached to the spans from that run.",
+      "expected_skill": "nemo-intake"
+    },
+    {
+      "type": "contextual",
+      "prompt": "My teammate says the traces from yesterday's demo are in the platform, but I query and get nothing back. Help me figure out why.",
+      "expected_skill": "nemo-intake"
+    },
+    {
+      "type": "negative-control",
+      "prompt": "Run an LLM-as-judge evaluation of my agent against this benchmark.",
+      "expected_skill_not": "nemo-intake"
+    },
+    {
+      "type": "negative-control",
+      "prompt": "Is the platform up? Show me overall health.",
+      "expected_skill_not": "nemo-intake"
+    },
+    {
+      "type": "negative-control",
+      "prompt": "Set up an intake form on my website for new customer leads.",
+      "expected_skill_not": "nemo-intake"
+    }
+  ]
+}
