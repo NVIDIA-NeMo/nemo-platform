@@ -59,7 +59,7 @@ class TestAgentFormat:
 class TestAgentValidation:
     def test_nat_config_rejects_runtime_capture_policy(self):
         with pytest.raises(ValidationError, match="capture_evidence"):
-            NatAgentConfig(capture_evidence=True)  # type: ignore[call-arg]
+            NatAgentConfig(capture_evidence=True)  # ty: ignore[unknown-argument]
 
     def test_agent_is_discriminated_union_of_concrete_variants(self):
         adapter = TypeAdapter(Agent)
@@ -131,10 +131,12 @@ class TestAgentValidation:
     def test_generic_agent_requires_body_and_response_path(self):
         """Generic agents must supply body and response_path."""
         with pytest.raises(ValueError, match="body"):
-            GenericAgent(url="http://agent.test", name="test", response_path="$.answer")  # type: ignore[call-arg]
+            GenericAgent(url="http://agent.test", name="test", response_path="$.answer")  # ty: ignore[missing-argument]
 
         with pytest.raises(ValueError, match="response_path"):
-            GenericAgent(url="http://agent.test", name="test", body={"query": "{{ prompt }}"})  # type: ignore[call-arg]
+            GenericAgent(  # ty: ignore[missing-argument]
+                url="http://agent.test", name="test", body={"query": "{{ prompt }}"}
+            )
 
     def test_generic_agent_valid(self):
         agent = GenericAgent(
@@ -180,7 +182,7 @@ class TestAgentValidation:
     def test_default_format_is_generic(self):
         """Format defaults to 'generic' — so body + response_path are required."""
         with pytest.raises(ValueError, match="body"):
-            GenericAgent(url="http://agent.test", name="test")  # type: ignore[call-arg]
+            GenericAgent(url="http://agent.test", name="test")  # ty: ignore[missing-argument]
 
     def test_api_key_env_sanitisation(self):
         agent = NemoAgentToolkitAgent(

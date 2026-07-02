@@ -59,6 +59,7 @@ def test_trial_from_sample_fallback_trace_has_trace_kind() -> None:
     trace = trial.evidence.require("trace", kind="trace")
     assert trace.format == "json"
 
+
 def test_trial_from_sample_preserves_typed_trace_and_canonical_metadata() -> None:
     task = AgentEvalTask(id="task-1", intent="Answer.", inputs={"prompt": "Q?"})
     target = Model(name="canonical-target", url="https://example/v1/chat/completions")
