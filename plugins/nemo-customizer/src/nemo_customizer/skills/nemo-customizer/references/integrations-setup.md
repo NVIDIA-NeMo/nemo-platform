@@ -1,6 +1,6 @@
 # Integrations setup (W&B + MLflow, local / Docker platform)
 
-Use this when job JSON includes `integrations.wandb` and/or `integrations.mlflow` on a **local or single-node Docker** NeMo Platform (`platform.runtime: docker`). Field reference: `hyperparameters.md` § **Integrations (automodel + unsloth)**.
+Use this when job JSON includes `integrations.wandb` and/or `integrations.mlflow` on a **local or single-node Docker** NeMo Platform (`platform.runtime: docker`) — i.e. **automodel / unsloth**. Field reference: `hyperparameters.md` § **Integrations (all backends)**. rl (DPO) accepts the same `integrations` block but runs on **Kubernetes / Ray**: reuse the field reference, but point `tracking_uri` / self-hosted W&B `base_url` at an endpoint reachable from the cluster (the `docker0` recipe below is Docker-runtime only).
 
 ## MLflow — local tracking server
 

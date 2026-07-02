@@ -9,6 +9,7 @@ from typing import ClassVar
 
 from fastapi import APIRouter
 from nemo_evaluator.api.v2 import metrics as metrics_routes
+from nemo_evaluator.api.v2 import results as results_routes
 from nemo_evaluator.authz import scope
 from nemo_evaluator.core import say_hello
 from nemo_evaluator.jobs.agent_evaluate import AgentEvalJob
@@ -84,6 +85,20 @@ class EvaluatorPluginService(NemoService):
                 router=metrics_routes.router,
                 tag="Evaluator Plugin Metrics Routes",
                 description="Stored metric (metric bundle) CRUD routes.",
+                prefix="/v2/workspaces/{workspace}",
+            ),
+            RouterSpec(
+                # list/get/delete /apis/evaluator/v2/workspaces/{workspace}/agent-eval-results.
+                router=results_routes.agent_eval_results_router,
+                tag="Evaluator Plugin Agent Eval Results Routes",
+                description="Queryable agent-evaluation result records.",
+                prefix="/v2/workspaces/{workspace}",
+            ),
+            RouterSpec(
+                # list/get/delete /apis/evaluator/v2/workspaces/{workspace}/eval-results.
+                router=results_routes.evaluate_results_router,
+                tag="Evaluator Plugin Eval Results Routes",
+                description="Queryable (row) evaluation result records.",
                 prefix="/v2/workspaces/{workspace}",
             ),
         ]

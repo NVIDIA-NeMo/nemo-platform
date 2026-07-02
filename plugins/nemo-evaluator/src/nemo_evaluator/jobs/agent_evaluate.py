@@ -10,12 +10,14 @@ per-trial scores + summary). The row-based counterpart is
 
 Per-task metrics may be given inline or as references to stored metrics;
 references are resolved into inline metrics during ``to_spec`` via the shared
-:mod:`nemo_evaluator.jobs.metric_resolution` helper. The result bundle (trials +
-scores + summary) is persisted as job artifacts.
+:mod:`nemo_evaluator.jobs.metric_resolution` helper. The full result bundle (trials +
+scores + summary) is persisted as job artifacts, and a concise, queryable result entity
+is written via :func:`~nemo_evaluator.jobs.result_persistence.persist_agent_eval_result`.
 """
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar
@@ -33,6 +35,7 @@ from nemo_evaluator.jobs.agent_spec import (
     Target,
 )
 from nemo_evaluator.jobs.metric_resolution import resolve_metrics_to_inline, to_runtime_bundle
+from nemo_evaluator.jobs.result_persistence import persist_agent_eval_result
 from nemo_evaluator.shared.metric_bundles.bundles import unbundle_metric
 from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
 from nemo_evaluator_sdk.agent_eval.persistence import persist_run
@@ -47,6 +50,8 @@ from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 #: Job-result artifact names + the on-disk bundle directory.
 DEFAULT_RESULT_NAME = "agent-eval-results"
@@ -279,5 +284,19 @@ class AgentEvalJob(NemoJob):
         files = self._write_result_files(result, ctx.storage.persistent)
         artifact = ctx.results.save(DEFAULT_RESULT_NAME, files.bundle_dir)
         ctx.results.save(SUMMARY_RESULT_NAME, files.summary)
+
+        # Persist the queryable result record (aggregates + coverage); the full bundle (trials) lives
+        # in the fileset referenced by `artifact`. Best-effort: the authoritative output (bundle +
+        # summary artifacts) is already saved above, so a persistence failure must not fail an
+        # otherwise-successful eval — log and continue.
+        try:
+            persist_agent_eval_result(
+                result, target=spec.target, ctx=ctx, bundle_ref=artifact.artifact_url, async_sdk=async_sdk
+            )
+        except Exception:
+            logger.warning(
+                "Failed to persist agent-eval result record; the result bundle artifact is unaffected",
+                exc_info=True,
+            )
 
         return {"status": "completed", "artifact": artifact.model_dump()}

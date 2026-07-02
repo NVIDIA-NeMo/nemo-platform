@@ -11,7 +11,7 @@ from typing import Any
 
 from kubernetes.client.rest import ApiException
 from nemo_deployments_plugin.backends.base import VolumeStatusUpdate
-from nemo_deployments_plugin.backends.k8s.client import KubernetesClients, _kubernetes_modules
+from nemo_deployments_plugin.backends.k8s.client import KubernetesClients, k8s_client_module
 from nemo_deployments_plugin.backends.labels import k8s_volume_resource_name, volume_identity_labels
 from nemo_deployments_plugin.entities import K8sVolumeConfig
 
@@ -42,18 +42,18 @@ def build_pvc_body(
     storage_class: str | None,
 ) -> Any:
     """Build a ``V1PersistentVolumeClaim`` for create."""
-    client, _ = _kubernetes_modules()
+    k8s = k8s_client_module()
     spec_kwargs: dict[str, Any] = {
         "access_modes": list(access_modes),
-        "resources": client.V1VolumeResourceRequirements(requests={"storage": size}),
+        "resources": k8s.client.V1VolumeResourceRequirements(requests={"storage": size}),
     }
     if storage_class is not None:
         spec_kwargs["storage_class_name"] = storage_class
-    return client.V1PersistentVolumeClaim(
+    return k8s.client.V1PersistentVolumeClaim(
         api_version="v1",
         kind="PersistentVolumeClaim",
-        metadata=client.V1ObjectMeta(name=pvc_name, labels=labels),
-        spec=client.V1PersistentVolumeClaimSpec(**spec_kwargs),
+        metadata=k8s.client.V1ObjectMeta(name=pvc_name, labels=labels),
+        spec=k8s.client.V1PersistentVolumeClaimSpec(**spec_kwargs),
     )
 
 

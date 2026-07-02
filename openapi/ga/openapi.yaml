@@ -8945,6 +8945,60 @@ components:
       type: object
       title: ContentSafetyConfig
       description: Configuration data for content safety rails.
+    ContextBloatDetectionConfig:
+      properties:
+        max_chars:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Max Chars
+          description: Size cap in characters. Inputs exceeding this are flagged.
+          default: 5000
+        min_chars:
+          type: integer
+          minimum: 0.0
+          title: Min Chars
+          description: Minimum characters before entropy/run/repetition checks apply.
+            Shorter texts are only checked against size cap.
+          default: 50
+        min_entropy:
+          type: number
+          maximum: 8.0
+          minimum: 0.0
+          title: Min Entropy
+          description: Shannon entropy floor (bits/char). English prose is ~4.0-4.5.
+          default: 3.5
+        max_repetition_ratio:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Max Repetition Ratio
+          description: Max fraction of repeated n-grams (0.0-1.0).
+          default: 0.4
+        ngram_size:
+          type: integer
+          minimum: 1.0
+          title: Ngram Size
+          description: Size of n-grams used for repetition detection.
+          default: 3
+        max_run_ratio:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Max Run Ratio
+          description: Max fraction of text that is the longest single-char run.
+          default: 0.1
+        action:
+          type: string
+          enum:
+          - reject
+          - truncate
+          - warn
+          title: Action
+          description: 'Action on detection: ''reject'', ''truncate'', or ''warn''.'
+          default: reject
+      type: object
+      title: ContextBloatDetectionConfig
+      description: Configuration for context bloat / context manipulation detection.
     CreateAdapterRequest:
       properties:
         name:
@@ -11209,8 +11263,23 @@ components:
         server_endpoint:
           type: string
           title: Server Endpoint
-          description: The endpoint for the GLiNER detection server.
-          default: http://localhost:1235/v1/extract
+          description: The endpoint for the GLiNER detection server. By default, this
+            is for a locally hosted NIM instance running the GLiNER model. Changed
+            from http://localhost:1235/v1/extract (custom server) to http://localhost:8000/v1/chat/completions
+            (NIM) in this release. If you use the custom gliner_server, set this explicitly
+            to http://localhost:1235/v1/extract.
+          default: http://localhost:8000/v1/chat/completions
+        model:
+          type: string
+          title: Model
+          description: Model identifier sent in NIM API requests (only used when server_endpoint
+            ends with /v1/chat/completions).
+          default: nvidia/gliner-pii
+        api_key_env_var:
+          title: Api Key Env Var
+          description: Name of the environment variable containing the API key for
+            authenticated endpoints (e.g., NVIDIA_API_KEY).
+          type: string
         threshold:
           type: number
           title: Threshold
@@ -11245,6 +11314,7 @@ components:
           - $ref: '#/components/schemas/GLiNERDetectionOptions'
           description: Configuration of the entities to be detected on retrieved relevant
             chunks.
+      additionalProperties: false
       type: object
       title: GLiNERDetection
       description: Configuration for GLiNER PII detection.
@@ -11257,6 +11327,7 @@ components:
           title: Entities
           description: The list of entity labels to detect (e.g., 'email', 'phone_number',
             'ssn').
+      additionalProperties: false
       type: object
       title: GLiNERDetectionOptions
       description: Configuration options for GLiNER.
@@ -12801,6 +12872,50 @@ components:
       required:
       - data
       title: ListFilesetFilesResponse
+    LocalHFClassifierConfig:
+      properties:
+        model:
+          type: string
+          minLength: 1
+          title: Model
+          description: HF model ID, local path, or server-side model identifier.
+        threshold:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Threshold
+          description: Minimum score for a detection to trigger blocking.
+          default: 0.5
+        blocked_labels:
+          items:
+            type: string
+          type: array
+          title: Blocked Labels
+          description: Labels that should trigger blocking when detected above threshold.
+        engine:
+          type: string
+          const: local
+          title: Engine
+          default: local
+        task:
+          type: string
+          enum:
+          - text-classification
+          - token-classification
+          title: Task
+          description: HuggingFace pipeline task type.
+          default: text-classification
+        parameters:
+          additionalProperties: true
+          type: object
+          title: Parameters
+          description: Forwarded as kwargs to transformers.pipeline() (e.g. device,
+            dtype, trust_remote_code, token, revision, aggregation_strategy).
+      type: object
+      required:
+      - model
+      title: LocalHFClassifierConfig
+      description: Configuration for a local HuggingFace Transformers pipeline classifier.
     LocalStorageConfig:
       properties:
         read_chunk_size:
@@ -15698,6 +15813,42 @@ components:
       type: object
       title: PlatformSecretUpdateRequest
       description: Request body for updating a platform secret's metadata.
+    PolygrafDetection:
+      properties:
+        server_endpoint:
+          type: string
+          title: Server Endpoint
+          description: The endpoint for the Polygraf detection server.
+          default: http://localhost:8000/v1/pii/text-detect
+        input:
+          allOf:
+          - $ref: '#/components/schemas/PolygrafDetectionOptions'
+          description: Configuration of the entities to be detected on the user input.
+        output:
+          allOf:
+          - $ref: '#/components/schemas/PolygrafDetectionOptions'
+          description: Configuration of the entities to be detected on the bot output.
+        retrieval:
+          allOf:
+          - $ref: '#/components/schemas/PolygrafDetectionOptions'
+          description: Configuration of the entities to be detected on retrieved relevant
+            chunks.
+      additionalProperties: false
+      type: object
+      title: PolygrafDetection
+      description: Configuration for Polygraf PII detection.
+    PolygrafDetectionOptions:
+      properties:
+        entities:
+          items:
+            type: string
+          type: array
+          title: Entities
+          description: The list of entities that should be detected.
+      additionalProperties: false
+      type: object
+      title: PolygrafDetectionOptions
+      description: Configuration options for Polygraf.
     PrivateAIDetection:
       properties:
         server_endpoint:
@@ -16107,6 +16258,10 @@ components:
           allOf:
           - $ref: '#/components/schemas/GLiNERDetection'
           description: Configuration for GLiNER PII detection.
+        polygraf:
+          allOf:
+          - $ref: '#/components/schemas/PolygrafDetection'
+          description: Configuration for Polygraf PII detection.
         fiddler:
           allOf:
           - $ref: '#/components/schemas/FiddlerGuardrails'
@@ -16139,6 +16294,26 @@ components:
           allOf:
           - $ref: '#/components/schemas/ContentSafetyConfig'
           description: Configuration for content safety rails.
+        hf_classifier:
+          title: Hf Classifier
+          description: Named HF classifier configurations. Keys are classifier names
+            referenced by flows.
+          additionalProperties:
+            oneOf:
+            - $ref: '#/components/schemas/LocalHFClassifierConfig'
+            - $ref: '#/components/schemas/RemoteHFClassifierConfig'
+            discriminator:
+              propertyName: engine
+              mapping:
+                fms: '#/components/schemas/RemoteHFClassifierConfig'
+                kserve: '#/components/schemas/RemoteHFClassifierConfig'
+                local: '#/components/schemas/LocalHFClassifierConfig'
+                vllm: '#/components/schemas/RemoteHFClassifierConfig'
+          type: object
+        context_bloat_detection:
+          allOf:
+          - $ref: '#/components/schemas/ContextBloatDetectionConfig'
+          description: Configuration for context bloat / context manipulation detection.
       type: object
       title: RailsConfigDataInput
       description: Configuration data for specific rails that are supported out-of-the-box.
@@ -16180,6 +16355,10 @@ components:
           allOf:
           - $ref: '#/components/schemas/GLiNERDetection'
           description: Configuration for GLiNER PII detection.
+        polygraf:
+          allOf:
+          - $ref: '#/components/schemas/PolygrafDetection'
+          description: Configuration for Polygraf PII detection.
         fiddler:
           allOf:
           - $ref: '#/components/schemas/FiddlerGuardrails'
@@ -16212,6 +16391,26 @@ components:
           allOf:
           - $ref: '#/components/schemas/ContentSafetyConfig'
           description: Configuration for content safety rails.
+        hf_classifier:
+          title: Hf Classifier
+          description: Named HF classifier configurations. Keys are classifier names
+            referenced by flows.
+          additionalProperties:
+            oneOf:
+            - $ref: '#/components/schemas/LocalHFClassifierConfig'
+            - $ref: '#/components/schemas/RemoteHFClassifierConfig'
+            discriminator:
+              propertyName: engine
+              mapping:
+                fms: '#/components/schemas/RemoteHFClassifierConfig'
+                kserve: '#/components/schemas/RemoteHFClassifierConfig'
+                local: '#/components/schemas/LocalHFClassifierConfig'
+                vllm: '#/components/schemas/RemoteHFClassifierConfig'
+          type: object
+        context_bloat_detection:
+          allOf:
+          - $ref: '#/components/schemas/ContextBloatDetectionConfig'
+          description: Configuration for context bloat / context manipulation detection.
       type: object
       title: RailsConfigDataOutput
       description: Configuration data for specific rails that are supported out-of-the-box.
@@ -16545,6 +16744,59 @@ components:
       title: RegexDetectionOptions
       description: Configuration options for regex pattern detection on a specific
         source.
+    RemoteHFClassifierConfig:
+      properties:
+        model:
+          type: string
+          minLength: 1
+          title: Model
+          description: HF model ID, local path, or server-side model identifier.
+        threshold:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Threshold
+          description: Minimum score for a detection to trigger blocking.
+          default: 0.5
+        blocked_labels:
+          items:
+            type: string
+          type: array
+          title: Blocked Labels
+          description: Labels that should trigger blocking when detected above threshold.
+        engine:
+          type: string
+          enum:
+          - vllm
+          - kserve
+          - fms
+          title: Engine
+        base_url:
+          type: string
+          title: Base Url
+          description: Base URL for the inference server (e.g. 'http://host:8000').
+        api_key_env_var:
+          title: Api Key Env Var
+          description: 'Environment variable name holding the API key. Resolved at
+            runtime to an Authorization: Bearer header.'
+          type: string
+          pattern: ^[A-Za-z_][A-Za-z0-9_]*$
+        parameters:
+          additionalProperties: true
+          type: object
+          title: Parameters
+          description: 'Remote backend parameters: ''timeout'' (float, seconds), ''verify_ssl''
+            (bool), ''ca_cert''/''client_cert''/''client_key'' (str, paths). Note:
+            ''ca_cert'' replaces (not extends) system CAs; use a concatenated bundle
+            to include both custom and system CAs.'
+      type: object
+      required:
+      - model
+      - engine
+      - base_url
+      title: RemoteHFClassifierConfig
+      description: Configuration for a remote HuggingFace classifier (vLLM, KServe,
+        FMS).
     RetrievalRails:
       properties:
         flows:

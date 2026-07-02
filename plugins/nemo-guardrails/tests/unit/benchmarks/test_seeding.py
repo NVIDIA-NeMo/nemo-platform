@@ -14,6 +14,7 @@ from nemo_guardrails_plugin.benchmarks.constants import (
     CS_MODEL_NAME,
     CS_PROVIDER,
     GUARDRAIL_CONFIG,
+    NO_GUARDRAILS_VM_NAME,
     VM_NAME,
     WORKSPACE,
 )
@@ -145,12 +146,18 @@ class TestSeedBenchmark:
         cs_entity = seeded.cs_model_entity
         assert gc_call.kwargs["data"]["models"][0]["model"] == cs_entity
 
-        # VirtualModel uses the discovered app entity and points middleware at the
-        # guardrail config we just created.
-        vm_call = fake_client.inference.virtual_models.create.call_args
-        assert vm_call.kwargs["name"] == VM_NAME
-        assert vm_call.kwargs["default_model_entity"] == seeded.app_model_entity
-        assert vm_call.kwargs["models"] == [{"model": seeded.app_model_entity, "backend_format": "OPENAI_CHAT"}]
+        # Two VirtualModels are created: the guardrails VM (with middleware) and
+        # a control VM (no middleware) used by the without-guardrails benchmark
+        # variant.
+        vm_calls = fake_client.inference.virtual_models.create.call_args_list
+        assert len(vm_calls) == 2
+
+        guardrails_vm_call = vm_calls[0]
+        assert guardrails_vm_call.kwargs["name"] == VM_NAME
+        assert guardrails_vm_call.kwargs["default_model_entity"] == seeded.app_model_entity
+        assert guardrails_vm_call.kwargs["models"] == [
+            {"model": seeded.app_model_entity, "backend_format": "OPENAI_CHAT"}
+        ]
         expected_middleware = [
             {
                 "name": "nemo-guardrails",
@@ -158,8 +165,14 @@ class TestSeedBenchmark:
                 "config_id": f"{WORKSPACE}/{GUARDRAIL_CONFIG}",
             }
         ]
-        assert vm_call.kwargs["request_middleware"] == expected_middleware
-        assert vm_call.kwargs["response_middleware"] == expected_middleware
+        assert guardrails_vm_call.kwargs["request_middleware"] == expected_middleware
+        assert guardrails_vm_call.kwargs["response_middleware"] == expected_middleware
+
+        control_vm_call = vm_calls[1]
+        assert control_vm_call.kwargs["name"] == NO_GUARDRAILS_VM_NAME
+        assert control_vm_call.kwargs["default_model_entity"] == seeded.app_model_entity
+        assert control_vm_call.kwargs["request_middleware"] == []
+        assert control_vm_call.kwargs["response_middleware"] == []
 
     def test_generated_dir_contains_artifacts(self, fake_client: MagicMock, tmp_path: Path) -> None:
         ng_root = tmp_path / "NeMo-Guardrails"
@@ -176,6 +189,7 @@ class TestSeedBenchmark:
         assert (generated_dir / "app_provider.json").is_file()
         assert (generated_dir / "content_safety_provider.json").is_file()
         assert (generated_dir / "virtual_model.json").is_file()
+        assert (generated_dir / "virtual_model_no_guardrails.json").is_file()
 
         request_payload = json.loads(
             (generated_dir / "content_safety_local_nmp_request.json").read_text(encoding="utf-8")
@@ -197,6 +211,7 @@ class TestSeedBenchmark:
 
         assert seeded.workspace == WORKSPACE
         assert seeded.vm_ref == f"{WORKSPACE}/{VM_NAME}"
+        assert seeded.no_guardrails_vm_name == NO_GUARDRAILS_VM_NAME
         assert seeded.guardrail_config_ref == f"{WORKSPACE}/{GUARDRAIL_CONFIG}"
 
     def test_raises_if_served_models_never_populated(self, tmp_path: Path) -> None:

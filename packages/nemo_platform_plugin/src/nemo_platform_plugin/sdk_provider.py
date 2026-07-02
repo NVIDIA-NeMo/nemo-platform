@@ -72,6 +72,15 @@ class SDKProvider(Protocol):
         when ``NMP_PRINCIPAL`` is set, acts on behalf of the job creator.
         """
 
+    def get_async_task_sdk(self, service_name: str) -> AsyncNeMoPlatform:
+        """Async counterpart of :meth:`get_task_sdk` for use inside a task container.
+
+        Authenticates as ``service:{service_name}`` and, when ``NMP_PRINCIPAL``
+        is set, acts on behalf of the job creator with the *full* delegated
+        identity (on-behalf-of id, email, and groups) — wire-identical to
+        :meth:`get_task_sdk`, just async.
+        """
+
     def get_platform_sdk(
         self,
         *,
@@ -173,6 +182,29 @@ class DefaultSDKProvider:
             )
 
         return NeMoPlatform(
+            base_url=self._base_url(),
+            default_headers=headers,
+        )
+
+    def get_async_task_sdk(self, service_name: str) -> AsyncNeMoPlatform:
+        # Async mirror of get_task_sdk: identical headers (service principal,
+        # internal marker, and full on-behalf-of id/email/groups), async client.
+        headers: dict[str, str] = {
+            "X-NMP-Principal-Id": f"service:{service_name}",
+            _INTERNAL_REQUEST_HEADER: "true",
+        }
+
+        principal = _read_principal_from_env()
+        if principal is not None:
+            headers.update(_on_behalf_of_headers(principal))
+        else:
+            logger.warning(
+                "%s not set; async task SDK will authenticate as service:%s without on-behalf-of delegation",
+                _NMP_PRINCIPAL_ENVVAR,
+                service_name,
+            )
+
+        return AsyncNeMoPlatform(
             base_url=self._base_url(),
             default_headers=headers,
         )
@@ -309,6 +341,21 @@ def get_task_sdk(service_name: str) -> NeMoPlatform:
         on-behalf-of headers set.
     """
     return _resolve_provider().get_task_sdk(service_name)
+
+
+def get_async_task_sdk(service_name: str) -> AsyncNeMoPlatform:
+    """Async counterpart of :func:`get_task_sdk` for use inside a task container.
+
+    For a (synchronous) job ``run`` that needs to drive an async helper — e.g. an entity-store
+    write — without fabricating its own client. Authenticates as ``service:{service_name}`` and, when
+    ``NMP_PRINCIPAL`` is set, on behalf of the job creator with the full delegated identity
+    (on-behalf-of id, email, and groups) — wire-identical to :func:`get_task_sdk`.
+
+    A dedicated provider method (not a wrapper over :func:`get_async_platform_sdk`) so each provider
+    mirrors its own sync :meth:`SDKProvider.get_task_sdk` exactly; the platform provider routes URLs
+    and reuses its shared async client, the default provider uses env-var headers.
+    """
+    return _resolve_provider().get_async_task_sdk(service_name)
 
 
 def get_platform_sdk(

@@ -20,34 +20,31 @@ interface NumberRangeColumnFilter {
   label: string;
   type: 'custom';
   filterVariant: 'numberRange';
-  /** Lower bound of the slider track. */
-  min: number;
-  /** Upper bound of the slider track. */
-  max: number;
+  /** Lower bound of the slider track. Omit to hide the slider and leave the min input empty. */
+  min?: number;
+  /** Upper bound of the slider track. Omit to hide the slider and leave the max input empty. */
+  max?: number;
   /** Stepping interval for the slider and the min/max inputs. */
   step: number;
   renderFilter: () => React.JSX.Element;
 }
 
 export interface NumberRangeFilterConfig {
-  /** Lower bound of the slider track. @defaultValue 0 */
+  /** Lower bound of the slider track. Omit to hide the slider and leave the min input empty. */
   min?: number;
-  /** Upper bound of the slider track. @defaultValue 100 */
+  /** Upper bound of the slider track. Omit to hide the slider and leave the max input empty. */
   max?: number;
   /** Stepping interval for the slider and the min/max inputs. @defaultValue 1 */
   step?: number;
 }
 
 /**
- * Creates a numeric range filter definition for use in column `meta.filter`.
- *
- * Renders a RangeSlider above paired min/max inputs and stores its value as a
- * `{ $gte, $lte }` object, the same shape consumed by the platform's filter
- * endpoints. Bounds default to a 0–100 track with a step of 1.
+ * Builds a numberRange filter def for a column's `meta.filter`, stored as
+ * `{ $gte, $lte }`. Supplying both `min`/`max` shows the slider; step defaults to 1.
  */
 export function numberRangeFilter(
   label: string,
-  { min = 0, max = 100, step = 1 }: NumberRangeFilterConfig = {}
+  { min, max, step = 1 }: NumberRangeFilterConfig = {}
 ): NumberRangeColumnFilter {
   return {
     label,

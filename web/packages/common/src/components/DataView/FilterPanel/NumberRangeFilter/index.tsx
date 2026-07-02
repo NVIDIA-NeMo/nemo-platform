@@ -6,79 +6,83 @@ import {
   type NumberRangeFilterValue,
 } from '@nemo/common/src/components/DataView/FilterPanel/NumberRangeFilter/util';
 import type { DataViewColumn } from '@nemo/common/src/components/DataView/FilterPanel/types';
-import { Flex, RangeSlider, Stack, TextInput } from '@nvidia/foundations-react-core';
+import { Group, RangeSlider, Stack, TextInput } from '@nvidia/foundations-react-core';
 import { useCallback, useEffect, useState, type KeyboardEvent } from 'react';
-
-const DEFAULT_BOUNDS = { min: 0, max: 100, step: 1 };
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
 /**
- * Numeric range filter control. Pairs a {@link RangeSlider} (top row) with two
- * {@link TextInput} fields (min / max, in a {@link Flex} row) and stores its
- * value as `{ $gte, $lte }` via the column's filter state.
- *
- * The slider and the inputs are two views of the same range: dragging a thumb
- * updates the inputs live, while typing a bound previews on the slider and
- * commits on blur / Enter. Bounds are ordered before being stored, so an
- * inverted entry (min > max) is normalized rather than emitted as an impossible
- * range. A bound is only emitted when it actually narrows the track, so the
- * applied filter reads as `{ $gte }`, `{ $lte }`, both, or clears at the extremes.
- *
- * Use with {@link numberRangeFilter} in a column's `meta.filter`.
+ * Numeric range filter storing `{ $gte, $lte }`. With both `min` and `max` it
+ * renders a RangeSlider + inputs; with either omitted, just open-ended inputs.
  */
 export function NumberRangeFilterControl({ column }: { column: DataViewColumn }) {
   const filterDef = column.columnDef.meta?.filter;
-  const { min, max, step } = isNumberRangeFilter(filterDef) ? filterDef : DEFAULT_BOUNDS;
+  const rangeDef = isNumberRangeFilter(filterDef) ? filterDef : undefined;
+  const min = rangeDef?.min;
+  const max = rangeDef?.max;
+  const step = rangeDef?.step ?? 1;
+  // The slider only renders when it has a full track to draw; without both
+  // bounds the control is a pair of open-ended inputs.
+  const hasBounds = min != null && max != null;
   const header = column.columnDef.header;
   const label = filterDef?.label ?? (typeof header === 'string' ? header : column.id);
 
   const committed = column.getFilterValue() as NumberRangeFilterValue | undefined;
-  const committedLower = committed?.$gte ?? min;
-  const committedUpper = committed?.$lte ?? max;
+  // In bounded mode an empty field represents the bound; in unbounded mode it
+  // represents an open end, so the field stays empty and its placeholder shows.
+  const committedLower = committed?.$gte ?? (hasBounds ? min : undefined);
+  const committedUpper = committed?.$lte ?? (hasBounds ? max : undefined);
 
   // Local string state lets users edit each field freely — including clearing it
   // or typing partial values like "1." — without snapping back on every keystroke.
-  const [minText, setMinText] = useState(String(committedLower));
-  const [maxText, setMaxText] = useState(String(committedUpper));
+  const [minText, setMinText] = useState(committedLower != null ? String(committedLower) : '');
+  const [maxText, setMaxText] = useState(committedUpper != null ? String(committedUpper) : '');
 
-  const parseBound = useCallback(
-    (text: string, fallback: number): number => {
+  // Parses a field into a number, or `undefined` when empty / non-numeric.
+  // Bounded input is clamped to the track; unbounded input is taken verbatim.
+  const parseField = useCallback(
+    (text: string): number | undefined => {
       const trimmed = text.trim();
-      if (trimmed === '') return fallback;
+      if (trimmed === '') return undefined;
       const parsed = Number(trimmed);
-      return Number.isFinite(parsed) ? clamp(parsed, min, max) : fallback;
+      if (!Number.isFinite(parsed)) return undefined;
+      return hasBounds ? clamp(parsed, min, max) : parsed;
     },
-    [min, max]
+    [hasBounds, min, max]
   );
 
-  // Resync inputs when the committed value changes externally (an applied-filter
-  // chip being removed, a reset, a slider release). Skip when the field already
-  // parses to the committed value so in-progress typing is never clobbered.
+  // Resync inputs when the committed value changes externally (chip removed, reset,
+  // slider release). Skip when the field already parses to it, so typing isn't clobbered.
   useEffect(() => {
     setMinText((curr) =>
-      parseBound(curr, min) === committedLower ? curr : String(committedLower)
+      parseField(curr) === committedLower
+        ? curr
+        : committedLower != null
+          ? String(committedLower)
+          : ''
     );
-  }, [committedLower, parseBound, min]);
+  }, [committedLower, parseField]);
   useEffect(() => {
     setMaxText((curr) =>
-      parseBound(curr, max) === committedUpper ? curr : String(committedUpper)
+      parseField(curr) === committedUpper
+        ? curr
+        : committedUpper != null
+          ? String(committedUpper)
+          : ''
     );
-  }, [committedUpper, parseBound, max]);
+  }, [committedUpper, parseField]);
 
-  const lower = parseBound(minText, min);
-  const upper = parseBound(maxText, max);
-  // The slider always renders two in-bounds, ascending thumbs.
-  const sliderValue: [number, number] = [Math.min(lower, upper), Math.max(lower, upper)];
-
-  // Orders the pair (so an inverted entry can't emit an impossible range) and
-  // keeps only a bound that narrows the track; clears the filter at the extremes.
+  // Orders the pair so an inverted entry can't emit an impossible range, and in
+  // bounded mode keeps only a bound that narrows the track (clears at the extremes).
   const commit = useCallback(
-    (rawLower: number, rawUpper: number) => {
-      const nextLower = Math.min(rawLower, rawUpper);
-      const nextUpper = Math.max(rawLower, rawUpper);
-      const $gte = nextLower > min ? nextLower : undefined;
-      const $lte = nextUpper < max ? nextUpper : undefined;
+    (rawLower: number | undefined, rawUpper: number | undefined) => {
+      let nextLower = rawLower;
+      let nextUpper = rawUpper;
+      if (nextLower != null && nextUpper != null && nextLower > nextUpper) {
+        [nextLower, nextUpper] = [nextUpper, nextLower];
+      }
+      const $gte = nextLower != null && (min == null || nextLower > min) ? nextLower : undefined;
+      const $lte = nextUpper != null && (max == null || nextUpper < max) ? nextUpper : undefined;
       column.setFilterValue($gte === undefined && $lte === undefined ? undefined : { $gte, $lte });
     },
     [column, min, max]
@@ -89,14 +93,18 @@ export function NumberRangeFilterControl({ column }: { column: DataViewColumn })
     setMaxText(String(nextUpper));
   };
 
-  // The text inputs update live so the slider can preview the range, but the
-  // filter is committed on blur / Enter. Committing per keystroke while ordering
-  // would let the resync swap the two fields out from under the user mid-edit.
+  // Inputs update live to preview on the slider but commit on blur / Enter:
+  // committing per keystroke would let the resync swap fields mid-edit.
   const applyTextEdit = () => {
-    const nextLower = Math.min(lower, upper);
-    const nextUpper = Math.max(lower, upper);
-    setMinText(String(nextLower));
-    setMaxText(String(nextUpper));
+    let nextLower = parseField(minText);
+    let nextUpper = parseField(maxText);
+    if (nextLower != null && nextUpper != null && nextLower > nextUpper) {
+      [nextLower, nextUpper] = [nextUpper, nextLower];
+    }
+    // Reflect the ordered/clamped values back into the fields. A bounded field
+    // falls back to its bound; an unbounded open end stays empty.
+    setMinText(nextLower != null ? String(nextLower) : hasBounds ? String(min) : '');
+    setMaxText(nextUpper != null ? String(nextUpper) : hasBounds ? String(max) : '');
     commit(nextLower, nextUpper);
   };
 
@@ -104,18 +112,29 @@ export function NumberRangeFilterControl({ column }: { column: DataViewColumn })
     if (event.key === 'Enter') applyTextEdit();
   };
 
+  // The slider always renders two in-bounds, ascending thumbs; an empty field
+  // falls back to its bound. Only computed when bounds exist (bounded mode).
+  const sliderValue: [number, number] | undefined = hasBounds
+    ? [
+        Math.min(parseField(minText) ?? min, parseField(maxText) ?? max),
+        Math.max(parseField(minText) ?? min, parseField(maxText) ?? max),
+      ]
+    : undefined;
+
   return (
     <Stack gap="density-lg" data-testid={`column-filter-${column.id}`}>
-      <RangeSlider
-        aria-label={`${label} range`}
-        min={min}
-        max={max}
-        step={step}
-        value={sliderValue}
-        onValueChange={handleSliderChange}
-        onValueCommit={([nextLower, nextUpper]) => commit(nextLower, nextUpper)}
-      />
-      <Flex gap="2">
+      {hasBounds && sliderValue && (
+        <RangeSlider
+          aria-label={`${label} range`}
+          min={min}
+          max={max}
+          step={step}
+          value={sliderValue}
+          onValueChange={handleSliderChange}
+          onValueCommit={([nextLower, nextUpper]) => commit(nextLower, nextUpper)}
+        />
+      )}
+      <Group className="w-full [&>*]:!h-[var(--nv-input-height)]">
         <TextInput
           type="number"
           aria-label={`${label} minimum`}
@@ -150,7 +169,7 @@ export function NumberRangeFilterControl({ column }: { column: DataViewColumn })
             },
           }}
         />
-      </Flex>
+      </Group>
     </Stack>
   );
 }

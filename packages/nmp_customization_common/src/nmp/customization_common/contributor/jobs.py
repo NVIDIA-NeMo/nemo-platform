@@ -39,6 +39,24 @@ def require_docker_runtime(backend_label: str) -> None:
         )
 
 
+def require_distributed_runtime(backend_label: str) -> None:
+    """Refuse to compile when the platform isn't a remote Kubernetes cluster.
+
+    Sibling to :func:`require_docker_runtime` for backends that provision a Ray
+    cluster (e.g. NeMo-RL DPO). Unlike the SFT backends, these have no local
+    single-node Docker fallback: they need the platform's Kubernetes/Volcano
+    scheduler to place GPU pods and inject the distributed env
+    (``RANK``/``WORLD_SIZE``/``MASTER_ADDR``). Surface the misconfiguration before
+    the Jobs API rejects the spec.
+    """
+    platform_config = NemoPlatformConfig.get()
+    if platform_config.runtime != Runtime.KUBERNETES:
+        raise PlatformJobCompilationError(
+            f"{backend_label} training requires platform.runtime: kubernetes — it provisions a Ray "
+            "cluster on the remote GPU cluster and has no local Docker fallback.",
+        )
+
+
 class BaseSubmitJob(NemoJob):
     """Shared submit-only job scaffold.
 

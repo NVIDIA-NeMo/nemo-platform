@@ -177,6 +177,7 @@ enabled-plugins = [
   "nemo-customizer-plugin",
   "nemo-automodel-plugin",
   "nemo-unsloth-plugin",
+  "nemo-rl-plugin",
 ]
 
 # Legacy runtime needed specifically for task images that still invoke
@@ -375,8 +376,10 @@ nemo-agents-example-calculator = { workspace = true }
 nemo-customizer-plugin = { workspace = true }
 nemo-automodel-plugin = { workspace = true }
 nemo-unsloth-plugin = { workspace = true }
+nemo-rl-plugin = { workspace = true }
 nmp-automodel = { workspace = true }
 nmp-unsloth = { workspace = true }
+nmp-rl = { workspace = true }
 nmp-customization-common = { workspace = true }
 
 
@@ -429,8 +432,10 @@ members = [
   "plugins/nemo-customizer",
   "plugins/nemo-automodel",
   "plugins/nemo-unsloth",
+  "plugins/nemo-rl",
   "services/automodel",
   "services/unsloth",
+  "services/rl",
 ]
 
 
@@ -568,10 +573,13 @@ exclude = [
 
   "packages/garak_api/",
 
-  # GPU-container training drivers import torch/peft/nemo_automodel/unsloth at runtime only.
+  # GPU-container training drivers import torch/peft/nemo_automodel/unsloth/nemo_rl at runtime only.
   "services/automodel/src/nmp/automodel/tasks/training/backends/",
   "services/automodel/src/nmp/automodel/tasks/training/utils.py",
   "services/unsloth/src/nmp/unsloth/tasks/training/backends/",
+  "services/rl/src/nmp/rl/tasks/training/backends/",
+  "services/rl/src/nmp/rl/tasks/training/utils.py",
+  "services/rl/src/nmp/rl/tasks/training/runner.py",
   # Helm chart test payloads run inside purpose-built Kubernetes containers.
   # The NCCL worker imports torch at runtime, which is not part of the root
   # workspace type-checking environment.

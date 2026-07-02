@@ -15,7 +15,7 @@ can contribute one or more surfaces:
 
 | Surface | Entry-point group | What it adds |
 |---------|-------------------|--------------|
-| HTTP service | `nemo.services` | FastAPI routers mounted under `/apis/<name>/...` |
+| HTTP service | `nemo.services` | FastAPI routers mounted under `/apis/<name>/...` — every route must declare authorization (see [Writing Plugins](#writing-plugins)) |
 | CLI | `nemo.cli` | `nemo <plugin> ...` commands |
 | Job | `nemo.jobs` | Local or submitted jobs with generated `run`, `submit`, and `explain` verbs |
 | Controller | `nemo.controllers` | Background reconciliation loops |
@@ -102,6 +102,15 @@ and the [CLI reference](/documentation/reference/cli-reference/full-cli-referenc
 Plugin authors use the `nemo-platform-plugin` package. A minimal plugin declares entry
 points in `pyproject.toml`, implements the matching class, and restarts
 `nemo services run` so the local platform discovers it.
+
+Every plugin HTTP route must declare authorization — a `@path_rule` naming the
+permission(s) the caller must hold and the caller kind (`CallerKind.PRINCIPAL` or
+`CallerKind.SERVICE_PRINCIPAL`), paired with a `@AuthzScope.read` / `@AuthzScope.write`
+scope gate. Routes registered through a job or function route factory declare it by
+passing `authz=` instead. A route with no rule fails closed: the platform refuses to
+build the policy bundle rather than serve an unguarded endpoint. See
+[Plugin Authorization](/documentation/access-control/authorization/plugin-authorization)
+for the full pattern.
 
 Keep plugins local-first for OSS 0.2.0: avoid requiring a cluster,
 container runtime, or external control plane for the documented launch path.

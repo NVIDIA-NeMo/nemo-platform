@@ -8,9 +8,8 @@ These are internal configuration and response types used by the guardrails engin
 
 import logging
 import os
-from collections.abc import Mapping
 from enum import Enum
-from typing import Any, Dict, Iterator, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import yaml
 from nemoguardrails.colang import parse_colang_file, parse_flow_elements
@@ -19,11 +18,13 @@ from nemoguardrails.rails.llm.config import (
     JAILBREAK_FLOW_HEURISTICS,
     JAILBREAK_FLOW_MODEL,
     ContentSafetyConfig,
+    ContextBloatDetectionConfig,
     CrowdStrikeAIDRRailConfig,
     GLiNERDetection,
+    HFClassifierConfig,
+    PolygrafDetection,
     RegexDetection,
     _join_config,
-    _join_rails_configs,
     _load_imported_paths,
     _load_path,
     _parse_colang_files_recursively,
@@ -113,7 +114,7 @@ class ModelCacheConfig(Value):
     )
 
 
-class ModelParameters(Mapping, Value):
+class ModelParameters(Value):
     """Parameters for configuring how to interact with a model in a guardrails config."""
 
     # Allow additional fields to maintain compatibility with nemoguardrails, which allows
@@ -133,13 +134,27 @@ class ModelParameters(Mapping, Value):
         except AttributeError:
             raise KeyError(key)
 
-    def __iter__(self) -> Iterator[str]:
-        """Enable iteration over keys, excluding fields with None values."""
-        return iter(self.model_dump(exclude_none=True).keys())
+    def __setitem__(self, key: str, value: Any) -> None:
+        """Enable dict-style assignment: params['key'] = value."""
+        setattr(self, key, value)
 
-    def __len__(self) -> int:
-        """Return number of fields, excluding fields with None values."""
-        return len(self.model_dump(exclude_none=True))
+    def __eq__(self, other: object) -> bool:
+        """Compare against plain dicts using the public parameter values."""
+        if isinstance(other, dict):
+            return self.model_dump(exclude_none=True) == other
+        return super().__eq__(other)
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """Enable dict-style lookup with a default value."""
+        return self.model_dump(exclude_none=True).get(key, default)
+
+    def keys(self):
+        """Support `**params` expansion without inheriting from Mapping."""
+        return self.model_dump(exclude_none=True).keys()
+
+    def items(self):
+        """Enable dict-style iteration over parameter key/value pairs."""
+        return self.model_dump(exclude_none=True).items()
 
 
 # Model types that the user should not be able to configure in a guardrails config.
@@ -180,7 +195,7 @@ class Model(Value):
         ),
     )
     parameters: Optional["ModelParameters"] = Field(
-        default_factory=dict,
+        default_factory=ModelParameters,
         description="Additional parameters to configure how to interact with the model.",
     )
 
@@ -1152,6 +1167,11 @@ class RailsConfigData(Value):
         description="Configuration for GLiNER PII detection.",
     )
 
+    polygraf: Optional[PolygrafDetection] = Field(
+        default_factory=PolygrafDetection,
+        description="Configuration for Polygraf PII detection.",
+    )
+
     fiddler: Optional[FiddlerGuardrails] = Field(
         default=None,
         description="Configuration for Fiddler Guardrails.",
@@ -1189,6 +1209,16 @@ class RailsConfigData(Value):
     content_safety: Optional[ContentSafetyConfig] = Field(
         default=None,
         description="Configuration for content safety rails.",
+    )
+
+    hf_classifier: Optional[Dict[str, HFClassifierConfig]] = Field(
+        default=None,
+        description="Named HF classifier configurations. Keys are classifier names referenced by flows.",
+    )
+
+    context_bloat_detection: Optional[ContextBloatDetectionConfig] = Field(
+        default_factory=ContextBloatDetectionConfig,
+        description="Configuration for context bloat / context manipulation detection.",
     )
 
 
@@ -1281,7 +1311,7 @@ class RailsConfig(Value):
     models: List[Model] = Field(default_factory=list, description="The list of models used by the rails configuration.")
 
     instructions: Optional[List[Instruction]] = Field(
-        default=[Instruction.parse_obj(obj) for obj in _default_config["instructions"]],
+        default=[Instruction.model_validate(obj) for obj in _default_config["instructions"]],
         description="List of instructions in natural language that the LLM should use.",
     )
 
@@ -1673,6 +1703,34 @@ class RailsConfig(Value):
     def __add__(self, other: "RailsConfig") -> "RailsConfig":
         """Adds two RailsConfig objects."""
         return _join_rails_configs(self, other)
+
+
+def _join_rails_configs(base_rails_config: RailsConfig, updated_rails_config: RailsConfig) -> RailsConfig:
+    """Helper to join two rails configuration."""
+
+    config_old_types = {}
+    for model_old in base_rails_config.models:
+        config_old_types[model_old.type] = model_old
+
+    for model_new in updated_rails_config.models:
+        if model_new.type in config_old_types:
+            if model_new.engine != config_old_types[model_new.type].engine:
+                raise ValueError("Both config files should have the same engine for the same model type")
+            if model_new.model != config_old_types[model_new.type].model:
+                raise ValueError("Both config files should have the same model for the same model type")
+
+    if base_rails_config.actions_server_url != updated_rails_config.actions_server_url:
+        raise ValueError("Both config files should have the same actions_server_url")
+
+    combined_rails_config_dict = _join_dict(base_rails_config.model_dump(), updated_rails_config.model_dump())
+    # filter out empty strings to avoid leading/trailing commas
+    config_paths = [
+        base_rails_config.model_dump()["config_path"] or "",
+        updated_rails_config.model_dump()["config_path"] or "",
+    ]
+    combined_rails_config_dict["config_path"] = ",".join(filter(None, config_paths))
+    combined_rails_config = RailsConfig(**combined_rails_config_dict)
+    return combined_rails_config
 
 
 def _join_dict(dict1, dict2):

@@ -64,7 +64,7 @@ Each entry has `provider`, `profile` (name), and `backend` (e.g. `docker`, `kube
 | Response includes **`provider`: `gpu` or `gpu_distributed`** | **`automodel`** (default) |
 | No GPU profiles (only `subprocess` and/or CPU `provider`) | Report that GPU customization is unavailable |
 
-Both backends are **`submit`-only**. After submit, the platform's **Docker executor** runs GPU container steps on the daemon attached to the connected platform host (`platform.runtime: docker`). Training does not run in the CLI shell — query execution profiles on the platform (`NMP_BASE_URL`), not GPU availability in the agent's terminal.
+Automodel and unsloth are **`submit`-only**. After submit, the platform's **Docker executor** runs GPU container steps on the daemon attached to the connected platform host (`platform.runtime: docker`). (rl is also submit-only but runs on Kubernetes/Ray — see `rl-kubernetes-runtime.md`.) Training does not run in the CLI shell — query execution profiles on the platform (`NMP_BASE_URL`), not GPU availability in the agent's terminal.
 
 ### Pick execution profile
 
@@ -181,7 +181,7 @@ Job errors like `Failed to pull image … nmp-unsloth-training:… Not Found`, `
 
 | Situation | Action |
 |-----------|--------|
-| **Remote platform** — user gave a host/URL (e.g. `10.0.0.51:8080`) or you set `NMP_BASE_URL` to something other than `http://127.0.0.1:8080` or `http://localhost:8080` | **Do not** run `docker build`, `docker pull`, or `docker buildx bake` on the agent machine — that only affects the agent's local daemon, not the remote platform. Tell the user they must build or load the image **on the target host** (the machine whose Docker daemon runs the GPU job steps). Report with **Report to user** in `SKILL.md`, then append **Report follow-up — missing image (remote platform)** below. Stop; do not retry submit until the user confirms the image is available on the target. |
+| **Remote platform** — user gave a host/URL (e.g. `10.0.0.51:8080`) or you set `NMP_BASE_URL` to something other than `http://127.0.0.1:8080` or `http://localhost:8080` | **Do not** run `docker build`, `docker pull`, or `docker buildx bake` on the agent machine — that only affects the agent's local daemon, not the remote platform. Tell the user they must build or load the image **on the target host** (the machine whose Docker daemon runs the GPU job steps). Report with the template in `references/reporting.md`, then append **Report follow-up — missing image (remote platform)** below. Stop; do not retry submit until the user confirms the image is available on the target. |
 | **Local platform** — default URL only (`127.0.0.1:8080` / `localhost:8080`) | Build or pull on **that same host** where `nemo services run` and Docker share a daemon. See build commands below and `docker/unsloth/README.md` (unsloth) or automodel docker docs. Set env vars **before** starting/restarting the platform. |
 
 Image env vars are read when the platform starts (not per job):
@@ -220,7 +220,7 @@ After the image is on the target, re-submit the same job JSON (use a fresh `outp
 
 ### Report follow-up — missing image (remote platform)
 
-When submit or poll returns a missing-image error and the base URL is **user-overridden**, start with the **Report to user** template in `SKILL.md` (status `error`, **Output adapter fileset (planned):**, Notes quoting the pull error and naming the target host). Then append these sections:
+When submit or poll returns a missing-image error and the base URL is **user-overridden**, start with the **Report to user** template in `references/reporting.md` (status `error`, **Output adapter fileset (planned):**, Notes quoting the pull error and naming the target host). Then append these sections:
 
 **What you need to do on the target host** — build or load the training image on the machine running the NeMo platform (where `docker info` works for the platform's daemon), set `NMP_UNSLOTH_TRAINING_IMAGE` or automodel image env vars, and restart platform services. Full steps: `docker/unsloth/README.md` (unsloth) or automodel docker docs.
 
@@ -323,4 +323,4 @@ Unsloth:
 | Live schema | `nemo customization unsloth explain` |
 | Run (disabled) | `nemo customization unsloth run …` → hard-fails; use `submit` |
 
-Both backends return a job id from `submit` — poll until top-level status is terminal (`completed`, `error`, or `cancelled`).
+All backends return a job id from `submit` — poll until top-level status is terminal (`completed`, `error`, or `cancelled`).

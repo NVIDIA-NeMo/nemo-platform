@@ -1,0 +1,73 @@
+# syntax=docker/dockerfile:1
+# nmp-rl tasks - CPU file_io / model_entity steps for an nmp-rl DPO job.
+#
+# Deliberately does NOT build on nmp-rl-base: the download/upload/model-entity
+# steps only need the platform glue (SDK + customization-common), not NeMo-RL /
+# Ray / vLLM. Basing on the NGC image keeps it consistent with the platform's
+# CUDA userspace while staying far lighter than the training image.
+
+ARG SMOKE_MARKER=smoke_nmp_rl_tasks
+ARG PYTORCH_BASE=nvcr.io/nvidia/pytorch:26.02-py3
+
+FROM ${PYTORCH_BASE} AS base
+
+WORKDIR /app
+
+COPY --from=ghcr.io/astral-sh/uv:0.9.14 /uv /bin/uv
+ENV PATH="/bin:${PATH}"
+
+ENV VIRTUAL_ENV=/opt/venv \
+    UV_PROJECT_ENVIRONMENT=/opt/venv \
+    UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1 \
+    HF_HUB_ENABLE_HF_TRANSFER=1 \
+    OTEL_PYTHON_EXCLUDED_URLS="health"
+ENV PATH="/opt/venv/bin:/root/.local/bin:${PATH}"
+
+RUN uv venv ${UV_PROJECT_ENVIRONMENT} --system-site-packages
+
+FROM base AS runtime
+
+ARG USERNAME=ubuntu
+ARG USER_UID=1000
+ARG USER_GID=1000
+
+COPY --from=platform-workspace / /app
+WORKDIR /app
+
+RUN mkdir -p /home/${USERNAME}/.cache && \
+    chown -R ${USER_UID}:${USER_GID} /home/${USERNAME} /app/services/rl
+
+# Only the glue + nmp-rl (compile/tasks side). No NeMo-RL extra → no Ray/vLLM.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache \
+    -e /app/sdk/python/nemo-platform \
+    -e /app/packages/nemo_platform_plugin \
+    -e /app/packages/nmp_common \
+    -e /app/packages/nmp_customization_common \
+    -e /app/services/rl
+
+ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
+# Default CMD is a harmless help invocation; the platform overrides `command`
+# per step (e.g. -m nmp.rl.tasks.file_io / nmp.rl.tasks.model_entity).
+ENTRYPOINT ["/opt/venv/bin/python"]
+CMD ["-m", "nmp.rl.tasks.file_io", "--help"]
+
+USER ${USER_UID}:${USER_GID}
+
+# NOTE: this smoke-test stage is intentionally NOT wired into docker-bake.hcl
+# (unlike nmp-automodel-{tasks,training}-smoke-test). There are no RL smoke tests
+# yet — tests/smoke_gpu/ carries no tests marked `smoke_nmp_rl_tasks`, and that
+# marker isn't registered in its conftest.py. Wiring a bake target now would run
+# `pytest -m smoke_nmp_rl_tasks` against zero collected tests, which exits 5
+# ("no tests ran") and fails the bake. Add RL import smoke tests + register the
+# marker first, then add the bake target (see nmp-automodel-tasks-smoke-test for
+# the pattern). The stage is kept so it's ready to wire up once tests exist.
+FROM runtime AS smoke-test
+ARG SMOKE_MARKER
+USER 0
+COPY tests/smoke_gpu/ /smoke_test/
+RUN uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache --reinstall pytest && \
+    ${VIRTUAL_ENV}/bin/pytest /smoke_test/ -m ${SMOKE_MARKER} -v
+
+FROM runtime

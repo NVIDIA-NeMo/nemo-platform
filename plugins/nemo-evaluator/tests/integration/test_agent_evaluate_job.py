@@ -326,6 +326,15 @@ def test_submit_to_subprocess_backend_runs_agent_eval(subprocess_platform: str) 
     job = wait_for_platform_job(client, job_name, WORKSPACE, timeout=480)
     assert job.status == "completed", f"job {job_name} ended {job.status!r}: {getattr(job, 'status_details', None)}"
 
+    # Persistence: run() wrote a queryable result record, retrievable via the typed SDK resource
+    # (client.evaluator.agent_eval_results -> the /agent-eval-results route). The record is keyed by
+    # the job id and denormalizes the target it ran against; the full bundle lives in bundle_ref.
+    result = client.evaluator.agent_eval_results.retrieve(job_name, workspace=WORKSPACE)
+    assert result.job_id == job_name
+    assert (result.target_kind, result.target_name) == ("codex", CODEX_MODEL)
+    assert result.bundle_ref
+    assert result.created_at is not None
+
 
 @requires_codex
 @pytest.mark.timeout(600)
@@ -412,6 +421,15 @@ def test_submit_model_target_under_auth_forwards_identity_to_igw(auth_subprocess
 
     job = wait_for_platform_job(sdk, job_name, WORKSPACE, timeout=360)
     assert job.status == "completed", f"job {job_name} ended {job.status!r}: {getattr(job, 'status_details', None)}"
+
+    # Persistence under auth: the result-entity write goes through the job's async task SDK
+    # (get_async_task_sdk) as service:evaluator on-behalf-of the creator. A retrievable record here
+    # proves that delegated identity actually authorized the entity write end-to-end (not just the
+    # IGW inference call) — the key validation of the async task-SDK identity parity.
+    result = sdk.evaluator.agent_eval_results.retrieve(job_name, workspace=WORKSPACE)
+    assert result.job_id == job_name
+    assert (result.target_kind, result.target_name) == ("model", model_name)
+    assert result.bundle_ref
 
 
 @pytest.mark.timeout(600)

@@ -166,6 +166,33 @@ self._entities = NemoEntitiesClient(entities_api)
 
 `as_service="my-plugin"` sets `X-NMP-Principal-Id: service:my-plugin` on all outgoing requests. Service principals have elevated permissions for cross-workspace listing.
 
+## Authorization — Status-Write Routes
+
+A controller writes observed state back through the platform HTTP API, and its SDK carries a service-principal identity — `as_service="my-plugin"` sets `X-NMP-Principal-Id: service:my-plugin` (above). So any status-write route the plugin exposes *for* the controller must be gated to service principals only, or a normal user token could spoof observed status:
+
+```python
+from nemo_platform_plugin.authz import CallerKind, path_rule
+from nemo_deployments_plugin.api.v2._perms import DeploymentPerms
+from nemo_deployments_plugin.authz import scope
+
+@router.put("/deployments/{name}/status", response_model=Deployment, tags=["Deployment Status"])
+@scope.write
+@path_rule(callers=[CallerKind.SERVICE_PRINCIPAL], permissions=[DeploymentPerms.STATUS_UPDATE])
+async def update_deployment_status(...): ...
+```
+
+`CallerKind.SERVICE_PRINCIPAL` (vs. the default `PRINCIPAL`) is enforced in Rego — the caller's id must be prefixed `service:`. The `STATUS_UPDATE` permission is a compound id minted under the collection the controller projects onto:
+
+```python
+from nemo_platform_plugin.authz import PermissionSet, perm
+
+class DeploymentPerms(PermissionSet, namespace="deployments.deployments"):
+    STATUS_UPDATE = perm("Update deployment observed status (controller)", suffix="status.update")
+    # -> id "deployments.deployments.status.update"
+```
+
+Model these routes on `plugins/nemo-deployments/src/nemo_deployments_plugin/api/v2/status.py`. Every plugin HTTP route needs a `@path_rule` plus a `@scope.read`/`.write` gate — see the `plugin-authz` skill for the full route-authz surface (`AuthzScope`, `PermissionSet`, `perm`, route factories, and fail modes).
+
 ## On-Behalf-Of Access (for user secrets)
 
 When a controller needs to access a user-owned secret:

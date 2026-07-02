@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Kubernetes substrate backend for the deployments plugin (scaffold)."""
+"""Kubernetes substrate backend for the deployments plugin."""
 
 from __future__ import annotations
 
@@ -14,9 +14,15 @@ from nemo_deployments_plugin.backends.base import (
     LogResult,
     VolumeStatusUpdate,
 )
+from nemo_deployments_plugin.backends.k8s import deployments as deployment_ops
+from nemo_deployments_plugin.backends.k8s import jobs as job_ops
 from nemo_deployments_plugin.backends.k8s import volumes as volume_ops
 from nemo_deployments_plugin.backends.k8s.client import KubernetesClients
 from nemo_deployments_plugin.backends.k8s.config import K8sExecutorConfig
+from nemo_deployments_plugin.backends.labels import deployment_identity_labels
+from nemo_deployments_plugin.entities import Deployment, DeploymentConfig
+from nemo_platform.resources.entities import AsyncEntitiesResource
+from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -26,12 +32,18 @@ _K8S_INSTALL_HINT = (
 )
 
 
+def _prefer_failed_delete_result(*results: BackendStatusUpdate) -> BackendStatusUpdate:
+    for result in results:
+        if result.status == "FAILED":
+            return result
+    return results[-1]
+
+
 class K8sDeploymentBackend(DeploymentBackend):
     """Manage deployments and volumes as native Kubernetes objects.
 
-    Lifecycle methods not yet implemented raise ``NotImplementedError`` (not ``...``) so
-    accidental calls fail loudly during phased rollout; ``...`` is for ``@abstractmethod``
-    stubs on the ABC itself.
+    Job-backed deployments (``restart_policy`` Never/OnFailure) are implemented in phase 3.
+    Deployment + Service (Always) is implemented in phase 4; full PodSpec compilation lands in phase 5.
     """
 
     _clients: KubernetesClients
@@ -47,6 +59,7 @@ class K8sDeploymentBackend(DeploymentBackend):
             kubeconfig_path=self._executor_config.kubeconfig_path,
             request_timeout=self._executor_config.request_timeout,
         )
+        self._entities = NemoEntitiesClient(AsyncEntitiesResource(self._sdk))
         logger.debug(
             "K8sDeploymentBackend initialized (default_namespace=%s)",
             self._executor_config.default_namespace,
@@ -64,6 +77,19 @@ class K8sDeploymentBackend(DeploymentBackend):
     def clients(self) -> KubernetesClients:
         return self._clients
 
+    async def _load_deployment_config(self, workspace: str, config_name: str) -> DeploymentConfig:
+        return await self._entities.get(DeploymentConfig, config_name, workspace=workspace)
+
+    async def _load_deployment_context(
+        self,
+        workspace: str,
+        name: str,
+    ) -> tuple[Deployment, DeploymentConfig, dict[str, Any]]:
+        deployment = await self._entities.get(Deployment, name, workspace=workspace)
+        config = await self._load_deployment_config(workspace, deployment.deployment_config)
+        backend_config = config.backend_config.model_dump(by_alias=True, exclude_none=True)
+        return deployment, config, backend_config
+
     async def create_deployment(
         self,
         *,
@@ -73,16 +99,140 @@ class K8sDeploymentBackend(DeploymentBackend):
         labels: dict[str, str],
         backend_config: dict[str, Any],
     ) -> BackendStatusUpdate:
-        raise NotImplementedError("K8s create_deployment is implemented in a later phase.")
+        try:
+            config = await self._load_deployment_config(workspace, config_name)
+        except NemoEntityNotFoundError:
+            return BackendStatusUpdate(
+                status="FAILED",
+                status_message=f"DeploymentConfig '{config_name}' not found in workspace '{workspace}'",
+            )
+        except Exception as exc:
+            logger.exception("Failed to load deployment config %s/%s", workspace, config_name)
+            return BackendStatusUpdate(status="FAILED", status_message=f"Failed to load deployment config: {exc}")
+
+        if config.restart_policy == "Always":
+            return await deployment_ops.create_deployment(
+                self._clients,
+                default_namespace=self._executor_config.default_namespace,
+                workspace=workspace,
+                name=name,
+                config_name=config_name,
+                labels=labels,
+                backend_config=backend_config,
+                config=config,
+            )
+
+        return await job_ops.create_job(
+            self._clients,
+            default_namespace=self._executor_config.default_namespace,
+            workspace=workspace,
+            name=name,
+            config_name=config_name,
+            labels=labels,
+            backend_config=backend_config,
+            config=config,
+        )
 
     async def read_status(self, *, workspace: str, name: str) -> BackendStatusUpdate:
-        raise NotImplementedError("K8s read_status is implemented in a later phase.")
+        try:
+            _, config, backend_config = await self._load_deployment_context(workspace, name)
+        except NemoEntityNotFoundError:
+            return BackendStatusUpdate(
+                status="FAILED",
+                status_message=f"Deployment '{name}' not found in workspace '{workspace}'",
+            )
+        except Exception as exc:
+            return BackendStatusUpdate(status="FAILED", status_message=f"Failed to load deployment: {exc}")
+
+        if config.restart_policy == "Always":
+            try:
+                container = deployment_ops.validate_config_for_deployment(config)
+            except job_ops.DeploymentConfigError as exc:
+                return BackendStatusUpdate(status="FAILED", status_message=str(exc))
+            return await deployment_ops.read_deployment_status(
+                self._clients,
+                default_namespace=self._executor_config.default_namespace,
+                workspace=workspace,
+                name=name,
+                backend_config=backend_config,
+                config_name=config.name,
+                restart_policy=config.restart_policy,
+                backoff_limit=config.backoff_limit,
+                container=container,
+            )
+
+        return await job_ops.read_job_status(
+            self._clients,
+            default_namespace=self._executor_config.default_namespace,
+            workspace=workspace,
+            name=name,
+            backend_config=backend_config,
+            config_name=config.name,
+            restart_policy=config.restart_policy,
+            backoff_limit=config.backoff_limit,
+        )
 
     async def delete_deployment(self, workspace: str, name: str) -> BackendStatusUpdate:
-        raise NotImplementedError("K8s delete_deployment is implemented in a later phase.")
+        try:
+            _, config, backend_config = await self._load_deployment_context(workspace, name)
+        except NemoEntityNotFoundError:
+            scope_labels = job_ops.deployment_scope_labels(workspace, name)
+            deployment_result = await deployment_ops.delete_deployment(
+                self._clients,
+                default_namespace=self._executor_config.default_namespace,
+                workspace=workspace,
+                name=name,
+                backend_config={},
+                expected_labels=scope_labels,
+            )
+            job_result = await job_ops.delete_job(
+                self._clients,
+                default_namespace=self._executor_config.default_namespace,
+                workspace=workspace,
+                name=name,
+                backend_config={},
+                expected_labels=scope_labels,
+            )
+            return _prefer_failed_delete_result(deployment_result, job_result)
+        except Exception as exc:
+            return BackendStatusUpdate(status="FAILED", status_message=f"Failed to load deployment: {exc}")
+
+        expected_labels = deployment_identity_labels(
+            workspace,
+            name,
+            config.restart_policy,
+            config_name=config.name,
+            backoff_limit=config.backoff_limit,
+        )
+        if config.restart_policy == "Always":
+            return await deployment_ops.delete_deployment(
+                self._clients,
+                default_namespace=self._executor_config.default_namespace,
+                workspace=workspace,
+                name=name,
+                backend_config=backend_config,
+                expected_labels=expected_labels,
+            )
+
+        return await job_ops.delete_job(
+            self._clients,
+            default_namespace=self._executor_config.default_namespace,
+            workspace=workspace,
+            name=name,
+            backend_config=backend_config,
+            expected_labels=expected_labels,
+        )
 
     async def list_managed_deployment_names(self) -> list[str]:
-        raise NotImplementedError("K8s list_managed_deployment_names is implemented in a later phase.")
+        job_names = await job_ops.list_managed_job_names(
+            self._clients,
+            default_namespace=self._executor_config.default_namespace,
+        )
+        deployment_names = await deployment_ops.list_managed_deployment_names(
+            self._clients,
+            default_namespace=self._executor_config.default_namespace,
+        )
+        return sorted(set(job_names) | set(deployment_names))
 
     async def get_logs(
         self,
@@ -91,7 +241,31 @@ class K8sDeploymentBackend(DeploymentBackend):
         name: str,
         tail: int = 100,
     ) -> LogResult:
-        raise NotImplementedError("K8s get_logs is implemented in a later phase.")
+        try:
+            _, config, backend_config = await self._load_deployment_context(workspace, name)
+        except NemoEntityNotFoundError:
+            return LogResult(lines=[f"Deployment '{name}' not found in workspace '{workspace}'"])
+        except Exception as exc:
+            return LogResult(lines=[f"Failed to load deployment: {exc}"])
+
+        if config.restart_policy == "Always":
+            return await deployment_ops.get_deployment_logs(
+                self._clients,
+                default_namespace=self._executor_config.default_namespace,
+                workspace=workspace,
+                name=name,
+                backend_config=backend_config,
+                tail=tail,
+            )
+
+        return await job_ops.get_job_logs(
+            self._clients,
+            default_namespace=self._executor_config.default_namespace,
+            workspace=workspace,
+            name=name,
+            backend_config=backend_config,
+            tail=tail,
+        )
 
     async def create_volume(
         self,

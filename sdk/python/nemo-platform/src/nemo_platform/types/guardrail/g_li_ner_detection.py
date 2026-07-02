@@ -26,6 +26,12 @@ __all__ = ["GLiNERDetection"]
 class GLiNERDetection(BaseModel):
     """Configuration for GLiNER PII detection."""
 
+    api_key_env_var: Optional[str] = None
+    """
+    Name of the environment variable containing the API key for authenticated
+    endpoints (e.g., NVIDIA_API_KEY).
+    """
+
     chunk_length: Optional[int] = None
     """Length of text chunks for processing."""
 
@@ -34,6 +40,12 @@ class GLiNERDetection(BaseModel):
 
     input: Optional[GLiNERDetectionOptions] = None
     """Configuration options for GLiNER."""
+
+    model: Optional[str] = None
+    """
+    Model identifier sent in NIM API requests (only used when server_endpoint ends
+    with /v1/chat/completions).
+    """
 
     output: Optional[GLiNERDetectionOptions] = None
     """Configuration options for GLiNER."""
@@ -45,7 +57,13 @@ class GLiNERDetection(BaseModel):
     """Configuration options for GLiNER."""
 
     server_endpoint: Optional[str] = None
-    """The endpoint for the GLiNER detection server."""
+    """The endpoint for the GLiNER detection server.
+
+    By default, this is for a locally hosted NIM instance running the GLiNER model.
+    Changed from http://localhost:1235/v1/extract (custom server) to
+    http://localhost:8000/v1/chat/completions (NIM) in this release. If you use the
+    custom gliner_server, set this explicitly to http://localhost:1235/v1/extract.
+    """
 
     threshold: Optional[float] = None
     """Confidence threshold for entity detection (0.0 to 1.0)."""

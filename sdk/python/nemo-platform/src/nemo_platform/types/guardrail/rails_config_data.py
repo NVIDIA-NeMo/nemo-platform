@@ -15,13 +15,16 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from typing import Optional
+from typing import Dict, Union, Optional
+from typing_extensions import Annotated, TypeAlias
 
+from ..._utils import PropertyInfo
 from ..._models import BaseModel
 from .regex_detection import RegexDetection
 from .fiddler_guardrails import FiddlerGuardrails
 from .g_li_ner_detection import GLiNERDetection
 from .pangea_rail_config import PangeaRailConfig
+from .polygraf_detection import PolygrafDetection
 from .clavata_rail_config import ClavataRailConfig
 from .injection_detection import InjectionDetection
 from .patronus_rail_config import PatronusRailConfig
@@ -34,9 +37,16 @@ from .sensitive_data_detection import SensitiveDataDetection
 from .fact_checking_rail_config import FactCheckingRailConfig
 from .guardrails_ai_rail_config import GuardrailsAIRailConfig
 from .jailbreak_detection_config import JailbreakDetectionConfig
+from .local_hf_classifier_config import LocalHfClassifierConfig
+from .remote_hf_classifier_config import RemoteHfClassifierConfig
 from .crowd_strike_aidr_rail_config import CrowdStrikeAidrRailConfig
+from .context_bloat_detection_config import ContextBloatDetectionConfig
 
-__all__ = ["RailsConfigData"]
+__all__ = ["RailsConfigData", "HfClassifier"]
+
+HfClassifier: TypeAlias = Annotated[
+    Union[LocalHfClassifierConfig, RemoteHfClassifierConfig], PropertyInfo(discriminator="engine")
+]
 
 
 class RailsConfigData(BaseModel):
@@ -54,6 +64,9 @@ class RailsConfigData(BaseModel):
     content_safety: Optional[ContentSafetyConfig] = None
     """Configuration data for content safety rails."""
 
+    context_bloat_detection: Optional[ContextBloatDetectionConfig] = None
+    """Configuration for context bloat / context manipulation detection."""
+
     crowdstrike_aidr: Optional[CrowdStrikeAidrRailConfig] = None
     """Configuration data for the CrowdStrike AIDR API"""
 
@@ -69,6 +82,12 @@ class RailsConfigData(BaseModel):
     guardrails_ai: Optional[GuardrailsAIRailConfig] = None
     """Configuration data for Guardrails AI integration."""
 
+    hf_classifier: Optional[Dict[str, HfClassifier]] = None
+    """Named HF classifier configurations.
+
+    Keys are classifier names referenced by flows.
+    """
+
     injection_detection: Optional[InjectionDetection] = None
     """Configuration for injection detection."""
 
@@ -80,6 +99,9 @@ class RailsConfigData(BaseModel):
 
     patronus: Optional[PatronusRailConfig] = None
     """Configuration data for the Patronus Evaluate API"""
+
+    polygraf: Optional[PolygrafDetection] = None
+    """Configuration for Polygraf PII detection."""
 
     privateai: Optional[PrivateAIDetection] = None
     """Configuration for Private AI."""

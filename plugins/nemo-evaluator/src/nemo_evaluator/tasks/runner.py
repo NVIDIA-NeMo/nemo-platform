@@ -15,7 +15,7 @@ import signal
 from types import FrameType
 
 from nemo_platform_plugin.job import NemoJob
-from nemo_platform_plugin.sdk_provider import get_task_sdk
+from nemo_platform_plugin.sdk_provider import get_async_task_sdk, get_task_sdk
 from nemo_platform_plugin.tasks.dispatcher import run_task
 
 logger = logging.getLogger(__name__)
@@ -33,11 +33,16 @@ def run_task_main(job_cls: type[NemoJob], *, service_name: str) -> int:
     """Build the task SDK and dispatch to ``job_cls``; return a process exit code.
 
     Returns :data:`SDK_INITIALIZATION_EXIT_CODE` if the task SDK can't be built.
+
+    Builds both a sync and an async task SDK (same identity): the sync handle is what most jobs use,
+    and the async one lets a synchronous ``run`` drive async helpers (e.g. persisting a result entity
+    through the async entity-store client) without fabricating its own client.
     """
     signal.signal(signal.SIGTERM, _shutdown_handler)
     try:
         sdk = get_task_sdk(service_name)
+        async_sdk = get_async_task_sdk(service_name)
     except Exception:
         logger.exception("Failed to build task SDK for %s", service_name)
         return SDK_INITIALIZATION_EXIT_CODE
-    return run_task(job_cls, sdk=sdk)
+    return run_task(job_cls, sdk=sdk, async_sdk=async_sdk)

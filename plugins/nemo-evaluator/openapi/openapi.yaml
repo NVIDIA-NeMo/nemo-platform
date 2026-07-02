@@ -45,6 +45,136 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/evaluator/v2/workspaces/{workspace}/agent-eval-results:
+    get:
+      tags:
+      - Evaluator Plugin Agent Eval Results Routes
+      summary: List Agent Eval Results By Workspace
+      description: List agent-evaluation result records for a workspace.
+      operationId: list_agent_eval_results_apis_evaluator_v2_workspaces__workspace__agent_eval_results_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          description: Page size.
+          default: 100
+          title: Page Size
+        description: Page size.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/ResultSort'
+          description: Sort field; prefix with '-' for descending.
+          default: -created_at
+        description: Sort field; prefix with '-' for descending.
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/ResultFilter'
+        description: Filter by workspace, name, target, and timestamps.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentEvalResultsPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/evaluator/v2/workspaces/{workspace}/agent-eval-results/{name}:
+    get:
+      tags:
+      - Evaluator Plugin Agent Eval Results Routes
+      summary: Get Agent Eval Result
+      description: Get an agent-evaluation result record by workspace and name.
+      operationId: get_agent_eval_result_apis_evaluator_v2_workspaces__workspace__agent_eval_results__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentEvalResult'
+        '404':
+          description: Result not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Evaluator Plugin Agent Eval Results Routes
+      summary: Delete Agent Eval Result
+      description: Delete an agent-evaluation result record by workspace and name.
+      operationId: delete_agent_eval_result_apis_evaluator_v2_workspaces__workspace__agent_eval_results__name__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '204':
+          description: Successful Response
+        '404':
+          description: Result not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /apis/evaluator/v2/workspaces/{workspace}/agent-evaluate/jobs:
     post:
       tags:
@@ -413,6 +543,136 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PlatformJobStatusResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/evaluator/v2/workspaces/{workspace}/eval-results:
+    get:
+      tags:
+      - Evaluator Plugin Eval Results Routes
+      summary: List Eval Results By Workspace
+      description: List (row) evaluation result records for a workspace.
+      operationId: list_eval_results_apis_evaluator_v2_workspaces__workspace__eval_results_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          description: Page size.
+          default: 100
+          title: Page Size
+        description: Page size.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/ResultSort'
+          description: Sort field; prefix with '-' for descending.
+          default: -created_at
+        description: Sort field; prefix with '-' for descending.
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/EvaluateResultFilter'
+        description: Filter by workspace, name, target, dataset_ref, and timestamps.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluateResultsPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/evaluator/v2/workspaces/{workspace}/eval-results/{name}:
+    get:
+      tags:
+      - Evaluator Plugin Eval Results Routes
+      summary: Get Eval Result
+      description: Get a (row) evaluation result record by workspace and name.
+      operationId: get_eval_result_apis_evaluator_v2_workspaces__workspace__eval_results__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluateResult'
+        '404':
+          description: Result not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Evaluator Plugin Eval Results Routes
+      summary: Delete Eval Result
+      description: Delete a (row) evaluation result record by workspace and name.
+      operationId: delete_eval_result_apis_evaluator_v2_workspaces__workspace__eval_results__name__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '204':
+          description: Successful Response
+        '404':
+          description: Result not found
         '422':
           description: Validation Error
           content:
@@ -1101,6 +1361,94 @@ components:
       title: AgentEvalInputSpec
       description: 'Submitter-facing agent-evaluation input: tasks whose metrics may
         be inline or references.'
+    AgentEvalResult:
+      properties:
+        id:
+          type: string
+          title: Id
+          description: Unique identifier for the stored result record.
+        name:
+          type: string
+          title: Name
+          description: Result record name (equals the producing job's id).
+        workspace:
+          type: string
+          title: Workspace
+          description: Workspace the result belongs to.
+        project:
+          title: Project
+          description: The project associated with this result.
+          type: string
+        job_id:
+          type: string
+          title: Job Id
+          description: Identifier of the job run that produced this result.
+        target_kind:
+          title: Target Kind
+          description: 'Target discriminator: ''model'', ''agent'', or a runner kind.'
+          type: string
+        target_name:
+          title: Target Name
+          description: Model/agent entity name, or the runner's model.
+          type: string
+        target_url:
+          title: Target Url
+          description: Endpoint URL, when the target is an HTTP model/agent.
+          type: string
+        scores:
+          allOf:
+          - $ref: '#/components/schemas/AggregatedMetricResult'
+          description: Aggregated metric scores for the run.
+        bundle_ref:
+          type: string
+          title: Bundle Ref
+          description: Reference to the full result bundle in the Files service.
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+          description: Timestamp the result was created.
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+          description: Timestamp the result was last updated.
+      type: object
+      required:
+      - id
+      - name
+      - workspace
+      - job_id
+      - scores
+      - bundle_ref
+      - created_at
+      - updated_at
+      title: AgentEvalResult
+      description: API representation of a persisted agent-evaluation result record.
+    AgentEvalResultsPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/AgentEvalResult'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: AgentEvalResultsPage
     AgentEvalSpec:
       oneOf:
       - properties:
@@ -1552,6 +1900,146 @@ components:
         there is no separate
 
         prompt template here.'
+    AggregateRangeScore:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: Name of the score.
+        count:
+          type: integer
+          title: Count
+          description: Number of samples evaluated (excluding NaN).
+        nan_count:
+          type: integer
+          title: Nan Count
+          description: Number of samples that produced NaN scores.
+        sum:
+          title: Sum
+          description: Sum of all score values.
+          type: number
+        mean:
+          title: Mean
+          description: Mean score value.
+          type: number
+        min:
+          title: Min
+          description: Minimum score value.
+          type: number
+        max:
+          title: Max
+          description: Maximum score value.
+          type: number
+        std_dev:
+          title: Std Dev
+          description: Standard deviation of the scores.
+          type: number
+        variance:
+          title: Variance
+          description: Variance of the scores.
+          type: number
+        score_type:
+          type: string
+          const: range
+          title: Score Type
+          description: Type of score.
+          default: range
+        percentiles:
+          allOf:
+          - $ref: '#/components/schemas/Percentiles'
+          description: Percentile distribution of scores.
+        histogram:
+          allOf:
+          - $ref: '#/components/schemas/Histogram'
+          description: Histogram of score distribution.
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      - count
+      - nan_count
+      title: AggregateRangeScore
+      description: Aggregated statistics for a range-type score with percentiles and
+        histogram.
+    AggregateRubricScore:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: Name of the score.
+        count:
+          type: integer
+          title: Count
+          description: Number of samples evaluated (excluding NaN).
+        nan_count:
+          type: integer
+          title: Nan Count
+          description: Number of samples that produced NaN scores.
+        sum:
+          title: Sum
+          description: Sum of all score values.
+          type: number
+        mean:
+          title: Mean
+          description: Mean score value.
+          type: number
+        min:
+          title: Min
+          description: Minimum score value.
+          type: number
+        max:
+          title: Max
+          description: Maximum score value.
+          type: number
+        std_dev:
+          title: Std Dev
+          description: Standard deviation of the scores.
+          type: number
+        variance:
+          title: Variance
+          description: Variance of the scores.
+          type: number
+        score_type:
+          type: string
+          const: rubric
+          title: Score Type
+          description: Type of score.
+          default: rubric
+        rubric_distribution:
+          items:
+            $ref: '#/components/schemas/RubricScoreStat'
+          type: array
+          title: Rubric Distribution
+          description: Distribution of rubric categories.
+        mode_category:
+          title: Mode Category
+          description: Most frequent rubric category.
+          type: string
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      - count
+      - nan_count
+      - rubric_distribution
+      title: AggregateRubricScore
+      description: Aggregated statistics for a rubric-type score with category distribution.
+    AggregatedMetricResult:
+      properties:
+        scores:
+          items:
+            anyOf:
+            - $ref: '#/components/schemas/AggregateRangeScore'
+            - $ref: '#/components/schemas/AggregateRubricScore'
+          type: array
+          title: Scores
+          description: The list of aggregated scores.
+      additionalProperties: false
+      type: object
+      required:
+      - scores
+      title: AggregatedMetricResult
+      description: Result of aggregating metric scores with full statistics.
     BundledMetricOutputSpec:
       properties:
         name:
@@ -1886,6 +2374,133 @@ components:
       - updated_at
       - -updated_at
       title: EvaluateJobsSortField
+    EvaluateResult:
+      properties:
+        id:
+          type: string
+          title: Id
+          description: Unique identifier for the stored result record.
+        name:
+          type: string
+          title: Name
+          description: Result record name (equals the producing job's id).
+        workspace:
+          type: string
+          title: Workspace
+          description: Workspace the result belongs to.
+        project:
+          title: Project
+          description: The project associated with this result.
+          type: string
+        job_id:
+          type: string
+          title: Job Id
+          description: Identifier of the job run that produced this result.
+        target_kind:
+          title: Target Kind
+          description: 'Target discriminator: ''model'', ''agent'', or a runner kind.'
+          type: string
+        target_name:
+          title: Target Name
+          description: Model/agent entity name, or the runner's model.
+          type: string
+        target_url:
+          title: Target Url
+          description: Endpoint URL, when the target is an HTTP model/agent.
+          type: string
+        scores:
+          allOf:
+          - $ref: '#/components/schemas/AggregatedMetricResult'
+          description: Aggregated metric scores for the run.
+        bundle_ref:
+          type: string
+          title: Bundle Ref
+          description: Reference to the full result bundle in the Files service.
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+          description: Timestamp the result was created.
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+          description: Timestamp the result was last updated.
+        dataset_ref:
+          title: Dataset Ref
+          description: Reference to the dataset evaluated; None for an inline dataset.
+          type: string
+        metric_types:
+          items:
+            type: string
+          type: array
+          title: Metric Types
+          description: Runtime metric type names applied in the run.
+      type: object
+      required:
+      - id
+      - name
+      - workspace
+      - job_id
+      - scores
+      - bundle_ref
+      - created_at
+      - updated_at
+      - metric_types
+      title: EvaluateResult
+      description: API representation of a persisted (row) evaluation result record.
+    EvaluateResultFilter:
+      additionalProperties: false
+      description: Adds row-eval's referenceable-input trait.
+      properties:
+        workspace:
+          title: Workspace
+          type: string
+        name:
+          title: Name
+          type: string
+        job_id:
+          title: Job Id
+          type: string
+        target_kind:
+          title: Target Kind
+          type: string
+        target_name:
+          title: Target Name
+          type: string
+        created_at:
+          $ref: '#/components/schemas/DatetimeFilter'
+        updated_at:
+          $ref: '#/components/schemas/DatetimeFilter'
+        dataset_ref:
+          title: Dataset Ref
+          type: string
+      title: EvaluateResultFilter
+      type: object
+    EvaluateResultsPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/EvaluateResult'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: EvaluateResultsPage
     EvaluateSpec:
       properties:
         dataset:
@@ -2071,6 +2686,46 @@ components:
       required:
       - message
       title: HelloResponse
+    Histogram:
+      properties:
+        bins:
+          items:
+            $ref: '#/components/schemas/HistogramBin'
+          type: array
+          title: Bins
+          description: Histogram bins.
+      additionalProperties: false
+      type: object
+      required:
+      - bins
+      title: Histogram
+      description: Histogram of score distribution.
+    HistogramBin:
+      properties:
+        lower_bound:
+          anyOf:
+          - type: number
+          - type: integer
+          title: Lower Bound
+          description: Lower bound of the bin (inclusive).
+        upper_bound:
+          anyOf:
+          - type: number
+          - type: integer
+          title: Upper Bound
+          description: Upper bound of the bin (exclusive for all but last bin).
+        count:
+          type: integer
+          title: Count
+          description: Number of values in this bin.
+      additionalProperties: false
+      type: object
+      required:
+      - lower_bound
+      - upper_bound
+      - count
+      title: HistogramBin
+      description: A single bin in a histogram.
     InferenceParams:
       properties:
         temperature:
@@ -2501,6 +3156,83 @@ components:
       - total_pages
       - total_results
       title: PaginationData
+    Percentiles:
+      properties:
+        p10:
+          anyOf:
+          - type: number
+          - type: integer
+          title: P10
+          description: 10th percentile.
+        p20:
+          anyOf:
+          - type: number
+          - type: integer
+          title: P20
+          description: 20th percentile.
+        p30:
+          anyOf:
+          - type: number
+          - type: integer
+          title: P30
+          description: 30th percentile.
+        p40:
+          anyOf:
+          - type: number
+          - type: integer
+          title: P40
+          description: 40th percentile.
+        p50:
+          anyOf:
+          - type: number
+          - type: integer
+          title: P50
+          description: 50th percentile (median).
+        p60:
+          anyOf:
+          - type: number
+          - type: integer
+          title: P60
+          description: 60th percentile.
+        p70:
+          anyOf:
+          - type: number
+          - type: integer
+          title: P70
+          description: 70th percentile.
+        p80:
+          anyOf:
+          - type: number
+          - type: integer
+          title: P80
+          description: 80th percentile.
+        p90:
+          anyOf:
+          - type: number
+          - type: integer
+          title: P90
+          description: 90th percentile.
+        p100:
+          anyOf:
+          - type: number
+          - type: integer
+          title: P100
+          description: 100th percentile.
+      additionalProperties: false
+      type: object
+      required:
+      - p10
+      - p20
+      - p30
+      - p40
+      - p50
+      - p60
+      - p70
+      - p80
+      - p90
+      - p100
+      title: Percentiles
+      description: Percentile distribution of scores.
     PlatformJobListResultResponse:
       properties:
         data:
@@ -2763,6 +3495,71 @@ components:
       type: object
       title: ReasoningParams
       description: Custom settings that control the model's reasoning behavior.
+    ResultFilter:
+      additionalProperties: false
+      description: Traits shared by both result collections (used directly for agent-eval
+        results).
+      properties:
+        workspace:
+          title: Workspace
+          type: string
+        name:
+          title: Name
+          type: string
+        job_id:
+          title: Job Id
+          type: string
+        target_kind:
+          title: Target Kind
+          type: string
+        target_name:
+          title: Target Name
+          type: string
+        created_at:
+          $ref: '#/components/schemas/DatetimeFilter'
+        updated_at:
+          $ref: '#/components/schemas/DatetimeFilter'
+      title: ResultFilter
+      type: object
+    ResultSort:
+      type: string
+      enum:
+      - name
+      - -name
+      - created_at
+      - -created_at
+      - updated_at
+      - -updated_at
+      title: ResultSort
+      description: Sort fields for result queries (``-`` prefix sorts descending).
+    RubricScoreStat:
+      properties:
+        label:
+          type: string
+          title: Label
+          description: The label to use for the level of the rubric grading criteria.
+        description:
+          title: Description
+          description: Describe the semantic meaning of each criteria for the given
+            rubric.
+          type: string
+        value:
+          anyOf:
+          - type: number
+          - type: integer
+          title: Value
+          description: The score value to assign for the criteria.
+        count:
+          type: integer
+          title: Count
+          description: The number of samples evaluated with the rubric level.
+          default: 0
+      type: object
+      required:
+      - label
+      - value
+      title: RubricScoreStat
+      description: Rubric score with count statistics.
     RunConfig:
       properties:
         parallelism:

@@ -4,7 +4,6 @@
 import pytest
 from nmp.guardrails.app.common.utils import (
     _IMAGE_URL_HINT,
-    MODEL_INITIALIZATION_ERROR_PREFIX,
     clean_llm_call_error,
     clean_model_initialization_error,
 )
@@ -74,45 +73,33 @@ class TestCleanLLMCallError:
         assert result == f"{error} {_IMAGE_URL_HINT}"
 
 
-class TestModelInitializationErrorPrefix:
+class TestLLMRailsInitializationErrors:
     """
-    Tests to ensure our MODEL_INITIALIZATION_ERROR_PREFIX stays in sync
-    with the nemo-guardrails library.
-
-    If these tests fail, it means the nemo-guardrails library has changed
-    the error message format in ModelInitializationError, and we need to update
-    MODEL_INITIALIZATION_ERROR_PREFIX accordingly.
+    Tests that LLMRails surfaces init-time errors from our custom model provider.
     """
 
-    def test_llmrails_initialization_error_contains_expected_prefix(self):
+    def test_chatnim_initialization_error_surfaces_provider_message(self):
         """
-        Triggers a ModelInitializationError by instantiating LLMRails with an
-        invalid model configuration, and verifies that the error message contains the expected prefix.
+        Triggers an init-time error from ChatNIM and verifies the provider's
+        actionable message is surfaced.
         """
         from nemoguardrails import LLMRails, RailsConfig
-        from nemoguardrails.rails.llm.llmrails import ModelInitializationError
+        from pydantic_core import ValidationError
 
-        # Create a config with an invalid/nonexistent LLM provider
-        # This will cause LLMRails to fail during model initialization
         config = RailsConfig.from_content(
             yaml_content="""
             models:
               - type: main
-                engine: nonexistent_provider
+                engine: nimchat
                 model: fake-model
+                parameters:
+                  api_key: secret
             """
         )
 
-        with pytest.raises(ModelInitializationError) as exc_info:
+        with pytest.raises(ValidationError) as exc_info:
             LLMRails(config=config)
 
         error_message = str(exc_info.value)
 
-        # Verify the error message contains our expected prefix
-        assert MODEL_INITIALIZATION_ERROR_PREFIX in error_message
-
-        # Verify our cleaning function works on the real error
-        cleaned = clean_model_initialization_error(error_message)
-
-        # The cleaned message should not start with the prefix
-        assert not cleaned.startswith(MODEL_INITIALIZATION_ERROR_PREFIX)
+        assert "API keys cannot be passed directly to ChatNIM" in error_message

@@ -1,0 +1,38 @@
+{
+  "name": "qwen3-dpo-integrations-smoke",
+  "model": "default/qwen3-0.6b",
+  "dataset": "default/helpsteer3-dpo",
+  "training": {
+    "type": "dpo",
+    "max_steps": 20,
+    "batch_size": 32,
+    "micro_batch_size": 1,
+    "learning_rate": 5e-6,
+    "max_seq_length": 1024,
+    "ref_policy_kl_penalty": 0.05,
+    "parallelism": { "num_nodes": 1, "num_gpus_per_node": 1 }
+  },
+  "integrations": {
+    "wandb": {
+      "project": "my-project",
+      "name": "run-001",
+      "entity": "my-team",
+      "tags": ["sft", "llama"],
+      "notes": "Experiment notes",
+      "base_url": "https://wandb.internal",
+      "api_key_secret": "default/wandb-api-key"
+    },
+    "mlflow": {
+      "experiment_name": "llama-finetuning",
+      "name": "run-001",
+      "tracking_uri": "http://mlflow:5000",
+      "tags": {
+        "team": "nlp"
+      },
+      "description": "SFT experiment"
+    }
+  },
+  "output": {
+    "name": "qwen3-0.6b-dpo"
+  }
+}

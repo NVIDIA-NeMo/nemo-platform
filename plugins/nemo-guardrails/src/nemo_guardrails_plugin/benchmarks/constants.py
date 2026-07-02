@@ -8,6 +8,17 @@ from __future__ import annotations
 WORKSPACE = "benchmark"
 GUARDRAIL_CONFIG = "content-safety-local"
 VM_NAME = "guardrails-vm"
+# Control VirtualModel with no middleware attached. Used by the benchmark
+# harness to measure NMP+IGW latency *without* the guardrails middleware so
+# the with-vs-without delta isolates middleware overhead.
+NO_GUARDRAILS_VM_NAME = "no-guardrails-vm"
+
+# Logical identifiers for the two benchmark variants. Used as subdirectory
+# names under `aiperf_results/` and `logs/`, and as the value of the
+# harness's `--variant` flag.
+VARIANT_WITH_GUARDRAILS = "with-guardrails"
+VARIANT_WITHOUT_GUARDRAILS = "without-guardrails"
+ALL_VARIANTS = (VARIANT_WITH_GUARDRAILS, VARIANT_WITHOUT_GUARDRAILS)
 
 # ModelProvider that proxies requests to the mock main model
 APP_PROVIDER = "benchmark-app-llm"

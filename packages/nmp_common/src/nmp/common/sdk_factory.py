@@ -191,6 +191,34 @@ def get_task_sdk(as_service: str, http_client: httpx.Client | None = None) -> Ne
     )
 
 
+def get_async_task_sdk(as_service: str, http_client: Optional[httpx.AsyncClient] = None) -> AsyncNeMoPlatform:
+    """Async counterpart of :func:`get_task_sdk` for use inside a task container.
+
+    Reads the job creator's principal from ``NMP_PRINCIPAL`` and creates an async SDK that
+    authenticates as the given service while acting on behalf of the job creator with the full
+    delegated identity (on-behalf-of id, email, and groups). Wire-identical to :func:`get_task_sdk`.
+
+    Args:
+        as_service: Service name for the service principal (e.g., "evaluator").
+        http_client: Optional async HTTP client to use for requests.
+
+    Returns:
+        Configured AsyncNeMoPlatform SDK with internal + on-behalf-of headers.
+    """
+    principal = principal_from_env()
+    if principal is None:
+        logger.warning(
+            "NMP_PRINCIPAL not set; async task SDK will authenticate as service:%s without on-behalf-of delegation",
+            as_service,
+        )
+    return get_async_platform_sdk(
+        as_service=as_service,
+        internal=True,
+        http_client=http_client,
+        on_behalf_of=principal.effective_principal if principal else None,
+    )
+
+
 def get_async_platform_sdk(
     as_service: str | None = None,
     internal: bool = False,
@@ -343,6 +371,9 @@ class PlatformSDKProvider:
 
     def get_task_sdk(self, service_name: str, http_client: httpx.Client | None = None) -> NeMoPlatform:
         return get_task_sdk(service_name, http_client=http_client)
+
+    def get_async_task_sdk(self, service_name: str, http_client: httpx.AsyncClient | None = None) -> AsyncNeMoPlatform:
+        return get_async_task_sdk(service_name, http_client=http_client)
 
     def get_platform_sdk(
         self,

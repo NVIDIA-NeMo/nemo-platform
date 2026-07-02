@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from nemo_deployments_plugin.backends.k8s.backend import K8sDeploymentBackend
@@ -15,6 +15,11 @@ from nemo_deployments_plugin.backends.k8s.backend import K8sDeploymentBackend
 @pytest.fixture
 def mock_sdk() -> MagicMock:
     return MagicMock()
+
+
+@pytest.fixture
+def mock_entities() -> AsyncMock:
+    return AsyncMock()
 
 
 @pytest.fixture
@@ -28,10 +33,15 @@ def mock_k8s_clients() -> MagicMock:
 
 
 @pytest.fixture
-def k8s_backend(mock_sdk: MagicMock, mock_k8s_clients: MagicMock) -> Iterator[K8sDeploymentBackend]:
+def k8s_backend(
+    mock_sdk: MagicMock,
+    mock_k8s_clients: MagicMock,
+    mock_entities: AsyncMock,
+) -> Iterator[K8sDeploymentBackend]:
     with patch("nemo_deployments_plugin.backends.k8s.backend.KubernetesClients", return_value=mock_k8s_clients):
         backend = K8sDeploymentBackend(
             mock_sdk,
             {"default_namespace": "nemo-deployments", "request_timeout": 30},
         )
+        backend._entities = mock_entities
         yield backend

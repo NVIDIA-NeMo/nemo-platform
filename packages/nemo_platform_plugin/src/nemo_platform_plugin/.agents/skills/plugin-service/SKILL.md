@@ -32,6 +32,26 @@ Example: `name="my-plugin"`, `prefix="/v2/workspaces/{workspace}"`, route `/widg
 
 Convention: always use `prefix="/v2/workspaces/{workspace}"` for resource endpoints.
 
+## Authorization
+
+Every plugin HTTP route MUST carry a `@path_rule` — a route with no rule is a validation error, and under the default `on_invalid_plugin=hard_fail` the auth service refuses to build the OPA bundle rather than silently fence the route, so the platform 502s. Each route also declares exactly one OAuth scope with `@AuthzScope.read` / `.write` — a separate, orthogonal decorator. `@router.<method>` is the outermost decorator; `@scope` and `@path_rule` sit beneath it (their relative order is irrelevant):
+
+```python
+from nemo_platform_plugin.authz import AuthzScope, CallerKind, PermissionSet, path_rule, perm
+
+scope = AuthzScope("my-plugin")                    # owns my-plugin:read / my-plugin:write
+
+class WidgetPerms(PermissionSet, namespace="my-plugin.widgets"):
+    READ = perm("Read a widget")                   # -> "my-plugin.widgets.read"
+
+@router.get("/widgets/{name}", response_model=Widget)
+@scope.read                                        # OAuth scope gate
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[WidgetPerms.READ])
+async def get_widget(...) -> Widget: ...
+```
+
+Reference `PermissionSet` members (never bare strings — a bare string raises `TypeError` at import), and pass `authz=scope` to route factories (`add_job_routes` / `add_function_routes`) so their routes are ruled too. See [`../plugin-authz/SKILL.md`](../plugin-authz/SKILL.md) for the full surface — caller kinds, compound permission ids, role grants, and fail-mode config.
+
 ## Response Schemas
 
 ### Entity objects as responses
@@ -39,7 +59,13 @@ Convention: always use `prefix="/v2/workspaces/{workspace}"` for resource endpoi
 Return entity objects directly — no separate response class needed:
 
 ```python
+from nemo_platform_plugin.authz import AuthzScope, CallerKind, PermissionSet, path_rule, perm
 from nemo_platform_plugin.entity import NemoEntity
+
+scope = AuthzScope("my-plugin")                    # owns my-plugin:read / my-plugin:write
+
+class WidgetPerms(PermissionSet, namespace="my-plugin.widgets"):
+    CREATE = perm("Create a widget")               # -> "my-plugin.widgets.create"
 
 class Widget(NemoEntity, entity_type="my_plugin_widget"):
     colour: str
@@ -47,6 +73,8 @@ class Widget(NemoEntity, entity_type="my_plugin_widget"):
 
 # Use the entity class directly as response_model:
 @router.post("/widgets", response_model=Widget, status_code=201)
+@scope.write                                       # OAuth scope gate
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[WidgetPerms.CREATE])
 async def create_widget(...) -> Widget:
     saved = await entity_client.create(widget)
     return saved
@@ -109,9 +137,17 @@ from nmp.common.auth.dependencies import get_auth_client
 from nmp.common.auth.client import AuthClient
 from nmp.common.service.dependencies import get_sdk_client  # transitive dep via nmp-common; not re-exported by nemo_platform_plugin
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.authz import AuthzScope, CallerKind, PermissionSet, path_rule, perm
 from fastapi import Depends
 
+scope = AuthzScope("my-plugin")
+
+class WidgetPerms(PermissionSet, namespace="my-plugin.widgets"):
+    LIST = perm("List widgets")                    # -> "my-plugin.widgets.list"
+
 @router.get("/widgets")
+@scope.read
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[WidgetPerms.LIST])
 async def list_widgets(
     workspace: str,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
@@ -173,9 +209,11 @@ def test_get_widget():
 - **`get_entity_client` is a placeholder**: The platform injects the real implementation via `app.dependency_overrides`. In tests, override it with `lambda: mock_client`.
 - **`NemoFilter` extra="forbid"**: Unknown filter query params return 422. This is by design — it prevents typos from silently returning unfiltered results.
 - **URL formula**: Routes mount at `/apis/<name>/<prefix>/<route>`. The `prefix` in `RouterSpec` is appended after the service name, not replacing it.
+- **Unruled route → OPA bundle build fails**: A route with no `@path_rule` is a validation error; under the default `on_invalid_plugin=hard_fail` the auth service refuses to build the bundle and the platform 502s. Attach `@path_rule` (plus `@scope.read`/`.write`) to every handler, or `authz=` on a route factory.
 
 ## See Also
 
 - [`crud-example.md`](crud-example.md) — Complete CRUD implementation with all imports
 - [`../plugin-entities/SKILL.md`](../plugin-entities/SKILL.md) — Entity definitions and client
 - [`../plugin-platform-services/SKILL.md`](../plugin-platform-services/SKILL.md) — Calling other platform services
+- [`../plugin-authz/SKILL.md`](../plugin-authz/SKILL.md) — Authorization for plugin routes

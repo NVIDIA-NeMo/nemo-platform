@@ -114,11 +114,9 @@ Things you can ask it to do, once the platform is running:
 - **Generate synthetic data.** Generate synthetic data for training or evaluation purposes using Data Designer.
 - **NeMo Studio (alpha).** Installed automatically with the platform. Browser UI for chat, monitoring, and reviewing optimization suggestions. Studio's agent-focused features are still a work in progress; the CLI is the primary surface today.
 
-## What's coming soon
+## Release notes
 
-- Fine-tuning
-- Safe Synthesizer (synthetic data with privacy guarantees)
-- Broader agent framework support. Today NeMo Platform optimizes LangGraph agents wrapped in NAT. If your agent is in another framework, you need to write the NAT wrapper.
+See the [current release notes](https://docs.nvidia.com/nemo-platform/documentation/reference/release-notes/current-release) for the latest features, improvements, and known limitations.
 
 ## Skills
 
