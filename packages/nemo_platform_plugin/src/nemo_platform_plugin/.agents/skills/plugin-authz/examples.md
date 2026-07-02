@@ -206,7 +206,7 @@ def _build_health_router() -> APIRouter:
 
 ## Job collection
 
-`add_job_routes(job_cls, authz=...)` mounts submit/list/get/delete (plus cancel/status/logs/results). Pass `authz=` or the routes are **unruled** — the kwarg defaults to `None`. When set, each generated route is stamped with a PRINCIPAL `@path_rule` and a scope: reads share one `<namespace>.read` permission; mutating routes get their own (`<namespace>.create`, `.delete`, `.cancel`, ...), all descriptions minted from the job factory's catalog.
+`add_job_routes(job_cls, authz=...)` mounts submit/list/get/delete (plus cancel/status/logs/results). Pass `authz=` or the routes are **unruled** — the kwarg defaults to `None`. When set, each generated route is stamped with a PRINCIPAL `@path_rule` and a scope: reads share one `<namespace>.read` permission; mutating routes get their own (`<namespace>.create`, `.delete`, `.cancel`, ...), all descriptions minted from the job factory's catalog. (Building the `NemoJob` class itself — `spec_schema`, `run`, `compile`, `container` — is the **plugin-job** skill; here we only add the authz wiring around it.)
 
 ```python
 # service.py
@@ -242,7 +242,7 @@ add_job_routes(RunJob, authz=scope.child("run"))
 
 ## Function
 
-`add_function_routes(function_cls, authz=..., permission_description=...)` mounts a single `POST`. Pass `authz=` or the route is unruled. Invoking a function is a **write** action: the adapter stamps a PRINCIPAL `@path_rule` with an invoke permission minted as `<namespace>.<function-name>` and attaches the write scope. `permission_description` requires `authz` — supplying it alone is a `ValueError` (the description would be silently discarded).
+`add_function_routes(function_cls, authz=..., permission_description=...)` mounts a single `POST`. Pass `authz=` or the route is unruled. Invoking a function is a **write** action: the adapter stamps a PRINCIPAL `@path_rule` with an invoke permission minted as `<namespace>.<function-name>` and attaches the write scope. `permission_description` requires `authz` — supplying it alone is a `ValueError` (the description would be silently discarded). (Building the `NemoFunction` class — `spec_schema`, `async def run` — is the **plugin-function** skill; here we only add the authz wiring.)
 
 ```python
 # service.py
@@ -311,10 +311,15 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 from nemo_platform_plugin.authz import CallerKind, path_rule
-from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError, NemoEntityNotFoundError
+from nemo_platform_plugin.entity_client import (
+    NemoEntitiesClient,
+    NemoEntityConflictError,
+    NemoEntityNotFoundError,
+    get_entity_client,
+)
 
 from .authz import scope
-from .dependencies import get_entity_client, require_service_principal
+from .dependencies import require_service_principal
 from .entities import Widget
 from ._perms import WidgetPerms
 from .schema import UpdateWidgetStatusRequest

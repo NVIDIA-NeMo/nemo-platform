@@ -37,14 +37,15 @@ async def get_item(workspace: str, name: str) -> Item: ...
 @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[ItemPerms.READ, ItemPerms.WRITE])
 ```
 
-- `callers` are **OR**'d, `permissions` are **AND**'d.
-- Stacking `@path_rule` on one handler adds **OR alternatives** (any satisfied rule allows access).
-- `callers` is **required and non-empty**; `permissions` may be `[]` for an authenticated-but-permissionless route (e.g. `/healthz`, a blob `PUT`).
+- Within a rule, `callers` are **OR**'d and `permissions` are **AND**'d.
+- `callers` is **required and non-empty** — there is no `callers=[]` (it raises at import). To allow more than one caller kind, list them in one rule: `callers=[CallerKind.PRINCIPAL, CallerKind.SERVICE_PRINCIPAL]`.
+- `permissions` may be `[]` for an authenticated-but-permissionless route (e.g. `/healthz`, a blob `PUT`).
+- Stacking `@path_rule` on one handler adds OR-alternatives, but **v1 ORs only the caller dimension**: stacked rules must share the same `permissions` (an OR of *distinct* permission sets is rejected at derivation). "PRINCIPAL needs A, SERVICE_PRINCIPAL needs B" on one route isn't expressible — use one rule with shared permissions.
 - Reference `PermissionSet` members, **never bare strings** — a string raises `TypeError` at import, so a permission typo can't reach the policy layer.
 
 ## Permission ids — `PermissionSet` + `perm()`
 
-Id grammar is `<service>.<resource>.<action>`, joined from parts. The `<service>` (first segment) MUST equal `NemoService.name` — that namespace fence is enforced, or the whole plugin fails closed.
+Id grammar is `<service>.<resource>.<action>`, joined from parts. The `<service>` (first segment) MUST equal `NemoService.name` — that namespace fence is enforced, or the whole plugin fails closed. Segments split on dots only; hyphens are fine *within* a segment, so a hyphenated name like `my-plugin` yields `my-plugin.widgets.create` — three segments (`my-plugin` / `widgets` / `create`), not four.
 
 ```python
 class ItemPerms(PermissionSet, namespace="myplugin.items"):
@@ -70,13 +71,19 @@ AuthzScope("agents").child("deployments").permission("create", description="..."
 
 Share one `AuthzScope` across a plugin's route modules (define it in a small `authz.py` and import it) so the scope and namespace live in one place.
 
-## Caller kinds — PRINCIPAL vs SERVICE_PRINCIPAL
+## Caller kinds — who may call the route
 
-- `CallerKind.PRINCIPAL` — a normal authenticated user. The default.
-- `CallerKind.SERVICE_PRINCIPAL` — a caller whose id is prefixed `service:` (e.g. a controller writing observed status).
-- Caller-kind is a PDP subject attribute enforced in Rego. There is no `ANON` kind — genuinely public routes are core infrastructure, hardcoded as a PEP bypass.
+`callers` is a required, non-empty list on every `@path_rule`; it names which kinds of authenticated caller the rule applies to (multiple are OR'd). Caller-kind is a PDP subject attribute enforced in Rego, not a permission.
 
-The deployments controller-status `PUT` is the canonical service-principal route — only the controller (`service:...`) may write observed status:
+| Set `callers` to | Satisfied by | Use it for |
+|---|---|---|
+| `[CallerKind.PRINCIPAL]` | a normal authenticated user (a human, or any user token) | the baseline — user-facing CRUD, reads, and actions a person invokes |
+| `[CallerKind.SERVICE_PRINCIPAL]` | a caller whose id is prefixed `service:` (another service or a controller) | machine-to-machine routes a user must never call directly, e.g. a controller writing observed status |
+| `[CallerKind.PRINCIPAL, CallerKind.SERVICE_PRINCIPAL]` | either of the above | routes hit by both people and services (e.g. a read a controller also consumes) |
+
+If you are not writing a machine-only route, use `PRINCIPAL` — it is the baseline posture, and every rule states its callers explicitly (there is no "unset" at the `@path_rule` level). Pinning a route to `SERVICE_PRINCIPAL` alone denies a human user even when they hold the right permission. There is no anonymous or public caller kind: a plugin route always requires an authenticated caller, and genuinely public endpoints are core-infra bypasses, not plugin routes.
+
+The deployments controller-status `PUT` is the canonical service-principal-only route — only the controller (`service:...`) may write observed status:
 
 ```python
 @router.put("/deployments/{name}/status", response_model=Deployment)
@@ -142,6 +149,17 @@ make build-policy && make test-policy
 ```
 
 > **Local dev:** `services/core/auth/.../assets/policy.wasm` is a gitignored build artifact. Run `make build-policy` after pulling authz/Rego changes, otherwise `test_embedded_pdp.py` fails against a stale copy (misleading `sprintf` / fence-fails-open errors).
+
+For a fast in-process check with no running platform, add a `tests/test_authz.py` that derives your service's contribution and asserts it's clean (copy any plugin's `tests/test_authz.py`):
+
+```python
+from nemo_platform_plugin.authz_discovery import _derive_service_contribution
+
+def test_all_routes_are_ruled():
+    contrib, errors, _warnings = _derive_service_contribution(MyService())
+    assert not errors
+    assert not any(m.deny for methods in contrib.endpoints.values() for m in methods.values())
+```
 
 ## Migrating off `get_authz_contribution`
 
