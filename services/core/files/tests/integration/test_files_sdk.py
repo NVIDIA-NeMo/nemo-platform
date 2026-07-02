@@ -24,6 +24,8 @@ from pathlib import Path
 
 import pytest
 from nemo_platform import NeMoPlatform
+from nemo_platform import NotFoundError as StainlessNotFoundError
+from nemo_platform import PermissionDeniedError as StainlessPermissionDeniedError
 from nemo_platform_plugin.client.errors import NotFoundError, PermissionDeniedError
 from nemo_platform_plugin.files.types import FilesetFileOutput, FilesetOutput
 from nmp.core.files.testing.utils import create_fileset, test_fileset_name
@@ -818,7 +820,7 @@ class TestFilesUploadAutoCreate:
         fileset_name = f"nonexistent-{uuid.uuid4().hex[:8]}"
         workspace = sdk.workspace or "default"
 
-        with pytest.raises(NotFoundError):
+        with pytest.raises((NotFoundError, StainlessNotFoundError)):
             sdk.files.upload_content(
                 content=b"test",
                 remote_path="test.txt",
@@ -1035,7 +1037,7 @@ class TestFilesDownloadEdgeCases:
 
     def test_download_content_non_existent_file(self, sdk: NeMoPlatform, fileset: FilesetOutput):
         """Test downloading content of a file that doesn't exist raises NotFoundError."""
-        with pytest.raises(NotFoundError):
+        with pytest.raises((NotFoundError, StainlessNotFoundError)):
             sdk.files.download_content(
                 fileset=fileset.name,
                 workspace=fileset.workspace,
@@ -1048,7 +1050,7 @@ class TestFilesDeleteEdgeCases:
 
     def test_delete_non_existent_file(self, sdk: NeMoPlatform, fileset: FilesetOutput):
         """Test deleting a file that doesn't exist raises NotFoundError."""
-        with pytest.raises(NotFoundError):
+        with pytest.raises((NotFoundError, StainlessNotFoundError)):
             sdk.files.delete(
                 fileset=fileset.name,
                 workspace=fileset.workspace,
@@ -1099,7 +1101,7 @@ class TestFilesetImmutabilityForNonServicePrincipals:
         assert len(files.data) == 1
         assert files.data[0].path == "data.txt"
         # Non-service principal must not be able to upload (fileset is immutable for them).
-        with pytest.raises(PermissionDeniedError):
+        with pytest.raises((PermissionDeniedError, StainlessPermissionDeniedError)):
             sdk_user.files.upload_content(
                 content=b"from user",
                 remote_path="user.txt",

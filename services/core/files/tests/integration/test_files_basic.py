@@ -22,11 +22,9 @@ import duckdb
 import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
-from nemo_platform import (
-    NeMoPlatform,
-)
+from nemo_platform import APIStatusError, ConflictError, NeMoPlatform, NotFoundError
 from nemo_platform.types.files.fileset import Fileset
-from nemo_platform_plugin.client.errors import ConflictError, NemoHTTPError, NotFoundError
+from nemo_platform_plugin.client import errors as nemo_errors
 from nmp.core.files.testing.utils import (
     DEFAULT_WORKSPACE_ID,
     HTTPXFileSystem,
@@ -351,6 +349,7 @@ class TestFilesBasic:
             pass  # Expected
 
         # Test 3: Try to download non-existent file
+        # File operations go through fsspec which raises NemoHTTPError (not remapped).
         with create_fileset(sdk) as fileset:
             try:
                 sdk.files.download_content(
@@ -359,7 +358,7 @@ class TestFilesBasic:
                     workspace=fileset.workspace,
                 )
                 assert False, "Should have raised NotFoundError for non-existent file"
-            except NotFoundError:
+            except (NotFoundError, nemo_errors.NotFoundError):
                 pass  # Expected
 
         # Test 4: Try to delete non-existent file
@@ -371,7 +370,7 @@ class TestFilesBasic:
                     workspace=fileset.workspace,
                 )
                 assert False, "Should have raised NotFoundError when deleting non-existent file"
-            except NotFoundError:
+            except (NotFoundError, nemo_errors.NotFoundError):
                 pass  # Expected
 
         # Test 5: List files in non-existent fileset
@@ -381,7 +380,7 @@ class TestFilesBasic:
                 workspace="non-existent-workspace",
             )
             assert False, "Should have raised NotFoundError"
-        except NotFoundError:
+        except (NotFoundError, nemo_errors.NotFoundError):
             pass  # Expected
 
     def test_fileset_create_conflict(self, sdk: NeMoPlatform):
@@ -407,7 +406,7 @@ class TestFilesBasic:
                 storage={"type": "local", "path": "/etc"},
             )
             assert False, "Should have raised NemoHTTPError for local storage"
-        except NemoHTTPError as exc:
+        except (APIStatusError, nemo_errors.NemoHTTPError) as exc:
             assert exc.status_code == 400
             assert "local storage is not allowed" in str(exc.body).lower()
 
@@ -424,7 +423,7 @@ class TestFilesBasic:
                 },
             )
             assert False, "Should have raised NemoHTTPError for S3 with use_sdk_auth=True"
-        except NemoHTTPError as exc:
+        except (APIStatusError, nemo_errors.NemoHTTPError) as exc:
             assert exc.status_code == 400
             assert "use_sdk_auth=true is not allowed" in str(exc.body).lower()
 
@@ -585,7 +584,10 @@ class TestFilesBasic:
 
     def test_fileset_create_rejects_invalid_dataset_schema_metadata(self, sdk: NeMoPlatform):
         """Test invalid JSON Schema metadata is rejected at fileset create time."""
-        with pytest.raises((NemoHTTPError, ValidationError), match="definitely-not-a-valid-json-schema-type"):
+        with pytest.raises(
+            (APIStatusError, nemo_errors.NemoHTTPError, ValidationError),
+            match="definitely-not-a-valid-json-schema-type",
+        ):
             with create_fileset(
                 sdk,
                 purpose="dataset",

@@ -384,14 +384,22 @@ class FilesetFileSystem(AsyncFileSystem):
 
     @staticmethod
     def _ensure_async(client: FilesClient | AsyncFilesClient) -> AsyncFilesClient:
-        """Ensure we have an AsyncFilesClient, converting from sync if needed."""
+        """Ensure we have an AsyncFilesClient, converting from sync if needed.
+
+        Preserves subclass behavior: if the sync client has ``_async_cls``
+        (e.g. a remapping subclass), that class is used for the async client.
+        """
         if isinstance(client, AsyncFilesClient):
             return client
 
         import httpx
 
+        # Use _async_cls if the sync client defines one (e.g. _RemappingFilesClient
+        # → _RemappingAsyncFilesClient), otherwise plain AsyncFilesClient.
+        async_cls = getattr(client, "_async_cls", None) or AsyncFilesClient
+
         transport = _detect_async_transport(client._http)
-        return AsyncFilesClient(
+        return async_cls(
             base_url=client.base_url,
             workspace=client.workspace,
             auth=client._auth,

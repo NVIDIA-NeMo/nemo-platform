@@ -7,8 +7,8 @@ import uuid
 from collections.abc import Iterator
 
 import pytest
-from nemo_platform import NeMoPlatform
-from nemo_platform_plugin.client.errors import NemoHTTPError
+from nemo_platform import APIStatusError, NeMoPlatform
+from nemo_platform_plugin.client import errors as nemo_errors
 from nmp.common.auth import AuthClient, get_auth_client
 from nmp.common.auth.models import Principal
 from nmp.common.config import AuthConfig, Configuration
@@ -70,7 +70,7 @@ class TestAllowedExternalHostsRejection:
         sdk.secrets.create(workspace=DEFAULT_WORKSPACE, name=secret_name, value="nvapi-dummy")
         try:
             name = f"ngc-disallowed-{uuid.uuid4().hex[:8]}"
-            with pytest.raises(NemoHTTPError) as exc_info:
+            with pytest.raises((APIStatusError, nemo_errors.NemoHTTPError)) as exc_info:
                 sdk.files.filesets.create(
                     workspace=DEFAULT_WORKSPACE,
                     name=name,
@@ -101,7 +101,7 @@ class TestAllowedExternalHostsRejection:
         """Creating a HuggingFace fileset with endpoint outside allowed_external_hosts returns 400."""
         sdk = sdk_with_restrictive_hosts
         name = f"hf-disallowed-{uuid.uuid4().hex[:8]}"
-        with pytest.raises(NemoHTTPError) as exc_info:
+        with pytest.raises((APIStatusError, nemo_errors.NemoHTTPError)) as exc_info:
             sdk.files.filesets.create(
                 workspace=DEFAULT_WORKSPACE,
                 name=name,
