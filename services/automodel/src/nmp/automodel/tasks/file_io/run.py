@@ -412,7 +412,6 @@ class FileIORunner:
                         name=fileset.name,
                         workspace=workspace,
                         metadata=metadata,
-                        timeout=CREATE_FILESET_TIMEOUT,
                     )
                     logger.info(f"Patched existing FileSet metadata: {workspace}/{fileset.name}")
                 except Exception as e:
