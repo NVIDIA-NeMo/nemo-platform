@@ -6,7 +6,7 @@
  * Do not edit manually.
  * agents (plugin)
  */
-import type { LogLine } from './LogLine';
+import type { LogLine } from './LogLine.ts';
 
 /**
  * Response body for ``GET /deployments/{name}/logs``.
