@@ -74,10 +74,11 @@ def status_from_job(
         return BackendStatusUpdate(status="FAILED", status_message=message)
 
     status = job.status
-    if status is not None and status.active:
+    active_pods = int(status.active or 0) if status is not None else 0
+    if active_pods > 0:
         return BackendStatusUpdate(
             status="STARTING",
-            status_message=f"Job {job_name} is running ({status.active} active pod(s))",
+            status_message=f"Job {job_name} is running ({active_pods} active pod(s))",
         )
 
     return BackendStatusUpdate(status="STARTING", status_message=f"Job {job_name} is pending")

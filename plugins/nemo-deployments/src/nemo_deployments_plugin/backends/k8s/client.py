@@ -5,7 +5,7 @@
 
 Copied from the jobs service pattern; tagged for future extraction to a shared substrate lib.
 
-Imports are centralized in ``_kubernetes_modules()`` rather than hoisted to module scope so
+Imports are centralized in ``k8s_client_module()`` rather than hoisted to module scope so
 ``registry`` can load without requiring the optional ``kubernetes`` package until a k8s
 executor is actually constructed.
 """
@@ -21,6 +21,23 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _kubernetes_modules_cache: tuple[Any, Any] | None = None
+_k8s_client_module: _KubernetesClientModule | None = None
+
+
+class _KubernetesClientModule:
+    """Lazy facade for ``kubernetes.client`` model constructors."""
+
+    __slots__ = ("_client",)
+
+    def __init__(self) -> None:
+        self._client: Any | None = None
+
+    @property
+    def client(self) -> Any:
+        if self._client is None:
+            client, _ = _kubernetes_modules()
+            self._client = client
+        return self._client
 
 
 def _kubernetes_modules() -> tuple[Any, Any]:
@@ -31,6 +48,14 @@ def _kubernetes_modules() -> tuple[Any, Any]:
 
         _kubernetes_modules_cache = (client, config)
     return _kubernetes_modules_cache
+
+
+def k8s_client_module() -> _KubernetesClientModule:
+    """Return lazy access to ``kubernetes.client`` for building API objects."""
+    global _k8s_client_module
+    if _k8s_client_module is None:
+        _k8s_client_module = _KubernetesClientModule()
+    return _k8s_client_module
 
 
 def build_api_client(*, kubeconfig_path: str | None = None) -> ApiClient:
@@ -76,22 +101,19 @@ class KubernetesClients:
     @property
     def core_v1(self) -> CoreV1Api:
         if self._core_v1 is None:
-            client, _ = _kubernetes_modules()
-            self._core_v1 = client.CoreV1Api(self._api())
+            self._core_v1 = k8s_client_module().client.CoreV1Api(self._api())
         return self._core_v1
 
     @property
     def apps_v1(self) -> AppsV1Api:
         if self._apps_v1 is None:
-            client, _ = _kubernetes_modules()
-            self._apps_v1 = client.AppsV1Api(self._api())
+            self._apps_v1 = k8s_client_module().client.AppsV1Api(self._api())
         return self._apps_v1
 
     @property
     def batch_v1(self) -> BatchV1Api:
         if self._batch_v1 is None:
-            client, _ = _kubernetes_modules()
-            self._batch_v1 = client.BatchV1Api(self._api())
+            self._batch_v1 = k8s_client_module().client.BatchV1Api(self._api())
         return self._batch_v1
 
     def close(self) -> None:

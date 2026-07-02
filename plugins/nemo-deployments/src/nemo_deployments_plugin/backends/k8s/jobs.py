@@ -11,7 +11,7 @@ from typing import Any
 
 from kubernetes.client.rest import ApiException
 from nemo_deployments_plugin.backends.base import BackendStatusUpdate, LogResult
-from nemo_deployments_plugin.backends.k8s.client import KubernetesClients, _kubernetes_modules
+from nemo_deployments_plugin.backends.k8s.client import KubernetesClients, k8s_client_module
 from nemo_deployments_plugin.backends.k8s.status import (
     LOG_MAX_CHARS,
     missing_job_status,
@@ -97,12 +97,12 @@ def validate_config_for_job(config: DeploymentConfig) -> Container:
 
 
 def merged_volume_mounts(config: DeploymentConfig, container: Container) -> list[VolumeMount]:
-    by_name: dict[str, VolumeMount] = {}
+    mounts_by_name: dict[str, VolumeMount] = {}
     for mount in config.volume_mounts:
-        by_name[mount.name] = mount
+        mounts_by_name[mount.name] = mount
     for mount in container.volume_mounts:
-        by_name[mount.name] = mount
-    return list(by_name.values())
+        mounts_by_name[mount.name] = mount
+    return list(mounts_by_name.values())
 
 
 def job_backoff_limit(config: DeploymentConfig) -> int:
@@ -112,8 +112,8 @@ def job_backoff_limit(config: DeploymentConfig) -> int:
 
 
 def build_env_vars(container: Container) -> list[Any]:
-    client, _ = _kubernetes_modules()
-    return [client.V1EnvVar(name=item.name, value=item.value) for item in container.env if item.value is not None]
+    k8s = k8s_client_module()
+    return [k8s.client.V1EnvVar(name=item.name, value=item.value) for item in container.env if item.value is not None]
 
 
 def build_resource_requirements(container: Container) -> Any | None:
@@ -121,18 +121,18 @@ def build_resource_requirements(container: Container) -> Any | None:
     requests = container.resources.requests or None
     if not limits and not requests:
         return None
-    client, _ = _kubernetes_modules()
-    return client.V1ResourceRequirements(limits=limits, requests=requests)
+    k8s = k8s_client_module()
+    return k8s.client.V1ResourceRequirements(limits=limits, requests=requests)
 
 
 def build_pod_volumes(*, workspace: str, mounts: list[VolumeMount]) -> list[Any]:
     if not mounts:
         return []
-    client, _ = _kubernetes_modules()
+    k8s = k8s_client_module()
     return [
-        client.V1Volume(
+        k8s.client.V1Volume(
             name=mount.name,
-            persistent_volume_claim=client.V1PersistentVolumeClaimVolumeSource(
+            persistent_volume_claim=k8s.client.V1PersistentVolumeClaimVolumeSource(
                 claim_name=k8s_volume_resource_name(workspace, mount.name),
             ),
         )
@@ -143,9 +143,9 @@ def build_pod_volumes(*, workspace: str, mounts: list[VolumeMount]) -> list[Any]
 def build_volume_mounts(mounts: list[VolumeMount]) -> list[Any]:
     if not mounts:
         return []
-    client, _ = _kubernetes_modules()
+    k8s = k8s_client_module()
     return [
-        client.V1VolumeMount(
+        k8s.client.V1VolumeMount(
             name=mount.name,
             mount_path=mount.mount_path,
             read_only=mount.read_only,
@@ -156,7 +156,7 @@ def build_volume_mounts(mounts: list[VolumeMount]) -> list[Any]:
 
 
 def build_container_spec(container: Container, *, volume_mounts: list[VolumeMount] | None = None) -> Any:
-    client, _ = _kubernetes_modules()
+    k8s = k8s_client_module()
     kwargs: dict[str, Any] = {
         "name": container.name,
         "image": container.image,
@@ -169,7 +169,7 @@ def build_container_spec(container: Container, *, volume_mounts: list[VolumeMoun
         kwargs["args"] = list(container.args)
     if volume_mounts:
         kwargs["volume_mounts"] = build_volume_mounts(volume_mounts)
-    return client.V1Container(**kwargs)
+    return k8s.client.V1Container(**kwargs)
 
 
 def build_job_body(
@@ -181,7 +181,7 @@ def build_job_body(
     workspace: str,
 ) -> Any:
     """Build a ``batch/v1.Job`` for create."""
-    client, _ = _kubernetes_modules()
+    k8s = k8s_client_module()
     mounts = merged_volume_mounts(config, container)
     pod_spec_kwargs: dict[str, Any] = {
         "restart_policy": config.restart_policy,
@@ -191,15 +191,15 @@ def build_job_body(
     if volumes:
         pod_spec_kwargs["volumes"] = volumes
 
-    return client.V1Job(
+    return k8s.client.V1Job(
         api_version="batch/v1",
         kind="Job",
-        metadata=client.V1ObjectMeta(name=job_name, labels=labels),
-        spec=client.V1JobSpec(
+        metadata=k8s.client.V1ObjectMeta(name=job_name, labels=labels),
+        spec=k8s.client.V1JobSpec(
             backoff_limit=job_backoff_limit(config),
-            template=client.V1PodTemplateSpec(
-                metadata=client.V1ObjectMeta(labels=labels),
-                spec=client.V1PodSpec(**pod_spec_kwargs),
+            template=k8s.client.V1PodTemplateSpec(
+                metadata=k8s.client.V1ObjectMeta(labels=labels),
+                spec=k8s.client.V1PodSpec(**pod_spec_kwargs),
             ),
         ),
     )

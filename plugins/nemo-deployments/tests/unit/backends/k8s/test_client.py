@@ -18,8 +18,10 @@ def _reset_kubernetes_modules_cache() -> Iterator[None]:
     import nemo_deployments_plugin.backends.k8s.client as k8s_client
 
     k8s_client._kubernetes_modules_cache = None
+    k8s_client._k8s_client_module = None
     yield
     k8s_client._kubernetes_modules_cache = None
+    k8s_client._k8s_client_module = None
 
 
 def test_k8s_backend_registered() -> None:
