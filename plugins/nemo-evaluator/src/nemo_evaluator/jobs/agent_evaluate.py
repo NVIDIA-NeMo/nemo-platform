@@ -17,6 +17,7 @@ is written via :func:`~nemo_evaluator.jobs.result_persistence.persist_agent_eval
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar
@@ -49,6 +50,8 @@ from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 #: Job-result artifact names + the on-disk bundle directory.
 DEFAULT_RESULT_NAME = "agent-eval-results"
@@ -283,9 +286,17 @@ class AgentEvalJob(NemoJob):
         ctx.results.save(SUMMARY_RESULT_NAME, files.summary)
 
         # Persist the queryable result record (aggregates + coverage); the full bundle (trials) lives
-        # in the fileset referenced by `artifact`.
-        persist_agent_eval_result(
-            result, target=spec.target, ctx=ctx, bundle_ref=artifact.artifact_url, async_sdk=async_sdk
-        )
+        # in the fileset referenced by `artifact`. Best-effort: the authoritative output (bundle +
+        # summary artifacts) is already saved above, so a persistence failure must not fail an
+        # otherwise-successful eval — log and continue.
+        try:
+            persist_agent_eval_result(
+                result, target=spec.target, ctx=ctx, bundle_ref=artifact.artifact_url, async_sdk=async_sdk
+            )
+        except Exception:
+            logger.warning(
+                "Failed to persist agent-eval result record; the result bundle artifact is unaffected",
+                exc_info=True,
+            )
 
         return {"status": "completed", "artifact": artifact.model_dump()}

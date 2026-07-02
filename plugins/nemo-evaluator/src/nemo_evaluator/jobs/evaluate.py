@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any, ClassVar, Self, TypeAlias
@@ -42,6 +43,8 @@ from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+logger = logging.getLogger(__name__)
 
 TargetSpec = Model | Agent
 MetricSpec: TypeAlias = Annotated[list[MetricRefOrInline], Field(min_length=1)]
@@ -302,16 +305,24 @@ class EvaluateJob(NemoJob):
         ctx.results.save(ARTIFACTS_RESULT_NAME, result_files.artifacts_dir, ignore_patterns=RESULT_IGNORE_PATTERNS)
 
         # Persist the queryable result record (aggregate scores); per-row detail lives in the fileset
-        # bundle referenced by `artifact`.
-        persist_evaluate_result(
-            result,
-            target=spec.target,
-            dataset_ref=spec.dataset.root if isinstance(spec.dataset, FilesetRef) else None,
-            metric_types=[metric.type for metric in metrics],
-            ctx=ctx,
-            bundle_ref=artifact.artifact_url,
-            async_sdk=async_sdk,
-        )
+        # bundle referenced by `artifact`. Best-effort: the authoritative output (result artifacts) is
+        # already saved above, so a persistence failure must not fail an otherwise-successful eval —
+        # log and continue.
+        try:
+            persist_evaluate_result(
+                result,
+                target=spec.target,
+                dataset_ref=spec.dataset.root if isinstance(spec.dataset, FilesetRef) else None,
+                metric_types=[metric.type for metric in metrics],
+                ctx=ctx,
+                bundle_ref=artifact.artifact_url,
+                async_sdk=async_sdk,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to persist evaluate result record; the result artifacts are unaffected",
+                exc_info=True,
+            )
 
         # TODO: Implement progress reporting hook in SDK - AALGO-149
         # self.report_progress(

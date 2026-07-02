@@ -451,6 +451,22 @@ def test_evaluate_job_runs_inline_exact_match_metric() -> None:
     assert aggregate_scores[0]["mean"] == 0.5
 
 
+def test_evaluate_job_survives_result_persistence_failure(mocker: MockerFixture) -> None:
+    # Mirror of the agent-eval job: the queryable result record is a best-effort convenience index;
+    # a persistence failure must not fail an otherwise-successful eval (its artifacts are already saved).
+    persist = mocker.patch(
+        "nemo_evaluator.jobs.evaluate.persist_evaluate_result",
+        side_effect=RuntimeError("entity store unavailable"),
+    )
+
+    result = NemoJobScheduler().run_local(EvaluateJob, _exact_match_spec())
+
+    persist.assert_called_once()
+    assert result["status"] == "completed"
+    aggregate_scores = _load_artifact_payload(result)["aggregate_scores"]["scores"]
+    assert aggregate_scores[0]["name"] == "exact-match.exact-match"
+
+
 def test_evaluate_job_applies_metric_job_params_once() -> None:
     spec = {
         "metrics": [_bundle_payload(_CountingJobParamsMetric())],

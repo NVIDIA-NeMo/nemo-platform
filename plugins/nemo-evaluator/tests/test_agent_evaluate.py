@@ -148,6 +148,26 @@ def test_agent_eval_job_reconstructs_tasks_and_persists_bundle(tmp_path: Path, m
     assert result["artifact"]["name"] == DEFAULT_RESULT_NAME
 
 
+def test_agent_eval_job_survives_result_persistence_failure(tmp_path: Path, mocker: MockerFixture) -> None:
+    # The queryable result record is a best-effort convenience index; the authoritative output (bundle
+    # + summary artifacts) is already saved. A persistence failure must not fail a successful eval.
+    mocker.patch.object(AgentEvalJob, "_build_evaluator", return_value=_FakeEvaluator())
+    persist = mocker.patch(
+        "nemo_evaluator.jobs.agent_evaluate.persist_agent_eval_result",
+        side_effect=RuntimeError("entity store unavailable"),
+    )
+    ctx = _job_context(tmp_path)
+
+    spec = AgentEvalSpec(tasks=[_task_spec()], target=CodexRunnerTarget(model="gpt-5.5"))
+    result = AgentEvalJob().run(spec.model_dump(), ctx=ctx)
+
+    # Persistence was attempted and raised, yet the job still completed with its artifacts intact.
+    persist.assert_called_once()
+    assert result["status"] == "completed"
+    assert result["artifact"]["name"] == DEFAULT_RESULT_NAME
+    assert (ctx.storage.persistent / "results" / DEFAULT_RESULT_NAME).exists()
+
+
 def test_agent_eval_spec_requires_at_least_one_task() -> None:
     with pytest.raises(ValueError, match="at least 1 item|too_short|min_length"):
         AgentEvalSpec(tasks=[])

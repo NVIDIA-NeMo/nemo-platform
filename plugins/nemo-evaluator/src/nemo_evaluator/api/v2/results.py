@@ -122,6 +122,9 @@ async def list_agent_eval_results(
 @agent_eval_results_router.get(
     "/agent-eval-results/{name}",
     summary="Get Agent Eval Result",
+    status_code=status.HTTP_200_OK,
+    response_model=AgentEvalResult,
+    response_model_exclude_none=True,
     responses={status.HTTP_404_NOT_FOUND: {"description": "Result not found"}},
 )
 @scope.read
@@ -132,10 +135,16 @@ async def get_agent_eval_result(
     service: ResultService = Depends(get_result_service),
 ) -> AgentEvalResult:
     """Get an agent-evaluation result record by workspace and name."""
-    result = await service.get_agent_eval_result(workspace, name)
-    if result is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Result not found: {workspace}/{name}")
-    return result
+    try:
+        result = await service.get_agent_eval_result(workspace, name)
+        if result is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Result not found: {workspace}/{name}")
+        return result
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception(f"Failed to get agent-eval result {_sanitize_for_log(workspace)}/{_sanitize_for_log(name)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
 
 
 @agent_eval_results_router.delete(
@@ -152,9 +161,15 @@ async def delete_agent_eval_result(
     service: ResultService = Depends(get_result_service),
 ) -> None:
     """Delete an agent-evaluation result record by workspace and name."""
-    if not await service.delete_agent_eval_result(workspace, name):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Result not found: {workspace}/{name}")
-    return None
+    try:
+        if not await service.delete_agent_eval_result(workspace, name):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Result not found: {workspace}/{name}")
+        return None
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception(f"Failed to delete agent-eval result {_sanitize_for_log(workspace)}/{_sanitize_for_log(name)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
 
 
 # --- (row) eval results ------------------------------------------------------
@@ -195,6 +210,9 @@ async def list_eval_results(
 @evaluate_results_router.get(
     "/eval-results/{name}",
     summary="Get Eval Result",
+    status_code=status.HTTP_200_OK,
+    response_model=EvaluateResult,
+    response_model_exclude_none=True,
     responses={status.HTTP_404_NOT_FOUND: {"description": "Result not found"}},
 )
 @scope.read
@@ -205,10 +223,16 @@ async def get_eval_result(
     service: ResultService = Depends(get_result_service),
 ) -> EvaluateResult:
     """Get a (row) evaluation result record by workspace and name."""
-    result = await service.get_eval_result(workspace, name)
-    if result is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Result not found: {workspace}/{name}")
-    return result
+    try:
+        result = await service.get_eval_result(workspace, name)
+        if result is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Result not found: {workspace}/{name}")
+        return result
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception(f"Failed to get eval result {_sanitize_for_log(workspace)}/{_sanitize_for_log(name)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
 
 
 @evaluate_results_router.delete(
@@ -225,6 +249,12 @@ async def delete_eval_result(
     service: ResultService = Depends(get_result_service),
 ) -> None:
     """Delete a (row) evaluation result record by workspace and name."""
-    if not await service.delete_eval_result(workspace, name):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Result not found: {workspace}/{name}")
-    return None
+    try:
+        if not await service.delete_eval_result(workspace, name):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Result not found: {workspace}/{name}")
+        return None
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception(f"Failed to delete eval result {_sanitize_for_log(workspace)}/{_sanitize_for_log(name)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
