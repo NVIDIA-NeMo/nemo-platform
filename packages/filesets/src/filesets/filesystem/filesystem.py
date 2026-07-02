@@ -17,6 +17,7 @@ from anyio import to_thread
 from fsspec.asyn import AbstractAsyncStreamedFile, AsyncFileSystem, _get_batch_size
 from fsspec.callbacks import DEFAULT_CALLBACK, Callback
 from fsspec.spec import AbstractBufferedFile
+from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 from nemo_platform_plugin.files.types import FilesetFileOutput, ListFilesQueryParams
 
@@ -350,7 +351,7 @@ class FilesetFileSystem(AsyncFileSystem):
         self,
         *,
         client: FilesClient | AsyncFilesClient | None = None,
-        sdk: Any | None = None,
+        sdk: NeMoPlatform | AsyncNeMoPlatform | None = None,
         batch_size: int | None = None,
         blocksize: int | None = None,
         asynchronous: bool = True,
@@ -400,14 +401,13 @@ class FilesetFileSystem(AsyncFileSystem):
         ), False
 
     @staticmethod
-    def _client_from_sdk(sdk: Any) -> tuple[AsyncFilesClient, bool]:
+    def _client_from_sdk(sdk: NeMoPlatform | AsyncNeMoPlatform) -> tuple[AsyncFilesClient, bool]:
         """Convert a NeMoPlatform SDK instance to an AsyncFilesClient.
 
         Returns (async_client, asynchronous) where asynchronous indicates
         whether fsspec should use async mode.
         """
         import httpx
-        from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 
         if isinstance(sdk, AsyncNeMoPlatform):
             return AsyncFilesClient(
@@ -416,9 +416,6 @@ class FilesetFileSystem(AsyncFileSystem):
                 default_headers=sdk._custom_headers,
                 http_client=sdk._client,
             ), True
-
-        if not isinstance(sdk, NeMoPlatform):
-            raise TypeError(f"Expected NeMoPlatform or AsyncNeMoPlatform, got {type(sdk).__name__}")
 
         transport = _detect_async_transport(sdk._client)
 

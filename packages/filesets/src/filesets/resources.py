@@ -142,6 +142,11 @@ class FilesetsSubResource:
 
     Wraps ``FilesClient`` methods with higher-level convenience signatures
     (unwrapped params, ``exist_ok`` support).
+
+    .. deprecated::
+        Temporary shim to maintain the ``sdk.files.filesets.create(...)`` interface
+        for existing consumers. New code should use ``FilesClient`` directly.
+        Once all callers are migrated, this class will be removed.
     """
 
     def __init__(self, client: FilesClient) -> None:
@@ -241,6 +246,11 @@ class AsyncFilesetsSubResource:
 
     Wraps ``AsyncFilesClient`` methods with higher-level convenience signatures
     (unwrapped params, ``exist_ok`` support).
+
+    .. deprecated::
+        Temporary shim to maintain the ``sdk.files.filesets.create(...)`` interface
+        for existing consumers. New code should use ``AsyncFilesClient`` directly.
+        Once all callers are migrated, this class will be removed.
     """
 
     def __init__(self, client: AsyncFilesClient) -> None:
