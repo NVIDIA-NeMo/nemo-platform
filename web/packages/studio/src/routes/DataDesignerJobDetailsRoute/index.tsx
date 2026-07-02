@@ -20,6 +20,7 @@ import { Loading } from '@studio/components/Layouts/Loading';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { DataDesignerConfigPanel } from '@studio/routes/DataDesignerJobDetailsRoute/DataDesignerConfigPanel';
 import { DatasetProfilerSection } from '@studio/routes/DataDesignerJobDetailsRoute/DatasetProfilerSection';
+import { JobDatasetEditorSection } from '@studio/routes/DataDesignerJobDetailsRoute/JobDatasetEditorSection';
 import { JobOutputFilesetSection } from '@studio/routes/DataDesignerJobDetailsRoute/JobOutputFilesetSection';
 import { useDataDesignerJobFromRoute } from '@studio/routes/DataDesignerJobDetailsRoute/useDataDesignerJobFromRoute';
 import { getDataDesignerJobListRoute } from '@studio/routes/utils';
@@ -127,11 +128,16 @@ export const DataDesignerJobDetailsRoute: FC = () => {
         <TabsRoot defaultValue="profile" className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
           <TabsList>
             <TabsTrigger value="profile">Profile</TabsTrigger>
+            <TabsTrigger value="data">Data</TabsTrigger>
             <TabsTrigger value="output">Output files</TabsTrigger>
           </TabsList>
 
           <TabsContent value="profile" className="min-h-0 flex-1 overflow-y-auto px-0">
             <DatasetProfilerSection />
+          </TabsContent>
+
+          <TabsContent value="data" className="min-h-0 min-w-0 flex-1 overflow-y-auto px-0">
+            <JobDatasetEditorSection />
           </TabsContent>
 
           <TabsContent value="output" className="min-h-0 flex-1 overflow-y-auto px-0">

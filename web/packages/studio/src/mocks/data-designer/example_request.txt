@@ -1,35 +1,16 @@
-I want a made-up spreadsheet of fake company customers so I can practice looking at patterns—not real data. Please aim for about 500 rows (or fewer if that’s easier for a quick test).
+Generate about 100 rows of fake B2B customer data (not real companies).
 
-What each row is
-Each row is one company during one three-month period (like “January–March 2024”).
+Each row is one company for one quarter (e.g. 2024-Q1).
 
-Simple columns to include
+Columns:
+- company_id — random fake code (letters and numbers)
+- description — general company goals
+- quarter — e.g. "2024-Q1"
+- region — North America, Europe, Asia, or Latin America
+- company_size — small, medium, or large
+- user_count — integer; large companies usually have more users
+- annual_payment — dollars, positive integer; scales with company_size
+- churn_risk — low, medium, or high
+- satisfaction — 0–10; lower when churn_risk is high
 
-Company ID – a fake code for the company (random letters/numbers, not real names).
-Time period – which three-month chunk it is (e.g. “2024, first quarter”).
-Part of the world – pick from a short list like North America, Europe, Asia, Latin America.
-Company size – small, medium, or large (large companies should usually look “bigger” in the numbers below).
-How many people use the product – a whole number; bigger companies tend to have more users, but not always.
-How often they log in – a number that makes sense with how many people use it.
-How “into” the product they seem – a score from 0–100 (higher = using more features / more engaged).
-Do they use single sign-on? – yes or no (more common for larger companies).
-Plan level – basic, standard, or premium (premium more likely for larger companies).
-How much they pay per year (in dollars) – a positive number; bigger companies pay more on average.
-Discount % – 0–40%; bigger contracts might have slightly smaller discounts on average.
-Risk that they might leave – label as low, medium, or high (high risk often goes with more support tickets and lower satisfaction).
-Support tickets this period – a whole number; more tickets when risk is higher.
-Satisfaction score – 0–10 (higher is happier; lower when there are many tickets or high leave-risk).
-Last time someone logged in – a date in that three-month window; sometimes blank if they’ve gone quiet.
-When their contract ends – a future date for active customers.
-Two short text columns written by an AI (plain English)
-
-Short summary – 2–4 sentences in everyday language about that company this period (mention region, size, rough payment level, risk, and satisfaction—without using jargon labels like “ARR” or “NPS”).
-What the account manager should do – 3–5 simple bullet ideas for helping that customer (match the risk level and how engaged they are).
-A couple of “calculated” style columns
-
-Payment per user – yearly payment divided by number of users (avoid dividing by zero).
-Engagement level – high / medium / low based on the score and how often they log in.
-Rules
-
-Everything should fit together sensibly (e.g. tiny companies rarely pay millions; unhappy scores often pair with higher leave-risk).
-Use fake company names or codes only—no real brands.
+Rules: keep values plausible together (small companies should not pay millions). Use fake IDs only — no real brands.

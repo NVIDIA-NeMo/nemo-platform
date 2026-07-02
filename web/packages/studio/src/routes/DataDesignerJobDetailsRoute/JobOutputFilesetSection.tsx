@@ -10,7 +10,8 @@ import {
   useFilesRetrieveFileset,
 } from '@nemo/sdk/generated/platform/api';
 import type { FilesetFileOutput } from '@nemo/sdk/generated/platform/schema';
-import { Anchor, Banner, Card, Stack, Text } from '@nvidia/foundations-react-core';
+import { Anchor, Banner, Card, Spinner, Stack, Text } from '@nvidia/foundations-react-core';
+import { Empty } from '@studio/components/Empty';
 import { FilesetFilePreviewPanel } from '@studio/components/FilesetFilePreviewPanel';
 import type { FileSystemFile } from '@studio/components/FilesTable/utils';
 import { useDataDesignerArtifactsFileset } from '@studio/routes/DataDesignerJobDetailsRoute/useDataDesignerArtifactsFileset';
@@ -142,40 +143,45 @@ export const JobOutputFilesetSection: FC = () => {
 
   if (isResultsLoading && !artifactsResult) {
     return (
-      <Card>
-        <Stack gap="4">
-          <Text kind="body/regular/md" className="text-muted">
-            Loading job results…
-          </Text>
-        </Stack>
+      <Card
+        className="min-w-0 w-full"
+        attributes={{ CardContent: { className: 'flex justify-center items-center' } }}
+      >
+        <Spinner description="Loading job results..." />
       </Card>
     );
   }
 
   if (isResultsError) {
+    const errorTitle =
+      resultsError instanceof Error ? 'Error loading job results' : 'Could not load job results';
+    const errorMessage =
+      resultsError instanceof Error
+        ? resultsError.message
+        : 'The job results list could not be loaded.';
     return (
-      <Card>
-        <Stack gap="4">
-          <Banner kind="inline" status="error" title="Could not load job results">
-            {resultsError instanceof Error
-              ? resultsError.message
-              : 'The job results list could not be loaded.'}
-          </Banner>
-        </Stack>
+      <Card
+        className="min-w-0 w-full"
+        attributes={{ CardContent: { className: 'flex justify-center items-center' } }}
+      >
+        <Empty title={errorTitle} description={errorMessage} />
       </Card>
     );
   }
 
   if (!artifactsResult) {
+    const emptyTitle = isTerminal
+      ? 'No artifacts result was returned for this job.'
+      : 'Output files will appear here once the job registers its artifacts result.';
+    const emptyDescription = isTerminal
+      ? 'No artifacts result was returned for this job.'
+      : 'Output files will appear here once the job registers its artifacts result.';
     return (
-      <Card>
-        <Stack gap="4">
-          <Text kind="body/regular/md" className="text-muted">
-            {isTerminal
-              ? 'No artifacts result was returned for this job.'
-              : 'Output files will appear here once the job registers its artifacts result.'}
-          </Text>
-        </Stack>
+      <Card
+        className="min-w-0 w-full"
+        attributes={{ CardContent: { className: 'flex justify-center items-center' } }}
+      >
+        <Empty title={emptyTitle} description={emptyDescription} />
       </Card>
     );
   }
