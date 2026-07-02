@@ -354,16 +354,22 @@ class FilesetFileSystem(AsyncFileSystem):
         sdk: NeMoPlatform | AsyncNeMoPlatform | None = None,
         batch_size: int | None = None,
         blocksize: int | None = None,
-        asynchronous: bool = True,
         **kwargs,
     ):
         if client is None and sdk is None:
             raise TypeError("Either 'client' or 'sdk' must be provided")
 
-        if client is not None:
-            async_client, asynchronous = self._to_async_client(client)
-        else:
-            async_client, asynchronous = self._client_from_sdk(sdk)
+        # Normalize: convert sdk to a FilesClient so there's one code path.
+        if client is None:
+            from nemo_platform_plugin.client.adapter import client_from_platform
+
+            if isinstance(sdk, AsyncNeMoPlatform):
+                client = client_from_platform(sdk, AsyncFilesClient)
+            else:
+                client = client_from_platform(sdk, FilesClient)
+
+        async_client = self._ensure_async(client)
+        is_async = isinstance(client, AsyncFilesClient)
 
         if batch_size is None:
             batch_size = self.default_batch_size
@@ -371,18 +377,14 @@ class FilesetFileSystem(AsyncFileSystem):
         if blocksize is None:
             blocksize = self.blocksize
 
-        super().__init__(asynchronous=asynchronous, batch_size=batch_size, blocksize=blocksize, **kwargs)
+        super().__init__(asynchronous=is_async, batch_size=batch_size, blocksize=blocksize, **kwargs)
         self._client = async_client
 
     @staticmethod
-    def _to_async_client(client: FilesClient | AsyncFilesClient) -> tuple[AsyncFilesClient, bool]:
-        """Convert a sync or async FilesClient to an AsyncFilesClient.
-
-        Returns (async_client, asynchronous) where asynchronous indicates
-        whether fsspec should use async mode.
-        """
+    def _ensure_async(client: FilesClient | AsyncFilesClient) -> AsyncFilesClient:
+        """Ensure we have an AsyncFilesClient, converting from sync if needed."""
         if isinstance(client, AsyncFilesClient):
-            return client, True
+            return client
 
         import httpx
 
@@ -398,46 +400,7 @@ class FilesetFileSystem(AsyncFileSystem):
                 base_url=client.base_url,
                 headers=dict(client._default_headers) if client._default_headers else None,
             ),
-        ), False
-
-    @staticmethod
-    def _client_from_sdk(sdk: NeMoPlatform | AsyncNeMoPlatform) -> tuple[AsyncFilesClient, bool]:
-        """Convert a NeMoPlatform SDK instance to an AsyncFilesClient.
-
-        Returns (async_client, asynchronous) where asynchronous indicates
-        whether fsspec should use async mode.
-        """
-        import httpx
-
-        if isinstance(sdk, AsyncNeMoPlatform):
-            return AsyncFilesClient(
-                base_url=str(sdk.base_url).rstrip("/"),
-                workspace=sdk.workspace,
-                default_headers=sdk._custom_headers,
-                http_client=sdk._client,
-            ), True
-
-        transport = _detect_async_transport(sdk._client)
-
-        # Prefer _custom_headers (set via with_options/set_default_headers),
-        # fall back to the httpx client's actual headers (set at construction,
-        # e.g. TestClient(headers={...})), filtering out httpx defaults.
-        custom_headers = sdk._custom_headers
-        if not custom_headers:
-            skip = {"accept", "accept-encoding", "connection", "user-agent", "host"}
-            custom_headers = {k: v for k, v in sdk._client.headers.items() if k.lower() not in skip}
-
-        return AsyncFilesClient(
-            base_url=str(sdk.base_url).rstrip("/"),
-            workspace=sdk.workspace,
-            default_headers=custom_headers,
-            timeout=sdk.timeout,
-            http_client=httpx.AsyncClient(
-                transport=transport,
-                base_url=str(sdk.base_url).rstrip("/"),
-                headers=custom_headers,
-            ),
-        ), False
+        )
 
     @property
     def _workspace(self) -> str | None:
