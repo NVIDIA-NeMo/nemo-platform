@@ -2,13 +2,17 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import json
+import threading
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 import pytest
+from nemo_evaluator_sdk.agent_eval import workspace_seeds
 from nemo_evaluator_sdk.agent_eval.runtimes.codex import runtime as codex_runtime
 from nemo_evaluator_sdk.agent_eval.runtimes.docker_sandbox import DockerSandboxAgentRuntime
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalTask
+from pydantic import BaseModel
 
 # The runtime *selection* (local vs docker-cli vs docker-sandbox) is generic and lives here; only the
 # ProfBench ``score_source`` labels + candidate prompt live in the example (test_profbench_codex_target).
@@ -315,6 +319,58 @@ async def test_codex_cli_agent_runtime_seeds_workspace_and_stamps_agent_ok(
 
 
 @pytest.mark.asyncio
+async def test_codex_cli_agent_runtime_seeds_off_the_event_loop_thread(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Seeding is synchronous and a handler may block (e.g. the plugin's fileset download). It runs on
+    # the event loop shared by every concurrent task, so it must be offloaded to a worker thread —
+    # otherwise one slow seed stalls the whole run. Register a probe handler that records the thread
+    # it resolves on and assert it is not the loop thread.
+    class _ProbeSeed(BaseModel):
+        kind: str = "thread_probe"
+
+    class _ProbeHandler:
+        kind = "thread_probe"
+        resolved_on: int | None = None
+
+        def parse(self, value: Mapping[str, Any]) -> BaseModel:
+            return _ProbeSeed()
+
+        def resolve(self, seed: BaseModel) -> bytes:
+            _ProbeHandler.resolved_on = threading.get_ident()
+            return b"probe"
+
+    monkeypatch.setitem(workspace_seeds._HANDLERS, "thread_probe", _ProbeHandler())
+
+    class FakeProcess:
+        returncode = 0
+
+        def __init__(self, command: tuple[str, ...]) -> None:
+            self.command = command
+
+        async def communicate(self, input: bytes) -> tuple[bytes, bytes]:
+            final_output_path = Path(self.command[self.command.index("--output-last-message") + 1])
+            final_output_path.write_text("ok", encoding="utf-8")
+            return b"", b""
+
+    async def fake_process_factory(*command: str, **kwargs: Any) -> FakeProcess:
+        return FakeProcess(command)
+
+    monkeypatch.setattr(codex_runtime.shutil, "which", lambda value: f"/bin/{value}")
+    runtime = codex_runtime.CodexCliAgentRuntime(
+        work_root=tmp_path / "codex",
+        process_factory=fake_process_factory,
+    )
+    task = AgentEvalTask(id="probe", intent="probe", inputs={"files": {"p.txt": {"kind": "thread_probe"}}})
+
+    trials = await runtime.run_tasks([task])
+
+    assert trials[0].status == "completed"
+    assert _ProbeHandler.resolved_on is not None
+    assert _ProbeHandler.resolved_on != threading.get_ident()
+
+
+@pytest.mark.asyncio
 async def test_codex_cli_agent_runtime_rejects_seed_path_escaping_workspace(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -331,7 +387,7 @@ async def test_codex_cli_agent_runtime_rejects_seed_path_escaping_workspace(
     # A traversal path is surfaced as a failed trial (the exception is caught per-task).
     trials = await runtime.run_tasks([task])
     assert trials[0].status == "failed"
-    assert trials[0].metadata["error_type"] == "ValueError"
+    assert trials[0].metadata["error_type"] == "WorkspaceSeedError"
     assert trials[0].metadata["agent_ok"] is False
 
 

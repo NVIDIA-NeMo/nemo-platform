@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 from urllib.parse import urlsplit
 
+import nemo_evaluator.agent_seeds  # noqa: F401 - registers the platform 'fileset' workspace-seed handler
 from nemo_evaluator.api.schemas import MetricInline
 from nemo_evaluator.jobs.agent_compiler import compile_agent_eval_job
 from nemo_evaluator.jobs.agent_spec import (

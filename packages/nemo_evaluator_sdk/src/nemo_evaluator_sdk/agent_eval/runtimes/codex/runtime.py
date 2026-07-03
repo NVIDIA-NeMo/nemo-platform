@@ -20,6 +20,7 @@ from typing import Any
 from nemo_evaluator_sdk.agent_eval.runtimes.docker_sandbox import DockerSandboxAgentRuntime
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
+from nemo_evaluator_sdk.agent_eval.workspace_seeds import SEED_FILES_INPUT_KEY, seed_workspace
 from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
 
 DEFAULT_CODEX_TIMEOUT_S = 600
@@ -47,11 +48,6 @@ class EffectiveCodexRuntime(StrEnum):
 #: Builds the prompt handed to Codex on stdin for a task. Swap it to change how a task is framed
 #: (e.g. a benchmark-specific preamble); the default presents the task and invites workspace edits.
 CodexPromptBuilder = Callable[[AgentEvalTask], str]
-
-#: Optional ``inputs`` key holding a ``{relative_path: contents}`` map of files to seed into the
-#: agent's workspace before it runs — how a task hands the agent starter code (a buggy file to fix,
-#: a module to test, a project skeleton). Excluded from the default prompt body (listed by name).
-SEED_FILES_INPUT_KEY = "files"
 
 
 class CodexCliAgentRuntime:
@@ -113,8 +109,10 @@ class CodexCliAgentRuntime:
         process: Any | None = None
         try:
             # Seed inside the guarded block so a bad seed (e.g. a path escaping the workspace) fails
-            # just this task rather than aborting the whole run.
-            seeded_files = _seed_workspace(workspace_dir, task)
+            # just this task rather than aborting the whole run. Offload to a worker thread: seeding is
+            # synchronous (a handler may do blocking I/O, e.g. the plugin's fileset download), and this
+            # runs on the event loop shared by every concurrent task, so a blocking seed would stall them all.
+            seeded_files = await asyncio.to_thread(seed_workspace, workspace_dir, task.inputs.get(SEED_FILES_INPUT_KEY))
             process = await self._process_factory(
                 *command,
                 stdin=subprocess.PIPE,
@@ -410,27 +408,6 @@ def default_codex_prompt(task: AgentEvalTask) -> str:
         "as needed. When you are done, briefly summarize what you changed.",
     ]
     return "\n".join(lines) + "\n"
-
-
-def _seed_workspace(workspace_dir: Path, task: AgentEvalTask) -> list[str]:
-    """Write any ``inputs[SEED_FILES_INPUT_KEY]`` files into the workspace before the agent runs.
-
-    Returns the seeded relative paths (for trial metadata). Paths that escape the workspace (absolute
-    or ``..`` traversal) are rejected so a task can only stage files inside its own sandbox.
-    """
-    seeds = task.inputs.get(SEED_FILES_INPUT_KEY)
-    if not isinstance(seeds, Mapping):
-        return []
-    workspace_root = workspace_dir.resolve()
-    written: list[str] = []
-    for rel_path, contents in seeds.items():
-        target = (workspace_root / str(rel_path)).resolve()
-        if target != workspace_root and workspace_root not in target.parents:
-            raise ValueError(f"seed file path escapes the workspace: {rel_path!r}")
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(contents if isinstance(contents, str) else str(contents), encoding="utf-8")
-        written.append(str(rel_path))
-    return written
 
 
 def _failed_codex_trial(
