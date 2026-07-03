@@ -30,14 +30,28 @@ ProcessFactory = Callable[..., Awaitable[Any]]
 
 
 class RuntimeChoice(StrEnum):
+    """Which Codex execution mode the caller wants."""
+
     DOCKER = "docker"
     LOCAL = "local"
 
 
 class EffectiveCodexRuntime(StrEnum):
+    """The concrete runtime chosen for a :class:`RuntimeChoice` + environment."""
+
     DOCKER_SANDBOX = "docker_sandbox"
     DOCKER_CLI = "docker_cli"
     LOCAL_CLI = "local_cli"
+
+
+#: Builds the prompt handed to Codex on stdin for a task. Swap it to change how a task is framed
+#: (e.g. a benchmark-specific preamble); the default presents the task and invites workspace edits.
+CodexPromptBuilder = Callable[[AgentEvalTask], str]
+
+#: Optional ``inputs`` key holding a ``{relative_path: contents}`` map of files to seed into the
+#: agent's workspace before it runs — how a task hands the agent starter code (a buggy file to fix,
+#: a module to test, a project skeleton). Excluded from the default prompt body (listed by name).
+SEED_FILES_INPUT_KEY = "files"
 
 
 class CodexCliAgentRuntime:
@@ -50,6 +64,7 @@ class CodexCliAgentRuntime:
         work_root: str | Path | None = None,
         codex_bin: str = "codex",
         timeout_s: int = DEFAULT_CODEX_TIMEOUT_S,
+        prompt_builder: CodexPromptBuilder | None = None,
         process_factory: ProcessFactory | None = None,
         runtime_name: str = "codex_cli",
     ) -> None:
@@ -57,6 +72,7 @@ class CodexCliAgentRuntime:
         self._work_root = Path(work_root).expanduser() if work_root is not None else None
         self._codex_bin = codex_bin
         self._timeout_s = timeout_s
+        self._prompt_builder = prompt_builder or default_codex_prompt
         self._process_factory = process_factory or asyncio.create_subprocess_exec
         self._runtime_name = runtime_name
 
@@ -83,7 +99,7 @@ class CodexCliAgentRuntime:
         evidence_dir.mkdir(parents=True, exist_ok=True)
         workspace_dir.mkdir(parents=True, exist_ok=True)
 
-        prompt = _codex_prompt(task)
+        prompt = self._prompt_builder(task)
         prompt_path = evidence_dir / "prompt.txt"
         task_path = evidence_dir / "task.json"
         stdout_path = evidence_dir / "stdout.jsonl"
@@ -96,6 +112,9 @@ class CodexCliAgentRuntime:
         command = self._command(workspace_dir=workspace_dir, final_output_path=final_output_path)
         process: Any | None = None
         try:
+            # Seed inside the guarded block so a bad seed (e.g. a path escaping the workspace) fails
+            # just this task rather than aborting the whole run.
+            seeded_files = _seed_workspace(workspace_dir, task)
             process = await self._process_factory(
                 *command,
                 stdin=subprocess.PIPE,
@@ -158,6 +177,8 @@ class CodexCliAgentRuntime:
                 "runtime": self._runtime_name,
                 "agent": "codex",
                 "agent_model": self._model,
+                "agent_ok": True,
+                "seeded_files": seeded_files,
                 "generated": True,
             },
         )
@@ -204,12 +225,14 @@ class CodexDockerCliAgentRuntime(CodexCliAgentRuntime):
         codex_package: str = DEFAULT_CODEX_DOCKER_CLI_PACKAGE,
         auth_path: str | Path | None = None,
         timeout_s: int = DEFAULT_CODEX_TIMEOUT_S,
+        prompt_builder: CodexPromptBuilder | None = None,
         process_factory: ProcessFactory | None = None,
     ) -> None:
         super().__init__(
             model=model,
             work_root=work_root,
             timeout_s=timeout_s,
+            prompt_builder=prompt_builder,
             process_factory=process_factory,
             runtime_name="codex_docker_cli",
         )
@@ -280,33 +303,43 @@ class CodexDockerCliAgentRuntime(CodexCliAgentRuntime):
         ]
 
 
-def resolve_codex_target(
+def resolve_codex_runtime(
     *,
     runtime: RuntimeChoice,
     model: str | None,
     output_dir: Path,
     env: Mapping[str, str] = os.environ,
-) -> tuple[CodexCliAgentRuntime | CodexDockerCliAgentRuntime | DockerSandboxAgentRuntime, str, EffectiveCodexRuntime]:
-    """Resolve a Codex-backed agent-eval target for ProfBench-style candidate runs."""
+    prompt_builder: CodexPromptBuilder | None = None,
+) -> tuple[CodexCliAgentRuntime | CodexDockerCliAgentRuntime | DockerSandboxAgentRuntime, EffectiveCodexRuntime]:
+    """Pick and construct a Codex runtime for a run-mode + environment.
+
+    ``local`` runs the on-PATH Codex CLI. ``docker`` prefers the OpenAI-Agents ``DockerSandbox`` when
+    ``OPENAI_API_KEY`` is an OpenAI platform secret (``sk-...``) and otherwise falls back to the
+    containerized Codex CLI (which mounts ``~/.codex/auth.json``). ``prompt_builder`` is threaded into
+    the CLI runtimes; the sandbox runtime does its own prompting. Returns the runtime plus the
+    :class:`EffectiveCodexRuntime` actually chosen so callers can label/report it.
+    """
     effective_runtime = _resolve_codex_runtime(runtime, env)
     if effective_runtime == EffectiveCodexRuntime.LOCAL_CLI:
         return (
-            CodexCliAgentRuntime(model=model, work_root=output_dir / "evidence" / "codex"),
-            "codex_cli_candidate_and_live_judge",
+            CodexCliAgentRuntime(
+                model=model,
+                work_root=output_dir / "evidence" / "codex",
+                prompt_builder=prompt_builder,
+            ),
             effective_runtime,
         )
     if effective_runtime == EffectiveCodexRuntime.DOCKER_CLI:
         return (
-            CodexDockerCliAgentRuntime(model=model, work_root=output_dir / "evidence" / "codex-docker"),
-            "codex_docker_cli_candidate_and_live_judge",
+            CodexDockerCliAgentRuntime(
+                model=model,
+                work_root=output_dir / "evidence" / "codex-docker",
+                prompt_builder=prompt_builder,
+            ),
             effective_runtime,
         )
     if effective_runtime == EffectiveCodexRuntime.DOCKER_SANDBOX:
-        return (
-            DockerSandboxAgentRuntime(model=model or DEFAULT_CODEX_DOCKER_MODEL),
-            "docker_sandbox_candidate_and_live_judge",
-            effective_runtime,
-        )
+        return DockerSandboxAgentRuntime(model=model or DEFAULT_CODEX_DOCKER_MODEL), effective_runtime
     raise ValueError(f"unsupported Codex runtime {runtime!r}")
 
 
@@ -318,6 +351,10 @@ def _resolve_codex_runtime(runtime: RuntimeChoice, env: Mapping[str, str] = os.e
             return EffectiveCodexRuntime.DOCKER_SANDBOX
         return EffectiveCodexRuntime.DOCKER_CLI
     raise ValueError(f"unsupported Codex runtime {runtime!r}")
+
+
+def _openai_sdk_secret_key_is_set(env: Mapping[str, str] = os.environ) -> bool:
+    return env.get("OPENAI_API_KEY", "").strip().startswith("sk-")
 
 
 def list_codex_agent_models(*, codex_bin: str = "codex") -> list[dict[str, Any]]:
@@ -351,14 +388,49 @@ def print_codex_agent_models(*, codex_bin: str = "codex") -> None:
             print(slug)
 
 
-def _codex_prompt(task: AgentEvalTask) -> str:
-    return (
-        "Answer the ProfBench task below. Return only the final answer text; do not include "
-        "analysis, markdown fences, tool logs, or commentary.\n\n"
-        f"Task id: {task.id}\n"
-        f"Intent: {task.intent}\n"
-        f"Inputs: {task.inputs}\n"
-    )
+def default_codex_prompt(task: AgentEvalTask) -> str:
+    """Frame a task for Codex as an agent that works in its current directory.
+
+    Task-agnostic: it states the intent and inputs and invites the agent to read/create/edit files,
+    rather than constraining the answer to a single text reply. Seed files (``inputs[SEED_FILES_INPUT_KEY]``)
+    are listed by name instead of dumped inline — the agent finds them already in its workspace. Pass a
+    custom :data:`CodexPromptBuilder` to the runtime to override this framing for a specific benchmark.
+    """
+    body_inputs = {key: value for key, value in task.inputs.items() if key != SEED_FILES_INPUT_KEY}
+    lines = [f"Task id: {task.id}", f"Intent: {task.intent}"]
+    if body_inputs:
+        lines += ["", "Inputs:", json.dumps(body_inputs, indent=2, default=str)]
+    seeded = task.inputs.get(SEED_FILES_INPUT_KEY)
+    if isinstance(seeded, Mapping) and seeded:
+        lines += ["", "These files are already in your working directory:"]
+        lines += [f"  - {path}" for path in seeded]
+    lines += [
+        "",
+        "Complete the task by working in your current directory. You may read, create, and edit files "
+        "as needed. When you are done, briefly summarize what you changed.",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def _seed_workspace(workspace_dir: Path, task: AgentEvalTask) -> list[str]:
+    """Write any ``inputs[SEED_FILES_INPUT_KEY]`` files into the workspace before the agent runs.
+
+    Returns the seeded relative paths (for trial metadata). Paths that escape the workspace (absolute
+    or ``..`` traversal) are rejected so a task can only stage files inside its own sandbox.
+    """
+    seeds = task.inputs.get(SEED_FILES_INPUT_KEY)
+    if not isinstance(seeds, Mapping):
+        return []
+    workspace_root = workspace_dir.resolve()
+    written: list[str] = []
+    for rel_path, contents in seeds.items():
+        target = (workspace_root / str(rel_path)).resolve()
+        if target != workspace_root and workspace_root not in target.parents:
+            raise ValueError(f"seed file path escapes the workspace: {rel_path!r}")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(contents if isinstance(contents, str) else str(contents), encoding="utf-8")
+        written.append(str(rel_path))
+    return written
 
 
 def _failed_codex_trial(
@@ -384,6 +456,7 @@ def _failed_codex_trial(
         metadata={
             "runtime": runtime_name,
             "agent": "codex",
+            "agent_ok": False,
             "error_type": exc.__class__.__name__,
             "error": str(exc),
         },
@@ -408,7 +481,3 @@ def _decode_process_output(value: bytes | str | None) -> str:
 
 def _safe_path_name(value: str) -> str:
     return "".join(char if char.isalnum() or char in "._-" else "-" for char in value).strip(".-")[:120]
-
-
-def _openai_sdk_secret_key_is_set(env: Mapping[str, str] = os.environ) -> bool:
-    return env.get("OPENAI_API_KEY", "").strip().startswith("sk-")

@@ -27,9 +27,9 @@ from nemo_evaluator_sdk.agent_eval.runtimes.codex.runtime import (
     EffectiveCodexRuntime,
     RuntimeChoice,
     print_codex_agent_models,
-    resolve_codex_target,
+    resolve_codex_runtime,
 )
-from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig
+from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTarget, AgentEvalTrial
 from nemo_evaluator_sdk.values import InferenceParams, Model, RunConfigOnlineModel, SecretRef
 
@@ -241,6 +241,28 @@ def _judge_model() -> Model:
     )
 
 
+# ProfBench-specific Codex policy. Runtime *selection* is generic (resolve_codex_runtime, in the SDK);
+# ProfBench owns only how a task is framed for the agent and how the resulting score is labeled.
+# ProfBench runs Codex as a *candidate* whose single text answer a live judge grades, so the prompt
+# forbids tool chatter and the score_source records the candidate+judge topology.
+PROFBENCH_SCORE_SOURCE = {
+    EffectiveCodexRuntime.LOCAL_CLI: "codex_cli_candidate_and_live_judge",
+    EffectiveCodexRuntime.DOCKER_CLI: "codex_docker_cli_candidate_and_live_judge",
+    EffectiveCodexRuntime.DOCKER_SANDBOX: "docker_sandbox_candidate_and_live_judge",
+}
+
+
+def profbench_codex_prompt(task: AgentEvalTask) -> str:
+    """Frame a task as a ProfBench candidate: return only the final answer text, no tooling chatter."""
+    return (
+        "Answer the ProfBench task below. Return only the final answer text; do not include "
+        "analysis, markdown fences, tool logs, or commentary.\n\n"
+        f"Task id: {task.id}\n"
+        f"Intent: {task.intent}\n"
+        f"Inputs: {task.inputs}\n"
+    )
+
+
 def _live_candidate_target(
     *,
     agent: AgentChoice,
@@ -265,13 +287,15 @@ def _live_candidate_target(
             None,
         )
     if agent == AgentChoice.CODEX:
-        target, score_source, effective_runtime = resolve_codex_target(
+        # SDK picks the runtime; ProfBench supplies the candidate prompt and the score_source label.
+        target, effective_runtime = resolve_codex_runtime(
             runtime=runtime,
             model=agent_model,
             output_dir=output_dir,
             env=env,
+            prompt_builder=profbench_codex_prompt,
         )
-        return target, None, score_source, effective_runtime
+        return target, None, PROFBENCH_SCORE_SOURCE[effective_runtime], effective_runtime
     raise ValueError(f"unsupported ProfBench agent {agent!r}")
 
 

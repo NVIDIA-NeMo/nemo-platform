@@ -10,76 +10,56 @@ from nemo_evaluator_sdk.agent_eval.runtimes.codex import runtime as codex_runtim
 from nemo_evaluator_sdk.agent_eval.runtimes.docker_sandbox import DockerSandboxAgentRuntime
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalTask
 
+# The runtime *selection* (local vs docker-cli vs docker-sandbox) is generic and lives here; only the
+# ProfBench ``score_source`` labels + candidate prompt live in the example (test_profbench_codex_target).
 
-def test_resolve_codex_target_selects_local_cli_runtime(tmp_path: Path) -> None:
-    target, score_source, effective_runtime = codex_runtime.resolve_codex_target(
+
+def _prompt_builder(task: AgentEvalTask) -> str:
+    return f"do: {task.id}\n"
+
+
+def test_resolve_codex_runtime_local_cli_threads_prompt_builder(tmp_path: Path) -> None:
+    target, effective = codex_runtime.resolve_codex_runtime(
         runtime=codex_runtime.RuntimeChoice.LOCAL,
         model="gpt-5",
-        output_dir=tmp_path / "live-candidate",
+        output_dir=tmp_path / "run",
         env={"OPENAI_API_KEY": "sk-test-key"},
+        prompt_builder=_prompt_builder,
     )
 
     assert isinstance(target, codex_runtime.CodexCliAgentRuntime)
     assert target._model == "gpt-5"
-    assert target._work_root == tmp_path / "live-candidate" / "evidence" / "codex"
-    assert score_source == "codex_cli_candidate_and_live_judge"
-    assert effective_runtime == codex_runtime.EffectiveCodexRuntime.LOCAL_CLI
+    assert target._work_root == tmp_path / "run" / "evidence" / "codex"
+    assert target._prompt_builder is _prompt_builder
+    assert effective == codex_runtime.EffectiveCodexRuntime.LOCAL_CLI
 
 
-def test_resolve_codex_target_uses_sdk_docker_when_openai_api_key_is_set(tmp_path: Path) -> None:
-    target, score_source, effective_runtime = codex_runtime.resolve_codex_target(
+def test_resolve_codex_runtime_docker_uses_sandbox_for_openai_secret_key(tmp_path: Path) -> None:
+    target, effective = codex_runtime.resolve_codex_runtime(
         runtime=codex_runtime.RuntimeChoice.DOCKER,
         model=None,
-        output_dir=tmp_path / "live-candidate",
+        output_dir=tmp_path / "run",
         env={"OPENAI_API_KEY": "sk-test-key"},
     )
 
     assert isinstance(target, DockerSandboxAgentRuntime)
     assert target._model == codex_runtime.DEFAULT_CODEX_DOCKER_MODEL
-    assert score_source == "docker_sandbox_candidate_and_live_judge"
-    assert effective_runtime == codex_runtime.EffectiveCodexRuntime.DOCKER_SANDBOX
+    assert effective == codex_runtime.EffectiveCodexRuntime.DOCKER_SANDBOX
 
 
-def test_resolve_codex_target_uses_sdk_docker_agent_model(tmp_path: Path) -> None:
-    target, score_source, effective_runtime = codex_runtime.resolve_codex_target(
+def test_resolve_codex_runtime_docker_falls_back_to_cli_without_sdk_key(tmp_path: Path) -> None:
+    target, effective = codex_runtime.resolve_codex_runtime(
         runtime=codex_runtime.RuntimeChoice.DOCKER,
         model="gpt-5.4",
-        output_dir=tmp_path / "live-candidate",
-        env={"OPENAI_API_KEY": "sk-test-key"},
-    )
-
-    assert isinstance(target, DockerSandboxAgentRuntime)
-    assert target._model == "gpt-5.4"
-    assert score_source == "docker_sandbox_candidate_and_live_judge"
-    assert effective_runtime == codex_runtime.EffectiveCodexRuntime.DOCKER_SANDBOX
-
-
-def test_resolve_codex_target_falls_back_to_docker_cli_without_openai_api_key(tmp_path: Path) -> None:
-    target, score_source, effective_runtime = codex_runtime.resolve_codex_target(
-        runtime=codex_runtime.RuntimeChoice.DOCKER,
-        model="gpt-5.4",
-        output_dir=tmp_path / "live-candidate",
-        env={},
-    )
-
-    assert isinstance(target, codex_runtime.CodexDockerCliAgentRuntime)
-    assert target._model == "gpt-5.4"
-    assert target._work_root == tmp_path / "live-candidate" / "evidence" / "codex-docker"
-    assert score_source == "codex_docker_cli_candidate_and_live_judge"
-    assert effective_runtime == codex_runtime.EffectiveCodexRuntime.DOCKER_CLI
-
-
-def test_resolve_codex_target_falls_back_to_docker_cli_with_oauth_token(tmp_path: Path) -> None:
-    target, score_source, effective_runtime = codex_runtime.resolve_codex_target(
-        runtime=codex_runtime.RuntimeChoice.DOCKER,
-        model="gpt-5.4",
-        output_dir=tmp_path / "live-candidate",
+        output_dir=tmp_path / "run",
         env={"OPENAI_API_KEY": "oauth-token"},
+        prompt_builder=_prompt_builder,
     )
 
     assert isinstance(target, codex_runtime.CodexDockerCliAgentRuntime)
-    assert score_source == "codex_docker_cli_candidate_and_live_judge"
-    assert effective_runtime == codex_runtime.EffectiveCodexRuntime.DOCKER_CLI
+    assert target._work_root == tmp_path / "run" / "evidence" / "codex-docker"
+    assert target._prompt_builder is _prompt_builder
+    assert effective == codex_runtime.EffectiveCodexRuntime.DOCKER_CLI
 
 
 def test_list_codex_agent_models_prints_visible_models(
@@ -127,7 +107,9 @@ async def test_codex_cli_agent_runtime_uses_local_codex_command_and_writes_evide
             self.command = command
 
         async def communicate(self, input: bytes) -> tuple[bytes, bytes]:
-            assert b"Answer the ProfBench task below" in input
+            # Default prompt is task-agnostic: it states the task and invites workspace edits.
+            assert b"Task id: task/1" in input
+            assert b"Intent:" in input
             final_output_path = Path(self.command[self.command.index("--output-last-message") + 1])
             final_output_path.write_text("codex answer", encoding="utf-8")
             return b'{"type":"event"}\n', b""
@@ -179,7 +161,7 @@ async def test_codex_docker_cli_agent_runtime_runs_codex_in_container_and_writes
             self.command = command
 
         async def communicate(self, input: bytes) -> tuple[bytes, bytes]:
-            assert b"Answer the ProfBench task below" in input
+            assert b"Task id: task/1" in input
             evidence_mount = self.command[self.command.index(f"{auth_path.resolve()}:/root/.codex/auth.json:ro") + 4]
             evidence_dir = Path(evidence_mount.split(":/evidence", maxsplit=1)[0])
             (evidence_dir / "final_output.txt").write_text("docker codex answer", encoding="utf-8")
@@ -289,3 +271,96 @@ async def test_codex_cli_agent_runtime_falls_back_to_stdout_and_persists_final_o
     assert trials[0].output.output_text == "stdout fallback\n"
     final_output = tmp_path / "codex" / "000000-task-2" / "final_output.txt"
     assert final_output.read_text(encoding="utf-8") == "stdout fallback\n"
+
+
+@pytest.mark.asyncio
+async def test_codex_cli_agent_runtime_seeds_workspace_and_stamps_agent_ok(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class FakeProcess:
+        returncode = 0
+
+        def __init__(self, command: tuple[str, ...]) -> None:
+            self.command = command
+
+        async def communicate(self, input: bytes) -> tuple[bytes, bytes]:
+            # Seed files are staged before the agent runs and listed (by name) in the prompt.
+            workspace_dir = Path(self.command[self.command.index("--cd") + 1])
+            assert (workspace_dir / "buggy.py").read_text(encoding="utf-8") == "def add(a, b)\n    return a + b\n"
+            assert b"buggy.py" in input
+            final_output_path = Path(self.command[self.command.index("--output-last-message") + 1])
+            final_output_path.write_text("fixed it", encoding="utf-8")
+            return b"", b""
+
+    async def fake_process_factory(*command: str, **kwargs: Any) -> FakeProcess:
+        return FakeProcess(command)
+
+    monkeypatch.setattr(codex_runtime.shutil, "which", lambda value: f"/bin/{value}")
+    runtime = codex_runtime.CodexCliAgentRuntime(
+        work_root=tmp_path / "codex",
+        process_factory=fake_process_factory,
+    )
+    task = AgentEvalTask(
+        id="fix-bug",
+        intent="Fix the syntax error.",
+        inputs={"files": {"buggy.py": "def add(a, b)\n    return a + b\n"}},
+    )
+
+    trials = await runtime.run_tasks([task])
+
+    assert trials[0].status == "completed"
+    # agent_ok is stamped so AgentPhaseSuccessMetric works over Codex trials.
+    assert trials[0].metadata["agent_ok"] is True
+    assert trials[0].metadata["seeded_files"] == ["buggy.py"]
+
+
+@pytest.mark.asyncio
+async def test_codex_cli_agent_runtime_rejects_seed_path_escaping_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def fake_process_factory(*command: str, **kwargs: Any) -> Any:  # pragma: no cover - never reached
+        raise AssertionError("agent should not run when seeding fails")
+
+    monkeypatch.setattr(codex_runtime.shutil, "which", lambda value: f"/bin/{value}")
+    runtime = codex_runtime.CodexCliAgentRuntime(
+        work_root=tmp_path / "codex",
+        process_factory=fake_process_factory,
+    )
+    task = AgentEvalTask(id="evil", intent="escape", inputs={"files": {"../escape.txt": "x"}})
+
+    # A traversal path is surfaced as a failed trial (the exception is caught per-task).
+    trials = await runtime.run_tasks([task])
+    assert trials[0].status == "failed"
+    assert trials[0].metadata["error_type"] == "ValueError"
+    assert trials[0].metadata["agent_ok"] is False
+
+
+@pytest.mark.asyncio
+async def test_codex_cli_agent_runtime_uses_injected_prompt_builder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class FakeProcess:
+        returncode = 0
+
+        def __init__(self, command: tuple[str, ...]) -> None:
+            self.command = command
+
+        async def communicate(self, input: bytes) -> tuple[bytes, bytes]:
+            assert input == b"CUSTOM: fix-bug\n"
+            final_output_path = Path(self.command[self.command.index("--output-last-message") + 1])
+            final_output_path.write_text("ok", encoding="utf-8")
+            return b"", b""
+
+    async def fake_process_factory(*command: str, **kwargs: Any) -> FakeProcess:
+        return FakeProcess(command)
+
+    monkeypatch.setattr(codex_runtime.shutil, "which", lambda value: f"/bin/{value}")
+    runtime = codex_runtime.CodexCliAgentRuntime(
+        work_root=tmp_path / "codex",
+        prompt_builder=lambda task: f"CUSTOM: {task.id}\n",
+        process_factory=fake_process_factory,
+    )
+    task = AgentEvalTask(id="fix-bug", intent="Fix.", inputs={})
+
+    trials = await runtime.run_tasks([task])
+    assert trials[0].status == "completed"
