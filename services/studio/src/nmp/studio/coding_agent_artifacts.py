@@ -165,16 +165,23 @@ def _decode_answer_pair_value(value: str) -> str:
     return decoded if isinstance(decoded, str) else value
 
 
+def answer_selection_pairs(text: str) -> list[tuple[str, str]]:
+    """Return the question and answer pairs persisted by AskUserQuestion."""
+    pairs: list[tuple[str, str]] = []
+    for match in _ANSWER_PAIR_RE.finditer(text):
+        question = _decode_answer_pair_value(match.group(1)).strip()
+        answer = _decode_answer_pair_value(match.group(2)).strip()
+        if question and answer:
+            pairs.append((question, answer))
+    return pairs
+
+
 def record_answer_selections(
     artifacts: ChatArtifactsResponse,
     text: str,
     question_labels: dict[str, str] | None = None,
 ) -> None:
-    for match in _ANSWER_PAIR_RE.finditer(text):
-        question = _decode_answer_pair_value(match.group(1)).strip()
-        answer = _decode_answer_pair_value(match.group(2)).strip()
-        if not question or not answer:
-            continue
+    for question, answer in answer_selection_pairs(text):
         label = question_labels.get(question) if question_labels else None
         _set_selection_artifact(artifacts, label or _selection_label(question), answer)
 

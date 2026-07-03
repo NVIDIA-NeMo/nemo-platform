@@ -331,6 +331,54 @@ describe('Claude Code utilities', () => {
     });
   });
 
+  it('preserves interactive user answers as message boundaries on refresh', () => {
+    const history: ClaudeCodeSessionHistory = {
+      session_id: 'session-1',
+      chat_artifacts: { selections: [], files: [], links: [], jobs: [], tools: [] },
+      items: [
+        { kind: 'user', text: 'optimize an agent' },
+        {
+          kind: 'assistant',
+          parts: [
+            { type: 'text', text: 'Which agent should I optimize?' },
+            { type: 'tool_use', name: 'mcp__nemo_studio__select_agent', input: {} },
+          ],
+        },
+        { kind: 'user', text: 'Selected agent: calculator-agent' },
+        {
+          kind: 'assistant',
+          parts: [
+            { type: 'text', text: 'I analyzed calculator-agent.' },
+            {
+              type: 'text',
+              text: `${STUDIO_MESSAGE_SUMMARY_START} summary: Generated optimization suggestions. details_label: worked briefly ${STUDIO_MESSAGE_SUMMARY_END}`,
+            },
+          ],
+        },
+      ],
+    };
+
+    const messages = getClaudeCodeHistoryMessages(history);
+
+    expect(messages).toHaveLength(4);
+    expect(messages[1]).toMatchObject({ role: 'assistant' });
+    expect(messages[2]).toEqual({
+      id: 'session-1-2',
+      role: 'user',
+      content: [{ type: 'text', text: 'Selected agent: calculator-agent' }],
+    });
+    expect(messages[3]).toMatchObject({
+      role: 'assistant',
+      content: [
+        {
+          type: 'tool-call',
+          toolName: CLAUDE_CODE_COLLAPSED_STUDIO_DETAILS_TOOL_NAME,
+        },
+        { type: 'text', text: 'Generated optimization suggestions.' },
+      ],
+    });
+  });
+
   it('keeps stored job progress tool calls visible in history', () => {
     const history: ClaudeCodeSessionHistory = {
       session_id: 'session-1',

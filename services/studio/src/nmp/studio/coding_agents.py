@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from nmp.studio import studio_links
 from nmp.studio.coding_agent_artifacts import (
     ChatArtifactsResponse,
+    answer_selection_pairs,
     record_answer_selections,
     record_coding_agent_model,
     record_spec_text_artifacts,
@@ -136,6 +137,14 @@ class HistorySummary:
     tool_call_count: int = 0
     tool_calls: list[str] = dataclass_field(default_factory=list)
     chat_artifacts: ChatArtifactsResponse = dataclass_field(default_factory=ChatArtifactsResponse)
+
+
+@dataclass(frozen=True)
+class HistoryToolUse:
+    """Tool metadata needed to restore user interactions during history replay."""
+
+    name: str
+    input: dict[str, Any]
 
 
 def _mcp_tools_for_destinations(
@@ -315,11 +324,14 @@ def _build_studio_system_prompt(
         "Inside the summary block, use exactly these fields on separate lines:",
         f"{STUDIO_MESSAGE_SUMMARY_START}",
         "worked_for: <elapsed time if you know it, otherwise unknown>",
-        "summary: <1-3 short sentences, at most 60 words, describing the user-visible result and current state>",
+        "summary: <concise Markdown, at most 60 words, describing the user-visible result and current state>",
         "details_label: worked for <same elapsed time or unknown>",
         f"{STUDIO_MESSAGE_SUMMARY_END}",
         "Keep detailed explanation, command output, tool logs, diffs, and step-by-step work outside the summary block and before it.",
         "Do not put raw command output, code diffs, tool logs, or long reasoning inside the summary block.",
+        "Format the summary as valid Markdown. When it contains multiple suggestions, results, or steps, put a blank line after 'summary:' and use a numbered or bulleted list rather than flattening the items into prose.",
+        "If the detailed message body contains any Markdown links, repeat those links at the bottom of the summary so they remain visible when the details are collapsed.",
+        "Put repeated links on separate lines without a heading and without formatting them as a bulleted or numbered list.",
         "Studio will use this block to collapse everything before it behind a 'worked for <time>' accordion and show only the short summary by default.",
         "When you are interrupted by a permission request, input request, or need to ask the user something, still include the summary block describing what happened so far and what you need next.",
         "When user input is still required, the summary's final sentence MUST state the exact unresolved selection or action, for example 'Select an agent to continue.' Never show only the investigation result while hiding the request for input in the collapsed details.",
@@ -595,6 +607,80 @@ def list_history_sessions() -> list[HistorySessionResponse]:
     return sessions
 
 
+def _history_tool_result_text(content: Any) -> str | None:
+    if isinstance(content, str):
+        return _trimmed_string(content)
+    if not isinstance(content, list):
+        return None
+    text_parts = [
+        text for part in content if isinstance(part, dict) and (text := _trimmed_string(part.get("text"))) is not None
+    ]
+    return "\n".join(text_parts) or None
+
+
+def _history_interaction_text(tool_use: HistoryToolUse, result_text: str) -> str | None:
+    short_name = tool_use.name.rsplit("__", maxsplit=1)[-1]
+    if tool_use.name == "AskUserQuestion" or short_name == "ask_user_question":
+        try:
+            result_value = json.loads(result_text)
+        except json.JSONDecodeError:
+            result_value = None
+        if isinstance(result_value, dict):
+            result_text = _trimmed_string(result_value.get("response")) or result_text
+        pairs = answer_selection_pairs(result_text)
+        return "\n\n".join(f"{question}\n{answer}" for question, answer in pairs) or None
+
+    try:
+        result = json.loads(result_text)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(result, dict) or result.get("status") != "submitted":
+        return None
+
+    if short_name == SELECT_AGENT_TOOL_NAME:
+        agent = _trimmed_string(result.get("agent"))
+        return f"Selected agent: {agent}" if agent else None
+    if short_name == SELECT_MODEL_TOOL_NAME:
+        output_key = _trimmed_string(tool_use.input.get("output_key")) or "model"
+        model = _trimmed_string(result.get(output_key))
+        display_label = _trimmed_string(tool_use.input.get("display_label")) or "Selected model"
+        return f"{display_label}: {model}" if model else None
+    if short_name == SELECT_DATASET_FILE_TOOL_NAME:
+        fileset = _trimmed_string(result.get("dataset_fileset"))
+        path = _trimmed_string(result.get("dataset_path"))
+        return f"Selected dataset: {fileset}/{path}" if fileset and path else None
+    if short_name == SELECT_EVAL_CONFIG_TOOL_NAME:
+        if result.get("needs_eval_config") is True:
+            return "I don't have an evaluation config yet"
+        if result.get("use_sample_eval_config") is True:
+            return "Use sample evaluation config"
+        fileset = _trimmed_string(result.get("eval_config_fileset"))
+        path = _trimmed_string(result.get("eval_config"))
+        return f"Selected eval config: {fileset}/{path}" if fileset and path else None
+    return None
+
+
+def _history_user_interaction_texts(
+    content: Any,
+    tool_uses: dict[str, HistoryToolUse],
+) -> list[str]:
+    if not isinstance(content, list):
+        return []
+    texts: list[str] = []
+    for part in content:
+        if not isinstance(part, dict) or part.get("type") != "tool_result":
+            continue
+        tool_use_id = _trimmed_string(part.get("tool_use_id"))
+        tool_use = tool_uses.get(tool_use_id) if tool_use_id else None
+        result_text = _history_tool_result_text(part.get("content"))
+        if tool_use is None or result_text is None:
+            continue
+        display_text = _history_interaction_text(tool_use, result_text)
+        if display_text:
+            texts.append(display_text)
+    return texts
+
+
 @router.get("/history/sessions/{session_id}", response_model=SessionHistoryResponse)
 def get_session_history(session_id: str) -> SessionHistoryResponse:
     """Load Claude session history for chat replay."""
@@ -605,6 +691,7 @@ def get_session_history(session_id: str) -> SessionHistoryResponse:
 
     items: list[dict[str, Any]] = []
     summary = _summarize_history_session(path)
+    tool_uses: dict[str, HistoryToolUse] = {}
     try:
         with path.open("r", encoding="utf-8", errors="replace") as fh:
             for line in fh:
@@ -625,10 +712,24 @@ def get_session_history(session_id: str) -> SessionHistoryResponse:
                     if isinstance(content, str) and content:
                         content = _strip_studio_context_from_prompt(content)
                         items.append({"kind": "user", "text": content})
+                    else:
+                        items.extend(
+                            {"kind": "user", "text": text}
+                            for text in _history_user_interaction_texts(content, tool_uses)
+                        )
                 elif entry_type == "assistant" and isinstance(message, dict):
                     parts = _extract_assistant_parts(message.get("content"))
                     if parts:
                         items.append({"kind": "assistant", "parts": parts})
+                    for part in parts:
+                        tool_use_id = _trimmed_string(part.get("id"))
+                        tool_name = _trimmed_string(part.get("name"))
+                        tool_input = part.get("input")
+                        if tool_use_id and tool_name:
+                            tool_uses[tool_use_id] = HistoryToolUse(
+                                name=tool_name,
+                                input=tool_input if isinstance(tool_input, dict) else {},
+                            )
     except OSError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

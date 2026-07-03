@@ -103,6 +103,11 @@ interface StudioSummaryBlock {
   readonly summaryText: string;
 }
 
+interface MarkdownLink {
+  readonly href: string;
+  readonly markdown: string;
+}
+
 interface SerializedClaudeCodeTextPart {
   readonly text: string;
   readonly type: 'text';
@@ -141,6 +146,46 @@ const normalizeSummaryField = (value: string | undefined): string | undefined =>
 const normalizeMarkdownSummary = (value: string | undefined): string | undefined => {
   const trimmed = value?.replace(/\r\n?/g, '\n').trim();
   return trimmed || undefined;
+};
+
+const getMarkdownLinks = (text: string): readonly MarkdownLink[] => {
+  const links: MarkdownLink[] = [];
+  const seenHrefs = new Set<string>();
+  const markdownLinkPattern = /(?<!!)\[([^\]\n]+)\]\(([^)\s]+)(?:\s+["'][^"']*["'])?\)/g;
+
+  for (const match of text.matchAll(markdownLinkPattern)) {
+    const label = match[1]?.trim();
+    const href = match[2]?.trim();
+    if (!label || !href || seenHrefs.has(href)) continue;
+    seenHrefs.add(href);
+    links.push({ href, markdown: `[${label}](${href})` });
+  }
+
+  for (const match of text.matchAll(/https?:\/\/[^\s<>()\]]+/g)) {
+    const href = match[0].replace(/[.,;:!?]+$/, '');
+    if (!href || seenHrefs.has(href)) continue;
+    seenHrefs.add(href);
+    links.push({ href, markdown: `[${href}](${href})` });
+  }
+
+  return links;
+};
+
+const appendDetailLinksToSummary = (
+  summaryText: string,
+  detailParts: readonly ThreadAssistantMessagePart[]
+): string => {
+  const summaryHrefs = new Set(getMarkdownLinks(summaryText).map((link) => link.href));
+  const detailText = detailParts
+    .filter(
+      (part): part is Extract<ThreadAssistantMessagePart, { type: 'text' }> => part.type === 'text'
+    )
+    .map((part) => part.text)
+    .join('\n');
+  const missingLinks = getMarkdownLinks(detailText).filter((link) => !summaryHrefs.has(link.href));
+  if (!missingLinks.length) return summaryText;
+
+  return `${summaryText}\n\n${missingLinks.map((link) => link.markdown).join('\n\n')}`;
 };
 
 const getStudioSummaryFields = (
@@ -414,10 +459,11 @@ const getStudioSummaryBlock = (
     const baseSummaryText =
       summaryFields.summaryText ?? normalizeMarkdownSummary(trailingSummaryText);
     if (!baseSummaryText) return undefined;
-    const summaryText =
+    const summaryTextWithQuestion =
       question && !baseSummaryText.includes(question)
         ? `${baseSummaryText}\n\n${question}`
         : baseSummaryText;
+    const summaryText = appendDetailLinksToSummary(summaryTextWithQuestion, detailParts);
 
     return {
       detailsLabel: getStudioDetailsLabel({

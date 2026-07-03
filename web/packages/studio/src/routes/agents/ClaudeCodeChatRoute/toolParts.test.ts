@@ -235,8 +235,8 @@ describe('Claude Code tool parts', () => {
     const markdownSummary = [
       '## Completed',
       '',
-      '- Preserved **emphasis**',
-      '- Preserved `inline code`',
+      '1. Preserved **emphasis**',
+      '2. Preserved `inline code`',
       '',
       '```ts',
       'const formatted = true;',
@@ -264,5 +264,68 @@ describe('Claude Code tool parts', () => {
       },
       { type: 'text', text: markdownSummary },
     ]);
+  });
+
+  it('includes links from collapsed details at the bottom of the summary', () => {
+    const parts: readonly ThreadAssistantMessagePart[] = [
+      {
+        type: 'text',
+        text: [
+          'I generated the report.',
+          '',
+          '[Agent optimizations](/workspaces/default/agents/suggestions)',
+        ].join('\n'),
+      },
+      {
+        type: 'text',
+        text: [
+          STUDIO_MESSAGE_SUMMARY_START,
+          'worked_for: 12s',
+          'summary: Generated three optimization suggestions.',
+          'details_label: worked for 12s',
+          STUDIO_MESSAGE_SUMMARY_END,
+        ].join('\n'),
+      },
+    ];
+
+    expect(getClaudeCodeCompletedMessageParts(parts)).toMatchObject([
+      {
+        type: 'tool-call',
+        toolName: CLAUDE_CODE_COLLAPSED_STUDIO_DETAILS_TOOL_NAME,
+      },
+      {
+        type: 'text',
+        text: [
+          'Generated three optimization suggestions.',
+          '',
+          '[Agent optimizations](/workspaces/default/agents/suggestions)',
+        ].join('\n'),
+      },
+    ]);
+  });
+
+  it('does not duplicate a detail link already included in the summary', () => {
+    const link = '[Agent optimizations](/workspaces/default/agents/suggestions)';
+    const parts: readonly ThreadAssistantMessagePart[] = [
+      { type: 'text', text: `I generated the report.\n\n${link}` },
+      {
+        type: 'text',
+        text: [
+          STUDIO_MESSAGE_SUMMARY_START,
+          'worked_for: 12s',
+          `summary: Generated three optimization suggestions.\n\n${link}`,
+          'details_label: worked for 12s',
+          STUDIO_MESSAGE_SUMMARY_END,
+        ].join('\n'),
+      },
+    ];
+
+    const completedParts = getClaudeCodeCompletedMessageParts(parts);
+    const summaryPart = completedParts.at(-1);
+
+    expect(summaryPart).toEqual({
+      type: 'text',
+      text: `Generated three optimization suggestions.\n\n${link}`,
+    });
   });
 });

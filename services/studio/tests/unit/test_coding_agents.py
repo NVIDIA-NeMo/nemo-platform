@@ -415,6 +415,7 @@ def test_list_and_get_history_sessions(
                     },
                 ],
             },
+            {"kind": "user", "text": "Which agent should be used?\nbeach-finder"},
             {
                 "kind": "assistant",
                 "parts": [
@@ -483,6 +484,50 @@ def test_list_claude_skills_returns_claude_install_metadata(
 
     assert response.status_code == 200
     assert response.json() == [_expected_inference_skill_response(installed=True)]
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "tool_input", "result", "expected"),
+    [
+        (
+            "mcp__nemo_studio__select_agent",
+            {},
+            '{"status":"submitted","agent":"beach-finder"}',
+            "Selected agent: beach-finder",
+        ),
+        (
+            "mcp__nemo_studio__select_model",
+            {"display_label": "Fallback model", "output_key": "fallback_model"},
+            '{"status":"submitted","fallback_model":"nemotron"}',
+            "Fallback model: nemotron",
+        ),
+        (
+            "mcp__nemo_studio__select_dataset_file",
+            {},
+            '{"status":"submitted","dataset_fileset":"eval-data","dataset_path":"input.jsonl"}',
+            "Selected dataset: eval-data/input.jsonl",
+        ),
+        (
+            "mcp__nemo_studio__select_eval_config",
+            {},
+            '{"status":"submitted","needs_eval_config":true}',
+            "I don't have an evaluation config yet",
+        ),
+    ],
+)
+def test_history_interaction_text_restores_studio_picker_submissions(
+    tool_name: str,
+    tool_input: dict[str, Any],
+    result: str,
+    expected: str,
+):
+    assert (
+        coding_agents._history_interaction_text(
+            coding_agents.HistoryToolUse(name=tool_name, input=tool_input),
+            result,
+        )
+        == expected
+    )
 
 
 def test_load_claude_skills_falls_back_on_duplicate_skill_error(
@@ -651,7 +696,7 @@ def test_build_studio_system_prompt_includes_message_summary_contract():
     assert coding_agents.STUDIO_MESSAGE_SUMMARY_START in prompt
     assert coding_agents.STUDIO_MESSAGE_SUMMARY_END in prompt
     assert "worked_for: <elapsed time if you know it, otherwise unknown>" in prompt
-    assert "summary: <1-3 short sentences" in prompt
+    assert "summary: <concise Markdown" in prompt
     assert "details_label: worked for <same elapsed time or unknown>" in prompt
     assert "behind a 'worked for <time>' accordion" in prompt
     assert "Never end a message with only a plain-text question" in prompt
@@ -661,6 +706,9 @@ def test_build_studio_system_prompt_includes_message_summary_contract():
     assert "A timeout, disconnect, or other interactive-tool error is not permission to continue" in prompt
     assert "summary's final sentence MUST state the exact unresolved selection or action" in prompt
     assert "Never show only the investigation result" in prompt
+    assert "use a numbered or bulleted list" in prompt
+    assert "repeat those links at the bottom of the summary" in prompt
+    assert "Put repeated links on separate lines without a heading" in prompt
     assert "Do not omit the summary block because the message is short." in prompt
 
 
