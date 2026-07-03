@@ -76,9 +76,41 @@ class CodexRunnerTarget(BaseModel):
     timeout_s: int = Field(default=600, ge=1, description="Per-task timeout for the Codex CLI, in seconds.")
 
 
+class FabricRunnerTarget(BaseModel):
+    """Generate trials by driving an agent harness through the NeMo Fabric runtime.
+
+    Fabric is harness-agnostic: the harness (Codex, Hermes, ...) is selected by the supplied
+    config's ``harness.adapter_id`` and is never inferred from ``model``. ``model`` is applied as a
+    final profile overlay when given.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["fabric"] = "fabric"
+    config: dict[str, Any] = Field(
+        description="Inline NeMo Fabric agent config (an ``agent.yaml`` as a JSON-shaped mapping). Its "
+        "``harness.adapter_id`` selects the harness, e.g. ``nvidia.fabric.codex.cli`` for Codex.",
+    )
+    profiles: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Ordered Fabric profile overlays applied after the base config, before ``model``.",
+    )
+    model: str | None = Field(
+        default=None,
+        description="Optional ``provider/model`` slug applied as a final profile overlay; the harness "
+        "default is used when omitted.",
+    )
+    timeout_s: int = Field(default=600, ge=1, description="Per-task timeout for the Fabric run, in seconds.")
+    capture_trajectory: bool = Field(
+        default=True,
+        description="Capture the agent trajectory as ATIF via NeMo Relay and attach it to trial evidence. "
+        "Requires the NeMo Relay gateway in the run environment.",
+    )
+
+
 #: The agent-runner slot of the target union — the spec-side mirror of ``AgentTaskRunner``, resolved
-#: to a runtime at run time. One member today; widen to a ``kind``-union as more runners land.
-AgentRunnerTarget: TypeAlias = CodexRunnerTarget
+#: to a runtime at run time. ``kind``-discriminated; widen with more members as runners land.
+AgentRunnerTarget: TypeAlias = CodexRunnerTarget | FabricRunnerTarget
 
 #: What generates trials: a Model or Agent endpoint, or an agent runner. ``kind``-discriminated, and
 #: the spec-level analog of the SDK's runtime ``AgentEvalTarget`` (Model | Agent | AgentTaskRunner).

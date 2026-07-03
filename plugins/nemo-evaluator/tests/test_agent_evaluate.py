@@ -25,6 +25,7 @@ from nemo_evaluator.jobs.agent_spec import (
     AgentEvalTaskSpec,
     AgentTarget,
     CodexRunnerTarget,
+    FabricRunnerTarget,
     ModelTarget,
     Target,
 )
@@ -35,6 +36,7 @@ from nemo_evaluator.tasks.agent_evaluate import main as agent_eval_task_main
 from nemo_evaluator.tasks.runner import SDK_INITIALIZATION_EXIT_CODE
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSummary
 from nemo_evaluator_sdk.agent_eval.runtimes.codex.runtime import CodexCliAgentRuntime
+from nemo_evaluator_sdk.agent_eval.runtimes.fabric.runtime import FabricAgentRuntime
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import (
     AgentEvalTarget,
@@ -192,6 +194,21 @@ def test_resolve_target_builds_codex_runtime_from_runner_target(tmp_path: Path) 
     assert params is None
 
 
+def test_resolve_target_builds_fabric_runtime_from_runner_target(tmp_path: Path) -> None:
+    ctx = _job_context(tmp_path)
+    fabric_target = FabricRunnerTarget(
+        config={"metadata": {"name": "a"}, "harness": {"adapter_id": "nvidia.fabric.codex.cli"}},
+        model="openai/gpt-5.4",
+    )
+    target, prompt_template, params = AgentEvalJob._resolve_target(fabric_target, ctx)
+    assert isinstance(target, FabricAgentRuntime)
+    assert target._model == "openai/gpt-5.4"
+    assert target._work_root == ctx.storage.persistent / "fabric"
+    # A runner shapes its own request, so it contributes no prompt template or inference params.
+    assert prompt_template is None
+    assert params is None
+
+
 def test_resolve_target_unpacks_model_target_request_config(tmp_path: Path) -> None:
     ctx = _job_context(tmp_path)
     model = Model(url="http://model.test/v1/chat/completions", name="m")
@@ -342,6 +359,13 @@ def _assert_agent_eval_step_entrypoint(job_spec: PlatformJobSpec) -> None:
     ("target", "expected_kind", "expected_endpoint_name"),
     [
         (CodexRunnerTarget(model="gpt-5.5"), "codex", None),
+        (
+            FabricRunnerTarget(
+                config={"metadata": {"name": "a"}, "harness": {"adapter_id": "nvidia.fabric.codex.cli"}}
+            ),
+            "fabric",
+            None,
+        ),
         (
             ModelTarget(
                 model=Model(url="http://model.test/v1/chat/completions", name="test-model"),

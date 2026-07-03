@@ -1451,6 +1451,7 @@ components:
           - $ref: '#/components/schemas/ModelTargetInput'
           - $ref: '#/components/schemas/AgentTargetInput'
           - $ref: '#/components/schemas/CodexRunnerTarget'
+          - $ref: '#/components/schemas/FabricRunnerTarget'
           title: Target
           description: 'What generates trials online: a Model or Agent endpoint, or
             an agent runner (e.g. Codex CLI). Endpoint targets carry their own request
@@ -1602,6 +1603,7 @@ components:
           - $ref: '#/components/schemas/ModelTargetOutput'
           - $ref: '#/components/schemas/AgentTargetOutput'
           - $ref: '#/components/schemas/CodexRunnerTarget'
+          - $ref: '#/components/schemas/FabricRunnerTarget'
           title: Target
           description: 'What generates trials online: a Model or Agent endpoint, or
             an agent runner (e.g. Codex CLI). Endpoint targets carry their own request
@@ -2751,6 +2753,61 @@ components:
       - kind
       title: EvidenceDescriptor
       description: Descriptor for a candidate trace, source, or artifact.
+    FabricRunnerTarget:
+      properties:
+        kind:
+          type: string
+          const: fabric
+          title: Kind
+          default: fabric
+        config:
+          additionalProperties: true
+          type: object
+          title: Config
+          description: Inline NeMo Fabric agent config (an ``agent.yaml`` as a JSON-shaped
+            mapping). Its ``harness.adapter_id`` selects the harness, e.g. ``nvidia.fabric.codex.cli``
+            for Codex.
+        profiles:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Profiles
+          description: Ordered Fabric profile overlays applied after the base config,
+            before ``model``.
+        model:
+          title: Model
+          description: Optional ``provider/model`` slug applied as a final profile
+            overlay; the harness default is used when omitted.
+          type: string
+        timeout_s:
+          type: integer
+          minimum: 1.0
+          title: Timeout S
+          description: Per-task timeout for the Fabric run, in seconds.
+          default: 600
+        capture_trajectory:
+          type: boolean
+          title: Capture Trajectory
+          description: Capture the agent trajectory as ATIF via NeMo Relay and attach
+            it to trial evidence. Requires the NeMo Relay gateway in the run environment.
+          default: true
+      additionalProperties: false
+      type: object
+      required:
+      - config
+      title: FabricRunnerTarget
+      description: 'Generate trials by driving an agent harness through the NeMo Fabric
+        runtime.
+
+
+        Fabric is harness-agnostic: the harness (Codex, Hermes, ...) is selected by
+        the supplied
+
+        config''s ``harness.adapter_id`` and is never inferred from ``model``. ``model``
+        is applied as a
+
+        final profile overlay when given.'
     FieldMapping:
       properties:
         input:
