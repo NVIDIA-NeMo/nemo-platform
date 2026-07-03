@@ -1429,6 +1429,188 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/evaluator/v2/workspaces/{workspace}/tasksets:
+    get:
+      tags:
+      - Evaluator Plugin Tasksets Routes
+      summary: List Tasksets By Workspace
+      description: List stored tasksets for a specific workspace.
+      operationId: list_tasksets_apis_evaluator_v2_workspaces__workspace__tasksets_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          description: Page size.
+          default: 100
+          title: Page Size
+        description: Page size.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/TasksetSort'
+          description: The field to sort by. To sort in decreasing order, use `-`
+            in front of the field name.
+          default: created_at
+        description: The field to sort by. To sort in decreasing order, use `-` in
+          front of the field name.
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/TasksetFilter'
+        description: Filter tasksets by workspace, name, created_at, and updated_at.
+      responses:
+        '200':
+          description: Return stored tasksets for a workspace
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TasksetsPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/evaluator/v2/workspaces/{workspace}/tasksets/{name}:
+    post:
+      tags:
+      - Evaluator Plugin Tasksets Routes
+      summary: Create Taskset
+      description: Store a new taskset, addressed by workspace/name.
+      operationId: create_taskset_apis_evaluator_v2_workspaces__workspace__tasksets__name__post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 255
+          pattern: ^[\w\-\.]+$
+          title: Name
+      - name: project
+        in: query
+        required: false
+        schema:
+          description: Optional project to associate with the taskset.
+          title: Project
+          type: string
+        description: Optional project to associate with the taskset.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TasksetInput'
+      responses:
+        '201':
+          description: Store a new taskset
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Taskset'
+        '409':
+          description: Taskset already exists
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Evaluator Plugin Tasksets Routes
+      summary: Get Taskset
+      description: Get a stored taskset by workspace and name.
+      operationId: get_taskset_apis_evaluator_v2_workspaces__workspace__tasksets__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Return stored taskset details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Taskset'
+        '404':
+          description: Taskset not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Evaluator Plugin Tasksets Routes
+      summary: Delete Taskset
+      description: Delete a stored taskset by workspace and name.
+      operationId: delete_taskset_apis_evaluator_v2_workspaces__workspace__tasksets__name__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '204':
+          description: Delete a stored taskset
+        '404':
+          description: Taskset not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     AgentEvalInputSpec:
@@ -4258,6 +4440,14 @@ components:
         agent''s prompt; the
 
         runtime falls back to the task ``intent`` when it is unset.'
+    TaskRef:
+      type: string
+      pattern: ^[\w\-.]+(/[\w\-.]+)?$
+      title: TaskRef
+      description: "Reference to a persisted task (format: ``workspace/name`` or ``name``).\n\
+        \nSame shape and charset as :class:`MetricRef` \u2014 a taskset points at\
+        \ its member tasks by reference\n(there are no inline tasks), so a stored\
+        \ taskset only ever holds refs."
     TaskSort:
       type: string
       enum:
@@ -4293,6 +4483,144 @@ components:
       required:
       - data
       title: TasksPage
+    Taskset:
+      properties:
+        id:
+          type: string
+          title: Id
+          description: Unique identifier for the stored taskset record.
+        name:
+          type: string
+          title: Name
+          description: "Taskset name \u2014 the stable id, unique within its workspace."
+        workspace:
+          type: string
+          title: Workspace
+          description: Workspace the taskset belongs to.
+        project:
+          title: Project
+          description: The project associated with this taskset.
+          type: string
+        description:
+          title: Description
+          description: Human-readable description of the grouping.
+          type: string
+        tasks:
+          items:
+            $ref: '#/components/schemas/TaskRef'
+          type: array
+          title: Tasks
+          description: References to the member tasks (set semantics; duplicates rejected).
+        metadata:
+          items:
+            $ref: '#/components/schemas/MetadataItem'
+          type: array
+          title: Metadata
+          description: Key/value annotations for the taskset.
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+          description: Timestamp the taskset was created.
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+          description: Timestamp the taskset was last updated.
+      type: object
+      required:
+      - id
+      - name
+      - workspace
+      - created_at
+      - updated_at
+      title: Taskset
+      description: "API representation of a stored taskset \u2014 a flexible grouping\
+        \ of tasks with metadata.\n\nMembers are referenced by ``workspace/name``\
+        \ (there are no inline tasks). Membership is a set:\norder is not significant\
+        \ and duplicate references are rejected."
+    TasksetFilter:
+      additionalProperties: false
+      description: Filter for taskset queries (top-level entity columns only; custom-field
+        filtering is a follow-up).
+      properties:
+        workspace:
+          description: Filter by workspace.
+          title: Workspace
+          type: string
+        name:
+          description: Filter by name.
+          title: Name
+          type: string
+        created_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Filter by creation date.
+        updated_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Filter by update date.
+      title: TasksetFilter
+      type: object
+    TasksetInput:
+      properties:
+        description:
+          title: Description
+          description: Human-readable description of the grouping.
+          type: string
+        tasks:
+          items:
+            $ref: '#/components/schemas/TaskRef'
+          type: array
+          title: Tasks
+          description: References to the member tasks (set semantics; duplicates rejected).
+        metadata:
+          items:
+            $ref: '#/components/schemas/MetadataItem'
+          type: array
+          title: Metadata
+          description: Key/value annotations for the taskset.
+      additionalProperties: false
+      type: object
+      title: TasksetInput
+      description: "Create/replace body for a stored taskset (the name comes from\
+        \ the path).\n\nThe authorable subset of :class:`Taskset` \u2014 minus server-owned\
+        \ fields (id, name, workspace,\ntimestamps)."
+    TasksetSort:
+      type: string
+      enum:
+      - name
+      - -name
+      - created_at
+      - -created_at
+      - updated_at
+      - -updated_at
+      title: TasksetSort
+      description: Sort fields for taskset queries.
+    TasksetsPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/Taskset'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: TasksetsPage
     ValidationError:
       properties:
         loc:
