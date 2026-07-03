@@ -1,13 +1,14 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import time
+import uuid
 from collections.abc import Iterator
 from dataclasses import replace
-from urllib.parse import urlparse
 
 import httpx
 import pytest
-import yaml
+from nemo_platform import NeMoPlatform
 
 from tests.auth_idp.providers import ProviderConfig, load_provider_matrix
 from tests.auth_idp.runtime import get_authentik_docker_test_runtime
@@ -20,8 +21,9 @@ def _token_request_body(grant: dict[str, str]) -> dict[str, str]:
     body = {
         "grant_type": grant_type,
         "client_id": grant["client_id"],
-        "client_secret": grant["client_secret"],
     }
+    if "client_secret" in grant:
+        body["client_secret"] = grant["client_secret"]
     if grant_type == "password":
         body["username"] = grant["username"]
         body["password"] = grant["password"]
@@ -33,6 +35,34 @@ def _token_request_body(grant: dict[str, str]) -> dict[str, str]:
             body["scope"] = grant["scope"]
         return body
     raise ValueError(f"unsupported grant_type for auth_idp token exchange: {grant_type}")
+
+
+def _exchange_token_with_retries(token_endpoint: str, grant: dict[str, str], timeout: float = 60.0) -> str:
+    deadline = time.monotonic() + timeout
+    last_error: Exception | None = None
+    while time.monotonic() < deadline:
+        try:
+            response = httpx.post(
+                token_endpoint,
+                data=_token_request_body(grant),
+                timeout=30.0,
+            )
+            if response.status_code >= 500:
+                last_error = httpx.HTTPStatusError(
+                    f"token endpoint not ready: {response.status_code}",
+                    request=response.request,
+                    response=response,
+                )
+                time.sleep(2)
+                continue
+            response.raise_for_status()
+            return response.json()["access_token"]
+        except httpx.RequestError as exc:
+            last_error = exc
+            time.sleep(2)
+    if last_error is not None:
+        raise last_error
+    raise TimeoutError(f"token endpoint did not become ready: {token_endpoint}")
 
 
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
@@ -47,13 +77,13 @@ def gateway_base_url(idp_provider: ProviderConfig) -> str:
 
 
 @pytest.fixture
-def provider_machine_groups(idp_provider: ProviderConfig) -> list[str]:
-    return idp_provider.machine_expected_groups
+def provider_workload_groups(idp_provider: ProviderConfig) -> list[str]:
+    return idp_provider.workload_expected_groups
 
 
 @pytest.fixture
-def provider_machine_principal(idp_provider: ProviderConfig) -> str:
-    return idp_provider.machine_principal_id
+def provider_workload_principal(idp_provider: ProviderConfig) -> str:
+    return idp_provider.workload_principal_id
 
 
 @pytest.fixture(scope="session")
@@ -88,14 +118,13 @@ def authentik_docker_runtime() -> ProviderConfig:
 def authentik_stack(
     require_idp_e2e: None,
     authentik_provider: ProviderConfig,
-    e2e_sidecars: dict[str, dict[str, str]],
+    _services: str,
 ) -> ProviderConfig:
-    sidecar = e2e_sidecars["authentik"]
     return replace(
         authentik_provider,
-        gateway_base_url=sidecar["gateway_base_url"],
-        discovery_url=sidecar["discovery_url"],
-        token_endpoint=sidecar["token_endpoint"],
+        gateway_base_url=_services,
+        discovery_url=f"{_services}/application/o/nemo/.well-known/openid-configuration",
+        token_endpoint=f"{_services}/application/o/token/",
     )
 
 
@@ -103,18 +132,45 @@ def authentik_stack(
 def machine_token(authentik_stack: ProviderConfig) -> str:
     grant = authentik_stack.machine_grant
     assert grant is not None
-    issuer = yaml.safe_load(authentik_stack.nemo_config.read_text())["auth"]["oidc"]["issuer"]
-    issuer_host = urlparse(issuer).netloc
-    response = httpx.post(
-        authentik_stack.token_endpoint,
-        data=_token_request_body(grant),
-        headers={"Host": issuer_host},
-        timeout=30.0,
-    )
-    response.raise_for_status()
-    return response.json()["access_token"]
+    assert authentik_stack.token_endpoint is not None
+    return _exchange_token_with_retries(authentik_stack.token_endpoint, grant)
 
 
 @pytest.fixture(scope="module")
-def machine_sdk(sdk, machine_token: str):
-    return sdk.with_options(set_default_headers={"Authorization": f"Bearer {machine_token}"})
+def human_token(authentik_stack: ProviderConfig) -> str:
+    grant = authentik_stack.human_grant
+    assert grant is not None
+    assert authentik_stack.token_endpoint is not None
+    return _exchange_token_with_retries(authentik_stack.token_endpoint, grant)
+
+
+@pytest.fixture(scope="module")
+def authentik_human_sdk(authentik_stack: ProviderConfig, human_token: str) -> NeMoPlatform:
+    return NeMoPlatform(
+        base_url=authentik_stack.gateway_base_url,
+        default_headers={"Authorization": f"Bearer {human_token}"},
+        max_retries=0,
+    )
+
+
+@pytest.fixture(scope="module")
+def machine_sdk(authentik_stack: ProviderConfig, machine_token: str) -> NeMoPlatform:
+    return NeMoPlatform(
+        base_url=authentik_stack.gateway_base_url,
+        default_headers={"Authorization": f"Bearer {machine_token}"},
+        max_retries=0,
+    )
+
+
+@pytest.fixture
+def authentik_workspace(authentik_human_sdk: NeMoPlatform) -> Iterator[str]:
+    workspace_name = f"authentik-ws-{uuid.uuid4().hex[:8]}"
+    authentik_human_sdk.workspaces.create(
+        name=workspace_name,
+        description="Workspace for Authentik live auth tests",
+        wait_role_propagation=True,
+    )
+    try:
+        yield workspace_name
+    finally:
+        authentik_human_sdk.workspaces.delete(workspace_name)

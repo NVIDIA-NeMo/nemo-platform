@@ -22,6 +22,7 @@ from nmp.common.jobs.constants import (
 from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.core.jobs.api.v2.jobs.schemas import PlatformJobStepWithContext
 from nmp.core.jobs.app.constants import (
+    JOB_ATTEMPT_ID_LABEL,
     JOB_EXECUTION_BACKEND_LABEL,
     JOB_EXECUTION_PROFILE_LABEL,
     JOB_ID_LABEL,
@@ -251,6 +252,14 @@ def test_docker_job_schedule(docker_job, docker_client_mock, test_job_step):
     # First container is job-init, second is the actual job container
     created_containers[0].start.assert_called_once()  # job-init container
     created_containers[1].start.assert_called_once()  # job container
+
+    docker_job._nmp_sdk.jobs.steps.update_status.assert_any_call(
+        test_job_step.name,
+        workspace=test_job_step.workspace,
+        job=test_job_step.job,
+        status=PlatformJobStatus.ACTIVE.value,
+        status_details={"message": "Container started"},
+    )
 
 
 def test_docker_job_with_persistence_schedule(docker_job, docker_client_mock, test_job_step_with_persistence):
@@ -1536,6 +1545,67 @@ def test_cleanup_steps_by_ttl(docker_job, docker_client_mock, test_job_step, cle
     mock_network.disconnect.assert_any_call(mock_container_killed)
     mock_network.disconnect.assert_any_call(mock_container_error)
     mock_network.disconnect.assert_any_call(mock_container_old_error)
+
+
+def test_cleanup_steps_finalizes_exited_active_container(docker_job, docker_client_mock):
+    """Cleanup should record a fast container's terminal status before the container can be removed."""
+    docker_job._execution_profile_config.cleanup_completed_jobs_immediately = False
+
+    recent_time = (datetime.datetime.now(datetime.UTC) - datetime.timedelta(seconds=5)).isoformat()
+    mock_container = MagicMock()
+    mock_container.name = "fast-job-fast-step"
+    mock_container.id = "fast-container-id"
+    mock_container.status = "exited"
+    mock_container.attrs = {
+        "State": {"ExitCode": 0, "FinishedAt": recent_time},
+        "NetworkSettings": {"Networks": {"host": {}}},
+    }
+    mock_container.labels = {
+        JOB_WORKSPACE_ID_LABEL: "default",
+        JOB_ID_LABEL: "fast-job",
+        JOB_ATTEMPT_ID_LABEL: "attempt-fast",
+        JOB_STEP_NAME_LABEL: "fast-step",
+        JOB_STEP_ID_LABEL: "step-fast",
+        JOB_TASK_ID_LABEL: "task-fast",
+        JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
+        JOB_TYPE_LABEL: JOB_TYPE_JOB,
+        JOB_USES_PERSISTENT_STORAGE_LABEL: "false",
+    }
+    docker_client_mock.containers.list.return_value = [mock_container]
+
+    active_step = MagicMock()
+    active_step.id = "step-fast"
+    active_step.status = PlatformJobStatus.ACTIVE
+    active_step.created_at = datetime.datetime.now(datetime.UTC)
+    active_step.updated_at = datetime.datetime.now(datetime.UTC)
+    docker_job._nmp_sdk.jobs.steps.retrieve.return_value = active_step
+
+    mock_network = MagicMock()
+    docker_client_mock.networks.get.return_value = mock_network
+
+    docker_job.cleanup_steps()
+
+    expected_status_details = {"message": "Job completed successfully with exit code 0"}
+    docker_job._nmp_sdk.jobs.tasks.create_or_update.assert_called_once_with(
+        "task-fast",
+        workspace="default",
+        job="fast-job",
+        step="fast-step",
+        status=PlatformJobStatus.COMPLETED.value,
+        status_details=expected_status_details,
+        error_details={},
+        error_stack="",
+    )
+    docker_job._nmp_sdk.jobs.steps.update_status.assert_called_once_with(
+        "fast-step",
+        workspace="default",
+        job="fast-job",
+        status=PlatformJobStatus.COMPLETED.value,
+        status_details=expected_status_details,
+        error_details={},
+    )
+    mock_network.disconnect.assert_called_once_with(mock_container)
+    mock_container.remove.assert_not_called()
 
 
 def test_cleanup_created_by_ttl(docker_job, docker_client_mock, test_job_step):

@@ -25,6 +25,9 @@ authz:
         description: "Create filesets"
       delete:
         description: "Delete filesets"
+      logs:
+        create:
+          description: "Upload logs to job filesets"
       list:
         description: "List filesets"
       read:
@@ -323,6 +326,7 @@ authz:
       permissions:
       - filesets.create
       - filesets.delete
+      - filesets.logs.create
       - filesets.update
       - guardrails.checks.exec
       - guardrails.configs.create
@@ -396,6 +400,10 @@ authz:
       - secrets.rotate
       - models.trust-remote-code.set
       - models.tool-call-plugin.set
+    JobLogWriter:
+      description: "Write job logs without broader fileset write access"
+      permissions:
+      - filesets.logs.create
     ServiceSystem:
       description: >-
         Internal platform service principal (principal IDs matching service:*). Used when no
@@ -639,7 +647,7 @@ authz:
     /apis/files/v2/workspaces/{workspace}/filesets/{name}/otlp/v1/logs:
       post:
         permissions:
-        - filesets.create
+        - filesets.logs.create
         scopes:
         - files:write
         - platform:write

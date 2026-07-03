@@ -337,6 +337,39 @@ class TestConfigWithoutFile:
         assert config.user.refresh_token is None
         assert not hasattr(config.user, "token_endpoint")
 
+    def test_config_from_workload_token_env_only(self, monkeypatch: pytest.MonkeyPatch):
+        """NEMO_WORKLOAD_TOKEN should bootstrap OAuth auth without a config file."""
+        monkeypatch.setenv("NMP_BASE_URL", "https://api.example.com")
+        monkeypatch.setenv("NEMO_WORKLOAD_TOKEN", "workload-token-123")
+
+        config = get_context()
+
+        assert isinstance(config.user, OAuthUser)
+        assert config.user.token.get_secret_value() == "workload-token-123"
+
+    def test_config_from_workload_token_file_env_only(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        """NEMO_WORKLOAD_TOKEN_FILE should bootstrap OAuth auth without a config file."""
+        token_path = tmp_path / "workload.token"
+        token_path.write_text("workload-token-from-file\n", encoding="utf-8")
+        monkeypatch.setenv("NMP_BASE_URL", "https://api.example.com")
+        monkeypatch.setenv("NEMO_WORKLOAD_TOKEN_FILE", str(token_path))
+
+        config = get_context()
+
+        assert isinstance(config.user, OAuthUser)
+        assert config.user.token.get_secret_value() == "workload-token-from-file"
+
+    def test_nmp_access_token_precedes_workload_token_env(self, monkeypatch: pytest.MonkeyPatch):
+        """NMP_ACCESS_TOKEN remains the highest-precedence token env var."""
+        monkeypatch.setenv("NMP_BASE_URL", "https://api.example.com")
+        monkeypatch.setenv("NMP_ACCESS_TOKEN", "preferred-token")
+        monkeypatch.setenv("NEMO_WORKLOAD_TOKEN", "workload-token-123")
+
+        config = get_context()
+
+        assert isinstance(config.user, OAuthUser)
+        assert config.user.token.get_secret_value() == "preferred-token"
+
     def test_config_from_env_access_token_ignores_legacy_api_key_env(self, monkeypatch: pytest.MonkeyPatch):
         """NMP_ACCESS_TOKEN is used when legacy NMP_API_KEY is present without config."""
         monkeypatch.setenv("NMP_BASE_URL", "https://api.example.com")

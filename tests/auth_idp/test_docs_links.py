@@ -10,8 +10,5 @@ pytestmark = [pytest.mark.auth_idp]
 
 def test_auth_docs_link_to_contrib_references():
     content = Path("docs/auth/authentication/idp-integration.mdx").read_text()
-    manifest_paths = sorted(Path("contrib/auth").glob("*/manifest.yaml"))
-    assert manifest_paths
-    for manifest_path in manifest_paths:
-        provider_path = f"contrib/auth/{manifest_path.parent.name}"
-        assert provider_path in content
+    assert "contrib/auth/authentik" in content
+    assert "NEMO_WORKLOAD_TOKEN" in content

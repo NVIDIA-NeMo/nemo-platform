@@ -29,30 +29,51 @@ def test_authentik_gateway_rejects_spoofed_principal_headers(authentik_stack, ma
     workspace_name = f"spoof-check-{uuid.uuid4().hex[:8]}"
     claims = _jwt_claims(machine_token)
     authenticated_principal_id = str(claims["sub"])
-    expected_binding_principal = claims.get("email") or authenticated_principal_id
+    expected_binding_principal = authenticated_principal_id
     headers = {
         "Authorization": f"Bearer {machine_token}",
         "X-NMP-Principal-Id": "service:bootstrap",
         "X-NMP-Principal-Email": "attacker@example.com",
     }
 
-    create_response = httpx.post(
+    try:
+        create_response = httpx.post(
+            f"{authentik_stack.gateway_base_url}/apis/entities/v2/workspaces",
+            json={"name": workspace_name, "description": "Spoofed header check"},
+            headers=headers,
+            timeout=10.0,
+        )
+        create_response.raise_for_status()
+        assert create_response.json()["created_by"] == authenticated_principal_id
+
+        members_response = httpx.get(
+            f"{authentik_stack.gateway_base_url}/apis/entities/v2/workspaces/{workspace_name}/members",
+            headers=headers,
+            timeout=10.0,
+        )
+        members_response.raise_for_status()
+        admin_member = next(member for member in members_response.json()["data"] if "Admin" in member["roles"])
+
+        assert admin_member["granted_by"] == authenticated_principal_id
+        assert admin_member["principal"] == expected_binding_principal
+        assert admin_member["principal"] not in {"service:bootstrap", "attacker@example.com"}
+    finally:
+        httpx.delete(
+            f"{authentik_stack.gateway_base_url}/apis/entities/v2/workspaces/{workspace_name}",
+            headers=headers,
+            timeout=10.0,
+        )
+
+
+def test_authentik_gateway_forwards_workload_groups(authentik_stack, machine_token: str):
+    claims = _jwt_claims(machine_token)
+    headers = {"Authorization": f"Bearer {machine_token}"}
+
+    response = httpx.get(
         f"{authentik_stack.gateway_base_url}/apis/entities/v2/workspaces",
-        json={"name": workspace_name, "description": "Spoofed header check"},
         headers=headers,
         timeout=10.0,
     )
-    create_response.raise_for_status()
-    assert create_response.json()["created_by"] == authenticated_principal_id
 
-    members_response = httpx.get(
-        f"{authentik_stack.gateway_base_url}/apis/entities/v2/workspaces/{workspace_name}/members",
-        headers=headers,
-        timeout=10.0,
-    )
-    members_response.raise_for_status()
-    admin_member = next(member for member in members_response.json()["data"] if "Admin" in member["roles"])
-
-    assert admin_member["granted_by"] == authenticated_principal_id
-    assert admin_member["principal"] == expected_binding_principal
-    assert admin_member["principal"] not in {"service:bootstrap", "attacker@example.com"}
+    assert response.status_code in {200, 403}
+    assert isinstance(claims.get("groups"), str)

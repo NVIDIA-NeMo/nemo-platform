@@ -15,6 +15,13 @@ ComposeFiles: TypeAlias = Path | tuple[Path, ...]
 ComposeEnv: TypeAlias = dict[str, str] | None
 
 
+def _compose_lifecycle(env: ComposeEnv) -> str:
+    lifecycle = (env or {}).get("AUTHENTIK_E2E_LIFECYCLE", environ.get("AUTHENTIK_E2E_LIFECYCLE", "fresh"))
+    if lifecycle not in {"fresh", "reuse"}:
+        raise ValueError(f"unsupported AUTHENTIK_E2E_LIFECYCLE: {lifecycle}")
+    return lifecycle
+
+
 def _compose_base_args(compose_file: ComposeFiles, project_name: str | None) -> list[str]:
     args = ["docker", "compose"]
     compose_files = (compose_file,) if isinstance(compose_file, Path) else compose_file
@@ -89,14 +96,29 @@ def compose_up(
     wait_timeout: int | None = None,
     env: ComposeEnv = None,
 ) -> None:
+    lifecycle = _compose_lifecycle(env)
     args = _compose_base_args(compose_file, project_name)
     args.extend(["up", "-d"])
+
+    expected_services = _compose_services(compose_file, project_name, "config", "--services", env=env)
+    if lifecycle == "reuse":
+        running_services = _compose_services(
+            compose_file,
+            project_name,
+            "ps",
+            "--services",
+            "--status",
+            "running",
+            env=env,
+        )
+        if running_services == expected_services:
+            return
+
     subprocess.run(args, check=True, env=_compose_env(env))
 
     if wait_timeout is None:
         return
 
-    expected_services = _compose_services(compose_file, project_name, "config", "--services", env=env)
     deadline = time.monotonic() + wait_timeout
     while time.monotonic() < deadline:
         running_services = _compose_services(
@@ -125,6 +147,8 @@ def compose_up(
 
 
 def compose_down(compose_file: ComposeFiles, *, project_name: str | None = None, env: ComposeEnv = None) -> None:
+    if _compose_lifecycle(env) == "reuse":
+        return
     args = _compose_base_args(compose_file, project_name)
     args.extend(["down", "-v"])
     subprocess.run(args, check=True, env=_compose_env(env))
@@ -187,16 +211,21 @@ def wait_for_token_endpoint(provider: ProviderConfig, timeout: float = 60) -> st
     last_response: httpx.Response | None = None
     while time.monotonic() < deadline:
         try:
+            grant = provider.machine_grant
+            data = {
+                "grant_type": grant["grant_type"],
+                "client_id": grant["client_id"],
+            }
+            if "client_secret" in grant:
+                data["client_secret"] = grant["client_secret"]
+            if grant["grant_type"] == "password":
+                data["username"] = grant["username"]
+                data["password"] = grant["password"]
+            if "scope" in grant:
+                data["scope"] = grant["scope"]
             response = httpx.post(
                 provider.token_endpoint,
-                data={
-                    "grant_type": provider.machine_grant["grant_type"],
-                    "client_id": provider.machine_grant["client_id"],
-                    "client_secret": provider.machine_grant["client_secret"],
-                    "username": provider.machine_grant["username"],
-                    "password": provider.machine_grant["password"],
-                    "scope": provider.machine_grant["scope"],
-                },
+                data=data,
                 timeout=30.0,
             )
         except httpx.RequestError as exc:

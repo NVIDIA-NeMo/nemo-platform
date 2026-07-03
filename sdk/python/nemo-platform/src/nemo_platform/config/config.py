@@ -28,6 +28,9 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
+_WORKLOAD_TOKEN_ENVVAR = "NEMO_WORKLOAD_TOKEN"
+_WORKLOAD_TOKEN_FILE_ENVVAR = "NEMO_WORKLOAD_TOKEN_FILE"
+
 
 class Config(BaseModel):
     """
@@ -135,6 +138,13 @@ class Config(BaseModel):
             env_key = f"NMP_{field_name.upper()}"
             if val := os.environ.get(env_key):
                 env_values[field_name] = val
+        if "access_token" not in env_values:
+            if token := os.environ.get(_WORKLOAD_TOKEN_ENVVAR):
+                env_values["access_token"] = token
+            elif token_path := os.environ.get(_WORKLOAD_TOKEN_FILE_ENVVAR):
+                token = Path(token_path).read_text(encoding="utf-8").strip()
+                if token:
+                    env_values["access_token"] = token
         return env_values
 
     @classmethod

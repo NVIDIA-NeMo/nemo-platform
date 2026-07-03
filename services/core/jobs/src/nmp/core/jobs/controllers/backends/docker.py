@@ -935,6 +935,13 @@ chmod -R 777 {job_vol}/{storage_subpath}
             logger.info(
                 "Started container for job step", extra={"container_name": container.name, "attempts": attempts}
             )
+            self._nmp_sdk.jobs.steps.update_status(
+                step.name,
+                workspace=step.workspace,
+                job=step.job,
+                status=PlatformJobStatus.ACTIVE.value,
+                status_details={"message": "Container started"},
+            )
         except Exception as e:
             raise FailedToScheduleError(
                 f"Failed to start container {container.name} for job step",
@@ -1142,6 +1149,56 @@ chmod -R 777 {job_vol}/{storage_subpath}
         logger.info("Updated task", extra={"task_id": task_id, "status": status})
         return JobUpdate(status=status.value, status_details=status_details, error_details=error_details)
 
+    def finalize_exited_container_step(
+        self,
+        *,
+        container: Container,
+        job: str,
+        step_name: str,
+        workspace: str,
+    ) -> bool:
+        """Update task and step status from an exited container observed during cleanup.
+
+        Fast Docker jobs can exit before the next reconcile cycle sees the terminal
+        container state. If cleanup observes that state first, finalize it here so
+        the next reconcile does not turn a successfully exited, removed container
+        into a missing-container error.
+        """
+        step = self.get_step_safe(job=job, step_name=step_name, workspace=workspace)
+        if step is None:
+            return True
+
+        terminal_statuses = {status.value for status in PlatformJobStatus.terminals()}
+        step_status = step.status.value if hasattr(step.status, "value") else str(step.status)
+        if step_status in terminal_statuses:
+            return True
+
+        step_context = PlatformJobStepWithContext(
+            id=step.id,
+            job=job,
+            attempt_id=self.get_label_from_container(container, JOB_ATTEMPT_ID_LABEL),
+            fileset="",
+            workspace=workspace,
+            name=step_name,
+            status=step.status,
+            created_at=step.created_at,
+            updated_at=step.updated_at,
+        )
+        job_update = self.create_step_update(step_context, container)
+        self._nmp_sdk.jobs.steps.update_status(
+            step_name,
+            workspace=workspace,
+            job=job,
+            status=job_update.status,
+            status_details=job_update.status_details,  # type: ignore
+            error_details=job_update.error_details,  # type: ignore
+        )
+        logger.info(
+            "Finalized exited container during cleanup",
+            extra={"workspace": workspace, "job": job, "step_name": step_name, "status": job_update.status},
+        )
+        return True
+
     def map_docker_container_status_to_platform_status(
         self, step: PlatformJobStepWithContext, container: Container
     ) -> tuple[PlatformJobStatus, dict, str]:
@@ -1266,8 +1323,16 @@ chmod -R 777 {job_vol}/{storage_subpath}
                     # Verify the step is terminal before cleaning up.
                     # This prevents cleaning up resources that we last marked in active state,
                     # were prematurely cleaned up, and then sync active to error because the resource is gone.
-                    if not self.check_step_is_terminal(job=job, step_name=step_name, workspace=workspace):
-                        logger.debug("Skipping cleanup for for job container because step is not in terminal state")
+                    step_is_terminal = self.check_step_is_terminal(job=job, step_name=step_name, workspace=workspace)
+                    if not step_is_terminal:
+                        step_is_terminal = self.finalize_exited_container_step(
+                            container=container,
+                            job=job,
+                            step_name=step_name,
+                            workspace=workspace,
+                        )
+                    if not step_is_terminal:
+                        logger.debug("Skipping cleanup for job container because step is not in terminal state")
                         continue
 
                     # Always disconnect the container from its network first if not already done.

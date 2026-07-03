@@ -28,12 +28,19 @@ def test_all_provider_manifests_share_the_same_contract():
 def test_authentik_manifest_declares_real_token_acquisition_contract():
     manifest = yaml.safe_load(Path("contrib/auth/authentik/manifest.yaml").read_text())
     token_acquisition = manifest["token_acquisition"]
+    workload_contract = manifest["workload_contract"]
 
     assert token_acquisition["token_endpoint"]
     assert token_acquisition["human_grant"]["grant_type"] == "password"
-    assert token_acquisition["machine_grant"]["grant_type"] == "client_credentials"
+    assert token_acquisition["machine_grant"]["grant_type"] == "password"
     assert token_acquisition["human_grant"]["client_id"]
     assert token_acquisition["machine_grant"]["client_id"]
+    assert token_acquisition["human_grant"]["password"] == "nemo-user-token-secret-dev"
+    assert "offline_access" in token_acquisition["human_grant"]["scope"].split()
+    assert workload_contract["audience"] == "nemo-platform"
+    assert workload_contract["groups_format"] == "comma_string"
+    assert workload_contract["forwarded_headers"]["principal_id"] == "X-NMP-Principal-Id"
+    assert workload_contract["forwarded_headers"]["principal_groups"] == "X-NMP-Principal-Groups"
 
 
 def test_authentik_manifest_declares_extended_startup_timeouts_for_real_oidc():

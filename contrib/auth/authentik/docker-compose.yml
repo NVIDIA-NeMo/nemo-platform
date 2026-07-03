@@ -10,13 +10,14 @@ x-authentik-env: &authentik-env
 
 services:
   nemo:
-    image: ${IMAGE_REGISTRY:-local}/nmp-api:${BAKE_TAG:-authentik-local}
+    image: ${IMAGE_REGISTRY:-my-registry}/nmp-api:${BAKE_TAG:-local}
     environment:
       MODE: development
       NMP_CONFIG_FILE_PATH: /etc/nmp/config.yaml
       NMP_CONFIG_WARNINGS_DISABLED: "1"
       NMP_SEED_ON_STARTUP: "true"
       NMP_SECRETS_ALLOW_KEY_CREATION: "1"
+      NEMO_JOBS_DEFAULT_DOCKER_NETWORK: ${AUTHENTIK_WORKLOAD_NETWORK_NAME:-authentik_workload}
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health/ready', timeout=5)\""]
       interval: 10s
@@ -24,9 +25,11 @@ services:
       retries: 12
       start_period: 20s
     volumes:
-      - ./config/platform-compose-authentik.yaml:/etc/nmp/config.yaml:ro
+      - ${NEMO_COMPOSE_CONFIG_PATH:-./config/platform-compose-authentik.yaml}:/etc/nmp/config.yaml:ro
       - /var/run/docker.sock:/var/run/docker.sock:rw
       - nemo-data:/data
+    networks:
+      - nemo-internal
 
   gateway:
     image: envoyproxy/envoy:v1.33-latest
@@ -38,6 +41,11 @@ services:
     depends_on:
       nemo:
         condition: service_healthy
+    networks:
+      nemo-internal: {}
+      workload:
+        aliases:
+          - nemo-gateway
 
   authentik-postgres:
     image: docker.io/library/postgres:16-alpine
@@ -53,6 +61,8 @@ services:
       POSTGRES_PASSWORD: ${PG_PASS:-authentik}
     volumes:
       - authentik-pgdata:/var/lib/postgresql/data
+    networks:
+      - nemo-internal
 
   authentik-redis:
     image: docker.io/library/redis:7-alpine
@@ -65,14 +75,14 @@ services:
       retries: 10
     volumes:
       - authentik-redisdata:/data
+    networks:
+      - nemo-internal
 
   authentik-server:
     image: ghcr.io/goauthentik/server:${AUTHENTIK_TAG:-2024.12}
     restart: unless-stopped
     command: server
     environment: *authentik-env
-    ports:
-      - "${AUTHENTIK_ISSUER_PORT:-19000}:9000"
     volumes:
       - ./blueprints:/blueprints/custom:ro
       - authentik-media:/media
@@ -81,6 +91,8 @@ services:
         condition: service_healthy
       authentik-redis:
         condition: service_healthy
+    networks:
+      - nemo-internal
 
   authentik-worker:
     image: ghcr.io/goauthentik/server:${AUTHENTIK_TAG:-2024.12}
@@ -95,9 +107,16 @@ services:
         condition: service_healthy
       authentik-redis:
         condition: service_healthy
+    networks:
+      - nemo-internal
 
 volumes:
   nemo-data:
   authentik-pgdata:
   authentik-redisdata:
   authentik-media:
+
+networks:
+  nemo-internal: {}
+  workload:
+    name: ${AUTHENTIK_WORKLOAD_NETWORK_NAME:-authentik_workload}

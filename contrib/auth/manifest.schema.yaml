@@ -9,7 +9,8 @@ required:
   - nemo_config
   - principal_contract
   - human_identity
-  - machine_identity
+  - workload_identity
+  - workload_contract
   - healthchecks
   - startup_timeouts
 properties:
@@ -41,8 +42,20 @@ properties:
       - internal_service_prefix_reserved
   human_identity:
     type: object
-  machine_identity:
+  workload_identity:
     type: object
+    required:
+      - principal_id
+      - expected_groups
+  workload_contract:
+    type: object
+    required:
+      - audience
+      - principal_claim
+      - groups_claim
+      - groups_format
+      - token_env_vars
+      - forwarded_headers
   healthchecks:
     type: array
   startup_timeouts:

@@ -1,273 +1,278 @@
-# Authentik Reference
+# Authentik Reference Example
 
-This directory contains a standalone local reference deployment for running
-NeMo Platform with Authentik as the OIDC identity provider.
+This directory contains a local Authentik-backed NeMo Platform example. Use it
+to verify three user-visible flows:
 
-The bundle includes:
+- log in to NeMo with Authentik
+- call NeMo APIs through the Authentik gateway
+- run a NeMo job whose workload uses a real Authentik workload token
 
-- an Authentik application for NeMo
-- a `groups` scope mapping so NeMo can authorize by group membership
-- a demo human admin user
-- a demo machine identity that authenticates with a service token
-- an Envoy gateway that strips inbound `X-NMP-Principal-*` headers before
-  forwarding traffic to NeMo
-
-## What This Deployment Verifies
-
-This local deployment proves the customer-facing service-token flow:
-
-1. Authentik issues a real access token for a machine identity.
-2. NeMo treats that identity as an external OIDC principal, not as an internal
-   `service:*` caller.
-3. NeMo authorizes the machine identity through group-based workspace bindings.
+All credentials in this example are for local development only.
 
 ## Prerequisites
 
 - Docker with `docker compose`
 - a bootstrapped NeMo Platform checkout
+- a shell from the repo root
 
-## Included Demo Identities
+## Demo Identities
 
-This bundle seeds the following demo identities:
+The stack seeds these local-only identities:
 
-- Human admin user:
-  `username=akadmin`
-  `password=akadmin-dev`
-  `email=admin@example.com`
-- Machine identity:
-  `principal_id=svc-nemo-ci`
-  `group=nemo-editors`
-  `service token secret=svc-nemo-ci-token-secret-dev`
-- OIDC client:
-  `client_id=nemo-platform`
-  `client_secret=nemo-platform-secret-dev`
+- Human user: `nemo-user`
+- Human password: `nemo-user-password-dev`
+- Human email: `nemo-user@example.com`
+- CLI OIDC client: `nemo-platform-cli`
+- Workload identity: `svc-nemo-ci`
+- Workload group: `nemo-editors`
 
-These values are for local development only. Change them before adapting this
-bundle to any shared environment.
-
-## Local Deployment
-
-### 1. Start the local Authentik + NeMo stack
+## Start The Stack
 
 From the repo root:
 
 ```bash
-make run-contrib-auth-authentik
+contrib/auth/authentik/run.sh stack
 ```
 
-This target:
+This starts NeMo, Authentik, and the local gateway with the existing default
+NeMo API image, `my-registry/nmp-api:local`. The script does not build images.
+Leave this process running. Stop it with `Ctrl-C` when you are done; the script
+removes the Compose stack and volumes on exit.
 
-- builds and loads the local CPU image set
-- starts the `nemo`, `gateway`, and Authentik services in the foreground
-- uses the local image tag `local/nmp-api:authentik-local`
-- tears the stack down automatically when you stop it with `Ctrl-C`
-
-If `IMAGE_REGISTRY` or `BAKE_TAG` are already set in your shell, the target
-uses those existing values. Otherwise it defaults to `local` and
-`authentik-local`.
-
-This compose stack starts:
-
-- NeMo API on the internal hostname `nemo`
-- gateway: `http://127.0.0.1:18080`
-- Authentik UI and OIDC issuer: `http://127.0.0.1:19000`
-
-The gateway forwards to the NeMo container on the same Docker network, so no
-manual Envoy rewrite is required.
-
-### 2. Verify OIDC discovery
+To use a different prebuilt image for the example, pass it explicitly:
 
 ```bash
-curl -sf http://127.0.0.1:19000/application/o/nemo/.well-known/openid-configuration >/dev/null && echo "OIDC discovery OK"
+contrib/auth/authentik/run.sh stack --image registry.example.com/nemo/nmp-api:<tag>
 ```
 
-### 3. Point the NeMo CLI at the Authentik gateway
+The auth-idp test suite has one entrypoint:
 
-The CLI talks to the gateway, not directly to the NeMo container.
+```bash
+make test-auth-idp
+```
+
+To run the tests against the same prebuilt image used by the example, pass the
+matching registry and tag to that test target:
+
+```bash
+IMAGE_REGISTRY=registry.example.com/nemo BAKE_TAG=<tag> make test-auth-idp
+```
+
+Wait until the gateway is ready:
+
+```bash
+until curl -sf http://127.0.0.1:18080/apis/auth/discovery >/dev/null; do
+  sleep 2
+done
+```
+
+The local gateway URL is:
+
+```text
+http://127.0.0.1:18080
+```
+
+## Log In With Authentik
+
+Point the CLI at the Authentik gateway:
 
 ```bash
 nemo config set --context authentik-human --base-url http://127.0.0.1:18080 --activate
-nemo config set --context authentik-machine --base-url http://127.0.0.1:18080
 ```
 
-## Verify Service Tokens
-
-The commands below use the NeMo CLI for workspace operations and context
-switching. The only non-CLI step is minting bearer tokens so they can be loaded
-into CLI contexts.
-
-### Configure CLI contexts with access tokens
-
-The `nemo` CLI stores bearer tokens per context. The command shape is:
+Start browser login:
 
 ```bash
-nemo config set --context <context-name> --access-token "$TOKEN"
+nemo auth login --context authentik-human --base-url http://127.0.0.1:18080
 ```
 
-To switch the active context later:
+Log in with:
+
+- username: `nemo-user`
+- password: `nemo-user-password-dev`
+
+Verify the saved session:
 
 ```bash
-nemo config use-context <context-name>
+nemo --context authentik-human auth status
+nemo --context authentik-human workspaces list
 ```
 
-To inspect which context is active:
+Expected result: `auth status` shows `Auth Type: oauth`, the email
+`nemo-user@example.com`, and a refresh token. `workspaces list` should return
+without an auth error.
+
+## Create A Demo Workspace
 
 ```bash
-nemo config current-context
-```
-
-### 1. Get a human admin token
-
-Use the seeded admin user to obtain a bearer token:
-
-```bash
-export HUMAN_TOKEN="$(
-  uv run python - <<'PY'
-import httpx
-
-response = httpx.post(
-    "http://127.0.0.1:19000/application/o/token/",
-    data={
-        "grant_type": "password",
-        "client_id": "nemo-platform",
-        "client_secret": "nemo-platform-secret-dev",
-        "username": "akadmin",
-        "password": "akadmin-dev",
-        "scope": "openid profile email groups",
-    },
-    timeout=30.0,
-)
-response.raise_for_status()
-print(response.json()["access_token"])
-PY
-)"
-```
-
-Load that token into the human CLI context:
-
-```bash
-nemo config set --context authentik-human --access-token "$HUMAN_TOKEN"
-nemo config use-context authentik-human
-```
-
-### 2. Get a machine token
-
-Use the seeded machine identity to obtain a bearer token:
-
-```bash
-export MACHINE_TOKEN="$(
-  uv run python - <<'PY'
-import httpx
-
-response = httpx.post(
-    "http://127.0.0.1:19000/application/o/token/",
-    data={
-        "grant_type": "client_credentials",
-        "client_id": "nemo-platform",
-        "client_secret": "nemo-platform-secret-dev",
-        "username": "svc-nemo-ci",
-        "password": "svc-nemo-ci-token-secret-dev",
-        "scope": "openid email groups",
-    },
-    timeout=30.0,
-)
-response.raise_for_status()
-print(response.json()["access_token"])
-PY
-)"
-```
-
-Load that token into the machine CLI context:
-
-```bash
-nemo config set --context authentik-machine --access-token "$MACHINE_TOKEN"
-nemo config use-context authentik-machine
-```
-
-### 3. Create a workspace as the human admin
-
-```bash
-export WORKSPACE="authentik-demo"
+export WORKSPACE=authentik-demo
 
 nemo --context authentik-human workspaces create "$WORKSPACE" \
-  --description "Authentik service-token demo" \
+  --description "Authentik reference example" \
   --wait-role-propagation
 ```
 
-The creator is automatically granted workspace admin access.
-
-### 4. Confirm the machine token is denied before binding
-
-```bash
-nemo --context authentik-machine workspaces get "$WORKSPACE"
-```
-
-Expected result: an authorization failure.
-
-### 5. Bind the machine group to the workspace
-
-The demo machine identity belongs to the Authentik group `nemo-editors`. Grant
-that group a NeMo workspace role:
+Grant the demo workload group access to the workspace:
 
 ```bash
 nemo --context authentik-human workspaces members create \
   --workspace "$WORKSPACE" \
   --principal nemo-editors \
   --roles Viewer \
+  --roles JobLogWriter \
   --wait-role-propagation
 ```
 
-### 6. Confirm the machine token is now allowed
+Expected result: the human user can manage the workspace, and the workload
+group can read the workspace and upload job logs.
+
+## Run A Workload Job
 
 ```bash
-nemo --context authentik-machine workspaces get "$WORKSPACE"
+export JOB_NAME=authentik-workload-demo
+export WORKLOAD_TOKEN_SECRET="${JOB_NAME}-token"
 ```
 
-Expected result: the workspace is returned successfully.
-
-### 7. Revoke the binding and confirm access is removed
+Fetch a local demo token for the seeded workload identity and store it as a
+workspace secret:
 
 ```bash
-nemo --context authentik-human workspaces members delete nemo-editors \
+export NEMO_WORKLOAD_TOKEN="$(
+  curl -fsS http://127.0.0.1:18080/application/o/token/ \
+    -d grant_type=password \
+    -d client_id=nemo-platform \
+    -d client_secret=nemo-platform-secret-dev \
+    -d username=svc-nemo-ci \
+    -d password=svc-nemo-ci-token-secret-dev \
+    -d scope="openid email groups" \
+  | python -c 'import json, sys; print(json.load(sys.stdin)["access_token"])'
+)"
+
+printf '%s' "$NEMO_WORKLOAD_TOKEN" \
+  | nemo --context authentik-human secrets create "$WORKLOAD_TOKEN_SECRET" \
+      --workspace "$WORKSPACE" \
+      --from-file -
+```
+
+Create the job request:
+
+```bash
+python - <<'PY' >/tmp/authentik-workload-job.json
+import json
+import os
+import sys
+
+payload = {
+    "source": "authentik-reference-example",
+    "spec": {"demo": "authentik-workload-auth"},
+    "platform_spec": {
+        "steps": [
+            {
+                "name": "workload-workspace-get",
+                "executor": {
+                    "provider": "cpu",
+                    "profile": "workload",
+                    "container": {
+                        "entrypoint": ["nemo-platform"],
+                        "command": [
+                            "run",
+                            "task",
+                            "--task",
+                            "nmp.hello_world.tasks.workload_workspace_get",
+                        ],
+                    },
+                },
+                "environment": [
+                    {
+                        "name": "NEMO_WORKLOAD_TOKEN",
+                        "from_secret": {"name": os.environ["WORKLOAD_TOKEN_SECRET"]},
+                    }
+                ],
+                "config": {"workspace": os.environ["WORKSPACE"]},
+            }
+        ]
+    },
+}
+
+json.dump(payload, sys.stdout, indent=2)
+PY
+```
+
+Submit the job:
+
+```bash
+nemo --context authentik-human jobs create "$JOB_NAME" \
   --workspace "$WORKSPACE" \
-  --wait-role-propagation
+  --input-file /tmp/authentik-workload-job.json
 ```
 
-Then retry the machine request:
+Watch it complete:
 
 ```bash
-nemo --context authentik-machine workspaces get "$WORKSPACE"
+nemo --context authentik-human jobs get-status "$JOB_NAME" --workspace "$WORKSPACE"
 ```
 
-Expected result: access returns to an authorization failure.
+After the job reaches `completed`, read the logs:
+
+```bash
+nemo --context authentik-human jobs get-logs "$JOB_NAME" \
+  --workspace "$WORKSPACE" \
+  --all-pages
+```
+
+Expected result: the logs include:
+
+```text
+Successfully retrieved workspace: authentik-demo
+```
+
+That confirms the job workload used the Authentik workload token to call NeMo
+through the gateway.
+
+## Refresh The CLI Session
+
+The example requests `offline_access`, so the CLI stores a refresh token.
+
+```bash
+nemo --context authentik-human auth refresh
+nemo --context authentik-human auth status
+```
+
+Expected result: the context remains authenticated and still reports a refresh
+token.
 
 ## Cleanup
 
-Stopping `make run-contrib-auth-authentik` with `Ctrl-C` automatically removes the
-compose stack and volumes.
-
-If you created a temporary workspace for verification before stopping the
-stack, you can also delete it with the human CLI context:
+Remove the demo job and workspace if you created them:
 
 ```bash
+nemo --context authentik-human jobs delete "$JOB_NAME" --workspace "$WORKSPACE"
+nemo --context authentik-human secrets delete "$WORKLOAD_TOKEN_SECRET" --workspace "$WORKSPACE"
 nemo --context authentik-human workspaces delete "$WORKSPACE"
 ```
 
-## Production Adaptation
+Then stop the stack with `Ctrl-C` in the terminal running
+`contrib/auth/authentik/run.sh stack`.
 
-- configure NeMo `auth.oidc` with your production Authentik issuer, client ID,
-  and claim mappings
-- ensure your access tokens include the `groups` claim NeMo binds to roles
-- keep the gateway rule that strips inbound `X-NMP-Principal-*` headers before
-  forwarding to NeMo
-- keep external machine callers as ordinary OIDC subjects rather than internal
-  `service:*` principals
-- replace all bundled development secrets before using this pattern anywhere
-  outside a local sandbox
+## Troubleshooting
 
-## CI Note
+- `Audiences in Jwt are not allowed`: restart the stack so Envoy reloads the
+  latest gateway config, then log in again.
+- `Permission denied`: verify `nemo --context authentik-human auth status`,
+  then check
+  `nemo --context authentik-human workspaces members list --workspace "$WORKSPACE"`.
+  If you just created the workspace or member bindings, wait a few seconds and
+  retry so the authorization cache can refresh.
+- Job stays `created` or `pending`: confirm the stack was started with
+  `contrib/auth/authentik/run.sh stack` and Docker is running.
+- Job completes but logs are missing: confirm `nemo-editors` has `JobLogWriter`
+  on the workspace.
 
-This compose topology is also compatible with CI as long as the `nemo` service
-uses a prebuilt `nmp-api` image. The current local instructions use
-`local/nmp-api:authentik-local`, while CI can provide the same service image via
-`IMAGE_REGISTRY` and `BAKE_TAG` without rebuilding it.
+## Adapting This Example
+
+Before adapting this pattern outside a local sandbox:
+
+- replace all bundled demo passwords and client secrets
+- configure Authentik with your real users, groups, and OIDC clients
+- configure NeMo `auth.oidc` with your Authentik issuer and claim mappings
+- keep the gateway as the only public entrypoint to NeMo

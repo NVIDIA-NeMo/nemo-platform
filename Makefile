@@ -123,17 +123,9 @@ docs-check: ## Validate the Fern docs (fern check + validate-mdx + gated-link ch
 	cd docs/fern && npm run check
 
 .PHONY: test-auth-idp
+AUTHENTIK_E2E_LIFECYCLE ?= fresh
 test-auth-idp: ## Run the auth-idp test suite
-	uv run --frozen pytest tests/auth_idp -v
-
-AUTHENTIK_EXAMPLE_COMPOSE_DIR ?= contrib/auth/authentik
-
-.PHONY: run-contrib-auth-authentik
-run-contrib-auth-authentik: ## Build/load the local nmp-api image and run the Authentik example stack in the foreground
-	IMAGE_REGISTRY=$${IMAGE_REGISTRY:-local} BAKE_TAG=$${BAKE_TAG:-authentik-local} $(MAKE) docker-load TARGET=docker-cpu
-	@set -e; \
-	trap 'cd $(AUTHENTIK_EXAMPLE_COMPOSE_DIR) && IMAGE_REGISTRY=$${IMAGE_REGISTRY:-local} BAKE_TAG=$${BAKE_TAG:-authentik-local} docker compose down -v' EXIT INT TERM; \
-	cd $(AUTHENTIK_EXAMPLE_COMPOSE_DIR) && IMAGE_REGISTRY=$${IMAGE_REGISTRY:-local} BAKE_TAG=$${BAKE_TAG:-authentik-local} docker compose up
+	AUTHENTIK_E2E_LIFECYCLE=$(AUTHENTIK_E2E_LIFECYCLE) uv run --frozen pytest tests/auth_idp -v --run-e2e
 
 .PHONY: docs-check-python-snippets
 docs-check-python-snippets: ## Syntax-check and type-check Python snippets in one doc (DOCS_PATH=...)

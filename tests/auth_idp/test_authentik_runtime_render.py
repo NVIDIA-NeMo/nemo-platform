@@ -7,169 +7,137 @@ import pytest
 import yaml
 
 from tests.auth_idp.authentik_live import AUTHENTIK_DOCKER_E2E_CONFIG
-from tests.auth_idp.runtime import (
-    authentik_runtime_compose_env,
-    authentik_runtime_compose_files,
-    configure_authentik_gateway_upstream,
-    finalize_authentik_runtime_bundle,
-    get_authentik_docker_test_runtime,
-    render_authentik_runtime_bundle,
-)
+from tests.auth_idp.runtime import get_authentik_docker_test_runtime
 
 pytestmark = [pytest.mark.auth_idp]
 
 
-def test_render_authentik_runtime_bundle_rewrites_runtime_urls(tmp_path: Path):
-    runtime = render_authentik_runtime_bundle(
-        runtime_root=tmp_path,
-        gateway_host_port=28180,
-        issuer_host_port=29100,
-        compose_project_name="authentik-e2e-test",
-    )
-
-    compose = yaml.safe_load(runtime.compose_file.read_text())
-    assert compose["services"]["gateway"]["volumes"] == [
-        f"{(tmp_path / 'gateway' / 'envoy.yaml').resolve()}:/etc/envoy/envoy.yaml:ro"
-    ]
-    assert not (tmp_path / "README.md").exists()
-    assert not (tmp_path / "blueprints").exists()
-    assert runtime.compose_file.name == "docker-compose.override.yml"
-
-    manifest = yaml.safe_load((tmp_path / "manifest.yaml").read_text())
-    assert manifest["gateway_base_url"] == "http://127.0.0.1:28180"
-    assert manifest["issuer_url"] == "http://127.0.0.1:29100/application/o/nemo/"
-    assert manifest["token_acquisition"]["token_endpoint"] == "http://127.0.0.1:29100/application/o/token/"
-    assert (
-        manifest["healthchecks"][0]["url"]
-        == "http://127.0.0.1:29100/application/o/nemo/.well-known/openid-configuration"
-    )
-
-    nemo_auth = yaml.safe_load(runtime.nemo_config.read_text())
-    assert nemo_auth["auth"]["oidc"]["issuer"] == "http://127.0.0.1:29100/application/o/nemo/"
-
-    envoy_content = (tmp_path / "gateway" / "envoy.yaml").read_text()
-    assert "address: nemo" in envoy_content
-
-    assert runtime.compose_project_name == "authentik-e2e-test"
-    assert runtime.gateway_base_url == "http://127.0.0.1:28180"
-    assert runtime.token_endpoint == "http://127.0.0.1:29100/application/o/token/"
-
-
-def test_render_authentik_runtime_bundle_can_override_nemo_auth_issuer(tmp_path: Path):
-    runtime = render_authentik_runtime_bundle(
-        runtime_root=tmp_path,
-        gateway_host_port=28180,
-        issuer_host_port=29100,
-        compose_project_name="authentik-e2e-test",
-        nemo_auth_issuer_url="http://authentik-server:9000/application/o/nemo/",
-    )
-
-    nemo_auth = yaml.safe_load(runtime.nemo_config.read_text())
-    assert nemo_auth["auth"]["oidc"]["issuer"] == "http://authentik-server:9000/application/o/nemo/"
-
-
-def test_render_authentik_runtime_bundle_can_defer_to_docker_published_ports(tmp_path: Path):
-    runtime = render_authentik_runtime_bundle(
-        runtime_root=tmp_path,
-        gateway_host_port=None,
-        issuer_host_port=None,
-        compose_project_name="authentik-e2e-test",
-    )
-
-    compose = yaml.safe_load(runtime.compose_file.read_text())
-    assert "ports" not in compose["services"]["gateway"]
-    assert runtime.gateway_base_url == "http://127.0.0.1:0"
-    assert runtime.token_endpoint == "http://127.0.0.1:0/application/o/token/"
-
-
-def test_authentik_runtime_compose_env_defaults_to_docker_assigned_host_ports():
-    assert authentik_runtime_compose_env(None, None) == {
-        "AUTHENTIK_GATEWAY_PORT": "0",
-        "AUTHENTIK_ISSUER_PORT": "0",
-    }
-
-
-def test_authentik_runtime_compose_env_supports_explicit_host_ports():
-    assert authentik_runtime_compose_env(28180, 29100) == {
-        "AUTHENTIK_GATEWAY_PORT": "28180",
-        "AUTHENTIK_ISSUER_PORT": "29100",
-    }
-
-
-def test_finalize_authentik_runtime_bundle_rewrites_runtime_urls_after_startup(tmp_path: Path):
-    render_authentik_runtime_bundle(
-        runtime_root=tmp_path,
-        gateway_host_port=None,
-        issuer_host_port=None,
-        compose_project_name="authentik-e2e-test",
-    )
-
-    runtime = finalize_authentik_runtime_bundle(
-        tmp_path,
-        gateway_host_port=28180,
-        issuer_host_port=29100,
-        compose_project_name="authentik-e2e-test",
-    )
-
-    manifest = yaml.safe_load((tmp_path / "manifest.yaml").read_text())
-    assert manifest["gateway_base_url"] == "http://127.0.0.1:28180"
-    assert manifest["issuer_url"] == "http://127.0.0.1:29100/application/o/nemo/"
-    assert runtime.gateway_base_url == "http://127.0.0.1:28180"
-    assert runtime.token_endpoint == "http://127.0.0.1:29100/application/o/token/"
-
-
-def test_get_authentik_docker_test_runtime_uses_checked_in_compose_nemo_config():
+def test_get_authentik_docker_test_runtime_uses_checked_in_compose_stack():
     runtime = get_authentik_docker_test_runtime()
 
     assert runtime.compose_file == Path("contrib/auth/authentik/docker-compose.yml")
     assert runtime.nemo_config == Path("contrib/auth/authentik/config/platform-compose-authentik.yaml")
-    assert runtime.token_endpoint == "http://127.0.0.1:19000/application/o/token/"
+    assert runtime.gateway_base_url == "http://127.0.0.1:18080"
+    assert runtime.token_endpoint == "http://127.0.0.1:18080/application/o/token/"
 
 
-def test_authentik_live_marker_uses_single_checked_in_compose_config():
-    assert AUTHENTIK_DOCKER_E2E_CONFIG.args[0] == "contrib/auth/authentik/config/platform-compose-authentik.yaml"
-    assert AUTHENTIK_DOCKER_E2E_CONFIG.args[1:] == (
+def test_authentik_live_marker_uses_compose_harness_metadata():
+    expected_lifecycle = AUTHENTIK_DOCKER_E2E_CONFIG.kwargs["harness"]["env"]["AUTHENTIK_E2E_LIFECYCLE"]
+    expected_workload_network = AUTHENTIK_DOCKER_E2E_CONFIG.kwargs["harness"]["env"]["AUTHENTIK_WORKLOAD_NETWORK_NAME"]
+    assert AUTHENTIK_DOCKER_E2E_CONFIG.args == (
+        "contrib/auth/authentik/config/platform-compose-authentik.yaml",
         {
-            "e2e_sidecars": {
-                "authentik": {
-                    "provider": "authentik",
+            "auth": {
+                "oidc": {
+                    "additional_issuers": [
+                        "http://authentik-server:9000/application/o/nemo/",
+                        "http://127.0.0.1:38080/application/o/nemo-cli/",
+                        "http://127.0.0.1:38080/application/o/nemo/",
+                    ],
+                    "token_endpoint": "http://127.0.0.1:38080/application/o/token/",
+                    "device_authorization_endpoint": "http://127.0.0.1:38080/application/o/device/",
                 }
             }
         },
     )
-
-
-def test_authentik_runtime_compose_files_include_base_and_override(tmp_path: Path):
-    assert authentik_runtime_compose_files(tmp_path) == (
-        Path("contrib/auth/authentik/docker-compose.yml"),
-        tmp_path / "docker-compose.override.yml",
-    )
-
-
-def test_configure_authentik_gateway_upstream_can_target_same_docker_network(tmp_path: Path):
-    render_authentik_runtime_bundle(
-        runtime_root=tmp_path,
-        gateway_host_port=28180,
-        issuer_host_port=29100,
-        compose_project_name="authentik-e2e-test",
-    )
-
-    configure_authentik_gateway_upstream(
-        tmp_path,
-        upstream_host="nmp-quickstart",
-        upstream_port=8080,
-        external_network_name="nmp-quickstart-network",
-    )
-
-    envoy = yaml.safe_load((tmp_path / "gateway" / "envoy.yaml").read_text())
-    socket_address = envoy["static_resources"]["clusters"][0]["load_assignment"]["endpoints"][0]["lb_endpoints"][0][
-        "endpoint"
-    ]["address"]["socket_address"]
-    assert socket_address["address"] == "nmp-quickstart"
-    assert socket_address["port_value"] == 8080
-
-    compose = yaml.safe_load((tmp_path / "docker-compose.override.yml").read_text())
-    assert compose["networks"]["default"] == {
-        "name": "nmp-quickstart-network",
-        "external": True,
+    assert AUTHENTIK_DOCKER_E2E_CONFIG.kwargs == {
+        "harness": {
+            "backend": "docker_compose",
+            "compose_file": "contrib/auth/authentik/docker-compose.yml",
+            "compose_project_name": "authentik-e2e",
+            "service_url": "http://127.0.0.1:38080",
+            "wait_url": "http://127.0.0.1:38080/application/o/nemo/.well-known/openid-configuration",
+            "env": {
+                "AUTHENTIK_GATEWAY_PORT": "38080",
+                "AUTHENTIK_E2E_LIFECYCLE": expected_lifecycle,
+                "AUTHENTIK_WORKLOAD_NETWORK_NAME": expected_workload_network,
+            },
+        }
     }
+    assert expected_workload_network == "authentik-e2e_workload"
+
+
+def test_authentik_make_target_defaults_full_suite_to_fresh():
+    makefile = Path("Makefile").read_text(encoding="utf-8")
+
+    assert "AUTHENTIK_E2E_LIFECYCLE ?= fresh" in makefile
+    assert (
+        "AUTHENTIK_E2E_LIFECYCLE=$(AUTHENTIK_E2E_LIFECYCLE) uv run --frozen pytest tests/auth_idp -v --run-e2e"
+    ) in makefile
+
+
+def test_authentik_compose_uses_split_network_topology():
+    compose = yaml.safe_load(Path("contrib/auth/authentik/docker-compose.yml").read_text(encoding="utf-8"))
+
+    assert compose["networks"]["nemo-internal"] == {}
+    assert compose["networks"]["workload"]["name"] == "${AUTHENTIK_WORKLOAD_NETWORK_NAME:-authentik_workload}"
+    assert compose["services"]["nemo"]["networks"] == ["nemo-internal"]
+    assert compose["services"]["gateway"]["networks"]["nemo-internal"] == {}
+    assert compose["services"]["gateway"]["networks"]["workload"]["aliases"] == ["nemo-gateway"]
+
+
+def test_authentik_compose_uses_platform_default_image():
+    compose = yaml.safe_load(Path("contrib/auth/authentik/docker-compose.yml").read_text(encoding="utf-8"))
+
+    assert compose["services"]["nemo"]["image"] == "${IMAGE_REGISTRY:-my-registry}/nmp-api:${BAKE_TAG:-local}"
+
+
+def test_authentik_compose_sets_workload_job_network_env():
+    compose = yaml.safe_load(Path("contrib/auth/authentik/docker-compose.yml").read_text(encoding="utf-8"))
+
+    assert (
+        compose["services"]["nemo"]["environment"]["NEMO_JOBS_DEFAULT_DOCKER_NETWORK"]
+        == "${AUTHENTIK_WORKLOAD_NETWORK_NAME:-authentik_workload}"
+    )
+
+
+def test_authentik_platform_config_routes_job_sdk_calls_to_gateway_alias():
+    config = yaml.safe_load(
+        Path("contrib/auth/authentik/config/platform-compose-authentik.yaml").read_text(encoding="utf-8")
+    )
+
+    assert config["platform"]["loopback_address"] == "nemo-gateway"
+
+
+def test_authentik_platform_config_exposes_docker_workload_profile_for_live_job_check():
+    config = yaml.safe_load(
+        Path("contrib/auth/authentik/config/platform-compose-authentik.yaml").read_text(encoding="utf-8")
+    )
+
+    executors = {(executor["provider"], executor["profile"]): executor for executor in config["jobs"]["executors"]}
+    workload = executors[("cpu", "workload")]
+
+    assert workload["backend"] == "docker"
+    assert workload["config"]["cleanup_completed_jobs_immediately"] is False
+    assert workload["config"]["launcher_tool_path"] == "/tools/jobs-launcher"
+
+
+def test_authentik_gateway_strips_spoofed_headers_before_jwt_claim_forwarding():
+    envoy = yaml.safe_load(Path("contrib/auth/authentik/gateway/envoy.yaml").read_text(encoding="utf-8"))
+    http_manager = envoy["static_resources"]["listeners"][0]["filter_chains"][0]["filters"][0]["typed_config"]
+    virtual_host = http_manager["route_config"]["virtual_hosts"][0]
+    http_filters = http_manager["http_filters"]
+
+    assert "request_headers_to_remove" not in virtual_host
+    assert [http_filter["name"] for http_filter in http_filters[:2]] == [
+        "envoy.filters.http.lua",
+        "envoy.filters.http.jwt_authn",
+    ]
+
+    lua_code = http_filters[0]["typed_config"]["inline_code"]
+    assert 'headers:remove("x-nmp-principal-id")' in lua_code
+    assert 'headers:remove("x-nmp-principal-groups")' in lua_code
+
+
+def test_authentik_gateway_accepts_confidential_and_cli_token_audiences():
+    envoy = yaml.safe_load(Path("contrib/auth/authentik/gateway/envoy.yaml").read_text(encoding="utf-8"))
+    http_manager = envoy["static_resources"]["listeners"][0]["filter_chains"][0]["filters"][0]["typed_config"]
+    jwt_authn = next(
+        http_filter
+        for http_filter in http_manager["http_filters"]
+        if http_filter["name"] == "envoy.filters.http.jwt_authn"
+    )
+
+    provider = jwt_authn["typed_config"]["providers"]["authentik_workload"]
+
+    assert provider["audiences"] == ["nemo-platform", "nemo-platform-cli"]

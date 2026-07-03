@@ -22,20 +22,20 @@ def _sdk_as_bearer_user(sdk, *, principal_id: str, email: str, groups: list[str]
     return sdk.with_options(set_default_headers=_bearer_headers(principal_id=principal_id, email=email, groups=groups))
 
 
-def test_machine_identity_principal_id_is_not_treated_as_internal_service(idp_provider):
-    assert idp_provider.machine_principal_id
-    assert not idp_provider.machine_principal_id.startswith("service:")
+def test_workload_identity_principal_id_is_not_treated_as_internal_service(idp_provider):
+    assert idp_provider.workload_principal_id
+    assert not idp_provider.workload_principal_id.startswith("service:")
 
 
-def test_machine_identity_group_binding_contract_is_declared(idp_provider, provider_machine_groups):
-    assert provider_machine_groups
+def test_workload_identity_group_binding_contract_is_declared(idp_provider, provider_workload_groups):
+    assert provider_workload_groups
 
 
-def test_unsigned_machine_identity_header_shape_matches_contract(idp_provider):
+def test_unsigned_workload_identity_header_shape_matches_contract(idp_provider):
     headers = _bearer_headers(
-        principal_id=idp_provider.machine_principal_id,
-        email="machine@example.com",
-        groups=idp_provider.machine_expected_groups,
+        principal_id=idp_provider.workload_principal_id,
+        email="workload@example.com",
+        groups=idp_provider.workload_expected_groups,
     )
     assert "Authorization" in headers
 
@@ -55,55 +55,55 @@ def test_human_oidc_identity_can_access_bound_workspace(sdk, workspace):
     assert retrieved_workspace.name == workspace
 
 
-def test_machine_identity_is_denied_before_binding(sdk, workspace, idp_provider):
-    machine_sdk = _sdk_as_bearer_user(
+def test_workload_identity_is_denied_before_binding(sdk, workspace, idp_provider):
+    workload_sdk = _sdk_as_bearer_user(
         sdk,
-        principal_id=idp_provider.machine_principal_id,
-        email=f"{idp_provider.machine_principal_id}@example.com",
+        principal_id=idp_provider.workload_principal_id,
+        email=f"{idp_provider.workload_principal_id}@example.com",
         groups=[],
     )
 
     with pytest.raises(APIStatusError):
-        machine_sdk.workspaces.retrieve(workspace)
+        workload_sdk.workspaces.retrieve(workspace)
 
 
-def test_machine_identity_is_allowed_after_binding(sdk, workspace, idp_provider):
+def test_workload_identity_is_allowed_after_binding(sdk, workspace, idp_provider):
     admin_sdk = _sdk_as_bearer_user(
         sdk,
         principal_id=TEST_ADMIN_EMAIL,
         email=TEST_ADMIN_EMAIL,
         groups=["admin"],
     )
-    for group in idp_provider.machine_expected_groups:
+    for group in idp_provider.workload_expected_groups:
         grant_workspace_role(admin_sdk, workspace=workspace, principal=group, roles=["Viewer"])
 
-    machine_sdk = _sdk_as_bearer_user(
+    workload_sdk = _sdk_as_bearer_user(
         sdk,
-        principal_id=idp_provider.machine_principal_id,
-        email=f"{idp_provider.machine_principal_id}@example.com",
-        groups=idp_provider.machine_expected_groups,
+        principal_id=idp_provider.workload_principal_id,
+        email=f"{idp_provider.workload_principal_id}@example.com",
+        groups=idp_provider.workload_expected_groups,
     )
-    retrieved_workspace = machine_sdk.workspaces.retrieve(workspace)
+    retrieved_workspace = workload_sdk.workspaces.retrieve(workspace)
     assert retrieved_workspace.name == workspace
 
 
-def test_machine_identity_returns_to_denied_after_revoke(sdk, workspace, idp_provider):
+def test_workload_identity_returns_to_denied_after_revoke(sdk, workspace, idp_provider):
     admin_sdk = _sdk_as_bearer_user(
         sdk,
         principal_id=TEST_ADMIN_EMAIL,
         email=TEST_ADMIN_EMAIL,
         groups=["admin"],
     )
-    for group in idp_provider.machine_expected_groups:
+    for group in idp_provider.workload_expected_groups:
         grant_workspace_role(admin_sdk, workspace=workspace, principal=group, roles=["Viewer"])
         admin_sdk.workspaces.members.delete(group, workspace=workspace, wait_role_propagation=True)
 
-    machine_sdk = _sdk_as_bearer_user(
+    workload_sdk = _sdk_as_bearer_user(
         sdk,
-        principal_id=idp_provider.machine_principal_id,
-        email=f"{idp_provider.machine_principal_id}@example.com",
-        groups=idp_provider.machine_expected_groups,
+        principal_id=idp_provider.workload_principal_id,
+        email=f"{idp_provider.workload_principal_id}@example.com",
+        groups=idp_provider.workload_expected_groups,
     )
 
     with pytest.raises(APIStatusError):
-        machine_sdk.workspaces.retrieve(workspace)
+        workload_sdk.workspaces.retrieve(workspace)

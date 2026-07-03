@@ -499,6 +499,34 @@ class TestWithStaticAuthzData:
         )
         assert result["allowed"] is True
 
+    def test_job_log_writer_can_upload_otlp_logs_without_editor(self, static_authz_data):
+        static_authz_data["authz"]["principals"] = {
+            "viewer@test.com": {"workspaces": {"my-ws": ["Viewer"]}},
+            "log-writer@test.com": {"workspaces": {"my-ws": ["Viewer", "JobLogWriter"]}},
+        }
+        set_policy_data(static_authz_data)
+
+        path = "/apis/files/v2/workspaces/my-ws/filesets/job-fileset-test/otlp/v1/logs"
+        viewer_result = evaluate(
+            "allow",
+            {
+                "principal_id": "viewer@test.com",
+                "method": "POST",
+                "path": path,
+            },
+        )
+        log_writer_result = evaluate(
+            "allow",
+            {
+                "principal_id": "log-writer@test.com",
+                "method": "POST",
+                "path": path,
+            },
+        )
+
+        assert viewer_result["allowed"] is False
+        assert log_writer_result["allowed"] is True
+
 
 class TestIntakeAuthorization:
     """Verify active Intake endpoints are workspace-scoped in static authz data."""

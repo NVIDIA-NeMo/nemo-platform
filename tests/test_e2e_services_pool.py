@@ -7,7 +7,6 @@ import e2e.services_pool as services_pool
 
 def test_render_e2e_config_for_docker_preserves_container_paths(tmp_path) -> None:
     config = {
-        "e2e": {"backend": "docker"},
         "jobs": {
             "executors": [
                 {
@@ -19,7 +18,7 @@ def test_render_e2e_config_for_docker_preserves_container_paths(tmp_path) -> Non
         "files": {"default_storage_config": {"type": "local", "path": "/data/files"}},
     }
 
-    rendered = services_pool._render_e2e_config_for_backend(config, tmp_path)
+    rendered = services_pool._render_e2e_config_for_backend(config, tmp_path, {"backend": "docker"})
 
     assert rendered["jobs"]["executors"][0]["config"]["working_directory"] == "/data/subprocess-jobs"
     assert rendered["files"]["default_storage_config"]["path"] == "/data/files"
@@ -38,7 +37,7 @@ def test_render_e2e_config_for_subprocess_rewrites_instance_paths(tmp_path) -> N
         "files": {"default_storage_config": {"type": "local", "path": ".tmp/e2e/files"}},
     }
 
-    rendered = services_pool._render_e2e_config_for_backend(config, tmp_path)
+    rendered = services_pool._render_e2e_config_for_backend(config, tmp_path, {"backend": "subprocess"})
 
     assert rendered["jobs"]["executors"][0]["config"]["working_directory"] == str(tmp_path / "subprocess-jobs")
     assert rendered["files"]["default_storage_config"]["path"] == str(tmp_path / "files")
@@ -70,3 +69,22 @@ def test_docker_backend_overrides_fall_back_to_ci_bake_env(monkeypatch) -> None:
         "registry": "ghcr.io/example/default",
         "tag": "default-tag",
     }
+
+
+def test_render_e2e_config_for_docker_compose_preserves_container_paths(tmp_path) -> None:
+    config = {
+        "jobs": {
+            "executors": [
+                {
+                    "provider": "subprocess",
+                    "config": {"working_directory": "/data/subprocess-jobs"},
+                }
+            ]
+        },
+        "files": {"default_storage_config": {"type": "local", "path": "/data/files"}},
+    }
+
+    rendered = services_pool._render_e2e_config_for_backend(config, tmp_path, {"backend": "docker_compose"})
+
+    assert rendered["jobs"]["executors"][0]["config"]["working_directory"] == "/data/subprocess-jobs"
+    assert rendered["files"]["default_storage_config"]["path"] == "/data/files"
