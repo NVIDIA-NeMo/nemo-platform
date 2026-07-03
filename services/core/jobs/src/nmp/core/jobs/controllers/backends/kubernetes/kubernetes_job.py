@@ -631,10 +631,10 @@ def map_kubernetes_job_status_to_step_status(
     running_pods = [pod for pod in pods if pod.phase == "Running"]
     pending_pods = [pod for pod in pods if pod.phase == "Pending"]
 
-    if errored_pods:
-        return PlatformJobStatus.ERROR, {"message": "Job has errored pods, check tasks for error details"}
-
-    # If we are pausing or have paused the job, check if the suspended job has any active pods
+    # Check suspended/cancelling state BEFORE errored pods. When K8s suspends or
+    # cancels a Job it sends SIGTERM to running pods, which causes them to appear
+    # as "errored" (non-zero exit code). These terminated pods are expected — they
+    # must not cause the reconciler to report ERROR.
     is_suspended = job.spec and job.spec.suspend is not None and job.spec.suspend
     is_active = len(running_pods) > 0
     if is_cancelling:
@@ -647,6 +647,9 @@ def map_kubernetes_job_status_to_step_status(
             return PlatformJobStatus.PAUSING, {"message": "Job is being paused"}
         else:
             return PlatformJobStatus.PAUSED, {"message": "Job is paused"}
+
+    if errored_pods:
+        return PlatformJobStatus.ERROR, {"message": "Job has errored pods, check tasks for error details"}
     if is_active:
         return PlatformJobStatus.ACTIVE, {"message": f"Job is active with {len(running_pods)}/{len(pods)} running pods"}
     # In some cases after resuming from suspension, the job status may not reflect active pods immediately.

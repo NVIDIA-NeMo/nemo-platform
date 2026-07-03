@@ -5,9 +5,10 @@ import json
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock, patch
 
 import pytest
-from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator, _trial_from_sample
+from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator, _new_run_id, _trial_from_sample
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalSummary
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.tasks import (
@@ -18,9 +19,18 @@ from nemo_evaluator_sdk.agent_eval.tasks import (
     ViewSignal,
 )
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
+from nemo_evaluator_sdk.agent_inference import AgentInferenceContext, AgentInvocationResult, AgentInvocationStatus
 from nemo_evaluator_sdk.enums import AgentFormat, ModelFormat
 from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
-from nemo_evaluator_sdk.values import Agent, Model, RunConfigOnline, RunConfigOnlineModel
+from nemo_evaluator_sdk.values import (
+    Agent,
+    GenericAgent,
+    Model,
+    NemoAgentToolkitAgent,
+    RunConfigOnline,
+    RunConfigOnlineModel,
+)
+from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
 from nemo_evaluator_sdk.values.results import AggregateScore
 
 
@@ -37,6 +47,70 @@ def test_trial_from_sample_falls_back_to_reasoning_content() -> None:
     explicit = _trial_from_sample(task, target, {"output_text": "final answer", "response": response})
     assert explicit.output is not None
     assert explicit.output.output_text == "final answer"
+
+
+def test_trial_from_sample_fallback_trace_has_trace_kind() -> None:
+    task = AgentEvalTask(id="task-1", intent="Answer.", inputs={"prompt": "Q?"})
+    target = Model(name="target", url="https://example/v1/chat/completions")
+
+    trial = _trial_from_sample(task, target, {"output_text": "answer"})
+
+    assert trial.evidence is not None
+    trace = trial.evidence.require("trace", kind="trace")
+    assert trace.format == "json"
+
+
+def test_trial_from_sample_preserves_typed_trace_and_canonical_metadata() -> None:
+    task = AgentEvalTask(id="task-1", intent="Answer.", inputs={"prompt": "Q?"})
+    target = Model(name="canonical-target", url="https://example/v1/chat/completions")
+    typed_trace = {
+        "schema_version": "ATIF-v1.7",
+        "steps": [{"source": "user", "message": "Q?"}],
+    }
+
+    trial = _trial_from_sample(
+        task,
+        target,
+        {
+            "output_text": "answer",
+            "trajectory": [{"legacy": True}],
+            "evidence": CandidateEvidence(
+                descriptors={
+                    "trace": EvidenceDescriptor(
+                        kind="trace",
+                        format="atif",
+                        data=typed_trace,
+                    )
+                }
+            ),
+            "invocation_metadata": {
+                "endpoint": "/generate/stream",
+                "model_id": "spoofed-model",
+                "target_name": "spoofed-target",
+                "generated": False,
+            },
+        },
+    )
+
+    assert trial.evidence is not None
+    trace = trial.evidence.require("trace", kind="trace")
+    assert trace.format == "atif"
+    assert trace.data == typed_trace
+    assert trial.metadata["endpoint"] == "/generate/stream"
+    assert trial.metadata["model_id"] == "canonical-target"
+    assert trial.metadata["target_name"] == "canonical-target"
+    assert trial.metadata["generated"] is True
+
+
+def test_generated_run_ids_are_unique_within_the_same_second() -> None:
+    with patch("nemo_evaluator_sdk.agent_eval.evaluator.datetime") as mock_datetime:
+        mock_datetime.now.return_value.strftime.return_value = "20260628120000"
+
+        first = _new_run_id()
+        second = _new_run_id()
+
+    assert first != second
+    assert first.startswith("agent-eval-20260628120000-")
 
 
 def _score(summary: AgentEvalSummary, name: str) -> AggregateScore:
@@ -98,9 +172,9 @@ class _FailingMetric:
         raise RuntimeError("missing final_state evidence")
 
 
-def _task(metric: Any | None = None) -> AgentEvalTask:
+def _task(metric: Any | None = None, *, task_id: str = "task-1") -> AgentEvalTask:
     return AgentEvalTask(
-        id="task-1",
+        id=task_id,
         intent="Answer a professional benchmark prompt.",
         inputs={"prompt": "What is the answer?", "domain": "Finance MBA"},
         metrics=[metric or _ConstantMetric()],
@@ -379,7 +453,7 @@ async def test_live_agent_generation_preserves_trace_evidence_for_metrics() -> N
             "trajectory": [{"tool": "search", "line": 3}],
         }
 
-    agent = Agent(
+    agent = GenericAgent(
         url="https://agent.test",
         name="target-agent",
         format=AgentFormat.GENERIC,
@@ -397,6 +471,264 @@ async def test_live_agent_generation_preserves_trace_evidence_for_metrics() -> N
     assert result.trials[0].output is not None
     assert result.trials[0].output.output_text == "Generated agent answer"
     assert metric.inputs[0].candidate.evidence == result.trials[0].evidence
+
+
+@pytest.mark.asyncio
+async def test_live_agent_typed_partial_invocation_preserves_non_trace_evidence() -> None:
+    metric = _EvidenceMetric()
+
+    async def fake_agent_inference(
+        agent: Agent,
+        request: dict[str, Any],
+        **kwargs: Any,
+    ) -> AgentInvocationResult:
+        del agent, request, kwargs
+        return AgentInvocationResult(
+            status=AgentInvocationStatus.PARTIAL,
+            response={"choices": [{"message": {"role": "assistant", "content": None}}]},
+            evidence=CandidateEvidence(
+                descriptors={
+                    "stream_events": EvidenceDescriptor(
+                        kind="agent_stream_events",
+                        format="json",
+                        data=[{"channel": "data", "payload": {"value": {"error": "auth required"}}}],
+                    )
+                }
+            ),
+            metadata={"stream_error": "auth required"},
+        )
+
+    agent = NemoAgentToolkitAgent(url="https://agent.test", name="target-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
+    result = await AgentEvaluator(inference_fn=fake_agent_inference).run(
+        tasks=[_task(metric)],
+        target=agent,
+        config=AgentEvalRunConfig(params=RunConfigOnline(parallelism=1)),
+    )
+
+    trial = result.trials[0]
+    assert trial.status is AgentEvalTrialStatus.PARTIAL
+    assert trial.evidence is not None
+    assert trial.evidence.require("stream_events").kind == "agent_stream_events"
+    assert "trace" not in trial.evidence.names()
+    assert metric.inputs[0].candidate.evidence == trial.evidence
+    assert result.scores[0].status is AgentEvalScoreStatus.COMPLETED
+
+
+@pytest.mark.asyncio
+async def test_live_agent_typed_failed_invocation_retains_output_and_evidence() -> None:
+    async def fake_agent_inference(
+        agent: Agent,
+        request: dict[str, Any],
+        **kwargs: Any,
+    ) -> AgentInvocationResult:
+        del agent, request, kwargs
+        return AgentInvocationResult(
+            status=AgentInvocationStatus.FAILED,
+            response={"choices": [{"message": {"role": "assistant", "content": "answer"}}]},
+            output_text="answer",
+            evidence=CandidateEvidence(
+                descriptors={
+                    "raw_stream": EvidenceDescriptor(
+                        kind="agent_stream",
+                        format="text",
+                        data="data: answer\n",
+                    ),
+                    "translation_error": EvidenceDescriptor(
+                        kind="error",
+                        format="json",
+                        data={"error": "invalid ATIF"},
+                    ),
+                }
+            ),
+        )
+
+    agent = NemoAgentToolkitAgent(
+        url="https://agent.test",
+        name="target-agent",
+        format=AgentFormat.NEMO_AGENT_TOOLKIT,
+    )
+    result = await AgentEvaluator(inference_fn=fake_agent_inference).run(
+        tasks=[_task()],
+        target=agent,
+        config=AgentEvalRunConfig(params=RunConfigOnline(parallelism=1)),
+    )
+
+    trial = result.trials[0]
+    assert trial.status is AgentEvalTrialStatus.FAILED
+    assert trial.output is not None
+    assert trial.output.output_text == "answer"
+    assert trial.evidence is not None
+    assert trial.evidence.require("raw_stream").data == "data: answer\n"
+    assert trial.evidence.require("translation_error").kind == "error"
+
+
+@pytest.mark.asyncio
+async def test_generation_boundary_names_agent_eval_context() -> None:
+    agent = NemoAgentToolkitAgent(url="https://agent.test", name="target-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
+    sample = {
+        "output_text": "answer",
+        "response": {"choices": [{"message": {"role": "assistant", "content": "answer"}}]},
+    }
+
+    with patch(
+        "nemo_evaluator_sdk.agent_eval.evaluator._generate_sample",
+        new_callable=AsyncMock,
+        return_value=sample,
+    ) as mock_generate:
+        await AgentEvaluator(inference_fn=AsyncMock()).run(
+            tasks=[_task()],
+            target=agent,
+            config=AgentEvalRunConfig(
+                run_id="run-123",
+                params=RunConfigOnline(parallelism=1),
+                write_dashboard=False,
+            ),
+        )
+
+    assert mock_generate.await_args is not None
+    assert mock_generate.await_args.kwargs["agent_eval_context"] == {
+        "run_id": "run-123",
+        "task_id": "task-1",
+        "invocation_id": "run-123:task-1:target-agent",
+    }
+    assert "template_context" not in mock_generate.await_args.kwargs
+
+
+@pytest.mark.asyncio
+async def test_default_agent_invocation_receives_run_context_and_evidence_dir(tmp_path: Path) -> None:
+    invocation = AgentInvocationResult(
+        status=AgentInvocationStatus.COMPLETED,
+        response={"choices": [{"message": {"role": "assistant", "content": "answer"}}]},
+        output_text="answer",
+    )
+    agent = NemoAgentToolkitAgent(url="https://agent.test", name="target-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
+    prompt_template = {
+        "input_message": "{{ item.prompt }}",
+        "conversation_id": ("{{ agent_eval.run_id }}-{{ agent_eval.task_id }}-{{ agent_eval.invocation_id }}"),
+    }
+
+    with patch(
+        "nemo_evaluator_sdk.agent_inference.invoke_agent",
+        new_callable=AsyncMock,
+        return_value=invocation,
+    ) as mock_invoke:
+        await AgentEvaluator().run(
+            tasks=[_task()],
+            target=agent,
+            config=AgentEvalRunConfig(
+                run_id="run-123",
+                output_dir=tmp_path,
+                prompt_template=prompt_template,
+                params=RunConfigOnline(parallelism=1),
+                write_dashboard=False,
+            ),
+        )
+
+    assert mock_invoke.await_args is not None
+    assert mock_invoke.await_args.args[1] == {
+        "input_message": "What is the answer?",
+        "conversation_id": "run-123-task-1-run-123:task-1:target-agent",
+    }
+    assert mock_invoke.await_args.kwargs["evidence_dir"] == tmp_path / "evidence" / "000000-task-1"
+
+
+@pytest.mark.asyncio
+async def test_default_agent_evidence_dirs_are_confined_and_unique(tmp_path: Path) -> None:
+    captured_dirs: list[Path] = []
+    invocation = AgentInvocationResult(
+        status=AgentInvocationStatus.COMPLETED,
+        response={"choices": [{"message": {"role": "assistant", "content": "answer"}}]},
+        output_text="answer",
+    )
+
+    async def fake_invoke(agent: Agent, request: dict[str, Any], **kwargs: Any) -> AgentInvocationResult:
+        del agent, request
+        evidence_dir = kwargs["evidence_dir"]
+        assert isinstance(evidence_dir, Path)
+        captured_dirs.append(evidence_dir)
+        return invocation
+
+    tasks = [
+        _task(task_id=".."),
+        _task(task_id="a/b"),
+        _task(task_id="a?b"),
+    ]
+    agent = NemoAgentToolkitAgent(url="https://agent.test", name="target-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
+
+    with patch("nemo_evaluator_sdk.agent_inference.invoke_agent", side_effect=fake_invoke):
+        await AgentEvaluator().run(
+            tasks=tasks,
+            target=agent,
+            config=AgentEvalRunConfig(
+                run_id="run-123",
+                output_dir=tmp_path,
+                params=RunConfigOnline(parallelism=1),
+                write_dashboard=False,
+            ),
+        )
+
+    evidence_root = (tmp_path / "evidence").resolve()
+    assert {path.name for path in captured_dirs} == {
+        "task-000000",
+        "000001-a-b",
+        "000002-a-b",
+    }
+    assert len({path.resolve() for path in captured_dirs}) == len(tasks)
+    assert all(path.resolve().parent == evidence_root for path in captured_dirs)
+
+
+@pytest.mark.asyncio
+async def test_agent_inference_factory_receives_per_task_context(tmp_path: Path) -> None:
+    invocation = AgentInvocationResult(
+        status=AgentInvocationStatus.COMPLETED,
+        response={"choices": [{"message": {"role": "assistant", "content": "answer"}}]},
+        output_text="answer",
+    )
+    agent = NemoAgentToolkitAgent(url="https://agent.test", name="target-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
+
+    contexts: list[AgentInferenceContext] = []
+
+    async def inference_fn(agent, request, **kwargs):
+        del agent, request, kwargs
+        return invocation
+
+    def factory(context: AgentInferenceContext):
+        contexts.append(context)
+        return inference_fn
+
+    await AgentEvaluator(agent_inference_fn_factory=factory).run(
+        tasks=[_task()],
+        target=agent,
+        config=AgentEvalRunConfig(
+            run_id="run-123",
+            output_dir=tmp_path,
+            params=RunConfigOnline(parallelism=1),
+            write_dashboard=False,
+        ),
+    )
+
+    assert len(contexts) == 1
+    assert contexts[0].metadata == {
+        "run_id": "run-123",
+        "task_id": "task-1",
+        "invocation_id": "run-123:task-1:target-agent",
+    }
+    assert contexts[0].evidence_dir == tmp_path / "evidence" / "000000-task-1"
+
+
+def test_agent_evaluator_rejects_direct_inference_and_factory() -> None:
+    async def inference_fn(agent, request, **kwargs):
+        del agent, request, kwargs
+        return {}
+
+    invalid_kwargs: Any = {
+        "inference_fn": inference_fn,
+        "agent_inference_fn_factory": lambda context: inference_fn,
+    }
+    with pytest.raises(ValueError, match="inference_fn.*agent_inference_fn_factory"):
+        # Deliberately bypass the overload contract to verify the runtime guard for
+        # dynamically typed callers.
+        AgentEvaluator(**invalid_kwargs)  # ty: ignore[no-matching-overload]
 
 
 @pytest.mark.asyncio

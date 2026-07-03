@@ -372,11 +372,6 @@ def test_job_cancel_once_active(sdk: NeMoPlatform, workspace: str):
 # ---------------------------------------------------------------------------
 
 
-# AIRCORE-853: K8s reconciler checks for errored pods before checking if the
-# job is suspended. When K8s kills pods during suspension, the terminated pod
-# is misclassified as an error, causing the job to transition to 'error'
-# instead of 'paused'. Re-enable once the reconciler is fixed.
-@pytest.mark.skip(reason="AIRCORE-853: pause races with errored-pod detection in K8s reconciler")
 def test_job_pause_resume(sdk: NeMoPlatform, workspace: str):
     """Test that a job can be paused and then resumed after being paused."""
     job = sdk.jobs.create(
@@ -390,7 +385,9 @@ def test_job_pause_resume(sdk: NeMoPlatform, workspace: str):
                     "executor": {
                         "provider": "cpu",
                         "container": {
-                            "command": ["sh", "-c", "sleep 300"],
+                            # Short sleep so the job completes quickly after resume.
+                            # The pause/resume cycle is what we're testing, not the workload.
+                            "command": ["sh", "-c", "sleep 30"],
                         },
                     },
                 },
@@ -417,7 +414,6 @@ def test_job_pause_resume(sdk: NeMoPlatform, workspace: str):
     assert completed_job.status == "completed", f"Job failed with status: {completed_job.status}"
 
 
-@pytest.mark.skip(reason="AIRCORE-853: pause races with errored-pod detection in K8s reconciler")
 def test_job_pause_and_cancel(sdk: NeMoPlatform, workspace: str):
     """Test that a job can be paused and then cancelled after being paused."""
     job = sdk.jobs.create(
@@ -431,7 +427,7 @@ def test_job_pause_and_cancel(sdk: NeMoPlatform, workspace: str):
                     "executor": {
                         "provider": "cpu",
                         "container": {
-                            "command": ["sh", "-c", "sleep 300"],
+                            "command": ["sh", "-c", "sleep 30"],
                         },
                     },
                 },

@@ -35,6 +35,7 @@ class SpanGroupBy(StrEnum):
 
 
 SpanMode = Literal["summary", "detailed"]
+SPAN_SUMMARY_ERROR_MESSAGE_CHAR_LIMIT = 1000
 
 
 class SpanFilter(BaseModel):
@@ -130,7 +131,13 @@ class Span(BaseModel):
     ended_at: datetime | None = None
     status: SpanStatus
     error_type: str | None = None
-    error_message: str | None = None
+    error_message: str | None = Field(
+        default=None,
+        description=(
+            "Normalized error message. In summary mode this is truncated to "
+            f"{SPAN_SUMMARY_ERROR_MESSAGE_CHAR_LIMIT} characters."
+        ),
+    )
     provider: str | None = None
     model: str | None = None
     prompt_id: str | None = None
@@ -176,7 +183,7 @@ class Span(BaseModel):
             ended_at=span.end_time,
             status=span.status,
             error_type=semantic_attributes.error_type,
-            error_message=None if summary else semantic_attributes.error_message,
+            error_message=_error_message_for_mode(semantic_attributes.error_message, summary=summary),
             provider=semantic_attributes.provider,
             model=semantic_attributes.model,
             prompt_id=semantic_attributes.prompt_id,
@@ -241,3 +248,9 @@ def _float_or_none(value: object) -> float | None:
     if isinstance(value, str | int | float | Decimal):
         return float(value)
     raise TypeError(f"Expected float-compatible span value, got {type(value).__name__}")
+
+
+def _error_message_for_mode(value: str | None, *, summary: bool) -> str | None:
+    if value is None or not summary:
+        return value
+    return value[:SPAN_SUMMARY_ERROR_MESSAGE_CHAR_LIMIT]

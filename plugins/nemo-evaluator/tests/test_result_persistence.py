@@ -25,7 +25,7 @@ from nemo_evaluator.jobs.result_persistence import (
 )
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSummary
 from nemo_evaluator_sdk.enums import AgentFormat
-from nemo_evaluator_sdk.values import Agent, Model
+from nemo_evaluator_sdk.values import Agent, GenericAgent, Model
 from nemo_evaluator_sdk.values.results import AggregatedMetricResult, EvaluationResult
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.entities import EntityBase
@@ -43,7 +43,7 @@ def _model() -> Model:
 
 
 def _agent() -> Agent:
-    return Agent(
+    return GenericAgent(
         url="http://agent.test",
         name="my-agent",
         format=AgentFormat.GENERIC,

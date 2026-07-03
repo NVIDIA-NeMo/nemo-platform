@@ -14,17 +14,18 @@ from typing import Any, Protocol, runtime_checkable
 
 from nemo_platform.beta.evaluator.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_platform.beta.evaluator.values import Agent, Model
-from nemo_platform.beta.evaluator.values.evidence import CandidateEvidence, EvidenceDescriptor
+from nemo_platform.beta.evaluator.values.evidence import (
+    EVIDENCE_FINAL_STATE,
+    EVIDENCE_FORMAT_ATIF,
+    EVIDENCE_FORMAT_JSON,
+    EVIDENCE_INITIAL_STATE,
+    EVIDENCE_LOGS,
+    EVIDENCE_TRACE,
+    EVIDENCE_VERIFIER_LOGS,
+    CandidateEvidence,
+    EvidenceDescriptor,
+)
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
-
-# Well-known evidence keys produced by ``standard_evidence_descriptors``. Harness
-# code may import these to tag evidence consistently; callers may still add
-# arbitrary extension keys alongside them.
-EVIDENCE_INITIAL_STATE = "initial_state"
-EVIDENCE_TRACE = "trace"
-EVIDENCE_LOGS = "logs"
-EVIDENCE_FINAL_STATE = "final_state"
-EVIDENCE_VERIFIER_LOGS = "verifier_logs"
 
 
 class AgentEvalTrialStatus(str, Enum):
@@ -160,8 +161,8 @@ def standard_evidence_descriptors(
         trace_name = Path(trace_path).name.lower()
         is_atif = trace_name.startswith("atif") or ".atif." in trace_name
         descriptors[EVIDENCE_TRACE] = EvidenceDescriptor(
-            kind="trace",
-            format="atif" if is_atif else "json",
+            kind=EVIDENCE_TRACE,
+            format=EVIDENCE_FORMAT_ATIF if is_atif else EVIDENCE_FORMAT_JSON,
             ref=str(trace_path),
         )
 

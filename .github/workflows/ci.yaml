@@ -44,6 +44,7 @@ jobs:
       docker: ${{ steps.changes.outputs.docker }}
       helm: ${{ steps.changes.outputs.helm }}
       cpu-smoke: ${{ steps.changes.outputs.cpu-smoke }}
+      guardrails-benchmark: ${{ steps.changes.outputs.guardrails-benchmark }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: ./.github/actions/changes
@@ -1277,21 +1278,36 @@ jobs:
           retention-days: 7
           path: web/packages/studio/playwright-report/
 
-  benchmark-guardrails:
-    name: Guardrails plugin benchmark
-    if: github.event_name == 'workflow_dispatch'
+  guardrails-benchmark:
+    # Parallel matrix jobs (one NMP per variant) so the two sweeps don't
+    # share mocks or contend on :8080. `guardrails-benchmark-analyze` merges
+    # the artifacts and prints the comparison.
+    name: nemo-guardrails plugin benchmark (${{ matrix.variant }})
+    needs: [changes]
+    if: >
+      !cancelled() && (
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.guardrails-benchmark == 'true'
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      # Keep the partial artifact if one variant fails.
+      fail-fast: false
+      matrix:
+        variant: [with-guardrails, without-guardrails]
     steps:
       - name: Checkout nemo-platform
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           path: nemo-platform
+          persist-credentials: false
       - name: Checkout NeMo-Guardrails
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           repository: NVIDIA/NeMo-Guardrails
           path: NeMo-Guardrails
+          persist-credentials: false
       - name: Install uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
@@ -1309,7 +1325,13 @@ jobs:
           PYTORCH_DEPS: cpu
       - name: Run benchmark sweep
         working-directory: nemo-platform
-        run: make benchmark-guardrails
+        # Pin both variants to the same `--run-id` so when the analyze job
+        # downloads both artifacts into one `runs/` parent, they merge into
+        # a single run directory the analyzer can read normally.
+        run: |
+          make benchmark-guardrails BENCHMARK_ARGS="\
+            --variant ${{ matrix.variant }} \
+            --run-id ci-${{ github.run_id }}-${{ github.run_attempt }}"
         env:
           NEMO_GUARDRAILS_REPO_ROOT: ${{ github.workspace }}/NeMo-Guardrails
           _TYPER_FORCE_DISABLE_TERMINAL: "1"
@@ -1317,7 +1339,57 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: benchmark-guardrails-results
+          # Ensure we use a unique artifact name per benchmark variant.
+          name: guardrails-benchmark-results-${{ matrix.variant }}
+          retention-days: 30
+          path: |
+            nemo-platform/plugins/nemo-guardrails/benchmarks/artifacts/runs/
+
+  guardrails-benchmark-analyze:
+    # Merge both variant artifacts and print the comparison table.
+    name: nemo-guardrails plugin benchmark analysis
+    needs: [changes, guardrails-benchmark]
+    if: >
+      !cancelled() && (
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.guardrails-benchmark == 'true'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout nemo-platform
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          path: nemo-platform
+          persist-credentials: false
+      - name: Download with-guardrails artifact
+        # If a variant failed entirely it may have uploaded no artifact;
+        # the analyzer handles the single-variant case so don't fail here.
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: guardrails-benchmark-results-with-guardrails
+          path: nemo-platform/plugins/nemo-guardrails/benchmarks/artifacts/runs/
+      - name: Download without-guardrails artifact
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: guardrails-benchmark-results-without-guardrails
+          path: nemo-platform/plugins/nemo-guardrails/benchmarks/artifacts/runs/
+      - name: Print benchmark comparison
+        working-directory: nemo-platform
+        # `analyze.py` doesn't rely on NMP or AIPerf, so we skip the uv bootstrap
+        # step and run it with the runner's `python3` CLI directly.
+        run: |
+          RUN_DIR=$(find plugins/nemo-guardrails/benchmarks/artifacts/runs -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' | sort -nr | head -1 | cut -d' ' -f2-)
+          echo "Analyzing run directory: $RUN_DIR"
+          python3 plugins/nemo-guardrails/src/nemo_guardrails_plugin/benchmarks/analyze.py "$RUN_DIR" --strict
+      - name: Upload merged benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          # Single artifact so baseline collection is one download per run.
+          name: guardrails-benchmark-results-merged
           retention-days: 30
           path: |
             nemo-platform/plugins/nemo-guardrails/benchmarks/artifacts/runs/
@@ -1476,8 +1548,9 @@ jobs:
       - web-sdk-gen
       - web-studio-deps
       - web-studio-e2e
-      - benchmark-guardrails
       - opa-policy-test
+      - guardrails-benchmark
+      - guardrails-benchmark-analyze
     if: always()
     runs-on: ubuntu-latest
     permissions:

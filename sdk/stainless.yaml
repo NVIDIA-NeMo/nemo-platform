@@ -290,6 +290,7 @@ resources:
       clavata_rail_config: ClavataRailConfig
       clavata_rail_options: ClavataRailOptions
       content_safety_config: ContentSafetyConfig
+      context_bloat_detection_config: ContextBloatDetectionConfig
       crowd_strike_aidr_rail_config: CrowdStrikeAIDRRailConfig
       dialog_rails: DialogRails
       executed_action: ExecutedAction
@@ -317,6 +318,7 @@ resources:
       instruction: Instruction
       jailbreak_detection_config: JailbreakDetectionConfig
       llm_call_info: LLMCallInfo
+      local_hf_classifier_config: LocalHFClassifierConfig
       log_adapter_config: LogAdapterConfig
       message_template: MessageTemplate
       model: Model
@@ -333,6 +335,8 @@ resources:
       patronus_evaluation_success_strategy: PatronusEvaluationSuccessStrategy
       patronus_rail_config: PatronusRailConfigOutput
       patronus_rail_config_param: PatronusRailConfigInput
+      polygraf_detection: PolygrafDetection
+      polygraf_detection_options: PolygrafDetectionOptions
       private_ai_detection: PrivateAIDetection
       private_ai_detection_options: PrivateAIDetectionOptions
       rail_status: RailStatus
@@ -345,6 +349,7 @@ resources:
       reasoning_config: ReasoningConfig
       regex_detection: RegexDetection
       regex_detection_options: RegexDetectionOptions
+      remote_hf_classifier_config: RemoteHFClassifierConfig
       retrieval_rails: RetrievalRails
       sensitive_data_detection: SensitiveDataDetection
       sensitive_data_detection_options: SensitiveDataDetectionOptions

@@ -14,6 +14,7 @@ from nemo_deployments_plugin.backends.base import (
     LogResult,
     VolumeStatusUpdate,
 )
+from nemo_deployments_plugin.backends.k8s import deployments as deployment_ops
 from nemo_deployments_plugin.backends.k8s import jobs as job_ops
 from nemo_deployments_plugin.backends.k8s import volumes as volume_ops
 from nemo_deployments_plugin.backends.k8s.client import KubernetesClients
@@ -29,14 +30,20 @@ _K8S_INSTALL_HINT = (
     "kubernetes package is required for K8sDeploymentBackend. "
     "Install with: uv sync --package nemo-deployments-plugin --extra k8s"
 )
-_ALWAYS_POLICY_MESSAGE = "restart_policy Always requires Deployment+Service support (AIRCORE-757 phase 4)"
+
+
+def _prefer_failed_delete_result(*results: BackendStatusUpdate) -> BackendStatusUpdate:
+    for result in results:
+        if result.status == "FAILED":
+            return result
+    return results[-1]
 
 
 class K8sDeploymentBackend(DeploymentBackend):
     """Manage deployments and volumes as native Kubernetes objects.
 
     Job-backed deployments (``restart_policy`` Never/OnFailure) are implemented in phase 3.
-    Deployment + Service (Always) and full PodSpec compilation land in later phases.
+    Deployment + Service (Always) is implemented in phase 4; full PodSpec compilation is phase 5.
     """
 
     _clients: KubernetesClients
@@ -104,7 +111,16 @@ class K8sDeploymentBackend(DeploymentBackend):
             return BackendStatusUpdate(status="FAILED", status_message=f"Failed to load deployment config: {exc}")
 
         if config.restart_policy == "Always":
-            return BackendStatusUpdate(status="FAILED", status_message=_ALWAYS_POLICY_MESSAGE)
+            return await deployment_ops.create_deployment(
+                self._clients,
+                default_namespace=self._executor_config.default_namespace,
+                workspace=workspace,
+                name=name,
+                config_name=config_name,
+                labels=labels,
+                backend_config=backend_config,
+                config=config,
+            )
 
         return await job_ops.create_job(
             self._clients,
@@ -129,7 +145,21 @@ class K8sDeploymentBackend(DeploymentBackend):
             return BackendStatusUpdate(status="FAILED", status_message=f"Failed to load deployment: {exc}")
 
         if config.restart_policy == "Always":
-            return BackendStatusUpdate(status="FAILED", status_message=_ALWAYS_POLICY_MESSAGE)
+            try:
+                deployment_ops.validate_config_for_deployment(config)
+            except job_ops.DeploymentConfigError as exc:
+                return BackendStatusUpdate(status="FAILED", status_message=str(exc))
+            return await deployment_ops.read_deployment_status(
+                self._clients,
+                default_namespace=self._executor_config.default_namespace,
+                workspace=workspace,
+                name=name,
+                backend_config=backend_config,
+                config_name=config.name,
+                restart_policy=config.restart_policy,
+                backoff_limit=config.backoff_limit,
+                containers=tuple(config.containers),
+            )
 
         return await job_ops.read_job_status(
             self._clients,
@@ -146,19 +176,43 @@ class K8sDeploymentBackend(DeploymentBackend):
         try:
             _, config, backend_config = await self._load_deployment_context(workspace, name)
         except NemoEntityNotFoundError:
-            return await job_ops.delete_job(
+            scope_labels = job_ops.deployment_scope_labels(workspace, name)
+            deployment_result = await deployment_ops.delete_deployment(
                 self._clients,
                 default_namespace=self._executor_config.default_namespace,
                 workspace=workspace,
                 name=name,
                 backend_config={},
-                expected_labels=job_ops.deployment_scope_labels(workspace, name),
+                expected_labels=scope_labels,
             )
+            job_result = await job_ops.delete_job(
+                self._clients,
+                default_namespace=self._executor_config.default_namespace,
+                workspace=workspace,
+                name=name,
+                backend_config={},
+                expected_labels=scope_labels,
+            )
+            return _prefer_failed_delete_result(deployment_result, job_result)
         except Exception as exc:
             return BackendStatusUpdate(status="FAILED", status_message=f"Failed to load deployment: {exc}")
 
+        expected_labels = deployment_identity_labels(
+            workspace,
+            name,
+            config.restart_policy,
+            config_name=config.name,
+            backoff_limit=config.backoff_limit,
+        )
         if config.restart_policy == "Always":
-            return BackendStatusUpdate(status="FAILED", status_message=_ALWAYS_POLICY_MESSAGE)
+            return await deployment_ops.delete_deployment(
+                self._clients,
+                default_namespace=self._executor_config.default_namespace,
+                workspace=workspace,
+                name=name,
+                backend_config=backend_config,
+                expected_labels=expected_labels,
+            )
 
         return await job_ops.delete_job(
             self._clients,
@@ -166,20 +220,19 @@ class K8sDeploymentBackend(DeploymentBackend):
             workspace=workspace,
             name=name,
             backend_config=backend_config,
-            expected_labels=deployment_identity_labels(
-                workspace,
-                name,
-                config.restart_policy,
-                config_name=config.name,
-                backoff_limit=config.backoff_limit,
-            ),
+            expected_labels=expected_labels,
         )
 
     async def list_managed_deployment_names(self) -> list[str]:
-        return await job_ops.list_managed_job_names(
+        job_names = await job_ops.list_managed_job_names(
             self._clients,
             default_namespace=self._executor_config.default_namespace,
         )
+        deployment_names = await deployment_ops.list_managed_deployment_names(
+            self._clients,
+            default_namespace=self._executor_config.default_namespace,
+        )
+        return sorted(set(job_names) | set(deployment_names))
 
     async def get_logs(
         self,
@@ -196,7 +249,14 @@ class K8sDeploymentBackend(DeploymentBackend):
             return LogResult(lines=[f"Failed to load deployment: {exc}"])
 
         if config.restart_policy == "Always":
-            return LogResult(lines=[_ALWAYS_POLICY_MESSAGE])
+            return await deployment_ops.get_deployment_logs(
+                self._clients,
+                default_namespace=self._executor_config.default_namespace,
+                workspace=workspace,
+                name=name,
+                backend_config=backend_config,
+                tail=tail,
+            )
 
         return await job_ops.get_job_logs(
             self._clients,

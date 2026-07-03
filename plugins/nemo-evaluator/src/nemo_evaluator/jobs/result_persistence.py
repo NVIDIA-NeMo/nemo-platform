@@ -23,7 +23,7 @@ from nemo_evaluator.entities import AgentEvalResultEntity, EvaluateResultEntity
 from nemo_evaluator.jobs.agent_spec import AgentTarget, CodexRunnerTarget, ModelTarget, Target
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
 from nemo_evaluator_sdk.execution.metric_execution import run_sync
-from nemo_evaluator_sdk.values import Agent, Model
+from nemo_evaluator_sdk.values import Agent, AgentBase, Model
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
 from nemo_evaluator_sdk.values.results import EvaluationResult
 from nemo_platform import AsyncNeMoPlatform
@@ -89,7 +89,7 @@ def _row_target_fields(target: Model | Agent | None) -> tuple[str | None, str | 
     """(kind, name, url) flat target traits for a row-eval target."""
     if isinstance(target, Model):
         return "model", target.name, _safe_target_url(target.url)
-    if isinstance(target, Agent):
+    if isinstance(target, AgentBase):
         return "agent", getattr(target, "name", None), _safe_target_url(target.url)
     return None, None, None
 

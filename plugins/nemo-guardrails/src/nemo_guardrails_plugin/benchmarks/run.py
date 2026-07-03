@@ -25,21 +25,27 @@ import os
 import sys
 import time
 from contextlib import ExitStack
+from dataclasses import dataclass
 from pathlib import Path
 
 from nemo_guardrails_plugin.benchmarks.aiperf_runner import (
+    SweepRunResult,
     collect_sweep_results,
     prepare_runtime_aiperf_config,
     run_aiperf_sweep,
 )
+from nemo_guardrails_plugin.benchmarks.analyze import analyze_run
 from nemo_guardrails_plugin.benchmarks.bootstrap import ensure_aiperf_venv
 from nemo_guardrails_plugin.benchmarks.constants import (
     AIPERF_SHIM_BASE_URL,
+    ALL_VARIANTS,
     APP_PROVIDER_URL,
     CS_PROVIDER_URL,
     IGW_CHAT_PATH,
     NMP_BASE_URL,
     NMP_HEALTH_PATH,
+    VARIANT_WITH_GUARDRAILS,
+    VARIANT_WITHOUT_GUARDRAILS,
     WORKSPACE,
 )
 from nemo_guardrails_plugin.benchmarks.paths import (
@@ -66,8 +72,6 @@ _REQUIRED_NEMOGUARDRAILS_FILES = (
     Path("benchmark/aiperf/__main__.py"),
     Path("benchmark/aiperf/run_aiperf.py"),
     Path("benchmark/mock_llm_server/run_server.py"),
-    Path("benchmark/mock_llm_server/configs/meta-llama-3.3-70b-instruct.env"),
-    Path("benchmark/mock_llm_server/configs/nvidia-llama-3.1-nemoguard-8b-content-safety.env"),
     Path("examples/configs/content_safety_local/config.yml"),
     Path("examples/configs/content_safety_local/prompts.yml"),
 )
@@ -89,6 +93,18 @@ def _validate_nemoguardrails_repo(nemoguardrails_repo_root: Path) -> None:
         raise FileNotFoundError(
             f"NeMo Guardrails checkout at {nemoguardrails_repo_root} is missing required files:\n  - {bullet}"
         )
+
+
+def _validate_in_repo_mock_configs(paths: RunPaths) -> None:
+    """Fail fast if the in-repo mock LLM env files are missing.
+
+    These live in this repo (not upstream) so we control mock behavior
+    independently of the NeMo-Guardrails checkout.
+    """
+    missing = [p for p in (paths.mock_app_env, paths.mock_content_safety_env) if not p.is_file()]
+    if missing:
+        bullet = "\n  - ".join(str(p) for p in missing)
+        raise FileNotFoundError(f"In-repo mock LLM config files missing:\n  - {bullet}")
 
 
 def _build_mock_nim_processes(paths: RunPaths, workers: int) -> list[SupervisedProcess]:
@@ -122,20 +138,18 @@ def _build_mock_nim_processes(paths: RunPaths, workers: int) -> list[SupervisedP
             health_timeout_seconds=_MOCK_HEALTH_TIMEOUT_SECONDS,
         )
 
+    # Env files come from this repo, rather than the upstream library.
     return [
-        # Main LLM mock server
         spec(
             "mock-app-llm",
             8000,
-            paths.nemoguardrails_repo_root / "benchmark/mock_llm_server/configs/meta-llama-3.3-70b-instruct.env",
+            paths.mock_app_env,
             health_url=f"{APP_PROVIDER_URL}/health",
         ),
-        # Content-safety LLM mock server
         spec(
             "mock-content-safety-llm",
             8001,
-            paths.nemoguardrails_repo_root
-            / "benchmark/mock_llm_server/configs/nvidia-llama-3.1-nemoguard-8b-content-safety.env",
+            paths.mock_content_safety_env,
             health_url=f"{CS_PROVIDER_URL}/health",
         ),
     ]
@@ -205,6 +219,109 @@ def _smoke_test(client: NeMoPlatform, seeded: SeededResources) -> None:
     raise RuntimeError(f"Smoke test failed after 60 attempts: {last_error}")
 
 
+@dataclass(frozen=True)
+class BenchmarkOutcome:
+    """Outcome of a single benchmark variant's AIPerf sweep, used by the summary."""
+
+    variant: str
+    aiperf_exit: int
+    output_dir: Path
+    sweep_results: list[SweepRunResult]
+
+    @property
+    def failures(self) -> int:
+        return sum(1 for r in self.sweep_results if not r.passed)
+
+    @property
+    def passed(self) -> bool:
+        return self.aiperf_exit == 0 and bool(self.sweep_results) and self.failures == 0
+
+
+def _vm_ref_for_variant(variant: str, seeded: SeededResources) -> str:
+    """Pick which seeded VirtualModel a benchmark variant should target."""
+    if variant == VARIANT_WITH_GUARDRAILS:
+        return seeded.vm_ref
+    if variant == VARIANT_WITHOUT_GUARDRAILS:
+        return seeded.no_guardrails_vm_ref
+    raise ValueError(f"Unknown variant: {variant!r}")
+
+
+def _run_benchmark(
+    *,
+    variant: str,
+    paths: RunPaths,
+    seeded: SeededResources,
+    aiperf_python: Path,
+) -> BenchmarkOutcome:
+    """Materialize a per-variant AIPerf config, run the sweep, collect results."""
+    vm_ref = _vm_ref_for_variant(variant, seeded)
+    runtime_config = paths.runtime_config_for(variant)
+    aiperf_output_dir = paths.aiperf_output_dir_for(variant)
+    aiperf_log = paths.aiperf_log_for(variant)
+
+    sweep_config = prepare_runtime_aiperf_config(
+        template_path=paths.config_template,
+        runtime_config_path=runtime_config,
+        aiperf_output_dir=aiperf_output_dir,
+        model_ref=vm_ref,
+    )
+    log.info(
+        "Benchmark %s: targeting %s; concurrency=%s, duration=%ss",
+        variant,
+        vm_ref,
+        sweep_config.get("sweeps", {}).get("concurrency"),
+        sweep_config.get("base_config", {}).get("benchmark_duration"),
+    )
+    log.info(
+        "Starting AIPerf sweep [%s] against %s -> shim -> %s%s",
+        variant,
+        AIPERF_SHIM_BASE_URL,
+        NMP_BASE_URL,
+        IGW_CHAT_PATH,
+    )
+
+    aiperf_exit = run_aiperf_sweep(
+        nemoguardrails_repo_root=paths.nemoguardrails_repo_root,
+        runtime_config=runtime_config,
+        log_path=aiperf_log,
+        python_executable=str(aiperf_python),
+        venv_bin_path=paths.aiperf_venv_dir / "bin",
+    )
+
+    sweep_results = collect_sweep_results(aiperf_output_dir)
+    return BenchmarkOutcome(
+        variant=variant,
+        aiperf_exit=aiperf_exit,
+        output_dir=aiperf_output_dir,
+        sweep_results=sweep_results,
+    )
+
+
+def _summarize_benchmark_results(outcomes: list[BenchmarkOutcome]) -> int:
+    """Log per-benchmark + overall summary; return process exit code."""
+    overall_failed = False
+    for outcome in outcomes:
+        if not outcome.sweep_results:
+            log.error(
+                "Benchmark %s: aiperf exited with code %d and produced no per-sweep results in %s",
+                outcome.variant,
+                outcome.aiperf_exit,
+                outcome.output_dir,
+            )
+        else:
+            log.info(
+                "Benchmark %s: %d run(s), %d failure(s); per-sweep outputs under %s",
+                outcome.variant,
+                len(outcome.sweep_results),
+                outcome.failures,
+                outcome.output_dir,
+            )
+        if not outcome.passed:
+            overall_failed = True
+
+    return 1 if overall_failed else 0
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="nemo-guardrails-benchmark",
@@ -244,8 +361,26 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Override the per-run directory name (default: current timestamp).",
     )
+    parser.add_argument(
+        "--variant",
+        choices=(*ALL_VARIANTS, "all"),
+        default="all",
+        help=(
+            "Which sweep to run. 'all' (default) runs both variants sequentially "
+            "against the same NMP; the with-vs-without delta isolates middleware "
+            "overhead. In CI, run the two variants as parallel jobs against "
+            "separate NMP instances."
+        ),
+    )
     parser.add_argument("--verbose", "-v", action="store_true")
     return parser.parse_args(argv)
+
+
+def _resolve_variants(variant_arg: str) -> tuple[str, ...]:
+    """Translate the ``--variant`` CLI argument into the ordered list to run."""
+    if variant_arg == "all":
+        return ALL_VARIANTS
+    return (variant_arg,)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -266,19 +401,17 @@ def main(argv: list[str] | None = None) -> int:
         run_id=args.run_id,
     )
     paths.ensure_directories()
+    _validate_in_repo_mock_configs(paths)
 
     log.info("Created directory for benchmark results at: %s", paths.run_dir)
-
-    sweep_config = prepare_runtime_aiperf_config(
-        template_path=paths.config_template,
-        runtime_config_path=paths.runtime_config,
-        aiperf_output_dir=paths.aiperf_output_dir,
-    )
     log.info(
-        "AIPerf sweep: concurrency=%s, duration=%ss",
-        sweep_config.get("sweeps", {}).get("concurrency"),
-        sweep_config.get("base_config", {}).get("benchmark_duration"),
+        "Mock LLM configs: app=%s, content-safety=%s",
+        paths.mock_app_env,
+        paths.mock_content_safety_env,
     )
+
+    variants = _resolve_variants(args.variant)
+    log.info("Will run %d variant(s): %s", len(variants), ", ".join(variants))
 
     # Ensure the dedicated aiperf venv exists *before* we start any supervised
     # processes.
@@ -318,43 +451,38 @@ def main(argv: list[str] | None = None) -> int:
         log.info("Waiting for VirtualModel %s to be ready...", seeded.vm_ref)
         _smoke_test(client, seeded)
 
-        log.info(
-            "Starting AIPerf sweep against %s -> shim -> %s%s",
-            AIPERF_SHIM_BASE_URL,
-            NMP_BASE_URL,
-            IGW_CHAT_PATH,
-        )
-        aiperf_exit = run_aiperf_sweep(
-            nemoguardrails_repo_root=paths.nemoguardrails_repo_root,
-            runtime_config=paths.runtime_config,
-            log_path=paths.log_dir / "aiperf.log",
-            python_executable=str(aiperf_python),
-            venv_bin_path=paths.aiperf_venv_dir / "bin",
-        )
+        # Variants run sequentially against the same NMP; only the targeted
+        # VirtualModel differs, so the delta isolates middleware overhead.
+        outcomes: list[BenchmarkOutcome] = []
+        for variant in variants:
+            outcomes.append(
+                _run_benchmark(
+                    variant=variant,
+                    paths=paths,
+                    seeded=seeded,
+                    aiperf_python=aiperf_python,
+                )
+            )
 
-    sweep_results = collect_sweep_results(paths.aiperf_output_dir)
-    failures = sum(1 for r in sweep_results if not r.passed)
+    exit_code = _summarize_benchmark_results(outcomes)
+    _maybe_print_analysis(paths.run_dir, outcomes)
+    return exit_code
 
-    if not sweep_results:
-        # AIPerf exited before producing any per-sweep dirs. Surface that
-        # explicitly so the log isn't ambiguous about why we're failing.
-        log.error(
-            "aiperf exited with code %d and produced no per-sweep results in %s",
-            aiperf_exit,
-            paths.aiperf_output_dir,
-        )
-    else:
-        log.info(
-            "Sweep summary: %d run(s), %d failure(s); per-sweep outputs under %s",
-            len(sweep_results),
-            failures,
-            paths.aiperf_output_dir,
-        )
 
-    if failures or aiperf_exit != 0 or not sweep_results:
-        return 1
+def _maybe_print_analysis(run_dir: Path, outcomes: list[BenchmarkOutcome]) -> None:
+    """Print the analyzer's comparison table when at least one variant has results.
 
-    return 0
+    Wrapped in a broad try/except: the analyzer is post-processing only and
+    must not change the harness's exit code or hide a real benchmark failure.
+    """
+    if not any(o.sweep_results for o in outcomes):
+        return
+    try:
+        report = analyze_run(run_dir)
+    except Exception as exc:
+        log.warning("Analyzer failed; skipping summary table: %s", exc)
+        return
+    log.info("Benchmark analysis:\n%s", report)
 
 
 if __name__ == "__main__":

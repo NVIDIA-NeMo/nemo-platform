@@ -384,6 +384,27 @@ class TestGetSdkOnBehalfOf:
         assert "X-NMP-Principal-On-Behalf-Of" in delegated_sdk.default_headers
         assert delegated_sdk.default_headers["X-NMP-Principal-On-Behalf-Of"] == "user@example.com"
 
+    def test_get_sdk_on_behalf_of_with_principal_includes_email_and_groups(self):
+        """Test that Principal delegation includes delegated email and groups headers."""
+        base_sdk = NeMoPlatform(
+            base_url="http://testserver",
+            default_headers={"X-NMP-Principal-Id": "service:my-service"},
+        )
+
+        delegated_sdk = get_sdk_on_behalf_of(
+            base_sdk,
+            Principal(
+                id="user@example.com",
+                email="user@example.com",
+                groups=["workspace-editors", "ml-team"],
+            ),
+        )
+
+        assert delegated_sdk.default_headers["X-NMP-Principal-Id"] == "service:my-service"
+        assert delegated_sdk.default_headers["X-NMP-Principal-On-Behalf-Of"] == "user@example.com"
+        assert delegated_sdk.default_headers["X-NMP-Principal-On-Behalf-Of-Email"] == "user@example.com"
+        assert delegated_sdk.default_headers["X-NMP-Principal-On-Behalf-Of-Groups"] == "workspace-editors,ml-team"
+
     def test_preserves_original_sdk(self):
         """Test that get_sdk_on_behalf_of doesn't modify the original SDK."""
         base_sdk = NeMoPlatform(

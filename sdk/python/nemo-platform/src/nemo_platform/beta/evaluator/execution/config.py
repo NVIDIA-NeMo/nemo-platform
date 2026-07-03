@@ -9,6 +9,7 @@ from typing import TypeAlias
 
 from nemo_platform.beta.evaluator.values import (
     Agent,
+    AgentBase,
     Model,
     RunConfig,
     RunConfigOnline,
@@ -31,7 +32,7 @@ def resolve_params(
         if not isinstance(params, RunConfigOnlineModel):
             raise TypeError("model target requires RunConfigOnlineModel")
         return params
-    if isinstance(target, Agent):
+    if isinstance(target, AgentBase):
         if type(params) is not RunConfigOnline:
             raise TypeError("agent target requires RunConfigOnline")
         return params

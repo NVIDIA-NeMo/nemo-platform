@@ -188,3 +188,66 @@ async def test_list_returns_workspace_metrics(service: MetricService) -> None:
     assert {m.name for m in page.data} == {"a", "b"}
     assert page.pagination is not None
     assert page.pagination.total_results == 2
+
+
+# ---- derived metrics -------------------------------------------------------
+
+
+async def test_store_derived_metric_names_by_digest_and_marks_derived(service: MetricService) -> None:
+    from nemo_evaluator.api.service.metric_service import _MAX_ENTITY_NAME_LENGTH
+
+    ref = await service.store_derived_metric(_bundle(), workspace="default")
+
+    workspace, _, name = ref.root.partition("/")
+    assert workspace == "default"
+    assert name.startswith("derived.")
+    # The entity store caps names at 63 chars; the derived name must fit (it 422s otherwise).
+    assert len(name) <= _MAX_ENTITY_NAME_LENGTH
+    # Stored entity is flagged derived and Files-backed like any metric.
+    entity = service.entity_client.entities[("default", name)]
+    assert entity.derived is True
+    assert _fileset_of(service, entity.bundle_ref) in service.sdk._store
+
+
+async def test_store_derived_metric_distinguishes_full_contract(service: MetricService) -> None:
+    # Two metrics with an identical payload but a differing bundle-level field (here: metadata) must
+    # NOT collapse — addressing on payload.digest alone would have silently rebound one onto the other.
+    bundle = _bundle()
+    variant = bundle.model_copy(update={"metadata": bundle.metadata.model_copy(update={"description": "different"})})
+    assert bundle.payload.digest == variant.payload.digest  # same executable payload...
+
+    first = await service.store_derived_metric(bundle, workspace="default")
+    second = await service.store_derived_metric(variant, workspace="default")
+
+    assert first.root != second.root  # ...but distinct derived metrics, not one silently reused
+    assert len(service.entity_client.entities) == 2
+
+
+async def test_store_derived_metric_is_content_addressed_dedup(service: MetricService) -> None:
+    bundle = _bundle()
+
+    first = await service.store_derived_metric(bundle, workspace="default")
+    second = await service.store_derived_metric(bundle, workspace="default")
+
+    # Identical content collapses to one stored bundle (same ref, single entity, single fileset).
+    assert first.root == second.root
+    assert len(service.entity_client.entities) == 1
+    assert len(service.sdk._store) == 1
+
+
+async def test_list_excludes_derived_by_default(service: MetricService) -> None:
+    captured: list[object] = []
+    original_list = service.entity_client.list
+
+    async def _spy(entity_cls, *, filter_operation=None, **kwargs):
+        captured.append(filter_operation)
+        return await original_list(entity_cls, filter_operation=filter_operation, **kwargs)
+
+    service.entity_client.list = _spy
+
+    await service.list_metrics("default")
+    await service.list_metrics("default", include_derived=True)
+
+    # Default listing injects a filter (NOT derived); include_derived passes none through.
+    assert captured[0] is not None
+    assert captured[1] is None

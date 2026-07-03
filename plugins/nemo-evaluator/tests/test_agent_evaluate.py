@@ -44,7 +44,7 @@ from nemo_evaluator_sdk.agent_eval.trials import (
 )
 from nemo_evaluator_sdk.enums import AgentFormat
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
-from nemo_evaluator_sdk.values import Agent, Model, RunConfigOnline, RunConfigOnlineModel, SecretRef
+from nemo_evaluator_sdk.values import Agent, GenericAgent, Model, RunConfigOnline, RunConfigOnlineModel, SecretRef
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform.types.jobs.platform_job_spec import PlatformJobSpec
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
@@ -66,7 +66,7 @@ def _task_spec() -> AgentEvalTaskSpec:
     return AgentEvalTaskSpec(
         id="task-1",
         intent="Answer the question.",
-        inputs={"prompt": "What is 2+2?"},
+        inputs={"instruction": "What is 2+2?"},
         metrics=[_inline_metric()],
     )
 
@@ -174,7 +174,7 @@ def test_agent_eval_spec_requires_at_least_one_task() -> None:
 
 
 def _agent() -> Agent:
-    return Agent(
+    return GenericAgent(
         url="http://agent.test",
         name="test-agent",
         format=AgentFormat.GENERIC,
@@ -301,7 +301,7 @@ async def test_to_spec_resolves_inline_task_metrics_without_a_platform() -> None
             AgentEvalTaskInput(
                 id="task-1",
                 intent="Answer the question.",
-                inputs={"prompt": "What is 2+2?"},
+                inputs={"instruction": "What is 2+2?"},
                 metrics=[_inline_metric()],
             )
         ],
@@ -439,7 +439,7 @@ def test_run_local_executes_each_target_type(target: Target, mocker: MockerFixtu
     input_spec = AgentEvalInputSpec(
         tasks=[
             AgentEvalTaskInput(
-                id="task-1", intent="Answer.", inputs={"prompt": "What is 2+2?"}, metrics=[_inline_metric()]
+                id="task-1", intent="Answer.", inputs={"instruction": "What is 2+2?"}, metrics=[_inline_metric()]
             )
         ],
         target=target,

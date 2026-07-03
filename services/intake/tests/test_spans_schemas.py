@@ -7,7 +7,7 @@ import json
 from datetime import datetime, timezone
 
 import pytest
-from nmp.intake.spans.api.spans_schemas import Span, SpanGroup
+from nmp.intake.spans.api.spans_schemas import SPAN_SUMMARY_ERROR_MESSAGE_CHAR_LIMIT, Span, SpanGroup
 from nmp.intake.spans.api.traces_schemas import Trace
 from nmp.intake.spans.domain import IntakeSpan, IntakeTrace, SpanKind, SpanStatus
 from nmp.intake.spans.domain import SpanGroup as IntakeSpanGroup
@@ -61,6 +61,37 @@ def test_span_response_raw_attributes_merges_atif_raw_with_unknown_attributes():
         "custom.number": 1.25,
         "custom.bool": True,
     }
+
+
+def test_span_summary_keeps_bounded_error_message_without_bulk_fields():
+    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    error_message = "x" * (SPAN_SUMMARY_ERROR_MESSAGE_CHAR_LIMIT + 50)
+    span = IntakeSpan(
+        workspace="workspace-a",
+        session_id="session-a",
+        trace_id="trace-a",
+        source_format="otel",
+        external_span_id="span-a",
+        kind=SpanKind.AGENT,
+        status=SpanStatus.ERROR,
+        start_time=now,
+        event_ts=now,
+        input="large input",
+        output="large output",
+        attributes_string={
+            "exception.type": "RuntimeError",
+            "exception.message": error_message,
+            "custom.string": "value-a",
+        },
+    )
+
+    response = Span.from_domain(span, mode="summary")
+
+    assert response.error_type == "RuntimeError"
+    assert response.error_message == "x" * SPAN_SUMMARY_ERROR_MESSAGE_CHAR_LIMIT
+    assert response.input is None
+    assert response.output is None
+    assert response.raw_attributes is None
 
 
 def test_span_group_response_maps_group_values():

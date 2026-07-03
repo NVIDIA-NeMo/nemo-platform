@@ -18,7 +18,7 @@ describe('AnnotationsPanel', () => {
     const user = userEvent.setup();
 
     renderRoute(<AnnotationsPanel workspace="default" spanId={SPAN_ID} sessionId={SESSION_ID} />, {
-      history: '/workspaces/default/intake/spans/span-root-001',
+      history: '/workspaces/default/intake/traces/trace-agent-run-001?spanId=span-root-001',
     });
 
     expect(
@@ -40,7 +40,7 @@ describe('AnnotationsPanel', () => {
     const user = userEvent.setup();
 
     renderRoute(<AnnotationsPanel workspace="default" spanId={SPAN_ID} sessionId={SESSION_ID} />, {
-      history: '/workspaces/default/intake/spans/span-root-001',
+      history: '/workspaces/default/intake/traces/trace-agent-run-001?spanId=span-root-001',
     });
 
     const note = await screen.findByRole('article', { name: 'Note annotation' });

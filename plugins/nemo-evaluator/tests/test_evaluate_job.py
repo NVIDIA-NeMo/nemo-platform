@@ -48,6 +48,7 @@ from nemo_evaluator_sdk.values import (
     Agent,
     AggregatedMetricResult,
     EvaluationResult,
+    GenericAgent,
     Model,
     RunConfig,
     RunConfigOnline,
@@ -840,7 +841,7 @@ async def test_evaluate_job_compile_produces_online_agent_job() -> None:
     spec = EvaluateSpec.model_validate(
         {
             **_exact_match_spec(),
-            "target": Agent(
+            "target": GenericAgent(
                 url="http://agent.test",
                 name="test-agent",
                 format=AgentFormat.GENERIC,
@@ -1114,7 +1115,7 @@ class TestEvaluateJobCompile:
                 "prompt_template is required when EvaluateSpec.target is a model",
             ),
             (
-                Agent(
+                GenericAgent(
                     url="http://agent.test",
                     name="test-agent",
                     format=AgentFormat.GENERIC,
@@ -1150,7 +1151,7 @@ class TestEvaluateJobCompile:
         [
             (Model(url="http://model.test/v1/chat/completions", name="test-model"), "model target"),
             (
-                Agent(
+                GenericAgent(
                     url="http://agent.test",
                     name="test-agent",
                     format=AgentFormat.GENERIC,
@@ -1216,7 +1217,7 @@ class TestEvaluateJobRun:
             ),
             (
                 {
-                    "target": Agent(
+                    "target": GenericAgent(
                         url="http://agent.test",
                         name="test-agent",
                         format=AgentFormat.GENERIC,

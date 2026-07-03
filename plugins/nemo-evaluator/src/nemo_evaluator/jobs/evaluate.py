@@ -30,6 +30,7 @@ from nemo_evaluator_sdk.execution.config import resolve_params
 from nemo_evaluator_sdk.execution.metric_execution import run_sync
 from nemo_evaluator_sdk.values import (
     Agent,
+    AgentBase,
     FieldMapping,
     Model,
     RunConfig,
@@ -274,7 +275,7 @@ class EvaluateJob(NemoJob):
                 field_mapping=spec.field_mapping,
                 prompt_template=spec.prompt_template,
             )
-        elif isinstance(spec.target, Agent):
+        elif isinstance(spec.target, AgentBase):
             if type(params) is not RunConfigOnline:
                 raise TypeError("agent target requires RunConfigOnline")
             if spec.prompt_template is None:

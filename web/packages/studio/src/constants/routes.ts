@@ -27,7 +27,6 @@ export const ROUTE_PARAMS = {
   safeSynthesizerJobName: 'safeSynthesizerJobName',
   dataDesignerJobName: 'dataDesignerJobName',
   traceId: 'traceId',
-  spanId: 'spanId',
   deploymentConfigName: 'deploymentConfigName',
   deploymentName: 'deploymentName',
   /** Side panel mode under deployments (e.g. `details`). */
@@ -97,7 +96,6 @@ export const ROUTES = {
     intakeTraces: `/workspaces/:${P.workspace}/intake/traces`,
     intakeSpans: `/workspaces/:${P.workspace}/intake/spans`,
     intakeTrace: `/workspaces/:${P.workspace}/intake/traces/:${P.traceId}`,
-    intakeSpan: `/workspaces/:${P.workspace}/intake/spans/:${P.spanId}`,
     safeSynthesizer: `/workspaces/:${P.workspace}/safe-synthesizer`,
     safeSynthesizerNew: `/workspaces/:${P.workspace}/safe-synthesizer/new`,
     safeSynthesizerJob: `/workspaces/:${P.workspace}/safe-synthesizer/job/:${P.safeSynthesizerJobName}`,

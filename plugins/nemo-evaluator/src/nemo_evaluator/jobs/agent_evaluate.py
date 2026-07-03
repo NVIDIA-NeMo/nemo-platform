@@ -95,10 +95,12 @@ def _to_runtime_task(task: AgentEvalTaskSpec) -> AgentEvalTask:
     return AgentEvalTask(
         id=task.id,
         intent=task.intent,
-        inputs=task.inputs,
+        # The runtime task carries plain dicts; the typed DTOs collapse to them — recognized input
+        # keys only, and the key/value metadata pairs folded into a mapping.
+        inputs=task.inputs.model_dump(exclude_none=True),
         metrics=[_runtime_metric(metric) for metric in task.metrics],
         views=task.views,
-        metadata=task.metadata,
+        metadata={item.key: item.value for item in task.metadata},
     )
 
 

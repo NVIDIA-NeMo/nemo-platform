@@ -10,13 +10,16 @@ Response models are standalone: they translate from the stored entity via
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from nmp.common.entities.values import DatetimeFilter, Filter, NumberFilter, map_entity_field
 from nmp.intake.entities.experiments import Experiment, ExperimentGroup, SortCriterion
 from nmp.intake.spans.domain import SpanStatus
 from nmp.intake.spans.experiment_session_repository import ExperimentSessionRow
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field
+
+ExperimentSessionMode = Literal["summary", "detailed"]
+EXPERIMENT_SESSION_SUMMARY_INPUT_CHAR_LIMIT = 1000
 
 
 class ExperimentGroupRequest(BaseModel):
@@ -292,7 +295,13 @@ class ExperimentSessionResponse(BaseModel):
     latency_ms: float | None = None
 
     status: SpanStatus = Field(description="Root-span status: success, error, cancelled, or unknown.")
-    input: str | None = Field(default=None, description="Root-span input text (the query).")
+    input: str | None = Field(
+        default=None,
+        description=(
+            "Root-span input text. In summary mode this is truncated to "
+            f"{EXPERIMENT_SESSION_SUMMARY_INPUT_CHAR_LIMIT} characters."
+        ),
+    )
 
     input_tokens: int | None = Field(default=None, description="Sum of input tokens across this session's spans.")
     output_tokens: int | None = Field(default=None, description="Sum of output tokens across this session's spans.")

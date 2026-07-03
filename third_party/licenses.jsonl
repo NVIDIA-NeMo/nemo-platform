@@ -12,7 +12,6 @@
 {"name": "alembic", "license": "MIT", "compatible": true}
 {"name": "annotated-doc", "license": "MIT", "compatible": true}
 {"name": "annotated-types", "license": "MIT", "compatible": true}
-{"name": "annoy", "license": "APACHE-2.0", "compatible": true}
 {"name": "anthropic", "license": "MIT", "compatible": true}
 {"name": "anyascii", "license": "ISC", "compatible": true}
 {"name": "anyio", "license": "MIT", "compatible": true}
@@ -309,7 +308,6 @@
 {"name": "validators", "license": "MIT", "compatible": true}
 {"name": "wandb", "license": "MIT", "compatible": true}
 {"name": "wasmtime", "license": "APACHE-2.0 WITH LLVM-EXCEPTION", "compatible": true}
-{"name": "watchdog", "license": "APACHE-2.0", "compatible": true}
 {"name": "watchfiles", "license": "MIT", "compatible": true}
 {"name": "wcwidth", "license": "MIT", "compatible": true}
 {"name": "websocket-client", "license": "APACHE-2.0", "compatible": true}

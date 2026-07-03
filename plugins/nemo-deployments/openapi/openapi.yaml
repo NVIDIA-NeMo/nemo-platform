@@ -581,6 +581,15 @@ components:
           $ref: '#/components/schemas/Probe'
         readinessProbe:
           $ref: '#/components/schemas/Probe'
+        restartPolicy:
+          title: Restartpolicy
+          description: Per-container restart policy for init containers; Always enables
+            k8s native sidecar.
+          type: string
+          enum:
+          - Always
+          - OnFailure
+          - Never
       type: object
       required:
       - name
@@ -625,6 +634,15 @@ components:
           $ref: '#/components/schemas/Probe'
         readinessProbe:
           $ref: '#/components/schemas/Probe'
+        restartPolicy:
+          title: Restartpolicy
+          description: Per-container restart policy for init containers; Always enables
+            k8s native sidecar.
+          type: string
+          enum:
+          - Always
+          - OnFailure
+          - Never
       type: object
       required:
       - name

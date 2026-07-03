@@ -1006,6 +1006,136 @@ def test_sync_job_active_to_paused_to_resumed(kubernetes_job, test_step_active, 
     assert job_update.status == PlatformJobStatus.PENDING
 
 
+def test_sync_job_paused_with_errored_pods_from_sigterm(kubernetes_job, test_step_pending):
+    """Test that a suspended job with errored pods (killed by SIGTERM) reports PAUSED, not ERROR.
+
+    When K8s suspends a Job it sends SIGTERM to running pods. The terminated pods
+    show up with errors (non-zero exit code). The reconciler must recognise this as
+    a normal part of suspension and return PAUSED rather than ERROR.
+
+    Regression test for AIRCORE-853.
+    """
+    mock_job_spec = MagicMock()
+    mock_job_spec.suspend = True
+
+    mock_job_status = MagicMock()
+    mock_job_status.active = None
+    mock_job_status.succeeded = None
+    mock_job_status.failed = None
+    mock_job_status.terminating = None
+    mock_job_status.completion_time = None
+
+    mock_job = MagicMock()
+    mock_job.status = mock_job_status
+    mock_job.spec = mock_job_spec
+    kubernetes_job._batch_v1.read_namespaced_job.return_value = mock_job
+
+    # Pod was killed by SIGTERM during suspension — has errors but no running containers
+    with patch("nmp.core.jobs.controllers.backends.kubernetes.kubernetes_job.list_pod_status") as mock_list_pod_status:
+        mock_list_pod_status.return_value = [
+            PodStatus(
+                task_id="test-task",
+                name="test-pod",
+                errors={"test-container": 137},
+                completed=set(),
+                active=set(),
+                waiting={},
+                phase="Failed",
+            )
+        ]
+        job_update = kubernetes_job.sync(test_step_pending)
+
+    assert job_update.status == PlatformJobStatus.PAUSED
+
+
+def test_sync_job_pausing_with_errored_pods_from_sigterm(kubernetes_job, test_step_pending):
+    """Test that a suspended job with both running and errored pods reports PAUSING, not ERROR.
+
+    During suspension, some pods may already be terminated (errored) while others
+    are still running. The reconciler should report PAUSING.
+
+    Regression test for AIRCORE-853.
+    """
+    mock_job_spec = MagicMock()
+    mock_job_spec.suspend = True
+
+    mock_job_status = MagicMock()
+    mock_job_status.active = 1
+    mock_job_status.succeeded = None
+    mock_job_status.failed = None
+    mock_job_status.terminating = None
+    mock_job_status.completion_time = None
+
+    mock_job = MagicMock()
+    mock_job.status = mock_job_status
+    mock_job.spec = mock_job_spec
+    kubernetes_job._batch_v1.read_namespaced_job.return_value = mock_job
+
+    with patch("nmp.core.jobs.controllers.backends.kubernetes.kubernetes_job.list_pod_status") as mock_list_pod_status:
+        mock_list_pod_status.return_value = [
+            PodStatus(
+                task_id="test-task-1",
+                name="test-pod-1",
+                errors={"test-container": 137},
+                completed=set(),
+                active=set(),
+                waiting={},
+                phase="Failed",
+            ),
+            PodStatus(
+                task_id="test-task-2",
+                name="test-pod-2",
+                errors={},
+                completed=set(),
+                active={"test-container"},
+                waiting={},
+                phase="Running",
+            ),
+        ]
+        job_update = kubernetes_job.sync(test_step_pending)
+
+    assert job_update.status == PlatformJobStatus.PAUSING
+
+
+def test_sync_job_cancelling_with_errored_pods(kubernetes_job, test_step_cancelling):
+    """Test that a cancelling job with errored pods reports CANCELLED, not ERROR.
+
+    Same race as suspension — K8s kills pods during cancellation.
+
+    Regression test for AIRCORE-853.
+    """
+    mock_job_spec = MagicMock()
+    mock_job_spec.suspend = False
+
+    mock_job_status = MagicMock()
+    mock_job_status.active = None
+    mock_job_status.succeeded = None
+    mock_job_status.failed = None
+    mock_job_status.terminating = None
+    mock_job_status.completion_time = None
+
+    mock_job = MagicMock()
+    mock_job.status = mock_job_status
+    mock_job.spec = mock_job_spec
+    kubernetes_job._batch_v1.read_namespaced_job.return_value = mock_job
+
+    with patch("nmp.core.jobs.controllers.backends.kubernetes.kubernetes_job.list_pod_status") as mock_list_pod_status:
+        mock_list_pod_status.return_value = [
+            PodStatus(
+                task_id="test-task",
+                name="test-pod",
+                errors={"test-container": 137},
+                completed=set(),
+                active=set(),
+                waiting={},
+                phase="Failed",
+            )
+        ]
+        job_update = kubernetes_job.sync(test_step_cancelling)
+
+    assert job_update.status == PlatformJobStatus.CANCELLED
+
+
 def test_sync_job_cancelling(kubernetes_job, test_step_cancelling):
     """Test syncing a cancelling job that isn't ready to be cancelled."""
     # Mock cancelling job status

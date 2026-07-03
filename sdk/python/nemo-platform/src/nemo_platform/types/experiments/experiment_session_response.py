@@ -62,7 +62,7 @@ class ExperimentSessionResponse(BaseModel):
     """
 
     input: Optional[str] = None
-    """Root-span input text (the query)."""
+    """Root-span input text. In summary mode this is truncated to 1000 characters."""
 
     input_tokens: Optional[int] = None
     """Sum of input tokens across this session's spans."""

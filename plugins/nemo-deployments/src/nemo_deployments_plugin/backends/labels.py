@@ -58,6 +58,14 @@ def k8s_volume_resource_name(workspace: str, volume_name: str) -> str:
     )
 
 
+def k8s_deployment_configmap_name(workspace: str, deployment_name: str) -> str:
+    """Kubernetes ConfigMap name for deployment config files."""
+    return k8s_safe_name(
+        f"dep-cm-{workspace}-{deployment_name}",
+        hash_input=f"{deployment_key(workspace, deployment_name)}/config",
+    )
+
+
 def deployment_identity_labels(
     workspace: str,
     name: str,

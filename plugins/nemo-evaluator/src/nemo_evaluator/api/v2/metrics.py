@@ -67,6 +67,10 @@ async def list_metrics(
         default=MetricSort.CREATED_AT_ASC,
         description="The field to sort by. To sort in decreasing order, use `-` in front of the field name.",
     ),
+    include_derived: bool = Query(
+        default=False,
+        description="Include derived (task-internal) metrics, which are hidden from the listing by default.",
+    ),
     parsed_filter: ParsedFilter = Depends(make_filter_dep(MetricFilter)),
     service: MetricService = Depends(get_metric_service),
 ) -> Page[Metric]:
@@ -80,6 +84,7 @@ async def list_metrics(
             page_size=page_size,
             sort=sort,
             filter_operation=parsed_filter.operation,
+            include_derived=include_derived,
         )
     except Exception:
         logger.exception(f"Failed to list metrics for workspace {_sanitize_for_log(workspace)}")
