@@ -125,6 +125,29 @@ def test_to_runtime_task_reconstructs_runtime_metric_instances() -> None:
     assert isinstance(task.metrics[0], ExactMatchMetric)
 
 
+async def test_reference_round_trips_from_input_spec_to_runtime_task() -> None:
+    # Grader-only ``reference`` must survive the wire DTO -> canonical spec -> runtime task path so
+    # metrics can grade against held-out ground truth (never seeded into the agent workspace).
+    reference = {"test_calculator.py": "def test_add(): assert add(2, 3) == 5"}
+    input_spec = AgentEvalInputSpec(
+        target=CodexRunnerTarget(),
+        tasks=[
+            AgentEvalTaskInput(
+                id="fix-bug",
+                intent="Fix the bug.",
+                inputs={"instruction": "Fix calculator.py."},
+                reference=reference,
+                metrics=[_inline_metric()],
+            )
+        ],
+    )
+
+    spec = await AgentEvalJob.to_spec(input_spec, workspace="dev", entity_client=None, async_sdk=None, is_local=True)
+    assert isinstance(spec, AgentEvalSpec)
+    assert spec.tasks[0].reference == reference
+    assert _to_runtime_task(spec.tasks[0]).reference == reference
+
+
 def test_agent_eval_job_reconstructs_tasks_and_persists_bundle(tmp_path: Path, mocker: MockerFixture) -> None:
     fake = _FakeEvaluator()
     mocker.patch.object(AgentEvalJob, "_build_evaluator", return_value=fake)

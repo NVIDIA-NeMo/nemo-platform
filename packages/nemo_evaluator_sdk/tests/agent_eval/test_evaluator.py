@@ -8,7 +8,13 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator, _new_run_id, _trial_from_sample
+from nemo_evaluator_sdk.agent_eval.evaluator import (
+    AgentEvaluator,
+    _metric_row,
+    _new_run_id,
+    _task_row,
+    _trial_from_sample,
+)
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalSummary
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.tasks import (
@@ -111,6 +117,24 @@ def test_generated_run_ids_are_unique_within_the_same_second() -> None:
 
     assert first != second
     assert first.startswith("agent-eval-20260628120000-")
+
+
+def test_metric_row_exposes_reference_but_task_row_hides_it() -> None:
+    # ``reference`` is grader-only held-out ground truth: metrics must see it, the agent (via the
+    # generation ``_task_row``) must not.
+    task = AgentEvalTask(
+        id="task-1",
+        intent="Fix the bug.",
+        inputs={"instruction": "Fix calculator.py."},
+        reference={"test_calculator.py": "def test_add(): assert add(2, 3) == 5"},
+    )
+    trial = _candidate_trial()
+
+    metric_row = _metric_row(task, trial)
+    assert metric_row["reference"] == {"test_calculator.py": "def test_add(): assert add(2, 3) == 5"}
+
+    task_row = _task_row(task)
+    assert "reference" not in task_row
 
 
 def _score(summary: AgentEvalSummary, name: str) -> AggregateScore:

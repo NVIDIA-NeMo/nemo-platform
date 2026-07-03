@@ -643,6 +643,9 @@ def _metric_row(task: AgentEvalTask, trial: AgentEvalTrial) -> dict[str, Any]:
             "metadata": task.metadata,
         },
         "inputs": task.inputs,
+        # Grader-only ground truth: available to metrics here but never seeded into the agent's
+        # workspace (see AgentEvalTask.reference), so a metric can grade against held-out artifacts.
+        "reference": task.reference,
         "trial": {
             "id": trial.id,
             "task_id": trial.task_id,

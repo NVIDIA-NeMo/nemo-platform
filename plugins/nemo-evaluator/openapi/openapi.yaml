@@ -1659,6 +1659,14 @@ components:
           allOf:
           - $ref: '#/components/schemas/TaskInputs'
           description: The task's recognized input fields.
+        reference:
+          additionalProperties: true
+          type: object
+          title: Reference
+          description: Grader-only ground truth (held-out tests, expected outputs,
+            rubric data). Surfaced to metrics but never seeded into the agent's workspace
+            or shown to the agent, so a metric can grade against artifacts the agent
+            cannot influence.
         views:
           additionalProperties:
             $ref: '#/components/schemas/SemanticView'
@@ -1703,6 +1711,14 @@ components:
           allOf:
           - $ref: '#/components/schemas/TaskInputs'
           description: The task's recognized input fields.
+        reference:
+          additionalProperties: true
+          type: object
+          title: Reference
+          description: Grader-only ground truth (held-out tests, expected outputs,
+            rubric data). Surfaced to metrics but never seeded into the agent's workspace
+            or shown to the agent, so a metric can grade against artifacts the agent
+            cannot influence.
         views:
           additionalProperties:
             $ref: '#/components/schemas/SemanticView'
