@@ -220,6 +220,14 @@ def main(
             hidden=True,
         ),
     ] = False,
+    no_telemetry: Annotated[
+        bool,
+        typer.Option(
+            "--no-telemetry",
+            help="Disable anonymous usage telemetry for this invocation.",
+            rich_help_panel="Global Options",
+        ),
+    ] = False,
 ) -> None:
     """
     Command-line interface for NeMo Platform.
@@ -251,6 +259,12 @@ def main(
         env_val = os.environ.get("NMP_AGENT_MODE", "").lower()
         agent_mode = env_val in ("1", "true", "yes")
     ctx.obj.agent_mode = agent_mode
+
+    # Capture command name + agent mode for the command_invoked telemetry event, wire
+    # the per-invocation opt-out, and print the first-run notice. Best effort inside.
+    from nemo_platform_ext.cli.telemetry import runtime as telemetry_runtime
+
+    telemetry_runtime.on_callback(ctx, no_telemetry=no_telemetry)
 
     # Build ConfigParams from CLI args
     overrides: ConfigParams = {}
