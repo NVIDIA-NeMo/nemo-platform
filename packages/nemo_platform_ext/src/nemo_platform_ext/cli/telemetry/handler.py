@@ -22,10 +22,10 @@ from collections.abc import Coroutine
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, ClassVar, Protocol
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit, urlunsplit
 
-from pydantic import BaseModel
+from nemo_platform_ext.cli.telemetry.events import PlatformTelemetryEvent
 
 if TYPE_CHECKING:
     import httpx
@@ -36,17 +36,6 @@ DEFAULT_ENDPOINT = "https://events.telemetry.data.nvidia.com/v1.1/events/json"
 MAX_RETRIES = 3
 CPU_ARCHITECTURE = platform.uname().machine
 logger = logging.getLogger(__name__)
-
-
-class PlatformTelemetryEvent(Protocol):
-    """Protocol for telemetry events. Task 2 will define the concrete PlatformTelemetryEvent model."""
-
-    _event_name: ClassVar[str]
-    _schema_version: ClassVar[str]
-
-    def model_dump(self, *, by_alias: bool = False, mode: str = "python") -> dict[str, Any]:
-        """Serialize the event to a dictionary."""
-        ...
 
 
 def _telemetry_enabled() -> bool:
@@ -77,7 +66,7 @@ def _session_prefix() -> str | None:
 
 @dataclass
 class QueuedEvent:
-    event: object
+    event: PlatformTelemetryEvent
     timestamp: datetime
     retry_count: int = 0
 
@@ -328,9 +317,7 @@ class TelemetryHandler:
     def enqueue(self, event: object) -> None:
         if not _telemetry_enabled():
             return
-        if not isinstance(event, BaseModel):
-            return
-        if not hasattr(event, "_event_name"):
+        if not isinstance(event, PlatformTelemetryEvent):
             return
         queued = QueuedEvent(event=event, timestamp=datetime.now(timezone.utc))
         with self._queue_lock:

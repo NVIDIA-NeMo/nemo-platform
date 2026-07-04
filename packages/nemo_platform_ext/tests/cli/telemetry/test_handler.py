@@ -5,9 +5,11 @@ import asyncio
 import importlib
 import threading
 from datetime import datetime, timezone
+from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from nemo_platform_ext.cli.telemetry.events import PlatformTelemetryEvent
 from nemo_platform_ext.cli.telemetry.handler import (
     QueuedEvent,
     TelemetryHandler,
@@ -16,7 +18,7 @@ from nemo_platform_ext.cli.telemetry.handler import (
     _telemetry_endpoint,
     build_payload,
 )
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 telemetry_module = importlib.import_module("nemo_platform_ext.cli.telemetry.handler")
 
@@ -26,17 +28,18 @@ telemetry_module = importlib.import_module("nemo_platform_ext.cli.telemetry.hand
 # =============================================================================
 
 
-class _StubEvent(BaseModel):
-    """Minimal event model for testing. Task 2 will define the concrete PlatformTelemetryEvent."""
+class _StubEvent(PlatformTelemetryEvent):
+    """Minimal concrete event for testing, subclassing the real PlatformTelemetryEvent.
 
-    _event_name: str = "stub_event"
-    _schema_version: str = "1.9"
+    ``task_status`` and ``deployment_type`` are redeclared as plain strings to shed
+    the base's serialization aliases, so the handler tests keep asserting the
+    snake_case keys the Task 1 handler emitted.
+    """
+
+    _event_name: ClassVar[str] = "stub_event"
     task: str = Field(default="test_task")
     task_status: str = Field(default="completed")
     deployment_type: str = Field(default="sdk")
-
-    class Config:
-        validate_assignment = True
 
 
 # =============================================================================
