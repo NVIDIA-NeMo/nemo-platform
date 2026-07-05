@@ -80,6 +80,26 @@ from nemo_platform.config.models import (
 
 SETUP_MOD = "nemo_platform.cli.commands.setup"
 
+
+@pytest.fixture(autouse=True)
+def _silence_telemetry():
+    """Silence stray telemetry side effects across this module.
+
+    These are direct-call unit tests with no telemetry intent. Several exercise
+    the real setup wrappers (`_create_provider`, `_wait_for_models`,
+    `_deploy_demo_agent`, `_auto_setup`), which call the real `emit_event`. With
+    telemetry enabled by default that constructs a `TelemetryHandler` and
+    schedules `_flush_events`, whose orphaned coroutine surfaces later as a
+    "coroutine ... was never awaited" RuntimeWarning (blamed on whichever
+    mock-heavy test triggers GC, not the emitting one). Patch emit_event at module
+    scope so no handler is ever built. No test in this file asserts on emit_event
+    (the telemetry assertions live in test_onboarding_events.py), so this weakens
+    nothing.
+    """
+    with patch("nemo_platform.cli.telemetry.emit.emit_event"):
+        yield
+
+
 # ---------------------------------------------------------------------------
 # KnownProvider catalog tests
 # ---------------------------------------------------------------------------

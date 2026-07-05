@@ -45,6 +45,8 @@ from nemo_platform.cli.commands.skills.base import Scope, Skill
 from nemo_platform.cli.commands.skills.registry import get_installer, load_skills
 from nemo_platform.cli.core.context import CLIContext
 from nemo_platform.cli.core.errors import handle_errors
+from nemo_platform.cli.telemetry import emit
+from nemo_platform.cli.telemetry.events import OnboardingStepEvent, TaskStatusEnum
 from nemo_platform.config.config import Config
 from nemo_platform.config.models import ConfigFile, ConfigParams, LocalServicesConfig
 from nemo_platform.ui.prompts import (
@@ -423,7 +425,16 @@ def _create_provider(
             kwargs["required_extra_headers"] = {header_name.strip(): header_value.strip()}
     if default_extra_headers:
         kwargs["default_extra_headers"] = default_extra_headers
-    client.inference.providers.create(**kwargs)
+    try:
+        client.inference.providers.create(**kwargs)
+    except Exception:
+        emit.emit_event(
+            OnboardingStepEvent(step="provider_connected", task_status=TaskStatusEnum.ERROR, provider_type=name)
+        )
+        raise
+    emit.emit_event(
+        OnboardingStepEvent(step="provider_connected", task_status=TaskStatusEnum.COMPLETED, provider_type=name)
+    )
 
 
 def _update_provider(
@@ -450,7 +461,51 @@ _PROVIDER_UNHEALTHY_STATUSES = frozenset({"ERROR", "LOST"})
 _NON_COMPLIANT_MARKER = "Non-OpenAI compliant"
 
 
+def _bucket_model_count(count: int) -> str:
+    """Bucket a discovered-model count into a coarse range for telemetry.
+
+    Keeps the emitted value low-cardinality (no exact counts leave the machine).
+    """
+    if count <= 0:
+        return "0"
+    if count <= 5:
+        return "1-5"
+    if count <= 20:
+        return "6-20"
+    if count <= 100:
+        return "21-100"
+    return "101+"
+
+
 def _wait_for_models(
+    client: NeMoPlatform,
+    provider_name: str,
+    workspace: str,
+    host_url: str = "",
+    round_seconds: int = _MODEL_DISCOVERY_ROUND_SECONDS,
+    max_rounds: int = _MODEL_DISCOVERY_MAX_ROUNDS,
+) -> list[str]:
+    """Poll for served models and emit one ``models_discovered`` event.
+
+    Thin telemetry wrapper around :func:`_wait_for_models_impl`: COMPLETED with
+    the discovered-count bucket on success, ERROR (re-raised) if polling blows up.
+    """
+    try:
+        models = _wait_for_models_impl(client, provider_name, workspace, host_url, round_seconds, max_rounds)
+    except Exception:
+        emit.emit_event(OnboardingStepEvent(step="models_discovered", task_status=TaskStatusEnum.ERROR))
+        raise
+    emit.emit_event(
+        OnboardingStepEvent(
+            step="models_discovered",
+            task_status=TaskStatusEnum.COMPLETED,
+            models_discovered_bucket=_bucket_model_count(len(models)),
+        )
+    )
+    return models
+
+
+def _wait_for_models_impl(
     client: NeMoPlatform,
     provider_name: str,
     workspace: str,
@@ -930,20 +985,30 @@ def _run_skill_install(
         console.print(f"  {WARN} No skills selected to install.")
         return
 
-    successes = 0
-    failures = 0
-    for agent in agents:
-        try:
-            installer = get_installer(agent)
-            installer.install(scope, project_root, chosen)
-            console.print(f"  {CHECK} Installed {len(chosen)} skill(s) for {agent}")
-            successes += 1
-        except Exception as exc:
-            console.print(f"  {WARN} Failed to install skills for {agent}: {exc}")
-            failures += 1
+    skills_target = ",".join(agents)
+    try:
+        successes = 0
+        failures = 0
+        for agent in agents:
+            try:
+                installer = get_installer(agent)
+                installer.install(scope, project_root, chosen)
+                console.print(f"  {CHECK} Installed {len(chosen)} skill(s) for {agent}")
+                successes += 1
+            except Exception as exc:
+                console.print(f"  {WARN} Failed to install skills for {agent}: {exc}")
+                failures += 1
 
-    if failures and not successes:
-        raise typer.Exit(1)
+        if failures and not successes:
+            raise typer.Exit(1)
+    except Exception:
+        emit.emit_event(
+            OnboardingStepEvent(step="skills_installed", task_status=TaskStatusEnum.ERROR, skills_target=skills_target)
+        )
+        raise
+    emit.emit_event(
+        OnboardingStepEvent(step="skills_installed", task_status=TaskStatusEnum.COMPLETED, skills_target=skills_target)
+    )
 
 
 def _parse_csv_flag(value: str | None) -> list[str] | None:
@@ -1160,6 +1225,25 @@ def _agents_api_ready(base_url: str, workspace: str) -> bool:
 
 
 def _deploy_demo_agent(base_url: str, workspace: str, config_path: Traversable, default_model: str) -> bool:
+    """Deploy the demo agent and emit one ``agent_deployed`` event.
+
+    Telemetry wrapper around :func:`_deploy_demo_agent_impl`: COMPLETED with the
+    deployment outcome as ``agent_deployed`` on success, ERROR (re-raised) on failure.
+    """
+    try:
+        deployed = _deploy_demo_agent_impl(base_url, workspace, config_path, default_model)
+    except Exception:
+        emit.emit_event(
+            OnboardingStepEvent(step="agent_deployed", task_status=TaskStatusEnum.ERROR, agent_deployed=False)
+        )
+        raise
+    emit.emit_event(
+        OnboardingStepEvent(step="agent_deployed", task_status=TaskStatusEnum.COMPLETED, agent_deployed=deployed)
+    )
+    return deployed
+
+
+def _deploy_demo_agent_impl(base_url: str, workspace: str, config_path: Traversable, default_model: str) -> bool:
     """Create and deploy the demo calculator agent. Returns True on success."""
     # Optional plugin: import here so ``nemo setup`` works without nemo-agents installed.
     from nemo_agents_plugin.utils import expand_env_vars
@@ -1711,30 +1795,43 @@ def setup_command(
     skills_agents_list = _parse_csv_flag(skills_agents)
     skills_from_list = _parse_csv_flag(skills_from)
 
-    if auto:
-        _run_auto_mode(
-            cli_context,
-            client,
-            workspace,
-            base_url,
-            install_skills,
-            deploy_agent,
-            skills_agents=skills_agents_list,
-            skills_scope=skills_scope,
-            skills_from=skills_from_list,
-        )
-    else:
-        _run_interactive_mode(
-            cli_context,
-            client,
-            workspace,
-            base_url,
-            install_skills,
-            deploy_agent,
-            skills_agents=skills_agents_list,
-            skills_scope=skills_scope,
-            skills_from=skills_from_list,
-        )
+    try:
+        if auto:
+            _run_auto_mode(
+                cli_context,
+                client,
+                workspace,
+                base_url,
+                install_skills,
+                deploy_agent,
+                skills_agents=skills_agents_list,
+                skills_scope=skills_scope,
+                skills_from=skills_from_list,
+            )
+        else:
+            _run_interactive_mode(
+                cli_context,
+                client,
+                workspace,
+                base_url,
+                install_skills,
+                deploy_agent,
+                skills_agents=skills_agents_list,
+                skills_scope=skills_scope,
+                skills_from=skills_from_list,
+            )
+    except typer.Exit as exc:
+        # A clean user-cancel raises typer.Exit(0); that is a normal end of the
+        # flow, not a failure, so it must not corrupt the onboarding funnel.
+        # Only a non-zero exit code counts as ERROR. Re-raise unchanged either way.
+        status = TaskStatusEnum.COMPLETED if exc.exit_code == 0 else TaskStatusEnum.ERROR
+        emit.emit_event(OnboardingStepEvent(step="setup_finished", task_status=status))
+        raise
+    except Exception:
+        # Any real (non-Exit) failure: setup did not finish cleanly.
+        emit.emit_event(OnboardingStepEvent(step="setup_finished", task_status=TaskStatusEnum.ERROR))
+        raise
+    emit.emit_event(OnboardingStepEvent(step="setup_finished", task_status=TaskStatusEnum.COMPLETED))
 
 
 def _run_auto_mode(
@@ -1770,6 +1867,16 @@ def _run_auto_mode(
             break
         if attempt < _MODEL_DISCOVERY_MAX_ROUNDS - 1:
             console.print(f"  {WARN} Models not available yet, retrying...")
+
+    # Auto mode discovers models via an inline loop rather than _wait_for_models,
+    # so emit the models_discovered event here to cover the non-interactive path.
+    emit.emit_event(
+        OnboardingStepEvent(
+            step="models_discovered",
+            task_status=TaskStatusEnum.COMPLETED,
+            models_discovered_bucket=_bucket_model_count(len(entity_ids)),
+        )
+    )
 
     default_model = os.environ.get("NEMO_DEFAULT_MODEL", "").strip()
     if not default_model and entity_ids:
