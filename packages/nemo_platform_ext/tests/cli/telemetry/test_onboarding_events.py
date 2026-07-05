@@ -13,6 +13,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+import typer
 from nemo_platform.resources.inference.providers import ProvidersResource
 from nemo_platform_ext.cli.commands.setup import (
     _bucket_model_count,
@@ -20,6 +21,7 @@ from nemo_platform_ext.cli.commands.setup import (
     _deploy_demo_agent,
     _run_skill_install,
     _wait_for_models,
+    setup_command,
 )
 from nemo_platform_ext.cli.commands.skills.base import Scope, Skill
 from nemo_platform_ext.cli.telemetry.events import TaskStatusEnum
@@ -237,3 +239,69 @@ class TestBucketModelCount:
     )
     def test_buckets(self, count, expected):
         assert _bucket_model_count(count) == expected
+
+
+class TestSetupFinishedTelemetry:
+    """setup_finished must reflect the real outcome of the dispatch.
+
+    A clean user-cancel raises typer.Exit(0); that is a normal end, not a
+    failure, so it must emit COMPLETED. Any non-zero Exit (or real exception)
+    emits ERROR. In every case the Exit propagates unchanged.
+    """
+
+    def _run(self, emit, dispatch_exc):
+        """Drive setup_command to the auto/interactive dispatch, patching all
+        preamble so only the dispatch outcome matters. `dispatch_exc` is raised
+        from _run_interactive_mode; None means a clean finish."""
+        ctx = MagicMock(spec=typer.Context)
+        ctx.obj = MagicMock()
+        ctx.obj.get_base_url.return_value = "http://localhost:3000"
+
+        interactive = MagicMock()
+        if dispatch_exc is not None:
+            interactive.side_effect = dispatch_exc
+
+        with (
+            patch(f"{SETUP_MOD}.console"),
+            patch(f"{SETUP_MOD}.is_interactive", return_value=True),
+            patch(f"{SETUP_MOD}._maybe_start_services"),
+            patch(f"{SETUP_MOD}._check_platform_reachable_with_retries", return_value=True),
+            patch(f"{SETUP_MOD}._bootstrap_config_if_missing"),
+            patch(f"{SETUP_MOD}._run_interactive_mode", interactive),
+        ):
+            setup_command(ctx)
+
+    @patch(EMIT_TARGET)
+    def test_clean_exit_zero_emits_completed(self, emit):
+        with pytest.raises(typer.Exit) as exc_info:
+            self._run(emit, typer.Exit(0))
+        assert exc_info.value.exit_code == 0
+        finished = [c.args[0] for c in emit.call_args_list if c.args[0].step == "setup_finished"]
+        assert len(finished) == 1
+        assert finished[0].task_status == TaskStatusEnum.COMPLETED
+
+    @patch(EMIT_TARGET)
+    def test_default_exit_emits_completed(self, emit):
+        # typer.Exit() defaults to exit_code 0, so a bare Exit is a clean end too.
+        with pytest.raises(typer.Exit):
+            self._run(emit, typer.Exit())
+        finished = [c.args[0] for c in emit.call_args_list if c.args[0].step == "setup_finished"]
+        assert len(finished) == 1
+        assert finished[0].task_status == TaskStatusEnum.COMPLETED
+
+    @patch(EMIT_TARGET)
+    def test_nonzero_exit_emits_error(self, emit):
+        with pytest.raises(typer.Exit) as exc_info:
+            self._run(emit, typer.Exit(1))
+        assert exc_info.value.exit_code == 1
+        finished = [c.args[0] for c in emit.call_args_list if c.args[0].step == "setup_finished"]
+        assert len(finished) == 1
+        assert finished[0].task_status == TaskStatusEnum.ERROR
+
+    @patch(EMIT_TARGET)
+    def test_real_exception_emits_error(self, emit):
+        with pytest.raises(RuntimeError):
+            self._run(emit, RuntimeError("boom"))
+        finished = [c.args[0] for c in emit.call_args_list if c.args[0].step == "setup_finished"]
+        assert len(finished) == 1
+        assert finished[0].task_status == TaskStatusEnum.ERROR

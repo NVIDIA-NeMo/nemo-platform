@@ -1820,9 +1820,15 @@ def setup_command(
                 skills_scope=skills_scope,
                 skills_from=skills_from_list,
             )
+    except typer.Exit as exc:
+        # A clean user-cancel raises typer.Exit(0); that is a normal end of the
+        # flow, not a failure, so it must not corrupt the onboarding funnel.
+        # Only a non-zero exit code counts as ERROR. Re-raise unchanged either way.
+        status = TaskStatusEnum.COMPLETED if exc.exit_code == 0 else TaskStatusEnum.ERROR
+        emit.emit_event(OnboardingStepEvent(step="setup_finished", task_status=status))
+        raise
     except Exception:
-        # Covers a non-zero typer.Exit (including the exit(0) raised on user
-        # cancel) and any real failure: setup did not finish cleanly.
+        # Any real (non-Exit) failure: setup did not finish cleanly.
         emit.emit_event(OnboardingStepEvent(step="setup_finished", task_status=TaskStatusEnum.ERROR))
         raise
     emit.emit_event(OnboardingStepEvent(step="setup_finished", task_status=TaskStatusEnum.COMPLETED))
