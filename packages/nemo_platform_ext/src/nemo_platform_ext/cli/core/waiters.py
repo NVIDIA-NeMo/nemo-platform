@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from datetime import datetime
 from typing import Any
@@ -26,6 +27,7 @@ from rich.console import Console
 from rich.live import Live
 from rich.text import Text
 
+logger = logging.getLogger(__name__)
 console = Console()
 
 _TRANSIENT_GATEWAY_STATUS_CODES = {429, 502, 503, 504}
@@ -53,6 +55,48 @@ def _seconds_since_creation(entry_timestamp: datetime | str | None, created_at: 
 
 def _status_text(status: Any) -> str:
     return str(status or "")
+
+
+def _emit_job_run_event(job_status: Any, *, resource_label: str, status: str, start_time: float) -> None:
+    """Emit a ``job_run`` telemetry event for a terminal platform job.
+
+    Best effort: never raises and never affects the waiter's return value.
+    """
+    try:
+        from nemo_platform_ext.cli.telemetry.emit import emit_event
+        from nemo_platform_ext.cli.telemetry.events import JobRunEvent, TaskStatusEnum
+
+        status_map = {
+            "completed": TaskStatusEnum.COMPLETED,
+            "error": TaskStatusEnum.ERROR,
+            "cancelled": TaskStatusEnum.CANCELED,
+        }
+        task_status = status_map.get(status, TaskStatusEnum.UNDEFINED)
+
+        details = getattr(job_status, "status_details", None)
+        if not isinstance(details, dict):
+            details = {}
+
+        plugins: set[str] = set()
+        for step in getattr(job_status, "steps", None) or []:
+            step_name = getattr(step, "name", "") or ""
+            prefix = step_name.split(".", 1)[0]
+            if prefix:
+                plugins.add(prefix)
+
+        emit_event(
+            JobRunEvent(
+                task_status=task_status,
+                job_type=resource_label,
+                duration_sec=float(time.time() - start_time),
+                plugins=sorted(plugins),
+                model=details.get("model", "undefined"),
+                input_tokens=details.get("input_tokens", -1),
+                output_tokens=details.get("output_tokens", -1),
+            )
+        )
+    except Exception:
+        logger.debug("Failed to emit job_run telemetry event", exc_info=True)
 
 
 def _make_history_line(
@@ -270,11 +314,17 @@ def wait_for_platform_job(
 
             if current_status == "completed":
                 live.stop()
+                _emit_job_run_event(
+                    job_status, resource_label=resource_label, status=current_status, start_time=start_time
+                )
                 console.print(f"\n[green]✓ {resource_label.title()} completed![/green]")
                 return True
 
             if current_status in {"cancelled", "error"}:
                 live.stop()
+                _emit_job_run_event(
+                    job_status, resource_label=resource_label, status=current_status, start_time=start_time
+                )
                 console.print(f"\n[red]✗ {resource_label.title()} entered {current_status} state[/red]")
                 return False
 
