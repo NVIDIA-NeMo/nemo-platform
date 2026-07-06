@@ -883,7 +883,4 @@ class LLMRailsCache:
         rails._explain_info = None
         # Even when no main LLM is provided, clear the previous lease's model
         # so a warmed or reused instance cannot leak routing across requests.
-        if main_llm is None:
-            rails.llm = None
-            return
         rails.update_llm(main_llm)
