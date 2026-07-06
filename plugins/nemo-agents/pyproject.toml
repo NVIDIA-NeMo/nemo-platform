@@ -40,6 +40,7 @@ agents = "nemo_agents_plugin.skills:skills_dir"
 "agents.evaluate-suite" = "nemo_agents_plugin.jobs.evaluate_suite:EvaluateSuiteJob"
 "agents.analyze" = "nemo_agents_plugin.jobs.analyze_batch:AnalyzeBatchJob"
 "agents.optimize-skills" = "nemo_agents_plugin.jobs.optimize_skills:OptimizeSkillsJob"
+"agents.harden" = "nemo_agents_plugin.jobs.harden_agent:HardenAgentJob"
 
 [project.entry-points."nemo.controllers"]
 "agents-deployment" = "nemo_agents_plugin.runner.controller:AgentDeploymentController"
