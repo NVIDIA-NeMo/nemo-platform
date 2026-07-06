@@ -199,7 +199,7 @@ export const JobDatasetEditorSection: FC = () => {
           File
         </Text>
         <SelectRoot
-          value={selectedPath ?? undefined}
+          value={selectedPath ?? defaultPath ?? undefined}
           onValueChange={(value: string) => setSelectedPath(value)}
         >
           <SelectTrigger
@@ -253,7 +253,7 @@ export const JobDatasetEditorSection: FC = () => {
     }
 
     if (parsed.error) {
-      return <Empty title="Could not parse file" description={parsed.error} />;
+      return centered(<Empty title="Could not parse file" description={parsed.error} />);
     }
 
     return (

@@ -18,7 +18,15 @@ import { useDataDesignerArtifactsFileset } from '@studio/routes/DataDesignerJobD
 import { getFilesetDetailsRoute } from '@studio/routes/utils';
 import { getHumanReadableFileSize } from '@studio/util/files';
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useState, type ComponentProps, type FC } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ComponentProps,
+  type FC,
+  type ReactNode,
+} from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 type FileRow = FilesetFileOutput & { id: string };
@@ -31,6 +39,15 @@ function fileRowToSystemFile(row: FileRow): FileSystemFile {
     oid: row.file_ref,
   };
 }
+
+const centeredCard = (children: ReactNode) => (
+  <Card
+    className="min-w-0 w-full"
+    attributes={{ CardContent: { className: 'flex justify-center items-center' } }}
+  >
+    {children}
+  </Card>
+);
 
 export const JobOutputFilesetSection: FC = () => {
   const navigate = useNavigate();
@@ -142,14 +159,7 @@ export const JobOutputFilesetSection: FC = () => {
   }, [filesetWorkspace, filesetName]);
 
   if (isResultsLoading && !artifactsResult) {
-    return (
-      <Card
-        className="min-w-0 w-full"
-        attributes={{ CardContent: { className: 'flex justify-center items-center' } }}
-      >
-        <Spinner description="Loading job results..." />
-      </Card>
-    );
+    return centeredCard(<Spinner description="Loading job results..." />);
   }
 
   if (isResultsError) {
@@ -159,14 +169,7 @@ export const JobOutputFilesetSection: FC = () => {
       resultsError instanceof Error
         ? resultsError.message
         : 'The job results list could not be loaded.';
-    return (
-      <Card
-        className="min-w-0 w-full"
-        attributes={{ CardContent: { className: 'flex justify-center items-center' } }}
-      >
-        <Empty title={errorTitle} description={errorMessage} />
-      </Card>
-    );
+    return centeredCard(<Empty title={errorTitle} description={errorMessage} />);
   }
 
   if (!artifactsResult) {
@@ -174,16 +177,9 @@ export const JobOutputFilesetSection: FC = () => {
       ? 'No artifacts result was returned for this job.'
       : 'Output files will appear here once the job registers its artifacts result.';
     const emptyDescription = isTerminal
-      ? 'No artifacts result was returned for this job.'
-      : 'Output files will appear here once the job registers its artifacts result.';
-    return (
-      <Card
-        className="min-w-0 w-full"
-        attributes={{ CardContent: { className: 'flex justify-center items-center' } }}
-      >
-        <Empty title={emptyTitle} description={emptyDescription} />
-      </Card>
-    );
+      ? 'This job completed but did not produce an artifacts result.'
+      : 'Check back after the job registers its artifacts result.';
+    return centeredCard(<Empty title={emptyTitle} description={emptyDescription} />);
   }
 
   if (!filesetLoc) {
