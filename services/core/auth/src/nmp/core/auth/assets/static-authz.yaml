@@ -255,6 +255,8 @@ authz:
       update:
         description: "Update secrets"
     workspaces:
+      create:
+        description: "Create workspaces"
       delete:
         description: "Delete workspaces"
       list:
@@ -389,6 +391,10 @@ authz:
       - workspaces.members.delete
       - models.trust-remote-code.set
       - models.tool-call-plugin.set
+    WorkspaceCreator:
+      description: "Create new workspaces"
+      permissions:
+      - workspaces.create
     PlatformAdmin:
       description: "Platform-wide administrative access"
       permissions:
@@ -461,8 +467,11 @@ authz:
         - entities:read
         - platform:read
       post:
-        permissions: []
-        scopes: []
+        permissions:
+        - workspaces.create
+        scopes:
+        - entities:write
+        - platform:write
     /apis/entities/v2/workspaces/{name}:
       delete:
         permissions:

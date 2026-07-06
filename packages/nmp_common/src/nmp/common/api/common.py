@@ -9,8 +9,9 @@ from typing import Generic, List, Optional, TypeVar
 
 from nemo_platform_plugin.schema import Page as Page
 from nemo_platform_plugin.schema import PaginationData as PaginationData
+from nemo_platform_plugin.schema import SecretRef as SecretRef
 from nemo_platform_plugin.schema import Value
-from pydantic import BaseModel, Field, RootModel, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from starlette.responses import StreamingResponse
 
 T = TypeVar("T")
@@ -150,14 +151,3 @@ class DateRange(BaseModel):
             if self.start >= self.end:
                 raise ValueError("Start date must be before end date")
         return self
-
-
-class SecretRef(RootModel):
-    root: str = Field(
-        description="Reference to a secret. Format: 'secret_name' (uses request workspace) or 'workspace/secret_name' (explicit workspace).",
-        pattern=r"^[a-z0-9_-]+(/[a-z0-9_-]+)?$",
-        examples=[
-            "my-secret",
-            "my-workspace/my-secret",
-        ],
-    )

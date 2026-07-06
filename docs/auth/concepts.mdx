@@ -145,9 +145,10 @@ flowchart TB
 
 ### Workspace Creation
 
-Creating a workspace is a special operation:
+Creating a workspace is a system-scoped RBAC operation:
 
-- All authenticated users can create workspaces (no special permission needed)
+- By default, all authenticated users can create workspaces because platform seed grants `WorkspaceCreator` to the wildcard principal `*` in the `system` workspace
+- Operators can restrict workspace creation by removing that wildcard binding and granting `WorkspaceCreator` only to specific users or groups
 - The creator automatically receives the **Admin** role
 - New workspaces are private by default (only the creator has access)
 - You can immediately start creating resources
@@ -158,6 +159,7 @@ NeMo Platform automatically provisions role bindings for the wildcard principal 
 
 - **`default`**: All authenticated users have **Editor** role, allowing everyone to create and manage resources immediately
 - **`system`**: All authenticated users have **Viewer** role, providing read-only access to system-level resources
+- **`system`**: All authenticated users also receive the seeded **WorkspaceCreator** role, preserving open workspace creation until operators rebind it
 
 ## Workspace Visibility
 

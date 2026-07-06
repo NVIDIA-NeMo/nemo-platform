@@ -322,9 +322,9 @@ def infer_permissions(path: str, method: str) -> List[str]:
         elif "embeddings" in path:
             return ["inference.embeddings"]
 
-    # Special case for workspace creation (empty permissions — open to authenticated users)
+    # Special case for workspace creation (system-scoped RBAC, not workspace-scoped RBAC)
     if path.endswith("/workspaces") and method == "post":
-        return []
+        return ["workspaces.create"]
 
     # Special case for workspace members (permission lives under workspaces.* regardless
     # of which API area exposes the route, e.g. /apis/entities/v2/workspaces/{ws}/members)
@@ -383,9 +383,9 @@ def infer_scopes(path: str, method: str) -> List[str]:
     Every endpoint gets both an area-specific scope (e.g. models:read) and
     the corresponding platform catch-all scope (platform:read/platform:write).
     """
-    # Special case for workspace creation (empty scopes - open to all authenticated users)
+    # Special case for workspace creation (normal write scopes despite no workspace in path)
     if path.endswith("/workspaces") and method == "post":
-        return []
+        return ["entities:write", "platform:write"]
 
     # Determine read/write based on method
     is_write = method in ["post", "put", "patch", "delete"]

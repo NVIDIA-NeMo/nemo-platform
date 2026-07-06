@@ -12,33 +12,18 @@ converted, so the canonical job spec and execution path only ever see runtime
 
 from __future__ import annotations
 
-from typing import Any, TypeAlias
+from typing import Any
 
-from nemo_evaluator.api.schemas import MetricInline
+# ``MetricRef`` / ``MetricRefOrInline`` are defined in ``api.schemas`` (next to ``MetricInline``) so
+# entity/DTO modules can reference them without importing this module's entities-dependent resolution
+# logic (which would create an import cycle). Imported here for use below and re-exported for the
+# existing ``nemo_evaluator.metric_refs`` import sites.
+from nemo_evaluator.api.schemas import MetricRef, MetricRefOrInline
 from nemo_evaluator.entities import MetricBundleEntity
 from nemo_evaluator.metric_storage import load_bundle
 from nemo_evaluator.shared.metric_bundles.bundles import MetricBundle
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.entities import EntityNotFoundError
-from pydantic import Field, RootModel
-
-# A reference is ``name`` or ``workspace/name``, each segment using the platform
-# name charset. Enforced on the field so empty/malformed refs are rejected at
-# validation time rather than during parsing.
-_METRIC_REF_PATTERN = r"^[\w\-.]+(/[\w\-.]+)?$"
-
-
-class MetricRef(RootModel[str]):
-    """Reference to a persisted metric (format: ``workspace/name`` or ``name``)."""
-
-    root: str = Field(
-        pattern=_METRIC_REF_PATTERN,
-        description="Reference to a stored metric (format: workspace/metric-name, or metric-name in the job workspace).",
-    )
-
-
-#: A wire metric is either an inline bundle DTO or a reference to a stored metric.
-MetricRefOrInline: TypeAlias = MetricInline | MetricRef
 
 
 def parse_metric_ref(root: str, default_workspace: str) -> tuple[str, str]:

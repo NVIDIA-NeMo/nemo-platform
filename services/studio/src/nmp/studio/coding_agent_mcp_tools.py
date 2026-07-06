@@ -226,12 +226,14 @@ STUDIO_CODING_AGENT_CONTEXT = "\n".join(
         ),
         (
             "For clarification, multiple-choice, yes/no, or freeform questions that do NOT map to one of "
-            "the select_* tools, use Claude Code's AskUserQuestion tool rather than writing a "
-            "questionnaire in markdown."
+            "the select_* tools, use Claude Code's AskUserQuestion tool rather than a questionnaire "
+            "in markdown."
         ),
         (
-            "Only fall back to plain chat questions when no suitable UI tool is available, the user "
-            "already provided the value, or the UI tool returns skipped or error."
+            "Only fall back to plain chat questions when no suitable UI tool exists, the user already "
+            "provided the value, or the user explicitly skips the UI tool. A timeout, disconnect, or "
+            "other UI-tool error is not permission to continue or repeat the question in plain text; "
+            "leave the input unresolved and tell the user the interactive request must be retried."
         ),
         (
             "Set UI tool titles, descriptions, display labels, and output_key values to match the "

@@ -95,7 +95,7 @@ curl -sf http://localhost:8080/health/ready
 uv run python -m nmp.platform_seed
 ```
 
-`uv run nemo-platform run task --task nmp.platform_seed` is equivalent. The seed task is idempotent. It creates the **PlatformAdmin** binding in the `system` workspace for `auth.admin_email`, the wildcard **Editor** binding for the default workspace, and the wildcard **Viewer** binding for the `system` workspace. Without this step, OIDC login can succeed but admin operations may still return `403 Forbidden` because the RBAC bindings are missing.
+`uv run nemo-platform run task --task nmp.platform_seed` is equivalent. The seed task is idempotent. It creates the **PlatformAdmin** binding in the `system` workspace for `auth.admin_email`, the wildcard **Editor** binding for the default workspace, the wildcard **Viewer** binding for the `system` workspace, and the wildcard **WorkspaceCreator** binding for the `system` workspace. Without this step, OIDC login can succeed but admin operations may still return `403 Forbidden` because the RBAC bindings are missing.
 
 When setup completes, try chatting with the model you selected. Use the model name shown at the end of setup (or find it with `nemo models list`):
 

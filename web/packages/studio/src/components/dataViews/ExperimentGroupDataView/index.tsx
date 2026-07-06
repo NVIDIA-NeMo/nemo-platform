@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { dateTimeFilter } from '@nemo/common/src/components/DataView/dateTimeFilter';
+import { numberRangeFilter } from '@nemo/common/src/components/DataView/FilterPanel/NumberRangeFilter/util';
 import {
   Root as DataViewRoot,
   EditColumnsMenu,
@@ -62,6 +63,13 @@ const seedSortFromDefault = (
   return id ? { id, desc } : undefined;
 };
 
+// Maps filterable column ids to their API rollup-stat filter field. The dotted key
+// (e.g. `latency_ms.mean`) is required by the backend's rollup-metric filter parser;
+// the nested shape (`latency_ms.mean` split into objects) is rejected.
+const FILTER_FIELD_MAP: Readonly<Record<string, string>> = {
+  latency_ms: 'latency_ms.mean',
+};
+
 const getExperimentSortParam = (
   sortingState: { id: string; desc: boolean }[]
 ): ListExperimentsSortParam | undefined => {
@@ -109,6 +117,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
     columnVisibility: { created_by: false, updated_at: false },
     // Keep the pin toggle reachable while horizontally scrolling this wide table.
     columnPinning: { left: ['pin'] },
+    filterFieldMap: FILTER_FIELD_MAP,
   });
 
   const page = dataViewState.pagination.state.pageIndex + 1;
@@ -336,7 +345,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
       accessor((original) => original.latency_ms?.mean, {
         id: 'latency_ms',
         header: 'Avg Latency',
-        meta: { title: false },
+        meta: { title: false, filter: numberRangeFilter('Avg Latency') },
         enableSorting: true,
         cell: ({ row }) => {
           const { latency_ms, run_count } = row.original;

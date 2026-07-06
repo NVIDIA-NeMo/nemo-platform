@@ -7,11 +7,21 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 from kubernetes.client.rest import ApiException
 from nemo_deployments_plugin.backends.base import BackendStatusUpdate, LogResult
 from nemo_deployments_plugin.backends.k8s.client import KubernetesClients, k8s_client_module
+from nemo_deployments_plugin.backends.k8s.compiler import (
+    CompiledWorkload,
+    DeploymentConfigError,
+    compile_workload,
+    create_configmap,
+    delete_configmap,
+    delete_configmap_best_effort,
+    validate_config_for_job,
+)
 from nemo_deployments_plugin.backends.k8s.status import (
     LOG_MAX_CHARS,
     missing_job_status,
@@ -24,19 +34,23 @@ from nemo_deployments_plugin.backends.labels import (
     DEPLOYMENT_WORKSPACE_LABEL,
     MANAGED_BY_KEY,
     deployment_identity_labels,
+    k8s_deployment_configmap_name,
     k8s_deployment_resource_name,
-    k8s_volume_resource_name,
     managed_by_label_selector,
 )
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
-from nemo_deployments_plugin.entities import Container, DeploymentConfig, K8sDeploymentConfig, VolumeMount
+from nemo_deployments_plugin.entities import DeploymentConfig, K8sDeploymentConfig
 from nemo_deployments_plugin.types import RestartPolicy
 
 logger = logging.getLogger(__name__)
 
 
-class DeploymentConfigError(ValueError):
-    """Invalid deployment config for k8s Job backend."""
+@dataclass(frozen=True)
+class BuiltJob:
+    """A batch/v1.Job plus the compiled workload used to build its pod template."""
+
+    job: Any
+    compiled: CompiledWorkload
 
 
 def resolve_k8s_deployment_config(backend_config: dict[str, Any]) -> K8sDeploymentConfig | None:
@@ -85,91 +99,10 @@ def trim_log_text(text: str) -> tuple[list[str], bool]:
     return lines, truncated
 
 
-def validate_config_for_job(config: DeploymentConfig) -> Container:
-    """Return the sole container spec for a Job-backed deployment."""
-    if config.init_containers:
-        raise DeploymentConfigError("init_containers are not supported by the k8s Job backend in this phase")
-    if len(config.containers) != 1:
-        raise DeploymentConfigError(f"k8s Job backend supports exactly one container; got {len(config.containers)}")
-    if config.restart_policy == "Always":
-        raise DeploymentConfigError("restart_policy Always uses Deployment, not Job")
-    return config.containers[0]
-
-
-def merged_volume_mounts(config: DeploymentConfig, container: Container) -> list[VolumeMount]:
-    mounts_by_name: dict[str, VolumeMount] = {}
-    for mount in config.volume_mounts:
-        mounts_by_name[mount.name] = mount
-    for mount in container.volume_mounts:
-        mounts_by_name[mount.name] = mount
-    return list(mounts_by_name.values())
-
-
 def job_backoff_limit(config: DeploymentConfig) -> int:
     if config.restart_policy == "Never":
         return 0
     return config.backoff_limit
-
-
-def build_env_vars(container: Container) -> list[Any]:
-    k8s = k8s_client_module()
-    return [k8s.client.V1EnvVar(name=item.name, value=item.value) for item in container.env if item.value is not None]
-
-
-def build_resource_requirements(container: Container) -> Any | None:
-    limits = container.resources.limits or None
-    requests = container.resources.requests or None
-    if not limits and not requests:
-        return None
-    k8s = k8s_client_module()
-    return k8s.client.V1ResourceRequirements(limits=limits, requests=requests)
-
-
-def build_pod_volumes(*, workspace: str, mounts: list[VolumeMount]) -> list[Any]:
-    if not mounts:
-        return []
-    k8s = k8s_client_module()
-    return [
-        k8s.client.V1Volume(
-            name=mount.name,
-            persistent_volume_claim=k8s.client.V1PersistentVolumeClaimVolumeSource(
-                claim_name=k8s_volume_resource_name(workspace, mount.name),
-            ),
-        )
-        for mount in mounts
-    ]
-
-
-def build_volume_mounts(mounts: list[VolumeMount]) -> list[Any]:
-    if not mounts:
-        return []
-    k8s = k8s_client_module()
-    return [
-        k8s.client.V1VolumeMount(
-            name=mount.name,
-            mount_path=mount.mount_path,
-            read_only=mount.read_only,
-            sub_path=mount.sub_path,
-        )
-        for mount in mounts
-    ]
-
-
-def build_container_spec(container: Container, *, volume_mounts: list[VolumeMount] | None = None) -> Any:
-    k8s = k8s_client_module()
-    kwargs: dict[str, Any] = {
-        "name": container.name,
-        "image": container.image,
-        "env": build_env_vars(container) or None,
-        "resources": build_resource_requirements(container),
-    }
-    if container.command:
-        kwargs["command"] = list(container.command)
-    if container.args:
-        kwargs["args"] = list(container.args)
-    if volume_mounts:
-        kwargs["volume_mounts"] = build_volume_mounts(volume_mounts)
-    return k8s.client.V1Container(**kwargs)
 
 
 def build_job_body(
@@ -177,21 +110,21 @@ def build_job_body(
     job_name: str,
     labels: dict[str, str],
     config: DeploymentConfig,
-    container: Container,
     workspace: str,
-) -> Any:
+    deployment_name: str,
+    k8s_config: K8sDeploymentConfig | None,
+) -> BuiltJob:
     """Build a ``batch/v1.Job`` for create."""
     k8s = k8s_client_module()
-    mounts = merged_volume_mounts(config, container)
-    pod_spec_kwargs: dict[str, Any] = {
-        "restart_policy": config.restart_policy,
-        "containers": [build_container_spec(container, volume_mounts=mounts or None)],
-    }
-    volumes = build_pod_volumes(workspace=workspace, mounts=mounts)
-    if volumes:
-        pod_spec_kwargs["volumes"] = volumes
-
-    return k8s.client.V1Job(
+    compiled = compile_workload(
+        config=config,
+        workspace=workspace,
+        deployment_name=deployment_name,
+        labels=labels,
+        k8s_config=k8s_config,
+        pod_restart_policy=config.restart_policy,
+    )
+    job = k8s.client.V1Job(
         api_version="batch/v1",
         kind="Job",
         metadata=k8s.client.V1ObjectMeta(name=job_name, labels=labels),
@@ -199,10 +132,11 @@ def build_job_body(
             backoff_limit=job_backoff_limit(config),
             template=k8s.client.V1PodTemplateSpec(
                 metadata=k8s.client.V1ObjectMeta(labels=labels),
-                spec=k8s.client.V1PodSpec(**pod_spec_kwargs),
+                spec=k8s.client.V1PodSpec(**compiled.pod_spec_kwargs),
             ),
         ),
     )
+    return BuiltJob(job=job, compiled=compiled)
 
 
 async def read_pod_exit_code(
@@ -252,7 +186,7 @@ async def create_job(
 ) -> BackendStatusUpdate:
     job_name = k8s_deployment_resource_name(workspace, name)
     try:
-        container = validate_config_for_job(config)
+        validate_config_for_job(config)
         k8s_config = resolve_k8s_deployment_config(backend_config)
         namespace = resolve_deployment_namespace(default_namespace=default_namespace, k8s_config=k8s_config)
         identity_labels = deployment_identity_labels(
@@ -263,17 +197,30 @@ async def create_job(
             backoff_limit=config.backoff_limit,
         )
         all_labels = {**labels, **config.labels, **identity_labels}
-        body = build_job_body(
+        built = build_job_body(
             job_name=job_name,
             labels=all_labels,
             config=config,
-            container=container,
             workspace=workspace,
+            deployment_name=name,
+            k8s_config=k8s_config,
         )
+        body = built.job
+        compiled = built.compiled
         timeout = clients.request_timeout
         batch_v1 = clients.batch_v1
+        core_v1 = clients.core_v1
 
         def _create() -> Any:
+            configmap_written = compiled.configmap_body is not None
+            if configmap_written:
+                create_configmap(
+                    core_v1,
+                    namespace=namespace,
+                    body=compiled.configmap_body,
+                    expected_labels=identity_labels,
+                    timeout=timeout,
+                )
             try:
                 return batch_v1.create_namespaced_job(
                     namespace=namespace,
@@ -282,10 +229,27 @@ async def create_job(
                 )
             except ApiException as exc:
                 if exc.status == 409:
-                    return batch_v1.read_namespaced_job(
+                    job = batch_v1.read_namespaced_job(
                         name=job_name,
                         namespace=namespace,
                         _request_timeout=timeout,
+                    )
+                    if not resource_labels_match(job, identity_labels) and configmap_written:
+                        delete_configmap_best_effort(
+                            core_v1,
+                            namespace=namespace,
+                            name=compiled.configmap_name,
+                            expected_labels=identity_labels,
+                            timeout=timeout,
+                        )
+                    return job
+                if configmap_written:
+                    delete_configmap_best_effort(
+                        core_v1,
+                        namespace=namespace,
+                        name=compiled.configmap_name,
+                        expected_labels=identity_labels,
+                        timeout=timeout,
                     )
                 raise
 
@@ -371,6 +335,8 @@ async def delete_job(
         namespace = resolve_deployment_namespace(default_namespace=default_namespace, k8s_config=k8s_config)
         timeout = clients.request_timeout
         batch_v1 = clients.batch_v1
+        core_v1 = clients.core_v1
+        configmap_name = k8s_deployment_configmap_name(workspace, name)
 
         def _delete() -> str | None:
             try:
@@ -381,6 +347,13 @@ async def delete_job(
                 )
             except ApiException as exc:
                 if exc.status == 404:
+                    delete_configmap(
+                        core_v1,
+                        namespace=namespace,
+                        name=configmap_name,
+                        expected_labels=expected_labels,
+                        timeout=timeout,
+                    )
                     return None
                 raise
             if not resource_labels_match(job, expected_labels):
@@ -391,10 +364,24 @@ async def delete_job(
                 propagation_policy="Background",
                 _request_timeout=timeout,
             )
+            delete_configmap(
+                core_v1,
+                namespace=namespace,
+                name=configmap_name,
+                expected_labels=expected_labels,
+                timeout=timeout,
+            )
             return "deleted"
 
         result = await asyncio.to_thread(_delete)
         if result == "foreign":
+            delete_configmap_best_effort(
+                core_v1,
+                namespace=namespace,
+                name=configmap_name,
+                expected_labels=expected_labels,
+                timeout=timeout,
+            )
             return BackendStatusUpdate(
                 status="FAILED",
                 status_message=f"Job {job_name} exists but is not managed by this plugin",

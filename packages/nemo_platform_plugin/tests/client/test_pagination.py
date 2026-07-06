@@ -64,7 +64,7 @@ class TestPaginatedSync:
         resp = client.send(LIST_ITEMS())
 
         assert isinstance(resp, NemoPaginatedResponse)
-        items = list(resp)
+        items = list(resp.items())
         assert len(items) == 2
         assert items[0].name == "a"
         assert items[1].name == "b"
@@ -85,7 +85,7 @@ class TestPaginatedSync:
         client = NemoClient(base_url=BASE, workspace="default", http_client=mock_http)
         resp = client.send(LIST_ITEMS())
 
-        items = list(resp)
+        items = list(resp.items())
         assert len(items) == 5
         assert [i.name for i in items] == ["a", "b", "c", "d", "e"]
         assert mock_http.request.call_count == 3
@@ -98,7 +98,7 @@ class TestPaginatedSync:
         client = NemoClient(base_url=BASE, workspace="default", http_client=mock_http)
         resp = client.send(LIST_ITEMS())
 
-        page = resp.data()
+        page = resp.page()
         assert len(page.items) == 1
         assert page.items[0].name == "a"
         assert page.page == 1
@@ -116,7 +116,7 @@ class TestPaginatedSync:
         client = NemoClient(base_url=BASE, workspace="default", http_client=mock_http)
         resp = client.send(LIST_ITEMS())
 
-        items = list(resp)
+        items = list(resp.items())
         assert items == []
 
     def test_no_pagination_metadata(self) -> None:
@@ -131,7 +131,7 @@ class TestPaginatedSync:
         client = NemoClient(base_url=BASE, workspace="default", http_client=mock_http)
         resp = client.send(LIST_ITEMS())
 
-        items = list(resp)
+        items = list(resp.items())
         assert len(items) == 1
         assert mock_http.request.call_count == 1
 
@@ -145,7 +145,7 @@ class TestPaginatedSync:
 
         client = NemoClient(base_url=BASE, workspace="default", http_client=mock_http)
         resp = client.send(LIST_ITEMS())
-        list(resp)  # consume all pages
+        list(resp.items())  # consume all pages
 
         # Second call should have page=2 in params
         second_call_params = mock_http.request.call_args_list[1][1]["params"]
@@ -173,7 +173,7 @@ class TestPaginatedViaMethod:
         resp = client.list_items()
 
         # Client options are applied but shouldn't break pagination
-        items = list(resp)
+        items = list(resp.items())
         assert len(items) == 1
         assert items[0].name == "a"
 
@@ -197,7 +197,7 @@ class TestPaginatedAsync:
         resp = await client.send(LIST_ITEMS())
 
         assert isinstance(resp, AsyncNemoPaginatedResponse)
-        items = [item async for item in resp]
+        items = [item async for item in resp.items()]
         assert len(items) == 2
         assert items[0].name == "a"
         assert items[1].name == "b"
@@ -211,7 +211,7 @@ class TestPaginatedAsync:
         client = AsyncNemoClient(base_url=BASE, workspace="default", http_client=mock_http)
         resp = await client.send(LIST_ITEMS())
 
-        page = resp.data()
+        page = resp.page()
         assert len(page.items) == 1
         assert page.page == 1
         assert page.total_pages == 3
@@ -245,7 +245,7 @@ class TestPaginatedRetry:
             http_client=mock_http,
             retry=RetryPolicy(max_retries=2, backoff_base=0.0),
         )
-        items = list(client.send(LIST_ITEMS()))
+        items = list(client.send(LIST_ITEMS()).items())
 
         assert len(items) == 2
         assert [i.name for i in items] == ["a", "b"]
@@ -291,7 +291,7 @@ class TestCustomStrategy:
         client = NemoClient(base_url=BASE, workspace="default", http_client=mock_http)
         resp = client.send(LIST_THINGS())
 
-        items = list(resp)
+        items = list(resp.items())
         assert len(items) == 2
         assert items[0].name == "a"
 
@@ -330,7 +330,7 @@ class TestCustomStrategy:
         ]
 
         client = NemoClient(base_url=BASE, workspace="default", http_client=mock_http)
-        items = list(client.send(LIST_THINGS()))
+        items = list(client.send(LIST_THINGS()).items())
 
         assert len(items) == 2
         # Verify the second call used "offset" not "page"

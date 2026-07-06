@@ -62,16 +62,18 @@ NO_TRUNCATE_FIELDS = {
     "{namespace}/{name}",  # Computed OpenAI path field
 }
 
-# Common field names for list items in API responses
-LIST_ITEM_FIELDS = ["data"]
+# Common field names for list items in API responses.
+# Checked in order via getattr. Callables (e.g. NemoPaginatedResponse.items)
+# are invoked; plain attributes/properties are returned directly.
+LIST_ITEM_FIELDS = ["data", "items"]
 
 
 def _extract_items_from_response(data: Any) -> list[Any]:
     """Extract list items from an API response.
 
     Handles various response formats:
-    - Paginated responses with .data attribute
-    - Non-paginated responses with .files, .items, etc.
+    - Paginated responses with .items() method (NemoPaginatedResponse)
+    - Paginated responses with .data attribute (legacy Page)
     - Plain lists
     - Dict responses
 
@@ -81,16 +83,18 @@ def _extract_items_from_response(data: Any) -> list[Any]:
     Returns:
         List of items from the response
     """
-    # Try common field names for list items
-    for field in LIST_ITEM_FIELDS:
-        if hasattr(data, field):
-            return getattr(data, field)
-        if isinstance(data, dict) and field in data:
-            return data[field]
-
-    # Handle plain lists
     if isinstance(data, list):
         return data
+
+    for field in LIST_ITEM_FIELDS:
+        if isinstance(data, dict):
+            if field in data:
+                return data[field]
+        else:
+            value = getattr(data, field, None)
+            if value is None:
+                continue
+            return list(value()) if callable(value) else value
 
     return []
 

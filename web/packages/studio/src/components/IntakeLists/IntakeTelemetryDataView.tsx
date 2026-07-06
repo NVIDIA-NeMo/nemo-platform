@@ -40,7 +40,7 @@ interface IntakeTelemetryToolbarProps<DataType = unknown> {
   searchField?: string;
   showFilters: boolean;
   onToggleFilters: () => void;
-  filterTogglePortalTargetId?: string;
+  slotEndPortalTargetId?: string;
   renderBulkActions?: (props: {
     selectedRows: DataType[];
     table: DataView.TanstackTable.Table<DataType>;
@@ -53,7 +53,7 @@ const IntakeTelemetryToolbar = <DataType,>({
   searchField,
   showFilters,
   onToggleFilters,
-  filterTogglePortalTargetId,
+  slotEndPortalTargetId,
   renderBulkActions,
   searchBarProps,
   slotEnd,
@@ -63,24 +63,28 @@ const IntakeTelemetryToolbar = <DataType,>({
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
-    setPortalTarget(
-      filterTogglePortalTargetId ? document.getElementById(filterTogglePortalTargetId) : null
-    );
-  }, [filterTogglePortalTargetId]);
+    setPortalTarget(slotEndPortalTargetId ? document.getElementById(slotEndPortalTargetId) : null);
+  }, [slotEndPortalTargetId]);
 
   const filterToggle = hasFilterableColumns ? (
     <FilterPanelToggle showFilters={showFilters} onToggle={onToggleFilters} />
   ) : null;
-  const shouldPortalToggle = Boolean(filterTogglePortalTargetId);
-  const rendersInlineToggle = Boolean(!filterTogglePortalTargetId && filterToggle);
+  const shouldPortalToggle = Boolean(slotEndPortalTargetId);
+  const rendersInlineToggle = Boolean(!slotEndPortalTargetId && filterToggle);
   const rendersToolbar = Boolean(
-    searchField || slotEnd || rendersInlineToggle || renderBulkActions
+    searchField || (!shouldPortalToggle && slotEnd) || rendersInlineToggle || renderBulkActions
   );
 
   return (
     <>
-      {shouldPortalToggle && portalTarget && filterToggle
-        ? createPortal(filterToggle, portalTarget)
+      {shouldPortalToggle && portalTarget
+        ? createPortal(
+            <>
+              {filterToggle}
+              {slotEnd}
+            </>,
+            portalTarget
+          )
         : null}
       {rendersToolbar && (
         <DataView.Toolbar
@@ -103,7 +107,7 @@ const IntakeTelemetryToolbar = <DataType,>({
               {...searchBarProps}
             />
           )}
-          {slotEnd}
+          {!shouldPortalToggle && slotEnd}
           {rendersInlineToggle ? filterToggle : null}
         </DataView.Toolbar>
       )}
@@ -124,7 +128,7 @@ export interface IntakeTelemetryDataViewProps<DataType> {
   }) => ReactNode;
   children?: ReactNode;
   toolbarSlotEnd?: ReactNode;
-  filterTogglePortalTargetId?: string;
+  slotEndPortalTargetId?: string;
   scrollContainerRef?: RefObject<HTMLDivElement | null>;
   attributes?: {
     DataViewRoot?: Omit<
@@ -148,7 +152,7 @@ export const IntakeTelemetryDataView = <DataType,>({
   scrollContainerRef,
   searchField,
   toolbarSlotEnd,
-  filterTogglePortalTargetId,
+  slotEndPortalTargetId,
 }: IntakeTelemetryDataViewProps<DataType>) => {
   const [showFilters, setShowFilters] = useState(false);
   const toggleFilters = useMemo(() => () => setShowFilters((prev) => !prev), []);
@@ -208,7 +212,7 @@ export const IntakeTelemetryDataView = <DataType,>({
           searchField={searchField}
           showFilters={showFilters}
           onToggleFilters={toggleFilters}
-          filterTogglePortalTargetId={filterTogglePortalTargetId}
+          slotEndPortalTargetId={slotEndPortalTargetId}
           renderBulkActions={renderBulkActions}
           searchBarProps={attributes?.DataViewSearchBar}
           slotEnd={toolbarSlotEnd}

@@ -118,10 +118,11 @@ const hasVisibleAssistantContent = (content: ThreadMessageLike['content']): bool
 
 const completeClaudeCodeAssistantContent = (
   content: ThreadMessageLike['content'],
-  status: MessageStatus
+  status: MessageStatus,
+  elapsedMs?: number
 ): ThreadMessageLike['content'] => {
   if (status.type !== 'complete' || !Array.isArray(content)) return content;
-  return getClaudeCodeCompletedMessageParts(content);
+  return getClaudeCodeCompletedMessageParts(content, { elapsedMs });
 };
 
 export const useCustomAssistantChatRuntime = ({
@@ -192,8 +193,17 @@ export const useCustomAssistantChatRuntime = ({
       let assistantMessageId: string | null = null;
       let responseText = '';
       let responseContent: readonly ThreadAssistantMessagePart[] | undefined;
+      let runStartedAt = Date.now();
+      let runPausedAt: number | undefined;
+
+      const resumeRunTimer = () => {
+        if (runPausedAt === undefined) return;
+        runStartedAt += Date.now() - runPausedAt;
+        runPausedAt = undefined;
+      };
 
       const createAssistantMessage = () => {
+        resumeRunTimer();
         const assistantMessage = createTextMessage('assistant', '', RUNNING_STATUS);
         assistantMessageId = assistantMessage.id!;
         responseText = '';
@@ -211,6 +221,7 @@ export const useCustomAssistantChatRuntime = ({
           return false;
         }
 
+        resumeRunTimer();
         assistantMessageId = lastMessage.id;
         responseContent = getAssistantMessageParts(lastMessage);
         responseText = getAssistantPartsText(responseContent);
@@ -242,7 +253,7 @@ export const useCustomAssistantChatRuntime = ({
           currentAssistantMessageId,
           options.collapseClaudeCodeContent === false
             ? content
-            : completeClaudeCodeAssistantContent(content, status),
+            : completeClaudeCodeAssistantContent(content, status, Date.now() - runStartedAt),
           status
         );
       };
@@ -293,6 +304,7 @@ export const useCustomAssistantChatRuntime = ({
         completeActiveAssistantMessage(COMPLETE_STATUS, getCurrentResponseContent(), {
           collapseClaudeCodeContent: false,
         });
+        runPausedAt ??= Date.now();
       };
 
       try {

@@ -16,7 +16,7 @@ const IntakeTracesTableRoute = lazy(() =>
   import('@studio/components/IntakeLists/IntakeTracesTable').then(({ IntakeTracesTable }) => {
     const IntakeTracesTableRouteComponent: FC = () => (
       <Stack className="flex-1 min-h-0">
-        <IntakeTracesTable filterTogglePortalTargetId={INTAKE_FILTER_ACTION_TARGET_ID} />
+        <IntakeTracesTable slotEndPortalTargetId={INTAKE_FILTER_ACTION_TARGET_ID} />
       </Stack>
     );
 
@@ -27,7 +27,7 @@ const IntakeSpansTableRoute = lazy(() =>
   import('@studio/components/IntakeLists/IntakeSpansTable').then(({ IntakeSpansTable }) => {
     const IntakeSpansTableRouteComponent: FC = () => (
       <Stack className="flex-1 min-h-0">
-        <IntakeSpansTable filterTogglePortalTargetId={INTAKE_FILTER_ACTION_TARGET_ID} />
+        <IntakeSpansTable slotEndPortalTargetId={INTAKE_FILTER_ACTION_TARGET_ID} />
       </Stack>
     );
 
@@ -37,11 +37,6 @@ const IntakeSpansTableRoute = lazy(() =>
 const IntakeTraceDetailRoute = lazy(() =>
   import('@studio/routes/IntakeTraceDetailRoute').then((module) => ({
     default: module.IntakeTraceDetailRoute,
-  }))
-);
-const IntakeSpanDetailRoute = lazy(() =>
-  import('@studio/routes/IntakeSpanDetailRoute').then((module) => ({
-    default: module.IntakeSpanDetailRoute,
   }))
 );
 
@@ -68,11 +63,6 @@ export const intakeRoutes: RouteObject[] = gateIntakeRoutes([
   {
     path: ROUTES.workspace.intakeTrace,
     element: <IntakeTraceDetailRoute />,
-    errorElement: <ErrorPanel title="Intake" />,
-  },
-  {
-    path: ROUTES.workspace.intakeSpan,
-    element: <IntakeSpanDetailRoute />,
     errorElement: <ErrorPanel title="Intake" />,
   },
 ]);

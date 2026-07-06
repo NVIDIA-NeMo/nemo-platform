@@ -4,20 +4,14 @@
 """Domain entities for the Files service."""
 
 from datetime import datetime
-from enum import StrEnum
 from typing import Any, ClassVar, Dict
 
+from nemo_platform_plugin.files.types import FilesetPurpose as FilesetPurpose
 from nmp.common.entities import constants
 from nmp.common.entities.client import EntityBase
 from nmp.common.files.metadata import FilesetMetadata
 from nmp.core.files.app.backends.factory import StorageConfig
 from pydantic import Field
-
-
-class FilesetPurpose(StrEnum):
-    DATASET = "dataset"
-    GENERIC = "generic"
-    MODEL = "model"
 
 
 class Fileset(EntityBase):

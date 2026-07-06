@@ -102,8 +102,6 @@ class Value(BaseModel):
 
 
 class SecretRef(RootModel):
-    """Reference to a platform secret by name."""
-
     root: str = Field(
         description="Reference to a secret. Format: 'secret_name' (uses request workspace) or 'workspace/secret_name' (explicit workspace).",
         pattern=r"^[a-z0-9_-]+(/[a-z0-9_-]+)?$",

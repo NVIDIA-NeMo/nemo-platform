@@ -3,6 +3,8 @@
 
 """Metric evaluation orchestration for evaluator SDK runtime."""
 
+# ruff: noqa: I001 - the vendored SDK mirror uses different import-order settings.
+
 from __future__ import annotations
 
 import asyncio
@@ -19,6 +21,8 @@ import httpx
 import nemo_platform.beta.evaluator.inference as inference
 from nemo_platform.beta.evaluator.agent_inference import (
     AgentInferenceFn,
+    AgentInvocationResult,
+    invoke_agent,
     make_agent_inference_request,
     new_agent_inference_client,
 )
@@ -48,6 +52,7 @@ from nemo_platform.beta.evaluator.resilience.errors import get_evaluation_error
 from nemo_platform.beta.evaluator.templates import render_request
 from nemo_platform.beta.evaluator.values import (
     Agent,
+    AgentBase,
     EvaluationResult,
     Model,
     RowScore,
@@ -306,6 +311,7 @@ async def generate_online_sample(
     preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
     postprocess_hooks: Sequence[inference.PostprocessResponse] | None = None,
     default_headers: dict[str, str] | None = None,
+    template_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]: ...
 
 
@@ -322,6 +328,7 @@ async def generate_online_sample(
     preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
     postprocess_hooks: Sequence[inference.PostprocessResponse] | None = None,
     default_headers: dict[str, str] | None = None,
+    template_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]: ...
 
 
@@ -337,6 +344,7 @@ async def generate_online_sample(
     preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
     postprocess_hooks: Sequence[inference.PostprocessResponse] | None = None,
     default_headers: dict[str, str] | None = None,
+    template_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Generate one sample payload using shared request rendering and inference logic.
 
@@ -348,7 +356,7 @@ async def generate_online_sample(
     - ``target: Agent`` pairs with ``inference_fn: AgentInferenceFn``.
       ``default_headers`` is forwarded to the inference fn.
     """
-    request = render_request(prompt_template, context={**row, "item": row})
+    request = render_request(prompt_template, context={**row, "item": row, **(template_context or {})})
     if isinstance(target, Model):
         model_params = params if isinstance(params, RunConfigOnlineModel) else None
         _maybe_set_nim_default_max_tokens(request=request, model=target, params=model_params)
@@ -382,11 +390,20 @@ async def generate_online_sample(
             timeout=timeout,
         )
 
-    processed_response, output_text = _process_online_response(
-        response,
+    if isinstance(response, AgentInvocationResult):
+        invocation = response
+        response_payload = response.response
+    else:
+        invocation = None
+        response_payload = cast(dict[str, Any], response)
+    processed_response, processed_output_text = _process_online_response(
+        response_payload,
         index=index,
         postprocess_hooks=postprocess_hooks,
     )
+    output_text = processed_output_text
+    if invocation is not None and not isinstance(output_text, str):
+        output_text = invocation.output_text
 
     sample: dict[str, Any] = {}
     if output_text:
@@ -398,6 +415,11 @@ async def generate_online_sample(
     # through the nested response payload.
     if isinstance(processed_response, dict) and "trajectory" in processed_response:
         sample["trajectory"] = processed_response["trajectory"]
+    if invocation is not None:
+        sample["invocation_status"] = invocation.status.value
+        sample["invocation_metadata"] = invocation.metadata
+        if invocation.evidence is not None:
+            sample["evidence"] = invocation.evidence
     return sample
 
 
@@ -421,7 +443,7 @@ async def generate_online_sample_agent(
         index=index,
         prompt_template=prompt_template,
         params=params,
-        inference_fn=agent_inference_fn or make_agent_inference_request,
+        inference_fn=agent_inference_fn or invoke_agent,
         client=client,
         preprocess_hooks=preprocess_hooks,
         postprocess_hooks=postprocess_hooks,
@@ -584,15 +606,16 @@ class ComputeMetricPipeline:
         # overloaded ``__init__`` pins the valid pairings statically, and this
         # guard makes the Agent-side contract fail loudly at runtime if a
         # caller bypasses those types.
-        if isinstance(self.target, Agent):
+        if isinstance(self.target, AgentBase):
             if self.inference_fn is None:
                 raise TypeError("expected AgentInferenceFn for Agent target")
 
             # Safe by the Agent↔AgentInferenceFn overload (see above).
+            agent_target = cast(Agent, self.target)
             agent_fn = cast(AgentInferenceFn, self.inference_fn)
             agent_params = self.params if isinstance(self.params, RunConfigOnline) else None
             return await generate_online_sample(
-                target=self.target,
+                target=agent_target,
                 row=row,
                 index=index,
                 prompt_template=self.prompt_template,
@@ -831,7 +854,7 @@ async def evaluate_metric(
             preprocess_hooks=merged_preprocess_hooks,
             postprocess_hooks=merged_postprocess_hooks,
         )
-    elif isinstance(target, Agent):
+    elif isinstance(target, AgentBase):
         params = cast(RunConfigOnline, params)
         if prompt_template is None:
             raise ValueError("prompt_template is required for agent online evaluation")

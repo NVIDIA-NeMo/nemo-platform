@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing_extensions import TypedDict
+from typing_extensions import Literal, TypedDict
 
 from .experiment_session_filter_param import ExperimentSessionFilterParam
 
@@ -29,6 +29,13 @@ class SessionListParams(TypedDict, total=False):
 
     filter: ExperimentSessionFilterParam
     """Filter sessions by test_case_id and status."""
+
+    mode: Literal["summary", "detailed"]
+    """Response payload mode.
+
+    summary keeps the same session row fields but truncates root-span input to 1000
+    characters; detailed returns the full root-span input.
+    """
 
     page: int
     """Page number."""

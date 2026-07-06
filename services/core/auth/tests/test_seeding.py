@@ -13,11 +13,13 @@ from nmp.core.auth.app.seeding import (
     PLATFORM_ADMIN_ROLE,
     SYSTEM_WORKSPACE_ROLE,
     WILDCARD_PRINCIPAL,
+    WORKSPACE_CREATOR_ROLE,
     _generate_binding_name,
     run_seeding,
     seed_default_workspace_editor,
     seed_platform_admin,
     seed_system_workspace_viewer,
+    seed_workspace_creator,
 )
 from nmp.core.auth.entities import RoleBindingEntity
 
@@ -207,6 +209,21 @@ class TestSeedDefaultWorkspaceEditor:
         created_entity = mock_entity_client.create.call_args[0][0]
         assert created_entity.workspace == "my-custom-workspace"
 
+    @pytest.mark.asyncio
+    async def test_seed_treats_revoked_binding_as_intentional_override(self, mock_config):
+        """Test that a revoked wildcard binding is not recreated or treated as failure."""
+        mock_entity_client = MagicMock()
+        existing_binding = MagicMock()
+        existing_binding.revoked_at = datetime.now(timezone.utc)
+        mock_entity_client.get = AsyncMock(return_value=existing_binding)
+        mock_entity_client.create = AsyncMock()
+
+        with patch("nmp.core.auth.app.seeding.get_service_config", return_value=mock_config):
+            result = await seed_default_workspace_editor(mock_entity_client)
+
+        assert result is True
+        mock_entity_client.create.assert_not_called()
+
 
 class TestSeedSystemWorkspaceViewer:
     """Tests for system workspace Viewer seeding."""
@@ -259,6 +276,62 @@ class TestSeedSystemWorkspaceViewer:
         assert result is True
 
 
+class TestSeedWorkspaceCreator:
+    """Tests for system workspace WorkspaceCreator seeding."""
+
+    @pytest.fixture
+    def mock_entity_client(self):
+        """Create a mock entity client with get raising NotFound (new binding case)."""
+        client = MagicMock()
+        client.get = AsyncMock(side_effect=EntityNotFoundError("Not found"))
+        client.create = AsyncMock()
+        return client
+
+    @pytest.mark.asyncio
+    async def test_seed_creates_wildcard_workspace_creator_binding(self, mock_entity_client):
+        """Test that seeding creates the wildcard WorkspaceCreator binding."""
+        result = await seed_workspace_creator(mock_entity_client)
+
+        assert result is True
+        mock_entity_client.create.assert_called_once()
+
+        created_entity = mock_entity_client.create.call_args[0][0]
+        assert isinstance(created_entity, RoleBindingEntity)
+        assert created_entity.workspace == SYSTEM_WORKSPACE
+        assert created_entity.principal == WILDCARD_PRINCIPAL
+        assert created_entity.role == WORKSPACE_CREATOR_ROLE
+        assert created_entity.name == "wildcard-system-workspacecreator"
+        assert created_entity.granted_by == "system"
+
+    @pytest.mark.asyncio
+    async def test_seed_handles_existing_binding(self):
+        """Test that seeding returns True when binding already exists."""
+        mock_entity_client = MagicMock()
+        existing_binding = MagicMock()
+        existing_binding.revoked_at = None
+        mock_entity_client.get = AsyncMock(return_value=existing_binding)
+        mock_entity_client.create = AsyncMock()
+
+        result = await seed_workspace_creator(mock_entity_client)
+
+        assert result is True
+        mock_entity_client.create.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_seed_treats_revoked_binding_as_intentional_override(self):
+        """Test that a revoked WorkspaceCreator wildcard binding is preserved."""
+        mock_entity_client = MagicMock()
+        existing_binding = MagicMock()
+        existing_binding.revoked_at = datetime.now(timezone.utc)
+        mock_entity_client.get = AsyncMock(return_value=existing_binding)
+        mock_entity_client.create = AsyncMock()
+
+        result = await seed_workspace_creator(mock_entity_client)
+
+        assert result is True
+        mock_entity_client.create.assert_not_called()
+
+
 class TestRunSeeding:
     """Tests for the main seeding entry point."""
 
@@ -293,8 +366,8 @@ class TestRunSeeding:
             result = await run_seeding(mock_entity_client)
 
         assert result is True
-        # Should create: platform admin + default workspace editor + system workspace viewer
-        assert mock_entity_client.create.call_count == 3
+        # Should create: platform admin + default workspace editor + system workspace viewer + workspace creator
+        assert mock_entity_client.create.call_count == 4
 
     @pytest.mark.asyncio
     async def test_run_seeding_seeds_wildcard_bindings_without_admin(self, mock_entity_client, mock_config_no_admin):
@@ -303,8 +376,8 @@ class TestRunSeeding:
             result = await run_seeding(mock_entity_client)
 
         assert result is True
-        # Should create: default workspace editor + system workspace viewer (no platform admin)
-        assert mock_entity_client.create.call_count == 2
+        # Should create: default workspace editor + system workspace viewer + workspace creator (no platform admin)
+        assert mock_entity_client.create.call_count == 3
 
     @pytest.mark.asyncio
     async def test_run_seeding_returns_false_on_platform_admin_failure(self, mock_config_with_admin):
@@ -329,3 +402,22 @@ class TestRunSeeding:
             result = await run_seeding(mock_entity_client)
 
         assert result is False
+
+    @pytest.mark.asyncio
+    async def test_run_seeding_succeeds_when_workspace_creator_binding_was_revoked(self, mock_config_no_admin):
+        """Test that a revoked wildcard binding is treated as an operator override."""
+        mock_entity_client = MagicMock()
+        wildcard_editor = MagicMock()
+        wildcard_editor.revoked_at = None
+        wildcard_viewer = MagicMock()
+        wildcard_viewer.revoked_at = None
+        wildcard_creator = MagicMock()
+        wildcard_creator.revoked_at = datetime.now(timezone.utc)
+        mock_entity_client.get = AsyncMock(side_effect=[wildcard_editor, wildcard_viewer, wildcard_creator])
+        mock_entity_client.create = AsyncMock()
+
+        with patch("nmp.core.auth.app.seeding.get_service_config", return_value=mock_config_no_admin):
+            result = await run_seeding(mock_entity_client)
+
+        assert result is True
+        mock_entity_client.create.assert_not_called()

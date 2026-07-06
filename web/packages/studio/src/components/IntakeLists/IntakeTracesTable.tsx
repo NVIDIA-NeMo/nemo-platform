@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { dateTimeFilter } from '@nemo/common/src/components/DataView/dateTimeFilter';
+import { EditColumnsMenu } from '@nemo/common/src/components/DataView/internal';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
@@ -21,19 +22,20 @@ import {
   getTraceDisplayName,
 } from '@studio/util/intakeTelemetry';
 import { keepPreviousData } from '@tanstack/react-query';
+import { Columns3 } from 'lucide-react';
 import type { ComponentProps, FC, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 export interface IntakeTracesTableProps {
   workspace?: string;
-  filterTogglePortalTargetId?: string;
+  slotEndPortalTargetId?: string;
   emptyStateActions?: ReactNode;
   noResultsActions?: ReactNode;
 }
 
 export const IntakeTracesTable: FC<IntakeTracesTableProps> = ({
   workspace: workspaceProp,
-  filterTogglePortalTargetId,
+  slotEndPortalTargetId,
   emptyStateActions,
   noResultsActions,
 }) => {
@@ -163,7 +165,19 @@ export const IntakeTracesTable: FC<IntakeTracesTableProps> = ({
     <IntakeTelemetryDataView<Trace>
       dataViewState={dataViewState}
       makeColumns={makeColumns}
-      filterTogglePortalTargetId={filterTogglePortalTargetId}
+      slotEndPortalTargetId={slotEndPortalTargetId}
+      toolbarSlotEnd={
+        <EditColumnsMenu
+          kind="secondary"
+          showChevron={false}
+          slotContent={<div aria-hidden className="h-0 w-[230px]" />}
+        >
+          <>
+            <Columns3 />
+            <span className="hide-mobile">Columns</span>
+          </>
+        </EditColumnsMenu>
+      }
       onRowClick={(trace) => navigate(getIntakeTraceRoute(requestWorkspace, trace.id))}
       attributes={{
         DataViewRoot: {

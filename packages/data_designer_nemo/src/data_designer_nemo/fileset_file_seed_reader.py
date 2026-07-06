@@ -26,7 +26,7 @@ class FilesetFileSeedReader(SeedReader[FilesetFileSeedSource]):
         if self._sdk is None:
             raise RuntimeError("FilesetFileSeedReader requires an injected NeMo Platform SDK")
 
-        filesystem = FilesetFileSystem(self._sdk)
+        filesystem = FilesetFileSystem(sdk=self._sdk)
 
         conn = duckdb.connect()
         conn.register_filesystem(filesystem)

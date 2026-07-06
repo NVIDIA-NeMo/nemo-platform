@@ -25,6 +25,7 @@ from nemo_evaluator.jobs.agent_spec import (
     AgentEvalTaskSpec,
     AgentTarget,
     CodexRunnerTarget,
+    FabricRunnerTarget,
     ModelTarget,
     Target,
 )
@@ -35,6 +36,7 @@ from nemo_evaluator.tasks.agent_evaluate import main as agent_eval_task_main
 from nemo_evaluator.tasks.runner import SDK_INITIALIZATION_EXIT_CODE
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSummary
 from nemo_evaluator_sdk.agent_eval.runtimes.codex.runtime import CodexCliAgentRuntime
+from nemo_evaluator_sdk.agent_eval.runtimes.fabric.runtime import FabricAgentRuntime
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import (
     AgentEvalTarget,
@@ -44,7 +46,7 @@ from nemo_evaluator_sdk.agent_eval.trials import (
 )
 from nemo_evaluator_sdk.enums import AgentFormat
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
-from nemo_evaluator_sdk.values import Agent, Model, RunConfigOnline, RunConfigOnlineModel, SecretRef
+from nemo_evaluator_sdk.values import Agent, GenericAgent, Model, RunConfigOnline, RunConfigOnlineModel, SecretRef
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform.types.jobs.platform_job_spec import PlatformJobSpec
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
@@ -66,7 +68,7 @@ def _task_spec() -> AgentEvalTaskSpec:
     return AgentEvalTaskSpec(
         id="task-1",
         intent="Answer the question.",
-        inputs={"prompt": "What is 2+2?"},
+        inputs={"instruction": "What is 2+2?"},
         metrics=[_inline_metric()],
     )
 
@@ -125,6 +127,29 @@ def test_to_runtime_task_reconstructs_runtime_metric_instances() -> None:
     assert isinstance(task.metrics[0], ExactMatchMetric)
 
 
+async def test_reference_round_trips_from_input_spec_to_runtime_task() -> None:
+    # Grader-only ``reference`` must survive the wire DTO -> canonical spec -> runtime task path so
+    # metrics can grade against held-out ground truth (never seeded into the agent workspace).
+    reference = {"test_calculator.py": "def test_add(): assert add(2, 3) == 5"}
+    input_spec = AgentEvalInputSpec(
+        target=CodexRunnerTarget(),
+        tasks=[
+            AgentEvalTaskInput(
+                id="fix-bug",
+                intent="Fix the bug.",
+                inputs={"instruction": "Fix calculator.py."},
+                reference=reference,
+                metrics=[_inline_metric()],
+            )
+        ],
+    )
+
+    spec = await AgentEvalJob.to_spec(input_spec, workspace="dev", entity_client=None, async_sdk=None, is_local=True)
+    assert isinstance(spec, AgentEvalSpec)
+    assert spec.tasks[0].reference == reference
+    assert _to_runtime_task(spec.tasks[0]).reference == reference
+
+
 def test_agent_eval_job_reconstructs_tasks_and_persists_bundle(tmp_path: Path, mocker: MockerFixture) -> None:
     fake = _FakeEvaluator()
     mocker.patch.object(AgentEvalJob, "_build_evaluator", return_value=fake)
@@ -174,7 +199,7 @@ def test_agent_eval_spec_requires_at_least_one_task() -> None:
 
 
 def _agent() -> Agent:
-    return Agent(
+    return GenericAgent(
         url="http://agent.test",
         name="test-agent",
         format=AgentFormat.GENERIC,
@@ -188,6 +213,21 @@ def test_resolve_target_builds_codex_runtime_from_runner_target(tmp_path: Path) 
     target, prompt_template, params = AgentEvalJob._resolve_target(CodexRunnerTarget(model="gpt-5.5"), ctx)
     # A runner shapes its own request, so it contributes no prompt template or inference params.
     assert isinstance(target, CodexCliAgentRuntime)
+    assert prompt_template is None
+    assert params is None
+
+
+def test_resolve_target_builds_fabric_runtime_from_runner_target(tmp_path: Path) -> None:
+    ctx = _job_context(tmp_path)
+    fabric_target = FabricRunnerTarget(
+        config={"metadata": {"name": "a"}, "harness": {"adapter_id": "nvidia.fabric.codex.cli"}},
+        model="openai/gpt-5.4",
+    )
+    target, prompt_template, params = AgentEvalJob._resolve_target(fabric_target, ctx)
+    assert isinstance(target, FabricAgentRuntime)
+    assert target._model == "openai/gpt-5.4"
+    assert target._work_root == ctx.storage.persistent / "fabric"
+    # A runner shapes its own request, so it contributes no prompt template or inference params.
     assert prompt_template is None
     assert params is None
 
@@ -301,7 +341,7 @@ async def test_to_spec_resolves_inline_task_metrics_without_a_platform() -> None
             AgentEvalTaskInput(
                 id="task-1",
                 intent="Answer the question.",
-                inputs={"prompt": "What is 2+2?"},
+                inputs={"instruction": "What is 2+2?"},
                 metrics=[_inline_metric()],
             )
         ],
@@ -342,6 +382,13 @@ def _assert_agent_eval_step_entrypoint(job_spec: PlatformJobSpec) -> None:
     ("target", "expected_kind", "expected_endpoint_name"),
     [
         (CodexRunnerTarget(model="gpt-5.5"), "codex", None),
+        (
+            FabricRunnerTarget(
+                config={"metadata": {"name": "a"}, "harness": {"adapter_id": "nvidia.fabric.codex.cli"}}
+            ),
+            "fabric",
+            None,
+        ),
         (
             ModelTarget(
                 model=Model(url="http://model.test/v1/chat/completions", name="test-model"),
@@ -439,7 +486,7 @@ def test_run_local_executes_each_target_type(target: Target, mocker: MockerFixtu
     input_spec = AgentEvalInputSpec(
         tasks=[
             AgentEvalTaskInput(
-                id="task-1", intent="Answer.", inputs={"prompt": "What is 2+2?"}, metrics=[_inline_metric()]
+                id="task-1", intent="Answer.", inputs={"instruction": "What is 2+2?"}, metrics=[_inline_metric()]
             )
         ],
         target=target,

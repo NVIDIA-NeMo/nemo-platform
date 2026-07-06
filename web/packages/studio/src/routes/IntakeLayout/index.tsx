@@ -68,7 +68,7 @@ export const IntakeLayout: FC = () => {
           />
           <div
             id={INTAKE_FILTER_ACTION_TARGET_ID}
-            className="flex shrink-0 items-center justify-end"
+            className="flex shrink-0 items-center justify-end gap-density-xl"
           />
         </div>
         <Suspense fallback={<Loading description="Loading..." />}>

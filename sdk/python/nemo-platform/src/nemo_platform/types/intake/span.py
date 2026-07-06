@@ -60,6 +60,7 @@ class Span(BaseModel):
     ended_at: Optional[datetime] = None
 
     error_message: Optional[str] = None
+    """Normalized error message. In summary mode this is truncated to 1000 characters."""
 
     error_type: Optional[str] = None
 

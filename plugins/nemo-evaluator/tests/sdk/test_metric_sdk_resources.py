@@ -158,6 +158,20 @@ def test_sync_list_encodes_metric_type_filter_and_sort() -> None:
     assert params["sort"] == "-created_at"
 
 
+def test_sync_list_omits_include_derived_unless_requested() -> None:
+    # Derived (task-internal) metrics are hidden by default: the param is only sent when explicitly set,
+    # so the default listing matches the route's own default without a redundant query arg.
+    http_client = MagicMock()
+    http_client.get.return_value = _response({"data": []})
+    resource = EvaluatorMetricsResource(_platform(http_client))
+
+    resource.list()
+    assert "include_derived" not in http_client.get.call_args.kwargs["params"]
+
+    resource.list(include_derived=True)
+    assert http_client.get.call_args.kwargs["params"]["include_derived"] is True
+
+
 def test_sync_delete_issues_delete_request() -> None:
     http_client = MagicMock()
     http_client.delete.return_value = _response({})

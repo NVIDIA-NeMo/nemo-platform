@@ -9,6 +9,7 @@ import {
 } from '@studio/components/IntakeDetail/IntakeComponents/spanKeyValues';
 import { mockSpanById } from '@studio/mocks/intake/telemetry';
 import { EMPTY_VALUE } from '@studio/util/intakeTelemetry';
+import { isValidElement, type ReactElement } from 'react';
 
 describe('spanKeyValues', () => {
   it('builds span summary entries without crashing on empty object fields', () => {
@@ -126,6 +127,20 @@ describe('spanKeyValues', () => {
     // Metadata section omits them to avoid duplication.
     expect(labels).not.toEqual(
       expect.arrayContaining(['Status', 'Started', 'Ended', 'Model', 'Provider', 'Total Cost'])
+    );
+  });
+
+  it('links the trace metadata field to the bare trace route', () => {
+    const span = mockSpanById('span-llm-001');
+    expect(span).toBeDefined();
+
+    const traceEntry = buildSpanSummaryEntries(span!, { workspace: 'default' }).find(
+      (entry) => entry.id === 'trace_id'
+    );
+
+    expect(isValidElement(traceEntry?.value)).toBe(true);
+    expect((traceEntry!.value as ReactElement<{ to: string }>).props.to).toBe(
+      '/workspaces/default/intake/traces/trace-agent-run-001'
     );
   });
 });

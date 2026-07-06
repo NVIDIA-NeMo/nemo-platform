@@ -36,6 +36,7 @@ PLATFORM_ADMIN_ROLE = "PlatformAdmin"
 WILDCARD_PRINCIPAL = "*"
 DEFAULT_WORKSPACE_ROLE = "Editor"
 SYSTEM_WORKSPACE_ROLE = "Viewer"
+WORKSPACE_CREATOR_ROLE = "WorkspaceCreator"
 
 
 def _generate_binding_name(principal: str, workspace: str, role: str) -> str:
@@ -183,7 +184,8 @@ async def _seed_wildcard_binding(
         description: Human-readable description for logging
 
     Returns:
-        True if binding exists (created or already present), False if creation failed.
+        True if binding exists, was intentionally revoked, or was created successfully.
+        False only if creation fails unexpectedly.
     """
     binding_name = _generate_binding_name(WILDCARD_PRINCIPAL, workspace, role)
 
@@ -201,11 +203,11 @@ async def _seed_wildcard_binding(
             )
             return True
         else:
-            logger.warning(
-                f"Wildcard {description} binding exists but is revoked",
+            logger.info(
+                f"Wildcard {description} binding is revoked; preserving operator override",
                 extra={"workspace": workspace, "role": role},
             )
-            return False
+            return True
     except EntityNotFoundError:
         pass
 
@@ -284,6 +286,21 @@ async def seed_system_workspace_viewer(entity_client: EntityClient) -> bool:
     )
 
 
+async def seed_workspace_creator(entity_client: EntityClient) -> bool:
+    """Seed WorkspaceCreator role binding for wildcard principal on system workspace.
+
+    This preserves the current product behavior: any authenticated user can create
+    workspaces by default. Operators can later revoke or replace this binding to
+    restrict creation to specific users or groups.
+    """
+    return await _seed_wildcard_binding(
+        entity_client,
+        workspace=SYSTEM_WORKSPACE,
+        role=WORKSPACE_CREATOR_ROLE,
+        description="system workspace WorkspaceCreator",
+    )
+
+
 async def run_seeding(entity_client: EntityClient) -> bool:
     """Run all seeding operations.
 
@@ -312,6 +329,10 @@ async def run_seeding(entity_client: EntityClient) -> bool:
 
     if not await seed_system_workspace_viewer(entity_client):
         logger.error("Failed to seed system workspace Viewer for wildcard principal")
+        return False
+
+    if not await seed_workspace_creator(entity_client):
+        logger.error("Failed to seed system workspace WorkspaceCreator for wildcard principal")
         return False
 
     logger.debug("Auth service seeding complete")

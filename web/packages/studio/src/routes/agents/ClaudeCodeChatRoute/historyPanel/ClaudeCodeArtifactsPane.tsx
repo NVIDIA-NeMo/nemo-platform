@@ -16,7 +16,7 @@ import {
   hasArtifacts,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/historyPanel/helpers';
 import type { ClaudeCodeChatArtifacts } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
-import { Bot, Boxes, Cpu, PanelRightClose, Sparkles } from 'lucide-react';
+import { Bot, Cpu, PanelRightClose, Sparkles } from 'lucide-react';
 
 export const ClaudeCodeArtifactsPane = ({
   artifacts,
@@ -60,7 +60,6 @@ export const ClaudeCodeArtifactsPane = ({
           <Stack gap="density-sm" className="min-w-0">
             <ArtifactRow icon={<Bot size={14} />} label="Agent" value={artifacts.agent} />
             <ArtifactRow icon={<Cpu size={14} />} label="Model" value={selectedModel} />
-            <ArtifactRow icon={<Boxes size={14} />} label="Workspace" value={artifacts.workspace} />
           </Stack>
           <SelectionArtifacts selections={artifacts.selections} />
           <JobArtifacts jobs={artifacts.jobs} workspace={artifacts.workspace} />

@@ -7,6 +7,7 @@ import {
   CLAUDE_CODE_JOB_PROGRESS_TOOL_NAME,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/jobProgressConsts';
 import {
+  CLAUDE_CODE_COLLAPSED_STUDIO_DETAILS_TOOL_NAME,
   CLAUDE_CODE_COLLAPSED_THINKING_TOOL_NAME,
   CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
@@ -111,6 +112,63 @@ const expectFileChangeBlockFullWidth = () => {
 };
 
 describe('ClaudeCodeToolCallPart', () => {
+  it('renders Studio summary details behind a worked-for disclosure', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ClaudeCodeToolCallPart
+        addResult={vi.fn()}
+        args={{
+          label: 'worked for 42s',
+          parts: [
+            {
+              type: 'text',
+              text: [
+                '## Optimization report',
+                '',
+                '**Current config:** `meta-llama-3-1-70b-instruct`',
+                '',
+                '- Preserved first suggestion',
+                '- Preserved second suggestion',
+              ].join('\n'),
+            },
+            {
+              type: 'tool-call',
+              args: { command: 'pwd' },
+              argsText: '{"command":"pwd"}',
+              toolCallId: 'toolu_bash',
+              toolName: 'Bash',
+            },
+          ],
+        }}
+        argsText=""
+        resume={vi.fn()}
+        status={{ type: 'complete' }}
+        toolCallId="claude-code-collapsed-studio-details"
+        toolName={CLAUDE_CODE_COLLAPSED_STUDIO_DETAILS_TOOL_NAME}
+        type="tool-call"
+      />
+    );
+
+    const disclosure = screen.getByTestId('claude-code-collapsed-studio-details');
+    expect(disclosure).toHaveTextContent('worked for 42s');
+    expect(disclosure).not.toHaveAttribute('open');
+    expect(screen.getByTestId('claude-code-collapsed-studio-details-content')).toHaveTextContent(
+      'Optimization report'
+    );
+    expect(screen.getByTestId('claude-code-collapsed-studio-details-content')).toHaveTextContent(
+      'Ran pwd'
+    );
+
+    await user.click(screen.getByText('worked for 42s'));
+
+    expect(disclosure).toHaveAttribute('open');
+    expect(screen.getByRole('heading', { level: 2, name: 'Optimization report' })).toBeVisible();
+    expect(screen.getByText('Current config:')).toHaveProperty('tagName', 'STRONG');
+    expect(screen.getByText('meta-llama-3-1-70b-instruct')).toHaveProperty('tagName', 'CODE');
+    expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('Preserved first suggestion');
+  });
+
   it('renders collapsed thinking as an expandable subtle disclosure', async () => {
     const user = userEvent.setup();
 
@@ -142,6 +200,27 @@ describe('ClaudeCodeToolCallPart', () => {
     expect(screen.getByTestId('claude-code-collapsed-thinking-content')).toHaveTextContent(
       'I found the files that matter.'
     );
+  });
+
+  it('replaces a persisted unknown work time with a neutral label', () => {
+    render(
+      <ClaudeCodeToolCallPart
+        addResult={vi.fn()}
+        args={{
+          label: 'worked for unknown',
+          parts: [{ type: 'text', text: 'Completed work.' }],
+        }}
+        argsText=""
+        resume={vi.fn()}
+        status={{ type: 'complete' }}
+        toolCallId="claude-code-collapsed-studio-details"
+        toolName={CLAUDE_CODE_COLLAPSED_STUDIO_DETAILS_TOOL_NAME}
+        type="tool-call"
+      />
+    );
+
+    expect(screen.getByText('Work details')).toBeVisible();
+    expect(screen.queryByText('worked for unknown')).not.toBeInTheDocument();
   });
 
   it.each(subtleToolCases)(

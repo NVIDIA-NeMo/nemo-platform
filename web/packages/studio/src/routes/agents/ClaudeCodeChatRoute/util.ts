@@ -8,6 +8,7 @@ import {
   getClaudeCodeCompletedMessageParts,
   groupConsecutiveClaudeCodeSubtleToolCalls,
   mergeConsecutiveClaudeCodeSubtleToolMessages,
+  STUDIO_MESSAGE_SUMMARY_START,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
 import type {
   ClaudeCodeAssistantHistoryPart,
@@ -50,6 +51,56 @@ const getAssistantMessagePart = (
   return undefined;
 };
 
+const getAssistantContent = (
+  message: ThreadMessageLike
+): readonly ThreadAssistantMessagePart[] | undefined =>
+  message.role === 'assistant' && Array.isArray(message.content) ? message.content : undefined;
+
+const hasStudioSummaryMarker = (message: ThreadMessageLike): boolean =>
+  getAssistantContent(message)?.some(
+    (part) => part.type === 'text' && part.text.includes(STUDIO_MESSAGE_SUMMARY_START)
+  ) ?? false;
+
+const combineAssistantRunMessages = (
+  messages: readonly ThreadMessageLike[]
+): readonly ThreadMessageLike[] => {
+  const combinedMessages: ThreadMessageLike[] = [];
+  let pendingAssistantMessages: ThreadMessageLike[] = [];
+
+  const flushPendingAssistantMessages = () => {
+    if (!pendingAssistantMessages.length) return;
+
+    if (!pendingAssistantMessages.some(hasStudioSummaryMarker)) {
+      combinedMessages.push(...pendingAssistantMessages);
+      pendingAssistantMessages = [];
+      return;
+    }
+
+    const firstMessage = pendingAssistantMessages[0]!;
+    const lastMessage = pendingAssistantMessages[pendingAssistantMessages.length - 1]!;
+    combinedMessages.push({
+      ...lastMessage,
+      id: firstMessage.id ?? lastMessage.id,
+      content: pendingAssistantMessages.flatMap((message) => getAssistantContent(message) ?? []),
+      status: COMPLETE_STATUS,
+    });
+    pendingAssistantMessages = [];
+  };
+
+  for (const message of messages) {
+    if (message.role === 'assistant') {
+      pendingAssistantMessages.push(message);
+      continue;
+    }
+
+    flushPendingAssistantMessages();
+    combinedMessages.push(message);
+  }
+
+  flushPendingAssistantMessages();
+  return combinedMessages;
+};
+
 export const getClaudeCodeHistoryMessages = (
   history: ClaudeCodeSessionHistory | undefined
 ): readonly ThreadMessageLike[] => {
@@ -81,9 +132,10 @@ export const getClaudeCodeHistoryMessages = (
     })
     .filter((message): message is ThreadMessageLike => message !== undefined);
 
-  return mergeConsecutiveClaudeCodeSubtleToolMessages(messages).map((message) =>
-    message.role === 'assistant' && Array.isArray(message.content)
-      ? { ...message, content: getClaudeCodeCompletedMessageParts(message.content) }
-      : message
+  return mergeConsecutiveClaudeCodeSubtleToolMessages(combineAssistantRunMessages(messages)).map(
+    (message) =>
+      message.role === 'assistant' && Array.isArray(message.content)
+        ? { ...message, content: getClaudeCodeCompletedMessageParts(message.content) }
+        : message
   );
 };

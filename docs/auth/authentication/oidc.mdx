@@ -71,7 +71,7 @@ curl -sf http://localhost:8080/health/ready
 uv run python -m nmp.platform_seed
 ```
 
-The seed task creates the **PlatformAdmin** binding for `auth.admin_email`, plus the default wildcard bindings used for authenticated access. Without this step, OIDC login can succeed while admin operations return `403 Forbidden`.
+The seed task creates the **PlatformAdmin** binding for `auth.admin_email`, the wildcard **Editor** binding for the `default` workspace, the wildcard **Viewer** binding for the `system` workspace, and the wildcard **WorkspaceCreator** binding for `system` that preserves open workspace creation by default. Without this step, OIDC login can succeed while admin operations, workspace creation, and access to the default and system workspaces can still return `403 Forbidden`.
 
 ### Step 4: Configure Scopes (Optional)
 

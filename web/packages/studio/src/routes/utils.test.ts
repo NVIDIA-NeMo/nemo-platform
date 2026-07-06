@@ -7,6 +7,7 @@ import {
   getEvaluationMetricDetailsRoute,
   getEvaluationMetricRunRoute,
   getEvaluationMetricsRunRoute,
+  getIntakeTraceSpanRoute,
   getPromptTuningFormRoute,
   getWorkspaceBaseModelsRoute,
   getWorkspaceInferenceProvidersRoute,
@@ -145,6 +146,14 @@ describe('getPromptTuningFormRoute', () => {
   it('appends an encoded ?model= query param when a model URN is provided', () => {
     expect(getPromptTuningFormRoute(workspace, { model: 'my-workspace/my-model' })).toBe(
       '/workspaces/my-workspace/customizations/prompt-tuned/new?model=my-workspace%2Fmy-model'
+    );
+  });
+});
+
+describe('getIntakeTraceSpanRoute', () => {
+  it('deep-links to a span inside the trace detail route', () => {
+    expect(getIntakeTraceSpanRoute('my-workspace', 'trace-1', 'span-1')).toBe(
+      '/workspaces/my-workspace/intake/traces/trace-1?spanId=span-1'
     );
   });
 });

@@ -71,6 +71,12 @@ class AgentEvalTask(BaseModel):
     inputs: dict[str, Any] = Field(
         description="What the agent receives or starts from, e.g. instruction, filesystem seed, or state refs.",
     )
+    reference: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Grader-only ground truth (held-out tests, expected outputs, rubric data). Surfaced to "
+        "metrics as row.data['reference'] but never seeded into the agent's workspace or shown to the "
+        "agent, so a metric can grade against artifacts the agent cannot influence.",
+    )
     metrics: list[Metric] = Field(
         default_factory=list,
         description="Ordered concrete SDK metric instances that score this task; metric types must be unique.",

@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 from urllib.parse import urlsplit
 
+import nemo_evaluator.agent_seeds  # noqa: F401 - registers the platform 'fileset' workspace-seed handler
 from nemo_evaluator.api.schemas import MetricInline
 from nemo_evaluator.jobs.agent_compiler import compile_agent_eval_job
 from nemo_evaluator.jobs.agent_spec import (
@@ -31,6 +32,7 @@ from nemo_evaluator.jobs.agent_spec import (
     AgentEvalTaskSpec,
     AgentTarget,
     CodexRunnerTarget,
+    FabricRunnerTarget,
     ModelTarget,
     Target,
 )
@@ -41,6 +43,7 @@ from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
 from nemo_evaluator_sdk.agent_eval.persistence import persist_run
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
 from nemo_evaluator_sdk.agent_eval.runtimes.codex.runtime import CodexCliAgentRuntime
+from nemo_evaluator_sdk.agent_eval.runtimes.fabric.runtime import FabricAgentRuntime
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTarget
 from nemo_evaluator_sdk.metrics.protocol import Metric
@@ -95,10 +98,13 @@ def _to_runtime_task(task: AgentEvalTaskSpec) -> AgentEvalTask:
     return AgentEvalTask(
         id=task.id,
         intent=task.intent,
-        inputs=task.inputs,
+        # The runtime task carries plain dicts; the typed DTOs collapse to them — recognized input
+        # keys only, and the key/value metadata pairs folded into a mapping.
+        inputs=task.inputs.model_dump(exclude_none=True),
+        reference=task.reference,
         metrics=[_runtime_metric(metric) for metric in task.metrics],
         views=task.views,
-        metadata=task.metadata,
+        metadata={item.key: item.value for item in task.metadata},
     )
 
 
@@ -142,6 +148,7 @@ class AgentEvalJob(NemoJob):
                     id=task.id,
                     intent=task.intent,
                     inputs=task.inputs,
+                    reference=task.reference,
                     metrics=metrics,
                     views=task.views,
                     metadata=task.metadata,
@@ -246,6 +253,16 @@ class AgentEvalJob(NemoJob):
                 work_root=ctx.storage.persistent / "codex",
             )
             return runtime, None, None
+        if isinstance(target, FabricRunnerTarget):
+            fabric_runtime = FabricAgentRuntime(
+                config=target.config,
+                profiles=target.profiles,
+                model=target.model,
+                timeout_s=target.timeout_s,
+                capture_trajectory=target.capture_trajectory,
+                work_root=ctx.storage.persistent / "fabric",
+            )
+            return fabric_runtime, None, None
         return None, None, None
 
     @staticmethod

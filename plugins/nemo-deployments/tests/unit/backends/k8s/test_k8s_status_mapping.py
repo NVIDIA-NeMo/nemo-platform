@@ -72,7 +72,7 @@ def test_status_from_deployment(ready_replicas, deleting, pod, expected_status, 
     endpoints = build_in_cluster_endpoints(
         resource_name=resource_name,
         namespace="default",
-        container=sample_always_config().containers[0],
+        containers=tuple(sample_always_config().containers),
     )
     update = status_from_deployment(
         deployment=deployment,

@@ -20,7 +20,7 @@ import { getErrorMessage } from '@studio/api/common/utils';
 import { IntakeTelemetryStatusBadge } from '@studio/components/IntakeDetail/IntakeComponents/IntakeTelemetryStatusBadge';
 import { IntakeTelemetryDataView } from '@studio/components/IntakeLists/IntakeTelemetryDataView';
 import { useWorkspaceFromPathIfExists } from '@studio/hooks/useWorkspaceFromPath';
-import { getIntakeSpanRoute, getIntakeTraceRoute } from '@studio/routes/utils';
+import { getIntakeTraceSpanRoute } from '@studio/routes/utils';
 import {
   formatCost,
   formatDurationMs,
@@ -98,7 +98,7 @@ const SpanNameCell: FC<SpanNameCellProps> = ({ span, depth, showHierarchy }) => 
 
 export interface IntakeSpansTableProps {
   workspace?: string;
-  filterTogglePortalTargetId?: string;
+  slotEndPortalTargetId?: string;
   fixedFilter?: SpanFilter;
   mode?: ListSpansMode;
   defaultSort?: { id: string; desc: boolean };
@@ -115,7 +115,7 @@ export interface IntakeSpansTableProps {
 
 export const IntakeSpansTable: FC<IntakeSpansTableProps> = ({
   workspace: workspaceProp,
-  filterTogglePortalTargetId,
+  slotEndPortalTargetId,
   fixedFilter,
   mode = 'summary',
   defaultSort = { id: 'started_at', desc: true },
@@ -137,7 +137,11 @@ export const IntakeSpansTable: FC<IntakeSpansTableProps> = ({
     onRowClick === null
       ? undefined
       : (onRowClick ??
-        ((span: SpanTableRow) => navigate(getIntakeSpanRoute(requestWorkspace, span.span_id))));
+        ((span: SpanTableRow) => {
+          if (span.trace_id) {
+            navigate(getIntakeTraceSpanRoute(requestWorkspace, span.trace_id, span.span_id));
+          }
+        }));
 
   const dataViewState = useStudioDataViewState({
     defaultSort,
@@ -255,7 +259,11 @@ export const IntakeSpansTable: FC<IntakeSpansTableProps> = ({
             row.original.trace_id ? (
               <Anchor asChild>
                 <Link
-                  to={getIntakeTraceRoute(requestWorkspace, row.original.trace_id)}
+                  to={getIntakeTraceSpanRoute(
+                    requestWorkspace,
+                    row.original.trace_id,
+                    row.original.span_id
+                  )}
                   className="truncate"
                   title={row.original.trace_id}
                 >
@@ -311,7 +319,7 @@ export const IntakeSpansTable: FC<IntakeSpansTableProps> = ({
     <IntakeTelemetryDataView<SpanTableRow>
       dataViewState={dataViewState}
       makeColumns={makeColumns}
-      filterTogglePortalTargetId={filterTogglePortalTargetId}
+      slotEndPortalTargetId={slotEndPortalTargetId}
       onRowClick={handleRowClick}
       attributes={{
         DataViewRoot: {

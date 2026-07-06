@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { isNumberRangeFilter } from '@nemo/common/src/components/DataView/FilterPanel/NumberRangeFilter/util';
 import { LoadingCell } from '@nemo/common/src/components/DataView/internal/cells/LoadingCell';
 import {
   RowActionsCell,
@@ -170,6 +171,12 @@ export function useMakeColumns<TData>({
         col.enableColumnFilter = true;
         if (col.meta.filter.type === 'text' && !col.filterFn) {
           col.filterFn = 'fuzzy' as unknown as FilterFn<TData>;
+        }
+        // Number-range columns store `{ $gte, $lte }`. Without an explicit filterFn, TanStack
+        // resolves a numeric column to `inNumberRange`, whose `autoRemove` treats that object as
+        // an empty `[min, max]` tuple and silently drops the filter on every commit.
+        if (isNumberRangeFilter(col.meta.filter) && !col.filterFn) {
+          col.filterFn = 'numberRange' as unknown as FilterFn<TData>;
         }
         if (col.meta.filter.type === 'multi-select' || col.meta.filter.type === 'single-select') {
           if (!col.filterFn) {

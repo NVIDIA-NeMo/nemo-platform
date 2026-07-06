@@ -19,11 +19,17 @@ unknown_endpoint_test_data := {
 			"includes": ["Viewer"],
 			"permissions": ["entities.create", "entities.update", "workspaces.update"],
 		},
+		"WorkspaceCreator": {
+			"permissions": ["workspaces.create"],
+		},
 	},
 	"endpoints": {
 		"/apis/entities/v2/workspaces": {
 			"get": {"permissions": ["workspaces.list"]},
-			"post": {"permissions": []},
+			"post": {
+				"permissions": ["workspaces.create"],
+				"scopes": ["entities:write", "platform:write"],
+			},
 		},
 		"/apis/entities/v2/workspaces/{name}": {
 			"get": {"permissions": ["workspaces.read"]},
@@ -136,22 +142,42 @@ test_unknown_endpoint_denied_cross_workspace_list_head if {
 	result.allowed == false
 }
 
-# --- Existing behavior preserved: explicit permissions: [] still works ---
+# --- Existing behavior preserved: configured endpoints still work ---
 
-# Endpoints explicitly configured with permissions: [] (like workspace creation)
-# must still allow any authenticated user.
-test_explicit_empty_permissions_still_allowed if {
+# Workspace creation still works when the caller has a system-scoped creator binding.
+test_workspace_creation_allowed_with_creator_binding if {
 	result := authz.allow with input as {
 		"principal_id": "user@test.com",
 		"method": "POST",
 		"path": "/apis/entities/v2/workspaces",
+		"scopes": ["entities:write", "platform:write"],
 	}
 		with data.authz.roles as unknown_endpoint_test_data.roles
 		with data.authz.endpoints as unknown_endpoint_test_data.endpoints
 		with data.authz.workspaces as unknown_endpoint_test_data.workspaces
-		with data.authz.principals as unknown_endpoint_test_data.principals
+		with data.authz.principals as {
+			"*": {"workspaces": {"system": ["WorkspaceCreator"]}},
+		}
 
 	result.allowed == true
+}
+
+# Workspace creation must still enforce the endpoint's write scopes.
+test_workspace_creation_denied_with_wrong_scope if {
+	result := authz.allow with input as {
+		"principal_id": "user@test.com",
+		"method": "POST",
+		"path": "/apis/entities/v2/workspaces",
+		"scopes": ["platform:read"],
+	}
+		with data.authz.roles as unknown_endpoint_test_data.roles
+		with data.authz.endpoints as unknown_endpoint_test_data.endpoints
+		with data.authz.workspaces as unknown_endpoint_test_data.workspaces
+		with data.authz.principals as {
+			"*": {"workspaces": {"system": ["WorkspaceCreator"]}},
+		}
+
+	result.allowed == false
 }
 
 # --- Bypass rules are unaffected ---
@@ -285,9 +311,9 @@ test_get_required_permissions_undefined_for_unknown if {
 		with data.authz.endpoints as unknown_endpoint_test_data.endpoints
 }
 
-# get_required_permissions still returns [] for endpoints with explicit empty permissions.
-test_get_required_permissions_empty_for_explicit if {
+# get_required_permissions still returns the configured permission for known endpoints.
+test_get_required_permissions_for_workspace_creation if {
 	perms := common.get_required_permissions("/apis/entities/v2/workspaces", "POST")
 		with data.authz.endpoints as unknown_endpoint_test_data.endpoints
-	perms == []
+	perms == ["workspaces.create"]
 }

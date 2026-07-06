@@ -9,7 +9,7 @@ from collections.abc import Iterator
 
 from nemo_evaluator.jobs.evaluate import EvaluateSpec
 from nemo_evaluator.jobs.secret_env import build_task_environment
-from nemo_evaluator_sdk.values import Agent, Model, RunConfig, RunConfigOnline, RunConfigOnlineModel
+from nemo_evaluator_sdk.values import AgentBase, Model, RunConfig, RunConfigOnline, RunConfigOnlineModel
 from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
     CPUExecutionProviderSpec,
@@ -33,7 +33,7 @@ def _validate_evaluate_spec(spec: EvaluateSpec) -> None:
             raise ValueError("prompt_template is required when EvaluateSpec.target is a model")
         if not isinstance(spec.params, RunConfigOnlineModel):
             raise TypeError("model target requires RunConfigOnlineModel")
-    elif isinstance(spec.target, Agent):
+    elif isinstance(spec.target, AgentBase):
         if spec.prompt_template is None:
             raise ValueError("prompt_template is required when EvaluateSpec.target is an agent")
         if not isinstance(spec.params, RunConfigOnline):
@@ -48,7 +48,11 @@ def _secret_refs(spec: EvaluateSpec) -> Iterator[tuple[str, str]]:
         for env_name, secret_ref in bundle.secrets.items():
             yield env_name, secret_ref.root
 
-    if isinstance(spec.target, Model | Agent) and spec.target.api_key_secret is not None and spec.target.api_key_env:
+    if (
+        isinstance(spec.target, (Model, AgentBase))
+        and spec.target.api_key_secret is not None
+        and spec.target.api_key_env
+    ):
         yield spec.target.api_key_env, spec.target.api_key_secret.root
 
 

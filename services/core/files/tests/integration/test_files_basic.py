@@ -22,18 +22,15 @@ import duckdb
 import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
-from nemo_platform import (
-    APIStatusError,
-    ConflictError,
-    NeMoPlatform,
-    NotFoundError,
-)
-from nemo_platform.types.files.fileset import Fileset, LocalStorageConfig
+from nemo_platform import APIStatusError, ConflictError, NeMoPlatform, NotFoundError
+from nemo_platform.types.files.fileset import Fileset
+from nemo_platform_plugin.client import errors as nemo_errors
 from nmp.core.files.testing.utils import (
     DEFAULT_WORKSPACE_ID,
     HTTPXFileSystem,
     create_fileset,
 )
+from pydantic import ValidationError
 
 
 class TestFilesBasic:
@@ -47,57 +44,67 @@ class TestFilesBasic:
         """Test listing filesets and filtering by workspace."""
         with create_fileset(sdk) as fileset1:
             with create_fileset(sdk) as fileset2:
-                filesets = sdk.files.filesets.list(workspace=DEFAULT_WORKSPACE_ID)
-                assert any(fs.id == fileset1.id for fs in filesets.data)
-                assert any(fs.id == fileset2.id for fs in filesets.data)
+                filesets = list(sdk.files.filesets.list(workspace=DEFAULT_WORKSPACE_ID).items())
+                assert any(fs.id == fileset1.id for fs in filesets)
+                assert any(fs.id == fileset2.id for fs in filesets)
 
     def test_fileset_list_filter_by_name(self, sdk: NeMoPlatform):
         """Test listing filesets with name filter."""
         with create_fileset(sdk) as fileset1:
             with create_fileset(sdk) as fileset2:
                 # Filter by exact name of fileset1
-                filtered = sdk.files.filesets.list(
-                    workspace=DEFAULT_WORKSPACE_ID,
-                    filter={"name": fileset1.name},
+                filtered = list(
+                    sdk.files.filesets.list(
+                        workspace=DEFAULT_WORKSPACE_ID,
+                        filter={"name": fileset1.name},
+                    ).items()
                 )
-                assert len(filtered.data) == 1
-                assert filtered.data[0].id == fileset1.id
-                assert filtered.data[0].name == fileset1.name
+                assert len(filtered) == 1
+                assert filtered[0].id == fileset1.id
+                assert filtered[0].name == fileset1.name
 
                 # Filter by exact name of fileset2
-                filtered2 = sdk.files.filesets.list(
-                    workspace=DEFAULT_WORKSPACE_ID,
-                    filter={"name": fileset2.name},
+                filtered2 = list(
+                    sdk.files.filesets.list(
+                        workspace=DEFAULT_WORKSPACE_ID,
+                        filter={"name": fileset2.name},
+                    ).items()
                 )
-                assert len(filtered2.data) == 1
-                assert filtered2.data[0].id == fileset2.id
+                assert len(filtered2) == 1
+                assert filtered2[0].id == fileset2.id
 
                 # Filter by non-existent name should return empty
-                filtered_none = sdk.files.filesets.list(
-                    workspace=DEFAULT_WORKSPACE_ID,
-                    filter={"name": "non-existent-fileset-name"},
+                filtered_none = list(
+                    sdk.files.filesets.list(
+                        workspace=DEFAULT_WORKSPACE_ID,
+                        filter={"name": "non-existent-fileset-name"},
+                    ).items()
                 )
-                assert len(filtered_none.data) == 0
+                assert len(filtered_none) == 0
 
     def test_fileset_list_filter_by_purpose(self, sdk: NeMoPlatform):
         """Test listing filesets with purpose filter."""
         with create_fileset(sdk, purpose="dataset") as dataset_fileset:
             with create_fileset(sdk, purpose="generic") as generic_fileset:
                 # Filter by purpose=dataset
-                dataset_filesets = sdk.files.filesets.list(
-                    workspace=DEFAULT_WORKSPACE_ID,
-                    filter={"purpose": "dataset"},
+                dataset_filesets = list(
+                    sdk.files.filesets.list(
+                        workspace=DEFAULT_WORKSPACE_ID,
+                        filter={"purpose": "dataset"},
+                    ).items()
                 )
-                assert any(fs.id == dataset_fileset.id for fs in dataset_filesets.data)
-                assert not any(fs.id == generic_fileset.id for fs in dataset_filesets.data)
+                assert any(fs.id == dataset_fileset.id for fs in dataset_filesets)
+                assert not any(fs.id == generic_fileset.id for fs in dataset_filesets)
 
                 # Filter by purpose=generic
-                generic_filesets = sdk.files.filesets.list(
-                    workspace=DEFAULT_WORKSPACE_ID,
-                    filter={"purpose": "generic"},
+                generic_filesets = list(
+                    sdk.files.filesets.list(
+                        workspace=DEFAULT_WORKSPACE_ID,
+                        filter={"purpose": "generic"},
+                    ).items()
                 )
-                assert any(fs.id == generic_fileset.id for fs in generic_filesets.data)
-                assert not any(fs.id == dataset_fileset.id for fs in generic_filesets.data)
+                assert any(fs.id == generic_fileset.id for fs in generic_filesets)
+                assert not any(fs.id == dataset_fileset.id for fs in generic_filesets)
 
     def test_fileset_list_filter_by_storage_type(self, sdk: NeMoPlatform):
         """Test listing filesets with storage_type filter."""
@@ -105,14 +112,16 @@ class TestFilesBasic:
         with create_fileset(sdk) as local_fileset1:
             with create_fileset(sdk) as local_fileset2:
                 # Filter by storage_type=local
-                local_filesets = sdk.files.filesets.list(
-                    workspace=DEFAULT_WORKSPACE_ID,
-                    filter={"storage_type": "local"},
+                local_filesets = list(
+                    sdk.files.filesets.list(
+                        workspace=DEFAULT_WORKSPACE_ID,
+                        filter={"storage_type": "local"},
+                    ).items()
                 )
-                assert any(fs.id == local_fileset1.id for fs in local_filesets.data)
-                assert any(fs.id == local_fileset2.id for fs in local_filesets.data)
+                assert any(fs.id == local_fileset1.id for fs in local_filesets)
+                assert any(fs.id == local_fileset2.id for fs in local_filesets)
                 # Verify storage type is local
-                for fs in local_filesets.data:
+                for fs in local_filesets:
                     if fs.id in [local_fileset1.id, local_fileset2.id]:
                         assert fs.storage.type == "local"
 
@@ -124,29 +133,29 @@ class TestFilesBasic:
                 stack.enter_context(create_fileset(sdk, purpose="generic"))
 
             # Test first page with page_size=2
-            page1 = sdk.files.filesets.list(
+            resp1 = sdk.files.filesets.list(
                 workspace=DEFAULT_WORKSPACE_ID,
                 page=1,
                 page_size=2,
             )
-            assert len(page1.data) == 2
-            assert page1.pagination is not None
-            assert page1.pagination.page == 1
-            assert page1.pagination.page_size == 2
+            page1 = resp1.page()
+            assert len(page1.items) == 2
+            assert page1.page == 1
+            assert page1.page_size == 2
 
             # Test second page
-            page2 = sdk.files.filesets.list(
+            resp2 = sdk.files.filesets.list(
                 workspace=DEFAULT_WORKSPACE_ID,
                 page=2,
                 page_size=2,
             )
-            assert len(page2.data) == 2
-            assert page2.pagination is not None
-            assert page2.pagination.page == 2
+            page2 = resp2.page()
+            assert len(page2.items) == 2
+            assert page2.page == 2
 
             # Verify pages have different data
-            page1_ids = {fs.id for fs in page1.data}
-            page2_ids = {fs.id for fs in page2.data}
+            page1_ids = {fs.id for fs in page1.items}
+            page2_ids = {fs.id for fs in page2.items}
             assert page1_ids.isdisjoint(page2_ids), "Pages should have different filesets"
 
     def test_file_upload_download(self, sdk: NeMoPlatform, fileset: Fileset):
@@ -340,6 +349,8 @@ class TestFilesBasic:
             pass  # Expected
 
         # Test 3: Try to download non-existent file
+        # Binary/streaming operations raise errors after send() returns (deferred),
+        # so they bypass the _RemappingFilesClient.send() override.
         with create_fileset(sdk) as fileset:
             try:
                 sdk.files.download_content(
@@ -348,7 +359,7 @@ class TestFilesBasic:
                     workspace=fileset.workspace,
                 )
                 assert False, "Should have raised NotFoundError for non-existent file"
-            except NotFoundError:
+            except (NotFoundError, nemo_errors.NotFoundError):
                 pass  # Expected
 
         # Test 4: Try to delete non-existent file
@@ -360,7 +371,7 @@ class TestFilesBasic:
                     workspace=fileset.workspace,
                 )
                 assert False, "Should have raised NotFoundError when deleting non-existent file"
-            except NotFoundError:
+            except (NotFoundError, nemo_errors.NotFoundError):
                 pass  # Expected
 
         # Test 5: List files in non-existent fileset
@@ -395,7 +406,7 @@ class TestFilesBasic:
                 name="reject-local-storage",
                 storage={"type": "local", "path": "/etc"},
             )
-            assert False, "Should have raised APIStatusError for local storage"
+            assert False, "Should have raised NemoHTTPError for local storage"
         except APIStatusError as exc:
             assert exc.status_code == 400
             assert "local storage is not allowed" in str(exc.body).lower()
@@ -412,7 +423,7 @@ class TestFilesBasic:
                     "use_sdk_auth": True,
                 },
             )
-            assert False, "Should have raised APIStatusError for S3 with use_sdk_auth=True"
+            assert False, "Should have raised NemoHTTPError for S3 with use_sdk_auth=True"
         except APIStatusError as exc:
             assert exc.status_code == 400
             assert "use_sdk_auth=true is not allowed" in str(exc.body).lower()
@@ -574,7 +585,10 @@ class TestFilesBasic:
 
     def test_fileset_create_rejects_invalid_dataset_schema_metadata(self, sdk: NeMoPlatform):
         """Test invalid JSON Schema metadata is rejected at fileset create time."""
-        with pytest.raises(APIStatusError, match="definitely-not-a-valid-json-schema-type"):
+        with pytest.raises(
+            (APIStatusError, ValidationError),
+            match="definitely-not-a-valid-json-schema-type",
+        ):
             with create_fileset(
                 sdk,
                 purpose="dataset",
@@ -619,7 +633,7 @@ class TestFilesBasic:
             )
 
             # Verify storage path exists with files
-            assert isinstance(fileset.storage, LocalStorageConfig)
+            assert fileset.storage.type == "local"
             storage_path = Path(fileset.storage.path)
             assert storage_path.exists()
             assert (storage_path / "file1.txt").exists()
@@ -648,11 +662,13 @@ class TestFilesBasic:
             time.sleep(1)
             with create_fileset(sdk) as fileset2:
                 # Filter by created_at[gte] should include both new filesets
-                filtered = sdk.files.filesets.list(
-                    workspace=DEFAULT_WORKSPACE_ID,
-                    filter={"created_at": {"$gte": before_create.isoformat(timespec="seconds")}},
+                filtered = list(
+                    sdk.files.filesets.list(
+                        workspace=DEFAULT_WORKSPACE_ID,
+                        filter={"created_at": {"$gte": before_create.isoformat(timespec="seconds")}},
+                    ).items()
                 )
-                fileset_ids = {fs.id for fs in filtered.data}
+                fileset_ids = {fs.id for fs in filtered}
                 assert fileset1.id in fileset_ids
                 assert fileset2.id in fileset_ids
 
@@ -669,11 +685,13 @@ class TestFilesBasic:
                 # Filter by created_at[lte] with time after first fileset
                 # should include first fileset but might include second
                 # (depends on timing precision)
-                filtered = sdk.files.filesets.list(
-                    workspace=DEFAULT_WORKSPACE_ID,
-                    filter={"created_at": {"$lte": after_first.isoformat()}},
+                filtered = list(
+                    sdk.files.filesets.list(
+                        workspace=DEFAULT_WORKSPACE_ID,
+                        filter={"created_at": {"$lte": after_first.isoformat()}},
+                    ).items()
                 )
-                fileset_ids = {fs.id for fs in filtered.data}
+                fileset_ids = {fs.id for fs in filtered}
                 assert fileset1.id in fileset_ids
 
     def test_fileset_list_filter_by_created_at_range(self, sdk: NeMoPlatform):
@@ -684,16 +702,18 @@ class TestFilesBasic:
             after_create = datetime.now(timezone.utc)
 
             # Filter by date range that includes the fileset
-            filtered = sdk.files.filesets.list(
-                workspace=DEFAULT_WORKSPACE_ID,
-                filter={
-                    "created_at": {
-                        "$gte": before_create.isoformat(),
-                        "$lte": after_create.isoformat(),
-                    }
-                },
+            filtered = list(
+                sdk.files.filesets.list(
+                    workspace=DEFAULT_WORKSPACE_ID,
+                    filter={
+                        "created_at": {
+                            "$gte": before_create.isoformat(),
+                            "$lte": after_create.isoformat(),
+                        }
+                    },
+                ).items()
             )
-            fileset_ids = {fs.id for fs in filtered.data}
+            fileset_ids = {fs.id for fs in filtered}
             assert fileset.id in fileset_ids
 
     def test_fileset_list_filter_by_created_at_excludes_older(self, sdk: NeMoPlatform):
@@ -709,11 +729,13 @@ class TestFilesBasic:
 
             with create_fileset(sdk) as new_fileset:
                 # Filter by created_at[gte] after old fileset was created
-                filtered = sdk.files.filesets.list(
-                    workspace=DEFAULT_WORKSPACE_ID,
-                    filter={"created_at": {"$gte": after_old.isoformat()}},
+                filtered = list(
+                    sdk.files.filesets.list(
+                        workspace=DEFAULT_WORKSPACE_ID,
+                        filter={"created_at": {"$gte": after_old.isoformat()}},
+                    ).items()
                 )
-                fileset_ids = {fs.id for fs in filtered.data}
+                fileset_ids = {fs.id for fs in filtered}
                 # New fileset should be included
                 assert new_fileset.id in fileset_ids
                 # Old fileset should be excluded
@@ -725,11 +747,13 @@ class TestFilesBasic:
 
         with create_fileset(sdk) as fileset:
             # Filter by updated_at[gte] should include the fileset
-            filtered = sdk.files.filesets.list(
-                workspace=DEFAULT_WORKSPACE_ID,
-                filter={"updated_at": {"$gte": before_create.isoformat()}},
+            filtered = list(
+                sdk.files.filesets.list(
+                    workspace=DEFAULT_WORKSPACE_ID,
+                    filter={"updated_at": {"$gte": before_create.isoformat()}},
+                ).items()
             )
-            fileset_ids = {fs.id for fs in filtered.data}
+            fileset_ids = {fs.id for fs in filtered}
             assert fileset.id in fileset_ids
 
     def test_fileset_list_combined_filters_with_datetime(self, sdk: NeMoPlatform):
@@ -739,14 +763,16 @@ class TestFilesBasic:
         with create_fileset(sdk, purpose="dataset") as dataset_fileset:
             with create_fileset(sdk, purpose="generic") as generic_fileset:
                 # Combine purpose filter with created_at filter
-                filtered = sdk.files.filesets.list(
-                    workspace=DEFAULT_WORKSPACE_ID,
-                    filter={
-                        "purpose": "dataset",
-                        "created_at": {"$gte": before_create.isoformat()},
-                    },
+                filtered = list(
+                    sdk.files.filesets.list(
+                        workspace=DEFAULT_WORKSPACE_ID,
+                        filter={
+                            "purpose": "dataset",
+                            "created_at": {"$gte": before_create.isoformat()},
+                        },
+                    ).items()
                 )
-                fileset_ids = {fs.id for fs in filtered.data}
+                fileset_ids = {fs.id for fs in filtered}
                 # Should include dataset fileset
                 assert dataset_fileset.id in fileset_ids
                 # Should exclude generic fileset

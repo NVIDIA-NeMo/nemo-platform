@@ -84,7 +84,15 @@ class NemoBinaryResponse:
 
     def __init__(self, stream_ctx: AbstractContextManager[httpx.Response], request: PreparedRequest) -> None:
         self._stream_ctx = stream_ctx
+        self._http_response: httpx.Response | None = None
         self.request = request
+
+    @property
+    def http_response(self) -> httpx.Response:
+        """The underlying httpx response. Available after entering ``stream()``."""
+        if self._http_response is None:
+            raise RuntimeError("http_response is only available inside a stream() context")
+        return self._http_response
 
     def read(self) -> bytes:
         """Read and return the entire response body as bytes."""
@@ -94,11 +102,25 @@ class NemoBinaryResponse:
             return data
 
     @contextmanager
-    def stream(self) -> Iterator[Iterator[bytes]]:
-        """Yield an iterator of byte chunks."""
+    def stream(self, chunk_size: int | None = None) -> Iterator[Iterator[bytes]]:
+        """Yield an iterator of raw byte chunks.
+
+        Args:
+            chunk_size: Maximum number of bytes per chunk. If None, uses the
+                transport's default chunking.
+
+        The underlying httpx response is available as ``http_response``
+        after entering the context, e.g. for reading ``Content-Length``::
+
+            with resp.stream() as chunks:
+                size = resp.http_response.headers.get("content-length")
+                for chunk in chunks:
+                    ...
+        """
         with self._stream_ctx as raw:
+            self._http_response = raw
             raise_for_status(raw)
-            yield raw.iter_bytes()
+            yield raw.iter_raw(chunk_size) if chunk_size else raw.iter_raw()
 
 
 class NemoStreamResponse(Generic[ModelT]):
@@ -163,7 +185,15 @@ class AsyncNemoBinaryResponse:
 
     def __init__(self, stream_ctx: AbstractAsyncContextManager[httpx.Response], request: PreparedRequest) -> None:
         self._stream_ctx = stream_ctx
+        self._http_response: httpx.Response | None = None
         self.request = request
+
+    @property
+    def http_response(self) -> httpx.Response:
+        """The underlying httpx response. Available after entering ``stream()``."""
+        if self._http_response is None:
+            raise RuntimeError("http_response is only available inside a stream() context")
+        return self._http_response
 
     async def read(self) -> bytes:
         """Read and return the entire response body as bytes."""
@@ -173,11 +203,25 @@ class AsyncNemoBinaryResponse:
             return data
 
     @asynccontextmanager
-    async def stream(self) -> AsyncIterator[AsyncIterator[bytes]]:
-        """Yield an async iterator of byte chunks."""
+    async def stream(self, chunk_size: int | None = None) -> AsyncIterator[AsyncIterator[bytes]]:
+        """Yield an async iterator of raw byte chunks.
+
+        Args:
+            chunk_size: Maximum number of bytes per chunk. If None, uses the
+                transport's default chunking.
+
+        The underlying httpx response is available as ``http_response``
+        after entering the context, e.g. for reading ``Content-Length``::
+
+            async with resp.stream() as chunks:
+                size = resp.http_response.headers.get("content-length")
+                async for chunk in chunks:
+                    ...
+        """
         async with self._stream_ctx as raw:
+            self._http_response = raw
             raise_for_status(raw)
-            yield raw.aiter_bytes()
+            yield raw.aiter_raw(chunk_size) if chunk_size else raw.aiter_raw()
 
 
 class AsyncNemoStreamResponse(Generic[ModelT]):
@@ -233,11 +277,11 @@ AsyncPageFetcher = Callable[[PreparedRequest, Any], Coroutine[Any, Any, httpx.Re
 class PageResult(Generic[ModelT]):
     """A single page of results with pagination metadata.
 
-    Returned by :meth:`NemoPaginatedResponse.data` for callers who want
+    Returned by :meth:`NemoPaginatedResponse.page` for callers who want
     one page at a time rather than auto-iterating all pages::
 
         resp = client.send(list_items())
-        page = resp.data()
+        page = resp.page()
         print(f"Page {page.page} of {page.total_pages} ({page.total_results} total)")
         for item in page.items:
             print(item.name)
@@ -251,18 +295,23 @@ class PageResult(Generic[ModelT]):
 
 
 class NemoPaginatedResponse(Generic[ModelT]):
-    """Sync iterable over all items across paginated API responses.
+    """Sync paginated API response.
 
-    Lazily fetches subsequent pages using the pagination strategy configured
-    on the endpoint's ``Paginated[T, Strategy]`` return type.  Iterating
-    yields individual ``ModelT`` items, not page envelopes::
+    Provides two iteration modes::
 
-        for item in client.send(list_items()):
+        # Iterate all items across all pages
+        for item in response.items():
             print(item.name)
 
-    For single-page access with metadata, use :meth:`data`::
+        # Iterate page by page with metadata
+        for page in response.pages():
+            print(f"Page {page.page}/{page.total_pages}")
+            for item in page.items:
+                process(item)
 
-        page = client.send(list_items()).data()
+    For single-page access, use :meth:`page`::
+
+        page = response.page()
         print(f"{page.total_results} total across {page.total_pages} pages")
     """
 
@@ -291,13 +340,14 @@ class NemoPaginatedResponse(Generic[ModelT]):
         items = [self._model_type.model_validate(item) for item in self._strategy.extract_items(body)]
         return items, body
 
-    def data(self) -> PageResult[ModelT]:
+    def page(self) -> PageResult[ModelT]:
         """Return the first page as a :class:`PageResult` with metadata."""
         items, body = self._parse_page(self._first_response)
         metadata = self._strategy.extract_metadata(body)
         return PageResult(items=items, **metadata)
 
-    def __iter__(self) -> Iterator[ModelT]:
+    def items(self) -> Iterator[ModelT]:
+        """Iterate all items across all pages, fetching subsequent pages lazily."""
         items, body = self._parse_page(self._first_response)
         yield from items
 
@@ -308,14 +358,31 @@ class NemoPaginatedResponse(Generic[ModelT]):
             current = next_page
             next_page = self._strategy.next_page(body, current)
 
+    def pages(self) -> Iterator[PageResult[ModelT]]:
+        """Iterate page by page, yielding :class:`PageResult` objects with metadata."""
+        items, body = self._parse_page(self._first_response)
+        metadata = self._strategy.extract_metadata(body)
+        yield PageResult(items=items, **metadata)
+
+        next_page = self._strategy.next_page(body, 1)
+        while next_page is not None:
+            items, body = self._parse_page(self._fetch_page(self.request, next_page))
+            metadata = self._strategy.extract_metadata(body)
+            yield PageResult(items=items, **metadata)
+            current = next_page
+            next_page = self._strategy.next_page(body, current)
+
 
 class AsyncNemoPaginatedResponse(Generic[ModelT]):
-    """Async iterable over all items across paginated API responses.
+    """Async paginated API response.
 
     Async twin of :class:`NemoPaginatedResponse`::
 
-        async for item in await client.send(list_items()):
+        async for item in response.items():
             print(item.name)
+
+        async for page in response.pages():
+            print(f"Page {page.page}/{page.total_pages}")
     """
 
     def __init__(
@@ -343,13 +410,14 @@ class AsyncNemoPaginatedResponse(Generic[ModelT]):
         items = [self._model_type.model_validate(item) for item in self._strategy.extract_items(body)]
         return items, body
 
-    def data(self) -> PageResult[ModelT]:
+    def page(self) -> PageResult[ModelT]:
         """Return the first page as a :class:`PageResult` with metadata."""
         items, body = self._parse_page(self._first_response)
         metadata = self._strategy.extract_metadata(body)
         return PageResult(items=items, **metadata)
 
-    async def __aiter__(self) -> AsyncIterator[ModelT]:
+    async def items(self) -> AsyncIterator[ModelT]:
+        """Iterate all items across all pages, fetching subsequent pages lazily."""
         items, body = self._parse_page(self._first_response)
         for item in items:
             yield item
@@ -360,5 +428,20 @@ class AsyncNemoPaginatedResponse(Generic[ModelT]):
             items, body = self._parse_page(raw)
             for item in items:
                 yield item
+            current = next_page
+            next_page = self._strategy.next_page(body, current)
+
+    async def pages(self) -> AsyncIterator[PageResult[ModelT]]:
+        """Iterate page by page, yielding :class:`PageResult` objects with metadata."""
+        items, body = self._parse_page(self._first_response)
+        metadata = self._strategy.extract_metadata(body)
+        yield PageResult(items=items, **metadata)
+
+        next_page = self._strategy.next_page(body, 1)
+        while next_page is not None:
+            raw = await self._fetch_page(self.request, next_page)
+            items, body = self._parse_page(raw)
+            metadata = self._strategy.extract_metadata(body)
+            yield PageResult(items=items, **metadata)
             current = next_page
             next_page = self._strategy.next_page(body, current)

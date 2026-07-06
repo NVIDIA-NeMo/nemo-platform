@@ -231,6 +231,26 @@ def test_manifest_maps_workspace_dir_to_local_dir(tmp_path: Path) -> None:
     assert manifest.entries["workspace"].src == workspace.resolve()
 
 
+def test_manifest_omits_serialized_task_to_avoid_leaking_grader_fields() -> None:
+    # The workspace is seeded only with the agent-facing projection (prompt + declared files); the
+    # task object is never serialized in, so grader-only fields like ``reference`` cannot leak.
+    runtime = DockerSandboxAgentRuntime()
+    task = AgentEvalTask(
+        id="task-1",
+        intent="Intent text.",
+        inputs={"prompt": "Prompt text."},
+        reference={"test_calculator.py": "def test_add(): assert add(2, 3) == 5"},
+    )
+
+    manifest = runtime._build_manifest(task, _fake_sdk())
+
+    assert "task.json" not in manifest.entries
+    seeded_files = [entry.content for entry in manifest.entries.values() if isinstance(entry, _FakeFile)]
+    seeded = b"".join(seeded_files).decode("utf-8")
+    assert "reference" not in seeded
+    assert "test_calculator.py" not in seeded
+
+
 def test_manifest_rejects_relative_or_missing_workspace_dir(tmp_path: Path) -> None:
     runtime = DockerSandboxAgentRuntime()
 

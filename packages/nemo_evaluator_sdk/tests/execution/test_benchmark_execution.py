@@ -26,7 +26,7 @@ from nemo_evaluator_sdk.execution.benchmark_execution import (
 )
 from nemo_evaluator_sdk.execution.values import EvaluationError, EvaluationPhase
 from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
-from nemo_evaluator_sdk.values import Agent
+from nemo_evaluator_sdk.values import Agent, GenericAgent
 from nemo_evaluator_sdk.values.models import Model
 from nemo_evaluator_sdk.values.params import RunConfig, RunConfigOnlineModel
 from nemo_evaluator_sdk.values.results import RowScore
@@ -136,7 +136,7 @@ def _make_model() -> Model:
 
 def _make_agent() -> Agent:
     """Build a minimal generic Agent instance suitable for online benchmark tests."""
-    return Agent(
+    return GenericAgent(
         url="http://agent.test",
         name="test-agent",
         format=AgentFormat.GENERIC,

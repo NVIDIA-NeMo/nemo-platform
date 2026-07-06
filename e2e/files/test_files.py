@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 from nemo_platform import NeMoPlatform
-from nemo_platform.types.files import Fileset
+from nemo_platform_plugin.files.types import FilesetOutput as Fileset
 
 
 @pytest.fixture

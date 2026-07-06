@@ -198,18 +198,80 @@ async def test_unified_diff_reports_text_patch_and_skips_binary(tmp_path: Path) 
 
 _ATIF_TRAJECTORY = {
     "schema_version": "ATIF-v1.7",
-    "agent": {"name": "demo", "version": "1.0"},
+    "session_id": "session-1",
+    "trajectory_id": "trajectory-1",
+    "agent": {
+        "name": "demo",
+        "version": "1.0",
+        "model_name": "demo-model",
+        "tool_definitions": [{"type": "function", "function": {"name": "search"}}],
+        "extra": {"deployment": "local"},
+        "future_agent_field": "accepted",
+    },
     "steps": [
-        {"step_id": 1, "source": "user", "message": "do it"},
+        {
+            "step_id": 1,
+            "timestamp": "2026-06-30T12:00:00Z",
+            "source": "user",
+            "message": "do it",
+            "extra": {"request_id": "request-1"},
+            "future_step_field": "accepted",
+        },
         {
             "step_id": 2,
+            "timestamp": "2026-06-30T12:00:01Z",
             "source": "agent",
+            "model_name": "demo-model",
+            "reasoning_effort": "low",
             "message": "calling tool",
-            "tool_calls": [{"tool_call_id": "c1", "function_name": "search", "arguments": {"q": "x"}}],
-            "observation": {"results": [{"source_call_id": "c1", "content": "result text"}]},
+            "reasoning_content": "need current data",
+            "tool_calls": [
+                {
+                    "tool_call_id": "c1",
+                    "function_name": "search",
+                    "arguments": {"q": "x"},
+                    "extra": {"event_type": "function_complete"},
+                    "future_tool_call_field": "accepted",
+                }
+            ],
+            "observation": {
+                "results": [
+                    {
+                        "source_call_id": "c1",
+                        "content": '{"count": 4}',
+                        "extra": {"event_type": "function_complete"},
+                        "future_result_field": "accepted",
+                    }
+                ],
+                "future_observation_field": "accepted",
+            },
+            "metrics": {
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "cached_tokens": 3,
+                "cost_usd": 0.01,
+                "prompt_token_ids": [1, 2],
+                "completion_token_ids": [3],
+                "logprobs": [-0.5],
+                "extra": {"provider": "test"},
+            },
+            "is_copied_context": False,
+            "llm_call_count": 1,
+            "extra": {"stream_updates": [{"sequence": 1}, {"sequence": 2}]},
         },
     ],
-    "final_metrics": {"total_prompt_tokens": 10, "total_completion_tokens": 5},
+    "notes": "tool evidence fixture",
+    "final_metrics": {
+        "total_prompt_tokens": 10,
+        "total_completion_tokens": 5,
+        "total_cached_tokens": 3,
+        "total_cost_usd": 0.01,
+        "total_steps": 2,
+        "extra": {"provider": "test"},
+    },
+    "continued_trajectory_ref": "trajectory-2.json",
+    "extra": {"translator": "bugnemo"},
+    "future_root_field": "accepted",
 }
 
 
@@ -235,6 +297,55 @@ async def test_trace_handle_reads_atif(tmp_path: Path) -> None:
     )
     with pytest.raises(ValidationError):
         await (await bad.trace("trace")).trace()
+
+
+@pytest.mark.asyncio
+async def test_trace_handle_exposes_typed_tool_evidence_and_retains_modeled_fields() -> None:
+    evidence = CandidateEvidence(
+        descriptors={"trace": EvidenceDescriptor(kind="trace", format="atif", data=_ATIF_TRAJECTORY)}
+    )
+
+    trajectory = await (await evidence.trace("trace")).trace()
+    assert trajectory.agent is not None
+    assert trajectory.agent.name == "demo"
+    assert trajectory.session_id == "session-1"
+    assert trajectory.trajectory_id == "trajectory-1"
+    assert trajectory.steps[1].step_id == 2
+    assert trajectory.steps[1].observation is not None
+    result = trajectory.steps[1].observation.results[0]
+    assert result.source_call_id == "c1"
+    assert result.content == '{"count": 4}'
+    assert result.extra == {"event_type": "function_complete"}
+    assert trajectory.steps[1].extra == {"stream_updates": [{"sequence": 1}, {"sequence": 2}]}
+    assert trajectory.steps[1].tool_calls is not None
+    assert trajectory.steps[1].tool_calls[0].extra == {"event_type": "function_complete"}
+    assert trajectory.steps[1].metrics is not None
+    assert trajectory.steps[1].metrics.cached_tokens == 3
+    assert trajectory.final_metrics is not None
+    assert trajectory.final_metrics.total_steps == 2
+
+    dumped = trajectory.model_dump(exclude_none=True)
+    assert dumped["agent"]["extra"] == {"deployment": "local"}
+    assert dumped["steps"][1]["observation"]["results"][0]["extra"] == {"event_type": "function_complete"}
+    assert dumped["steps"][1]["extra"] == {"stream_updates": [{"sequence": 1}, {"sequence": 2}]}
+    assert dumped["steps"][1]["tool_calls"][0]["extra"] == {"event_type": "function_complete"}
+    assert dumped["extra"] == {"translator": "bugnemo"}
+
+    # Unknown fields from newer ATIF revisions are accepted but omitted from the
+    # typed read view; the producer dictionary remains authoritative elsewhere.
+    assert "future_root_field" not in dumped
+    assert "future_step_field" not in dumped["steps"][0]
+    assert "future_result_field" not in dumped["steps"][1]["observation"]["results"][0]
+
+
+def test_observation_models_are_exported_from_source_and_vendored_values_packages() -> None:
+    from nemo_evaluator_sdk.values import Observation as SourceObservation
+    from nemo_evaluator_sdk.values import ObservationResult as SourceObservationResult
+    from nemo_platform.beta.evaluator.values import Observation as VendoredObservation
+    from nemo_platform.beta.evaluator.values import ObservationResult as VendoredObservationResult
+
+    assert SourceObservation.__name__ == VendoredObservation.__name__ == "Observation"
+    assert SourceObservationResult.__name__ == VendoredObservationResult.__name__ == "ObservationResult"
 
 
 @pytest.mark.asyncio

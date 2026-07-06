@@ -673,6 +673,54 @@ class TestGenericEntitiesApiBlocked:
         )
         assert result["allowed"] is True
 
+    def test_workspace_create_uses_system_scoped_permission(self, static_authz_data):
+        static_authz_data["authz"]["principals"] = {
+            "*": {"workspaces": {"system": ["WorkspaceCreator"]}},
+            "admin@test.com": {"workspaces": {"system": ["PlatformAdmin"]}},
+            "group:ml-leads": {"workspaces": {"system": ["WorkspaceCreator"]}},
+        }
+        set_policy_data(static_authz_data)
+
+        wildcard_allowed = evaluate(
+            "allow",
+            {
+                "principal_id": "plain-user@test.com",
+                "method": "POST",
+                "path": "/apis/entities/v2/workspaces",
+                "scopes": ["entities:write", "platform:write"],
+            },
+        )
+        assert wildcard_allowed["allowed"] is True
+
+        static_authz_data["authz"]["principals"] = {
+            "admin@test.com": {"workspaces": {"system": ["PlatformAdmin"]}},
+            "group:ml-leads": {"workspaces": {"system": ["WorkspaceCreator"]}},
+        }
+        set_policy_data(static_authz_data)
+
+        plain_denied = evaluate(
+            "allow",
+            {
+                "principal_id": "plain-user@test.com",
+                "method": "POST",
+                "path": "/apis/entities/v2/workspaces",
+                "scopes": ["entities:write", "platform:write"],
+            },
+        )
+        group_allowed = evaluate(
+            "allow",
+            {
+                "principal_id": "lead-user@test.com",
+                "principal_groups": ["group:ml-leads"],
+                "method": "POST",
+                "path": "/apis/entities/v2/workspaces",
+                "scopes": ["entities:write", "platform:write"],
+            },
+        )
+
+        assert plain_denied["allowed"] is False
+        assert group_allowed["allowed"] is True
+
 
 class TestPerAreaScopes:
     """Validate that every endpoint in static-authz.yaml has per-area scopes.
@@ -801,12 +849,12 @@ class TestPerAreaScopes:
 
         assert not inconsistent, "Inconsistent read/write scopes:\n" + "\n".join(inconsistent)
 
-    def test_workspace_creation_has_empty_scopes(self, static_authz_data):
-        """POST /apis/entities/v2/workspaces should have empty scopes (open to all authenticated users)."""
+    def test_workspace_creation_requires_write_scopes_and_permission(self, static_authz_data):
+        """POST /apis/entities/v2/workspaces should participate in normal write-scope RBAC."""
         ws_endpoint = static_authz_data["authz"]["endpoints"].get("/apis/entities/v2/workspaces", {})
         post_config = ws_endpoint.get("post", {})
-        assert post_config.get("scopes") == [], "Workspace creation (POST) should have empty scopes"
-        assert post_config.get("permissions") == [], "Workspace creation (POST) should have empty permissions"
+        assert post_config.get("scopes") == ["entities:write", "platform:write"]
+        assert post_config.get("permissions") == ["workspaces.create"]
 
     def test_audit_workspace_endpoints_have_audit_scopes(self, static_authz_data):
         """All workspace-scoped audit endpoints should have audit:read/audit:write scopes."""

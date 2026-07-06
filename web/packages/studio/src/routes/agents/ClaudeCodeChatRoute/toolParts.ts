@@ -12,7 +12,11 @@ export type ClaudeCodeToolArgs = ClaudeCodeToolCallPart['args'];
 type ClaudeCodeToolArgValue = ClaudeCodeToolArgs[string];
 
 export const CLAUDE_CODE_COLLAPSED_THINKING_TOOL_NAME = 'ClaudeCodeCollapsedThinking';
+export const CLAUDE_CODE_COLLAPSED_STUDIO_DETAILS_TOOL_NAME = 'ClaudeCodeCollapsedStudioDetails';
 export const CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME = 'ClaudeCodeSubtleToolGroup';
+export const CLAUDE_CODE_WORK_DETAILS_LABEL = 'Work details';
+export const STUDIO_MESSAGE_SUMMARY_START = '<<<NEMO_STUDIO_MESSAGE_SUMMARY_V1>>>';
+export const STUDIO_MESSAGE_SUMMARY_END = '<<<END_NEMO_STUDIO_MESSAGE_SUMMARY_V1>>>';
 
 const FILE_CHANGE_TOOL_CALL_NAMES = new Set(['Edit', 'MultiEdit', 'Write']);
 
@@ -22,6 +26,7 @@ export const isClaudeCodeJobProgressToolName = (toolName: string): boolean =>
 
 export const isClaudeCodeSubtleToolCallName = (toolName: string): boolean =>
   toolName !== CLAUDE_CODE_COLLAPSED_THINKING_TOOL_NAME &&
+  toolName !== CLAUDE_CODE_COLLAPSED_STUDIO_DETAILS_TOOL_NAME &&
   toolName !== CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME &&
   !FILE_CHANGE_TOOL_CALL_NAMES.has(toolName) &&
   !isClaudeCodeJobProgressToolName(toolName);
@@ -83,6 +88,197 @@ const createClaudeCodeCollapsedThinkingPart = (text: string): ThreadAssistantMes
     type: 'tool-call',
     toolCallId: 'claude-code-collapsed-thinking',
     toolName: CLAUDE_CODE_COLLAPSED_THINKING_TOOL_NAME,
+    args,
+    argsText: JSON.stringify(args),
+  };
+};
+
+interface ClaudeCodeCompletedMessageOptions {
+  readonly elapsedMs?: number;
+}
+
+interface StudioSummaryBlock {
+  readonly detailsLabel: string;
+  readonly detailParts: readonly ThreadAssistantMessagePart[];
+  readonly summaryText: string;
+}
+
+interface MarkdownLink {
+  readonly href: string;
+  readonly markdown: string;
+}
+
+interface SerializedClaudeCodeTextPart {
+  readonly text: string;
+  readonly type: 'text';
+}
+
+interface SerializedClaudeCodeToolPart {
+  readonly args: ClaudeCodeToolArgs;
+  readonly argsText: string;
+  readonly toolCallId: string;
+  readonly toolName: string;
+  readonly type: 'tool-call';
+}
+
+type SerializedClaudeCodePart = SerializedClaudeCodeTextPart | SerializedClaudeCodeToolPart;
+
+const formatElapsedDuration = (elapsedMs: number | undefined): string | undefined => {
+  if (elapsedMs === undefined || !Number.isFinite(elapsedMs)) return undefined;
+
+  const totalSeconds = Math.max(1, Math.round(elapsedMs / 1000));
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (totalMinutes < 60) return seconds ? `${totalMinutes}m ${seconds}s` : `${totalMinutes}m`;
+
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
+};
+
+const normalizeSummaryField = (value: string | undefined): string | undefined => {
+  const trimmed = value?.replace(/\s+/g, ' ').trim();
+  return trimmed || undefined;
+};
+
+const normalizeMarkdownSummary = (value: string | undefined): string | undefined => {
+  const trimmed = value?.replace(/\r\n?/g, '\n').trim();
+  return trimmed || undefined;
+};
+
+const getMarkdownLinks = (text: string): readonly MarkdownLink[] => {
+  const links: MarkdownLink[] = [];
+  const seenHrefs = new Set<string>();
+  const markdownLinkPattern = /(?<!!)\[([^\]\n]+)\]\(([^)\s]+)(?:\s+["'][^"']*["'])?\)/g;
+
+  for (const match of text.matchAll(markdownLinkPattern)) {
+    const label = match[1]?.trim();
+    const href = match[2]?.trim();
+    if (!label || !href || seenHrefs.has(href)) continue;
+    seenHrefs.add(href);
+    links.push({ href, markdown: `[${label}](${href})` });
+  }
+
+  for (const match of text.matchAll(/https?:\/\/[^\s<>()\]]+/g)) {
+    const href = match[0].replace(/[.,;:!?]+$/, '');
+    if (!href || seenHrefs.has(href)) continue;
+    seenHrefs.add(href);
+    links.push({ href, markdown: `[${href}](${href})` });
+  }
+
+  return links;
+};
+
+const appendDetailLinksToSummary = (
+  summaryText: string,
+  detailParts: readonly ThreadAssistantMessagePart[]
+): string => {
+  const summaryHrefs = new Set(getMarkdownLinks(summaryText).map((link) => link.href));
+  const detailText = detailParts
+    .filter(
+      (part): part is Extract<ThreadAssistantMessagePart, { type: 'text' }> => part.type === 'text'
+    )
+    .map((part) => part.text)
+    .join('\n');
+  const missingLinks = getMarkdownLinks(detailText).filter((link) => !summaryHrefs.has(link.href));
+  if (!missingLinks.length) return summaryText;
+
+  return `${summaryText}\n\n${missingLinks.map((link) => link.markdown).join('\n\n')}`;
+};
+
+const getStudioSummaryFields = (
+  blockText: string
+): {
+  readonly detailsLabel?: string;
+  readonly summaryText?: string;
+  readonly workedFor?: string;
+} => {
+  const fields: Partial<Record<'details_label' | 'summary' | 'worked_for', string[]>> = {};
+
+  const fieldMatches = Array.from(
+    blockText.matchAll(/(?:^|\s)(worked_for|summary|details_label):\s*/gi)
+  );
+
+  for (const [index, match] of fieldMatches.entries()) {
+    const field = match[1]!.toLowerCase() as 'details_label' | 'summary' | 'worked_for';
+    const valueStart = (match.index ?? 0) + match[0].length;
+    const valueEnd = fieldMatches[index + 1]?.index ?? blockText.length;
+    fields[field] = [blockText.slice(valueStart, valueEnd)];
+  }
+
+  return {
+    detailsLabel: normalizeSummaryField(fields.details_label?.join(' ')),
+    summaryText: normalizeMarkdownSummary(fields.summary?.join('\n')),
+    workedFor: normalizeSummaryField(fields.worked_for?.join(' ')),
+  };
+};
+
+const getStudioDetailsLabel = ({
+  elapsedMs,
+  summaryFields,
+}: {
+  readonly elapsedMs?: number;
+  readonly summaryFields: ReturnType<typeof getStudioSummaryFields>;
+}): string => {
+  const elapsedDuration = formatElapsedDuration(elapsedMs);
+  if (elapsedDuration) return `worked for ${elapsedDuration}`;
+
+  if (summaryFields.detailsLabel?.toLowerCase().startsWith('worked for ')) {
+    return summaryFields.detailsLabel.toLowerCase() === 'worked for unknown'
+      ? CLAUDE_CODE_WORK_DETAILS_LABEL
+      : summaryFields.detailsLabel;
+  }
+
+  if (!summaryFields.workedFor || summaryFields.workedFor.toLowerCase() === 'unknown') {
+    return CLAUDE_CODE_WORK_DETAILS_LABEL;
+  }
+
+  return `worked for ${summaryFields.workedFor}`;
+};
+
+const serializeClaudeCodePart = (
+  part: ThreadAssistantMessagePart
+): SerializedClaudeCodePart | undefined => {
+  if (part.type === 'text') {
+    const text = part.text.trim();
+    return text ? { type: 'text', text } : undefined;
+  }
+
+  if (
+    part.type !== 'tool-call' ||
+    part.toolName === CLAUDE_CODE_COLLAPSED_STUDIO_DETAILS_TOOL_NAME
+  ) {
+    return undefined;
+  }
+
+  return {
+    type: 'tool-call',
+    args: toClaudeCodeToolArgs(part.args),
+    argsText: part.argsText,
+    toolCallId: part.toolCallId,
+    toolName: part.toolName,
+  };
+};
+
+const createClaudeCodeCollapsedStudioDetailsPart = ({
+  label,
+  parts,
+}: {
+  readonly label: string;
+  readonly parts: readonly ThreadAssistantMessagePart[];
+}): ThreadAssistantMessagePart | undefined => {
+  const serializedParts = groupConsecutiveClaudeCodeSubtleToolCalls(parts)
+    .map(serializeClaudeCodePart)
+    .filter((part): part is SerializedClaudeCodePart => part !== undefined);
+  if (!serializedParts.length) return undefined;
+
+  const args = toClaudeCodeToolArgs({ label, parts: serializedParts });
+  return {
+    type: 'tool-call',
+    toolCallId: 'claude-code-collapsed-studio-details',
+    toolName: CLAUDE_CODE_COLLAPSED_STUDIO_DETAILS_TOOL_NAME,
     args,
     argsText: JSON.stringify(args),
   };
@@ -177,6 +373,111 @@ const splitTextParagraphs = (text: string): readonly string[] =>
     .map((paragraph) => paragraph.trim())
     .filter(Boolean);
 
+const splitTrailingQuestion = (
+  text: string
+): { readonly detailText: string; readonly question?: string } => {
+  const lines = text.trim().split('\n');
+  const lastLine = lines.at(-1)?.trim();
+  if (!lastLine?.endsWith('?')) return { detailText: text.trim() };
+
+  return {
+    detailText: lines.slice(0, -1).join('\n').trim(),
+    question: lastLine,
+  };
+};
+
+const getTruncatedStudioSummaryText = (
+  detailParts: readonly ThreadAssistantMessagePart[],
+  question: string | undefined
+): string => {
+  const detailText = detailParts
+    .filter(
+      (part): part is Extract<ThreadAssistantMessagePart, { type: 'text' }> => part.type === 'text'
+    )
+    .map((part) => part.text)
+    .join('\n\n');
+  const detailSummary = splitTextParagraphs(detailText).at(-1);
+  const baseSummary = detailSummary ?? 'The response ended before its summary was complete.';
+  return question && !baseSummary.includes(question)
+    ? `${baseSummary}\n\n${question}`
+    : baseSummary;
+};
+
+const getStudioSummaryBlock = (
+  parts: readonly ThreadAssistantMessagePart[],
+  options: ClaudeCodeCompletedMessageOptions
+): StudioSummaryBlock | undefined => {
+  const detailParts: ThreadAssistantMessagePart[] = [];
+
+  for (let index = 0; index < parts.length; index += 1) {
+    const part = parts[index]!;
+    if (part.type !== 'text') {
+      detailParts.push(part);
+      continue;
+    }
+
+    const summaryStartIndex = part.text.indexOf(STUDIO_MESSAGE_SUMMARY_START);
+    if (summaryStartIndex < 0) {
+      detailParts.push(part);
+      continue;
+    }
+
+    const textBeforeSummary = part.text.slice(0, summaryStartIndex).trim();
+    const { detailText, question } = splitTrailingQuestion(textBeforeSummary);
+    if (detailText) {
+      detailParts.push({ type: 'text', text: detailText });
+    }
+
+    const summarySourceParts = [part.text.slice(summaryStartIndex)];
+    for (const remainingPart of parts.slice(index + 1)) {
+      if (remainingPart.type === 'text') {
+        summarySourceParts.push(remainingPart.text);
+      } else {
+        detailParts.push(remainingPart);
+      }
+    }
+    const summarySource = summarySourceParts.join('\n');
+    const summaryEndIndex = summarySource.indexOf(STUDIO_MESSAGE_SUMMARY_END);
+    if (summaryEndIndex < 0) {
+      return {
+        detailsLabel: getStudioDetailsLabel({
+          elapsedMs: options.elapsedMs,
+          summaryFields: getStudioSummaryFields(''),
+        }),
+        detailParts,
+        summaryText: getTruncatedStudioSummaryText(detailParts, question),
+      };
+    }
+
+    const summaryBlockText = summarySource
+      .slice(STUDIO_MESSAGE_SUMMARY_START.length, summaryEndIndex)
+      .trim();
+    const trailingSummaryText = summarySource
+      .slice(summaryEndIndex + STUDIO_MESSAGE_SUMMARY_END.length)
+      .trim();
+    const summaryFields = getStudioSummaryFields(summaryBlockText);
+    const baseSummaryText =
+      summaryFields.summaryText ?? normalizeMarkdownSummary(trailingSummaryText);
+    if (!baseSummaryText) return undefined;
+    const summaryTextWithQuestion =
+      question && !baseSummaryText.includes(question)
+        ? `${baseSummaryText}\n\n${question}`
+        : baseSummaryText;
+    const summaryText = appendDetailLinksToSummary(summaryTextWithQuestion, detailParts);
+
+    return {
+      detailsLabel: getStudioDetailsLabel({
+        elapsedMs: options.elapsedMs,
+        summaryFields,
+      }),
+      detailParts,
+      summaryText,
+    };
+  }
+
+  return undefined;
+};
+
 const getCollapsedTextParts = (
   parts: readonly ThreadAssistantMessagePart[],
   lastToolIndex: number
@@ -214,8 +515,21 @@ const getCollapsedTextParts = (
 };
 
 export const getClaudeCodeCompletedMessageParts = (
-  parts: readonly ThreadAssistantMessagePart[]
+  parts: readonly ThreadAssistantMessagePart[],
+  options: ClaudeCodeCompletedMessageOptions = {}
 ): readonly ThreadAssistantMessagePart[] => {
+  const studioSummaryBlock = getStudioSummaryBlock(parts, options);
+  if (studioSummaryBlock) {
+    const completedParts: ThreadAssistantMessagePart[] = [];
+    const collapsedDetailsPart = createClaudeCodeCollapsedStudioDetailsPart({
+      label: studioSummaryBlock.detailsLabel,
+      parts: studioSummaryBlock.detailParts,
+    });
+    if (collapsedDetailsPart) completedParts.push(collapsedDetailsPart);
+    completedParts.push({ type: 'text', text: studioSummaryBlock.summaryText });
+    return completedParts;
+  }
+
   const completedParts: ThreadAssistantMessagePart[] = [];
   let lastToolIndex = -1;
 

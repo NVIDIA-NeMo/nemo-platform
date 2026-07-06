@@ -17,6 +17,7 @@ from typing import Generator
 
 import pytest
 from nemo_platform import NeMoPlatform, PermissionDeniedError, UnprocessableEntityError
+from nmp.common.auth.models import Principal
 from nmp.common.sdk_factory import get_sdk_on_behalf_of
 from nmp.core.secrets.config import SecretsServiceConfig
 from nmp.core.secrets.service import SecretsService
@@ -739,6 +740,42 @@ class TestDelegatedSecretAccess:
         assert result.name == secret_name
         assert result.value == secret_value
 
+    def test_service_principal_can_access_on_behalf_of_group_bound_viewer(self, sdk: NeMoPlatform):
+        """Test delegated access succeeds when the delegated user's group has Viewer."""
+        workspace_name = short_unique_name("del-grp")
+        secret_name = short_unique_name("secret")
+        secret_value = "delegated-group-secret"
+        delegated_email = unique_email("viewer")
+        delegated_group = f"group-{short_unique_name('vw')}"
+
+        platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
+        platform_admin_sdk.workspaces.create(name=workspace_name)
+        grant_workspace_role(
+            platform_admin_sdk,
+            workspace=workspace_name,
+            principal=delegated_group,
+            roles=["Viewer"],
+        )
+        platform_admin_sdk.secrets.create(
+            workspace=workspace_name,
+            name=secret_name,
+            value=secret_value,
+        )
+
+        delegated_sdk = get_sdk_on_behalf_of(
+            as_user(sdk, SERVICE_PRINCIPAL),
+            Principal(
+                id=delegated_email,
+                email=delegated_email,
+                groups=[delegated_group],
+            ),
+        )
+
+        result = delegated_sdk.secrets.access(workspace=workspace_name, name=secret_name)
+
+        assert result.name == secret_name
+        assert result.value == secret_value
+
     def test_platform_admin_cannot_access_on_behalf_of_non_member(self, sdk: NeMoPlatform):
         """Test platform admin accessing secret on behalf of a non-member user."""
         workspace_name = short_unique_name("del-nm")
@@ -758,6 +795,40 @@ class TestDelegatedSecretAccess:
         # Platform admin accesses secret on behalf of non-member
         # Non-member doesn't have any role in workspace, so this should fail
         delegated_sdk = get_sdk_on_behalf_of(as_user(sdk, TEST_ADMIN_EMAIL), non_member_email)
+        with pytest.raises(PermissionDeniedError):
+            delegated_sdk.secrets.access(workspace=workspace_name, name=secret_name)
+
+    def test_service_principal_denies_on_behalf_of_user_missing_group_bound_role(self, sdk: NeMoPlatform):
+        """Test delegated access fails when the delegated user lacks the bound group."""
+        workspace_name = short_unique_name("del-grp-no")
+        secret_name = short_unique_name("secret")
+        delegated_email = unique_email("viewer")
+        bound_group = f"group-{short_unique_name('bound')}"
+        other_group = f"group-{short_unique_name('other')}"
+
+        platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
+        platform_admin_sdk.workspaces.create(name=workspace_name)
+        grant_workspace_role(
+            platform_admin_sdk,
+            workspace=workspace_name,
+            principal=bound_group,
+            roles=["Viewer"],
+        )
+        platform_admin_sdk.secrets.create(
+            workspace=workspace_name,
+            name=secret_name,
+            value="delegated-group-secret",
+        )
+
+        delegated_sdk = get_sdk_on_behalf_of(
+            as_user(sdk, SERVICE_PRINCIPAL),
+            Principal(
+                id=delegated_email,
+                email=delegated_email,
+                groups=[other_group],
+            ),
+        )
+
         with pytest.raises(PermissionDeniedError):
             delegated_sdk.secrets.access(workspace=workspace_name, name=secret_name)
 

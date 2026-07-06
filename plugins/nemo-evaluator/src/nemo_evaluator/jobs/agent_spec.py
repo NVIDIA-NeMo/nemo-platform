@@ -18,7 +18,7 @@ from typing import Any, Literal, Self, TypeAlias
 # payload kind so MetricBundle payloads round-trip through validation.
 import nemo_evaluator.shared.metric_bundles.cloudpickle  # noqa: F401
 import nemo_evaluator.shared.metric_bundles.inline  # noqa: F401
-from nemo_evaluator.api.schemas import MetricInline
+from nemo_evaluator.api.schemas import MetricInline, TaskInputs, TaskMetadataList
 from nemo_evaluator.jobs.metric_resolution import to_runtime_bundle, unresolved_model_refs
 from nemo_evaluator.metric_refs import MetricRefOrInline
 from nemo_evaluator.shared.metric_bundles.bundles import unbundle_metric
@@ -49,10 +49,10 @@ class ModelTarget(BaseModel):
 
 
 class AgentTarget(BaseModel):
-    """Generate trials by calling an Agent (generic HTTP) endpoint.
+    """Generate trials by calling a generic HTTP or NeMo Agent Toolkit target.
 
-    The agent shapes its own request via its ``body`` / ``response_path``, so there is no separate
-    prompt template here.
+    The selected agent variant owns its request and response profile, so there is no
+    separate prompt template here.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -76,9 +76,41 @@ class CodexRunnerTarget(BaseModel):
     timeout_s: int = Field(default=600, ge=1, description="Per-task timeout for the Codex CLI, in seconds.")
 
 
+class FabricRunnerTarget(BaseModel):
+    """Generate trials by driving an agent harness through the NeMo Fabric runtime.
+
+    Fabric is harness-agnostic: the harness (Codex, Hermes, ...) is selected by the supplied
+    config's ``harness.adapter_id`` and is never inferred from ``model``. ``model`` is applied as a
+    final profile overlay when given.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["fabric"] = "fabric"
+    config: dict[str, Any] = Field(
+        description="Inline NeMo Fabric agent config (an ``agent.yaml`` as a JSON-shaped mapping). Its "
+        "``harness.adapter_id`` selects the harness, e.g. ``nvidia.fabric.codex.cli`` for Codex.",
+    )
+    profiles: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Ordered Fabric profile overlays applied after the base config, before ``model``.",
+    )
+    model: str | None = Field(
+        default=None,
+        description="Optional ``provider/model`` slug applied as a final profile overlay; the harness "
+        "default is used when omitted.",
+    )
+    timeout_s: int = Field(default=600, ge=1, description="Per-task timeout for the Fabric run, in seconds.")
+    capture_trajectory: bool = Field(
+        default=True,
+        description="Capture the agent trajectory as ATIF via NeMo Relay and attach it to trial evidence. "
+        "Requires the NeMo Relay gateway in the run environment.",
+    )
+
+
 #: The agent-runner slot of the target union — the spec-side mirror of ``AgentTaskRunner``, resolved
-#: to a runtime at run time. One member today; widen to a ``kind``-union as more runners land.
-AgentRunnerTarget: TypeAlias = CodexRunnerTarget
+#: to a runtime at run time. ``kind``-discriminated; widen with more members as runners land.
+AgentRunnerTarget: TypeAlias = CodexRunnerTarget | FabricRunnerTarget
 
 #: What generates trials: a Model or Agent endpoint, or an agent runner. ``kind``-discriminated, and
 #: the spec-level analog of the SDK's runtime ``AgentEvalTarget`` (Model | Agent | AgentTaskRunner).
@@ -97,12 +129,18 @@ class _AgentEvalTaskCommon(BaseModel):
 
     id: str = Field(description="Stable task identifier, unique within the task collection.")
     intent: str = Field(description="Human-readable description of the desired agent behavior.")
-    inputs: dict[str, Any] = Field(description="What the agent receives or starts from (instruction, seed, refs).")
+    inputs: TaskInputs = Field(default_factory=TaskInputs, description="The task's recognized input fields.")
+    reference: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Grader-only ground truth (held-out tests, expected outputs, rubric data). Surfaced to "
+        "metrics but never seeded into the agent's workspace or shown to the agent, so a metric can grade "
+        "against artifacts the agent cannot influence.",
+    )
     views: dict[str, SemanticView] = Field(
         default_factory=dict,
         description="Optional reporting views mapping this task's metric outputs into named semantic scores.",
     )
-    metadata: dict[str, Any] = Field(default_factory=dict, description="Free-form metadata associated with the task.")
+    metadata: TaskMetadataList = Field(default_factory=list, description="Key/value annotations for the task.")
 
 
 class AgentEvalTaskInput(_AgentEvalTaskCommon):

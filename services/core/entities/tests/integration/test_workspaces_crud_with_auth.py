@@ -14,6 +14,7 @@ Uses the create_test_client pattern for fast in-memory testing.
 
 import uuid
 from contextlib import contextmanager
+from time import monotonic, sleep
 from typing import Generator
 
 import pytest
@@ -86,6 +87,43 @@ def as_service(sdk: NeMoPlatform, service_name: str) -> Generator[None, None, No
         sdk._client.headers.update(old_headers)
 
 
+def restrict_workspace_creation_to_named_users(sdk: NeMoPlatform) -> None:
+    """Revoke the seeded wildcard WorkspaceCreator binding while preserving Viewer."""
+    with as_service(sdk, "auth"):
+        sdk.workspaces.members.update(
+            principal_id="*",
+            workspace="system",
+            roles=["Viewer"],
+            wait_role_propagation=True,
+        )
+
+
+def wait_for_workspace_create_authz(
+    sdk: NeMoPlatform, principal_id: str, expected: bool, timeout_s: float = 5.0
+) -> None:
+    """Poll the authz allow endpoint until workspace creation reaches the expected decision."""
+    deadline = monotonic() + timeout_s
+    payload = {
+        "input": {
+            "principal_id": principal_id,
+            "method": "POST",
+            "path": "/apis/entities/v2/workspaces",
+            "scopes": ["entities:write", "platform:write"],
+        }
+    }
+
+    with as_service(sdk, "auth"):
+        while monotonic() < deadline:
+            response = sdk._client.post("/apis/auth/v2/authz/allow", json=payload)
+            assert response.status_code == 200
+            allowed = response.json()["result"]["allowed"]
+            if allowed is expected:
+                return
+            sleep(0.1)
+
+    raise AssertionError(f"workspace-create authz for {principal_id} did not become {expected} within {timeout_s}s")
+
+
 @pytest.fixture(scope="module")
 def sdk() -> Generator[NeMoPlatform, None, None]:
     """SDK client with EntitiesService (auth enabled)."""
@@ -146,6 +184,59 @@ class TestWorkspaceCRUDWithAuth:
         assert workspace.description == "Auth test workspace"
         assert workspace.created_by == TEST_USER_EMAIL
         assert workspace.updated_by == TEST_USER_EMAIL
+
+    def test_workspace_create_remains_open_by_default(self, sdk: NeMoPlatform):
+        """Default seeding keeps workspace creation open to authenticated users."""
+        creator_email = f"creator-{uuid.uuid4().hex[:8]}@example.com"
+        workspace_name = short_unique_name("default-open")
+
+        with as_user(sdk, creator_email):
+            created = sdk.workspaces.create(name=workspace_name)
+
+        assert created.name == workspace_name
+        assert created.created_by == creator_email
+
+    def test_workspace_create_can_be_restricted_by_rebinding_system_role(self, sdk: NeMoPlatform):
+        """Operators can rebind system workspace creation access to specific principals."""
+        creator_email = f"creator-{uuid.uuid4().hex[:8]}@example.com"
+        workspace_name = short_unique_name("restricted")
+        seeded_wildcard_roles = ["Viewer", "WorkspaceCreator"]
+
+        try:
+            restrict_workspace_creation_to_named_users(sdk)
+
+            with as_service(sdk, "auth"):
+                sdk.workspaces.members.create(
+                    workspace="system",
+                    principal=creator_email,
+                    roles=["Viewer", "WorkspaceCreator"],
+                    wait_role_propagation=True,
+                )
+
+            wait_for_workspace_create_authz(sdk, creator_email, expected=True)
+
+            with as_service(sdk, "auth"):
+                members = sdk.workspaces.members.list(workspace="system")
+
+            wildcard_member = next((m for m in members.data if m.principal == "*"), None)
+            creator_member = next((m for m in members.data if m.principal == creator_email), None)
+
+            assert wildcard_member is not None
+            assert set(wildcard_member.roles) == {"Viewer"}
+            assert creator_member is not None
+            assert set(creator_member.roles) == {"Viewer", "WorkspaceCreator"}
+
+            with as_user(sdk, creator_email):
+                created = sdk.workspaces.create(name=workspace_name)
+                assert created.name == workspace_name
+        finally:
+            with as_service(sdk, "auth"):
+                sdk.workspaces.members.update(
+                    principal_id="*",
+                    workspace="system",
+                    roles=seeded_wildcard_roles,
+                    wait_role_propagation=True,
+                )
 
     def test_creator_gets_admin_role(self, sdk: NeMoPlatform):
         """Test that workspace creator automatically gets Admin role."""

@@ -1,0 +1,157 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+"""Shared request/response types for the Files service.
+
+These types define the HTTP contract for filesets and file operations.
+Both the server (FastAPI routes) and the client (NemoClient endpoints)
+import from here — one source of truth, no Stainless-generated duplicates.
+"""
+
+from __future__ import annotations
+
+from enum import StrEnum
+from typing import Any, NotRequired, TypedDict
+
+from nemo_platform_plugin.files.metadata import FilesetMetadata
+from nemo_platform_plugin.files.storage_config import StorageConfig
+from nemo_platform_plugin.schema import Page
+from pydantic import BaseModel, Field
+
+
+class FilesetPurpose(StrEnum):
+    DATASET = "dataset"
+    GENERIC = "generic"
+    MODEL = "model"
+
+
+class CacheStatus(StrEnum):
+    """Cache status for files in external storage backends."""
+
+    CACHED = "cached"
+    CACHING = "caching"
+    NOT_CACHED = "not_cached"
+    NOT_CACHEABLE = "not_cacheable"
+
+
+# ---------------------------------------------------------------------------
+# Response types
+# ---------------------------------------------------------------------------
+
+
+class FilesetOutput(BaseModel):
+    """Response DTO for fileset operations."""
+
+    id: str
+    name: str
+    workspace: str
+    description: str
+    purpose: FilesetPurpose
+    storage: StorageConfig
+    metadata: FilesetMetadata
+    custom_fields: dict[str, Any]
+    project: str
+    created_at: str
+    updated_at: str
+
+
+class FilesetFileOutput(BaseModel):
+    file_ref: str
+    file_url: str
+    path: str
+    size: int
+    cache_status: CacheStatus | None = None
+
+
+class ListFilesetFilesResponse(BaseModel):
+    data: list[FilesetFileOutput]
+
+
+FilesetPage = Page[FilesetOutput]
+
+
+# ---------------------------------------------------------------------------
+# Request types
+# ---------------------------------------------------------------------------
+
+NAME_PATTERN = r"^[\w\-.]+$"
+MAX_LENGTH = 255
+
+
+class CreateFilesetRequest(BaseModel):
+    name: str = Field(
+        description="The name of the fileset. Allowed characters: letters (a-z, A-Z), digits (0-9), underscores, hyphens, and dots.",
+        max_length=MAX_LENGTH,
+        pattern=NAME_PATTERN,
+        examples=["training-data-v1", "llama-checkpoint"],
+    )
+    description: str | None = Field(
+        default=None,
+        description="The description of the fileset.",
+        max_length=MAX_LENGTH,
+    )
+    project: str | None = Field(
+        default=None,
+        description="The name of the project associated with this fileset.",
+    )
+    storage: StorageConfig | None = Field(
+        default=None,
+        description="The storage configuration for the fileset. If not provided, uses default storage.",
+    )
+    purpose: FilesetPurpose = Field(
+        default=FilesetPurpose.GENERIC,
+        description="The purpose of the fileset.",
+    )
+    metadata: FilesetMetadata = Field(
+        default_factory=FilesetMetadata,
+        description="Purpose-specific metadata. Use the purpose as the key (e.g., {dataset: {...}}).",
+    )
+    custom_fields: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Custom fields for the fileset.",
+    )
+    cache: bool = Field(
+        default=False,
+        description="Cache all files after creation. Only applies to external storage.",
+    )
+
+
+class UpdateFilesetRequest(BaseModel):
+    description: str | None = Field(
+        default=None,
+        description="The description of the fileset.",
+        max_length=MAX_LENGTH,
+    )
+    project: str | None = Field(
+        default=None,
+        description="The name of the project associated with this fileset.",
+    )
+    purpose: FilesetPurpose | None = Field(
+        default=None,
+        description="The purpose of the fileset.",
+    )
+    metadata: FilesetMetadata | None = Field(
+        default=None,
+        description="Purpose-specific metadata. Use the purpose as the key (e.g., {dataset: {...}}).",
+    )
+    custom_fields: dict[str, Any] | None = Field(
+        default=None,
+        description="Custom fields for the fileset.",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Query parameter types
+# ---------------------------------------------------------------------------
+
+
+class ListFilesetsQueryParams(TypedDict, total=False):
+    page: NotRequired[int]
+    page_size: NotRequired[int]
+    sort: NotRequired[str]
+    filter: NotRequired[str]
+
+
+class ListFilesQueryParams(TypedDict, total=False):
+    path: NotRequired[str]
+    include_cache_status: NotRequired[bool]

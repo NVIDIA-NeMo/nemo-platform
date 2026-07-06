@@ -158,9 +158,12 @@ class DockerSandboxAgentRuntime:
                     await client.delete(sandbox)
 
     def _build_manifest(self, task: AgentEvalTask, sdk: SandboxSDK) -> Any:
+        # Seed only the agent-facing projection of the task: the prompt (its instruction) plus any
+        # declared workspace files. We deliberately do NOT serialize the task object into the
+        # workspace — nothing in the runtime consumes it, and dumping the whole DTO would expose
+        # grader-only fields (e.g. ``reference`` held-out ground truth) to the agent.
         entries: dict[str, Any] = {
             "instruction.md": sdk.File(content=_task_prompt(task).encode("utf-8")),
-            "task.json": sdk.File(content=task.model_dump_json().encode("utf-8")),
             "output": sdk.Dir(),
         }
         workspace_dir = task.inputs.get("workspace_dir")

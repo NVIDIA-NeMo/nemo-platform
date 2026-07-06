@@ -282,6 +282,11 @@ class SubprocessJobBackend(JobBackend[SubprocessExecutionProvider, SubprocessJob
                     status=PlatformJobStatus.CANCELLED.value,
                     status_details={"message": "Subprocess not found, job cancelled"},
                 )
+            if step.status == PlatformJobStatus.PAUSING:
+                return JobUpdate(
+                    status=PlatformJobStatus.PAUSED.value,
+                    status_details={"message": "Subprocess not found, job paused"},
+                )
             task_fallback = self._get_task_fallback_update(step)
             if task_fallback is not None:
                 return task_fallback
@@ -306,6 +311,9 @@ class SubprocessJobBackend(JobBackend[SubprocessExecutionProvider, SubprocessJob
             )
 
         if step.status == PlatformJobStatus.CANCELLING and metadata.process.poll() is None:
+            self._terminate_process(metadata)
+
+        if step.status == PlatformJobStatus.PAUSING and metadata.process.poll() is None:
             self._terminate_process(metadata)
 
         ttl_seconds = (
@@ -528,10 +536,21 @@ class SubprocessJobBackend(JobBackend[SubprocessExecutionProvider, SubprocessJob
         if exit_code is None:
             if step.status == PlatformJobStatus.CANCELLING:
                 return PlatformJobStatus.CANCELLING, {"message": "Job is cancelling", **status_details}, {}, ""
+            if step.status == PlatformJobStatus.PAUSING:
+                return PlatformJobStatus.PAUSING, {"message": "Job is pausing", **status_details}, {}, ""
             return PlatformJobStatus.ACTIVE, {"message": "Job is running", **status_details}, {}, ""
 
         self._finish_logs(metadata)
         status_details["exit_code"] = exit_code
+        # Check pausing/cancelling before treating a non-zero exit as an error.
+        # The process was killed as part of pause/cancel — the exit code is expected.
+        if step.status == PlatformJobStatus.PAUSING:
+            return (
+                PlatformJobStatus.PAUSED,
+                {"message": f"Job paused with exit code {exit_code}", **status_details},
+                {},
+                "",
+            )
         if step.status == PlatformJobStatus.CANCELLING:
             return (
                 PlatformJobStatus.CANCELLED,

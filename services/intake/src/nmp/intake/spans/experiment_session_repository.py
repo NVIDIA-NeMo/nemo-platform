@@ -62,7 +62,11 @@ class ExperimentSessionRepository:
         test_case_id: str | None = None,
         page: int,
         page_size: int,
+        input_char_limit: int | None = None,
     ) -> ExperimentSessionPage:
+        if input_char_limit is not None and input_char_limit < 1:
+            raise ValueError("input_char_limit must be positive when set")
+
         trace_index_table = self._client.table("trace_index")
         spans_table = self._client.table("spans")
         evaluator_results_table = self._client.table("evaluator_results")
@@ -96,15 +100,19 @@ class ExperimentSessionRepository:
             spans_table=spans_table,
             evaluator_results_table=evaluator_results_table,
             scoped_filter_sql=scoped_filter_sql,
+            input_char_limit=input_char_limit,
         )
+        list_parameters = {
+            **base_parameters,
+            **scoped_filter_parameters,
+            "limit": page_size,
+            "offset": offset,
+        }
+        if input_char_limit is not None:
+            list_parameters["input_char_limit"] = input_char_limit
         list_result = await self._client.query(
             list_sql,
-            parameters={
-                **base_parameters,
-                **scoped_filter_parameters,
-                "limit": page_size,
-                "offset": offset,
-            },
+            parameters=list_parameters,
         )
         rows = [_row(record) for record in result_rows(list_result)]
         return ExperimentSessionPage(rows=rows, total=total)
@@ -122,20 +130,35 @@ def _scoped_filter(*, test_case_id: str | None, status: SpanStatus | None) -> tu
     return "".join(f"\n            AND {clause}" for clause in clauses), parameters
 
 
-def _scoped_sessions_sql(trace_index_table: str, *, scoped_filter_sql: str) -> str:
+def _scoped_sessions_sql(
+    trace_index_table: str,
+    *,
+    scoped_filter_sql: str,
+    input_char_limit: int | None = None,
+    include_input: bool = True,
+) -> str:
+    select_columns = [
+        "workspace",
+        "experiment_id",
+        "session_id",
+        "test_case_id",
+        "trace_id",
+        "root_span_id",
+        "root_started_at AS start_time",
+        "root_ended_at AS end_time",
+        "latency_ms",
+        "root_status AS root_span_status",
+    ]
+    if include_input:
+        select_columns.append(
+            "root_input AS input"
+            if input_char_limit is None
+            else "substringUTF8(root_input, 1, %(input_char_limit)s) AS input"
+        )
+    select_sql = ",\n            ".join(select_columns)
     return f"""
         SELECT
-            workspace,
-            experiment_id,
-            session_id,
-            test_case_id,
-            trace_id,
-            root_span_id,
-            root_started_at AS start_time,
-            root_ended_at AS end_time,
-            latency_ms,
-            root_status AS root_span_status,
-            root_input AS input
+            {select_sql}
         FROM {trace_index_table} FINAL
         WHERE workspace = %(workspace)s
             AND is_deleted = 0
@@ -151,7 +174,11 @@ def _count_sql(
     trace_index_table: str,
     scoped_filter_sql: str,
 ) -> str:
-    scoped_sessions_sql = _scoped_sessions_sql(trace_index_table, scoped_filter_sql=scoped_filter_sql)
+    scoped_sessions_sql = _scoped_sessions_sql(
+        trace_index_table,
+        scoped_filter_sql=scoped_filter_sql,
+        include_input=False,
+    )
     return f"""
         SELECT count()
         FROM (
@@ -166,11 +193,17 @@ def _list_sql(
     spans_table: str,
     evaluator_results_table: str,
     scoped_filter_sql: str,
+    input_char_limit: int | None = None,
 ) -> str:
+    scoped_sessions_sql = _scoped_sessions_sql(
+        trace_index_table,
+        scoped_filter_sql=scoped_filter_sql,
+        input_char_limit=input_char_limit,
+    )
     return f"""
         WITH
         scoped_sessions AS (
-            {_scoped_sessions_sql(trace_index_table, scoped_filter_sql=scoped_filter_sql)}
+            {scoped_sessions_sql}
         ),
         page_sessions AS (
             SELECT

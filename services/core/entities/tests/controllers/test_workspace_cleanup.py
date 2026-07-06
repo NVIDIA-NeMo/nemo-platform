@@ -37,6 +37,16 @@ class _AsyncIterator:
             raise StopAsyncIteration
 
 
+class _MockPaginatedResponse:
+    """Mock for paginated responses that expose .items() for async iteration."""
+
+    def __init__(self, items):
+        self._items = items
+
+    def items(self):
+        return _AsyncIterator(self._items)
+
+
 def _make_sdk(
     jobs: list | None = None,
     deployments: list | None = None,
@@ -49,7 +59,7 @@ def _make_sdk(
     sdk.jobs.delete = AsyncMock()
     sdk.inference.deployments.list = AsyncMock(return_value=_AsyncIterator(deployments or []))
     sdk.inference.deployments.delete = AsyncMock()
-    sdk.files.filesets.list = AsyncMock(return_value=_AsyncIterator(filesets or []))
+    sdk.files.filesets.list = AsyncMock(return_value=_MockPaginatedResponse(filesets or []))
     sdk.files.filesets.delete = AsyncMock()
     return sdk
 
@@ -148,7 +158,7 @@ class TestWorkspaceCleanupAsyncStep:
         sdk = MagicMock()
         sdk.jobs.list = AsyncMock(return_value=_AsyncIterator([]))
         sdk.inference.deployments.list = AsyncMock(return_value=_AsyncIterator([]))
-        sdk.files.filesets.list = AsyncMock(return_value=_AsyncIterator([]))
+        sdk.files.filesets.list = AsyncMock(return_value=_MockPaginatedResponse([]))
 
         controller = _make_controller(workspace_repo=repo, nmp_sdk=sdk)
 
@@ -329,7 +339,7 @@ class TestWorkspaceCleanupFilesets:
         fileset.name = "test-fileset"
 
         sdk = MagicMock()
-        sdk.files.filesets.list = AsyncMock(return_value=_AsyncIterator([fileset]))
+        sdk.files.filesets.list = AsyncMock(return_value=_MockPaginatedResponse([fileset]))
         sdk.files.filesets.delete = AsyncMock()
 
         controller = _make_controller(nmp_sdk=sdk)
@@ -349,7 +359,7 @@ class TestWorkspaceCleanupFilesets:
         fs2.name = "fs2"
 
         sdk = MagicMock()
-        sdk.files.filesets.list = AsyncMock(return_value=_AsyncIterator([fs1, fs2]))
+        sdk.files.filesets.list = AsyncMock(return_value=_MockPaginatedResponse([fs1, fs2]))
         sdk.files.filesets.delete = AsyncMock(side_effect=[Exception("fail"), None])
 
         controller = _make_controller(nmp_sdk=sdk)

@@ -36,7 +36,7 @@ class FilesetsPersonReader(PersonReader):
         self._sdk = sdk
 
     def create_duckdb_connection(self) -> duckdb.DuckDBPyConnection:
-        filesystem = FilesetFileSystem(self._sdk)
+        filesystem = FilesetFileSystem(sdk=self._sdk)
         conn = duckdb.connect()
         conn.register_filesystem(filesystem)
         return conn

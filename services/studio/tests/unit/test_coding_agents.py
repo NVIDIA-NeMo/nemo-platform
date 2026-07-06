@@ -119,6 +119,12 @@ def test_build_claude_argv_uses_new_session_then_resume_flag():
     assert argv[:3] == ["claude", "-p", "hello"]
     assert "--output-format" in argv
     assert "stream-json" in argv
+    mcp_config = json.loads(argv[argv.index("--mcp-config") + 1])
+    assert mcp_config["mcpServers"][coding_agents.CLAUDE_MCP_SERVER_NAME] == {
+        "type": "http",
+        "url": "http://test/mcp",
+        "timeout": coding_agents.CLAUDE_MCP_TOOL_TIMEOUT_MS,
+    }
     assert "--allowedTools" in argv
     allowed_tools = argv[argv.index("--allowedTools") + 1].split(",")
     assert f"mcp__{coding_agents.CLAUDE_MCP_SERVER_NAME}__select_agent" in allowed_tools
@@ -127,6 +133,7 @@ def test_build_claude_argv_uses_new_session_then_resume_flag():
     assert f"mcp__{coding_agents.CLAUDE_MCP_SERVER_NAME}__select_model" in allowed_tools
     assert f"mcp__{coding_agents.CLAUDE_MCP_SERVER_NAME}__job_progress" in allowed_tools
     assert f"mcp__{coding_agents.CLAUDE_MCP_SERVER_NAME}__studio_link" in allowed_tools
+    assert "--disallowedTools" not in argv
     assert "--append-system-prompt" in argv
     assert argv[argv.index("--append-system-prompt") + 1] == coding_agents.STUDIO_CODING_AGENT_CONTEXT
     assert "--permission-prompt-tool" in argv
@@ -408,6 +415,7 @@ def test_list_and_get_history_sessions(
                     },
                 ],
             },
+            {"kind": "user", "text": "Which agent should be used?\nbeach-finder"},
             {
                 "kind": "assistant",
                 "parts": [
@@ -476,6 +484,50 @@ def test_list_claude_skills_returns_claude_install_metadata(
 
     assert response.status_code == 200
     assert response.json() == [_expected_inference_skill_response(installed=True)]
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "tool_input", "result", "expected"),
+    [
+        (
+            "mcp__nemo_studio__select_agent",
+            {},
+            '{"status":"submitted","agent":"beach-finder"}',
+            "Selected agent: beach-finder",
+        ),
+        (
+            "mcp__nemo_studio__select_model",
+            {"display_label": "Fallback model", "output_key": "fallback_model"},
+            '{"status":"submitted","fallback_model":"nemotron"}',
+            "Fallback model: nemotron",
+        ),
+        (
+            "mcp__nemo_studio__select_dataset_file",
+            {},
+            '{"status":"submitted","dataset_fileset":"eval-data","dataset_path":"input.jsonl"}',
+            "Selected dataset: eval-data/input.jsonl",
+        ),
+        (
+            "mcp__nemo_studio__select_eval_config",
+            {},
+            '{"status":"submitted","needs_eval_config":true}',
+            "I don't have an evaluation config yet",
+        ),
+    ],
+)
+def test_history_interaction_text_restores_studio_picker_submissions(
+    tool_name: str,
+    tool_input: dict[str, Any],
+    result: str,
+    expected: str,
+):
+    assert (
+        coding_agents._history_interaction_text(
+            coding_agents.HistoryToolUse(name=tool_name, input=tool_input),
+            result,
+        )
+        == expected
+    )
 
 
 def test_load_claude_skills_falls_back_on_duplicate_skill_error(
@@ -632,6 +684,34 @@ def test_build_studio_system_prompt_preserves_empty_enabled_destinations():
     assert destinations_line == "Enabled Studio link destinations for this Studio instance: ."
 
 
+def test_build_studio_system_prompt_includes_message_summary_contract():
+    prompt = coding_agents._build_studio_system_prompt(
+        "default",
+        "https://studio.test",
+        "/workspaces/default/dashboard/code-agent",
+        {},
+    )
+
+    assert "Required message-summary behavior:" in prompt
+    assert coding_agents.STUDIO_MESSAGE_SUMMARY_START in prompt
+    assert coding_agents.STUDIO_MESSAGE_SUMMARY_END in prompt
+    assert "worked_for: <elapsed time if you know it, otherwise unknown>" in prompt
+    assert "summary: <concise Markdown" in prompt
+    assert "details_label: worked for <same elapsed time or unknown>" in prompt
+    assert "behind a 'worked for <time>' accordion" in prompt
+    assert "Never end a message with only a plain-text question" in prompt
+    assert "call the matching select_* tool before completing the message" in prompt
+    assert "use Claude Code's AskUserQuestion tool" in prompt
+    assert "For AskUserQuestion, provide input shaped as" in prompt
+    assert "A timeout, disconnect, or other interactive-tool error is not permission to continue" in prompt
+    assert "summary's final sentence MUST state the exact unresolved selection or action" in prompt
+    assert "Never show only the investigation result" in prompt
+    assert "use a numbered or bulleted list" in prompt
+    assert "repeat those links at the bottom of the summary" in prompt
+    assert "Put repeated links on separate lines without a heading" in prompt
+    assert "Do not omit the summary block because the message is short." in prompt
+
+
 def test_studio_link_destinations_cover_registered_workspace_routes():
     repo_root = Path(__file__).resolve().parents[4]
     routes_index = (repo_root / "web/packages/studio/src/routes/index.tsx").read_text()
@@ -675,7 +755,6 @@ def test_studio_link_destinations_cover_registered_workspace_routes():
         "index": "workspace",
         "inferenceProviders": "inference_providers",
         "intake": "intake",
-        "intakeSpan": "intake_span",
         "intakeSpans": "intake_spans",
         "intakeTrace": "intake_trace",
         "intakeTraces": "intake_traces",
@@ -998,6 +1077,38 @@ def test_mcp_studio_link_returns_fileset_file_markdown(service_client: TestClien
     }
 
 
+def test_mcp_studio_link_returns_intake_span_markdown(monkeypatch: pytest.MonkeyPatch):
+    service_client = service_client_with_feature_flags(monkeypatch, {"intake_enabled": True})
+    session_id = str(uuid.uuid4())
+
+    response = service_client.post(
+        f"/v2/coding-agents/mcp/{session_id}?workspace=default",
+        json={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "studio_link",
+                "arguments": {
+                    "destination": "intake_span",
+                    "trace_id": "trace 01",
+                    "span_id": "span 02",
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    result_text = response.json()["result"]["content"][0]["text"]
+    assert json.loads(result_text) == {
+        "workspace": "default",
+        "destination": "intake_span",
+        "path": "/workspaces/default/intake/traces/trace%2001?spanId=span%2002",
+        "url": None,
+        "markdown": "[Span span 02](/workspaces/default/intake/traces/trace%2001?spanId=span%2002)",
+    }
+
+
 def test_mcp_studio_link_returns_started_evaluation_result_markdown(service_client: TestClient):
     session_id = str(uuid.uuid4())
 
@@ -1251,6 +1362,81 @@ async def test_request_agent_input_rejects_reserved_response_keys():
     }
 
 
+async def test_permission_request_waits_until_user_resolves_it():
+    session_id = str(uuid.uuid4())
+    coding_agents._session_streams[session_id] = asyncio.Queue()
+
+    request_task = asyncio.create_task(
+        coding_agents._request_permission(
+            session_id,
+            {"tool_name": "AskUserQuestion", "input": {"question": "Continue?"}},
+        )
+    )
+    _, payload = await coding_agents._session_streams[session_id].get()
+    request_id = json.loads(payload)["request_id"]
+
+    await asyncio.sleep(0)
+    assert not request_task.done()
+
+    await coding_agents.resolve_permission(
+        session_id,
+        request_id,
+        coding_agents.PermissionDecision(approved=True),
+    )
+
+    assert await request_task == {"behavior": "allow", "updatedInput": {"question": "Continue?"}}
+
+
+async def test_agent_input_request_cleans_up_when_wait_is_cancelled():
+    session_id = str(uuid.uuid4())
+    coding_agents._session_streams[session_id] = asyncio.Queue()
+
+    request_task = asyncio.create_task(coding_agents._request_agent_input(session_id, "agent", {}))
+    _, payload = await coding_agents._session_streams[session_id].get()
+    request_id = json.loads(payload)["request_id"]
+
+    assert request_id in coding_agents._pending_agent_inputs
+    request_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await request_task
+    assert request_id not in coding_agents._pending_agent_inputs
+
+
+async def test_blocking_mcp_tool_response_streams_keepalives_until_user_responds():
+    session_id = str(uuid.uuid4())
+    coding_agents._session_streams[session_id] = asyncio.Queue()
+    result = asyncio.get_running_loop().create_future()
+
+    response = await coding_agents._blocking_mcp_tool_response(session_id, 7, result)
+
+    assert response.media_type == "text/event-stream"
+    assert response.headers["cache-control"] == "no-cache, no-transform"
+    assert response.headers["x-accel-buffering"] == "no"
+
+    iterator = response.body_iterator
+    assert await anext(iterator) == ": keepalive\n\n"
+
+    result.set_result({"status": "answered", "response": "A detailed answer"})
+    final_event = await anext(iterator)
+    assert final_event.startswith("event: message\ndata: ")
+    payload = json.loads(final_event.removeprefix("event: message\ndata: ").removesuffix("\n\n"))
+    assert payload == {
+        "jsonrpc": "2.0",
+        "id": 7,
+        "result": {
+            "content": [
+                {
+                    "type": "text",
+                    "text": json.dumps({"status": "answered", "response": "A detailed answer"}),
+                }
+            ]
+        },
+    }
+
+    with pytest.raises(StopAsyncIteration):
+        await anext(iterator)
+
+
 def test_platform_route_stream_uses_public_mcp_callback(monkeypatch: pytest.MonkeyPatch):
     service = StudioService()
     app = FastAPI()
@@ -1392,6 +1578,8 @@ def test_public_mcp_route_is_mounted_before_static_fallback():
         f"/studio/api/coding-agents/mcp/{session_id}",
         json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
     )
+    get_response = client.get(f"/studio/api/coding-agents/mcp/{session_id}")
+    delete_response = client.delete(f"/studio/api/coding-agents/mcp/{session_id}")
 
     assert response.status_code == 200
     assert [tool["name"] for tool in response.json()["result"]["tools"]] == [
@@ -1403,6 +1591,10 @@ def test_public_mcp_route_is_mounted_before_static_fallback():
         "job_progress",
         "studio_link",
     ]
+    assert get_response.status_code == 405
+    assert get_response.headers["allow"] == "POST"
+    assert delete_response.status_code == 405
+    assert delete_response.headers["allow"] == "POST"
 
 
 def test_coding_agent_routes_are_available_by_default():

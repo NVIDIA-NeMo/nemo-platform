@@ -1,0 +1,325 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+"""Unit tests for FabricAgentRuntime using a fake nemo_fabric SDK (the native package is optional)."""
+
+from __future__ import annotations
+
+import json
+import sys
+import types
+from pathlib import Path
+from typing import Any
+
+import pytest
+from nemo_evaluator_sdk.agent_eval.runtimes.fabric import runtime as fabric_runtime
+from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalTask
+from nemo_evaluator_sdk.values.evidence import EVIDENCE_FORMAT_ATIF, EVIDENCE_TRACE
+
+
+class _FakeConfig:
+    def __init__(self, mapping: dict[str, Any]) -> None:
+        self.mapping = mapping
+
+    @classmethod
+    def from_mapping(cls, mapping: dict[str, Any]) -> _FakeConfig:
+        return cls(mapping)
+
+
+class _FakeProfile:
+    def __init__(self, *, name: str | None = None, models: Any = None, mapping: Any = None) -> None:
+        self.name = name
+        self.models = models
+        self.mapping = mapping
+
+    @classmethod
+    def from_mapping(cls, mapping: dict[str, Any]) -> _FakeProfile:
+        return cls(name=mapping.get("name"), mapping=mapping)
+
+
+class _FakeRelayConfig:
+    """Stand-in for nemo_relay.observability's typed config objects (AtifConfig/AtofConfig/...)."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        self.kwargs = kwargs
+
+    def to_dict(self) -> dict[str, Any]:
+        return {key: (value.to_dict() if hasattr(value, "to_dict") else value) for key, value in self.kwargs.items()}
+
+
+class _FakeComponentSpec:
+    def __init__(self, *, config: Any, enabled: bool = True) -> None:
+        self.config = config
+        self.enabled = enabled
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"kind": "observability", "enabled": self.enabled, "config": self.config.to_dict()}
+
+
+class _FakeArtifact:
+    def __init__(self, name: str, kind: str, path: Path, media_type: str | None = None) -> None:
+        self.name = name
+        self.kind = kind
+        self.path = path
+        self.media_type = media_type
+
+
+class _FakeManifest:
+    def __init__(self, artifacts: list[_FakeArtifact]) -> None:
+        self.root: Path | None = None
+        self.artifacts = artifacts
+
+
+class _FakeError:
+    def __init__(self, stage: str, code: str, message: str) -> None:
+        self.stage = stage
+        self.code = code
+        self.message = message
+
+
+class _FakeTelemetry:
+    def __init__(self, *, provider: str, kind: str, uri: str | None, trace_id: str | None) -> None:
+        self.provider = provider
+        self.kind = kind
+        self.uri = uri
+        self.trace_id = trace_id
+
+
+class _FakeEvent:
+    def __init__(self, kind: str, message: str) -> None:
+        self.kind = kind
+        self.message = message
+
+
+class _FakeResult:
+    def __init__(
+        self,
+        *,
+        status: str,
+        output: Any = None,
+        error: _FakeError | None = None,
+        artifacts: list[_FakeArtifact] | None = None,
+    ) -> None:
+        self.status = status
+        self.output = output
+        self.error = error
+        self.harness = "codex"
+        self.adapter_id = "nvidia.fabric.codex.cli"
+        self.adapter_kind = "process"
+        self.invocation_id = "inv-1"
+        self.artifacts = _FakeManifest(artifacts or [])
+        self.telemetry = [_FakeTelemetry(provider="relay", kind="trace", uri="file:///relay", trace_id="tid-1")]
+        self.events = [_FakeEvent("runtime_start", "started")]
+
+    def to_mapping(self) -> dict[str, Any]:
+        return {"status": self.status, "output": self.output, "harness": self.harness}
+
+
+def _install_fake_fabric(monkeypatch: pytest.MonkeyPatch, handler: Any) -> type:
+    """Inject a fake ``nemo_fabric`` module (the runtime imports it lazily); return the client class."""
+
+    class _FakeClient:
+        recorded: list[dict[str, Any]] = []
+
+        async def __aenter__(self) -> _FakeClient:
+            return self
+
+        async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
+            return False
+
+        async def run(self, agent: Any, **kwargs: Any) -> Any:
+            _FakeClient.recorded.append({"agent": agent, **kwargs})
+            return handler(agent, kwargs)
+
+    _FakeClient.recorded = []
+    module = types.ModuleType("nemo_fabric")
+    module.FabricClient = _FakeClient  # type: ignore[attr-defined]
+    module.FabricConfig = _FakeConfig  # type: ignore[attr-defined]
+    module.FabricProfileConfig = _FakeProfile  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "nemo_fabric", module)
+
+    # The runtime builds the trajectory profile from nemo_relay's typed config objects (lazy import);
+    # stub the optional package so trajectory-capture paths resolve without the native dependency.
+    relay_mod = types.ModuleType("nemo_relay")
+    observability_mod = types.ModuleType("nemo_relay.observability")
+    observability_mod.AtifConfig = _FakeRelayConfig  # type: ignore[attr-defined]
+    observability_mod.AtofConfig = _FakeRelayConfig  # type: ignore[attr-defined]
+    observability_mod.ObservabilityConfig = _FakeRelayConfig  # type: ignore[attr-defined]
+    observability_mod.ComponentSpec = _FakeComponentSpec  # type: ignore[attr-defined]
+    relay_mod.observability = observability_mod  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "nemo_relay", relay_mod)
+    monkeypatch.setitem(sys.modules, "nemo_relay.observability", observability_mod)
+    return _FakeClient
+
+
+_TASK = AgentEvalTask(id="task/1", intent="Answer.", inputs={"prompt": "Ping?"})
+_CONFIG = {"metadata": {"name": "a"}, "harness": {"adapter_id": "nvidia.fabric.codex.cli"}}
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_maps_succeeded_result_to_completed_trial(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    artifact = _FakeArtifact("stdout", "log", tmp_path / "stdout.txt")
+
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        return _FakeResult(
+            status="succeeded",
+            output={"adapter": "cli", "response": "PONG", "returncode": 0},
+            artifacts=[artifact],
+        )
+
+    client_cls = _install_fake_fabric(monkeypatch, handler)
+    runtime = fabric_runtime.FabricAgentRuntime(config=_CONFIG, model="openai/gpt-5.4", work_root=tmp_path / "fabric")
+
+    trials = await runtime.run_tasks([_TASK])
+
+    trial = trials[0]
+    assert trial.status == "completed"
+    assert trial.output is not None
+    assert trial.output.output_text == "PONG"  # extracted from the adapter envelope's `response`
+    assert trial.output.response == {"adapter": "cli", "response": "PONG", "returncode": 0}
+    assert trial.metadata["harness"] == "codex"
+    assert trial.metadata["adapter_id"] == "nvidia.fabric.codex.cli"
+    assert trial.metadata["generated"] is True
+    # Evidence: the persisted result envelope + each Fabric artifact by name.
+    assert trial.evidence is not None
+    assert trial.evidence.descriptors["result"].ref.endswith("fabric_result.json")
+    assert trial.evidence.descriptors["stdout"].ref == str(tmp_path / "stdout.txt")
+    result_file = tmp_path / "fabric" / "000000-task-1" / "fabric_result.json"
+    assert json.loads(result_file.read_text(encoding="utf-8"))["status"] == "succeeded"
+    # Model applied as a profile overlay (Harbor pattern) + the Relay ATIF trajectory overlay.
+    profiles = client_cls.recorded[0]["profiles"]
+    names = [p.name for p in profiles]
+    assert "eval_model" in names
+    assert "eval_trajectory" in names  # capture_trajectory defaults on
+    model_profile = next(p for p in profiles if p.name == "eval_model")
+    assert model_profile.models == {"default": {"provider": "openai", "model": "openai/gpt-5.4"}}
+    assert client_cls.recorded[0]["request_id"] == "task/1"
+    # Telemetry reference is preserved end-to-end (uri + trace_id), not just provider/kind.
+    assert trial.evidence.metadata["telemetry"][0]["uri"] == "file:///relay"
+    assert trial.evidence.metadata["telemetry"][0]["trace_id"] == "tid-1"
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_maps_atif_artifact_to_trace_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    atif = _FakeArtifact("relay_atif", "atif", tmp_path / "trajectory.atif.json", "application/json")
+
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        return _FakeResult(status="succeeded", output={"response": "ok"}, artifacts=[atif])
+
+    _install_fake_fabric(monkeypatch, handler)
+    runtime = fabric_runtime.FabricAgentRuntime(config=_CONFIG, work_root=tmp_path / "fabric")
+
+    trials = await runtime.run_tasks([_TASK])
+
+    evidence = trials[0].evidence
+    assert evidence is not None
+    # The ATIF artifact is exposed both under its own name and the standard trace key.
+    assert evidence.descriptors["relay_atif"].ref == str(tmp_path / "trajectory.atif.json")
+    trace = evidence.descriptors[EVIDENCE_TRACE]
+    assert trace.format == EVIDENCE_FORMAT_ATIF
+    assert trace.ref == str(tmp_path / "trajectory.atif.json")
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_capture_trajectory_false_skips_relay_overlay(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        return _FakeResult(status="succeeded", output="ok")
+
+    client_cls = _install_fake_fabric(monkeypatch, handler)
+    runtime = fabric_runtime.FabricAgentRuntime(config=_CONFIG, work_root=tmp_path / "fabric", capture_trajectory=False)
+
+    await runtime.run_tasks([_TASK])
+
+    names = [p.name for p in client_cls.recorded[0]["profiles"]]
+    assert "eval_trajectory" not in names
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_maps_failed_result_to_failed_trial(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        return _FakeResult(
+            status="failed",
+            error=_FakeError(stage="invoke", code="process_exit_nonzero", message="boom"),
+        )
+
+    _install_fake_fabric(monkeypatch, handler)
+    runtime = fabric_runtime.FabricAgentRuntime(config=_CONFIG, work_root=tmp_path / "fabric")
+
+    trials = await runtime.run_tasks([_TASK])
+
+    trial = trials[0]
+    assert trial.status == "failed"
+    assert trial.output is None
+    assert trial.metadata["error_type"] == "process_exit_nonzero"
+    assert trial.metadata["error"] == "boom"
+    assert trial.evidence is not None
+    assert "error" in trial.evidence.descriptors
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_maps_timeout_to_failed_trial(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        return _FakeResult(status="succeeded", output="never")
+
+    _install_fake_fabric(monkeypatch, handler)
+
+    async def fake_wait_for(awaitable: Any, timeout: float) -> Any:
+        awaitable.close()
+        raise TimeoutError
+
+    monkeypatch.setattr(fabric_runtime.asyncio, "wait_for", fake_wait_for)
+    runtime = fabric_runtime.FabricAgentRuntime(config=_CONFIG, work_root=tmp_path / "fabric")
+
+    trials = await runtime.run_tasks([_TASK])
+
+    assert trials[0].status == "failed"
+    assert trials[0].metadata["error_type"] == "TimeoutError"
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_captures_run_exception_as_failed_trial(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        raise RuntimeError("client blew up")
+
+    _install_fake_fabric(monkeypatch, handler)
+    runtime = fabric_runtime.FabricAgentRuntime(config=_CONFIG, work_root=tmp_path / "fabric")
+
+    trials = await runtime.run_tasks([_TASK])
+
+    assert trials[0].status == "failed"
+    assert trials[0].metadata["error_type"] == "RuntimeError"
+    assert trials[0].metadata["error"] == "client blew up"
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_raises_without_nemo_fabric(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # run_tasks surfaces a clear error when the optional native package can't be imported.
+    monkeypatch.setitem(sys.modules, "nemo_fabric", None)  # forces ImportError on `import nemo_fabric`
+    runtime = fabric_runtime.FabricAgentRuntime(config=_CONFIG, work_root=tmp_path / "fabric")
+    with pytest.raises(RuntimeError, match="requires the `nemo-fabric` package"):
+        await runtime.run_tasks([_TASK])
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_trajectory_capture_requires_nemo_relay(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Trajectory capture builds the profile from nemo_relay; surface a clear error when it is absent.
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        return _FakeResult(status="succeeded", output="ok")
+
+    _install_fake_fabric(monkeypatch, handler)  # installs fabric + relay stubs...
+    monkeypatch.setitem(sys.modules, "nemo_relay.observability", None)  # ...then force ImportError on relay
+    runtime = fabric_runtime.FabricAgentRuntime(config=_CONFIG, work_root=tmp_path / "fabric")
+    with pytest.raises(RuntimeError, match="nemo-relay"):
+        await runtime.run_tasks([_TASK])

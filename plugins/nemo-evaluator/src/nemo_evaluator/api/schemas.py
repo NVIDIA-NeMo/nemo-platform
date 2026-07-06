@@ -7,18 +7,19 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, TypeAlias
 
 from nemo_evaluator.shared.metric_bundles.bundles import (
     BundledMetricOutputSpec,
     MetricMetadata,
 )
+from nemo_evaluator_sdk.agent_eval.tasks import SemanticView
 from nemo_evaluator_sdk.values.common import SecretRef
 from nemo_evaluator_sdk.values.results import AggregatedMetricResult
 from nemo_platform_plugin.api.filter import ComparisonOperation, FilterOperation, LogicalOperation
 from nemo_platform_plugin.api.parsed_filter import ENTITY_BASE_FIELDS
 from nemo_platform_plugin.schema import DatetimeFilter, Filter
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, RootModel, field_validator
 
 
 class DataFilter(Filter):
@@ -132,6 +133,26 @@ class MetricInline(BaseModel):
     payload: MetricPayload = Field(description="Format-specific serialized metric.")
 
 
+# A reference is ``name`` or ``workspace/name``, each segment using the platform name charset.
+# Enforced on the field so empty/malformed refs are rejected at validation rather than during parsing.
+_METRIC_REF_PATTERN = r"^[\w\-.]+(/[\w\-.]+)?$"
+
+
+class MetricRef(RootModel[str]):
+    """Reference to a persisted metric (format: ``workspace/name`` or ``name``)."""
+
+    root: str = Field(
+        pattern=_METRIC_REF_PATTERN,
+        description="Reference to a stored metric (format: workspace/metric-name, or metric-name in the job workspace).",
+    )
+
+
+#: A wire metric is either an inline bundle DTO or a reference to a stored metric. Lives here (next to
+#: ``MetricInline``) rather than in ``metric_refs`` so entity/DTO modules can use it without importing
+#: the ref-resolution logic (which depends on ``entities`` and would cycle); ``metric_refs`` re-exports.
+MetricRefOrInline: TypeAlias = MetricInline | MetricRef
+
+
 class Metric(BaseModel):
     """API representation of a stored metric.
 
@@ -151,6 +172,11 @@ class Metric(BaseModel):
     payload_kind: str = Field(description="Payload discriminator of the stored bundle.")
     payload_digest: str = Field(description="Digest of the stored payload.")
     bundle_ref: str = Field(description="Files reference to the canonical serialized bundle.")
+    derived: bool = Field(
+        default=False,
+        description="True for a content-addressed metric auto-stored from an inline task metric "
+        "(excluded from the default metric listing).",
+    )
     created_at: datetime = Field(description="Timestamp the metric was created.")
     updated_at: datetime = Field(description="Timestamp the metric was last updated.")
 
@@ -173,6 +199,7 @@ class MetricFilter(DataFilter):
     name: str | None = Field(None, description="Filter by name.")
     metric_type: str | None = Field(None, description="Filter by metric type.")
     description: str | None = Field(None, description="Filter by description.")
+    derived: bool | None = Field(None, description="Filter by derived flag.")
     created_at: DatetimeFilter | None = Field(None, description="Filter by creation date.")
     updated_at: DatetimeFilter | None = Field(None, description="Filter by update date.")
 
@@ -218,3 +245,108 @@ class EvaluateResult(_ResultBase):
         default=None, description="Reference to the dataset evaluated; None for an inline dataset."
     )
     metric_types: list[str] = Field(description="Runtime metric type names applied in the run.")
+
+
+class TaskInputs(BaseModel):
+    """A task's recognized input fields.
+
+    ``extra="forbid"``: only the field below is accepted. ``instruction`` is the agent's prompt; the
+    runtime falls back to the task ``intent`` when it is unset.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    instruction: str | None = Field(
+        default=None, description="The agent's instruction (its prompt). Falls back to the task `intent` when unset."
+    )
+
+
+class MetadataItem(BaseModel):
+    """A single key/value annotation on a task."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: str = Field(description="Annotation key.")
+    value: str = Field(description="Annotation value.")
+
+
+def _reject_duplicate_metadata_keys(items: list[MetadataItem]) -> list[MetadataItem]:
+    """Metadata is a key→value map expressed as a list; duplicate keys would silently collapse (e.g.
+    when folded into a mapping for the runtime), so reject them at validation rather than lose data."""
+    seen: set[str] = set()
+    for item in items:
+        if item.key in seen:
+            raise ValueError(f"duplicate metadata key: {item.key!r}")
+        seen.add(item.key)
+    return items
+
+
+#: A task's metadata: key/value annotations with unique keys (duplicates rejected at validation).
+TaskMetadataList: TypeAlias = Annotated[list[MetadataItem], AfterValidator(_reject_duplicate_metadata_keys)]
+
+
+class Task(BaseModel):
+    """API representation of a stored agent-eval task.
+
+    Maps to the SDK :class:`~nemo_evaluator_sdk.agent_eval.tasks.AgentEvalTask` — the task's stable
+    ``id`` is the record ``name`` (unique within its workspace). Metrics are stored in their wire form
+    (inline bundles and/or references to stored metrics); references resolve to inline at run time.
+    """
+
+    id: str = Field(description="Unique identifier for the stored task record.")
+    name: str = Field(description="Task name — the stable task id, unique within its workspace.")
+    workspace: str = Field(description="Workspace the task belongs to.")
+    project: str | None = Field(default=None, description="The project associated with this task.")
+    intent: str = Field(description="Human-readable description of the desired agent behavior.")
+    inputs: TaskInputs = Field(default_factory=TaskInputs, description="The task's recognized input fields.")
+    metrics: list[MetricRef] = Field(
+        default_factory=list,
+        description="References to the metrics that score this task; inline metrics submitted on create "
+        "are normalized to (derived) stored metrics, so a stored task holds refs only.",
+    )
+    views: dict[str, SemanticView] = Field(
+        default_factory=dict, description="Optional reporting views mapping metric outputs into named semantic scores."
+    )
+    metadata: TaskMetadataList = Field(default_factory=list, description="Key/value annotations for the task.")
+    created_at: datetime = Field(description="Timestamp the task was created.")
+    updated_at: datetime = Field(description="Timestamp the task was last updated.")
+
+
+class TaskInput(BaseModel):
+    """Create/replace body for a stored task (the name comes from the path).
+
+    The authorable subset of :class:`Task` — the SDK ``AgentEvalTask`` shape minus server-owned
+    fields (id, name, workspace, timestamps).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    intent: str = Field(description="Human-readable description of the desired agent behavior.")
+    inputs: TaskInputs = Field(default_factory=TaskInputs, description="The task's recognized input fields.")
+    metrics: list[MetricRefOrInline] = Field(
+        default_factory=list, description="Metrics that score this task — inline bundles and/or stored-metric refs."
+    )
+    views: dict[str, SemanticView] = Field(
+        default_factory=dict, description="Optional reporting views mapping metric outputs into named semantic scores."
+    )
+    metadata: TaskMetadataList = Field(default_factory=list, description="Key/value annotations for the task.")
+
+
+class TaskSort(StrEnum):
+    """Sort fields for task queries."""
+
+    NAME_ASC = "name"
+    NAME_DESC = "-name"
+    CREATED_AT_ASC = "created_at"
+    CREATED_AT_DESC = "-created_at"
+    UPDATED_AT_ASC = "updated_at"
+    UPDATED_AT_DESC = "-updated_at"
+
+
+class TaskFilter(Filter):
+    """Filter for task queries (top-level entity columns only; custom-field filtering is a follow-up)."""
+
+    workspace: str | None = Field(None, description="Filter by workspace.")
+    name: str | None = Field(None, description="Filter by name.")
+    created_at: DatetimeFilter | None = Field(None, description="Filter by creation date.")
+    updated_at: DatetimeFilter | None = Field(None, description="Filter by update date.")

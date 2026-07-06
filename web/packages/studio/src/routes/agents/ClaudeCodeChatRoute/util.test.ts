@@ -3,8 +3,11 @@
 
 import { CLAUDE_CODE_JOB_PROGRESS_MCP_TOOL_NAME } from '@studio/routes/agents/ClaudeCodeChatRoute/jobProgressConsts';
 import {
+  CLAUDE_CODE_COLLAPSED_STUDIO_DETAILS_TOOL_NAME,
   CLAUDE_CODE_COLLAPSED_THINKING_TOOL_NAME,
   CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME,
+  STUDIO_MESSAGE_SUMMARY_END,
+  STUDIO_MESSAGE_SUMMARY_START,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
 import type { ClaudeCodeSessionHistory } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
 import {
@@ -215,6 +218,163 @@ describe('Claude Code utilities', () => {
             ],
           },
         },
+      ],
+    });
+  });
+
+  it('collapses all assistant history before a Studio summary block on refresh', () => {
+    const history: ClaudeCodeSessionHistory = {
+      session_id: 'session-1',
+      chat_artifacts: { selections: [], files: [], links: [], jobs: [], tools: [] },
+      items: [
+        { kind: 'user', text: 'optimize calculator-agent' },
+        {
+          kind: 'assistant',
+          parts: [
+            {
+              type: 'text',
+              text: "I'll start by invoking the nemo-agents-optimize skill.",
+            },
+            { type: 'tool_use', name: 'ToolSearch', input: { query: 'select_agent' } },
+            { type: 'tool_use', name: 'mcp__nemo_studio__select_agent', input: {} },
+          ],
+        },
+        {
+          kind: 'assistant',
+          parts: [
+            {
+              type: 'text',
+              text: "The user selected calculator-agent. Now I'll run the workflow.",
+            },
+            { type: 'tool_use', name: 'Skill', input: { name: 'nemo-agents-optimize' } },
+          ],
+        },
+        {
+          kind: 'assistant',
+          parts: [
+            { type: 'text', text: 'Starting parallel data fetches.' },
+            { type: 'tool_use', name: 'Bash', input: { description: 'List deployed agents' } },
+            { type: 'tool_use', name: 'Bash', input: { description: 'Read model catalog' } },
+          ],
+        },
+        {
+          kind: 'assistant',
+          parts: [
+            { type: 'text', text: 'Both files uploaded. Let me get the Studio link.' },
+            { type: 'tool_use', name: 'mcp__nemo_studio__studio_link', input: {} },
+            {
+              type: 'text',
+              text: `${STUDIO_MESSAGE_SUMMARY_START} worked_for: ~3 minutes summary: Analyzed calculator-agent and generated 3 optimization suggestions. Snapshot and suggestions persisted. details_label: worked for ~3 minutes ${STUDIO_MESSAGE_SUMMARY_END}`,
+            },
+          ],
+        },
+      ],
+    };
+
+    const messages = getClaudeCodeHistoryMessages(history);
+
+    expect(messages).toHaveLength(2);
+    expect(messages[0]).toEqual({
+      id: 'session-1-0',
+      role: 'user',
+      content: [{ type: 'text', text: 'optimize calculator-agent' }],
+    });
+    expect(messages[1]).toMatchObject({
+      role: 'assistant',
+      content: [
+        {
+          type: 'tool-call',
+          toolName: CLAUDE_CODE_COLLAPSED_STUDIO_DETAILS_TOOL_NAME,
+          args: {
+            label: 'worked for ~3 minutes',
+            parts: [
+              {
+                type: 'text',
+                text: "I'll start by invoking the nemo-agents-optimize skill.",
+              },
+              {
+                type: 'tool-call',
+                toolName: CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME,
+              },
+              {
+                type: 'text',
+                text: "The user selected calculator-agent. Now I'll run the workflow.",
+              },
+              {
+                type: 'tool-call',
+                toolName: 'Skill',
+              },
+              {
+                type: 'text',
+                text: 'Starting parallel data fetches.',
+              },
+              {
+                type: 'tool-call',
+                toolName: CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME,
+              },
+              {
+                type: 'text',
+                text: 'Both files uploaded. Let me get the Studio link.',
+              },
+              {
+                type: 'tool-call',
+                toolName: 'mcp__nemo_studio__studio_link',
+              },
+            ],
+          },
+        },
+        {
+          type: 'text',
+          text: 'Analyzed calculator-agent and generated 3 optimization suggestions. Snapshot and suggestions persisted.',
+        },
+      ],
+    });
+  });
+
+  it('preserves interactive user answers as message boundaries on refresh', () => {
+    const history: ClaudeCodeSessionHistory = {
+      session_id: 'session-1',
+      chat_artifacts: { selections: [], files: [], links: [], jobs: [], tools: [] },
+      items: [
+        { kind: 'user', text: 'optimize an agent' },
+        {
+          kind: 'assistant',
+          parts: [
+            { type: 'text', text: 'Which agent should I optimize?' },
+            { type: 'tool_use', name: 'mcp__nemo_studio__select_agent', input: {} },
+          ],
+        },
+        { kind: 'user', text: 'Selected agent: calculator-agent' },
+        {
+          kind: 'assistant',
+          parts: [
+            { type: 'text', text: 'I analyzed calculator-agent.' },
+            {
+              type: 'text',
+              text: `${STUDIO_MESSAGE_SUMMARY_START} summary: Generated optimization suggestions. details_label: worked briefly ${STUDIO_MESSAGE_SUMMARY_END}`,
+            },
+          ],
+        },
+      ],
+    };
+
+    const messages = getClaudeCodeHistoryMessages(history);
+
+    expect(messages).toHaveLength(4);
+    expect(messages[1]).toMatchObject({ role: 'assistant' });
+    expect(messages[2]).toEqual({
+      id: 'session-1-2',
+      role: 'user',
+      content: [{ type: 'text', text: 'Selected agent: calculator-agent' }],
+    });
+    expect(messages[3]).toMatchObject({
+      role: 'assistant',
+      content: [
+        {
+          type: 'tool-call',
+          toolName: CLAUDE_CODE_COLLAPSED_STUDIO_DETAILS_TOOL_NAME,
+        },
+        { type: 'text', text: 'Generated optimization suggestions.' },
       ],
     });
   });

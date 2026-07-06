@@ -177,6 +177,7 @@ def test_metric_filter_translates_custom_fields_to_data_namespace() -> None:
     assert MetricFilter._get_entity_field_map() == {
         "metric_type": "data.metric_type",
         "description": "data.description",
+        "derived": "data.derived",
     }
     op = LogicalOperation(
         operator=FilterOperator.AND,
