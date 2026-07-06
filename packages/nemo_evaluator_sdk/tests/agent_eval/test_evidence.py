@@ -114,6 +114,37 @@ async def test_run_verifier_uses_overlay_and_reports_outcome(tmp_path: Path) -> 
 
 
 @pytest.mark.asyncio
+async def test_run_verifier_overlay_files_are_staged_over_the_copy(tmp_path: Path) -> None:
+    root = tmp_path / "workspace"
+    root.mkdir()
+    (root / "answer.txt").write_text("agent", encoding="utf-8")  # the agent could edit this
+    handle = LocalFilesystemEvidence(root)
+
+    # A held-out file the agent never had: it appears in the copy the verifier runs against.
+    made = await handle.run_verifier(["cat", "held_out.txt"], overlay_files={"held_out.txt": "truth"})
+    assert made.ok and made.stdout.strip() == "truth"
+
+    # An overlay file wins over the agent's version (so held-out ground truth can't be edited away).
+    over = await handle.run_verifier(["cat", "answer.txt"], overlay_files={"answer.txt": "truth"})
+    assert over.stdout.strip() == "truth"
+
+    # Overlaying does not mutate the stored evidence, and it accepts nested paths.
+    nested = await handle.run_verifier(["cat", "tests/t.txt"], overlay_files={"tests/t.txt": "ok"})
+    assert nested.stdout.strip() == "ok"
+    assert await handle.list_files("**/*") == ["answer.txt"]
+
+
+@pytest.mark.asyncio
+async def test_run_verifier_overlay_rejects_path_escaping_the_copy(tmp_path: Path) -> None:
+    root = tmp_path / "workspace"
+    root.mkdir()
+    handle = LocalFilesystemEvidence(root)
+
+    with pytest.raises(ValueError, match="escapes the verifier copy"):
+        await handle.run_verifier(["true"], overlay_files={"../escape.txt": "nope"})
+
+
+@pytest.mark.asyncio
 async def test_escaping_symlinks_are_not_hashed_or_copied(tmp_path: Path) -> None:
     secret = tmp_path / "secret.txt"
     secret.write_text("TOPSECRET", encoding="utf-8")
