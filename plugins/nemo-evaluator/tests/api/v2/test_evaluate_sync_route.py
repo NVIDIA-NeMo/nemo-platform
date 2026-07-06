@@ -352,12 +352,9 @@ def test_sync_evaluate_error_responses_are_typed_in_openapi() -> None:
 def test_sync_evaluate_backpressure_timeout_and_slot_release(
     client: TestClient, monkeypatch: pytest.MonkeyPatch, fresh_slots: None
 ) -> None:
-    """One request through the full capacity lifecycle: 504 on timeout, 503 while the orphaned
-    worker holds its slot, then release on true completion.
-
-    TestClient runs each request on a fresh event loop, so this also pins that slot release
-    must not depend on the submitting request's loop still being alive (regression: a
-    loop-coupled release leaked the slot permanently and 503'd the endpoint until restart).
+    """Full capacity lifecycle: 504 on timeout, 503 while the orphaned worker holds its slot,
+    release on completion. TestClient's per-request loop also pins that release can't depend on
+    the submitting loop (regression: a loop-coupled release leaked the slot until restart).
     """
     monkeypatch.setattr(evaluate_routes, "SYNC_EVALUATE_TIMEOUT_SECONDS", 0.2)
     gate = threading.Event()

@@ -180,8 +180,7 @@ class BaseRAGASMetric(MetricBase):
                 "api_key": initial_api_key,
             }
             if judge_model.default_headers:
-                # Runtime headers (e.g. caller identity forwarded by the platform) must reach
-                # the judge client, or in-process evaluation silently drops the caller's identity.
+                # Forward runtime headers (e.g. caller identity) or the judge call drops them.
                 self._llm_model["default_headers"] = dict(judge_model.default_headers)
 
         embeddings_model = getattr(self, "embeddings_model", None)
@@ -305,9 +304,8 @@ class BaseRAGASMetric(MetricBase):
         chat_params: dict[str, Any] = {}
         if self._inference_params:
             chat_params.update(self._inference_params)
-        # Transport and auth (base_url, api_key, default_headers) come from the resolved model
-        # and must never be overridable by caller-supplied inference params — otherwise a
-        # request could redirect the judge call (SSRF) or replace forwarded caller identity.
+        # Applied last: transport/auth from the resolved model must win over inference params,
+        # else a request could redirect the judge call (SSRF) or replace the forwarded identity.
         chat_params.update(self._llm_model)
 
         # Filter out None values

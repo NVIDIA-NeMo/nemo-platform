@@ -55,17 +55,13 @@ MAX_SYNC_METRICS = 10
 SYNC_EVALUATE_TIMEOUT_SECONDS = 60.0
 
 _SYNC_EVAL_MAX_WORKERS = 4
-# A timed-out (detached) worker keeps its slot until its bounded inference calls finish, so
-# retries are capped low to keep worst-case slot occupancy near the request timeout.
+# Capped low so a detached (timed-out) worker's slot occupancy stays near the request timeout.
 _SYNC_WORKER_MAX_RETRIES = 1
 
-# Metric types that call a user-supplied URL during evaluation (SSRF surface). Belt on top of
-# the inline-payload allow-list below for metric types whose payload is inline but whose
-# runtime behavior is network-bound.
+# Metric types that call a user-supplied URL during evaluation (SSRF surface).
 _NETWORK_BACKED_METRIC_TYPES = frozenset({MetricType.REMOTE.value, MetricType.NEMO_AGENT_TOOLKIT_REMOTE.value})
 
-# In-flight bound for sync evals. Thread-safe: released from the worker future's done callback,
-# which runs on the worker thread — it must not depend on any event loop still being alive.
+# Released from the worker's done callback (worker thread), so it can't depend on any event loop.
 _SYNC_SLOTS = threading.BoundedSemaphore(_SYNC_EVAL_MAX_WORKERS)
 
 router = APIRouter()
@@ -110,7 +106,7 @@ def _bounded_inference_fn(budget_seconds: float) -> InferenceFn:
         default_headers: dict | None = None,
         timeout: float | None = None,
     ) -> dict:
-        # Attribute access (not an imported symbol) so injected/patched inference fns still apply.
+        # Attribute access (not a bound import) so a patched make_inference_request still applies.
         return await sdk_inference.make_inference_request(
             model,
             request,
@@ -124,19 +120,13 @@ def _bounded_inference_fn(budget_seconds: float) -> InferenceFn:
     return _fn
 
 
-# RAGAS builds its judge ChatOpenAI client from `inference` (extra="allow"), so a caller could
-# smuggle transport/auth kwargs (base_url, default_headers, api_key, ...) that redirect the judge
-# call or replace the forwarded caller identity. On the sync path only these generation params
-# survive; transport/auth is forced from the resolved model.
+# RAGAS builds its judge ChatOpenAI client from `inference` (extra="allow"); only these
+# generation params survive the sync path, so a caller can't smuggle transport/auth kwargs.
 _ALLOWED_RAGAS_INFERENCE_KEYS = frozenset({"temperature", "max_tokens", "max_completion_tokens", "top_p", "stop"})
 
 
 def _bound_worker_inference(metrics: list[Metric], budget_seconds: float) -> None:
-    """Bound each metric's model calls so a detached (timed-out) worker frees its slot quickly.
-
-    Without this, judge calls fall back to client-default timeouts (up to 600s per attempt),
-    letting one slow upstream hold a sync slot far beyond the request timeout.
-    """
+    """Cap each metric's model calls at the sync budget so a detached worker frees its slot fast."""
     for metric in metrics:
         set_inference_fn = getattr(metric, "set_inference_fn", None)
         if callable(set_inference_fn):
@@ -146,12 +136,7 @@ def _bound_worker_inference(metrics: list[Metric], budget_seconds: float) -> Non
 
 
 def _sanitize_ragas_inference(metric: BaseRAGASMetric, budget_seconds: float) -> None:
-    """Strip RAGAS inference down to safe generation params and clamp its timeout/retries.
-
-    Drops any transport/auth kwargs a caller supplied (they must come from the resolved model),
-    and clamps request_timeout/max_retries into the sync budget so an explicit 3600s/99-retry
-    request can't keep its worker slot occupied for hours after the 60s HTTP response.
-    """
+    """Drop caller transport/auth kwargs (forced from the resolved model) and clamp timeout/retries."""
     inference = getattr(metric, "inference", None)
     if not isinstance(inference, InferenceParams):
         return
@@ -166,18 +151,13 @@ def _sanitize_ragas_inference(metric: BaseRAGASMetric, budget_seconds: float) ->
         min(existing_retries, _SYNC_WORKER_MAX_RETRIES) if existing_retries is not None else _SYNC_WORKER_MAX_RETRIES
     )
 
-    # Reassigned before resolve_models() re-runs _configure_models(), so the sanitized params are
-    # what RAGAS uses to build its client. (inference lives on the RAGAS judge-config mixin, not
-    # on the BaseRAGASMetric base, so set it dynamically.)
+    # Set dynamically: inference lives on the RAGAS judge-config mixin, not the base. Applied
+    # before resolve_models() re-runs _configure_models(), so RAGAS builds its client from these.
     setattr(metric, "inference", InferenceParams(**safe))
 
 
 def _submit_sync_evaluation(run: Callable[[], EvaluationArtifactResult]) -> concurrent.futures.Future:
-    """Run an evaluation on a dedicated daemon thread and return a Future for its result.
-
-    Daemon threads (unlike ThreadPoolExecutor workers) can't block interpreter shutdown if an
-    uncancellable eval is stuck on a network call when the process receives SIGTERM.
-    """
+    """Run on a daemon thread (returns a Future) so a stuck eval can't block SIGTERM shutdown."""
     future: concurrent.futures.Future = concurrent.futures.Future()
 
     def _worker() -> None:
@@ -252,8 +232,7 @@ async def evaluate_sync(
     del workspace  # route is workspace-scoped for authz only
 
     for metric in request.metrics:
-        # Allow-list: only the inline payload kind may execute in the API process, so any
-        # future payload kind fails closed instead of slipping past a cloudpickle deny-check.
+        # Allow-list, not deny-list: any future payload kind fails closed.
         if metric.payload.kind != "inline":
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -279,12 +258,11 @@ async def evaluate_sync(
                 ),
             )
 
-    # Cheap request-shape validation — no slot held, no remote calls. 422 carries the underlying
-    # message (malformed metric, bad params, ...).
+    # Cheap request-shape validation — no slot held, no remote calls.
     try:
         runtime_metrics = [unbundle_metric(to_runtime_bundle(metric)) for metric in request.metrics]
 
-        # An inline model's URL/secret would SSRF/exfiltrate from the API process; require a ModelRef.
+        # Inline models carry an arbitrary URL/secret (SSRF); require a ModelRef.
         for runtime_metric in runtime_metrics:
             if _has_inline_model(runtime_metric):
                 raise HTTPException(
@@ -305,8 +283,7 @@ async def evaluate_sync(
             detail=f"Evaluation request was invalid: {exc}",
         ) from exc
 
-    # Reserve capacity before any downstream fan-out: model resolution hits remote model/provider
-    # lookups, so backpressure must gate it — otherwise requests fan out unbounded while full.
+    # Reserve capacity before model resolution so backpressure gates its remote lookups.
     if not _SYNC_SLOTS.acquire(blocking=False):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -318,7 +295,7 @@ async def evaluate_sync(
         try:
             _bound_worker_inference(runtime_metrics, SYNC_EVALUATE_TIMEOUT_SECONDS)
 
-            # Resolve refs as the caller (forward request-scoped headers); skip when no metric uses a model.
+            # Resolve refs as the caller (forward request-scoped headers).
             metrics_with_models = [m for m in runtime_metrics if isinstance(m, MetricWithModels)]
             if metrics_with_models:
                 resolver = _ForwardedHeaderModelResolver(
@@ -343,18 +320,17 @@ async def evaluate_sync(
                 field_mapping=request.field_mapping,
             )
         )
-        # Ownership of the slot passes to the future's done callback; the finally must not
-        # also release it. Set before registering the callback: an already-finished worker
-        # runs the callback inline, and a double release trips BoundedSemaphore.
+        # Slot ownership passes to the done callback (fires on true completion, so a timed-out
+        # run can't oversubscribe). Clear slot_held first: an already-done future runs the
+        # callback inline, and a double release trips BoundedSemaphore.
         slot_held = False
-        # Free the slot only on true completion, so an orphaned (timed-out) run can't oversubscribe.
         future.add_done_callback(lambda _f: _SYNC_SLOTS.release())
     finally:
         if slot_held:
             _SYNC_SLOTS.release()
 
-    # asyncio.wait (not wait_for) so a TimeoutError raised inside the worker can't be mistaken
-    # for the sync budget expiring: not-done is the only timeout signal.
+    # asyncio.wait (not wait_for): not-done is the only timeout signal, so a worker-raised
+    # TimeoutError isn't mistaken for the sync budget expiring.
     wrapped = asyncio.wrap_future(future)
     done, _ = await asyncio.wait({wrapped}, timeout=SYNC_EVALUATE_TIMEOUT_SECONDS)
     if not done:
@@ -373,8 +349,7 @@ async def evaluate_sync(
     try:
         return wrapped.result()
     except EvaluationError as exc:
-        # Evaluation-level failures (missing dataset columns, judge output mismatch, ...) are
-        # actionable by the caller; internal TypeError/ValueError bugs stay 500s below.
+        # Caller-actionable; internal TypeError/ValueError bugs stay 500s below.
         logger.warning("Synchronous evaluation failed", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
