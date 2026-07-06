@@ -45,14 +45,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /apis/evaluator/v2/evaluate/schema:
+  /apis/evaluator/v2/evaluate/jobs/schema:
     get:
       tags:
       - Evaluator Plugin Catalog Routes
-      summary: Get Evaluate Input Schema
-      description: Return the JSON schema for the evaluate input spec (the `explain`
+      summary: Get Evaluate Job Input Schema
+      description: Return the JSON schema for the evaluate job input spec (the `explain`
         payload).
-      operationId: get_evaluate_schema_apis_evaluator_v2_evaluate_schema_get
+      operationId: get_evaluate_job_schema_apis_evaluator_v2_evaluate_jobs_schema_get
       responses:
         '200':
           description: JSON schema for the evaluate job input spec
@@ -61,8 +61,26 @@ paths:
               schema:
                 additionalProperties: true
                 type: object
-                title: Response Get Evaluate Schema Apis Evaluator V2 Evaluate Schema
-                  Get
+                title: Response Get Evaluate Job Schema Apis Evaluator V2 Evaluate
+                  Jobs Schema Get
+  /apis/evaluator/v2/evaluate/schema:
+    get:
+      tags:
+      - Evaluator Plugin Catalog Routes
+      summary: Get Synchronous Evaluate Request Schema
+      description: Return the JSON schema for the synchronous `POST .../evaluate`
+        request body.
+      operationId: get_evaluate_sync_schema_apis_evaluator_v2_evaluate_schema_get
+      responses:
+        '200':
+          description: JSON schema for the synchronous evaluate request body
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Get Evaluate Sync Schema Apis Evaluator V2 Evaluate
+                  Schema Get
   /apis/evaluator/v2/metric-types:
     get:
       tags:
@@ -77,14 +95,7 @@ paths:
           content:
             application/json:
               schema:
-                additionalProperties:
-                  items:
-                    additionalProperties:
-                      type: string
-                    type: object
-                  type: array
-                type: object
-                title: Response List Metric Types Apis Evaluator V2 Metric Types Get
+                $ref: '#/components/schemas/MetricTypeList'
   /apis/evaluator/v2/metric-types/{metric_type}:
     get:
       tags:
@@ -3049,6 +3060,7 @@ components:
           items:
             $ref: '#/components/schemas/MetricInline'
           type: array
+          maxItems: 10
           minItems: 1
           title: Metrics
           description: Inline metrics to evaluate.
@@ -3698,6 +3710,35 @@ components:
       - -updated_at
       title: MetricSort
       description: Sort fields for metric queries.
+    MetricTypeEntry:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: Metric type name, as accepted in metric definitions.
+        description:
+          type: string
+          title: Description
+          description: Human-readable description of the metric type.
+      type: object
+      required:
+      - name
+      - description
+      title: MetricTypeEntry
+      description: One built-in metric type in the catalog.
+    MetricTypeList:
+      properties:
+        metric_types:
+          items:
+            $ref: '#/components/schemas/MetricTypeEntry'
+          type: array
+          title: Metric Types
+          description: Available built-in metric types.
+      type: object
+      required:
+      - metric_types
+      title: MetricTypeList
+      description: Catalog of built-in metric types.
     MetricsPage:
       properties:
         data:

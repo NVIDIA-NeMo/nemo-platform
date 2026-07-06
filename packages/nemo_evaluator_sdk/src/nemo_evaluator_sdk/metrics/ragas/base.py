@@ -179,6 +179,10 @@ class BaseRAGASMetric(MetricBase):
                 "base_url": judge_model.url.replace("/completions", "").replace("/chat", ""),
                 "api_key": initial_api_key,
             }
+            if judge_model.default_headers:
+                # Runtime headers (e.g. caller identity forwarded by the platform) must reach
+                # the judge client, or in-process evaluation silently drops the caller's identity.
+                self._llm_model["default_headers"] = dict(judge_model.default_headers)
 
         embeddings_model = getattr(self, "embeddings_model", None)
         if isinstance(embeddings_model, Model):
@@ -198,6 +202,8 @@ class BaseRAGASMetric(MetricBase):
                 "api_key": initial_api_key,
                 "truncate": self._inference_params.get("truncate", "NONE"),
             }
+            if embeddings_model.default_headers:
+                self._embed_params["default_headers"] = dict(embeddings_model.default_headers)
 
     async def resolve_models(self, model_resolver: ModelResolver) -> None:
         """Resolve RAGAS model references before the metric is used for evaluation."""

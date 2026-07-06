@@ -39,7 +39,11 @@ class EvaluatorPluginService(NemoService):
     """Service surface for the evaluator plugin."""
 
     name: ClassVar[str] = "evaluator"
-    dependencies: ClassVar[list[str]] = ["nemo-evaluator-sdk", "entities", "files", "models", "inference-gateway"]
+    # NOTE: models and inference-gateway are intentionally NOT startup dependencies even though
+    # the sync evaluate route uses them: declaring them would block evaluator startup (up to 120s
+    # per dependency) whenever either is deployed-but-unhealthy. The sync route degrades at
+    # request time instead (model resolution fails with an actionable 422).
+    dependencies: ClassVar[list[str]] = ["nemo-evaluator-sdk", "entities", "files"]
 
     def get_routers(self) -> list[RouterSpec]:
         router = APIRouter()

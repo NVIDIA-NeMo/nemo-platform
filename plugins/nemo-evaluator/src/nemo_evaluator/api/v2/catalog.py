@@ -8,12 +8,27 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, status
+from nemo_evaluator.api.v2.evaluate import EvaluateSyncRequest
 from nemo_evaluator.authz import scope
 from nemo_evaluator.jobs.evaluate import EvaluateInputSpec
 from nemo_evaluator.metric_catalog import metric_type_entries, metric_type_schema
 from nemo_platform_plugin.authz import CallerKind, path_rule
+from pydantic import BaseModel, Field
 
 router = APIRouter()
+
+
+class MetricTypeEntry(BaseModel):
+    """One built-in metric type in the catalog."""
+
+    name: str = Field(description="Metric type name, as accepted in metric definitions.")
+    description: str = Field(description="Human-readable description of the metric type.")
+
+
+class MetricTypeList(BaseModel):
+    """Catalog of built-in metric types."""
+
+    metric_types: list[MetricTypeEntry] = Field(description="Available built-in metric types.")
 
 
 @router.get(
@@ -24,9 +39,9 @@ router = APIRouter()
 )
 @scope.read
 @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[])
-async def list_metric_types() -> dict[str, list[dict[str, str]]]:
+async def list_metric_types() -> MetricTypeList:
     """List the built-in evaluator metric types (the same catalog the CLI prints)."""
-    return {"metric_types": metric_type_entries()}
+    return MetricTypeList(metric_types=[MetricTypeEntry(**entry) for entry in metric_type_entries()])
 
 
 @router.get(
@@ -51,12 +66,25 @@ async def get_metric_type_schema(metric_type: str) -> dict[str, Any]:
 
 @router.get(
     "/evaluate/schema",
-    summary="Get Evaluate Input Schema",
+    summary="Get Synchronous Evaluate Request Schema",
+    response_description="JSON schema for the synchronous evaluate request body",
+    status_code=status.HTTP_200_OK,
+)
+@scope.read
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[])
+async def get_evaluate_sync_schema() -> dict[str, Any]:
+    """Return the JSON schema for the synchronous `POST .../evaluate` request body."""
+    return EvaluateSyncRequest.model_json_schema()
+
+
+@router.get(
+    "/evaluate/jobs/schema",
+    summary="Get Evaluate Job Input Schema",
     response_description="JSON schema for the evaluate job input spec",
     status_code=status.HTTP_200_OK,
 )
 @scope.read
 @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[])
-async def get_evaluate_schema() -> dict[str, Any]:
-    """Return the JSON schema for the evaluate input spec (the `explain` payload)."""
+async def get_evaluate_job_schema() -> dict[str, Any]:
+    """Return the JSON schema for the evaluate job input spec (the `explain` payload)."""
     return EvaluateInputSpec.model_json_schema()

@@ -21,7 +21,8 @@ All routes are under `/apis/evaluator`. Several map directly to CLI commands so 
 |---|---|---|
 | `GET /v2/metric-types` | List built-in metric types and descriptions | `nemo evaluator metric-types` |
 | `GET /v2/metric-types/{metric_type}` | JSON schema for one metric type | `nemo evaluator metric-types <name>` |
-| `GET /v2/evaluate/schema` | JSON schema for the evaluate input spec | `nemo evaluator evaluate explain` |
+| `GET /v2/evaluate/schema` | JSON schema for the **synchronous** evaluate request body | — |
+| `GET /v2/evaluate/jobs/schema` | JSON schema for the evaluate **job** input spec | `nemo evaluator evaluate explain` |
 | `POST /v2/workspaces/{workspace}/evaluate` | Run a bounded evaluation **synchronously** and return the result inline | `nemo evaluator evaluate run` |
 | `POST /v2/workspaces/{workspace}/evaluate/jobs` (+ lifecycle) | Submit a durable evaluation job | `nemo evaluator evaluate submit` |
 | `GET/POST/DELETE /v2/workspaces/{workspace}/metrics[/{name}]` | Stored-metric CRUD (create/list/get/delete; immutable) | — |
@@ -32,7 +33,8 @@ All routes are under `/apis/evaluator`. Several map directly to CLI commands so 
 is deliberately bounded to what is safe there (anything else goes to the durable `/evaluate/jobs`
 API, which runs in an isolated container). It returns `422` for:
 
-- **Cloudpickle metric bundles** — arbitrary code is never unpickled in the API process.
+- **Non-inline metric payloads** (allow-list on `payload.kind == "inline"`) — arbitrary code
+  (e.g. cloudpickle) is never executed in the API process, and future payload kinds fail closed.
 - **Network (remote) metric types** (`remote`, `nemo-agent-toolkit-remote`) — they call a
   user-supplied URL (SSRF).
 - **Metrics with secret references** — the in-process backend resolves secrets from the API
@@ -45,13 +47,15 @@ API, which runs in an isolated container). It returns `422` for:
 - **Online targets** — generation against a model/agent target is not supported here; submit a job.
 
 So **LLM-judge and other model-backed metrics are supported** as long as their models are
-`ModelRef`s. The dataset must be **inline rows** (no `FilesetRef`), capped at `MAX_SYNC_ROWS` (10).
+`ModelRef`s. The dataset must be **inline rows** (no `FilesetRef`), capped at `MAX_SYNC_ROWS` (10),
+and the metrics list is capped at `MAX_SYNC_METRICS` (10).
 
-Execution runs on a dedicated bounded thread pool (`_SYNC_EVAL_MAX_WORKERS`, 4) under a wall-clock
-timeout (`SYNC_EVALUATE_TIMEOUT_SECONDS`, 60s) → `504` on expiry. When all slots are busy the
-endpoint returns `503` rather than queueing (a blocking SDK call can't be cancelled, so a
-timed-out evaluation keeps holding its slot until the underlying call actually returns). For
-anything heavier, use the durable job API.
+Execution runs on bounded daemon worker threads (`_SYNC_EVAL_MAX_WORKERS`, 4 concurrent slots)
+under a wall-clock timeout (`SYNC_EVALUATE_TIMEOUT_SECONDS`, 60s) → `504` on expiry. When all
+slots are busy the endpoint returns `503` rather than queueing. A timed-out evaluation keeps
+holding its slot until its underlying calls return, but each metric's model calls are bounded to
+the same 60s budget (with retries capped at 1), so worst-case slot occupancy stays near the
+request timeout. For anything heavier, use the durable job API.
 
 Authz: read routes require `evaluator:read`; the synchronous evaluate route requires the
 `evaluator.evaluate.exec` permission (`evaluator:write`).

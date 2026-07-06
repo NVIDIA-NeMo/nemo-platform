@@ -10,29 +10,35 @@ models by platform ModelRef only. Heavier or untrusted work goes through `/evalu
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import functools
 import logging
-from concurrent.futures import ThreadPoolExecutor
-from typing import Annotated, Any
+import threading
+from typing import Annotated, Any, Callable, cast
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from nemo_evaluator.api.schemas import MetricInline
 from nemo_evaluator.authz import scope
-from nemo_evaluator.jobs.evaluate import run_evaluation, to_runtime_bundle
+from nemo_evaluator.jobs.evaluate import EvaluationArtifactResult, run_evaluation, to_runtime_bundle
 from nemo_evaluator.resolvers import PlatformModelResolver
 from nemo_evaluator.shared.metric_bundles.bundles import unbundle_metric
+from nemo_evaluator_sdk import inference as sdk_inference
 from nemo_evaluator_sdk.enums import MetricType
 from nemo_evaluator_sdk.execution.config import resolve_params
 from nemo_evaluator_sdk.execution.values import EvaluationError
-from nemo_evaluator_sdk.metrics.protocol import MetricWithModels
+from nemo_evaluator_sdk.inference import InferenceFn
+from nemo_evaluator_sdk.metrics.protocol import Metric, MetricWithModels
+from nemo_evaluator_sdk.metrics.ragas.base import BaseRAGASMetric
 from nemo_evaluator_sdk.values import FieldMapping, Model, RunConfig
 from nemo_evaluator_sdk.values.models import ModelRef
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
+from nemo_evaluator_sdk.values.params import InferenceParams
 from nemo_evaluator_sdk.values.results import EvaluationResult
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.authz import CallerKind, PermissionSet, path_rule, perm
 from nemo_platform_plugin.dependencies import get_sdk_client
 from nemo_platform_plugin.sdk_provider import get_forwarding_headers
+from openai import AsyncOpenAI
 from pydantic import BaseModel, ConfigDict, Field
 
 logger = logging.getLogger(__name__)
@@ -45,14 +51,22 @@ class EvaluateSyncPerms(PermissionSet, namespace="evaluator.evaluate"):
 
 
 MAX_SYNC_ROWS = 10
+MAX_SYNC_METRICS = 10
 SYNC_EVALUATE_TIMEOUT_SECONDS = 60.0
 
-# Dedicated bounded pool so a stuck (uncancellable) sync eval can't starve the main request pool.
 _SYNC_EVAL_MAX_WORKERS = 4
-_SYNC_EVAL_EXECUTOR = ThreadPoolExecutor(max_workers=_SYNC_EVAL_MAX_WORKERS, thread_name_prefix="evaluator-sync")
+# A timed-out (detached) worker keeps its slot until its bounded inference calls finish, so
+# retries are capped low to keep worst-case slot occupancy near the request timeout.
+_SYNC_WORKER_MAX_RETRIES = 1
 
-# Metric types that call a user-supplied URL during evaluation (SSRF surface).
+# Metric types that call a user-supplied URL during evaluation (SSRF surface). Belt on top of
+# the inline-payload allow-list below for metric types whose payload is inline but whose
+# runtime behavior is network-bound.
 _NETWORK_BACKED_METRIC_TYPES = frozenset({MetricType.REMOTE.value, MetricType.NEMO_AGENT_TOOLKIT_REMOTE.value})
+
+# In-flight bound for sync evals. Thread-safe: released from the worker future's done callback,
+# which runs on the worker thread — it must not depend on any event loop still being alive.
+_SYNC_SLOTS = threading.BoundedSemaphore(_SYNC_EVAL_MAX_WORKERS)
 
 router = APIRouter()
 
@@ -70,29 +84,87 @@ class _ForwardedHeaderModelResolver:
         return model.with_default_headers(self._headers)
 
 
-class _SlotCounter:
-    """In-flight counter for sync-eval backpressure; mutated only on the event-loop thread."""
-
-    def __init__(self, limit: int) -> None:
-        self._limit = limit
-        self._in_flight = 0
-
-    def try_acquire(self) -> bool:
-        if self._in_flight >= self._limit:
-            return False
-        self._in_flight += 1
+def _has_inline_model(value: object) -> bool:
+    """True if an inline Model (vs a platform ModelRef) appears anywhere in a metric's fields."""
+    if isinstance(value, Model):
         return True
+    if isinstance(value, BaseModel):
+        return any(_has_inline_model(field_value) for field_value in vars(value).values())
+    if isinstance(value, dict):
+        return any(_has_inline_model(item) for item in value.values())
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return any(_has_inline_model(item) for item in value)
+    return False
 
-    def release(self) -> None:
-        self._in_flight = max(0, self._in_flight - 1)
+
+def _bounded_inference_fn(budget_seconds: float) -> InferenceFn:
+    """Inference fn that caps per-request timeout and retries at the sync budget."""
+
+    async def _fn(
+        model: Model,
+        request: dict,
+        max_retries: int | None = None,
+        *,
+        client: AsyncOpenAI | None = None,
+        api_key: str | None = None,
+        default_headers: dict | None = None,
+        timeout: float | None = None,
+    ) -> dict:
+        # Attribute access (not an imported symbol) so injected/patched inference fns still apply.
+        return await sdk_inference.make_inference_request(
+            model,
+            request,
+            min(max_retries if max_retries is not None else _SYNC_WORKER_MAX_RETRIES, _SYNC_WORKER_MAX_RETRIES),
+            client=client,
+            api_key=api_key,
+            default_headers=default_headers,
+            timeout=timeout if timeout is not None else budget_seconds,
+        )
+
+    return _fn
 
 
-_SYNC_SLOTS = _SlotCounter(_SYNC_EVAL_MAX_WORKERS)
+def _bound_worker_inference(metrics: list[Metric], budget_seconds: float) -> None:
+    """Bound each metric's model calls so a detached (timed-out) worker frees its slot quickly.
+
+    Without this, judge calls fall back to client-default timeouts (up to 600s per attempt),
+    letting one slow upstream hold a sync slot far beyond the request timeout.
+    """
+    for metric in metrics:
+        set_inference_fn = getattr(metric, "set_inference_fn", None)
+        if callable(set_inference_fn):
+            set_inference_fn(_bounded_inference_fn(budget_seconds))
+        if isinstance(metric, BaseRAGASMetric):
+            # RAGAS builds its judge client from `inference` extras (ChatOpenAI kwargs);
+            # respect explicit user settings, only fill the gaps. InferenceParams allows
+            # extra fields, so assignment lands in __pydantic_extra__ and survives dumps.
+            inference = getattr(metric, "inference", None)
+            if isinstance(inference, InferenceParams):
+                extras = cast(Any, inference)
+                if getattr(extras, "request_timeout", None) is None:
+                    extras.request_timeout = budget_seconds
+                if getattr(extras, "max_retries", None) is None:
+                    extras.max_retries = _SYNC_WORKER_MAX_RETRIES
 
 
-def _has_inline_model(metric: object) -> bool:
-    """True if any top-level metric field is an inline Model (vs a platform ModelRef)."""
-    return any(isinstance(value, Model) for value in vars(metric).values())
+def _submit_sync_evaluation(run: Callable[[], EvaluationArtifactResult]) -> concurrent.futures.Future:
+    """Run an evaluation on a dedicated daemon thread and return a Future for its result.
+
+    Daemon threads (unlike ThreadPoolExecutor workers) can't block interpreter shutdown if an
+    uncancellable eval is stuck on a network call when the process receives SIGTERM.
+    """
+    future: concurrent.futures.Future = concurrent.futures.Future()
+
+    def _worker() -> None:
+        if not future.set_running_or_notify_cancel():
+            return
+        try:
+            future.set_result(run())
+        except BaseException as exc:  # noqa: BLE001 — the future is the error channel
+            future.set_exception(exc)
+
+    threading.Thread(target=_worker, name="evaluator-sync", daemon=True).start()
+    return future
 
 
 class EvaluateSyncRequest(BaseModel):
@@ -104,7 +176,10 @@ class EvaluateSyncRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    metrics: Annotated[list[MetricInline], Field(min_length=1, description="Inline metrics to evaluate.")]
+    metrics: Annotated[
+        list[MetricInline],
+        Field(min_length=1, max_length=MAX_SYNC_METRICS, description="Inline metrics to evaluate."),
+    ]
     dataset: Annotated[
         list[dict[str, Any]],
         Field(min_length=1, max_length=MAX_SYNC_ROWS, description="Inline dataset rows to evaluate."),
@@ -137,12 +212,14 @@ async def evaluate_sync(
     del workspace  # route is workspace-scoped for authz only
 
     for metric in request.metrics:
-        if metric.payload.kind == "cloudpickle":
+        # Allow-list: only the inline payload kind may execute in the API process, so any
+        # future payload kind fails closed instead of slipping past a cloudpickle deny-check.
+        if metric.payload.kind != "inline":
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=(
-                    "Synchronous evaluation supports inline (built-in) metrics only. "
-                    "Submit cloudpickle metric bundles as a durable job via /evaluate/jobs."
+                    f"Synchronous evaluation supports inline (built-in) metrics only, "
+                    f"not '{metric.payload.kind}' payloads. Submit them as a durable job via /evaluate/jobs."
                 ),
             )
         if metric.metric_type in _NETWORK_BACKED_METRIC_TYPES:
@@ -162,6 +239,8 @@ async def evaluate_sync(
                 ),
             )
 
+    # Validation phase: everything here failed because of the request contents, so 422 carries
+    # the underlying message (model ref not found, malformed metric, bad params, ...).
     try:
         runtime_metrics = [unbundle_metric(to_runtime_bundle(metric)) for metric in request.metrics]
 
@@ -176,6 +255,8 @@ async def evaluate_sync(
                     ),
                 )
 
+        _bound_worker_inference(runtime_metrics, SYNC_EVALUATE_TIMEOUT_SECONDS)
+
         # Resolve refs as the caller (forward request-scoped headers); skip when no metric uses a model.
         metrics_with_models = [m for m in runtime_metrics if isinstance(m, MetricWithModels)]
         if metrics_with_models:
@@ -185,14 +266,22 @@ async def evaluate_sync(
             await asyncio.gather(*(m.resolve_models(resolver) for m in metrics_with_models))
 
         params = resolve_params(request.params, None)
+    except HTTPException:
+        raise
+    except (TypeError, ValueError, EvaluationError) as exc:
+        logger.warning("Synchronous evaluation request was invalid", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Evaluation request was invalid: {exc}",
+        ) from exc
 
-        if not _SYNC_SLOTS.try_acquire():
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Synchronous evaluation capacity is full; retry shortly or submit a durable job via /evaluate/jobs.",
-            )
-        loop = asyncio.get_running_loop()
-        future = _SYNC_EVAL_EXECUTOR.submit(
+    if not _SYNC_SLOTS.acquire(blocking=False):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Synchronous evaluation capacity is full; retry shortly or submit a durable job via /evaluate/jobs.",
+        )
+    try:
+        future = _submit_sync_evaluation(
             functools.partial(
                 run_evaluation,
                 metrics=runtime_metrics,
@@ -203,14 +292,20 @@ async def evaluate_sync(
                 field_mapping=request.field_mapping,
             )
         )
-        # Free the slot only on true completion, so an orphaned (timed-out) run can't oversubscribe.
-        future.add_done_callback(lambda _f: loop.call_soon_threadsafe(_SYNC_SLOTS.release))
-        result = await asyncio.wait_for(asyncio.wrap_future(future), timeout=SYNC_EVALUATE_TIMEOUT_SECONDS)
-    except HTTPException:
+    except BaseException:
+        _SYNC_SLOTS.release()
         raise
-    except asyncio.TimeoutError:
+    # Free the slot only on true completion, so an orphaned (timed-out) run can't oversubscribe.
+    future.add_done_callback(lambda _f: _SYNC_SLOTS.release())
+
+    # asyncio.wait (not wait_for) so a TimeoutError raised inside the worker can't be mistaken
+    # for the sync budget expiring: not-done is the only timeout signal.
+    wrapped = asyncio.wrap_future(future)
+    done, _ = await asyncio.wait({wrapped}, timeout=SYNC_EVALUATE_TIMEOUT_SECONDS)
+    if not done:
         logger.warning(
-            "Synchronous evaluation exceeded %.0fs; worker may still be running.", SYNC_EVALUATE_TIMEOUT_SECONDS
+            "Synchronous evaluation exceeded %.0fs; worker keeps its slot until its bounded inference calls finish.",
+            SYNC_EVALUATE_TIMEOUT_SECONDS,
         )
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
@@ -219,14 +314,17 @@ async def evaluate_sync(
                 "Submit as a durable job via /evaluate/jobs instead."
             ),
         )
-    except (TypeError, ValueError, EvaluationError):
-        logger.warning("Synchronous evaluation could not be completed", exc_info=True)
+
+    try:
+        return wrapped.result()
+    except EvaluationError as exc:
+        # Evaluation-level failures (missing dataset columns, judge output mismatch, ...) are
+        # actionable by the caller; internal TypeError/ValueError bugs stay 500s below.
+        logger.warning("Synchronous evaluation failed", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Evaluation request was invalid or could not be completed.",
-        )
+            detail=f"Evaluation failed: {exc}",
+        ) from exc
     except Exception:
         logger.exception("Synchronous evaluation failed")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
-
-    return result
