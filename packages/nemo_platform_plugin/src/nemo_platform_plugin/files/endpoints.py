@@ -12,7 +12,7 @@ from abc import abstractmethod
 from collections.abc import AsyncIterable, Iterable
 
 from nemo_platform_plugin.client.endpoint import delete, get, patch, post, put
-from nemo_platform_plugin.client.types import BinaryContent, Paginated
+from nemo_platform_plugin.client.types import BinaryContent, Paginated, PreparedRequest
 from nemo_platform_plugin.files.types import (
     CreateFilesetRequest,
     FilesetFileOutput,
@@ -28,9 +28,9 @@ from nemo_platform_plugin.files.types import (
 # ---------------------------------------------------------------------------
 
 
-@post("/apis/files/v2/workspaces/{workspace}/filesets")
+@get("/apis/files/v2/workspaces/{workspace}/filesets/{name}")
 @abstractmethod
-def create_fileset(*, workspace: str | None = None, body: CreateFilesetRequest) -> FilesetOutput: ...
+def get_fileset(*, workspace: str | None = None, name: str) -> FilesetOutput: ...
 
 
 @get("/apis/files/v2/workspaces/{workspace}/filesets")
@@ -40,9 +40,16 @@ def list_filesets(
 ) -> Paginated[FilesetOutput]: ...
 
 
-@get("/apis/files/v2/workspaces/{workspace}/filesets/{name}")
+def _get_fileset_on_conflict(body: CreateFilesetRequest, workspace: str | None) -> PreparedRequest[FilesetOutput]:
+    """Build the retrieve request replayed when ``create_fileset(exist_ok=True)`` 409s."""
+    return get_fileset(name=body.name, workspace=workspace)
+
+
+@post("/apis/files/v2/workspaces/{workspace}/filesets", get_on_conflict=_get_fileset_on_conflict)
 @abstractmethod
-def get_fileset(*, workspace: str | None = None, name: str) -> FilesetOutput: ...
+def create_fileset(
+    *, workspace: str | None = None, body: CreateFilesetRequest, exist_ok: bool = False
+) -> FilesetOutput: ...
 
 
 @patch("/apis/files/v2/workspaces/{workspace}/filesets/{name}")

@@ -11,7 +11,8 @@ import httpx
 import pytest
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.endpoint import delete, get, post
-from nemo_platform_plugin.client.errors import NemoHTTPError
+from nemo_platform_plugin.client.errors import ConflictError, NemoHTTPError, NotFoundError
+from nemo_platform_plugin.client.method import method
 from nemo_platform_plugin.client.types import PreparedRequest, RetryPolicy
 from pydantic import BaseModel
 
@@ -47,6 +48,16 @@ def DELETE_ITEM(*, name: str) -> None:
     raise NotImplementedError
 
 
+def _get_item_on_conflict(body: ItemRequest, workspace: str | None) -> PreparedRequest[ItemResponse]:
+    """Resolver: on a create 409, retrieve the existing item by name."""
+    return GET_ITEM(name=body.name)
+
+
+@post("/apis/test/v2/items", get_on_conflict=_get_item_on_conflict)
+def CREATE_ITEM_LINKED(body: ItemRequest, *, exist_ok: bool = False) -> ItemResponse:
+    raise NotImplementedError
+
+
 # ---------------------------------------------------------------------------
 # exist_ok: stripped from request, stashed in client_options
 # ---------------------------------------------------------------------------
@@ -70,6 +81,151 @@ class TestExistOkOption:
     def test_endpoint_without_options_has_none(self) -> None:
         prepared = GET_ITEM(name="alice")
         assert prepared.client_options is None
+
+
+# ---------------------------------------------------------------------------
+# get_on_conflict: resolver wiring at request-build time
+# ---------------------------------------------------------------------------
+
+
+class TestConflictResolverWiring:
+    def test_resolver_builds_get_at_request_time(self) -> None:
+        """The create request carries a prebuilt GET derived from the body."""
+        prepared = CREATE_ITEM_LINKED(ItemRequest(name="alice"), exist_ok=True)
+
+        assert prepared.on_conflict_get is not None
+        get_req = prepared.on_conflict_get
+        assert get_req.method == "GET"
+        assert get_req.path_template == "/apis/test/v2/items/{name}"
+        assert get_req.path_params == {"name": "alice"}
+
+    def test_no_resolver_leaves_on_conflict_get_none(self) -> None:
+        prepared = CREATE_ITEM(ItemRequest(name="alice"), exist_ok=True)
+        assert prepared.on_conflict_get is None
+
+
+# ---------------------------------------------------------------------------
+# exist_ok: resolved via send() by replaying the linked GET on 409
+# ---------------------------------------------------------------------------
+
+
+def _mock_http(*responses: httpx.Response) -> MagicMock:
+    """A sync httpx.Client whose .request() returns the given responses in order."""
+    mock = MagicMock(spec=httpx.Client)
+    mock.request.side_effect = list(responses)
+    return mock
+
+
+def _resp(status: int, body: dict, method: str = "POST", url: str = f"{BASE}/apis/test/v2/items") -> httpx.Response:
+    return httpx.Response(status, request=httpx.Request(method, url), json=body)
+
+
+class TestExistOkViaSend:
+    def test_409_with_exist_ok_replays_get_and_returns_entity(self) -> None:
+        """409 (real error body) + exist_ok -> auto-GET returns the existing entity."""
+        mock = _mock_http(
+            _resp(409, {"detail": "Item 'alice' already exists"}),
+            _resp(200, {"id": 7, "name": "alice"}, method="GET", url=f"{BASE}/apis/test/v2/items/alice"),
+        )
+        client = NemoClient(base_url=BASE, http_client=mock)
+
+        resp = client.send(CREATE_ITEM_LINKED(ItemRequest(name="alice"), exist_ok=True))
+
+        assert resp.body is not None
+        assert resp.body.id == 7
+        assert resp.body.name == "alice"
+        # POST then follow-up GET.
+        assert mock.request.call_count == 2
+        assert mock.request.call_args_list[1].args[0] == "GET"
+
+    def test_409_without_exist_ok_raises_conflict(self) -> None:
+        mock = _mock_http(_resp(409, {"detail": "Item 'alice' already exists"}))
+        client = NemoClient(base_url=BASE, http_client=mock)
+
+        with pytest.raises(ConflictError) as exc_info:
+            client.send(CREATE_ITEM_LINKED(ItemRequest(name="alice")))
+
+        assert exc_info.value.status_code == 409
+        assert mock.request.call_count == 1  # no follow-up GET
+
+    def test_non_409_with_exist_ok_passes_through(self) -> None:
+        mock = _mock_http(_resp(201, {"id": 1, "name": "alice"}))
+        client = NemoClient(base_url=BASE, http_client=mock)
+
+        resp = client.send(CREATE_ITEM_LINKED(ItemRequest(name="alice"), exist_ok=True))
+
+        assert resp.http_response.status_code == 201
+        assert resp.body is not None
+        assert resp.body.name == "alice"
+        assert mock.request.call_count == 1
+
+    def test_409_exist_ok_without_resolver_raises_clear_error(self) -> None:
+        """exist_ok on an endpoint with no get_on_conflict is a usage error, not a crash."""
+        mock = _mock_http(_resp(409, {"detail": "Item 'alice' already exists"}))
+        client = NemoClient(base_url=BASE, http_client=mock)
+
+        with pytest.raises(ValueError, match="get_on_conflict"):
+            client.send(CREATE_ITEM(ItemRequest(name="alice"), exist_ok=True))
+
+    def test_get_404_after_409_is_surfaced(self) -> None:
+        """Entity deleted between the 409 and the follow-up GET -> NotFoundError."""
+        mock = _mock_http(
+            _resp(409, {"detail": "Item 'alice' already exists"}),
+            _resp(404, {"detail": "not found"}, method="GET", url=f"{BASE}/apis/test/v2/items/alice"),
+        )
+        client = NemoClient(base_url=BASE, http_client=mock)
+
+        with pytest.raises(NotFoundError):
+            client.send(CREATE_ITEM_LINKED(ItemRequest(name="alice"), exist_ok=True))
+
+
+class TestExistOkViaMethod:
+    def test_flat_method_call_resolves_conflict(self) -> None:
+        """client.create_item(..., exist_ok=True) returns the entity on 409."""
+        mock = _mock_http(
+            _resp(409, {"detail": "Item 'alice' already exists"}),
+            _resp(200, {"id": 7, "name": "alice"}, method="GET", url=f"{BASE}/apis/test/v2/items/alice"),
+        )
+
+        class _Methods:
+            create_item = method(CREATE_ITEM_LINKED)
+
+        class TestClient(_Methods, NemoClient):
+            pass
+
+        client = TestClient(base_url=BASE, http_client=mock)
+        resp = client.create_item(body=ItemRequest(name="alice"), exist_ok=True)
+
+        assert resp.body is not None
+        assert resp.body.id == 7
+
+
+class TestAsyncExistOkViaSend:
+    @pytest.mark.asyncio
+    async def test_409_with_exist_ok_replays_get_and_returns_entity(self) -> None:
+        mock = AsyncMock(spec=httpx.AsyncClient)
+        mock.request.side_effect = [
+            _resp(409, {"detail": "Item 'alice' already exists"}),
+            _resp(200, {"id": 7, "name": "alice"}, method="GET", url=f"{BASE}/apis/test/v2/items/alice"),
+        ]
+        client = AsyncNemoClient(base_url=BASE, http_client=mock)
+
+        resp = await client.send(CREATE_ITEM_LINKED(ItemRequest(name="alice"), exist_ok=True))
+
+        assert resp.body is not None
+        assert resp.body.id == 7
+        assert resp.body.name == "alice"
+        assert mock.request.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_409_without_exist_ok_raises_conflict(self) -> None:
+        mock = AsyncMock(spec=httpx.AsyncClient)
+        mock.request.side_effect = [_resp(409, {"detail": "Item 'alice' already exists"})]
+        client = AsyncNemoClient(base_url=BASE, http_client=mock)
+
+        with pytest.raises(ConflictError):
+            await client.send(CREATE_ITEM_LINKED(ItemRequest(name="alice")))
+        assert mock.request.call_count == 1
 
 
 # ---------------------------------------------------------------------------
