@@ -13,7 +13,10 @@ import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
-import type { ExperimentFilter, ExperimentGroupResponse } from '@nemo/sdk/generated/platform/schema';
+import type {
+  ExperimentFilter,
+  ExperimentGroupResponse,
+} from '@nemo/sdk/generated/platform/schema';
 import { Button, Text, Tooltip } from '@nvidia/foundations-react-core';
 import { Empty } from '@studio/components/dataViews/ExperimentGroupDataView/Empty';
 import { MeanValueTooltipCell } from '@studio/components/dataViews/ExperimentGroupDataView/MeanValueTooltipCell';
@@ -111,9 +114,15 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
   const experimentGroupName = group.name;
   const experimentGroupId = group.id;
 
+  // Seed the sort from default_metric_sort so its column header reflects the order on load. Memoized
+  // so the reference is stable across renders (until default_metric_sort changes).
+  const defaultSort = useMemo(
+    () => seedSortFromDefault(group.default_metric_sort),
+    [group.default_metric_sort]
+  );
+
   const dataViewState = useStudioDataViewState<ExperimentFilter>({
-    // Seed the sort from default_metric_sort so its column header reflects the order on load.
-    defaultSort: seedSortFromDefault(group.default_metric_sort),
+    defaultSort,
     columnVisibility: { created_by: false, updated_at: false },
     // Keep the pin toggle reachable while horizontally scrolling this wide table.
     columnPinning: { left: ['pin'] },

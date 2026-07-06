@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { useGetExperimentGroup } from '@nemo/sdk/generated/platform/api';
 import { Badge, Button, PageHeader, Stack, Text } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
@@ -18,7 +19,7 @@ import { type FC, useState } from 'react';
 export const ExperimentGroupDetailRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
   const { experimentGroupName } = useRequiredPathParams([ROUTE_PARAMS.experimentGroupName]);
-  const { data: group } = useGetExperimentGroup(workspace, experimentGroupName);
+  const { data: group, error } = useGetExperimentGroup(workspace, experimentGroupName);
   const [editOpen, setEditOpen] = useState(false);
 
   useBreadcrumbs({
@@ -42,26 +43,32 @@ export const ExperimentGroupDetailRoute: FC = () => {
             </Button>
           }
         />
-        {group && (
-          <ExperimentGroupEditModal
-            open={editOpen}
-            onClose={() => setEditOpen(false)}
-            workspace={workspace}
-            group={group}
-          />
-        )}
-        <ExperimentGroupMetrics experimentGroupName={experimentGroupName} />
-        <div className="flex flex-col gap-4 border-t border-base pt-4">
-          <div className="flex items-center gap-3">
-            <Text kind="title/sm">Experiments</Text>
-            {group?.experiment_count !== undefined && (
-              <Badge color="gray" kind="solid" className="text-sm">
-                {group.experiment_count}
-              </Badge>
+        {error ? (
+          <ErrorMessage message="Failed to load experiment group." />
+        ) : (
+          <>
+            {group && (
+              <ExperimentGroupEditModal
+                open={editOpen}
+                onClose={() => setEditOpen(false)}
+                workspace={workspace}
+                group={group}
+              />
             )}
-          </div>
-          {group && <ExperimentGroupDataView group={group} />}
-        </div>
+            <ExperimentGroupMetrics experimentGroupName={experimentGroupName} />
+            <div className="flex flex-col gap-4 border-t border-base pt-4">
+              <div className="flex items-center gap-3">
+                <Text kind="title/sm">Experiments</Text>
+                {group?.experiment_count !== undefined && (
+                  <Badge color="gray" kind="solid" className="text-sm">
+                    {group.experiment_count}
+                  </Badge>
+                )}
+              </div>
+              {group && <ExperimentGroupDataView group={group} />}
+            </div>
+          </>
+        )}
       </Stack>
     </AccessibleTitle>
   );

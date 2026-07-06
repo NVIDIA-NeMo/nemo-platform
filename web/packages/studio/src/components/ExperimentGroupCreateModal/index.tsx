@@ -61,8 +61,8 @@ export const ExperimentGroupCreateModal: FC<ExperimentGroupCreateModalProps> = (
   });
 
   const formDisabled = isSubmitting;
-  // Default sort is a custom, array-of-objects control, so it's managed outside react-hook-form's
-  // register() and merged into the payload on submit.
+  // Default metric sort is a single `sort`-param string driven by a custom control (not a registered
+  // input), so it's managed outside react-hook-form and merged into the payload in onSubmit.
   const [defaultSort, setDefaultSort] = useState<string | null>(null);
 
   const toast = useToast();
