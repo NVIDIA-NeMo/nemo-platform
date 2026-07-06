@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import {
   Card,
   Flex,
@@ -13,21 +14,37 @@ import {
   Stack,
   Text,
 } from '@nvidia/foundations-react-core';
-import { useDatasetFileContent } from '@studio/api/datasets/useDatasetFileContent';
+import {
+  FILE_PREVIEW_MAX_BYTES,
+  useDatasetFileContent,
+} from '@studio/api/datasets/useDatasetFileContent';
+import { useDatasetFilesUpload } from '@studio/api/datasets/useDatasetFilesUpload';
 import { Empty } from '@studio/components/Empty';
 import { FileRowEditor } from '@studio/components/FileRowEditor';
 import {
   type DataFileFormat,
   formatFromFileName,
   parseDataFile,
+  serializeDataFile,
 } from '@studio/components/FileRowEditor/parse';
+import type { DataFileRow } from '@studio/components/FileRowEditor/types';
 import { BUILDER_CONFIG_FILENAME } from '@studio/routes/DataDesignerJobDetailsRoute/builderConfig';
 import { useDataDesignerArtifactsFileset } from '@studio/routes/DataDesignerJobDetailsRoute/useDataDesignerArtifactsFileset';
 import { getFileNameFromPath, getHumanReadableFileSize } from '@studio/util/files';
-import { useEffect, useMemo, useState, type FC, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FC, type ReactNode } from 'react';
 
 /** File formats this tab can render as rows. Parquet is decoded to JSONL by the hook. */
 const DATA_FILE_FORMATS: readonly DataFileFormat[] = ['parquet', 'jsonl', 'json', 'csv'];
+
+/**
+ * Suffix for the JSONL file that holds edits to a Parquet source. Parquet cannot be
+ * re-encoded in the browser, so edits are persisted to a sibling JSONL file instead of
+ * corrupting the original `.parquet`.
+ */
+const PARQUET_EDIT_SUFFIX = '.edited.jsonl';
+
+const parquetEditSiblingPath = (path: string): string =>
+  `${path.replace(/\.[^./]+$/, '')}${PARQUET_EDIT_SUFFIX}`;
 
 const centered = (children: ReactNode) => (
   <Card>
@@ -48,7 +65,9 @@ const centered = (children: ReactNode) => (
  * fetched via {@link useDatasetFileContent}, which decodes Parquet to JSONL server-side,
  * so Parquet/JSONL/JSON/CSV all arrive as text and parse through {@link parseDataFile}.
  *
- * Edits are in-memory only — the editor's row state is not yet wired back to the Files API.
+ * Edits are persisted via the editor's "Save File" action: text formats (JSON/JSONL/CSV)
+ * overwrite the file in place, while Parquet — which cannot be re-encoded in-browser — is
+ * saved to a sibling JSONL file that then becomes the default/selected view.
  */
 export const JobDatasetEditorSection: FC = () => {
   const { filesetWorkspace, filesetName, files, isResultsLoading, isFilesLoading } =
@@ -67,18 +86,32 @@ export const JobDatasetEditorSection: FC = () => {
   );
 
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const pendingSiblingPath = useRef<string | null>(null);
 
-  // Prefer the first Parquet file (the typical primary output), else the first data file.
   const defaultPath = useMemo(() => {
+    const editSibling = dataFiles.find((file) => file.path.endsWith(PARQUET_EDIT_SUFFIX));
+    if (editSibling) {
+      return editSibling.path;
+    }
     const firstParquet = dataFiles.find((file) => formatFromFileName(file.path) === 'parquet');
     return firstParquet?.path ?? dataFiles[0]?.path ?? null;
   }, [dataFiles]);
 
-  // Default once files resolve; keep the current pick if it survives.
+  // Default once files resolve; keep the current pick if it survives (or is a pending save).
   useEffect(() => {
-    setSelectedPath((prev) =>
-      prev && dataFiles.some((file) => file.path === prev) ? prev : defaultPath
-    );
+    setSelectedPath((prev) => {
+      if (prev && dataFiles.some((file) => file.path === prev)) {
+        // Once the pending sibling shows up in the list, it no longer needs the guard.
+        if (prev === pendingSiblingPath.current) {
+          pendingSiblingPath.current = null;
+        }
+        return prev;
+      }
+      if (prev && prev === pendingSiblingPath.current) {
+        return prev;
+      }
+      return defaultPath;
+    });
   }, [dataFiles, defaultPath]);
 
   const selectedFile = useMemo(
@@ -115,6 +148,48 @@ export const JobDatasetEditorSection: FC = () => {
     }
   }, [rawContent, parseFormat]);
 
+  const isContentTruncated = Boolean(
+    selectedFile && sourceFormat !== 'parquet' && selectedFile.size > FILE_PREVIEW_MAX_BYTES
+  );
+  const saveDisabledReason = isContentTruncated
+    ? 'This file is too large to load in full — saving is disabled to avoid truncating it.'
+    : undefined;
+
+  const toast = useToast();
+  const { mutateAsync: uploadFiles, isPending: isSaving } = useDatasetFilesUpload();
+
+  const handleSaveFile = useCallback(
+    async (rows: DataFileRow[]) => {
+      if (!filesetWorkspace || !filesetName || !selectedPath) {
+        return;
+      }
+      const isParquetSource = sourceFormat === 'parquet';
+      const targetPath = isParquetSource ? parquetEditSiblingPath(selectedPath) : selectedPath;
+      const targetFormat: DataFileFormat = isParquetSource ? 'jsonl' : sourceFormat;
+      const content = serializeDataFile(rows, targetFormat);
+      const file = new File([content], targetPath, { type: 'application/octet-stream' });
+
+      try {
+        await uploadFiles({
+          workspace: filesetWorkspace,
+          datasetName: filesetName,
+          files: [file],
+        });
+        if (isParquetSource) {
+          pendingSiblingPath.current = targetPath;
+          setSelectedPath(targetPath);
+          toast.success(`Saved edits to ${getFileNameFromPath(targetPath)}`);
+        } else {
+          toast.success('File saved');
+        }
+      } catch (error) {
+        toast.error('Could not save file. Your changes were not persisted.');
+        throw error;
+      }
+    },
+    [filesetWorkspace, filesetName, selectedPath, sourceFormat, uploadFiles, toast]
+  );
+
   const isResolving = isResultsLoading || isFilesLoading;
 
   const fileSelector =
@@ -129,8 +204,6 @@ export const JobDatasetEditorSection: FC = () => {
         >
           <SelectTrigger
             placeholder="Select a file"
-            // Trigger normally shows the raw value (full path); render the basename to match
-            // the list items, and truncate with a leading ellipsis so the extension stays visible.
             renderValue={(value) =>
               typeof value === 'string' ? (
                 <span className="block max-w-[200px] truncate text-left [direction:rtl]">
@@ -190,6 +263,9 @@ export const JobDatasetEditorSection: FC = () => {
         fileSizeLabel={selectedFile ? getHumanReadableFileSize(selectedFile.size) : undefined}
         initialRows={parsed.rows}
         showOpenFile={false}
+        onSaveFile={handleSaveFile}
+        isSaving={isSaving}
+        saveDisabledReason={saveDisabledReason}
       />
     );
   };
