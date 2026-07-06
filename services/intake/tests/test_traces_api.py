@@ -67,5 +67,12 @@ def test_trace_filter_schema_keeps_trace_index_filters_canonical():
     assert "deprecated" not in properties["test_case_id"]
 
 
+def test_trace_filter_applies_no_implicit_time_bound():
+    filters = _trace_filter("workspace-a", _parsed_filter({"id": "trace-a"}))
+
+    assert filters.started_at_gte is None
+    assert filters.started_at_lte is None
+
+
 def _parsed_filter(value: dict[str, object]) -> ParsedFilter:
     return ParsedFilter(operation=parse_json_filter(json.dumps(value)))
