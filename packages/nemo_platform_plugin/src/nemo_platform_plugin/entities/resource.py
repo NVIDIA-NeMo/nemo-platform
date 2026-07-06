@@ -1,13 +1,14 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""NemoClient-backed entity client.
+"""High-level Entity Store resource.
 
-``NemoEntityClient`` is the ergonomic, entity-model-aware client. It presents
-the same operations as the legacy Stainless-backed ``EntityClient`` (create,
-list, get, get_by_id, update, delete, ...), returns the same ``EntityBase``
-models, and maps transport errors to the same ``Entity*Error`` hierarchy — but
-talks to the Entity Store over the ``NemoClient`` typed HTTP client.
+``EntityStoreResource`` is the ergonomic, entity-model-aware wrapper (the
+``FilesResource`` analogue for entities). It wraps the low-level
+``AsyncEntitiesClient`` and presents the same operations as the legacy
+Stainless-backed ``EntityClient`` (create, list, get, get_by_id, update,
+delete, ...), returns the same ``EntityBase`` models, and maps transport errors
+to the same ``Entity*Error`` hierarchy.
 
 ``list`` returns a ``NemoPaginatedResponse[EntityT]``, consistent with every
 other NemoClient service; single-page callers use ``result.page().items``.
@@ -23,7 +24,7 @@ from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.client.errors import ConflictError, NotFoundError, UnprocessableEntityError
 from nemo_platform_plugin.client.response import AsyncNemoPaginatedResponse, PageResult
-from nemo_platform_plugin.entities.client import AsyncEntitiesEndpointClient
+from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.entities.legacy import (
     DEFAULT_WORKSPACE,
     EntityConflictError,
@@ -76,7 +77,7 @@ class _MappedPaginatedResponse(AsyncNemoPaginatedResponse[EntityT]):
     def __init__(
         self,
         inner: AsyncNemoPaginatedResponse[EntityResponse],
-        client: NemoEntityClient,
+        client: EntityStoreResource,
         entity_type: EntityTypeLike,
     ) -> None:
         self._inner = inner
@@ -110,7 +111,7 @@ class _MappedPaginatedResponse(AsyncNemoPaginatedResponse[EntityT]):
             yield self._convert(page)
 
 
-class NemoEntityClient:
+class EntityStoreResource:
     """Async entity client backed by the ``NemoClient`` typed HTTP transport.
 
     A single client handles all entity types — pass the entity class to each
@@ -118,18 +119,26 @@ class NemoEntityClient:
     ``"prod/my-model"`` are supported), with ID lookup for debugging.
     """
 
-    def __init__(self, client: AsyncNemoClient) -> None:
+    def __init__(self, client: AsyncEntitiesClient) -> None:
         self._client = client
-        self._endpoints = AsyncEntitiesEndpointClient.from_client(client)
 
     @classmethod
-    def from_platform(cls, platform: Any) -> NemoEntityClient:
+    def from_client(cls, client: AsyncNemoClient) -> EntityStoreResource:
+        """Build from a generic ``AsyncNemoClient``, reusing its transport.
+
+        For callers that hold a base client (e.g. from ``client_provider``)
+        rather than an :class:`AsyncEntitiesClient`.
+        """
+        return cls(AsyncEntitiesClient.from_client(client))
+
+    @classmethod
+    def from_platform(cls, platform: Any) -> EntityStoreResource:
         """Build a client from a legacy ``AsyncNeMoPlatform`` SDK instance.
 
         Bridges onto the SDK's transport (base URL, workspace, headers, httpx
         client) so existing SDK-construction plumbing can be reused unchanged.
         """
-        return cls(client_from_platform(platform, AsyncNemoClient))
+        return cls(client_from_platform(platform, AsyncEntitiesClient))
 
     async def close(self) -> None:
         """Close the underlying HTTP transport."""
@@ -172,7 +181,7 @@ class NemoEntityClient:
 
         return result
 
-    def as_service(self, service_name: str, *, internal: bool = False) -> NemoEntityClient:
+    def as_service(self, service_name: str, *, internal: bool = False) -> EntityStoreResource:
         """Return a copy authenticating as ``service:<service_name>``.
 
         Use for background tasks, startup code, or permission elevation. The
@@ -180,7 +189,11 @@ class NemoEntityClient:
         headers applied; the original is unchanged.
         """
         elevated = self._client.with_headers(_service_principal_headers(service_name, internal=internal))
-        return NemoEntityClient(elevated)
+        return EntityStoreResource(elevated)
+
+    # ------------------------------------------------------------------
+    # Operations
+    # ------------------------------------------------------------------
 
     async def list(
         self,
@@ -205,7 +218,7 @@ class NemoEntityClient:
         """
         if filter_operation is not None and filter_str is not None:
             raise ValueError(
-                "NemoEntityClient.list: pass either filter_operation or filter_str, not both. "
+                "EntityStoreResource.list: pass either filter_operation or filter_str, not both. "
                 "Merge into a single filter_operation via ParsedFilter.and_with."
             )
 
@@ -225,7 +238,7 @@ class NemoEntityClient:
         if sort:
             query["sort"] = _convert_sort_to_api_sort(sort)
 
-        inner = await self._endpoints.list_entities(
+        inner = await self._client.list_entities(
             workspace=workspace, entity_type=_get_entity_type(entity_type), query_params=query
         )
         return _MappedPaginatedResponse(inner, self, entity_type)
@@ -244,7 +257,7 @@ class NemoEntityClient:
             create_kwargs["project"] = entity.project
         body = EntityCreateInput(**create_kwargs)
         try:
-            response = await self._endpoints.create_entity(
+            response = await self._client.create_entity(
                 workspace=entity.workspace, entity_type=_get_entity_type(entity_type), body=body
             )
             return self._convert_api_entity_to_model(response.data(), entity_type)
@@ -269,7 +282,7 @@ class NemoEntityClient:
         if parent is not None:
             query["parent"] = parent
         try:
-            response = await self._endpoints.get_entity_by_name(
+            response = await self._client.get_entity_by_name(
                 workspace=ws,
                 entity_type=_get_entity_type(entity_type),
                 name=entity_name,
@@ -282,7 +295,7 @@ class NemoEntityClient:
     async def get_by_id(self, entity_type: EntityTypeLike, entity_id: str) -> EntityT:
         """Get an entity by UUID (debugging/internal use)."""
         try:
-            response = await self._endpoints.get_entity_by_id(id=entity_id)
+            response = await self._client.get_entity_by_id(id=entity_id)
             return self._convert_api_entity_to_model(response.data(), entity_type)
         except NotFoundError as e:
             raise EntityNotFoundError(f"Entity with id '{entity_id}' not found") from e
@@ -310,7 +323,7 @@ class NemoEntityClient:
         if entity._parent is not None:
             query["parent"] = entity._parent
         try:
-            response = await self._endpoints.update_entity_by_name(
+            response = await self._client.update_entity_by_name(
                 workspace=entity.workspace,
                 entity_type=_get_entity_type(entity_type),
                 name=path_name,
@@ -339,7 +352,7 @@ class NemoEntityClient:
         if parent is not None:
             query["parent"] = parent
         try:
-            response = await self._endpoints.delete_entity_by_name(
+            response = await self._client.delete_entity_by_name(
                 workspace=ws,
                 entity_type=_get_entity_type(entity_type),
                 name=entity_name,
@@ -352,11 +365,11 @@ class NemoEntityClient:
     async def delete_by_id(self, entity_type: EntityTypeLike, entity_id: str) -> DeleteResponse:
         """Delete an entity by UUID (fetches it first to resolve name/workspace)."""
         try:
-            entity = (await self._endpoints.get_entity_by_id(id=entity_id)).data()
+            entity = (await self._client.get_entity_by_id(id=entity_id)).data()
             query: ParentQueryParams = {}
             if entity.parent is not None:
                 query["parent"] = entity.parent
-            response = await self._endpoints.delete_entity_by_name(
+            response = await self._client.delete_entity_by_name(
                 workspace=entity.workspace,
                 entity_type=entity.entity_type,
                 name=entity.name,

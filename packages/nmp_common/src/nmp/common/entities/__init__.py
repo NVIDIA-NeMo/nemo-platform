@@ -16,9 +16,9 @@ from nmp.common.entities.client import (
     EntityConflictError,
     EntityNotFoundError,
     EntityStoreError,
+    EntityStoreResource,
     EntityValidationError,
     ListResponse,
-    NemoEntityClient,
     PaginationInfo,
 )
 
@@ -63,7 +63,7 @@ __all__ = [
     "EntityConflictError",
     "EntityValidationError",
     "ListResponse",
-    "NemoEntityClient",
+    "EntityStoreResource",
     "PaginationInfo",
     "ALL_WORKSPACES",
     # Constants for validation

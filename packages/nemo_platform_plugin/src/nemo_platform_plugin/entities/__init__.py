@@ -6,10 +6,12 @@
 Re-exports the legacy Stainless-backed :class:`EntityClient` and shared entity
 types (``entities.legacy``) so existing ``from nemo_platform_plugin.entities
 import ...`` imports keep working, alongside the new NemoClient-backed
-:class:`NemoEntityClient` (``entities.entity_client``).
+:class:`EntityStoreResource` (``entities.resource``) and its low-level
+:class:`EntitiesClient` (``entities.client``).
 """
 
-from nemo_platform_plugin.entities.entity_client import NemoEntityClient as NemoEntityClient
+from nemo_platform_plugin.entities.client import AsyncEntitiesClient as AsyncEntitiesClient
+from nemo_platform_plugin.entities.client import EntitiesClient as EntitiesClient
 from nemo_platform_plugin.entities.legacy import EntityBase as EntityBase
 from nemo_platform_plugin.entities.legacy import EntityClient as EntityClient
 from nemo_platform_plugin.entities.legacy import EntityClientProtocol as EntityClientProtocol
@@ -27,3 +29,4 @@ from nemo_platform_plugin.entities.legacy import _convert_filter_obj_to_filter_s
 from nemo_platform_plugin.entities.legacy import _convert_sort_to_api_sort as _convert_sort_to_api_sort
 from nemo_platform_plugin.entities.legacy import _get_entity_type as _get_entity_type
 from nemo_platform_plugin.entities.legacy import parse_qualified_name as parse_qualified_name
+from nemo_platform_plugin.entities.resource import EntityStoreResource as EntityStoreResource

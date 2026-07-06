@@ -13,7 +13,7 @@ from typing import Callable, TypeVar
 
 from fastapi import Request
 from nemo_platform_plugin.dependencies import get_entity_client as get_entity_client
-from nemo_platform_plugin.dependencies import get_nemo_entity_client as get_nemo_entity_client
+from nemo_platform_plugin.dependencies import get_entity_store_resource as get_entity_store_resource
 from nemo_platform_plugin.dependencies import get_platform_config as get_platform_config
 from nemo_platform_plugin.dependencies import get_sdk_client as get_sdk_client
 from nemo_platform_plugin.dependencies import get_service_config as get_service_config

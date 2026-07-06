@@ -17,9 +17,9 @@ from nemo_platform_plugin.entities import EntityClient as _PluginEntityClient
 from nemo_platform_plugin.entities import EntityConflictError as EntityConflictError
 from nemo_platform_plugin.entities import EntityNotFoundError as EntityNotFoundError
 from nemo_platform_plugin.entities import EntityStoreError as EntityStoreError
+from nemo_platform_plugin.entities import EntityStoreResource as EntityStoreResource
 from nemo_platform_plugin.entities import EntityValidationError as EntityValidationError
 from nemo_platform_plugin.entities import ListResponse as ListResponse
-from nemo_platform_plugin.entities import NemoEntityClient as NemoEntityClient
 from nemo_platform_plugin.entities import PaginationInfo as PaginationInfo
 from nemo_platform_plugin.entities import parse_qualified_name as parse_qualified_name
 

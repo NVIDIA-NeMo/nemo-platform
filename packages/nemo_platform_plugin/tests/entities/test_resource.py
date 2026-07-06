@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Behavioral tests for NemoEntityClient (NemoClient-backed entity client)."""
+"""Behavioral tests for EntityStoreResource (NemoClient-backed entity client)."""
 
 from __future__ import annotations
 
@@ -11,13 +11,12 @@ from unittest.mock import AsyncMock
 
 import httpx
 import pytest
-from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.entities import (
     EntityBase,
     EntityConflictError,
     EntityNotFoundError,
+    EntityStoreResource,
     EntityValidationError,
-    NemoEntityClient,
 )
 
 BASE = "http://test:8000"
@@ -71,8 +70,10 @@ def _page(items: list[dict[str, Any]], *, page: int = 1, total_pages: int = 1, p
     }
 
 
-def _client(mock_http: AsyncMock, workspace: str | None = "default") -> NemoEntityClient:
-    return NemoEntityClient(AsyncNemoClient(base_url=BASE, workspace=workspace, http_client=mock_http))
+def _client(mock_http: AsyncMock, workspace: str | None = "default") -> EntityStoreResource:
+    from nemo_platform_plugin.entities.client import AsyncEntitiesClient
+
+    return EntityStoreResource(AsyncEntitiesClient(base_url=BASE, workspace=workspace, http_client=mock_http))
 
 
 # ---------------------------------------------------------------------------
@@ -325,27 +326,27 @@ class TestAsService:
 # ---------------------------------------------------------------------------
 
 
-class TestGetNemoEntityClientDefault:
+class TestGetEntityStoreResourceDefault:
     def test_builds_env_scoped_client(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from nemo_platform_plugin.dependencies import get_nemo_entity_client
+        from nemo_platform_plugin.dependencies import get_entity_store_resource
 
         monkeypatch.setenv("NMP_BASE_URL", "http://localhost:9999")
         monkeypatch.setenv("NMP_PRINCIPAL", json.dumps({"id": "user:alice", "email": "a@x.com"}))
 
-        client = get_nemo_entity_client()
+        client = get_entity_store_resource()
 
-        assert isinstance(client, NemoEntityClient)
+        assert isinstance(client, EntityStoreResource)
         assert client._client.base_url == "http://localhost:9999"
         assert client._client._default_headers["X-NMP-Principal-Id"] == "user:alice"
 
     def test_defaults_without_principal_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from nemo_platform_plugin.dependencies import get_nemo_entity_client
+        from nemo_platform_plugin.dependencies import get_entity_store_resource
 
         monkeypatch.delenv("NMP_BASE_URL", raising=False)
         monkeypatch.delenv("NMP_PRINCIPAL", raising=False)
 
-        client = get_nemo_entity_client()
+        client = get_entity_store_resource()
 
-        assert isinstance(client, NemoEntityClient)
+        assert isinstance(client, EntityStoreResource)
         assert client._client.base_url == "http://localhost:8080"
         assert "X-NMP-Principal-Id" not in client._client._default_headers

@@ -4,9 +4,9 @@
 """Low-level typed HTTP clients for the Entity Store service.
 
 Wraps the endpoint functions from ``entities.endpoints`` as direct methods via
-the ``method()`` descriptor, following the files-service pattern. These are the
-transport layer; the ergonomic, entity-model-aware client is
-``NemoEntityClient`` in ``entities.entity_client``.
+the ``method()`` descriptor, following the files-service ``FilesClient`` pattern.
+These are the transport layer; the ergonomic, entity-model-aware wrapper is
+``EntityStoreResource`` in ``entities.resource``.
 """
 
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
@@ -23,9 +23,9 @@ class _EntitiesMethods:
     delete_entity_by_name = method(endpoints.delete_entity_by_name)
 
 
-class EntitiesEndpointClient(_EntitiesMethods, NemoClient):
+class EntitiesClient(_EntitiesMethods, NemoClient):
     """Sync low-level client for the Entity Store API."""
 
 
-class AsyncEntitiesEndpointClient(_EntitiesMethods, AsyncNemoClient):
+class AsyncEntitiesClient(_EntitiesMethods, AsyncNemoClient):
     """Async low-level client for the Entity Store API."""

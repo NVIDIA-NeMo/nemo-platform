@@ -35,7 +35,7 @@ from nmp.common.controller import Controller
 from nmp.common.entities.client import EntityClient
 
 if TYPE_CHECKING:
-    from nemo_platform_plugin.entities import NemoEntityClient
+    from nemo_platform_plugin.entities import EntityStoreResource
 
 logger = logging.getLogger(__name__)
 
@@ -155,23 +155,23 @@ class DependencyProvider:
         entities_api = AsyncEntitiesResource(sdk)
         return EntityClient(entities_api)
 
-    def get_nemo_entity_client(self, as_service: str | None = None) -> "NemoEntityClient":
-        """Return a NemoClient-backed NemoEntityClient.
+    def get_entity_store_resource(self, as_service: str | None = None) -> "EntityStoreResource":
+        """Return a NemoClient-backed EntityStoreResource.
 
         Drop-in for :meth:`get_entity_client` built on the new typed HTTP client.
         Bridges the same per-request / service-principal SDK plumbing via
-        ``NemoEntityClient.from_platform`` so headers (on-behalf-of, service
+        ``EntityStoreResource.from_platform`` so headers (on-behalf-of, service
         principal) match the legacy path exactly. Not yet wired as a consumer
         default — provided so services can migrate (AIRCORE-875 / AIRCORE-827).
         """
-        from nemo_platform_plugin.entities import NemoEntityClient
+        from nemo_platform_plugin.entities import EntityStoreResource
 
         if as_service is not None:
             sdk = self.get_sdk_client(as_service=as_service)
-            return NemoEntityClient.from_platform(sdk)
+            return EntityStoreResource.from_platform(sdk)
 
         sdk = self._get_entity_sdk_on_behalf_of()
-        return NemoEntityClient.from_platform(sdk)
+        return EntityStoreResource.from_platform(sdk)
 
     def _get_entity_sdk_on_behalf_of(self) -> AsyncNeMoPlatform:
         """Create a per-request SDK for entity operations using service principal + on-behalf-of.
@@ -207,7 +207,7 @@ class DependencyProvider:
         """Configure FastAPI dependency overrides."""
         from nmp.common.service.dependencies import (
             get_entity_client,
-            get_nemo_entity_client,
+            get_entity_store_resource,
             get_platform_config,
             get_sdk_client,
             get_service_config,
@@ -215,7 +215,7 @@ class DependencyProvider:
 
         app.dependency_overrides[get_sdk_client] = self.get_request_scoped_sdk
         app.dependency_overrides[get_entity_client] = self.get_entity_client
-        app.dependency_overrides[get_nemo_entity_client] = self.get_nemo_entity_client
+        app.dependency_overrides[get_entity_store_resource] = self.get_entity_store_resource
         app.dependency_overrides[get_platform_config] = self.get_platform_config
         if service._service_config is not None:
             app.dependency_overrides[get_service_config] = lambda: service._service_config

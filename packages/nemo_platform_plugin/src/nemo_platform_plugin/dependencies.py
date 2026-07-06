@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from nemo_platform import AsyncNeMoPlatform
     from nemo_platform_plugin.config import PlatformConfig
-    from nemo_platform_plugin.entities import EntityClient, NemoEntityClient
+    from nemo_platform_plugin.entities import EntityClient, EntityStoreResource
 
 
 def get_platform_config() -> "PlatformConfig":
@@ -64,8 +64,8 @@ def get_entity_client() -> "EntityClient":
     )
 
 
-def get_nemo_entity_client() -> "NemoEntityClient":
-    """Return a NemoClient-backed :class:`NemoEntityClient`.
+def get_entity_store_resource() -> "EntityStoreResource":
+    """Return a NemoClient-backed :class:`EntityStoreResource`.
 
     Unlike the sibling placeholders (``get_sdk_client``, ``get_entity_client``,
     ``get_platform_config``), this has a real default implementation because
@@ -80,6 +80,6 @@ def get_nemo_entity_client() -> "NemoEntityClient":
     request-scoped client (service-principal + on-behalf-of headers).
     """
     from nemo_platform_plugin.client_provider import get_async_nemo_client
-    from nemo_platform_plugin.entities import NemoEntityClient
+    from nemo_platform_plugin.entities import EntityStoreResource
 
-    return NemoEntityClient(get_async_nemo_client())
+    return EntityStoreResource.from_client(get_async_nemo_client())
