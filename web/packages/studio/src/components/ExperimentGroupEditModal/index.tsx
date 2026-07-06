@@ -48,7 +48,9 @@ export const ExperimentGroupEditModal: FC<ExperimentGroupEditModalProps> = ({
   const evaluatorOptions = useMemo(
     () =>
       [
-        ...new Set((experimentsPage?.data ?? []).flatMap((e) => Object.keys(e.aggregate_scores ?? {}))),
+        ...new Set(
+          (experimentsPage?.data ?? []).flatMap((e) => Object.keys(e.aggregate_scores ?? {}))
+        ),
       ].sort(),
     [experimentsPage]
   );
@@ -81,7 +83,11 @@ export const ExperimentGroupEditModal: FC<ExperimentGroupEditModalProps> = ({
     } catch (error) {
       const detail = error instanceof AxiosError ? error.response?.data?.detail : undefined;
       const message =
-        typeof detail === 'string' ? detail : error instanceof Error ? error.message : 'Unknown error';
+        typeof detail === 'string'
+          ? detail
+          : error instanceof Error
+            ? error.message
+            : 'Unknown error';
       toast.error(`Failed to update experiment group: ${message}`);
     }
   };
