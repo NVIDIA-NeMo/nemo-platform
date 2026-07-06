@@ -10470,13 +10470,14 @@ components:
           description: Free-form producer metadata for the group.
           additionalProperties: true
           type: object
-        default_metric_sort:
-          title: Default Metric Sort
-          description: 'Default sort for this group''s experiments list, as a `sort`-param
-            string (leading ''-'' = descending), e.g. ''-cost_usd.mean''. Clients
-            apply it as the list `sort` param. The field must be a numeric rollup
-            metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>.'
+        default_sort:
           type: string
+          title: Default Sort
+          description: Default sort for this group's experiments list, as a `sort`-param
+            string (leading '-' = descending); defaults to '-created_at'. Accepts
+            any field the experiments list `sort` param does; clients apply it as
+            the list `sort` param.
+          default: -created_at
       additionalProperties: false
       type: object
       required:
@@ -10507,9 +10508,9 @@ components:
           title: Metadata
           additionalProperties: true
           type: object
-        default_metric_sort:
-          title: Default Metric Sort
+        default_sort:
           type: string
+          title: Default Sort
         created_at:
           title: Created At
           type: string
@@ -10528,6 +10529,7 @@ components:
       - id
       - name
       - workspace
+      - default_sort
       title: ExperimentGroupResponse
       description: ExperimentGroup as served by the API.
     ExperimentGroupResponsesPage:

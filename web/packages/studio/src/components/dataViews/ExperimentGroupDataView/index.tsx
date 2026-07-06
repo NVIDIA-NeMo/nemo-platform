@@ -46,17 +46,17 @@ const STATIC_SORT_FIELD_MAP: Readonly<Record<string, string>> = {
   run_count: 'run_count',
 };
 
-// Resolves a group's default_metric_sort (a `sort`-param string like `-cost_usd.mean`) to the
-// table's initial sort so the matching column header shows the sort on load. Matches on the metric
-// family (any stat); the column itself always sorts on `.mean`, which is what the control produces.
+// Resolves a group's default_sort (a `sort`-param string like `-cost_usd.mean` or `-created_at`) to
+// the table's initial sort so the matching column header shows the sort on load. Entity columns map
+// by exact id; metric columns match on the family (any stat) since the column always sorts on `.mean`.
 const seedSortFromDefault = (
-  defaultMetricSort: string | null | undefined
+  defaultSort: string | null | undefined
 ): { id: string; desc: boolean } | undefined => {
-  if (!defaultMetricSort) return undefined;
-  const desc = defaultMetricSort.startsWith('-');
-  const field = desc ? defaultMetricSort.slice(1) : defaultMetricSort;
+  if (!defaultSort) return undefined;
+  const desc = defaultSort.startsWith('-');
+  const field = desc ? defaultSort.slice(1) : defaultSort;
   let id: string | undefined;
-  if (field === 'run_count') id = 'run_count';
+  if (field === 'name' || field === 'created_at' || field === 'run_count') id = field;
   else if (field.startsWith('cost_usd.')) id = 'cost_usd';
   else if (field.startsWith('latency_ms.')) id = 'latency_ms';
   else {
@@ -91,7 +91,7 @@ const getExperimentSortParam = (
 };
 
 interface ExperimentGroupDataViewProps {
-  /** The loaded group, so the table's initial sort can seed from `default_metric_sort` at first
+  /** The loaded group, so the table's initial sort can seed from `default_sort` at first
    * render — the sorting state is initialized once and not reactive. */
   group: ExperimentGroupResponse;
 }
@@ -114,12 +114,9 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
   const experimentGroupName = group.name;
   const experimentGroupId = group.id;
 
-  // Seed the sort from default_metric_sort so its column header reflects the order on load. Memoized
-  // so the reference is stable across renders (until default_metric_sort changes).
-  const defaultSort = useMemo(
-    () => seedSortFromDefault(group.default_metric_sort),
-    [group.default_metric_sort]
-  );
+  // Seed the sort from default_sort so its column header reflects the order on load. Memoized so the
+  // reference is stable across renders (until default_sort changes).
+  const defaultSort = useMemo(() => seedSortFromDefault(group.default_sort), [group.default_sort]);
 
   const dataViewState = useStudioDataViewState<ExperimentFilter>({
     defaultSort,

@@ -1,15 +1,21 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-/** Always-available sort fields (no experiments needed to know them). Metrics rank on their `.mean`. */
+/** Sort fields available without inspecting experiments: entity columns + metrics (metrics rank on
+ * their `.mean`). Evaluator fields are discovered per group and appended by the control. */
 export const STATIC_FIELDS: ReadonlyArray<{ value: string; label: string }> = [
+  { value: 'name', label: 'Name' },
+  { value: 'created_at', label: 'Created' },
   { value: 'cost_usd.mean', label: 'Avg Cost' },
   { value: 'latency_ms.mean', label: 'Avg Latency' },
-  { value: 'run_count', label: 'Run count' },
+  { value: 'run_count', label: 'Run Count' },
 ];
 
 /** Prefix for a per-evaluator Select option value, e.g. `evaluator:accuracy`. */
 export const EVALUATOR_PREFIX = 'evaluator:';
+
+/** Default when a group hasn't set one — newest first. Mirrors the backend entity default. */
+export const DEFAULT_SORT = '-created_at';
 
 // Evaluator names may contain dots; the `.mean` suffix is the anchor.
 const EVALUATOR_FIELD = /^evaluators\.(.+)\.mean$/;

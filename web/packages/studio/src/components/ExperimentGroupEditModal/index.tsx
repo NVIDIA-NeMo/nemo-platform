@@ -29,13 +29,13 @@ export const ExperimentGroupEditModal: FC<ExperimentGroupEditModalProps> = ({
 }) => {
   const toast = useToast();
   const [description, setDescription] = useState(group.description ?? '');
-  const [defaultSort, setDefaultSort] = useState<string | null>(group.default_metric_sort ?? null);
+  const [defaultSort, setDefaultSort] = useState<string>(group.default_sort);
 
   // Reset local form state whenever the modal (re)opens or points at a different group.
   useEffect(() => {
     if (open) {
       setDescription(group.description ?? '');
-      setDefaultSort(group.default_metric_sort ?? null);
+      setDefaultSort(group.default_sort);
     }
   }, [open, group]);
 
@@ -76,7 +76,7 @@ export const ExperimentGroupEditModal: FC<ExperimentGroupEditModalProps> = ({
           // Name is immutable for a group; send it unchanged so the update isn't treated as a rename.
           name: group.name,
           description: description || undefined,
-          default_metric_sort: defaultSort ?? undefined,
+          default_sort: defaultSort,
         },
       });
       onClose();

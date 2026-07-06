@@ -31,12 +31,11 @@ class ExperimentGroupUpdateParams(TypedDict, total=False):
     body_name: Required[Annotated[str, PropertyInfo(alias="name")]]
     """Workspace-unique group name."""
 
-    default_metric_sort: str
+    default_sort: str
     """
     Default sort for this group's experiments list, as a `sort`-param string
-    (leading '-' = descending), e.g. '-cost_usd.mean'. Clients apply it as the list
-    `sort` param. The field must be a numeric rollup metric: run_count,
-    cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>.
+    (leading '-' = descending); defaults to '-created_at'. Accepts any field the
+    experiments list `sort` param does; clients apply it as the list `sort` param.
     """
 
     description: str

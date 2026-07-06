@@ -34,13 +34,12 @@ class ExperimentGroupRequest(BaseModel):
     )
     summary: str | None = Field(default=None, description="Human- or agent-authored summary of the group's findings.")
     metadata: dict[str, Any] | None = Field(default=None, description="Free-form producer metadata for the group.")
-    default_metric_sort: str | None = Field(
-        default=None,
+    default_sort: str = Field(
+        default="-created_at",
         description=(
             "Default sort for this group's experiments list, as a `sort`-param string (leading '-' = "
-            "descending), e.g. '-cost_usd.mean'. Clients apply it as the list `sort` param. The field "
-            "must be a numeric rollup metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or "
-            "evaluators.<name>.<stat>."
+            "descending); defaults to '-created_at'. Accepts any field the experiments list `sort` "
+            "param does; clients apply it as the list `sort` param."
         ),
     )
 
@@ -80,7 +79,7 @@ class ExperimentGroupResponse(BaseModel):
     insight_id: str | None = None
     summary: str | None = None
     metadata: dict[str, Any] | None = None
-    default_metric_sort: str | None = None
+    default_sort: str
     created_at: datetime | None = None
     updated_at: datetime | None = None
     experiment_count: int = Field(
@@ -98,7 +97,7 @@ class ExperimentGroupResponse(BaseModel):
             insight_id=entity.insight_id,
             summary=entity.summary,
             metadata=entity.metadata,
-            default_metric_sort=entity.default_metric_sort,
+            default_sort=entity.default_sort,
             created_at=entity.created_at,
             updated_at=entity.updated_at,
         )

@@ -71,7 +71,7 @@ class ExperimentGroupsResource(SyncAPIResource):
         *,
         workspace: str | None = None,
         name: str,
-        default_metric_sort: str | Omit = omit,
+        default_sort: str | Omit = omit,
         description: str | Omit = omit,
         insight_id: str | Omit = omit,
         metadata: Dict[str, object] | Omit = omit,
@@ -90,10 +90,9 @@ class ExperimentGroupsResource(SyncAPIResource):
         Args:
           name: Workspace-unique group name.
 
-          default_metric_sort: Default sort for this group's experiments list, as a `sort`-param string
-              (leading '-' = descending), e.g. '-cost_usd.mean'. Clients apply it as the list
-              `sort` param. The field must be a numeric rollup metric: run_count,
-              cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>.
+          default_sort: Default sort for this group's experiments list, as a `sort`-param string
+              (leading '-' = descending); defaults to '-created_at'. Accepts any field the
+              experiments list `sort` param does; clients apply it as the list `sort` param.
 
           description: Human-readable purpose of the group.
 
@@ -125,7 +124,7 @@ class ExperimentGroupsResource(SyncAPIResource):
                 body=maybe_transform(
                     {
                         "name": name,
-                        "default_metric_sort": default_metric_sort,
+                        "default_sort": default_sort,
                         "description": description,
                         "insight_id": insight_id,
                         "metadata": metadata,
@@ -189,7 +188,7 @@ class ExperimentGroupsResource(SyncAPIResource):
         *,
         workspace: str | None = None,
         body_name: str,
-        default_metric_sort: str | Omit = omit,
+        default_sort: str | Omit = omit,
         description: str | Omit = omit,
         insight_id: str | Omit = omit,
         metadata: Dict[str, object] | Omit = omit,
@@ -207,10 +206,9 @@ class ExperimentGroupsResource(SyncAPIResource):
         Args:
           body_name: Workspace-unique group name.
 
-          default_metric_sort: Default sort for this group's experiments list, as a `sort`-param string
-              (leading '-' = descending), e.g. '-cost_usd.mean'. Clients apply it as the list
-              `sort` param. The field must be a numeric rollup metric: run_count,
-              cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>.
+          default_sort: Default sort for this group's experiments list, as a `sort`-param string
+              (leading '-' = descending); defaults to '-created_at'. Accepts any field the
+              experiments list `sort` param does; clients apply it as the list `sort` param.
 
           description: Human-readable purpose of the group.
 
@@ -243,7 +241,7 @@ class ExperimentGroupsResource(SyncAPIResource):
             body=maybe_transform(
                 {
                     "body_name": body_name,
-                    "default_metric_sort": default_metric_sort,
+                    "default_sort": default_sort,
                     "description": description,
                     "insight_id": insight_id,
                     "metadata": metadata,
@@ -384,7 +382,7 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
         *,
         workspace: str | None = None,
         name: str,
-        default_metric_sort: str | Omit = omit,
+        default_sort: str | Omit = omit,
         description: str | Omit = omit,
         insight_id: str | Omit = omit,
         metadata: Dict[str, object] | Omit = omit,
@@ -403,10 +401,9 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
         Args:
           name: Workspace-unique group name.
 
-          default_metric_sort: Default sort for this group's experiments list, as a `sort`-param string
-              (leading '-' = descending), e.g. '-cost_usd.mean'. Clients apply it as the list
-              `sort` param. The field must be a numeric rollup metric: run_count,
-              cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>.
+          default_sort: Default sort for this group's experiments list, as a `sort`-param string
+              (leading '-' = descending); defaults to '-created_at'. Accepts any field the
+              experiments list `sort` param does; clients apply it as the list `sort` param.
 
           description: Human-readable purpose of the group.
 
@@ -438,7 +435,7 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
                 body=await async_maybe_transform(
                     {
                         "name": name,
-                        "default_metric_sort": default_metric_sort,
+                        "default_sort": default_sort,
                         "description": description,
                         "insight_id": insight_id,
                         "metadata": metadata,
@@ -502,7 +499,7 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
         *,
         workspace: str | None = None,
         body_name: str,
-        default_metric_sort: str | Omit = omit,
+        default_sort: str | Omit = omit,
         description: str | Omit = omit,
         insight_id: str | Omit = omit,
         metadata: Dict[str, object] | Omit = omit,
@@ -520,10 +517,9 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
         Args:
           body_name: Workspace-unique group name.
 
-          default_metric_sort: Default sort for this group's experiments list, as a `sort`-param string
-              (leading '-' = descending), e.g. '-cost_usd.mean'. Clients apply it as the list
-              `sort` param. The field must be a numeric rollup metric: run_count,
-              cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>.
+          default_sort: Default sort for this group's experiments list, as a `sort`-param string
+              (leading '-' = descending); defaults to '-created_at'. Accepts any field the
+              experiments list `sort` param does; clients apply it as the list `sort` param.
 
           description: Human-readable purpose of the group.
 
@@ -556,7 +552,7 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
             body=await async_maybe_transform(
                 {
                     "body_name": body_name,
-                    "default_metric_sort": default_metric_sort,
+                    "default_sort": default_sort,
                     "description": description,
                     "insight_id": insight_id,
                     "metadata": metadata,

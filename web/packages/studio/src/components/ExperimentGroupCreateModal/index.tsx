@@ -30,6 +30,7 @@ import {
 } from '@nvidia/foundations-react-core';
 import { queryClient } from '@studio/api/queryClient';
 import { DefaultSortControl } from '@studio/components/DefaultSortControl';
+import { DEFAULT_SORT } from '@studio/components/DefaultSortControl/util';
 import {
   experimentGroupCreateSchema,
   type ExperimentGroupCreateFormFields,
@@ -61,9 +62,9 @@ export const ExperimentGroupCreateModal: FC<ExperimentGroupCreateModalProps> = (
   });
 
   const formDisabled = isSubmitting;
-  // Default metric sort is a single `sort`-param string driven by a custom control (not a registered
-  // input), so it's managed outside react-hook-form and merged into the payload in onSubmit.
-  const [defaultSort, setDefaultSort] = useState<string | null>(null);
+  // Default sort is a single `sort`-param string driven by a custom control (not a registered input),
+  // so it's managed outside react-hook-form and merged into the payload in onSubmit.
+  const [defaultSort, setDefaultSort] = useState<string>(DEFAULT_SORT);
 
   const toast = useToast();
 
@@ -77,7 +78,7 @@ export const ExperimentGroupCreateModal: FC<ExperimentGroupCreateModalProps> = (
 
   const resetAndClose = () => {
     reset();
-    setDefaultSort(null);
+    setDefaultSort(DEFAULT_SORT);
     onClose();
   };
 
@@ -88,7 +89,7 @@ export const ExperimentGroupCreateModal: FC<ExperimentGroupCreateModalProps> = (
         data: {
           name: data.name,
           description: data.description,
-          default_metric_sort: defaultSort ?? undefined,
+          default_sort: defaultSort,
         },
       });
       resetAndClose();

@@ -120,7 +120,7 @@ async def create_experiment_group(
     body: ExperimentGroupRequest,
     entity_client: EntityClientDep,
 ) -> ExperimentGroupResponse:
-    _validate_default_metric_sort(body.default_metric_sort)
+    _validate_default_sort(body.default_sort)
     entity = ExperimentGroup(
         workspace=workspace,
         name=body.name,
@@ -128,7 +128,7 @@ async def create_experiment_group(
         insight_id=body.insight_id,
         summary=body.summary,
         metadata=body.metadata,
-        default_metric_sort=body.default_metric_sort,
+        default_sort=body.default_sort,
     )
     try:
         created = await entity_client.create(entity)
@@ -238,12 +238,12 @@ async def update_experiment_group(
             status_code=status.HTTP_409_CONFLICT,
             detail="Cannot rename an experiment group; the name is its identity.",
         )
-    _validate_default_metric_sort(body.default_metric_sort)
+    _validate_default_sort(body.default_sort)
     existing.description = body.description
     existing.insight_id = body.insight_id
     existing.summary = body.summary
     existing.metadata = body.metadata
-    existing.default_metric_sort = body.default_metric_sort
+    existing.default_sort = body.default_sort
     updated = await entity_client.update(existing)
     response = ExperimentGroupResponse.from_entity(updated)
     response.experiment_count = await _count_live_experiments_in_group(
@@ -1105,22 +1105,16 @@ def _experiment_sort_value(response: ExperimentResponse, field: str) -> Any:
     return getattr(score, stat, None) if score is not None else None
 
 
-def _validate_default_metric_sort(default_metric_sort: str | None) -> None:
-    """Reject a default metric sort whose field isn't a numeric rollup metric.
+def _validate_default_sort(default_sort: str | None) -> None:
+    """Reject a default sort whose field the experiments list can't sort by.
 
-    The value is a ``sort``-param string (optional leading '-' for descending), e.g. ``-cost_usd.mean``.
+    The value is a ``sort``-param string (optional leading '-' for descending), e.g. ``-cost_usd.mean``;
+    the field must satisfy the same rule as the list ``sort`` query param.
     """
-    if default_metric_sort is None:
+    if default_sort is None:
         return
-    field = default_metric_sort[1:] if default_metric_sort.startswith("-") else default_metric_sort
-    if not _is_valid_metric_path(field):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                f"Unsupported sort field: {field}. Use a numeric rollup metric "
-                "(run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>)."
-            ),
-        )
+    field = default_sort[1:] if default_sort.startswith("-") else default_sort
+    _validate_sort_field(field)
 
 
 def _sort_experiments(

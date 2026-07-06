@@ -28,13 +28,13 @@ class ExperimentGroupResponse(BaseModel):
 
     id: str
 
+    default_sort: str
+
     name: str
 
     workspace: str
 
     created_at: Optional[datetime] = None
-
-    default_metric_sort: Optional[str] = None
 
     description: Optional[str] = None
 

@@ -3,7 +3,6 @@
 
 import { snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
 import {
-  Button,
   FormField,
   SegmentedControl,
   SelectContent,
@@ -23,18 +22,17 @@ import {
   isEvaluatorField,
   parseSortString,
 } from '@studio/components/DefaultSortControl/util';
-import { X } from 'lucide-react';
 import type { FC } from 'react';
 
 /**
  * A group's **default sort**: a single `sort`-param string (e.g. `-cost_usd.mean`) the client applies
- * as the experiments list's `sort` param on load. Optional (`null` = no default). The field ranks on
- * a metric's mean, matching the sort/filter API grammar.
+ * as the experiments list's `sort` param on load. Always set (defaults to `-created_at`); the field
+ * is any the experiments list can sort by, matching the sort/filter API grammar.
  */
 
 export interface DefaultSortControlProps {
-  value: string | null;
-  onChange: (next: string | null) => void;
+  value: string;
+  onChange: (next: string) => void;
   /** Known evaluator names to offer as first-class options (edit modal). Empty at create time. */
   evaluatorOptions?: string[];
   disabled?: boolean;
@@ -46,13 +44,12 @@ export const DefaultSortControl: FC<DefaultSortControlProps> = ({
   evaluatorOptions = [],
   disabled,
 }) => {
-  const parsed = value != null ? parseSortString(value) : null;
-  const setField = (field: string) => onChange(formatSortString(field, parsed?.desc ?? true));
+  const parsed = parseSortString(value);
+  const setField = (field: string) => onChange(formatSortString(field, parsed.desc));
 
   // Keep the currently-selected evaluator selectable even if it wasn't among the discovered options
   // (e.g. a saved sort whose evaluator isn't in the sampled experiments), so it stays visible.
-  const currentEvaluator =
-    parsed && isEvaluatorField(parsed.field) ? evaluatorNameOf(parsed.field) : '';
+  const currentEvaluator = isEvaluatorField(parsed.field) ? evaluatorNameOf(parsed.field) : '';
   const evaluators =
     currentEvaluator && !evaluatorOptions.includes(currentEvaluator)
       ? [...evaluatorOptions, currentEvaluator]
@@ -79,20 +76,20 @@ export const DefaultSortControl: FC<DefaultSortControlProps> = ({
   };
 
   return (
-    <FormField slotLabel="Default metric sort (optional)">
+    <FormField slotLabel="Default sort">
       <Stack gap="density-md">
         <Text kind="body/regular/sm" className="text-secondary">
-          The metric this group&apos;s experiments are sorted by on load.
+          The field this group&apos;s experiments are sorted by on load.
         </Text>
         <div className="flex items-center gap-2">
           <SelectRoot
-            value={parsed ? selectValueFor(parsed.field) : ''}
+            value={selectValueFor(parsed.field)}
             onValueChange={onSelectField}
             disabled={disabled}
           >
             <SelectTrigger
               className="w-48"
-              placeholder="Select metric"
+              placeholder="Select field"
               aria-label="Sort field"
               renderValue={(v) => (typeof v === 'string' && v ? labelForOption(v) : undefined)}
             />
@@ -112,32 +109,15 @@ export const DefaultSortControl: FC<DefaultSortControlProps> = ({
             </SelectContent>
           </SelectRoot>
 
-          {parsed != null && (
-            <>
-              <SegmentedControl
-                size="tiny"
-                value={parsed.desc ? 'desc' : 'asc'}
-                onValueChange={(d: string) =>
-                  onChange(formatSortString(parsed.field, d === 'desc'))
-                }
-                items={[
-                  { value: 'asc', children: 'Asc' },
-                  { value: 'desc', children: 'Desc' },
-                ]}
-              />
-
-              <Button
-                kind="tertiary"
-                color="neutral"
-                size="small"
-                aria-label="Clear default sort"
-                disabled={disabled}
-                onClick={() => onChange(null)}
-              >
-                <X />
-              </Button>
-            </>
-          )}
+          <SegmentedControl
+            size="tiny"
+            value={parsed.desc ? 'desc' : 'asc'}
+            onValueChange={(d: string) => onChange(formatSortString(parsed.field, d === 'desc'))}
+            items={[
+              { value: 'asc', children: 'Asc' },
+              { value: 'desc', children: 'Desc' },
+            ]}
+          />
         </div>
       </Stack>
     </FormField>
