@@ -795,10 +795,22 @@ paths:
                   Post
         '422':
           description: Invalid request or unsupported metric/model
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluateSyncError'
         '503':
           description: Synchronous evaluation capacity is full
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluateSyncError'
         '504':
           description: Evaluation exceeded the synchronous time limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluateSyncError'
   /apis/evaluator/v2/workspaces/{workspace}/evaluate/jobs:
     post:
       tags:
@@ -3054,6 +3066,17 @@ components:
       title: EvaluateSpec
       description: Canonical SDK evaluation spec with platform model and metric references
         resolved.
+    EvaluateSyncError:
+      properties:
+        detail:
+          type: string
+          title: Detail
+          description: Human-readable, actionable description of why the request failed.
+      type: object
+      required:
+      - detail
+      title: EvaluateSyncError
+      description: Error body for the synchronous evaluate route (422/503/504).
     EvaluateSyncRequest:
       properties:
         metrics:

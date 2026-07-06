@@ -302,9 +302,13 @@ class BaseRAGASMetric(MetricBase):
         if not self._llm_model:
             return None
 
-        chat_params: dict[str, Any] = {**self._llm_model}
+        chat_params: dict[str, Any] = {}
         if self._inference_params:
             chat_params.update(self._inference_params)
+        # Transport and auth (base_url, api_key, default_headers) come from the resolved model
+        # and must never be overridable by caller-supplied inference params — otherwise a
+        # request could redirect the judge call (SSRF) or replace forwarded caller identity.
+        chat_params.update(self._llm_model)
 
         # Filter out None values
         chat_params = {k: v for k, v in chat_params.items() if v is not None}

@@ -14,7 +14,7 @@ import concurrent.futures
 import functools
 import logging
 import threading
-from typing import Annotated, Any, Callable, cast
+from typing import Annotated, Any, Callable
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from nemo_evaluator.api.schemas import MetricInline
@@ -124,6 +124,13 @@ def _bounded_inference_fn(budget_seconds: float) -> InferenceFn:
     return _fn
 
 
+# RAGAS builds its judge ChatOpenAI client from `inference` (extra="allow"), so a caller could
+# smuggle transport/auth kwargs (base_url, default_headers, api_key, ...) that redirect the judge
+# call or replace the forwarded caller identity. On the sync path only these generation params
+# survive; transport/auth is forced from the resolved model.
+_ALLOWED_RAGAS_INFERENCE_KEYS = frozenset({"temperature", "max_tokens", "max_completion_tokens", "top_p", "stop"})
+
+
 def _bound_worker_inference(metrics: list[Metric], budget_seconds: float) -> None:
     """Bound each metric's model calls so a detached (timed-out) worker frees its slot quickly.
 
@@ -135,16 +142,34 @@ def _bound_worker_inference(metrics: list[Metric], budget_seconds: float) -> Non
         if callable(set_inference_fn):
             set_inference_fn(_bounded_inference_fn(budget_seconds))
         if isinstance(metric, BaseRAGASMetric):
-            # RAGAS builds its judge client from `inference` extras (ChatOpenAI kwargs);
-            # respect explicit user settings, only fill the gaps. InferenceParams allows
-            # extra fields, so assignment lands in __pydantic_extra__ and survives dumps.
-            inference = getattr(metric, "inference", None)
-            if isinstance(inference, InferenceParams):
-                extras = cast(Any, inference)
-                if getattr(extras, "request_timeout", None) is None:
-                    extras.request_timeout = budget_seconds
-                if getattr(extras, "max_retries", None) is None:
-                    extras.max_retries = _SYNC_WORKER_MAX_RETRIES
+            _sanitize_ragas_inference(metric, budget_seconds)
+
+
+def _sanitize_ragas_inference(metric: BaseRAGASMetric, budget_seconds: float) -> None:
+    """Strip RAGAS inference down to safe generation params and clamp its timeout/retries.
+
+    Drops any transport/auth kwargs a caller supplied (they must come from the resolved model),
+    and clamps request_timeout/max_retries into the sync budget so an explicit 3600s/99-retry
+    request can't keep its worker slot occupied for hours after the 60s HTTP response.
+    """
+    inference = getattr(metric, "inference", None)
+    if not isinstance(inference, InferenceParams):
+        return
+
+    dumped = inference.model_dump(exclude_none=True)
+    safe = {key: value for key, value in dumped.items() if key in _ALLOWED_RAGAS_INFERENCE_KEYS}
+
+    existing_timeout = dumped.get("request_timeout")
+    safe["request_timeout"] = min(existing_timeout, budget_seconds) if existing_timeout else budget_seconds
+    existing_retries = dumped.get("max_retries")
+    safe["max_retries"] = (
+        min(existing_retries, _SYNC_WORKER_MAX_RETRIES) if existing_retries is not None else _SYNC_WORKER_MAX_RETRIES
+    )
+
+    # Reassigned before resolve_models() re-runs _configure_models(), so the sanitized params are
+    # what RAGAS uses to build its client. (inference lives on the RAGAS judge-config mixin, not
+    # on the BaseRAGASMetric base, so set it dynamically.)
+    setattr(metric, "inference", InferenceParams(**safe))
 
 
 def _submit_sync_evaluation(run: Callable[[], EvaluationArtifactResult]) -> concurrent.futures.Future:
@@ -165,6 +190,12 @@ def _submit_sync_evaluation(run: Callable[[], EvaluationArtifactResult]) -> conc
 
     threading.Thread(target=_worker, name="evaluator-sync", daemon=True).start()
     return future
+
+
+class EvaluateSyncError(BaseModel):
+    """Error body for the synchronous evaluate route (422/503/504)."""
+
+    detail: str = Field(description="Human-readable, actionable description of why the request failed.")
 
 
 class EvaluateSyncRequest(BaseModel):
@@ -196,9 +227,18 @@ class EvaluateSyncRequest(BaseModel):
     response_description="The inline evaluation result (aggregate and row scores)",
     status_code=status.HTTP_200_OK,
     responses={
-        status.HTTP_422_UNPROCESSABLE_ENTITY: {"description": "Invalid request or unsupported metric/model"},
-        status.HTTP_503_SERVICE_UNAVAILABLE: {"description": "Synchronous evaluation capacity is full"},
-        status.HTTP_504_GATEWAY_TIMEOUT: {"description": "Evaluation exceeded the synchronous time limit"},
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {
+            "model": EvaluateSyncError,
+            "description": "Invalid request or unsupported metric/model",
+        },
+        status.HTTP_503_SERVICE_UNAVAILABLE: {
+            "model": EvaluateSyncError,
+            "description": "Synchronous evaluation capacity is full",
+        },
+        status.HTTP_504_GATEWAY_TIMEOUT: {
+            "model": EvaluateSyncError,
+            "description": "Evaluation exceeded the synchronous time limit",
+        },
     },
 )
 @scope.write
@@ -239,8 +279,8 @@ async def evaluate_sync(
                 ),
             )
 
-    # Validation phase: everything here failed because of the request contents, so 422 carries
-    # the underlying message (model ref not found, malformed metric, bad params, ...).
+    # Cheap request-shape validation — no slot held, no remote calls. 422 carries the underlying
+    # message (malformed metric, bad params, ...).
     try:
         runtime_metrics = [unbundle_metric(to_runtime_bundle(metric)) for metric in request.metrics]
 
@@ -255,16 +295,6 @@ async def evaluate_sync(
                     ),
                 )
 
-        _bound_worker_inference(runtime_metrics, SYNC_EVALUATE_TIMEOUT_SECONDS)
-
-        # Resolve refs as the caller (forward request-scoped headers); skip when no metric uses a model.
-        metrics_with_models = [m for m in runtime_metrics if isinstance(m, MetricWithModels)]
-        if metrics_with_models:
-            resolver = _ForwardedHeaderModelResolver(
-                PlatformModelResolver(async_sdk), get_forwarding_headers(async_sdk)
-            )
-            await asyncio.gather(*(m.resolve_models(resolver) for m in metrics_with_models))
-
         params = resolve_params(request.params, None)
     except HTTPException:
         raise
@@ -275,12 +305,33 @@ async def evaluate_sync(
             detail=f"Evaluation request was invalid: {exc}",
         ) from exc
 
+    # Reserve capacity before any downstream fan-out: model resolution hits remote model/provider
+    # lookups, so backpressure must gate it — otherwise requests fan out unbounded while full.
     if not _SYNC_SLOTS.acquire(blocking=False):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Synchronous evaluation capacity is full; retry shortly or submit a durable job via /evaluate/jobs.",
         )
+
+    slot_held = True
     try:
+        try:
+            _bound_worker_inference(runtime_metrics, SYNC_EVALUATE_TIMEOUT_SECONDS)
+
+            # Resolve refs as the caller (forward request-scoped headers); skip when no metric uses a model.
+            metrics_with_models = [m for m in runtime_metrics if isinstance(m, MetricWithModels)]
+            if metrics_with_models:
+                resolver = _ForwardedHeaderModelResolver(
+                    PlatformModelResolver(async_sdk), get_forwarding_headers(async_sdk)
+                )
+                await asyncio.gather(*(m.resolve_models(resolver) for m in metrics_with_models))
+        except (TypeError, ValueError, EvaluationError) as exc:
+            logger.warning("Synchronous evaluation request was invalid", exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Evaluation request was invalid: {exc}",
+            ) from exc
+
         future = _submit_sync_evaluation(
             functools.partial(
                 run_evaluation,
@@ -292,11 +343,15 @@ async def evaluate_sync(
                 field_mapping=request.field_mapping,
             )
         )
-    except BaseException:
-        _SYNC_SLOTS.release()
-        raise
-    # Free the slot only on true completion, so an orphaned (timed-out) run can't oversubscribe.
-    future.add_done_callback(lambda _f: _SYNC_SLOTS.release())
+        # Ownership of the slot passes to the future's done callback; the finally must not
+        # also release it. Set before registering the callback: an already-finished worker
+        # runs the callback inline, and a double release trips BoundedSemaphore.
+        slot_held = False
+        # Free the slot only on true completion, so an orphaned (timed-out) run can't oversubscribe.
+        future.add_done_callback(lambda _f: _SYNC_SLOTS.release())
+    finally:
+        if slot_held:
+            _SYNC_SLOTS.release()
 
     # asyncio.wait (not wait_for) so a TimeoutError raised inside the worker can't be mistaken
     # for the sync budget expiring: not-done is the only timeout signal.

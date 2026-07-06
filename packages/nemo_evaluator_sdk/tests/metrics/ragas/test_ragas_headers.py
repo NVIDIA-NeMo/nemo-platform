@@ -10,8 +10,10 @@ models; dropping them here silently strips the caller's identity from judge/embe
 from typing import Any, cast
 
 import httpx
-from nemo_evaluator_sdk.metrics.ragas import ResponseRelevancyMetric
+import pytest
+from nemo_evaluator_sdk.metrics.ragas import AnswerAccuracyMetric, ResponseRelevancyMetric
 from nemo_evaluator_sdk.values import Model
+from nemo_evaluator_sdk.values.params import InferenceParams
 
 CALLER_HEADERS = {"X-NMP-Principal-Id": "user@example.com"}
 
@@ -52,3 +54,40 @@ def test_default_headers_reach_judge_and_embeddings_clients() -> None:
     embeddings = metric._get_embeddings_client()
     assert embeddings is not None
     assert cast(Any, embeddings).embeddings.default_headers == CALLER_HEADERS
+
+
+def test_inference_extras_cannot_override_resolved_transport(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A caller-supplied inference payload must not be able to redirect the judge call (SSRF) or
+    # replace the forwarded caller identity: transport/auth comes from the resolved model.
+    captured: dict[str, Any] = {}
+
+    class _FakeChatOpenAI:
+        def __init__(self, **kwargs: Any) -> None:
+            captured.update(kwargs)
+
+    monkeypatch.setattr("nemo_evaluator_sdk.metrics.ragas.base._get_langchain_chat_openai", lambda: _FakeChatOpenAI)
+    monkeypatch.setattr(
+        "nemo_evaluator_sdk.metrics.ragas.base.get_langchain_llm_wrapper_class", lambda: lambda judge: judge
+    )
+
+    metric = AnswerAccuracyMetric(
+        judge_model=Model(
+            name="gpt-4",
+            url="https://igw.local/v1/chat/completions",
+            default_headers=CALLER_HEADERS,
+        ),
+        inference=InferenceParams.model_validate(
+            {
+                "temperature": 0.5,
+                "base_url": "http://attacker.test/v1",
+                "default_headers": {"X-NMP-Principal-Id": "attacker"},
+            }
+        ),
+    )
+
+    metric._get_llm_judge(httpx.AsyncClient())
+
+    assert captured["base_url"] == "https://igw.local/v1"
+    assert captured["default_headers"] == CALLER_HEADERS
+    # Legitimate generation params still pass through.
+    assert captured["temperature"] == 0.5

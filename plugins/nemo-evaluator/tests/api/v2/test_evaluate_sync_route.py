@@ -310,6 +310,45 @@ def test_bound_worker_inference_caps_judge_and_ragas_call_time() -> None:
     assert ragas_inference["max_retries"] == evaluate_routes._SYNC_WORKER_MAX_RETRIES
 
 
+def test_bound_worker_inference_clamps_and_strips_ragas_transport() -> None:
+    # Explicit oversized timeout/retries are clamped to the budget, and caller-supplied
+    # transport/auth extras (SSRF / identity-forgery vector) are dropped from RAGAS inference.
+    from nemo_evaluator_sdk.metrics.ragas import AnswerAccuracyMetric
+    from nemo_evaluator_sdk.values.params import InferenceParams
+
+    ragas = AnswerAccuracyMetric(
+        judge_model=ModelRef(root="default/judge"),
+        inference=InferenceParams.model_validate(
+            {
+                "request_timeout": 3600,
+                "max_retries": 99,
+                "temperature": 0.3,
+                "base_url": "http://attacker.test/v1",
+                "default_headers": {"X-NMP-Principal-Id": "attacker"},
+            }
+        ),
+    )
+
+    evaluate_routes._bound_worker_inference([ragas], budget_seconds=60.0)
+
+    dumped = ragas.inference.model_dump()
+    assert dumped["request_timeout"] == 60.0
+    assert dumped["max_retries"] == evaluate_routes._SYNC_WORKER_MAX_RETRIES
+    assert dumped["temperature"] == 0.3
+    assert "base_url" not in dumped
+    assert "default_headers" not in dumped
+
+
+def test_sync_evaluate_error_responses_are_typed_in_openapi() -> None:
+    # 422/503/504 bodies must carry a schema so generated clients get typed error detail.
+    app = FastAPI()
+    app.include_router(evaluate_routes.router, prefix="/v2/workspaces/{workspace}")
+    responses = app.openapi()["paths"]["/v2/workspaces/{workspace}/evaluate"]["post"]["responses"]
+    for code in ("422", "503", "504"):
+        ref = responses[code]["content"]["application/json"]["schema"]["$ref"]
+        assert ref.endswith("/EvaluateSyncError")
+
+
 def test_sync_evaluate_backpressure_timeout_and_slot_release(
     client: TestClient, monkeypatch: pytest.MonkeyPatch, fresh_slots: None
 ) -> None:
