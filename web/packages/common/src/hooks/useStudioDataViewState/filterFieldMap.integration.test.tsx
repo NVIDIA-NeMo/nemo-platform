@@ -187,3 +187,56 @@ describe('useStudioDataViewState range-filter integration (function-form filterF
     );
   });
 });
+
+/** run_count is a flat scalar metric (not a `.<stat>` rollup), so the view's filter-field function
+ * returns undefined for it and the range filter must emit under the plain `run_count` key —
+ * matching the backend's `filter[run_count][$gte]=5` shape. */
+interface RunCountRow {
+  run_count?: number;
+}
+
+const RUN_COUNT_DATA: RunCountRow[] = [{ run_count: 1 }, { run_count: 5 }, { run_count: 20 }];
+
+function useRunCountHarness() {
+  // Mirrors ExperimentGroupDataView: run_count isn't remapped, so the function returns undefined.
+  const dataViewState = useStudioDataViewState({ filterFieldMap: () => undefined });
+  const columns = useMakeColumns<RunCountRow>({
+    makeColumns: (columnHelper) => [
+      columnHelper.accessor((r) => r.run_count, {
+        id: 'run_count',
+        header: 'Run Count',
+        meta: { filter: numberRangeFilter('Run Count') },
+      }),
+    ],
+    overrideToLoadingCells: false,
+  });
+  const table = useCustomReactTable<RunCountRow>({
+    columns,
+    data: RUN_COUNT_DATA,
+    dataMode: 'manual',
+    state: dataViewState,
+    totalCount: RUN_COUNT_DATA.length,
+  });
+  return { dataViewState, table };
+}
+
+describe('useStudioDataViewState range-filter integration (flat run_count key)', () => {
+  it('emits a run_count range under its own flat key when the field function returns undefined', async () => {
+    const { result } = renderHook(() => useRunCountHarness(), { wrapper: MemoryRouter });
+
+    // Regression guard: numeric rows must still resolve to numberRange, not TanStack's inNumberRange.
+    expect(result.current.table.getColumn('run_count')?.columnDef.filterFn).toBe('numberRange');
+
+    act(() => {
+      result.current.table.getColumn('run_count')?.setFilterValue({ $gte: 5, $lte: 20 });
+    });
+
+    await waitFor(
+      () =>
+        expect(result.current.dataViewState.apiFilter.filter).toEqual({
+          run_count: { $gte: 5, $lte: 20 },
+        }),
+      { timeout: 2000 }
+    );
+  });
+});

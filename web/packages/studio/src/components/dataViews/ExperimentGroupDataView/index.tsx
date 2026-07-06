@@ -353,6 +353,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
         id: 'run_count',
         header: 'Run Count',
         enableSorting: true,
+        meta: { filter: numberRangeFilter('Run Count') },
         cell: ({ row }) => <Text>{String(row.original.run_count ?? 0)}</Text>,
       }),
       accessor('created_at', {
