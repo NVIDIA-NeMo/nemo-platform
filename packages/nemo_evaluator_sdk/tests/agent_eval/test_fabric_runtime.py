@@ -224,6 +224,96 @@ async def test_fabric_runtime_maps_atif_artifact_to_trace_evidence(
     assert trace.ref == str(tmp_path / "trajectory.atif.json")
 
 
+def _workspace_from_profiles(profiles: list[Any]) -> Path:
+    """Pull the staged workspace path out of the ``eval_workspace`` profile overlay."""
+    profile = next(p for p in profiles if p.name == fabric_runtime._WORKSPACE_PROFILE_NAME)
+    return Path(profile.mapping["environment"]["workspace"])
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_seeds_workspace_and_exposes_workspace_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    task = AgentEvalTask(
+        id="fix/bug",
+        intent="Fix the bug.",
+        inputs={"instruction": "make the tests pass", "files": {"calc.py": "value = 1\n"}},
+    )
+
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        # The harness runs in the staged workspace; simulate an edit it leaves behind.
+        workspace = _workspace_from_profiles(kwargs["profiles"])
+        (workspace / "result.txt").write_text("done", encoding="utf-8")
+        return _FakeResult(status="succeeded", output={"response": "ok"})
+
+    client_cls = _install_fake_fabric(monkeypatch, handler)
+    runtime = fabric_runtime.FabricAgentRuntime(config=_CONFIG, work_root=tmp_path / "fabric")
+
+    trials = await runtime.run_tasks([task])
+
+    trial = trials[0]
+    assert trial.status == "completed"
+    # A dedicated workspace profile overlay carries environment.workspace (the harness's cwd).
+    profiles = client_cls.recorded[0]["profiles"]
+    assert fabric_runtime._WORKSPACE_PROFILE_NAME in [p.name for p in profiles]
+    workspace = _workspace_from_profiles(profiles)
+    # The seed file is staged and the agent's edit is present in the same dir.
+    assert (workspace / "calc.py").read_text(encoding="utf-8") == "value = 1\n"
+    assert (workspace / "result.txt").read_text(encoding="utf-8") == "done"
+    # The final workspace is exposed as filesystem evidence (same key/kind as the Codex runtime).
+    assert trial.evidence is not None
+    workspace_evidence = trial.evidence.descriptors["workspace"]
+    assert workspace_evidence.kind == "filesystem"
+    assert workspace_evidence.ref == str(workspace)
+    # Seed-file contents are listed by name in the input, not dumped inline (they are already on disk).
+    harness_input = client_cls.recorded[0]["input"]
+    assert "calc.py" in harness_input
+    assert "value = 1" not in harness_input
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_stages_workspace_even_without_seed_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Every task gets a workspace, even with no inputs['files'] — the harness may still create files,
+    # and the per-task dir is exposed as evidence uniformly (a from-scratch coding task, say).
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        return _FakeResult(status="succeeded", output="ok")
+
+    client_cls = _install_fake_fabric(monkeypatch, handler)
+    runtime = fabric_runtime.FabricAgentRuntime(config=_CONFIG, work_root=tmp_path / "fabric")
+
+    trials = await runtime.run_tasks([_TASK])  # _TASK has no 'files' input
+
+    profiles = client_cls.recorded[0]["profiles"]
+    assert fabric_runtime._WORKSPACE_PROFILE_NAME in [p.name for p in profiles]
+    workspace = _workspace_from_profiles(profiles)
+    assert workspace.is_dir()
+    assert trials[0].evidence is not None
+    assert trials[0].evidence.descriptors["workspace"].ref == str(workspace)
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_bad_seed_fails_only_that_task(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A seed path escaping the workspace must fail just this task (as a failed trial), not abort the run.
+    bad_task = AgentEvalTask(
+        id="bad/seed",
+        intent="unused",
+        inputs={"files": {"../escape.py": "nope"}},
+    )
+
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        return _FakeResult(status="succeeded", output="unreached")
+
+    _install_fake_fabric(monkeypatch, handler)
+    runtime = fabric_runtime.FabricAgentRuntime(config=_CONFIG, work_root=tmp_path / "fabric")
+
+    trials = await runtime.run_tasks([bad_task])
+
+    assert trials[0].status == "failed"
+    assert trials[0].metadata["error_type"] == "WorkspaceSeedError"
+
+
 @pytest.mark.asyncio
 async def test_fabric_runtime_capture_trajectory_false_skips_relay_overlay(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
