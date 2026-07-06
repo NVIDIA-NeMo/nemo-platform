@@ -403,7 +403,7 @@ class NemoClient(BaseNemoClient):
         raw = self._request_with_retry(request, url, req_headers, params, resolved_retry)
         if _should_resolve_conflict(raw, request):
             assert request.on_conflict_get is not None
-            return self.send(request.on_conflict_get, retry=retry)
+            return self.send(request.on_conflict_get, headers=headers, retry=retry)
         raise_for_status(raw)
         body = None
         if request.response_type is not None:
@@ -607,7 +607,7 @@ class AsyncNemoClient(BaseNemoClient):
         raw = await self._request_with_retry(request, url, req_headers, params, resolved_retry)
         if _should_resolve_conflict(raw, request):
             assert request.on_conflict_get is not None
-            return await self.send(request.on_conflict_get, retry=retry)
+            return await self.send(request.on_conflict_get, headers=headers, retry=retry)
         raise_for_status(raw)
         body = None
         if request.response_type is not None:

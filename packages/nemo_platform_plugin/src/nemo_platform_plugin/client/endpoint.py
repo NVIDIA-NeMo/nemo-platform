@@ -179,6 +179,17 @@ def _make_endpoint(
     client_option_names = _identify_client_option_params(fn)
     _validate_params(fn, path_param_names, client_option_names)
 
+    # Fail fast: exist_ok relies on a get_on_conflict resolver to fetch the
+    # existing entity on 409. Without one, the option is inert and a real
+    # conflict would raise at send() time — catch the misconfiguration here.
+    if "exist_ok" in client_option_names and get_on_conflict is None:
+        fn_name = getattr(fn, "__qualname__", getattr(fn, "__name__", repr(fn)))
+        raise TypeError(
+            f"Endpoint {fn_name} declares the 'exist_ok' option but no "
+            "get_on_conflict resolver. Pass get_on_conflict=<resolver> to the "
+            "@post decorator so the existing entity can be retrieved on 409."
+        )
+
     hints = get_type_hints(fn)
     ret = hints.get("return")
     response_type = ret if ret is not None and ret is not type(None) else None
