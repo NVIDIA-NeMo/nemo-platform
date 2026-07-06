@@ -37,7 +37,7 @@ describe('FileRowEditor', () => {
 
     expect(screen.getByText('Unsaved edits')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Apply Change' }));
+    await user.click(screen.getByRole('button', { name: 'Stage Changes' }));
 
     expect(screen.queryByText('Unsaved edits')).not.toBeInTheDocument();
   });
@@ -60,7 +60,7 @@ describe('FileRowEditor', () => {
     // Edit a row and commit it to the table.
     await user.click(screen.getByText('cuDNN'));
     await user.type(screen.getByLabelText('topic'), ' updated');
-    await user.click(screen.getByRole('button', { name: 'Apply Change' }));
+    await user.click(screen.getByRole('button', { name: 'Stage Changes' }));
 
     // Now dirty → enabled, with an "Unsaved changes" chip in the toolbar.
     expect(saveFileButton).toBeEnabled();
@@ -84,7 +84,7 @@ describe('FileRowEditor', () => {
 
     await user.click(screen.getByText('cuDNN'));
     await user.type(screen.getByLabelText('topic'), ' updated');
-    await user.click(screen.getByRole('button', { name: 'Apply Change' }));
+    await user.click(screen.getByRole('button', { name: 'Stage Changes' }));
 
     const saveFileButton = screen.getByRole('button', { name: 'Save File' });
     await user.click(saveFileButton);
