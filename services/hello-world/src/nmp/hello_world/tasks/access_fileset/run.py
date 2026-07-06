@@ -7,7 +7,10 @@ This task is used for E2E testing of auth propagation. It attempts to
 retrieve a fileset and reports whether access was granted or denied.
 """
 
-from nemo_platform import APIStatusError, NeMoPlatform
+from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NemoHTTPError
+from nemo_platform_plugin.files.client import FilesClient
 from nmp.common.jobs.config import get_task_config
 from nmp.common.sdk_factory import get_platform_sdk
 from pydantic import BaseModel
@@ -38,12 +41,13 @@ def run(*, sdk: NeMoPlatform | None = None) -> int:
 
         print(f"Attempting to access fileset '{config.fileset}' in workspace '{config.workspace}'")
 
-        fileset = sdk.files.filesets.retrieve(workspace=config.workspace, name=config.fileset)
+        files = client_from_platform(sdk, FilesClient)
+        fileset = files.get_fileset(workspace=config.workspace, name=config.fileset).data()
 
         print(f"Successfully accessed fileset: {fileset.name}")
         return 0
 
-    except APIStatusError as e:
+    except NemoHTTPError as e:
         if e.status_code == 403:
             print(f"Access denied (403 Forbidden): {e}")
         elif e.status_code == 404:

@@ -10,15 +10,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform.filesets import ListFilesResponse
-from nemo_platform.types.files import (
-    Fileset,
-    FilesetFile,
-    HuggingfaceStorageConfig,
-    LocalStorageConfig,
-    NGCStorageConfig,
-)
-from nemo_platform.types.shared import FilesetMetadata
+from nemo_platform_plugin.files.metadata import FilesetMetadata
+from nemo_platform_plugin.files.storage_config import HuggingfaceStorageConfig, LocalStorageConfig, NGCStorageConfig
+from nemo_platform_plugin.files.types import FilesetFileOutput, FilesetOutput, ListFilesetFilesResponse
 from nmp.common.api.common import Page, PaginationData
 from nmp.common.api.filter import ComparisonOperation, FilterOperator, LogicalOperation
 from nmp.common.api.parsed_filter import ParsedFilter
@@ -189,14 +183,37 @@ def mock_entity_client() -> AsyncMock:
 
 
 @pytest.fixture
-def model_entity_service(mock_entity_client):
+def _mock_files_client():
+    """Mock the FilesClient returned by client_from_platform in the permissions module."""
+    fileset_output = FilesetOutput(
+        id="fileset-id-123",
+        name="test-fileset",
+        workspace="default",
+        description="Test fileset",
+        storage=LocalStorageConfig(path="test-path"),
+        purpose="generic",
+        project="test-project",
+        created_at="2026-01-01T00:00:00Z",
+        updated_at="2026-01-01T00:00:00Z",
+        custom_fields={"key": "value"},
+        metadata=FilesetMetadata(),
+    )
+    mock_fc = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.data.return_value = fileset_output
+    mock_fc.get_fileset.return_value = mock_response
+    with patch("nmp.core.models.api.permissions.client_from_platform", return_value=mock_fc):
+        yield mock_fc
+
+
+@pytest.fixture
+def model_entity_service(mock_entity_client, _mock_files_client):
     """Create a ModelEntityService with mocked EntityClient."""
     async_sdk = AsyncMock(spec=AsyncNeMoPlatform)
     async_sdk.files.list = AsyncMock(
-        return_value=ListFilesResponse(
+        return_value=ListFilesetFilesResponse(
             data=[
-                FilesetFile(
-                    id="file-id-123",
+                FilesetFileOutput(
                     file_ref="file-ref-123",
                     file_url="file-url-123",
                     path="path-123",
@@ -204,21 +221,6 @@ def model_entity_service(mock_entity_client):
                     cache_status="cached",
                 )
             ]
-        )
-    )
-    async_sdk.files.filesets.retrieve = AsyncMock(
-        return_value=Fileset(
-            id="fileset-id-123",
-            name="test-fileset",
-            workspace="default",
-            description="Test fileset",
-            storage=LocalStorageConfig(path="test-path"),
-            purpose="generic",
-            project="test-project",
-            created_at="2026-01-01T00:00:00Z",
-            updated_at="2026-01-01T00:00:00Z",
-            custom_fields={"key": "value"},
-            metadata=FilesetMetadata(),
         )
     )
     return ModelEntityService(mock_entity_client, sdk=async_sdk)
@@ -1161,9 +1163,9 @@ async def test_list_adapters_resolves_parent_models_with_canonical_all_workspace
     assert mock_entity_client.list.call_args_list[1].kwargs["workspace"] == ALL_WORKSPACES
 
 
-def _hf_fileset(repo_id: str) -> Fileset:
-    """Create a Fileset with HuggingFace storage for is_trusted_repo_id tests."""
-    return Fileset(
+def _hf_fileset(repo_id: str) -> FilesetOutput:
+    """Create a FilesetOutput with HuggingFace storage for is_trusted_repo_id tests."""
+    return FilesetOutput(
         id="fs-1",
         name="test-fileset",
         workspace="default",
@@ -1178,9 +1180,9 @@ def _hf_fileset(repo_id: str) -> Fileset:
     )
 
 
-def _ngc_fileset(org: str, team: str, target: str) -> Fileset:
-    """Create a Fileset with NGC storage for is_trusted_repo_id tests (path: org/team/target)."""
-    return Fileset(
+def _ngc_fileset(org: str, team: str, target: str) -> FilesetOutput:
+    """Create a FilesetOutput with NGC storage for is_trusted_repo_id tests (path: org/team/target)."""
+    return FilesetOutput(
         id="fs-1",
         name="test-fileset",
         workspace="default",
@@ -1280,7 +1282,7 @@ async def test_is_trusted_repo_id_no_match(model_entity_service):
 async def test_is_trusted_repo_id_non_huggingface_storage(model_entity_service):
     """When fileset storage is not huggingface or ngc, returns False."""
     # Arrange
-    fileset = Fileset(
+    fileset = FilesetOutput(
         id="fs-1",
         name="test-fileset",
         workspace="default",

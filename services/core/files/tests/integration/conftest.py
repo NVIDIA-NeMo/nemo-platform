@@ -15,7 +15,9 @@ import pytest
 from fastapi import Request
 from fastapi.testclient import TestClient
 from nemo_platform import NeMoPlatform
-from nemo_platform.types.files.fileset import Fileset
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.files.types import FilesetOutput
 from nmp.common.auth import AuthClient, get_auth_client
 from nmp.common.auth.models import Principal
 from nmp.common.config import AuthConfig
@@ -141,7 +143,7 @@ def files_config() -> FilesConfig:
 
 
 @pytest.fixture
-def fileset(sdk: NeMoPlatform) -> Iterator[Fileset]:
+def fileset(sdk: NeMoPlatform) -> Iterator[FilesetOutput]:
     with create_fileset(sdk) as fileset:
         yield fileset
 
@@ -165,9 +167,10 @@ def fileset_cleanup(sdk: NeMoPlatform) -> Iterator[Callable[[str], None]]:
     yield register
 
     # Cleanup all registered filesets
+    files = client_from_platform(sdk, FilesClient)
     for name, ws in to_cleanup:
         try:
-            sdk.files.filesets.delete(name=name, workspace=ws)
+            files.delete_fileset(name=name, workspace=ws)
         except Exception:
             pass
 

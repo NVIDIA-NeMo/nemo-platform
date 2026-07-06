@@ -8,7 +8,10 @@ from data_designer.config.seed_source import SeedSource
 from data_designer_nemo.errors import NDDInternalError, NDDInvalidConfigError
 from data_designer_nemo.fileset_file_seed_source import FilesetFileSeedSource
 from data_designer_nemo.secret_resolver import validate_secret
-from nemo_platform import AsyncNeMoPlatform, NotFoundError, PermissionDeniedError
+from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NotFoundError, PermissionDeniedError
+from nemo_platform_plugin.files.client import AsyncFilesClient
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +30,9 @@ async def validate_seed(dd_config: dd.DataDesignerConfig, workspace: str, sdk: A
 
     if isinstance(seed_source, FilesetFileSeedSource):
         workspace, fileset_name = _parse_seed_source_path(seed_source.path, workspace)
+        files = client_from_platform(sdk, AsyncFilesClient)
         try:
-            await sdk.files.filesets.retrieve(name=fileset_name, workspace=workspace)
+            await files.get_fileset(name=fileset_name, workspace=workspace)
         except NotFoundError as e:
             raise NDDInvalidConfigError(f"Could not find fileset {fileset_name!r} in workspace {workspace!r}") from e
         except PermissionDeniedError as e:

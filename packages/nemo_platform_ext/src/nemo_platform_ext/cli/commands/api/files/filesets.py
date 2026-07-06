@@ -7,6 +7,9 @@ from __future__ import annotations
 from typing import Annotated, Literal
 
 import typer
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.files.types import CreateFilesetRequest, UpdateFilesetRequest
 
 from nemo_platform_ext.cli.core.api import build_kwargs, merge_filter_dict
 from nemo_platform_ext.cli.core.code_generator import handle_code_generation
@@ -139,7 +142,12 @@ def create_filesets(
         return
 
     client = state.get_client()
-    result = client.files.filesets.create(**all_kwargs)
+    files = client_from_platform(client, FilesClient)
+    exist_ok_val = all_kwargs.pop("exist_ok", None)
+    result = files.create_fileset(
+        body=CreateFilesetRequest(**all_kwargs),
+        **({"exist_ok": exist_ok_val} if exist_ok_val is not None else {}),
+    ).data()
 
     format_output(
         result,
@@ -167,11 +175,12 @@ def delete_filesets(
     files."""
     state: CLIContext = ctx.obj
     client = state.get_client()
+    files = client_from_platform(client, FilesClient)
 
     kwargs = build_kwargs(
         workspace=workspace,
     )
-    client.files.filesets.delete(name, **kwargs)
+    files.delete_fileset(name=name, **kwargs)
 
     typer.echo("✓ Deleted successfully")
 
@@ -247,17 +256,18 @@ def list_filesets(
         return
 
     client = state.get_client()
+    files = client_from_platform(client, FilesClient)
     path_args = ()
     pagination_type = PaginationType.PAGE_NUMBER
     if all_pages:
         items = fetch_all_pages(
-            client.files.filesets.list,
+            files.list_filesets,
             path_args=path_args,
             body_args=kwargs,
             pagination_type=pagination_type,
         )
     else:
-        items = client.files.filesets.list(*path_args, **kwargs)
+        items = files.list_filesets(*path_args, **kwargs)
 
     format_output(
         items,
@@ -293,7 +303,8 @@ def retrieve_filesets(
         return
 
     client = state.get_client()
-    result = client.files.filesets.retrieve(name, **kwargs)
+    files = client_from_platform(client, FilesClient)
+    result = files.get_fileset(name=name, **kwargs).data()
 
     format_output(
         result,
@@ -375,7 +386,14 @@ def update_filesets(
         return
 
     client = state.get_client()
-    result = client.files.filesets.update(**all_kwargs)
+    files = client_from_platform(client, FilesClient)
+    name_val = all_kwargs.pop("name")
+    workspace_val = all_kwargs.pop("workspace", None)
+    result = files.update_fileset(
+        name=name_val,
+        **({"workspace": workspace_val} if workspace_val is not None else {}),
+        body=UpdateFilesetRequest(**all_kwargs),
+    ).data()
 
     format_output(
         result,

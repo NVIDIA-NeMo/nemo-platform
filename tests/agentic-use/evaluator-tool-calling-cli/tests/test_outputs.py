@@ -17,6 +17,8 @@ import sys
 
 import pytest
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import FilesClient
 
 sys.path.insert(0, "/tests/shared")
 from trace_reader import get_session
@@ -61,8 +63,8 @@ def test_workspace_exists():
 def test_fileset_exists():
     """Verify the tool-calling-dataset fileset was created."""
     client = _get_client()
-    response = client.files.filesets.list()
-    fileset_names = [fs.name for fs in response.data]
+    files = client_from_platform(client, FilesClient)
+    fileset_names = [fs.name for fs in files.list_filesets().page().items]
     assert FILESET in fileset_names, f"Fileset '{FILESET}' not found. Found: {fileset_names}"
 
 

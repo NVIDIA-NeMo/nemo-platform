@@ -26,8 +26,11 @@ from nemo_platform import (
     NeMoPlatformError,
     NotFoundError,
 )
-from nemo_platform.types.files import Fileset, HuggingfaceStorageConfig, LocalStorageConfig, NGCStorageConfig
 from nemo_platform.types.models import ModelEntity
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.files.storage_config import HuggingfaceStorageConfig, LocalStorageConfig, NGCStorageConfig
+from nemo_platform_plugin.files.types import FilesetOutput
 from nmp.common.entities.utils import parse_entity_ref
 from nmp.common.model_utils import is_embedding_model
 from nmp.common.sdk_factory import get_platform_sdk
@@ -75,22 +78,25 @@ class ModelSpecRunner:
         self.job_ctx = job_ctx
 
     @staticmethod
-    def _merge_fileset_metadata(fs: Fileset, model_spec: ModelSpec) -> None:
+    def _merge_fileset_metadata(fs: FilesetOutput, model_spec: ModelSpec) -> None:
         """Merge tool calling metadata from fileset into model spec.
 
         Users can set these values on the fileset at creation time via metadata:
-            sdk.files.filesets.create(
-                ...,
-                metadata={
-                    "model": {
-                        "tool_calling": {
-                            "chat_template": "<jinja2 template>",
-                            "tool_call_parser": "llama3_json",
-                            "tool_call_plugin": "default/my-plugin-fileset",
-                            "auto_tool_choice": True,
+            files = client_from_platform(sdk, FilesClient)
+            files.create_fileset(
+                body=CreateFilesetRequest(
+                    ...,
+                    metadata={
+                        "model": {
+                            "tool_calling": {
+                                "chat_template": "<jinja2 template>",
+                                "tool_call_parser": "llama3_json",
+                                "tool_call_plugin": "default/my-plugin-fileset",
+                                "auto_tool_choice": True,
+                            },
                         },
                     },
-                },
+                ),
             )
 
         The model spec task then merges these into the auto-generated ModelSpec so
@@ -200,7 +206,8 @@ class ModelSpecRunner:
         # Validate that the fileset exists before creating the model entity
         logger.info(f"Validating fileset exists: {fileset_workspace}/{fileset_name}")
         try:
-            fs = self.sdk.files.filesets.retrieve(workspace=fileset_workspace, name=fileset_name)
+            files = client_from_platform(self.sdk, FilesClient)
+            fs = files.get_fileset(workspace=fileset_workspace, name=fileset_name).data()
             logger.info(f"Fileset validation successful: {fileset_workspace}/{fileset_name}")
         except Exception as e:
             logger.error(f"Fileset validation failed: {fileset_workspace}/{fileset_name}")

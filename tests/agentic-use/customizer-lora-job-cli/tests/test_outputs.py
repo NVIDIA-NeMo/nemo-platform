@@ -14,6 +14,8 @@ from typing import Any
 
 import pytest
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import FilesClient
 
 WORKSPACE = "lora-training-workspace"
 FILESET = "sft-training-data"
@@ -61,8 +63,8 @@ def test_workspace_exists(client: NeMoPlatform):
 
 def test_fileset_exists(client: NeMoPlatform):
     """Verify the sft-training-data fileset was created."""
-    response = client.files.filesets.list(workspace=WORKSPACE)
-    fileset_names = [fs.name for fs in response.data]
+    files = client_from_platform(client, FilesClient)
+    fileset_names = [fs.name for fs in files.list_filesets(workspace=WORKSPACE).page().items]
     assert FILESET in fileset_names, f"Fileset '{FILESET}' not found. Found: {fileset_names}"
 
 

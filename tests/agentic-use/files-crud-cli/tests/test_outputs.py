@@ -15,6 +15,8 @@ import os
 
 import pytest
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import FilesClient
 from trace_reader import get_session
 
 WORKSPACE = "default"
@@ -28,8 +30,8 @@ def client() -> NeMoPlatform:
 
 def test_harbor_test_fileset_deleted(client: NeMoPlatform) -> None:
     """Test that harbor-test-fileset was deleted after CRUD operations."""
-    response = client.files.filesets.list()
-    fileset_names = [fs.name for fs in response.data]
+    files = client_from_platform(client, FilesClient)
+    fileset_names = [fs.name for fs in files.list_filesets().page().items]
     assert "harbor-test-fileset" not in fileset_names, (
         f"Fileset 'harbor-test-fileset' should have been deleted but still exists! Found: {fileset_names}"
     )
@@ -37,7 +39,8 @@ def test_harbor_test_fileset_deleted(client: NeMoPlatform) -> None:
 
 def test_harbor_final_fileset_exists(client: NeMoPlatform) -> None:
     """Test that harbor-final-fileset was created and has correct metadata."""
-    response = client.files.filesets.retrieve(name="harbor-final-fileset")
+    files = client_from_platform(client, FilesClient)
+    response = files.get_fileset(name="harbor-final-fileset").data()
     assert response.name == "harbor-final-fileset", (
         f"Expected fileset name 'harbor-final-fileset', got '{response.name}'"
     )

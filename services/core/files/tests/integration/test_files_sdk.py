@@ -24,8 +24,14 @@ from pathlib import Path
 
 import pytest
 from nemo_platform import NeMoPlatform, NotFoundError, PermissionDeniedError
-from nemo_platform_plugin.client import errors as nemo_errors
-from nemo_platform_plugin.files.types import FilesetFileOutput, FilesetOutput
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.files.types import (
+    CreateFilesetRequest,
+    FilesetFileOutput,
+    FilesetOutput,
+    UpdateFilesetRequest,
+)
 from nmp.core.files.testing.utils import create_fileset, test_fileset_name
 
 
@@ -1036,7 +1042,7 @@ class TestFilesDownloadEdgeCases:
     def test_download_content_non_existent_file(self, sdk: NeMoPlatform, fileset: FilesetOutput):
         """Test downloading content of a file that doesn't exist raises NotFoundError."""
         # Binary/streaming errors are deferred (raised after send()), bypassing remapping.
-        with pytest.raises((NotFoundError, nemo_errors.NotFoundError)):
+        with pytest.raises(NotFoundError):
             sdk.files.download_content(
                 fileset=fileset.name,
                 workspace=fileset.workspace,
@@ -1050,7 +1056,7 @@ class TestFilesDeleteEdgeCases:
     def test_delete_non_existent_file(self, sdk: NeMoPlatform, fileset: FilesetOutput):
         """Test deleting a file that doesn't exist raises NotFoundError."""
         # File delete goes through fsspec rm → deferred error path.
-        with pytest.raises((NotFoundError, nemo_errors.NotFoundError)):
+        with pytest.raises(NotFoundError):
             sdk.files.delete(
                 fileset=fileset.name,
                 workspace=fileset.workspace,
@@ -1063,18 +1069,21 @@ class TestFilesetImmutabilityForNonServicePrincipals:
 
     def test_create_fileset_with_service_source_as_default_principal_fails_to_set(self, sdk: NeMoPlatform):
         """Non-service principal cannot set service_source; it is stripped on create."""
+        files = client_from_platform(sdk, FilesClient)
         workspace = sdk.workspace or "default"
         name = test_fileset_name()
-        sdk.files.filesets.create(
+        files.create_fileset(
+            body=CreateFilesetRequest(
+                name=name,
+                description="Test",
+                custom_fields={"service_source": "customizer"},
+            ),
             workspace=workspace,
-            name=name,
-            description="Test",
-            custom_fields={"service_source": "customizer"},
         )
-        created = sdk.files.filesets.retrieve(name=name, workspace=workspace)
+        created = files.get_fileset(name=name, workspace=workspace).data()
         # Endpoint strips service_source for non-service principals; fileset must not have it.
         assert created.custom_fields.get("service_source") is None
-        sdk.files.filesets.delete(name=name, workspace=workspace)
+        files.delete_fileset(name=name, workspace=workspace)
 
     def test_service_principal_can_set_service_source_and_upload_then_user_cannot_upload(
         self, sdk_user_and_service: tuple[NeMoPlatform, NeMoPlatform]
@@ -1084,11 +1093,17 @@ class TestFilesetImmutabilityForNonServicePrincipals:
         workspace = sdk_service.workspace or "default"
         name = test_fileset_name()
         # Service principal creates fileset with service_source and uploads a file.
-        created = sdk_service.files.filesets.create(
-            workspace=workspace,
-            name=name,
-            description="Immutability test",
-            custom_fields={"service_source": "customizer"},
+        created = (
+            client_from_platform(sdk_service, FilesClient)
+            .create_fileset(
+                workspace=workspace,
+                body=CreateFilesetRequest(
+                    name=name,
+                    description="Immutability test",
+                    custom_fields={"service_source": "customizer"},
+                ),
+            )
+            .data()
         )
         assert created.custom_fields.get("service_source") == "customizer"
         sdk_service.files.upload_content(
@@ -1108,7 +1123,7 @@ class TestFilesetImmutabilityForNonServicePrincipals:
                 fileset=name,
                 workspace=workspace,
             )
-        sdk_service.files.filesets.delete(name=name, workspace=workspace)
+        client_from_platform(sdk_service, FilesClient).delete_fileset(name=name, workspace=workspace)
 
     def test_non_service_principal_cannot_overwrite_or_remove_service_source_on_update(
         self, sdk_user_and_service: tuple[NeMoPlatform, NeMoPlatform]
@@ -1118,26 +1133,28 @@ class TestFilesetImmutabilityForNonServicePrincipals:
         workspace = sdk_service.workspace or "default"
         name = test_fileset_name()
         # Service principal creates fileset with service_source.
-        sdk_service.files.filesets.create(
+        service_files = client_from_platform(sdk_service, FilesClient)
+        user_files = client_from_platform(sdk_user, FilesClient)
+        service_files.create_fileset(
             workspace=workspace,
-            name=name,
-            description="Update immutability test",
-            custom_fields={"service_source": "customizer"},
+            body=CreateFilesetRequest(
+                name=name,
+                description="Update immutability test",
+                custom_fields={"service_source": "customizer"},
+            ),
         )
-        # User tries to overwrite service_source → must be ignored (preserved).
-        sdk_user.files.filesets.update(
+        user_files.update_fileset(
             name=name,
             workspace=workspace,
-            custom_fields={"service_source": "other-service"},
+            body=UpdateFilesetRequest(custom_fields={"service_source": "other-service"}),
         )
-        updated = sdk_user.files.filesets.retrieve(name=name, workspace=workspace)
+        updated = user_files.get_fileset(name=name, workspace=workspace).data()
         assert updated.custom_fields.get("service_source") == "customizer"
-        # User tries to remove service_source by sending custom_fields without it → must stay.
-        sdk_user.files.filesets.update(
+        user_files.update_fileset(
             name=name,
             workspace=workspace,
-            custom_fields={"other_key": "value"},
+            body=UpdateFilesetRequest(custom_fields={"other_key": "value"}),
         )
-        after_remove_attempt = sdk_user.files.filesets.retrieve(name=name, workspace=workspace)
+        after_remove_attempt = user_files.get_fileset(name=name, workspace=workspace).data()
         assert after_remove_attempt.custom_fields.get("service_source") == "customizer"
-        sdk_service.files.filesets.delete(name=name, workspace=workspace)
+        service_files.delete_fileset(name=name, workspace=workspace)

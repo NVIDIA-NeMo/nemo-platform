@@ -10,8 +10,12 @@ import pytest
 from data_designer_nemo.fileset_file_seed_source import FilesetFileSeedSource
 from data_designer_nemo.nemotron_personas import WORKSPACE, get_resource_name_for_locale
 from nemo_data_designer_plugin.sdk.errors import DataDesignerJobError
-from nemo_platform import NeMoPlatform, NotFoundError
+from nemo_platform import NeMoPlatform
 from nemo_platform.types.inference import ModelProvider
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NotFoundError
+from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.files.types import CreateFilesetRequest
 from nmp.testing import MockProviderResponse, add_mock_provider, assert_exit_0, run_nemo_local
 from nmp.testing.pytest_outcomes import pytest_skip
 
@@ -137,7 +141,8 @@ def test_fileset_seed_data(sdk: NeMoPlatform, workspace: str) -> None:
     is wired up properly by the Data Designer *platform plugin*.
     """
     fileset_name = "my-fileset"
-    sdk.files.filesets.create(name=fileset_name, workspace=workspace)
+    files = client_from_platform(sdk, FilesClient)
+    files.create_fileset(body=CreateFilesetRequest(name=fileset_name), workspace=workspace)
 
     seed_data = pd.DataFrame(data={"seed": ["my-seed"]})
     remote_path = "data.parquet"
@@ -183,8 +188,9 @@ def nemotron_personas_locale(_services: str, sdk: NeMoPlatform, workspace: str, 
     locale = "en_SG"
 
     fileset_name = get_resource_name_for_locale(locale)
+    files = client_from_platform(sdk, FilesClient)
     with suppress(NotFoundError):
-        sdk.files.filesets.delete(fileset_name, workspace=WORKSPACE)
+        files.delete_fileset(name=fileset_name, workspace=WORKSPACE)
 
     result = run_nemo_local(
         "data-designer",
@@ -202,7 +208,7 @@ def nemotron_personas_locale(_services: str, sdk: NeMoPlatform, workspace: str, 
     yield locale
 
     with suppress(NotFoundError):
-        sdk.files.filesets.delete(fileset_name, workspace=WORKSPACE)
+        files.delete_fileset(name=fileset_name, workspace=WORKSPACE)
 
 
 def test_nemotron_personas_sampling(sdk: NeMoPlatform, workspace: str, nemotron_personas_locale: str) -> None:

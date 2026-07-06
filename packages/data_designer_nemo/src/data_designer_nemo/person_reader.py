@@ -9,6 +9,8 @@ from data_designer_nemo.nemotron_personas import (
 from data_designer_nemo.sdk_translation import async_to_sync_sdk
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform.filesets import FilesetFileSystem
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import FilesClient
 
 
 class FilesetsPersonReader(PersonReader):
@@ -36,7 +38,8 @@ class FilesetsPersonReader(PersonReader):
         self._sdk = sdk
 
     def create_duckdb_connection(self) -> duckdb.DuckDBPyConnection:
-        filesystem = FilesetFileSystem(sdk=self._sdk)
+        files_client = client_from_platform(self._sdk, FilesClient)
+        filesystem = FilesetFileSystem(client=files_client)
         conn = duckdb.connect()
         conn.register_filesystem(filesystem)
         return conn

@@ -11,6 +11,8 @@ quickstart environment does not include the job execution worker.
 import os
 
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import FilesClient
 
 WORKSPACE = "eval-test-workspace"
 FILESET = "eval-dataset"
@@ -32,8 +34,8 @@ def test_workspace_exists():
 def test_fileset_exists():
     """Verify the eval-dataset fileset was created."""
     client = _get_client()
-    response = client.files.filesets.list(workspace=WORKSPACE)
-    fileset_names = [fs.name for fs in response.data]
+    files = client_from_platform(client, FilesClient)
+    fileset_names = [fs.name for fs in files.list_filesets(workspace=WORKSPACE).page().items]
     assert FILESET in fileset_names, f"Fileset '{FILESET}' not found. Found: {fileset_names}"
 
 

@@ -16,6 +16,8 @@ import os
 
 import pytest
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import FilesClient
 from trace_reader import get_session
 
 WORKSPACE = "default"
@@ -35,7 +37,8 @@ def client() -> NeMoPlatform:
 
 def test_fileset_exists(client: NeMoPlatform) -> None:
     """Test that harbor-dataset-fileset was created with correct metadata."""
-    response = client.files.filesets.retrieve(name=FILESET_NAME)
+    files = client_from_platform(client, FilesClient)
+    response = files.get_fileset(name=FILESET_NAME).data()
     assert response.name == FILESET_NAME, f"Expected fileset name '{FILESET_NAME}', got '{response.name}'"
     assert response.description == "Dataset fileset for harbor eval", (
         f"Expected description 'Dataset fileset for harbor eval', got '{response.description}'"
