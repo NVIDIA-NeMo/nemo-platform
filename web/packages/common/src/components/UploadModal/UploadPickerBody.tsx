@@ -5,6 +5,7 @@ import { useUploadModalContext } from '@nemo/common/src/components/UploadModal/C
 import { DatasetUploader } from '@nemo/common/src/components/UploadModal/DatasetUploader';
 import { FileUpload } from '@nemo/common/src/components/UploadModal/FileUpload';
 import { SimpleFilesTable } from '@nemo/common/src/components/UploadModal/SimpleFilesTable';
+import type { UploadModalProps } from '@nemo/common/src/components/UploadModal/types';
 import {
   Stack,
   TabsContent,
@@ -20,6 +21,8 @@ interface UploadPickerBodyProps {
   includeDataset?: boolean;
   /** If true, renders both dataset and file upload options in separate tabs. */
   includeTabs?: boolean;
+  filesetPurposeFilter?: UploadModalProps['filesetPurposeFilter'];
+  filesetLabel?: string;
 }
 
 /** Body of the upload picker — the picker UI without modal chrome. Shared
@@ -28,6 +31,8 @@ export const UploadPickerBody: FC<UploadPickerBodyProps> = ({
   workspace,
   includeDataset = false,
   includeTabs = false,
+  filesetPurposeFilter,
+  filesetLabel,
 }) => {
   const [state, dispatch] = useUploadModalContext();
   const { files, activeTab } = state;
@@ -46,7 +51,11 @@ export const UploadPickerBody: FC<UploadPickerBodyProps> = ({
           <TabsTrigger value="file">Upload a File</TabsTrigger>
         </TabsList>
         <TabsContent value="dataset" className="min-h-0 w-full px-0">
-          <DatasetUploader projectId={workspace} />
+          <DatasetUploader
+            projectId={workspace}
+            filesetPurposeFilter={filesetPurposeFilter}
+            filesetLabel={filesetLabel}
+          />
         </TabsContent>
         <TabsContent value="file" className="min-h-0 w-full px-0">
           {files.length === 0 ? <FileUpload /> : <SimpleFilesTable />}
@@ -58,7 +67,11 @@ export const UploadPickerBody: FC<UploadPickerBodyProps> = ({
   if (includeDataset) {
     return (
       <Stack gap="density-md" className="min-h-0 w-full">
-        <DatasetUploader projectId={workspace} />
+        <DatasetUploader
+          projectId={workspace}
+          filesetPurposeFilter={filesetPurposeFilter}
+          filesetLabel={filesetLabel}
+        />
       </Stack>
     );
   }

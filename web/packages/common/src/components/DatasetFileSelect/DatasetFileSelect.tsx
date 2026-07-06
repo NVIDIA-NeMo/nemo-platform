@@ -10,6 +10,7 @@ import { FileList, FileListItem } from '@nemo/common/src/components/FileList';
 import { UploadModal } from '@nemo/common/src/components/UploadModal/index';
 import { InlineUploadPicker } from '@nemo/common/src/components/UploadModal/InlineUploadPicker';
 import type { SubmitUploadType } from '@nemo/common/src/components/UploadModal/types';
+import type { FilesetPurpose } from '@nemo/sdk/generated/platform/schema';
 import { SidePanel, Stack, Text } from '@nvidia/foundations-react-core';
 import { FolderOpen } from 'lucide-react';
 import { FC, useEffect, useMemo, useRef, useState } from 'react';
@@ -49,6 +50,8 @@ interface DatasetFileSelectProps {
    *  selects a file. Also hides the post-commit file list since the parent
    *  form already reflects the selection. */
   autoCommit?: boolean;
+  filesetPurposeFilter?: FilesetPurpose | null;
+  filesetLabel?: string;
 }
 
 /**
@@ -77,6 +80,8 @@ export const DatasetFileSelect: FC<DatasetFileSelectProps> = ({
   listLabel,
   inline = false,
   autoCommit = false,
+  filesetPurposeFilter,
+  filesetLabel,
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -196,6 +201,8 @@ export const DatasetFileSelect: FC<DatasetFileSelectProps> = ({
             allowMultipleFileSelection={allowMultiple}
             acceptableFileTypes={acceptedFileTypes}
             invalidFileMode={invalidFileMode}
+            filesetPurposeFilter={filesetPurposeFilter}
+            filesetLabel={filesetLabel}
             onSubmit={handleModalSubmit}
             autoCommit={autoCommit}
           />
@@ -270,6 +277,8 @@ export const DatasetFileSelect: FC<DatasetFileSelectProps> = ({
           onSubmit={handleModalSubmit}
           acceptableFileTypes={acceptedFileTypes}
           invalidFileMode={invalidFileMode}
+          filesetPurposeFilter={filesetPurposeFilter}
+          filesetLabel={filesetLabel}
           allowMultipleFileSelection={allowMultiple}
           // Default modal width is too narrow for the files table; widen the
           // surface so file paths and sizes don't get truncated. Stays

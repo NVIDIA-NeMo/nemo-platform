@@ -44,6 +44,32 @@ const mockFilesets: FilesetOutput[] = [
     created_at: '2024-01-01T00:00:00Z',
     updated_at: '2024-01-01T00:00:00Z',
   },
+  {
+    id: 'default/generic-fileset',
+    name: 'generic-fileset',
+    workspace: 'default',
+    description: '',
+    purpose: 'generic',
+    storage: { type: 'local', path: '/data' } as const,
+    metadata: {},
+    custom_fields: {},
+    project: 'default',
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+  },
+  {
+    id: 'default/model-fileset',
+    name: 'model-fileset',
+    workspace: 'default',
+    description: '',
+    purpose: 'model',
+    storage: { type: 'local', path: '/data' } as const,
+    metadata: {},
+    custom_fields: {},
+    project: 'default',
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+  },
 ];
 
 // Helper component to access context in tests
@@ -102,6 +128,31 @@ describe('DatasetSelect', () => {
         filter: { purpose: 'dataset' },
       })
     );
+  });
+
+  it('can show all filesets without a purpose filter', async () => {
+    render(
+      <DatasetSelect
+        project="test-project"
+        filesetPurposeFilter={null}
+        filesetLabel="Filesets"
+      />,
+      {
+        wrapper: createWrapper(),
+      }
+    );
+
+    expect(useFilesListFilesets).toHaveBeenCalledWith('test-project', {
+      page_size: 100,
+      sort: 'created_at',
+    });
+    expect(screen.getByText('Filesets')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('combobox', { name: 'Filesets' }));
+
+    expect(screen.getByRole('option', { name: 'dataset1' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'generic-fileset' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'model-fileset' })).toBeInTheDocument();
   });
 
   it('shows loading state', async () => {

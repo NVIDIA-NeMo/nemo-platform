@@ -29,6 +29,9 @@ const REQUEST_PREFIXES = [
   /^let'?s\s+/i,
 ];
 
+const INLINE_REQUEST_PREFIX =
+  /(?:\b(?:can|could|would|will|should)\s+(?:you|we)\s+|\bis\s+it\s+possible(?:\s+for\s+(?:us|you|me))?\s+to\s+|\b(?:i|we)\s+(?:need|want)\s+to\s+|\bi(?:'d| would)\s+like(?:\s+you)?\s+to\s+|\bhelp(?:\s+(?:me|us))?(?:\s+to)?\s+)/gi;
+
 export const isClaudeCodePanelTab = (value: string): value is ClaudeCodePanelTab =>
   value === 'history' || value === 'skills';
 
@@ -109,6 +112,67 @@ const limitTitleLength = (title: string): string => {
   return limited;
 };
 
+const getLatestRequestClause = (prompt: string): string | undefined => {
+  const matches = Array.from(prompt.matchAll(INLINE_REQUEST_PREFIX));
+  const lastMatch = matches.at(-1);
+  if (!lastMatch || lastMatch.index === undefined) return undefined;
+
+  const request = prompt.slice(lastMatch.index + lastMatch[0].length);
+  return splitPromptSentences(request)[0];
+};
+
+const getSmartPromptHistoryTitle = (prompt: string): string | undefined => {
+  const cleanPrompt = getCleanTitleText(prompt);
+  const normalizedPrompt = cleanPrompt.toLocaleLowerCase();
+
+  if (
+    /\bhistory\b/.test(normalizedPrompt) &&
+    /\b(?:name|names|naming|title|titles)\b/.test(normalizedPrompt)
+  ) {
+    if (/\b(?:meaningful|smart|better|useful)\b/.test(normalizedPrompt)) {
+      return 'Generate Meaningful History Names';
+    }
+    if (/\b(?:restore|regression|lost|bring.+back|used to)\b/.test(normalizedPrompt)) {
+      return 'Restore Summarized History Names';
+    }
+    return 'Improve History Session Names';
+  }
+
+  if (
+    /\bgeneric\b/.test(normalizedPrompt) &&
+    /\b(?:fileset|file|upload)\b/.test(normalizedPrompt) &&
+    /\b(?:any|type|yml|yaml|allow)\b/.test(normalizedPrompt)
+  ) {
+    return 'Allow Any Generic Fileset Upload';
+  }
+
+  if (
+    /\bmessages?\b/.test(normalizedPrompt) &&
+    /\bseparat(?:e|ed)\b/.test(normalizedPrompt) &&
+    /\b(?:chat|text|tool|stream|refresh)\b/.test(normalizedPrompt)
+  ) {
+    return 'Separate Live Chat Messages';
+  }
+
+  const requestClause = getLatestRequestClause(cleanPrompt);
+  if (!requestClause) return undefined;
+
+  const hiddenSubject = requestClause.match(
+    /^(?:please\s+)?(?:make\s+sure|ensure(?:\s+that)?)\s+(.+?)\s+(?:doesn't|does\s+not|isn't|is\s+not)\s+(?:show|appear|render)\b/i
+  )?.[1];
+  if (hiddenSubject) {
+    return limitTitleLength(capitalizeTitle(`Hide ${hiddenSubject}`));
+  }
+
+  const title = capitalizeTitle(
+    stripRequestPrefix(requestClause)
+      .replace(/^(?:please\s+)?(?:make\s+sure|ensure(?:\s+that)?)\s+/i, '')
+      .replace(/[,:;\s-]+$/g, '')
+      .trim()
+  );
+  return title ? limitTitleLength(title) : undefined;
+};
+
 const getPromptHistoryTitle = (prompt: string): string | undefined => {
   const source = getPromptTitleSource(prompt);
   const title = capitalizeTitle(
@@ -130,8 +194,10 @@ const getArtifactHistoryTitle = (artifacts: ClaudeCodeChatArtifacts): string | u
 };
 
 export const getHistorySessionTitle = (session: ClaudeCodeHistorySession): string =>
-  getPromptHistoryTitle(session.first_prompt) ??
+  (session.title ? getCleanTitleText(session.title) : undefined) ??
+  getSmartPromptHistoryTitle(session.first_prompt) ??
   getArtifactHistoryTitle(session.chat_artifacts) ??
+  getPromptHistoryTitle(session.first_prompt) ??
   'Claude Code session';
 
 export const getSelectedArtifactModel = (artifacts: ClaudeCodeChatArtifacts): string | undefined =>

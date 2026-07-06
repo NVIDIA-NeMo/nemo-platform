@@ -21,7 +21,7 @@ general:
         level: WARN
       file:
         _type: file
-        path: ./.tmp/email_phishing_analyzer.log
+        path: ./email_phishing_analyzer.log
         level: DEBUG
 
 functions:
@@ -44,17 +44,17 @@ functions:
 llms:
   nim_llm:
     _type: nim
-    model_name: nvidia/nemotron-3-nano-30b-a3b
+    model_name: nvidia-nemotron-3-nano-30b-a3b
     temperature: 0.0
     max_tokens: 512
   nim_rag_eval_llm:
     _type: nim
-    model_name: nvidia/nemotron-3-super-120b-a12b
+    model_name: nvidia-nemotron-3-super-120b-a12b
     temperature: 0.0
     max_tokens: 1024
   nim_trajectory_eval_llm:
     _type: nim
-    model_name: nvidia/nemotron-3-super-120b-a12b
+    model_name: nvidia-nemotron-3-super-120b-a12b
     temperature: 0.0
     max_tokens: 1024
 
@@ -80,34 +80,17 @@ eval:
           question_key: body
           answer_key: label
 
-    profiler:
-        token_uniqueness_forecast: true
-        workflow_runtime_forecast: true
-        compute_llm_metrics: true
-        csv_exclude_io_text: true
-        prompt_caching_prefixes:
-          enable: true
-          min_frequency: 0.1
-        bottleneck_analysis:
-          # Can also be simple_stack
-          enable_nested_stack: true
-        concurrency_spike_analysis:
-          enable: true
-          spike_threshold: 7
-
   evaluators:
     accuracy:
-      _type: ragas
-      metric: AnswerAccuracy
+      _type: tunable_rag_evaluator
       llm_name: nim_rag_eval_llm
-    groundedness:
-      _type: ragas
-      metric: ResponseGroundedness
-      llm_name: nim_rag_eval_llm
-    relevance:
-      _type: ragas
-      metric: ContextRelevance
-      llm_name: nim_rag_eval_llm
+      default_scoring: false
+      judge_llm_prompt: >
+        Compare only the phishing or benign classification in the generated
+        answer with the expected answer. Set score to 1.0 when the labels
+        match and 0.0 when they differ or the generated answer has no clear
+        label. Return only the JSON object required by the format instructions,
+        with numeric score and concise reasoning fields. Do not use Markdown.
     trajectory_accuracy:
       _type: trajectory
       llm_name: nim_trajectory_eval_llm

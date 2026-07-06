@@ -195,14 +195,15 @@ const getStudioSummaryFields = (
   readonly summaryText?: string;
   readonly workedFor?: string;
 } => {
-  const fields: Partial<Record<'details_label' | 'summary' | 'worked_for', string[]>> = {};
+  type StudioSummaryField = 'details_label' | 'summary' | 'title' | 'worked_for';
+  const fields: Partial<Record<StudioSummaryField, string[]>> = {};
 
   const fieldMatches = Array.from(
-    blockText.matchAll(/(?:^|\s)(worked_for|summary|details_label):\s*/gi)
+    blockText.matchAll(/(?:^|\s)(title|worked_for|summary|details_label):\s*/gi)
   );
 
   for (const [index, match] of fieldMatches.entries()) {
-    const field = match[1]!.toLowerCase() as 'details_label' | 'summary' | 'worked_for';
+    const field = match[1]!.toLowerCase() as StudioSummaryField;
     const valueStart = (match.index ?? 0) + match[0].length;
     const valueEnd = fieldMatches[index + 1]?.index ?? blockText.length;
     fields[field] = [blockText.slice(valueStart, valueEnd)];

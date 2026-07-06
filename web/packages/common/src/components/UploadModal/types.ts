@@ -1,7 +1,11 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { FilesetFileOutput, FilesetOutput } from '@nemo/sdk/generated/platform/schema';
+import {
+  FilesetFileOutput,
+  FilesetOutput,
+  FilesetPurpose,
+} from '@nemo/sdk/generated/platform/schema';
 import {
   ModalContent,
   ModalHeading,
@@ -62,6 +66,10 @@ export interface UploadModalProps {
   /** When false, the dataset picker hides the "Create new dataset" option.
    *  Defaults to ``true`` (legacy behaviour). */
   allowNewDataset?: boolean;
+  /** Purpose used to filter existing filesets. Pass ``null`` to show every purpose. */
+  filesetPurposeFilter?: FilesetPurpose | null;
+  /** User-facing label for the existing-fileset selector. Defaults to ``Dataset``. */
+  filesetLabel?: string;
   attributes?: {
     ModalRoot?: React.ComponentProps<typeof ModalRoot>;
     ModalContent?: React.ComponentProps<typeof ModalContent>;

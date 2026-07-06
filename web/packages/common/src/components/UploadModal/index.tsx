@@ -39,6 +39,8 @@ const UploadModalContent: FC<UploadModalProps> = ({
   onClose,
   className,
   attributes,
+  filesetPurposeFilter,
+  filesetLabel,
 }) => {
   const [, dispatch] = useUploadModalContext();
   const modalId = useId();
@@ -75,6 +77,8 @@ const UploadModalContent: FC<UploadModalProps> = ({
               workspace={workspace}
               includeDataset={includeDataset}
               includeTabs={includeTabs}
+              filesetPurposeFilter={filesetPurposeFilter}
+              filesetLabel={filesetLabel}
             />
           </ModalMain>
           <ModalFooter className="flex w-full justify-end gap-2" {...attributes?.ModalFooter}>

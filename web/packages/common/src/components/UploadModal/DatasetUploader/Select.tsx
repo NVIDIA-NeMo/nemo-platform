@@ -5,7 +5,7 @@ import { useUploadModalContext } from '@nemo/common/src/components/UploadModal/C
 import { getExistingFileId } from '@nemo/common/src/components/UploadModal/utils';
 import { getEntityReference } from '@nemo/common/src/namedEntity';
 import { filesListFilesetFiles, useFilesListFilesets } from '@nemo/sdk/generated/platform/api';
-import { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
+import { FilesetOutput, FilesetPurpose } from '@nemo/sdk/generated/platform/schema';
 import { Flex, FormField, Select, Text } from '@nvidia/foundations-react-core';
 import { CircleAlert } from 'lucide-react';
 import { FC, useMemo } from 'react';
@@ -17,6 +17,8 @@ interface Props {
   project: string;
   disabled?: boolean;
   error?: string;
+  filesetPurposeFilter?: FilesetPurpose | null;
+  filesetLabel?: string;
 }
 
 const filesetToOption = (fileset: FilesetOutput) => ({
@@ -24,7 +26,13 @@ const filesetToOption = (fileset: FilesetOutput) => ({
   value: getEntityReference(fileset),
 });
 
-export const DatasetSelect: FC<Props> = ({ project, disabled, error }) => {
+export const DatasetSelect: FC<Props> = ({
+  project,
+  disabled,
+  error,
+  filesetPurposeFilter = FilesetPurpose.dataset,
+  filesetLabel = 'Dataset',
+}) => {
   const [state, dispatch] = useUploadModalContext();
   const { dataset, allowNewDataset } = state;
 
@@ -43,7 +51,7 @@ export const DatasetSelect: FC<Props> = ({ project, disabled, error }) => {
      */
     page_size: 100, // v2 API max is 100
     sort: 'created_at',
-    filter: { purpose: 'dataset' },
+    ...(filesetPurposeFilter ? { filter: { purpose: filesetPurposeFilter } } : {}),
   });
 
   const filesets = useMemo(() => filesetsResponse?.data ?? [], [filesetsResponse]);
@@ -85,10 +93,20 @@ export const DatasetSelect: FC<Props> = ({ project, disabled, error }) => {
   };
 
   const datasetOptions = useMemo(() => {
+    const filesetCollectionLabel = filesetLabel === 'Dataset' ? 'Datasets' : filesetLabel;
+    const filesetCollectionLabelLower = filesetCollectionLabel.toLocaleLowerCase();
     if (isLoading) {
-      return [{ children: 'Loading datasets...', value: 'loading', disabled: true }];
+      return [
+        { children: `Loading ${filesetCollectionLabelLower}...`, value: 'loading', disabled: true },
+      ];
     } else if (isError) {
-      return [{ children: 'Error loading datasets...', value: 'error', disabled: true }];
+      return [
+        {
+          children: `Error loading ${filesetCollectionLabelLower}...`,
+          value: 'error',
+          disabled: true,
+        },
+      ];
     }
 
     return (
@@ -96,11 +114,11 @@ export const DatasetSelect: FC<Props> = ({ project, disabled, error }) => {
         ?.sort((filesetA, filesetB) => (filesetA?.name || '').localeCompare(filesetB.name || ''))
         .map(filesetToOption) || []
     );
-  }, [filesets, isLoading, isError]);
+  }, [filesetLabel, filesets, isLoading, isError]);
 
   return (
     <FormField
-      slotLabel="Dataset"
+      slotLabel={filesetLabel}
       slotError={
         <Flex gap="density-md" align="center">
           <CircleAlert className="text-feedback-danger" />
@@ -114,7 +132,7 @@ export const DatasetSelect: FC<Props> = ({ project, disabled, error }) => {
       {(props) => (
         <Select
           {...props}
-          aria-label="dataset-select"
+          aria-label={`${filesetLabel.toLocaleLowerCase()}-select`}
           className="motion-safe:[&.nv-input:not(.nv-input--disabled):not(.nv-input--readonly)]:transition-[margin,color,background-color,border-color,outline-color,text-decoration-color,fill,stroke] duration-250 data-[state=open]:mb-24"
           disabled={disabled}
           items={[
@@ -135,14 +153,14 @@ export const DatasetSelect: FC<Props> = ({ project, disabled, error }) => {
                 ]
               : []),
             {
-              slotHeading: 'Existing Datasets',
+              slotHeading: `Existing ${filesetLabel === 'Dataset' ? 'Datasets' : filesetLabel}`,
               attributes: { MenuHeading: { className: 'hidden', 'aria-hidden': true } },
               items: datasetOptions,
             },
           ]}
           value={selectedDatasetOption}
           onValueChange={handleDatasetSelect}
-          placeholder="Select a dataset"
+          placeholder={`Select ${filesetLabel === 'Dataset' ? 'a dataset' : 'a fileset'}`}
         />
       )}
     </FormField>

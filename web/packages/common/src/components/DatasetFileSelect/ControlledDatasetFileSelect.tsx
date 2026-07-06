@@ -9,6 +9,7 @@ import { parseFilesetLocation } from '@nemo/common/src/components/DatasetFileSel
 import { parseFilesetUrl } from '@nemo/common/src/components/DatasetFileSelect/utils';
 import type { FileListItem } from '@nemo/common/src/components/FileList';
 import type { UseControllerComponentProps } from '@nemo/common/src/utils/types';
+import type { FilesetPurpose } from '@nemo/sdk/generated/platform/schema';
 import { FormField } from '@nvidia/foundations-react-core';
 import { FC, useMemo } from 'react';
 import { useController } from 'react-hook-form';
@@ -32,6 +33,8 @@ interface ControlledDatasetFileSelectProps extends UseControllerComponentProps {
   /** Inline-only: skip the "Add" button and commit on selection; also hides
    *  the file list rendered below the picker. */
   autoCommit?: boolean;
+  filesetPurposeFilter?: FilesetPurpose | null;
+  filesetLabel?: string;
   /**
    * Callback fired when a file is selected. Useful for custom validation or processing.
    * Called with the selected file info, or null when file is cleared.
@@ -73,6 +76,8 @@ export const ControlledDatasetFileSelect: FC<ControlledDatasetFileSelectProps> =
   listLabel,
   inline,
   autoCommit,
+  filesetPurposeFilter,
+  filesetLabel,
 }) => {
   const {
     field: { onChange, value },
@@ -131,6 +136,8 @@ export const ControlledDatasetFileSelect: FC<ControlledDatasetFileSelectProps> =
         listLabel={listLabel}
         inline={inline}
         autoCommit={autoCommit}
+        filesetPurposeFilter={filesetPurposeFilter}
+        filesetLabel={filesetLabel}
       />
     </FormField>
   );

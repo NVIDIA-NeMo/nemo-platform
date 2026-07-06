@@ -27,6 +27,7 @@ describe('Claude Code tool parts', () => {
           'I found the prompt builder and updated it.',
           '',
           STUDIO_MESSAGE_SUMMARY_START,
+          'title: Improve Coding Agent Summaries',
           'worked_for: unknown',
           'summary: Updated Studio so completed coding-agent messages collapse to a short summary.',
           'details_label: worked for unknown',

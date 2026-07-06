@@ -97,6 +97,7 @@ describe('ClaudeCodeHistoryPanel', () => {
       {
         session_id: 'session-1',
         mtime: Date.now() / 1000,
+        title: 'Improve Evaluation Triage Labels',
         first_prompt: firstPrompt,
         message_count: 2,
         token_count: 100,
@@ -121,7 +122,7 @@ describe('ClaudeCodeHistoryPanel', () => {
     );
 
     const sessionButton = await screen.findByRole('button', {
-      name: 'Show compact outcome labels for faster triage now',
+      name: 'Improve Evaluation Triage Labels now',
     });
 
     expect(sessionButton).toHaveAttribute('title', expect.stringContaining(firstPrompt));

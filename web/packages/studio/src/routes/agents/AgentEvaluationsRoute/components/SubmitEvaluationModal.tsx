@@ -286,6 +286,8 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
             setError={(error) => setError('datasetFile', error)}
             clearError={() => clearErrors('datasetFile')}
             workspace={workspace}
+            filesetPurposeFilter={null}
+            filesetLabel="Filesets"
             inline
             autoCommit
             formFieldProps={{

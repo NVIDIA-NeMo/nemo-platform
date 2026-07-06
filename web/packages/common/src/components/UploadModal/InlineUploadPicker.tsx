@@ -22,6 +22,8 @@ type InlineUploadPickerProps = Pick<
   | 'acceptableFileSize'
   | 'invalidFileMode'
   | 'allowNewDataset'
+  | 'filesetPurposeFilter'
+  | 'filesetLabel'
 > & {
   /** Called once the picked / uploaded file is committed. */
   onSubmit: (data: SubmitUploadType) => void;
@@ -41,6 +43,8 @@ interface InnerProps {
   onSubmit: (data: SubmitUploadType) => void;
   addButtonText: string;
   autoCommit: boolean;
+  filesetPurposeFilter?: UploadModalProps['filesetPurposeFilter'];
+  filesetLabel?: string;
 }
 
 const InlineUploadPickerContent: FC<InnerProps> = ({
@@ -50,6 +54,8 @@ const InlineUploadPickerContent: FC<InnerProps> = ({
   onSubmit,
   addButtonText,
   autoCommit,
+  filesetPurposeFilter,
+  filesetLabel,
 }) => {
   const [state] = useUploadModalContext();
   const { submit, isSubmitting } = useUploadSubmit({
@@ -126,6 +132,8 @@ const InlineUploadPickerContent: FC<InnerProps> = ({
           workspace={workspace}
           includeDataset={includeDataset}
           includeTabs={includeTabs}
+          filesetPurposeFilter={filesetPurposeFilter}
+          filesetLabel={filesetLabel}
         />
         {addButton && !filesTableVisible ? <Flex justify="end">{addButton}</Flex> : null}
       </Stack>
@@ -151,6 +159,8 @@ export const InlineUploadPicker: FC<InlineUploadPickerProps> = ({
   onSubmit,
   addButtonText = 'Add file',
   autoCommit = false,
+  filesetPurposeFilter,
+  filesetLabel,
 }) => {
   // In ``autoCommit`` mode the "Create new dataset" path would race with the
   // user editing the dataset name (each keystroke would re-fire the upload),
@@ -186,6 +196,8 @@ export const InlineUploadPicker: FC<InlineUploadPickerProps> = ({
         onSubmit={onSubmit}
         addButtonText={addButtonText}
         autoCommit={autoCommit}
+        filesetPurposeFilter={filesetPurposeFilter}
+        filesetLabel={filesetLabel}
       />
     </UploadModalProvider>
   );

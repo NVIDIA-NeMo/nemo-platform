@@ -13,24 +13,36 @@ import { useUploadModalContext } from '@nemo/common/src/components/UploadModal/C
 import { ExistingDataset } from '@nemo/common/src/components/UploadModal/DatasetUploader/ExistingDataset';
 import { NewDataset } from '@nemo/common/src/components/UploadModal/DatasetUploader/NewDataset';
 import { DatasetSelect } from '@nemo/common/src/components/UploadModal/DatasetUploader/Select';
+import type { UploadModalProps } from '@nemo/common/src/components/UploadModal/types';
 import { Stack } from '@nvidia/foundations-react-core';
 import { FC } from 'react';
 
 interface Props {
   projectId: string;
+  filesetPurposeFilter?: UploadModalProps['filesetPurposeFilter'];
+  filesetLabel?: string;
 }
 
 /**
  * A component that allows selecting a dataset and uploading files.
  * Uses UploadModalContext for state management.
  */
-export const DatasetUploader: FC<Props> = ({ projectId }) => {
+export const DatasetUploader: FC<Props> = ({
+  projectId,
+  filesetPurposeFilter,
+  filesetLabel,
+}) => {
   const [state] = useUploadModalContext();
   const { dataset, errors } = state;
 
   return (
     <Stack gap="density-xl" className="min-h-0 w-full flex-1">
-      <DatasetSelect project={projectId} error={errors?.dataset} />
+      <DatasetSelect
+        project={projectId}
+        error={errors?.dataset}
+        filesetPurposeFilter={filesetPurposeFilter}
+        filesetLabel={filesetLabel}
+      />
       {dataset && (dataset.type === 'new' ? <NewDataset /> : <ExistingDataset />)}
     </Stack>
   );
