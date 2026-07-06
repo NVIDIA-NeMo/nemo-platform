@@ -305,6 +305,7 @@ nemo-guardrails-plugin = [
   "langchain-community>=0.3.31,<0.4",
   "langchain-core>=1.4.8",
   "langchain-openai>=1.3.3",
+  "jsonschema>=4.23.0",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
