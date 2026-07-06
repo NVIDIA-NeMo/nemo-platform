@@ -77,12 +77,14 @@ def _emit_job_run_event(job_status: Any, *, resource_label: str, status: str, st
         if not isinstance(details, dict):
             details = {}
 
-        plugins: set[str] = set()
-        for step in getattr(job_status, "steps", None) or []:
-            step_name = getattr(step, "name", "") or ""
-            prefix = step_name.split(".", 1)[0]
-            if prefix:
-                plugins.add(prefix)
+        # job_type is the job's operation entry point(s) (for example "auditor.audit"), read
+        # from the step names per the PRD. These are static plugin.operation identifiers, not
+        # the user-chosen job name, so they carry no user data. It falls back to the resource
+        # label when the job reports no steps. plugins are the distinct plugin prefixes.
+        entry_points = sorted(
+            {name for step in (getattr(job_status, "steps", None) or []) if (name := getattr(step, "name", "") or "")}
+        )
+        plugins = sorted({ep.split(".", 1)[0] for ep in entry_points})
 
         # ``status_details`` can carry an explicit null (e.g. ``model: null``). Passing
         # None to the str-typed / int-typed event fields fails validation and the
@@ -97,9 +99,9 @@ def _emit_job_run_event(job_status: Any, *, resource_label: str, status: str, st
         emit_event(
             JobRunEvent(
                 task_status=task_status,
-                job_type=resource_label,
+                job_type=",".join(entry_points) if entry_points else resource_label,
                 duration_sec=float(time.time() - start_time),
-                plugins=sorted(plugins),
+                plugins=plugins,
                 model=model,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
