@@ -26,6 +26,7 @@ import {
   useExperimentGroupExperiments,
 } from '@studio/components/dataViews/ExperimentGroupDataView/useExperimentGroupExperiments';
 import { useSortErrorRecovery } from '@studio/components/dataViews/ExperimentGroupDataView/useSortErrorRecovery';
+import { deriveEvaluatorNames } from '@studio/components/dataViews/ExperimentGroupDataView/util';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getExperimentDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
@@ -66,11 +67,14 @@ const seedSortFromDefault = (
   return id ? { id, desc } : undefined;
 };
 
-// Maps filterable column ids to their API rollup-stat filter field. The dotted key
-// (e.g. `latency_ms.mean`) is required by the backend's rollup-metric filter parser;
-// the nested shape (`latency_ms.mean` split into objects) is rejected.
-const FILTER_FIELD_MAP: Readonly<Record<string, string>> = {
-  latency_ms: 'latency_ms.mean',
+// Maps a filter column id to its dotted API rollup-stat field (required by the backend parser).
+// Evaluator ids are dynamic, so derive `evaluators.<name>.mean` here, like getExperimentSortParam.
+const getExperimentFilterField = (id: string): string | undefined => {
+  if (id === 'cost_usd') return 'cost_usd.mean';
+  if (id === 'latency_ms') return 'latency_ms.mean';
+  const evaluatorMatch = id.match(/^evaluator-(.+)$/);
+  if (evaluatorMatch) return `evaluators.${evaluatorMatch[1]}.mean`;
+  return undefined;
 };
 
 const getExperimentSortParam = (
@@ -123,7 +127,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
     columnVisibility: { created_by: false, updated_at: false },
     // Keep the pin toggle reachable while horizontally scrolling this wide table.
     columnPinning: { left: ['pin'] },
-    filterFieldMap: FILTER_FIELD_MAP,
+    filterFieldMap: getExperimentFilterField,
   });
 
   const page = dataViewState.pagination.state.pageIndex + 1;
@@ -158,11 +162,11 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
     onError: toast.error,
   });
 
-  // One score column per evaluator: the union of evaluator names across the loaded rows,
-  // sorted for a deterministic column order across renders and page changes.
+  // One score column per evaluator: the names found across the loaded rows, plus any evaluator
+  // with an active filter (so its column survives a zero-result filter — see deriveEvaluatorNames).
   const evaluatorNames = useMemo(
-    () => [...new Set(orderedData.flatMap((e) => Object.keys(e.aggregate_scores ?? {})))].sort(),
-    [orderedData]
+    () => deriveEvaluatorNames(orderedData, dataViewState.debouncedColumnFilters),
+    [orderedData, dataViewState.debouncedColumnFilters]
   );
 
   // One column per metadata key: keys are lowercased so case variants (e.g. "status"
@@ -312,7 +316,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
           id: `evaluator-${name}`,
           header: `Avg ${title}`,
           enableSorting: true,
-          meta: { title: false },
+          meta: { title: false, filter: numberRangeFilter(`Avg ${title}`) },
           size: 140,
           cell: ({ row }) => {
             const score = row.original.aggregate_scores?.[name];
@@ -333,7 +337,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
         id: 'cost_usd',
         header: 'Avg Cost',
         enableSorting: true,
-        meta: { title: false },
+        meta: { title: false, filter: numberRangeFilter('Avg Cost') },
         cell: ({ row }) => {
           const { cost_usd, run_count } = row.original;
           return (
@@ -371,6 +375,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
         id: 'run_count',
         header: 'Run Count',
         enableSorting: true,
+        meta: { filter: numberRangeFilter('Run Count') },
         cell: ({ row }) => <Text>{String(row.original.run_count ?? 0)}</Text>,
       }),
       accessor('created_at', {

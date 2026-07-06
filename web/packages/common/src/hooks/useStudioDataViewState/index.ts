@@ -38,13 +38,9 @@ export interface UseStudioDataViewStateOptions extends Omit<
    * Example: { id: 'created_at', desc: true } for descending by created_at.
    */
   defaultSort?: { id: string; desc: boolean };
-  /**
-   * Maps a column filter id to the API filter key it should be emitted under.
-   * A column not present in the map is emitted under its own id (current behavior).
-   * Use for columns whose API field differs from the column id, e.g.
-   * `{ latency_ms: 'latency_ms.mean' }`.
-   */
-  filterFieldMap?: Record<string, string>;
+  /** Maps a filter column id to the API key it's emitted under (id used as-is when absent). Also
+   * accepts a function `(id) => key | undefined` for dynamic ids, e.g. `latency_ms`→`latency_ms.mean`. */
+  filterFieldMap?: Record<string, string> | ((id: string) => string | undefined);
 }
 
 /**
@@ -498,7 +494,11 @@ export const useStudioDataViewState = <FilterType = Record<string, unknown>>(
               return false;
             return true;
           })
-          .map((f) => [filterFieldMap?.[f.id] ?? f.id, f.value])
+          .map((f) => {
+            const mappedKey =
+              typeof filterFieldMap === 'function' ? filterFieldMap(f.id) : filterFieldMap?.[f.id];
+            return [mappedKey ?? f.id, f.value];
+          })
       ) as Partial<FilterType>;
     }
 

@@ -833,6 +833,43 @@ describe('useStudioDataViewState', () => {
         storage_type: 's3',
       });
     });
+
+    it('should remap column filter ids via a function-form filterFieldMap', () => {
+      const filters = JSON.stringify([
+        { id: 'evaluator-accuracy', value: { $gte: 0.8, $lte: 1 } },
+        { id: 'cost_usd', value: { $lte: 0.5 } },
+      ]);
+      const wrapper = createWrapper([`/?filters=${encodeURIComponent(filters)}`]);
+
+      const { result } = renderHook(
+        () =>
+          useStudioDataViewState({
+            filterFieldMap: (id) => {
+              if (id === 'cost_usd') return 'cost_usd.mean';
+              const match = id.match(/^evaluator-(.+)$/);
+              return match ? `evaluators.${match[1]}.mean` : undefined;
+            },
+          }),
+        { wrapper }
+      );
+
+      expect(result.current.apiFilter.filter).toEqual({
+        'evaluators.accuracy.mean': { $gte: 0.8, $lte: 1 },
+        'cost_usd.mean': { $lte: 0.5 },
+      });
+    });
+
+    it('should leave a column filter id under its own id when the function returns undefined', () => {
+      const filters = JSON.stringify([{ id: 'storage_type', value: 's3' }]);
+      const wrapper = createWrapper([`/?filters=${encodeURIComponent(filters)}`]);
+
+      const { result } = renderHook(
+        () => useStudioDataViewState({ filterFieldMap: () => undefined }),
+        { wrapper }
+      );
+
+      expect(result.current.apiFilter.filter).toEqual({ storage_type: 's3' });
+    });
   });
 
   describe('resetFilters', () => {

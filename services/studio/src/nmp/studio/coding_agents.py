@@ -1040,7 +1040,11 @@ async def _stream_claude(
 
     try:
         while True:
-            event_type, payload = await queue.get()
+            try:
+                event_type, payload = await asyncio.wait_for(queue.get(), timeout=MCP_KEEPALIVE_INTERVAL_SECONDS)
+            except asyncio.TimeoutError:
+                yield ":\n\n"
+                continue
             if event_type == "end":
                 break
             if event_type == "claude":

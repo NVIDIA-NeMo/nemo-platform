@@ -39,6 +39,7 @@ from typing import Any, get_type_hints
 from nemo_platform_plugin.client.types import (
     BLESSED_CLIENT_PARAMS,
     RESERVED_PARAM_NAMES,
+    ConflictResolver,
     P,
     PreparedRequest,
     ResponseT,
@@ -96,6 +97,7 @@ def _build_prepared_request(
     path_param_names: set[str],
     client_option_names: set[str],
     response_type: type | None,
+    get_on_conflict: ConflictResolver | None,
     args: tuple,
     kwargs: dict,
 ) -> PreparedRequest:
@@ -106,6 +108,11 @@ def _build_prepared_request(
 
     Client option parameters (blessed names like ``exist_ok``) are stripped
     from the HTTP request and stashed in ``PreparedRequest.client_options``.
+
+    If ``get_on_conflict`` is set, the resolver is called here with the live
+    ``body`` model and resolved ``workspace`` to build the retrieve request that
+    ``send()`` replays on a 409. It runs before ``body`` is serialised because the
+    resolver needs the model, not the JSON bytes.
     """
     bound = sig.bind_partial(*args, **kwargs)
     bound.apply_defaults()
@@ -115,6 +122,7 @@ def _build_prepared_request(
     content: bytes | Iterable[bytes] | AsyncIterable[bytes] | None = None
     content_type: str | None = None
     client_options: dict[str, Any] | None = None
+    body_model: BaseModel | None = None
 
     for name, value in bound.arguments.items():
         if name == "self":
@@ -129,6 +137,7 @@ def _build_prepared_request(
         elif name == "body":
             if not isinstance(value, BaseModel):
                 raise TypeError(f"body must be a BaseModel instance, got {type(value).__name__}")
+            body_model = value
             content = value.model_dump_json(exclude_unset=True).encode()
             content_type = "application/json"
         elif name == "content":
@@ -137,6 +146,13 @@ def _build_prepared_request(
         elif name == "query_params":
             if value is not None:
                 query_params = dict(value)
+
+    on_conflict_get: PreparedRequest | None = None
+    if get_on_conflict is not None and body_model is not None:
+        # ``workspace`` may be omitted by the caller (filled from the client
+        # default at send() time). Pass through whatever was bound, if any.
+        workspace = bound.arguments.get("workspace")
+        on_conflict_get = get_on_conflict(body_model, workspace)
 
     return PreparedRequest(
         path_template=path,
@@ -147,15 +163,32 @@ def _build_prepared_request(
         response_type=response_type,
         query_params=query_params,
         client_options=client_options,
+        on_conflict_get=on_conflict_get,
     )
 
 
-def _make_endpoint(http_method: str, path: str, fn: Callable[P, ResponseT]) -> Callable[P, PreparedRequest[ResponseT]]:
+def _make_endpoint(
+    http_method: str,
+    path: str,
+    fn: Callable[P, ResponseT],
+    get_on_conflict: ConflictResolver | None = None,
+) -> Callable[P, PreparedRequest[ResponseT]]:
     """Create a callable that builds PreparedRequests from the function's signature."""
     sig = inspect.signature(fn)
     path_param_names = {field_name for _, field_name, _, _ in string.Formatter().parse(path) if field_name}
     client_option_names = _identify_client_option_params(fn)
     _validate_params(fn, path_param_names, client_option_names)
+
+    # Fail fast: exist_ok relies on a get_on_conflict resolver to fetch the
+    # existing entity on 409. Without one, the option is inert and a real
+    # conflict would raise at send() time — catch the misconfiguration here.
+    if "exist_ok" in client_option_names and get_on_conflict is None:
+        fn_name = getattr(fn, "__qualname__", getattr(fn, "__name__", repr(fn)))
+        raise TypeError(
+            f"Endpoint {fn_name} declares the 'exist_ok' option but no "
+            "get_on_conflict resolver. Pass get_on_conflict=<resolver> to the "
+            "@post decorator so the existing entity can be retrieved on 409."
+        )
 
     hints = get_type_hints(fn)
     ret = hints.get("return")
@@ -164,7 +197,15 @@ def _make_endpoint(http_method: str, path: str, fn: Callable[P, ResponseT]) -> C
     @functools.wraps(fn)
     def prepare(*args: P.args, **kwargs: P.kwargs) -> PreparedRequest[ResponseT]:
         return _build_prepared_request(
-            http_method, path, sig, path_param_names, client_option_names, response_type, args, kwargs
+            http_method,
+            path,
+            sig,
+            path_param_names,
+            client_option_names,
+            response_type,
+            get_on_conflict,
+            args,
+            kwargs,
         )
 
     return prepare
@@ -184,11 +225,22 @@ def get(path: str) -> Callable[[Callable[P, ResponseT]], Callable[P, PreparedReq
     return decorator
 
 
-def post(path: str) -> Callable[[Callable[P, ResponseT]], Callable[P, PreparedRequest[ResponseT]]]:
-    """Define a POST endpoint."""
+def post(
+    path: str, *, get_on_conflict: ConflictResolver | None = None
+) -> Callable[[Callable[P, ResponseT]], Callable[P, PreparedRequest[ResponseT]]]:
+    """Define a POST endpoint.
+
+    Args:
+        path: URL path template with ``{placeholder}`` path params.
+        get_on_conflict: Optional resolver enabling ``exist_ok`` on a create
+            endpoint. When the request is sent with ``exist_ok=True`` and the
+            server responds 409, the client replays the retrieve request this
+            resolver builds and returns its entity instead of raising
+            :class:`ConflictError`. See :class:`ConflictResolver`.
+    """
 
     def decorator(fn: Callable[P, ResponseT]) -> Callable[P, PreparedRequest[ResponseT]]:
-        return _make_endpoint("POST", path, fn)
+        return _make_endpoint("POST", path, fn, get_on_conflict=get_on_conflict)
 
     return decorator
 
