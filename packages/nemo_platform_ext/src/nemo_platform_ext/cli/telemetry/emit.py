@@ -24,7 +24,8 @@ _SESSION_ID = uuid.uuid4().hex
 _NOTICE_TEXT = (
     "NeMo Platform collects anonymous usage data to improve the product. "
     "No prompts, data, or personal information leave your machine. "
-    "Turn it off any time with NEMO_TELEMETRY_ENABLED=false.\n"
+    "Turn it off any time with NEMO_TELEMETRY_ENABLED=false. "
+    "Run nemo docs cli/configuration for details.\n"
 )
 
 

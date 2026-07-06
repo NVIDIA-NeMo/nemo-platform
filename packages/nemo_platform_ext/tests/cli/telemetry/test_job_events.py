@@ -77,12 +77,39 @@ def test_completed_emits_single_job_run_event(frozen_time: MagicMock) -> None:
 
     emit_event.assert_called_once()
     event = emit_event.call_args.args[0]
-    assert event.job_type == "customization"
+    # job_type is the job's operation entry points from the step names, per the PRD.
+    assert event.job_type == "auditor.audit,auditor.report,guardrails.check"
     assert event.task_status is TaskStatusEnum.COMPLETED
     assert event.input_tokens == 512
     assert event.output_tokens == 2048
     assert event.model == "nemotron-super-49b"
     assert event.plugins == ["auditor", "guardrails"]
+
+
+def test_single_step_job_type_is_the_entry_point(frozen_time: MagicMock) -> None:
+    jobs = MagicMock()
+    jobs.get_status.return_value = SimpleNamespace(
+        status="completed", steps=[SimpleNamespace(name="auditor.audit")], status_details={}
+    )
+
+    with patch(EMIT_TARGET) as emit_event:
+        assert waiters.wait_for_platform_job(jobs, "job-a", workspace="default", resource_label="audit") is True
+
+    event = emit_event.call_args.args[0]
+    assert event.job_type == "auditor.audit"
+    assert event.plugins == ["auditor"]
+
+
+def test_job_type_falls_back_to_resource_label_without_steps(frozen_time: MagicMock) -> None:
+    jobs = MagicMock()
+    jobs.get_status.return_value = SimpleNamespace(status="completed", steps=[], status_details={})
+
+    with patch(EMIT_TARGET) as emit_event:
+        assert waiters.wait_for_platform_job(jobs, "job-a", workspace="default", resource_label="customization") is True
+
+    event = emit_event.call_args.args[0]
+    assert event.job_type == "customization"
+    assert event.plugins == []
 
 
 def test_status_details_defaults_when_absent(frozen_time: MagicMock) -> None:
