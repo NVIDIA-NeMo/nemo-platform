@@ -11,13 +11,28 @@ import time
 import uuid
 from abc import abstractmethod
 from concurrent.futures import ThreadPoolExecutor
-from typing import Generic, Literal, TypeVar
+from typing import Generic, TypeVar
 
 import docker.types
 from docker.errors import APIError, ImageNotFound, NotFound
 from docker.models.containers import Container
 from docker.types import LogConfig, Mount
 from nemo_platform.types.jobs import PlatformJobStepWithContext
+from nemo_platform_plugin.jobs.execution_profiles import (
+    DockerJobExecutionProfile as PluginDockerJobExecutionProfile,
+)
+from nemo_platform_plugin.jobs.execution_profiles import (
+    DockerJobExecutionProfileConfig as PluginDockerJobExecutionProfileConfig,
+)
+from nemo_platform_plugin.jobs.execution_profiles import (
+    DockerJobNetworkConfig as PluginDockerJobNetworkConfig,
+)
+from nemo_platform_plugin.jobs.execution_profiles import (
+    DockerJobStorageConfig as DockerJobStorageConfig,
+)
+from nemo_platform_plugin.jobs.execution_profiles import (
+    DockerVolumeMount as DockerVolumeMount,
+)
 from nmp.common.auth import AuthContext
 from nmp.common.config import get_platform_config
 from nmp.common.docker.gpu_pool import GPUAllocationError
@@ -65,10 +80,8 @@ from nmp.core.jobs.app.providers import (
     ExecutionProviderT,
     GPUExecutionProvider,
 )
-from nmp.core.jobs.app.schemas import BaseExecutionProfile
 from nmp.core.jobs.controllers.backends.base import (
     JobBackend,
-    JobExecutionProfileConfig,
     JobUpdate,
     get_logs_endpoint_from_fileset,
     resolve_gpu_job_shm_size,
@@ -81,7 +94,7 @@ from nmp.core.jobs.controllers.backends.exceptions import (
     ResourceAllocationError,
 )
 from opentelemetry import trace
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 import docker
 
@@ -116,65 +129,43 @@ DOCKER_STOP_TIMEOUT = int(os.getenv("NEMO_JOBS_DEFAULT_DOCKER_STOP_TIMEOUT", "30
 ProviderT = TypeVar("ProviderT", bound=ExecutionProviderT)
 
 
-class DockerVolumeMount(BaseModel):
-    volume_name: str = Field(description="Name of the Docker volume to mount")
-    mount_path: str = Field(description="Path inside the container where the volume will be mounted")
-    kind: Literal["volume", "tmpfs"] = Field(
-        default="volume",
-        description="Type of the Docker volume to mount. Options are 'volume' or 'tmpfs' (default: 'volume'). tmpfs volumes are only supported on Linux hosts.",
-    )
-    options: dict | None = Field(default=None, description="Additional options for the volume")
-    allow_create_volume: bool = Field(
-        default=False, description="Whether to allow the creation of the volume if it does not exist (default: false)."
-    )
+# DockerVolumeMount and DockerJobStorageConfig are pure data shapes shared with
+# the typed HTTP client — imported from the plugin leaf node (see imports).
 
 
-class DockerJobStorageConfig(BaseModel):
-    """Configuration for persistent storage in Docker jobs."""
+class DockerJobNetworkConfig(PluginDockerJobNetworkConfig):
+    """Server-side Docker network config.
 
-    volume_name: str = Field(
-        default="nemo-jobs-storage", description="Name of the Docker volume for persistent storage"
-    )
-    volume_permissions_image: str = Field(
-        default=DEFAULT_VOLUME_PERMISSIONS_IMAGE, description="Docker image used to set permissions on the volume"
-    )
-    additional_volume_mounts: list[DockerVolumeMount] = Field(
-        default_factory=list,
-        description="List of additional Docker volume mounts for the job",
-    )
+    Overrides the plugin data model's default so the network name can be set at
+    runtime via the ``NEMO_JOBS_DEFAULT_DOCKER_NETWORK`` env var (used by
+    quickstart and e2e).
+    """
 
-
-class DockerJobNetworkConfig(BaseModel):
     job_container_network: str = Field(
         default=NEMO_JOBS_DEFAULT_DOCKER_NETWORK, description="Docker network for the job container"
     )
 
 
-class DockerJobExecutionProfileConfig(JobExecutionProfileConfig):
-    """Configuration for Docker Job execution profile."""
+class DockerJobExecutionProfileConfig(PluginDockerJobExecutionProfileConfig):
+    """Configuration for Docker Job execution profile.
 
-    storage: DockerJobStorageConfig = Field(
-        default_factory=DockerJobStorageConfig, description="Docker storage configuration"
-    )
+    Uses the server-side ``DockerJobNetworkConfig`` (env-var default) for
+    ``networking``.
+    """
+
     networking: DockerJobNetworkConfig = Field(
         default_factory=DockerJobNetworkConfig, description="Docker networking configuration"
     )
 
 
-class DockerJobExecutionProfile(BaseExecutionProfile):
+class DockerJobExecutionProfile(PluginDockerJobExecutionProfile):
     """
     Execution configuration for a Docker Job.
     This is used to define the executor type, provider, profile, and any additional configuration
     required for the executor to run the job on Docker
     """
 
-    backend: Literal["docker"] = "docker"
     config: DockerJobExecutionProfileConfig = Field(description="Additional configuration for the docker executor")
-
-    @property
-    def supports_persistent_storage(self) -> bool:
-        """Indicates if the execution profile supports persistent storage."""
-        return self.config.storage is not None
 
 
 class DockerJobBackend(JobBackend[ProviderT, DockerJobExecutionProfileConfig], Generic[ProviderT]):

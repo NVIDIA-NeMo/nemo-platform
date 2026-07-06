@@ -12,30 +12,20 @@ from typing import Generic, Optional, TypeVar
 from nemo_platform import NeMoPlatform, NotFoundError
 from nemo_platform.types import PlatformJobStatus
 from nemo_platform.types.jobs import PlatformJobStep, PlatformJobStepWithContext
-from nmp.common.auth.models import NMP_PRINCIPAL_ENVVAR
+from nemo_platform_plugin.jobs.execution_profiles import (
+    RESERVED_JOB_ENVIRONMENT_VARIABLE_NAMES as RESERVED_JOB_ENVIRONMENT_VARIABLE_NAMES,
+)
+from nemo_platform_plugin.jobs.execution_profiles import (
+    JobExecutionProfileConfig as JobExecutionProfileConfig,
+)
 from nmp.common.config.base import (
     LOOPBACK_ADDRESSES,
-    NMP_CONFIG_WARNINGS_DISABLED_ENV_VAR,
     PlatformConfig,
     determine_loopback_override,
 )
-from nmp.common.jobs.constants import (
-    CONFIG_TASK_STORAGE_PATH_ENVVAR,
-    EPHEMERAL_TASK_STORAGE_PATH_ENVVAR,
-    NEMO_JOB_ATTEMPT_ID_ENVVAR,
-    NEMO_JOB_FILESET_ENVVAR,
-    NEMO_JOB_ID_ENVVAR,
-    NEMO_JOB_SECRETS_ENVVAR,
-    NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR,
-    NEMO_JOB_STEP_ENVVAR,
-    NEMO_JOB_TASK_ENVVAR,
-    NEMO_JOB_WORKSPACE_ENVVAR,
-    PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
-    TASK_CONFIG_ENVVAR,
-)
 from nmp.common.sdk_factory import get_entity_parts
 from nmp.core.jobs.app.providers import ComputeResources
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -45,71 +35,15 @@ ExecutionProfileConfigT = TypeVar("ExecutionProfileConfigT")
 DEFAULT_PROFILE = "default"
 DEFAULT_PROVIDER = "cpu"
 
-# Env var names set by the platform during job creation; user-provided profile environment must not conflict.
-RESERVED_JOB_ENVIRONMENT_VARIABLE_NAMES: frozenset[str] = frozenset(
-    {
-        # From nmp.common.jobs.constants
-        CONFIG_TASK_STORAGE_PATH_ENVVAR,
-        EPHEMERAL_TASK_STORAGE_PATH_ENVVAR,
-        NEMO_JOB_ATTEMPT_ID_ENVVAR,
-        NEMO_JOB_FILESET_ENVVAR,
-        NEMO_JOB_ID_ENVVAR,
-        NEMO_JOB_SECRETS_ENVVAR,
-        NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR,
-        NEMO_JOB_STEP_ENVVAR,
-        NEMO_JOB_TASK_ENVVAR,
-        NEMO_JOB_WORKSPACE_ENVVAR,
-        PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
-        TASK_CONFIG_ENVVAR,
-        # Auth
-        NMP_PRINCIPAL_ENVVAR,
-        # OTEL (telemetry)
-        "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT",
-        "OTEL_LOGS_EXPORTER",
-        "OTEL_SERVICE_NAME",
-        "OTEL_EXPORTER_OTLP_LOGS_HEADERS",
-        # Platform shared envvars (to_shared_envvars with NMP_ prefix)
-        NMP_CONFIG_WARNINGS_DISABLED_ENV_VAR,
-        "NMP_BASE_URL",
-        "NMP_JOBS_URL",
-        "NMP_FILES_URL",
-        "NMP_MODELS_URL",
-        "NMP_SECRETS_URL",
-    }
-)
+# The env-var-name reserved set and the base ``JobExecutionProfileConfig`` now
+# live in the shared plugin leaf node (imported above) so that both the server
+# and the typed HTTP client agree on the wire shape and validation.
 
 
 class JobUpdate(BaseModel):
     status: PlatformJobStatus
     status_details: dict | None = None
     error_details: dict | None = None
-
-
-class JobExecutionProfileConfig(BaseModel):
-    ttl_seconds_before_active: int = 30 * 60  # 30 minutes
-    ttl_seconds_active: int = 24 * 60 * 60  # 24 hours
-    ttl_seconds_after_finished: int = 60 * 60  # 1 hour
-    cleanup_completed_jobs_immediately: bool = True
-    launcher_tool_path: str = Field(default="/tools/jobs-launcher", description="Path to the jobs launcher tool")
-    default_task_image: str | None = Field(
-        default=None,
-        min_length=1,
-        description="Default container image for job task pods. Used when a job step omits container.image. "
-        "When unset, falls back to the platform CPU tasks image (platform.image_registry/nmp-cpu-tasks:platform.image_tag).",
-    )
-    env: dict[str, str] = Field(
-        default_factory=dict,
-        description="Optional env vars applied to all jobs (e.g. HOME=/tmp). Keys must not conflict with platform-reserved names. Job steps may override these variables.",
-    )
-
-    @model_validator(mode="after")
-    def validate_env_no_reserved_names(self) -> JobExecutionProfileConfig:
-        conflicting = [k for k in self.env if k in RESERVED_JOB_ENVIRONMENT_VARIABLE_NAMES]
-        if conflicting:
-            raise ValueError(
-                f"Profile environment keys must not conflict with platform-reserved names: {sorted(conflicting)}"
-            )
-        return self
 
 
 _DEFAULT_TASK_IMAGE_NAME = "nmp-cpu-tasks"
