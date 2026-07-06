@@ -136,6 +136,47 @@ class TestBufferChatCompletionStream:
             }
         ]
 
+    async def test_missing_streamed_tool_call_ids_are_unique_per_index(self) -> None:
+        async def chunks() -> AsyncIterator[dict[str, Any]]:
+            yield {
+                "id": "chatcmpl-123",
+                "object": "chat.completion.chunk",
+                "created": 123,
+                "model": "served-model",
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {
+                            "role": "assistant",
+                            "tool_calls": [
+                                {
+                                    "index": 0,
+                                    "type": "function",
+                                    "function": {"name": "get_weather", "arguments": "{}"},
+                                },
+                                {
+                                    "index": 1,
+                                    "type": "function",
+                                    "function": {"name": "get_weather", "arguments": "{}"},
+                                },
+                            ],
+                        },
+                    }
+                ],
+            }
+            yield {
+                "id": "chatcmpl-123",
+                "object": "chat.completion.chunk",
+                "created": 123,
+                "model": "served-model",
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}],
+            }
+
+        buffered = await buffer_chat_completion_stream(chunks())
+
+        assert [tool_call["id"] for tool_call in buffered.tool_calls] == ["call_stream_0", "call_stream_1"]
+        assert buffered.tool_calls[0]["function"] == buffered.tool_calls[1]["function"]
+
     async def test_reconstructs_content_stream_without_tool_calls(self) -> None:
         async def chunks() -> AsyncIterator[dict[str, Any]]:
             yield {

@@ -130,6 +130,9 @@ def build_assistant_message_from_response_result(response_result: ResponseResult
     except (KeyError, IndexError, TypeError):
         return assistant_message
 
+    if not isinstance(message, dict):
+        return assistant_message
+
     assistant_message["content"] = message.get("content") or ""
     if tool_calls := message.get("tool_calls"):
         assistant_message["tool_calls"] = tool_calls

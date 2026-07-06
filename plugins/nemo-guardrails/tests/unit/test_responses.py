@@ -97,6 +97,7 @@ class TestBuildAssistantMessageFromResponseResult:
             {},
             {"choices": []},
             {"choices": [{}]},
+            {"choices": [{"message": None}]},
         ],
     )
     def test_fallback_to_empty_content(self, response_result: Any) -> None:

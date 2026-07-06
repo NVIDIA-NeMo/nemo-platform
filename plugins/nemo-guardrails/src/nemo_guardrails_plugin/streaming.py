@@ -241,7 +241,7 @@ async def buffer_chat_completion_stream(chunks: AsyncIterator[dict[str, Any]]) -
             _merge_streaming_tool_call_delta(tool_call_parts, delta.get("tool_calls"))
 
     message: dict[str, Any] = {"role": role, "content": "".join(content_parts) or None}
-    tool_calls = [_finalize_streaming_tool_call(part) for _, part in sorted(tool_call_parts.items())]
+    tool_calls = [_finalize_streaming_tool_call(index, part) for index, part in sorted(tool_call_parts.items())]
     if tool_calls:
         message["tool_calls"] = tool_calls
         if finish_reason is None:
@@ -285,9 +285,9 @@ def _merge_streaming_tool_call_delta(
                 function["arguments"] = function.get("arguments", "") + function_delta["arguments"]
 
 
-def _finalize_streaming_tool_call(part: dict[str, Any]) -> dict[str, Any]:
+def _finalize_streaming_tool_call(index: int, part: dict[str, Any]) -> dict[str, Any]:
     tool_call = copy.deepcopy(part)
-    tool_call.setdefault("id", f"call_stream_{abs(hash(json.dumps(tool_call, sort_keys=True))):x}")
+    tool_call.setdefault("id", f"call_stream_{index}")
     tool_call.setdefault("type", "function")
     function = tool_call.setdefault("function", {})
     function.setdefault("name", "")
