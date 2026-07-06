@@ -337,3 +337,112 @@ class TestCustomStrategy:
         second_call_params = mock_http.request.call_args_list[1][1]["params"]
         assert "offset" in second_call_params
         assert second_call_params["offset"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Infra hardening: empty-page guard, server-echoed page advancement, caching
+# ---------------------------------------------------------------------------
+
+
+class TestPaginationHardening:
+    def test_stops_on_empty_page_before_total_pages(self) -> None:
+        """If a page returns no items before total_pages is reached, stop.
+
+        Guards against a server reporting more pages than it can serve (stale
+        count, deletions mid-scan) — without this the client would loop fetching
+        empty pages up to total_pages.
+        """
+        mock_http = MagicMock(spec=httpx.Client)
+        mock_http.request.side_effect = [
+            _page_response([{"id": 1, "name": "a"}], page=1, total_pages=5),
+            # Page 2 comes back empty even though total_pages says 5
+            _page_response([], page=2, total_pages=5),
+        ]
+
+        client = NemoClient(base_url=BASE, workspace="default", http_client=mock_http)
+        items = list(client.send(LIST_ITEMS()).items())
+
+        assert [i.name for i in items] == ["a"]
+        # page 1 + page 2 (empty) — no page 3/4/5 fetched
+        assert mock_http.request.call_count == 2
+
+    def test_advances_from_server_echoed_page(self) -> None:
+        """Next-page number is derived from the body's echoed page, not a counter.
+
+        Even if the server renumbers pages, advancement tracks what the server
+        actually returned.
+        """
+        mock_http = MagicMock(spec=httpx.Client)
+        mock_http.request.side_effect = [
+            # Server echoes page=5 for the first response
+            _page_response([{"id": 1, "name": "a"}], page=5, total_pages=6),
+            _page_response([{"id": 2, "name": "b"}], page=6, total_pages=6),
+        ]
+
+        client = NemoClient(base_url=BASE, workspace="default", http_client=mock_http)
+        items = list(client.send(LIST_ITEMS()).items())
+
+        assert [i.name for i in items] == ["a", "b"]
+        # Second fetch requests page 6 (echoed 5 + 1), not page 2
+        second_call_params = mock_http.request.call_args_list[1][1]["params"]
+        assert second_call_params["page"] == 6
+
+    def test_page_is_cached(self) -> None:
+        """Repeated .page() calls parse the first response only once."""
+        mock_http = MagicMock(spec=httpx.Client)
+        mock_http.request.return_value = _page_response([{"id": 1, "name": "a"}], page=1, total_pages=1)
+
+        client = NemoClient(base_url=BASE, workspace="default", http_client=mock_http)
+        resp = client.send(LIST_ITEMS())
+
+        first = resp.page()
+        second = resp.page()
+        assert first is second
+        assert mock_http.request.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_async_stops_on_empty_page(self) -> None:
+        mock_http = AsyncMock(spec=httpx.AsyncClient)
+        mock_http.request.side_effect = [
+            _page_response([{"id": 1, "name": "a"}], page=1, total_pages=4),
+            _page_response([], page=2, total_pages=4),
+        ]
+
+        client = AsyncNemoClient(base_url=BASE, workspace="default", http_client=mock_http)
+        items = [item async for item in (await client.send(LIST_ITEMS())).items()]
+
+        assert [i.name for i in items] == ["a"]
+        assert mock_http.request.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_async_page_is_cached(self) -> None:
+        mock_http = AsyncMock(spec=httpx.AsyncClient)
+        mock_http.request.return_value = _page_response([{"id": 1, "name": "a"}], page=1, total_pages=1)
+
+        client = AsyncNemoClient(base_url=BASE, workspace="default", http_client=mock_http)
+        resp = await client.send(LIST_ITEMS())
+
+        assert resp.page() is resp.page()
+        assert mock_http.request.call_count == 1
+
+
+class TestDefaultRetry:
+    def test_retries_on_by_default(self) -> None:
+        """A client constructed without an explicit retry policy still retries 503s."""
+        mock_http = MagicMock(spec=httpx.Client)
+        mock_http.request.side_effect = [
+            httpx.Response(
+                503,
+                request=httpx.Request("GET", f"{BASE}/apis/test/v2/workspaces/default/items"),
+                json={"detail": "unavailable"},
+            ),
+            _page_response([{"id": 1, "name": "a"}], page=1, total_pages=1),
+        ]
+
+        # No retry= passed → DEFAULT_RETRY_POLICY (backoff patched to 0 for speed).
+        client = NemoClient(base_url=BASE, workspace="default", http_client=mock_http)
+        client._retry = RetryPolicy(backoff_base=0.0)  # keep default codes, zero sleep
+        items = list(client.send(LIST_ITEMS()).items())
+
+        assert [i.name for i in items] == ["a"]
+        assert mock_http.request.call_count == 2  # first 503 + retry success

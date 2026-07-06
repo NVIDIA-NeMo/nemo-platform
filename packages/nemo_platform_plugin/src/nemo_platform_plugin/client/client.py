@@ -43,6 +43,7 @@ from nemo_platform_plugin.client.response import (
     SyncPageFetcher,
 )
 from nemo_platform_plugin.client.types import (
+    DEFAULT_RETRY_POLICY,
     BinaryContent,
     OffsetPagination,
     Paginated,
@@ -117,7 +118,7 @@ class BaseNemoClient:
         base_url: str,
         workspace: str | None = None,
         auth: TokenProvider | str | None = None,
-        retry: RetryPolicy | None = None,
+        retry: RetryPolicy = DEFAULT_RETRY_POLICY,
         default_headers: Mapping[str, str] | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
@@ -136,7 +137,7 @@ class BaseNemoClient:
         return self._workspace
 
     @property
-    def retry(self) -> RetryPolicy | None:
+    def retry(self) -> RetryPolicy:
         return self._retry
 
     def _resolve_retry(self, retry: RetryPolicy | None) -> RetryPolicy | None:
@@ -240,7 +241,7 @@ class NemoClient(BaseNemoClient):
         auth: TokenProvider | str | None = None,
         default_headers: Mapping[str, str] | None = None,
         timeout: float = DEFAULT_TIMEOUT,
-        retry: RetryPolicy | None = None,
+        retry: RetryPolicy = DEFAULT_RETRY_POLICY,
         http_client: httpx.Client | None = None,
     ) -> None:
         super().__init__(
@@ -452,7 +453,7 @@ class AsyncNemoClient(BaseNemoClient):
         auth: TokenProvider | str | None = None,
         default_headers: Mapping[str, str] | None = None,
         timeout: float = DEFAULT_TIMEOUT,
-        retry: RetryPolicy | None = None,
+        retry: RetryPolicy = DEFAULT_RETRY_POLICY,
         http_client: httpx.AsyncClient | None = None,
     ) -> None:
         super().__init__(

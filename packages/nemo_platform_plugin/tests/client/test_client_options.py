@@ -214,7 +214,12 @@ class TestRetryPolicy:
 
         assert mock_http.request.call_count == 2
 
-    def test_no_retry_without_policy(self) -> None:
+    def test_default_policy_retries(self) -> None:
+        """Without an explicit policy, the client retries transient failures.
+
+        DEFAULT_RETRY_POLICY is applied by the constructor (max_retries=3), so a
+        persistent 503 is attempted 1 + 3 times before surfacing.
+        """
         mock_http = MagicMock(spec=httpx.Client)
         mock_http.request.return_value = httpx.Response(
             503,
@@ -222,7 +227,25 @@ class TestRetryPolicy:
             json={"detail": "unavailable"},
         )
 
-        client = NemoClient(base_url=BASE, http_client=mock_http)
+        # Use the default policy's codes but zero backoff to keep the test fast.
+        client = NemoClient(base_url=BASE, http_client=mock_http, retry=RetryPolicy(backoff_base=0.0))
+
+        with pytest.raises(NemoHTTPError) as exc_info:
+            client.send(GET_ITEM(name="alice"))
+
+        assert exc_info.value.status_code == 503
+        assert mock_http.request.call_count == 4  # 1 initial + 3 retries
+
+    def test_opt_out_of_retries(self) -> None:
+        """Passing max_retries=0 disables retries even though the default is on."""
+        mock_http = MagicMock(spec=httpx.Client)
+        mock_http.request.return_value = httpx.Response(
+            503,
+            request=httpx.Request("GET", f"{BASE}/apis/test/v2/items/alice"),
+            json={"detail": "unavailable"},
+        )
+
+        client = NemoClient(base_url=BASE, http_client=mock_http, retry=RetryPolicy(max_retries=0))
 
         with pytest.raises(NemoHTTPError) as exc_info:
             client.send(GET_ITEM(name="alice"))

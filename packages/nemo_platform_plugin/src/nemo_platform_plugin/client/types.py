@@ -204,6 +204,13 @@ class RetryPolicy:
     retryable_status_codes: tuple[int, ...] = (502, 503, 504, 429)
 
 
+# Shared default: retries transient failures out of the box. The retryable set
+# is deliberately conservative (pre-processing failures only), so replaying a
+# non-safe method is safe — notably 409 is excluded because it carries the
+# entity store's optimistic-lock conflict, which must never be retried blindly.
+DEFAULT_RETRY_POLICY = RetryPolicy()
+
+
 @dataclass(frozen=True, slots=True)
 class PreparedRequest(Generic[ResponseT]):
     """A request ready to be sent — carries the endpoint metadata and payload.

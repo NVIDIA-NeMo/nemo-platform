@@ -6,6 +6,7 @@
 from nmp.common.service.base import DependencyProvider, RouterConfig, Service
 from nmp.common.service.dependencies import (
     get_entity_client,
+    get_nemo_entity_client,
     get_platform_config,
     get_sdk_client,
     get_service_config,
@@ -20,6 +21,7 @@ __all__ = [
     "RouterConfig",
     "build_downstream_service_headers",
     "get_entity_client",
+    "get_nemo_entity_client",
     "get_platform_config",
     "get_sdk_client",
     "get_service_config",

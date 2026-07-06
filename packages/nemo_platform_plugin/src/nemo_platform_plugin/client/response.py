@@ -328,6 +328,7 @@ class NemoPaginatedResponse(Generic[ModelT]):
         self.request = request
         self._fetch_page = fetch_page
         self._strategy: type[PaginationStrategy] = strategy or OffsetPagination
+        self._first_page: PageResult[ModelT] | None = None
 
     @property
     def http_response(self) -> httpx.Response:
@@ -340,37 +341,48 @@ class NemoPaginatedResponse(Generic[ModelT]):
         items = [self._model_type.model_validate(item) for item in self._strategy.extract_items(body)]
         return items, body
 
+    def _next_page(self, items: list[ModelT], body: dict) -> Any | None:
+        """Compute the next page marker, or ``None`` to stop.
+
+        Stops when the current page returned zero items (guards against a
+        server reporting more pages than it can actually serve), and advances
+        from the page number echoed in the response body rather than a
+        client-side counter.
+        """
+        if not items:
+            return None
+        current = self._strategy.extract_metadata(body).get("page") or 1
+        return self._strategy.next_page(body, current)
+
     def page(self) -> PageResult[ModelT]:
         """Return the first page as a :class:`PageResult` with metadata."""
-        items, body = self._parse_page(self._first_response)
-        metadata = self._strategy.extract_metadata(body)
-        return PageResult(items=items, **metadata)
+        if self._first_page is None:
+            items, body = self._parse_page(self._first_response)
+            metadata = self._strategy.extract_metadata(body)
+            self._first_page = PageResult(items=items, **metadata)
+        return self._first_page
 
     def items(self) -> Iterator[ModelT]:
         """Iterate all items across all pages, fetching subsequent pages lazily."""
         items, body = self._parse_page(self._first_response)
         yield from items
 
-        next_page = self._strategy.next_page(body, 1)
+        next_page = self._next_page(items, body)
         while next_page is not None:
             items, body = self._parse_page(self._fetch_page(self.request, next_page))
             yield from items
-            current = next_page
-            next_page = self._strategy.next_page(body, current)
+            next_page = self._next_page(items, body)
 
     def pages(self) -> Iterator[PageResult[ModelT]]:
         """Iterate page by page, yielding :class:`PageResult` objects with metadata."""
         items, body = self._parse_page(self._first_response)
-        metadata = self._strategy.extract_metadata(body)
-        yield PageResult(items=items, **metadata)
+        yield PageResult(items=items, **self._strategy.extract_metadata(body))
 
-        next_page = self._strategy.next_page(body, 1)
+        next_page = self._next_page(items, body)
         while next_page is not None:
             items, body = self._parse_page(self._fetch_page(self.request, next_page))
-            metadata = self._strategy.extract_metadata(body)
-            yield PageResult(items=items, **metadata)
-            current = next_page
-            next_page = self._strategy.next_page(body, current)
+            yield PageResult(items=items, **self._strategy.extract_metadata(body))
+            next_page = self._next_page(items, body)
 
 
 class AsyncNemoPaginatedResponse(Generic[ModelT]):
@@ -398,6 +410,7 @@ class AsyncNemoPaginatedResponse(Generic[ModelT]):
         self.request = request
         self._fetch_page = fetch_page
         self._strategy: type[PaginationStrategy] = strategy or OffsetPagination
+        self._first_page: PageResult[ModelT] | None = None
 
     @property
     def http_response(self) -> httpx.Response:
@@ -410,11 +423,26 @@ class AsyncNemoPaginatedResponse(Generic[ModelT]):
         items = [self._model_type.model_validate(item) for item in self._strategy.extract_items(body)]
         return items, body
 
+    def _next_page(self, items: list[ModelT], body: dict) -> Any | None:
+        """Compute the next page marker, or ``None`` to stop.
+
+        Stops when the current page returned zero items (guards against a
+        server reporting more pages than it can actually serve), and advances
+        from the page number echoed in the response body rather than a
+        client-side counter.
+        """
+        if not items:
+            return None
+        current = self._strategy.extract_metadata(body).get("page") or 1
+        return self._strategy.next_page(body, current)
+
     def page(self) -> PageResult[ModelT]:
         """Return the first page as a :class:`PageResult` with metadata."""
-        items, body = self._parse_page(self._first_response)
-        metadata = self._strategy.extract_metadata(body)
-        return PageResult(items=items, **metadata)
+        if self._first_page is None:
+            items, body = self._parse_page(self._first_response)
+            metadata = self._strategy.extract_metadata(body)
+            self._first_page = PageResult(items=items, **metadata)
+        return self._first_page
 
     async def items(self) -> AsyncIterator[ModelT]:
         """Iterate all items across all pages, fetching subsequent pages lazily."""
@@ -422,26 +450,22 @@ class AsyncNemoPaginatedResponse(Generic[ModelT]):
         for item in items:
             yield item
 
-        next_page = self._strategy.next_page(body, 1)
+        next_page = self._next_page(items, body)
         while next_page is not None:
             raw = await self._fetch_page(self.request, next_page)
             items, body = self._parse_page(raw)
             for item in items:
                 yield item
-            current = next_page
-            next_page = self._strategy.next_page(body, current)
+            next_page = self._next_page(items, body)
 
     async def pages(self) -> AsyncIterator[PageResult[ModelT]]:
         """Iterate page by page, yielding :class:`PageResult` objects with metadata."""
         items, body = self._parse_page(self._first_response)
-        metadata = self._strategy.extract_metadata(body)
-        yield PageResult(items=items, **metadata)
+        yield PageResult(items=items, **self._strategy.extract_metadata(body))
 
-        next_page = self._strategy.next_page(body, 1)
+        next_page = self._next_page(items, body)
         while next_page is not None:
             raw = await self._fetch_page(self.request, next_page)
             items, body = self._parse_page(raw)
-            metadata = self._strategy.extract_metadata(body)
-            yield PageResult(items=items, **metadata)
-            current = next_page
-            next_page = self._strategy.next_page(body, current)
+            yield PageResult(items=items, **self._strategy.extract_metadata(body))
+            next_page = self._next_page(items, body)
