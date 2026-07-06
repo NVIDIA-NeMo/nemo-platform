@@ -333,8 +333,7 @@ class ExperimentsResource(SyncAPIResource):
               attribute (name, created_at, updated_at, pinned_at) or by an aggregate metric:
               run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>,
               where <stat> is one of mean, median, p90, p95, p99, sum, count. When omitted,
-              the group's configured default sort is used (falling back to -created_at), with
-              pinned experiments first.
+              defaults to -created_at with pinned experiments first.
 
           extra_headers: Send extra headers
 
@@ -774,8 +773,7 @@ class AsyncExperimentsResource(AsyncAPIResource):
               attribute (name, created_at, updated_at, pinned_at) or by an aggregate metric:
               run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>,
               where <stat> is one of mean, median, p90, p95, p99, sum, count. When omitted,
-              the group's configured default sort is used (falling back to -created_at), with
-              pinned experiments first.
+              defaults to -created_at with pinned experiments first.
 
           extra_headers: Send extra headers
 

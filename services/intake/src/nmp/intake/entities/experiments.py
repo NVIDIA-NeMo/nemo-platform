@@ -11,19 +11,10 @@ views. Rollups are derived from ClickHouse at read time.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, ClassVar, Literal
+from typing import Any, ClassVar
 
 from nmp.common.entities.client import EntityBase
-from pydantic import AnyUrl, BaseModel, Field
-
-
-class SortCriterion(BaseModel):
-    """One criterion in a group's default sort: a sortable rollup-metric path and its direction."""
-
-    field: str = Field(
-        description="Rollup-metric sort path, e.g. cost_usd.mean, latency_ms.p95, or evaluators.<name>.mean."
-    )
-    direction: Literal["asc", "desc"] = Field(description="Sort direction for this field.")
+from pydantic import AnyUrl, Field
 
 
 class ExperimentGroup(EntityBase):
@@ -41,12 +32,14 @@ class ExperimentGroup(EntityBase):
     )
     summary: str | None = Field(default=None, description="Human- or agent-authored summary of the group's findings.")
     metadata: dict[str, Any] | None = Field(default=None, description="Free-form producer metadata for the group.")
-    default_sort: list[SortCriterion] | None = Field(
+    default_metric_sort: str | None = Field(
         default=None,
         description=(
-            "Ordered default sort in priority order (first is primary, the rest are tiebreakers). When "
-            "set, it is the default order for this group's experiments list. Each field must be a numeric "
-            "rollup metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>."
+            "Default sort for this group's experiments list, as a `sort`-param string (a leading '-' "
+            "means descending), e.g. '-cost_usd.mean'. The client reads it from the group and applies "
+            "it as the list's `sort` param; the list endpoint itself does not consult it. The field "
+            "must be a numeric rollup metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or "
+            "evaluators.<name>.<stat>."
         ),
     )
     is_deleted: bool = Field(

@@ -12,8 +12,7 @@ import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
-import { useGetExperimentGroup } from '@nemo/sdk/generated/platform/api';
-import type { ExperimentFilter } from '@nemo/sdk/generated/platform/schema';
+import type { ExperimentFilter, ExperimentGroupResponse } from '@nemo/sdk/generated/platform/schema';
 import { Button, Text, Tooltip } from '@nvidia/foundations-react-core';
 import { Empty } from '@studio/components/dataViews/ExperimentGroupDataView/Empty';
 import { MeanValueTooltipCell } from '@studio/components/dataViews/ExperimentGroupDataView/MeanValueTooltipCell';
@@ -43,11 +42,32 @@ const STATIC_SORT_FIELD_MAP: Readonly<Record<string, string>> = {
   run_count: 'run_count',
 };
 
+// Resolves a group's default_metric_sort (a `sort`-param string like `-cost_usd.mean`) to the
+// table's initial sort so the matching column header shows the sort on load. Matches on the metric
+// family (any stat); the column itself always sorts on `.mean`, which is what the control produces.
+const seedSortFromDefault = (
+  defaultMetricSort: string | null | undefined
+): { id: string; desc: boolean } | undefined => {
+  if (!defaultMetricSort) return undefined;
+  const desc = defaultMetricSort.startsWith('-');
+  const field = desc ? defaultMetricSort.slice(1) : defaultMetricSort;
+  let id: string | undefined;
+  if (field === 'run_count') id = 'run_count';
+  else if (field.startsWith('cost_usd.')) id = 'cost_usd';
+  else if (field.startsWith('latency_ms.')) id = 'latency_ms';
+  else {
+    const evaluatorMatch = field.match(/^evaluators\.(.+)\.[^.]+$/);
+    if (evaluatorMatch) id = `evaluator-${evaluatorMatch[1]}`;
+  }
+  return id ? { id, desc } : undefined;
+};
+
 const getExperimentSortParam = (
   sortingState: { id: string; desc: boolean }[]
-): ListExperimentsSortParam => {
+): ListExperimentsSortParam | undefined => {
   const [first] = sortingState;
-  if (!first) return DEFAULT_SORT;
+  // No column sort -> omit `sort`; the API then defaults to -created_at with pinned first.
+  if (!first) return undefined;
   let field = STATIC_SORT_FIELD_MAP[first.id];
   if (!field) {
     // Evaluator columns use id `evaluator-<name>` so the API field can be derived without
@@ -60,7 +80,9 @@ const getExperimentSortParam = (
 };
 
 interface ExperimentGroupDataViewProps {
-  experimentGroupName: string;
+  /** The loaded group, so the table's initial sort can seed from `default_metric_sort` at first
+   * render — the sorting state is initialized once and not reactive. */
+  group: ExperimentGroupResponse;
 }
 
 /**
@@ -74,22 +96,16 @@ const formatEvaluatorScore = (mean: number | null | undefined): string => {
 };
 
 /** Lists the experiments that belong to a single experiment group. */
-export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
-  experimentGroupName,
-}) => {
+export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ group }) => {
   const workspace = useWorkspaceFromPath();
   const navigate = useNavigate();
   const toast = useToast();
-  const {
-    data: group,
-    isLoading: isGroupLoading,
-    error: groupError,
-  } = useGetExperimentGroup(workspace, experimentGroupName);
-  const experimentGroupId = group?.id ?? '';
+  const experimentGroupName = group.name;
+  const experimentGroupId = group.id;
 
   const dataViewState = useStudioDataViewState<ExperimentFilter>({
-    defaultSort: { id: 'created_at', desc: true },
-    // created_by isn't returned by the API and updated_at isn't shown; both are filter-only.
+    // Seed the sort from default_metric_sort so its column header reflects the order on load.
+    defaultSort: seedSortFromDefault(group.default_metric_sort),
     columnVisibility: { created_by: false, updated_at: false },
     // Keep the pin toggle reachable while horizontally scrolling this wide table.
     columnPinning: { left: ['pin'] },
@@ -368,10 +384,6 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
     [evaluatorNames, togglePin, metadataKeys]
   );
 
-  if (groupError) {
-    return <ErrorMessage message="Failed to load experiment group." />;
-  }
-
   // A recoverable sort error is handled by useSortErrorRecovery (toast + revert), and the table keeps
   // showing the last good page — so don't replace it with the full-page error for that case.
   if (error && !isRecoverableSortError) {
@@ -404,7 +416,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
         DataViewRoot: {
           data: orderedData,
           totalCount,
-          requestStatus: isGroupLoading || isLoading ? 'loading' : undefined,
+          requestStatus: isLoading ? 'loading' : undefined,
         },
         DataViewTableContent: {
           renderEmptyState: ({ hasFiltersApplied, hasSearchApplied }) =>

@@ -2,21 +2,24 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useGetExperimentGroup } from '@nemo/sdk/generated/platform/api';
-import { Badge, PageHeader, Stack, Text } from '@nvidia/foundations-react-core';
+import { Badge, Button, PageHeader, Stack, Text } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { ExperimentGroupDataView } from '@studio/components/dataViews/ExperimentGroupDataView';
+import { ExperimentGroupEditModal } from '@studio/components/ExperimentGroupEditModal';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { ExperimentGroupMetrics } from '@studio/routes/ExperimentGroupDetailRoute/ExperimentGroupMetrics';
 import { getExperimentRoute } from '@studio/routes/utils';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
-import { type FC } from 'react';
+import { Pencil } from 'lucide-react';
+import { type FC, useState } from 'react';
 
 export const ExperimentGroupDetailRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
   const { experimentGroupName } = useRequiredPathParams([ROUTE_PARAMS.experimentGroupName]);
   const { data: group } = useGetExperimentGroup(workspace, experimentGroupName);
+  const [editOpen, setEditOpen] = useState(false);
 
   useBreadcrumbs({
     items: [
@@ -32,7 +35,21 @@ export const ExperimentGroupDetailRoute: FC = () => {
           className="p-0"
           slotHeading={experimentGroupName}
           slotDescription={group?.description || undefined}
+          slotActions={
+            <Button kind="secondary" disabled={!group} onClick={() => setEditOpen(true)}>
+              <Pencil />
+              Edit
+            </Button>
+          }
         />
+        {group && (
+          <ExperimentGroupEditModal
+            open={editOpen}
+            onClose={() => setEditOpen(false)}
+            workspace={workspace}
+            group={group}
+          />
+        )}
         <ExperimentGroupMetrics experimentGroupName={experimentGroupName} />
         <div className="flex flex-col gap-4 border-t border-base pt-4">
           <div className="flex items-center gap-3">
@@ -43,7 +60,7 @@ export const ExperimentGroupDetailRoute: FC = () => {
               </Badge>
             )}
           </div>
-          <ExperimentGroupDataView experimentGroupName={experimentGroupName} />
+          {group && <ExperimentGroupDataView group={group} />}
         </div>
       </Stack>
     </AccessibleTitle>
