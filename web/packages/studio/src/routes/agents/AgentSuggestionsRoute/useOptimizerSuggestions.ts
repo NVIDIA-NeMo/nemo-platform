@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { featureFlags } from '@studio/constants/featureFlags';
 import {
   applySuggestion,
   archivePreviousRun,
@@ -11,18 +12,22 @@ import {
   fetchEvalAverageScores,
   fetchModels,
   fetchPiiSample,
+  fetchProfilerStats,
   isCanceledError,
   loadPreviousSuggestionsFromFileset,
   loadSnapshot,
   loadSuggestionsFromFileset,
   markSuggestionAppliedInFileset,
   SNAPSHOT_PATH,
+  submitEvalJob,
   SUGGESTIONS_PATH,
   uploadToFileset,
   waitForDeployments,
   waitForEvalJob,
 } from '@studio/routes/agents/AgentSuggestionsRoute/api';
 import type {
+  EvalJobStatus,
+  EvalRunResult,
   EvalUiState,
   OptimizationSuggestion,
   RunState,
@@ -91,6 +96,29 @@ const extractEvalAgentName = (suggestion: OptimizationSuggestion): string | unde
     const agent = spec?.agent;
     if (typeof agent !== 'string' || !agent) continue;
     return agent.includes('/') ? agent.split('/').pop() : agent;
+  }
+  return undefined;
+};
+
+/**
+ * Pull the eval-config fields out of the suggestion's ``POST /jobs/evaluate``
+ * step so a baseline eval of the *original* agent can be submitted with the
+ * identical dataset / judge config (apples-to-apples "before" vs "after").
+ */
+const extractEvalStepSpec = (
+  suggestion: OptimizationSuggestion
+): { eval_config?: string; eval_config_fileset?: string } | undefined => {
+  const apply = suggestion.apply;
+  const steps = Array.isArray(apply) ? apply : apply ? [apply] : [];
+  for (const step of steps) {
+    if (step.method !== 'POST' || !/\/jobs\/evaluate/.test(step.path)) continue;
+    const spec = (step.body as { spec?: Record<string, unknown> } | undefined)?.spec;
+    if (!spec) continue;
+    return {
+      eval_config: typeof spec.eval_config === 'string' ? spec.eval_config : undefined,
+      eval_config_fileset:
+        typeof spec.eval_config_fileset === 'string' ? spec.eval_config_fileset : undefined,
+    };
   }
   return undefined;
 };
@@ -319,18 +347,71 @@ export const useOptimizerSuggestions = (workspace: string) => {
         persistChainRef.current = persistTask.catch(() => undefined);
         await persistTask;
 
+        // The sibling name comes from the apply array (the eval step's
+        // body.spec.agent) — it's the agent the optimized eval runs against.
+        const siblingAgentName = extractEvalAgentName(suggestion);
+
+        // When the comparison flag is on, also re-score the *original* agent
+        // (a "before" baseline) with the identical dataset/judge config, so the
+        // tile can render before/after side-by-side. Gated on there being an
+        // optimized run to compare against. Best-effort: a baseline failure
+        // never blocks the optimized ("after") run.
+        const wantComparison =
+          featureFlags.optimizerComparisonEnabled &&
+          suggestion.type === 'model_optimization' &&
+          !!suggestion.agent &&
+          !!evalJobNames[0] &&
+          !!siblingAgentName;
+        const baselineFileset =
+          wantComparison && suggestion.agent ? evalOutputFilesetFor(suggestion.agent) : undefined;
+        let baselineJobName: string | undefined;
+        let baselineError: string | undefined;
+        if (wantComparison && suggestion.agent) {
+          const sibSpec = extractEvalStepSpec(targetSuggestion);
+          if (sibSpec?.eval_config && sibSpec?.eval_config_fileset) {
+            try {
+              baselineJobName = await submitEvalJob(
+                workspace,
+                {
+                  agent: suggestion.agent,
+                  eval_config: sibSpec.eval_config,
+                  eval_config_fileset: sibSpec.eval_config_fileset,
+                  output: baselineFileset as string,
+                },
+                controller.signal
+              );
+            } catch (err) {
+              if (isCanceledError(err)) return;
+              baselineError = toError(err).message;
+            }
+          } else {
+            baselineError = 'Original agent has no eval config to re-score against.';
+          }
+        }
+
         // Seed the eval-state row up front so the tile renders "Queued" the
         // moment apply succeeds, before deployment readiness or eval polling
-        // resolves. The sibling name comes from the apply array (the eval
-        // step's body.spec.agent) — it's the agent the eval will run against.
-        const siblingAgentName = extractEvalAgentName(suggestion);
+        // resolves.
         if (evalJobNames[0] && siblingAgentName) {
+          const seededBaseline: EvalRunResult | null =
+            wantComparison && suggestion.agent
+              ? {
+                  agentName: suggestion.agent,
+                  jobName: baselineJobName ?? '',
+                  status: baselineJobName ? 'queued' : 'failed',
+                  scores: [],
+                  profiler: null,
+                  error: baselineJobName ? undefined : baselineError,
+                }
+              : null;
           const seededState: EvalUiState = {
             jobName: evalJobNames[0],
             siblingAgentName,
             status: 'queued',
             scores: [],
+            profiler: null,
             detailHref: getAgentEvaluationDetailRoute(workspace, evalJobNames[0]),
+            baseline: seededBaseline,
           };
           setEvalStates((prev) => new Map(prev).set(key, seededState));
         }
@@ -347,45 +428,75 @@ export const useOptimizerSuggestions = (workspace: string) => {
           }
         }
 
+        // Targeted state patchers so the baseline and optimized runs can update
+        // independently (they poll in parallel).
+        const patchEval = (fn: (s: EvalUiState) => EvalUiState) =>
+          setEvalStates((prev) => {
+            const existing = prev.get(key);
+            if (!existing) return prev;
+            return new Map(prev).set(key, fn(existing));
+          });
+        const patchBaseline = (fn: (b: EvalRunResult) => EvalRunResult) =>
+          patchEval((s) => (s.baseline ? { ...s, baseline: fn(s.baseline) } : s));
+
+        // Wait for an eval job, then read its scores + profiler token/latency.
+        const collectRun = async (
+          jobName: string,
+          outputFileset: string,
+          onStatus: (status: EvalJobStatus) => void
+        ) => {
+          await waitForEvalJob(workspace, jobName, { signal: controller.signal, onStatus });
+          const [scores, profiler] = await Promise.all([
+            fetchEvalAverageScores(workspace, outputFileset, controller.signal),
+            fetchProfilerStats(workspace, outputFileset, controller.signal),
+          ]);
+          return { scores, profiler };
+        };
+
         // Eval polling runs in parallel with deployment readiness — the eval
         // job is queued by the platform, not the frontend, so we don't gate
         // it on the deployment becoming ``running`` here. The job itself
         // hits the deployment via the agent gateway, which the platform
         // controller routes once the deployment is ready.
-        if (evalJobNames[0] && siblingAgentName) {
-          const jobName = evalJobNames[0];
-          const outputFileset = evalOutputFilesetFor(siblingAgentName);
-          try {
-            await waitForEvalJob(workspace, jobName, {
-              signal: controller.signal,
-              onStatus: (status) => {
-                setEvalStates((prev) => {
-                  const existing = prev.get(key);
-                  if (!existing) return prev;
-                  return new Map(prev).set(key, { ...existing, status });
-                });
-              },
-            });
-            const scores = await fetchEvalAverageScores(
-              workspace,
-              outputFileset,
-              controller.signal
-            );
-            setEvalStates((prev) => {
-              const existing = prev.get(key);
-              if (!existing) return prev;
-              return new Map(prev).set(key, { ...existing, status: 'completed', scores });
-            });
-          } catch (evalErr) {
-            if (isCanceledError(evalErr)) return;
-            const message = evalErr instanceof Error ? evalErr.message : String(evalErr);
-            setEvalStates((prev) => {
-              const existing = prev.get(key);
-              if (!existing) return prev;
-              return new Map(prev).set(key, { ...existing, status: 'failed', error: message });
-            });
-          }
-        }
+        const optimizedTask =
+          evalJobNames[0] && siblingAgentName
+            ? (async () => {
+                try {
+                  const { scores, profiler } = await collectRun(
+                    evalJobNames[0],
+                    evalOutputFilesetFor(siblingAgentName),
+                    (status) => patchEval((s) => ({ ...s, status }))
+                  );
+                  patchEval((s) => ({ ...s, status: 'completed', scores, profiler }));
+                } catch (evalErr) {
+                  if (isCanceledError(evalErr)) return;
+                  patchEval((s) => ({ ...s, status: 'failed', error: toError(evalErr).message }));
+                }
+              })()
+            : Promise.resolve();
+
+        const baselineTask =
+          baselineJobName && baselineFileset
+            ? (async () => {
+                try {
+                  const { scores, profiler } = await collectRun(
+                    baselineJobName as string,
+                    baselineFileset,
+                    (status) => patchBaseline((b) => ({ ...b, status }))
+                  );
+                  patchBaseline((b) => ({ ...b, status: 'completed', scores, profiler }));
+                } catch (evalErr) {
+                  if (isCanceledError(evalErr)) return;
+                  patchBaseline((b) => ({
+                    ...b,
+                    status: 'failed',
+                    error: toError(evalErr).message,
+                  }));
+                }
+              })()
+            : Promise.resolve();
+
+        await Promise.all([optimizedTask, baselineTask]);
       } catch (err) {
         if (isCanceledError(err)) return;
         const message = toError(err).message;

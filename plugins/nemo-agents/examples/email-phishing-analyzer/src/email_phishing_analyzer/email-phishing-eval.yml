@@ -14,9 +14,6 @@
 # phishing). Each entry exposes one metric as its ``average_score``:
 #   recall  <- headline metric (fraction of real phishing emails caught)
 #   precision, accuracy, f1
-#
-# The profiler section produces the token and latency aggregates (avg tokens/call,
-# workflow runtime) needed for the cost/quality before-after comparison.
 
 eval:
   general:
@@ -29,12 +26,6 @@ eval:
       structure:
         question_key: body
         answer_key: label
-    profiler:
-      # Token and latency aggregates for the cost/quality comparison.
-      compute_llm_metrics: true
-      token_uniqueness_forecast: true
-      workflow_runtime_forecast: true
-      csv_exclude_io_text: true
 
   evaluators:
     recall:

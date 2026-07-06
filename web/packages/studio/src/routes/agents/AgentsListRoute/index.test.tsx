@@ -97,19 +97,17 @@ describe('AgentsListRoute', () => {
 
     expect(await screen.findByText('Agent detail page')).toBeInTheDocument();
 
-    expect(captured.name).toMatch(/^calculator-demo-agent-[a-z0-9]{6}$/);
+    expect(captured.name).toMatch(/^email-phishing-analyzer-[a-z0-9]{6}$/);
     expect(captured.description).toBeTruthy();
     const config = captured.config as {
       workflow: { _type: string; tool_names: string[]; use_native_tool_calling: boolean };
-      function_groups: Record<string, { _type: string }>;
       functions: Record<string, { _type: string }>;
       llms: { llm: { model_name: string } };
     };
     expect(config.workflow._type).toBe('react_agent');
-    expect(config.workflow.tool_names).toEqual(['calculator', 'current_datetime']);
+    expect(config.workflow.tool_names).toEqual(['email_phishing_analyzer']);
     expect(config.workflow.use_native_tool_calling).toBe(true);
-    expect(config.function_groups.calculator._type).toBe('calculator');
-    expect(config.functions.current_datetime._type).toBe('current_datetime');
+    expect(config.functions.email_phishing_analyzer._type).toBe('email_phishing_analyzer');
     expect(config.llms.llm.model_name).toBe('nvidia-nemotron-super-49b');
   });
 
@@ -125,7 +123,7 @@ describe('AgentsListRoute', () => {
         };
         modelName = body.config.llms.llm.model_name;
         return HttpResponse.json({
-          name: 'calculator-demo-agent-abc123',
+          name: 'email-phishing-analyzer-abc123',
           workspace: params['workspace'],
         });
       })
@@ -238,7 +236,7 @@ describe('AgentsListRoute', () => {
     server.use(
       http.get(CREATE_AGENT_URL, () =>
         HttpResponse.json({
-          data: [{ name: 'calculator-demo-agent-abc123', workspace }],
+          data: [{ name: 'email-phishing-analyzer-abc123', workspace }],
           pagination: {
             page: 1,
             page_size: 50,
@@ -262,7 +260,7 @@ describe('AgentsListRoute', () => {
     );
 
     renderList();
-    await screen.findByText('calculator-demo-agent-abc123');
+    await screen.findByText('email-phishing-analyzer-abc123');
     const dialog = await openModal(user);
     await waitFor(() =>
       expect(within(dialog).getByRole('combobox')).toHaveTextContent('nvidia-nemotron-nano-9b-v2')

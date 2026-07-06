@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Badge, Block, Button, Card, Flex, Stack, Text } from '@nvidia/foundations-react-core';
+import { featureFlags } from '@studio/constants/featureFlags';
+import { BeforeAfterComparison } from '@studio/routes/agents/AgentSuggestionsRoute/components/BeforeAfterComparison';
 import {
   EVAL_STATUS_COLOR,
   EVAL_STATUS_LABEL,
@@ -19,6 +21,9 @@ export const SuggestionTile: FC<SuggestionTileProps> = memo(
     const canApply = !!suggestion.apply && !!onApply;
     const actions = suggestion.suggested_actions ?? [];
     const severity = suggestion.severity ?? 'low';
+    // Render the side-by-side view once a baseline ("before") run exists and the
+    // flag is on; otherwise fall back to the optimized-only score badges.
+    const showComparison = featureFlags.optimizerComparisonEnabled && !!evalState?.baseline;
 
     return (
       <Card>
@@ -91,24 +96,30 @@ export const SuggestionTile: FC<SuggestionTileProps> = memo(
                 View details
               </Link>
             </Flex>
-            {evalState.status === 'completed' && evalState.scores.length > 0 && (
-              <Flex gap="density-md" wrap="wrap">
-                {evalState.scores.map((s) => (
-                  <Badge key={s.evaluator} kind="solid" color="green">
-                    {s.evaluator}: {s.averageScore.toFixed(2)}
-                  </Badge>
-                ))}
-              </Flex>
-            )}
-            {evalState.status === 'completed' && evalState.scores.length === 0 && (
-              <Text kind="body/regular/sm" color="secondary">
-                Eval finished — no evaluator scores parsed from the output fileset.
-              </Text>
-            )}
-            {evalState.error && (
-              <Text kind="body/regular/sm" color="danger">
-                {evalState.error}
-              </Text>
+            {showComparison ? (
+              <BeforeAfterComparison evalState={evalState} />
+            ) : (
+              <>
+                {evalState.status === 'completed' && evalState.scores.length > 0 && (
+                  <Flex gap="density-md" wrap="wrap">
+                    {evalState.scores.map((s) => (
+                      <Badge key={s.evaluator} kind="solid" color="green">
+                        {s.evaluator}: {s.averageScore.toFixed(2)}
+                      </Badge>
+                    ))}
+                  </Flex>
+                )}
+                {evalState.status === 'completed' && evalState.scores.length === 0 && (
+                  <Text kind="body/regular/sm" color="secondary">
+                    Eval finished — no evaluator scores parsed from the output fileset.
+                  </Text>
+                )}
+                {evalState.error && (
+                  <Text kind="body/regular/sm" color="danger">
+                    {evalState.error}
+                  </Text>
+                )}
+              </>
             )}
           </Stack>
         )}

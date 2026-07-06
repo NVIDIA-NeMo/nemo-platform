@@ -99,6 +99,8 @@ RUN /app/.venv/bin/python -c "import nmp.core.jobs; import nmp.core.entities; pr
 # - nvidia-nat[most]: nat runtime with common plugin set.
 # - nvidia-nat-atif: ATIF schema models for trajectory validation.
 # - nvidia-nat-eval: nat eval / optimize support.
+# - nvidia-nat-profiler: ProfilerRunner — writes the token/latency artifacts the
+#   `profiler:` block in email-phishing-eval.yml produces (not included in [most]).
 # - nvidia-nat-mcp: mcp_client function type support.
 # - plugins/nemo-agents: exposes `nemo agents ...` commands.
 # - examples/calculator-agent: registers `_type: calculator` function group.
@@ -110,7 +112,7 @@ RUN /app/.venv/bin/python -c "import nmp.core.jobs; import nmp.core.entities; pr
 # nvidia-nat-core/eval/langchain==1.7.0), which caused ImportErrors at plugin
 # discovery (e.g. register_dataset_loader) and crashed `nat start fastapi`.
 RUN uv pip install --python /app/.venv/bin/python \
-        "nvidia-nat[most]==1.7.0" nvidia-nat-atif==1.7.0 nvidia-nat-eval==1.7.0 nvidia-nat-mcp==1.7.0 && \
+        "nvidia-nat[most]==1.7.0" nvidia-nat-atif==1.7.0 nvidia-nat-eval==1.7.0 nvidia-nat-profiler==1.7.0 nvidia-nat-mcp==1.7.0 && \
     uv pip install --python /app/.venv/bin/python -e /app/plugins/nemo-agents && \
     uv pip install --python /app/.venv/bin/python -e /app/plugins/nemo-agents/examples/calculator-agent && \
     uv pip install --python /app/.venv/bin/python -e /app/plugins/nemo-agents/examples/email-phishing-analyzer && \

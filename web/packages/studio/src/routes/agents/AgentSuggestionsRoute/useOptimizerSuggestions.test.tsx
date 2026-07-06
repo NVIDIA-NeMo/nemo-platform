@@ -15,10 +15,12 @@ const mocks = vi.hoisted(() => ({
   fetchEvalAverageScores: vi.fn(),
   fetchModels: vi.fn(),
   fetchPiiSample: vi.fn(),
+  fetchProfilerStats: vi.fn(),
   loadPreviousSuggestionsFromFileset: vi.fn(),
   loadSnapshot: vi.fn(),
   loadSuggestionsFromFileset: vi.fn(),
   markSuggestionAppliedInFileset: vi.fn(),
+  submitEvalJob: vi.fn(),
   uploadToFileset: vi.fn(),
   waitForDeployments: vi.fn(),
   waitForEvalJob: vi.fn(),
@@ -34,6 +36,7 @@ vi.mock('@studio/routes/agents/AgentSuggestionsRoute/api', () => ({
   fetchEvalAverageScores: (...args: unknown[]) => mocks.fetchEvalAverageScores(...args),
   fetchModels: (...args: unknown[]) => mocks.fetchModels(...args),
   fetchPiiSample: (...args: unknown[]) => mocks.fetchPiiSample(...args),
+  fetchProfilerStats: (...args: unknown[]) => mocks.fetchProfilerStats(...args),
   isCanceledError: (err: unknown): boolean => {
     const e = err as { name?: string; code?: string };
     return e?.name === 'AbortError' || e?.name === 'CanceledError' || e?.code === 'ERR_CANCELED';
@@ -45,6 +48,7 @@ vi.mock('@studio/routes/agents/AgentSuggestionsRoute/api', () => ({
   markSuggestionAppliedInFileset: (...args: unknown[]) =>
     mocks.markSuggestionAppliedInFileset(...args),
   SNAPSHOT_PATH: 'optimizer_snapshot.json',
+  submitEvalJob: (...args: unknown[]) => mocks.submitEvalJob(...args),
   SUGGESTIONS_PATH: 'optimizer_suggestions.jsonl',
   uploadToFileset: (...args: unknown[]) => mocks.uploadToFileset(...args),
   waitForDeployments: (...args: unknown[]) => mocks.waitForDeployments(...args),
@@ -87,6 +91,8 @@ beforeEach(() => {
   mocks.ensureEvalConfigFileset.mockReset().mockResolvedValue(undefined);
   mocks.fetchAgents.mockReset().mockResolvedValue([]);
   mocks.fetchEvalAverageScores.mockReset().mockResolvedValue([]);
+  mocks.fetchProfilerStats.mockReset().mockResolvedValue(null);
+  mocks.submitEvalJob.mockReset().mockResolvedValue('baseline-eval-1');
   mocks.fetchModels.mockReset().mockResolvedValue([]);
   mocks.fetchPiiSample.mockReset().mockResolvedValue('');
   mocks.loadPreviousSuggestionsFromFileset.mockReset().mockResolvedValue([]);

@@ -24,6 +24,7 @@ import type {
   EvalJobStatusResponse,
   EvalScore,
   OptimizationSuggestion,
+  ProfilerStats,
   SnapshotShape,
   SuggestionApplyMethod,
   SuggestionApplySpec,
@@ -689,6 +690,201 @@ export const fetchEvalAverageScores = async (
     }
   }
   return scores;
+};
+
+// ---------------------------------------------------------------------------
+// Profiler token/latency parsing (nvidia-nat-profiler artifacts)
+// ---------------------------------------------------------------------------
+
+// Latency/runtime confidence intervals; token columns live in the CSV.
+const PROFILER_METRICS_BASENAME = 'inference_optimization.json';
+const PROFILER_TOKENS_BASENAME = 'standardized_data_all.csv';
+
+// Minimal RFC-4180-ish CSV parser. The phishing eval sets
+// ``csv_exclude_io_text: true`` so the free-text columns (which could embed
+// newlines) are dropped, but we still handle quoted fields + escaped quotes so
+// a stray comma in a name column can't shift the token columns.
+export const parseCsv = (text: string): string[][] => {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += c;
+      }
+      continue;
+    }
+    if (c === '"') {
+      inQuotes = true;
+    } else if (c === ',') {
+      row.push(field);
+      field = '';
+    } else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      row.push(field);
+      field = '';
+      rows.push(row);
+      row = [];
+    } else {
+      field += c;
+    }
+  }
+  if (field.length > 0 || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+  return rows;
+};
+
+const numOrNull = (v: unknown): number | null =>
+  typeof v === 'number' && Number.isFinite(v) ? v : null;
+
+// Prefer p95, fall back to mean, from an InferenceMetricsModel dump.
+const ciValue = (ci: unknown): number | null => {
+  if (typeof ci !== 'object' || ci === null) return null;
+  const obj = ci as { p95?: unknown; mean?: unknown };
+  return numOrNull(obj.p95) ?? numOrNull(obj.mean);
+};
+
+type CsvTokenAggregate = Pick<
+  ProfilerStats,
+  'avgTotalTokens' | 'avgPromptTokens' | 'avgCompletionTokens'
+>;
+
+const EMPTY_TOKEN_AGGREGATE: CsvTokenAggregate = {
+  avgTotalTokens: null,
+  avgPromptTokens: null,
+  avgCompletionTokens: null,
+};
+
+// Mean per-item tokens from the standardized-data CSV: sum each token column
+// across all rows, divide by the count of distinct evaluated items
+// (``example_number``).
+export const aggregateCsvTokens = (csv: string): CsvTokenAggregate => {
+  const rows = parseCsv(csv);
+  if (rows.length < 2) return EMPTY_TOKEN_AGGREGATE;
+  const header = rows[0].map((h) => h.trim());
+  const idxTotal = header.indexOf('total_tokens');
+  const idxPrompt = header.indexOf('prompt_tokens');
+  const idxCompletion = header.indexOf('completion_tokens');
+  const idxExample = header.indexOf('example_number');
+  let total = 0;
+  let prompt = 0;
+  let completion = 0;
+  const items = new Set<string>();
+  for (let r = 1; r < rows.length; r++) {
+    const cells = rows[r];
+    if (cells.length === 1 && cells[0] === '') continue; // blank trailing line
+    const t = idxTotal >= 0 ? Number(cells[idxTotal]) : NaN;
+    const p = idxPrompt >= 0 ? Number(cells[idxPrompt]) : NaN;
+    const c = idxCompletion >= 0 ? Number(cells[idxCompletion]) : NaN;
+    if (Number.isFinite(t)) total += t;
+    if (Number.isFinite(p)) prompt += p;
+    if (Number.isFinite(c)) completion += c;
+    const ex = idxExample >= 0 ? cells[idxExample] : undefined;
+    if (ex !== undefined && ex !== '') items.add(ex);
+  }
+  const n = items.size;
+  if (n === 0) return EMPTY_TOKEN_AGGREGATE;
+  return {
+    avgTotalTokens: idxTotal >= 0 ? total / n : null,
+    avgPromptTokens: idxPrompt >= 0 ? prompt / n : null,
+    avgCompletionTokens: idxCompletion >= 0 ? completion / n : null,
+  };
+};
+
+// Reads the NAT profiler artifacts (matched by basename, since nat-eval nests
+// them under the config's ``output_dir``) from an eval output fileset and
+// returns normalized token/latency aggregates. Returns null when neither
+// artifact is present (e.g. the profiler plugin isn't installed). Never throws
+// except on cancel — a missing/malformed profiler output must not fail the
+// eval-score flow.
+export const fetchProfilerStats = async (
+  workspace: string,
+  outputFileset: string,
+  signal: AbortSignal
+): Promise<ProfilerStats | null> => {
+  let listing;
+  try {
+    listing = await filesListFilesetFiles(workspace, outputFileset, undefined, signal);
+  } catch (err) {
+    if (isCanceledError(err)) throw err;
+    return null;
+  }
+  const files = listing?.data ?? [];
+  const metricsFile = files.find((f) => basenameOf(f.path) === PROFILER_METRICS_BASENAME);
+  const tokensFile = files.find((f) => basenameOf(f.path) === PROFILER_TOKENS_BASENAME);
+  if (!metricsFile && !tokensFile) return null;
+
+  let llmLatencyP95Seconds: number | null = null;
+  let workflowRuntimeP95Seconds: number | null = null;
+  if (metricsFile) {
+    try {
+      const blob = await filesDownloadFile(workspace, outputFileset, metricsFile.path, signal);
+      if (blob) {
+        const parsed = JSON.parse(await blob.text()) as {
+          confidence_intervals?: {
+            llm_latency_confidence_intervals?: unknown;
+            workflow_run_time_confidence_intervals?: unknown;
+          };
+        };
+        const ci = parsed.confidence_intervals;
+        llmLatencyP95Seconds = ciValue(ci?.llm_latency_confidence_intervals);
+        workflowRuntimeP95Seconds = ciValue(ci?.workflow_run_time_confidence_intervals);
+      }
+    } catch (err) {
+      if (isCanceledError(err)) throw err;
+    }
+  }
+
+  let tokens: CsvTokenAggregate = EMPTY_TOKEN_AGGREGATE;
+  if (tokensFile) {
+    try {
+      const blob = await filesDownloadFile(workspace, outputFileset, tokensFile.path, signal);
+      if (blob) tokens = aggregateCsvTokens(await blob.text());
+    } catch (err) {
+      if (isCanceledError(err)) throw err;
+    }
+  }
+
+  return { ...tokens, llmLatencyP95Seconds, workflowRuntimeP95Seconds };
+};
+
+interface EvalJobSpec {
+  agent: string;
+  eval_config: string;
+  eval_config_fileset: string;
+  output: string;
+}
+
+// Submits a standalone evaluate-agent job — used for the baseline re-score of
+// the original agent. Trusted caller (the optimizer hook), so it does not go
+// through the JSONL apply allowlist. Returns the created job name.
+export const submitEvalJob = async (
+  workspace: string,
+  spec: EvalJobSpec,
+  signal: AbortSignal
+): Promise<string> => {
+  const res = await customFetch<{ name?: string }>({
+    url: `/apis/agents/v2/workspaces/${encodeURIComponent(workspace)}/jobs/evaluate`,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    data: { spec },
+    signal,
+  });
+  const name = res?.name;
+  if (!name) throw new Error('Baseline evaluation job did not return a job name');
+  return name;
 };
 
 export const markSuggestionAppliedInFileset = async (

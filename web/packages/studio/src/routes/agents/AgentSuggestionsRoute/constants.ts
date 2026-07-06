@@ -75,6 +75,14 @@ eval:
     dataset:
       _type: json
       file_path: ${SAMPLE_EVAL_DATA_PATH}
+    profiler:
+      # Token/latency aggregates for the before/after comparison view. Requires
+      # the nvidia-nat-profiler plugin (installed in the agentic-base runner);
+      # if absent the eval still scores and Studio simply shows "—" for cost.
+      compute_llm_metrics: true
+      token_uniqueness_forecast: true
+      workflow_runtime_forecast: true
+      csv_exclude_io_text: true
   evaluators:
     accuracy:
       _type: tunable_rag_evaluator
