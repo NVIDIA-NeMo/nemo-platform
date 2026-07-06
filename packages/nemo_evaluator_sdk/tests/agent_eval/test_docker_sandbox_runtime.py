@@ -245,9 +245,8 @@ def test_manifest_omits_serialized_task_to_avoid_leaking_grader_fields() -> None
     manifest = runtime._build_manifest(task, _fake_sdk())
 
     assert "task.json" not in manifest.entries
-    seeded = b"".join(
-        entry.content for entry in manifest.entries.values() if isinstance(entry, _FakeFile)
-    ).decode("utf-8")
+    seeded_files = [entry.content for entry in manifest.entries.values() if isinstance(entry, _FakeFile)]
+    seeded = b"".join(seeded_files).decode("utf-8")
     assert "reference" not in seeded
     assert "test_calculator.py" not in seeded
 
