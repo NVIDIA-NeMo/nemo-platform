@@ -72,7 +72,10 @@ def emit_event(event: PlatformTelemetryEvent) -> None:
     try:
         if not telemetry_opted_in():
             return
-        handler = TelemetryHandler(source_client_version=_client_version(), session_id=_SESSION_ID)
+        # No retries on the CLI exit path: a synchronous send blocks the user's command,
+        # so cap the worst case at one bounded send (SEND_TIMEOUT_SECONDS) rather than
+        # retrying against a slow or unreachable endpoint while the user waits.
+        handler = TelemetryHandler(source_client_version=_client_version(), session_id=_SESSION_ID, max_retries=0)
         handler.enqueue(event)
         handler.stop()
     except Exception:
