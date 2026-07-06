@@ -255,8 +255,6 @@ class FilesetsSubResource:
             custom_fields=custom_fields or {},
             cache=cache,
         )
-        # exist_ok is handled by the client: on a 409 it replays the linked GET
-        # (get_fileset) and returns the existing entity. See AIRCORE-866.
         return self._client.create_fileset(workspace=workspace, body=body, exist_ok=exist_ok).data()
 
     def retrieve(self, name: str, *, workspace: str | None = None) -> FilesetOutput:
@@ -354,8 +352,6 @@ class AsyncFilesetsSubResource:
             custom_fields=custom_fields or {},
             cache=cache,
         )
-        # exist_ok is handled by the client: on a 409 it replays the linked GET
-        # (get_fileset) and returns the existing entity. See AIRCORE-866.
         return (await self._client.create_fileset(workspace=workspace, body=body, exist_ok=exist_ok)).data()
 
     async def retrieve(self, name: str, *, workspace: str | None = None) -> FilesetOutput:
