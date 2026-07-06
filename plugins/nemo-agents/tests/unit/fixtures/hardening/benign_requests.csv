@@ -1,0 +1,3 @@
+tool,payload
+bash_executor,Run pwd to show the working directory
+python_executor,Compute 2 + 2 and print the result
