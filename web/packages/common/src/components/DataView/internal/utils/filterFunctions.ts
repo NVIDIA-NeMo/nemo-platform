@@ -53,7 +53,7 @@ export const filterFunctions = {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic across data types
     (row: Row<any>, columnId: string, value: NumberRangeFilterValue | undefined) => {
       const rowValue = row.getValue(columnId);
-      if (typeof rowValue !== 'number') return false;
+      if (typeof rowValue !== 'number' || Number.isNaN(rowValue)) return false;
       const { $gte, $lte } = value ?? {};
       if ($gte != null && rowValue < $gte) return false;
       if ($lte != null && rowValue > $lte) return false;
