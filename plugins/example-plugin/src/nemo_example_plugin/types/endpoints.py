@@ -22,7 +22,7 @@ from nemo_example_plugin.types.payloads import (
     UpdateExampleItemRequest,
 )
 from nemo_platform_plugin.client.endpoint import delete, get, patch, post, put
-from nemo_platform_plugin.client.types import BinaryContent, Paginated, Stream
+from nemo_platform_plugin.client.types import BinaryContent, Paginated, PreparedRequest, Stream
 
 
 @get("/apis/example/hello/{name}")
@@ -30,7 +30,17 @@ from nemo_platform_plugin.client.types import BinaryContent, Paginated, Stream
 def hello(*, name: str) -> HelloResponse: ...
 
 
-@post("/apis/example/v2/workspaces/{workspace}/items")
+@get("/apis/example/v2/workspaces/{workspace}/items/{name}")
+@abstractmethod
+def get_item(*, workspace: str | None = None, name: str) -> ExampleItem: ...
+
+
+def _get_item_on_conflict(body: CreateExampleItemRequest, workspace: str | None) -> PreparedRequest[ExampleItem]:
+    """Build the retrieve request replayed when ``create_item(exist_ok=True)`` 409s."""
+    return get_item(name=body.name, workspace=workspace)
+
+
+@post("/apis/example/v2/workspaces/{workspace}/items", get_on_conflict=_get_item_on_conflict)
 @abstractmethod
 def create_item(
     *, workspace: str | None = None, body: CreateExampleItemRequest, exist_ok: bool = False
@@ -47,11 +57,6 @@ class ListItemsQueryParams(TypedDict, total=False):
 def list_items(
     *, workspace: str | None = None, query_params: ListItemsQueryParams | None = None
 ) -> Paginated[ExampleItem]: ...
-
-
-@get("/apis/example/v2/workspaces/{workspace}/items/{name}")
-@abstractmethod
-def get_item(*, workspace: str | None = None, name: str) -> ExampleItem: ...
 
 
 @patch("/apis/example/v2/workspaces/{workspace}/items/{name}")
