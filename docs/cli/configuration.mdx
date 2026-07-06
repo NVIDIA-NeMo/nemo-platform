@@ -151,6 +151,8 @@ Collected data includes:
 
 The events are batched and sent to NVIDIA's telemetry endpoint with no user or device identifiers attached.
 
+A random per-run session identifier groups the events from a single invocation. It is generated fresh each time you run a `nemo` command, carries no user or device identity, and is discarded when the process exits.
+
 ### What Data Is Not Collected
 
 - User data, prompts, or model outputs

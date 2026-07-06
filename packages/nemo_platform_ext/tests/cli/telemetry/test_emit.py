@@ -31,6 +31,16 @@ class TestOptOutLayers:
     def test_default_is_on(self):
         assert emit_mod.telemetry_opted_in() is True
 
+    def test_config_load_error_fails_closed(self, monkeypatch):
+        """A broken/parse-error config must fail closed (opted out), not default to on."""
+        from nemo_platform_ext.config import config as config_mod
+
+        def boom(*args, **kwargs):
+            raise RuntimeError("broken config")
+
+        monkeypatch.setattr(config_mod.Config, "load", boom)
+        assert emit_mod.telemetry_opted_in() is False
+
 
 class TestEmitEvent:
     @patch.object(emit_mod, "TelemetryHandler")
@@ -50,6 +60,15 @@ class TestEmitEvent:
     @patch.object(emit_mod, "TelemetryHandler", side_effect=RuntimeError("boom"))
     def test_emit_never_raises(self, handler_cls):
         emit_mod.emit_event(_event())  # must not raise
+
+    @patch.object(emit_mod, "TelemetryHandler")
+    def test_session_id_is_stable_across_calls(self, handler_cls):
+        """Every event in one process shares the per-process session id."""
+        emit_mod.emit_event(_event())
+        emit_mod.emit_event(_event())
+        session_ids = [call.kwargs["session_id"] for call in handler_cls.call_args_list]
+        assert len(session_ids) == 2
+        assert session_ids[0] == session_ids[1] == emit_mod._SESSION_ID
 
 
 class TestFirstRunNotice:

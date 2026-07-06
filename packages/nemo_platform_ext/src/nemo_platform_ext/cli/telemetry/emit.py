@@ -16,6 +16,11 @@ logger = logging.getLogger(__name__)
 
 _invocation_opt_out = False
 
+# One random session id per process. It groups every event emitted during a single
+# invocation without carrying any user or device identity, and is discarded when the
+# process exits. This is the same pattern the Agno framework uses for session_id/run_id.
+_SESSION_ID = uuid.uuid4().hex
+
 _NOTICE_TEXT = (
     "NeMo Platform collects anonymous usage data to improve the product. "
     "No prompts, data, or personal information leave your machine. "
@@ -37,7 +42,10 @@ def _config_opted_out() -> bool:
         cfg = Config.load()
         return getattr(cfg.get_config_file(), "telemetry_enabled", True) is False
     except Exception:
-        return False
+        # A privacy control must fail closed: if we cannot read the config to confirm
+        # the user is opted in, treat them as opted out and do not send.
+        logger.debug("Could not read telemetry opt-out config; failing closed (opted out)", exc_info=True)
+        return True
 
 
 def telemetry_opted_in() -> bool:
@@ -55,6 +63,7 @@ def _client_version() -> str:
 
         return nemo_platform.__version__
     except Exception:
+        logger.debug("Could not resolve client version for telemetry", exc_info=True)
         return "undefined"
 
 
@@ -63,7 +72,7 @@ def emit_event(event: PlatformTelemetryEvent) -> None:
     try:
         if not telemetry_opted_in():
             return
-        handler = TelemetryHandler(source_client_version=_client_version(), session_id=uuid.uuid4().hex)
+        handler = TelemetryHandler(source_client_version=_client_version(), session_id=_SESSION_ID)
         handler.enqueue(event)
         handler.stop()
     except Exception:

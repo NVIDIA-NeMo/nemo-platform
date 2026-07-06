@@ -34,6 +34,10 @@ CLIENT_ID = "184482118588404"
 NEMO_TELEMETRY_VERSION = "nemo-telemetry/1.0"
 DEFAULT_ENDPOINT = "https://events.telemetry.data.nvidia.com/v1.1/events/json"
 MAX_RETRIES = 3
+# Tight explicit timeout so a hung or black-holed endpoint can never block a command
+# at exit for longer than this. httpx's default is ~5s, which is too long for a
+# best-effort flush that runs synchronously on the command's exit path.
+SEND_TIMEOUT_SECONDS = 2.0
 CPU_ARCHITECTURE = platform.uname().machine
 logger = logging.getLogger(__name__)
 
@@ -380,9 +384,10 @@ class TelemetryHandler:
         try:
             import httpx
 
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=SEND_TIMEOUT_SECONDS) as client:
                 await self._send_events_with_client(client, events)
         except Exception:  # noqa: BLE001
+            logger.debug("Telemetry send failed; routing events to DLQ", exc_info=True)
             self._add_to_dlq(events)
 
     async def _send_events_with_client(self, client: httpx.AsyncClient, events: list[QueuedEvent]) -> None:
@@ -424,6 +429,7 @@ class TelemetryHandler:
             if response.status_code == 408 or response.status_code >= 500:
                 self._add_to_dlq(events)
         except Exception:  # noqa: BLE001
+            logger.debug("Telemetry POST failed; routing events to DLQ", exc_info=True)
             self._add_to_dlq(events)
 
     def _add_to_dlq(self, events: list[QueuedEvent]) -> None:
