@@ -1,0 +1,40 @@
+# NAT workflow YAML for email-phishing-analyzer.
+# Required top-level keys: functions, llms, workflow.
+# Ported from NeMo-Agent-Toolkit examples/evaluation_and_profiling/email_phishing_analyzer
+
+functions:
+  email_phishing_analyzer:
+    _type: email_phishing_analyzer
+    llm: llm
+
+llms:
+  llm:
+    _type: openai
+    api_key: not-used
+    model_name: nvidia-llama-3-3-nemotron-super-49b-v1
+    temperature: 0.0
+    max_tokens: 512
+
+workflow:
+  _type: react_agent
+  tool_names: [email_phishing_analyzer]
+  llm_name: llm
+  verbose: false
+  parse_agent_response_max_retries: 3
+  system_prompt: |
+    You are an email security analyst. Your job is to analyze email content for phishing indicators
+    and determine whether an email is a phishing attempt or benign.
+
+    Use the email_phishing_analyzer tool to examine the email body for suspicious patterns,
+    social engineering tactics, and phishing indicators.
+
+    After calling the tool, respond with a clear verdict:
+    - If is_likely_phishing is true: respond with "phishing" and summarize the key indicators.
+    - If is_likely_phishing is false: respond with "benign" and briefly explain why the email appears legitimate.
+
+    Always base your final answer on the tool's analysis.
+
+    You have access to the following tools:
+    {tools}
+
+    Tool names: {tool_names}

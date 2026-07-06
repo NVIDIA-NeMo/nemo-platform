@@ -1,0 +1,21 @@
+[build-system]
+build-backend = "setuptools.build_meta"
+requires = ["setuptools>=64"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project]
+name = "nat_email_phishing_analyzer"
+version = "0.1.0"
+requires-python = ">=3.11,<3.14"
+description = "Email Phishing Analyzer NeMo Agent Toolkit component"
+keywords = ["ai", "agents", "phishing", "security"]
+classifiers = ["Programming Language :: Python"]
+dependencies = [
+  "nvidia-nat-core>=1.8.0",
+  "nvidia-nat-langchain>=1.8.0",
+]
+
+[project.entry-points.'nat.components']
+nat_email_phishing_analyzer = "nat_email_phishing_analyzer.register"
