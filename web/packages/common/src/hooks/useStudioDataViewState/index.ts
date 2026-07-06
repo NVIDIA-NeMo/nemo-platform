@@ -38,6 +38,13 @@ export interface UseStudioDataViewStateOptions extends Omit<
    * Example: { id: 'created_at', desc: true } for descending by created_at.
    */
   defaultSort?: { id: string; desc: boolean };
+  /**
+   * Maps a column filter id to the API filter key it should be emitted under.
+   * A column not present in the map is emitted under its own id (current behavior).
+   * Use for columns whose API field differs from the column id, e.g.
+   * `{ latency_ms: 'latency_ms.mean' }`.
+   */
+  filterFieldMap?: Record<string, string>;
 }
 
 /**
@@ -68,7 +75,8 @@ export interface StudioDataViewState<FilterType = Record<string, unknown>>
   debouncedColumnFilters: DataView.TanstackTable.ColumnFiltersState;
   /**
    * Convention-mapped API filter object built from debounced columnFilters and searchBar.
-   * - `columnFilters` entries map to `filter` keys: `{id, value}` → `filter[id] = value`
+   * - `columnFilters` entries map to `filter` keys: `{id, value}` → `filter[id] = value`,
+   *   unless a `filterFieldMap` entry remaps the id to a different API key.
    * - `searchBar` is exposed as `searchText` when non-empty. Consumers are responsible for
    *   mapping `searchText` onto the appropriate filter field (and wrapping it in an operator
    *   like `$like` if fuzzy matching is desired).
@@ -107,6 +115,7 @@ export const useStudioDataViewState = <FilterType = Record<string, unknown>>(
     defaultPage = DEFAULT_PAGE,
     defaultPageSize = DEFAULT_PAGE_SIZE,
     defaultSort,
+    filterFieldMap,
     ...dataViewOptions
   } = options ?? {};
 
@@ -489,12 +498,12 @@ export const useStudioDataViewState = <FilterType = Record<string, unknown>>(
               return false;
             return true;
           })
-          .map((f) => [f.id, f.value])
+          .map((f) => [filterFieldMap?.[f.id] ?? f.id, f.value])
       ) as Partial<FilterType>;
     }
 
     return result;
-  }, [debouncedSearchBar, debouncedColumnFilters]);
+  }, [debouncedSearchBar, debouncedColumnFilters, filterFieldMap]);
 
   // Reset all filters and search
   const resetFilters = useCallback(() => {

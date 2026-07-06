@@ -801,6 +801,38 @@ describe('useStudioDataViewState', () => {
         filter: { type: 'local' },
       });
     });
+
+    it('should remap a column filter id to its API key via filterFieldMap', () => {
+      const filters = JSON.stringify([{ id: 'latency_ms', value: { $gte: 5, $lte: 10 } }]);
+      const wrapper = createWrapper([`/?filters=${encodeURIComponent(filters)}`]);
+
+      const { result } = renderHook(
+        () => useStudioDataViewState({ filterFieldMap: { latency_ms: 'latency_ms.mean' } }),
+        { wrapper }
+      );
+
+      expect(result.current.apiFilter.filter).toEqual({
+        'latency_ms.mean': { $gte: 5, $lte: 10 },
+      });
+    });
+
+    it('should leave unmapped column filter ids under their own id', () => {
+      const filters = JSON.stringify([
+        { id: 'latency_ms', value: { $gte: 5 } },
+        { id: 'storage_type', value: 's3' },
+      ]);
+      const wrapper = createWrapper([`/?filters=${encodeURIComponent(filters)}`]);
+
+      const { result } = renderHook(
+        () => useStudioDataViewState({ filterFieldMap: { latency_ms: 'latency_ms.mean' } }),
+        { wrapper }
+      );
+
+      expect(result.current.apiFilter.filter).toEqual({
+        'latency_ms.mean': { $gte: 5 },
+        storage_type: 's3',
+      });
+    });
   });
 
   describe('resetFilters', () => {
