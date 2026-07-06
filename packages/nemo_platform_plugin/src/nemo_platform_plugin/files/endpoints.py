@@ -20,8 +20,11 @@ from nemo_platform_plugin.files.types import (
     ListFilesetFilesResponse,
     ListFilesetsQueryParams,
     ListFilesQueryParams,
+    OtlpExportLogsResponse,
+    OtlpLogQueryRequest,
     UpdateFilesetRequest,
 )
+from nemo_platform_plugin.jobs.schemas import PlatformJobLogPage
 
 # ---------------------------------------------------------------------------
 # Fileset CRUD
@@ -82,3 +85,18 @@ def download_file(*, workspace: str | None = None, name: str, path: str) -> Bina
 @delete("/apis/files/v2/workspaces/{workspace}/filesets/{name}/-/{path}")
 @abstractmethod
 def delete_file(*, workspace: str | None = None, name: str, path: str) -> FilesetFileOutput: ...
+
+
+# ---------------------------------------------------------------------------
+# OTLP log operations
+# ---------------------------------------------------------------------------
+
+
+@post("/apis/files/v2/workspaces/{workspace}/filesets/{name}/otlp/v1/logs")
+@abstractmethod
+def upload_otlp_logs(*, workspace: str | None = None, name: str) -> OtlpExportLogsResponse: ...
+
+
+@post("/apis/files/v2/workspaces/{workspace}/filesets/{name}/otlp/v1/logs/query")
+@abstractmethod
+def query_otlp_logs(*, workspace: str | None = None, name: str, body: OtlpLogQueryRequest) -> PlatformJobLogPage: ...

@@ -433,9 +433,6 @@ class FilesResource:
     """
 
     def __init__(self, client) -> None:
-        # _raw_client kept for otlp delegation (Stainless SDK), removed by AIRCORE-840.
-        self._raw_client = client
-
         from nemo_platform_plugin.client.adapter import client_from_platform
 
         self._client = client_from_platform(client, _RemappingFilesClient)
@@ -444,13 +441,6 @@ class FilesResource:
     def filesets(self) -> FilesetsSubResource:
         """Access fileset CRUD operations (create, retrieve, update, list, delete)."""
         return FilesetsSubResource(self._client)
-
-    @cached_property
-    def otlp(self):
-        """Access OTLP log operations (delegated to Stainless SDK resource)."""
-        from nemo_platform.resources.files.otlp.otlp import OtlpResource
-
-        return OtlpResource(self._raw_client)
 
     @cached_property
     def fsspec(self) -> FilesetFileSystem:
@@ -965,9 +955,6 @@ class AsyncFilesResource:
     """
 
     def __init__(self, client) -> None:
-        # _raw_client kept for otlp delegation (Stainless SDK), removed by AIRCORE-840.
-        self._raw_client = client
-
         from nemo_platform_plugin.client.adapter import client_from_platform
 
         self._client = client_from_platform(client, _RemappingAsyncFilesClient)
@@ -976,13 +963,6 @@ class AsyncFilesResource:
     def filesets(self) -> AsyncFilesetsSubResource:
         """Access fileset CRUD operations (create, retrieve, update, list, delete)."""
         return AsyncFilesetsSubResource(self._client)
-
-    @cached_property
-    def otlp(self):
-        """Access OTLP log operations (delegated to Stainless SDK resource)."""
-        from nemo_platform.resources.files.otlp.otlp import AsyncOtlpResource
-
-        return AsyncOtlpResource(self._raw_client)
 
     @cached_property
     def fsspec(self) -> FilesetFileSystem:
