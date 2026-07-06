@@ -84,15 +84,25 @@ def _emit_job_run_event(job_status: Any, *, resource_label: str, status: str, st
             if prefix:
                 plugins.add(prefix)
 
+        # ``status_details`` can carry an explicit null (e.g. ``model: null``). Passing
+        # None to the str-typed / int-typed event fields fails validation and the
+        # best-effort guard would silently drop the whole event, so coerce here.
+        # Tokens use explicit None checks, not ``or``, so a legitimate 0 survives as 0.
+        model = details.get("model") or "undefined"
+        raw_input_tokens = details.get("input_tokens")
+        input_tokens = int(raw_input_tokens) if raw_input_tokens is not None else -1
+        raw_output_tokens = details.get("output_tokens")
+        output_tokens = int(raw_output_tokens) if raw_output_tokens is not None else -1
+
         emit_event(
             JobRunEvent(
                 task_status=task_status,
                 job_type=resource_label,
                 duration_sec=float(time.time() - start_time),
                 plugins=sorted(plugins),
-                model=details.get("model", "undefined"),
-                input_tokens=details.get("input_tokens", -1),
-                output_tokens=details.get("output_tokens", -1),
+                model=model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
             )
         )
     except Exception:

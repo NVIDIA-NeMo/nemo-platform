@@ -27,6 +27,7 @@ class _InvocationState:
     agent_mode: bool = False
     started: bool = False
     opted_out: bool = False
+    help_requested: bool = False
 
 
 state = _InvocationState()
@@ -39,6 +40,7 @@ def reset() -> None:
     state.agent_mode = False
     state.started = False
     state.opted_out = False
+    state.help_requested = False
 
 
 def on_callback(ctx, *, no_telemetry: bool) -> None:
@@ -58,6 +60,8 @@ def on_callback(ctx, *, no_telemetry: bool) -> None:
             state.command_parts = [invoked]
         maybe_print_first_run_notice()
     except Exception:  # noqa: BLE001
+        # Fail closed: if telemetry setup breaks, suppress this invocation's event.
+        state.opted_out = True
         logger.debug("telemetry on_callback failed", exc_info=True)
 
 
@@ -71,6 +75,10 @@ def emit_command_invoked(task_status: TaskStatusEnum, duration_sec: float) -> No
     """Emit exactly one ``command_invoked`` event. Best effort; never raises."""
     try:
         if state.opted_out:
+            return
+        if state.help_requested:
+            # Reading help (e.g. ``nemo docs --help``) is not usage. Bare ``--help`` is
+            # already covered by the empty-command_parts guard below.
             return
         if not (state.started and state.command_parts):
             # Bare ``--help`` and usage errors before a command resolves never emit.

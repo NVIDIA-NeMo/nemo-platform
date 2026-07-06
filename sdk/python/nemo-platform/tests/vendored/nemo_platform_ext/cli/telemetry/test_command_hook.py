@@ -45,3 +45,10 @@ class TestCommandInvokedHook:
     def test_bare_help_does_not_emit(self, emit):
         runner.invoke(app, ["--help"])
         emit.assert_not_called()
+
+    @patch("nemo_platform.cli.telemetry.emit.emit_event")
+    def test_group_help_does_not_emit(self, emit):
+        """``nemo <group> --help`` reads help; it is not usage and must not emit."""
+        result = runner.invoke(app, ["docs", "--help"])
+        assert result.exit_code == 0
+        emit.assert_not_called()

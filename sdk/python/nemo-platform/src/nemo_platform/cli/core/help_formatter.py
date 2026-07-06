@@ -69,6 +69,15 @@ class NmpErrorHandlingMixin:
         is_telemetry_root = type(self).__name__ == "ManifestBackedNmpGroup"
         if is_telemetry_root:
             runtime.reset()
+            # Reading help (e.g. ``nemo docs --help``) is not usage, so it must not emit
+            # a command_invoked event. Detect a help request from the resolved args; the
+            # help option names are the same ones every command registers via
+            # ``_context_settings_with_help``.
+            import sys
+
+            resolved_args = args if args is not None else sys.argv[1:]
+            if any(arg in HELP_OPTION_NAMES for arg in resolved_args):
+                runtime.state.help_requested = True
 
         start = time.monotonic()
         status: TaskStatusEnum | None = None

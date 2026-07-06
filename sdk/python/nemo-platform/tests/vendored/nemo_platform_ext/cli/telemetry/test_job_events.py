@@ -99,6 +99,25 @@ def test_status_details_defaults_when_absent(frozen_time: MagicMock) -> None:
     assert event.plugins == []
 
 
+def test_null_status_details_still_emits(frozen_time: MagicMock) -> None:
+    """Explicit nulls must not drop the event; a real 0 token count must survive."""
+    jobs = MagicMock()
+    jobs.get_status.return_value = SimpleNamespace(
+        status="completed",
+        steps=[],
+        status_details={"model": None, "input_tokens": 0, "output_tokens": None},
+    )
+
+    with patch(EMIT_TARGET) as emit_event:
+        assert waiters.wait_for_platform_job(jobs, "job-a", workspace="default") is True
+
+    emit_event.assert_called_once()
+    event = emit_event.call_args.args[0]
+    assert event.model == "undefined"
+    assert event.input_tokens == 0
+    assert event.output_tokens == -1
+
+
 def test_error_status_maps_to_error(frozen_time: MagicMock) -> None:
     jobs = MagicMock()
     jobs.get_status.return_value = SimpleNamespace(status="error", steps=[], status_details={})
