@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { FinetuningType } from '@nemo/sdk/vendored/customizer/schema';
+import type { FinetuningType } from '@nemo/sdk/generated/platform/schema';
 import { Group, Tag } from '@nvidia/foundations-react-core';
 import { formatFinetuningType } from '@studio/util/customizations';
 import type { FC } from 'react';

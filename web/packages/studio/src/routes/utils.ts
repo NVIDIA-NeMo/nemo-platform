@@ -116,14 +116,6 @@ export const getCustomizationJobListRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.customizationJobList, { workspace });
 };
 
-export const getNewCustomizationJobRoute = (workspace: string, options?: { model?: string }) => {
-  const basePath = generatePath(ROUTES.workspace.newCustomizationJob, { workspace });
-  if (options?.model) {
-    return `${basePath}?model=${encodeURIComponent(options.model)}`;
-  }
-  return basePath;
-};
-
 export const getWorkspacePathParamsFromName = (workspace: string): WorkspacePathParams => {
   return { workspace };
 };
@@ -196,10 +188,6 @@ export const getWorkspaceCustomizationJobDetailsRoute = (
 
 export const getWorkspaceCustomizationJobListRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.customizationJobList, { workspace });
-};
-
-export const getWorkspaceNewCustomizationJobRoute = (workspace: string) => {
-  return generatePath(ROUTES.workspace.newCustomizationJob, { workspace });
 };
 
 export const getWorkspaceEvaluationRoute = (workspace: string) => {
