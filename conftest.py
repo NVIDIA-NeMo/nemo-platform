@@ -198,6 +198,13 @@ def pytest_configure(config):
     """
     config.option.importmode = "importlib"
 
+    # Bridge the e2e cluster URL (--cluster-url / $NMP_E2E_CLUSTER_URL) to
+    # NMP_BASE_URL, which the e2e services-pool + `sdk` fixture already use to
+    # connect to an external platform instead of spawning a local subprocess.
+    cluster_url = config.getoption("--cluster-url", default=None)
+    if cluster_url and not os.environ.get("NMP_BASE_URL"):
+        os.environ["NMP_BASE_URL"] = cluster_url
+
 
 def pytest_collection_modifyitems(config, items):
     """
@@ -275,6 +282,40 @@ def pytest_addoption(parser):
         default=True,
         help="Run integration tests (enabled by default)",
     )
+    # --- E2E backend / feature selection -----------------------------------
+    # These mirror the invocations the Makefile `test-e2e-*` targets already
+    # advertise. They are registered here (root) so they are valid for both
+    # `pytest e2e ...` and `pytest tests/...`.
+    parser.addoption(
+        "--kubernetes",
+        action="store_true",
+        default=False,
+        help="Target an external Kubernetes cluster for e2e tests "
+        "(set the platform URL via --cluster-url or NMP_E2E_CLUSTER_URL).",
+    )
+    parser.addoption(
+        "--docker",
+        action="store_true",
+        default=False,
+        help="Target a Docker backend for e2e tests.",
+    )
+    parser.addoption(
+        "--feature",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="Enable an e2e feature gate (repeatable), e.g. `--feature gpu`. "
+        "Tests marked @pytest.mark.gpu only run when `--feature gpu` is passed, "
+        "so default CI (which never passes it) skips them.",
+    )
+    parser.addoption(
+        "--cluster-url",
+        action="store",
+        default=os.environ.get("NMP_E2E_CLUSTER_URL"),
+        metavar="URL",
+        help="Base URL of an already-running platform to test against "
+        "(defaults to $NMP_E2E_CLUSTER_URL). When set, NMP_BASE_URL is populated from it.",
+    )
 
 
 def pytest_runtest_setup(item):
@@ -293,6 +334,9 @@ def pytest_runtest_setup(item):
     if "container_only" in [marker.name for marker in item.iter_markers()]:
         if not os.environ.get("NMP_BASE_URL"):
             skip_test("Skipping container-only test (requires NMP_BASE_URL)")
+    if "gpu" in [marker.name for marker in item.iter_markers()]:
+        if "gpu" not in (item.config.getoption("--feature") or []):
+            skip_test("Skipping GPU test (requires --feature gpu; default CI never passes it)")
 
 
 from xdist.scheduler.loadscope import LoadScopeScheduling  # noqa: E402

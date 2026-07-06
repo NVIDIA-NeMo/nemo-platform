@@ -17,8 +17,14 @@ import httpx
 import pytest
 from nemo_platform import NeMoPlatform
 from nemo_platform.types.inference import ContainerExecutorConfigParam, ModelDeploymentConfigModelSpecParam
+from nmp.testing.e2e.jobs import wait_for_platform_job
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
+
+# Default vLLM server image (see services/core/models/.../backends/*/config.py).
+DEFAULT_VLLM_IMAGE = "vllm/vllm-openai"
+DEFAULT_VLLM_IMAGE_TAG = "v0.22.1"
 
 LOGS_DIR = Path("e2e-logs")
 
@@ -164,7 +170,7 @@ def save_job_logs_to_file(sdk: NeMoPlatform, job_name: str, workspace: str) -> t
     LOGS_DIR.mkdir(exist_ok=True)
     log_file = LOGS_DIR / f"{job_name}.log"
     try:
-        logs = sdk.customization.jobs.get_logs(job_name, workspace=workspace)
+        logs = sdk.jobs.get_logs(workspace=workspace, name=job_name)
         if logs.data:
             with log_file.open("w") as f:
                 for log_entry in logs.data:
@@ -178,7 +184,7 @@ def save_job_logs_to_file(sdk: NeMoPlatform, job_name: str, workspace: str) -> t
 
     status_file = LOGS_DIR / f"{job_name}-status.json"
     try:
-        job_status = sdk.customization.jobs.get_status(job_name, workspace=workspace)
+        job_status = sdk.jobs.get_status(workspace=workspace, name=job_name)
         status_file.write_text(job_status.model_dump_json(indent=2))
         logger.info(f"Saved job status to {status_file}")
     except Exception as e:
@@ -196,7 +202,7 @@ def get_job_failure_details(sdk: NeMoPlatform, job_name: str, workspace: str) ->
     details = [f"Job {job_name} failed. Details:"]
 
     try:
-        job_status = sdk.customization.jobs.get_status(job_name, workspace=workspace)
+        job_status = sdk.jobs.get_status(workspace=workspace, name=job_name)
         details.append(f"\nJob Status: {job_status.model_dump_json(indent=2)}")
     except Exception as e:
         details.append(f"\nFailed to get job status: {e}")
@@ -275,7 +281,7 @@ def wait_for_customization_job(
             )
 
         try:
-            status = sdk.customization.jobs.get_status(name=job_name, workspace=workspace)
+            status = sdk.jobs.get_status(workspace=workspace, name=job_name)
             consecutive_errors = 0
         except (httpx.TimeoutException, httpx.ConnectError, ConnectionError, OSError) as exc:
             consecutive_errors += 1
@@ -303,7 +309,44 @@ def wait_for_customization_job(
 
         time.sleep(poll_interval)
 
-    return sdk.customization.jobs.retrieve(job_name, workspace=workspace)
+    return sdk.jobs.retrieve(job_name, workspace=workspace)
+
+
+def submit_and_wait_customization_job(
+    sdk: NeMoPlatform,
+    backend: str,
+    spec: BaseModel,
+    workspace: str,
+    name: str | None = None,
+    timeout: float = 3600,
+    image_pull_timeout: float = 1800,
+    poll_interval: float = 30,
+):
+    """Submit a customization job to ``backend`` and wait for a terminal state.
+
+    ``backend`` is ``"automodel"``, ``"unsloth"``, or ``"rl"``; ``spec`` is that
+    backend's pydantic ``*JobInput`` instance. Submits via
+    ``sdk.customization.<backend>.jobs.create(spec=...)`` and polls the generic
+    jobs API (customization jobs are platform jobs named ``<backend>-<hex>``).
+
+    Returns:
+        Tuple ``(job_name, final_job)``. Callers assert ``final_job.status ==
+        "completed"`` (use :func:`get_job_failure_details` for diagnostics).
+    """
+    contributor = getattr(sdk.customization, backend)
+    job_resource = contributor.jobs.create(spec=spec, workspace=workspace, name=name)
+    job_name = job_resource.job.name
+    logger.info("Submitted %s customization job: %s", backend, job_name)
+    final_job = wait_for_platform_job(
+        sdk,
+        job_name,
+        workspace,
+        timeout=timeout,
+        image_pull_timeout=image_pull_timeout,
+        poll_interval=poll_interval,
+    )
+    logger.info("Customization job %s finished with status: %s", job_name, final_job.status)
+    return job_name, final_job
 
 
 def wait_for_model_spec(
@@ -420,6 +463,86 @@ def run_inference_test(
     logger.info("-" * 80)
     logger.info(content)
     logger.info("-" * 80)
+
+
+def deploy_vllm_model(
+    sdk: NeMoPlatform,
+    workspace: str,
+    model_entity: str,
+    *,
+    lora_enabled: bool = False,
+    max_lora_rank: int = 16,
+    gpu: int = 1,
+    image_name: str = DEFAULT_VLLM_IMAGE,
+    image_tag: str = DEFAULT_VLLM_IMAGE_TAG,
+    ready_timeout: int = 3600,
+    gateway_timeout: int = 120,
+) -> tuple[str, str]:
+    """Deploy ``model_entity`` with the vLLM engine and wait until it serves inference.
+
+    For LoRA eval, deploy the **base** entity with ``lora_enabled=True`` — a completed
+    LoRA job auto-registers its adapter on the base entity, which hot-reloads onto
+    this deployment. For full-weight / DPO, deploy the **output** entity with
+    ``lora_enabled=False``.
+
+    Returns:
+        ``(deployment_name, deployment_config_name)`` — pass both to
+        :func:`delete_deployment` for teardown.
+    """
+    deployment_config_name = get_unique_name("e2e-vllm-config")
+    deployment_name = get_unique_name("e2e-vllm")
+
+    model_spec: ModelDeploymentConfigModelSpecParam = {
+        "model_name": model_entity,
+        "model_namespace": workspace,
+        "lora_enabled": lora_enabled,
+    }
+    executor_config: ContainerExecutorConfigParam = {
+        "gpu": gpu,
+        "image_name": image_name,
+        "image_tag": image_tag,
+    }
+    if lora_enabled:
+        executor_config["additional_args"] = ["--enable-lora", "--max-lora-rank", str(max_lora_rank)]
+
+    logger.info("Deploying %s/%s on vLLM (lora_enabled=%s)", workspace, model_entity, lora_enabled)
+    sdk.inference.deployment_configs.create(
+        workspace=workspace,
+        name=deployment_config_name,
+        description=f"E2E vLLM deployment for {model_entity}",
+        model_entity_id=model_entity,
+        engine="vllm",
+        model_spec=model_spec,
+        executor_config=executor_config,
+    )
+    sdk.inference.deployments.create(workspace=workspace, name=deployment_name, config=deployment_config_name)
+    _wait_for_deployment_ready(sdk, workspace, deployment_name, timeout=ready_timeout)
+    _wait_for_gateway_ready(sdk, workspace, deployment_name, timeout=gateway_timeout)
+    logger.info("Deployment %s ready and routable", deployment_name)
+    return deployment_name, deployment_config_name
+
+
+def delete_deployment(
+    sdk: NeMoPlatform,
+    workspace: str,
+    deployment_name: str,
+    deployment_config_name: str | None = None,
+    wait_seconds: int = 30,
+) -> None:
+    """Best-effort teardown of a deployment (+ its config) to free the GPU."""
+    try:
+        sdk.inference.deployments.delete(deployment_name, workspace=workspace)
+        logger.info("Deleted deployment %s", deployment_name)
+        if wait_seconds:
+            time.sleep(wait_seconds)
+    except Exception as exc:  # noqa: BLE001 - teardown is best-effort
+        logger.warning("Failed to delete deployment %s: %s", deployment_name, exc)
+    if deployment_config_name:
+        try:
+            sdk.inference.deployment_configs.delete(deployment_config_name, workspace=workspace)
+            logger.info("Deleted deployment config %s", deployment_config_name)
+        except Exception as exc:  # noqa: BLE001 - teardown is best-effort
+            logger.warning("Failed to delete deployment config %s: %s", deployment_config_name, exc)
 
 
 def deploy_and_test_model(
