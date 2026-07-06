@@ -132,6 +132,7 @@ async def _wait_for_status(
         if status.status in terminal_statuses:
             return
         await asyncio.sleep(POLL_INTERVAL_SECONDS)
+    pytest.fail(f"{name!r} did not reach {terminal_statuses} within {attempts} attempts")
 
 
 @pytest.mark.asyncio
@@ -152,7 +153,8 @@ async def test_pvc_lifecycle(k8s_backend: K8sDeploymentBackend) -> None:
         assert read.status in ("PENDING", "BOUND")
     finally:
         deleted = await k8s_backend.delete_volume("itest-pvc", "data")
-        assert deleted.status == "RELEASED"
+
+    assert deleted.status == "RELEASED"
 
 
 @pytest.mark.asyncio

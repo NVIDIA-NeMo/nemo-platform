@@ -95,7 +95,11 @@ async def test_puller_server_prerequisite_chain(k8s_registry: ExecutorRegistry) 
         workspace: str | None = None,
     ) -> Deployment | DeploymentConfig:
         if entity_type is Deployment:
-            return puller_dep if name == "puller" else server_dep
+            if name == "puller":
+                return puller_dep
+            if name == "server":
+                return server_dep
+            raise KeyError(name)
         if entity_type is DeploymentConfig:
             return config_cache[(workspace or "itest", name)]
         raise KeyError(name)
@@ -133,5 +137,11 @@ async def test_puller_server_prerequisite_chain(k8s_registry: ExecutorRegistry) 
             await asyncio.sleep(POLL_INTERVAL_SECONDS)
         assert server_dep.status in ("READY", "STARTING")
     finally:
-        await backend.delete_deployment("itest", "puller")
-        await backend.delete_deployment("itest", "server")
+        results = await asyncio.gather(
+            backend.delete_deployment("itest", "puller"),
+            backend.delete_deployment("itest", "server"),
+            return_exceptions=True,
+        )
+        for result in results:
+            if isinstance(result, Exception):
+                raise result

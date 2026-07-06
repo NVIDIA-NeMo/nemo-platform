@@ -112,6 +112,15 @@ exercise the k8s backend and reconciler against a real cluster. Like the Docker
 integration tests above, they skip automatically (CI stays green) when no
 cluster is reachable.
 
+**Prerequisites:**
+
+- `kind` and `kubectl` on your `PATH` (for the local run) or an existing
+  cluster context (for the dev-blue run).
+- `uv` for running the test suite.
+- A kubeconfig pointing at a reachable cluster — either the one `kind create
+  cluster` sets automatically, or your own context via `kubectl config
+  use-context`.
+
 **Local run against kind** (no dev-blue access needed):
 
 ```bash
