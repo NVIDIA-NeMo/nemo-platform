@@ -223,8 +223,8 @@ class FilesetsSubResource:
     (unwrapped params, ``exist_ok`` support).
 
     .. deprecated::
-        Temporary shim to maintain the ``sdk.files.nemo_platform.filesets.create(...)`` interface
-        for existing consumers. New code should use ``FilesClient`` directly.
+        Temporary shim for the ``sdk.files`` fileset interface.
+        New code should use ``FilesClient`` directly.
         Once all callers are migrated, this class will be removed.
     """
 
@@ -328,8 +328,8 @@ class AsyncFilesetsSubResource:
     (unwrapped params, ``exist_ok`` support).
 
     .. deprecated::
-        Temporary shim to maintain the ``sdk.files.nemo_platform.filesets.create(...)`` interface
-        for existing consumers. New code should use ``AsyncFilesClient`` directly.
+        Temporary shim for the ``sdk.files`` fileset interface.
+        New code should use ``AsyncFilesClient`` directly.
         Once all callers are migrated, this class will be removed.
     """
 

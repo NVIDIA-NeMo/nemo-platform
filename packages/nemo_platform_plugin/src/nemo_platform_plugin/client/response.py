@@ -102,8 +102,12 @@ class NemoBinaryResponse:
             return data
 
     @contextmanager
-    def stream(self) -> Iterator[Iterator[bytes]]:
+    def stream(self, chunk_size: int | None = None) -> Iterator[Iterator[bytes]]:
         """Yield an iterator of raw byte chunks.
+
+        Args:
+            chunk_size: Maximum number of bytes per chunk. If None, uses the
+                transport's default chunking.
 
         The underlying httpx response is available as ``http_response``
         after entering the context, e.g. for reading ``Content-Length``::
@@ -116,7 +120,7 @@ class NemoBinaryResponse:
         with self._stream_ctx as raw:
             self._http_response = raw
             raise_for_status(raw)
-            yield raw.iter_raw()
+            yield raw.iter_raw(chunk_size) if chunk_size else raw.iter_raw()
 
 
 class NemoStreamResponse(Generic[ModelT]):
@@ -199,8 +203,12 @@ class AsyncNemoBinaryResponse:
             return data
 
     @asynccontextmanager
-    async def stream(self) -> AsyncIterator[AsyncIterator[bytes]]:
+    async def stream(self, chunk_size: int | None = None) -> AsyncIterator[AsyncIterator[bytes]]:
         """Yield an async iterator of raw byte chunks.
+
+        Args:
+            chunk_size: Maximum number of bytes per chunk. If None, uses the
+                transport's default chunking.
 
         The underlying httpx response is available as ``http_response``
         after entering the context, e.g. for reading ``Content-Length``::
@@ -213,7 +221,7 @@ class AsyncNemoBinaryResponse:
         async with self._stream_ctx as raw:
             self._http_response = raw
             raise_for_status(raw)
-            yield raw.aiter_raw()
+            yield raw.aiter_raw(chunk_size) if chunk_size else raw.aiter_raw()
 
 
 class AsyncNemoStreamResponse(Generic[ModelT]):

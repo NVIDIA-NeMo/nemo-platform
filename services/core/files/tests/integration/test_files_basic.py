@@ -349,7 +349,8 @@ class TestFilesBasic:
             pass  # Expected
 
         # Test 3: Try to download non-existent file
-        # File operations go through fsspec which raises NemoHTTPError (not remapped).
+        # Binary/streaming operations raise errors after send() returns (deferred),
+        # so they bypass the _RemappingFilesClient.send() override.
         with create_fileset(sdk) as fileset:
             try:
                 sdk.files.download_content(
@@ -380,7 +381,7 @@ class TestFilesBasic:
                 workspace="non-existent-workspace",
             )
             assert False, "Should have raised NotFoundError"
-        except (NotFoundError, nemo_errors.NotFoundError):
+        except NotFoundError:
             pass  # Expected
 
     def test_fileset_create_conflict(self, sdk: NeMoPlatform):
@@ -406,7 +407,7 @@ class TestFilesBasic:
                 storage={"type": "local", "path": "/etc"},
             )
             assert False, "Should have raised NemoHTTPError for local storage"
-        except (APIStatusError, nemo_errors.NemoHTTPError) as exc:
+        except APIStatusError as exc:
             assert exc.status_code == 400
             assert "local storage is not allowed" in str(exc.body).lower()
 
@@ -423,7 +424,7 @@ class TestFilesBasic:
                 },
             )
             assert False, "Should have raised NemoHTTPError for S3 with use_sdk_auth=True"
-        except (APIStatusError, nemo_errors.NemoHTTPError) as exc:
+        except APIStatusError as exc:
             assert exc.status_code == 400
             assert "use_sdk_auth=true is not allowed" in str(exc.body).lower()
 
@@ -585,7 +586,7 @@ class TestFilesBasic:
     def test_fileset_create_rejects_invalid_dataset_schema_metadata(self, sdk: NeMoPlatform):
         """Test invalid JSON Schema metadata is rejected at fileset create time."""
         with pytest.raises(
-            (APIStatusError, nemo_errors.NemoHTTPError, ValidationError),
+            (APIStatusError, ValidationError),
             match="definitely-not-a-valid-json-schema-type",
         ):
             with create_fileset(
