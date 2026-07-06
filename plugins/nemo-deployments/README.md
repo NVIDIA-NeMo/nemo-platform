@@ -71,7 +71,7 @@ deployments:
       backend: k8s
       config:
         kubeconfig_path: /path/to/kubeconfig  # unset: in-cluster config, then default kubeconfig
-        default_namespace: tbray-dev
+        default_namespace: default  # namespace the controller's ServiceAccount has RBAC in
         request_timeout: 60
   default_executor: local-k8s
 ```
