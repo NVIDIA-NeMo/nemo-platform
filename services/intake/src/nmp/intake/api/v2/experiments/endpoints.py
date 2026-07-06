@@ -37,7 +37,7 @@ from nmp.intake.api.v2.experiments.schemas import (
     ExperimentSessionMode,
     ExperimentSessionResponse,
 )
-from nmp.intake.entities.experiments import Experiment, ExperimentGroup, SortCriterion
+from nmp.intake.entities.experiments import Experiment, ExperimentGroup
 from nmp.intake.spans.api.dependencies import require_workspace_access, validate_list_query_params
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 from nmp.intake.spans.domain import SpanStatus
@@ -386,16 +386,15 @@ async def list_experiments(
             "Field to sort by; prefix with '-' for descending. Sort by an experiment attribute "
             "(name, created_at, updated_at, pinned_at) or by an aggregate metric: run_count, "
             "cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>, where <stat> is one of "
-            "mean, median, p90, p95, p99, sum, count. When omitted, the group's configured default sort "
-            "is used (falling back to -created_at), with pinned experiments first."
+            "mean, median, p90, p95, p99, sum, count. When omitted, defaults to -created_at with pinned "
+            "experiments first."
         ),
     ),
 ) -> Page[ExperimentResponse]:
     validate_list_query_params(request)
     _apply_is_deleted_filter(parsed)
     _apply_is_pinned_filter(parsed)
-    # An explicit `sort` overrides the group's default sort. When omitted, fall back to that default
-    # sort (then -created_at), with pinned experiments floated to the top.
+    # When omitted, fall back to -created_at with pinned experiments floated to the top.
     if sort is not None:
         descending = sort.startswith("-")
         sort_field = sort[1:] if descending else sort
@@ -404,7 +403,7 @@ async def list_experiments(
         pinned_first = False
         explicit_metric_sort = sort_field not in _ENTITY_SORT_FIELDS
     else:
-        sort_keys = await _default_sort_keys(entity_client, parsed)
+        sort_keys = [("created_at", True)]
         pinned_first = True
         explicit_metric_sort = False
     # Rollup-metric predicates live in ClickHouse, not the entity store, so they can't be pushed to
@@ -1106,37 +1105,16 @@ def _experiment_sort_value(response: ExperimentResponse, field: str) -> Any:
     return getattr(score, stat, None) if score is not None else None
 
 
-def _validate_default_sort(default_sort: list[SortCriterion] | None) -> None:
-    """Reject a default sort whose fields aren't numeric rollup metrics (run_count / `<metric>.<stat>`)."""
-    for entry in default_sort or []:
-        if not _is_valid_metric_path(entry.field):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Unsupported sort field: {entry.field}. Use a numeric rollup metric "
-                    "(run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>)."
-                ),
-            )
+def _validate_default_sort(default_sort: str | None) -> None:
+    """Reject a default sort whose field the experiments list can't sort by.
 
-
-async def _default_sort_keys(entity_client: EntityClient, parsed: ParsedFilter) -> list[tuple[str, bool]]:
-    """Resolve the default sort keys when no explicit ``sort`` is passed.
-
-    When the query is scoped to a single experiment_group_id and that group has a default sort, use it
-    in priority order. ``-created_at`` is always appended as the final key so ordering falls back
-    gracefully when sort values are missing/unresolved (or no default sort is set).
+    The value is a ``sort``-param string (optional leading '-' for descending), e.g. ``-cost_usd.mean``;
+    the field must satisfy the same rule as the list ``sort`` query param.
     """
-    keys: list[tuple[str, bool]] = []
-    group_id = parsed.extract("experiment_group_id")
-    if isinstance(group_id, str):
-        try:
-            group = await entity_client.get_by_id(ExperimentGroup, entity_id=group_id)
-        except EntityNotFoundError:
-            group = None
-        if group is not None and group.default_sort:
-            keys = [(entry.field, entry.direction == "desc") for entry in group.default_sort]
-    keys.append(("created_at", True))
-    return keys
+    if default_sort is None:
+        return
+    field = default_sort[1:] if default_sort.startswith("-") else default_sort
+    _validate_sort_field(field)
 
 
 def _sort_experiments(

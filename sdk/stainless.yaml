@@ -904,7 +904,6 @@ resources:
       experiment_group_request: ExperimentGroupRequest
       experiment_group_response: ExperimentGroupResponse
       experiment_group_responses_page: ExperimentGroupResponsesPage
-      sort_criterion: SortCriterion
     methods:
       create: post /apis/intake/v2/workspaces/{workspace}/experiment-groups
       list: get /apis/intake/v2/workspaces/{workspace}/experiment-groups

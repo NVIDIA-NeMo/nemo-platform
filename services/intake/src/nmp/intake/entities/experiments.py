@@ -11,19 +11,10 @@ views. Rollups are derived from ClickHouse at read time.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, ClassVar, Literal
+from typing import Any, ClassVar
 
 from nmp.common.entities.client import EntityBase
-from pydantic import AnyUrl, BaseModel, Field
-
-
-class SortCriterion(BaseModel):
-    """One criterion in a group's default sort: a sortable rollup-metric path and its direction."""
-
-    field: str = Field(
-        description="Rollup-metric sort path, e.g. cost_usd.mean, latency_ms.p95, or evaluators.<name>.mean."
-    )
-    direction: Literal["asc", "desc"] = Field(description="Sort direction for this field.")
+from pydantic import AnyUrl, Field, field_validator
 
 
 class ExperimentGroup(EntityBase):
@@ -41,14 +32,24 @@ class ExperimentGroup(EntityBase):
     )
     summary: str | None = Field(default=None, description="Human- or agent-authored summary of the group's findings.")
     metadata: dict[str, Any] | None = Field(default=None, description="Free-form producer metadata for the group.")
-    default_sort: list[SortCriterion] | None = Field(
-        default=None,
+    default_sort: str = Field(
+        default="-created_at",
         description=(
-            "Ordered default sort in priority order (first is primary, the rest are tiebreakers). When "
-            "set, it is the default order for this group's experiments list. Each field must be a numeric "
-            "rollup metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>."
+            "Default sort for this group's experiments list, as a `sort`-param string (leading '-' = "
+            "descending); defaults to '-created_at'. Accepts any field the experiments list `sort` "
+            "param does. The client applies it as the list `sort` param; this endpoint does not "
+            "consult it."
         ),
     )
+
+    @field_validator("default_sort", mode="before")
+    @classmethod
+    def _default_sort_fallback(cls, value: Any) -> Any:
+        """Upgrade legacy rows to the default. Groups persisted before this field was a non-null string
+        stored ``default_sort`` as ``null`` (or, earlier, a ``SortCriterion`` list); the entity store is
+        schema-on-read, so coerce anything that isn't a usable string to the default on read."""
+        return value if isinstance(value, str) else "-created_at"
+
     is_deleted: bool = Field(
         default=False,
         description=(

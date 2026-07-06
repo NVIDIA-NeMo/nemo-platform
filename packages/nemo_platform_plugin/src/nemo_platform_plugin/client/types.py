@@ -159,6 +159,31 @@ class Paginated(Generic[ModelT, StrategyT]):
 # query_params) and are not treated as path parameters.
 RESERVED_PARAM_NAMES: frozenset[str] = frozenset({"self", "body", "content", "query_params"})
 
+
+class ConflictResolver(Protocol):
+    """Builds the retrieve request to run when a create hits a 409 Conflict.
+
+    Passed to ``@post(..., get_on_conflict=...)`` on a create endpoint. When the
+    create is sent with ``exist_ok=True`` and the server responds 409, the client
+    replays the request this resolver returns and returns *its* entity instead of
+    raising :class:`ConflictError`.
+
+    The resolver receives the create's request ``body`` model and the resolved
+    ``workspace``, and returns a :class:`PreparedRequest` for the matching GET —
+    typically by calling the linked GET endpoint::
+
+        def _get_fileset_on_conflict(
+            body: CreateFilesetRequest, workspace: str | None
+        ) -> PreparedRequest[FilesetOutput]:
+            return get_fileset(name=body.name, workspace=workspace)
+
+    Because the resolver calls the real GET endpoint, its arguments are checked by
+    the type checker at the call site — there is no runtime guessing.
+    """
+
+    def __call__(self, body: Any, workspace: str | None) -> PreparedRequest: ...
+
+
 # Parameters with these names are recognised in endpoint signatures as
 # client-side options.  They are stripped from the HTTP request and stashed
 # in ``PreparedRequest.client_options`` for the client to act on.
@@ -222,6 +247,11 @@ class PreparedRequest(Generic[ResponseT]):
     query_params: dict[str, str | int | bool | None] | None = None
     extra_headers: dict[str, str] | None = None
     client_options: dict[str, Any] | None = None
+    # Prebuilt GET to replay on a 409 when ``exist_ok`` is set. Produced by a
+    # ``get_on_conflict`` resolver at request-build time (the resolver needs the
+    # live ``body`` model, which is serialised away by the time this request is
+    # sent). ``send()`` replays it instead of raising ``ConflictError``.
+    on_conflict_get: PreparedRequest | None = None
 
     def with_headers(self, headers: dict[str, str]) -> PreparedRequest[ResponseT]:
         """Return a new PreparedRequest with additional headers merged in."""

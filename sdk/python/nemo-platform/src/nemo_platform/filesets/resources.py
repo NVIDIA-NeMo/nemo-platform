@@ -255,15 +255,7 @@ class FilesetsSubResource:
             custom_fields=custom_fields or {},
             cache=cache,
         )
-        # The server returns an error body on 409, not the entity, so
-        # exist_ok is handled here with a follow-up GET rather than at
-        # the endpoint/client level.
-        try:
-            return self._client.create_fileset(workspace=workspace, body=body).data()
-        except nemo_platform.APIStatusError as e:
-            if e.status_code == 409 and exist_ok:
-                return self.retrieve(name=name, workspace=workspace)
-            raise
+        return self._client.create_fileset(workspace=workspace, body=body, exist_ok=exist_ok).data()
 
     def retrieve(self, name: str, *, workspace: str | None = None) -> FilesetOutput:
         return self._client.get_fileset(workspace=workspace, name=name).data()
@@ -360,15 +352,7 @@ class AsyncFilesetsSubResource:
             custom_fields=custom_fields or {},
             cache=cache,
         )
-        # The server returns an error body on 409, not the entity, so
-        # exist_ok is handled here with a follow-up GET rather than at
-        # the endpoint/client level.
-        try:
-            return (await self._client.create_fileset(workspace=workspace, body=body)).data()
-        except nemo_platform.APIStatusError as e:
-            if e.status_code == 409 and exist_ok:
-                return await self.retrieve(name=name, workspace=workspace)
-            raise
+        return (await self._client.create_fileset(workspace=workspace, body=body, exist_ok=exist_ok)).data()
 
     async def retrieve(self, name: str, *, workspace: str | None = None) -> FilesetOutput:
         return (await self._client.get_fileset(workspace=workspace, name=name)).data()
@@ -433,9 +417,6 @@ class FilesResource:
     """
 
     def __init__(self, client) -> None:
-        # _raw_client kept for otlp delegation (Stainless SDK), removed by AIRCORE-840.
-        self._raw_client = client
-
         from nemo_platform_plugin.client.adapter import client_from_platform
 
         self._client = client_from_platform(client, _RemappingFilesClient)
@@ -444,13 +425,6 @@ class FilesResource:
     def filesets(self) -> FilesetsSubResource:
         """Access fileset CRUD operations (create, retrieve, update, list, delete)."""
         return FilesetsSubResource(self._client)
-
-    @cached_property
-    def otlp(self):
-        """Access OTLP log operations (delegated to Stainless SDK resource)."""
-        from nemo_platform.resources.files.otlp.otlp import OtlpResource
-
-        return OtlpResource(self._raw_client)
 
     @cached_property
     def fsspec(self) -> FilesetFileSystem:
@@ -965,9 +939,6 @@ class AsyncFilesResource:
     """
 
     def __init__(self, client) -> None:
-        # _raw_client kept for otlp delegation (Stainless SDK), removed by AIRCORE-840.
-        self._raw_client = client
-
         from nemo_platform_plugin.client.adapter import client_from_platform
 
         self._client = client_from_platform(client, _RemappingAsyncFilesClient)
@@ -976,13 +947,6 @@ class AsyncFilesResource:
     def filesets(self) -> AsyncFilesetsSubResource:
         """Access fileset CRUD operations (create, retrieve, update, list, delete)."""
         return AsyncFilesetsSubResource(self._client)
-
-    @cached_property
-    def otlp(self):
-        """Access OTLP log operations (delegated to Stainless SDK resource)."""
-        from nemo_platform.resources.files.otlp.otlp import AsyncOtlpResource
-
-        return AsyncOtlpResource(self._raw_client)
 
     @cached_property
     def fsspec(self) -> FilesetFileSystem:

@@ -17,11 +17,10 @@
 
 from __future__ import annotations
 
-from typing import Dict, Iterable
+from typing import Dict
 from typing_extensions import Required, Annotated, TypedDict
 
 from ..._utils import PropertyInfo
-from .sort_criterion_param import SortCriterionParam
 
 __all__ = ["ExperimentGroupUpdateParams"]
 
@@ -32,11 +31,11 @@ class ExperimentGroupUpdateParams(TypedDict, total=False):
     body_name: Required[Annotated[str, PropertyInfo(alias="name")]]
     """Workspace-unique group name."""
 
-    default_sort: Iterable[SortCriterionParam]
+    default_sort: str
     """
-    Ordered default sort (priority order; first is primary, rest are tiebreakers)
-    for this group's experiments list. Each field must be a numeric rollup metric:
-    run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>.
+    Default sort for this group's experiments list, as a `sort`-param string
+    (leading '-' = descending); defaults to '-created_at'. Accepts any field the
+    experiments list `sort` param does; clients apply it as the list `sort` param.
     """
 
     description: str

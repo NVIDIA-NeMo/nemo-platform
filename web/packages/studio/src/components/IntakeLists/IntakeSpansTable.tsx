@@ -18,6 +18,12 @@ import {
 import { Anchor, Button, Text } from '@nvidia/foundations-react-core';
 import { getErrorMessage } from '@studio/api/common/utils';
 import { IntakeTelemetryStatusBadge } from '@studio/components/IntakeDetail/IntakeComponents/IntakeTelemetryStatusBadge';
+import {
+  isDefaultStartedAtFilter,
+  makeDefaultStartedAtFilter,
+  type StartedAtFilterEntry,
+  useSeededStartedAtFilter,
+} from '@studio/components/IntakeLists/defaultStartedAtFilter';
 import { IntakeTelemetryDataView } from '@studio/components/IntakeLists/IntakeTelemetryDataView';
 import { useWorkspaceFromPathIfExists } from '@studio/hooks/useWorkspaceFromPath';
 import { getIntakeTraceSpanRoute } from '@studio/routes/utils';
@@ -32,7 +38,7 @@ import {
   type SpanTableRow,
 } from '@studio/util/intakeTelemetry';
 import { keepPreviousData } from '@tanstack/react-query';
-import { type ComponentProps, type FC, type ReactNode, useMemo } from 'react';
+import { type ComponentProps, type FC, type ReactNode, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 const SPAN_STATUS_FILTER_OPTIONS = [
@@ -113,7 +119,23 @@ export interface IntakeSpansTableProps {
   onRowClick?: ((span: SpanTableRow) => void) | null;
 }
 
-export const IntakeSpansTable: FC<IntakeSpansTableProps> = ({
+export const IntakeSpansTable: FC<IntakeSpansTableProps> = (props) => {
+  // Seed the default started_at filter into the URL before the table mounts,
+  // so the dataview state initializes from it directly — one render, one
+  // request, no unfiltered first fetch. Scoped embeds (fixedFilter) are
+  // already bounded and skip the seed.
+  const [defaultStartedAtFilter] = useState(() =>
+    props.fixedFilter ? null : makeDefaultStartedAtFilter()
+  );
+  const filtersSeeded = useSeededStartedAtFilter(defaultStartedAtFilter);
+
+  if (!filtersSeeded) return null;
+  return <SeededIntakeSpansTable {...props} defaultStartedAtFilter={defaultStartedAtFilter} />;
+};
+
+const SeededIntakeSpansTable: FC<
+  IntakeSpansTableProps & { defaultStartedAtFilter: StartedAtFilterEntry | null }
+> = ({
   workspace: workspaceProp,
   slotEndPortalTargetId,
   fixedFilter,
@@ -127,6 +149,7 @@ export const IntakeSpansTable: FC<IntakeSpansTableProps> = ({
   emptyStateActions,
   noResultsActions,
   onRowClick,
+  defaultStartedAtFilter,
 }) => {
   const navigate = useNavigate();
   const routeWorkspace = useWorkspaceFromPathIfExists();
@@ -148,7 +171,12 @@ export const IntakeSpansTable: FC<IntakeSpansTableProps> = ({
     defaultPageSize,
   });
 
-  const hasActiveFilters = dataViewState.debouncedColumnFilters.length > 0;
+  // The seeded started_at default doesn't count as user filtering: an empty
+  // workspace should still get the first-run empty state.
+  const hasActiveFilters = dataViewState.debouncedColumnFilters.some(
+    (filter) =>
+      defaultStartedAtFilter === null || !isDefaultStartedAtFilter(filter, defaultStartedAtFilter)
+  );
 
   const {
     data: spansResponse,

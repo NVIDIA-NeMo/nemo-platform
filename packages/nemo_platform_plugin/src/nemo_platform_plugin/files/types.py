@@ -155,3 +155,23 @@ class ListFilesetsQueryParams(TypedDict, total=False):
 class ListFilesQueryParams(TypedDict, total=False):
     path: NotRequired[str]
     include_cache_status: NotRequired[bool]
+
+
+# ---------------------------------------------------------------------------
+# OTLP types
+# ---------------------------------------------------------------------------
+
+
+class OtlpLogQueryRequest(BaseModel):
+    filters: dict[str, str] = Field(default_factory=dict)
+    limit: int | None = None
+    page_cursor: str | None = None
+
+
+class OtlpExportLogsPartialSuccess(BaseModel):
+    error_message: str | None = Field(default=None, alias="errorMessage")
+    rejected_log_records: int | None = Field(default=None, alias="rejectedLogRecords")
+
+
+class OtlpExportLogsResponse(BaseModel):
+    partial_success: OtlpExportLogsPartialSuccess | None = Field(default=None, alias="partialSuccess")
