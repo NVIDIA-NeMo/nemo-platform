@@ -87,7 +87,7 @@ The `DeploymentsController` runs inside the `nmp-core` controller pod
 existing ServiceAccount and Role rather than a dedicated one. The deploy
 chart's `k8s/helm/templates/core/controller-role.yaml` grants that Role the
 verbs the k8s backend needs in `.Release.Namespace`: `get`/`list`/`watch` on
-pods and pods/log, `create`/`get`/`list`/`watch`/`update`/`patch`/`delete` on
+pods, `get`/`list` on pods/log, `create`/`get`/`list`/`watch`/`update`/`patch`/`delete` on
 `batch/v1.Job`, `get`/`list`/`create`/`delete` on PVCs, ConfigMaps, and
 Services, and `get`/`list`/`watch`/`create`/`delete` on `apps/v1.Deployment`.
 
