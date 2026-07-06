@@ -1,0 +1,89 @@
+# email-phishing-optimize.yml
+#
+# Optimization config for the email phishing analyzer.
+#
+# Tunes the agent LLM's hyperparameters (temperature, top_p) with Optuna-based
+# numeric optimization to maximize recall on the classification benchmark. The
+# eval section reuses the same dataset and classification evaluators as
+# email-phishing-eval.yml.
+#
+# Usage:
+#
+#   nemo agents optimize run \
+#       --optimize-config examples/email-phishing-analyzer/email-phishing-optimize.yml \
+#       --agent email-phishing-analyzer
+#
+# See the NAT Optimizer Guide for search spaces, prompt GA, and multi-objective
+# tuning: https://docs.nvidia.com/nemo/agent-toolkit/latest/improve-workflows/optimizer.html
+
+llms:
+  # LLM used by the agent workflow — its hyperparameters are optimized.
+  # base_url and api_key are injected automatically by the platform (routes through
+  # the Inference Gateway). ${NEMO_DEFAULT_MODEL} resolves to the model configured
+  # on the SDK context so the example works against whichever model the platform has
+  # registered as a VirtualModel.
+  llm:
+    _type: openai
+    model_name: ${NEMO_DEFAULT_MODEL}
+    temperature: 0.0
+    max_tokens: 512
+    optimizable_params:
+      - temperature
+      - top_p
+    search_space:
+      temperature:
+        low: 0.0
+        high: 0.8
+        step: 0.2
+      top_p:
+        low: 0.5
+        high: 1.0
+        step: 0.1
+
+# Evaluation section — used by the optimizer to score each trial.
+eval:
+  general:
+    max_concurrency: 4
+    output_dir: eval/email-phishing
+    dataset:
+      _type: csv
+      file_path: email-phishing-eval-data.csv
+      id_key: subject
+      structure:
+        question_key: body
+        answer_key: label
+  evaluators:
+    recall:
+      _type: email_phishing_classification
+      metric: recall
+      positive_label: phishing
+      negative_label: benign
+    accuracy:
+      _type: email_phishing_classification
+      metric: accuracy
+      positive_label: phishing
+      negative_label: benign
+
+# Optimizer section — controls the tuning strategy.
+optimizer:
+  output_path: optimizer_results/email-phishing
+
+  # Numeric (Optuna) hyperparameter search over temperature and top_p.
+  numeric:
+    enabled: true
+    n_trials: 3
+
+  # Prompt GA is disabled here; the ``prompt`` field on the tool is optimizable
+  # (see register.py) and can be enabled with prompt-type search spaces.
+  prompt:
+    enabled: false
+
+  # Run the workflow twice per parameter set for more stable scoring.
+  reps_per_param_set: 2
+
+  # Recall is the headline metric to maximize.
+  eval_metrics:
+    recall:
+      evaluator_name: recall
+      direction: maximize
+      weight: 1.0

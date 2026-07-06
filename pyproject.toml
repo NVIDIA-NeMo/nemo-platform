@@ -373,6 +373,7 @@ nemo-switchyard = { workspace = true }
 nemo-agents-plugin = { workspace = true }
 nemo-deployments-plugin = { workspace = true }
 nemo-agents-example-calculator = { workspace = true }
+nemo-agents-example-email-phishing = { workspace = true }
 nemo-customizer-plugin = { workspace = true }
 nemo-automodel-plugin = { workspace = true }
 nemo-unsloth-plugin = { workspace = true }
@@ -429,6 +430,7 @@ members = [
   "plugins/nemo-agents",
   "plugins/nemo-deployments",
   "plugins/nemo-agents/examples/calculator-agent",
+  "plugins/nemo-agents/examples/email-phishing-analyzer",
   "plugins/nemo-customizer",
   "plugins/nemo-automodel",
   "plugins/nemo-unsloth",
@@ -536,6 +538,10 @@ extra-paths = [
   # nemo-agents plugin is not a workspace member; add its src so ty can
   # resolve nemo_agents_plugin imports when checking plugin test files.
   "plugins/nemo-agents/src",
+  # email-phishing-analyzer example ships multiple intra-package modules; add
+  # its src so ty can resolve ``email_phishing_analyzer`` and the ``.utils`` /
+  # ``.prompt`` relative imports from its modules and test files.
+  "plugins/nemo-agents/examples/email-phishing-analyzer/src",
   # example-plugin is not a workspace member; add its src so ty can
   # resolve nmp.example_plugin imports when checking plugin test files.
   "plugins/example-plugin/src",

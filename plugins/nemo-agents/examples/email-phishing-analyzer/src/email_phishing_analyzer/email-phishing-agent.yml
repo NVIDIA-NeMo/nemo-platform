@@ -1,0 +1,54 @@
+# email-phishing-agent.yml
+#
+# A ReAct agent that classifies an email body as "phishing" or "benign" using the
+# ``email_phishing_analyzer`` tool. Ported from NeMo-Agent-Toolkit's
+# examples/evaluation_and_profiling/email_phishing_analyzer, wired for the NeMo
+# Platform (traffic routes through the Inference Gateway; no base_url/api_key in
+# config). Install the sibling package so NAT loads its ``nat.components`` entry
+# point:
+#
+#   uv pip install -e plugins/nemo-agents/examples/email-phishing-analyzer
+#
+# Platform-managed deployment:
+#   nemo agents create --name email-phishing-analyzer \
+#     --agent-config plugins/nemo-agents/examples/email-phishing-analyzer/src/email_phishing_analyzer/email-phishing-agent.yml
+#   nemo agents deploy  --agent email-phishing-analyzer
+#   nemo agents invoke  --agent email-phishing-analyzer \
+#     --input "Dear customer, verify your account at http://verify-example.com or it will be suspended."
+
+functions:
+  email_phishing_analyzer:
+    _type: email_phishing_analyzer   # requires nemo-agents-example-email-phishing (pip install this dir)
+    llm: llm
+    prompt: |
+      Examine the following email content and determine if it exhibits signs of malicious intent. Look for any
+      suspicious signals that may indicate phishing, such as requests for personal information or suspicious tone.
+
+      Email content:
+      {body}
+
+      Return your findings as a JSON object with these fields:
+
+      - is_likely_phishing: (boolean) true if phishing is suspected
+      - explanation: (string) detailed explanation of your reasoning
+
+llms:
+  llm:
+    _type: openai
+    # base_url is injected by the platform controller at deploy time.
+    # For local runs, override: --override llms.llm.base_url https://integrate.api.nvidia.com/v1
+    api_key: not-used
+    model_name: ${NEMO_DEFAULT_MODEL}
+    temperature: 0.0
+    max_tokens: 512
+
+workflow:
+  _type: react_agent
+  tool_names: [email_phishing_analyzer]
+  llm_name: llm
+  verbose: false
+  parse_agent_response_max_retries: 3
+  # Use the LLM's native tool-calling API instead of NAT's text-mode ReAct regex
+  # parser, which rejects tool-call output followed by trailing prose.
+  use_native_tool_calling: true
+  additional_instructions: The final response should indicate that the email is either "phishing" or "benign".

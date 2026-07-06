@@ -1,0 +1,59 @@
+# email-phishing-eval.yml
+#
+# Classification benchmark for the email phishing analyzer.
+#
+# This config is eval-only (no agent workflow). The agent runs remotely (already
+# deployed) and its endpoint is passed via the CLI:
+#
+#   nemo agents evaluate run \
+#       --eval-config examples/email-phishing-analyzer/email-phishing-eval.yml \
+#       --agent email-phishing-analyzer
+#
+# The four ``email_phishing_classification`` evaluators compute binary-classification
+# metrics over the whole dataset from a single confusion matrix (positive class =
+# phishing). Each entry exposes one metric as its ``average_score``:
+#   recall  <- headline metric (fraction of real phishing emails caught)
+#   precision, accuracy, f1
+#
+# The profiler section produces the token and latency aggregates (avg tokens/call,
+# workflow runtime) needed for the cost/quality before-after comparison.
+
+eval:
+  general:
+    max_concurrency: 4
+    output_dir: eval/email-phishing
+    dataset:
+      _type: csv
+      file_path: email-phishing-eval-data.csv
+      id_key: subject
+      structure:
+        question_key: body
+        answer_key: label
+    profiler:
+      # Token and latency aggregates for the cost/quality comparison.
+      compute_llm_metrics: true
+      token_uniqueness_forecast: true
+      workflow_runtime_forecast: true
+      csv_exclude_io_text: true
+
+  evaluators:
+    recall:
+      _type: email_phishing_classification
+      metric: recall
+      positive_label: phishing
+      negative_label: benign
+    precision:
+      _type: email_phishing_classification
+      metric: precision
+      positive_label: phishing
+      negative_label: benign
+    accuracy:
+      _type: email_phishing_classification
+      metric: accuracy
+      positive_label: phishing
+      negative_label: benign
+    f1:
+      _type: email_phishing_classification
+      metric: f1
+      positive_label: phishing
+      negative_label: benign

@@ -102,6 +102,8 @@ RUN /app/.venv/bin/python -c "import nmp.core.jobs; import nmp.core.entities; pr
 # - nvidia-nat-mcp: mcp_client function type support.
 # - plugins/nemo-agents: exposes `nemo agents ...` commands.
 # - examples/calculator-agent: registers `_type: calculator` function group.
+# - examples/email-phishing-analyzer: registers the `_type: email_phishing_analyzer`
+#   tool and the `_type: email_phishing_classification` evaluator (first-mile demo).
 #
 # All nvidia-nat* packages MUST be pinned to the same version. The CLI/meta
 # package historically lagged the plugin packages (e.g. nvidia-nat==1.4.3 vs
@@ -111,6 +113,7 @@ RUN uv pip install --python /app/.venv/bin/python \
         "nvidia-nat[most]==1.7.0" nvidia-nat-atif==1.7.0 nvidia-nat-eval==1.7.0 nvidia-nat-mcp==1.7.0 && \
     uv pip install --python /app/.venv/bin/python -e /app/plugins/nemo-agents && \
     uv pip install --python /app/.venv/bin/python -e /app/plugins/nemo-agents/examples/calculator-agent && \
+    uv pip install --python /app/.venv/bin/python -e /app/plugins/nemo-agents/examples/email-phishing-analyzer && \
     chown -R harbor:harbor /app/.venv
 
 # Set environment variable for NeMo Platform API base URL

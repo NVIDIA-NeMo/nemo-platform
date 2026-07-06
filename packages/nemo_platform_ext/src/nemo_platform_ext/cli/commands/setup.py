@@ -228,7 +228,7 @@ _CONTROLLER_HEALTH_RETRY_DELAY = 3.0
 _POST_START_REACHABLE_RETRIES = 6
 _POST_START_REACHABLE_DELAY = 2.0
 
-_DEMO_AGENT_NAME = "calculator-agent"
+_DEMO_AGENT_NAME = "email-phishing-analyzer"
 
 
 def _pause(seconds: float) -> None:
@@ -1124,13 +1124,13 @@ def _agents_plugin_available() -> bool:
 
 
 def _agent_config_path() -> Traversable | None:
-    """Return the path to the calculator-agent demo config YAML, or None."""
+    """Return the path to the email-phishing-analyzer demo config YAML, or None."""
     try:
-        candidate = files("calculator_agent").joinpath("calculator-agent.yml")
+        candidate = files("email_phishing_analyzer").joinpath("email-phishing-agent.yml")
         if candidate.is_file():
             return candidate
     except (ImportError, ModuleNotFoundError):
-        logger.debug("calculator_agent package not importable; demo agent config unavailable", exc_info=True)
+        logger.debug("email_phishing_analyzer package not importable; demo agent config unavailable", exc_info=True)
 
     return None
 
@@ -1160,7 +1160,7 @@ def _agents_api_ready(base_url: str, workspace: str) -> bool:
 
 
 def _deploy_demo_agent(base_url: str, workspace: str, config_path: Traversable, default_model: str) -> bool:
-    """Create and deploy the demo calculator agent. Returns True on success."""
+    """Create and deploy the demo email-phishing-analyzer agent. Returns True on success."""
     # Optional plugin: import here so ``nemo setup`` works without nemo-agents installed.
     from nemo_agents_plugin.utils import expand_env_vars
 
@@ -1169,7 +1169,7 @@ def _deploy_demo_agent(base_url: str, workspace: str, config_path: Traversable, 
     if not _agent_exists(base_url, workspace):
         config_dict = _yaml.safe_load(config_path.read_text(encoding="utf-8"))
         config_dict = expand_env_vars(config_dict, vars_dict={"NEMO_DEFAULT_MODEL": default_model})
-        payload = {"name": _DEMO_AGENT_NAME, "description": "Demo calculator agent", "config": config_dict}
+        payload = {"name": _DEMO_AGENT_NAME, "description": "Demo email phishing analyzer agent", "config": config_dict}
         resp = httpx.post(
             f"{api_base}/apis/agents/v2/workspaces/{workspace}/agents",
             json=payload,
@@ -1229,7 +1229,7 @@ def _maybe_deploy_agent(
     deploy_agent: bool | None,
     default_model: str | None = None,
 ) -> bool:
-    """Optionally deploy the demo calculator agent.
+    """Optionally deploy the demo email-phishing-analyzer agent.
 
     In interactive mode (auto=False), prompts the user if deploy_agent is None.
     Default is **no** -- the demo is opt-in for users who don't have their own
@@ -1249,7 +1249,7 @@ def _maybe_deploy_agent(
             return False
         console.print(
             "  NeMo Platform optimizes AI agents. If you don't have your own\n"
-            "  agent yet, you can deploy a demo calculator agent to try things out.\n"
+            "  agent yet, you can deploy a demo email-phishing-analyzer agent to try things out.\n"
         )
         should_deploy = (
             prompt_choice(
@@ -1272,7 +1272,7 @@ def _maybe_deploy_agent(
 
     config_path = _agent_config_path()
     if config_path is None:
-        console.print(f"  {WARN} Could not find calculator-agent config YAML, skipping agent deployment")
+        console.print(f"  {WARN} Could not find email-phishing-analyzer config YAML, skipping agent deployment")
         return False
 
     start = time.monotonic()
@@ -1632,7 +1632,7 @@ def setup_command(
     ] = None,
     deploy_agent: Annotated[
         bool | None,
-        typer.Option("--deploy-agent/--no-deploy-agent", help="Deploy the demo calculator agent"),
+        typer.Option("--deploy-agent/--no-deploy-agent", help="Deploy the demo email-phishing-analyzer agent"),
     ] = None,
     ready_timeout: Annotated[
         int | None,

@@ -1,0 +1,1656 @@
+subject,body,label
+Vandelay monthly newsletter,"Hello,
+Here's what happened at Vandelay this month: a new office opened, the People Ops team shipped a feature, and we welcomed five new hires. Read the full stories on our internal wiki.
+Have a great week,
+The Vandelay Comms Team",benign
+Urgent request - confidential,"Hi Diego,
+I'm in back-to-back meetings and need you to handle something discreetly. Please purchase four $1,240.00 gift cards for a client and send me the codes right away. I'll approve the reimbursement afterward. Do not loop in anyone else yet.
+Thanks,
+The CEO",phishing
+Wayne Enterprises monthly newsletter,"Hello,
+Here's what happened at Wayne Enterprises this month: a new office opened, the Sales team shipped a feature, and we welcomed five new hires. Read the full stories on our internal wiki.
+Have a great week,
+The Wayne Enterprises Comms Team",benign
+Stark Industries monthly newsletter,"Hello,
+Here's what happened at Stark Industries this month: a new office opened, the Marketing team shipped a feature, and we welcomed five new hires. Read the full stories on our internal wiki.
+Have a great week,
+The Stark Industries Comms Team",benign
+Your Dropbox password will expire in 2 hours,"Dear user,
+Your password is about to expire. To keep your account active, re-enter your current password and confirm a new one immediately at:
+http://dropbox-secure.example.com/verify?id=17847
+Ignoring this message will lock you out of your mailbox.
+IT Helpdesk",phishing
+Your receipt from Soylent,"Hi Diego,
+Thanks for your purchase. Your order total was $1,240.00 and it will arrive in 3-5 business days. No action is needed; this email is for your records.
+Soylent Support",benign
+Open enrollment starts next week,"Hi everyone,
+Benefits open enrollment begins Tuesday. Review your options in the HR portal at your convenience before the end of the month. Reach out to People Ops with any questions.
+Best,
+Liam, People Ops",benign
+Your FedEx password will expire in 2 hours,"Dear user,
+Your password is about to expire. To keep your account active, re-enter your current password and confirm a new one immediately at:
+http://fedex-secure.example.com/verify?id=94464
+Ignoring this message will lock you out of your mailbox.
+IT Helpdesk",phishing
+You're invited: Wayne Enterprises tech talk on Wednesday,"Hi Liam,
+We're hosting an internal tech talk on Wednesday at 1pm covering our latest IT work. Add it to your calendar if you're interested - the recording will be shared afterward.
+See you there,
+Jordan",benign
+Your Amazon password will expire in 2 hours,"Dear user,
+Your password is about to expire. To keep your account active, re-enter your current password and confirm a new one immediately at:
+http://amazon-secure.example.com/verify?id=10001
+Ignoring this message will lock you out of your mailbox.
+IT Helpdesk",phishing
+You're invited: Wonka tech talk on Monday,"Hi Morgan,
+We're hosting an internal tech talk on Monday at 2pm covering our latest Sales work. Add it to your calendar if you're interested - the recording will be shared afterward.
+See you there,
+Leo",benign
+IRS notice: you are eligible for a tax refund,"Dear taxpayer,
+You are eligible for a refund of $1,240.00. To process your refund, confirm your social security number and bank routing details through the secure form:
+http://amazon-secure.example.com/verify?id=86915
+This request must be completed within 48 hours.",phishing
+PayPal: your package could not be delivered,"Hi,
+We attempted to deliver your parcel but were unable to complete it due to an unpaid customs fee of $1,240.00. Reschedule delivery and pay the fee within 12 hours here:
+http://paypal-secure.example.com/verify?id=60640
+Unclaimed packages are returned to sender.
+PayPal Delivery",phishing
+Calendar invite: 1:1 on Friday,"Hi Sam,
+Sending over a calendar invite for our 1:1 on Friday at 9am. Feel free to add anything you'd like to discuss to the shared notes doc.
+Talk soon,
+Chen",benign
+Reminder: Marketing sync on Tuesday,"Hi team,
+Just a reminder that our Marketing sync is on Tuesday at 9am. Agenda: status updates and next week's priorities. Let me know if you can't make it.
+Thanks,
+Noah",benign
+Open enrollment starts next week,"Hi everyone,
+Benefits open enrollment begins Wednesday. Review your options in the HR portal at your convenience before the end of the month. Reach out to People Ops with any questions.
+Best,
+Raj, People Ops",benign
+"Claim your $1,000 gift card now","Dear valued customer,
+Congratulations! You have been selected to receive a free reward. To claim your prize, simply confirm your shipping address and card details at the link below.
+http://microsoft-365-secure.example.com/verify?id=77249
+This exclusive offer expires tonight, so act fast!",phishing
+Your receipt from Wonka,"Hi Jordan,
+Thanks for your purchase. Your order total was $540.00 and it will arrive in 3-5 business days. No action is needed; this email is for your records.
+Wonka Support",benign
+Are you available?,"Hi Fatima,
+I'm in back-to-back meetings and need you to handle something discreetly. Please purchase four $540.00 gift cards for a client and send me the codes right away. I'll approve the reimbursement afterward. Do not loop in anyone else yet.
+Thanks,
+The CEO",phishing
+You're invited: Cyberdyne tech talk on Tuesday,"Hi Omar,
+We're hosting an internal tech talk on Tuesday at 10:30am covering our latest Finance work. Add it to your calendar if you're interested - the recording will be shared afterward.
+See you there,
+Ivan",benign
+Apple: your package could not be delivered,"Hi,
+We attempted to deliver your parcel but were unable to complete it due to an unpaid customs fee of $540.00. Reschedule delivery and pay the fee within 12 hours here:
+http://apple-secure.example.com/verify?id=88428
+Unclaimed packages are returned to sender.
+Apple Delivery",phishing
+Project update: Vandelay rollout,"Hi Fatima,
+Quick update: we finished the first milestone ahead of schedule and testing looks good. I'll share the deck before Tuesday. Let me know if you'd like to review earlier.
+Cheers,
+Morgan",benign
+Project update: Umbrella rollout,"Hi Sofia,
+Quick update: we finished the first milestone ahead of schedule and testing looks good. I'll share the deck before Thursday. Let me know if you'd like to review earlier.
+Cheers,
+Omar",benign
+IRS notice: you are eligible for a tax refund,"Dear taxpayer,
+You are eligible for a refund of $128.50. To process your refund, confirm your social security number and bank routing details through the secure form:
+http://netflix-secure.example.com/verify?id=34699
+This request must be completed within 48 hours.",phishing
+Reminder: Legal sync on Thursday,"Hi team,
+Just a reminder that our Legal sync is on Thursday at 1pm. Agenda: status updates and next week's priorities. Let me know if you can't make it.
+Thanks,
+Yuki",benign
+Leo shared a document with you,"Leo has shared a confidential file 'Budget.xlsx' with you on Microsoft 365. Sign in with your work email and password to view it:
+http://microsoft-365-secure.example.com/verify?id=93452
+This link is available for a limited time.",phishing
+Open enrollment starts next week,"Hi everyone,
+Benefits open enrollment begins Wednesday. Review your options in the HR portal at your convenience before the end of the month. Reach out to People Ops with any questions.
+Best,
+Chen, People Ops",benign
+IRS notice: you are eligible for a tax refund,"Dear taxpayer,
+You are eligible for a refund of $2,310.75. To process your refund, confirm your social security number and bank routing details through the secure form:
+http://microsoft-365-secure.example.com/verify?id=98323
+This request must be completed within 48 hours.",phishing
+Double your Bitcoin in 24 hours - limited event,"Hello investor,
+Our exclusive Contoso crypto event guarantees a 100% return. Send any amount to the wallet on the page below and receive double back instantly.
+http://fedex-secure.example.com/verify?id=28105
+Verified by thousands of happy users. Offer ends at midnight.",phishing
+You are today's lucky PayPal winner!,"Dear valued customer,
+Congratulations! You have been selected to receive a free reward. To claim your prize, simply confirm your shipping address and card details at the link below.
+http://paypal-secure.example.com/verify?id=75337
+This exclusive offer expires tonight, so act fast!",phishing
+Action required: unusual sign-in on your Netflix account,"Dear customer,
+We detected unusual activity on your Netflix account. To avoid permanent suspension, you must verify your identity within 24 hours by clicking the link below and entering your username, password, and one-time code.
+http://netflix-secure.example.com/verify?id=91678
+Failure to act will result in your account being disabled.
+Regards,
+Netflix Security Team",phishing
+Reminder: Marketing sync on Wednesday,"Hi team,
+Just a reminder that our Marketing sync is on Wednesday at 2pm. Agenda: status updates and next week's priorities. Let me know if you can't make it.
+Thanks,
+Emma",benign
+Are you available?,"Hi Grace,
+I'm in back-to-back meetings and need you to handle something discreetly. Please purchase four $999.00 gift cards for a client and send me the codes right away. I'll approve the reimbursement afterward. Do not loop in anyone else yet.
+Thanks,
+The CEO",phishing
+"Claim your $1,000 gift card now","Dear valued customer,
+Congratulations! You have been selected to receive a free reward. To claim your prize, simply confirm your shipping address and card details at the link below.
+http://microsoft-365-secure.example.com/verify?id=59038
+This exclusive offer expires tonight, so act fast!",phishing
+IRS notice: you are eligible for a tax refund,"Dear taxpayer,
+You are eligible for a refund of $999.00. To process your refund, confirm your social security number and bank routing details through the secure form:
+http://microsoft-365-secure.example.com/verify?id=98440
+This request must be completed within 48 hours.",phishing
+"Claim your $1,000 gift card now","Dear valued customer,
+Congratulations! You have been selected to receive a free reward. To claim your prize, simply confirm your shipping address and card details at the link below.
+http://docusign-secure.example.com/verify?id=18310
+This exclusive offer expires tonight, so act fast!",phishing
+IRS notice: you are eligible for a tax refund,"Dear taxpayer,
+You are eligible for a refund of $76.20. To process your refund, confirm your social security number and bank routing details through the secure form:
+http://netflix-secure.example.com/verify?id=83225
+This request must be completed within 48 hours.",phishing
+You're invited: Acme tech talk on Friday,"Hi Jordan,
+We're hosting an internal tech talk on Friday at 10:30am covering our latest Finance work. Add it to your calendar if you're interested - the recording will be shared afterward.
+See you there,
+Fatima",benign
+Double your Bitcoin in 24 hours - limited event,"Hello investor,
+Our exclusive Hooli crypto event guarantees a 100% return. Send any amount to the wallet on the page below and receive double back instantly.
+http://microsoft-365-secure.example.com/verify?id=27708
+Verified by thousands of happy users. Offer ends at midnight.",phishing
+Reminder: IT sync on Wednesday,"Hi team,
+Just a reminder that our IT sync is on Wednesday at 1pm. Agenda: status updates and next week's priorities. Let me know if you can't make it.
+Thanks,
+Taylor",benign
+Urgent request - confidential,"Hi Taylor,
+I'm in back-to-back meetings and need you to handle something discreetly. Please purchase four $999.00 gift cards for a client and send me the codes right away. I'll approve the reimbursement afterward. Do not loop in anyone else yet.
+Thanks,
+The CEO",phishing
+You're invited: Hooli tech talk on Wednesday,"Hi Noah,
+We're hosting an internal tech talk on Wednesday at 3:15pm covering our latest IT work. Add it to your calendar if you're interested - the recording will be shared afterward.
+See you there,
+Sam",benign
+Liam shared a document with you,"Liam has shared a confidential file 'Bonus-List.xlsx' with you on Microsoft 365. Sign in with your work email and password to view it:
+http://microsoft-365-secure.example.com/verify?id=96847
+This link is available for a limited time.",phishing
+Invoice 8744 overdue - immediate payment required,"Hello,
+Our records show an unpaid balance of $49.99. To avoid a late fee and service interruption, please review and settle the invoice using the secure portal below.
+http://fedex-secure.example.com/verify?id=50148
+If payment is not received today, the account will be forwarded to collections.
+Accounts Receivable",phishing
+Reminder: IT sync on Tuesday,"Hi team,
+Just a reminder that our IT sync is on Tuesday at 9am. Agenda: status updates and next week's priorities. Let me know if you can't make it.
+Thanks,
+Raj",benign
+You're invited: Soylent tech talk on Thursday,"Hi Emma,
+We're hosting an internal tech talk on Thursday at 1pm covering our latest Marketing work. Add it to your calendar if you're interested - the recording will be shared afterward.
+See you there,
+Sofia",benign
+"Claim your $1,000 gift card now","Dear valued customer,
+Congratulations! You have been selected to receive a free reward. To claim your prize, simply confirm your shipping address and card details at the link below.
+http://netflix-secure.example.com/verify?id=72036
+This exclusive offer expires tonight, so act fast!",phishing
+Open enrollment starts next week,"Hi everyone,
+Benefits open enrollment begins Thursday. Review your options in the HR portal at your convenience before the end of the month. Reach out to People Ops with any questions.
+Best,
+Sam, People Ops",benign
+You're invited: Northwind tech talk on Monday,"Hi Liam,
+We're hosting an internal tech talk on Monday at 9am covering our latest Sales work. Add it to your calendar if you're interested - the recording will be shared afterward.
+See you there,
+Noah",benign
+Urgent request - confidential,"Hi Jordan,
+I'm in back-to-back meetings and need you to handle something discreetly. Please purchase four $999.00 gift cards for a client and send me the codes right away. I'll approve the reimbursement afterward. Do not loop in anyone else yet.
+Thanks,
+The CEO",phishing
+Urgent request - confidential,"Hi Morgan,
+I'm in back-to-back meetings and need you to handle something discreetly. Please purchase four $76.20 gift cards for a client and send me the codes right away. I'll approve the reimbursement afterward. Do not loop in anyone else yet.
+Thanks,
+The CEO",phishing
+Your receipt from Initech,"Hi Taylor,
+Thanks for your purchase. Your order total was $49.99 and it will arrive in 3-5 business days. No action is needed; this email is for your records.
+Initech Support",benign
+Your receipt from Umbrella,"Hi Grace,
+Thanks for your purchase. Your order total was $76.20 and it will arrive in 3-5 business days. No action is needed; this email is for your records.
+Umbrella Support",benign
+Reminder: IT sync on Wednesday,"Hi team,
+Just a reminder that our IT sync is on Wednesday at 1pm. Agenda: status updates and next week's priorities. Let me know if you can't make it.
+Thanks,
+Jordan",benign
+DHL: your package could not be delivered,"Hi,
+We attempted to deliver your parcel but were unable to complete it due to an unpaid customs fee of $49.99. Reschedule delivery and pay the fee within 12 hours here:
+http://dhl-secure.example.com/verify?id=65447
+Unclaimed packages are returned to sender.
+DHL Delivery",phishing
+IRS notice: you are eligible for a tax refund,"Dear taxpayer,
+You are eligible for a refund of $2,310.75. To process your refund, confirm your social security number and bank routing details through the secure form:
+http://amazon-secure.example.com/verify?id=66840
+This request must be completed within 48 hours.",phishing
+You're invited: Initech tech talk on Tuesday,"Hi Grace,
+We're hosting an internal tech talk on Tuesday at 2pm covering our latest Sales work. Add it to your calendar if you're interested - the recording will be shared afterward.
+See you there,
+Olivia",benign
+Calendar invite: 1:1 on Monday,"Hi Omar,
+Sending over a calendar invite for our 1:1 on Monday at 2pm. Feel free to add anything you'd like to discuss to the shared notes doc.
+Talk soon,
+Taylor",benign
+Acme monthly newsletter,"Hello,
+Here's what happened at Acme this month: a new office opened, the Legal team shipped a feature, and we welcomed five new hires. Read the full stories on our internal wiki.
+Have a great week,
+The Acme Comms Team",benign
+Amazon: your package could not be delivered,"Hi,
+We attempted to deliver your parcel but were unable to complete it due to an unpaid customs fee of $14.30. Reschedule delivery and pay the fee within 12 hours here:
+http://amazon-secure.example.com/verify?id=48113
+Unclaimed packages are returned to sender.
+Amazon Delivery",phishing
+Calendar invite: 1:1 on Thursday,"Hi Leo,
+Sending over a calendar invite for our 1:1 on Thursday at 10:30am. Feel free to add anything you'd like to discuss to the shared notes doc.
+Talk soon,
+Sam",benign
+Cyberdyne monthly newsletter,"Hello,
+Here's what happened at Cyberdyne this month: a new office opened, the Sales team shipped a feature, and we welcomed five new hires. Read the full stories on our internal wiki.
+Have a great week,
+The Cyberdyne Comms Team",benign
+Open enrollment starts next week,"Hi everyone,
+Benefits open enrollment begins Monday. Review your options in the HR portal at your convenience before the end of the month. Reach out to People Ops with any questions.
+Best,
+Jordan, People Ops",benign
+Open enrollment starts next week,"Hi everyone,
+Benefits open enrollment begins Thursday. Review your options in the HR portal at your convenience before the end of the month. Reach out to People Ops with any questions.
+Best,
+Olivia, People Ops",benign
+IRS notice: you are eligible for a tax refund,"Dear taxpayer,
+You are eligible for a refund of $76.20. To process your refund, confirm your social security number and bank routing details through the secure form:
+http://fedex-secure.example.com/verify?id=87097
+This request must be completed within 48 hours.",phishing
+Scheduled maintenance this weekend,"Hello,
+IT will perform scheduled maintenance on internal tools this Saturday from 10pm to 2am. No action is required and you don't need to enter any credentials. Systems may be briefly unavailable during that window.
+Vandelay IT",benign
+You're invited: Pied Piper tech talk on Tuesday,"Hi Emma,
+We're hosting an internal tech talk on Tuesday at 3:15pm covering our latest Sales work. Add it to your calendar if you're interested - the recording will be shared afterward.
+See you there,
+Omar",benign
+Morgan shared a document with you,"Morgan has shared a confidential file 'Budget.xlsx' with you on Netflix. Sign in with your work email and password to view it:
+http://netflix-secure.example.com/verify?id=96345
+This link is available for a limited time.",phishing
+Stark Industries monthly newsletter,"Hello,
+Here's what happened at Stark Industries this month: a new office opened, the Legal team shipped a feature, and we welcomed five new hires. Read the full stories on our internal wiki.
+Have a great week,
+The Stark Industries Comms Team",benign
+"Claim your $1,000 gift card now","Dear valued customer,
+Congratulations! You have been selected to receive a free reward. To claim your prize, simply confirm your shipping address and card details at the link below.
+http://dropbox-secure.example.com/verify?id=55498
+This exclusive offer expires tonight, so act fast!",phishing
+Calendar invite: 1:1 on Friday,"Hi Leo,
+Sending over a calendar invite for our 1:1 on Friday at 1pm. Feel free to add anything you'd like to discuss to the shared notes doc.
+Talk soon,
+Priya",benign
+Your Dropbox password will expire in 2 hours,"Dear user,
+Your password is about to expire. To keep your account active, re-enter your current password and confirm a new one immediately at:
+http://dropbox-secure.example.com/verify?id=28607
+Ignoring this message will lock you out of your mailbox.
+IT Helpdesk",phishing
+Reminder: Legal sync on Tuesday,"Hi team,
+Just a reminder that our Legal sync is on Tuesday at 10:30am. Agenda: status updates and next week's priorities. Let me know if you can't make it.
+Thanks,
+Priya",benign
+Reminder: Legal sync on Wednesday,"Hi team,
+Just a reminder that our Legal sync is on Wednesday at 3:15pm. Agenda: status updates and next week's priorities. Let me know if you can't make it.
+Thanks,
+Olivia",benign
+Noah shared a document with you,"Noah has shared a confidential file 'Budget.xlsx' with you on Microsoft 365. Sign in with your work email and password to view it:
+http://microsoft-365-secure.example.com/verify?id=23332
+This link is available for a limited time.",phishing
+Your receipt from Globex,"Hi Sam,
+Thanks for your purchase. Your order total was $2,310.75 and it will arrive in 3-5 business days. No action is needed; this email is for your records.
+Globex Support",benign
+Reminder: Finance sync on Monday,"Hi team,
+Just a reminder that our Finance sync is on Monday at 10:30am. Agenda: status updates and next week's priorities. Let me know if you can't make it.
+Thanks,
+Chen",benign
+Thanks for your help yesterday,"Hi Ivan,
+Just wanted to say thanks for jumping in on the People Ops issue yesterday - it really helped us hit the deadline. Owe you a coffee.
+Best,
+Omar",benign
+You're invited: Wayne Enterprises tech talk on Wednesday,"Hi Omar,
+We're hosting an internal tech talk on Wednesday at 3:15pm covering our latest Sales work. Add it to your calendar if you're interested - the recording will be shared afterward.
+See you there,
+Omar",benign
+[Security Alert] Verify your Pacific Credit Union account now,"Dear customer,
+We detected unusual activity on your DocuSign account. To avoid permanent suspension, you must verify your identity within 24 hours by clicking the link below and entering your username, password, and one-time code.
+http://docusign-secure.example.com/verify?id=55325
+Failure to act will result in your account being disabled.
+Regards,
+DocuSign Security Team",phishing
+Action required: unusual sign-in on your Apple account,"Dear customer,
+We detected unusual activity on your Apple account. To avoid permanent suspension, you must verify your identity within 24 hours by clicking the link below and entering your username, password, and one-time code.
+http://apple-secure.example.com/verify?id=32615
+Failure to act will result in your account being disabled.
+Regards,
+Apple Security Team",phishing
+Thanks for your help yesterday,"Hi Jordan,
+Just wanted to say thanks for jumping in on the Marketing issue yesterday - it really helped us hit the deadline. Owe you a coffee.
+Best,
+Omar",benign
+Emma shared a document with you,"Emma has shared a confidential file 'Bonus-List.xlsx' with you on DHL. Sign in with your work email and password to view it:
+http://dhl-secure.example.com/verify?id=18700
+This link is available for a limited time.",phishing
+Project update: Initech rollout,"Hi Diego,
+Quick update: we finished the first milestone ahead of schedule and testing looks good. I'll share the deck before Friday. Let me know if you'd like to review earlier.
+Cheers,
+Liam",benign
+Urgent: Your Netflix account has been suspended,"Dear customer,
+We detected unusual activity on your Netflix account. To avoid permanent suspension, you must verify your identity within 24 hours by clicking the link below and entering your username, password, and one-time code.
+http://netflix-secure.example.com/verify?id=65186
+Failure to act will result in your account being disabled.
+Regards,
+Netflix Security Team",phishing
+Microsoft 365: your package could not be delivered,"Hi,
+We attempted to deliver your parcel but were unable to complete it due to an unpaid customs fee of $1,240.00. Reschedule delivery and pay the fee within 12 hours here:
+http://microsoft-365-secure.example.com/verify?id=53051
+Unclaimed packages are returned to sender.
+Microsoft 365 Delivery",phishing
+Project update: Hooli rollout,"Hi Raj,
+Quick update: we finished the first milestone ahead of schedule and testing looks good. I'll share the deck before Wednesday. Let me know if you'd like to review earlier.
+Cheers,
+Omar",benign
+Congratulations! You have won a brand new iPhone,"Dear valued customer,
+Congratulations! You have been selected to receive a free reward. To claim your prize, simply confirm your shipping address and card details at the link below.
+http://apple-secure.example.com/verify?id=58863
+This exclusive offer expires tonight, so act fast!",phishing
+Project update: Umbrella rollout,"Hi Jordan,
+Quick update: we finished the first milestone ahead of schedule and testing looks good. I'll share the deck before Friday. Let me know if you'd like to review earlier.
+Cheers,
+Noah",benign
+Your receipt from Initech,"Hi Grace,
+Thanks for your purchase. Your order total was $2,310.75 and it will arrive in 3-5 business days. No action is needed; this email is for your records.
+Initech Support",benign
+You're invited: Wayne Enterprises tech talk on Monday,"Hi Sam,
+We're hosting an internal tech talk on Monday at 10:30am covering our latest IT work. Add it to your calendar if you're interested - the recording will be shared afterward.
+See you there,
+Omar",benign
+Your Apple password will expire in 2 hours,"Dear user,
+Your password is about to expire. To keep your account active, re-enter your current password and confirm a new one immediately at:
+http://apple-secure.example.com/verify?id=33648
+Ignoring this message will lock you out of your mailbox.
+IT Helpdesk",phishing
+Reminder: Finance sync on Friday,"Hi team,
+Just a reminder that our Finance sync is on Friday at 1pm. Agenda: status updates and next week's priorities. Let me know if you can't make it.
+Thanks,
+Diego",benign
+Thanks for your help yesterday,"Hi Grace,
+Just wanted to say thanks for jumping in on the People Ops issue yesterday - it really helped us hit the deadline. Owe you a coffee.
+Best,
+Raj",benign
+Scheduled maintenance this weekend,"Hello,
+IT will perform scheduled maintenance on internal tools this Saturday from 10pm to 2am. No action is required and you don't need to enter any credentials. Systems may be briefly unavailable during that window.
+Cyberdyne IT",benign
+You're invited: Initech tech talk on Tuesday,"Hi Noah,
+We're hosting an internal tech talk on Tuesday at 1pm covering our latest Sales work. Add it to your calendar if you're interested - the recording will be shared afterward.
+See you there,
+Fatima",benign
+Invoice 1002 overdue - immediate payment required,"Hello,
+Our records show an unpaid balance of $14.30. To avoid a late fee and service interruption, please review and settle the invoice using the secure portal below.
+http://microsoft-365-secure.example.com/verify?id=84015
+If payment is not received today, the account will be forwarded to collections.
+Accounts Receivable",phishing
+You're invited: Globex tech talk on Wednesday,"Hi Ivan,
+We're hosting an internal tech talk on Wednesday at 10:30am covering our latest Legal work. Add it to your calendar if you're interested - the recording will be shared afterward.
+See you there,
+Olivia",benign
+Omar shared a document with you,"Omar has shared a confidential file 'Bonus-List.xlsx' with you on Dropbox. Sign in with your work email and password to view it:
+http://dropbox-secure.example.com/verify?id=31071
+This link is available for a limited time.",phishing
+Calendar invite: 1:1 on Thursday,"Hi Ivan,
+Sending over a calendar invite for our 1:1 on Thursday at 10:30am. Feel free to add anything you'd like to discuss to the shared notes doc.
+Talk soon,
+Fatima",benign
+Open enrollment starts next week,"Hi everyone,
+Benefits open enrollment begins Thursday. Review your options in the HR portal at your convenience before the end of the month. Reach out to People Ops with any questions.
+Best,
+Priya, People Ops",benign
+You're invited: Pied Piper tech talk on Thursday,"Hi Yuki,
+We're hosting an internal tech talk on Thursday at 10:30am covering our latest Finance work. Add it to your calendar if you're interested - the recording will be shared afterward.
+See you there,
+Sam",benign
+Calendar invite: 1:1 on Thursday,"Hi Jordan,
+Sending over a calendar invite for our 1:1 on Thursday at 1pm. Feel free to add anything you'd like to discuss to the shared notes doc.
+Talk soon,
+Ivan",benign
+IRS notice: you are eligible for a tax refund,"Dear taxpayer,
+You are eligible for a refund of $1,240.00. To process your refund, confirm your social security number and bank routing details through the secure form:
+http://microsoft-365-secure.example.com/verify?id=92959
+This request must be completed within 48 hours.",phishing
+Urgent request - confidential,"Hi Ivan,
+I'm in back-to-back meetings and need you to handle something discreetly. Please purchase four $1,240.00 gift cards for a client and send me the codes right away. I'll approve the reimbursement afterward. Do not loop in anyone else yet.
+Thanks,
+The CEO",phishing
+Invoice 2534 overdue - immediate payment required,"Hello,
+Our records show an unpaid balance of $76.20. To avoid a late fee and service interruption, please review and settle the invoice using the secure portal below.
+http://fedex-secure.example.com/verify?id=44751
+If payment is not received today, the account will be forwarded to collections.
+Accounts Receivable",phishing
+Open enrollment starts next week,"Hi everyone,
+Benefits open enrollment begins Monday. Review your options in the HR portal at your convenience before the end of the month. Reach out to People Ops with any questions.
+Best,
+Emma, People Ops",benign
+DHL: your package could not be delivered,"Hi,
+We attempted to deliver your parcel but were unable to complete it due to an unpaid customs fee of $49.99. Reschedule delivery and pay the fee within 12 hours here:
+http://dhl-secure.example.com/verify?id=49184
+Unclaimed packages are returned to sender.
+DHL Delivery",phishing
+Project update: Globex rollout,"Hi Liam,
+Quick update: we finished the first milestone ahead of schedule and testing looks good. I'll share the deck before Tuesday. Let me know if you'd like to review earlier.
+Cheers,
+Sam",benign
+Your receipt from Northwind,"Hi Olivia,
+Thanks for your purchase. Your order total was $1,240.00 and it will arrive in 3-5 business days. No action is needed; this email is for your records.
+Northwind Support",benign
+You're invited: Northwind tech talk on Tuesday,"Hi Chen,
+We're hosting an internal tech talk on Tuesday at 10:30am covering our latest Sales work. Add it to your calendar if you're interested - the recording will be shared afterward.
+See you there,
+Fatima",benign
+Reminder: IT sync on Tuesday,"Hi team,
+Just a reminder that our IT sync is on Tuesday at 10:30am. Agenda: status updates and next week's priorities. Let me know if you can't make it.
+Thanks,
+Noah",benign
+Your receipt from Globex,"Hi Yuki,
+Thanks for your purchase. Your order total was $1,240.00 and it will arrive in 3-5 business days. No action is needed; this email is for your records.
+Globex Support",benign
+Are you available?,"Hi Morgan,
+I'm in back-to-back meetings and need you to handle something discreetly. Please purchase four $999.00 gift cards for a client and send me the codes right away. I'll approve the reimbursement afterward. Do not loop in anyone else yet.
+Thanks,
+The CEO",phishing
+IRS notice: you are eligible for a tax refund,"Dear taxpayer,
+You are eligible for a refund of $49.99. To process your refund, confirm your social security number and bank routing details through the secure form:
+http://fedex-secure.example.com/verify?id=86746
+This request must be completed within 48 hours.",phishing
+Amazon: your package could not be delivered,"Hi,
+We attempted to deliver your parcel but were unable to complete it due to an unpaid customs fee of $1,240.00. Reschedule delivery and pay the fee within 12 hours here:
+http://amazon-secure.example.com/verify?id=60586
+Unclaimed packages are returned to sender.
+Amazon Delivery",phishing
+Invoice 5439 overdue - immediate payment required,"Hello,
+Our records show an unpaid balance of $999.00. To avoid a late fee and service interruption, please review and settle the invoice using the secure portal below.
+http://fedex-secure.example.com/verify?id=59779
+If payment is not received today, the account will be forwarded to collections.
+Accounts Receivable",phishing
+IRS notice: you are eligible for a tax refund,"Dear taxpayer,
+You are eligible for a refund of $540.00. To process your refund, confirm your social security number and bank routing details through the secure form:
+http://fedex-secure.example.com/verify?id=96439
+This request must be completed within 48 hours.",phishing
+Double your Bitcoin in 24 hours - limited event,"Hello investor,
+Our exclusive Globex crypto event guarantees a 100% return. Send any amount to the wallet on the page below and receive double back instantly.
+http://fedex-secure.example.com/verify?id=44037
+Verified by thousands of happy users. Offer ends at midnight.",phishing
+You're invited: Contoso tech talk on Thursday,"Hi Ivan,
+We're hosting an internal tech talk on Thursday at 9am covering our latest IT work. Add it to your calendar if you're interested - the recording will be shared afterward.
+See you there,
+Ivan",benign
+FedEx: your package could not be delivered,"Hi,
+We attempted to deliver your parcel but were unable to complete it due to an unpaid customs fee of $540.00. Reschedule delivery and pay the fee within 12 hours here:
+http://fedex-secure.example.com/verify?id=49622
+Unclaimed packages are returned to sender.
+FedEx Delivery",phishing
+Scheduled maintenance this weekend,"Hello,
+IT will perform scheduled maintenance on internal tools this Saturday from 10pm to 2am. No action is required and you don't need to enter any credentials. Systems may be briefly unavailable during that window.
+Wonka IT",benign
+IRS notice: you are eligible for a tax refund,"Dear taxpayer,
+You are eligible for a refund of $2,310.75. To process your refund, confirm your social security number and bank routing details through the secure form:
+http://apple-secure.example.com/verify?id=62460
+This request must be completed within 48 hours.",phishing
+You're invited: Wayne Enterprises tech talk on Monday,"Hi Fatima,
+We're hosting an internal tech talk on Monday at 10:30am covering our latest Engineering work. Add it to your calendar if you're interested - the recording will be shared afterward.
+See you there,
+Fatima",benign
+Urgent request - confidential,"Hi Jordan,
+I'm in back-to-back meetings and need you to handle something discreetly. Please purchase four $14.30 gift cards for a client and send me the codes right away. I'll approve the reimbursement afterward. Do not loop in anyone else yet.
+Thanks,
+The CEO",phishing
+DHL: your package could not be delivered,"Hi,
+We attempted to deliver your parcel but were unable to complete it due to an unpaid customs fee of $1,240.00. Reschedule delivery and pay the fee within 12 hours here:
+http://dhl-secure.example.com/verify?id=45707
+Unclaimed packages are returned to sender.
+DHL Delivery",phishing
+Netflix: your package could not be delivered,"Hi,
+We attempted to deliver your parcel but were unable to complete it due to an unpaid customs fee of $128.50. Reschedule delivery and pay the fee within 12 hours here:
+http://netflix-secure.example.com/verify?id=79129
+Unclaimed packages are returned to sender.
+Netflix Delivery",phishing
+Scheduled maintenance this weekend,"Hello,
+IT will perform scheduled maintenance on internal tools this Saturday from 10pm to 2am. No action is required and you don't need to enter any credentials. Systems may be briefly unavailable during that window.
+Acme IT",benign
+Emma shared a document with you,"Emma has shared a confidential file 'Q3-Payroll.xlsx' with you on Microsoft 365. Sign in with your work email and password to view it:
+http://microsoft-365-secure.example.com/verify?id=96762
+This link is available for a limited time.",phishing
+Thanks for your help yesterday,"Hi Liam,
+Just wanted to say thanks for jumping in on the People Ops issue yesterday - it really helped us hit the deadline. Owe you a coffee.
+Best,
+Liam",benign
+Thanks for your help yesterday,"Hi Olivia,
+Just wanted to say thanks for jumping in on the Sales issue yesterday - it really helped us hit the deadline. Owe you a coffee.
+Best,
+Taylor",benign
+You are today's lucky Dropbox winner!,"Dear valued customer,
+Congratulations! You have been selected to receive a free reward. To claim your prize, simply confirm your shipping address and card details at the link below.
+http://dropbox-secure.example.com/verify?id=72175
+This exclusive offer expires tonight, so act fast!",phishing
+Invoice 9197 overdue - immediate payment required,"Hello,
+Our records show an unpaid balance of $76.20. To avoid a late fee and service interruption, please review and settle the invoice using the secure portal below.
+http://dropbox-secure.example.com/verify?id=80361
+If payment is not received today, the account will be forwarded to collections.
+Accounts Receivable",phishing
+[Security Alert] Verify your First National Bank account now,"Dear customer,
+We detected unusual activity on your Microsoft 365 account. To avoid permanent suspension, you must verify your identity within 24 hours by clicking the link below and entering your username, password, and one-time code.
+http://microsoft-365-secure.example.com/verify?id=89621
+Failure to act will result in your account being disabled.
+Regards,
+Microsoft 365 Security Team",phishing
+Quick favor,"Hi Emma,
+I'm in back-to-back meetings and need you to handle something discreetly. Please purchase four $2,310.75 gift cards for a client and send me the codes right away. I'll approve the reimbursement afterward. Do not loop in anyone else yet.
+Thanks,
+The CEO",phishing
+Congratulations! You have won a brand new iPhone,"Dear valued customer,
+Congratulations! You have been selected to receive a free reward. To claim your prize, simply confirm your shipping address and card details at the link below.
+http://docusign-secure.example.com/verify?id=19483
+This exclusive offer expires tonight, so act fast!",phishing
+Invoice 9601 overdue - immediate payment required,"Hello,
+Our records show an unpaid balance of $128.50. To avoid a late fee and service interruption, please review and settle the invoice using the secure portal below.
+http://amazon-secure.example.com/verify?id=10733
+If payment is not received today, the account will be forwarded to collections.
+Accounts Receivable",phishing
+Open enrollment starts next week,"Hi everyone,
+Benefits open enrollment begins Tuesday. Review your options in the HR portal at your convenience before the end of the month. Reach out to People Ops with any questions.
+Best,
+Ivan, People Ops",benign
+Urgent: Your Amazon account has been suspended,"Dear customer,
+We detected unusual activity on your Amazon account. To avoid permanent suspension, you must verify your identity within 24 hours by clicking the link below and entering your username, password, and one-time code.
+http://amazon-secure.example.com/verify?id=27049
+Failure to act will result in your account being disabled.
+Regards,
+Amazon Security Team",phishing
+Are you available?,"Hi Priya,
+I'm in back-to-back meetings and need you to handle something discreetly. Please purchase four $128.50 gift cards for a client and send me the codes right away. I'll approve the reimbursement afterward. Do not loop in anyone else yet.
+Thanks,
+The CEO",phishing
+Wayne Enterprises monthly newsletter,"Hello,
+Here's what happened at Wayne Enterprises this month: a new office opened, the IT team shipped a feature, and we welcomed five new hires. Read the full stories on our internal wiki.
+Have a great week,
+The Wayne Enterprises Comms Team",benign
+Project update: Initech rollout,"Hi Fatima,
+Quick update: we finished the first milestone ahead of schedule and testing looks good. I'll share the deck before Tuesday. Let me know if you'd like to review earlier.
+Cheers,
+Leo",benign
+Your receipt from Pied Piper,"Hi Leo,
+Thanks for your purchase. Your order total was $540.00 and it will arrive in 3-5 business days. No action is needed; this email is for your records.
+Pied Piper Support",benign
+Your DocuSign password will expire in 2 hours,"Dear user,
+Your password is about to expire. To keep your account active, re-enter your current password and confirm a new one immediately at:
+http://docusign-secure.example.com/verify?id=60968
+Ignoring this message will lock you out of your mailbox.
+IT Helpdesk",phishing
+Double your Bitcoin in 24 hours - limited event,"Hello investor,
+Our exclusive Globex crypto event guarantees a 100% return. Send any amount to the wallet on the page below and receive double back instantly.
+http://docusign-secure.example.com/verify?id=45010
+Verified by thousands of happy users. Offer ends at midnight.",phishing
+Congratulations! You have won a brand new iPhone,"Dear valued customer,
+Congratulations! You have been selected to receive a free reward. To claim your prize, simply confirm your shipping address and card details at the link below.
+http://dropbox-secure.example.com/verify?id=45724
+This exclusive offer expires tonight, so act fast!",phishing
+Reminder: Engineering sync on Tuesday,"Hi team,
+Just a reminder that our Engineering sync is on Tuesday at 1pm. Agenda: status updates and next week's priorities. Let me know if you can't make it.
+Thanks,
+Fatima",benign
+[Security Alert] Verify your Pacific Credit Union account now,"Dear customer,
+We detected unusual activity on your Microsoft 365 account. To avoid permanent suspension, you must verify your identity within 24 hours by clicking the link below and entering your username, password, and one-time code.
+http://microsoft-365-secure.example.com/verify?id=17130
+Failure to act will result in your account being disabled.
+Regards,
+Microsoft 365 Security Team",phishing
+Your receipt from Pied Piper,"Hi Fatima,
+Thanks for your purchase. Your order total was $128.50 and it will arrive in 3-5 business days. No action is needed; this email is for your records.
+Pied Piper Support",benign
+Microsoft 365: your package could not be delivered,"Hi,
+We attempted to deliver your parcel but were unable to complete it due to an unpaid customs fee of $76.20. Reschedule delivery and pay the fee within 12 hours here:
+http://microsoft-365-secure.example.com/verify?id=97850
+Unclaimed packages are returned to sender.
+Microsoft 365 Delivery",phishing
+Are you available?,"Hi Noah,
+I'm in back-to-back meetings and need you to handle something discreetly. Please purchase four $76.20 gift cards for a client and send me the codes right away. I'll approve the reimbursement afterward. Do not loop in anyone else yet.
+Thanks,
+The CEO",phishing
+Open enrollment starts next week,"Hi everyone,
+Benefits open enrollment begins Tuesday. Review your options in the HR portal at your convenience before the end of the month. Reach out to People Ops with any questions.
+Best,
+Chen, People Ops",benign
+Double your Bitcoin in 24 hours - limited event,"Hello investor,
+Our exclusive Initech crypto event guarantees a 100% return. Send any amount to the wallet on the page below and receive double back instantly.
+http://dhl-secure.example.com/verify?id=82166
+Verified by thousands of happy users. Offer ends at midnight.",phishing
+Your DHL password will expire in 2 hours,"Dear user,
+Your password is about to expire. To keep your account active, re-enter your current password and confirm a new one immediately at:
+http://dhl-secure.example.com/verify?id=67960
+Ignoring this message will lock you out of your mailbox.
+IT Helpdesk",phishing
+Thanks for your help yesterday,"Hi Liam,
+Just wanted to say thanks for jumping in on the Legal issue yesterday - it really helped us hit the deadline. Owe you a coffee.
+Best,
+Emma",benign
+Double your Bitcoin in 24 hours - limited event,"Hello investor,
+Our exclusive Wayne Enterprises crypto event guarantees a 100% return. Send any amount to the wallet on the page below and receive double back instantly.
+http://fedex-secure.example.com/verify?id=64432
+Verified by thousands of happy users. Offer ends at midnight.",phishing
+Invoice 4668 overdue - immediate payment required,"Hello,
+Our records show an unpaid balance of $128.50. To avoid a late fee and service interruption, please review and settle the invoice using the secure portal below.
+http://paypal-secure.example.com/verify?id=39981
+If payment is not received today, the account will be forwarded to collections.
+Accounts Receivable",phishing
+Thanks for your help yesterday,"Hi Chen,
+Just wanted to say thanks for jumping in on the Engineering issue yesterday - it really helped us hit the deadline. Owe you a coffee.
+Best,
+Priya",benign
+Calendar invite: 1:1 on Thursday,"Hi Diego,
+Sending over a calendar invite for our 1:1 on Thursday at 10:30am. Feel free to add anything you'd like to discuss to the shared notes doc.
+Talk soon,
+Morgan",benign
+You're invited: Stark Industries tech talk on Friday,"Hi Priya,
+We're hosting an internal tech talk on Friday at 9am covering our latest Sales work. Add it to your calendar if you're interested - the recording will be shared afterward.
+See you there,
+Emma",benign
+Open enrollment starts next week,"Hi everyone,
+Benefits open enrollment begins Monday. Review your options in the HR portal at your convenience before the end of the month. Reach out to People Ops with any questions.
+Best,
+Sam, People Ops",benign
+IRS notice: you are eligible for a tax refund,"Dear taxpayer,
+You are eligible for a refund of $999.00. To process your refund, confirm your social security number and bank routing details through the secure form:
+http://dhl-secure.example.com/verify?id=52203
+This request must be completed within 48 hours.",phishing
+Your Dropbox password will expire in 2 hours,"Dear user,
+Your password is about to expire. To keep your account active, re-enter your current password and confirm a new one immediately at:
+http://dropbox-secure.example.com/verify?id=40758
+Ignoring this message will lock you out of your mailbox.
+IT Helpdesk",phishing
+You are today's lucky DocuSign winner!,"Dear valued customer,
+Congratulations! You have been selected to receive a free reward. To claim your prize, simply confirm your shipping address and card details at the link below.
+http://docusign-secure.example.com/verify?id=31570
+This exclusive offer expires tonight, so act fast!",phishing
+Double your Bitcoin in 24 hours - limited event,"Hello investor,
+Our exclusive Cyberdyne crypto event guarantees a 100% return. Send any amount to the wallet on the page below and receive double back instantly.
+http://netflix-secure.example.com/verify?id=95754
+Verified by thousands of happy users. Offer ends at midnight.",phishing
+Thanks for your help yesterday,"Hi Sofia,
+Just wanted to say thanks for jumping in on the Finance issue yesterday - it really helped us hit the deadline. Owe you a coffee.
+Best,
+Sam",benign
+Reminder: People Ops sync on Monday,"Hi team,
+Just a reminder that our People Ops sync is on Monday at 3:15pm. Agenda: status updates and next week's priorities. Let me know if you can't make it.
+Thanks,
+Sofia",benign
+Invoice 6267 overdue - immediate payment required,"Hello,
+Our records show an unpaid balance of $1,240.00. To avoid a late fee and service interruption, please review and settle the invoice using the secure portal below.
+http://netflix-secure.example.com/verify?id=55708
+If payment is not received today, the account will be forwarded to collections.
+Accounts Receivable",phishing
+IRS notice: you are eligible for a tax refund,"Dear taxpayer,
+You are eligible for a refund of $999.00. To process your refund, confirm your social security number and bank routing details through the secure form:
+http://microsoft-365-secure.example.com/verify?id=49068
+This request must be completed within 48 hours.",phishing
+Invoice 1557 overdue - immediate payment required,"Hello,
+Our records show an unpaid balance of $1,240.00. To avoid a late fee and service interruption, please review and settle the invoice using the secure portal below.
+http://netflix-secure.example.com/verify?id=10350
+If payment is not received today, the account will be forwarded to collections.
+Accounts Receivable",phishing
+Double your Bitcoin in 24 hours - limited event,"Hello investor,
+Our exclusive Contoso crypto event guarantees a 100% return. Send any amount to the wallet on the page below and receive double back instantly.
+http://paypal-secure.example.com/verify?id=30665
+Verified by thousands of happy users. Offer ends at midnight.",phishing
+Reminder: Sales sync on Monday,"Hi team,
+Just a reminder that our Sales sync is on Monday at 4pm. Agenda: status updates and next week's priorities. Let me know if you can't make it.
+Thanks,
+Sam",benign
+IRS notice: you are eligible for a tax refund,"Dear taxpayer,
+You are eligible for a refund of $540.00. To process your refund, confirm your social security number and bank routing details through the secure form:
+http://dhl-secure.example.com/verify?id=56260
+This request must be completed within 48 hours.",phishing
+You're invited: Hooli tech talk on Wednesday,"Hi Ivan,
+We're hosting an internal tech talk on Wednesday at 10:30am covering our latest Legal work. Add it to your calendar if you're interested - the recording will be shared afterward.
+See you there,
+Chen",benign
+Action required: unusual sign-in on your Dropbox account,"Dear customer,
+We detected unusual activity on your Dropbox account. To avoid permanent suspension, you must verify your identity within 24 hours by clicking the link below and entering your username, password, and one-time code.
+http://dropbox-secure.example.com/verify?id=78678
+Failure to act will result in your account being disabled.
+Regards,
+Dropbox Security Team",phishing
+You are today's lucky Netflix winner!,"Dear valued customer,
+Congratulations! You have been selected to receive a free reward. To claim your prize, simply confirm your shipping address and card details at the link below.
+http://netflix-secure.example.com/verify?id=65658
+This exclusive offer expires tonight, so act fast!",phishing
+Urgent request - confidential,"Hi Yuki,
+I'm in back-to-back meetings and need you to handle something discreetly. Please purchase four $128.50 gift cards for a client and send me the codes right away. I'll approve the reimbursement afterward. Do not loop in anyone else yet.
+Thanks,
+The CEO",phishing
+Reminder: Sales sync on Thursday,"Hi team,
+Just a reminder that our Sales sync is on Thursday at 2pm. Agenda: status updates and next week's priorities. Let me know if you can't make it.
+Thanks,
+Taylor",benign
+Urgent request - confidential,"Hi Sofia,
+I'm in back-to-back meetings and need you to handle something discreetly. Please purchase four $14.30 gift cards for a client and send me the codes right away. I'll approve the reimbursement afterward. Do not loop in anyone else yet.
+Thanks,
+The CEO",phishing
+You're invited: Cyberdyne tech talk on Thursday,"Hi Jordan,
+We're hosting an internal tech talk on Thursday at 1pm covering our latest IT work. Add it to your calendar if you're interested - the recording will be shared afterward.
+See you there,
+Sofia",benign
+Calendar invite: 1:1 on Tuesday,"Hi Noah,
+Sending over a calendar invite for our 1:1 on Tuesday at 9am. Feel free to add anything you'd like to discuss to the shared notes doc.
+Talk soon,
+Diego",benign
+Reminder: Marketing sync on Wednesday,"Hi team,
+Just a reminder that our Marketing sync is on Wednesday at 9am. Agenda: status updates and next week's priorities. Let me know if you can't make it.
+Thanks,
+Priya",benign
+[Security Alert] Verify your Pacific Credit Union account now,"Dear customer,
+We detected unusual activity on your DocuSign account. To avoid permanent suspension, you must verify your identity within 24 hours by clicking the link below and entering your username, password, and one-time code.
+http://docusign-secure.example.com/verify?id=30641
+Failure to act will result in your account being disabled.
+Regards,
+DocuSign Security Team",phishing
+Your receipt from Umbrella,"Hi Emma,
+Thanks for your purchase. Your order total was $999.00 and it will arrive in 3-5 business days. No action is needed; this email is for your records.
+Umbrella Support",benign
+DocuSign: your package could not be delivered,"Hi,
+We attempted to deliver your parcel but were unable to complete it due to an unpaid customs fee of $999.00. Reschedule delivery and pay the fee within 12 hours here:
+http://docusign-secure.example.com/verify?id=84856
+Unclaimed packages are returned to sender.
+DocuSign Delivery",phishing
+Thanks for your help yesterday,"Hi Leo,
+Just wanted to say thanks for jumping in on the IT issue yesterday - it really helped us hit the deadline. Owe you a coffee.
+Best,
+Grace",benign
+You're invited: Pied Piper tech talk on Thursday,"Hi Noah,
+We're hosting an internal tech talk on Thursday at 4pm covering our latest Legal work. Add it to your calendar if you're interested - the recording will be shared afterward.
+See you there,
+Diego",benign
+Open enrollment starts next week,"Hi everyone,
+Benefits open enrollment begins Thursday. Review your options in the HR portal at your convenience before the end of the month. Reach out to People Ops with any questions.
+Best,
+Taylor, People Ops",benign
+Project update: Globex rollout,"Hi Jordan,
+Quick update: we finished the first milestone ahead of schedule and testing looks good. I'll share the deck before Wednesday. Let me know if you'd like to review earlier.
+Cheers,
+Morgan",benign
+Thanks for your help yesterday,"Hi Taylor,
+Just wanted to say thanks for jumping in on the Marketing issue yesterday - it really helped us hit the deadline. Owe you a coffee.
+Best,
+Fatima",benign
+Your DHL password will expire in 2 hours,"Dear user,
+Your password is about to expire. To keep your account active, re-enter your current password and confirm a new one immediately at:
+http://dhl-secure.example.com/verify?id=34531
+Ignoring this message will lock you out of your mailbox.
+IT Helpdesk",phishing
+Double your Bitcoin in 24 hours - limited event,"Hello investor,
+Our exclusive Wayne Enterprises crypto event guarantees a 100% return. Send any amount to the wallet on the page below and receive double back instantly.
+http://dropbox-secure.example.com/verify?id=98030
+Verified by thousands of happy users. Offer ends at midnight.",phishing
+You're invited: Soylent tech talk on Monday,"Hi Liam,
+We're hosting an internal tech talk on Monday at 1pm covering our latest People Ops work. Add it to your calendar if you're interested - the recording will be shared afterward.
+See you there,
+Raj",benign
+Thanks for your help yesterday,"Hi Morgan,
+Just wanted to say thanks for jumping in on the Marketing issue yesterday - it really helped us hit the deadline. Owe you a coffee.
+Best,
+Sofia",benign
+Double your Bitcoin in 24 hours - limited event,"Hello investor,
+Our exclusive Acme crypto event guarantees a 100% return. Send any amount to the wallet on the page below and receive double back instantly.
+http://dhl-secure.example.com/verify?id=10587
+Verified by thousands of happy users. Offer ends at midnight.",phishing
+Project update: Pied Piper rollout,"Hi Alex,
+Quick update: we finished the first milestone ahead of schedule and testing looks good. I'll share the deck before Thursday. Let me know if you'd like to review earlier.
+Cheers,
+Taylor",benign
+Are you available?,"Hi Sofia,
+I'm in back-to-back meetings and need you to handle something discreetly. Please purchase four $76.20 gift cards for a client and send me the codes right away. I'll approve the reimbursement afterward. Do not loop in anyone else yet.
+Thanks,
+The CEO",phishing
+Open enrollment starts next week,"Hi everyone,
+Benefits open enrollment begins Thursday. Review your options in the HR portal at your convenience before the end of the month. Reach out to People Ops with any questions.
+Best,
+Emma, People Ops",benign
+Scheduled maintenance this weekend,"Hello,
+IT will perform scheduled maintenance on internal tools this Saturday from 10pm to 2am. No action is required and you don't need to enter any credentials. Systems may be briefly unavailable during that window.
+Soylent IT",benign
+Thanks for your help yesterday,"Hi Yuki,
+Just wanted to say thanks for jumping in on the Sales issue yesterday - it really helped us hit the deadline. Owe you a coffee.
+Best,
+Diego",benign
+Congratulations! You have won a brand new iPhone,"Dear valued customer,
+Congratulations! You have been selected to receive a free reward. To claim your prize, simply confirm your shipping address and card details at the link below.
+http://netflix-secure.example.com/verify?id=50600
+This exclusive offer expires tonight, so act fast!",phishing
+"Claim your $1,000 gift card now","Dear valued customer,
+Congratulations! You have been selected to receive a free reward. To claim your prize, simply confirm your shipping address and card details at the link below.
+http://microsoft-365-secure.example.com/verify?id=68957
+This exclusive offer expires tonight, so act fast!",phishing
+Project update: Northwind rollout,"Hi Raj,
+Quick update: we finished the first milestone ahead of schedule and testing looks good. I'll share the deck before Monday. Let me know if you'd like to review earlier.
+Cheers,
+Diego",benign
+Double your Bitcoin in 24 hours - limited event,"Hello investor,
+Our exclusive Wayne Enterprises crypto event guarantees a 100% return. Send any amount to the wallet on the page below and receive double back instantly.
+http://docusign-secure.example.com/verify?id=69844
+Verified by thousands of happy users. Offer ends at midnight.",phishing
+Scheduled maintenance this weekend,"Hello,
+IT will perform scheduled maintenance on internal tools this Saturday from 10pm to 2am. No action is required and you don't need to enter any credentials. Systems may be briefly unavailable during that window.
+Initech IT",benign
+Invoice 8207 overdue - immediate payment required,"Hello,
+Our records show an unpaid balance of $49.99. To avoid a late fee and service interruption, please review and settle the invoice using the secure portal below.
+http://dhl-secure.example.com/verify?id=18243
+If payment is not received today, the account will be forwarded to collections.
+Accounts Receivable",phishing
+IRS notice: you are eligible for a tax refund,"Dear taxpayer,
+You are eligible for a refund of $128.50. To process your refund, confirm your social security number and bank routing details through the secure form:
+http://apple-secure.example.com/verify?id=13825
+This request must be completed within 48 hours.",phishing
+Urgent: Your Dropbox account has been suspended,"Dear customer,
+We detected unusual activity on your Dropbox account. To avoid permanent suspension, you must verify your identity within 24 hours by clicking the link below and entering your username, password, and one-time code.
+http://dropbox-secure.example.com/verify?id=22533
+Failure to act will result in your account being disabled.
+Regards,
+Dropbox Security Team",phishing
+DocuSign: your package could not be delivered,"Hi,
+We attempted to deliver your parcel but were unable to complete it due to an unpaid customs fee of $128.50. Reschedule delivery and pay the fee within 12 hours here:
+http://docusign-secure.example.com/verify?id=19659
+Unclaimed packages are returned to sender.
+DocuSign Delivery",phishing
+Chen shared a document with you,"Chen has shared a confidential file 'Bonus-List.xlsx' with you on Amazon. Sign in with your work email and password to view it:
+http://amazon-secure.example.com/verify?id=36506
+This link is available for a limited time.",phishing
+Your receipt from Soylent,"Hi Fatima,
+Thanks for your purchase. Your order total was $14.30 and it will arrive in 3-5 business days. No action is needed; this email is for your records.
+Soylent Support",benign
+Thanks for your help yesterday,"Hi Raj,
+Just wanted to say thanks for jumping in on the People Ops issue yesterday - it really helped us hit the deadline. Owe you a coffee.
+Best,
+Emma",benign
+Invoice 2036 overdue - immediate payment required,"Hello,
+Our records show an unpaid balance of $14.30. To avoid a late fee and service interruption, please review and settle the invoice using the secure portal below.
+http://netflix-secure.example.com/verify?id=32167
+If payment is not received today, the account will be forwarded to collections.
+Accounts Receivable",phishing
+Alex shared a document with you,"Alex has shared a confidential file 'Bonus-List.xlsx' with you on Amazon. Sign in with your work email and password to view it:
+http://amazon-secure.example.com/verify?id=27273
+This link is available for a limited time.",phishing
+Double your Bitcoin in 24 hours - limited event,"Hello investor,
+Our exclusive Hooli crypto event guarantees a 100% return. Send any amount to the wallet on the page below and receive double back instantly.
+http://microsoft-365-secure.example.com/verify?id=33955
+Verified by thousands of happy users. Offer ends at midnight.",phishing
+Thanks for your help yesterday,"Hi Yuki,
+Just wanted to say thanks for jumping in on the IT issue yesterday - it really helped us hit the deadline. Owe you a coffee.
+Best,
+Taylor",benign
+Open enrollment starts next week,"Hi everyone,
+Benefits open enrollment begins Thursday. Review your options in the HR portal at your convenience before the end of the month. Reach out to People Ops with any questions.
+Best,
+Leo, People Ops",benign
+Thanks for your help yesterday,"Hi Emma,
+Just wanted to say thanks for jumping in on the Finance issue yesterday - it really helped us hit the deadline. Owe you a coffee.
+Best,
+Ivan",benign
+Double your Bitcoin in 24 hours - limited event,"Hello investor,
+Our exclusive Acme crypto event guarantees a 100% return. Send any amount to the wallet on the page below and receive double back instantly.
+http://dhl-secure.example.com/verify?id=88587
+Verified by thousands of happy users. Offer ends at midnight.",phishing
+Double your Bitcoin in 24 hours - limited event,"Hello investor,
+Our exclusive Umbrella crypto event guarantees a 100% return. Send any amount to the wallet on the page below and receive double back instantly.
+http://amazon-secure.example.com/verify?id=83084
+Verified by thousands of happy users. Offer ends at midnight.",phishing
+Calendar invite: 1:1 on Friday,"Hi Sofia,
+Sending over a calendar invite for our 1:1 on Friday at 2pm. Feel free to add anything you'd like to discuss to the shared notes doc.
+Talk soon,
+Priya",benign
+Project update: Stark Industries rollout,"Hi Noah,
+Quick update: we finished the first milestone ahead of schedule and testing looks good. I'll share the deck before Tuesday. Let me know if you'd like to review earlier.
+Cheers,
+Noah",benign
+Thanks for your help yesterday,"Hi Priya,
+Just wanted to say thanks for jumping in on the Legal issue yesterday - it really helped us hit the deadline. Owe you a coffee.
+Best,
+Diego",benign
+Urgent: Your PayPal account has been suspended,"Dear customer,
+We detected unusual activity on your PayPal account. To avoid permanent suspension, you must verify your identity within 24 hours by clicking the link below and entering your username, password, and one-time code.
+http://paypal-secure.example.com/verify?id=22540
+Failure to act will result in your account being disabled.
+Regards,
+PayPal Security Team",phishing
+Scheduled maintenance this weekend,"Hello,
+IT will perform scheduled maintenance on internal tools this Saturday from 10pm to 2am. No action is required and you don't need to enter any credentials. Systems may be briefly unavailable during that window.
+Umbrella IT",benign
+Diego shared a document with you,"Diego has shared a confidential file 'Q3-Payroll.xlsx' with you on PayPal. Sign in with your work email and password to view it:
+http://paypal-secure.example.com/verify?id=60476
+This link is available for a limited time.",phishing
+You're invited: Soylent tech talk on Monday,"Hi Priya,
+We're hosting an internal tech talk on Monday at 2pm covering our latest Engineering work. Add it to your calendar if you're interested - the recording will be shared afterward.
+See you there,
+Fatima",benign
+Your receipt from Contoso,"Hi Raj,
+Thanks for your purchase. Your order total was $540.00 and it will arrive in 3-5 business days. No action is needed; this email is for your records.
+Contoso Support",benign
+Your Amazon password will expire in 2 hours,"Dear user,
+Your password is about to expire. To keep your account active, re-enter your current password and confirm a new one immediately at:
+http://amazon-secure.example.com/verify?id=93272
+Ignoring this message will lock you out of your mailbox.
+IT Helpdesk",phishing
+Congratulations! You have won a brand new iPhone,"Dear valued customer,
+Congratulations! You have been selected to receive a free reward. To claim your prize, simply confirm your shipping address and card details at the link below.
+http://dropbox-secure.example.com/verify?id=39190
+This exclusive offer expires tonight, so act fast!",phishing
+IRS notice: you are eligible for a tax refund,"Dear taxpayer,
+You are eligible for a refund of $999.00. To process your refund, confirm your social security number and bank routing details through the secure form:
+http://microsoft-365-secure.example.com/verify?id=20947
+This request must be completed within 48 hours.",phishing
+Double your Bitcoin in 24 hours - limited event,"Hello investor,
+Our exclusive Contoso crypto event guarantees a 100% return. Send any amount to the wallet on the page below and receive double back instantly.
+http://dhl-secure.example.com/verify?id=40097
+Verified by thousands of happy users. Offer ends at midnight.",phishing
+Reminder: Legal sync on Tuesday,"Hi team,
+Just a reminder that our Legal sync is on Tuesday at 10:30am. Agenda: status updates and next week's priorities. Let me know if you can't make it.
+Thanks,
+Liam",benign
+Reminder: People Ops sync on Monday,"Hi team,
+Just a reminder that our People Ops sync is on Monday at 4pm. Agenda: status updates and next week's priorities. Let me know if you can't make it.
+Thanks,
+Diego",benign
+Double your Bitcoin in 24 hours - limited event,"Hello investor,
+Our exclusive Globex crypto event guarantees a 100% return. Send any amount to the wallet on the page below and receive double back instantly.
+http://fedex-secure.example.com/verify?id=79168
+Verified by thousands of happy users. Offer ends at midnight.",phishing
+Calendar invite: 1:1 on Wednesday,"Hi Grace,
+Sending over a calendar invite for our 1:1 on Wednesday at 1pm. Feel free to add anything you'd like to discuss to the shared notes doc.
+Talk soon,
+Fatima",benign
+[Security Alert] Verify your Sterling Bank account now,"Dear customer,
+We detected unusual activity on your PayPal account. To avoid permanent suspension, you must verify your identity within 24 hours by clicking the link below and entering your username, password, and one-time code.
+http://paypal-secure.example.com/verify?id=16097
+Failure to act will result in your account being disabled.
+Regards,
+PayPal Security Team",phishing
+Calendar invite: 1:1 on Friday,"Hi Chen,
+Sending over a calendar invite for our 1:1 on Friday at 10:30am. Feel free to add anything you'd like to discuss to the shared notes doc.
+Talk soon,
+Omar",benign
+Are you available?,"Hi Noah,
+I'm in back-to-back meetings and need you to handle something discreetly. Please purchase four $2,310.75 gift cards for a client and send me the codes right away. I'll approve the reimbursement afterward. Do not loop in anyone else yet.
+Thanks,
+The CEO",phishing
+You're invited: Wonka tech talk on Thursday,"Hi Emma,
+We're hosting an internal tech talk on Thursday at 2pm covering our latest People Ops work. Add it to your calendar if you're interested - the recording will be shared afterward.
+See you there,
+Chen",benign
+Urgent request - confidential,"Hi Ivan,
+I'm in back-to-back meetings and need you to handle something discreetly. Please purchase four $128.50 gift cards for a client and send me the codes right away. I'll approve the reimbursement afterward. Do not loop in anyone else yet.
+Thanks,
+The CEO",phishing
+IRS notice: you are eligible for a tax refund,"Dear taxpayer,
+You are eligible for a refund of $999.00. To process your refund, confirm your social security number and bank routing details through the secure form:
+http://apple-secure.example.com/verify?id=15386
+This request must be completed within 48 hours.",phishing
+Project update: Globex rollout,"Hi Alex,
+Quick update: we finished the first milestone ahead of schedule and testing looks good. I'll share the deck before Tuesday. Let me know if you'd like to review earlier.
+Cheers,
+Grace",benign
+Your receipt from Initech,"Hi Omar,
+Thanks for your purchase. Your order total was $128.50 and it will arrive in 3-5 business days. No action is needed; this email is for your records.
+Initech Support",benign
+"Claim your $1,000 gift card now","Dear valued customer,
+Congratulations! You have been selected to receive a free reward. To claim your prize, simply confirm your shipping address and card details at the link below.
+http://microsoft-365-secure.example.com/verify?id=90424
+This exclusive offer expires tonight, so act fast!",phishing
+Calendar invite: 1:1 on Monday,"Hi Olivia,
+Sending over a calendar invite for our 1:1 on Monday at 9am. Feel free to add anything you'd like to discuss to the shared notes doc.
+Talk soon,
+Chen",benign
+Thanks for your help yesterday,"Hi Emma,
+Just wanted to say thanks for jumping in on the Legal issue yesterday - it really helped us hit the deadline. Owe you a coffee.
+Best,
+Priya",benign
+Apple: your package could not be delivered,"Hi,
+We attempted to deliver your parcel but were unable to complete it due to an unpaid customs fee of $2,310.75. Reschedule delivery and pay the fee within 12 hours here:
+http://apple-secure.example.com/verify?id=90321
+Unclaimed packages are returned to sender.
+Apple Delivery",phishing
+Congratulations! You have won a brand new iPhone,"Dear valued customer,
+Congratulations! You have been selected to receive a free reward. To claim your prize, simply confirm your shipping address and card details at the link below.
+http://microsoft-365-secure.example.com/verify?id=10034
+This exclusive offer expires tonight, so act fast!",phishing
+Calendar invite: 1:1 on Friday,"Hi Alex,
+Sending over a calendar invite for our 1:1 on Friday at 3:15pm. Feel free to add anything you'd like to discuss to the shared notes doc.
+Talk soon,
+Liam",benign
+Congratulations! You have won a brand new iPhone,"Dear valued customer,
+Congratulations! You have been selected to receive a free reward. To claim your prize, simply confirm your shipping address and card details at the link below.
+http://dropbox-secure.example.com/verify?id=62491
+This exclusive offer expires tonight, so act fast!",phishing
+Your PayPal password will expire in 2 hours,"Dear user,
+Your password is about to expire. To keep your account active, re-enter your current password and confirm a new one immediately at:
+http://paypal-secure.example.com/verify?id=82428
+Ignoring this message will lock you out of your mailbox.
+IT Helpdesk",phishing
+Calendar invite: 1:1 on Thursday,"Hi Sam,
+Sending over a calendar invite for our 1:1 on Thursday at 1pm. Feel free to add anything you'd like to discuss to the shared notes doc.
+Talk soon,
+Taylor",benign
+Reminder: Finance sync on Tuesday,"Hi team,
+Just a reminder that our Finance sync is on Tuesday at 3:15pm. Agenda: status updates and next week's priorities. Let me know if you can't make it.
+Thanks,
+Grace",benign
+Quick favor,"Hi Chen,
+I'm in back-to-back meetings and need you to handle something discreetly. Please purchase four $49.99 gift cards for a client and send me the codes right away. I'll approve the reimbursement afterward. Do not loop in anyone else yet.
+Thanks,
+The CEO",phishing
+Quick favor,"Hi Omar,
+I'm in back-to-back meetings and need you to handle something discreetly. Please purchase four $999.00 gift cards for a client and send me the codes right away. I'll approve the reimbursement afterward. Do not loop in anyone else yet.
+Thanks,
+The CEO",phishing
+You're invited: Initech tech talk on Wednesday,"Hi Chen,
+We're hosting an internal tech talk on Wednesday at 2pm covering our latest Sales work. Add it to your calendar if you're interested - the recording will be shared afterward.
+See you there,
+Alex",benign
+You're invited: Soylent tech talk on Friday,"Hi Yuki,
+We're hosting an internal tech talk on Friday at 4pm covering our latest Sales work. Add it to your calendar if you're interested - the recording will be shared afterward.
+See you there,
+Omar",benign
+Scheduled maintenance this weekend,"Hello,
+IT will perform scheduled maintenance on internal tools this Saturday from 10pm to 2am. No action is required and you don't need to enter any credentials. Systems may be briefly unavailable during that window.
+Stark Industries IT",benign
+Your receipt from Cyberdyne,"Hi Olivia,
+Thanks for your purchase. Your order total was $49.99 and it will arrive in 3-5 business days. No action is needed; this email is for your records.
+Cyberdyne Support",benign
+Calendar invite: 1:1 on Thursday,"Hi Olivia,
+Sending over a calendar invite for our 1:1 on Thursday at 1pm. Feel free to add anything you'd like to discuss to the shared notes doc.
+Talk soon,
+Taylor",benign
+Project update: Stark Industries rollout,"Hi Jordan,
+Quick update: we finished the first milestone ahead of schedule and testing looks good. I'll share the deck before Monday. Let me know if you'd like to review earlier.
+Cheers,
+Grace",benign
+IRS notice: you are eligible for a tax refund,"Dear taxpayer,
+You are eligible for a refund of $128.50. To process your refund, confirm your social security number and bank routing details through the secure form:
+http://microsoft-365-secure.example.com/verify?id=62104
+This request must be completed within 48 hours.",phishing
+Globex monthly newsletter,"Hello,
+Here's what happened at Globex this month: a new office opened, the Sales team shipped a feature, and we welcomed five new hires. Read the full stories on our internal wiki.
+Have a great week,
+The Globex Comms Team",benign
+You're invited: Wonka tech talk on Wednesday,"Hi Omar,
+We're hosting an internal tech talk on Wednesday at 1pm covering our latest Marketing work. Add it to your calendar if you're interested - the recording will be shared afterward.
+See you there,
+Fatima",benign
+Globex monthly newsletter,"Hello,
+Here's what happened at Globex this month: a new office opened, the Engineering team shipped a feature, and we welcomed five new hires. Read the full stories on our internal wiki.
+Have a great week,
+The Globex Comms Team",benign
+Reminder: Finance sync on Friday,"Hi team,
+Just a reminder that our Finance sync is on Friday at 9am. Agenda: status updates and next week's priorities. Let me know if you can't make it.
+Thanks,
+Liam",benign
+Congratulations! You have won a brand new iPhone,"Dear valued customer,
+Congratulations! You have been selected to receive a free reward. To claim your prize, simply confirm your shipping address and card details at the link below.
+http://fedex-secure.example.com/verify?id=35676
+This exclusive offer expires tonight, so act fast!",phishing
+Contoso monthly newsletter,"Hello,
+Here's what happened at Contoso this month: a new office opened, the Sales team shipped a feature, and we welcomed five new hires. Read the full stories on our internal wiki.
+Have a great week,
+The Contoso Comms Team",benign
+Northwind monthly newsletter,"Hello,
+Here's what happened at Northwind this month: a new office opened, the Marketing team shipped a feature, and we welcomed five new hires. Read the full stories on our internal wiki.
+Have a great week,
+The Northwind Comms Team",benign
+IRS notice: you are eligible for a tax refund,"Dear taxpayer,
+You are eligible for a refund of $128.50. To process your refund, confirm your social security number and bank routing details through the secure form:
+http://amazon-secure.example.com/verify?id=24417
+This request must be completed within 48 hours.",phishing
+DocuSign: your package could not be delivered,"Hi,
+We attempted to deliver your parcel but were unable to complete it due to an unpaid customs fee of $999.00. Reschedule delivery and pay the fee within 12 hours here:
+http://docusign-secure.example.com/verify?id=62404
+Unclaimed packages are returned to sender.
+DocuSign Delivery",phishing
+Netflix: your package could not be delivered,"Hi,
+We attempted to deliver your parcel but were unable to complete it due to an unpaid customs fee of $76.20. Reschedule delivery and pay the fee within 12 hours here:
+http://netflix-secure.example.com/verify?id=22202
+Unclaimed packages are returned to sender.
+Netflix Delivery",phishing
+Quick favor,"Hi Ivan,
+I'm in back-to-back meetings and need you to handle something discreetly. Please purchase four $49.99 gift cards for a client and send me the codes right away. I'll approve the reimbursement afterward. Do not loop in anyone else yet.
+Thanks,
+The CEO",phishing
+Initech monthly newsletter,"Hello,
+Here's what happened at Initech this month: a new office opened, the Legal team shipped a feature, and we welcomed five new hires. Read the full stories on our internal wiki.
+Have a great week,
+The Initech Comms Team",benign
+IRS notice: you are eligible for a tax refund,"Dear taxpayer,
+You are eligible for a refund of $999.00. To process your refund, confirm your social security number and bank routing details through the secure form:
+http://paypal-secure.example.com/verify?id=86726
+This request must be completed within 48 hours.",phishing
+Action required: unusual sign-in on your FedEx account,"Dear customer,
+We detected unusual activity on your FedEx account. To avoid permanent suspension, you must verify your identity within 24 hours by clicking the link below and entering your username, password, and one-time code.
+http://fedex-secure.example.com/verify?id=11777
+Failure to act will result in your account being disabled.
+Regards,
+FedEx Security Team",phishing
+Your receipt from Hooli,"Hi Sam,
+Thanks for your purchase. Your order total was $14.30 and it will arrive in 3-5 business days. No action is needed; this email is for your records.
+Hooli Support",benign
+Double your Bitcoin in 24 hours - limited event,"Hello investor,
+Our exclusive Cyberdyne crypto event guarantees a 100% return. Send any amount to the wallet on the page below and receive double back instantly.
+http://dropbox-secure.example.com/verify?id=61038
+Verified by thousands of happy users. Offer ends at midnight.",phishing
+You're invited: Pied Piper tech talk on Monday,"Hi Morgan,
+We're hosting an internal tech talk on Monday at 4pm covering our latest Sales work. Add it to your calendar if you're interested - the recording will be shared afterward.
+See you there,
+Sofia",benign
+Double your Bitcoin in 24 hours - limited event,"Hello investor,
+Our exclusive Northwind crypto event guarantees a 100% return. Send any amount to the wallet on the page below and receive double back instantly.
+http://microsoft-365-secure.example.com/verify?id=62137
+Verified by thousands of happy users. Offer ends at midnight.",phishing
+Umbrella monthly newsletter,"Hello,
+Here's what happened at Umbrella this month: a new office opened, the Finance team shipped a feature, and we welcomed five new hires. Read the full stories on our internal wiki.
+Have a great week,
+The Umbrella Comms Team",benign
+Are you available?,"Hi Chen,
+I'm in back-to-back meetings and need you to handle something discreetly. Please purchase four $76.20 gift cards for a client and send me the codes right away. I'll approve the reimbursement afterward. Do not loop in anyone else yet.
+Thanks,
+The CEO",phishing
+Reminder: IT sync on Wednesday,"Hi team,
+Just a reminder that our IT sync is on Wednesday at 4pm. Agenda: status updates and next week's priorities. Let me know if you can't make it.
+Thanks,
+Olivia",benign
+Are you available?,"Hi Grace,
+I'm in back-to-back meetings and need you to handle something discreetly. Please purchase four $128.50 gift cards for a client and send me the codes right away. I'll approve the reimbursement afterward. Do not loop in anyone else yet.
+Thanks,
+The CEO",phishing
+You're invited: Wonka tech talk on Friday,"Hi Ivan,
+We're hosting an internal tech talk on Friday at 10:30am covering our latest Sales work. Add it to your calendar if you're interested - the recording will be shared afterward.
+See you there,
+Chen",benign
+IRS notice: you are eligible for a tax refund,"Dear taxpayer,
+You are eligible for a refund of $2,310.75. To process your refund, confirm your social security number and bank routing details through the secure form:
+http://docusign-secure.example.com/verify?id=14953
+This request must be completed within 48 hours.",phishing
+Double your Bitcoin in 24 hours - limited event,"Hello investor,
+Our exclusive Contoso crypto event guarantees a 100% return. Send any amount to the wallet on the page below and receive double back instantly.
+http://dhl-secure.example.com/verify?id=38011
+Verified by thousands of happy users. Offer ends at midnight.",phishing
+Your receipt from Massive Dynamic,"Hi Emma,
+Thanks for your purchase. Your order total was $999.00 and it will arrive in 3-5 business days. No action is needed; this email is for your records.
+Massive Dynamic Support",benign
+Thanks for your help yesterday,"Hi Taylor,
+Just wanted to say thanks for jumping in on the Sales issue yesterday - it really helped us hit the deadline. Owe you a coffee.
+Best,
+Ivan",benign
+You are today's lucky Amazon winner!,"Dear valued customer,
+Congratulations! You have been selected to receive a free reward. To claim your prize, simply confirm your shipping address and card details at the link below.
+http://amazon-secure.example.com/verify?id=59783
+This exclusive offer expires tonight, so act fast!",phishing
+Contoso monthly newsletter,"Hello,
+Here's what happened at Contoso this month: a new office opened, the Marketing team shipped a feature, and we welcomed five new hires. Read the full stories on our internal wiki.
+Have a great week,
+The Contoso Comms Team",benign
+Your receipt from Stark Industries,"Hi Leo,
+Thanks for your purchase. Your order total was $999.00 and it will arrive in 3-5 business days. No action is needed; this email is for your records.
+Stark Industries Support",benign
+Reminder: Engineering sync on Wednesday,"Hi team,
+Just a reminder that our Engineering sync is on Wednesday at 10:30am. Agenda: status updates and next week's priorities. Let me know if you can't make it.
+Thanks,
+Emma",benign
+Thanks for your help yesterday,"Hi Sofia,
+Just wanted to say thanks for jumping in on the Engineering issue yesterday - it really helped us hit the deadline. Owe you a coffee.
+Best,
+Grace",benign
+Urgent: Your Netflix account has been suspended,"Dear customer,
+We detected unusual activity on your Netflix account. To avoid permanent suspension, you must verify your identity within 24 hours by clicking the link below and entering your username, password, and one-time code.
+http://netflix-secure.example.com/verify?id=21450
+Failure to act will result in your account being disabled.
+Regards,
+Netflix Security Team",phishing
+Project update: Pied Piper rollout,"Hi Omar,
+Quick update: we finished the first milestone ahead of schedule and testing looks good. I'll share the deck before Thursday. Let me know if you'd like to review earlier.
+Cheers,
+Chen",benign
+You're invited: Pied Piper tech talk on Friday,"Hi Chen,
+We're hosting an internal tech talk on Friday at 1pm covering our latest Engineering work. Add it to your calendar if you're interested - the recording will be shared afterward.
+See you there,
+Grace",benign
+Open enrollment starts next week,"Hi everyone,
+Benefits open enrollment begins Monday. Review your options in the HR portal at your convenience before the end of the month. Reach out to People Ops with any questions.
+Best,
+Alex, People Ops",benign
+Project update: Globex rollout,"Hi Emma,
+Quick update: we finished the first milestone ahead of schedule and testing looks good. I'll share the deck before Friday. Let me know if you'd like to review earlier.
+Cheers,
+Omar",benign
+Your Netflix password will expire in 2 hours,"Dear user,
+Your password is about to expire. To keep your account active, re-enter your current password and confirm a new one immediately at:
+http://netflix-secure.example.com/verify?id=77804
+Ignoring this message will lock you out of your mailbox.
+IT Helpdesk",phishing
+Double your Bitcoin in 24 hours - limited event,"Hello investor,
+Our exclusive Wayne Enterprises crypto event guarantees a 100% return. Send any amount to the wallet on the page below and receive double back instantly.
+http://apple-secure.example.com/verify?id=45871
+Verified by thousands of happy users. Offer ends at midnight.",phishing
+Invoice 7946 overdue - immediate payment required,"Hello,
+Our records show an unpaid balance of $76.20. To avoid a late fee and service interruption, please review and settle the invoice using the secure portal below.
+http://paypal-secure.example.com/verify?id=86117
+If payment is not received today, the account will be forwarded to collections.
+Accounts Receivable",phishing
+Double your Bitcoin in 24 hours - limited event,"Hello investor,
+Our exclusive Umbrella crypto event guarantees a 100% return. Send any amount to the wallet on the page below and receive double back instantly.
+http://docusign-secure.example.com/verify?id=70000
+Verified by thousands of happy users. Offer ends at midnight.",phishing
+Your PayPal password will expire in 2 hours,"Dear user,
+Your password is about to expire. To keep your account active, re-enter your current password and confirm a new one immediately at:
+http://paypal-secure.example.com/verify?id=18171
+Ignoring this message will lock you out of your mailbox.
+IT Helpdesk",phishing
+Open enrollment starts next week,"Hi everyone,
+Benefits open enrollment begins Friday. Review your options in the HR portal at your convenience before the end of the month. Reach out to People Ops with any questions.
+Best,
+Raj, People Ops",benign
+Project update: Contoso rollout,"Hi Grace,
+Quick update: we finished the first milestone ahead of schedule and testing looks good. I'll share the deck before Monday. Let me know if you'd like to review earlier.
+Cheers,
+Jordan",benign
+"Claim your $1,000 gift card now","Dear valued customer,
+Congratulations! You have been selected to receive a free reward. To claim your prize, simply confirm your shipping address and card details at the link below.
+http://amazon-secure.example.com/verify?id=10909
+This exclusive offer expires tonight, so act fast!",phishing
+Project update: Globex rollout,"Hi Grace,
+Quick update: we finished the first milestone ahead of schedule and testing looks good. I'll share the deck before Tuesday. Let me know if you'd like to review earlier.
+Cheers,
+Ivan",benign
+Your FedEx password will expire in 2 hours,"Dear user,
+Your password is about to expire. To keep your account active, re-enter your current password and confirm a new one immediately at:
+http://fedex-secure.example.com/verify?id=70538
+Ignoring this message will lock you out of your mailbox.
+IT Helpdesk",phishing
+Double your Bitcoin in 24 hours - limited event,"Hello investor,
+Our exclusive Soylent crypto event guarantees a 100% return. Send any amount to the wallet on the page below and receive double back instantly.
+http://docusign-secure.example.com/verify?id=67611
+Verified by thousands of happy users. Offer ends at midnight.",phishing
+Calendar invite: 1:1 on Thursday,"Hi Grace,
+Sending over a calendar invite for our 1:1 on Thursday at 3:15pm. Feel free to add anything you'd like to discuss to the shared notes doc.
+Talk soon,
+Olivia",benign
+Noah shared a document with you,"Noah has shared a confidential file 'Q3-Payroll.xlsx' with you on Amazon. Sign in with your work email and password to view it:
+http://amazon-secure.example.com/verify?id=71658
+This link is available for a limited time.",phishing
+[Security Alert] Verify your First National Bank account now,"Dear customer,
+We detected unusual activity on your PayPal account. To avoid permanent suspension, you must verify your identity within 24 hours by clicking the link below and entering your username, password, and one-time code.
+http://paypal-secure.example.com/verify?id=83008
+Failure to act will result in your account being disabled.
+Regards,
+PayPal Security Team",phishing
+Calendar invite: 1:1 on Tuesday,"Hi Yuki,
+Sending over a calendar invite for our 1:1 on Tuesday at 3:15pm. Feel free to add anything you'd like to discuss to the shared notes doc.
+Talk soon,
+Sam",benign
+Double your Bitcoin in 24 hours - limited event,"Hello investor,
+Our exclusive Soylent crypto event guarantees a 100% return. Send any amount to the wallet on the page below and receive double back instantly.
+http://netflix-secure.example.com/verify?id=91391
+Verified by thousands of happy users. Offer ends at midnight.",phishing
+Congratulations! You have won a brand new iPhone,"Dear valued customer,
+Congratulations! You have been selected to receive a free reward. To claim your prize, simply confirm your shipping address and card details at the link below.
+http://docusign-secure.example.com/verify?id=99232
+This exclusive offer expires tonight, so act fast!",phishing
+IRS notice: you are eligible for a tax refund,"Dear taxpayer,
+You are eligible for a refund of $76.20. To process your refund, confirm your social security number and bank routing details through the secure form:
+http://paypal-secure.example.com/verify?id=98460
+This request must be completed within 48 hours.",phishing
+Thanks for your help yesterday,"Hi Diego,
+Just wanted to say thanks for jumping in on the Marketing issue yesterday - it really helped us hit the deadline. Owe you a coffee.
+Best,
+Sofia",benign
+IRS notice: you are eligible for a tax refund,"Dear taxpayer,
+You are eligible for a refund of $76.20. To process your refund, confirm your social security number and bank routing details through the secure form:
+http://dropbox-secure.example.com/verify?id=32850
+This request must be completed within 48 hours.",phishing
+Calendar invite: 1:1 on Thursday,"Hi Chen,
+Sending over a calendar invite for our 1:1 on Thursday at 9am. Feel free to add anything you'd like to discuss to the shared notes doc.
+Talk soon,
+Alex",benign
+Calendar invite: 1:1 on Friday,"Hi Priya,
+Sending over a calendar invite for our 1:1 on Friday at 3:15pm. Feel free to add anything you'd like to discuss to the shared notes doc.
+Talk soon,
+Emma",benign
+Project update: Northwind rollout,"Hi Raj,
+Quick update: we finished the first milestone ahead of schedule and testing looks good. I'll share the deck before Thursday. Let me know if you'd like to review earlier.
+Cheers,
+Raj",benign
+Your FedEx password will expire in 2 hours,"Dear user,
+Your password is about to expire. To keep your account active, re-enter your current password and confirm a new one immediately at:
+http://fedex-secure.example.com/verify?id=94172
+Ignoring this message will lock you out of your mailbox.
+IT Helpdesk",phishing
+Olivia shared a document with you,"Olivia has shared a confidential file 'Bonus-List.xlsx' with you on Netflix. Sign in with your work email and password to view it:
+http://netflix-secure.example.com/verify?id=42296
+This link is available for a limited time.",phishing
+Scheduled maintenance this weekend,"Hello,
+IT will perform scheduled maintenance on internal tools this Saturday from 10pm to 2am. No action is required and you don't need to enter any credentials. Systems may be briefly unavailable during that window.
+Northwind IT",benign
+Project update: Hooli rollout,"Hi Liam,
+Quick update: we finished the first milestone ahead of schedule and testing looks good. I'll share the deck before Monday. Let me know if you'd like to review earlier.
+Cheers,
+Fatima",benign
+Double your Bitcoin in 24 hours - limited event,"Hello investor,
+Our exclusive Soylent crypto event guarantees a 100% return. Send any amount to the wallet on the page below and receive double back instantly.
+http://netflix-secure.example.com/verify?id=27798
+Verified by thousands of happy users. Offer ends at midnight.",phishing
+Congratulations! You have won a brand new iPhone,"Dear valued customer,
+Congratulations! You have been selected to receive a free reward. To claim your prize, simply confirm your shipping address and card details at the link below.
+http://amazon-secure.example.com/verify?id=65711
+This exclusive offer expires tonight, so act fast!",phishing
+Apple: your package could not be delivered,"Hi,
+We attempted to deliver your parcel but were unable to complete it due to an unpaid customs fee of $76.20. Reschedule delivery and pay the fee within 12 hours here:
+http://apple-secure.example.com/verify?id=50969
+Unclaimed packages are returned to sender.
+Apple Delivery",phishing
+[Security Alert] Verify your First National Bank account now,"Dear customer,
+We detected unusual activity on your Microsoft 365 account. To avoid permanent suspension, you must verify your identity within 24 hours by clicking the link below and entering your username, password, and one-time code.
+http://microsoft-365-secure.example.com/verify?id=83714
+Failure to act will result in your account being disabled.
+Regards,
+Microsoft 365 Security Team",phishing
+Invoice 3263 overdue - immediate payment required,"Hello,
+Our records show an unpaid balance of $14.30. To avoid a late fee and service interruption, please review and settle the invoice using the secure portal below.
+http://apple-secure.example.com/verify?id=27206
+If payment is not received today, the account will be forwarded to collections.
+Accounts Receivable",phishing
+IRS notice: you are eligible for a tax refund,"Dear taxpayer,
+You are eligible for a refund of $999.00. To process your refund, confirm your social security number and bank routing details through the secure form:
+http://dhl-secure.example.com/verify?id=69191
+This request must be completed within 48 hours.",phishing
+Calendar invite: 1:1 on Thursday,"Hi Priya,
+Sending over a calendar invite for our 1:1 on Thursday at 9am. Feel free to add anything you'd like to discuss to the shared notes doc.
+Talk soon,
+Omar",benign
+Congratulations! You have won a brand new iPhone,"Dear valued customer,
+Congratulations! You have been selected to receive a free reward. To claim your prize, simply confirm your shipping address and card details at the link below.
+http://docusign-secure.example.com/verify?id=63297
+This exclusive offer expires tonight, so act fast!",phishing
+Are you available?,"Hi Emma,
+I'm in back-to-back meetings and need you to handle something discreetly. Please purchase four $2,310.75 gift cards for a client and send me the codes right away. I'll approve the reimbursement afterward. Do not loop in anyone else yet.
+Thanks,
+The CEO",phishing
+IRS notice: you are eligible for a tax refund,"Dear taxpayer,
+You are eligible for a refund of $540.00. To process your refund, confirm your social security number and bank routing details through the secure form:
+http://netflix-secure.example.com/verify?id=63359
+This request must be completed within 48 hours.",phishing
+Calendar invite: 1:1 on Tuesday,"Hi Raj,
+Sending over a calendar invite for our 1:1 on Tuesday at 9am. Feel free to add anything you'd like to discuss to the shared notes doc.
+Talk soon,
+Morgan",benign
+Double your Bitcoin in 24 hours - limited event,"Hello investor,
+Our exclusive Soylent crypto event guarantees a 100% return. Send any amount to the wallet on the page below and receive double back instantly.
+http://dropbox-secure.example.com/verify?id=42062
+Verified by thousands of happy users. Offer ends at midnight.",phishing
+Sofia shared a document with you,"Sofia has shared a confidential file 'Bonus-List.xlsx' with you on DocuSign. Sign in with your work email and password to view it:
+http://docusign-secure.example.com/verify?id=92179
+This link is available for a limited time.",phishing
+You are today's lucky FedEx winner!,"Dear valued customer,
+Congratulations! You have been selected to receive a free reward. To claim your prize, simply confirm your shipping address and card details at the link below.
+http://fedex-secure.example.com/verify?id=67411
+This exclusive offer expires tonight, so act fast!",phishing
+Grace shared a document with you,"Grace has shared a confidential file 'Bonus-List.xlsx' with you on Amazon. Sign in with your work email and password to view it:
+http://amazon-secure.example.com/verify?id=83203
+This link is available for a limited time.",phishing
+[Security Alert] Verify your Sterling Bank account now,"Dear customer,
+We detected unusual activity on your Amazon account. To avoid permanent suspension, you must verify your identity within 24 hours by clicking the link below and entering your username, password, and one-time code.
+http://amazon-secure.example.com/verify?id=74902
+Failure to act will result in your account being disabled.
+Regards,
+Amazon Security Team",phishing
+Calendar invite: 1:1 on Friday,"Hi Priya,
+Sending over a calendar invite for our 1:1 on Friday at 4pm. Feel free to add anything you'd like to discuss to the shared notes doc.
+Talk soon,
+Sam",benign
+Action required: unusual sign-in on your Apple account,"Dear customer,
+We detected unusual activity on your Apple account. To avoid permanent suspension, you must verify your identity within 24 hours by clicking the link below and entering your username, password, and one-time code.
+http://apple-secure.example.com/verify?id=82246
+Failure to act will result in your account being disabled.
+Regards,
+Apple Security Team",phishing
+Urgent: Your Netflix account has been suspended,"Dear customer,
+We detected unusual activity on your Netflix account. To avoid permanent suspension, you must verify your identity within 24 hours by clicking the link below and entering your username, password, and one-time code.
+http://netflix-secure.example.com/verify?id=78145
+Failure to act will result in your account being disabled.
+Regards,
+Netflix Security Team",phishing
+Thanks for your help yesterday,"Hi Sam,
+Just wanted to say thanks for jumping in on the Finance issue yesterday - it really helped us hit the deadline. Owe you a coffee.
+Best,
+Jordan",benign
+Double your Bitcoin in 24 hours - limited event,"Hello investor,
+Our exclusive Cyberdyne crypto event guarantees a 100% return. Send any amount to the wallet on the page below and receive double back instantly.
+http://paypal-secure.example.com/verify?id=91090
+Verified by thousands of happy users. Offer ends at midnight.",phishing
+Double your Bitcoin in 24 hours - limited event,"Hello investor,
+Our exclusive Vandelay crypto event guarantees a 100% return. Send any amount to the wallet on the page below and receive double back instantly.
+http://netflix-secure.example.com/verify?id=20685
+Verified by thousands of happy users. Offer ends at midnight.",phishing
+Apple: your package could not be delivered,"Hi,
+We attempted to deliver your parcel but were unable to complete it due to an unpaid customs fee of $1,240.00. Reschedule delivery and pay the fee within 12 hours here:
+http://apple-secure.example.com/verify?id=73572
+Unclaimed packages are returned to sender.
+Apple Delivery",phishing
+Reminder: Sales sync on Friday,"Hi team,
+Just a reminder that our Sales sync is on Friday at 4pm. Agenda: status updates and next week's priorities. Let me know if you can't make it.
+Thanks,
+Sofia",benign
+Fatima shared a document with you,"Fatima has shared a confidential file 'Budget.xlsx' with you on Amazon. Sign in with your work email and password to view it:
+http://amazon-secure.example.com/verify?id=40697
+This link is available for a limited time.",phishing
+[Security Alert] Verify your Pacific Credit Union account now,"Dear customer,
+We detected unusual activity on your Amazon account. To avoid permanent suspension, you must verify your identity within 24 hours by clicking the link below and entering your username, password, and one-time code.
+http://amazon-secure.example.com/verify?id=69013
+Failure to act will result in your account being disabled.
+Regards,
+Amazon Security Team",phishing
+Pied Piper monthly newsletter,"Hello,
+Here's what happened at Pied Piper this month: a new office opened, the Marketing team shipped a feature, and we welcomed five new hires. Read the full stories on our internal wiki.
+Have a great week,
+The Pied Piper Comms Team",benign
+Reminder: Finance sync on Friday,"Hi team,
+Just a reminder that our Finance sync is on Friday at 1pm. Agenda: status updates and next week's priorities. Let me know if you can't make it.
+Thanks,
+Olivia",benign
+Reminder: IT sync on Monday,"Hi team,
+Just a reminder that our IT sync is on Monday at 3:15pm. Agenda: status updates and next week's priorities. Let me know if you can't make it.
+Thanks,
+Liam",benign
+Scheduled maintenance this weekend,"Hello,
+IT will perform scheduled maintenance on internal tools this Saturday from 10pm to 2am. No action is required and you don't need to enter any credentials. Systems may be briefly unavailable during that window.
+Massive Dynamic IT",benign
+Open enrollment starts next week,"Hi everyone,
+Benefits open enrollment begins Friday. Review your options in the HR portal at your convenience before the end of the month. Reach out to People Ops with any questions.
+Best,
+Fatima, People Ops",benign
+Microsoft 365: your package could not be delivered,"Hi,
+We attempted to deliver your parcel but were unable to complete it due to an unpaid customs fee of $49.99. Reschedule delivery and pay the fee within 12 hours here:
+http://microsoft-365-secure.example.com/verify?id=44167
+Unclaimed packages are returned to sender.
+Microsoft 365 Delivery",phishing
+Project update: Soylent rollout,"Hi Alex,
+Quick update: we finished the first milestone ahead of schedule and testing looks good. I'll share the deck before Wednesday. Let me know if you'd like to review earlier.
+Cheers,
+Morgan",benign
+Reminder: Legal sync on Monday,"Hi team,
+Just a reminder that our Legal sync is on Monday at 4pm. Agenda: status updates and next week's priorities. Let me know if you can't make it.
+Thanks,
+Noah",benign
+You're invited: Wayne Enterprises tech talk on Wednesday,"Hi Grace,
+We're hosting an internal tech talk on Wednesday at 2pm covering our latest Sales work. Add it to your calendar if you're interested - the recording will be shared afterward.
+See you there,
+Chen",benign
+Your receipt from Wonka,"Hi Priya,
+Thanks for your purchase. Your order total was $999.00 and it will arrive in 3-5 business days. No action is needed; this email is for your records.
+Wonka Support",benign
+Are you available?,"Hi Yuki,
+I'm in back-to-back meetings and need you to handle something discreetly. Please purchase four $999.00 gift cards for a client and send me the codes right away. I'll approve the reimbursement afterward. Do not loop in anyone else yet.
+Thanks,
+The CEO",phishing
+Netflix: your package could not be delivered,"Hi,
+We attempted to deliver your parcel but were unable to complete it due to an unpaid customs fee of $1,240.00. Reschedule delivery and pay the fee within 12 hours here:
+http://netflix-secure.example.com/verify?id=26783
+Unclaimed packages are returned to sender.
+Netflix Delivery",phishing
+Reminder: Marketing sync on Wednesday,"Hi team,
+Just a reminder that our Marketing sync is on Wednesday at 2pm. Agenda: status updates and next week's priorities. Let me know if you can't make it.
+Thanks,
+Morgan",benign
+Project update: Cyberdyne rollout,"Hi Grace,
+Quick update: we finished the first milestone ahead of schedule and testing looks good. I'll share the deck before Monday. Let me know if you'd like to review earlier.
+Cheers,
+Yuki",benign
+Thanks for your help yesterday,"Hi Ivan,
+Just wanted to say thanks for jumping in on the People Ops issue yesterday - it really helped us hit the deadline. Owe you a coffee.
+Best,
+Jordan",benign
+Open enrollment starts next week,"Hi everyone,
+Benefits open enrollment begins Wednesday. Review your options in the HR portal at your convenience before the end of the month. Reach out to People Ops with any questions.
+Best,
+Sam, People Ops",benign
+Microsoft 365: your package could not be delivered,"Hi,
+We attempted to deliver your parcel but were unable to complete it due to an unpaid customs fee of $1,240.00. Reschedule delivery and pay the fee within 12 hours here:
+http://microsoft-365-secure.example.com/verify?id=11704
+Unclaimed packages are returned to sender.
+Microsoft 365 Delivery",phishing
+"Claim your $1,000 gift card now","Dear valued customer,
+Congratulations! You have been selected to receive a free reward. To claim your prize, simply confirm your shipping address and card details at the link below.
+http://fedex-secure.example.com/verify?id=24877
+This exclusive offer expires tonight, so act fast!",phishing
+You're invited: Contoso tech talk on Thursday,"Hi Yuki,
+We're hosting an internal tech talk on Thursday at 3:15pm covering our latest Engineering work. Add it to your calendar if you're interested - the recording will be shared afterward.
+See you there,
+Yuki",benign
+Dropbox: your package could not be delivered,"Hi,
+We attempted to deliver your parcel but were unable to complete it due to an unpaid customs fee of $76.20. Reschedule delivery and pay the fee within 12 hours here:
+http://dropbox-secure.example.com/verify?id=89395
+Unclaimed packages are returned to sender.
+Dropbox Delivery",phishing
+IRS notice: you are eligible for a tax refund,"Dear taxpayer,
+You are eligible for a refund of $128.50. To process your refund, confirm your social security number and bank routing details through the secure form:
+http://docusign-secure.example.com/verify?id=39595
+This request must be completed within 48 hours.",phishing
+Invoice 5072 overdue - immediate payment required,"Hello,
+Our records show an unpaid balance of $2,310.75. To avoid a late fee and service interruption, please review and settle the invoice using the secure portal below.
+http://fedex-secure.example.com/verify?id=38210
+If payment is not received today, the account will be forwarded to collections.
+Accounts Receivable",phishing
+Calendar invite: 1:1 on Monday,"Hi Raj,
+Sending over a calendar invite for our 1:1 on Monday at 1pm. Feel free to add anything you'd like to discuss to the shared notes doc.
+Talk soon,
+Grace",benign
+Open enrollment starts next week,"Hi everyone,
+Benefits open enrollment begins Tuesday. Review your options in the HR portal at your convenience before the end of the month. Reach out to People Ops with any questions.
+Best,
+Alex, People Ops",benign
+Sam shared a document with you,"Sam has shared a confidential file 'Bonus-List.xlsx' with you on Apple. Sign in with your work email and password to view it:
+http://apple-secure.example.com/verify?id=12537
+This link is available for a limited time.",phishing
+You're invited: Soylent tech talk on Tuesday,"Hi Raj,
+We're hosting an internal tech talk on Tuesday at 1pm covering our latest IT work. Add it to your calendar if you're interested - the recording will be shared afterward.
+See you there,
+Olivia",benign
+Action required: unusual sign-in on your Apple account,"Dear customer,
+We detected unusual activity on your Apple account. To avoid permanent suspension, you must verify your identity within 24 hours by clicking the link below and entering your username, password, and one-time code.
+http://apple-secure.example.com/verify?id=23672
+Failure to act will result in your account being disabled.
+Regards,
+Apple Security Team",phishing
+Project update: Vandelay rollout,"Hi Morgan,
+Quick update: we finished the first milestone ahead of schedule and testing looks good. I'll share the deck before Tuesday. Let me know if you'd like to review earlier.
+Cheers,
+Taylor",benign
+Your Microsoft 365 password will expire in 2 hours,"Dear user,
+Your password is about to expire. To keep your account active, re-enter your current password and confirm a new one immediately at:
+http://microsoft-365-secure.example.com/verify?id=51852
+Ignoring this message will lock you out of your mailbox.
+IT Helpdesk",phishing
+Reminder: Marketing sync on Thursday,"Hi team,
+Just a reminder that our Marketing sync is on Thursday at 10:30am. Agenda: status updates and next week's priorities. Let me know if you can't make it.
+Thanks,
+Omar",benign
+[Security Alert] Verify your Union Savings account now,"Dear customer,
+We detected unusual activity on your Dropbox account. To avoid permanent suspension, you must verify your identity within 24 hours by clicking the link below and entering your username, password, and one-time code.
+http://dropbox-secure.example.com/verify?id=27103
+Failure to act will result in your account being disabled.
+Regards,
+Dropbox Security Team",phishing
+Double your Bitcoin in 24 hours - limited event,"Hello investor,
+Our exclusive Vandelay crypto event guarantees a 100% return. Send any amount to the wallet on the page below and receive double back instantly.
+http://apple-secure.example.com/verify?id=74058
+Verified by thousands of happy users. Offer ends at midnight.",phishing
+Your receipt from Wayne Enterprises,"Hi Grace,
+Thanks for your purchase. Your order total was $1,240.00 and it will arrive in 3-5 business days. No action is needed; this email is for your records.
+Wayne Enterprises Support",benign
+[Security Alert] Verify your Sterling Bank account now,"Dear customer,
+We detected unusual activity on your DocuSign account. To avoid permanent suspension, you must verify your identity within 24 hours by clicking the link below and entering your username, password, and one-time code.
+http://docusign-secure.example.com/verify?id=78709
+Failure to act will result in your account being disabled.
+Regards,
+DocuSign Security Team",phishing
+"Claim your $1,000 gift card now","Dear valued customer,
+Congratulations! You have been selected to receive a free reward. To claim your prize, simply confirm your shipping address and card details at the link below.
+http://microsoft-365-secure.example.com/verify?id=42181
+This exclusive offer expires tonight, so act fast!",phishing
+Pied Piper monthly newsletter,"Hello,
+Here's what happened at Pied Piper this month: a new office opened, the People Ops team shipped a feature, and we welcomed five new hires. Read the full stories on our internal wiki.
+Have a great week,
+The Pied Piper Comms Team",benign
+Invoice 1727 overdue - immediate payment required,"Hello,
+Our records show an unpaid balance of $2,310.75. To avoid a late fee and service interruption, please review and settle the invoice using the secure portal below.
+http://netflix-secure.example.com/verify?id=57404
+If payment is not received today, the account will be forwarded to collections.
+Accounts Receivable",phishing
+[Security Alert] Verify your MetroTrust account now,"Dear customer,
+We detected unusual activity on your DHL account. To avoid permanent suspension, you must verify your identity within 24 hours by clicking the link below and entering your username, password, and one-time code.
+http://dhl-secure.example.com/verify?id=26903
+Failure to act will result in your account being disabled.
+Regards,
+DHL Security Team",phishing
+Quick favor,"Hi Raj,
+I'm in back-to-back meetings and need you to handle something discreetly. Please purchase four $49.99 gift cards for a client and send me the codes right away. I'll approve the reimbursement afterward. Do not loop in anyone else yet.
+Thanks,
+The CEO",phishing
+Calendar invite: 1:1 on Tuesday,"Hi Emma,
+Sending over a calendar invite for our 1:1 on Tuesday at 3:15pm. Feel free to add anything you'd like to discuss to the shared notes doc.
+Talk soon,
+Chen",benign
+You're invited: Contoso tech talk on Tuesday,"Hi Raj,
+We're hosting an internal tech talk on Tuesday at 4pm covering our latest Marketing work. Add it to your calendar if you're interested - the recording will be shared afterward.
+See you there,
+Grace",benign
+Calendar invite: 1:1 on Monday,"Hi Taylor,
+Sending over a calendar invite for our 1:1 on Monday at 10:30am. Feel free to add anything you'd like to discuss to the shared notes doc.
+Talk soon,
+Yuki",benign
+Reminder: Engineering sync on Wednesday,"Hi team,
+Just a reminder that our Engineering sync is on Wednesday at 2pm. Agenda: status updates and next week's priorities. Let me know if you can't make it.
+Thanks,
+Chen",benign
+Thanks for your help yesterday,"Hi Olivia,
+Just wanted to say thanks for jumping in on the Finance issue yesterday - it really helped us hit the deadline. Owe you a coffee.
+Best,
+Ivan",benign
+Open enrollment starts next week,"Hi everyone,
+Benefits open enrollment begins Monday. Review your options in the HR portal at your convenience before the end of the month. Reach out to People Ops with any questions.
+Best,
+Omar, People Ops",benign
+Scheduled maintenance this weekend,"Hello,
+IT will perform scheduled maintenance on internal tools this Saturday from 10pm to 2am. No action is required and you don't need to enter any credentials. Systems may be briefly unavailable during that window.
+Wayne Enterprises IT",benign
+Netflix: your package could not be delivered,"Hi,
+We attempted to deliver your parcel but were unable to complete it due to an unpaid customs fee of $76.20. Reschedule delivery and pay the fee within 12 hours here:
+http://netflix-secure.example.com/verify?id=30518
+Unclaimed packages are returned to sender.
+Netflix Delivery",phishing
