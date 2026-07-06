@@ -69,7 +69,7 @@ export const SelectableCard: FC<SelectableCardProps> = ({
     type="button"
     onClick={onActivate}
     aria-pressed={selected}
-    className={`flex w-[240px] justify-between cursor-pointer flex-col items-start gap-1.5 rounded-md border bg-surface-raised px-2 py-1.5 text-left transition-colors hover:border-strong hover:bg-surface-hover focus-visible:border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#76b900] ${selected ? 'border-strong' : 'border-base'} ${className ?? ''}`}
+    className={`flex w-[240px] justify-between cursor-pointer flex-col items-start gap-1.5 rounded-md border bg-surface-raised px-2 py-1.5 text-left transition-colors hover:border-strong hover:bg-surface-hover focus-visible:border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-brand,#76b900) ${selected ? 'border-strong' : 'border-base'} ${className ?? ''}`}
   >
     <Stack gap="1.5">
       <Flex className="w-full items-center gap-2">

@@ -1,21 +1,39 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { DagCanvas } from '@studio/components/DagCanvas';
 import {
   CardNode,
   type CardNodeData,
   type CardNodeType,
 } from '@studio/components/DagCanvas/CardNode';
 import { NODE_HEIGHT, NODE_WIDTH, layoutGraph } from '@studio/components/DagCanvas/layout';
+import type { DagNode } from '@studio/components/DagCanvas/types';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { type Edge, type Node, type NodeProps, Position } from '@xyflow/react';
 
-// Handle reads from React Flow's internal store/context, which only exists inside a
-// rendered <ReactFlow>. Stub it so CardNode can be unit-tested in isolation.
+// React Flow reads from an internal store/context that only exists inside a fully
+// measured <ReactFlow> (needs ResizeObserver + real layout, absent in jsdom). Stub
+// Handle for isolated CardNode tests, and stub ReactFlow to render each node's
+// activation handler so DagCanvas's own onActivate → onNodeClick wiring is testable.
 vi.mock('@xyflow/react', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@xyflow/react')>();
-  return { ...actual, Handle: () => null };
+  return {
+    ...actual,
+    Handle: () => null,
+    Background: () => null,
+    Controls: () => null,
+    ReactFlow: ({ nodes }: { nodes: CardNodeType[] }) => (
+      <div>
+        {nodes.map((node) => (
+          <button key={node.id} type="button" onClick={() => node.data.onActivate?.()}>
+            {node.data.title}
+          </button>
+        ))}
+      </div>
+    ),
+  };
 });
 
 const makeNode = (id: string): Node<CardNodeData> => ({
@@ -124,5 +142,45 @@ describe('CardNode', () => {
     await user.keyboard('{Enter}');
 
     expect(onActivate).toHaveBeenCalled();
+  });
+});
+
+describe('DagCanvas', () => {
+  it('bridges a node activation to onNodeClick with the node id and data', async () => {
+    const user = userEvent.setup();
+    const onNodeClick = vi.fn();
+    const nodes: DagNode[] = [
+      { id: 'train', data: { title: 'Train', type: 'CUSTOMIZER' } },
+      { id: 'evaluate', data: { title: 'Evaluate' } },
+    ];
+
+    render(
+      <DagCanvas
+        nodes={nodes}
+        edges={[{ source: 'train', target: 'evaluate' }]}
+        onNodeClick={onNodeClick}
+      />
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Train' }));
+
+    expect(onNodeClick).toHaveBeenCalledTimes(1);
+    expect(onNodeClick).toHaveBeenCalledWith('train', nodes[0].data);
+  });
+
+  it('always calls the latest onNodeClick after the callback identity changes', async () => {
+    const user = userEvent.setup();
+    const first = vi.fn();
+    const second = vi.fn();
+    const nodes: DagNode[] = [{ id: 'train', data: { title: 'Train' } }];
+
+    const { rerender } = render(<DagCanvas nodes={nodes} edges={[]} onNodeClick={first} />);
+    // Swap in a fresh callback reference, mirroring a parent passing an inline arrow.
+    rerender(<DagCanvas nodes={nodes} edges={[]} onNodeClick={second} />);
+
+    await user.click(screen.getByRole('button', { name: 'Train' }));
+
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledWith('train', nodes[0].data);
   });
 });

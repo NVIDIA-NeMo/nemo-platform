@@ -93,11 +93,11 @@ const clearNodesOffEdges = (
  * dagre reports node centers, so we offset by half the card size to get the
  * top-left origin React Flow expects.
  */
-export const layoutGraph = <T extends Record<string, unknown>>(
-  nodes: Node<T>[],
+export const layoutGraph = <N extends Node>(
+  nodes: N[],
   edges: Edge[],
   direction: DagDirection
-): Node<T>[] => {
+): N[] => {
   const graph = new dagre.graphlib.Graph();
   graph.setDefaultEdgeLabel(() => ({}));
   graph.setGraph({ rankdir: direction, nodesep: 48, ranksep: 64 });
