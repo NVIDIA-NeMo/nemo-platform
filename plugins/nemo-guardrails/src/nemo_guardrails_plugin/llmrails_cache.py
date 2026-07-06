@@ -27,6 +27,7 @@ builder that shares parsed Colang and :class:`KnowledgeBase` across instances.
 from __future__ import annotations
 
 import asyncio
+import copy
 import hashlib
 import json
 import logging
@@ -34,15 +35,16 @@ from collections import OrderedDict, deque
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Protocol
 
-from langchain_core.language_models.base import BaseLanguageModel
 from nemo_platform.types.guardrail import OutputRailsStreamingConfig
 from nemo_platform.types.guardrail import RailsConfig as PlatformRailsConfig
 from nemo_platform_plugin.inference_middleware import OpenAICompatibleInferenceTarget
 from nemoguardrails import RailsConfig as LibraryRailsConfig
 from nemoguardrails.rails.llm.config import Model
 from nemoguardrails.rails.llm.llmrails import LLMRails
+from nemoguardrails.types import LLMModel
 from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
@@ -138,6 +140,22 @@ def source_has_output_flows(source: GuardrailConfigSource) -> bool:
     if rails is None or rails.output is None:
         return False
     return bool(rails.output.flows)
+
+
+def source_has_tool_output_flows(source: GuardrailConfigSource) -> bool:
+    """Return ``True`` when ``source`` declares at least one tool_output flow."""
+    rails = source.rails.rails
+    if rails is None or rails.tool_output is None:
+        return False
+    return bool(rails.tool_output.flows)
+
+
+def source_has_tool_input_flows(source: GuardrailConfigSource) -> bool:
+    """Return ``True`` when ``source`` declares at least one tool_input flow."""
+    rails = source.rails.rails
+    if rails is None or rails.tool_input is None:
+        return False
+    return bool(rails.tool_input.flows)
 
 
 def extract_output_rails_streaming_config(
@@ -442,6 +460,16 @@ class LLMRailsBuilder(Protocol):
     async def build(self, config: LibraryRailsConfig) -> LLMRails: ...
 
 
+_TOOL_RAILS_PATH = str(Path(__file__).parent / "tool_rails")
+"""Absolute path to the plugin's built-in tool rail Colang flows.
+
+Injected into every ``LLMRails`` build so the library discovers the ``flows.co``
+wrappers for the plugin-owned ``check_tool_*`` actions. The Python actions
+themselves are registered explicitly via ``register_action`` — the library does
+not auto-import ``actions.py`` files from ``import_paths`` directories.
+"""
+
+
 class DefaultLLMRailsBuilder:
     """Phase 1 builder: ``asyncio.to_thread(LLMRails, config=config)``.
 
@@ -451,7 +479,38 @@ class DefaultLLMRailsBuilder:
     """
 
     async def build(self, config: LibraryRailsConfig) -> LLMRails:
-        return await asyncio.to_thread(LLMRails, config=config)
+        from nemo_guardrails_plugin.tool_rails.actions import (
+            check_tool_allowlist,
+            check_tool_arguments,
+            check_tool_result_linkage,
+            check_tool_schema,
+        )
+        from nemoguardrails.colang import parse_colang_file
+
+        # Treat the cached StableRailsConfig.rails as immutable. Pools can ask
+        # the builder to create multiple LLMRails instances from the same config,
+        # so tool-flow injection must happen on a per-build copy.
+        config = copy.deepcopy(config)
+
+        # import_paths is only processed during LibraryRailsConfig.model_validate(); mutating it
+        # afterward has no effect on the Colang runtime's flow_configs. We parse flows.co directly
+        # and inject the parsed flows into config.flows so _init_flow_configs() sees them.
+        flows_co_path = Path(_TOOL_RAILS_PATH) / "flows.co"
+        flows_co_content = flows_co_path.read_text()
+        parsed = parse_colang_file("flows.co", flows_co_content)
+        tool_rail_flows = parsed.get("flows", [])
+        for flow in tool_rail_flows:
+            # Prevent auto-triggering on events; these flows are only called via `do <flow>`.
+            flow["is_subflow"] = True
+            flow["is_system_flow"] = True
+        config.flows = list(config.flows or []) + tool_rail_flows
+
+        rails = await asyncio.to_thread(LLMRails, config=config)
+        rails.register_action(check_tool_allowlist, name="check_tool_allowlist")
+        rails.register_action(check_tool_arguments, name="check_tool_arguments")
+        rails.register_action(check_tool_schema, name="check_tool_schema")
+        rails.register_action(check_tool_result_linkage, name="check_tool_result_linkage")
+        return rails
 
 
 # =============================================================================
@@ -657,7 +716,7 @@ class LLMRailsCache:
         self,
         stable: StableRailsConfig,
         *,
-        main_llm: BaseLanguageModel | None = None,
+        main_llm: LLMModel | None = None,
         provenance: Provenance | None = None,
     ) -> AsyncIterator[LLMRails]:
         """Lease one :class:`LLMRails` for one logical operation.
@@ -817,11 +876,14 @@ class LLMRailsCache:
             )
 
     @staticmethod
-    def _reset(rails: LLMRails, main_llm: BaseLanguageModel | None) -> None:
+    def _reset(rails: LLMRails, main_llm: LLMModel | None) -> None:
         """Wipe per-request shared state and apply this request's main LLM."""
         # Prevent leaks by clearing shared state inside a LLMRails instance.
         rails.events_history_cache.clear()
-        rails.explain_info = None
-        # Inject main_llm. Even if main_llm is None, we want this to persist
-        # to prevent subsequent leases without main_llms from reusing the wrong model.
+        rails._explain_info = None
+        # Even when no main LLM is provided, clear the previous lease's model
+        # so a warmed or reused instance cannot leak routing across requests.
+        if main_llm is None:
+            rails.llm = None
+            return
         rails.update_llm(main_llm)

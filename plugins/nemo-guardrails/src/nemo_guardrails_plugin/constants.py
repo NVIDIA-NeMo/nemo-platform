@@ -6,6 +6,9 @@ GUARDRAILS_PLUGIN_CONFIG_TYPE = "guardrail_config"
 PROCESS_REQUEST_RAIL_TYPES = ["input"]
 # Rail types to execute in the process_response middleware.
 PROCESS_RESPONSE_RAIL_TYPES = ["output"]
+# Rail types for tool call and tool result rails.
+PROCESS_TOOL_OUTPUT_RAIL_TYPES = ["tool_output"]
+PROCESS_TOOL_INPUT_RAIL_TYPES = ["tool_input"]
 # Role to use in the message if the user requests guardrails_data
 # to be injected as a response choice.
 GUARDRAILS_DATA_MESSAGE_ROLE = "guardrails_data"

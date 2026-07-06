@@ -1,13 +1,14 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import json
 import logging
 import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
 from nemo_guardrails_plugin.constants import GUARDRAILS_DATA_MESSAGE_ROLE
-from nemo_guardrails_plugin.rails import build_guardrails_data
+from nemo_guardrails_plugin.rails import build_generation_response_logs, build_guardrails_data
 from nemo_platform.types.guardrail import GenerationLogOptionsParam
 from nemo_platform_plugin.inference_middleware import (
     ImmediateResponse,
@@ -15,6 +16,7 @@ from nemo_platform_plugin.inference_middleware import (
     InferenceResponse,
     ResponseResult,
 )
+from nemoguardrails.rails.llm.options import GenerationLog as LibraryGenerationLog
 from nemoguardrails.rails.llm.options import GenerationResponse
 
 logger = logging.getLogger(__name__)
@@ -25,6 +27,62 @@ GUARDRAILS_DATA_FIELD = "guardrails_data"
 def build_chat_completion_response_id() -> str:
     """Build a chat completion response ID consistent with OpenAI-style responses."""
     return f"chatcmpl-{uuid.uuid4()}"
+
+
+def _to_jsonable(value: Any) -> Any:
+    """Best-effort conversion of SDK / pydantic models to plain JSON data."""
+    if value is None or isinstance(value, str | int | float | bool):
+        return value
+    if isinstance(value, dict):
+        return {str(k): _to_jsonable(v) for k, v in value.items() if v is not None}
+    if isinstance(value, list | tuple):
+        return [_to_jsonable(v) for v in value if v is not None]
+
+    model_dump = getattr(value, "model_dump", None)
+    if callable(model_dump):
+        try:
+            return _to_jsonable(model_dump(mode="json", exclude_none=True))
+        except TypeError:
+            try:
+                return _to_jsonable(model_dump(exclude_none=True))
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    to_dict = getattr(value, "to_dict", None)
+    if callable(to_dict):
+        try:
+            return _to_jsonable(to_dict(mode="json", exclude_none=True))
+        except TypeError:
+            try:
+                return _to_jsonable(to_dict(exclude_none=True))
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    if hasattr(value, "__dict__"):
+        return {
+            key: _to_jsonable(val)
+            for key, val in vars(value).items()
+            if not key.startswith("_") and val is not None
+        }
+
+    return str(value)
+
+
+def guardrails_data_to_dict(guardrails_data: Any) -> dict[str, Any]:
+    """Serialize GuardrailsData without relying on fragile deferred pydantic serializers."""
+    payload = _to_jsonable(guardrails_data)
+    if isinstance(payload, dict):
+        return payload
+    return {}
+
+
+def guardrails_data_to_json(guardrails_data: Any) -> str:
+    """Serialize GuardrailsData to compact JSON."""
+    return json.dumps(guardrails_data_to_dict(guardrails_data), separators=(",", ":"))
 
 
 def is_blocked_generation_response(generation_response: GenerationResponse) -> bool:
@@ -61,7 +119,7 @@ def build_assistant_message_from_response_result(response_result: ResponseResult
     """
     Build an assistant message object with the content from the given response.
     """
-    assistant_message = {
+    assistant_message: dict[str, Any] = {
         "role": "assistant",
         "content": "",
     }
@@ -70,11 +128,13 @@ def build_assistant_message_from_response_result(response_result: ResponseResult
         return assistant_message
 
     try:
-        content = response_result["choices"][0]["message"]["content"]
+        message = response_result["choices"][0]["message"]
     except (KeyError, IndexError, TypeError):
         return assistant_message
 
-    assistant_message["content"] = content
+    assistant_message["content"] = message.get("content") or ""
+    if tool_calls := message.get("tool_calls"):
+        assistant_message["tool_calls"] = tool_calls
     return assistant_message
 
 
@@ -83,6 +143,7 @@ def build_blocked_immediate_response_body(
     request_body: dict[str, Any],
     generation_response: GenerationResponse,
     user_log_options: GenerationLogOptionsParam | None,
+    input_generation_logs: list[LibraryGenerationLog] | None = None,
 ) -> dict[str, Any]:
     """
     Build the response body to return when an input or output rail blocks the request.
@@ -103,11 +164,13 @@ def build_blocked_immediate_response_body(
 
     guardrails_data = build_guardrails_data(
         config_id,
-        input_generation_response=generation_response,
+        input_generation_logs=input_generation_logs
+        if input_generation_logs is not None
+        else build_generation_response_logs(generation_response),
         user_log_options=user_log_options,
     )
     if guardrails_data is not None:
-        blocked[GUARDRAILS_DATA_FIELD] = guardrails_data.model_dump(exclude_none=True)
+        blocked[GUARDRAILS_DATA_FIELD] = guardrails_data_to_dict(guardrails_data)
 
     return blocked
 
@@ -134,7 +197,7 @@ def build_blocked_output_response_body(
     config_id: str,
     original_response: dict[str, Any],
     generation_response: GenerationResponse,
-    input_generation_response: GenerationResponse | None,
+    input_generation_logs: list[LibraryGenerationLog] | None,
     user_log_options: GenerationLogOptionsParam | None,
     return_guardrails_data_as_choice: bool = False,
 ) -> dict[str, Any]:
@@ -157,7 +220,7 @@ def build_blocked_output_response_body(
 
     guardrails_data = build_guardrails_data(
         config_id,
-        input_generation_response=input_generation_response,
+        input_generation_logs=input_generation_logs,
         output_generation_response=generation_response,
         user_log_options=user_log_options,
     )
@@ -168,12 +231,12 @@ def build_blocked_output_response_body(
                 "index": 1,
                 "message": {
                     "role": GUARDRAILS_DATA_MESSAGE_ROLE,
-                    "content": guardrails_data.model_dump_json(exclude_none=True),
+                    "content": guardrails_data_to_json(guardrails_data),
                 },
             }
         )
     else:
-        blocked_response[GUARDRAILS_DATA_FIELD] = guardrails_data.model_dump(exclude_none=True)
+        blocked_response[GUARDRAILS_DATA_FIELD] = guardrails_data_to_dict(guardrails_data)
 
     return blocked_response
 
@@ -182,7 +245,7 @@ def build_output_response_body(
     config_id: str,
     original_response: dict[str, Any],
     generation_response: GenerationResponse | None,
-    input_generation_response: GenerationResponse | None,
+    input_generation_logs: list[LibraryGenerationLog] | None,
     user_log_options: GenerationLogOptionsParam | None,
     return_guardrails_data_as_choice: bool = False,
 ) -> dict[str, Any]:
@@ -204,7 +267,7 @@ def build_output_response_body(
 
     guardrails_data = build_guardrails_data(
         config_id,
-        input_generation_response=input_generation_response,
+        input_generation_logs=input_generation_logs,
         output_generation_response=generation_response,
         user_log_options=user_log_options,
     )
@@ -215,12 +278,12 @@ def build_output_response_body(
                 "index": len(response["choices"]),
                 "message": {
                     "role": GUARDRAILS_DATA_MESSAGE_ROLE,
-                    "content": guardrails_data.model_dump_json(exclude_none=True),
+                    "content": guardrails_data_to_json(guardrails_data),
                 },
             }
         )
     else:
-        response[GUARDRAILS_DATA_FIELD] = guardrails_data.model_dump(exclude_none=True)
+        response[GUARDRAILS_DATA_FIELD] = guardrails_data_to_dict(guardrails_data)
 
     return response
 

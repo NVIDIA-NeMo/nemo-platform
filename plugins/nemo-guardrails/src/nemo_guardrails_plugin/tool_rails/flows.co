@@ -1,0 +1,23 @@
+define flow check tool allowlist
+  $allowed = execute check_tool_allowlist
+  if not $allowed
+    bot refuse to respond
+    abort
+
+define flow check tool arguments
+  $allowed = execute check_tool_arguments
+  if not $allowed
+    bot refuse to respond
+    abort
+
+define flow check tool schema
+  $allowed = execute check_tool_schema
+  if not $allowed
+    bot refuse to respond
+    abort
+
+define flow check tool result linkage
+  $allowed = execute check_tool_result_linkage
+  if not $allowed
+    bot refuse to respond
+    abort

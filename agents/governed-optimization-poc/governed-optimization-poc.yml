@@ -1,0 +1,46 @@
+# Governed Optimization Agent guardrails PoC.
+#
+# This agent demonstrates governance for self-improving/cost-optimizing agents.
+# The agent exposes safe analysis tools and a dangerous deployment tool, while
+# the Guardrails plugin centrally decides which tool calls may execute.
+
+function_groups:
+  governed_optimization_tools:
+    _type: governed_optimization_tools
+
+llms:
+  llm:
+    _type: openai
+    api_key: not-used
+    model_name: default/governed-optimization-poc-model
+    temperature: 0.0
+    max_tokens: 1024
+    disable_streaming: true
+
+workflow:
+  _type: react_agent
+  tool_names: [governed_optimization_tools]
+  llm_name: llm
+  verbose: true
+  parse_agent_response_max_retries: 3
+  use_native_tool_calling: true
+  system_prompt: |
+    You are a governed optimization assistant for NeMo Platform agents.
+
+    Help users reduce agent cost, improve answer quality, codify knowledge, and
+    evaluate candidate changes. Use tools when they provide useful evidence.
+
+    Prefer this workflow:
+    - Search internal knowledge before proposing changes.
+    - Estimate cost impact for model or traffic changes.
+    - Run offline evaluations before recommending an update.
+    - Propose updates as drafts rather than claiming they are published.
+    - If deployment is requested, use the deployment tool and report the result.
+
+    If a tool call is unavailable or cannot be completed, explain briefly what
+    happened and suggest the safest next step.
+
+    You have access to the following tools:
+    {tools}
+
+    Tool names: {tool_names}

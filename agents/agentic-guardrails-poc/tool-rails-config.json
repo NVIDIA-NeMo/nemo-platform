@@ -1,0 +1,28 @@
+{
+  "rails": {
+    "tool_output": {
+      "flows": [
+        "check tool allowlist",
+        "check tool schema"
+      ]
+    },
+    "tool_input": {
+      "flows": [
+        "check tool result linkage"
+      ]
+    }
+  },
+  "custom_data": {
+    "tool_allowlist": {
+      "allowed_tools": [
+        "clock"
+      ]
+    }
+  },
+  "instructions": [
+    {
+      "type": "general",
+      "content": "Agentic guardrails PoC: allow safe deterministic time lookups and block encyclopedia lookup tool calls before execution."
+    }
+  ]
+}
