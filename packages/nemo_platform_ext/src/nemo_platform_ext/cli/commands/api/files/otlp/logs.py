@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+# NOTE: This file is auto-generated
 from __future__ import annotations
 
 from typing import Annotated
@@ -63,12 +64,8 @@ def create_logs(
     if handle_code_generation(["files", "otlp", "logs"], "create", all_kwargs, output_format, state):
         return
 
-    from nemo_platform_plugin.client.adapter import client_from_platform
-    from nemo_platform_plugin.files.client import FilesClient
-
-    sdk = state.get_client()
-    files_client = client_from_platform(sdk, FilesClient)
-    result = files_client.upload_otlp_logs(name=name, workspace=workspace)
+    client = state.get_client()
+    result = client.files.otlp.logs.create(**all_kwargs)
 
     format_output(
         result,
@@ -95,12 +92,6 @@ def query_logs(
 
     This is an internal endpoint that runs DuckDB queries with direct storage
     access."""
-    import json
-
-    from nemo_platform_plugin.client.adapter import client_from_platform
-    from nemo_platform_plugin.files.client import FilesClient
-    from nemo_platform_plugin.files.types import OtlpLogQueryRequest
-
     state: CLIContext = ctx.obj
     output_format = state.get_output_format(output_format)
 
@@ -113,16 +104,8 @@ def query_logs(
     if handle_code_generation(["files", "otlp", "logs"], "query", kwargs, output_format, state):
         return
 
-    parsed_filters = json.loads(filters) if filters else {}
-
-    sdk = state.get_client()
-    files_client = client_from_platform(sdk, FilesClient)
-    body = OtlpLogQueryRequest(
-        filters=parsed_filters,
-        limit=limit,
-        page_cursor=page_cursor,
-    )
-    result = files_client.query_otlp_logs(name=name, workspace=workspace, body=body)
+    client = state.get_client()
+    result = client.files.otlp.logs.query(name, **kwargs)
 
     format_output(
         result,
