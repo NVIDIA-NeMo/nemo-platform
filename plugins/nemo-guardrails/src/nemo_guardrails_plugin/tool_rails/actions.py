@@ -184,7 +184,9 @@ async def check_tool_schema(
                 logger.debug("check_tool_schema: argument validation failed for tool %r: %s", name, exc.message)
                 return False
 
-        logger.debug("check_tool_schema: passed tool_names=%s", [tc.get("function", {}).get("name") for tc in tool_calls])
+        logger.debug(
+            "check_tool_schema: passed tool_names=%s", [tc.get("function", {}).get("name") for tc in tool_calls]
+        )
         return True
     except Exception:
         logger.exception("check_tool_schema failed unexpectedly; blocking")

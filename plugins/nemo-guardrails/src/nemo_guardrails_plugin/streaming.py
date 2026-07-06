@@ -287,7 +287,7 @@ def _merge_streaming_tool_call_delta(
 
 def _finalize_streaming_tool_call(part: dict[str, Any]) -> dict[str, Any]:
     tool_call = copy.deepcopy(part)
-    tool_call.setdefault("id", f"call_stream_{abs(hash(json.dumps(tool_call, sort_keys=True))) :x}")
+    tool_call.setdefault("id", f"call_stream_{abs(hash(json.dumps(tool_call, sort_keys=True))):x}")
     tool_call.setdefault("type", "function")
     function = tool_call.setdefault("function", {})
     function.setdefault("name", "")
@@ -307,7 +307,9 @@ async def response_body_to_streaming_chunks(
     fallback_model: str,
 ) -> AsyncIterator[dict[str, Any]]:
     """Convert a full chat-completion response into OpenAI-compatible chunks."""
-    response_id = response_body.get("id") if isinstance(response_body.get("id"), str) else build_chat_completion_response_id()
+    response_id = (
+        response_body.get("id") if isinstance(response_body.get("id"), str) else build_chat_completion_response_id()
+    )
     created = response_body.get("created") if isinstance(response_body.get("created"), int) else int(time.time())
     model = response_body.get("model") if isinstance(response_body.get("model"), str) else fallback_model
     system_fingerprint = response_body.get("system_fingerprint")

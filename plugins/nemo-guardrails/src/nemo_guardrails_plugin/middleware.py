@@ -697,7 +697,9 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
                     logger.exception("Streaming output rails lease failed")
                     yield build_streaming_error_response(exc)
 
-            return InferenceResponse(_streaming_with_lease(), response.headers, None, dict(response.response_body_annotations))
+            return InferenceResponse(
+                _streaming_with_lease(), response.headers, None, dict(response.response_body_annotations)
+            )
 
         if response_body is None:
             return response

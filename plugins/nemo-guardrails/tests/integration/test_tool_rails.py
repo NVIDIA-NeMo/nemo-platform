@@ -35,7 +35,9 @@ pytestmark = [pytest.mark.integration]
 BLOCKED_REFUSAL_TEXT = "I'm sorry, I can't respond to that."
 
 
-def _tool_call_response_body(tool_name: str, arguments: str = "{}", finish_reason: str = "tool_calls") -> dict[str, Any]:
+def _tool_call_response_body(
+    tool_name: str, arguments: str = "{}", finish_reason: str = "tool_calls"
+) -> dict[str, Any]:
     """Build an OpenAI-compatible response body with finish_reason='tool_calls'."""
     return {
         "id": "chatcmpl-test",
@@ -96,7 +98,9 @@ def _tool_call_stream_chunks(tool_name: str, arguments: str = "{}") -> list[dict
             "choices": [
                 {
                     "index": 0,
-                    "delta": {"tool_calls": [{"index": 0, "function": {"arguments": arguments[len(arguments) // 2 :]}}]},
+                    "delta": {
+                        "tool_calls": [{"index": 0, "function": {"arguments": arguments[len(arguments) // 2 :]}}]
+                    },
                 }
             ],
         },

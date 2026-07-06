@@ -138,8 +138,18 @@ class TestBufferChatCompletionStream:
 
     async def test_reconstructs_content_stream_without_tool_calls(self) -> None:
         async def chunks() -> AsyncIterator[dict[str, Any]]:
-            yield {"id": "chatcmpl-123", "created": 123, "model": "served-model", "choices": [{"index": 0, "delta": {"role": "assistant", "content": "Hel"}}]}
-            yield {"id": "chatcmpl-123", "created": 123, "model": "served-model", "choices": [{"index": 0, "delta": {"content": "lo"}, "finish_reason": "stop"}]}
+            yield {
+                "id": "chatcmpl-123",
+                "created": 123,
+                "model": "served-model",
+                "choices": [{"index": 0, "delta": {"role": "assistant", "content": "Hel"}}],
+            }
+            yield {
+                "id": "chatcmpl-123",
+                "created": 123,
+                "model": "served-model",
+                "choices": [{"index": 0, "delta": {"content": "lo"}, "finish_reason": "stop"}],
+            }
 
         buffered = await buffer_chat_completion_stream(chunks())
 

@@ -64,9 +64,7 @@ def _to_jsonable(value: Any) -> Any:
 
     if hasattr(value, "__dict__"):
         return {
-            key: _to_jsonable(val)
-            for key, val in vars(value).items()
-            if not key.startswith("_") and val is not None
+            key: _to_jsonable(val) for key, val in vars(value).items() if not key.startswith("_") and val is not None
         }
 
     return str(value)

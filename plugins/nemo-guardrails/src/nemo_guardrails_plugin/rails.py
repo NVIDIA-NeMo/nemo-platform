@@ -221,7 +221,9 @@ def _build_generation_log(
     if not user_log_options:
         return None
 
-    input_log = GenerationResponseMapper.to_platform_generation_log(_merge_generation_logs(*(input_generation_logs or [])))
+    input_log = GenerationResponseMapper.to_platform_generation_log(
+        _merge_generation_logs(*(input_generation_logs or []))
+    )
     output_log = GenerationResponseMapper.to_platform_generation_log(
         output_generation_response.log if output_generation_response else None
     )
