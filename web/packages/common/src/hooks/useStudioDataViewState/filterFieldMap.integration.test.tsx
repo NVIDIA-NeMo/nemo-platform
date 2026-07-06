@@ -122,3 +122,68 @@ describe('useStudioDataViewState range-filter integration', () => {
     );
   });
 });
+
+/** Evaluator columns use dynamic `evaluator-<name>` ids, so the view passes a function-form
+ * `filterFieldMap` deriving `evaluators.<name>.mean`. Guards that path end-to-end. */
+interface EvaluatorRow {
+  aggregate_scores?: { [name: string]: { mean?: number } };
+}
+
+const EVALUATOR_DATA: EvaluatorRow[] = [
+  { aggregate_scores: { accuracy: { mean: 0.2 } } },
+  { aggregate_scores: { accuracy: { mean: 0.6 } } },
+  { aggregate_scores: { accuracy: { mean: 0.95 } } },
+];
+
+// Mirrors ExperimentGroupDataView's getExperimentFilterField for the dynamic evaluator id.
+const evaluatorFilterField = (id: string): string | undefined => {
+  const match = id.match(/^evaluator-(.+)$/);
+  return match ? `evaluators.${match[1]}.mean` : undefined;
+};
+
+function useEvaluatorHarness() {
+  const dataViewState = useStudioDataViewState({ filterFieldMap: evaluatorFilterField });
+  const columns = useMakeColumns<EvaluatorRow>({
+    makeColumns: (columnHelper) => [
+      columnHelper.accessor((r) => r.aggregate_scores?.accuracy?.mean, {
+        id: 'evaluator-accuracy',
+        header: 'Avg Accuracy',
+        meta: { filter: numberRangeFilter('Avg Accuracy') },
+      }),
+    ],
+    overrideToLoadingCells: false,
+  });
+  const table = useCustomReactTable<EvaluatorRow>({
+    columns,
+    data: EVALUATOR_DATA,
+    dataMode: 'manual',
+    state: dataViewState,
+    totalCount: EVALUATOR_DATA.length,
+  });
+  return { dataViewState, table };
+}
+
+describe('useStudioDataViewState range-filter integration (function-form filterFieldMap)', () => {
+  it('remaps a dynamic evaluator column id to its dotted API key', async () => {
+    const { result } = renderHook(() => useEvaluatorHarness(), { wrapper: MemoryRouter });
+
+    // Same regression guard as latency: the column must resolve to the numberRange filterFn.
+    expect(result.current.table.getColumn('evaluator-accuracy')?.columnDef.filterFn).toBe(
+      'numberRange'
+    );
+
+    act(() => {
+      result.current.table
+        .getColumn('evaluator-accuracy')
+        ?.setFilterValue({ $gte: 0.5, $lte: 0.9 });
+    });
+
+    await waitFor(
+      () =>
+        expect(result.current.dataViewState.apiFilter.filter).toEqual({
+          'evaluators.accuracy.mean': { $gte: 0.5, $lte: 0.9 },
+        }),
+      { timeout: 2000 }
+    );
+  });
+});
