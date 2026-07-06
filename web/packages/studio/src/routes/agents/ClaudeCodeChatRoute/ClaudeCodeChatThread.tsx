@@ -156,6 +156,7 @@ export const ClaudeCodeChatThread: FC<ClaudeCodeChatThreadProps> = ({
         }
         viewportClassName={CHAT_VIEWPORT_SCROLLBAR_CLASS}
         hideAssistantMessageActions
+        hideEmptyRunningAssistantMessageSurface
         toolCallPartComponent={ClaudeCodeToolCallPart}
         attributes={{
           ThreadViewport: {
@@ -167,6 +168,7 @@ export const ClaudeCodeChatThread: FC<ClaudeCodeChatThreadProps> = ({
         onReset={handleChatReset}
         showRunningIndicator={!studioNavigationRequest && !decisionRequest && !inputRequest}
         messageContentProps={MESSAGE_CONTENT_PROPS}
+        separateAssistantMessageParts
         emptyState={EMPTY_STATE}
         composerOverride={
           studioNavigationRequest ? (

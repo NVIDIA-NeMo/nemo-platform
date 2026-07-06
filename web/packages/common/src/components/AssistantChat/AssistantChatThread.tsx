@@ -40,10 +40,12 @@ export const AssistantChatThread = ({
   contentClassName,
   composerContainerClassName,
   hideAssistantMessageActions,
+  hideEmptyRunningAssistantMessageSurface,
   toolCallPartComponent,
   viewportClassName,
   composerOverride,
   messageContentProps,
+  separateAssistantMessageParts,
   enableImageAttachments,
   minInputRows,
 }: AssistantChatThreadProps) => {
@@ -53,12 +55,21 @@ export const AssistantChatThread = ({
     () => (
       <AssistantMessage
         hideAssistantMessageActions={hideAssistantMessageActions}
+        hideEmptyRunningMessageSurface={hideEmptyRunningAssistantMessageSurface}
         messageContentProps={messageContentProps}
+        separateMessageParts={separateAssistantMessageParts}
         showRunningIndicator={showRunningIndicator}
         toolCallPartComponent={toolCallPartComponent}
       />
     ),
-    [hideAssistantMessageActions, messageContentProps, showRunningIndicator, toolCallPartComponent]
+    [
+      hideAssistantMessageActions,
+      hideEmptyRunningAssistantMessageSurface,
+      messageContentProps,
+      separateAssistantMessageParts,
+      showRunningIndicator,
+      toolCallPartComponent,
+    ]
   );
   const UserMessageWithToolCallPart = useCallback(
     () => (

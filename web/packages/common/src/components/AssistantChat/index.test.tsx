@@ -112,18 +112,24 @@ const renderAssistantChat = (element: ReactElement) =>
 
 const StaticAssistantChatThread = ({
   hideAssistantMessageActions,
+  hideEmptyRunningAssistantMessageSurface,
+  isRunning = false,
   messages: initialMessages = defaultStaticMessages,
+  separateAssistantMessageParts,
   toolCallPartComponent,
 }: {
   hideAssistantMessageActions?: boolean;
+  hideEmptyRunningAssistantMessageSurface?: boolean;
+  isRunning?: boolean;
   messages?: readonly ThreadMessageLike[];
+  separateAssistantMessageParts?: boolean;
   toolCallPartComponent?: ToolCallMessagePartComponent;
 }) => {
   const [messages, setMessages] = useState<readonly ThreadMessageLike[]>(initialMessages);
   const runtime = useExternalStoreRuntime<ThreadMessageLike>({
     messages,
     setMessages,
-    isRunning: false,
+    isRunning,
     onNew: async () => undefined,
     onEdit: async () => undefined,
     onReload: async () => undefined,
@@ -138,8 +144,10 @@ const StaticAssistantChatThread = ({
     <AssistantRuntimeProvider runtime={runtime}>
       <AssistantChatThread
         hideAssistantMessageActions={hideAssistantMessageActions}
+        hideEmptyRunningAssistantMessageSurface={hideEmptyRunningAssistantMessageSurface}
         placeholder="Task prompt"
         onReset={() => undefined}
+        separateAssistantMessageParts={separateAssistantMessageParts}
         toolCallPartComponent={toolCallPartComponent}
       />
     </AssistantRuntimeProvider>
@@ -293,6 +301,94 @@ describe('AssistantChat', () => {
     expect(
       within(assistantMessage).queryByTestId('assistant-chat-message-surface')
     ).not.toBeInTheDocument();
+  });
+
+  it('hides an empty running response surface while keeping the loading indicator', () => {
+    renderAssistantChat(
+      <StaticAssistantChatThread
+        hideAssistantMessageActions
+        hideEmptyRunningAssistantMessageSurface
+        isRunning
+        messages={[
+          {
+            role: 'assistant',
+            content: [{ type: 'text', text: '' }],
+            status: { type: 'running' },
+          },
+        ]}
+      />
+    );
+
+    const assistantMessage = screen.getByTestId('assistant-chat-message');
+
+    expect(
+      within(assistantMessage).queryByTestId('assistant-chat-message-surface')
+    ).not.toBeInTheDocument();
+    expect(within(assistantMessage).getByTestId('assistant-chat-skeleton')).toBeInTheDocument();
+  });
+
+  it('shows the running response surface once it has content', () => {
+    renderAssistantChat(
+      <StaticAssistantChatThread
+        hideAssistantMessageActions
+        hideEmptyRunningAssistantMessageSurface
+        isRunning
+        messages={[
+          {
+            role: 'assistant',
+            content: [{ type: 'text', text: 'Working on it.' }],
+            status: { type: 'running' },
+          },
+        ]}
+      />
+    );
+
+    const assistantMessage = screen.getByTestId('assistant-chat-message');
+
+    expect(within(assistantMessage).getByTestId('assistant-chat-message-surface')).toHaveTextContent(
+      'Working on it.'
+    );
+    expect(within(assistantMessage).getByTestId('assistant-chat-skeleton')).toBeInTheDocument();
+  });
+
+  it('renders mixed assistant text and tool parts as separate blocks when enabled', () => {
+    renderAssistantChat(
+      <StaticAssistantChatThread
+        hideAssistantMessageActions
+        messages={[
+          {
+            role: 'assistant',
+            content: [
+              { type: 'text', text: 'I will inspect the repository.' },
+              {
+                type: 'tool-call',
+                toolCallId: 'toolu_read',
+                toolName: 'Read',
+                args: { file_path: 'README.md' },
+              },
+              { type: 'text', text: 'I found the relevant file.' },
+            ],
+            status: { type: 'complete', reason: 'stop' },
+          },
+        ]}
+        separateAssistantMessageParts
+        toolCallPartComponent={({ toolName }) => (
+          <div data-testid="assistant-chat-tool-pill">{toolName}</div>
+        )}
+      />
+    );
+
+    const assistantMessage = screen.getByTestId('assistant-chat-message');
+    const responseSurfaces = within(assistantMessage).getAllByTestId(
+      'assistant-chat-message-surface'
+    );
+
+    expect(responseSurfaces).toHaveLength(2);
+    expect(responseSurfaces[0]).toHaveTextContent('I will inspect the repository.');
+    expect(within(assistantMessage).getByTestId('assistant-chat-tool-pill')).toHaveTextContent(
+      'Read'
+    );
+    expect(responseSurfaces[1]).toHaveTextContent('I found the relevant file.');
   });
 
   it('offers an enabled add-image affordance for a vision model when enabled', () => {

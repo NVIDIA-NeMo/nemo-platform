@@ -43,10 +43,12 @@ export interface AssistantChatThreadProps {
   contentClassName?: string;
   composerContainerClassName?: string;
   hideAssistantMessageActions?: boolean;
+  hideEmptyRunningAssistantMessageSurface?: boolean;
   toolCallPartComponent?: ToolCallMessagePartComponent;
   viewportClassName?: string;
   composerOverride?: ReactNode;
   messageContentProps?: AssistantChatMessageContentProps;
+  separateAssistantMessageParts?: boolean;
   enableImageAttachments?: boolean;
   minInputRows?: number;
 }

@@ -332,6 +332,30 @@ describe('FilesetNewRoute', () => {
       expect(mockCheckDatasetQuality).not.toHaveBeenCalled();
     });
 
+    it('allows YAML and other file types when purpose is Generic', async () => {
+      const user = userEvent.setup();
+      renderRoute();
+
+      await user.click(await screen.findByRole('radio', { name: 'Generic' }));
+
+      // The Upload component renders a visually hidden file input with no accessible name.
+      // eslint-disable-next-line testing-library/no-node-access
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+      expect(input).not.toHaveAttribute('accept');
+
+      const files = [
+        new File(['name: example'], 'config.yml', { type: 'application/yaml' }),
+        new File(['binary-ish'], 'weights.bin', { type: 'application/octet-stream' }),
+      ];
+      await user.upload(input, files);
+
+      expect(Array.from(input.files ?? []).map((file) => file.name)).toEqual([
+        'config.yml',
+        'weights.bin',
+      ]);
+      expect(screen.getByText('Supports any file type up to 50 MB.')).toBeInTheDocument();
+    });
+
     it('clears quality reports when switching to the Sample Dataset tab', async () => {
       mockCheckDatasetQuality.mockResolvedValue(
         makeQualityReport({ hasErrors: false, hasWarnings: false })

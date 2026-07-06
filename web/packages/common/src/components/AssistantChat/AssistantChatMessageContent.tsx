@@ -6,14 +6,30 @@ import type { MessageRenderProps } from '@nemo/common/src/components/AssistantCh
 import { MessageContent } from '@nemo/common/src/components/Chat/MessageContent';
 import { Banner } from '@nvidia/foundations-react-core';
 
+export const ASSISTANT_MESSAGE_SURFACE_CLASS =
+  'w-full max-w-full rounded-lg border border-base border-l-4 border-l-[var(--border-color-brand)] bg-surface-base px-density-lg py-density-md shadow ring-1 ring-black/5 dark:ring-white/10';
+
 export const AssistantChatMessageContent = ({
   messageContentProps,
+  separateTextParts = false,
   toolCallPartComponent,
-}: MessageRenderProps) => (
+}: MessageRenderProps & { separateTextParts?: boolean }) => (
   <>
     <MessagePrimitive.Parts
       components={{
-        Text: ({ text }) => <MessageContent content={text} {...messageContentProps} />,
+        Text: ({ text }) =>
+          separateTextParts ? (
+            text.trim() ? (
+              <div
+                className={ASSISTANT_MESSAGE_SURFACE_CLASS}
+                data-testid="assistant-chat-message-surface"
+              >
+                <MessageContent content={text} {...messageContentProps} />
+              </div>
+            ) : null
+          ) : (
+            <MessageContent content={text} {...messageContentProps} />
+          ),
         Image: ({ image, filename }) => (
           <img
             src={image}

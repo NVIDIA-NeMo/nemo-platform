@@ -7,7 +7,10 @@ import {
   ThreadPrimitive,
   useAuiState,
 } from '@assistant-ui/react';
-import { AssistantChatMessageContent } from '@nemo/common/src/components/AssistantChat/AssistantChatMessageContent';
+import {
+  ASSISTANT_MESSAGE_SURFACE_CLASS,
+  AssistantChatMessageContent,
+} from '@nemo/common/src/components/AssistantChat/AssistantChatMessageContent';
 import {
   ACTION_BUTTON_CLASS,
   CopyAction,
@@ -19,13 +22,25 @@ import { RefreshCw } from 'lucide-react';
 
 export const AssistantMessage = ({
   hideAssistantMessageActions,
+  hideEmptyRunningMessageSurface = false,
   messageContentProps,
+  separateMessageParts = false,
   showRunningIndicator = true,
   toolCallPartComponent,
 }: MessageRenderProps & {
   hideAssistantMessageActions?: boolean;
+  hideEmptyRunningMessageSurface?: boolean;
+  separateMessageParts?: boolean;
   showRunningIndicator?: boolean;
 }) => {
+  const isEmptyRunningMessage = useAuiState((state) => {
+    const { parts } = state.message;
+    const hasVisibleContent = parts.some(
+      (part) => part.type !== 'text' || part.text.trim().length > 0
+    );
+
+    return state.message.status?.type === 'running' && !hasVisibleContent;
+  });
   const isToolOnlyMessage = useAuiState((state) => {
     const { parts } = state.message;
     return parts.length > 0 && parts.every((part) => part.type === 'tool-call');
@@ -37,14 +52,20 @@ export const AssistantMessage = ({
       data-testspeaker="assistant"
       className="group/message flex w-full flex-col items-start gap-density-xs whitespace-normal"
     >
-      {isToolOnlyMessage ? (
+      {separateMessageParts ? (
+        <AssistantChatMessageContent
+          messageContentProps={messageContentProps}
+          separateTextParts
+          toolCallPartComponent={toolCallPartComponent}
+        />
+      ) : isToolOnlyMessage ? (
         <AssistantChatMessageContent
           messageContentProps={messageContentProps}
           toolCallPartComponent={toolCallPartComponent}
         />
-      ) : (
+      ) : hideEmptyRunningMessageSurface && isEmptyRunningMessage ? null : (
         <div
-          className="w-full max-w-full rounded-lg border border-base border-l-4 border-l-[var(--border-color-brand)] bg-surface-base px-density-lg py-density-md shadow ring-1 ring-black/5 dark:ring-white/10"
+          className={ASSISTANT_MESSAGE_SURFACE_CLASS}
           data-testid="assistant-chat-message-surface"
         >
           <AssistantChatMessageContent

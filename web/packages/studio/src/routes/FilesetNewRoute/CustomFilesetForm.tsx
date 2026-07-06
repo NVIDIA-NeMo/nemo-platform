@@ -48,6 +48,8 @@ interface CustomFilesetFormProps {
   onRequestNewSecret: () => void;
 }
 
+const DATASET_UPLOAD_ACCEPT = 'text/csv,text/json,.jsonl,.parquet';
+
 export const CustomFilesetForm: FC<CustomFilesetFormProps> = ({
   control,
   errors,
@@ -68,6 +70,8 @@ export const CustomFilesetForm: FC<CustomFilesetFormProps> = ({
   onClearQualityReports,
   onRequestNewSecret,
 }) => {
+  const acceptsAnyFileType = purpose === FilesetPurpose.generic;
+
   return (
     <>
       <Text kind="body/regular/md">
@@ -152,14 +156,16 @@ export const CustomFilesetForm: FC<CustomFilesetFormProps> = ({
               <TabsContent className="w-full min-w-0 p-0 items-stretch" value="local">
                 <Stack gap="density-md" className="w-full">
                   <Upload
-                    accept="text/csv,text/json,.jsonl,.parquet"
+                    accept={acceptsAnyFileType ? undefined : DATASET_UPLOAD_ACCEPT}
                     multiple
                     onValueChange={(files) => {
                       const list = Array.isArray(files) ? files : files ? [files] : undefined;
                       void onFilesChange(toFileList(list));
                     }}
                   >
-                    Supports JSONL, JSON, CSV, and Parquet files up to 50 MB.
+                    {acceptsAnyFileType
+                      ? 'Supports any file type up to 50 MB.'
+                      : 'Supports JSONL, JSON, CSV, and Parquet files up to 50 MB.'}
                   </Upload>
                   {purpose === FilesetPurpose.dataset && (
                     <Stack gap="density-sm" ref={qualityReportRef}>

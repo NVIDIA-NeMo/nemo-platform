@@ -24,13 +24,19 @@ vi.mock('@assistant-ui/react', () => ({
 vi.mock('@nemo/common/src/components/AssistantChat/AssistantChatThread', () => ({
   AssistantChatThread: ({
     composerOverride,
+    hideEmptyRunningAssistantMessageSurface,
+    separateAssistantMessageParts,
     showRunningIndicator,
   }: {
     composerOverride?: ReactNode;
+    hideEmptyRunningAssistantMessageSurface?: boolean;
+    separateAssistantMessageParts?: boolean;
     showRunningIndicator?: boolean;
   }) => (
     <div
       data-testid="assistant-chat-thread"
+      data-hide-empty-running-surface={String(hideEmptyRunningAssistantMessageSurface)}
+      data-separate-assistant-message-parts={String(separateAssistantMessageParts)}
       data-show-running-indicator={String(showRunningIndicator)}
     >
       {composerOverride}
@@ -111,6 +117,14 @@ describe('ClaudeCodeChatThread Studio UI navigation', () => {
     expect(screen.getByTestId('assistant-chat-thread')).toHaveAttribute(
       'data-show-running-indicator',
       'false'
+    );
+    expect(screen.getByTestId('assistant-chat-thread')).toHaveAttribute(
+      'data-hide-empty-running-surface',
+      'true'
+    );
+    expect(screen.getByTestId('assistant-chat-thread')).toHaveAttribute(
+      'data-separate-assistant-message-parts',
+      'true'
     );
   });
 
