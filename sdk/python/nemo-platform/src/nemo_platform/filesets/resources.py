@@ -255,15 +255,7 @@ class FilesetsSubResource:
             custom_fields=custom_fields or {},
             cache=cache,
         )
-        # The server returns an error body on 409, not the entity, so
-        # exist_ok is handled here with a follow-up GET rather than at
-        # the endpoint/client level.
-        try:
-            return self._client.create_fileset(workspace=workspace, body=body).data()
-        except nemo_platform.APIStatusError as e:
-            if e.status_code == 409 and exist_ok:
-                return self.retrieve(name=name, workspace=workspace)
-            raise
+        return self._client.create_fileset(workspace=workspace, body=body, exist_ok=exist_ok).data()
 
     def retrieve(self, name: str, *, workspace: str | None = None) -> FilesetOutput:
         return self._client.get_fileset(workspace=workspace, name=name).data()
@@ -360,15 +352,7 @@ class AsyncFilesetsSubResource:
             custom_fields=custom_fields or {},
             cache=cache,
         )
-        # The server returns an error body on 409, not the entity, so
-        # exist_ok is handled here with a follow-up GET rather than at
-        # the endpoint/client level.
-        try:
-            return (await self._client.create_fileset(workspace=workspace, body=body)).data()
-        except nemo_platform.APIStatusError as e:
-            if e.status_code == 409 and exist_ok:
-                return await self.retrieve(name=name, workspace=workspace)
-            raise
+        return (await self._client.create_fileset(workspace=workspace, body=body, exist_ok=exist_ok)).data()
 
     async def retrieve(self, name: str, *, workspace: str | None = None) -> FilesetOutput:
         return (await self._client.get_fileset(workspace=workspace, name=name)).data()
