@@ -182,16 +182,19 @@ def setup_mock_provider(sdk: NeMoPlatform, test_case: GuardrailsChatTestCase) ->
         sdk,
         workspace=test_case.workspace,
         name=unique_name("gr-provider"),
+        # `served_models` registers the model by bare name; the mock provider already
+        # belongs to `test_case.workspace`.
         served_models={
             test_case.backend_model_name: test_case.backend_model_name,
             test_case.content_safety_model_name: test_case.content_safety_model_name,
         },
+        # `mock_response_body_by_model` maps the request body's exact `model` value,
+        # which is the workspace-qualified model ref, to a mock response(s).
         mock_response_body_by_model={
             test_case.backend_model_ref: [
                 MockProviderResponse(response_body=_chat_completion(BACKEND_RESPONSE)),
             ],
             test_case.content_safety_model_ref: _content_safety_responses(test_case),
-            test_case.content_safety_model_name: _content_safety_responses(test_case),
         },
     )
     _wait_for_virtual_model(sdk, test_case.workspace, test_case.content_safety_model_name)
