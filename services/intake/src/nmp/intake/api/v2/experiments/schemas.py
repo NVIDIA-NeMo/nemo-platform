@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from nmp.common.entities.values import DatetimeFilter, Filter, NumberFilter, map_entity_field
-from nmp.intake.entities.experiments import Experiment, ExperimentGroup, SortCriterion
+from nmp.intake.entities.experiments import Experiment, ExperimentGroup
 from nmp.intake.spans.domain import SpanStatus
 from nmp.intake.spans.experiment_session_repository import ExperimentSessionRow
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field
@@ -34,12 +34,12 @@ class ExperimentGroupRequest(BaseModel):
     )
     summary: str | None = Field(default=None, description="Human- or agent-authored summary of the group's findings.")
     metadata: dict[str, Any] | None = Field(default=None, description="Free-form producer metadata for the group.")
-    default_sort: list[SortCriterion] | None = Field(
-        default=None,
+    default_sort: str = Field(
+        default="-created_at",
         description=(
-            "Ordered default sort (priority order; first is primary, rest are tiebreakers) for this "
-            "group's experiments list. Each field must be a numeric rollup metric: run_count, "
-            "cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>."
+            "Default sort for this group's experiments list, as a `sort`-param string (leading '-' = "
+            "descending); defaults to '-created_at'. Accepts any field the experiments list `sort` "
+            "param does; clients apply it as the list `sort` param."
         ),
     )
 
@@ -79,7 +79,7 @@ class ExperimentGroupResponse(BaseModel):
     insight_id: str | None = None
     summary: str | None = None
     metadata: dict[str, Any] | None = None
-    default_sort: list[SortCriterion] | None = None
+    default_sort: str
     created_at: datetime | None = None
     updated_at: datetime | None = None
     experiment_count: int = Field(

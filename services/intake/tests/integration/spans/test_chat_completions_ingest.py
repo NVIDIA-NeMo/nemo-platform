@@ -51,7 +51,6 @@ def _openai_response(**overrides: Any) -> dict[str, Any]:
     response = {
         "id": "chatcmpl-test-abc123",
         "object": "chat.completion",
-        # Keep within the spans list default 30-day started_at lookback.
         "created": int(datetime.now(timezone.utc).timestamp()),
         "model": "gpt-4o-mini-2024-08-06",
         "choices": [

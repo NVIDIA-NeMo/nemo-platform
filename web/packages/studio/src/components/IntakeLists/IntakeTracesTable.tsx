@@ -12,6 +12,12 @@ import { useListTraces } from '@nemo/sdk/generated/platform/api';
 import type { Trace, TraceFilter, TraceSortField } from '@nemo/sdk/generated/platform/schema';
 import { Badge, Button } from '@nvidia/foundations-react-core';
 import { getErrorMessage } from '@studio/api/common/utils';
+import {
+  isDefaultStartedAtFilter,
+  makeDefaultStartedAtFilter,
+  type StartedAtFilterEntry,
+  useSeededStartedAtFilter,
+} from '@studio/components/IntakeLists/defaultStartedAtFilter';
 import { IntakeTelemetryDataView } from '@studio/components/IntakeLists/IntakeTelemetryDataView';
 import { useWorkspaceFromPathIfExists } from '@studio/hooks/useWorkspaceFromPath';
 import { getIntakeTraceRoute } from '@studio/routes/utils';
@@ -23,7 +29,7 @@ import {
 } from '@studio/util/intakeTelemetry';
 import { keepPreviousData } from '@tanstack/react-query';
 import { Columns3 } from 'lucide-react';
-import type { ComponentProps, FC, ReactNode } from 'react';
+import { type ComponentProps, type FC, type ReactNode, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 export interface IntakeTracesTableProps {
@@ -33,11 +39,25 @@ export interface IntakeTracesTableProps {
   noResultsActions?: ReactNode;
 }
 
-export const IntakeTracesTable: FC<IntakeTracesTableProps> = ({
+export const IntakeTracesTable: FC<IntakeTracesTableProps> = (props) => {
+  // Seed the default started_at filter into the URL before the table mounts,
+  // so the dataview state initializes from it directly — one render, one
+  // request, no unfiltered first fetch.
+  const [defaultStartedAtFilter] = useState(makeDefaultStartedAtFilter);
+  const filtersSeeded = useSeededStartedAtFilter(defaultStartedAtFilter);
+
+  if (!filtersSeeded) return null;
+  return <SeededIntakeTracesTable {...props} defaultStartedAtFilter={defaultStartedAtFilter} />;
+};
+
+const SeededIntakeTracesTable: FC<
+  IntakeTracesTableProps & { defaultStartedAtFilter: StartedAtFilterEntry }
+> = ({
   workspace: workspaceProp,
   slotEndPortalTargetId,
   emptyStateActions,
   noResultsActions,
+  defaultStartedAtFilter,
 }) => {
   const navigate = useNavigate();
   const routeWorkspace = useWorkspaceFromPathIfExists();
@@ -49,7 +69,11 @@ export const IntakeTracesTable: FC<IntakeTracesTableProps> = ({
     defaultSort: { id: 'started_at', desc: true },
   });
 
-  const hasActiveFilters = dataViewState.debouncedColumnFilters.length > 0;
+  // The seeded started_at default doesn't count as user filtering: an empty
+  // workspace should still get the first-run empty state.
+  const hasActiveFilters = dataViewState.debouncedColumnFilters.some(
+    (filter) => !isDefaultStartedAtFilter(filter, defaultStartedAtFilter)
+  );
 
   const {
     data: tracesResponse,

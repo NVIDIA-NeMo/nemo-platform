@@ -18,7 +18,6 @@ import {
   useCreateExperimentGroup,
 } from '@nemo/sdk/generated/platform/api';
 import {
-  Button,
   CodeSnippet,
   FormField,
   Stack,
@@ -30,14 +29,15 @@ import {
   TextInput,
 } from '@nvidia/foundations-react-core';
 import { queryClient } from '@studio/api/queryClient';
+import { DefaultSortControl } from '@studio/components/DefaultSortControl';
+import { DEFAULT_SORT } from '@studio/components/DefaultSortControl/util';
 import {
   experimentGroupCreateSchema,
   type ExperimentGroupCreateFormFields,
 } from '@studio/components/ExperimentGroupCreateModal/constants';
 import { handleFormErrorsGeneric } from '@studio/util/forms/error';
 import { AxiosError } from 'axios';
-import { Plus } from 'lucide-react';
-import type { FC } from 'react';
+import { useState, type FC } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 
 export interface ExperimentGroupCreateModalProps extends Pick<FormModalProps, 'open' | 'onClose'> {
@@ -62,6 +62,9 @@ export const ExperimentGroupCreateModal: FC<ExperimentGroupCreateModalProps> = (
   });
 
   const formDisabled = isSubmitting;
+  // Default sort is a single `sort`-param string driven by a custom control (not a registered input),
+  // so it's managed outside react-hook-form and merged into the payload in onSubmit.
+  const [defaultSort, setDefaultSort] = useState<string>(DEFAULT_SORT);
 
   const toast = useToast();
 
@@ -75,6 +78,7 @@ export const ExperimentGroupCreateModal: FC<ExperimentGroupCreateModalProps> = (
 
   const resetAndClose = () => {
     reset();
+    setDefaultSort(DEFAULT_SORT);
     onClose();
   };
 
@@ -85,6 +89,7 @@ export const ExperimentGroupCreateModal: FC<ExperimentGroupCreateModalProps> = (
         data: {
           name: data.name,
           description: data.description,
+          default_sort: defaultSort,
         },
       });
       resetAndClose();
@@ -166,10 +171,11 @@ export const ExperimentGroupCreateModal: FC<ExperimentGroupCreateModalProps> = (
                 {...register('description')}
               />
             </FormField>
-            <Button aria-label="Add evaluator" disabled>
-              <Plus />
-              Add evaluator
-            </Button>
+            <DefaultSortControl
+              value={defaultSort}
+              onChange={setDefaultSort}
+              disabled={formDisabled}
+            />
           </Stack>
         </TabsContent>
 
