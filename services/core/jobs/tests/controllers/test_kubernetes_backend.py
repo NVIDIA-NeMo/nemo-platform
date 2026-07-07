@@ -1048,6 +1048,45 @@ def test_sync_job_paused_with_errored_pods_from_sigterm(kubernetes_job, test_ste
     assert job_update.status == PlatformJobStatus.PAUSED
 
 
+def test_sync_job_paused_ignores_task_errors_from_suspend(kubernetes_job, test_step_pending):
+    """Task-level pod errors observed during suspension must not override PAUSED."""
+    mock_job_spec = MagicMock()
+    mock_job_spec.suspend = True
+
+    mock_job_status = MagicMock()
+    mock_job_status.active = None
+    mock_job_status.succeeded = None
+    mock_job_status.failed = None
+    mock_job_status.terminating = None
+    mock_job_status.completion_time = None
+
+    mock_job = MagicMock()
+    mock_job.status = mock_job_status
+    mock_job.spec = mock_job_spec
+    kubernetes_job._batch_v1.read_namespaced_job.return_value = mock_job
+
+    with (
+        patch("nmp.core.jobs.controllers.backends.kubernetes.kubernetes_job.list_pod_status") as mock_list_pod_status,
+        patch("nmp.core.jobs.controllers.backends.kubernetes.kubernetes_job.update_all_tasks") as mock_update_all_tasks,
+    ):
+        mock_list_pod_status.return_value = [
+            PodStatus(
+                task_id="test-task",
+                name="test-pod",
+                errors={"test-container": 137},
+                completed=set(),
+                active=set(),
+                waiting={},
+                phase="Failed",
+            )
+        ]
+        mock_update_all_tasks.return_value = True
+
+        job_update = kubernetes_job.sync(test_step_pending)
+
+    assert job_update.status == PlatformJobStatus.PAUSED
+
+
 def test_sync_job_pausing_with_errored_pods_from_sigterm(kubernetes_job, test_step_pending):
     """Test that a suspended job with both running and errored pods reports PAUSING, not ERROR.
 
@@ -1131,6 +1170,45 @@ def test_sync_job_cancelling_with_errored_pods(kubernetes_job, test_step_cancell
                 phase="Failed",
             )
         ]
+        job_update = kubernetes_job.sync(test_step_cancelling)
+
+    assert job_update.status == PlatformJobStatus.CANCELLED
+
+
+def test_sync_job_cancelled_ignores_task_errors_from_termination(kubernetes_job, test_step_cancelling):
+    """Task-level pod errors observed during termination must not override CANCELLED."""
+    mock_job_spec = MagicMock()
+    mock_job_spec.suspend = False
+
+    mock_job_status = MagicMock()
+    mock_job_status.active = None
+    mock_job_status.succeeded = None
+    mock_job_status.failed = None
+    mock_job_status.terminating = None
+    mock_job_status.completion_time = None
+
+    mock_job = MagicMock()
+    mock_job.status = mock_job_status
+    mock_job.spec = mock_job_spec
+    kubernetes_job._batch_v1.read_namespaced_job.return_value = mock_job
+
+    with (
+        patch("nmp.core.jobs.controllers.backends.kubernetes.kubernetes_job.list_pod_status") as mock_list_pod_status,
+        patch("nmp.core.jobs.controllers.backends.kubernetes.kubernetes_job.update_all_tasks") as mock_update_all_tasks,
+    ):
+        mock_list_pod_status.return_value = [
+            PodStatus(
+                task_id="test-task",
+                name="test-pod",
+                errors={"test-container": 137},
+                completed=set(),
+                active=set(),
+                waiting={},
+                phase="Failed",
+            )
+        ]
+        mock_update_all_tasks.return_value = True
+
         job_update = kubernetes_job.sync(test_step_cancelling)
 
     assert job_update.status == PlatformJobStatus.CANCELLED

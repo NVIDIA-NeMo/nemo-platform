@@ -282,6 +282,20 @@ class DockerDeploymentCreationReconciler:
         engine = str(labels.get(ENGINE_LABEL, ENGINE_NIM)).lower()
         return ENGINE_HEALTH_PATHS.get(engine, ENGINE_HEALTH_PATHS[ENGINE_NIM])
 
+    def _managed_container_labels(
+        self,
+        deployment: ModelDeployment,
+        extra_labels: dict[str, str] | None = None,
+    ) -> dict[str, str]:
+        """Build labels for Docker resources managed by the models controller."""
+        return {
+            **self._backend_config.model_labels,
+            "nmp.nvidia.com/deployment-workspace": deployment.workspace,
+            "nmp.nvidia.com/deployment-name": deployment.name,
+            MODEL_MANAGED_BY_LABEL: MODEL_MANAGED_BY_MODELS_CONTROLLER,
+            **(extra_labels or {}),
+        }
+
     # ======================================================================
     # Network / URL helpers
     # ======================================================================
@@ -348,6 +362,7 @@ class DockerDeploymentCreationReconciler:
                 self.list_containers,
                 all=True,
                 filters={"label": f"{MODEL_MANAGED_BY_LABEL}={MODEL_MANAGED_BY_MODELS_CONTROLLER}"},
+                ignore_removed=True,
             )
         except Exception as e:
             logger.error(f"Failed to list containers: {e}")
@@ -1048,13 +1063,13 @@ class DockerDeploymentCreationReconciler:
                 "detach": True,
                 "device_requests": device_requests,
                 "volumes": volumes,
-                "labels": {
-                    "nmp.nvidia.com/deployment-workspace": deployment.workspace,
-                    "nmp.nvidia.com/deployment-name": deployment.name,
-                    ENGINE_LABEL: engine,
-                    HEALTH_PATH_LABEL: _resolve_health_path(engine, view),
-                    MODEL_MANAGED_BY_LABEL: MODEL_MANAGED_BY_MODELS_CONTROLLER,
-                },
+                "labels": self._managed_container_labels(
+                    deployment,
+                    {
+                        ENGINE_LABEL: engine,
+                        HEALTH_PATH_LABEL: _resolve_health_path(engine, view),
+                    },
+                ),
                 "restart_policy": {"Name": "unless-stopped"},
             }
 
@@ -1135,11 +1150,7 @@ class DockerDeploymentCreationReconciler:
                         state.volume_name: {"bind": "/model-store", "mode": "rw"},
                         state.scratch_volume_name: {"bind": "/scratch", "mode": "rw"},
                     },
-                    "labels": {
-                        "nmp.nvidia.com/deployment-workspace": deployment.workspace,
-                        "nmp.nvidia.com/deployment-name": deployment.name,
-                        MODEL_MANAGED_BY_LABEL: MODEL_MANAGED_BY_MODELS_CONTROLLER,
-                    },
+                    "labels": self._managed_container_labels(deployment),
                     "restart_policy": {"Name": "unless-stopped"},
                     "healthcheck": {"test": ["NONE"]},
                     "ports": {},
@@ -1292,12 +1303,10 @@ class DockerDeploymentCreationReconciler:
             "environment": env_vars,
             "user": "1000:1000",
             "volumes": {volume_name: {"bind": "/model-store", "mode": "rw"}},
-            "labels": {
-                "nmp.nvidia.com/deployment-workspace": deployment.workspace,
-                "nmp.nvidia.com/deployment-name": deployment.name,
-                "nmp.nvidia.com/managed-by": "models-controller",
-                "nmp.nvidia.com/container-type": "model-puller",
-            },
+            "labels": self._managed_container_labels(
+                deployment,
+                {"nmp.nvidia.com/container-type": "model-puller"},
+            ),
             "detach": True,
             "remove": False,
         }
@@ -1386,12 +1395,10 @@ class DockerDeploymentCreationReconciler:
                 "environment": env_vars,
                 "user": "1000:1000",
                 "volumes": {volume_name: {"bind": "/model-store", "mode": "rw"}},
-                "labels": {
-                    "nmp.nvidia.com/deployment-workspace": deployment.workspace,
-                    "nmp.nvidia.com/deployment-name": deployment.name,
-                    MODEL_MANAGED_BY_LABEL: MODEL_MANAGED_BY_MODELS_CONTROLLER,
-                    "nmp.nvidia.com/container-type": "plugin-puller",
-                },
+                "labels": self._managed_container_labels(
+                    deployment,
+                    {"nmp.nvidia.com/container-type": "plugin-puller"},
+                ),
                 "detach": True,
                 "remove": False,
             }

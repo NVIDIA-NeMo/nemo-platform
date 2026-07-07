@@ -493,6 +493,8 @@ models:
         model_puller_max_workers: 1
         # Number of retries when the puller fails with a transient error (IncompleteRead, ChunkedEncodingError, connection broken). Same volume is reused so partial downloads can be completed. | default: 3
         model_puller_retries: 3
+        # Additional labels copied onto model resources managed by the models controller.
+        model_labels: {}
         # BusyBox image repository used for helper containers (permissions/find/chown). | default: 'busybox'
         busybox_image: busybox
         # BusyBox image tag used for helper containers. | default: 'latest'
@@ -577,6 +579,8 @@ models:
         default_tolerations:
         # Default Kubernetes node selector for all NIM deployments. Can be overridden per-deployment via k8s_nim_operator_config. Example: {'node-type': 'gpu-node', 'zone': 'us-west1-a'}
         default_node_selector:
+        # Additional labels copied onto model resources managed by the models controller.
+        model_labels:
         # Default Kubernetes labels applied to NIMService and NIMCache resources and their child resources (e.g. pods). Merged with controller-managed labels; controller labels take precedence on conflict. Example: {'team': 'ml-platform', 'environment': 'prod'}
         default_labels:
         # Default Kubernetes annotations applied to NIMService and NIMCache resources and their child resources (e.g. pods, PVCs). Merged with controller-managed annotations; controller annotations take precedence on conflict. Example: {'prometheus.io/scrape': 'true'}

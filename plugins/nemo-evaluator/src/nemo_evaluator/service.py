@@ -11,6 +11,7 @@ from fastapi import APIRouter
 from nemo_evaluator.api.v2 import metrics as metrics_routes
 from nemo_evaluator.api.v2 import results as results_routes
 from nemo_evaluator.api.v2 import tasks as tasks_routes
+from nemo_evaluator.api.v2 import tasksets as tasksets_routes
 from nemo_evaluator.authz import scope
 from nemo_evaluator.core import say_hello
 from nemo_evaluator.jobs.agent_evaluate import AgentEvalJob
@@ -107,6 +108,13 @@ class EvaluatorPluginService(NemoService):
                 router=tasks_routes.router,
                 tag="Evaluator Plugin Tasks Routes",
                 description="Stored agent-eval task CRUD routes.",
+                prefix="/v2/workspaces/{workspace}",
+            ),
+            RouterSpec(
+                # CRUD /apis/evaluator/v2/workspaces/{workspace}/tasksets.
+                router=tasksets_routes.router,
+                tag="Evaluator Plugin Tasksets Routes",
+                description="Stored taskset CRUD routes.",
                 prefix="/v2/workspaces/{workspace}",
             ),
         ]

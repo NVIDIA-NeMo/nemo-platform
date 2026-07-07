@@ -18,7 +18,7 @@ from typing import Any
 # entity/DTO modules can reference them without importing this module's entities-dependent resolution
 # logic (which would create an import cycle). Imported here for use below and re-exported for the
 # existing ``nemo_evaluator.metric_refs`` import sites.
-from nemo_evaluator.api.schemas import MetricRef, MetricRefOrInline
+from nemo_evaluator.api.schemas import MetricRef, MetricRefOrInline, parse_entity_ref
 from nemo_evaluator.entities import MetricBundleEntity
 from nemo_evaluator.metric_storage import load_bundle
 from nemo_evaluator.shared.metric_bundles.bundles import MetricBundle
@@ -29,13 +29,10 @@ from nemo_platform_plugin.entities import EntityNotFoundError
 def parse_metric_ref(root: str, default_workspace: str) -> tuple[str, str]:
     """Split a validated metric reference into ``(workspace, name)``.
 
-    The ``workspace/name`` vs bare-``name`` shape is guaranteed by
-    :class:`MetricRef`'s field pattern, so this only needs to split.
+    Thin alias over the shared :func:`~nemo_evaluator.api.schemas.parse_entity_ref` (all
+    ``workspace/name`` refs split identically); kept for the existing ``metric_refs`` call sites.
     """
-    workspace, separator, name = root.partition("/")
-    if separator:
-        return workspace, name
-    return default_workspace, root
+    return parse_entity_ref(root, default_workspace)
 
 
 async def resolve_metric_ref(

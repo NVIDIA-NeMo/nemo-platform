@@ -304,26 +304,38 @@ def ensure_mock_sidecar_image(docker_client: docker.DockerClient, image_name: st
 MODELS_CONTROLLER_MANAGED_LABEL = "nmp.nvidia.com/managed-by=models-controller"
 
 
-def cleanup_model_deployment_containers(docker_client: docker.DockerClient) -> int:
-    """Stop and remove all containers managed by the models controller.
+def _matches_labels(container_labels: dict[str, str], labels: dict[str, str]) -> bool:
+    """Return True when all expected Docker labels are present."""
+    return all(container_labels.get(key) == value for key, value in labels.items())
+
+
+def cleanup_model_deployment_containers(
+    docker_client: docker.DockerClient,
+    labels: dict[str, str] | None = None,
+) -> int:
+    """Stop and remove models-controller containers matching optional owner labels.
 
     Finds containers with label nmp.nvidia.com/managed-by=models-controller
-    (NIM and sidecar containers created by the Docker backend), stops and
-    removes them. Intended for integration test teardown so failed tests
-    don't leave stuck containers; use as a pytest fixture teardown.
+    (NIM, sidecar, and puller containers created by the Docker backend), stops
+    and removes them. When labels are supplied, only containers matching all
+    owner labels are removed. Intended for integration test teardown so failed
+    tests don't leave stuck containers; use as a pytest fixture teardown.
 
     Uses the same retry logic as DockerTestContext for DinD compatibility.
 
     Args:
         docker_client: Docker client to use.
+        labels: Optional labels used to scope cleanup to this test owner.
 
     Returns:
         Number of containers removed.
     """
+    labels = labels or {}
     try:
         containers = docker_client.containers.list(
             all=True,
             filters={"label": MODELS_CONTROLLER_MANAGED_LABEL},
+            ignore_removed=True,
         )
     except Exception:
         return 0
@@ -333,6 +345,9 @@ def cleanup_model_deployment_containers(docker_client: docker.DockerClient) -> i
 
     for container in containers:
         try:
+            if labels and not _matches_labels(container.labels or {}, labels):
+                continue
+
             name = container.name
 
             @retry(
@@ -500,10 +515,15 @@ class DockerTestContext:
         # Print relevant containers
         print("\n--- Docker PS (test containers) ---")
         try:
-            for c in self.docker_client.containers.list(all=True):
+            for c in self.docker_client.containers.list(all=True, ignore_removed=True):
                 labels = c.labels
                 if labels.get("nmp.nvidia.com/managed-by") == "models-controller":
-                    print(f"  {c.name}: {c.status}")
+                    owner = {
+                        key: value
+                        for key, value in labels.items()
+                        if key in {"nmp.nvidia.com/test-run", "nmp.nvidia.com/test-worker"}
+                    }
+                    print(f"  {c.name}: {c.status} labels={owner}")
         except Exception as e:
             print(f"Could not list containers: {e}")
 

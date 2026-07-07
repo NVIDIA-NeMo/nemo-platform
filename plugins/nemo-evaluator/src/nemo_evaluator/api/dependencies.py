@@ -9,6 +9,7 @@ from fastapi import Depends
 from nemo_evaluator.api.service.metric_service import MetricService
 from nemo_evaluator.api.service.result_service import ResultService
 from nemo_evaluator.api.service.task_service import TaskService
+from nemo_evaluator.api.service.taskset_service import TasksetService
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.dependencies import get_entity_client, get_sdk_client
 from nemo_platform_plugin.entities import EntityClient
@@ -36,3 +37,12 @@ def get_task_service(
     """Provide a TaskService. It uses the MetricService to normalize inline task metrics into
     (derived) stored metrics, so a persisted task holds only references."""
     return TaskService(entity_client, metric_service)
+
+
+def get_taskset_service(
+    entity_client: EntityClient = Depends(get_entity_client),
+    task_service: TaskService = Depends(get_task_service),
+) -> TasksetService:
+    """Provide a TasksetService. It uses the TaskService to validate that each referenced task
+    exists when a taskset is created."""
+    return TasksetService(entity_client, task_service)
