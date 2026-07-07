@@ -12,7 +12,12 @@ import {
   useSensors,
 } from '@dnd-kit/core';
 import { restrictToHorizontalAxis } from '@dnd-kit/modifiers';
-import { arrayMove, horizontalListSortingStrategy, SortableContext, useSortable } from '@dnd-kit/sortable';
+import {
+  arrayMove,
+  horizontalListSortingStrategy,
+  SortableContext,
+  useSortable,
+} from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useInnerDataViewContext } from '@nemo/common/src/components/DataView/internal/context';
 import {
@@ -35,7 +40,13 @@ import {
   type TableRootProps,
   TableRow,
 } from '@nvidia/foundations-react-core';
-import { flexRender, type Cell, type Header, type Row, type Table as ReactTableType } from '@tanstack/react-table';
+import {
+  flexRender,
+  type Cell,
+  type Header,
+  type Row,
+  type Table as ReactTableType,
+} from '@tanstack/react-table';
 import type { Virtualizer } from '@tanstack/react-virtual';
 import classnames from 'classnames';
 import {
@@ -149,7 +160,10 @@ export const TableContent = forwardRef<HTMLTableElement, TableContentProps>(
                   <SortableContext items={columnOrder} strategy={horizontalListSortingStrategy}>
                     {headerGroup.headers.map((header) => {
                       const isPinned = !!header.column.getIsPinned();
-                      const cellStyle = getCellStyle({ column: header.column, disableAutoSizing: !!virtualizer });
+                      const cellStyle = getCellStyle({
+                        column: header.column,
+                        disableAutoSizing: !!virtualizer,
+                      });
                       const headerClassName = classnames(
                         'relative',
                         header.column.getIsLastColumn('left') &&
@@ -225,7 +239,9 @@ export const TableContent = forwardRef<HTMLTableElement, TableContentProps>(
       >
         {tableContent}
       </DndContext>
-    ) : tableContent;
+    ) : (
+      tableContent
+    );
   }
 );
 TableContent.displayName = 'TableContent';
@@ -386,7 +402,12 @@ interface DraggableColumnHeaderProps {
   className?: string;
 }
 
-function DraggableColumnHeader({ automaticTitles, header, cellStyle, className }: DraggableColumnHeaderProps) {
+function DraggableColumnHeader({
+  automaticTitles,
+  header,
+  cellStyle,
+  className,
+}: DraggableColumnHeaderProps) {
   const { attributes, isDragging, listeners, setNodeRef, transform, transition } = useSortable({
     id: header.column.id,
   });
@@ -432,7 +453,7 @@ function DragAlongCell({ cell }: DragAlongCellProps) {
   };
 
   return (
-        // eslint-disable-next-line no-restricted-syntax -- DnD transform is a dynamic inline value that cannot be expressed as a class
+    // eslint-disable-next-line no-restricted-syntax -- DnD transform is a dynamic inline value that cannot be expressed as a class
     <TableDataCell ref={setNodeRef} style={style}>
       {flexRender(cell.column.columnDef.cell, cell.getContext())}
     </TableDataCell>
