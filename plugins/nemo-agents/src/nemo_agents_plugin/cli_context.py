@@ -20,13 +20,29 @@ back-import would create a cycle.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Annotated, Any, Optional
 
 import click
+import typer
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_BASE_URL = "http://localhost:8080"
+
+BASE_URL_HELP = (
+    "Platform base URL. Resolution order: "
+    "(1) this --base-url flag or NEMO_BASE_URL; "
+    "(2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; "
+    f"(3) {DEFAULT_BASE_URL} (default)."
+)
+
+# Reusable ``--base-url`` option shared across every ``nemo agents`` command
+# so the option and its help text are defined once. ``None`` means "unset" so
+# ``resolve_base_url`` can fall back to the shared CLI context / config.
+BaseUrlOption = Annotated[
+    Optional[str],
+    typer.Option("--base-url", envvar="NEMO_BASE_URL", help=BASE_URL_HELP),
+]
 
 
 def current_cli_state() -> Any:

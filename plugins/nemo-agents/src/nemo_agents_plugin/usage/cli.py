@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Optional
 
 import typer
-from nemo_agents_plugin.cli_context import resolve_base_url, resolve_context_headers
+from nemo_agents_plugin.cli_context import BaseUrlOption, resolve_base_url, resolve_context_headers
 from nemo_agents_plugin.usage import compute, render
 from nemo_agents_plugin.usage import parser as parser_module
 from nemo_agents_plugin.usage.models import (
@@ -73,16 +73,7 @@ def register_usage_commands(app: typer.Typer) -> None:
             "public number — leave unset and compute_units stays null.",
         ),
         workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
-        base_url: Optional[str] = typer.Option(
-            None,
-            "--base-url",
-            envvar="NEMO_BASE_URL",
-            help=(
-                "Platform base URL for fileset downloads. Defaults to the base URL "
-                "from the shared CLI config (`nemo config set --base-url`) / "
-                "NMP_BASE_URL env var, then http://localhost:8080."
-            ),
-        ),
+        base_url: BaseUrlOption = None,
     ) -> None:
         """Show a usage report for *ref*."""
         _show(

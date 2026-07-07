@@ -49,6 +49,9 @@ from nemo_agents_plugin.cli_context import (
     DEFAULT_BASE_URL as _DEFAULT_BASE_URL,
 )
 from nemo_agents_plugin.cli_context import (
+    BaseUrlOption,
+)
+from nemo_agents_plugin.cli_context import (
     resolve_base_url as _resolve_base_url,
 )
 from nemo_agents_plugin.cli_context import (
@@ -153,16 +156,7 @@ def _register_local_commands(app: typer.Typer) -> None:
             help="Name of a specific deployment to invoke (platform required).",
         ),
         workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
-        base_url: Optional[str] = typer.Option(
-            None,
-            "--base-url",
-            envvar="NEMO_BASE_URL",
-            help=(
-                "Platform base URL. Defaults to the base URL from the shared CLI "
-                "config (`nemo config set --base-url`) / NMP_BASE_URL env var, then "
-                "http://localhost:8080."
-            ),
-        ),
+        base_url: BaseUrlOption = None,
         timeout: float = typer.Option(
             300,
             "--timeout",
@@ -646,16 +640,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
         ),
         description: str = typer.Option("", "--description"),
         workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
-        base_url: Optional[str] = typer.Option(
-            None,
-            "--base-url",
-            envvar="NEMO_BASE_URL",
-            help=(
-                "Platform base URL. Defaults to the base URL from the shared CLI "
-                "config (`nemo config set --base-url`) / NMP_BASE_URL env var, then "
-                "http://localhost:8080."
-            ),
-        ),
+        base_url: BaseUrlOption = None,
     ) -> None:
         """Register an agent on the platform."""
         base_url = _resolve_base_url(base_url)
@@ -681,16 +666,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
     def list_agents(
         ctx: typer.Context,
         workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
-        base_url: Optional[str] = typer.Option(
-            None,
-            "--base-url",
-            envvar="NEMO_BASE_URL",
-            help=(
-                "Platform base URL. Defaults to the base URL from the shared CLI "
-                "config (`nemo config set --base-url`) / NMP_BASE_URL env var, then "
-                "http://localhost:8080."
-            ),
-        ),
+        base_url: BaseUrlOption = None,
         output_format: Optional[_LIST_OUTPUT_FORMAT] = typer.Option(
             None,
             "--format",
@@ -722,16 +698,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
     def get(
         name: str = typer.Argument(..., help="Agent name."),
         workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
-        base_url: Optional[str] = typer.Option(
-            None,
-            "--base-url",
-            envvar="NEMO_BASE_URL",
-            help=(
-                "Platform base URL. Defaults to the base URL from the shared CLI "
-                "config (`nemo config set --base-url`) / NMP_BASE_URL env var, then "
-                "http://localhost:8080."
-            ),
-        ),
+        base_url: BaseUrlOption = None,
     ) -> None:
         """Get an agent by name."""
         base_url = _resolve_base_url(base_url)
@@ -742,16 +709,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
     def delete(
         name: str = typer.Argument(..., help="Agent name."),
         workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
-        base_url: Optional[str] = typer.Option(
-            None,
-            "--base-url",
-            envvar="NEMO_BASE_URL",
-            help=(
-                "Platform base URL. Defaults to the base URL from the shared CLI "
-                "config (`nemo config set --base-url`) / NMP_BASE_URL env var, then "
-                "http://localhost:8080."
-            ),
-        ),
+        base_url: BaseUrlOption = None,
         yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
     ) -> None:
         """Delete an agent from the platform."""
@@ -783,16 +741,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
             help="Maximum seconds to wait for a terminal status (only with --wait).",
         ),
         workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
-        base_url: Optional[str] = typer.Option(
-            None,
-            "--base-url",
-            envvar="NEMO_BASE_URL",
-            help=(
-                "Platform base URL. Defaults to the base URL from the shared CLI "
-                "config (`nemo config set --base-url`) / NMP_BASE_URL env var, then "
-                "http://localhost:8080."
-            ),
-        ),
+        base_url: BaseUrlOption = None,
     ) -> None:
         """Deploy an agent on the platform.
 
@@ -860,16 +809,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
             help="Print only the absolute log file path and exit (useful for scripting).",
         ),
         workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
-        base_url: Optional[str] = typer.Option(
-            None,
-            "--base-url",
-            envvar="NEMO_BASE_URL",
-            help=(
-                "Platform base URL. Defaults to the base URL from the shared CLI "
-                "config (`nemo config set --base-url`) / NMP_BASE_URL env var, then "
-                "http://localhost:8080."
-            ),
-        ),
+        base_url: BaseUrlOption = None,
     ) -> None:
         """Show logs for an agent deployment.
 
@@ -937,16 +877,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
             None, "--agent", "--all", "-a", help="Remove all deployments for this agent."
         ),
         workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
-        base_url: Optional[str] = typer.Option(
-            None,
-            "--base-url",
-            envvar="NEMO_BASE_URL",
-            help=(
-                "Platform base URL. Defaults to the base URL from the shared CLI "
-                "config (`nemo config set --base-url`) / NMP_BASE_URL env var, then "
-                "http://localhost:8080."
-            ),
-        ),
+        base_url: BaseUrlOption = None,
         yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
     ) -> None:
         """Stop and remove a deployment (or all deployments for an agent)."""
@@ -976,16 +907,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
     def deployments_list(
         ctx: typer.Context,
         workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
-        base_url: Optional[str] = typer.Option(
-            None,
-            "--base-url",
-            envvar="NEMO_BASE_URL",
-            help=(
-                "Platform base URL. Defaults to the base URL from the shared CLI "
-                "config (`nemo config set --base-url`) / NMP_BASE_URL env var, then "
-                "http://localhost:8080."
-            ),
-        ),
+        base_url: BaseUrlOption = None,
         output_format: Optional[_LIST_OUTPUT_FORMAT] = typer.Option(
             None,
             "--format",
@@ -1017,16 +939,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
     def deployments_get(
         name: str = typer.Argument(..., help="Deployment name."),
         workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
-        base_url: Optional[str] = typer.Option(
-            None,
-            "--base-url",
-            envvar="NEMO_BASE_URL",
-            help=(
-                "Platform base URL. Defaults to the base URL from the shared CLI "
-                "config (`nemo config set --base-url`) / NMP_BASE_URL env var, then "
-                "http://localhost:8080."
-            ),
-        ),
+        base_url: BaseUrlOption = None,
     ) -> None:
         """Get a deployment by name."""
         base_url = _resolve_base_url(base_url)
@@ -1037,16 +950,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
     def deployments_delete(
         name: str = typer.Argument(..., help="Deployment name."),
         workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
-        base_url: Optional[str] = typer.Option(
-            None,
-            "--base-url",
-            envvar="NEMO_BASE_URL",
-            help=(
-                "Platform base URL. Defaults to the base URL from the shared CLI "
-                "config (`nemo config set --base-url`) / NMP_BASE_URL env var, then "
-                "http://localhost:8080."
-            ),
-        ),
+        base_url: BaseUrlOption = None,
         yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
     ) -> None:
         """Delete a deployment by name."""
@@ -1068,16 +972,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
         timeout: int = typer.Option(300, "--timeout", "-t", help="Maximum seconds to wait."),
         interval: float = typer.Option(2.0, "--interval", help="Poll interval in seconds."),
         workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
-        base_url: Optional[str] = typer.Option(
-            None,
-            "--base-url",
-            envvar="NEMO_BASE_URL",
-            help=(
-                "Platform base URL. Defaults to the base URL from the shared CLI "
-                "config (`nemo config set --base-url`) / NMP_BASE_URL env var, then "
-                "http://localhost:8080."
-            ),
-        ),
+        base_url: BaseUrlOption = None,
     ) -> None:
         """Wait for a deployment to reach 'running' or 'failed' status.
 
