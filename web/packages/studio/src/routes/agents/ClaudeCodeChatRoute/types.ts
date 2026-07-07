@@ -82,6 +82,7 @@ export interface ClaudeCodeChatArtifacts {
 export interface ClaudeCodeHistorySession {
   session_id: string;
   mtime: number;
+  title?: string;
   first_prompt: string;
   message_count: number;
   token_count: number;

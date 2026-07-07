@@ -34,7 +34,6 @@ import { ChevronRight, ClipboardList } from 'lucide-react';
 interface ClaudeCodeToolCallPartContentProps {
   readonly args: ClaudeCodeToolArgs;
   readonly argsText: string;
-  readonly isRunning?: boolean;
   readonly toolName: string;
 }
 
@@ -105,7 +104,6 @@ const CollapsedStudioDetailsPartContent = ({
     <ClaudeCodeToolCallPartContent
       args={part.args}
       argsText={part.argsText}
-      isRunning={false}
       toolName={part.toolName}
     />
   );
@@ -154,7 +152,6 @@ const ClaudeCodeToolCallPartContent = ({
   args,
   argsText,
   toolName,
-  isRunning = false,
 }: ClaudeCodeToolCallPartContentProps) => {
   if (toolName === CLAUDE_CODE_COLLAPSED_STUDIO_DETAILS_TOOL_NAME) {
     return <CollapsedStudioDetailsToolCall args={args} />;
@@ -171,16 +168,13 @@ const ClaudeCodeToolCallPartContent = ({
 
   if (toolName === CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME) {
     const subtleActions = getSubtleToolGroupActions(args);
-    return subtleActions.length ? (
-      <SubtleToolCallRow actions={subtleActions} isRunning={isRunning} />
-    ) : null;
+    return subtleActions.length ? <SubtleToolCallRow actions={subtleActions} /> : null;
   }
 
   const subtleMessage = getSubtleToolMessage(toolName, args);
   if (subtleMessage) {
     return (
       <SubtleToolCallRow
-        isRunning={isRunning}
         actions={[
           {
             detail: getSubtleToolDetail(toolName, args, subtleMessage),
@@ -197,7 +191,7 @@ const ClaudeCodeToolCallPartContent = ({
   if (toolName === 'Write' || toolName === 'Edit' || toolName === 'MultiEdit') {
     const fileChangeSummary = getFileChangeSummary(toolName, args, argsText);
     if (fileChangeSummary) {
-      return <FileChangeToolCallCard isRunning={isRunning} summary={fileChangeSummary} />;
+      return <FileChangeToolCallCard summary={fileChangeSummary} />;
     }
   }
 
@@ -209,7 +203,6 @@ const ClaudeCodeToolCallPartContent = ({
   );
   return (
     <SubtleToolCallRow
-      isRunning={isRunning}
       actions={[
         {
           detail: getSubtleToolDetail(toolName, args, fallbackMessage),
@@ -226,13 +219,5 @@ const ClaudeCodeToolCallPartContent = ({
 export const ClaudeCodeToolCallPart: ToolCallMessagePartComponent<ClaudeCodeToolArgs, unknown> = ({
   args,
   argsText,
-  status,
   toolName,
-}) => (
-  <ClaudeCodeToolCallPartContent
-    args={args}
-    argsText={argsText}
-    isRunning={status.type === 'running'}
-    toolName={toolName}
-  />
-);
+}) => <ClaudeCodeToolCallPartContent args={args} argsText={argsText} toolName={toolName} />;

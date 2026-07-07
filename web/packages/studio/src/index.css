@@ -88,24 +88,3 @@ body {
 .nv-radio-group-item[data-disabled] {
   cursor: not-allowed;
 }
-
-@keyframes claude-code-tool-call-running-color {
-  0%,
-  100% {
-    color: var(--text-color-subtle);
-  }
-
-  50% {
-    color: var(--text-color-brand);
-  }
-}
-
-.claude-code-tool-call-running {
-  color: var(--text-color-brand);
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .claude-code-tool-call-running {
-    animation: claude-code-tool-call-running-color 1.6s ease-in-out infinite;
-  }
-}
