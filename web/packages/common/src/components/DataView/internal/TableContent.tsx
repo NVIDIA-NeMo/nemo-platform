@@ -22,9 +22,22 @@ import {
   type TableRootProps,
   TableRow,
 } from '@nvidia/foundations-react-core';
-import { flexRender, type Row, type Table as ReactTableType } from '@tanstack/react-table';
+import { flexRender, type Cell, type Header, type Row, type Table as ReactTableType } from '@tanstack/react-table';
 import type { Virtualizer } from '@tanstack/react-virtual';
 import classnames from 'classnames';
+import {
+  closestCenter,
+  DndContext,
+  type DragEndEvent,
+  KeyboardSensor,
+  MouseSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import { restrictToHorizontalAxis } from '@dnd-kit/modifiers';
+import { arrayMove, horizontalListSortingStrategy, SortableContext, useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import {
   Fragment,
   forwardRef,
@@ -45,6 +58,8 @@ export interface TableContentProps
   /** If true, the table header will be sticky. @defaultValue false */
   stickyTableHeader?: boolean;
   virtualizer?: Virtualizer<HTMLTableElement, HTMLElement>;
+  /** When true, column headers become draggable for reordering. Pinned columns are excluded. */
+  enableColumnReordering?: boolean;
 }
 
 const TABLE_VARIABLES = {
@@ -58,6 +73,7 @@ export const TableContent = forwardRef<HTMLTableElement, TableContentProps>(
   (
     {
       className,
+      enableColumnReordering = false,
       rowLimit,
       renderEmptyState,
       renderErrorState,
@@ -84,10 +100,34 @@ export const TableContent = forwardRef<HTMLTableElement, TableContentProps>(
       // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-compute when column count changes, not on every column reference
       [hasPinnedColumns, columnSizing, tableColumns.length]
     );
+    // Derive current column order for SortableContext. When columnOrder state is empty,
+    // TanStack uses definition order — fall back to getVisibleLeafColumns() to match.
+    const columnOrder = table.getState().columnOrder.length
+      ? table.getState().columnOrder
+      : table.getVisibleLeafColumns().map((c) => c.id);
+    const sensors = useSensors(
+      useSensor(MouseSensor, {}),
+      useSensor(TouchSensor, {}),
+      useSensor(KeyboardSensor, {})
+    );
+    const handleDragEnd = useCallback(
+      (event: DragEndEvent) => {
+        const { active, over } = event;
+        if (!active || !over || active.id === over.id) return;
+        const currentOrder = table.getState().columnOrder.length
+          ? table.getState().columnOrder
+          : table.getVisibleLeafColumns().map((c) => c.id);
+        const oldIndex = currentOrder.indexOf(active.id as string);
+        const newIndex = currentOrder.indexOf(over.id as string);
+        if (oldIndex === -1 || newIndex === -1) return;
+        table.setColumnOrder(arrayMove(currentOrder, oldIndex, newIndex));
+      },
+      [table]
+    );
     if (state.displayMode.state !== 'table') {
       return null;
     }
-    return (
+    const tableContent = (
       <div className="min-h-fit w-full overflow-auto">
         <TableRoot
           className={classnames(
@@ -105,30 +145,70 @@ export const TableContent = forwardRef<HTMLTableElement, TableContentProps>(
           <TableHead className={classnames(stickyTableHeader && 'sticky top-0 z-10')}>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <TableColumnHeader
-                    key={header.id}
-                    automaticTitles={autoCellTooltips}
-                    className={classnames(
-                      'relative',
-                      header.column.getIsLastColumn('left') &&
-                        'shadow-[inset_-4px_0_4px_-4px_var(--color-gray-400)]',
-                      header.column.getIsFirstColumn('right') &&
-                        'shadow-[inset_4px_0_4px_-4px_var(--color-gray-400)]'
-                    )}
-                    header={header}
-                    // eslint-disable-next-line no-restricted-syntax -- pinned column offsets are dynamic
-                    style={getCellStyle({
-                      column: header.column,
-                      disableAutoSizing: !!virtualizer,
+                {enableColumnReordering ? (
+                  <SortableContext items={columnOrder} strategy={horizontalListSortingStrategy}>
+                    {headerGroup.headers.map((header) => {
+                      const isPinned = !!header.column.getIsPinned();
+                      const cellStyle = getCellStyle({ column: header.column, disableAutoSizing: !!virtualizer });
+                      const headerClassName = classnames(
+                        'relative',
+                        header.column.getIsLastColumn('left') &&
+                          'shadow-[inset_-4px_0_4px_-4px_var(--color-gray-400)]',
+                        header.column.getIsFirstColumn('right') &&
+                          'shadow-[inset_4px_0_4px_-4px_var(--color-gray-400)]'
+                      );
+                      return isPinned ? (
+                        <TableColumnHeader
+                          key={header.id}
+                          automaticTitles={autoCellTooltips}
+                          className={headerClassName}
+                          header={header}
+                          // eslint-disable-next-line no-restricted-syntax -- pinned column offsets are dynamic
+                          style={cellStyle}
+                        />
+                      ) : (
+                        <DraggableColumnHeader
+                          key={header.id}
+                          automaticTitles={autoCellTooltips}
+                          className={headerClassName}
+                          header={header}
+                          cellStyle={cellStyle}
+                        />
+                      );
                     })}
-                  />
-                ))}
+                  </SortableContext>
+                ) : (
+                  headerGroup.headers.map((header) => (
+                    <TableColumnHeader
+                      key={header.id}
+                      automaticTitles={autoCellTooltips}
+                      className={classnames(
+                        'relative',
+                        header.column.getIsLastColumn('left') &&
+                          'shadow-[inset_-4px_0_4px_-4px_var(--color-gray-400)]',
+                        header.column.getIsFirstColumn('right') &&
+                          'shadow-[inset_4px_0_4px_-4px_var(--color-gray-400)]'
+                      )}
+                      header={header}
+                      // eslint-disable-next-line no-restricted-syntax -- pinned column offsets are dynamic
+                      style={getCellStyle({
+                        column: header.column,
+                        disableAutoSizing: !!virtualizer,
+                      })}
+                    />
+                  ))
+                )}
               </TableRow>
             ))}
           </TableHead>
           {!isDataViewEmptyState && !isDataViewErrorState && (
-            <TableBody table={table} virtualizer={virtualizer} rowLimit={rowLimit} />
+            <TableBody
+              table={table}
+              virtualizer={virtualizer}
+              rowLimit={rowLimit}
+              enableColumnReordering={enableColumnReordering}
+              columnOrder={columnOrder}
+            />
           )}
         </TableRoot>
         {slotStatusResult ?? (
@@ -136,17 +216,26 @@ export const TableContent = forwardRef<HTMLTableElement, TableContentProps>(
         )}
       </div>
     );
+    return enableColumnReordering ? (
+      <DndContext
+        collisionDetection={closestCenter}
+        modifiers={[restrictToHorizontalAxis]}
+        onDragEnd={handleDragEnd}
+        sensors={sensors}
+      >
+        {tableContent}
+      </DndContext>
+    ) : tableContent;
   }
 );
 TableContent.displayName = 'TableContent';
-
-/** @deprecated Use `TableContent` instead. */
-export const Table = TableContent;
 
 interface TableBodyProps {
   table: ReactTableType<IntentionalAny>;
   virtualizer?: Virtualizer<HTMLTableElement, HTMLElement>;
   rowLimit?: number;
+  enableColumnReordering?: boolean;
+  columnOrder?: string[];
 }
 
 function TableBody(props: TableBodyProps): JSX.Element {
@@ -175,6 +264,8 @@ interface InnerTableBodyProps extends TableBodyProps {
 
 function InnerTableBody({
   autoCellTooltips,
+  columnOrder,
+  enableColumnReordering,
   highlightedRowId,
   renderCustomRowExpansion,
   rowLimit,
@@ -222,42 +313,50 @@ function InnerTableBody({
                   : undefined
               }
             >
-              {row?.getVisibleCells().map((cell) => {
-                let isFirstNonPrebuiltColumn = false;
-                if (
-                  !foundFirstNonPrebuiltColumn &&
-                  !cell.column.columnDef.meta?._isPrebuiltColumn
-                ) {
-                  foundFirstNonPrebuiltColumn = true;
-                  isFirstNonPrebuiltColumn = true;
-                }
-                return (
-                  <TableDataCell
-                    key={cell.id}
-                    align={cell.column.columnDef.meta?.alignment}
-                    className={classnames(
-                      'data-[pinned]:sticky data-[pinned]:z-10',
-                      'data-[within-subrow]:data-[first-non-prebuilt-column]:!pl-[var(--subrow-indent,var(--table-cell-inline-padding))]',
-                      cell.column.getIsLastColumn('left') &&
-                        'shadow-[inset_-4px_0_4px_-4px_var(--color-gray-400)]',
-                      cell.column.getIsFirstColumn('right') &&
-                        'shadow-[inset_4px_0_4px_-4px_var(--color-gray-400)]'
-                    )}
-                    data-first-non-prebuilt-column={isFirstNonPrebuiltColumn || undefined}
-                    data-pinned={cell.column.getIsPinned() || undefined}
-                    data-within-subrow={(row?.depth && row.depth > 0) || undefined}
-                    headers={getHeaderId(cell.column.id)}
-                    title={autoCellTooltips ? getCellTitle(cell) || undefined : undefined}
-                    // eslint-disable-next-line no-restricted-syntax -- pinned column offsets are dynamic
-                    style={getCellStyle({
-                      column: cell.column,
-                      disableAutoSizing: !!virtualizer,
-                    })}
-                  >
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </TableDataCell>
-                );
-              })}
+              {enableColumnReordering && columnOrder ? (
+                <SortableContext items={columnOrder} strategy={horizontalListSortingStrategy}>
+                  {row?.getVisibleCells().map((cell) => (
+                    <DragAlongCell key={cell.id} cell={cell} />
+                  ))}
+                </SortableContext>
+              ) : (
+                row?.getVisibleCells().map((cell) => {
+                  let isFirstNonPrebuiltColumn = false;
+                  if (
+                    !foundFirstNonPrebuiltColumn &&
+                    !cell.column.columnDef.meta?._isPrebuiltColumn
+                  ) {
+                    foundFirstNonPrebuiltColumn = true;
+                    isFirstNonPrebuiltColumn = true;
+                  }
+                  return (
+                    <TableDataCell
+                      key={cell.id}
+                      align={cell.column.columnDef.meta?.alignment}
+                      className={classnames(
+                        'data-[pinned]:sticky data-[pinned]:z-10',
+                        'data-[within-subrow]:data-[first-non-prebuilt-column]:!pl-[var(--subrow-indent,var(--table-cell-inline-padding))]',
+                        cell.column.getIsLastColumn('left') &&
+                          'shadow-[inset_-4px_0_4px_-4px_var(--color-gray-400)]',
+                        cell.column.getIsFirstColumn('right') &&
+                          'shadow-[inset_4px_0_4px_-4px_var(--color-gray-400)]'
+                      )}
+                      data-first-non-prebuilt-column={isFirstNonPrebuiltColumn || undefined}
+                      data-pinned={cell.column.getIsPinned() || undefined}
+                      data-within-subrow={(row?.depth && row.depth > 0) || undefined}
+                      headers={getHeaderId(cell.column.id)}
+                      title={autoCellTooltips ? getCellTitle(cell) || undefined : undefined}
+                      // eslint-disable-next-line no-restricted-syntax -- pinned column offsets are dynamic
+                      style={getCellStyle({
+                        column: cell.column,
+                        disableAutoSizing: !!virtualizer,
+                      })}
+                    >
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableDataCell>
+                  );
+                })
+              )}
             </TableRow>
             {row?.getIsExpanded() && renderCustomRowExpansion && (
               <TableRow>
@@ -277,3 +376,63 @@ const MemoizedBody = memo(
   InnerTableBody,
   (prev, next) => prev.table.options.data === next.table.options.data
 );
+
+// --- Column DnD: draggable header cell ---
+
+interface DraggableColumnHeaderProps {
+  automaticTitles: boolean;
+  header: Header<IntentionalAny, unknown>;
+  cellStyle?: CSSProperties;
+  className?: string;
+}
+
+function DraggableColumnHeader({ automaticTitles, header, cellStyle, className }: DraggableColumnHeaderProps) {
+  const { attributes, isDragging, listeners, setNodeRef, transform, transition } = useSortable({
+    id: header.column.id,
+  });
+
+  const style: CSSProperties = {
+    opacity: isDragging ? 0.8 : 1,
+    position: 'relative',
+    transform: CSS.Translate.toString(transform), // Translate (not Transform) avoids column squishing
+    transition: transition ?? 'width transform 0.2s ease-in-out',
+    zIndex: isDragging ? 1 : 0,
+    ...cellStyle,
+  };
+
+  return (
+    <TableColumnHeader
+      automaticTitles={automaticTitles}
+      header={header}
+      className={className}
+      style={style}
+      dragProps={{ attributes, listeners, isDragging, setNodeRef }}
+    />
+  );
+}
+
+// --- Column DnD: body cell that moves with the dragged column ---
+
+interface DragAlongCellProps {
+  cell: Cell<IntentionalAny, unknown>;
+}
+
+function DragAlongCell({ cell }: DragAlongCellProps) {
+  const { isDragging, setNodeRef, transform, transition } = useSortable({
+    id: cell.column.id,
+  });
+
+  const style: CSSProperties = {
+    opacity: isDragging ? 0.8 : 1,
+    position: 'relative',
+    transform: CSS.Translate.toString(transform),
+    transition: transition ?? 'width transform 0.2s ease-in-out',
+    zIndex: isDragging ? 1 : 0,
+  };
+
+  return (
+    <TableDataCell ref={setNodeRef} style={style}>
+      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+    </TableDataCell>
+  );
+}

@@ -72,7 +72,6 @@ export {
   type StatusResultProps,
 } from '@nemo/common/src/components/DataView/internal/StatusResult';
 export {
-  Table,
   TableContent,
   type TableContentProps,
 } from '@nemo/common/src/components/DataView/internal/TableContent';

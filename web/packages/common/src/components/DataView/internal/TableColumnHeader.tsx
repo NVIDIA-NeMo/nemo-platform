@@ -8,12 +8,14 @@ import { getHeaderId } from '@nemo/common/src/components/DataView/internal/utils
 import { Button, TableHeaderCell } from '@nvidia/foundations-react-core';
 import { childrenToText } from '@nvidia/foundations-react-core/lib';
 import { flexRender, type Header, type SortDirection } from '@tanstack/react-table';
+import type { DraggableAttributes } from '@dnd-kit/core';
 import classnames from 'classnames';
 import { ArrowUp, ArrowUpDown, GripVertical } from 'lucide-react';
-import type { ComponentProps, JSX, ReactNode } from 'react';
+import type { ComponentProps, JSX, ReactNode, Ref } from 'react';
 
 interface DragProps {
-  attributes: Record<string, unknown>;
+  setNodeRef?: (node: HTMLElement | null) => void;
+  attributes: DraggableAttributes;
   listeners: Record<string, unknown> | undefined;
   isDragging: boolean;
 }
@@ -38,6 +40,7 @@ export function TableColumnHeader({
   const headerMeta = header.column.columnDef.meta;
   return (
     <TableHeaderCell
+      ref={dragProps?.setNodeRef as Ref<HTMLTableCellElement> | undefined}
       align={headerMeta?.headerAlignment ?? headerMeta?.alignment}
       className={classnames(
         className,
