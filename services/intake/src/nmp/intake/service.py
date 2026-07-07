@@ -72,7 +72,9 @@ class IntakeService(Service[IntakeConfig]):
         self.clickhouse_client = ClickHouseSpanClient(ClickHouseSettings.from_config(cfg))
         logger.warning(
             "ClickHouse schema setup was not run during Intake startup; "
-            "trace endpoints will initialize ClickHouse on first use and return 503 until it is reachable",
+            "trace endpoints will initialize ClickHouse on first use and return 503 until it is reachable. "
+            "For local development, start ClickHouse with services/intake/scripts/spans/run_clickhouse.sh; "
+            "see services/intake/README.md#local-development.",
             extra={
                 "service": self.name,
                 "clickhouse_url": cfg.clickhouse_config.url,
