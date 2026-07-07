@@ -224,7 +224,9 @@ class FabricAgentRuntime:
                 metadata={**base_metadata, "evidence_dir": str(evidence_dir)},
             ),
             evidence=self._evidence(result, result_path, workspace_dir),
-            metadata={**base_metadata, "generated": True},
+            # AgentPhaseSuccessMetric reads agent_ok to score whether the agent phase finished cleanly
+            # (an explicit bool, not just trial status).
+            metadata={**base_metadata, "generated": True, "agent_ok": True},
         )
 
     def _evidence(self, result: RunResult, result_path: Path, workspace_dir: Path) -> CandidateEvidence:
@@ -289,6 +291,7 @@ class FabricAgentRuntime:
             metadata={
                 **(dict(extra_metadata) if extra_metadata else {}),
                 "runtime": self._runtime_name,
+                "agent_ok": False,
                 "error_type": error_type,
                 "error": error_message,
             },

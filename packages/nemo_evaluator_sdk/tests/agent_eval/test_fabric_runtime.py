@@ -182,6 +182,8 @@ async def test_fabric_runtime_maps_succeeded_result_to_completed_trial(
     assert trial.metadata["harness"] == "codex"
     assert trial.metadata["adapter_id"] == "nvidia.fabric.codex.cli"
     assert trial.metadata["generated"] is True
+    # agent_ok mirrors the Codex runtime so AgentPhaseSuccessMetric scores the phase as clean.
+    assert trial.metadata["agent_ok"] is True
     # Evidence: the persisted result envelope + each Fabric artifact by name.
     assert trial.evidence is not None
     assert trial.evidence.descriptors["result"].ref.endswith("fabric_result.json")
@@ -350,6 +352,7 @@ async def test_fabric_runtime_maps_failed_result_to_failed_trial(
     assert trial.output is None
     assert trial.metadata["error_type"] == "process_exit_nonzero"
     assert trial.metadata["error"] == "boom"
+    assert trial.metadata["agent_ok"] is False
     assert trial.evidence is not None
     assert "error" in trial.evidence.descriptors
 
@@ -413,3 +416,27 @@ async def test_fabric_runtime_trajectory_capture_requires_nemo_relay(
     runtime = fabric_runtime.FabricAgentRuntime(config=_CONFIG, work_root=tmp_path / "fabric")
     with pytest.raises(RuntimeError, match="nemo-relay"):
         await runtime.run_tasks([_TASK])
+
+
+@pytest.mark.asyncio
+async def test_fabric_success_trial_scores_agent_phase_success_true(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Regression guard: AgentPhaseSuccessMetric reads candidate.metadata["agent_ok"]; a successful Fabric
+    # trial must set it (via the same _trial_sample path the evaluator uses) so the metric scores True.
+    from nemo_evaluator_sdk.agent_eval.evaluator import _metric_row, _trial_sample
+    from nemo_evaluator_sdk.agent_eval.metrics import AgentPhaseSuccessMetric
+    from nemo_evaluator_sdk.execution.samples import build_metric_input
+
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        return _FakeResult(status="succeeded", output={"response": "ok"})
+
+    _install_fake_fabric(monkeypatch, handler)
+    runtime = fabric_runtime.FabricAgentRuntime(config=_CONFIG, work_root=tmp_path / "fabric")
+
+    trial = (await runtime.run_tasks([_TASK]))[0]
+    metric_input = build_metric_input(_metric_row(_TASK, trial), _trial_sample(trial), 0)
+    result = await AgentPhaseSuccessMetric().compute_scores(metric_input)
+
+    assert result.outputs[0].name == "agent_phase_success"
+    assert result.outputs[0].value is True

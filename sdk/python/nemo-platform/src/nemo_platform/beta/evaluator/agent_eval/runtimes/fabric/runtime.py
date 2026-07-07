@@ -12,9 +12,8 @@ is applied as a final profile overlay, mirroring Fabric's own Harbor integration
 Every task runs in its own fresh workspace: the runtime seeds it from
 ``inputs['files']`` (a no-op when there are none), runs the harness in it (via
 ``environment.workspace``), and exposes its final file tree as ``workspace``
-filesystem evidence — the same contract the Codex runtime provides, so
-workspace-reading metrics score a Fabric trial unchanged, alongside the ATIF
-trajectory. Any ``environment.workspace`` set in the supplied config is
+filesystem evidence, so workspace-reading metrics score a Fabric trial alongside
+the ATIF trajectory. Any ``environment.workspace`` set in the supplied config is
 overridden per task.
 
 ``nemo_fabric`` is an optional native dependency: its types are imported for
@@ -64,12 +63,12 @@ _MISSING_RELAY_MSG = (
 # them and hand them to Fabric/Relay, so they are not derived from either library.
 _RELAY_SUBDIR = "relay"
 _ARTIFACTS_SUBDIR = "artifacts"
-# Per-task workspace: where seed files are staged and where the harness (Codex, ...) reads/writes. We
+# Per-task workspace: where seed files are staged and where the harness reads/writes. We
 # create it, point Fabric's ``environment.workspace`` at it, and expose it as ``workspace`` evidence.
 _WORKSPACE_SUBDIR = "workspace"
 _WORKSPACE_PROFILE_NAME = "eval_workspace"
-# Evidence key + descriptor kind for the staged workspace (mirrors the Codex runtime so the same
-# workspace-reading metrics score a Fabric trial unchanged).
+# Evidence key + descriptor kind for the staged workspace, consumed by the
+# workspace-reading metrics.
 _WORKSPACE_EVIDENCE_KEY = "workspace"
 _WORKSPACE_EVIDENCE_KIND = "filesystem"
 # Trajectory profile identity + the file-exporter output names we choose (Relay accepts these as inputs).
@@ -167,11 +166,11 @@ class FabricAgentRuntime:
 
         # Every task runs in its own fresh workspace: seed any ``inputs['files']`` into it (a no-op when
         # there are none), point the harness at it via ``environment.workspace``, and expose it as
-        # ``workspace`` filesystem evidence — the coding-agent contract the Codex runtime provides, and a
-        # uniform per-task dir that maps cleanly onto a per-task container volume later. Seeding runs
-        # inside the guarded block so a bad seed (a path escaping the workspace, an unresolvable fileset)
-        # fails just this task, not the whole run; it is synchronous and may block (a fileset handler
-        # downloads), so it is offloaded off the shared event loop, exactly as the Codex runtime does.
+        # ``workspace`` filesystem evidence — a uniform per-task dir that maps cleanly onto a per-task
+        # container volume later. Seeding runs inside the guarded block so a bad seed (a path escaping
+        # the workspace, an unresolvable fileset) fails just this task, not the whole run; it is
+        # synchronous and may block (a fileset handler downloads), so it is offloaded off the shared
+        # event loop.
         workspace_dir = evidence_dir / _WORKSPACE_SUBDIR
         workspace_dir.mkdir(parents=True, exist_ok=True)
         try:
@@ -225,13 +224,14 @@ class FabricAgentRuntime:
                 metadata={**base_metadata, "evidence_dir": str(evidence_dir)},
             ),
             evidence=self._evidence(result, result_path, workspace_dir),
-            metadata={**base_metadata, "generated": True},
+            # AgentPhaseSuccessMetric reads agent_ok to score whether the agent phase finished cleanly
+            # (an explicit bool, not just trial status).
+            metadata={**base_metadata, "generated": True, "agent_ok": True},
         )
 
     def _evidence(self, result: RunResult, result_path: Path, workspace_dir: Path) -> CandidateEvidence:
         # The workspace is a host directory the harness ran in, so its final file tree is available on
-        # disk — expose it as filesystem evidence (same key/kind as the Codex runtime) so
-        # workspace-reading metrics score a Fabric trial without change.
+        # disk — expose it as filesystem evidence so workspace-reading metrics can score a Fabric trial.
         descriptors: dict[str, EvidenceDescriptor] = {
             "result": EvidenceDescriptor(kind="json", format="json", ref=str(result_path)),
             _WORKSPACE_EVIDENCE_KEY: EvidenceDescriptor(kind=_WORKSPACE_EVIDENCE_KIND, ref=str(workspace_dir)),
@@ -291,6 +291,7 @@ class FabricAgentRuntime:
             metadata={
                 **(dict(extra_metadata) if extra_metadata else {}),
                 "runtime": self._runtime_name,
+                "agent_ok": False,
                 "error_type": error_type,
                 "error": error_message,
             },
@@ -391,8 +392,8 @@ def _fabric_input(task: AgentEvalTask, seeded_files: Sequence[str] = ()) -> str:
     """Frame the task as the harness's input text.
 
     When files were staged into the workspace, list them by name and invite the agent to work in its
-    current directory (mirroring the Codex runtime's default prompt) rather than dumping their contents
-    inline; the seed-files key is dropped from the echoed inputs since those files are already on disk.
+    current directory rather than dumping their contents inline; the seed-files key is dropped from
+    the echoed inputs since those files are already on disk.
     """
     body_inputs = {key: value for key, value in task.inputs.items() if key != SEED_FILES_INPUT_KEY}
     lines = [f"Task id: {task.id}", f"Intent: {task.intent}"]
