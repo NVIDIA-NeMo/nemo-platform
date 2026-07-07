@@ -1071,10 +1071,44 @@ def test_mcp_studio_link_returns_fileset_file_markdown(service_client: TestClien
     assert json.loads(result_text) == {
         "workspace": "default",
         "destination": "fileset_file",
-        "path": "/workspaces/default/filesets/training%20data/file/nested%2Fexamples.jsonl",
+        "path": "/workspaces/default/filesets/default%2Ftraining%20data/file/nested%2Fexamples.jsonl",
         "url": None,
-        "markdown": "[File nested/examples.jsonl](/workspaces/default/filesets/training%20data/file/nested%2Fexamples.jsonl)",
+        "markdown": (
+            "[File nested/examples.jsonl]"
+            "(/workspaces/default/filesets/default%2Ftraining%20data/file/nested%2Fexamples.jsonl)"
+        ),
     }
+
+
+def test_build_studio_link_result_namespaces_fileset_panel_id():
+    result = studio_links.build_studio_link_result(
+        workspace="default",
+        studio_base_url=None,
+        args={"destination": "fileset_panel", "name": "my fileset"},
+    )
+    # `fileset_panel` -> filesetDetails route `:filesetId` is the namespaced
+    # entity reference `{workspace}/{name}` encoded as one segment.
+    assert result["path"] == "/workspaces/default/filesets/default%2Fmy%20fileset"
+
+
+def test_build_studio_link_result_does_not_double_prefix_namespaced_fileset():
+    result = studio_links.build_studio_link_result(
+        workspace="default",
+        studio_base_url=None,
+        args={"destination": "fileset_file", "name": "default/my-fileset", "file_path": "a.csv"},
+    )
+    # An already-namespaced name must not be prefixed again.
+    assert result["path"] == "/workspaces/default/filesets/default%2Fmy-fileset/file/a.csv"
+
+
+def test_build_studio_link_result_keeps_bare_name_for_fileset_detail():
+    result = studio_links.build_studio_link_result(
+        workspace="default",
+        studio_base_url=None,
+        args={"destination": "fileset", "name": "my-fileset"},
+    )
+    # `fileset` -> filesetDetail route `:filesetName` is the bare name.
+    assert result["path"] == "/workspaces/default/filesets/my-fileset/detail"
 
 
 def test_mcp_studio_link_returns_intake_span_markdown(monkeypatch: pytest.MonkeyPatch):

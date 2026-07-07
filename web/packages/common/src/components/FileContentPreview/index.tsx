@@ -11,6 +11,11 @@ import {
 import type { FileListItem } from '@nemo/common/src/components/FileList';
 import { MarkdownContent } from '@nemo/common/src/components/MarkdownContent';
 import { ScrollTable } from '@nemo/common/src/components/ScrollTable';
+import {
+  buildRowsAndKeysFromJsonlSample,
+  formatJsonlSampleCellValue,
+  labelForJsonlSampleColumnKey,
+} from '@nemo/common/src/utils/parseJsonlObjectSample';
 import { Flex, Spinner, TableRowDefinition, Text } from '@nvidia/foundations-react-core';
 import Papa from 'papaparse';
 import { FC, useEffect, useMemo, useState } from 'react';
@@ -41,7 +46,15 @@ export const FileContentPreview: FC<FileContentPreviewProps> = ({
   const isJson = useMemo(() => isJsonFile(jsonContentType), [jsonContentType]);
   const extension = useMemo(() => getFileExtension(file.path), [file.path]);
   const isCsv = extension === '.csv';
+  const isParquet = extension === '.parquet';
   const isMarkdown = extension !== null && MARKDOWN_EXTENSIONS.has(extension);
+
+  // Parquet is decoded upstream to newline-delimited JSON objects (one row per
+  // line). Render it as a table rather than raw JSON text.
+  const parquetTable = useMemo(() => {
+    if (!isParquet || !content) return null;
+    return buildRowsAndKeysFromJsonlSample(content);
+  }, [isParquet, content]);
 
   // Parse CSV if applicable
   useEffect(() => {
@@ -136,6 +149,26 @@ export const FileContentPreview: FC<FileContentPreviewProps> = ({
       id: index.toString(),
       cells: csvData.columns.map((column: string) => ({
         children: String(row[column] ?? ''),
+      })),
+    }));
+
+    return (
+      <div className="h-full p-4">
+        <ScrollTable columns={columns} rows={rows} pagination={false} allowHorizontalScroll />
+      </div>
+    );
+  }
+
+  // Parquet files - rendered as a table from the upstream JSONL serialization
+  if (isParquet && parquetTable && parquetTable.rows.length > 0) {
+    const columns = parquetTable.columnKeys.map((key: string) => ({
+      children: labelForJsonlSampleColumnKey(key),
+    }));
+
+    const rows: TableRowDefinition[] = parquetTable.rows.map((row) => ({
+      id: row.id,
+      cells: parquetTable.columnKeys.map((key: string) => ({
+        children: formatJsonlSampleCellValue(row.values[key]),
       })),
     }));
 

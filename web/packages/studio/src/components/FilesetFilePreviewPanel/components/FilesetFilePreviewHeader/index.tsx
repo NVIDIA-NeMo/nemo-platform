@@ -30,9 +30,9 @@ export const FilesetFilePreviewHeader: FC<FilesetFilePreviewHeaderProps> = ({
   onDeleteSuccess,
   onRenameSuccess,
 }) => (
-  <Flex justify="between" align="center" gap="density-sm" className="shrink-0 w-full">
-    <Flex gap="density-sm" align="center" className="min-w-0">
-      <FolderOpen width={16} height={16} />
+  <Flex justify="between" align="center" gap="density-sm" className="shrink-0 w-full pr-28">
+    <Flex gap="density-sm" align="center" className="min-w-0 overflow-hidden">
+      <FolderOpen width={16} height={16} className="shrink-0" />
       <FileBreadcrumbs
         filesetName={filesetName}
         filePath={filePath}

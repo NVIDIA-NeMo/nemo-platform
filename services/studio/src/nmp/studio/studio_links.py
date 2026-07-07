@@ -561,6 +561,13 @@ def tool_for_destinations(destinations: Mapping[str, StudioLinkDestination]) -> 
     return tool
 
 
+# Destinations whose `{name}` segment is the route's `:filesetId` param, which is the
+# namespaced entity reference `{workspace}/{name}` encoded as a single path segment
+# (e.g. `default%2Fmy-fileset`) — not the bare name. The `fileset` (…/detail) route uses
+# `:filesetName` (bare) instead, so it is intentionally excluded.
+_NAMESPACED_FILESET_DESTINATIONS = frozenset({"fileset_panel", "fileset_file"})
+
+
 def _path_part(value: str) -> str:
     return quote(value, safe="")
 
@@ -632,9 +639,19 @@ def build_studio_link_result(
         missing = "name" if missing_args == ["name"] else ", ".join(missing_args)
         return {"error": f"{missing} is required for Studio destination: {destination}"}
 
+    def _path_value(arg_name: str, value: str | None) -> str:
+        if value is None:
+            return ""
+        # The `:filesetId` route param is the namespaced entity reference
+        # `{workspace}/{name}`; prefix the workspace unless a namespaced value
+        # was supplied already.
+        if arg_name == "name" and destination in _NAMESPACED_FILESET_DESTINATIONS and "/" not in value:
+            return _path_part(f"{workspace}/{value}")
+        return _path_part(value)
+
     path_values = {
         "workspace": _path_part(workspace),
-        **{arg_name: _path_part(value) if value is not None else "" for arg_name, value in raw_values.items()},
+        **{arg_name: _path_value(arg_name, value) for arg_name, value in raw_values.items()},
     }
     path = config.path_template.format(**path_values)
     label_values = {arg_name: value for arg_name, value in raw_values.items() if value is not None}

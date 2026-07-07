@@ -165,6 +165,27 @@ describe('FileContentPreview', () => {
     });
   });
 
+  describe('Parquet files', () => {
+    it('renders parquet (serialized as JSONL) rows in a table', () => {
+      render(
+        <FileContentPreview
+          file={{ path: 'trace.parquet' }}
+          isLoading={false}
+          error={null}
+          content={'{"subject":"Hello","label":"ham"}\n{"subject":"Win cash","label":"phishing"}'}
+        />
+      );
+      // Column headers derived from the object keys
+      expect(screen.getByText('subject')).toBeInTheDocument();
+      expect(screen.getByText('label')).toBeInTheDocument();
+      // Cell values
+      expect(screen.getByText('Hello')).toBeInTheDocument();
+      expect(screen.getByText('phishing')).toBeInTheDocument();
+      // Not rendered as a raw code editor
+      expect(screen.queryByTestId('code-editor')).toBeNull();
+    });
+  });
+
   describe('Plain text fallback', () => {
     it('routes unknown extensions through CodeEditor with contentType=text', () => {
       render(

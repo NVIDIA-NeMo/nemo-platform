@@ -136,7 +136,48 @@ describe('Claude Code chat artifacts', () => {
       {
         label: 'Dataset file',
         destination: 'fileset_file',
-        href: '/workspaces/default/filesets/training%20data/file/nested%2Fexamples.jsonl',
+        href: '/workspaces/default/filesets/default%2Ftraining%20data/file/nested%2Fexamples.jsonl',
+      },
+    ]);
+  });
+
+  it('namespaces the fileset id but does not double-prefix an already-namespaced name', () => {
+    const artifacts = updateClaudeCodeChatArtifactsFromEvent(
+      { ...createEmptyClaudeCodeChatArtifacts(), workspace: 'default' },
+      {
+        type: 'assistant',
+        message: {
+          content: [
+            {
+              type: 'tool_use',
+              name: 'mcp__nemo_studio__studio_link',
+              input: { destination: 'fileset_panel', name: 'my fileset', label: 'Fileset' },
+            },
+            {
+              type: 'tool_use',
+              name: 'mcp__nemo_studio__studio_link',
+              input: {
+                destination: 'fileset_file',
+                name: 'default/my-fileset',
+                file_path: 'a.csv',
+                label: 'File',
+              },
+            },
+          ],
+        },
+      }
+    );
+
+    expect(artifacts.links).toEqual([
+      {
+        label: 'Fileset',
+        destination: 'fileset_panel',
+        href: '/workspaces/default/filesets/default%2Fmy%20fileset',
+      },
+      {
+        label: 'File',
+        destination: 'fileset_file',
+        href: '/workspaces/default/filesets/default%2Fmy-fileset/file/a.csv',
       },
     ]);
   });

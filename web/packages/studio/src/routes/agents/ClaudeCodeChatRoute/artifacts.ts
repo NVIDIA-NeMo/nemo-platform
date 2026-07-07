@@ -100,6 +100,11 @@ const STUDIO_LINK_PATH_TEMPLATES: Record<string, string> = {
   experiment_group: '/workspaces/{workspace}/experiment/{name}',
   experiment_detail: '/workspaces/{workspace}/experiment/{name}/{experiment_name}',
 };
+// Destinations whose `{name}` segment is the route's `:filesetId` param, which is the
+// namespaced entity reference `{workspace}/{name}` encoded as a single path segment
+// (e.g. `default%2Fmy-fileset`) — not the bare name. The `fileset` (…/detail) route
+// uses `:filesetName` (bare) instead, so it is intentionally excluded.
+const NAMESPACED_FILESET_DESTINATIONS = new Set(['fileset_panel', 'fileset_file']);
 const STUDIO_LINK_ARGUMENT_ALIASES = {
   name: [
     'resource_name',
@@ -224,7 +229,18 @@ const buildStudioLinkHrefFromInput = (
     const value = getStudioLinkArgument(input, argumentName);
     if (!value) return undefined;
 
-    values[argumentName] = encodeURIComponent(value);
+    // The `:filesetId` route param is the namespaced entity reference
+    // `{workspace}/{name}`; prefix the workspace unless the agent already
+    // supplied a namespaced value.
+    const resolved =
+      argumentName === 'name' &&
+      destination !== undefined &&
+      NAMESPACED_FILESET_DESTINATIONS.has(destination) &&
+      !value.includes('/')
+        ? `${workspaceValue}/${value}`
+        : value;
+
+    values[argumentName] = encodeURIComponent(resolved);
   }
 
   return template.replace(
