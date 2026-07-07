@@ -28,9 +28,12 @@ import {
   fetchEvalConfigFiles,
   fetchEvaluatorOutputs,
   fetchWorkflowOutput,
+  isTerminalStatus,
   outputFilesetForJob,
 } from '@studio/routes/agents/AgentEvaluationsRoute/api';
+import { CompareEvaluationsModal } from '@studio/routes/agents/AgentEvaluationsRoute/components/CompareEvaluationsModal';
 import { EvalConfigFilesPanel } from '@studio/routes/agents/AgentEvaluationsRoute/components/EvalConfigFilesPanel';
+import { EvalJobLogsPanel } from '@studio/routes/agents/AgentEvaluationsRoute/components/EvalJobLogsPanel';
 import { EvaluatorOutputPanel } from '@studio/routes/agents/AgentEvaluationsRoute/components/EvaluatorOutputPanel';
 import { WorkflowOutputPanel } from '@studio/routes/agents/AgentEvaluationsRoute/components/WorkflowOutputPanel';
 import { formatScore, scoreColor } from '@studio/routes/agents/AgentEvaluationsRoute/evalScores';
@@ -38,27 +41,17 @@ import { fetchEvalAverageScores } from '@studio/routes/agents/AgentSuggestionsRo
 import { getAgentEvaluationsListRoute, getAgentsListRoute } from '@studio/routes/utils';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ClipboardList, FlaskConical, FolderOpen } from 'lucide-react';
-import { type FC } from 'react';
+import { ClipboardList, Columns3, FlaskConical, FolderOpen } from 'lucide-react';
+import { useState, type FC } from 'react';
 
-const TERMINAL_STATUSES = new Set([
-  'completed',
-  'succeeded',
-  'success',
-  'failed',
-  'cancelled',
-  'canceled',
-  'error',
-]);
-
-const isTerminal = (status: string | undefined): boolean =>
-  TERMINAL_STATUSES.has((status ?? '').toLowerCase());
+const isTerminal = isTerminalStatus;
 
 export const AgentEvaluationDetailRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
   const { agentEvalJobName: jobName } = useRequiredPathParams([ROUTE_PARAMS.agentEvalJobName]);
   const toast = useToast();
   const queryClient = useQueryClient();
+  const [compareOpen, setCompareOpen] = useState(false);
 
   useBreadcrumbs({
     items: [
@@ -158,15 +151,25 @@ export const AgentEvaluationDetailRoute: FC = () => {
           slotHeading={jobName}
           slotDescription="Evaluation against a deployed agent. Scores aggregate per evaluator from the eval-output fileset."
           slotActions={
-            !isJobTerminal && (
-              <Button
-                kind="secondary"
-                onClick={() => cancelMutation.mutate()}
-                disabled={cancelMutation.isPending}
-              >
-                {cancelMutation.isPending ? 'Cancelling…' : 'Cancel'}
-              </Button>
-            )
+            <Flex gap="density-md" align="center">
+              {isJobTerminal && job.spec.eval_config && (
+                <Button kind="secondary" onClick={() => setCompareOpen(true)}>
+                  <Flex gap="density-xs" align="center">
+                    <Columns3 size={16} />
+                    Compare
+                  </Flex>
+                </Button>
+              )}
+              {!isJobTerminal && (
+                <Button
+                  kind="secondary"
+                  onClick={() => cancelMutation.mutate()}
+                  disabled={cancelMutation.isPending}
+                >
+                  {cancelMutation.isPending ? 'Cancelling…' : 'Cancel'}
+                </Button>
+              )}
+            </Flex>
           }
         />
 
@@ -257,6 +260,8 @@ export const AgentEvaluationDetailRoute: FC = () => {
           </Panel>
         </Grid>
 
+        <EvalJobLogsPanel workspace={workspace} jobName={job.name} jobStatus={job.status} />
+
         {!isJobTerminal && (
           <Panel
             slotHeading="Eval results"
@@ -293,6 +298,15 @@ export const AgentEvaluationDetailRoute: FC = () => {
           <EvalConfigFilesPanel files={configFiles!} />
         )}
       </Stack>
+      {job.spec.eval_config && (
+        <CompareEvaluationsModal
+          open={compareOpen}
+          onClose={() => setCompareOpen(false)}
+          workspace={workspace}
+          evalConfig={job.spec.eval_config}
+          baseJob={job}
+        />
+      )}
     </AccessibleTitle>
   );
 };

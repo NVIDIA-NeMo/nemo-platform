@@ -17,12 +17,14 @@ import {
 } from '@studio/routes/agents/AgentSuggestionsRoute/constants';
 import type {
   EvalConfigChoice,
+  EvalRetryContext,
   OptimizationSuggestion,
 } from '@studio/routes/agents/AgentSuggestionsRoute/types';
 import { useOptimizerSuggestions } from '@studio/routes/agents/AgentSuggestionsRoute/useOptimizerSuggestions';
 import {
   capitalize,
   countSeverities,
+  isOrchestratedApplyType,
   snapshotAgentNames,
   snapshotModelNames,
 } from '@studio/routes/agents/AgentSuggestionsRoute/utils';
@@ -127,17 +129,26 @@ export const useAgentOptimizations = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [agentSearch, setAgentSearch] = useState('');
   // Suggestion the user just clicked Apply on — drives the eval-config
-  // chooser modal. ``null`` keeps the modal closed.
-  const [pendingApply, setPendingApply] = useState<OptimizationSuggestion | null>(null);
+  // chooser modal. ``null`` keeps the modal closed. ``evalRetry`` is set when
+  // the click was a "re-run just the eval" retry (optimization already
+  // succeeded), so the chosen config re-runs against the deployed sibling.
+  const [pendingApply, setPendingApply] = useState<{
+    suggestion: OptimizationSuggestion;
+    evalRetry?: EvalRetryContext;
+  } | null>(null);
   const dataViewState = useStudioDataViewState<SuggestionFilter>({});
 
   const handleApplyClicked = useCallback(
-    (suggestion: OptimizationSuggestion) => {
-      // Only ``model_optimization`` suggestions actually run an eval — for
-      // everything else (guardrails, data_safety, new_model_scan) there's
-      // nothing for the user to choose, so apply immediately.
-      if (suggestion.type === 'model_optimization' && suggestion.agent) {
-        setPendingApply(suggestion);
+    (suggestion: OptimizationSuggestion, opts?: { evalRetry?: EvalRetryContext }) => {
+      // ``model_optimization`` runs an eval, so open the config chooser. An
+      // orchestrated (hyperparameter-tuning) suggestion normally applies
+      // immediately, but on an eval retry we also open the chooser so the user
+      // can point the re-run at the right eval YAML. Everything else
+      // (guardrails, data_safety, new_model_scan) has nothing to choose.
+      const isModelOpt = suggestion.type === 'model_optimization' && !!suggestion.agent;
+      const isOrchestratedRetry = isOrchestratedApplyType(suggestion.type) && !!opts?.evalRetry;
+      if (isModelOpt || isOrchestratedRetry) {
+        setPendingApply({ suggestion, evalRetry: opts?.evalRetry });
         return;
       }
       void apply(suggestion);
@@ -150,10 +161,12 @@ export const useAgentOptimizations = () => {
       const target = pendingApply;
       setPendingApply(null);
       if (!target) return;
-      void apply(
-        target,
-        choice.filesetOverride ? { evalConfigOverride: choice.filesetOverride } : undefined
-      );
+      void apply(target.suggestion, {
+        evalConfigOverride: choice.filesetOverride ?? undefined,
+        evalOnlyRetry: target.evalRetry
+          ? { siblingAgentName: target.evalRetry.siblingAgentName }
+          : undefined,
+      });
     },
     [apply, pendingApply]
   );

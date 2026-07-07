@@ -43,6 +43,13 @@ const AgentEvaluationDetailRoute =
       default: m.AgentEvaluationDetailRoute,
     }))
   );
+const AgentEvaluationCompareRoute =
+  AGENTS_ENABLED &&
+  lazy(() =>
+    import('@studio/routes/agents/AgentEvaluationsRoute').then((m) => ({
+      default: m.AgentEvaluationCompareRoute,
+    }))
+  );
 
 export const agentRoutes: RouteObject[] = agentsRoutes([
   {
@@ -64,6 +71,13 @@ export const agentRoutes: RouteObject[] = agentsRoutes([
     path: ROUTES.workspace.agentEvaluationsList,
     element: AgentEvaluationsListRoute ? <AgentEvaluationsListRoute /> : null,
     errorElement: <ErrorPanel title="Agent Evaluations" />,
+  },
+  {
+    // Registered before the ``:agentEvalJobName`` detail route so the static
+    // ``compare`` segment is never captured as a job name.
+    path: ROUTES.workspace.agentEvaluationCompare,
+    element: AgentEvaluationCompareRoute ? <AgentEvaluationCompareRoute /> : null,
+    errorElement: <ErrorPanel title="Compare Evaluations" />,
   },
   {
     path: ROUTES.workspace.agentEvaluationDetail,

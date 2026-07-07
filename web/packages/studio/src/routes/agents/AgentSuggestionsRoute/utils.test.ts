@@ -11,10 +11,17 @@ import type {
 import {
   agentHasGuardrails,
   analyze,
+  applyStatusOf,
+  buildGuardedSiblingConfig,
+  buildTunedSiblingConfig,
+  buildGuardrailConfigData,
   CONTENT_SAFETY_MODEL_RE,
   extractBillionParams,
+  guardedBaseUrl,
   GUARDRAIL_MODELS,
   parseSuggestions,
+  pickContentSafetyModel,
+  qualifyModelRef,
   scanForPii,
   serializeSuggestions,
   snapshotAgentNames,
@@ -244,6 +251,193 @@ describe('analyze — guardrails', () => {
     const result = analyze({ ...baseAnalyzeInput, agents });
     const guardrails = result.filter((s) => s.type === 'guardrails');
     expect(guardrails.map((s) => s.model).sort()).toEqual(['risky-a', 'risky-b']);
+  });
+
+  it('emits a 3-step apply block (create config + guarded sibling + deploy)', () => {
+    const agents = [
+      makeAgent('phish', llmConfig('nemotron-70b', 'http://x/apis/inference-gateway/v2/...')),
+    ];
+    const models = [makeModel('nvidia-llama-3-1-nemoguard-8b-content-safety')];
+    const result = analyze({ ...baseAnalyzeInput, agents, models, workspace: 'ws-a' });
+    const g = result.find((s) => s.type === 'guardrails');
+    expect(Array.isArray(g?.apply)).toBe(true);
+    const steps = g?.apply as {
+      method: string;
+      path: string;
+      body: { name?: string; agent?: string; config?: AgentConfig; data?: unknown };
+    }[];
+    expect(steps).toHaveLength(3);
+
+    // Step 1: create the stored guardrail config.
+    expect(steps[0].method).toBe('POST');
+    expect(steps[0].path).toBe('/apis/guardrails/v2/workspaces/ws-a/configs');
+    const configName = steps[0].body.name as string;
+    expect(configName).toMatch(/^phish-guard-[a-z0-9]{5}$/);
+
+    // Step 2: create a guarded sibling; step 3 deploys it.
+    expect(steps[1].method).toBe('POST');
+    expect(steps[1].path).toBe('/apis/agents/v2/workspaces/ws-a/agents');
+    const siblingName = steps[1].body.name as string;
+    expect(siblingName).toMatch(/^phish-guarded-[a-z0-9]{5}$/);
+    expect(steps[2].method).toBe('POST');
+    expect(steps[2].path).toBe('/apis/agents/v2/workspaces/ws-a/deployments');
+    expect(steps[2].body.agent).toBe(siblingName);
+
+    // The sibling's llms route through the guardrails service and carry the
+    // config id — so re-analysis would see it as guarded (workflow untouched).
+    const siblingConfig = steps[1].body.config as AgentConfig;
+    expect(agentHasGuardrails(siblingConfig)).toBe(true);
+    const llm = Object.values(siblingConfig.llms ?? {})[0] as Record<string, unknown>;
+    expect(llm.base_url).toContain('/apis/guardrails/v2/workspaces/ws-a');
+    expect(llm.extra_body).toEqual({ guardrails: { config_ids: [`ws-a/${configName}`] } });
+    expect(g?.apply_description).toContain(siblingName);
+  });
+});
+
+describe('applyStatusOf', () => {
+  it('derives the apply lifecycle state, with failed winning over success', () => {
+    expect(applyStatusOf({})).toBeNull();
+    expect(applyStatusOf({ isApplying: true })).toBe('applying');
+    expect(applyStatusOf({ isApplied: true })).toBe('success');
+    expect(applyStatusOf({ applyError: 'boom' })).toBe('failed');
+    // Resources created (applied) but deployment never went ready → failed.
+    expect(applyStatusOf({ isApplied: true, applyError: 'deploy failed' })).toBe('failed');
+    // An in-flight error short-circuits to failed even mid-apply.
+    expect(applyStatusOf({ isApplying: true, applyError: 'boom' })).toBe('failed');
+  });
+});
+
+describe('guardrails apply helpers', () => {
+  it('qualifyModelRef prefixes bare names but leaves refs and env templates alone', () => {
+    expect(qualifyModelRef('nemoguard-8b', 'ws')).toBe('ws/nemoguard-8b');
+    expect(qualifyModelRef('default/nemoguard-8b', 'ws')).toBe('default/nemoguard-8b');
+    expect(qualifyModelRef('${NEMO_DEFAULT_MODEL}', 'ws')).toBe('${NEMO_DEFAULT_MODEL}');
+  });
+
+  it('guardedBaseUrl points at the guardrails service for the workspace', () => {
+    expect(guardedBaseUrl('ws-a')).toContain('/apis/guardrails/v2/workspaces/ws-a');
+    expect(guardedBaseUrl('ws-a')).not.toContain('//apis'); // no double slash from trailing base
+  });
+
+  it('pickContentSafetyModel prefers a workspace classifier, else the default', () => {
+    expect(pickContentSafetyModel([makeModel('llama-8b'), makeModel('gliner-multi')])).toBe(
+      'gliner-multi'
+    );
+    expect(pickContentSafetyModel([makeModel('llama-8b')])).toBe(
+      'nvidia-llama-3-1-nemoguard-8b-content-safety'
+    );
+  });
+
+  it('buildGuardrailConfigData emits content-safety + self-check INPUT rails', () => {
+    const data = buildGuardrailConfigData('ws', 'nvidia-nemoguard-8b-content-safety') as {
+      models: { type: string; model: string }[];
+      rails: { input: { flows: string[] }; output?: unknown };
+      prompts: { task: string }[];
+    };
+    expect(data.models[0]).toMatchObject({
+      type: 'content_safety',
+      model: 'ws/nvidia-nemoguard-8b-content-safety',
+    });
+    expect(data.rails.input.flows).toEqual([
+      'content safety check input $model=content_safety',
+      'self check input',
+    ]);
+    // Input-only: no output rail (the demo blocks ingested attacks pre-model).
+    expect(data.rails.output).toBeUndefined();
+    // self_check_input prompt is required by the service validator for that rail.
+    expect(data.prompts.map((p) => p.task)).toContain('self_check_input');
+  });
+
+  it('buildGuardedSiblingConfig repoints unguarded llms and preserves guarded ones + workflow', () => {
+    const config: AgentConfig = {
+      llms: {
+        risky: {
+          _type: 'openai',
+          model_name: 'nemotron-70b',
+          base_url: 'http://x/apis/inference-gateway/v2/...',
+        },
+        already: {
+          _type: 'openai',
+          model_name: 'g',
+          base_url: 'http://x/apis/guardrails/v2/...',
+        },
+      },
+      workflow: { _type: 'react_agent', tool_names: ['t'] },
+    };
+    const sibling = buildGuardedSiblingConfig(config, 'ws', 'ws-guard') as {
+      llms: Record<string, Record<string, unknown>>;
+      workflow: unknown;
+    };
+    expect(sibling.llms.risky.base_url).toContain('/apis/guardrails/v2/workspaces/ws');
+    expect(sibling.llms.risky.model_name).toBe('ws/nemotron-70b');
+    expect(sibling.llms.risky.extra_body).toEqual({
+      guardrails: { config_ids: ['ws/ws-guard'] },
+    });
+    // Already-guarded llm untouched (no extra_body injected).
+    expect(sibling.llms.already.extra_body).toBeUndefined();
+    expect(sibling.llms.already.base_url).toBe('http://x/apis/guardrails/v2/...');
+    // Workflow block is preserved verbatim.
+    expect(sibling.workflow).toEqual(config.workflow);
+    // Source config not mutated.
+    expect(config.llms?.risky.base_url).toBe('http://x/apis/inference-gateway/v2/...');
+  });
+});
+
+describe('analyze — hyperparameter optimization', () => {
+  it('emits one informational tune tile per agent with a tunable LLM', () => {
+    const agents = [
+      makeAgent('phish', llmConfig('nemotron-9b', 'http://x/apis/inference-gateway/v2/...')),
+    ];
+    const result = analyze({ ...baseAnalyzeInput, agents });
+    const hp = result.filter((s) => s.type === 'hyperparameter_optimization');
+    expect(hp).toHaveLength(1);
+    expect(hp[0].agent).toBe('phish');
+    expect(hp[0].model).toBe('nemotron-9b');
+    expect(hp[0].severity).toBe('low');
+    // Text-only: no one-click apply (the before/after is seeded out-of-band).
+    expect(hp[0].apply).toBeUndefined();
+    expect(hp[0].suggested_actions?.[0]).toContain('nemo agents optimize run');
+  });
+
+  it('does not emit for an agent with no config', () => {
+    const result = analyze({ ...baseAnalyzeInput, agents: [makeAgent('bare')] });
+    expect(result.some((s) => s.type === 'hyperparameter_optimization')).toBe(false);
+  });
+
+  it('is actionable (orchestrated) with an apply_description but no static apply array', () => {
+    const agents = [
+      makeAgent('phish', llmConfig('nemotron-9b', 'http://x/apis/inference-gateway/v2/...')),
+    ];
+    const hp = analyze({ ...baseAnalyzeInput, agents }).find(
+      (s) => s.type === 'hyperparameter_optimization'
+    );
+    // No static apply array — the pipeline runs in the hook.
+    expect(hp?.apply).toBeUndefined();
+    expect(hp?.apply_description).toMatch(/tuned copy/i);
+  });
+});
+
+describe('buildTunedSiblingConfig', () => {
+  it('sets tuned temperature/top_p on every llm, preserves workflow, no mutation', () => {
+    const config: AgentConfig = {
+      llms: {
+        a: { _type: 'openai', model_name: 'm', temperature: 0 },
+        b: { _type: 'openai', model_name: 'n', temperature: 0.1 },
+      },
+      workflow: { _type: 'react_agent', tool_names: ['t'] },
+    };
+    const tuned = buildTunedSiblingConfig(config, { temperature: 0.4, topP: 0.8 }) as {
+      llms: Record<string, Record<string, unknown>>;
+      workflow: unknown;
+    };
+    expect(tuned.llms.a.temperature).toBe(0.4);
+    expect(tuned.llms.a.top_p).toBe(0.8);
+    expect(tuned.llms.b.temperature).toBe(0.4);
+    expect(tuned.llms.b.top_p).toBe(0.8);
+    expect(tuned.workflow).toEqual(config.workflow);
+    // Source config untouched.
+    expect(config.llms?.a.temperature).toBe(0);
+    expect(config.llms?.a).not.toHaveProperty('top_p');
   });
 });
 

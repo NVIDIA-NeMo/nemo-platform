@@ -7,6 +7,26 @@ import { filesDownloadFile, filesListFilesetFiles } from '@nemo/sdk/generated/pl
 const PAGE_SIZE = 50;
 
 // ---------------------------------------------------------------------------
+// Job status
+// ---------------------------------------------------------------------------
+
+const TERMINAL_STATUSES = new Set([
+  'completed',
+  'succeeded',
+  'success',
+  'failed',
+  'cancelled',
+  'canceled',
+  'error',
+]);
+
+/** A job is terminal once it has finished running (whether it succeeded,
+ *  failed, or was cancelled). Scores and other output-fileset artifacts only
+ *  exist for terminal jobs. */
+export const isTerminalStatus = (status: string | undefined | null): boolean =>
+  TERMINAL_STATUSES.has((status ?? '').toLowerCase());
+
+// ---------------------------------------------------------------------------
 // Job listing + retrieval
 // ---------------------------------------------------------------------------
 

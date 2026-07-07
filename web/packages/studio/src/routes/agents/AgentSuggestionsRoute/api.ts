@@ -10,8 +10,11 @@ import {
   modelsListModels,
 } from '@nemo/sdk/generated/platform/api';
 import type { ModelEntity } from '@nemo/sdk/generated/platform/schema/ModelEntity';
+import type { AgentConfig } from '@studio/components/dataViews/AgentsDataView';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import {
+  OPTIMIZE_CONFIG_PATH,
+  OPTIMIZE_YAML,
   SAMPLE_EVAL_CONFIG_PATH,
   SAMPLE_EVAL_DATA_JSON,
   SAMPLE_EVAL_DATA_PATH,
@@ -24,6 +27,7 @@ import type {
   EvalJobStatusResponse,
   EvalScore,
   OptimizationSuggestion,
+  PersistedEvalRun,
   ProfilerStats,
   SnapshotShape,
   SuggestionApplyMethod,
@@ -37,6 +41,7 @@ import {
   suggestionIdentity,
 } from '@studio/routes/agents/AgentSuggestionsRoute/utils';
 import { toError } from '@studio/util/logger';
+import YAML from 'yaml';
 
 export const TELEMETRY_FILESET = 'nemo-agent-telemetry';
 export const OPTIMIZER_FILESET = 'nemo-agent-optimizer';
@@ -288,6 +293,22 @@ interface ApplyRule {
 }
 
 const APPLY_ALLOWLIST: ReadonlyArray<ApplyRule> = [
+  // Create a stored GuardrailConfig (guardrails apply, step 1). The guarded
+  // sibling created by the following POST /agents step references it by
+  // `<workspace>/<name>` in its llms extra_body. Workspace is enforced by
+  // validateApplySpec; identity binds to a non-empty body.name.
+  {
+    method: 'POST',
+    pattern: /^\/apis\/guardrails\/v2\/workspaces\/[^/]+\/configs\/?$/,
+    bindIdentity: (_url, body) => {
+      if (typeof body !== 'object' || body === null) return 'body must be an object';
+      const name = (body as { name?: unknown }).name;
+      if (typeof name !== 'string' || name.length === 0) {
+        return 'body.name must be a non-empty string';
+      }
+      return null;
+    },
+  },
   // Create sibling agent. Record body.name so a later POST /deployments can
   // target it.
   {
@@ -430,6 +451,21 @@ const validateApplySpec = (apply: SuggestionApplySpec, ctx: ApplyContext): strin
   return path;
 };
 
+// Anchored on the trailing resource so `/apis/agents/v2/...` (which contains
+// "agents" mid-path) doesn't false-match. Only the sibling-create and deploy
+// steps are idempotent on retry — the eval step must always run.
+const CREATE_AGENT_STEP = /\/workspaces\/[^/]+\/agents\/?(?:\?|$)/;
+const CREATE_DEPLOYMENT_STEP = /\/workspaces\/[^/]+\/deployments\/?(?:\?|$)/;
+
+// A re-applied suggestion (retry after a failed eval) re-runs create/deploy for
+// a sibling that already exists; the platform answers 409. Treat that as
+// success so retry can proceed to re-run the evals. Other errors still abort.
+const isAlreadyExistsError = (err: unknown): boolean => {
+  const status = (err as { response?: { status?: number } } | null)?.response?.status;
+  if (status === 409) return true;
+  return /already exists|conflict/i.test(toError(err).message);
+};
+
 // Runs steps sequentially. Stops on first failure (no rollback). Returns the
 // created deployment + evaluation-job names so callers can poll readiness /
 // results after the apply array completes.
@@ -454,13 +490,28 @@ export const applySuggestion = async (
     } catch (err) {
       throw new Error(`Step ${i + 1}/${steps.length}: ${toError(err).message}`);
     }
-    const response = await customFetch<{ name?: string } | undefined>({
-      url: safePath,
-      method: step.method,
-      data: step.body,
-      headers: { 'Content-Type': 'application/json' },
-      signal,
-    });
+    const idempotent =
+      step.method === 'POST' &&
+      (CREATE_AGENT_STEP.test(safePath) || CREATE_DEPLOYMENT_STEP.test(safePath));
+    let response: { name?: string } | undefined;
+    try {
+      response = await customFetch<{ name?: string } | undefined>({
+        url: safePath,
+        method: step.method,
+        data: step.body,
+        headers: { 'Content-Type': 'application/json' },
+        signal,
+      });
+    } catch (err) {
+      // Retry-safe: skip a create/deploy whose resource already exists so the
+      // eval step downstream still runs. The deployment name is unavailable
+      // from a 409, so readiness polling is simply skipped (the eval hits the
+      // deployment via the gateway and doesn't gate on it becoming running).
+      if (idempotent && isAlreadyExistsError(err)) {
+        continue;
+      }
+      throw err;
+    }
     if (step.method === 'POST' && response?.name) {
       if (/\/deployments(?:\/|$|\?)/.test(safePath)) {
         deploymentNames.push(response.name);
@@ -887,6 +938,229 @@ export const submitEvalJob = async (
   return name;
 };
 
+// ---------------------------------------------------------------------------
+// Hyperparameter optimization (nemo agents optimize) — submit / poll / parse
+// ---------------------------------------------------------------------------
+
+// Idempotently seed the bundled optimize config + sample dataset into *fileset*.
+// Existing files are left untouched, so a pre-baked optimize.yml (e.g. the
+// phishing example's real 400-row config) is preferred over the sample.
+export const ensureOptimizeConfigFileset = async (
+  workspace: string,
+  fileset: string,
+  signal: AbortSignal
+): Promise<void> => {
+  let existingPaths = new Set<string>();
+  try {
+    const listing = await filesListFilesetFiles(workspace, fileset, undefined, signal);
+    existingPaths = new Set((listing?.data ?? []).map((f) => f.path));
+  } catch (err) {
+    if (isCanceledError(err)) throw err;
+    if (!isNotFoundError(err)) throw err;
+    try {
+      await filesCreateFileset(workspace, { name: fileset }, signal);
+    } catch (createErr) {
+      if (isCanceledError(createErr)) throw createErr;
+      // 409 is fine — a parallel apply already created it.
+    }
+  }
+  const uploads: Array<{ path: string; content: string; type: string }> = [];
+  if (!existingPaths.has(OPTIMIZE_CONFIG_PATH)) {
+    uploads.push({ path: OPTIMIZE_CONFIG_PATH, content: OPTIMIZE_YAML, type: 'application/yaml' });
+  }
+  if (!existingPaths.has(SAMPLE_EVAL_DATA_PATH)) {
+    uploads.push({
+      path: SAMPLE_EVAL_DATA_PATH,
+      content: SAMPLE_EVAL_DATA_JSON,
+      type: 'application/json',
+    });
+  }
+  for (const u of uploads) {
+    const blob = new Blob([u.content], { type: u.type });
+    await filesUploadFile(workspace, fileset, u.path, blob, signal);
+  }
+};
+
+interface OptimizeJobSpec {
+  agent: string;
+  optimize_config: string;
+  optimize_config_fileset: string;
+  output: string;
+}
+
+// Submits a nemo-agents optimize job (Optuna hyperparameter sweep). Trusted
+// caller (the optimizer hook), so it does not go through the JSONL apply
+// allowlist. Returns the created job name.
+export const submitOptimizeJob = async (
+  workspace: string,
+  spec: OptimizeJobSpec,
+  signal: AbortSignal
+): Promise<string> => {
+  const res = await customFetch<{ name?: string }>({
+    url: `/apis/agents/v2/workspaces/${encodeURIComponent(workspace)}/jobs/optimize`,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    data: { spec },
+    signal,
+  });
+  const name = res?.name;
+  if (!name) throw new Error('Optimize job did not return a job name');
+  return name;
+};
+
+export const fetchOptimizeJobStatus = async (
+  workspace: string,
+  name: string,
+  signal: AbortSignal
+): Promise<EvalJobStatusResponse> => {
+  const res = await customFetch<RawJobStatus>({
+    url: `/apis/agents/v2/workspaces/${encodeURIComponent(workspace)}/jobs/optimize/${encodeURIComponent(name)}/status`,
+    method: 'GET',
+    signal,
+  });
+  const status = normaliseEvalStatus(res?.status ?? '');
+  const error = res?.error_details?.message ?? res?.status_details?.message;
+  return { name, status, error: error ?? undefined };
+};
+
+export const waitForOptimizeJob = async (
+  workspace: string,
+  name: string,
+  opts: WaitForEvalJobOptions
+): Promise<EvalJobStatusResponse> => {
+  // Sweeps run several trials × reps — allow more headroom than a single eval.
+  const timeoutMs = opts.timeoutMs ?? 60 * 60 * 1000;
+  const intervalMs = opts.intervalMs ?? 5000;
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (opts.signal.aborted) {
+      throw new DOMException(`Wait for optimize "${name}" aborted`, 'AbortError');
+    }
+    const job = await fetchOptimizeJobStatus(workspace, name, opts.signal);
+    if (job.status === 'completed') return job;
+    if (job.status === 'failed' || job.status === 'cancelled') {
+      throw new Error(`Optimization "${name}" ${job.status}${job.error ? `: ${job.error}` : ''}`);
+    }
+    if (opts.onStatus) opts.onStatus(job.status);
+    await new Promise<void>((resolve, reject) => {
+      const t = setTimeout(resolve, intervalMs);
+      opts.signal.addEventListener(
+        'abort',
+        () => {
+          clearTimeout(t);
+          reject(new DOMException(`Wait for optimize "${name}" aborted`, 'AbortError'));
+        },
+        { once: true }
+      );
+    });
+  }
+  throw new Error(`Timed out waiting for optimization "${name}" to complete`);
+};
+
+export interface TunedParams {
+  temperature: number;
+  topP: number;
+}
+
+// Pulls the tuned temperature/top_p out of a real sweep's ``optimized_config.yml``
+// (nat optimize writes it under optimizer.output_path; matched by basename since
+// it's nested). Returns the first llm entry carrying both knobs, or null.
+export const extractTunedParamsFromConfig = (yamlText: string): TunedParams | null => {
+  let parsed: unknown;
+  try {
+    parsed = YAML.parse(yamlText);
+  } catch {
+    return null;
+  }
+  const llms = (parsed as { llms?: unknown })?.llms;
+  if (typeof llms !== 'object' || llms === null) return null;
+  for (const llm of Object.values(llms as Record<string, unknown>)) {
+    if (typeof llm !== 'object' || llm === null) continue;
+    const { temperature, top_p: topP } = llm as { temperature?: unknown; top_p?: unknown };
+    if (
+      typeof temperature === 'number' &&
+      Number.isFinite(temperature) &&
+      typeof topP === 'number' &&
+      Number.isFinite(topP)
+    ) {
+      return { temperature, topP };
+    }
+  }
+  return null;
+};
+
+const OPTIMIZED_CONFIG_BASENAME = 'optimized_config.yml';
+
+export const fetchTunedParams = async (
+  workspace: string,
+  outputFileset: string,
+  signal: AbortSignal
+): Promise<TunedParams | null> => {
+  let listing;
+  try {
+    listing = await filesListFilesetFiles(workspace, outputFileset, undefined, signal);
+  } catch (err) {
+    if (isCanceledError(err)) throw err;
+    return null;
+  }
+  const file = (listing?.data ?? []).find((f) => basenameOf(f.path) === OPTIMIZED_CONFIG_BASENAME);
+  if (!file) return null;
+  const blob = await filesDownloadFile(workspace, outputFileset, file.path, signal);
+  if (!blob) return null;
+  return extractTunedParamsFromConfig(await blob.text());
+};
+
+// Fetch a single agent's stored config — the orchestrated optimize apply needs
+// it to build the tuned sibling (analyze() only carries the agent name).
+export const fetchAgentConfig = async (
+  workspace: string,
+  name: string,
+  signal: AbortSignal
+): Promise<AgentConfig> => {
+  const res = await customFetch<{ config?: AgentConfig }>({
+    url: `/apis/agents/v2/workspaces/${encodeURIComponent(workspace)}/agents/${encodeURIComponent(name)}`,
+    method: 'GET',
+    signal,
+  });
+  const config = res?.config;
+  if (!config) throw new Error(`Agent "${name}" has no stored config to tune.`);
+  return config;
+};
+
+// Trusted create helpers for the orchestrated optimize apply (the tuned sibling
+// can't go through the static JSONL allowlist since its config is computed at
+// runtime from the sweep result). Return the created resource name.
+export const createAgent = async (
+  workspace: string,
+  name: string,
+  config: Record<string, unknown>,
+  signal: AbortSignal
+): Promise<string> => {
+  const res = await customFetch<{ name?: string }>({
+    url: `/apis/agents/v2/workspaces/${encodeURIComponent(workspace)}/agents`,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    data: { name, config },
+    signal,
+  });
+  return res?.name ?? name;
+};
+
+export const createDeployment = async (
+  workspace: string,
+  agent: string,
+  signal: AbortSignal
+): Promise<string | undefined> => {
+  const res = await customFetch<{ name?: string }>({
+    url: `/apis/agents/v2/workspaces/${encodeURIComponent(workspace)}/deployments`,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    data: { agent },
+    signal,
+  });
+  return res?.name;
+};
+
 export const markSuggestionAppliedInFileset = async (
   workspace: string,
   target: OptimizationSuggestion,
@@ -899,6 +1173,29 @@ export const markSuggestionAppliedInFileset = async (
     if (s.applied || suggestionIdentity(s) !== targetIdentity) return s;
     mutated = true;
     return { ...s, applied: true, applied_at: new Date().toISOString() };
+  });
+  if (!mutated) return;
+  await uploadToFileset(workspace, SUGGESTIONS_PATH, serializeSuggestions(next), signal);
+};
+
+// Persists the eval-job pointers for a suggestion so the eval row can
+// re-hydrate + re-poll after a reload. Unlike ``markSuggestionAppliedInFileset``
+// this also updates already-applied rows (a retry re-submits fresh eval jobs).
+// Callers must serialize this through the hook's persist chain so it doesn't
+// race the applied-state write on the same JSONL.
+export const persistEvalRunInFileset = async (
+  workspace: string,
+  target: OptimizationSuggestion,
+  evalRun: PersistedEvalRun,
+  signal: AbortSignal
+): Promise<void> => {
+  const current = await loadSuggestionsFromFileset(workspace, signal);
+  const targetIdentity = suggestionIdentity(target);
+  let mutated = false;
+  const next = current.map((s) => {
+    if (suggestionIdentity(s) !== targetIdentity) return s;
+    mutated = true;
+    return { ...s, eval_run: evalRun };
   });
   if (!mutated) return;
   await uploadToFileset(workspace, SUGGESTIONS_PATH, serializeSuggestions(next), signal);

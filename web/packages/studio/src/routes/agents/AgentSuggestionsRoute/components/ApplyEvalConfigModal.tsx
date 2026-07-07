@@ -45,6 +45,9 @@ interface ApplyEvalConfigModalProps extends Pick<FormModalProps, 'open' | 'onClo
   workspace: string;
   /** Title of the suggestion being applied — surfaced in the modal copy. */
   suggestionTitle: string;
+  /** When true the optimization already ran and only the eval is being
+   *  re-run against the deployed sibling — adapts the modal copy. */
+  isRetry?: boolean;
   onConfirm: (choice: EvalConfigChoice) => void;
 }
 
@@ -53,6 +56,7 @@ export const ApplyEvalConfigModal: FC<ApplyEvalConfigModalProps> = ({
   onClose,
   workspace,
   suggestionTitle,
+  isRetry = false,
   onConfirm,
 }) => {
   const {
@@ -97,14 +101,15 @@ export const ApplyEvalConfigModal: FC<ApplyEvalConfigModalProps> = ({
     <FormModal
       open={open}
       onClose={onClose}
-      title="Apply optimization"
-      submitButtonText="Apply"
+      title={isRetry ? 'Restart evaluation' : 'Apply optimization'}
+      submitButtonText={isRetry ? 'Restart evaluation' : 'Apply'}
       onSubmit={handleSubmit(onSubmit)}
     >
       <Stack gap="density-xl">
         <Block>
           <Text kind="body/regular/sm" color="secondary">
-            About to apply: <Text kind="body/semibold/sm">{suggestionTitle}</Text>
+            {isRetry ? 'Re-running evaluation for: ' : 'About to apply: '}
+            <Text kind="body/semibold/sm">{suggestionTitle}</Text>
           </Text>
         </Block>
         <Block>

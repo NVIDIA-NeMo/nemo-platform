@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   loadSuggestionsFromFileset: vi.fn(),
   loadPreviousSuggestionsFromFileset: vi.fn(),
   markSuggestionAppliedInFileset: vi.fn(),
+  persistEvalRunInFileset: vi.fn(),
   submitEvalJob: vi.fn(),
   waitForDeployments: vi.fn(),
   waitForEvalJob: vi.fn(),
@@ -41,6 +42,7 @@ vi.mock('@studio/routes/agents/AgentSuggestionsRoute/api', () => ({
   loadSnapshot: vi.fn(),
   loadSuggestionsFromFileset: (...a: unknown[]) => mocks.loadSuggestionsFromFileset(...a),
   markSuggestionAppliedInFileset: (...a: unknown[]) => mocks.markSuggestionAppliedInFileset(...a),
+  persistEvalRunInFileset: (...a: unknown[]) => mocks.persistEvalRunInFileset(...a),
   SNAPSHOT_PATH: 'optimizer_snapshot.json',
   submitEvalJob: (...a: unknown[]) => mocks.submitEvalJob(...a),
   SUGGESTIONS_PATH: 'optimizer_suggestions.jsonl',
@@ -108,6 +110,7 @@ beforeEach(() => {
   mocks.loadSuggestionsFromFileset.mockReset().mockResolvedValue([]);
   mocks.loadPreviousSuggestionsFromFileset.mockReset().mockResolvedValue([]);
   mocks.markSuggestionAppliedInFileset.mockReset().mockResolvedValue(undefined);
+  mocks.persistEvalRunInFileset.mockReset().mockResolvedValue(undefined);
   mocks.submitEvalJob.mockReset().mockResolvedValue('eval-before');
   mocks.waitForDeployments.mockReset().mockResolvedValue(undefined);
   mocks.waitForEvalJob.mockReset().mockResolvedValue(undefined);

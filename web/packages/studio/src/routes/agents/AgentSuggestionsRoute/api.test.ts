@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { applySuggestion } from '@studio/routes/agents/AgentSuggestionsRoute/api';
+import {
+  applySuggestion,
+  extractTunedParamsFromConfig,
+} from '@studio/routes/agents/AgentSuggestionsRoute/api';
 import type { OptimizationSuggestion } from '@studio/routes/agents/AgentSuggestionsRoute/types';
 
 // `applySuggestion` calls `customFetch` only after validation passes; the
@@ -49,6 +52,36 @@ const expectReject = async (
 
 beforeEach(() => {
   customFetchMock.mockReset();
+});
+
+describe('extractTunedParamsFromConfig', () => {
+  it('reads the first llm carrying both temperature and top_p', () => {
+    const yaml = `llms:
+  llm:
+    _type: openai
+    temperature: 0.4
+    top_p: 0.8
+`;
+    expect(extractTunedParamsFromConfig(yaml)).toEqual({ temperature: 0.4, topP: 0.8 });
+  });
+
+  it('skips llms missing a knob and falls through to the next', () => {
+    const yaml = `llms:
+  judge:
+    temperature: 0.0
+  worker:
+    temperature: 0.6
+    top_p: 0.9
+`;
+    expect(extractTunedParamsFromConfig(yaml)).toEqual({ temperature: 0.6, topP: 0.9 });
+  });
+
+  it('returns null on missing knobs, no llms, or malformed yaml', () => {
+    expect(extractTunedParamsFromConfig('llms:\n  llm:\n    temperature: 0.4\n')).toBeNull();
+    expect(extractTunedParamsFromConfig('{}')).toBeNull();
+    expect(extractTunedParamsFromConfig('workflow: {}')).toBeNull();
+    expect(extractTunedParamsFromConfig('::::not yaml:::')).toBeNull();
+  });
 });
 
 describe('applySuggestion — path/method validation', () => {
@@ -218,6 +251,77 @@ describe('applySuggestion — identity binding', () => {
       }),
       WORKSPACE,
       /not suggestion\.agent .* or a sibling/
+    );
+  });
+});
+
+describe('applySuggestion — guardrails apply', () => {
+  const guardrailsApply = (): NonNullable<OptimizationSuggestion['apply']> => [
+    {
+      method: 'POST',
+      path: '/apis/guardrails/v2/workspaces/ws-a/configs',
+      body: { name: 'support-bot-guard-abcde', data: { rails: {} } },
+    },
+    {
+      method: 'POST',
+      path: '/apis/agents/v2/workspaces/ws-a/agents',
+      body: { name: 'support-bot-guarded-abcde', config: {} },
+    },
+    {
+      method: 'POST',
+      path: '/apis/agents/v2/workspaces/ws-a/deployments',
+      body: { agent: 'support-bot-guarded-abcde' },
+    },
+  ];
+
+  it('allows create-config → create-sibling → deploy and captures the deployment', async () => {
+    customFetchMock
+      .mockResolvedValueOnce({ name: 'support-bot-guard-abcde' }) // POST /configs
+      .mockResolvedValueOnce({ name: 'support-bot-guarded-abcde' }) // POST /agents
+      .mockResolvedValueOnce({ name: 'deploy-guard' }); // POST /deployments
+
+    const result = await applySuggestion(
+      makeSuggestion({ type: 'guardrails', apply: guardrailsApply() }),
+      WORKSPACE
+    );
+    expect(result).toEqual({ deploymentNames: ['deploy-guard'], evalJobNames: [] });
+    expect(customFetchMock).toHaveBeenCalledTimes(3);
+    expect(customFetchMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        url: '/apis/guardrails/v2/workspaces/ws-a/configs',
+        method: 'POST',
+      })
+    );
+  });
+
+  it('rejects POST /configs without body.name', async () => {
+    await expectReject(
+      makeSuggestion({
+        type: 'guardrails',
+        apply: {
+          method: 'POST',
+          path: '/apis/guardrails/v2/workspaces/ws-a/configs',
+          body: { data: {} },
+        },
+      }),
+      WORKSPACE,
+      /body\.name must be a non-empty string/
+    );
+  });
+
+  it('rejects a config POST to a different workspace than the apply context', async () => {
+    await expectReject(
+      makeSuggestion({
+        type: 'guardrails',
+        apply: {
+          method: 'POST',
+          path: '/apis/guardrails/v2/workspaces/other-ws/configs',
+          body: { name: 'x' },
+        },
+      }),
+      WORKSPACE,
+      /workspace mismatch/
     );
   });
 });

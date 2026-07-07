@@ -3,10 +3,19 @@
 
 import type { ModelEntity } from '@nemo/sdk/generated/platform/schema/ModelEntity';
 import type { AgentConfig } from '@studio/components/dataViews/AgentsDataView';
-import { SAMPLE_EVAL_CONFIG_PATH } from '@studio/routes/agents/AgentSuggestionsRoute/constants';
+import { PLATFORM_BASE_URL } from '@studio/constants/environment';
+import {
+  CONTENT_SAFETY_CHECK_INPUT_PROMPT,
+  DEFAULT_CONTENT_SAFETY_MODEL,
+  GUARDED_SIBLING_SUFFIX,
+  GUARDRAILS_WORKSPACES_SEGMENT,
+  INJECTION_SELF_CHECK_PROMPT,
+  SAMPLE_EVAL_CONFIG_PATH,
+} from '@studio/routes/agents/AgentSuggestionsRoute/constants';
 import type {
   AgentListing,
   AnalyzeInput,
+  ApplyStatus,
   OptimizationSuggestion,
   SnapshotShape,
   SuggestionApplySpec,
@@ -19,6 +28,25 @@ export const evalFilesetForAgent = (agentName: string): string => `${agentName}-
 /** Output fileset name for an evaluation run against a deployment. */
 export const evalOutputFilesetFor = (siblingAgentName: string): string =>
   `${siblingAgentName}-eval-out`;
+
+/** Output fileset for a `nemo agents optimize` run — where optimized_config.yml lands. */
+export const optimizeOutputFilesetFor = (agentName: string): string => `${agentName}-optimize-out`;
+
+/** Deep-clone *config* and set the tuned temperature/top_p on every llm. Used to
+ *  build the tuned sibling from a real optimizer sweep's best params. */
+export const buildTunedSiblingConfig = (
+  config: AgentConfig,
+  tuned: { temperature: number; topP: number }
+): Record<string, unknown> => {
+  const cloned = JSON.parse(JSON.stringify(config)) as {
+    llms?: Record<string, Record<string, unknown>>;
+  };
+  for (const llm of Object.values(cloned.llms ?? {})) {
+    llm.temperature = tuned.temperature;
+    llm.top_p = tuned.topP;
+  }
+  return cloned as Record<string, unknown>;
+};
 
 export const snapshotModelNames = (snapshot: SnapshotShape | null): string[] => {
   if (!snapshot?.agents) return [];
@@ -97,6 +125,20 @@ export const severityColor = (sev: string): 'red' | 'yellow' | 'gray' => {
 export const formatActions = (actions: readonly string[]): string => actions.join(' · ');
 
 export const capitalize = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
+
+// Terminal-vs-in-progress apply state for the tile badge. `failed` wins over
+// `success` so a partial apply (resources created, deployment never went ready
+// → applyError set with applied:true) surfaces as failed, not a green check.
+export const applyStatusOf = (opts: {
+  isApplying?: boolean;
+  isApplied?: boolean;
+  applyError?: string | null;
+}): ApplyStatus | null => {
+  if (opts.applyError) return 'failed';
+  if (opts.isApplying) return 'applying';
+  if (opts.isApplied) return 'success';
+  return null;
+};
 
 export const countSeverities = (
   list: readonly OptimizationSuggestion[]
@@ -198,22 +240,139 @@ export const scanForPii = (text: string): string[] => {
   return hits;
 };
 
+/** First workspace model that answers safety verdicts — the content-safety
+ *  input rail's task LLM. Falls back to the canonical NemoGuard classifier so
+ *  the demo works before `nemo models list` is wired through. */
+export const pickContentSafetyModel = (models: readonly ModelEntity[]): string =>
+  models.find((m) => CONTENT_SAFETY_MODEL_RE.test(m.name))?.name ?? DEFAULT_CONTENT_SAFETY_MODEL;
+
+/** `workspace/name` entity reference. Leaves already-qualified refs and
+ *  env-templated names (`${NEMO_DEFAULT_MODEL}`) alone. */
+export const qualifyModelRef = (model: string, workspace: string): string =>
+  model.includes('/') || model.includes('$') ? model : `${workspace}/${model}`;
+
+/** Base URL for the guardrails-service chat route in *workspace*. ChatOpenAI
+ *  appends `/chat/completions`; `llmIsGuarded` keys on the `/guardrails/`
+ *  segment so a base_url built from this is recognized as guarded. */
+export const guardedBaseUrl = (workspace: string): string =>
+  `${PLATFORM_BASE_URL.replace(/\/+$/, '')}${GUARDRAILS_WORKSPACES_SEGMENT}/${workspace}`;
+
+/** Stored GuardrailConfig `data`: a content-safety input rail (NemoGuard task
+ *  LLM) plus a self-check input rail for prompt-injection / jailbreak attempts.
+ *  Both are INPUT rails — the demo catches an injection in ingested email
+ *  content before it reaches the agent. */
+export const buildGuardrailConfigData = (
+  workspace: string,
+  contentSafetyModel: string
+): Record<string, unknown> => ({
+  models: [
+    {
+      type: 'content_safety',
+      engine: 'nim',
+      model: qualifyModelRef(contentSafetyModel, workspace),
+    },
+  ],
+  rails: {
+    input: { flows: ['content safety check input $model=content_safety', 'self check input'] },
+  },
+  prompts: [
+    {
+      task: 'content_safety_check_input $model=content_safety',
+      content: CONTENT_SAFETY_CHECK_INPUT_PROMPT,
+      output_parser: 'nemoguard_parse_prompt_safety',
+      max_tokens: 50,
+    },
+    { task: 'self_check_input', content: INJECTION_SELF_CHECK_PROMPT },
+  ],
+});
+
+/** Deep-clone *config* and repoint every UNGUARDED llm through the guardrails
+ *  service: base_url → guardrails route, model_name → workspace-qualified (so
+ *  the guarded route resolves it via IGW), and the rails config id injected via
+ *  `extra_body.guardrails.config_ids` (NAT's `openai` LLM forwards `extra_body`
+ *  into the request body). Already-guarded llms and the workflow block are left
+ *  untouched — the "no workflow change" guarantee. */
+export const buildGuardedSiblingConfig = (
+  config: AgentConfig,
+  workspace: string,
+  configName: string
+): Record<string, unknown> => {
+  const cloned = JSON.parse(JSON.stringify(config)) as {
+    llms?: Record<string, Record<string, unknown>>;
+  };
+  const baseUrl = guardedBaseUrl(workspace);
+  const configId = `${workspace}/${configName}`;
+  for (const llm of Object.values(cloned.llms ?? {})) {
+    if (typeof llm.base_url === 'string' && llm.base_url.includes('/guardrails/')) continue;
+    llm.base_url = baseUrl;
+    if (typeof llm.model_name === 'string') {
+      llm.model_name = qualifyModelRef(llm.model_name, workspace);
+    }
+    llm.extra_body = { guardrails: { config_ids: [configId] } };
+  }
+  return cloned as Record<string, unknown>;
+};
+
 // Emit one suggestion per unguarded LLM so (type, agent, model) identity is
-// stable when a mixed config is partially fixed.
-const buildGuardrailsSuggestions = (agent: AgentListing): OptimizationSuggestion[] => {
+// stable when a mixed config is partially fixed. Each suggestion's apply guards
+// the *whole* agent (a guarded sibling routes every unguarded llm through the
+// rails config), so on a multi-LLM agent the tiles are redundant — applying one
+// suffices; the random suffix keeps re-applies from 409-ing.
+const buildGuardrailsSuggestions = (
+  agent: AgentListing,
+  models: readonly ModelEntity[],
+  workspace: string
+): OptimizationSuggestion[] => {
   const unguarded = extractUnguardedModelNames(agent.config);
-  return unguarded.map((modelName) => ({
-    type: 'guardrails',
-    title: `No guardrails on ${agent.name} (${modelName})`,
-    detail: `Agent "${agent.name}" routes "${modelName}" directly through the inference gateway with no guardrails layer.`,
-    agent: agent.name,
-    model: modelName,
-    severity: 'high',
-    suggested_actions: [
-      'nemo guardrails configs create ...',
-      `Recommended models: ${GUARDRAIL_MODELS.join(', ')}`,
-    ],
-  }));
+  const config = agent.config;
+  return unguarded.map((modelName) => {
+    const suffix = randomSiblingSuffix();
+    const configName = `${agent.name}-guard-${suffix}`;
+    const siblingName = `${agent.name}-${GUARDED_SIBLING_SUFFIX}-${suffix}`;
+    const contentSafetyModel = pickContentSafetyModel(models);
+    const apply: SuggestionApplySpec[] | undefined = config
+      ? [
+          {
+            method: 'POST',
+            path: `/apis/guardrails/v2/workspaces/${workspace}/configs`,
+            body: {
+              name: configName,
+              description: `Input rails (content safety + prompt-injection self-check) for ${agent.name}.`,
+              data: buildGuardrailConfigData(workspace, contentSafetyModel),
+            },
+          },
+          {
+            method: 'POST',
+            path: `/apis/agents/v2/workspaces/${workspace}/agents`,
+            body: {
+              name: siblingName,
+              config: buildGuardedSiblingConfig(config, workspace, configName),
+            },
+          },
+          {
+            method: 'POST',
+            path: `/apis/agents/v2/workspaces/${workspace}/deployments`,
+            body: { agent: siblingName },
+          },
+        ]
+      : undefined;
+    return {
+      type: 'guardrails',
+      title: `No guardrails on ${agent.name} (${modelName})`,
+      detail: `Agent "${agent.name}" routes "${modelName}" directly through the inference gateway with no guardrails layer.`,
+      agent: agent.name,
+      model: modelName,
+      severity: 'high',
+      suggested_actions: [
+        'nemo guardrails configs create ...',
+        `Recommended models: ${GUARDRAIL_MODELS.join(', ')}`,
+      ],
+      apply,
+      apply_description: apply
+        ? `Creates guardrail config "${configName}" (content-safety + prompt-injection input rails) and a guarded copy "${siblingName}" that routes ${agent.name}'s model through the guardrails service. Workflow unchanged.`
+        : undefined,
+    };
+  });
 };
 
 // Largest smaller-than-current candidate, preferring Nemotron.
@@ -376,7 +535,42 @@ const buildNewModelSuggestion = (modelName: string): OptimizationSuggestion => (
   ],
 });
 
-// Pure — no I/O, no React.
+// Actionable tile: any agent with a tunable (openai/nim) LLM can be tuned via
+// `nemo agents optimize` (Optuna temperature/top_p sweep, no workflow change).
+// There's no static `apply` array — the tuned params aren't known until the
+// sweep runs — so the one-click is a dedicated orchestration in the hook
+// (see useOptimizerSuggestions), gated on this type. `HYPERPARAMETER_OPTIMIZATION_TYPE`
+// keys that gating everywhere (tile canApply, hook apply, modal skip).
+export const HYPERPARAMETER_OPTIMIZATION_TYPE = 'hyperparameter_optimization';
+
+const buildHyperparameterOptimizationSuggestions = (
+  agent: AgentListing
+): OptimizationSuggestion[] => {
+  const models = extractAgentModelNames(agent.config);
+  if (models.length === 0) return [];
+  return [
+    {
+      type: HYPERPARAMETER_OPTIMIZATION_TYPE,
+      title: `Tune sampling parameters for ${agent.name}`,
+      detail: `Sweep temperature / top_p on "${agent.name}" with NAT's Optuna optimizer to maximize your headline metric (e.g. recall) — same workflow, better sampling.`,
+      agent: agent.name,
+      // First model drives the tile badge and stabilizes (type, agent, model) identity.
+      model: models[0],
+      severity: 'low',
+      suggested_actions: [
+        `nemo agents optimize run --agent ${agent.name} --optimize-config optimize.yml`,
+      ],
+      apply_description: `Runs a real Optuna sweep, then deploys a tuned copy of ${agent.name} and evaluates it against the original — rendering a before/after once both finish.`,
+    },
+  ];
+};
+
+/** True when a suggestion's Apply is a runtime orchestration (no static `apply`
+ *  array) — currently only hyperparameter tuning. Used by the tile (canApply)
+ *  and the hook (apply routing). */
+export const isOrchestratedApplyType = (type: string): boolean =>
+  type === HYPERPARAMETER_OPTIMIZATION_TYPE;
+
 export const analyze = ({
   agents,
   models,
@@ -389,7 +583,7 @@ export const analyze = ({
 
   for (const agent of agents) {
     if (!agent.config || agentHasGuardrails(agent.config)) continue;
-    suggestions.push(...buildGuardrailsSuggestions(agent));
+    suggestions.push(...buildGuardrailsSuggestions(agent, models, workspace));
   }
 
   // One suggestion per oversized LLM per agent.
@@ -402,6 +596,13 @@ export const analyze = ({
       if (!best) continue;
       suggestions.push(buildModelOptimizationSuggestion(agent, modelName, params, best, workspace));
     }
+  }
+
+  // Hyperparameter tuning is orthogonal to sizing — offer it for every agent
+  // with a tunable LLM (informational; one-click before/after is seeded).
+  for (const agent of agents) {
+    if (!agent.config) continue;
+    suggestions.push(...buildHyperparameterOptimizationSuggestions(agent));
   }
 
   const piiHits = scanForPii(piiSampleText);

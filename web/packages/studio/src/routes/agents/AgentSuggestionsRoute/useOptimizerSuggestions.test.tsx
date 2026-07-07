@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   loadSnapshot: vi.fn(),
   loadSuggestionsFromFileset: vi.fn(),
   markSuggestionAppliedInFileset: vi.fn(),
+  persistEvalRunInFileset: vi.fn(),
   submitEvalJob: vi.fn(),
   uploadToFileset: vi.fn(),
   waitForDeployments: vi.fn(),
@@ -47,6 +48,7 @@ vi.mock('@studio/routes/agents/AgentSuggestionsRoute/api', () => ({
   loadSuggestionsFromFileset: (...args: unknown[]) => mocks.loadSuggestionsFromFileset(...args),
   markSuggestionAppliedInFileset: (...args: unknown[]) =>
     mocks.markSuggestionAppliedInFileset(...args),
+  persistEvalRunInFileset: (...args: unknown[]) => mocks.persistEvalRunInFileset(...args),
   SNAPSHOT_PATH: 'optimizer_snapshot.json',
   submitEvalJob: (...args: unknown[]) => mocks.submitEvalJob(...args),
   SUGGESTIONS_PATH: 'optimizer_suggestions.jsonl',
@@ -99,6 +101,7 @@ beforeEach(() => {
   mocks.loadSnapshot.mockReset().mockResolvedValue(null);
   mocks.loadSuggestionsFromFileset.mockReset().mockResolvedValue([]);
   mocks.markSuggestionAppliedInFileset.mockReset().mockResolvedValue(undefined);
+  mocks.persistEvalRunInFileset.mockReset().mockResolvedValue(undefined);
   mocks.uploadToFileset.mockReset().mockResolvedValue(undefined);
   mocks.waitForDeployments.mockReset().mockResolvedValue(undefined);
   mocks.waitForEvalJob.mockReset().mockResolvedValue(undefined);
@@ -289,5 +292,91 @@ describe('useOptimizerSuggestions run lifecycle', () => {
 
     expect(result.current.phase).toBe('idle');
     expect(mocks.uploadToFileset).not.toHaveBeenCalled();
+  });
+});
+
+describe('useOptimizerSuggestions eval-run persistence + hydration', () => {
+  const modelOptSuggestion = () => ({
+    type: 'model_optimization',
+    title: 't',
+    detail: 'd',
+    agent: 'support-bot',
+    model: 'big',
+    apply: [
+      {
+        method: 'POST' as const,
+        path: '/apis/agents/v2/workspaces/ws-a/agents',
+        body: { name: 'support-bot-mini' },
+      },
+      {
+        method: 'POST' as const,
+        path: '/apis/agents/v2/workspaces/ws-a/deployments',
+        body: { agent: 'support-bot-mini' },
+      },
+      {
+        method: 'POST' as const,
+        path: '/apis/agents/v2/workspaces/ws-a/jobs/evaluate',
+        body: { spec: { agent: 'support-bot-mini', eval_config: 'eval.yml' } },
+      },
+    ],
+  });
+
+  it('persists the eval-job pointers to the JSONL after submitting the eval', async () => {
+    mocks.applySuggestion.mockResolvedValue({
+      deploymentNames: ['deploy-1'],
+      evalJobNames: ['eval-1'],
+    });
+
+    const { result } = renderHook(() => useOptimizerSuggestions('ws-a'), {
+      wrapper: createWrapper(),
+    });
+
+    await act(async () => {
+      await result.current.apply(modelOptSuggestion());
+    });
+
+    expect(mocks.persistEvalRunInFileset).toHaveBeenCalledWith(
+      'ws-a',
+      expect.objectContaining({ agent: 'support-bot' }),
+      expect.objectContaining({ jobName: 'eval-1', siblingAgentName: 'support-bot-mini' }),
+      expect.anything()
+    );
+  });
+
+  it('re-hydrates and re-polls a persisted eval_run on load (survives reload)', async () => {
+    // Simulate a prior session that persisted the eval pointers to the JSONL.
+    mocks.loadSuggestionsFromFileset.mockResolvedValue([
+      {
+        ...modelOptSuggestion(),
+        applied: true,
+        eval_run: { jobName: 'eval-9', siblingAgentName: 'support-bot-mini', baseline: null },
+      },
+    ]);
+    mocks.fetchEvalAverageScores.mockResolvedValue([{ evaluator: 'accuracy', averageScore: 0.9 }]);
+
+    const { result } = renderHook(() => useOptimizerSuggestions('ws-a'), {
+      wrapper: createWrapper(),
+    });
+
+    // The hydration effect re-polls the persisted job with no apply() call.
+    await waitFor(() =>
+      expect(mocks.waitForEvalJob).toHaveBeenCalledWith(
+        'ws-a',
+        'eval-9',
+        expect.objectContaining({ signal: expect.anything() })
+      )
+    );
+
+    const suggestion = result.current.suggestions[0];
+    await waitFor(() =>
+      expect(result.current.getEvalState(suggestion)).toEqual(
+        expect.objectContaining({
+          jobName: 'eval-9',
+          siblingAgentName: 'support-bot-mini',
+          status: 'completed',
+          scores: [{ evaluator: 'accuracy', averageScore: 0.9 }],
+        })
+      )
+    );
   });
 });

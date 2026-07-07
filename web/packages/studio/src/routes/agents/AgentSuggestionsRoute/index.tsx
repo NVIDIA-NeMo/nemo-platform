@@ -246,7 +246,8 @@ export const AgentOptimizationsRoute: FC = () => {
         open={pendingApply !== null}
         onClose={() => setPendingApply(null)}
         workspace={workspace}
-        suggestionTitle={pendingApply?.title ?? ''}
+        suggestionTitle={pendingApply?.suggestion.title ?? ''}
+        isRetry={!!pendingApply?.evalRetry}
         onConfirm={handleEvalConfigChosen}
       />
     </AccessibleTitle>

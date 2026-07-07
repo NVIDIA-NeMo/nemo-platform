@@ -115,6 +115,9 @@ export const ROUTES = {
     agentDeploymentDetail: `/workspaces/:${P.workspace}/agent-deployments/:${P.agentDeploymentName}`,
     /** Agent-evaluation jobs list (Phase 2 of the agent-eval UX). */
     agentEvaluationsList: `/workspaces/:${P.workspace}/agents/evaluations`,
+    /** Side-by-side comparison of evaluation jobs. Jobs are passed via the
+     *  ``jobs`` query param (comma-separated job names). */
+    agentEvaluationCompare: `/workspaces/:${P.workspace}/agents/evaluations/compare`,
     /** Detail view for a single agent-evaluation job. */
     agentEvaluationDetail: `/workspaces/:${P.workspace}/agents/evaluations/:${P.agentEvalJobName}`,
     modelCompare: `/workspaces/:${P.workspace}/playground`,

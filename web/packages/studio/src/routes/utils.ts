@@ -531,3 +531,13 @@ export const getAgentEvaluationDetailRoute = (workspace: string, agentEvalJobNam
     agentEvalJobName,
   });
 };
+
+export const AGENT_EVAL_COMPARE_JOBS_PARAM = 'jobs';
+
+export const getAgentEvaluationCompareRoute = (workspace: string, jobNames: string[]) => {
+  const base = generatePath(ROUTES.workspace.agentEvaluationCompare, { workspace });
+  const search = new URLSearchParams({
+    [AGENT_EVAL_COMPARE_JOBS_PARAM]: jobNames.join(','),
+  });
+  return `${base}?${search.toString()}`;
+};

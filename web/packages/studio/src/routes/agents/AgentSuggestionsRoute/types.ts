@@ -13,6 +13,23 @@ export interface SuggestionApplySpec {
   body?: Record<string, unknown>;
 }
 
+/**
+ * Eval-job pointers persisted to the suggestions JSONL so the tile's eval row
+ * survives a reload/navigation: on load the hook re-seeds ``evalStates`` from
+ * this and re-polls the jobs to completion. Only job names + agent names are
+ * stored — scores/profiler are re-fetched, and output filesets / detail hrefs
+ * are derived from the agent names.
+ */
+export interface PersistedEvalRun {
+  /** Tuned ("after") eval job name. */
+  jobName: string;
+  /** Sibling agent the tuned eval scored — drives the output-fileset lookup. */
+  siblingAgentName: string;
+  /** Baseline ("before") run against the original agent + its job name, when a
+   *  comparison run was submitted. Absent/null when no baseline ran. */
+  baseline?: { agentName: string; jobName: string } | null;
+}
+
 export interface OptimizationSuggestion {
   type: string;
   title: string;
@@ -27,11 +44,24 @@ export interface OptimizationSuggestion {
   /** Persisted to JSONL so applied state survives reloads. */
   applied?: boolean;
   applied_at?: string;
+  /** Persisted eval-job pointers so the eval row re-hydrates after a reload. */
+  eval_run?: PersistedEvalRun;
+}
+
+/**
+ * Context passed alongside a tile's Apply click when the click is really a
+ * "re-run just the evaluation" retry: the optimization already succeeded and
+ * deployed a tuned sibling, only the eval failed. Carries the deployed sibling
+ * so the orchestrated apply can skip the (expensive) sweep + redeploy.
+ */
+export interface EvalRetryContext {
+  /** The already-deployed tuned sibling from the prior successful sweep. */
+  siblingAgentName: string;
 }
 
 export interface SuggestionTileProps {
   suggestion: OptimizationSuggestion;
-  onApply?: (suggestion: OptimizationSuggestion) => void;
+  onApply?: (suggestion: OptimizationSuggestion, opts?: { evalRetry?: EvalRetryContext }) => void;
   isApplying?: boolean;
   isApplied?: boolean;
   applyError?: string | null;
@@ -75,6 +105,15 @@ export interface WaitForDeploymentsOptions {
   intervalMs?: number;
   signal: AbortSignal;
 }
+
+/**
+ * Lifecycle of a suggestion's one-click apply, surfaced as a colored badge on
+ * the tile. `applying` covers resource creation + deployment-readiness wait;
+ * `success`/`failed` are the terminal states (green/red). Derived from the
+ * apply flags via ``applyStatusOf`` — ``failed`` wins over ``success`` so a
+ * "resources created but deployment never went ready" case reads as failed.
+ */
+export type ApplyStatus = 'applying' | 'success' | 'failed';
 
 export type EvalJobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'unknown';
 
