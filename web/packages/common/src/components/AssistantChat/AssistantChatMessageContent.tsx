@@ -19,6 +19,8 @@ export const AssistantChatMessageContent = ({
     <MessagePrimitive.Parts
       components={{
         Text: ({ text }) => {
+          if (!text.trim()) return null;
+
           const content = <MessageContent content={text} {...messageContentProps} />;
           return contentSurfaceClassName ? (
             <div className={contentSurfaceClassName} data-testid="assistant-chat-message-surface">

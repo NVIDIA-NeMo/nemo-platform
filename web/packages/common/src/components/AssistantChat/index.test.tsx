@@ -366,6 +366,43 @@ describe('AssistantChat', () => {
     expect(within(assistantMessage).getByTestId('assistant-chat-skeleton')).toBeInTheDocument();
   });
 
+  it('hides an empty text surface while a tool is running', () => {
+    renderAssistantChat(
+      <StaticAssistantChatThread
+        hideAssistantMessageActions
+        isRunning
+        messages={[
+          {
+            role: 'assistant',
+            content: [
+              { type: 'text', text: '  \n' },
+              {
+                type: 'tool-call',
+                toolCallId: 'toolu_read',
+                toolName: 'Read',
+                args: { file_path: 'README.md' },
+              },
+            ],
+            status: { type: 'running' },
+          },
+        ]}
+        toolCallPartComponent={({ toolName }) => (
+          <div data-testid="assistant-chat-tool-pill">{toolName}</div>
+        )}
+      />
+    );
+
+    const assistantMessage = screen.getByTestId('assistant-chat-message');
+
+    expect(within(assistantMessage).getByTestId('assistant-chat-tool-pill')).toHaveTextContent(
+      'Read'
+    );
+    expect(
+      within(assistantMessage).queryByTestId('assistant-chat-message-surface')
+    ).not.toBeInTheDocument();
+    expect(within(assistantMessage).getByTestId('assistant-chat-skeleton')).toBeInTheDocument();
+  });
+
   it('offers an enabled add-image affordance for a vision model when enabled', () => {
     renderAssistantChat(
       <AssistantChat model="test-vision-model" workspace="default" enableImageAttachments />
