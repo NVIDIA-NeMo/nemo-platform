@@ -9,17 +9,25 @@ import { Button, TableHeaderCell } from '@nvidia/foundations-react-core';
 import { childrenToText } from '@nvidia/foundations-react-core/lib';
 import { flexRender, type Header, type SortDirection } from '@tanstack/react-table';
 import classnames from 'classnames';
-import { ArrowUp, ArrowUpDown } from 'lucide-react';
+import { ArrowUp, ArrowUpDown, GripVertical } from 'lucide-react';
 import type { ComponentProps, JSX, ReactNode } from 'react';
+
+interface DragProps {
+  attributes: Record<string, unknown>;
+  listeners: Record<string, unknown> | undefined;
+  isDragging: boolean;
+}
 
 interface TableColumnHeaderProps extends ComponentProps<typeof TableHeaderCell> {
   automaticTitles?: boolean;
   header: Header<IntentionalAny, unknown>;
+  dragProps?: DragProps;
 }
 
 export function TableColumnHeader({
   automaticTitles,
   className,
+  dragProps,
   header,
   ...props
 }: TableColumnHeaderProps): JSX.Element {
@@ -36,14 +44,26 @@ export function TableColumnHeader({
         'group',
         'data-[pinned]:sticky data-[pinned]:z-10',
         '[&>.data-view-header-control]:-mx-[var(--table-cell-inline-padding)] [&>.data-view-header-control]:-my-[var(--table-cell-block-padding)]',
-        '[&>.data-view-header-control]:max-w-[calc(100%+var(--table-cell-inline-padding)*2-4px)]'
+        '[&>.data-view-header-control]:max-w-[calc(100%+var(--table-cell-inline-padding)*2-4px)]',
+        dragProps?.isDragging && 'opacity-50'
       )}
       colSpan={header.column.columns.length > 1 ? header.column.columns.length : undefined}
       data-pinned={header.column.getIsPinned() || undefined}
       id={getHeaderId(header.id)}
       title={automaticTitles ? childrenToText(children as ReactNode) || undefined : undefined}
+      {...(dragProps?.attributes ?? {})}
       {...props}
     >
+      {dragProps?.listeners && (
+        <button
+          className="cursor-grab active:cursor-grabbing p-0.5 text-secondary hover:text-primary focus:outline-none shrink-0"
+          aria-label="Drag to reorder column"
+          type="button"
+          {...dragProps.listeners}
+        >
+          <GripVertical size={14} />
+        </button>
+      )}
       <TableHeaderControlCell
         disabled={isDataViewLoadingState || isDataViewErrorState}
         header={header}
