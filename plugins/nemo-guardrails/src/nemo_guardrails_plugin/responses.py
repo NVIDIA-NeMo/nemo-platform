@@ -29,60 +29,6 @@ def build_chat_completion_response_id() -> str:
     return f"chatcmpl-{uuid.uuid4()}"
 
 
-def _to_jsonable(value: Any) -> Any:
-    """Best-effort conversion of SDK / pydantic models to plain JSON data."""
-    if value is None or isinstance(value, str | int | float | bool):
-        return value
-    if isinstance(value, dict):
-        return {str(k): _to_jsonable(v) for k, v in value.items() if v is not None}
-    if isinstance(value, list | tuple):
-        return [_to_jsonable(v) for v in value if v is not None]
-
-    model_dump = getattr(value, "model_dump", None)
-    if callable(model_dump):
-        try:
-            return _to_jsonable(model_dump(mode="json", exclude_none=True))
-        except TypeError:
-            try:
-                return _to_jsonable(model_dump(exclude_none=True))
-            except Exception:
-                pass
-        except Exception:
-            pass
-
-    to_dict = getattr(value, "to_dict", None)
-    if callable(to_dict):
-        try:
-            return _to_jsonable(to_dict(mode="json", exclude_none=True))
-        except TypeError:
-            try:
-                return _to_jsonable(to_dict(exclude_none=True))
-            except Exception:
-                pass
-        except Exception:
-            pass
-
-    if hasattr(value, "__dict__"):
-        return {
-            key: _to_jsonable(val) for key, val in vars(value).items() if not key.startswith("_") and val is not None
-        }
-
-    return str(value)
-
-
-def guardrails_data_to_dict(guardrails_data: Any) -> dict[str, Any]:
-    """Serialize GuardrailsData without relying on fragile deferred pydantic serializers."""
-    payload = _to_jsonable(guardrails_data)
-    if isinstance(payload, dict):
-        return payload
-    return {}
-
-
-def guardrails_data_to_json(guardrails_data: Any) -> str:
-    """Serialize GuardrailsData to compact JSON."""
-    return json.dumps(guardrails_data_to_dict(guardrails_data), separators=(",", ":"))
-
-
 def is_blocked_generation_response(generation_response: GenerationResponse) -> bool:
     """
     Returns True if the GenerationResponse indicates the request was blocked by a guardrail.
@@ -214,7 +160,7 @@ def build_blocked_immediate_response_body(
         user_log_options=user_log_options,
     )
     if guardrails_data is not None:
-        blocked[GUARDRAILS_DATA_FIELD] = guardrails_data_to_dict(guardrails_data)
+        blocked[GUARDRAILS_DATA_FIELD] = guardrails_data.to_dict(mode="json", exclude_none=True)
 
     return blocked
 
@@ -275,12 +221,15 @@ def build_blocked_output_response_body(
                 "index": 1,
                 "message": {
                     "role": GUARDRAILS_DATA_MESSAGE_ROLE,
-                    "content": guardrails_data_to_json(guardrails_data),
+                    "content": json.dumps(
+                        guardrails_data.to_dict(mode="json", exclude_none=True),
+                        separators=(",", ":"),
+                    ),
                 },
             }
         )
     else:
-        blocked_response[GUARDRAILS_DATA_FIELD] = guardrails_data_to_dict(guardrails_data)
+        blocked_response[GUARDRAILS_DATA_FIELD] = guardrails_data.to_dict(mode="json", exclude_none=True)
 
     return blocked_response
 
@@ -322,12 +271,15 @@ def build_output_response_body(
                 "index": len(response["choices"]),
                 "message": {
                     "role": GUARDRAILS_DATA_MESSAGE_ROLE,
-                    "content": guardrails_data_to_json(guardrails_data),
+                    "content": json.dumps(
+                        guardrails_data.to_dict(mode="json", exclude_none=True),
+                        separators=(",", ":"),
+                    ),
                 },
             }
         )
     else:
-        response[GUARDRAILS_DATA_FIELD] = guardrails_data_to_dict(guardrails_data)
+        response[GUARDRAILS_DATA_FIELD] = guardrails_data.to_dict(mode="json", exclude_none=True)
 
     return response
 

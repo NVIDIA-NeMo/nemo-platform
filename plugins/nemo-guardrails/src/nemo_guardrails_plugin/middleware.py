@@ -54,7 +54,6 @@ from nemo_guardrails_plugin.responses import (
     build_inference_response,
     build_output_response_body,
     first_response_finish_reason,
-    guardrails_data_to_dict,
     has_assistant_content,
     has_tool_calls,
     is_blocked_generation_response,
@@ -451,7 +450,10 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
         )
         if guardrails_data is not None:
             logger.debug("Storing guardrails_data in response_body_annotations for %s", provenance.label)
-            ctx.response_body_annotations[GUARDRAILS_DATA_FIELD] = guardrails_data_to_dict(guardrails_data)
+            ctx.response_body_annotations[GUARDRAILS_DATA_FIELD] = guardrails_data.to_dict(
+                mode="json",
+                exclude_none=True,
+            )
 
         return request
 

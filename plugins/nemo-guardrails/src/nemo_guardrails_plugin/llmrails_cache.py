@@ -505,7 +505,7 @@ class DefaultLLMRailsBuilder:
         for flow in tool_rail_flows:
             flow["is_subflow"] = True
             flow["is_system_flow"] = True
-        
+
         config.flows = list(config.flows or []) + tool_rail_flows
 
         rails = await asyncio.to_thread(LLMRails, config=config)

@@ -49,7 +49,9 @@ def _parse_tool_arguments(tool_call: dict, *, action_name: str) -> dict | None:
             logger.warning("%s: malformed JSON arguments for tool %r; blocking", action_name, _tool_name(tool_call))
             return None
         if not isinstance(parsed_args, dict):
-            logger.warning("%s: JSON arguments for tool %r are not an object; blocking", action_name, _tool_name(tool_call))
+            logger.warning(
+                "%s: JSON arguments for tool %r are not an object; blocking", action_name, _tool_name(tool_call)
+            )
             return None
         return parsed_args
 

@@ -13,7 +13,6 @@ from nemo_guardrails_plugin.responses import (
     build_immediate_response,
     build_inference_response,
     build_output_response_body,
-    guardrails_data_to_dict,
 )
 from nemo_platform_plugin.inference_middleware import InferenceMiddlewareError, InferenceResponse
 from nemoguardrails.rails.llm.options import ActivatedRail, GenerationLog, GenerationResponse
@@ -152,20 +151,6 @@ class TestBuildBlockedOutputResponseBody:
         assert guardrails_choice["index"] == 1
         assert guardrails_choice["message"]["role"] == GUARDRAILS_DATA_MESSAGE_ROLE
         assert json.loads(guardrails_choice["message"]["content"])["config_ids"] == ["ws/my-config"]
-
-    def test_guardrails_data_serializer_falls_back_when_model_dump_fails(self) -> None:
-        class BrokenModelDump:
-            def __init__(self) -> None:
-                self.config_ids = ["ws/my-config"]
-                self.log = {"activated_rails": [{"name": "check tool allowlist", "type": "tool_output"}]}
-
-            def model_dump(self, **_: Any) -> dict[str, Any]:
-                raise TypeError("'NoneType' object cannot be converted to 'SchemaSerializer'")
-
-        assert guardrails_data_to_dict(BrokenModelDump()) == {
-            "config_ids": ["ws/my-config"],
-            "log": {"activated_rails": [{"name": "check tool allowlist", "type": "tool_output"}]},
-        }
 
 
 # ---------------------------------------------------------------------------

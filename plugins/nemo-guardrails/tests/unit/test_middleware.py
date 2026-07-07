@@ -1382,7 +1382,9 @@ class TestProcessResponse:
 
         with (
             patch.object(middleware, "_run_rails", new=run_rails_mock),
-            patch("nemo_guardrails_plugin.middleware.build_output_response_body", return_value=mock_result) as mock_build,
+            patch(
+                "nemo_guardrails_plugin.middleware.build_output_response_body", return_value=mock_result
+            ) as mock_build,
         ):
             await _process_response(
                 middleware,
@@ -1440,7 +1442,9 @@ class TestProcessResponse:
 
         with (
             patch.object(middleware, "_run_rails", new=run_rails_mock),
-            patch("nemo_guardrails_plugin.middleware.build_output_response_body", return_value=mock_result) as mock_build,
+            patch(
+                "nemo_guardrails_plugin.middleware.build_output_response_body", return_value=mock_result
+            ) as mock_build,
         ):
             await _process_response(
                 middleware,
@@ -1462,9 +1466,7 @@ class TestProcessResponse:
         assert mock_build.call_args.kwargs["generation_response"] is output_response
         assert mock_build.call_args.kwargs["prior_generation_logs"] == [input_response.log, tool_output_response.log]
 
-    async def test_malformed_tool_calls_do_not_crash_middleware_logging(
-        self, middleware: GuardrailsMiddleware
-    ) -> None:
+    async def test_malformed_tool_calls_do_not_crash_middleware_logging(self, middleware: GuardrailsMiddleware) -> None:
         request_body = {"model": "ws/llama", "messages": [{"role": "user", "content": "Call a tool"}]}
         response_result = {
             "id": "chatcmpl-123",
