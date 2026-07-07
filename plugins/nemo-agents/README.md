@@ -653,3 +653,50 @@ This can cut 20--40 seconds off the first deploy.
   `NMP_BASE_URL=http://127.0.0.1:8080` to ensure agent subprocess processes
   can reach the platform. Python's `httpx` resolves bare `localhost` to IPv6
   `::1` on macOS, which does not match an IPv4-only listener.
+
+### Container (`deployments`) backend — gotchas
+
+These were hit bringing up the container deployment path (`runner_backend:
+deployments`). They are environment/setup issues, not bugs in this plugin
+unless noted:
+
+- **Controllers must be running.** A deployment stays `pending` forever if the
+  `agents-deployment` / `deployments` controllers are not started. `nemo
+  services run` (no flags) starts all services **and** default controllers.
+  Passing `--service-group all` **without** `--controller-group all` starts
+  services but **no** controllers — the reconcile loop never runs. Use
+  `nemo services run` or add `--controller-group all` explicitly.
+
+- **Docker socket discovery (Colima/Podman).** The deployments Docker backend
+  connects via `docker.from_env()`, which honours `DOCKER_HOST`. On Colima the
+  socket is at `~/.colima/default/docker.sock`, not `/var/run/docker.sock`, so
+  startup fails with `FileNotFoundError` on the socket. Export the real socket
+  before starting the platform:
+  `export DOCKER_HOST=unix://$HOME/.colima/default/docker.sock`.
+
+- **`docker_host` executor config is currently unusable.** Setting
+  `docker_host` on a nemo-deployments docker executor triggers `TypeError:
+  kwargs_from_env() got an unexpected keyword argument 'base_url'` — the backend
+  passes `base_url` to `from_env()`, which doesn't accept it. Use the
+  `DOCKER_HOST` env var instead until that is fixed upstream.
+
+- **Don't replace the bundled runner config.** Pointing `NMP_CONFIG_FILE_PATH`
+  at a file containing only `agents:` / `deployments:` sections **replaces** the
+  bundled `local.yaml`, so the files service loses its writable storage path and
+  falls back to the container default `/data/files_storage` → `OSError: [Errno
+  30] Read-only file system: '/data'` on macOS. **Extend** a copy of
+  `packages/nmp_platform_runner/src/nmp/platform_runner/config/local.yaml` with
+  your `agents` / `deployments` sections rather than starting from scratch.
+
+- **Container env vars via `--env`.** Agent images that need credentials (e.g.
+  `NVIDIA_API_KEY`) receive them through `nemo agents deploy --env`. Use
+  `-e KEY=VALUE` to set a value directly, or bare `-e KEY` to forward the value
+  from your current shell. Ignored by the in-process backend.
+
+- **`verify_ssl` leaks into NIM requests (`nat serve` path).** Under `nat
+  serve`, nvidia-nat's NIM LangChain builder does not exclude `verify_ssl` from
+  the `ChatNVIDIA` kwargs (the OpenAI builder does), so it lands in the request
+  body and NVIDIA endpoints reject it with `Unsupported parameter(s):
+  verify_ssl`. The example `Dockerfile` patches the installed
+  `nat/plugins/langchain/llm.py` to mirror the OpenAI builder's exclude set;
+  remove that `RUN` step once NAT fixes this upstream.

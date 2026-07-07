@@ -36,6 +36,18 @@ RUN --mount=type=cache,id=uv_cache,target=/root/.cache/uv,sharing=locked \
     uv pip install --prerelease=allow "nvidia-nat[most]==${NAT_VERSION}" && \
     chmod -R a+rX /opt/uv /workspace/.venv
 
+# Work around a nvidia-nat serve-path bug: the NIM LangChain builder does not
+# exclude `verify_ssl` from the ChatNVIDIA kwargs (the OpenAI builder does), so
+# under `nat serve` it leaks into the request body and NVIDIA endpoints reject it
+# with "Unsupported parameter(s): verify_ssl". Mirror the OpenAI builder's exclude.
+# The build fails loudly if the target line is absent, e.g. after a NAT upgrade
+# that fixes this upstream — remove this step then.
+RUN set -e; \
+    LLM_FILE="$(echo /workspace/.venv/lib/python*/site-packages/nat/plugins/langchain/llm.py)"; \
+    grep -q 'exclude={"type", "max_tokens", "thinking", "api_type"}' "$LLM_FILE"; \
+    sed -i 's/exclude={"type", "max_tokens", "thinking", "api_type"}/exclude={"type", "max_tokens", "thinking", "api_type", "verify_ssl"}/' "$LLM_FILE"; \
+    grep -q '"api_type", "verify_ssl"' "$LLM_FILE"
+
 LABEL org.opencontainers.image.title="hello_world" \
       org.opencontainers.image.version="26.06.01" \
       org.opencontainers.image.authors="NeMo Agents Team" \

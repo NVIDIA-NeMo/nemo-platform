@@ -85,6 +85,7 @@ async def create_deployment(
         agent=body.agent,
         config=resolved_config,
         image=body.image or "",
+        env=body.env or {},
         status="pending",
     )
     try:

@@ -72,7 +72,9 @@ async def test_create_deployment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(mod, "get_base_url", lambda: "http://localhost:8080")
     backend = _backend(executor="local-docker")
 
-    info = await backend.create_deployment("ws", "foo", config={}, port=0, image="img:1")
+    info = await backend.create_deployment(
+        "ws", "foo", config={}, port=0, image="img:1", env={"NVIDIA_API_KEY": "secret"}
+    )
 
     assert info.status == "starting"
     assert backend._entities.create.await_count == 2
@@ -80,8 +82,10 @@ async def test_create_deployment(monkeypatch: pytest.MonkeyPatch) -> None:
     assert created_config.name == "agent-foo"  # prefixed to avoid user-deployment collisions
     assert created_deployment.deployment_config == "agent-foo"
     assert created_deployment.executor == "local-docker"
-    gateway_env = {e.name: e.value for e in created_config.containers[0].env}["NMP_GATEWAY_BASE_URL"]
-    assert gateway_env == "http://host.docker.internal:8080"
+    container_env = {e.name: e.value for e in created_config.containers[0].env}
+    assert container_env["NMP_GATEWAY_BASE_URL"] == "http://host.docker.internal:8080"
+    # Caller-supplied env is merged into the container alongside the platform defaults.
+    assert container_env["NVIDIA_API_KEY"] == "secret"
 
     # No image and no default_image → fail fast without touching the entity store.
     backend2 = _backend()
@@ -111,9 +115,11 @@ async def test_status_delete_and_list() -> None:
     backend._entities.get.side_effect = NemoEntityNotFoundError("nope")
     assert await backend.get_deployment_status("ws", "foo") is None
 
-    # Delete: mark Deployment DELETING (controller removes container + entity) and drop the config.
-    backend._entities.get.side_effect = None
-    backend._entities.get.return_value = ready
+    # Delete: mark Deployment DELETING (controller removes container + entity), wait for the
+    # Deployment to disappear, then drop the config. First get returns the live Deployment;
+    # the second get (the wait poll) 404s, so the config is deleted only once it's gone.
+    backend._entities.get.return_value = None
+    backend._entities.get.side_effect = [ready, NemoEntityNotFoundError("gone")]
     assert await backend.delete_deployment("ws", "foo") is True
     updated = backend._entities.update.await_args.args[0]
     assert updated.status == "DELETING"

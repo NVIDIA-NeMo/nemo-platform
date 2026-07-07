@@ -52,6 +52,13 @@ class CreateDeploymentRequest(BaseModel):
         default=None,
         description="Container image to deploy.  Required when the 'deployments' runner backend is active.",
     )
+    env: dict[str, str] | None = Field(
+        default=None,
+        description=(
+            "Environment variables to inject into the agent container (e.g. {'NVIDIA_API_KEY': '...'}). "
+            "Used by the 'deployments' runner backend; ignored by 'in_memory'."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -707,6 +707,26 @@ def _register_platform_commands(app: typer.Typer) -> None:
     def deploy(
         agent: str = typer.Option(..., "--agent", "-a", help="Name of the agent to deploy."),
         name: Optional[str] = typer.Option(None, "--name", "-n", help="Deployment name (auto-generated if omitted)."),
+        image: Optional[str] = typer.Option(
+            None,
+            "--image",
+            "-i",
+            help=(
+                "Container image to deploy (e.g. 'hello-world-agent:1.0.0'). Required when the "
+                "'deployments' runner backend is active; ignored by the default in-process backend."
+            ),
+        ),
+        env: Optional[list[str]] = typer.Option(
+            None,
+            "--env",
+            "-e",
+            help=(
+                "Environment variable to inject into the agent container, repeatable. "
+                "Use 'KEY=VALUE' to set a value directly, or bare 'KEY' to forward the "
+                "value from your current shell environment (e.g. '-e NVIDIA_API_KEY'). "
+                "Used by the 'deployments' runner backend; ignored by the in-process backend."
+            ),
+        ),
         wait: bool = typer.Option(
             True,
             "--wait/--no-wait",
@@ -739,6 +759,10 @@ def _register_platform_commands(app: typer.Typer) -> None:
         payload: dict = {"agent": agent}
         if name:
             payload["name"] = name
+        if image:
+            payload["image"] = image
+        if env:
+            payload["env"] = _parse_env_options(env)
         resp = _api_request("POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/deployments", json_body=payload)
         if not wait:
             typer.echo(json.dumps(resp, indent=2))
@@ -987,6 +1011,31 @@ def _register_platform_commands(app: typer.Typer) -> None:
 # ---------------------------------------------------------------------------
 
 _TERMINAL_STATUSES = {"running", "failed"}
+
+
+def _parse_env_options(entries: list[str]) -> dict[str, str]:
+    """Return a name->value env mapping from ``--env`` CLI entries.
+
+    Each entry is either ``KEY=VALUE`` (value used verbatim) or a bare ``KEY``
+    (value read from the current shell environment). A bare key that is not set
+    in the environment aborts the command with a clear error.
+    """
+    result: dict[str, str] = {}
+    for entry in entries:
+        if "=" in entry:
+            key, value = entry.split("=", 1)
+        else:
+            key = entry
+            value = os.environ.get(key, "")
+            if key not in os.environ:
+                raise typer.BadParameter(
+                    f"--env {key!r} has no value and is not set in the current environment. "
+                    f"Pass '{key}=VALUE' or export {key} before deploying."
+                )
+        if not key:
+            raise typer.BadParameter(f"--env entry {entry!r} has an empty variable name.")
+        result[key] = value
+    return result
 
 
 def _wait_for_deployment(

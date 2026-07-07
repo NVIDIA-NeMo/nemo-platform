@@ -179,6 +179,7 @@ class AgentDeploymentController(NemoController):
                 config=dep.config,
                 port=port,
                 image=dep.image or None,
+                env=dep.env or None,
             )
         except Exception as exc:
             logger.exception("Failed to start agent process for deployment '%s'", dep.name)

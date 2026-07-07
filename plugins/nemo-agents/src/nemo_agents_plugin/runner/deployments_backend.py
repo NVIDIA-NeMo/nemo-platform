@@ -15,7 +15,9 @@ is supplied to the container through env vars rather than config rewriting.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 from typing import Any
 
 import httpx
@@ -37,6 +39,13 @@ _HTTP_PORT_NAME = "http"
 # Prefix for the deployments entities we own, so list/get/delete never collide with
 # user-authored deployments in the same workspace.
 _ENTITY_PREFIX = "agent-"
+
+# On delete, wait up to this long for the deployments controller to tear down the
+# container and remove the Deployment entity before we drop the DeploymentConfig. This
+# keeps the config alive while a Deployment still references it, so the controller's
+# _load_configs never 404s on a config we deleted out from under it.
+_DELETE_CONFIG_WAIT_S = 30.0
+_DELETE_CONFIG_POLL_S = 1.0
 
 # agents lifecycle status  <-  deployments-plugin status
 _STATUS_MAP: dict[str, DeploymentStatus] = {
@@ -143,12 +152,19 @@ class DeploymentsRunnerBackend(RunnerBackend):
         return f"{_ENTITY_PREFIX}{name}"
 
     async def create_deployment(
-        self, workspace: str, name: str, config: dict[str, Any], port: int, image: str | None = None
+        self,
+        workspace: str,
+        name: str,
+        config: dict[str, Any],
+        port: int,
+        image: str | None = None,
+        env: dict[str, str] | None = None,
     ) -> DeploymentInfo:
         """Create DeploymentConfig + Deployment entities for the agent container.
 
         The container image is self-contained, so *config* and *port* (the host port,
-        which the deployments backend allocates) are unused here.
+        which the deployments backend allocates) are unused here. *env* is merged into
+        the container environment on top of the platform-supplied gateway variables.
         """
         del config, port
         resolved_image = image or self._config.default_image
@@ -161,17 +177,21 @@ class DeploymentsRunnerBackend(RunnerBackend):
 
         entities = self._entity_client()
         dep_name = self._dep_name(name)
-        env = {
+        container_env = {
             "NMP_GATEWAY_BASE_URL": container_gateway_url(get_base_url(), self._config.gateway_url_override),
             "NMP_WORKSPACE": workspace,
             "NMP_AGENT_NAME": name,
         }
+        # Caller-supplied env (e.g. NVIDIA_API_KEY passed on the deploy command line)
+        # overrides the platform defaults above.
+        if env:
+            container_env.update(env)
         deployment_config = build_deployment_config(
             name=dep_name,
             workspace=workspace,
             image=resolved_image,
             port=self._config.container_port,
-            env=env,
+            env=container_env,
         )
         await entities.create(deployment_config)
         deployment = Deployment(
@@ -205,19 +225,51 @@ class DeploymentsRunnerBackend(RunnerBackend):
         found = False
         try:
             deployment = await entities.get(Deployment, name=dep_name, workspace=workspace)
-            deployment.status = "DELETING"
-            await entities.update(deployment)
+            if deployment.status != "DELETING":
+                deployment.status = "DELETING"
+                await entities.update(deployment)
             found = True
         except NemoEntityNotFoundError:
             pass
         # The deployments controller removes the container and deletes the Deployment entity
-        # on DELETING; the DeploymentConfig is ours to clean up.
+        # on DELETING; the DeploymentConfig is ours to clean up. Wait for the Deployment to
+        # be gone first — deleting the config while the controller still holds a DELETING
+        # Deployment makes its _load_configs 404 every cycle (harmless but noisy log spam).
+        if found:
+            await self._wait_for_deployment_gone(workspace, dep_name)
         try:
             await entities.delete(DeploymentConfig, name=dep_name, workspace=workspace)
             found = True
         except NemoEntityNotFoundError:
             pass
         return found
+
+    async def _wait_for_deployment_gone(self, workspace: str, dep_name: str) -> None:
+        """Block until the Deployment entity is deleted or the wait budget elapses.
+
+        Args:
+            workspace: Workspace the Deployment belongs to.
+            dep_name: Prefixed Deployment entity name.
+
+        """
+        # ponytail: bounded polling blocks this reconcile iteration for up to
+        # _DELETE_CONFIG_WAIT_S; on timeout we delete the config anyway and accept a
+        # single 404 warning rather than leak the config or hang the loop. Upgrade path
+        # is a multi-cycle, reconcile-driven delete if this ever needs to be non-blocking.
+        entities = self._entity_client()
+        deadline = time.monotonic() + _DELETE_CONFIG_WAIT_S
+        while time.monotonic() < deadline:
+            try:
+                await entities.get(Deployment, name=dep_name, workspace=workspace)
+            except NemoEntityNotFoundError:
+                return
+            await asyncio.sleep(_DELETE_CONFIG_POLL_S)
+        logger.warning(
+            "Deployment '%s/%s' still present after %.0fs; deleting its config anyway.",
+            workspace,
+            dep_name,
+            _DELETE_CONFIG_WAIT_S,
+        )
 
     async def list_deployments(self, workspace: str | None = None) -> list[DeploymentInfo]:
         entities = self._entity_client()

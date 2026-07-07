@@ -18,11 +18,10 @@ class RunnerBackendRegistry:
     """Instantiates and holds the active :class:`~nemo_agents_plugin.runner.backend.RunnerBackend`.
 
     The backend type is determined by :attr:`~nemo_agents_plugin.config.AgentsConfig.runner_backend`.
-    Currently only ``"in_memory"`` is supported.
-
-    Future backends register here:
-    - ``"docker"``  → ``DockerRunnerBackend``
-    - ``"k8s"``     → ``K8sRunnerBackend``
+    Supported backends:
+    - ``"in_memory"`` (default) → ``InMemoryRunnerBackend`` (local ``nat`` subprocesses)
+    - ``"deployments"``         → ``DeploymentsRunnerBackend`` (containers via the
+      nemo-deployments plugin; docker or k8s per ``deployments.executor``)
     """
 
     def __init__(self, config: AgentsConfig) -> None:
