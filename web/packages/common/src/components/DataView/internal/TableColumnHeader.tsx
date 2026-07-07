@@ -15,7 +15,6 @@ import type { ComponentProps, JSX, ReactNode, Ref } from 'react';
 
 interface DragProps {
   setNodeRef?: (node: HTMLElement | null) => void;
-  setActivatorNodeRef?: (node: HTMLElement | null) => void;
   attributes: DraggableAttributes;
   listeners: Record<string, unknown> | undefined;
   isDragging: boolean;
@@ -55,15 +54,14 @@ export function TableColumnHeader({
       data-pinned={header.column.getIsPinned() || undefined}
       id={getHeaderId(header.id)}
       title={automaticTitles ? childrenToText(children as ReactNode) || undefined : undefined}
+      {...(dragProps?.attributes ?? {})}
       {...props}
     >
       {dragProps?.listeners && (
         <button
-          ref={dragProps.setActivatorNodeRef}
           className="cursor-grab active:cursor-grabbing p-0.5 text-secondary hover:text-primary focus:outline-none shrink-0"
           aria-label="Drag to reorder column"
           type="button"
-          {...dragProps.attributes}
           {...dragProps.listeners}
         >
           <GripVertical size={14} />

@@ -118,8 +118,8 @@ export const TableContent = forwardRef<HTMLTableElement, TableContentProps>(
       ? table.getState().columnOrder
       : table.getVisibleLeafColumns().map((c) => c.id);
     const sensors = useSensors(
-      useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
-      useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
+      useSensor(MouseSensor, {}),
+      useSensor(TouchSensor, {}),
       useSensor(KeyboardSensor, {})
     );
     const handleDragEnd = useCallback(
@@ -447,15 +447,7 @@ function DraggableColumnHeader({
   cellStyle,
   className,
 }: DraggableColumnHeaderProps) {
-  const {
-    attributes,
-    isDragging,
-    listeners,
-    setActivatorNodeRef,
-    setNodeRef,
-    transform,
-    transition,
-  } = useSortable({
+  const { attributes, isDragging, listeners, setNodeRef, transform, transition } = useSortable({
     id: header.column.id,
   });
 
@@ -475,7 +467,7 @@ function DraggableColumnHeader({
       className={className}
       // eslint-disable-next-line no-restricted-syntax -- DnD transform is a dynamic inline value that cannot be expressed as a class
       style={style}
-      dragProps={{ attributes, listeners, isDragging, setNodeRef, setActivatorNodeRef }}
+      dragProps={{ attributes, listeners, isDragging, setNodeRef }}
     />
   );
 }
