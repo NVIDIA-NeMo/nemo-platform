@@ -72,10 +72,14 @@ The middleware provides the context consumed by these actions:
 
 `tool_output` rails run after the model proposes tool calls and before an agent
 executes them. `tool_input` rails run when tool results are sent back to the
-model.
+model. For `check tool result linkage`, the request `messages` must include the
+assistant message that originally emitted `tool_calls` and the following
+`role: "tool"` result messages. A standalone tool result is treated as orphaned
+and blocked.
 
 ## Failure Behavior
 
 The actions fail closed on unexpected errors. Malformed tool-call arguments,
-undeclared schemas, and invalid result linkage return `False`, causing the
-Colang flow to abort and the plugin to return a blocked response.
+non-object tool-call arguments, undeclared schemas, and invalid result linkage
+return `False`, causing the Colang flow to abort and the plugin to return a
+blocked response.

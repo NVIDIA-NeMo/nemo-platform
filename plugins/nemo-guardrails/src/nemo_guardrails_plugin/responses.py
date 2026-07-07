@@ -98,6 +98,49 @@ def is_blocked_generation_response(generation_response: GenerationResponse) -> b
     return any(rail.stop is True for rail in activated_rails)
 
 
+def first_response_choice(response_body: dict[str, Any]) -> dict[str, Any]:
+    choices = response_body.get("choices")
+    if isinstance(choices, list) and choices and isinstance(choices[0], dict):
+        return choices[0]
+    return {}
+
+
+def first_response_message(response_body: dict[str, Any]) -> dict[str, Any]:
+    message = first_response_choice(response_body).get("message")
+    return message if isinstance(message, dict) else {}
+
+
+def first_response_finish_reason(response_body: dict[str, Any]) -> Any:
+    return first_response_choice(response_body).get("finish_reason")
+
+
+def response_tool_calls(response_body: dict[str, Any]) -> Any:
+    """Return the raw tool_calls value from the first response choice.
+
+    Tool rail actions fail closed on malformed shapes. Keep the raw value for
+    rail context, and use the safe helpers below for middleware logging/branching.
+    """
+    return first_response_message(response_body).get("tool_calls") or []
+
+
+def has_tool_calls(tool_calls: Any) -> bool:
+    return bool(tool_calls)
+
+
+def tool_call_count(tool_calls: Any) -> int:
+    return len(tool_calls) if isinstance(tool_calls, list) else int(bool(tool_calls))
+
+
+def tool_call_names(tool_calls: Any) -> list[Any]:
+    if not isinstance(tool_calls, list):
+        return []
+    return [tc.get("function", {}).get("name") for tc in tool_calls if isinstance(tc, dict)]
+
+
+def has_assistant_content(response_body: dict[str, Any]) -> bool:
+    return bool(first_response_message(response_body).get("content"))
+
+
 def extract_response_content(generation_response: GenerationResponse) -> str:
     """
     Extract the last assistant message content from a GenerationResponse.
@@ -144,7 +187,7 @@ def build_blocked_immediate_response_body(
     request_body: dict[str, Any],
     generation_response: GenerationResponse,
     user_log_options: GenerationLogOptionsParam | None,
-    input_generation_logs: list[LibraryGenerationLog] | None = None,
+    prior_generation_logs: list[LibraryGenerationLog] | None = None,
 ) -> dict[str, Any]:
     """
     Build the response body to return when an input or output rail blocks the request.
@@ -165,8 +208,8 @@ def build_blocked_immediate_response_body(
 
     guardrails_data = build_guardrails_data(
         config_id,
-        input_generation_logs=input_generation_logs
-        if input_generation_logs is not None
+        prior_generation_logs=prior_generation_logs
+        if prior_generation_logs is not None
         else build_generation_response_logs(generation_response),
         user_log_options=user_log_options,
     )
@@ -198,7 +241,7 @@ def build_blocked_output_response_body(
     config_id: str,
     original_response: dict[str, Any],
     generation_response: GenerationResponse,
-    input_generation_logs: list[LibraryGenerationLog] | None,
+    prior_generation_logs: list[LibraryGenerationLog] | None,
     user_log_options: GenerationLogOptionsParam | None,
     return_guardrails_data_as_choice: bool = False,
 ) -> dict[str, Any]:
@@ -221,8 +264,8 @@ def build_blocked_output_response_body(
 
     guardrails_data = build_guardrails_data(
         config_id,
-        input_generation_logs=input_generation_logs,
-        output_generation_response=generation_response,
+        prior_generation_logs=prior_generation_logs,
+        final_generation_log=generation_response.log,
         user_log_options=user_log_options,
     )
 
@@ -246,7 +289,7 @@ def build_output_response_body(
     config_id: str,
     original_response: dict[str, Any],
     generation_response: GenerationResponse | None,
-    input_generation_logs: list[LibraryGenerationLog] | None,
+    prior_generation_logs: list[LibraryGenerationLog] | None,
     user_log_options: GenerationLogOptionsParam | None,
     return_guardrails_data_as_choice: bool = False,
 ) -> dict[str, Any]:
@@ -268,8 +311,8 @@ def build_output_response_body(
 
     guardrails_data = build_guardrails_data(
         config_id,
-        input_generation_logs=input_generation_logs,
-        output_generation_response=generation_response,
+        prior_generation_logs=prior_generation_logs,
+        final_generation_log=generation_response.log if generation_response else None,
         user_log_options=user_log_options,
     )
 

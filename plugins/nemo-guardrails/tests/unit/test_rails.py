@@ -307,8 +307,8 @@ class TestBuildGuardrailsData:
                 internal_events=True,
                 colang_history=True,
             ),
-            input_generation_logs=build_generation_response_logs(input_response) if include_input else None,
-            output_generation_response=output_response if include_output else None,
+            prior_generation_logs=build_generation_response_logs(input_response) if include_input else None,
+            final_generation_log=output_response.log if include_output else None,
         )
 
         assert result.config_ids == ["ws/my-config"]
@@ -329,8 +329,8 @@ class TestBuildGuardrailsData:
         result = build_guardrails_data(
             config_id="ws/my-config",
             user_log_options={"activated_rails": True},
-            input_generation_logs=build_generation_response_logs(_response()),
-            output_generation_response=None,
+            prior_generation_logs=build_generation_response_logs(_response()),
+            final_generation_log=None,
         )
 
         assert result.config_ids == ["ws/my-config"]
@@ -357,8 +357,8 @@ class TestBuildGuardrailsData:
         result = build_guardrails_data(
             config_id="ws/my-config",
             user_log_options={"stats": True},
-            input_generation_logs=build_generation_response_logs(input_response),
-            output_generation_response=output_response,
+            prior_generation_logs=build_generation_response_logs(input_response),
+            final_generation_log=output_response.log,
         )
 
         assert result.log is not None

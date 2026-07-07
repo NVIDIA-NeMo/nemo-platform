@@ -119,7 +119,7 @@ class TestBuildBlockedOutputResponseBody:
             config_id="ws/my-config",
             original_response=original,
             generation_response=generation_response,
-            input_generation_logs=None,
+            prior_generation_logs=None,
             user_log_options=None,
         )
 
@@ -141,7 +141,7 @@ class TestBuildBlockedOutputResponseBody:
             config_id="ws/my-config",
             original_response=_make_response_result(),
             generation_response=_make_generation_response(stopped=True),
-            input_generation_logs=None,
+            prior_generation_logs=None,
             user_log_options=None,
             return_guardrails_data_as_choice=True,
         )
@@ -202,7 +202,7 @@ class TestBuildOutputResponseBody:
                 config_id="ws/my-config",
                 original_response={"id": "chatcmpl-123"},
                 generation_response=None,
-                input_generation_logs=None,
+                prior_generation_logs=None,
                 user_log_options=None,
             )
 
@@ -215,7 +215,7 @@ class TestBuildOutputResponseBody:
             config_id="ws/my-config",
             original_response=original,
             generation_response=_make_generation_response(),
-            input_generation_logs=None,
+            prior_generation_logs=None,
             user_log_options=None,
         )
 
@@ -236,7 +236,7 @@ class TestBuildOutputResponseBody:
             config_id="ws/my-config",
             original_response=original,
             generation_response=_make_generation_response(),
-            input_generation_logs=None,
+            prior_generation_logs=None,
             user_log_options=None,
         )
 
@@ -257,7 +257,7 @@ class TestBuildOutputResponseBody:
             config_id="ws/my-config",
             original_response=original,
             generation_response=_make_generation_response(),
-            input_generation_logs=None,
+            prior_generation_logs=None,
             user_log_options=None,
             return_guardrails_data_as_choice=True,
         )
@@ -291,7 +291,7 @@ class TestBuildOutputResponseBody:
             config_id="ws/my-config",
             original_response=original,
             generation_response=None,
-            input_generation_logs=build_generation_response_logs(input_response),
+            prior_generation_logs=build_generation_response_logs(input_response),
             user_log_options=None,
             return_guardrails_data_as_choice=True,
         )
@@ -318,7 +318,7 @@ class TestBuildOutputResponseBody:
             config_id="ws/my-config",
             original_response=original,
             generation_response=None,
-            input_generation_logs=build_generation_response_logs(input_response),
+            prior_generation_logs=build_generation_response_logs(input_response),
             user_log_options=None,
         )
 

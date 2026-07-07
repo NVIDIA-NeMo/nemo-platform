@@ -210,10 +210,10 @@ def _build_generation_stats(
 
 def _build_generation_log(
     user_log_options: GenerationLogOptionsParam | None,
-    input_generation_logs: list[LibraryGenerationLog] | None = None,
-    output_generation_response: GenerationResponse | None = None,
+    prior_generation_logs: list[LibraryGenerationLog] | None = None,
+    final_generation_log: LibraryGenerationLog | None = None,
 ) -> GenerationLog | None:
-    """Merge input and output rail logs into a :class:`GenerationLog`.
+    """Merge prior rail logs and the final rail log into a :class:`GenerationLog`.
 
     Only includes fields the user asked for. Returns ``None`` when no log
     fields were requested.
@@ -222,11 +222,9 @@ def _build_generation_log(
         return None
 
     input_log = GenerationResponseMapper.to_platform_generation_log(
-        _merge_generation_logs(*(input_generation_logs or []))
+        _merge_generation_logs(*(prior_generation_logs or []))
     )
-    output_log = GenerationResponseMapper.to_platform_generation_log(
-        output_generation_response.log if output_generation_response else None
-    )
+    output_log = GenerationResponseMapper.to_platform_generation_log(final_generation_log)
 
     activated_rails = None
     if user_log_options.get("activated_rails"):
@@ -265,8 +263,8 @@ def _build_generation_log(
 
 def build_guardrails_data(
     config_id: str,
-    input_generation_logs: list[LibraryGenerationLog] | None = None,
-    output_generation_response: GenerationResponse | None = None,
+    prior_generation_logs: list[LibraryGenerationLog] | None = None,
+    final_generation_log: LibraryGenerationLog | None = None,
     user_log_options: GenerationLogOptionsParam | None = None,
 ) -> GuardrailsData:
     """Build the :class:`GuardrailsData` to inject into the response body.
@@ -274,13 +272,13 @@ def build_guardrails_data(
     ``log`` is only populated when the caller requested it and there is
     at least one rail response to report.
     """
-    if not input_generation_logs and not output_generation_response:
+    if not prior_generation_logs and not final_generation_log:
         return GuardrailsData(config_ids=[config_id])
 
     if not user_log_options or not any(user_log_options.values()):
         return GuardrailsData(config_ids=[config_id])
 
-    output_log = _build_generation_log(user_log_options, input_generation_logs, output_generation_response)
+    output_log = _build_generation_log(user_log_options, prior_generation_logs, final_generation_log)
 
     return GuardrailsData(config_ids=[config_id], log=output_log)
 

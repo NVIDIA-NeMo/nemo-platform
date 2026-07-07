@@ -492,24 +492,30 @@ class DefaultLLMRailsBuilder:
         # so tool-flow injection must happen on a per-build copy.
         config = copy.deepcopy(config)
 
-        # import_paths is only processed during LibraryRailsConfig.model_validate(); mutating it
-        # afterward has no effect on the Colang runtime's flow_configs. We parse flows.co directly
-        # and inject the parsed flows into config.flows so _init_flow_configs() sees them.
+        # LLMRails needs these wrapper flows in config.flows at construction time.
+        # Parse the bundled flows.co here so configs can reference them by name
+        # without copying the Colang into every GuardrailConfig.
         flows_co_path = Path(_TOOL_RAILS_PATH) / "flows.co"
         flows_co_content = flows_co_path.read_text()
         parsed = parse_colang_file("flows.co", flows_co_content)
+
+        # Ensure these flows are not auto-triggered on events. They should only be triggered
+        # explicitly when set in the GuardrailConfig.
         tool_rail_flows = parsed.get("flows", [])
         for flow in tool_rail_flows:
-            # Prevent auto-triggering on events; these flows are only called via `do <flow>`.
             flow["is_subflow"] = True
             flow["is_system_flow"] = True
+        
         config.flows = list(config.flows or []) + tool_rail_flows
 
         rails = await asyncio.to_thread(LLMRails, config=config)
+        # NOTE: These names must match the `execute ...` calls in flows.co and the
+        # corresponding action function names in `tool_rails/actions.py`.
         rails.register_action(check_tool_allowlist, name="check_tool_allowlist")
         rails.register_action(check_tool_arguments, name="check_tool_arguments")
         rails.register_action(check_tool_schema, name="check_tool_schema")
         rails.register_action(check_tool_result_linkage, name="check_tool_result_linkage")
+
         return rails
 
 

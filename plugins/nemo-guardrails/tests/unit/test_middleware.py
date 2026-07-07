@@ -1204,7 +1204,7 @@ class TestProcessResponse:
         assert result == response_result
         call_kwargs = mock_build.call_args.kwargs
         assert call_kwargs["generation_response"] is None
-        assert call_kwargs["input_generation_logs"] == [input_response.log]
+        assert call_kwargs["prior_generation_logs"] == [input_response.log]
 
     async def test_response_middleware_clears_request_guardrails_annotation_for_return_choice(
         self, middleware: GuardrailsMiddleware
@@ -1352,6 +1352,157 @@ class TestProcessResponse:
         assert exc_info.value.status_code == 400
         mock_run.assert_not_called()
 
+    async def test_tool_call_only_response_runs_tool_output_but_skips_output_rails(
+        self, middleware: GuardrailsMiddleware
+    ) -> None:
+        request_body = {"model": "ws/llama", "messages": [{"role": "user", "content": "Call a tool"}]}
+        response_result = {
+            "id": "chatcmpl-123",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {"id": "call_1", "type": "function", "function": {"name": "get_weather", "arguments": "{}"}}
+                        ],
+                    },
+                    "finish_reason": "tool_calls",
+                }
+            ],
+        }
+        tool_output_response = _make_generation_response(
+            is_blocked=False,
+            rail_type="tool_output",
+            rail_name="check tool allowlist",
+        )
+        run_rails_mock = AsyncMock(return_value=tool_output_response)
+        mock_result = {**response_result, "guardrails_data": {"config_ids": ["my-workspace/my-config"]}}
+
+        with (
+            patch.object(middleware, "_run_rails", new=run_rails_mock),
+            patch("nemo_guardrails_plugin.middleware.build_output_response_body", return_value=mock_result) as mock_build,
+        ):
+            await _process_response(
+                middleware,
+                response_result,
+                request_body,
+                {},
+                {},
+                _entity_source(
+                    input_flows=[],
+                    output_flows=["self check output"],
+                    tool_output_flows=["check tool allowlist"],
+                ),
+            )
+
+        run_rails_mock.assert_called_once()
+        assert run_rails_mock.call_args.kwargs["rail_types"] == ["tool_output"]
+        assert mock_build.call_args.kwargs["generation_response"] is tool_output_response
+        assert mock_build.call_args.kwargs["prior_generation_logs"] is None
+
+    async def test_tool_call_response_with_content_runs_tool_output_then_output_rails(
+        self, middleware: GuardrailsMiddleware
+    ) -> None:
+        request_body = {
+            "model": "ws/llama",
+            "messages": [{"role": "user", "content": "Call a tool and explain"}],
+            "guardrails": {"options": {"log": {"activated_rails": True}}},
+        }
+        response_result = {
+            "id": "chatcmpl-123",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": "I will call the weather tool.",
+                        "tool_calls": [
+                            {"id": "call_1", "type": "function", "function": {"name": "get_weather", "arguments": "{}"}}
+                        ],
+                    },
+                    "finish_reason": "tool_calls",
+                }
+            ],
+        }
+        input_response = _make_generation_response(is_blocked=False, rail_type="input", rail_name="self check input")
+        tool_output_response = _make_generation_response(
+            is_blocked=False,
+            rail_type="tool_output",
+            rail_name="check tool allowlist",
+        )
+        output_response = _make_generation_response(is_blocked=False, rail_type="output", rail_name="self check output")
+        run_rails_mock = AsyncMock(side_effect=[tool_output_response, output_response])
+        ctx = _make_ctx(request_body)
+        ctx.state(PLUGIN_NAME).set(STATE_KEY_INPUT_GENERATION_LOGS, [input_response.log])
+        mock_result = {**response_result, "guardrails_data": {"config_ids": ["my-workspace/my-config"]}}
+
+        with (
+            patch.object(middleware, "_run_rails", new=run_rails_mock),
+            patch("nemo_guardrails_plugin.middleware.build_output_response_body", return_value=mock_result) as mock_build,
+        ):
+            await _process_response(
+                middleware,
+                response_result,
+                request_body,
+                {},
+                {},
+                _entity_source(
+                    input_flows=[],
+                    output_flows=["self check output"],
+                    tool_output_flows=["check tool allowlist"],
+                ),
+                ctx=ctx,
+            )
+
+        assert run_rails_mock.call_count == 2
+        assert run_rails_mock.call_args_list[0].kwargs["rail_types"] == ["tool_output"]
+        assert run_rails_mock.call_args_list[1].kwargs["rail_types"] == ["output"]
+        assert mock_build.call_args.kwargs["generation_response"] is output_response
+        assert mock_build.call_args.kwargs["prior_generation_logs"] == [input_response.log, tool_output_response.log]
+
+    async def test_malformed_tool_calls_do_not_crash_middleware_logging(
+        self, middleware: GuardrailsMiddleware
+    ) -> None:
+        request_body = {"model": "ws/llama", "messages": [{"role": "user", "content": "Call a tool"}]}
+        response_result = {
+            "id": "chatcmpl-123",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": None, "tool_calls": [None]},
+                    "finish_reason": "tool_calls",
+                }
+            ],
+        }
+        blocked_response = _make_generation_response(
+            is_blocked=True,
+            rail_type="tool_output",
+            rail_name="check tool schema",
+        )
+        run_rails_mock = AsyncMock(return_value=blocked_response)
+        mock_result = {**response_result, "guardrails_data": {"config_ids": ["my-workspace/my-config"]}}
+
+        with (
+            patch.object(middleware, "_run_rails", new=run_rails_mock),
+            patch(
+                "nemo_guardrails_plugin.middleware.build_blocked_output_response_body", return_value=mock_result
+            ) as mock_build,
+        ):
+            await _process_response(
+                middleware,
+                response_result,
+                request_body,
+                {},
+                {},
+                _entity_source(input_flows=[], tool_output_flows=["check tool schema"]),
+            )
+
+        run_rails_mock.assert_called_once()
+        assert run_rails_mock.call_args.kwargs["context_vars"]["tool_calls"] == [None]
+        assert mock_build.call_args.kwargs["generation_response"] is blocked_response
+
     async def test_run_rails_failure_propagates(self, middleware: GuardrailsMiddleware) -> None:
         """Companion to ``TestProcessRequest.test_run_rails_failure_propagates``:
         ``process_response`` must surface ``_run_rails``'s 503 unchanged."""
@@ -1470,7 +1621,7 @@ class TestProcessResponse:
                     ctx=ctx,
                 )
 
-        assert mock_build.call_args.kwargs["input_generation_logs"] == [input_response.log]
+        assert mock_build.call_args.kwargs["prior_generation_logs"] == [input_response.log]
 
     # -------------------------------------------------------------------
     # The returned ``InferenceResponse`` must have ``typed_body=None``.
