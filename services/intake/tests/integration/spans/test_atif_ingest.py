@@ -12,8 +12,14 @@ from fastapi.testclient import TestClient
 
 _HISTORICAL_GTE = "2024-01-01T00:00:00Z"
 
-# Frozen so ingested timestamps (and everything derived from them) are deterministic.
-_BASE_TIME = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+# Seeded relative to "now" (not a fixed calendar date) with a fixed sub-second offset:
+#   - relative so the spans stay inside the 90-day ClickHouse TTL (see clickhouse_migrations.py); a
+#     fixed past date silently ages out of retention and this test flakes red (TTL eviction runs on
+#     async merges). ~45 days is well beyond the (removed) 30-day list lookback yet within retention.
+#   - .500000 microseconds so no derived timestamp lands on a whole second, which the span read-side
+#     returns without a fractional part (e.g. "...:12" vs "...:12.000000") and would fail exact matches.
+# Everything derived from this base moves with it, so the reconstructed-timestamp assertions stay exact.
+_BASE_TIME = (datetime.now(timezone.utc) - timedelta(days=45)).replace(microsecond=500_000)
 
 
 def _atif_timestamp(dt: datetime) -> str:
