@@ -19,13 +19,10 @@ from nemo_evaluator.api.service.metric_service import MetricService
 from nemo_evaluator.entities import TaskEntity
 from nemo_platform_plugin.entities import EntityClient, EntityConflictError, EntityNotFoundError, PaginationInfo
 from nemo_platform_plugin.filter_ops import FilterOperation
+from nemo_platform_plugin.log_utils import sanitize_for_log
 from nemo_platform_plugin.schema import Page, PaginationData
 
 logger = logging.getLogger(__name__)
-
-
-def _sanitize_for_log(value: object) -> str:
-    return str(value).replace("\r", "").replace("\n", "")
 
 
 def _entity_to_task(entity: TaskEntity) -> Task:
@@ -97,7 +94,7 @@ class TaskService:
         except EntityConflictError as exc:
             raise ValueError(f"Task '{workspace}/{name}' already exists") from exc
         logger.info(
-            "Task created", extra={"workspace": _sanitize_for_log(workspace), "task_name": _sanitize_for_log(name)}
+            "Task created", extra={"workspace": sanitize_for_log(workspace), "task_name": sanitize_for_log(name)}
         )
         return _entity_to_task(created)
 
@@ -135,6 +132,6 @@ class TaskService:
         except EntityNotFoundError:
             return False
         logger.info(
-            "Task deleted", extra={"workspace": _sanitize_for_log(workspace), "task_name": _sanitize_for_log(name)}
+            "Task deleted", extra={"workspace": sanitize_for_log(workspace), "task_name": sanitize_for_log(name)}
         )
         return True

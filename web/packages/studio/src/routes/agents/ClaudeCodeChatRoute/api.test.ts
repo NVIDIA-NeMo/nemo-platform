@@ -4,6 +4,7 @@
 import { BASE_URL } from '@studio/constants/environment';
 import {
   getClaudeCodeSessionHistory,
+  listClaudeCodeHistorySessions,
   listClaudeCodeSkills,
   resolveClaudeCodeInput,
   resolveClaudeCodePermission,
@@ -19,6 +20,34 @@ const getExpectedStudioBaseUrl = (): string => {
 describe('Claude Code API helpers', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it('reads model-generated titles from history sessions', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify([
+            {
+              session_id: 'session-1',
+              mtime: 123,
+              title: 'Create Spam Detector Agent',
+              first_prompt: 'I want to create an agent that does spam detection.',
+              message_count: 2,
+              token_count: 10,
+              tool_call_count: 0,
+              tool_calls: [],
+              chat_artifacts: {},
+            },
+          ]),
+          { status: 200 }
+        )
+      )
+    );
+
+    const sessions = await listClaudeCodeHistorySessions();
+
+    expect(sessions[0]?.title).toBe('Create Spam Detector Agent');
   });
 
   it('posts messages with the active workspace', async () => {

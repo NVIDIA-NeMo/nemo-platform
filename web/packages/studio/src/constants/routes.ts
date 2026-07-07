@@ -76,7 +76,6 @@ export const ROUTES = {
     experimentTraceDetail: `/workspaces/:${P.workspace}/experiment/:${P.experimentGroupName}/:${P.experimentName}/traces/:${P.traceId}`,
     customizationJobList: `/workspaces/:${P.workspace}/customizations`,
     customizationJobDetails: `/workspaces/:${P.workspace}/customizations/:${P.customizationJobName}`,
-    newCustomizationJob: `/workspaces/:${P.workspace}/customizations/fine-tuned/new`,
     filesets: `/workspaces/:${P.workspace}/filesets`,
     filesetNew: `/workspaces/:${P.workspace}/filesets/new`,
     filesetDetails: `/workspaces/:${P.workspace}/filesets/:${P.filesetId}`,

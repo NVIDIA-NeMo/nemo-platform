@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { getEntityReference } from '@nemo/common/src/namedEntity';
-import { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
-import { CustomizationJob as CustomizationJobOutput } from '@nemo/sdk/vendored/customizer/schema';
+import { PlatformJobResponse, PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { customizationJob1 } from '@studio/mocks/customizer/customization-jobs';
@@ -60,8 +59,8 @@ describe('CustomizationJobDetailsRoute', () => {
       'CUDA out of memory. Tried to allocate 896.00 MiB. GPU 1 has a total capacity of 79.32 GiB of which 185.56 MiB is free.';
 
     server.use(
-      http.get<never, never, CustomizationJobOutput>(
-        `${PLATFORM_BASE_URL}/apis/customization/v2/workspaces/:workspace/jobs/:jobId`,
+      http.get<never, never, PlatformJobResponse>(
+        `${PLATFORM_BASE_URL}/apis/jobs/v2/workspaces/:workspace/jobs/:name`,
         () => {
           return HttpResponse.json({
             ...customizationJob1,
@@ -78,21 +77,7 @@ describe('CustomizationJobDetailsRoute', () => {
                 },
               ],
             },
-          });
-        }
-      ),
-      http.get<never, never, CustomizationJobOutput>(
-        `${PLATFORM_BASE_URL}/apis/customization/v2/workspaces/:workspace/jobs/:jobId/status`,
-        () => {
-          return HttpResponse.json({
-            ...customizationJob1,
-            status: PlatformJobStatus.error,
-            status_details: {
-              created_at: customizationJob1.created_at!,
-              updated_at: customizationJob1.updated_at!,
-              status: 'failed',
-            },
-          });
+          } as unknown as PlatformJobResponse);
         }
       ),
       http.get(`${PLATFORM_BASE_URL}/apis/jobs/v2/workspaces/:workspace/jobs/:name/logs`, () =>

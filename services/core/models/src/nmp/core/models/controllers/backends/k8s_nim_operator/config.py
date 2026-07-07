@@ -199,6 +199,11 @@ class K8sNimOperatorConfig(BaseModel):
         "Example: {'node-type': 'gpu-node', 'zone': 'us-west1-a'}",
         examples=[{"node-type": "gpu-node", "zone": "us-west1-a"}],
     )
+    model_labels: Optional[Dict[str, str]] = Field(
+        default=None,
+        description="Additional labels copied onto model resources managed by the models controller.",
+        examples=[{"example.com/test-label": "A", "example.com/test-suite": "B"}],
+    )
     default_labels: Optional[Dict[str, str]] = Field(
         default=None,
         description="Default Kubernetes labels applied to NIMService and NIMCache resources and their child resources (e.g. pods). "

@@ -12,6 +12,7 @@ import {
   Search,
   SearchCheck,
   ShieldCheck,
+  Sliders,
   Sparkles,
   Terminal,
 } from 'lucide-react';
@@ -88,6 +89,14 @@ export const SKILL_ACTION_TEMPLATES = {
       'Use the nemo-build-agent skill to scaffold and deploy a NeMo agent from an existing spec. Inspect the workspace first and ask for the target spec if needed.',
     icon: <Hammer size={18} />,
     requiredFeatureFlags: ['agentsEnabled'],
+  },
+  'nemo-customizer': {
+    title: 'Fine-tune a model',
+    description: 'Train a custom model on your dataset with NeMo Customizer.',
+    prompt:
+      'Use the nemo-customizer skill to fine-tune a model. Help me choose a base model, dataset, and training configuration, then launch and monitor the customization job.',
+    icon: <Sliders size={18} />,
+    requiredFeatureFlags: ['customizerEnabled'],
   },
   'nemo-data-designer-plugin': {
     title: 'Generate synthetic data',

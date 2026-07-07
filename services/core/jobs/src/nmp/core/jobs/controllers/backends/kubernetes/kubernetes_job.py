@@ -311,7 +311,26 @@ class KubernetesJobBackend(JobBackend[ProviderT, KubernetesJobExecutionProfileCo
             error_details["message"] = status_details.get("message", "Job encountered an error")
         status_details["events"] = self.get_kube_job_events(job)
         task_has_error = update_all_tasks(self._nmp_sdk, self._core_v1, self.namespace, step)
-        if task_has_error:
+        teardown_lifecycle_statuses = {
+            PlatformJobStatus.PAUSING,
+            PlatformJobStatus.PAUSED,
+            PlatformJobStatus.CANCELLING,
+            PlatformJobStatus.CANCELLED,
+        }
+        # Task-level errors can appear while Kubernetes is tearing down pods for
+        # a requested pause or cancel. Preserve those user-requested lifecycle
+        # states so the dispatcher can finish transitioning to PAUSED/CANCELLED.
+        if task_has_error and status in teardown_lifecycle_statuses:
+            logger.debug(
+                "Task error observed during container teardown",
+                extra={
+                    "workspace": step.workspace,
+                    "job": step.job,
+                    "step": step.name,
+                    "status": status,
+                },
+            )
+        elif task_has_error:
             status = PlatformJobStatus.ERROR
             if "message" not in error_details:
                 error_details["message"] = "One or more tasks are in error state"

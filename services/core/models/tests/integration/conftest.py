@@ -309,18 +309,34 @@ def docker_test_context(
 
 
 @pytest.fixture
-def models_controller_container_cleanup(docker_client: docker.DockerClient) -> Generator[None, None, None]:
+def docker_owner_labels(worker_id: str, testrun_uid: str) -> dict[str, str]:
+    """Labels used to scope Docker resources to this pytest worker/run."""
+    return {
+        "nmp.nvidia.com/test-run": testrun_uid,
+        "nmp.nvidia.com/test-worker": worker_id,
+    }
+
+
+@pytest.fixture
+def models_controller_container_cleanup(
+    docker_client: docker.DockerClient,
+    docker_owner_labels: dict[str, str],
+) -> Generator[None, None, None]:
     """Teardown: remove all containers with label nmp.nvidia.com/managed-by=models-controller.
 
     Ensures failed tests (e.g. stuck in PENDING) don't leave NIM/sidecar containers.
     Request this via controller_with_docker; no per-test try/finally needed.
     """
     yield
-    cleanup_model_deployment_containers(docker_client)
+    cleanup_model_deployment_containers(docker_client, labels=docker_owner_labels)
 
 
 @pytest.fixture
-def docker_backend_config(worker_id: str, mock_sidecar_image: str) -> dict[str, Any]:
+def docker_backend_config(
+    worker_id: str,
+    mock_sidecar_image: str,
+    docker_owner_labels: dict[str, str],
+) -> dict[str, Any]:
     """Configuration for Docker backend in tests.
 
     Uses worker_id from pytest-xdist to allocate unique port ranges per worker.
@@ -333,6 +349,7 @@ def docker_backend_config(worker_id: str, mock_sidecar_image: str) -> dict[str, 
         "models_docker_port_range_end": end_port,
         "docker_timeout": 60,
         "models_docker_host_service_name": "localhost",
+        "model_labels": docker_owner_labels,
     }
 
 

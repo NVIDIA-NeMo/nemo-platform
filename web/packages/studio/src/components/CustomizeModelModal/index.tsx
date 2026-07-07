@@ -21,7 +21,8 @@ import {
   CUSTOMIZATION_METHODS,
   CustomizationMethod,
 } from '@studio/components/CustomizeModelModal/constants';
-import { getNewCustomizationJobRoute, getPromptTuningFormRoute } from '@studio/routes/utils';
+import type { ClaudeCodeChatRouteState } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
+import { getClaudeCodeChatRoute, getPromptTuningFormRoute } from '@studio/routes/utils';
 import { FC, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -33,6 +34,12 @@ interface CustomizeModelModalProps {
   canPromptTune?: boolean;
   modelRef?: string;
 }
+
+/** Build the guided fine-tuning prompt the Code Agent starts from. */
+const buildFineTunePrompt = (modelRef?: string): string =>
+  `Use the nemo-customizer skill to fine-tune ${
+    modelRef ? `the base model \`${modelRef}\`` : 'a model'
+  }. Help me choose a dataset and training configuration, then launch and monitor the customization job.`;
 
 export const CustomizeModelModal: FC<CustomizeModelModalProps> = ({
   open,
@@ -53,11 +60,13 @@ export const CustomizeModelModal: FC<CustomizeModelModalProps> = ({
 
   const handleContinue = () => {
     onClose();
-    const route =
-      selectedMethod === 'fine-tuned'
-        ? getNewCustomizationJobRoute(workspace, { model: modelRef })
-        : getPromptTuningFormRoute(workspace, { model: modelRef });
-    navigate(route);
+    if (selectedMethod === 'fine-tuned') {
+      // Fine-tuning is run through the Code Agent, seeded with a guided prompt.
+      const state: ClaudeCodeChatRouteState = { initialPrompt: buildFineTunePrompt(modelRef) };
+      navigate(getClaudeCodeChatRoute(workspace), { state });
+      return;
+    }
+    navigate(getPromptTuningFormRoute(workspace, { model: modelRef }));
   };
 
   return (

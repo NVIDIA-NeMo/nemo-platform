@@ -6,21 +6,46 @@ import type { MessageRenderProps } from '@nemo/common/src/components/AssistantCh
 import { MessageContent } from '@nemo/common/src/components/Chat/MessageContent';
 import { Banner } from '@nvidia/foundations-react-core';
 
+interface AssistantChatMessageContentProps extends MessageRenderProps {
+  contentSurfaceClassName?: string;
+}
+
 export const AssistantChatMessageContent = ({
+  contentSurfaceClassName,
   messageContentProps,
   toolCallPartComponent,
-}: MessageRenderProps) => (
+}: AssistantChatMessageContentProps) => (
   <>
     <MessagePrimitive.Parts
       components={{
-        Text: ({ text }) => <MessageContent content={text} {...messageContentProps} />,
-        Image: ({ image, filename }) => (
-          <img
-            src={image}
-            alt={filename ?? 'Attached image'}
-            className="mt-density-xs max-h-64 w-auto rounded-lg border border-base object-contain"
-          />
-        ),
+        Text: ({ text }) => {
+          if (!text.trim()) return null;
+
+          const content = <MessageContent content={text} {...messageContentProps} />;
+          return contentSurfaceClassName ? (
+            <div className={contentSurfaceClassName} data-testid="assistant-chat-message-surface">
+              {content}
+            </div>
+          ) : (
+            content
+          );
+        },
+        Image: ({ image, filename }) => {
+          const content = (
+            <img
+              src={image}
+              alt={filename ?? 'Attached image'}
+              className="mt-density-xs max-h-64 w-auto rounded-lg border border-base object-contain"
+            />
+          );
+          return contentSurfaceClassName ? (
+            <div className={contentSurfaceClassName} data-testid="assistant-chat-message-surface">
+              {content}
+            </div>
+          ) : (
+            content
+          );
+        },
         tools: { Fallback: toolCallPartComponent },
       }}
     />

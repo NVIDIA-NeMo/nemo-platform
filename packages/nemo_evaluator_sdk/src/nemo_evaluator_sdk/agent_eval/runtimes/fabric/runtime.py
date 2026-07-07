@@ -67,7 +67,14 @@ _ATIF_ARTIFACT_KIND = "atif"
 
 
 class FabricAgentRuntime:
-    """AgentTaskRunner that generates trials by running tasks through NeMo Fabric."""
+    """AgentTaskRunner that generates trials by running tasks through NeMo Fabric.
+
+    The harness is selected entirely by ``config["harness"]["adapter_id"]``. Across harnesses the
+    config shape differs mainly in that ``adapter_id``, ``runtime.transport``, and any harness-specific
+    ``harness.settings`` — e.g. Codex runs as a subprocess (``transport="cli"``) while the Hermes SDK
+    harness runs in-library (``transport="library"``). See
+    ``examples/fabric_harness_runtimes.py`` for full Codex-CLI and Hermes-SDK config examples.
+    """
 
     def __init__(
         self,

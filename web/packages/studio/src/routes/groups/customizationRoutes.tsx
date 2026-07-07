@@ -22,11 +22,6 @@ const CustomizationJobDetailsRoute = lazy(() =>
     default: module.CustomizationJobDetailsRoute,
   }))
 );
-const NewCustomizationRoute = lazy(() =>
-  import('@studio/routes/NewCustomizationRoute').then((module) => ({
-    default: module.NewCustomizationRoute,
-  }))
-);
 
 export const customizationRoutes: RouteObject[] = gateCustomizationRoutes([
   {
@@ -42,11 +37,6 @@ export const customizationRoutes: RouteObject[] = gateCustomizationRoutes([
   {
     path: ROUTES.workspace.customizationJobDetails,
     element: <CustomizationJobDetailsRoute />,
-    errorElement: <ErrorPanel title="Customizer" />,
-  },
-  {
-    path: ROUTES.workspace.newCustomizationJob,
-    element: <NewCustomizationRoute />,
     errorElement: <ErrorPanel title="Customizer" />,
   },
 ]);

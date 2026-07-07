@@ -33,6 +33,10 @@ from nemo_evaluator.sdk.task_resources import (
     AsyncEvaluatorTasksResource,
     EvaluatorTasksResource,
 )
+from nemo_evaluator.sdk.taskset_resources import (
+    AsyncEvaluatorTasksetsResource,
+    EvaluatorTasksetsResource,
+)
 from nemo_evaluator.sdk.types import (
     PluginDatasetInput,
     RunConfig,
@@ -66,6 +70,7 @@ class Evaluator:
         self.agent_eval_results = EvaluatorAgentEvalResultsResource(platform)
         self.eval_results = EvaluatorEvalResultsResource(platform)
         self.tasks = EvaluatorTasksResource(platform)
+        self.tasksets = EvaluatorTasksetsResource(platform)
 
     def plugin_status(self) -> dict[str, object]:
         """Return evaluator plugin health information from the service."""
@@ -235,6 +240,7 @@ class AsyncEvaluator:
         self.agent_eval_results = AsyncEvaluatorAgentEvalResultsResource(platform)
         self.eval_results = AsyncEvaluatorEvalResultsResource(platform)
         self.tasks = AsyncEvaluatorTasksResource(platform)
+        self.tasksets = AsyncEvaluatorTasksetsResource(platform)
 
     async def plugin_status(self) -> dict[str, object]:
         """Return evaluator plugin health information from the service."""

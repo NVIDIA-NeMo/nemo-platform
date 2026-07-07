@@ -16,7 +16,6 @@ import {
 import {
   LINK_DOCS_MODELS,
   LINK_DOCS_SAFE_SYNTHESIZER,
-  LINK_DOCS_STUDIO_CUSTOMIZATION,
   LINK_DOCS_STUDIO_EVALUATION,
 } from '@studio/constants/links';
 import { ROUTES } from '@studio/constants/routes';
@@ -25,7 +24,7 @@ import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { getEvaluationResultsRoute, getModelCompareRoute } from '@studio/routes/utils';
 import { DashboardCard } from '@studio/routes/WorkspaceDashboardRoute/DashboardCard';
 import { ResourcesSection } from '@studio/routes/WorkspaceDashboardRoute/ResourcesSection';
-import { Sliders, Boxes } from 'lucide-react';
+import { Boxes } from 'lucide-react';
 import type { FC } from 'react';
 import { generatePath } from 'react-router-dom';
 
@@ -66,18 +65,6 @@ export const WorkspaceDashboardRoute: FC = () => {
                   actionHref={getModelCompareRoute(workspace)}
                 />
               )}
-              {/* Fine-tune a Model */}
-              {CUSTOMIZER_ENABLED && (
-                <DashboardCard
-                  icon={<Sliders className="w-8 h-8" />}
-                  title="Fine-tune a Model"
-                  description="Customize pre-trained models with your data for better performance on specific tasks."
-                  docsUrl={LINK_DOCS_STUDIO_CUSTOMIZATION}
-                  actionLabel="Fine-tune"
-                  actionHref={generatePath(ROUTES.workspace.newCustomizationJob, { workspace })}
-                />
-              )}
-
               {/* Prompt Tune a Model */}
               {CUSTOMIZER_ENABLED && (
                 <DashboardCard

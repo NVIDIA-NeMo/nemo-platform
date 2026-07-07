@@ -1,50 +1,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { CustomizationCreateJobBody } from '@nemo/sdk/vendored/customizer/zod';
 import { Slider } from '@nvidia/foundations-react-core';
 import { ComponentProps } from 'react';
-import { z } from 'zod';
 
 type SliderProps = ComponentProps<typeof Slider>;
 
-/** Training config is a union: SFT (0), distillation (1), DPO (2). We use the first option for common hyperparameters. */
-const trainingUnion = CustomizationCreateJobBody.shape.spec.shape.training;
-const trainingOptions = trainingUnion.options;
-
 /**
- * Hyperparameters zod schema extracted from the generated platform zod (SFT training variant).
- * Used by ZodFormField components to derive labels, descriptions, defaults, and validation.
- */
-export const hyperparametersSchema = trainingOptions[0];
-
-/** LoRA (PEFT) adapter config, extracted from the optional peft field of the SFT variant. */
-export const loraSchema = trainingOptions[0].shape.peft.unwrap();
-
-/** DPO training variant schema (ref_policy_kl_penalty, preference_loss_weight, etc.). */
-export const dpoSchema = trainingOptions[2];
-
-/** Distillation training variant schema (teacher_model, distillation_ratio, etc.). */
-export const distillationSchema = trainingOptions[1];
-
-/** Inferred TypeScript type for the hyperparameters form fields. */
-export type HyperparametersFields = z.infer<typeof hyperparametersSchema>;
-
-/** Inferred TypeScript type for the customization job spec (from generated zod). */
-export type CustomizationJobSpec = z.infer<typeof CustomizationCreateJobBody>['spec'];
-
-//https://docs.nvidia.com/nemo/microservices/latest/about/core-concepts/customization.html#limitations
-export const MODEL_CONFIGS_WITH_SEQUENCE_PACKING = [
-  'meta/llama-3.1-8b-instruct',
-  'meta/llama-3.1-70b-instruct',
-  'meta/llama3-70b-instruct',
-  'meta/llama-3.2-3b-instruct',
-  'meta/llama-3.2-1b',
-  'meta/llama-3.2-1b-instruct',
-];
-
-/**
- * @deprecated - Prefer using the zod schema instead
+ * @deprecated - Prefer using a zod schema instead
  */
 export interface CustomizerHyperparameters {
   batch_size: number;

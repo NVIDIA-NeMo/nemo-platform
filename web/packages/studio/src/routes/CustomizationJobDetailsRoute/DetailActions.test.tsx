@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
+import { CustomizationBackend } from '@nemo/sdk/vendored/customizer/schema';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { customizationJob1 } from '@studio/mocks/customizer/customization-jobs';
@@ -19,13 +20,17 @@ describe('DetailActions', () => {
     mockUseNavigate();
     mockUseParams({
       [ROUTE_PARAMS.workspace]: workspace1.name,
-      [ROUTE_PARAMS.customizationJobId]: customizationJob1.id,
+      [ROUTE_PARAMS.customizationJobName]: customizationJob1.name,
     });
   });
   it('should render cancel button when status is cancellable', () => {
     render(
       <TestProviders>
-        <DetailActions status={PlatformJobStatus.created} />
+        <DetailActions
+          status={PlatformJobStatus.created}
+          backend={CustomizationBackend.automodel}
+          name={customizationJob1.name}
+        />
       </TestProviders>
     );
     expect(screen.getByRole('button', { name: 'Cancel Job' })).toBeEnabled();
@@ -33,7 +38,11 @@ describe('DetailActions', () => {
   it('should render evaluate button when status is launchable', () => {
     render(
       <TestProviders>
-        <DetailActions status={PlatformJobStatus.completed} />
+        <DetailActions
+          status={PlatformJobStatus.completed}
+          backend={CustomizationBackend.automodel}
+          name={customizationJob1.name}
+        />
       </TestProviders>
     );
     expect(screen.getByRole('button', { name: 'Evaluate' })).toBeEnabled();
@@ -42,7 +51,7 @@ describe('DetailActions', () => {
     // Override the default handler with an infinite delay to capture the loading state
     server.use(
       http.post(
-        `${PLATFORM_BASE_URL}/apis/customization/v2/workspaces/:workspace/jobs/:name/cancel`,
+        `${PLATFORM_BASE_URL}/apis/customization/v2/workspaces/:workspace/:backend/jobs/:name/cancel`,
         async () => {
           await delay('infinite'); // Delay indefinitely to ensure loading state is captured
           return HttpResponse.json(customizationJob1);
@@ -53,7 +62,11 @@ describe('DetailActions', () => {
     const user = userEvent.setup();
     render(
       <TestProviders>
-        <DetailActions status={PlatformJobStatus.created} />
+        <DetailActions
+          status={PlatformJobStatus.created}
+          backend={CustomizationBackend.automodel}
+          name={customizationJob1.name}
+        />
       </TestProviders>
     );
 
@@ -69,7 +82,11 @@ describe('DetailActions', () => {
   ])('should render nothing when status is %s', (status) => {
     render(
       <TestProviders>
-        <DetailActions status={status} />
+        <DetailActions
+          status={status}
+          backend={CustomizationBackend.automodel}
+          name={customizationJob1.name}
+        />
       </TestProviders>
     );
     expect(screen.queryByRole('button', { name: 'Cancel Job' })).not.toBeInTheDocument();

@@ -37,4 +37,9 @@ def test_intake_ready_when_clickhouse_is_unavailable(
     assert any(
         "ClickHouse schema setup was not run during Intake startup" in record.message for record in caplog.records
     )
+    assert any(
+        "services/intake/scripts/spans/run_clickhouse.sh" in record.message
+        and "services/intake/README.md#local-development" in record.message
+        for record in caplog.records
+    )
     assert not any("ClickHouse readiness check failed" in record.message for record in caplog.records)
