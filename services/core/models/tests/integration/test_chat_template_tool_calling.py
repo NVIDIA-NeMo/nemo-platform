@@ -193,6 +193,7 @@ def _update_fileset_and_run_task(test_clients, model_name, metadata, tmp_path):
         name=FILESET_NAME,
         workspace=DEFAULT_WORKSPACE,
         metadata=metadata,
+        storage=None,
     )
 
     mock_files_client = MagicMock()

@@ -79,7 +79,7 @@ def test_make_fileset_creates_requested_locale_with_existing_secret(cli_sdk: NeM
     assert result.exit_code == 0, result.output
     files = client_from_platform(cli_sdk, FilesClient)
     filesets_page = files.list_filesets(workspace=WORKSPACE)
-    assert [fileset.name for fileset in filesets_page.data()] == [get_resource_name_for_locale("en_US")]
+    assert [fileset.name for fileset in filesets_page.items()] == [get_resource_name_for_locale("en_US")]
 
     fileset = files.get_fileset(name=get_resource_name_for_locale("en_US"), workspace=WORKSPACE).data()
     assert isinstance(fileset.storage, NGCStorageConfig)

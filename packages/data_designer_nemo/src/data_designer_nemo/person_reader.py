@@ -23,11 +23,10 @@ class FilesetsPersonReader(PersonReader):
     DuckDB calls into ``FilesetFileSystem`` synchronously, so the
     underlying filesystem must be in fsspec's sync mode
     (``asynchronous=False``) — fsspec then spins up its own daemon event
-    loop for sync→async bridging. ``FilesetFileSystem`` flips into
-    ``asynchronous=True`` whenever it receives an
-    :class:`AsyncNeMoPlatform`, which would break DuckDB. So when this
-    reader is constructed with an async SDK we rebuild a sync SDK from
-    the async one's base URL / headers / workspace and hand *that* to
+    loop for sync→async bridging. ``FilesetFileSystem`` sets
+    ``asynchronous=True`` when given an ``AsyncFilesClient``, which would
+    break DuckDB. So when this reader is constructed with an async SDK we
+    rebuild a sync SDK, derive a sync ``FilesClient``, and hand *that* to
     ``FilesetFileSystem``. Auth and identity propagate; fsspec stays in
     sync mode.
     """
