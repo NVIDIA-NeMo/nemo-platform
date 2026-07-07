@@ -23,19 +23,6 @@ from nemo_platform_plugin.entities import (
 # ---- in-memory fakes -------------------------------------------------------
 
 
-class _FakeFile:
-    def __init__(self, file_ref: str) -> None:
-        self.file_ref = file_ref
-
-
-class _FakeResponse:
-    def __init__(self, data: bytes) -> None:
-        self._data = data
-
-    async def read(self) -> bytes:
-        return self._data
-
-
 class _FakeFilesets:
     def __init__(self, store: dict[tuple[str, str], dict[str, bytes]]) -> None:
         self._store = store
@@ -54,12 +41,12 @@ class _FakeFiles:
         self._store = store
         self.filesets = _FakeFilesets(store)
 
-    async def _upload_file(self, *, path, body, workspace, name):
-        self._store.setdefault((workspace, name), {})[path] = bytes(body)
-        return _FakeFile(f"{workspace}/{name}#{path}")
+    async def upload_content(self, *, content, remote_path, fileset, workspace, fileset_auto_create=False):
+        self._store.setdefault((workspace, fileset), {})[remote_path] = bytes(content)
+        return object()
 
-    async def _download_file(self, path, *, workspace, name):
-        return _FakeResponse(self._store[(workspace, name)][path])
+    async def download_content(self, *, remote_path, fileset, workspace):
+        return self._store[(workspace, fileset)][remote_path]
 
 
 class _FakeSDK:

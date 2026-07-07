@@ -72,7 +72,7 @@ async def resolve_metrics_to_inline(
     resolution concerns then have *different* client requirements:
 
     * **Stored-ref loading** awaits real platform file I/O (``resolve_metric_ref`` → ``load_bundle``
-      → ``await sdk.files._download_file``), so it needs a genuine ``AsyncNeMoPlatform``. Anything
+      → ``await sdk.files.download_content(...)``), so it needs a genuine ``AsyncNeMoPlatform``. Anything
       else (``None`` or the sync client) is narrowed to ``None`` and rejected with a clear error when
       a stored ``MetricRef`` is actually present — never awaited blindly.
     * **Model-ref resolution** duck-types the client (``PlatformModelResolver`` tolerates sync or
