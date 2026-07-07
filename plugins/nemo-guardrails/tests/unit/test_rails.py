@@ -325,6 +325,25 @@ class TestBuildGuardrailsData:
         assert result.log.internal_events == expected_internal_events
         assert result.log.colang_history == expected_colang_history
 
+    def test_internal_events_with_dict_subclasses_are_json_serializable(self) -> None:
+        class AttributeDict(dict):
+            pass
+
+        response = _response(
+            internal_events=[{"event": "output_checked", "data": {"tool_calls": [AttributeDict(name="clock")]}}],
+        )
+
+        result = build_guardrails_data(
+            config_id="ws/my-config",
+            user_log_options={"internal_events": True},
+            final_generation_log=response.log,
+        )
+
+        assert result.log is not None
+        assert result.log.internal_events == [
+            {"event": "output_checked", "data": {"tool_calls": [{"name": "clock"}]}}
+        ]
+
     def test_input_only_generation_response_returns_guardrails_data_with_log(self) -> None:
         result = build_guardrails_data(
             config_id="ws/my-config",

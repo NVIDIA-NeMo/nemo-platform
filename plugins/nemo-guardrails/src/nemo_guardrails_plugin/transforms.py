@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import json
 from typing import Any, TypeAlias
 
 from nemo_platform.types.guardrail import (
@@ -62,7 +63,7 @@ class GenerationResponseMapper:
         return PlatformGenerationLog(
             activated_rails=GenerationResponseMapper.to_platform_activated_rails(log.activated_rails),
             llm_calls=GenerationResponseMapper.to_platform_llm_calls(log.llm_calls),
-            internal_events=log.internal_events,
+            internal_events=GenerationResponseMapper.to_platform_internal_events(log.internal_events),
             colang_history=log.colang_history,
             stats=GenerationResponseMapper.to_platform_generation_stats(log.stats),
         )
@@ -94,3 +95,16 @@ class GenerationResponseMapper:
             return None
 
         return [PlatformLLMCallInfo.model_validate(llm_call.model_dump(exclude_none=True)) for llm_call in llm_calls]
+
+    @staticmethod
+    def to_platform_internal_events(events: list[dict[str, object]] | None) -> list[dict[str, object]] | None:
+        """Translate nemoguardrails internal events into JSON-compatible platform log data."""
+        if events is None:
+            return None
+
+        # Tool-call events can contain dict subclasses (for example AttributeDict)
+        # from nemoguardrails internals. Normalize them to plain JSON data before
+        # validating into the platform SDK model.
+        return PlatformGenerationLog.model_validate(
+            {"internal_events": json.loads(json.dumps(events))}
+        ).internal_events
