@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { DraggableAttributes } from '@dnd-kit/core';
 import { useInnerDataViewContext } from '@nemo/common/src/components/DataView/internal/context';
 import { useHandleResize } from '@nemo/common/src/components/DataView/internal/hooks/useResizableColumns';
 import type { IntentionalAny } from '@nemo/common/src/components/DataView/internal/types';
@@ -8,7 +9,6 @@ import { getHeaderId } from '@nemo/common/src/components/DataView/internal/utils
 import { Button, TableHeaderCell } from '@nvidia/foundations-react-core';
 import { childrenToText } from '@nvidia/foundations-react-core/lib';
 import { flexRender, type Header, type SortDirection } from '@tanstack/react-table';
-import type { DraggableAttributes } from '@dnd-kit/core';
 import classnames from 'classnames';
 import { ArrowUp, ArrowUpDown, GripVertical } from 'lucide-react';
 import type { ComponentProps, JSX, ReactNode, Ref } from 'react';
