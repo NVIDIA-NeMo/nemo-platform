@@ -137,11 +137,11 @@ export NMP_K8S_ITEST_NAMESPACE=<your-namespace>  # defaults to "default"
 uv run pytest plugins/nemo-deployments/tests/integration/backends/k8s -v
 ```
 
-Tests authenticate with your ambient kubeconfig identity, not the restricted
-`nmp-core` controller ServiceAccount, so they validate backend behavior against
-a real API server but do **not** exercise the RBAC scope granted by the deploy
-chart's `controller-role.yaml`. That still needs a manual smoke test of the
-deployed platform pod.
+Tests authenticate with whatever kubeconfig identity is currently active in
+your shell, not the restricted `nmp-core` controller ServiceAccount, so they
+validate backend behavior against a real API server but do **not** exercise
+the RBAC scope granted by the deploy chart's `controller-role.yaml`. That
+still needs a manual smoke test of the deployed platform pod.
 
 `test_reconcile_k8s.py` covers prerequisite gating (one deployment blocking on
 another) but not PVC-mount gating: kind's default `local-path` StorageClass uses
