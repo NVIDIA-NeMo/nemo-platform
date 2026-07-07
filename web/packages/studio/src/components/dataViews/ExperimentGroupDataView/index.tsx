@@ -30,6 +30,7 @@ import { deriveEvaluatorNames } from '@studio/components/dataViews/ExperimentGro
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getExperimentDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
+import { useLocalStorage } from '@studio/util/hooks/useLocalStorage';
 import { Columns3, Pin } from 'lucide-react';
 import { type ComponentProps, type FC, useCallback, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -118,17 +119,11 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
   const experimentGroupName = group.name;
   const experimentGroupId = group.id;
 
-  // Persist column order to localStorage so it survives page refreshes.
-  // Keyed by experiment group ID so each group has its own saved order.
-  const columnOrderStorageKey = `nemo-studio:experiment-group-columns:${experimentGroupId}`;
-  const savedColumnOrder = useMemo(() => {
-    try {
-      const raw = localStorage.getItem(columnOrderStorageKey);
-      return raw ? (JSON.parse(raw) as string[]) : [];
-    } catch {
-      return [];
-    }
-  }, [columnOrderStorageKey]);
+  // Persist column order to localStorage, keyed by experiment group ID.
+  const [savedColumnOrder, saveColumnOrder] = useLocalStorage<string[]>(
+    `nemo-studio:experiment-group-columns:${experimentGroupId}`,
+    []
+  );
 
   // Seed the sort from default_sort so its column header reflects the order on load. Memoized so the
   // reference is stable across renders (until default_sort changes).
@@ -140,19 +135,14 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
     // Keep the pin toggle reachable while horizontally scrolling this wide table.
     columnPinning: { left: ['pin'] },
     filterFieldMap: getExperimentFilterField,
-    columnOrder: savedColumnOrder,
+    columnOrder: savedColumnOrder ?? [],
   });
 
-  // Write column order to localStorage whenever it changes.
+  // Write column order to localStorage whenever it changes after the first reorder.
   const { columnOrder } = dataViewState;
   useEffect(() => {
-    if (columnOrder.state.length === 0) return;
-    try {
-      localStorage.setItem(columnOrderStorageKey, JSON.stringify(columnOrder.state));
-    } catch {
-      // Quota exceeded or storage unavailable — order resets on next load, no crash.
-    }
-  }, [columnOrder.state, columnOrderStorageKey]);
+    if (columnOrder.state.length > 0) saveColumnOrder(columnOrder.state);
+  }, [columnOrder.state, saveColumnOrder]);
 
   const page = dataViewState.pagination.state.pageIndex + 1;
   const pageSize = dataViewState.pagination.state.pageSize;
