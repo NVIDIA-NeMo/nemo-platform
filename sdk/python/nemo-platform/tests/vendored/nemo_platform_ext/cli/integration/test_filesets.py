@@ -6,12 +6,11 @@
 from pathlib import Path
 
 import pytest
-from nemo_platform_plugin.files.types import CreateFilesetRequest
-from nemo_platform_plugin.files.client import FilesClient
-from nemo_platform_plugin.client.adapter import client_from_platform
-
 from nemo_platform import NeMoPlatform
 from nemo_platform.cli.app import app
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.files.types import CreateFilesetRequest
 
 from ..utils import assert_exit_code
 from .conftest import NmpCliRunner

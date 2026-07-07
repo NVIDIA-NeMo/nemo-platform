@@ -4,26 +4,24 @@
 # NOTE: This file is auto-generated
 from __future__ import annotations
 
-from typing import Literal, Annotated
+from typing import Annotated, Literal
 
 import typer
-from nemo_platform_plugin.files.types import CreateFilesetRequest, UpdateFilesetRequest, ListFilesetsQueryParams
-from nemo_platform_plugin.files.client import FilesClient
-from nemo_platform_plugin.client.adapter import client_from_platform
 
 from nemo_platform.cli.core.api import build_kwargs, merge_filter_dict
+from nemo_platform.cli.core.code_generator import handle_code_generation
+from nemo_platform.cli.core.context import CLIContext
+from nemo_platform.cli.core.errors import handle_errors
+from nemo_platform.cli.core.formatters import Column, check_output_columns_with_format, format_output
+from nemo_platform.cli.core.help_formatter import collect_warnings, create_typer_app
+from nemo_platform.cli.core.pagination import PaginationType, fetch_all_pages, warn_if_more_pages
+from nemo_platform.cli.core.stdin_utils import read_data_input_with_flags, read_payload, validate_required_fields
 from nemo_platform.cli.core.types import (
+    EntityOutputFormatOption,
+    ListOutputFormatOption,
     NoTruncateOption,
     OutputColumnsOption,
-    ListOutputFormatOption,
-    EntityOutputFormatOption,
 )
-from nemo_platform.cli.core.errors import handle_errors
-from nemo_platform.cli.core.context import CLIContext
-from nemo_platform.cli.core.formatters import Column, format_output, check_output_columns_with_format
-from nemo_platform.cli.core.stdin_utils import read_payload, validate_required_fields, read_data_input_with_flags
-from nemo_platform.cli.core.code_generator import handle_code_generation
-from nemo_platform.cli.core.help_formatter import add_warning, collect_warnings, create_typer_app
 
 app = create_typer_app(name="filesets", help="Manage filesets")
 
@@ -141,14 +139,7 @@ def create_filesets(
         return
 
     client = state.get_client()
-    files = client_from_platform(client, FilesClient)
-    exist_ok_val = all_kwargs.pop("exist_ok", None)
-    workspace_val = all_kwargs.pop("workspace", None)
-    result = files.create_fileset(
-        body=CreateFilesetRequest(**all_kwargs),
-        **({"workspace": workspace_val} if workspace_val is not None else {}),
-        **({"exist_ok": exist_ok_val} if exist_ok_val is not None else {}),
-    ).data()
+    result = client.files.filesets.create(**all_kwargs)
 
     format_output(
         result,
@@ -176,12 +167,11 @@ def delete_filesets(
     files."""
     state: CLIContext = ctx.obj
     client = state.get_client()
-    files = client_from_platform(client, FilesClient)
 
     kwargs = build_kwargs(
         workspace=workspace,
     )
-    files.delete_fileset(name=name, **kwargs)
+    client.files.filesets.delete(name, **kwargs)
 
     typer.echo("✓ Deleted successfully")
 
@@ -257,18 +247,17 @@ def list_filesets(
         return
 
     client = state.get_client()
-    files = client_from_platform(client, FilesClient)
-    workspace_val = kwargs.pop("workspace", None)
-    query_params = ListFilesetsQueryParams(**kwargs) if kwargs else None
-    response = files.list_filesets(
-        **({"workspace": workspace_val} if workspace_val is not None else {}),
-        **({"query_params": query_params} if query_params is not None else {}),
-    )
-
+    path_args = ()
+    pagination_type = PaginationType.PAGE_NUMBER
     if all_pages:
-        items = list(response.items())
+        items = fetch_all_pages(
+            client.files.filesets.list,
+            path_args=path_args,
+            body_args=kwargs,
+            pagination_type=pagination_type,
+        )
     else:
-        items = response
+        items = client.files.filesets.list(*path_args, **kwargs)
 
     format_output(
         items,
@@ -279,9 +268,7 @@ def list_filesets(
         timestamp_format=state.get_timestamp_format(),
     )
     if not all_pages:
-        page_result = response.page()
-        if page_result.total_pages is not None and page_result.total_pages > 1:
-            add_warning("More pages of results are available! Use --all-pages to fetch all results.")
+        warn_if_more_pages(items, pagination_type)
 
 
 @app.command("get")
@@ -306,8 +293,7 @@ def retrieve_filesets(
         return
 
     client = state.get_client()
-    files = client_from_platform(client, FilesClient)
-    result = files.get_fileset(name=name, **kwargs).data()
+    result = client.files.filesets.retrieve(name, **kwargs)
 
     format_output(
         result,
@@ -389,14 +375,7 @@ def update_filesets(
         return
 
     client = state.get_client()
-    files = client_from_platform(client, FilesClient)
-    name_val = all_kwargs.pop("name")
-    workspace_val = all_kwargs.pop("workspace", None)
-    result = files.update_fileset(
-        name=name_val,
-        **({"workspace": workspace_val} if workspace_val is not None else {}),
-        body=UpdateFilesetRequest(**all_kwargs),
-    ).data()
+    result = client.files.filesets.update(**all_kwargs)
 
     format_output(
         result,

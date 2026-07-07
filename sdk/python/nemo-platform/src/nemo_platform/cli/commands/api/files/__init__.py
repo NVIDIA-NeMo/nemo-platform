@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import FilesClient
 
 from nemo_platform.cli.commands.api.files import filesets, otlp
 from nemo_platform.cli.core.context import CLIContext
@@ -15,8 +17,6 @@ from nemo_platform.cli.core.errors import handle_errors
 from nemo_platform.cli.core.formatters import Column, check_output_columns_with_format, format_output
 from nemo_platform.cli.core.help_formatter import collect_warnings, create_typer_app
 from nemo_platform.cli.core.types import ListOutputFormatOption, NoTruncateOption, OutputColumnsOption
-from nemo_platform_plugin.client.adapter import client_from_platform
-from nemo_platform_plugin.files.client import FilesClient
 
 app = create_typer_app(name="files", help="Manage files")
 
