@@ -439,6 +439,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
           requestStatus: isLoading ? 'loading' : undefined,
         },
         DataViewTableContent: {
+          enableColumnReordering: true,
           renderEmptyState: ({ hasFiltersApplied, hasSearchApplied }) =>
             hasFiltersApplied || hasSearchApplied ? null : (
               <Empty experimentGroupName={experimentGroupName} />
