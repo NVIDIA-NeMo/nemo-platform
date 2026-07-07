@@ -197,6 +197,10 @@ def setup_mock_provider(sdk: NeMoPlatform, test_case: GuardrailsChatTestCase) ->
             ],
             test_case.content_safety_model_ref: _content_safety_responses(test_case),
         },
+        # Guardrails resolves task-model routes after the mock provider helper
+        # returns, while IGW warms the guarded VM middleware. Keep these
+        # test-created passthrough VMs out of controller orphan cleanup.
+        should_autoprovision_virtual_model=False,
     )
 
 
