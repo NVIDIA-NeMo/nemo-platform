@@ -340,9 +340,7 @@ class TestBuildGuardrailsData:
         )
 
         assert result.log is not None
-        assert result.log.internal_events == [
-            {"event": "output_checked", "data": {"tool_calls": [{"name": "clock"}]}}
-        ]
+        assert result.log.internal_events == [{"event": "output_checked", "data": {"tool_calls": [{"name": "clock"}]}}]
 
     def test_input_only_generation_response_returns_guardrails_data_with_log(self) -> None:
         result = build_guardrails_data(

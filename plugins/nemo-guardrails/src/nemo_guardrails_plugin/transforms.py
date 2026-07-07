@@ -105,6 +105,4 @@ class GenerationResponseMapper:
         # Tool-call events can contain dict subclasses (for example AttributeDict)
         # from nemoguardrails internals. Normalize them to plain JSON data before
         # validating into the platform SDK model.
-        return PlatformGenerationLog.model_validate(
-            {"internal_events": json.loads(json.dumps(events))}
-        ).internal_events
+        return PlatformGenerationLog.model_validate({"internal_events": json.loads(json.dumps(events))}).internal_events
