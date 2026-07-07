@@ -15,8 +15,8 @@ to our own API.
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform._exceptions import NotFoundError, PermissionDeniedError
 from nemo_platform_plugin.client.adapter import client_from_platform
-from nemo_platform_plugin.client.errors import NotFoundError as FilesNotFoundError
-from nemo_platform_plugin.client.errors import PermissionDeniedError as FilesPermissionDeniedError
+from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
+from nemo_platform_plugin.client.errors import PermissionDeniedError as ClientPermissionDeniedError
 from nemo_platform_plugin.files.client import AsyncFilesClient
 from nemo_platform_plugin.files.types import FilesetOutput
 from nmp.common.auth import AuthClient
@@ -54,9 +54,9 @@ async def check_fileset_access(nmp_sdk: AsyncNeMoPlatform, fileset: str, workspa
     try:
         fs = (await files.get_fileset(workspace=fs_workspace, name=fs_name)).data()
         return fs
-    except FilesPermissionDeniedError:
+    except ClientPermissionDeniedError:
         raise PermissionError(f"Access denied to fileset '{fileset}'") from None
-    except FilesNotFoundError:
+    except ClientNotFoundError:
         raise ValueError(f"Fileset '{fileset}' not found in workspace '{fs_workspace}'") from None
 
 

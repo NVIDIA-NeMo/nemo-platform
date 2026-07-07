@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from nemo_platform import AsyncNeMoPlatform, NotFoundError, PermissionDeniedError
 from nemo_platform_plugin.client.adapter import client_from_platform
-from nemo_platform_plugin.client.errors import NotFoundError as FilesNotFoundError
+from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
 from nemo_platform_plugin.files.client import AsyncFilesClient
 from nemo_platform_plugin.files.types import CreateFilesetRequest
 from nmp.common.api.filter import ComparisonOperation, FilterOperation, FilterOperator, LogicalOperation
@@ -459,7 +459,7 @@ class JobDispatcher:
             try:
                 files = client_from_platform(self.sdk, AsyncFilesClient)
                 await files.delete_fileset(name=job_entity.fileset, workspace=workspace)
-            except FilesNotFoundError:
+            except ClientNotFoundError:
                 logger.warning("Job fileset not found during deletion, may have been cleaned up already", extra=extras)
 
             logger.info(

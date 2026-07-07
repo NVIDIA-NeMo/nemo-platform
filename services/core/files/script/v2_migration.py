@@ -46,7 +46,7 @@ from typing import Any, Literal
 from huggingface_hub import HfApi
 from nemo_platform import ConflictError, NeMoPlatform, NotFoundError
 from nemo_platform_plugin.client.adapter import client_from_platform
-from nemo_platform_plugin.client.errors import NotFoundError as FilesNotFoundError
+from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
 from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.files.types import CreateFilesetRequest, ListFilesetsQueryParams
 
@@ -345,7 +345,7 @@ def _ensure_fileset(
     try:
         files.get_fileset(name=fileset, workspace=workspace)
         return "exists"
-    except FilesNotFoundError:
+    except ClientNotFoundError:
         files.create_fileset(body=CreateFilesetRequest(name=fileset), workspace=workspace)
         return "created"
 

@@ -39,7 +39,7 @@ from nemo_platform.types.inference import (
 from nemo_platform.types.models import LoraParam, ModelEntity
 from nemo_platform.types.shared_params.tool_call_config import ToolCallConfig as ToolCallConfigParam
 from nemo_platform_plugin.client.adapter import client_from_platform
-from nemo_platform_plugin.client.errors import InternalServerError as FilesInternalServerError
+from nemo_platform_plugin.client.errors import InternalServerError as ClientInternalServerError
 from nemo_platform_plugin.files.client import FilesClient
 from nmp.common.sdk_factory import get_task_sdk
 from nmp.customization_common.schemas.model_entity import (
@@ -177,7 +177,7 @@ class ModelEntityRunner:
             InternalServerError,
             APITimeoutError,
             APIConnectionError,
-            FilesInternalServerError,
+            ClientInternalServerError,
             httpx.TimeoutException,
             httpx.ConnectError,
         ):

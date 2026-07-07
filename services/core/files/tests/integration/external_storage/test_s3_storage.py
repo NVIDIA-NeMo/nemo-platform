@@ -37,7 +37,7 @@ from aiobotocore.session import get_session
 from botocore.exceptions import ClientError
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
-from nemo_platform_plugin.client.errors import NemoHTTPError as FilesBadRequestError
+from nemo_platform_plugin.client.errors import NemoHTTPError as ClientBadRequestError
 from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.files.types import CreateFilesetRequest, FilesetOutput
 from nmp.common.auth import AuthClient, get_auth_client
@@ -173,7 +173,7 @@ class TestS3StorageBackend:
         access_key_secret, secret_key_secret = s3_credentials
 
         files = client_from_platform(sdk, FilesClient)
-        with pytest.raises(FilesBadRequestError) as exc_info:
+        with pytest.raises(ClientBadRequestError) as exc_info:
             files.create_fileset(
                 workspace=DEFAULT_WORKSPACE,
                 body=CreateFilesetRequest(
@@ -200,7 +200,7 @@ class TestS3StorageBackend:
 
         try:
             files = client_from_platform(sdk, FilesClient)
-            with pytest.raises(FilesBadRequestError) as exc_info:
+            with pytest.raises(ClientBadRequestError) as exc_info:
                 files.create_fileset(
                     workspace=DEFAULT_WORKSPACE,
                     body=CreateFilesetRequest(
@@ -414,9 +414,9 @@ class TestS3StorageBackend:
             files_client.delete_fileset(name=fileset.name, workspace=fileset.workspace)
 
             # Verify fileset is gone
-            from nemo_platform_plugin.client.errors import NotFoundError as FilesNotFoundError
+            from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
 
-            with pytest.raises(FilesNotFoundError):
+            with pytest.raises(ClientNotFoundError):
                 files_client.get_fileset(name=name, workspace=DEFAULT_WORKSPACE)
 
         except Exception:

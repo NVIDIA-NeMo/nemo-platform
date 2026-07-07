@@ -22,7 +22,7 @@ from huggingface_hub import snapshot_download
 from nemo_platform import NeMoPlatform
 from nemo_platform.filesets import FilesetFileSystem
 from nemo_platform_plugin.client.adapter import client_from_platform
-from nemo_platform_plugin.client.errors import NemoHTTPError as FilesBadRequestError
+from nemo_platform_plugin.client.errors import NemoHTTPError as ClientBadRequestError
 from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.files.types import CreateFilesetRequest
 from nmp.core.files.app.backends.base import StorageImpl
@@ -165,7 +165,7 @@ class TestHuggingfaceStorageBackend:
         name = f"hf-test-{uuid.uuid4().hex[:8]}"
 
         files = client_from_platform(sdk, FilesClient)
-        with pytest.raises(FilesBadRequestError) as exc_info:
+        with pytest.raises(ClientBadRequestError) as exc_info:
             files.create_fileset(
                 workspace="default",
                 body=CreateFilesetRequest(

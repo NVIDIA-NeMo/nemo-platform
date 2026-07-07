@@ -12,8 +12,8 @@ from nemo_platform import AsyncNeMoPlatform
 from nemo_platform._exceptions import NotFoundError, PermissionDeniedError
 from nemo_platform.types.models import ModelEntity
 from nemo_platform_plugin.client.adapter import client_from_platform
-from nemo_platform_plugin.client.errors import NotFoundError as FilesNotFoundError
-from nemo_platform_plugin.client.errors import PermissionDeniedError as FilesPermissionDeniedError
+from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
+from nemo_platform_plugin.client.errors import PermissionDeniedError as ClientPermissionDeniedError
 from nemo_platform_plugin.files.client import AsyncFilesClient
 from nmp.common.entities.utils import parse_entity_ref
 from nmp.customization_common.schemas.file_io import FileSetRef
@@ -31,9 +31,9 @@ async def check_dataset_access(sdk: AsyncNeMoPlatform, dataset_uri: str, default
     files = client_from_platform(sdk, AsyncFilesClient)
     try:
         await files.get_fileset(workspace=workspace, name=ref.name)
-    except FilesPermissionDeniedError:
+    except ClientPermissionDeniedError:
         raise PermissionError(f"Access denied to dataset fileset '{workspace}/{ref.name}'") from None
-    except FilesNotFoundError:
+    except ClientNotFoundError:
         raise ValueError(
             f"Dataset fileset '{ref.name}' not found in workspace '{workspace}'. Verify the dataset exists."
         ) from None

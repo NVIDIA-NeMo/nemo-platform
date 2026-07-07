@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from nemo_platform import NotFoundError
-from nemo_platform_plugin.client.errors import NotFoundError as FilesNotFoundError
-from nemo_platform_plugin.client.errors import PermissionDeniedError as FilesPermissionDeniedError
+from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
+from nemo_platform_plugin.client.errors import PermissionDeniedError as ClientPermissionDeniedError
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nemo_safe_synthesizer.config.replace_pii import ClassifyConfig, Globals, PiiReplacerConfig, StepDefinition
 from nemo_safe_synthesizer_plugin.api.v2.jobs import endpoints
@@ -89,7 +89,7 @@ async def test_job_config_compiler_data_source_not_found(mock_sdk, mock_files_cl
     mock_response.status_code = 404
     mock_response.json.return_value = {"detail": "not found"}
     mock_response.text = "not found"
-    mock_files_client.get_fileset.side_effect = FilesNotFoundError(mock_response)
+    mock_files_client.get_fileset.side_effect = ClientNotFoundError(mock_response)
 
     with pytest.raises(PlatformJobCompilationError, match="Could not find fileset"):
         await _compile(_make_spec(), mock_sdk)
@@ -101,7 +101,7 @@ async def test_job_config_compiler_data_source_permission_denied(mock_sdk, mock_
     mock_response.status_code = 403
     mock_response.json.return_value = {"detail": "denied"}
     mock_response.text = "denied"
-    mock_files_client.get_fileset.side_effect = FilesPermissionDeniedError(mock_response)
+    mock_files_client.get_fileset.side_effect = ClientPermissionDeniedError(mock_response)
 
     with pytest.raises(PermissionError, match="Access denied to fileset"):
         await _compile(_make_spec(), mock_sdk)

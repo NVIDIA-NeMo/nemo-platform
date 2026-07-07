@@ -33,7 +33,7 @@ from nemo_platform_plugin.client.errors import (
     ConflictError,
 )
 from nemo_platform_plugin.client.errors import (
-    InternalServerError as FilesInternalServerError,
+    InternalServerError as ClientInternalServerError,
 )
 from nemo_platform_plugin.client.types import RetryPolicy
 from nemo_platform_plugin.files.client import FilesClient
@@ -400,7 +400,7 @@ class FileIORunner:
                 InternalServerError,
                 APITimeoutError,
                 APIConnectionError,
-                FilesInternalServerError,
+                ClientInternalServerError,
                 httpx.TimeoutException,
                 httpx.ConnectError,
             )
