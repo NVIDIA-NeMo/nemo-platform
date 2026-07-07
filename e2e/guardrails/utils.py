@@ -8,7 +8,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from nemo_platform import NeMoPlatform, NotFoundError
+from nemo_platform import APIStatusError, NeMoPlatform
 from nemo_platform.types.inference import MiddlewareCallParam
 from nmp.testing import MockProviderResponse, add_mock_provider
 
@@ -182,14 +182,15 @@ def setup_mock_provider(sdk: NeMoPlatform, test_case: GuardrailsChatTestCase) ->
         sdk,
         workspace=test_case.workspace,
         name=unique_name("gr-provider"),
-        # `served_models` registers the model by bare name; the mock provider already
-        # belongs to `test_case.workspace`.
+        # Register provider model entities by bare name; the provider already belongs
+        # to `test_case.workspace`, and `add_mock_provider` expands these to refs.
         served_models={
             test_case.backend_model_name: test_case.backend_model_name,
             test_case.content_safety_model_name: test_case.content_safety_model_name,
         },
-        # `mock_response_body_by_model` maps the request body's exact `model` value,
-        # which is the workspace-qualified model ref, to a mock response(s).
+        # Mock responses are selected by exact `body["model"]`. In this test, both
+        # the app LLM and Guardrails content-safety calls go through IGW using model
+        # entity refs, so the mock response map is keyed by `workspace/model`.
         mock_response_body_by_model={
             test_case.backend_model_ref: [
                 MockProviderResponse(response_body=_chat_completion(BACKEND_RESPONSE)),
@@ -197,7 +198,6 @@ def setup_mock_provider(sdk: NeMoPlatform, test_case: GuardrailsChatTestCase) ->
             test_case.content_safety_model_ref: _content_safety_responses(test_case),
         },
     )
-    _wait_for_virtual_model(sdk, test_case.workspace, test_case.content_safety_model_name)
 
 
 def create_guarded_virtual_model(
@@ -228,7 +228,7 @@ def create_guarded_virtual_model(
         request_middleware=[middleware_call],
         response_middleware=[middleware_call],
     )
-    _wait_for_virtual_model(sdk, test_case.workspace, test_case.virtual_model_name)
+    _wait_for_guarded_virtual_model(sdk, test_case)
 
 
 def post_chat_completion(
@@ -346,30 +346,53 @@ def _content_safety_responses(test_case: GuardrailsChatTestCase) -> list[MockPro
     return responses
 
 
-def _wait_for_virtual_model(
+def _wait_for_guarded_virtual_model(
     sdk: NeMoPlatform,
-    workspace: str,
-    name: str,
+    test_case: GuardrailsChatTestCase,
     timeout: float = 60,
     poll_interval: float = 0.5,
 ) -> None:
+    """Wait until the guarded VM route is cached with its Guardrails middleware.
+
+    E2E runs against a separate IGW process. Creating the VM persists the entity,
+    but the VM is not usable with middleware until IGW's background cache refresh
+    loads it into VirtualModelCache and resolves its Guardrails config into the
+    middleware registry.
+
+    To ensure the VM is ready to serve requests, use a request that Guardrails
+    rejects during request parsing, before any rail or backend inference runs.
+    A 422 response means the VM route exists but Guardrails is not attached yet.
+    """
     start = time.time()
     last_error: Exception | None = None
+    probe_body = _chat_body(
+        test_case,
+        extra={"guardrails": {"config_id": test_case.config_ref}},
+    )
 
     while time.time() - start < timeout:
         try:
-            sdk.inference.gateway.model.get(
-                "v1/models",
-                name=name,
-                workspace=workspace,
+            sdk.inference.gateway.model.post(
+                "v1/chat/completions",
+                name=test_case.virtual_model_name,
+                workspace=test_case.workspace,
+                body=probe_body,
             )
-            return
-        except NotFoundError as exc:
+        except APIStatusError as exc:
             last_error = exc
-            time.sleep(poll_interval)
+            if exc.status_code == 422:
+                return
+            if exc.status_code in {404, 503}:
+                time.sleep(poll_interval)
+                continue
+            raise
+
+        last_error = RuntimeError("Guarded VM routed without rejecting unsupported Guardrails request config")
+        time.sleep(poll_interval)
 
     raise TimeoutError(
-        f"VirtualModel {workspace}/{name} was not visible to IGW after {timeout}s. Last error: {last_error}"
+        f"Guarded VirtualModel {test_case.workspace}/{test_case.virtual_model_name} "
+        f"was not ready after {timeout}s. Last error: {last_error}"
     )
 
 
