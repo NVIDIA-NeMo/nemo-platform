@@ -125,13 +125,16 @@ def _match_path_parts(path_parts: tuple[str, ...], pattern_parts: tuple[str, ...
 
 
 async def _download_fileset_ref(
-    sdk: AsyncNeMoPlatform,
+    sdk: AsyncNeMoPlatform | NeMoPlatform,
     dataset: FilesetRef,
     destination: str,
     recursive: bool = True,
+    *,
+    fs: FilesetFileSystem | None = None,
 ) -> Path:
-    files_client = client_from_platform(sdk, AsyncFilesClient)
-    fs = FilesetFileSystem(client=files_client)
+    if fs is None:
+        files_client = client_from_platform(sdk, AsyncFilesClient)
+        fs = FilesetFileSystem(client=files_client)
     ref = dataset.root
 
     if "#" in ref:
@@ -144,6 +147,7 @@ async def _download_fileset_ref(
                 FilesetRef(root=base_path),
                 destination,
                 recursive=recursive,
+                fs=fs,
             )
 
         base_dest = _safe_child_path(Path(destination), base_path)
@@ -182,7 +186,7 @@ def _download_fileset_ref_sync(
 ) -> Path:
     files_client = client_from_platform(sdk, FilesClient)
     fs = FilesetFileSystem(client=files_client)
-    result = fsspec.asyn.sync(fs.loop, _download_fileset_ref, sdk, dataset, destination, recursive)
+    result = fsspec.asyn.sync(fs.loop, _download_fileset_ref, sdk, dataset, destination, recursive, fs=fs)
     if result is None:
         raise RuntimeError(f"FilesetRef download returned no path for dataset {dataset.root!r}")
     return result

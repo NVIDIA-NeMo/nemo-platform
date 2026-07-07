@@ -170,14 +170,9 @@ class BaseFilesetFileManager:
         except FileNotFoundError:
             if self.ensure_fileset_exists:
                 logger.info(f"Creating new fileset: [{self.fileset_name}] in workspace [{self.workspace}]")
-                if isinstance(self.sdk, AsyncNeMoPlatform):
-                    files = client_from_platform(self.sdk, AsyncFilesClient)
-                    await files.create_fileset(
-                        body=CreateFilesetRequest(name=self.fileset_name), workspace=self.workspace
-                    )
-                else:
-                    files = client_from_platform(self.sdk, FilesClient)
-                    files.create_fileset(body=CreateFilesetRequest(name=self.fileset_name), workspace=self.workspace)
+                await self._fs._client.create_fileset(
+                    body=CreateFilesetRequest(name=self.fileset_name), workspace=self.workspace
+                )
             else:
                 raise FileStorageDoesNotExist(
                     f"Fileset [{self.fileset_name}] in workspace [{self.workspace}] does not exist."
