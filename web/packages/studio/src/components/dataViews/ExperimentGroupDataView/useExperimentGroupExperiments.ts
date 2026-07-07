@@ -41,7 +41,8 @@ export interface UseExperimentGroupExperimentsParams {
   search: string;
   page: number;
   pageSize: number;
-  sort: ListExperimentsSortParam;
+  /** Omit (undefined) when no column sort is active; the API then defaults to -created_at. */
+  sort?: ListExperimentsSortParam;
 }
 
 export interface ExperimentGroupExperiments {

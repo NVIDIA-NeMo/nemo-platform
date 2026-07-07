@@ -15,11 +15,10 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 from datetime import datetime
 
 from ..._models import BaseModel
-from .sort_criterion import SortCriterion
 
 __all__ = ["ExperimentGroupResponse"]
 
@@ -29,13 +28,13 @@ class ExperimentGroupResponse(BaseModel):
 
     id: str
 
+    default_sort: str
+
     name: str
 
     workspace: str
 
     created_at: Optional[datetime] = None
-
-    default_sort: Optional[List[SortCriterion]] = None
 
     description: Optional[str] = None
 

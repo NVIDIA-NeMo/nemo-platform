@@ -45,6 +45,60 @@ def test_compile_pvc_basic():
     assert pvc.spec.storage_class_name is None
 
 
+def test_model_labels_apply_to_raw_k8s_object_metadata():
+    labels = {"example.com/test-label": "A", "example.com/test-suite": "B"}
+
+    pvc = c.compile_pvc(
+        resource_name="md-default-qwen",
+        workspace="default",
+        name="qwen",
+        engine="vllm",
+        disk_size="50Gi",
+        extra_labels=labels,
+    )
+    job = c.compile_puller_job(
+        resource_name="md-default-qwen",
+        workspace="default",
+        name="qwen",
+        engine="vllm",
+        image="hf-cli:25.10",
+        container_args=["download", "default/qwen", "--local-dir", "/model-store"],
+        extra_labels=labels,
+    )
+    deployment = c.compile_deployment(
+        resource_name="md-default-qwen",
+        workspace="default",
+        name="qwen",
+        engine="vllm",
+        image="vllm:v1",
+        args=["default/qwen"],
+        health_path="/v1/health/ready",
+        extra_labels=labels,
+    )
+    service = c.compile_service(
+        resource_name="md-default-qwen",
+        workspace="default",
+        name="qwen",
+        engine="vllm",
+        extra_labels=labels,
+    )
+    assert pvc.metadata is not None and pvc.metadata.labels is not None
+    assert job.metadata is not None and job.metadata.labels is not None
+    assert deployment.metadata is not None and deployment.metadata.labels is not None
+    assert (
+        deployment.spec is not None
+        and deployment.spec.template is not None
+        and deployment.spec.template.metadata is not None
+        and deployment.spec.template.metadata.labels is not None
+    )
+    assert service.metadata is not None and service.metadata.labels is not None
+    assert pvc.metadata.labels["example.com/test-label"] == "A"
+    assert job.metadata.labels["example.com/test-suite"] == "B"
+    assert deployment.metadata.labels["example.com/test-label"] == "A"
+    assert deployment.spec.template.metadata.labels["example.com/test-suite"] == "B"
+    assert service.metadata.labels["example.com/test-label"] == "A"
+
+
 def test_compile_pvc_storage_class_and_model_source():
     pvc = c.compile_pvc(
         resource_name="md-default-qwen",

@@ -3716,16 +3716,15 @@ paths:
             an experiment attribute (name, created_at, updated_at, pinned_at) or by
             an aggregate metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or
             evaluators.<name>.<stat>, where <stat> is one of mean, median, p90, p95,
-            p99, sum, count. When omitted, the group''s configured default sort is
-            used (falling back to -created_at), with pinned experiments first.'
+            p99, sum, count. When omitted, defaults to -created_at with pinned experiments
+            first.'
           title: Sort
           type: string
         description: 'Field to sort by; prefix with ''-'' for descending. Sort by
           an experiment attribute (name, created_at, updated_at, pinned_at) or by
           an aggregate metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>,
           where <stat> is one of mean, median, p90, p95, p99, sum, count. When omitted,
-          the group''s configured default sort is used (falling back to -created_at),
-          with pinned experiments first.'
+          defaults to -created_at with pinned experiments first.'
       - in: query
         name: filter
         style: deepObject
@@ -10472,14 +10471,13 @@ components:
           additionalProperties: true
           type: object
         default_sort:
+          type: string
           title: Default Sort
-          description: 'Ordered default sort (priority order; first is primary, rest
-            are tiebreakers) for this group''s experiments list. Each field must be
-            a numeric rollup metric: run_count, cost_usd.<stat>, latency_ms.<stat>,
-            or evaluators.<name>.<stat>.'
-          items:
-            $ref: '#/components/schemas/SortCriterion'
-          type: array
+          description: Default sort for this group's experiments list, as a `sort`-param
+            string (leading '-' = descending); defaults to '-created_at'. Accepts
+            any field the experiments list `sort` param does; clients apply it as
+            the list `sort` param.
+          default: -created_at
       additionalProperties: false
       type: object
       required:
@@ -10511,10 +10509,8 @@ components:
           additionalProperties: true
           type: object
         default_sort:
+          type: string
           title: Default Sort
-          items:
-            $ref: '#/components/schemas/SortCriterion'
-          type: array
         created_at:
           title: Created At
           type: string
@@ -10533,6 +10529,7 @@ components:
       - id
       - name
       - workspace
+      - default_sort
       title: ExperimentGroupResponse
       description: ExperimentGroup as served by the API.
     ExperimentGroupResponsesPage:
@@ -17113,27 +17110,6 @@ components:
       - window_size
       title: SlidingWindowConfig
       description: Sliding window attention configuration.
-    SortCriterion:
-      properties:
-        field:
-          type: string
-          title: Field
-          description: Rollup-metric sort path, e.g. cost_usd.mean, latency_ms.p95,
-            or evaluators.<name>.mean.
-        direction:
-          type: string
-          enum:
-          - asc
-          - desc
-          title: Direction
-          description: Sort direction for this field.
-      type: object
-      required:
-      - field
-      - direction
-      title: SortCriterion
-      description: 'One criterion in a group''s default sort: a sortable rollup-metric
-        path and its direction.'
     Span:
       properties:
         span_id:

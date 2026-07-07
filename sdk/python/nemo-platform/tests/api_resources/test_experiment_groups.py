@@ -50,12 +50,7 @@ class TestExperimentGroups:
         experiment_group = client.experiment_groups.create(
             workspace="workspace",
             name="name",
-            default_sort=[
-                {
-                    "direction": "asc",
-                    "field": "field",
-                }
-            ],
+            default_sort="default_sort",
             description="description",
             insight_id="insight_id",
             metadata={"foo": "bar"},
@@ -169,12 +164,7 @@ class TestExperimentGroups:
             path_name="name",
             workspace="workspace",
             body_name="name",
-            default_sort=[
-                {
-                    "direction": "asc",
-                    "field": "field",
-                }
-            ],
+            default_sort="default_sort",
             description="description",
             insight_id="insight_id",
             metadata={"foo": "bar"},
@@ -359,12 +349,7 @@ class TestAsyncExperimentGroups:
         experiment_group = await async_client.experiment_groups.create(
             workspace="workspace",
             name="name",
-            default_sort=[
-                {
-                    "direction": "asc",
-                    "field": "field",
-                }
-            ],
+            default_sort="default_sort",
             description="description",
             insight_id="insight_id",
             metadata={"foo": "bar"},
@@ -478,12 +463,7 @@ class TestAsyncExperimentGroups:
             path_name="name",
             workspace="workspace",
             body_name="name",
-            default_sort=[
-                {
-                    "direction": "asc",
-                    "field": "field",
-                }
-            ],
+            default_sort="default_sort",
             description="description",
             insight_id="insight_id",
             metadata={"foo": "bar"},

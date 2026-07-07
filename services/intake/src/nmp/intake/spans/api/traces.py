@@ -5,8 +5,6 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
-
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from nmp.common.api.common import Page
 from nmp.common.api.filter import FilterOperator
@@ -22,11 +20,9 @@ from nmp.intake.spans.api.query_filters import (
 from nmp.intake.spans.api.traces_schemas import Trace, TraceFilter, TraceMode, TraceSortField
 from nmp.intake.spans.domain import SpanStatus, TraceListFilter
 from nmp.intake.spans.service import TraceNotFoundError
-from nmp.intake.spans.storage import utc_now
 
 router = APIRouter(dependencies=[Depends(require_workspace_access)])
 API_TAG = "Traces"
-DEFAULT_LIST_LOOKBACK_DAYS = 30
 TRACE_INDEX_FILTER_FIELDS = frozenset(
     {
         "experiment_id",
@@ -67,7 +63,6 @@ async def list_traces(
 ) -> Page[Trace]:
     validate_list_query_params(request, additional_params={"mode"})
     filters = _trace_filter(workspace, parsed)
-    _apply_default_time_bound(filters)
     result = await service.list_traces(
         filters=filters,
         page=page,
@@ -143,8 +138,3 @@ def _set_trace_index_filter(filters: TraceListFilter, public_field: str, value: 
             detail=f"Conflicting trace filters for {field}",
         )
     setattr(filters, field, value)
-
-
-def _apply_default_time_bound(filters: TraceListFilter) -> None:
-    if filters.started_at_gte is None and filters.started_at_lte is None:
-        filters.started_at_gte = utc_now() - timedelta(days=DEFAULT_LIST_LOOKBACK_DAYS)

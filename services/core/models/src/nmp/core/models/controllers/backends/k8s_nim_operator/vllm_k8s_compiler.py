@@ -153,6 +153,7 @@ def compile_pvc(
     model_source: Optional[str] = None,
     namespace: Optional[str] = None,
     annotations: Optional[dict[str, str]] = None,
+    extra_labels: Optional[dict[str, str]] = None,
 ) -> k8s_client.V1PersistentVolumeClaim:
     """Compile the model-weights PVC.
 
@@ -165,7 +166,7 @@ def compile_pvc(
         metadata=k8s_client.V1ObjectMeta(
             name=pvc_name(resource_name),
             namespace=namespace,
-            labels=common_labels(workspace, name, engine),
+            labels=common_labels(workspace, name, engine, extra=extra_labels),
             annotations=_merge_annotations(annotations, model_source),
         ),
         spec=k8s_client.V1PersistentVolumeClaimSpec(
@@ -195,6 +196,7 @@ def compile_puller_job(
     backoff_limit: int = DEFAULT_BACKOFF_LIMIT,
     ttl_seconds_after_finished: int = DEFAULT_TTL_SECONDS_AFTER_FINISHED,
     annotations: Optional[dict[str, str]] = None,
+    extra_labels: Optional[dict[str, str]] = None,
 ) -> k8s_client.V1Job:
     """Compile the weight-puller Job.
 
@@ -209,7 +211,7 @@ def compile_puller_job(
     where the server can mount it (correct across any StorageClass
     ``volumeBindingMode``).
     """
-    labels = common_labels(workspace, name, engine)
+    labels = common_labels(workspace, name, engine, extra=extra_labels)
     job_annotations = _merge_annotations(annotations, model_source)
 
     env_list = [k8s_client.V1EnvVar(name=k, value=str(v)) for k, v in (env or {}).items()]
@@ -392,7 +394,7 @@ def compile_deployment(
         metadata=k8s_client.V1ObjectMeta(
             name=resource_name,
             namespace=namespace,
-            labels=common_labels(workspace, name, engine),
+            labels=common_labels(workspace, name, engine, extra=extra_labels),
         ),
         spec=k8s_client.V1DeploymentSpec(
             replicas=1,
@@ -413,13 +415,14 @@ def compile_service(
     engine: str,
     port: int = 8000,
     namespace: Optional[str] = None,
+    extra_labels: Optional[dict[str, str]] = None,
 ) -> k8s_client.V1Service:
     """Compile the ClusterIP Service exposing the server port for IGW routing."""
     return k8s_client.V1Service(
         metadata=k8s_client.V1ObjectMeta(
             name=resource_name,
             namespace=namespace,
-            labels=common_labels(workspace, name, engine),
+            labels=common_labels(workspace, name, engine, extra=extra_labels),
         ),
         spec=k8s_client.V1ServiceSpec(
             type="ClusterIP",
