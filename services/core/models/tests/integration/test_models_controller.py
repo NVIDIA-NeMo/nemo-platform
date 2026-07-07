@@ -419,7 +419,7 @@ def _get_worker_port_range(worker_id: str, ports_per_worker: int = 100) -> tuple
 
 
 @pytest.fixture
-def docker_backend_config(worker_id):
+def docker_backend_config(worker_id, docker_owner_labels):
     """Configuration for Docker backend in tests.
 
     Uses worker_id from pytest-xdist to allocate unique port ranges
@@ -431,6 +431,7 @@ def docker_backend_config(worker_id):
         "models_docker_port_range_end": end_port,
         "docker_timeout": 60,
         "models_docker_host_service_name": "localhost",
+        "model_labels": docker_owner_labels,
     }
 
 

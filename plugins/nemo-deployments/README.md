@@ -56,3 +56,51 @@ from the hyphen-joined string, so pairs like ``foo``/``bar-baz`` and
 ``nemo_platform_plugin.k8s_naming`` (same module used by the models service).
 Orphan cleanup matches identity labels, not names alone; existing containers
 keep their old names after upgrade.
+
+## Kubernetes executors
+
+The k8s backend emits native `apps/v1.Deployment` + `v1.Service` for
+`restart_policy: Always` workloads, `batch/v1.Job` for finite (`Never`/
+`OnFailure`) workloads, and `v1.PersistentVolumeClaim` for volumes — no
+`k8s-nim-operator` dependency. Configure a named executor in platform YAML:
+
+```yaml
+deployments:
+  executors:
+    - name: local-k8s
+      backend: k8s
+      config:
+        kubeconfig_path: /path/to/kubeconfig  # unset: in-cluster config, then default kubeconfig
+        default_namespace: default  # namespace the controller's ServiceAccount has RBAC in
+        request_timeout: 60
+  default_executor: local-k8s
+```
+
+Entity-level `backend_config.k8s.namespace` overrides `default_namespace` per
+deployment/volume; it must be a namespace the controller's ServiceAccount has
+RBAC in (see below).
+
+### RBAC
+
+The `DeploymentsController` runs inside the `nmp-core` controller pod
+(registered via the `nemo.controllers` entry point), so it reuses that pod's
+existing ServiceAccount and Role rather than a dedicated one. The deploy
+chart's `k8s/helm/templates/core/controller-role.yaml` grants that Role the
+verbs the k8s backend needs in `.Release.Namespace`: `get`/`list`/`watch` on
+pods, `get`/`list` on pods/log, `create`/`get`/`list`/`watch`/`update`/`patch`/`delete` on
+`batch/v1.Job`, `get`/`list`/`create`/`delete` on PVCs, ConfigMaps, and
+Services, and `get`/`list`/`watch`/`create`/`delete` on `apps/v1.Deployment`.
+
+This Role is namespace-scoped to the release namespace. Pointing
+`backend_config.k8s.namespace` at a namespace outside the release namespace
+requires additional RBAC that the chart does not provision today;
+namespace-per-workspace provisioning is a documented future enhancement.
+
+### Native sidecars
+
+The LoRA-adapter-style native sidecar pattern (an `init_containers` entry with
+`restart_policy: "Always"`) requires Kubernetes >= 1.29. On older clusters,
+omit the per-container `restart_policy` on init containers and run that
+container as a regular main container instead — the compiler does not
+fall back to legacy sidecar emulation (emptyDir readiness files, etc.)
+automatically.

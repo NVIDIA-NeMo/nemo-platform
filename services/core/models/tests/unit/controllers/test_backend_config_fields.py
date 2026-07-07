@@ -579,6 +579,31 @@ def test_default_labels_applied_to_nimservice_metadata_and_spec(sample_deploymen
     assert spec_labels["nmp.nvidia.com/deployment-workspace"] == sample_deployment.workspace
 
 
+def test_model_labels_applied_to_nimservice_metadata_and_spec(sample_deployment, minimal_nim_config):
+    """Test that model_labels from backend config are applied to NIMService CR metadata and spec (pods)."""
+    backend_config = K8sNimOperatorConfig(
+        model_labels={"nmp.nvidia.com/test-run": "run-1", "nmp.nvidia.com/test-worker": "gw0"},
+    )
+
+    nimservice = compile_nimservice(
+        backend_config=backend_config,
+        deployment=sample_deployment,
+        config=minimal_nim_config,
+        k8s_namespace="default",
+        resource_name="test-resource",
+    )
+
+    meta_labels = nimservice.metadata["labels"]
+    assert meta_labels["nmp.nvidia.com/test-run"] == "run-1"
+    assert meta_labels["nmp.nvidia.com/test-worker"] == "gw0"
+    assert meta_labels["app.kubernetes.io/name"] == "test-resource"
+
+    spec_labels = nimservice.spec.labels
+    assert spec_labels["nmp.nvidia.com/test-run"] == "run-1"
+    assert spec_labels["nmp.nvidia.com/test-worker"] == "gw0"
+    assert spec_labels["nmp.nvidia.com/deployment-workspace"] == sample_deployment.workspace
+
+
 def test_default_annotations_applied_to_nimservice_metadata_and_spec(sample_deployment, minimal_nim_config):
     """Test that default_annotations from backend config are applied to NIMService CR metadata and spec (pods)."""
     backend_config = K8sNimOperatorConfig(

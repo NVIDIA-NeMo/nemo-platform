@@ -149,6 +149,7 @@ class K8sReconciler(Reconciler):
                 model_source=source_tag,
                 namespace=self._k8s_namespace,
                 annotations=self._backend_config.default_annotations,
+                extra_labels=self._backend_config.model_labels,
             )
             job = vllm_k8s_compiler.compile_puller_job(
                 resource_name=resource_name,
@@ -165,6 +166,7 @@ class K8sReconciler(Reconciler):
                 user_id=user_id,
                 group_id=group_id,
                 model_source=source_tag,
+                extra_labels=self._backend_config.model_labels,
             )
 
             self._create_or_skip(self._core_v1.create_namespaced_persistent_volume_claim, pvc, "PVC")
@@ -522,6 +524,7 @@ class K8sReconciler(Reconciler):
             startup_grace_seconds=startup_grace,
             init_containers=init_containers,
             sidecar_containers=sidecar_containers,
+            extra_labels=self._backend_config.model_labels,
             mount_model_store=mount_model_store,
         )
         svc_obj = vllm_k8s_compiler.compile_service(
@@ -530,6 +533,7 @@ class K8sReconciler(Reconciler):
             name=deployment.name,
             engine=engine,
             namespace=self._k8s_namespace,
+            extra_labels=self._backend_config.model_labels,
         )
         return dep_obj, svc_obj
 

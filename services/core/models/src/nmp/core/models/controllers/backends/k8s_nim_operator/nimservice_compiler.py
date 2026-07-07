@@ -140,8 +140,8 @@ def compile_nimcache(
 
     files_full_url = _get_files_hf_url()
 
-    cr_labels = _merge_default_labels(
-        backend_config.default_labels,
+    cr_labels = _merge_model_labels(
+        backend_config,
         {
             "app.kubernetes.io/name": resource_name,
             MODEL_MANAGED_BY_LABEL: MODEL_MANAGED_BY_MODELS_CONTROLLER,
@@ -379,8 +379,8 @@ def compile_nimservice(
                 env=sidecar_env_vars,
             )
         ]
-    spec_labels = _merge_default_labels(
-        backend_config.default_labels,
+    spec_labels = _merge_model_labels(
+        backend_config,
         {
             "app.kubernetes.io/name": resource_name,
             MODEL_MANAGED_BY_LABEL: MODEL_MANAGED_BY_MODELS_CONTROLLER,
@@ -436,8 +436,8 @@ def compile_nimservice(
     nimservice_metadata: dict[str, Any] = {
         "name": resource_name,
         "namespace": k8s_namespace,
-        "labels": _merge_default_labels(
-            backend_config.default_labels,
+        "labels": _merge_model_labels(
+            backend_config,
             {
                 "app.kubernetes.io/name": resource_name,
                 MODEL_MANAGED_BY_LABEL: MODEL_MANAGED_BY_MODELS_CONTROLLER,
@@ -708,9 +708,10 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> None:
             base[key] = value
 
 
-def _merge_default_labels(default_labels: Optional[dict[str, str]], base: dict[str, str]) -> dict[str, str]:
-    """Merge default labels with base; base takes precedence on conflict."""
-    out = dict(default_labels or {})
+def _merge_model_labels(backend_config: K8sNimOperatorConfig, base: dict[str, str]) -> dict[str, str]:
+    """Merge configured model labels with base; base takes precedence on conflict."""
+    out = dict(backend_config.default_labels or {})
+    out.update(backend_config.model_labels or {})
     out.update(base)
     return out
 
