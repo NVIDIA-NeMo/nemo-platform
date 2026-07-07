@@ -45,6 +45,11 @@ import docker
 logger = getLogger(__name__)
 
 
+def _matches_labels(container_labels: dict[str, str], expected_labels: dict[str, str]) -> bool:
+    """Return True when all expected Docker labels are present."""
+    return all(container_labels.get(key) == value for key, value in expected_labels.items())
+
+
 class DockerServiceBackend(ServiceBackend):
     """Docker-based backend for managing model deployments.
 
@@ -439,14 +444,18 @@ class DockerServiceBackend(ServiceBackend):
                 self._reconciler.list_containers,
                 all=True,
                 filters={"label": f"{MODEL_MANAGED_BY_LABEL}={MODEL_MANAGED_BY_MODELS_CONTROLLER}"},
+                ignore_removed=True,
             )
         except Exception as e:
             logger.warning(f"Failed to list managed containers for orphan reconciliation: {e}")
             return []
 
         seen: set[str] = set()
+        owner_labels = self._backend_config.model_labels
         for container in containers:
             labels = container.labels or {}
+            if owner_labels and not _matches_labels(labels, owner_labels):
+                continue
             ws = labels.get("nmp.nvidia.com/deployment-workspace")
             n = labels.get("nmp.nvidia.com/deployment-name")
             if ws and n:
