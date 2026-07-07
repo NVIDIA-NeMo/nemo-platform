@@ -55,6 +55,7 @@ import {
   memo,
   useCallback,
   useMemo,
+  type ComponentProps,
   type CSSProperties,
   type JSX,
   type ReactNode,
@@ -331,9 +332,47 @@ function InnerTableBody({
             >
               {enableColumnReordering && columnOrder ? (
                 <SortableContext items={columnOrder} strategy={horizontalListSortingStrategy}>
-                  {row?.getVisibleCells().map((cell) => (
-                    <DragAlongCell key={cell.id} cell={cell} />
-                  ))}
+                  {row?.getVisibleCells().map((cell) => {
+                    let isFirstNonPrebuiltColumn = false;
+                    if (
+                      !foundFirstNonPrebuiltColumn &&
+                      !cell.column.columnDef.meta?._isPrebuiltColumn
+                    ) {
+                      foundFirstNonPrebuiltColumn = true;
+                      isFirstNonPrebuiltColumn = true;
+                    }
+                    const isPinned = !!cell.column.getIsPinned();
+                    const sharedProps = {
+                      align: cell.column.columnDef.meta?.alignment,
+                      className: classnames(
+                        'data-[pinned]:sticky data-[pinned]:z-10',
+                        'data-[within-subrow]:data-[first-non-prebuilt-column]:!pl-[var(--subrow-indent,var(--table-cell-inline-padding))]',
+                        cell.column.getIsLastColumn('left') &&
+                          'shadow-[inset_-4px_0_4px_-4px_var(--color-gray-400)]',
+                        cell.column.getIsFirstColumn('right') &&
+                          'shadow-[inset_4px_0_4px_-4px_var(--color-gray-400)]'
+                      ),
+                      'data-first-non-prebuilt-column': isFirstNonPrebuiltColumn || undefined,
+                      'data-pinned': cell.column.getIsPinned() || undefined,
+                      'data-within-subrow': (row?.depth && row.depth > 0) || undefined,
+                      headers: getHeaderId(cell.column.id),
+                      title: autoCellTooltips ? getCellTitle(cell) || undefined : undefined,
+                      style: getCellStyle({
+                        column: cell.column,
+                        disableAutoSizing: !!virtualizer,
+                      }),
+                    };
+                    const content = flexRender(cell.column.columnDef.cell, cell.getContext());
+                    return isPinned ? (
+                      <TableDataCell key={cell.id} {...sharedProps}>
+                        {content}
+                      </TableDataCell>
+                    ) : (
+                      <DragAlongCell key={cell.id} cell={cell} {...sharedProps}>
+                        {content}
+                      </DragAlongCell>
+                    );
+                  })}
                 </SortableContext>
               ) : (
                 row?.getVisibleCells().map((cell) => {
@@ -434,12 +473,15 @@ function DraggableColumnHeader({
 }
 
 // --- Column DnD: body cell that moves with the dragged column ---
+// Accepts the same props as TableDataCell so callers can forward all sizing/a11y/pinning
+// attributes. The DnD transform is merged on top of whatever style is passed in.
 
-interface DragAlongCellProps {
+interface DragAlongCellProps extends ComponentProps<typeof TableDataCell> {
   cell: Cell<IntentionalAny, unknown>;
+  children: ReactNode;
 }
 
-function DragAlongCell({ cell }: DragAlongCellProps) {
+function DragAlongCell({ cell, style: basestyle, children, ...rest }: DragAlongCellProps) {
   const { isDragging, setNodeRef, transform, transition } = useSortable({
     id: cell.column.id,
   });
@@ -450,12 +492,13 @@ function DragAlongCell({ cell }: DragAlongCellProps) {
     transform: CSS.Translate.toString(transform),
     transition: transition ?? 'width transform 0.2s ease-in-out',
     zIndex: isDragging ? 1 : 0,
+    ...basestyle,
   };
 
   return (
     // eslint-disable-next-line no-restricted-syntax -- DnD transform is a dynamic inline value that cannot be expressed as a class
-    <TableDataCell ref={setNodeRef} style={style}>
-      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+    <TableDataCell ref={setNodeRef} style={style} {...rest}>
+      {children}
     </TableDataCell>
   );
 }
