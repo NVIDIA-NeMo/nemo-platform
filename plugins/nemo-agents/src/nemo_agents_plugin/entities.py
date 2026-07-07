@@ -112,6 +112,10 @@ class AgentDeployment(NemoEntity, entity_type="agent_deployment"):
         default_factory=dict,
         description="Resolved agent config with IGW URL injected, written when the deployment is created.",
     )
+    image: str = Field(
+        default="",
+        description="Container image to deploy. Used by the 'deployments' runner backend; ignored by 'in_memory'.",
+    )
     status: DeploymentStatus = Field(
         default="pending",
         description="Lifecycle status: pending | starting | running | failed | deleting.",

@@ -192,8 +192,14 @@ class InMemoryRunnerBackend(RunnerBackend):
             except OSError:
                 return False
 
-    async def create_deployment(self, workspace: str, name: str, config: dict[str, Any], port: int) -> DeploymentInfo:
-        """Write config to a deterministic file and spawn ``nat serve``."""
+    async def create_deployment(
+        self, workspace: str, name: str, config: dict[str, Any], port: int, image: str | None = None
+    ) -> DeploymentInfo:
+        """Write config to a deterministic file and spawn ``nat serve``.
+
+        *image* is accepted for interface parity with container backends and ignored here.
+        """
+        del image
         key = (workspace, name)
         config_path = await asyncio.to_thread(self._write_config, workspace, name, config)
         log_path = self.log_path_for(workspace, name)

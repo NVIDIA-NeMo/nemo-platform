@@ -34,8 +34,15 @@ class RunnerBackendRegistry:
             logger.info(
                 "Runner backend: InMemoryRunnerBackend (port range start=%d)", config.controller.port_range_start
             )
+        elif backend_type == "deployments":
+            from nemo_agents_plugin.runner.deployments_backend import DeploymentsRunnerBackend
+
+            self._backend = DeploymentsRunnerBackend(config)
+            logger.info("Runner backend: DeploymentsRunnerBackend (executor=%s)", config.deployments.executor)
         else:
-            raise ValueError(f"Unknown runner_backend type '{backend_type}'. Supported values: 'in_memory'.")
+            raise ValueError(
+                f"Unknown runner_backend type '{backend_type}'. Supported values: 'in_memory', 'deployments'."
+            )
 
     @property
     def backend(self) -> RunnerBackend:

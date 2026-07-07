@@ -51,6 +51,35 @@ class ControllerConfig(BaseModel):
     )
 
 
+class DeploymentsRunnerConfig(BaseModel):
+    """Settings for the 'deployments' runner backend (containers via nemo-deployments)."""
+
+    executor: str | None = Field(
+        default=None,
+        description=(
+            "Named deployments-plugin executor to target (a docker or k8s executor). "
+            "Falls back to the deployments plugin's default_executor when unset."
+        ),
+    )
+    default_image: str | None = Field(
+        default=None,
+        description="Container image used when a deployment request does not specify one.",
+    )
+    container_port: int = Field(
+        default=8000,
+        ge=1,
+        le=65535,
+        description="Port the agent container listens on (must match the image's served port).",
+    )
+    gateway_url_override: str | None = Field(
+        default=None,
+        description=(
+            "Explicit Inference Gateway base URL reachable from inside the container. When unset, "
+            "the platform base URL's loopback host is rewritten to 'host.docker.internal'."
+        ),
+    )
+
+
 class AgentsConfig(NemoConfig):
     """Configuration for the Agents plugin."""
 
@@ -63,5 +92,12 @@ class AgentsConfig(NemoConfig):
     )
     runner_backend: str = Field(
         default="in_memory",
-        description="Runner backend type. Currently only 'in_memory' is supported.",
+        description=(
+            "Runner backend type: 'in_memory' (local nat subprocesses) or "
+            "'deployments' (containers via the nemo-deployments plugin)."
+        ),
+    )
+    deployments: DeploymentsRunnerConfig = Field(
+        default_factory=DeploymentsRunnerConfig,
+        description="Settings for the 'deployments' runner backend.",
     )

@@ -48,6 +48,10 @@ class CreateDeploymentRequest(BaseModel):
         default=None,
         description="Optional deployment name.  Auto-generated from agent name + random suffix if omitted.",
     )
+    image: str | None = Field(
+        default=None,
+        description="Container image to deploy.  Required when the 'deployments' runner backend is active.",
+    )
 
 
 # ---------------------------------------------------------------------------

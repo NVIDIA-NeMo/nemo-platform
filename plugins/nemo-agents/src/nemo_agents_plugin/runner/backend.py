@@ -86,8 +86,13 @@ class RunnerBackend(ABC):
         return 0
 
     @abstractmethod
-    async def create_deployment(self, workspace: str, name: str, config: dict[str, Any], port: int) -> DeploymentInfo:
-        """Start the agent process; returns status="starting"."""
+    async def create_deployment(
+        self, workspace: str, name: str, config: dict[str, Any], port: int, image: str | None = None
+    ) -> DeploymentInfo:
+        """Start the agent runtime; returns status="starting".
+
+        *image* is used by container backends; process backends ignore it.
+        """
         ...
 
     @abstractmethod

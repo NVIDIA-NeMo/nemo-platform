@@ -178,6 +178,7 @@ class AgentDeploymentController(NemoController):
                 name=dep.name,
                 config=dep.config,
                 port=port,
+                image=dep.image or None,
             )
         except Exception as exc:
             logger.exception("Failed to start agent process for deployment '%s'", dep.name)
@@ -239,6 +240,11 @@ class AgentDeploymentController(NemoController):
                 info.log_path or "<none>",
             )
             return
+
+        # Container backends assign the endpoint asynchronously once the runtime is
+        # scheduled; adopt it here so the health check and gateway proxy can reach the agent.
+        if info is not None and info.endpoint:
+            dep.endpoint = info.endpoint
 
         healthy = bool(dep.endpoint) and await self.backend.health_check(dep.endpoint)
 

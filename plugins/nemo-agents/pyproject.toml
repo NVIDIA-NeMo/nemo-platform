@@ -61,12 +61,17 @@ container = [
     "jinja2>=3.1",
     "python-on-whales>=0.60",
 ]
+# Enables the 'deployments' runner backend (container deployments via nemo-deployments).
+deployments = [
+    "nemo-deployments-plugin",
+]
 test = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "httpx>=0.27",
     "fastapi>=0.115",
     "jinja2>=3.1",
+    "nemo-deployments-plugin",
 ]
 
 [build-system]
@@ -88,6 +93,7 @@ packages = [
 nemo-platform = { workspace = true }
 nemo-platform-plugin = { workspace = true }
 nemo-agents-example-calculator = { workspace = true }
+nemo-deployments-plugin = { workspace = true }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
