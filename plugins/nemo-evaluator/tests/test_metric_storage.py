@@ -138,6 +138,13 @@ async def test_load_rejects_corrupt_bundle() -> None:
         await load_bundle(sdk, "default/metric-bundle.deadbeef#bundle.json")
 
 
+async def test_load_wraps_download_failure() -> None:
+    sdk = _FakeSDK()
+
+    with pytest.raises(MetricBundleStorageError, match="failed to download metric bundle"):
+        await load_bundle(sdk, "default/metric-bundle.missing#bundle.json")
+
+
 async def test_delete_by_ref_removes_only_that_fileset() -> None:
     sdk = _FakeSDK()
     bundle = _sample_bundle()

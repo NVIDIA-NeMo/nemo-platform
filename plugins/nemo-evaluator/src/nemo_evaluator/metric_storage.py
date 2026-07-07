@@ -110,7 +110,10 @@ async def load_bundle(sdk: AsyncNeMoPlatform, bundle_ref: str, *, expected_diges
     verified against it to detect drift or corruption.
     """
     workspace, fileset, path = parse_bundle_ref(bundle_ref)
-    data = await sdk.files.download_content(remote_path=path, fileset=fileset, workspace=workspace)
+    try:
+        data = await sdk.files.download_content(remote_path=path, fileset=fileset, workspace=workspace)
+    except Exception as exc:
+        raise MetricBundleStorageError(f"failed to download metric bundle from {bundle_ref!r}") from exc
     try:
         bundle = MetricBundle.model_validate_json(data)
     except (ValidationError, ValueError) as exc:

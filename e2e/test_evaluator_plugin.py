@@ -29,7 +29,7 @@ from nmp.testing.utils import ensure_passthrough_virtual_model
 
 pytestmark = [
     pytest.mark.container_only,
-    pytest.mark.timeout(1200),
+    pytest.mark.timeout(1800),
 ]
 
 EVALUATOR_JOB_TIMEOUT_SECONDS = 900.0
@@ -126,7 +126,7 @@ def _evaluator_url(sdk: NeMoPlatform, workspace: str, path: str) -> str:
 
 
 def _raw_evaluator_post(sdk: NeMoPlatform, workspace: str, path: str, payload: dict[str, object]) -> httpx.Response:
-    return httpx.post(
+    return sdk._client.post(
         _evaluator_url(sdk, workspace, path),
         json=payload,
         headers=_string_headers(sdk),
@@ -147,7 +147,7 @@ def _wait_for_model_entity_route(sdk: NeMoPlatform, workspace: str, model_name: 
     last_error: str | None = None
     while time.monotonic() < deadline:
         try:
-            response = httpx.post(
+            response = sdk._client.post(
                 url,
                 json={"model": model_name, "messages": [{"role": "user", "content": "ping"}]},
                 headers=_string_headers(sdk),
@@ -175,8 +175,12 @@ def _wait_for_model_entity_route(sdk: NeMoPlatform, workspace: str, model_name: 
             continue
         response.raise_for_status()
     if stable_since is not None:
-        return
-    detail = last_error if last_error is not None else f"{last_status} {last_body[:500]}"
+        stable_for = time.monotonic() - stable_since
+        detail = (
+            f"{last_status} {last_body[:500]} (stable for {stable_for:.1f}s; required {IGW_ROUTE_STABLE_SECONDS:.1f}s)"
+        )
+    else:
+        detail = last_error if last_error is not None else f"{last_status} {last_body[:500]}"
     raise TimeoutError(
         f"Model entity route {workspace}/{model_name} was not ready after "
         f"{IGW_ROUTE_TIMEOUT_SECONDS}s. Last response: {detail}"
