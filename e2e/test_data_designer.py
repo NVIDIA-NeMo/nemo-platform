@@ -12,7 +12,6 @@ from data_designer_nemo.nemotron_personas import WORKSPACE, get_resource_name_fo
 from nemo_data_designer_plugin.sdk.errors import DataDesignerJobError
 from nemo_platform import NeMoPlatform
 from nemo_platform.types.inference import ModelProvider
-from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NotFoundError
 from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.files.types import CreateFilesetRequest
@@ -136,13 +135,12 @@ def test_simple_ndd_config(sdk: NeMoPlatform, workspace: str) -> None:
     _assert_dataset_equal(job_dataset, expected_job_dataset)
 
 
-def test_fileset_seed_data(sdk: NeMoPlatform, workspace: str) -> None:
+def test_fileset_seed_data(sdk: NeMoPlatform, files_client: FilesClient, workspace: str) -> None:
     """Tests that the Data Designer *library* plugin that makes Filesets available as seed sources
     is wired up properly by the Data Designer *platform plugin*.
     """
     fileset_name = "my-fileset"
-    files = client_from_platform(sdk, FilesClient)
-    files.create_fileset(body=CreateFilesetRequest(name=fileset_name), workspace=workspace)
+    files_client.create_fileset(body=CreateFilesetRequest(name=fileset_name), workspace=workspace)
 
     seed_data = pd.DataFrame(data={"seed": ["my-seed"]})
     remote_path = "data.parquet"
@@ -175,7 +173,9 @@ def test_fileset_seed_data(sdk: NeMoPlatform, workspace: str) -> None:
 
 
 @pytest.fixture
-def nemotron_personas_locale(_services: str, sdk: NeMoPlatform, workspace: str, ngc_secret: str) -> Generator[str]:
+def nemotron_personas_locale(
+    _services: str, files_client: FilesClient, workspace: str, ngc_secret: str
+) -> Generator[str]:
     """Invokes the CLI to create a Fileset for Nemotron Personas data.
 
     This test does call out to NGC and downloads personas data. Use the smallest locale available
@@ -188,9 +188,8 @@ def nemotron_personas_locale(_services: str, sdk: NeMoPlatform, workspace: str, 
     locale = "en_SG"
 
     fileset_name = get_resource_name_for_locale(locale)
-    files = client_from_platform(sdk, FilesClient)
     with suppress(NotFoundError):
-        files.delete_fileset(name=fileset_name, workspace=WORKSPACE)
+        files_client.delete_fileset(name=fileset_name, workspace=WORKSPACE)
 
     result = run_nemo_local(
         "data-designer",
@@ -208,7 +207,7 @@ def nemotron_personas_locale(_services: str, sdk: NeMoPlatform, workspace: str, 
     yield locale
 
     with suppress(NotFoundError):
-        files.delete_fileset(name=fileset_name, workspace=WORKSPACE)
+        files_client.delete_fileset(name=fileset_name, workspace=WORKSPACE)
 
 
 def test_nemotron_personas_sampling(sdk: NeMoPlatform, workspace: str, nemotron_personas_locale: str) -> None:

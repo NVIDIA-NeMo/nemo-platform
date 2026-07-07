@@ -23,6 +23,10 @@ def _get_client() -> NeMoPlatform:
     return NeMoPlatform(base_url=nmp_base_url)
 
 
+def _get_files_client() -> FilesClient:
+    return client_from_platform(_get_client(), FilesClient)
+
+
 def test_workspace_exists():
     """Verify the eval-test-workspace was created."""
     client = _get_client()
@@ -33,9 +37,8 @@ def test_workspace_exists():
 
 def test_fileset_exists():
     """Verify the eval-dataset fileset was created."""
-    client = _get_client()
-    files = client_from_platform(client, FilesClient)
-    fileset_names = [fs.name for fs in files.list_filesets(workspace=WORKSPACE).page().items]
+    files_client = _get_files_client()
+    fileset_names = [fs.name for fs in files_client.list_filesets(workspace=WORKSPACE).page().items]
     assert FILESET in fileset_names, f"Fileset '{FILESET}' not found. Found: {fileset_names}"
 
 

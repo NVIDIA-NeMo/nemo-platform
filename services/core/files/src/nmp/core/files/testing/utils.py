@@ -121,4 +121,4 @@ def create_fileset(
         body=CreateFilesetRequest(name=name, description="Test fileset", **kwargs),
     ).data()
     yield fileset
-    files.delete_fileset(name, workspace=workspace)
+    files.delete_fileset(name=name, workspace=workspace)

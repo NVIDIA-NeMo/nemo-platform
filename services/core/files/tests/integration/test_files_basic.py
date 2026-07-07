@@ -39,7 +39,7 @@ class TestFilesBasic:
     def test_fileset_get(self, sdk: NeMoPlatform):
         files = client_from_platform(sdk, FilesClient)
         with create_fileset(sdk) as fileset:
-            fetched = files.get_fileset(fileset.name, workspace=fileset.workspace).data()
+            fetched = files.get_fileset(name=fileset.name, workspace=fileset.workspace).data()
             assert fetched.id == fileset.id
             assert fetched.name == fileset.name
 

@@ -532,7 +532,7 @@ class TestFilesetFileSystem:
         # Protocol is registered by the autouse fixture
         fs = fsspec.filesystem(
             "fileset",
-            sdk=sdk,
+            client=client_from_platform(sdk, FilesClient),
             skip_instance_cache=True,
         )
 
@@ -1839,7 +1839,7 @@ class TestDuckDBIntegration:
         )
 
         # Create filesystem via fsspec (how users would configure it)
-        fs = fsspec.filesystem("fileset", sdk=sdk)
+        fs = fsspec.filesystem("fileset", client=client_from_platform(sdk, FilesClient))
 
         # Query with DuckDB using fileset:// URL with new # format
         fileset_url = f"fileset://{fileset.workspace}/{fileset.name}#{file_path}"
@@ -1893,7 +1893,7 @@ class TestDuckDBIntegration:
         )
 
         # Create filesystem via fsspec
-        fs = fsspec.filesystem("fileset", sdk=sdk)
+        fs = fsspec.filesystem("fileset", client=client_from_platform(sdk, FilesClient))
         fileset_url = f"fileset://{fileset.workspace}/{fileset.name}#{file_path}"
         conn = duckdb.connect()
         conn.register_filesystem(fs)
@@ -1930,7 +1930,7 @@ class TestDuckDBIntegration:
         )
 
         # Create filesystem via fsspec
-        fs = fsspec.filesystem("fileset", sdk=sdk)
+        fs = fsspec.filesystem("fileset", client=client_from_platform(sdk, FilesClient))
 
         # Query with DuckDB using LEGACY path format: workspace/fileset/path
         fileset_url = f"fileset://{fileset.workspace}/{fileset.name}/{file_path}"

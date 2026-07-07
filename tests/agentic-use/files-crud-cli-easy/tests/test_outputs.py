@@ -28,19 +28,22 @@ def client() -> NeMoPlatform:
     return NeMoPlatform(base_url=nmp_base_url, workspace=WORKSPACE)
 
 
-def test_harbor_test_fileset_deleted(client: NeMoPlatform) -> None:
+@pytest.fixture
+def files_client(client: NeMoPlatform) -> FilesClient:
+    return client_from_platform(client, FilesClient)
+
+
+def test_harbor_test_fileset_deleted(files_client: FilesClient) -> None:
     """Test that harbor-test-fileset was deleted after CRUD operations."""
-    files = client_from_platform(client, FilesClient)
-    fileset_names = [fs.name for fs in files.list_filesets().page().items]
+    fileset_names = [fs.name for fs in files_client.list_filesets().page().items]
     assert "harbor-test-fileset" not in fileset_names, (
         f"Fileset 'harbor-test-fileset' should have been deleted but still exists! Found: {fileset_names}"
     )
 
 
-def test_harbor_final_fileset_exists(client: NeMoPlatform) -> None:
+def test_harbor_final_fileset_exists(files_client: FilesClient) -> None:
     """Test that harbor-final-fileset was created and has correct metadata."""
-    files = client_from_platform(client, FilesClient)
-    response = files.get_fileset(name="harbor-final-fileset").data()
+    response = files_client.get_fileset(name="harbor-final-fileset").data()
     assert response.name == "harbor-final-fileset", (
         f"Expected fileset name 'harbor-final-fileset', got '{response.name}'"
     )

@@ -35,10 +35,14 @@ def client() -> NeMoPlatform:
     return NeMoPlatform(base_url=nmp_base_url, workspace=WORKSPACE)
 
 
-def test_fileset_exists(client: NeMoPlatform) -> None:
+@pytest.fixture
+def files_client(client: NeMoPlatform) -> FilesClient:
+    return client_from_platform(client, FilesClient)
+
+
+def test_fileset_exists(files_client: FilesClient) -> None:
     """Test that harbor-dataset-fileset was created with correct metadata."""
-    files = client_from_platform(client, FilesClient)
-    response = files.get_fileset(name=FILESET_NAME).data()
+    response = files_client.get_fileset(name=FILESET_NAME).data()
     assert response.name == FILESET_NAME, f"Expected fileset name '{FILESET_NAME}', got '{response.name}'"
     assert response.description == "Dataset fileset for harbor eval", (
         f"Expected description 'Dataset fileset for harbor eval', got '{response.description}'"

@@ -12,17 +12,20 @@ a live server or external database.
 
 import os
 import uuid
-from pathlib import Path
 from typing import Generator
+from pathlib import Path
 
 import pytest
+from nmp.testing import create_test_client
 from click.testing import Result
+from typer.testing import CliRunner
+from starlette.testclient import TestClient
+from nmp.core.files.service import FilesService
+from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.client.adapter import client_from_platform
+
 from nemo_platform import NeMoPlatform
 from nemo_platform.cli.core.context import CLIContext
-from nmp.core.files.service import FilesService
-from nmp.testing import create_test_client
-from starlette.testclient import TestClient
-from typer.testing import CliRunner
 
 DEFAULT_WORKSPACE = "default"
 
@@ -38,6 +41,12 @@ def http_client() -> Generator[TestClient, None, None]:
 def sdk(http_client: TestClient) -> NeMoPlatform:
     """SDK client backed by the test client."""
     return NeMoPlatform(base_url="http://testserver", http_client=http_client)
+
+
+@pytest.fixture(scope="module")
+def files_client(sdk: NeMoPlatform) -> FilesClient:
+    """Provide a FilesClient derived from the SDK."""
+    return client_from_platform(sdk, FilesClient)
 
 
 @pytest.fixture

@@ -137,10 +137,13 @@ class FilesResource:
     For fsspec filesystem access, use ``resource.fsspec``.
     """
 
-    def __init__(self, client) -> None:
-        from nemo_platform_plugin.client.adapter import client_from_platform
+    def __init__(self, client, *, files_client: FilesClient | None = None) -> None:
+        if files_client is not None:
+            self._client = files_client
+        else:
+            from nemo_platform_plugin.client.adapter import client_from_platform
 
-        self._client = client_from_platform(client, FilesClient)
+            self._client = client_from_platform(client, FilesClient)
 
     @cached_property
     def client(self) -> FilesClient:
@@ -663,10 +666,13 @@ class AsyncFilesResource:
     For fsspec filesystem access, use ``resource.fsspec``.
     """
 
-    def __init__(self, client) -> None:
-        from nemo_platform_plugin.client.adapter import client_from_platform
+    def __init__(self, client, *, files_client: AsyncFilesClient | None = None) -> None:
+        if files_client is not None:
+            self._client = files_client
+        else:
+            from nemo_platform_plugin.client.adapter import client_from_platform
 
-        self._client = client_from_platform(client, AsyncFilesClient)
+            self._client = client_from_platform(client, AsyncFilesClient)
 
     @cached_property
     def client(self) -> AsyncFilesClient:

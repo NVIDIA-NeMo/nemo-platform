@@ -17,10 +17,11 @@ from .conftest import NmpCliRunner
 
 
 @pytest.fixture
-def test_fileset(sdk: NeMoPlatform, random_workspace: str) -> dict:
+def test_fileset(files_client: FilesClient, random_workspace: str) -> dict:
     """Create a test fileset."""
-    files = client_from_platform(sdk, FilesClient)
-    fileset = files.create_fileset(body=CreateFilesetRequest(name="test-fileset"), workspace=random_workspace).data()
+    fileset = files_client.create_fileset(
+        body=CreateFilesetRequest(name="test-fileset"), workspace=random_workspace
+    ).data()
     return {"workspace": random_workspace, "name": fileset.name}
 
 
@@ -214,7 +215,9 @@ class TestFilesetsUpload:
 
 
 @pytest.fixture
-def fileset_with_nested_files(sdk: NeMoPlatform, random_workspace: str, tmp_path: Path) -> dict:
+def fileset_with_nested_files(
+    sdk: NeMoPlatform, files_client: FilesClient, random_workspace: str, tmp_path: Path
+) -> dict:
     """Create a fileset with nested file structure for download tests.
 
     Structure:
@@ -224,8 +227,7 @@ def fileset_with_nested_files(sdk: NeMoPlatform, random_workspace: str, tmp_path
                 file2.txt
                 file3.txt
     """
-    files = client_from_platform(sdk, FilesClient)
-    fileset = files.create_fileset(
+    fileset = files_client.create_fileset(
         body=CreateFilesetRequest(name="download-test-fileset"), workspace=random_workspace
     ).data()
 
