@@ -72,8 +72,7 @@ from tenacity import before_sleep_log, retry, retry_if_exception_type, stop_afte
 
 logger = logging.getLogger(__name__)
 
-# Timeout configurations for SDK operations (httpx.Timeout for API calls)
-CREATE_FILESET_TIMEOUT = httpx.Timeout(10.0, connect=10.0)
+CREATE_FILESET_TIMEOUT = 10.0
 LIST_FILES_TIMEOUT = httpx.Timeout(10.0, connect=10.0)
 
 # Timeout configurations for FilesetFileSystem operations.
@@ -411,7 +410,7 @@ class FileIORunner:
     def _create_fileset_with_retry(self, fileset: FileSetRef, metadata: dict | None = None) -> None:
         """Internal method with retry logic for creating a FileSet."""
         files = client_from_platform(self.sdk, FilesClient).with_options(
-            timeout=10.0, retry=RetryPolicy(max_retries=0)
+            timeout=CREATE_FILESET_TIMEOUT, retry=RetryPolicy(max_retries=0)
         )
         try:
             body_kwargs: dict = {
