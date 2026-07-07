@@ -120,6 +120,40 @@ async def test_job_config_compiler_with_classify_provider(mock_sdk):
 
 
 @pytest.mark.asyncio
+async def test_job_config_compiler_container_mode_uses_safe_synthesizer_tasks_image(mock_sdk, monkeypatch):
+    monkeypatch.setattr(endpoints.config, "job_mode", "container")
+    monkeypatch.setattr(endpoints.config, "container_image", "safe-synthesizer-tasks")
+    monkeypatch.setattr(endpoints.config, "container_image_ref", None)
+    monkeypatch.setattr(endpoints, "get_qualified_image", lambda name: f"registry.example.com/nemo/{name}:test-tag")
+
+    result = await _compile(_make_spec(), mock_sdk)
+
+    step = next(iter(result["steps"]))
+    assert step["executor"]["provider"] == "gpu"
+    assert step["executor"]["container"]["image"] == "registry.example.com/nemo/safe-synthesizer-tasks:test-tag"
+    assert step["executor"]["container"]["entrypoint"] == [
+        "python",
+        "-m",
+        "nemo_safe_synthesizer_plugin.tasks.safe_synthesizer",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_job_config_compiler_container_mode_uses_image_ref_override(mock_sdk, monkeypatch):
+    monkeypatch.setattr(endpoints.config, "job_mode", "container")
+    monkeypatch.setattr(endpoints.config, "container_image_ref", "safe-synthesizer-tasks:local")
+    get_qualified_image = MagicMock(side_effect=AssertionError("image ref overrides should not be qualified"))
+    monkeypatch.setattr(endpoints, "get_qualified_image", get_qualified_image)
+
+    result = await _compile(_make_spec(), mock_sdk)
+
+    step = next(iter(result["steps"]))
+    assert step["executor"]["provider"] == "gpu"
+    assert step["executor"]["container"]["image"] == "safe-synthesizer-tasks:local"
+    get_qualified_image.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_job_config_compiler_validates_pretrained_model_job(mock_sdk):
     mock_sdk.jobs.results.retrieve = AsyncMock(
         return_value=MagicMock(artifact_url="default/job-results-prior#results/attempt-1/adapter")

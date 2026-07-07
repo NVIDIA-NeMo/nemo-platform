@@ -30,3 +30,4 @@ tornado>=6.5.5
 # Runtime compatibility constraints.
 boto3>=1.40.46,<1.40.62
 botocore>=1.40.46,<1.40.62
+gliner<0.2.27
