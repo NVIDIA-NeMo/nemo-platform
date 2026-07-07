@@ -3,6 +3,8 @@
 
 """SPA-aware static file serving for the Studio UI."""
 
+import base64
+import hashlib
 import logging
 import os
 import re
@@ -16,6 +18,69 @@ logger = logging.getLogger(__name__)
 
 # Pattern to match any STUDIO_UI_* markers for cleanup
 STUDIO_UI_MARKER_PATTERN = re.compile(r"STUDIO_UI_[A-Z_]+")
+
+# Finds inline <script type="importmap">…</script> blocks so their content
+# hash can be authorized in script-src without weakening the policy with
+# 'unsafe-inline'. The DOTALL flag lets . span newlines; non-greedy capture
+# avoids merging multiple script tags.
+_INLINE_IMPORTMAP_PATTERN = re.compile(
+    r'<script\s+type=["\']importmap["\']\s*>(.*?)</script>',
+    re.DOTALL,
+)
+
+# Default Content-Security-Policy for the Studio UI.
+#
+# script-src 'self' plus per-content SHA-256 hashes (appended at startup):
+#   Covers Studio JS chunks and plugin bundles (/plugin-ui/…) — all
+#   same-origin — plus the inline <script type="importmap"> block that
+#   wires plugin bundles to their shared React vendor copy. Hashes are
+#   computed from the served HTML so the policy stays tight without
+#   relying on 'unsafe-inline'.
+#
+# connect-src 'self':
+#   Assumes the platform API and Studio UI share the same origin (standard NMP
+#   deployment behind a single ingress).  Deployments routing API traffic to a
+#   separate origin must extend this directive.
+DEFAULT_CSP = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self' 'unsafe-inline' https://webassets.nvidia.com; "
+    "font-src 'self' https://webassets.nvidia.com https://brand-assets.cne.ngc.nvidia.com data:; "
+    "img-src 'self' data: blob: https:; "
+    "connect-src 'self'; "
+    "frame-src 'none'; "
+    "frame-ancestors 'none'; "
+    "object-src 'none'; "
+    "base-uri 'self'; "
+    "form-action 'self'"
+)
+
+
+def _sha256_script_source(content: str) -> str:
+    """CSP script-src token for an inline script's exact content.
+
+    The browser hashes the verbatim text between <script>…</script>,
+    including whitespace, so callers must pass the unmodified inner text.
+    """
+    digest = hashlib.sha256(content.encode("utf-8")).digest()
+    return f"'sha256-{base64.b64encode(digest).decode('ascii')}'"
+
+
+def _augment_csp_for_inline_scripts(csp: str, html: str) -> str:
+    """Add sha256 sources to script-src for each inline import-map script."""
+    hashes = [_sha256_script_source(match.group(1)) for match in _INLINE_IMPORTMAP_PATTERN.finditer(html)]
+    if not hashes:
+        return csp
+    # Inject the hashes into the script-src directive. Preserve the rest of
+    # the policy verbatim so any other directive tweaks survive.
+    addition = " " + " ".join(hashes)
+    replaced, count = re.subn(
+        r"(script-src[^;]*)",
+        lambda m: m.group(1) + addition,
+        csp,
+        count=1,
+    )
+    return replaced if count else csp + "; script-src 'self'" + addition
 
 
 class SPAStaticFiles(StaticFiles):
@@ -31,12 +96,14 @@ class SPAStaticFiles(StaticFiles):
     - Falls back to index.html for non-file routes (SPA routing)
     - Handles .html extension stripping for clean URLs
     - Injects runtime environment variables from platform config (pre-processed once at startup)
+    - Attaches Content-Security-Policy header to HTML responses
     """
 
     def __init__(
         self,
         *args,
         env_replacements: dict[str, str] | None = None,
+        csp_header: str | None = DEFAULT_CSP,
         **kwargs,
     ):
         """Initialize SPA static files handler.
@@ -44,13 +111,46 @@ class SPAStaticFiles(StaticFiles):
         Args:
             env_replacements: Optional dict of STUDIO_UI_* markers to replacement values.
                               These will be applied to HTML and JS files once at startup.
+            csp_header: Content-Security-Policy header value to attach to HTML responses.
+                        Pass None to disable CSP (not recommended in production).
+                        Defaults to DEFAULT_CSP.
         """
         super().__init__(*args, **kwargs)
         self._env_replacements = env_replacements or {}
+        self._csp_header = csp_header
         # Cache for pre-processed file contents (path -> processed content)
         self._processed_cache: dict[str, str] = {}
         # Pre-process files that need env var replacement
         self._preprocess_files()
+        # After preprocessing, derive per-response CSPs that authorize the
+        # HTML's inline <script type="importmap"> blocks via SHA-256 hashes.
+        self._csp_by_path: dict[str, str] = {}
+        if self._csp_header:
+            self._csp_by_path = self._compute_csp_by_path()
+
+    def _compute_csp_by_path(self) -> dict[str, str]:
+        """Map each HTML file to a CSP that authorizes its inline scripts.
+
+        Uses the preprocessed cache when available (so STUDIO_UI_* markers
+        are already replaced — that matters for hash computation if any
+        marker lives inside an inline script) and falls back to reading the
+        file from disk.
+        """
+        assert self._csp_header is not None
+        result: dict[str, str] = {}
+        directory = Path(str(self.directory))
+        for html_path in directory.glob("**/*.html"):
+            rel = str(html_path.relative_to(directory))
+            content = self._processed_cache.get(rel)
+            if content is None:
+                try:
+                    content = html_path.read_text(encoding="utf-8")
+                except Exception:
+                    continue
+            augmented = _augment_csp_for_inline_scripts(self._csp_header, content)
+            if augmented != self._csp_header:
+                result[rel] = augmented
+        return result
 
     def _apply_env_replacements(self, content: str) -> str:
         """Replace STUDIO_UI_* markers with actual values.
@@ -107,6 +207,18 @@ class SPAStaticFiles(StaticFiles):
 
         logger.info(f"Pre-processed {processed_count} files with env replacements")
 
+    def _with_csp(self, response: Response, rel_path: str | None = None) -> Response:
+        """Attach the CSP header to an HTML response if CSP is configured.
+
+        When *rel_path* names an HTML file whose inline scripts were hashed
+        at startup, attach the per-path augmented policy instead of the
+        base one so script-src authorizes those inline scripts.
+        """
+        if self._csp_header:
+            csp = self._csp_by_path.get(rel_path, self._csp_header) if rel_path else self._csp_header
+            response.headers["Content-Security-Policy"] = csp
+        return response
+
     async def get_response(self, path: str, scope: Scope) -> Response:
         """
         Override to implement SPA fallback routing and environment injection.
@@ -130,18 +242,30 @@ class SPAStaticFiles(StaticFiles):
                         media_type="application/javascript",
                     )
                 # Check if this HTML file was pre-processed
-                if path.endswith(".html") and rel_path in self._processed_cache:
-                    return Response(
-                        content=self._processed_cache[rel_path],
-                        media_type="text/html",
-                    )
+                if path.endswith(".html"):
+                    if rel_path in self._processed_cache:
+                        return self._with_csp(
+                            Response(
+                                content=self._processed_cache[rel_path],
+                                media_type="text/html",
+                            ),
+                            rel_path,
+                        )
+                    # Not preprocessed (no markers) — still needs CSP
+                    return self._with_csp(response, rel_path)
                 # Handle index.html when path is "." or "" (root directory request)
                 # StaticFiles serves index.html for directory requests with path="."
-                if rel_path in ("", ".", "/") and "index.html" in self._processed_cache:
-                    return Response(
-                        content=self._processed_cache["index.html"],
-                        media_type="text/html",
-                    )
+                if rel_path in ("", ".", "/"):
+                    if "index.html" in self._processed_cache:
+                        return self._with_csp(
+                            Response(
+                                content=self._processed_cache["index.html"],
+                                media_type="text/html",
+                            ),
+                            "index.html",
+                        )
+                    # index.html had no markers so wasn't preprocessed — still needs CSP
+                    return self._with_csp(response, "index.html")
                 return response
         except Exception:
             pass
@@ -176,11 +300,15 @@ class SPAStaticFiles(StaticFiles):
         """
         # Use pre-processed cache if available
         if rel_path in self._processed_cache:
-            return Response(content=self._processed_cache[rel_path], media_type=media_type)
+            response = Response(content=self._processed_cache[rel_path], media_type=media_type)
+        else:
+            # Otherwise read from disk (file has no markers to replace)
+            content = file_path.read_text(encoding="utf-8")
+            response = Response(content=content, media_type=media_type)
 
-        # Otherwise read from disk (file has no markers to replace)
-        content = file_path.read_text(encoding="utf-8")
-        return Response(content=content, media_type=media_type)
+        if media_type == "text/html":
+            return self._with_csp(response, rel_path)
+        return response
 
     @staticmethod
     def _has_file_extension(path: str) -> bool:

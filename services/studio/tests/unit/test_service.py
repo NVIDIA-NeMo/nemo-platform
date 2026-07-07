@@ -3,12 +3,16 @@
 
 """Unit tests for the StudioService."""
 
+from __future__ import annotations
+
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from nmp.studio.config import StudioConfig
+from nmp.studio.plugins import PluginManifestResponse
 from nmp.studio.service import StudioService
 
 
@@ -512,3 +516,35 @@ class TestStudioConfigEnvReplacements:
 
         result = config._resolve_config_path("nonexistent.path")
         assert result is None
+
+
+class TestConfigureAppPluginRouter:
+    """Tests that configure_app wires plugin static files and /apis/plugins."""
+
+    def test_plugins_endpoint_is_registered(self):
+        manifests = [PluginManifestResponse(name="ex", bundle_url="/plugin-ui/ex/index.js")]
+        with patch("nmp.studio.service.discover_plugins", return_value=manifests):
+            service = StudioService()
+            app = FastAPI()
+            service.configure_app(app)
+
+        client = TestClient(app)
+        response = client.get("/apis/plugins")
+        assert response.status_code == 200
+        data = response.json()
+        assert data[0]["name"] == "ex"
+
+    def test_static_files_mounted_for_each_plugin(self, tmp_path: Path):
+        bundle = tmp_path / "index.js"
+        bundle.write_text("export function mount(){}")
+        manifests = [PluginManifestResponse(name="ex", bundle_url="/plugin-ui/ex/index.js", bundle_dir=tmp_path)]
+
+        with patch("nmp.studio.service.discover_plugins", return_value=manifests):
+            with patch("nmp.studio.service.StaticFiles") as MockStaticFiles:
+                service = StudioService()
+                app = MagicMock(spec=FastAPI)
+                service.configure_app(app)
+
+        mount_calls = [call for call in app.mount.call_args_list if "/plugin-ui/" in str(call)]
+        assert len(mount_calls) == 1
+        MockStaticFiles.assert_called_once_with(directory=str(tmp_path))

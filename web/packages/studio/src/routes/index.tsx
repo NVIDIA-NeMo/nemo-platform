@@ -5,6 +5,8 @@ import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { ErrorPanel } from '@studio/components/ErrorPanel';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { ROUTES } from '@studio/constants/routes';
+import { PluginProvider } from '@studio/plugins/PluginContext';
+import { PluginRenderer } from '@studio/plugins/PluginRenderer';
 import {
   agentRoutes,
   anonymizerRoutes,
@@ -86,7 +88,11 @@ export const routes: RouteObject[] = [
       },
       {
         path: ROUTES.workspace.index,
-        element: <PageLayout sideNav={(collapsed) => <WorkspaceSideNav collapsed={collapsed} />} />,
+        element: (
+          <PluginProvider>
+            <PageLayout sideNav={(collapsed) => <WorkspaceSideNav collapsed={collapsed} />} />
+          </PluginProvider>
+        ),
         children: [
           {
             path: ROUTES.workspace.index,
@@ -119,6 +125,12 @@ export const routes: RouteObject[] = [
               ...dataDesignerRoutes,
               ...anonymizerRoutes,
               ...agentRoutes,
+              {
+                // The /* suffix allows the plugin to own sub-paths via its own internal router.
+                path: `${ROUTES.workspace.plugin}/*`,
+                element: <PluginRenderer />,
+                errorElement: <ErrorPanel title="Plugin" />,
+              },
               ...settingsRoutes,
               ...modelCompareRoutes,
               ...memberRoutes,

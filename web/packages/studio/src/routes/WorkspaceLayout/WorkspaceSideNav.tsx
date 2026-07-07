@@ -24,6 +24,8 @@ import {
   SETTINGS_ENABLED,
 } from '@studio/constants/environment';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
+import { getPluginIcon } from '@studio/plugins/iconMap';
+import { usePluginInstalled, usePlugins } from '@studio/plugins/PluginContext';
 import { iconColorClass } from '@studio/routes/constants';
 import { getAgentSideNavItems } from '@studio/routes/groups/agentRoutes';
 import {
@@ -66,6 +68,8 @@ import { useMemo } from 'react';
 
 export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
   const workspace = useWorkspaceFromPath();
+  const plugins = usePlugins();
+  const agentsInstalled = usePluginInstalled('agents');
 
   const items = useMemo(() => {
     const dashboardNav =
@@ -166,7 +170,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
         ]
       : [];
 
-    const agentItems = getAgentSideNavItems(workspace);
+    const agentItems = agentsInstalled ? getAgentSideNavItems(workspace) : [];
 
     const optimizerNav = OPTIMIZER_ENABLED
       ? [
@@ -276,7 +280,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
       ...(evaluateItems.length > 0 ? [{ group: 'Evaluate', items: evaluateItems }] : []),
       ...(safetyItems.length > 0 ? [{ group: 'Safety', items: safetyItems }] : []),
     ];
-  }, [workspace]);
+  }, [workspace, agentsInstalled]);
 
   const bottomItems = useMemo(
     () => [
@@ -294,5 +298,30 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
     [workspace]
   );
 
-  return <NavigationDrawer items={items} bottomItems={bottomItems} collapsed={collapsed} />;
+  const pluginNavGroups = useMemo(
+    () =>
+      plugins.flatMap((plugin) =>
+        plugin.navItems(workspace).map((group) => ({
+          group: group.group,
+          items: group.items.map((item) => {
+            const Icon = getPluginIcon(item.iconName);
+            return {
+              id: item.id,
+              slotIcon: Icon ? <Icon className={iconColorClass} /> : undefined,
+              slotLabel: item.label,
+              href: item.href,
+            };
+          }),
+        }))
+      ),
+    [plugins, workspace]
+  );
+
+  return (
+    <NavigationDrawer
+      items={[...items, ...pluginNavGroups]}
+      bottomItems={bottomItems}
+      collapsed={collapsed}
+    />
+  );
 };

@@ -5,11 +5,13 @@ import { baseTestConfig } from '@nemo/testing/react/config';
 import tailwindPostcss from '@tailwindcss/postcss';
 import react from '@vitejs/plugin-react';
 import * as fs from 'node:fs';
+import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { build as rolldownBuild, type Plugin as RolldownPlugin } from 'rolldown';
 import license, { type Dependency, type Person } from 'rollup-plugin-license';
 import { visualizer } from 'rollup-plugin-visualizer';
-import { loadEnv } from 'vite';
+import { loadEnv, type Plugin } from 'vite';
 import mkcert from 'vite-plugin-mkcert';
 import svgr from 'vite-plugin-svgr';
 // vite does not know about vitest -- vitest config extends vite config
@@ -31,8 +33,244 @@ interface LicenseReportDependency {
   readonly licenseText: string | null;
 }
 
+// Shared deps externalized from Studio's and plugins' production builds. At
+// runtime, bare imports of these names resolve via an import map in index.html
+// to bundles in public/vendor/, so Studio and every loaded plugin use one
+// shared React/react-dom/router instance.
+const VENDOR_EXTERNALS = [
+  'react',
+  'react/jsx-runtime',
+  'react-dom',
+  'react-dom/client',
+  'react-router',
+  'react-router-dom',
+] as const;
+
+// Each import specifier in the map resolves to a single vendor bundle.
+// 'react/jsx-runtime' shares react.js and 'react-dom/client' shares
+// react-dom.js so there's exactly one copy of each package's internals.
+const VENDOR_IMPORT_MAP: Record<string, string> = {
+  react: 'react.js',
+  'react/jsx-runtime': 'react.js',
+  'react-dom': 'react-dom.js',
+  'react-dom/client': 'react-dom.js',
+  'react-router': 'react-router.js',
+  'react-router-dom': 'react-router-dom.js',
+};
+
+// Virtual modules have no filesystem location. Rolldown's resolver falls
+// back to the build's cwd for bare specifiers, which is set to projectRoot
+// below, so returning the virtual id as-is lets node-resolve find 'react'
+// et al. in studio's node_modules.
+const virtualShimPlugin = (shims: Record<string, string>): RolldownPlugin => ({
+  name: 'virtual-shim',
+  resolveId(id) {
+    return id in shims ? id : null;
+  },
+  load(id) {
+    return shims[id] ?? null;
+  },
+});
+
+// React's CJS uses `module.exports = require(...)` double-indirection that
+// static CJS analysis can't split into named ESM exports, so `export *`
+// only catches `default`. We introspect the real module at build time and
+// emit explicit re-exports (`export var useState = _react["useState"]`) —
+// rolldown treats those as static named exports.
+function cjsNamedReexports(alias: string, keys: string[]): string[] {
+  return keys.map((k) => `export var ${k} = ${alias}["${k}"];`);
+}
+
+// When a CJS dependency does `require("react")` and 'react' is external,
+// rolldown leaves the call as `require(...)` guarded by
+// `typeof require !== "undefined" ? require : <fallback>`. In the browser
+// no `require` exists, so the fallback throws. This banner declares a
+// module-scope `require` backed by the ESM imports of the external names,
+// so the guarded call sees a real function and returns the shared
+// instance from the import map.
+function buildRequireShim(externals: readonly string[]): string {
+  const imports = externals
+    .map((n, i) => `import * as __ext${i} from ${JSON.stringify(n)};`)
+    .join(' ');
+  const entries = externals.map((n, i) => `${JSON.stringify(n)}:__ext${i}`).join(',');
+  // Return the full ESM namespace, not `default`. The namespace carries
+  // both `default` and every named export (e.g. react-dom/client's
+  // createRoot / hydrateRoot), which CJS consumers expect to find directly
+  // on the value returned by require().
+  return (
+    `${imports} ` +
+    `var __externals = {${entries}}; ` +
+    'var require = function(s) { ' +
+    'var m = __externals[s]; if (m) return m; ' +
+    "throw new Error('Dynamic require of \"' + s + '\" is not supported'); " +
+    '};'
+  );
+}
+
+async function buildVendorBundles(outdir: string, projectRoot: string): Promise<void> {
+  // Load React modules from studio's node_modules and enumerate their real
+  // runtime exports so we can generate explicit named re-exports.
+  const requireFromStudio = createRequire(path.resolve(projectRoot, 'package.json'));
+  const keysOf = (spec: string): string[] =>
+    Object.keys(requireFromStudio(spec)).filter((k) => k !== '__esModule' && k !== 'default');
+
+  const reactKeys = keysOf('react');
+  // jsx-runtime's Fragment overlaps with react's; keep only unique keys.
+  const jsxRuntimeKeys = keysOf('react/jsx-runtime').filter((k) => !reactKeys.includes(k));
+  // react-dom/client re-declares createRoot/hydrateRoot with
+  // `usingClientEntryPoint = true` to silence the legacy-root dev warning,
+  // so we export those *from* the client entry and skip them in react-dom's
+  // key list to avoid duplicate exports.
+  const reactDomClientKeys = keysOf('react-dom/client');
+  const reactDomKeys = keysOf('react-dom').filter((k) => !reactDomClientKeys.includes(k));
+
+  const shims: Record<string, string> = {
+    'virtual:react': [
+      "import _react from 'react';",
+      'export default _react;',
+      ...cjsNamedReexports('_react', reactKeys),
+      "import _jsxRuntime from 'react/jsx-runtime';",
+      ...cjsNamedReexports('_jsxRuntime', jsxRuntimeKeys),
+    ].join('\n'),
+    'virtual:react-dom': [
+      "import _reactDom from 'react-dom';",
+      "import _reactDomClient from 'react-dom/client';",
+      // Both 'react-dom' and 'react-dom/client' import-map to this file,
+      // so the default export must satisfy both shapes: `import X from
+      // 'react-dom/client'` expects X.createRoot, while `import X from
+      // 'react-dom'` expects X.createPortal/flushSync/etc. Merging makes
+      // the same object usable from either import style.
+      'var _reactDomMerged = Object.assign({}, _reactDom, _reactDomClient);',
+      'export default _reactDomMerged;',
+      ...cjsNamedReexports('_reactDom', reactDomKeys),
+      ...cjsNamedReexports('_reactDomClient', reactDomClientKeys),
+    ].join('\n'),
+    'virtual:react-router': "export * from 'react-router';",
+    'virtual:react-router-dom': "export * from 'react-router-dom';",
+  };
+
+  const entries: Array<{
+    entry: string;
+    outfile: string;
+    external: string[];
+    banner?: string;
+  }> = [
+    { entry: 'virtual:react', outfile: 'react.js', external: [] },
+    {
+      entry: 'virtual:react-dom',
+      outfile: 'react-dom.js',
+      external: ['react'],
+      banner: buildRequireShim(['react']),
+    },
+    { entry: 'virtual:react-router', outfile: 'react-router.js', external: ['react'] },
+    {
+      entry: 'virtual:react-router-dom',
+      outfile: 'react-router-dom.js',
+      external: ['react', 'react-dom', 'react-router'],
+    },
+  ];
+
+  fs.rmSync(outdir, { recursive: true, force: true });
+  fs.mkdirSync(outdir, { recursive: true });
+  await Promise.all(
+    entries.map(({ entry, outfile, external, banner }) =>
+      rolldownBuild({
+        input: entry,
+        cwd: projectRoot,
+        platform: 'browser',
+        transform: { define: { 'process.env.NODE_ENV': '"production"' } },
+        external,
+        plugins: [virtualShimPlugin(shims)],
+        output: {
+          file: path.resolve(outdir, outfile),
+          format: 'esm',
+          minify: true,
+          sourcemap: true,
+          banner,
+        },
+      })
+    )
+  );
+}
+
+// Generates public/vendor/*.js and injects an inline
+// <script type="importmap"> into index.html. Inline (not external) because
+// external import maps aren't universally supported, and inline resolves
+// before any module script — no race window where a dynamically-loaded
+// plugin's bare 'react' import can miss the map.
+function vendorPlugin(): Plugin {
+  let base = '/';
+  let outdir = '';
+  let projectRoot = '';
+  let pending: Promise<void> | null = null;
+
+  const ensureBuilt = () => {
+    if (!pending) {
+      pending = buildVendorBundles(outdir, projectRoot);
+    }
+    return pending;
+  };
+
+  // Base-aware absolute URLs: entries in the import map are resolved against
+  // the document base URL, which on SPA-fallback deep links can be anywhere
+  // inside the app, so relative './vendor/…' paths would break. Absolute
+  // paths prefixed with Vite's `base` resolve identically from any route.
+  const importMapJson = () =>
+    JSON.stringify({
+      imports: Object.fromEntries(
+        Object.entries(VENDOR_IMPORT_MAP).map(([k, v]) => [k, `${base}vendor/${v}`])
+      ),
+    });
+
+  let isServe = false;
+  return {
+    name: 'studio-plugin-vendor',
+    // Run before Vite's default resolver so the dev-mode rewrite below
+    // beats optimizeDeps. In build mode rolldownOptions.external handles
+    // the same specifiers; resolveId is a no-op there.
+    enforce: 'pre',
+    configResolved(config) {
+      base = config.base;
+      isServe = config.command === 'serve';
+      projectRoot = config.root;
+      outdir = path.resolve(projectRoot, 'public', 'vendor');
+    },
+    buildStart() {
+      return ensureBuilt();
+    },
+    configureServer() {
+      return ensureBuilt();
+    },
+    // Without this, Vite pre-bundles bare 'react' into .vite/deps and
+    // rewrites Studio's imports to that URL, giving Studio its own React
+    // while plugins use the vendor copy. Redirecting to the vendor URL
+    // in dev matches the prod externalization so a single React instance
+    // is shared at runtime.
+    resolveId(id) {
+      if (!isServe) return null;
+      const mapped = VENDOR_IMPORT_MAP[id];
+      if (mapped) {
+        return { id: `${base}vendor/${mapped}`, external: true };
+      }
+      return null;
+    },
+    transformIndexHtml() {
+      return [
+        {
+          tag: 'script',
+          attrs: { type: 'importmap' },
+          children: importMapJson(),
+          injectTo: 'head-prepend',
+        },
+      ];
+    },
+  };
+}
+
 const isCI = Boolean(process.env.CI);
 const isProd = process.env.NODE_ENV === 'production';
+const isTest = Boolean(process.env.VITEST);
+
 const configDir = path.dirname(fileURLToPath(import.meta.url));
 const commonPackageDir = path.resolve(configDir, '../common');
 const licenseFileNames = [
@@ -161,10 +399,13 @@ export default defineConfig(({ mode }) => {
   const proxyDomain = VITE_PLATFORM_PROXY_DOMAIN?.trim();
   const shouldProxyPlatform = VITE_PLATFORM_BASE_URL?.trim() === '' && Boolean(proxyDomain);
 
+  const inTestMode = isTest || mode.includes('test');
+
   // Skip mkcert in tests/CI: it fetches GitHub API for releases and hits rate limits (403) in CI.
   const plugins = [
     react(),
-    ...(process.env.VITEST || mode.includes('test') ? [] : [mkcert()]),
+    ...(inTestMode ? [] : [vendorPlugin()]),
+    ...(inTestMode ? [] : [mkcert()]),
     svgr(),
   ];
 
@@ -175,8 +416,22 @@ export default defineConfig(({ mode }) => {
     resolve: {
       tsconfigPaths: true,
     },
+    // Vite pre-bundles bare deps by default; excluding the shared vendor
+    // packages keeps them out of .vite/deps so our resolveId hook can route
+    // them to /vendor/* instead without Vite racing to pre-bundle first.
+    optimizeDeps: {
+      exclude: [...VENDOR_EXTERNALS],
+    },
     build: {
       rolldownOptions: {
+        external: [...VENDOR_EXTERNALS],
+        // Some CJS deps (e.g. KUI) call `require('react')` internally. With
+        // react external, rolldown emits a guarded `require` call whose
+        // browser fallback throws. The banner supplies a real `require` in
+        // every chunk that routes to the import-map-resolved ESM copy.
+        output: {
+          banner: buildRequireShim(VENDOR_EXTERNALS),
+        },
         plugins: [
           !isCI ? visualizer({ filename: 'dist/stats.html', gzipSize: true }) : undefined,
           license({

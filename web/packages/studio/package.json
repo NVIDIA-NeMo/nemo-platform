@@ -114,6 +114,8 @@
     "@vitest/coverage-v8": "catalog:",
     "@vitest/ui": "catalog:",
     "blob-polyfill": "^9.0.20240710",
+    "globals": "^17.7.0",
+    "rolldown": "^1.1.4",
     "happy-dom": "catalog:",
     "js-yaml": "^4.3.0",
     "jsdom": "catalog:",

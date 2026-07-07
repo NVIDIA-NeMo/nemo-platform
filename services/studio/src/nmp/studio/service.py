@@ -3,19 +3,23 @@
 
 """Studio service implementation for serving the NeMo Studio UI."""
 
+from __future__ import annotations
+
 import logging
 from collections.abc import Mapping
 from html import escape
 from pathlib import Path
-from typing import ClassVar, List
+from typing import ClassVar
 
 from fastapi import FastAPI, Request, status
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from nmp.common.http_clients import shared_async_http_client
 from nmp.common.service import RouterConfig, Service
 from nmp.studio import copilot
 from nmp.studio.config import StudioConfig
-from nmp.studio.static_files import SPAStaticFiles
+from nmp.studio.plugins import build_plugins_router, discover_plugins
+from nmp.studio.static_files import DEFAULT_CSP, SPAStaticFiles
 from starlette.responses import Response
 
 logger = logging.getLogger(__name__)
@@ -67,7 +71,7 @@ class StudioService(Service[StudioConfig]):
         """Service description for OpenAPI docs."""
         return "Serves the NeMo Studio web application and local copilot bridge"
 
-    def get_routers(self) -> List[RouterConfig]:
+    def get_routers(self) -> list[RouterConfig]:
         """Return routers for the studio service.
 
         Studio exposes API routes for local-only UI integrations in addition to
@@ -93,6 +97,7 @@ class StudioService(Service[StudioConfig]):
         self._mount_telemetry_proxy(app)
         self._mount_copilot_mcp(app)
         self._mount_static_files(app)
+        self._configure_plugins(app)
 
     def _mount_copilot_mcp(self, app: FastAPI) -> None:
         """Mount the auth-bypassed MCP callback before the /studio static app."""
@@ -231,14 +236,13 @@ class StudioService(Service[StudioConfig]):
         """
         static_path = self._get_static_files_path()
         if self._static_assets_ready(static_path):
-            # Get env replacements from config (single source of truth, cached)
-            env_replacements = self._get_config().env_replacements
             app.mount(
                 "/studio",
                 SPAStaticFiles(
                     directory=str(static_path),
                     html=True,
-                    env_replacements=env_replacements,
+                    env_replacements=self._get_config().env_replacements,
+                    csp_header=DEFAULT_CSP,
                 ),
                 name="studio-static",
             )
@@ -291,6 +295,30 @@ nemo services restart</pre>
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             headers={"Cache-Control": "no-store"},
         )
+
+    def _configure_plugins(self, app: FastAPI) -> None:
+        """Discover studio plugins and wire up their static files and API endpoint."""
+        manifests = discover_plugins()
+
+        for manifest in manifests:
+            plugin_dir = manifest.bundle_dir
+            if plugin_dir is None:
+                logger.debug("Plugin %r has no web bundle — skipping static file mount", manifest.name)
+            elif plugin_dir.exists():
+                app.mount(
+                    f"/plugin-ui/{manifest.name}",
+                    StaticFiles(directory=str(plugin_dir)),
+                    name=f"plugin-ui-{manifest.name}",
+                )
+                logger.info("Mounted plugin static files for %r at /plugin-ui/%s", manifest.name, manifest.name)
+            else:
+                logger.warning(
+                    "Plugin %r bundle directory %r not found — static files not mounted",
+                    manifest.name,
+                    plugin_dir,
+                )
+
+        app.include_router(build_plugins_router(manifests))
 
     def _get_static_files_path(self) -> Path:
         """Get the path to the static files directory.
