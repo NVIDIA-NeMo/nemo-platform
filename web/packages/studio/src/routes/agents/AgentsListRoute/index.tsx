@@ -38,6 +38,10 @@ export const AgentsListRoute: FC = () => {
   const handleOpenDetails = (agent: AgentTableRow) =>
     navigate(getAgentDetailRoute(workspace, agent.name));
 
+  if (!pluginsLoaded && !pluginsError) {
+    return null;
+  }
+
   if (pluginsLoaded && !pluginsError && !agentsInstalled) {
     return (
       <Stack className="h-full justify-center mx-auto max-w-[640px]" gap="density-md">

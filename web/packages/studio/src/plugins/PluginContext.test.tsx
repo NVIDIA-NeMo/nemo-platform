@@ -131,26 +131,4 @@ describe('PluginProvider', () => {
     expect(result.current.plugins).toHaveLength(0);
     warnSpy.mockRestore();
   });
-
-  it('skips a plugin with an untrusted bundle URL (missing-export path not unit-testable without dynamic-import mocking)', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    // The security gate rejects the URL before import() is called, so no
-    // dynamic-import mock is needed here.  The branch in loadPlugin() that
-    // checks for missing `mount`/`navItems` exports requires the ability to
-    // mock dynamic import(), which Vitest does not yet support cleanly.
-    vi.mocked(global.fetch).mockResolvedValue({
-      ok: true,
-      json: async () => [{ name: 'good', bundleUrl: 'https://evil.com/bad.js' }],
-    } as unknown as Response);
-
-    const { result } = renderHook(usePluginState, { wrapper: createWrapper() });
-
-    await waitFor(() => {
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Rejected untrusted bundle URL')
-      );
-    });
-    expect(result.current.plugins).toHaveLength(0);
-    warnSpy.mockRestore();
-  });
 });

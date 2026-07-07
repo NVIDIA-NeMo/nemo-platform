@@ -621,7 +621,7 @@ class TestBuildCSPHeader:
 
     def test_issuer_reaches_connect_and_frame_src(self):
         csp = self._csp_for({"STUDIO_UI_VITE_AUTH_AUTHORITY": "https://issuer.example.com/realms/nmp"})
-        assert "https://issuer.example.com" in self._directive(csp, "connect-src")
+        assert "https://issuer.example.com" in self._directive(csp, "connect-src").split()
         assert self._directive(csp, "frame-src") == "'self' https://issuer.example.com"
 
     def test_platform_base_url_reaches_connect_and_script_src(self):
@@ -636,7 +636,7 @@ class TestBuildCSPHeader:
                 "STUDIO_UI_VITE_NIM_PROXY_MICROSERVICE_URL": "https://nim.example.com",
             }
         )
-        connect = self._directive(csp, "connect-src")
+        connect = self._directive(csp, "connect-src").split()
         assert "https://ds.example.com" in connect
         assert "https://nim.example.com" in connect
         assert self._directive(csp, "script-src") == "'self'"

@@ -15,6 +15,13 @@ import { within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 
+vi.mock('@studio/plugins/PluginContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@studio/plugins/PluginContext')>()),
+  usePluginsLoaded: () => true,
+  usePluginsError: () => false,
+  usePluginInstalled: () => true,
+}));
+
 const workspace = workspace1.workspace;
 const MODELS_URL = `${PLATFORM_BASE_URL}${getModelsListModelsQueryKey(':workspace')[0]}`;
 const CREATE_AGENT_URL = `${PLATFORM_BASE_URL}${getAgentsListAgentsQueryKey(':workspace')[0]}`;

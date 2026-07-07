@@ -1,6 +1,7 @@
 import { BASE_URL } from '@studio/constants/environment';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { usePlugins, usePluginsLoaded } from '@studio/plugins/PluginContext';
+import { logger } from '@studio/util/logger';
 import { useEffect, useRef, type ReactElement } from 'react';
 import { useAuth } from 'react-oidc-context';
 import { useParams } from 'react-router-dom';
@@ -21,14 +22,19 @@ export const PluginRenderer = (): ReactElement => {
   useEffect(() => {
     if (!plugin || !containerRef.current) return;
 
-    return plugin.mount(containerRef.current, {
-      workspaceId: workspace,
-      auth: {
-        accessToken: accessTokenRef.current,
-        getAccessToken: () => accessTokenRef.current,
-      },
-      basename: BASE_URL ?? '/',
-    });
+    try {
+      return plugin.mount(containerRef.current, {
+        workspaceId: workspace,
+        auth: {
+          accessToken: accessTokenRef.current,
+          getAccessToken: () => accessTokenRef.current,
+        },
+        basename: BASE_URL ?? '/',
+      });
+    } catch (err) {
+      logger.error(`[plugins] Plugin "${plugin.name}" failed to mount`, err);
+      return undefined;
+    }
   }, [plugin, workspace]);
 
   if (!isLoaded) {
