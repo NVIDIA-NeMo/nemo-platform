@@ -93,8 +93,7 @@ Services, and `get`/`list`/`watch`/`create`/`delete` on `apps/v1.Deployment`.
 
 This Role is namespace-scoped to the release namespace. Pointing
 `backend_config.k8s.namespace` at a namespace outside the release namespace
-requires additional RBAC (a RoleBinding in that namespace, or a
-ClusterRole/ClusterRoleBinding) that the chart does not provision today;
+requires additional RBAC that the chart does not provision today;
 namespace-per-workspace provisioning is a documented future enhancement.
 
 ### Native sidecars

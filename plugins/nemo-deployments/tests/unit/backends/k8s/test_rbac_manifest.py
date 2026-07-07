@@ -18,16 +18,18 @@ from pathlib import Path
 
 import pytest
 
+_CONTROLLER_ROLE_RELATIVE_PATH = Path("k8s", "helm", "templates", "core", "controller-role.yaml")
+
 
 def _repo_root() -> Path:
     for parent in Path(__file__).resolve().parents:
-        if (parent / "k8s" / "helm" / "templates" / "core" / "controller-role.yaml").is_file():
+        if (parent / _CONTROLLER_ROLE_RELATIVE_PATH).is_file():
             return parent
-    raise FileNotFoundError("Could not locate repo root containing k8s/helm/templates/core/controller-role.yaml")
+    raise FileNotFoundError(f"Could not locate repo root containing {_CONTROLLER_ROLE_RELATIVE_PATH}")
 
 
 def _controller_role_source() -> str:
-    role_path = _repo_root() / "k8s" / "helm" / "templates" / "core" / "controller-role.yaml"
+    role_path = _repo_root() / _CONTROLLER_ROLE_RELATIVE_PATH
     content = role_path.read_text()
     # Only the Role definition (before the "---" separator) is relevant; the
     # RoleBinding that follows has no `rules:` block to collide with.
