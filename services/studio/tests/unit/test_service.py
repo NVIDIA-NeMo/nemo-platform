@@ -6,7 +6,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 from fastapi import FastAPI
@@ -534,17 +535,109 @@ class TestConfigureAppPluginRouter:
         data = response.json()
         assert data[0]["name"] == "ex"
 
-    def test_static_files_mounted_for_each_plugin(self, tmp_path: Path):
+    def test_bundle_assets_served_for_each_plugin(self, tmp_path: Path):
         bundle = tmp_path / "index.js"
         bundle.write_text("export function mount(){}")
+        (tmp_path / "index.js.map").write_text("{}")
+        (tmp_path / "styles.css").write_text("body{}")
         manifests = [PluginManifestResponse(name="ex", bundle_url="/plugin-ui/ex/index.js", bundle_dir=tmp_path)]
 
         with patch("nmp.studio.service.discover_plugins", return_value=manifests):
-            with patch("nmp.studio.service.StaticFiles") as MockStaticFiles:
-                service = StudioService()
-                app = MagicMock(spec=FastAPI)
-                service.configure_app(app)
+            service = StudioService()
+            app = FastAPI()
+            service.configure_app(app)
 
-        mount_calls = [call for call in app.mount.call_args_list if "/plugin-ui/" in str(call)]
-        assert len(mount_calls) == 1
-        MockStaticFiles.assert_called_once_with(directory=str(tmp_path))
+        client = TestClient(app)
+        response = client.get("/plugin-ui/ex/index.js")
+        assert response.status_code == 200
+        assert response.text == "export function mount(){}"
+        assert response.headers["content-type"].startswith("text/javascript")
+        assert client.get("/plugin-ui/ex/index.js.map").status_code == 200
+        assert client.get("/plugin-ui/ex/styles.css").status_code == 200
+
+    def test_bundle_assets_allowlist_blocks_non_bundle_files(self, tmp_path: Path):
+        """Only direct .js/.js.map/.css children of the bundle dir are reachable."""
+        (tmp_path / "index.js").write_text("// bundle")
+        (tmp_path / "secrets.py").write_text("TOKEN = 'x'")
+        (tmp_path / "config.yaml").write_text("key: value")
+        subdir = tmp_path / "sub"
+        subdir.mkdir()
+        (subdir / "nested.js").write_text("// nested")
+        manifests = [PluginManifestResponse(name="ex", bundle_url="/plugin-ui/ex/index.js", bundle_dir=tmp_path)]
+
+        with patch("nmp.studio.service.discover_plugins", return_value=manifests):
+            service = StudioService()
+            app = FastAPI()
+            service.configure_app(app)
+
+        client = TestClient(app)
+        assert client.get("/plugin-ui/ex/secrets.py").status_code == 404
+        assert client.get("/plugin-ui/ex/config.yaml").status_code == 404
+        assert client.get("/plugin-ui/ex/sub/nested.js").status_code == 404
+        assert client.get("/plugin-ui/ex/missing.js").status_code == 404
+        assert client.get("/plugin-ui/unknown/index.js").status_code == 404
+
+    def test_bundle_asset_symlink_escape_blocked(self, tmp_path: Path):
+        """A .js symlink inside the bundle dir must not serve a file outside it."""
+        bundle = tmp_path / "bundle"
+        bundle.mkdir()
+        (bundle / "index.js").write_text("// ok")
+        secret = tmp_path / "outside.js"
+        secret.write_text("SECRET")
+        (bundle / "leak.js").symlink_to(secret)
+        manifests = [PluginManifestResponse(name="ex", bundle_url="/plugin-ui/ex/index.js", bundle_dir=bundle)]
+
+        with patch("nmp.studio.service.discover_plugins", return_value=manifests):
+            service = StudioService()
+            app = FastAPI()
+            service.configure_app(app)
+
+        client = TestClient(app)
+        assert client.get("/plugin-ui/ex/index.js").status_code == 200
+        assert client.get("/plugin-ui/ex/leak.js").status_code == 404
+
+
+class TestBuildCSPHeader:
+    """_build_csp_header wires configured STUDIO_UI_* endpoints into CSP directives."""
+
+    @staticmethod
+    def _directive(csp: str, name: str) -> str:
+        for part in csp.split(";"):
+            part = part.strip()
+            if part.startswith(f"{name} "):
+                return part[len(name) + 1 :]
+        raise AssertionError(f"directive {name!r} not found in {csp!r}")
+
+    def _csp_for(self, replacements: dict[str, str]) -> str:
+        service = StudioService()
+        with patch.object(service, "_get_config", return_value=SimpleNamespace(env_replacements=replacements)):
+            return service._build_csp_header()
+
+    def test_empty_replacements_is_same_origin(self):
+        csp = self._csp_for({})
+        assert self._directive(csp, "connect-src") == "'self'"
+        assert self._directive(csp, "script-src") == "'self'"
+        assert self._directive(csp, "frame-src") == "'none'"
+
+    def test_issuer_reaches_connect_and_frame_src(self):
+        csp = self._csp_for({"STUDIO_UI_VITE_AUTH_AUTHORITY": "https://issuer.example.com/realms/nmp"})
+        assert "https://issuer.example.com" in self._directive(csp, "connect-src")
+        assert self._directive(csp, "frame-src") == "'self' https://issuer.example.com"
+
+    def test_platform_base_url_reaches_connect_and_script_src(self):
+        csp = self._csp_for({"STUDIO_UI_VITE_PLATFORM_BASE_URL": "https://api.example.com"})
+        assert "https://api.example.com" in self._directive(csp, "connect-src")
+        assert self._directive(csp, "script-src") == "'self' https://api.example.com"
+
+    def test_microservice_urls_reach_connect_src_only(self):
+        csp = self._csp_for(
+            {
+                "STUDIO_UI_VITE_DATA_STORE_MICROSERVICE_URL": "https://ds.example.com",
+                "STUDIO_UI_VITE_NIM_PROXY_MICROSERVICE_URL": "https://nim.example.com",
+            }
+        )
+        connect = self._directive(csp, "connect-src")
+        assert "https://ds.example.com" in connect
+        assert "https://nim.example.com" in connect
+        assert self._directive(csp, "script-src") == "'self'"
+        assert self._directive(csp, "frame-src") == "'none'"

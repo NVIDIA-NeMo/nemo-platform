@@ -15,16 +15,21 @@ export const PluginRenderer = (): ReactElement => {
 
   const plugin = plugins.find((p) => p.name === pluginName);
   const accessToken = user?.access_token ?? '';
+  const accessTokenRef = useRef(accessToken);
+  accessTokenRef.current = accessToken;
 
   useEffect(() => {
     if (!plugin || !containerRef.current) return;
 
     return plugin.mount(containerRef.current, {
       workspaceId: workspace,
-      auth: { accessToken },
+      auth: {
+        accessToken: accessTokenRef.current,
+        getAccessToken: () => accessTokenRef.current,
+      },
       basename: BASE_URL ?? '/',
     });
-  }, [plugin, workspace, accessToken]);
+  }, [plugin, workspace]);
 
   if (!isLoaded) {
     return (

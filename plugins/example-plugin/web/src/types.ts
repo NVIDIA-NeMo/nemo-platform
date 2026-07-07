@@ -7,7 +7,10 @@
 // build-time dependency on Studio's internal packages.
 export interface PluginMountProps {
   workspaceId: string;
-  auth: { accessToken: string };
+  auth: {
+    accessToken: string;
+    getAccessToken: () => string;
+  };
   /** The URL base path where Studio is mounted, e.g. `"/studio/"`. Pass to BrowserRouter as `basename`. */
   basename: string;
 }

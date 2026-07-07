@@ -107,7 +107,11 @@ function buildRequireShim(externals: readonly string[]): string {
   );
 }
 
-async function buildVendorBundles(outdir: string, projectRoot: string): Promise<void> {
+async function buildVendorBundles(
+  outdir: string,
+  projectRoot: string,
+  dev: boolean
+): Promise<void> {
   // Load React modules from studio's node_modules and enumerate their real
   // runtime exports so we can generate explicit named re-exports.
   const requireFromStudio = createRequire(path.resolve(projectRoot, 'package.json'));
@@ -178,13 +182,17 @@ async function buildVendorBundles(outdir: string, projectRoot: string): Promise<
         input: entry,
         cwd: projectRoot,
         platform: 'browser',
-        transform: { define: { 'process.env.NODE_ENV': '"production"' } },
+        // Dev needs React's development build: Fast Refresh's scheduleRefresh
+        // hook and dev warnings only exist in the development renderer.
+        transform: {
+          define: { 'process.env.NODE_ENV': dev ? '"development"' : '"production"' },
+        },
         external,
         plugins: [virtualShimPlugin(shims)],
         output: {
           file: path.resolve(outdir, outfile),
           format: 'esm',
-          minify: true,
+          minify: !dev,
           sourcemap: true,
           banner,
         },
@@ -202,11 +210,14 @@ function vendorPlugin(): Plugin {
   let base = '/';
   let outdir = '';
   let projectRoot = '';
+  let isServe = false;
   let pending: Promise<void> | null = null;
 
+  // buildVendorBundles wipes outdir and rebuilds on every vite process start,
+  // so dev and build never serve bundles left over from the other mode.
   const ensureBuilt = () => {
     if (!pending) {
-      pending = buildVendorBundles(outdir, projectRoot);
+      pending = buildVendorBundles(outdir, projectRoot, isServe);
     }
     return pending;
   };
@@ -222,7 +233,6 @@ function vendorPlugin(): Plugin {
       ),
     });
 
-  let isServe = false;
   return {
     name: 'studio-plugin-vendor',
     // Run before Vite's default resolver so the dev-mode rewrite below

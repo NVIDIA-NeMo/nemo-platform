@@ -7,9 +7,12 @@ export interface PluginMountProps {
   workspaceId: string;
   /**
    * Auth credentials for the plugin to call backend APIs.
-   * Only `accessToken` is exposed — plugins must not receive refresh tokens.
+   * Only access tokens are exposed — plugins must not receive refresh tokens.
    */
-  auth: { accessToken: string };
+  auth: {
+    accessToken: string;
+    getAccessToken: () => string;
+  };
   /**
    * The URL base path where Studio is mounted, e.g. `"/studio/"`.
    * Plugins that use their own router (e.g. React Router `BrowserRouter`) must

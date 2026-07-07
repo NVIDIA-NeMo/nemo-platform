@@ -11,15 +11,14 @@ from html import escape
 from pathlib import Path
 from typing import ClassVar
 
-from fastapi import FastAPI, Request, status
-from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.responses import FileResponse, HTMLResponse
 from nmp.common.http_clients import shared_async_http_client
 from nmp.common.service import RouterConfig, Service
 from nmp.studio import copilot
 from nmp.studio.config import StudioConfig
 from nmp.studio.plugins import build_plugins_router, discover_plugins
-from nmp.studio.static_files import DEFAULT_CSP, SPAStaticFiles
+from nmp.studio.static_files import SPAStaticFiles, build_csp
 from starlette.responses import Response
 
 logger = logging.getLogger(__name__)
@@ -42,6 +41,17 @@ HOP_BY_HOP_HEADERS = {
     "transfer-encoding",
     "upgrade",
 }
+
+
+def _bundle_asset_media_type(filename: str) -> str | None:
+    """Media type for an allowed plugin bundle asset; None for disallowed suffixes."""
+    if filename.endswith(".js.map"):
+        return "application/json"
+    if filename.endswith(".js"):
+        return "text/javascript"
+    if filename.endswith(".css"):
+        return "text/css"
+    return None
 
 
 class StudioService(Service[StudioConfig]):
@@ -228,6 +238,23 @@ class StudioService(Service[StudioConfig]):
             if key.lower() not in HOP_BY_HOP_HEADERS and key.lower() in {"content-type", "content-encoding"}
         }
 
+    def _build_csp_header(self) -> str:
+        """CSP extended with the cross-origin endpoints the SPA is configured to reach."""
+        replacements = self._get_config().env_replacements
+        issuer = replacements.get("STUDIO_UI_VITE_AUTH_AUTHORITY", "")
+        platform_base_url = replacements.get("STUDIO_UI_VITE_PLATFORM_BASE_URL", "")
+        return build_csp(
+            connect_src_urls=(
+                issuer,
+                platform_base_url,
+                replacements.get("STUDIO_UI_VITE_DATA_STORE_MICROSERVICE_URL", ""),
+                replacements.get("STUDIO_UI_VITE_NIM_PROXY_MICROSERVICE_URL", ""),
+                replacements.get("STUDIO_UI_VITE_NIM_PROXY_MICROSERVICE_INTERNAL_URL", ""),
+            ),
+            frame_src_urls=(issuer,),  # oidc-client-ts silent-renew iframe
+            script_src_urls=(platform_base_url,),  # dynamic import() of plugin bundles
+        )
+
     def _mount_static_files(self, app: FastAPI) -> None:
         """Mount static files on the given FastAPI app.
 
@@ -242,7 +269,7 @@ class StudioService(Service[StudioConfig]):
                     directory=str(static_path),
                     html=True,
                     env_replacements=self._get_config().env_replacements,
-                    csp_header=DEFAULT_CSP,
+                    csp_header=self._build_csp_header(),
                 ),
                 name="studio-static",
             )
@@ -297,26 +324,38 @@ nemo services restart</pre>
         )
 
     def _configure_plugins(self, app: FastAPI) -> None:
-        """Discover studio plugins and wire up their static files and API endpoint."""
+        """Discover studio plugins and wire up their bundle assets and API endpoint."""
         manifests = discover_plugins()
 
+        bundle_dirs: dict[str, Path] = {}
         for manifest in manifests:
             plugin_dir = manifest.bundle_dir
             if plugin_dir is None:
-                logger.debug("Plugin %r has no web bundle — skipping static file mount", manifest.name)
+                logger.debug("Plugin %r has no web bundle — skipping bundle assets", manifest.name)
             elif plugin_dir.exists():
-                app.mount(
-                    f"/plugin-ui/{manifest.name}",
-                    StaticFiles(directory=str(plugin_dir)),
-                    name=f"plugin-ui-{manifest.name}",
-                )
-                logger.info("Mounted plugin static files for %r at /plugin-ui/%s", manifest.name, manifest.name)
+                bundle_dirs[manifest.name] = plugin_dir
+                logger.info("Serving plugin bundle assets for %r at /plugin-ui/%s", manifest.name, manifest.name)
             else:
                 logger.warning(
-                    "Plugin %r bundle directory %r not found — static files not mounted",
+                    "Plugin %r bundle directory %r not found — bundle assets not served",
                     manifest.name,
                     plugin_dir,
                 )
+
+        @app.get("/plugin-ui/{plugin_name}/{filename}", include_in_schema=False)
+        async def serve_plugin_asset(plugin_name: str, filename: str) -> FileResponse:
+            # Allowlist: only direct children of the bundle dir with bundle-asset
+            # suffixes — never the plugin's Python source or subdirectories.
+            bundle_dir = bundle_dirs.get(plugin_name)
+            media_type = _bundle_asset_media_type(filename)
+            if bundle_dir is None or media_type is None or "/" in filename or "\\" in filename:
+                raise HTTPException(status_code=404)
+            # resolve() + parent check stops a symlink inside the bundle dir from
+            # escaping it and serving an arbitrary file over this public route.
+            file_path = (bundle_dir / filename).resolve()
+            if file_path.parent != bundle_dir.resolve() or not file_path.is_file():
+                raise HTTPException(status_code=404)
+            return FileResponse(file_path, media_type=media_type)
 
         app.include_router(build_plugins_router(manifests))
 

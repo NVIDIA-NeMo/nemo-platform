@@ -6,7 +6,11 @@ import { Button, PageHeader, Stack, Text } from '@nvidia/foundations-react-core'
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { AgentsTable, type AgentTableRow } from '@studio/components/dataViews/AgentsDataView';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
-import { usePluginInstalled, usePluginsLoaded } from '@studio/plugins/PluginContext';
+import {
+  usePluginInstalled,
+  usePluginsError,
+  usePluginsLoaded,
+} from '@studio/plugins/PluginContext';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { CreateDeploymentModal } from '@studio/routes/agents/AgentDeploymentsListRoute/CreateDeploymentModal';
 import { CloneAgentModal } from '@studio/routes/agents/AgentsListRoute/CloneAgentModal';
@@ -18,6 +22,7 @@ import { useNavigate } from 'react-router-dom';
 
 export const AgentsListRoute: FC = () => {
   const pluginsLoaded = usePluginsLoaded();
+  const pluginsError = usePluginsError();
   const agentsInstalled = usePluginInstalled('agents');
   const workspace = useWorkspaceFromPath();
   const navigate = useNavigate();
@@ -33,7 +38,7 @@ export const AgentsListRoute: FC = () => {
   const handleOpenDetails = (agent: AgentTableRow) =>
     navigate(getAgentDetailRoute(workspace, agent.name));
 
-  if (pluginsLoaded && !agentsInstalled) {
+  if (pluginsLoaded && !pluginsError && !agentsInstalled) {
     return (
       <Stack className="h-full justify-center mx-auto max-w-[640px]" gap="density-md">
         <CircleAlert className="size-16 stroke-2" color="var(--text-color-feedback-danger)" />

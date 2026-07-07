@@ -43,7 +43,7 @@ export function mount(container: HTMLElement, props: PluginMountProps): () => vo
   root.render(
     React.createElement(App, {
       workspaceId: props.workspaceId,
-      accessToken: props.auth.accessToken,
+      getAccessToken: props.auth.getAccessToken,
       basename: props.basename,
     }),
   );

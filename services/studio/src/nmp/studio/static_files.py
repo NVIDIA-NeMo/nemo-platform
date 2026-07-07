@@ -8,7 +8,9 @@ import hashlib
 import logging
 import os
 import re
+from collections.abc import Iterable
 from pathlib import Path
+from urllib.parse import urlparse
 
 from starlette.responses import Response
 from starlette.staticfiles import StaticFiles
@@ -28,32 +30,66 @@ _INLINE_IMPORTMAP_PATTERN = re.compile(
     re.DOTALL,
 )
 
-# Default Content-Security-Policy for the Studio UI.
-#
-# script-src 'self' plus per-content SHA-256 hashes (appended at startup):
-#   Covers Studio JS chunks and plugin bundles (/plugin-ui/…) — all
-#   same-origin — plus the inline <script type="importmap"> block that
-#   wires plugin bundles to their shared React vendor copy. Hashes are
-#   computed from the served HTML so the policy stays tight without
-#   relying on 'unsafe-inline'.
-#
-# connect-src 'self':
-#   Assumes the platform API and Studio UI share the same origin (standard NMP
-#   deployment behind a single ingress).  Deployments routing API traffic to a
-#   separate origin must extend this directive.
-DEFAULT_CSP = (
-    "default-src 'self'; "
-    "script-src 'self'; "
-    "style-src 'self' 'unsafe-inline' https://webassets.nvidia.com; "
-    "font-src 'self' https://webassets.nvidia.com https://brand-assets.cne.ngc.nvidia.com data:; "
-    "img-src 'self' data: blob: https:; "
-    "connect-src 'self'; "
-    "frame-src 'none'; "
-    "frame-ancestors 'none'; "
-    "object-src 'none'; "
-    "base-uri 'self'; "
-    "form-action 'self'"
-)
+
+def _origin(url: str) -> str | None:
+    """scheme://host[:port] of an absolute http(s) URL; None for empty/relative values."""
+    parsed = urlparse(url)
+    if parsed.scheme in ("http", "https") and parsed.netloc:
+        return f"{parsed.scheme}://{parsed.netloc}"
+    return None
+
+
+def _origins(urls: Iterable[str]) -> list[str]:
+    """Unique origins of the absolute URLs in *urls*, preserving order."""
+    result: list[str] = []
+    for url in urls:
+        origin = _origin(url)
+        if origin is not None and origin not in result:
+            result.append(origin)
+    return result
+
+
+def build_csp(
+    connect_src_urls: Iterable[str] = (),
+    frame_src_urls: Iterable[str] = (),
+    script_src_urls: Iterable[str] = (),
+) -> str:
+    """Content-Security-Policy for the Studio UI, built from configured endpoints.
+
+    script-src 'self' plus per-content SHA-256 hashes (appended at startup):
+      Covers Studio JS chunks and plugin bundles (/plugin-ui/…) plus the inline
+      <script type="importmap"> block that wires plugin bundles to their shared
+      React vendor copy. Hashes are computed from the served HTML so the policy
+      stays tight without relying on 'unsafe-inline'.
+
+    Each configured absolute URL contributes its origin (scheme://host[:port])
+    to the named directive so cross-origin deployments work: the OIDC issuer in
+    connect-src (token endpoint fetches) and frame-src (silent-renew iframe), a
+    cross-origin platform base URL in connect-src (API/plugin-manifest fetches)
+    and script-src (dynamic import() of plugin bundles). Empty or relative URLs
+    contribute nothing; with no arguments the policy is fully same-origin.
+    """
+    connect_src = " ".join(["'self'", *_origins(connect_src_urls)])
+    script_src = " ".join(["'self'", *_origins(script_src_urls)])
+    frame_origins = _origins(frame_src_urls)
+    frame_src = " ".join(["'self'", *frame_origins]) if frame_origins else "'none'"
+    return (
+        "default-src 'self'; "
+        f"script-src {script_src}; "
+        "style-src 'self' 'unsafe-inline' https://webassets.nvidia.com; "
+        "font-src 'self' https://webassets.nvidia.com https://brand-assets.cne.ngc.nvidia.com data:; "
+        "img-src 'self' data: blob: https:; "
+        f"connect-src {connect_src}; "
+        f"frame-src {frame_src}; "
+        "frame-ancestors 'none'; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'"
+    )
+
+
+# Same-origin default (standard NMP deployment behind a single ingress).
+DEFAULT_CSP = build_csp()
 
 
 def _sha256_script_source(content: str) -> str:

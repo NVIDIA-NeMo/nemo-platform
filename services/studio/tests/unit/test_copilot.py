@@ -8,12 +8,14 @@ import json
 import logging
 import re
 import uuid
+from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import httpx
 import pytest
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from fastapi.testclient import TestClient
 from nmp.studio import copilot, copilot_artifacts, copilot_skills, studio_links
 from nmp.studio.config import StudioConfig
@@ -965,6 +967,7 @@ def test_studio_link_destinations_cover_registered_workspace_routes():
         "members": "members",
         "modelCompare": "model_chat",
         "newCustomizationJob": "customization_new",
+        "plugin": "plugin",
         "promptTuningForm": "prompt_tuning",
         "safeSynthesizer": "safe_synthesizer",
         "safeSynthesizerJob": "safe_synthesizer_job",
@@ -1655,7 +1658,8 @@ async def test_blocking_mcp_tool_response_streams_keepalives_until_user_responds
     assert response.headers["cache-control"] == "no-cache, no-transform"
     assert response.headers["x-accel-buffering"] == "no"
 
-    iterator = response.body_iterator
+    assert isinstance(response, StreamingResponse)
+    iterator = cast(AsyncIterator[str], response.body_iterator)
     assert await anext(iterator) == ": keepalive\n\n"
 
     result.set_result({"status": "answered", "response": "A detailed answer"})

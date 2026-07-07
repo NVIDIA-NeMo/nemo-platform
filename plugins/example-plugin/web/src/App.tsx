@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, NavLink, Navigate, Outlet } from 'react-r
 
 interface AppProps {
   workspaceId: string;
-  accessToken: string;
+  getAccessToken: () => string;
   basename: string;
 }
 
@@ -22,10 +22,11 @@ interface AppProps {
  * - Links *within* plugin pages use React Router's `<NavLink>` / `<Link>` for
  *   client-side navigation without a full page reload.
  *
- * The `accessToken` prop is available for authenticated API calls, e.g.:
- *   fetch('/apis/my-resource', { headers: { Authorization: `Bearer ${accessToken}` } })
+ * Call `getAccessToken()` per request (not once at mount) so calls keep working
+ * after OIDC silent renew rotates the token, e.g.:
+ *   fetch('/apis/my-resource', { headers: { Authorization: `Bearer ${getAccessToken()}` } })
  */
-export function App({ workspaceId, accessToken, basename }: AppProps) {
+export function App({ workspaceId, getAccessToken, basename }: AppProps) {
   const base = `/workspaces/${workspaceId}/plugin/example`;
 
   return (
@@ -34,8 +35,8 @@ export function App({ workspaceId, accessToken, basename }: AppProps) {
         <Route path={`${base}/*`} element={<Layout base={base} />}>
           <Route index element={<Navigate to="overview" replace />} />
           <Route path="overview" element={<OverviewPage />} />
-          <Route path="auth" element={<AuthPage accessToken={accessToken} />} />
-          <Route path="workspace" element={<WorkspacePage workspaceId={workspaceId} accessToken={accessToken} />} />
+          <Route path="auth" element={<AuthPage getAccessToken={getAccessToken} />} />
+          <Route path="workspace" element={<WorkspacePage workspaceId={workspaceId} />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>
@@ -78,7 +79,8 @@ function OverviewPage() {
   );
 }
 
-function AuthPage({ accessToken }: { accessToken: string }) {
+function AuthPage({ getAccessToken }: { getAccessToken: () => string }) {
+  const accessToken = getAccessToken();
   // Parse the JWT payload (without verification — for display only).
   let claims: Record<string, unknown> | null = null;
   try {
@@ -95,14 +97,15 @@ function AuthPage({ accessToken }: { accessToken: string }) {
       <h1 className="text-lg font-semibold">Auth</h1>
       <p className="text-sm text-gray-500">
         Studio passes an OIDC access token to every plugin via{' '}
-        <code>mount(container, {'{ auth: { accessToken } }'})</code>. Use it as a
-        Bearer token when calling platform APIs.
+        <code>mount(container, {'{ auth: { getAccessToken } }'})</code>. Call{' '}
+        <code>getAccessToken()</code> per request — it returns the current token
+        after silent renewal — and use it as a Bearer token.
       </p>
 
       <div className="space-y-1">
         <h2 className="text-sm font-medium text-gray-700">Example API call</h2>
         <pre className="text-xs bg-gray-100 rounded p-3 overflow-x-auto">{`fetch('/apis/v1/workspaces', {
-  headers: { Authorization: \`Bearer \${accessToken}\` },
+  headers: { Authorization: \`Bearer \${getAccessToken()}\` },
 })`}</pre>
       </div>
 
@@ -122,7 +125,7 @@ function AuthPage({ accessToken }: { accessToken: string }) {
   );
 }
 
-function WorkspacePage({ workspaceId, accessToken }: { workspaceId: string; accessToken: string }) {
+function WorkspacePage({ workspaceId }: { workspaceId: string }) {
   return (
     <div className="space-y-3">
       <h1 className="text-lg font-semibold">Workspace</h1>
@@ -139,7 +142,7 @@ function WorkspacePage({ workspaceId, accessToken }: { workspaceId: string; acce
       <div className="space-y-1">
         <h2 className="text-sm font-medium text-gray-700">Example API call scoped to this workspace</h2>
         <pre className="text-xs bg-gray-100 rounded p-3 overflow-x-auto">{`fetch(\`/apis/v1/workspaces/\${workspaceId}/models\`, {
-  headers: { Authorization: \`Bearer \${accessToken}\` },
+  headers: { Authorization: \`Bearer \${getAccessToken()}\` },
 })`}</pre>
       </div>
     </div>

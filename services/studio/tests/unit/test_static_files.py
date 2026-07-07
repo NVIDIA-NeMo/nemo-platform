@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from nmp.studio.static_files import DEFAULT_CSP, SPAStaticFiles
+from nmp.studio.static_files import DEFAULT_CSP, SPAStaticFiles, build_csp
 
 
 @pytest.fixture()
@@ -90,6 +90,64 @@ class TestCSPHeader:
         response = c.get("/studio/")
         assert response.status_code == 200
         assert "Content-Security-Policy" not in response.headers
+
+
+def _directive(csp: str, name: str) -> str:
+    """Return the value of the named CSP directive, e.g. _directive(csp, 'script-src')."""
+    for part in csp.split(";"):
+        part = part.strip()
+        if part.startswith(f"{name} "):
+            return part[len(name) + 1 :]
+    raise AssertionError(f"directive {name!r} not found in {csp!r}")
+
+
+class TestBuildCSP:
+    """build_csp folds configured cross-origin endpoints into the right directives."""
+
+    def test_no_args_is_fully_same_origin(self):
+        csp = build_csp()
+        assert csp == DEFAULT_CSP
+        assert _directive(csp, "connect-src") == "'self'"
+        assert _directive(csp, "script-src") == "'self'"
+        assert _directive(csp, "frame-src") == "'none'"
+
+    def test_connect_src_url_contributes_origin(self):
+        csp = build_csp(connect_src_urls=("https://api.example.com",))
+        assert _directive(csp, "connect-src") == "'self' https://api.example.com"
+        assert _directive(csp, "script-src") == "'self'"
+
+    def test_script_src_url_contributes_origin(self):
+        csp = build_csp(script_src_urls=("https://cdn.example.com",))
+        assert _directive(csp, "script-src") == "'self' https://cdn.example.com"
+
+    def test_frame_src_switches_from_none_to_self_plus_origin(self):
+        csp = build_csp(frame_src_urls=("https://issuer.example.com",))
+        assert _directive(csp, "frame-src") == "'self' https://issuer.example.com"
+
+    def test_only_scheme_host_port_kept_not_path_or_query(self):
+        """A path/query in a configured URL must not leak into the directive."""
+        csp = build_csp(connect_src_urls=("https://api.example.com:8443/apis/v2?x=1",))
+        assert _directive(csp, "connect-src") == "'self' https://api.example.com:8443"
+
+    def test_empty_and_relative_urls_contribute_nothing(self):
+        csp = build_csp(
+            connect_src_urls=("", "/apis/plugins", "not-a-url", "ftp://x/y"),
+            script_src_urls=("",),
+            frame_src_urls=("",),
+        )
+        assert _directive(csp, "connect-src") == "'self'"
+        assert _directive(csp, "script-src") == "'self'"
+        assert _directive(csp, "frame-src") == "'none'"
+
+    def test_origins_deduped_preserving_order(self):
+        csp = build_csp(
+            connect_src_urls=(
+                "https://a.example.com/one",
+                "https://b.example.com",
+                "https://a.example.com/two",
+            )
+        )
+        assert _directive(csp, "connect-src") == "'self' https://a.example.com https://b.example.com"
 
 
 class TestHasFileExtension:

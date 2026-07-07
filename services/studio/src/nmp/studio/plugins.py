@@ -15,7 +15,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 from fastapi import APIRouter
-from nemo_platform_plugin.discovery import discover_entry_points, discover_studio
+from nemo_platform_plugin.discovery import discover_entry_points, discover_manifests, discover_studio
 from nemo_platform_plugin.interface import StudioSpec
 from pydantic import BaseModel
 
@@ -52,18 +52,29 @@ def _editable_source_root(dist: Distribution) -> Path | None:
 
 
 def _validate_bundle_path(ep_name: str, bundle_path: Path) -> bool:
-    """Return True if *bundle_path* is safe to serve via StaticFiles.
+    """Return True if *bundle_path* is safe to serve as a plugin bundle.
 
-    Two checks are applied:
+    Three checks are applied:
 
-    1. The resolved path must be a regular file (prevents accidentally mounting
+    1. The filename must be ``index.js`` — the advertised ``bundleUrl`` is
+       always ``/plugin-ui/<name>/index.js``, so any other filename would
+       validate here yet 404 in the browser.
+    2. The resolved path must be a regular file (prevents accidentally serving
        system directories, e.g. when ``bundle_path`` points to ``/etc/passwd``
        its parent ``/etc`` would otherwise be exposed).
-    2. Best-effort: the resolved path must be within the plugin's distribution
+    3. Best-effort: the resolved path must be within the plugin's distribution
        root as reported by ``importlib.metadata``, or — for PEP 660 editable
        installs — within the source directory recorded in ``direct_url.json``.
        Skipped when distribution metadata is unavailable (e.g. in tests).
     """
+    if bundle_path.name != "index.js":
+        logger.warning(
+            "Studio plugin %r bundle_path %r must be named index.js — skipping bundle",
+            ep_name,
+            bundle_path,
+        )
+        return False
+
     resolved = bundle_path.resolve()
     if not resolved.is_file():
         logger.warning(
@@ -93,21 +104,6 @@ def _validate_bundle_path(ep_name: str, bundle_path: Path) -> bool:
             logger.debug("Could not determine distribution root for plugin %r — skipping path check", ep_name)
 
     return True
-
-
-# Entry-point groups that represent user-facing plugins.  Infrastructure
-# groups like ``nemo.controllers`` and ``nemo.executors`` are excluded so
-# that deployment controllers and executor helpers don't appear as plugins.
-_PLUGIN_GROUPS = (
-    "nemo.services",
-    "nemo.cli",
-    "nemo.tasks",
-    "nemo.sdk",
-    "nemo.mcp",
-    "nemo.studio",
-    "nemo.skills",
-    "nemo.docs",
-)
 
 
 @dataclass
@@ -148,14 +144,7 @@ def discover_plugins() -> list[PluginManifestResponse]:
 
     The result is cached so factories are called exactly once per process.
     """
-    # Collect unique plugin names from user-facing entry-point groups only,
-    # excluding infrastructure groups like nemo.controllers and nemo.executors.
-    all_plugin_names: set[str] = set()
-    for group in _PLUGIN_GROUPS:
-        for ep_name in discover_entry_points(group):
-            # Mirror the task-name stripping done by discover_manifests()
-            plugin_name = ep_name.split(".", 1)[0] if group == "nemo.tasks" else ep_name
-            all_plugin_names.add(plugin_name)
+    all_plugin_names = set(discover_manifests())
 
     # Studio-specific specs, keyed by entry-point name.
     studio_factories = discover_studio()

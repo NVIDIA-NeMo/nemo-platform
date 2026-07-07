@@ -20,6 +20,10 @@ describe('getPluginIcon', () => {
     expect(getPluginIcon('this-icon-does-not-exist')).toBeUndefined();
   });
 
+  it('returns undefined for non-icon lucide exports like the generic Icon', () => {
+    expect(getPluginIcon('icon')).toBeUndefined();
+  });
+
   it('returns undefined for an empty string', () => {
     expect(getPluginIcon('')).toBeUndefined();
   });

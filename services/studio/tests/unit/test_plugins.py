@@ -29,21 +29,36 @@ def _eps(*names: str) -> dict[str, object]:
     return {n: object() for n in names}
 
 
+def _manifests(*names: str) -> dict[str, object]:
+    """Fake discover_manifests result: plugin name → sentinel manifest."""
+    return {n: object() for n in names}
+
+
 class TestDiscoverPlugins:
     def test_returns_empty_list_when_no_plugins_installed(self):
-        with patch("nmp.studio.plugins.discover_entry_points", return_value={}):
+        with patch("nmp.studio.plugins.discover_manifests", return_value={}):
             with patch("nmp.studio.plugins.discover_studio", return_value={}):
                 result = discover_plugins()
         assert result == []
 
     def test_plugin_without_studio_entry_appears_with_null_bundle_url(self):
         """A plugin installed via nemo.services (etc.) with no nemo.studio entry shows up."""
-        with patch("nmp.studio.plugins.discover_entry_points", return_value=_eps("agents")):
+        with patch("nmp.studio.plugins.discover_manifests", return_value=_manifests("agents")):
             with patch("nmp.studio.plugins.discover_studio", return_value={}):
                 result = discover_plugins()
 
         assert len(result) == 1
         assert result[0].name == "agents"
+        assert result[0].bundle_url is None
+
+    def test_jobs_only_plugin_appears_in_manifest(self):
+        """discover_manifests() is the source of truth, so a plugin that only
+        registers dot-scoped surfaces (nemo.jobs/nemo.functions) is listed."""
+        with patch("nmp.studio.plugins.discover_manifests", return_value=_manifests("automodel")):
+            with patch("nmp.studio.plugins.discover_studio", return_value={}):
+                result = discover_plugins()
+
+        assert [m.name for m in result] == ["automodel"]
         assert result[0].bundle_url is None
 
     def test_plugin_with_studio_entry_gets_bundle_url(self, tmp_path: Path):
@@ -52,9 +67,10 @@ class TestDiscoverPlugins:
         spec = StudioSpec(name="example", bundle_path=bundle_file)
         mock_factory = Mock(return_value=spec)
 
-        with patch("nmp.studio.plugins.discover_entry_points", return_value=_eps("example")):
-            with patch("nmp.studio.plugins.discover_studio", return_value={"example": mock_factory}):
-                result = discover_plugins()
+        with patch("nmp.studio.plugins.discover_manifests", return_value=_manifests("example")):
+            with patch("nmp.studio.plugins.discover_entry_points", return_value=_eps("example")):
+                with patch("nmp.studio.plugins.discover_studio", return_value={"example": mock_factory}):
+                    result = discover_plugins()
 
         mock_factory.assert_called_once()
         assert len(result) == 1
@@ -66,7 +82,7 @@ class TestDiscoverPlugins:
         broken_factory = Mock(side_effect=RuntimeError("oops"))
 
         with caplog.at_level(logging.WARNING, logger="nmp.studio.plugins"):
-            with patch("nmp.studio.plugins.discover_entry_points", return_value=_eps("bad-plugin")):
+            with patch("nmp.studio.plugins.discover_manifests", return_value=_manifests("bad-plugin")):
                 with patch("nmp.studio.plugins.discover_studio", return_value={"bad-plugin": broken_factory}):
                     result = discover_plugins()
 
@@ -79,7 +95,7 @@ class TestDiscoverPlugins:
         spec = StudioSpec(name="headless-plugin")
         mock_factory = Mock(return_value=spec)
 
-        with patch("nmp.studio.plugins.discover_entry_points", return_value=_eps("headless-plugin")):
+        with patch("nmp.studio.plugins.discover_manifests", return_value=_manifests("headless-plugin")):
             with patch("nmp.studio.plugins.discover_studio", return_value={"headless-plugin": mock_factory}):
                 result = discover_plugins()
 
@@ -98,9 +114,10 @@ class TestDiscoverPlugins:
         spec = StudioSpec(name="my-plugin", bundle_path=bundle_file)
         mock_factory = Mock(return_value=spec)
 
-        with patch("nmp.studio.plugins.discover_entry_points", return_value=_eps("my-plugin")):
-            with patch("nmp.studio.plugins.discover_studio", return_value={"my-plugin": mock_factory}):
-                result = discover_plugins()
+        with patch("nmp.studio.plugins.discover_manifests", return_value=_manifests("my-plugin")):
+            with patch("nmp.studio.plugins.discover_entry_points", return_value=_eps("my-plugin")):
+                with patch("nmp.studio.plugins.discover_studio", return_value={"my-plugin": mock_factory}):
+                    result = discover_plugins()
 
         assert result[0].bundle_url == "/plugin-ui/my-plugin/index.js"
         assert result[0].bundle_dir == bundle_dir.resolve()
@@ -111,7 +128,7 @@ class TestDiscoverPlugins:
         mock_factory = Mock(return_value=spec)
 
         with caplog.at_level(logging.WARNING, logger="nmp.studio.plugins"):
-            with patch("nmp.studio.plugins.discover_entry_points", return_value=_eps("my-plugin")):
+            with patch("nmp.studio.plugins.discover_manifests", return_value=_manifests("my-plugin")):
                 with patch("nmp.studio.plugins.discover_studio", return_value={"my-plugin": mock_factory}):
                     result = discover_plugins()
 
@@ -121,11 +138,11 @@ class TestDiscoverPlugins:
 
     def test_bundle_path_nonexistent_file_suppresses_bundle(self, tmp_path: Path, caplog):
         """A bundle_path that does not point to an existing file is rejected."""
-        spec = StudioSpec(name="my-plugin", bundle_path=tmp_path / "missing.js")
+        spec = StudioSpec(name="my-plugin", bundle_path=tmp_path / "index.js")
         mock_factory = Mock(return_value=spec)
 
         with caplog.at_level(logging.WARNING, logger="nmp.studio.plugins"):
-            with patch("nmp.studio.plugins.discover_entry_points", return_value=_eps("my-plugin")):
+            with patch("nmp.studio.plugins.discover_manifests", return_value=_manifests("my-plugin")):
                 with patch("nmp.studio.plugins.discover_studio", return_value={"my-plugin": mock_factory}):
                     result = discover_plugins()
 
@@ -150,9 +167,10 @@ class TestDiscoverPlugins:
         mock_ep.dist = mock_dist
 
         with caplog.at_level(logging.WARNING, logger="nmp.studio.plugins"):
-            with patch("nmp.studio.plugins.discover_entry_points", return_value={"my-plugin": mock_ep}):
-                with patch("nmp.studio.plugins.discover_studio", return_value={"my-plugin": mock_factory}):
-                    result = discover_plugins()
+            with patch("nmp.studio.plugins.discover_manifests", return_value=_manifests("my-plugin")):
+                with patch("nmp.studio.plugins.discover_entry_points", return_value={"my-plugin": mock_ep}):
+                    with patch("nmp.studio.plugins.discover_studio", return_value={"my-plugin": mock_factory}):
+                        result = discover_plugins()
 
         assert result[0].bundle_url is None
         assert "outside distribution root" in caplog.text
@@ -176,9 +194,10 @@ class TestDiscoverPlugins:
         mock_ep = Mock()
         mock_ep.dist = mock_dist
 
-        with patch("nmp.studio.plugins.discover_entry_points", return_value={"my-plugin": mock_ep}):
-            with patch("nmp.studio.plugins.discover_studio", return_value={"my-plugin": mock_factory}):
-                result = discover_plugins()
+        with patch("nmp.studio.plugins.discover_manifests", return_value=_manifests("my-plugin")):
+            with patch("nmp.studio.plugins.discover_entry_points", return_value={"my-plugin": mock_ep}):
+                with patch("nmp.studio.plugins.discover_studio", return_value={"my-plugin": mock_factory}):
+                    result = discover_plugins()
 
         assert result[0].bundle_url == "/plugin-ui/my-plugin/index.js"
 
@@ -198,9 +217,10 @@ class TestDiscoverPlugins:
         mock_ep = Mock()
         mock_ep.dist = mock_dist
 
-        with patch("nmp.studio.plugins.discover_entry_points", return_value={"my-plugin": mock_ep}):
-            with patch("nmp.studio.plugins.discover_studio", return_value={"my-plugin": mock_factory}):
-                result = discover_plugins()
+        with patch("nmp.studio.plugins.discover_manifests", return_value=_manifests("my-plugin")):
+            with patch("nmp.studio.plugins.discover_entry_points", return_value={"my-plugin": mock_ep}):
+                with patch("nmp.studio.plugins.discover_studio", return_value={"my-plugin": mock_factory}):
+                    result = discover_plugins()
 
         assert result[0].bundle_url == "/plugin-ui/my-plugin/index.js"
         assert result[0].bundle_dir == bundle_file.parent.resolve()
@@ -223,7 +243,7 @@ class TestDiscoverPlugins:
         mock_factory = Mock(return_value=spec)
 
         with caplog.at_level(logging.WARNING, logger="nmp.studio.plugins"):
-            with patch("nmp.studio.plugins.discover_entry_points", return_value=_eps("entry")):
+            with patch("nmp.studio.plugins.discover_manifests", return_value=_manifests("entry")):
                 with patch("nmp.studio.plugins.discover_studio", return_value={"entry": mock_factory}):
                     result = discover_plugins()
 
@@ -233,6 +253,45 @@ class TestDiscoverPlugins:
         # spec.name != entry-point key "entry", so bundle is rejected at the
         # name-mismatch check before the regex check fires.
         assert caplog.text  # a warning was logged
+
+    @pytest.mark.parametrize(
+        "invalid_key",
+        [
+            "UpperCase",
+            "a",  # single character (too short for [a-z][a-z0-9-]+)
+            "1abc",
+            "has spaces",
+        ],
+    )
+    def test_invalid_entry_point_key_suppresses_bundle(self, invalid_key: str, caplog):
+        """An entry-point key that fails _PLUGIN_NAME_RE is rejected even when
+        spec.name matches it (exercises the regex branch itself)."""
+        spec = StudioSpec(name=invalid_key, bundle_path=Path("/some/index.js"))
+        mock_factory = Mock(return_value=spec)
+
+        with caplog.at_level(logging.WARNING, logger="nmp.studio.plugins"):
+            with patch("nmp.studio.plugins.discover_manifests", return_value=_manifests(invalid_key)):
+                with patch("nmp.studio.plugins.discover_studio", return_value={invalid_key: mock_factory}):
+                    result = discover_plugins()
+
+        assert len(result) == 1
+        assert result[0].bundle_url is None
+        assert "invalid entry-point key" in caplog.text
+
+    def test_bundle_path_not_named_index_js_suppresses_bundle(self, tmp_path: Path, caplog):
+        """The advertised bundleUrl is always index.js, so other filenames are rejected."""
+        bundle_file = tmp_path / "main.js"
+        bundle_file.write_text("// bundle")
+        spec = StudioSpec(name="my-plugin", bundle_path=bundle_file)
+        mock_factory = Mock(return_value=spec)
+
+        with caplog.at_level(logging.WARNING, logger="nmp.studio.plugins"):
+            with patch("nmp.studio.plugins.discover_manifests", return_value=_manifests("my-plugin")):
+                with patch("nmp.studio.plugins.discover_studio", return_value={"my-plugin": mock_factory}):
+                    result = discover_plugins()
+
+        assert result[0].bundle_url is None
+        assert "must be named index.js" in caplog.text
 
 
 class TestPluginsRouter:

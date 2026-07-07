@@ -25,7 +25,12 @@ import {
 } from '@studio/constants/environment';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getPluginIcon } from '@studio/plugins/iconMap';
-import { usePluginInstalled, usePlugins } from '@studio/plugins/PluginContext';
+import {
+  usePluginInstalled,
+  usePlugins,
+  usePluginsError,
+  usePluginsLoaded,
+} from '@studio/plugins/PluginContext';
 import { iconColorClass } from '@studio/routes/constants';
 import { getAgentSideNavItems } from '@studio/routes/groups/agentRoutes';
 import {
@@ -47,6 +52,7 @@ import {
   getWorkspaceSettingsRoute,
   getWorkspaceVirtualModelsRoute,
 } from '@studio/routes/utils';
+import { logger } from '@studio/util/logger';
 import {
   Beaker,
   Boxes,
@@ -70,6 +76,10 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
   const workspace = useWorkspaceFromPath();
   const plugins = usePlugins();
   const agentsInstalled = usePluginInstalled('agents');
+  const pluginsLoaded = usePluginsLoaded();
+  const pluginsError = usePluginsError();
+  const manifestResolved = pluginsLoaded && !pluginsError;
+  const showAgents = agentsInstalled || !manifestResolved;
 
   const items = useMemo(() => {
     const dashboardNav =
@@ -170,7 +180,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
         ]
       : [];
 
-    const agentItems = agentsInstalled ? getAgentSideNavItems(workspace) : [];
+    const agentItems = showAgents ? getAgentSideNavItems(workspace) : [];
 
     const optimizerNav = OPTIMIZER_ENABLED
       ? [
@@ -280,7 +290,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
       ...(evaluateItems.length > 0 ? [{ group: 'Evaluate', items: evaluateItems }] : []),
       ...(safetyItems.length > 0 ? [{ group: 'Safety', items: safetyItems }] : []),
     ];
-  }, [workspace, agentsInstalled]);
+  }, [workspace, showAgents]);
 
   const bottomItems = useMemo(
     () => [
@@ -300,20 +310,25 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
 
   const pluginNavGroups = useMemo(
     () =>
-      plugins.flatMap((plugin) =>
-        plugin.navItems(workspace).map((group) => ({
-          group: group.group,
-          items: group.items.map((item) => {
-            const Icon = getPluginIcon(item.iconName);
-            return {
-              id: item.id,
-              slotIcon: Icon ? <Icon className={iconColorClass} /> : undefined,
-              slotLabel: item.label,
-              href: item.href,
-            };
-          }),
-        }))
-      ),
+      plugins.flatMap((plugin) => {
+        try {
+          return plugin.navItems(workspace).map((group) => ({
+            group: group.group,
+            items: group.items.map((item) => {
+              const Icon = getPluginIcon(item.iconName);
+              return {
+                id: item.id,
+                slotIcon: Icon ? <Icon className={iconColorClass} /> : undefined,
+                slotLabel: item.label,
+                href: item.href,
+              };
+            }),
+          }));
+        } catch (err) {
+          logger.warn(`[plugins] navItems() threw for plugin "${plugin.name}":`, err);
+          return [];
+        }
+      }),
     [plugins, workspace]
   );
 
