@@ -1,6 +1,19 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import {
+  closestCenter,
+  DndContext,
+  type DragEndEvent,
+  KeyboardSensor,
+  MouseSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import { restrictToHorizontalAxis } from '@dnd-kit/modifiers';
+import { arrayMove, horizontalListSortingStrategy, SortableContext, useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { useInnerDataViewContext } from '@nemo/common/src/components/DataView/internal/context';
 import {
   getCellStyle,
@@ -25,19 +38,6 @@ import {
 import { flexRender, type Cell, type Header, type Row, type Table as ReactTableType } from '@tanstack/react-table';
 import type { Virtualizer } from '@tanstack/react-virtual';
 import classnames from 'classnames';
-import {
-  closestCenter,
-  DndContext,
-  type DragEndEvent,
-  KeyboardSensor,
-  MouseSensor,
-  TouchSensor,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core';
-import { restrictToHorizontalAxis } from '@dnd-kit/modifiers';
-import { arrayMove, horizontalListSortingStrategy, SortableContext, useSortable } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 import {
   Fragment,
   forwardRef,
@@ -405,6 +405,7 @@ function DraggableColumnHeader({ automaticTitles, header, cellStyle, className }
       automaticTitles={automaticTitles}
       header={header}
       className={className}
+      // eslint-disable-next-line no-restricted-syntax -- DnD transform is a dynamic inline value that cannot be expressed as a class
       style={style}
       dragProps={{ attributes, listeners, isDragging, setNodeRef }}
     />
@@ -431,6 +432,7 @@ function DragAlongCell({ cell }: DragAlongCellProps) {
   };
 
   return (
+        // eslint-disable-next-line no-restricted-syntax -- DnD transform is a dynamic inline value that cannot be expressed as a class
     <TableDataCell ref={setNodeRef} style={style}>
       {flexRender(cell.column.columnDef.cell, cell.getContext())}
     </TableDataCell>
