@@ -9,15 +9,14 @@ from typing import Annotated, Literal
 import typer
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
-from nemo_platform_plugin.files.types import CreateFilesetRequest, UpdateFilesetRequest
+from nemo_platform_plugin.files.types import CreateFilesetRequest, ListFilesetsQueryParams, UpdateFilesetRequest
 
 from nemo_platform_ext.cli.core.api import build_kwargs, merge_filter_dict
 from nemo_platform_ext.cli.core.code_generator import handle_code_generation
 from nemo_platform_ext.cli.core.context import CLIContext
 from nemo_platform_ext.cli.core.errors import handle_errors
 from nemo_platform_ext.cli.core.formatters import Column, check_output_columns_with_format, format_output
-from nemo_platform_ext.cli.core.help_formatter import collect_warnings, create_typer_app
-from nemo_platform_ext.cli.core.pagination import PaginationType, fetch_all_pages, warn_if_more_pages
+from nemo_platform_ext.cli.core.help_formatter import add_warning, collect_warnings, create_typer_app
 from nemo_platform_ext.cli.core.stdin_utils import read_data_input_with_flags, read_payload, validate_required_fields
 from nemo_platform_ext.cli.core.types import (
     EntityOutputFormatOption,
@@ -144,8 +143,10 @@ def create_filesets(
     client = state.get_client()
     files = client_from_platform(client, FilesClient)
     exist_ok_val = all_kwargs.pop("exist_ok", None)
+    workspace_val = all_kwargs.pop("workspace", None)
     result = files.create_fileset(
         body=CreateFilesetRequest(**all_kwargs),
+        **({"workspace": workspace_val} if workspace_val is not None else {}),
         **({"exist_ok": exist_ok_val} if exist_ok_val is not None else {}),
     ).data()
 
@@ -257,17 +258,17 @@ def list_filesets(
 
     client = state.get_client()
     files = client_from_platform(client, FilesClient)
-    path_args = ()
-    pagination_type = PaginationType.PAGE_NUMBER
+    workspace_val = kwargs.pop("workspace", None)
+    query_params = ListFilesetsQueryParams(**kwargs) if kwargs else None
+    response = files.list_filesets(
+        **({"workspace": workspace_val} if workspace_val is not None else {}),
+        **({"query_params": query_params} if query_params is not None else {}),
+    )
+
     if all_pages:
-        items = fetch_all_pages(
-            files.list_filesets,
-            path_args=path_args,
-            body_args=kwargs,
-            pagination_type=pagination_type,
-        )
+        items = list(response.items())
     else:
-        items = files.list_filesets(*path_args, **kwargs)
+        items = response
 
     format_output(
         items,
@@ -278,7 +279,9 @@ def list_filesets(
         timestamp_format=state.get_timestamp_format(),
     )
     if not all_pages:
-        warn_if_more_pages(items, pagination_type)
+        page_result = response.page()
+        if page_result.total_pages is not None and page_result.total_pages > 1:
+            add_warning("More pages of results are available! Use --all-pages to fetch all results.")
 
 
 @app.command("get")

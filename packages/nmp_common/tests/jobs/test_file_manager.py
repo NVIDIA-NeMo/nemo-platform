@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from nemo_platform_plugin.jobs.file_manager import _filter_files_by_patterns
 from nmp.common.jobs.file_manager import FilesetFileManager, FileStorageType
@@ -135,14 +135,13 @@ def test_fileset_validate_storage_exists(fileset_manager, mock_fileset_fs):
     mock_fileset_fs._info.assert_called()
 
 
-@patch("nemo_platform_plugin.jobs.file_manager.client_from_platform")
-def test_fileset_validate_storage_creates(mock_cfp, fileset_manager, mock_fileset_fs, mock_sdk):
+def test_fileset_validate_storage_creates(fileset_manager, mock_fileset_fs):
     """Test validate_storage creates fileset when missing."""
-    mock_fc = MagicMock()
-    mock_cfp.return_value = mock_fc
+    mock_fileset_fs._client = MagicMock()
+    mock_fileset_fs._client.create_fileset = AsyncMock()
     mock_fileset_fs._info.side_effect = FileNotFoundError("not found")
     fileset_manager.validate_storage()
-    mock_fc.create_fileset.assert_called_once()
+    mock_fileset_fs._client.create_fileset.assert_called_once()
 
 
 def test_fileset_upload_file(tmp_path, fileset_manager, mock_fileset_fs):
