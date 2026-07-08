@@ -149,8 +149,17 @@ def _create_secret(sdk: Any, workspace: str, secret_name: str, secret_value: str
     For long-lived platform instances a stale secret (e.g. rotated key)
     would require manual deletion or an update-on-conflict strategy.
     """
+    from nemo_platform_plugin.client.adapter import client_from_platform
+    from nemo_platform_plugin.secrets.client import SecretsClient
+    from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest
+    from pydantic import SecretStr
+
+    secrets = client_from_platform(sdk, SecretsClient)
     try:
-        sdk.secrets.create(name=secret_name, value=secret_value, workspace=workspace)
+        secrets.create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr(secret_value)),
+            workspace=workspace,
+        )
         logger.info("Created secret '%s'", secret_name)
     except Exception as exc:
         if _is_conflict(exc):

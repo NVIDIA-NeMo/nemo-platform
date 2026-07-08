@@ -23,6 +23,9 @@ from unittest.mock import patch
 
 import pytest
 from nemo_platform import NeMoPlatform, PermissionDeniedError
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.secrets.client import SecretsClient
+from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest
 from nmp.core.auth.app.bundle import build_authorization_data as _real_build_authorization_data
 from nmp.core.files.service import FilesService
 from nmp.core.models.config import config as models_config
@@ -36,6 +39,7 @@ from nmp.testing import (
     short_unique_name,
     unique_email,
 )
+from pydantic import SecretStr
 
 
 async def _build_authorization_data_without_secrets(entities_client=None):
@@ -611,7 +615,10 @@ class TestProviderSecretPermissions:
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         admin_sdk.workspaces.create(name=workspace)
-        admin_sdk.secrets.create(workspace=workspace, name="my-api-key", value="test-value")
+        client_from_platform(admin_sdk, SecretsClient).create_secret(
+            body=PlatformSecretCreateRequest(name="my-api-key", value=SecretStr("test-value")),
+            workspace=workspace,
+        )
         grant_workspace_role(
             admin_sdk,
             workspace=workspace,
@@ -636,7 +643,10 @@ class TestProviderSecretPermissions:
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         admin_sdk.workspaces.create(name=workspace)
-        admin_sdk.secrets.create(workspace=workspace, name="my-api-key", value="test-value")
+        client_from_platform(admin_sdk, SecretsClient).create_secret(
+            body=PlatformSecretCreateRequest(name="my-api-key", value=SecretStr("test-value")),
+            workspace=workspace,
+        )
         grant_workspace_role(
             admin_sdk,
             workspace=workspace,
@@ -661,7 +671,10 @@ class TestProviderSecretPermissions:
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
             admin_sdk.workspaces.create(name=workspace)
-            admin_sdk.secrets.create(workspace=workspace, name="should-be-denied", value="test")
+            client_from_platform(admin_sdk, SecretsClient).create_secret(
+                body=PlatformSecretCreateRequest(name="should-be-denied", value=SecretStr("test")),
+                workspace=workspace,
+            )
             grant_workspace_role(
                 admin_sdk,
                 workspace=workspace,
@@ -694,7 +707,10 @@ class TestProviderSecretPermissions:
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
             admin_sdk.workspaces.create(name=workspace)
-            admin_sdk.secrets.create(workspace=workspace, name="should-be-denied", value="test")
+            client_from_platform(admin_sdk, SecretsClient).create_secret(
+                body=PlatformSecretCreateRequest(name="should-be-denied", value=SecretStr("test")),
+                workspace=workspace,
+            )
             grant_workspace_role(
                 admin_sdk,
                 workspace=workspace,

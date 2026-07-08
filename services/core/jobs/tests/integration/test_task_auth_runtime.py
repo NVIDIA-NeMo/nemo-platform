@@ -17,7 +17,10 @@ import os
 from typing import Protocol
 
 import pytest
-from nemo_platform import PermissionDeniedError
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import PermissionDeniedError
+from nemo_platform_plugin.secrets.client import SecretsClient
+from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest
 from nmp.core.secrets.service import SecretsService
 from nmp.testing import (
     TEST_ADMIN_EMAIL,
@@ -28,6 +31,7 @@ from nmp.testing import (
     short_unique_name,
     unique_email,
 )
+from pydantic import SecretStr
 
 
 class _SecretAccessTask(Protocol):
@@ -43,11 +47,12 @@ def _secret_access_task_module() -> _SecretAccessTask:
             workspace = os.environ["NEMO_JOB_WORKSPACE"]
             secret_name = os.environ["NEMO_TEST_SECRET_NAME"]
 
-            result = get_task_sdk(as_service="jobs", http_client=http_client).secrets.access(
-                workspace=workspace,
+            task_sdk = get_task_sdk(as_service="jobs", http_client=http_client)
+            result = client_from_platform(task_sdk, SecretsClient).access_secret(
                 name=secret_name,
+                workspace=workspace,
             )
-            return result.value
+            return result.data().value
 
     return _Task()
 
@@ -67,7 +72,10 @@ class TestTaskRuntimeAuthPropagation:
             workspaces=[workspace],
         ) as ctx:
             admin_sdk = as_user(ctx.sdk, TEST_ADMIN_EMAIL)
-            admin_sdk.secrets.create(workspace=workspace, name=secret_name, value=secret_value)
+            client_from_platform(admin_sdk, SecretsClient).create_secret(
+                body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr(secret_value)),
+                workspace=workspace,
+            )
             grant_workspace_role(
                 admin_sdk,
                 workspace=workspace,
@@ -115,7 +123,10 @@ class TestTaskRuntimeAuthPropagation:
             workspaces=[workspace],
         ) as ctx:
             admin_sdk = as_user(ctx.sdk, TEST_ADMIN_EMAIL)
-            admin_sdk.secrets.create(workspace=workspace, name=secret_name, value="secret-value")
+            client_from_platform(admin_sdk, SecretsClient).create_secret(
+                body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("secret-value")),
+                workspace=workspace,
+            )
 
             ctx.access_log.clear()
             with (

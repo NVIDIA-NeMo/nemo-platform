@@ -9,7 +9,11 @@ import pytest
 from data_designer_nemo.nemotron_personas import WORKSPACE, get_resource_name_for_locale
 from nemo_data_designer_plugin.cli import personas as personas_module
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.storage_config import NGCStorageConfig
+from nemo_platform_plugin.secrets.client import SecretsClient
+from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest
+from pydantic import SecretStr
 
 pytestmark = pytest.mark.integration
 
@@ -102,7 +106,7 @@ def test_make_fileset_creates_secret_from_env_then_fileset(
     )
 
     assert result.exit_code == 0, result.output
-    secret = cli_sdk.secrets.access("my-ngc-key", workspace="system")
+    secret = client_from_platform(cli_sdk, SecretsClient).access_secret(name="my-ngc-key", workspace="system").data()
     assert secret.value == "nvapi-from-env"
 
     fileset = cli_sdk.files.filesets.retrieve(name=get_resource_name_for_locale("en_US"), workspace=WORKSPACE)
@@ -165,7 +169,10 @@ def test_make_fileset_bare_secret_name() -> None:
 def test_make_fileset_create_secret_conflict_does_not_create_fileset(
     monkeypatch: pytest.MonkeyPatch, cli_sdk: NeMoPlatform
 ) -> None:
-    cli_sdk.secrets.create(workspace="system", name="my-ngc-key", value="nvapi-existing")
+    client_from_platform(cli_sdk, SecretsClient).create_secret(
+        workspace="system",
+        body=PlatformSecretCreateRequest(name="my-ngc-key", value=SecretStr("nvapi-existing")),
+    )
     monkeypatch.setenv("MY_NGC_API_KEY", "nvapi-from-env")
 
     result = u.invoke_cli(
@@ -195,7 +202,12 @@ def test_make_fileset_create_secret_internal_error_surfaces_clearly(
     def _boom(*args: object, **kwargs: object) -> None:
         raise RuntimeError("secrets backend exploded")
 
-    with patch.object(cli_sdk.secrets, "create", side_effect=_boom):
+    # The CLI creates secrets via ``client_from_platform(sdk, SecretsClient).create_secret``.
+    # ``create_secret`` is a descriptor whose ``__get__`` rejects class-level access, so it
+    # can't be patched on the class; intercept at the ``client_from_platform`` boundary instead.
+    mock_secrets = Mock()
+    mock_secrets.create_secret.side_effect = _boom
+    with patch.object(personas_module, "client_from_platform", return_value=mock_secrets):
         result = u.invoke_cli(
             [
                 "personas",

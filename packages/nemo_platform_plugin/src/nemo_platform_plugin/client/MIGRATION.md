@@ -185,13 +185,24 @@ so no `pyproject.toml` change is needed — but verify the server still imports 
 Building the client is the easy part. The service's callers are spread across the repo and must
 switch off `sdk.<service>.*`.
 
-### The goal: kill the call sites, not re-plumb the wiring
+### The goal: stop *using* Stainless, not force every consumer onto NemoClient
 
-The objective of a per-service PR is narrow and achievable in one PR: **no consumer calls
-`sdk.<service>.*` anymore** — every one goes through the typed client instead. It is explicitly
-**not** a goal to change how the SDK is constructed or passed around. All the DI seams, factories,
-and `Depends(...)` that hand out `NeMoPlatform` keep doing exactly that — swapping those to hand out
-typed clients is the bigger, separate **AIRCORE-883** effort.
+The real objective is to **remove Stainless SDK usage** for this service so the Stainless dependency
+can eventually be dropped — i.e. **no code calls `sdk.<service>.*`** (the Stainless subresource) any
+more. Concretely that means migrating every real call site to the typed client. It does **not** mean:
+- re-plumbing how the SDK is constructed or passed around — the DI seams, factories, and
+  `Depends(...)` that hand out `NeMoPlatform` keep doing exactly that (swapping those to hand out typed
+  clients is the separate **AIRCORE-883** effort); nor
+- forcing consumers that never touched Stainless onto NemoClient. A raw-HTTP caller
+  (`subprocess_runtime.py` builds `/apis/secrets/...` URLs itself, no SDK) isn't Stainless usage — it
+  can stay as-is. Mock-based tests that stub `mock.secrets.access` aren't Stainless *usage* either,
+  but once the code under test routes through `client_from_platform`, those stubs are dead — remove
+  them (nothing asserts on them) so no stale Stainless-shaped surface lingers.
+
+Be exhaustive when inventorying: production **and** test call sites, in `services/*`, `packages/*`,
+`plugins/*`, and top-level `tests/*` (e2e/`agentic-use`), plus test-*helpers* and *harnesses*. Tests
+that call the real service pass whether or not they're migrated (the service is unchanged), so they
+won't show up as CI failures — grep for `.secrets.` across the whole tree, don't rely on red tests.
 
 The bridge that makes this work at every call site is **`client_from_platform`**: given the
 `NeMoPlatform` a consumer already has, it builds a typed client that **shares the same httpx
@@ -399,19 +410,27 @@ handles multi-service RBAC fine** — per-principal auth is just headers (`as_us
 stays only for out-of-scope *setup* (`sdk.workspaces.*`, `grant_workspace_role` →
 `workspaces.members`) and the raw `sdk._client.post/get` no-auth (401) probes.
 
-### Genuinely deferred (not a `sdk.secrets.*` call, or a separate workstream)
+Beyond the production consumers above, the migration also covered **all remaining `sdk.secrets.*`
+usage** — test setup/harness helpers and e2e suites: the inference-gateway `testing/harness.py`,
+data-designer `testing/utils.py` + `test_personas_cli`, `test_secrets_entities.py`, the cross-service
+integration tests that create secrets as setup (files `test_s3_storage`/`test_ngc_storage`/
+`test_filesets_allowed_hosts`/`tests_filesets_with_auth_secrets`, models `test_models_with_auth`,
+jobs `test_task_auth_runtime`/`test_jobs_secrets_access`), and the `tests/agentic-use/*` e2e suites +
+`nemo-evaluator/examples`. Stale `mock.secrets.*` stubs in already-migrated consumers' unit tests were
+removed (dead — the code now routes through `client_from_platform`; nothing asserted on them).
 
-- `services/core/jobs/.../controllers/backends/subprocess_runtime.py` — **raw HTTP** to
-  `/apis/secrets/v2/.../access` (own `SecretReference` dataclass, never used the SDK). Could move to
-  `SecretsClient` but it's a different shape; left as-is.
+### Genuinely left (not Stainless *usage*, or a separate workstream)
+
 - The **`nemo secrets` CLI** — generated from the Stainless resource; migrating it is the CLI-generator
   effort (**AIRCORE-893**), out of scope here. See §4 for the preferred generic `sdk.nemo_client`
   direction.
-- `test_secrets_entities.py` — uses the shared `ClientContext.sdk` helper, not the secrets fixture.
-- `tests/agentic-use/secrets-*` — standalone but end-to-end against a live gateway; needs typed-client
-  auth wiring (`from_config`, AIRCORE-828). Straightforward once auth lands.
-- The Stainless secrets resource itself (`sdk/.../resources/secrets/`) — remove once nothing imports
-  it (after the deferred items above and the CLI generator).
+- `services/core/jobs/.../controllers/backends/subprocess_runtime.py` — **raw HTTP** to
+  `/apis/secrets/v2/.../access` (own `SecretReference` dataclass, **never used the SDK**). Since the
+  goal is to stop *using Stainless*, not force every consumer onto NemoClient, this stays as-is.
+- Three docstring/comment examples that mention `sdk.secrets.*` for illustration (`nmp_common/
+  sdk_factory.py`, `nmp_testing/client.py`, `test_secret_value_kwarg.py`) — prose, not calls.
+- The Stainless secrets resource itself (`sdk/.../resources/secrets/`) — remove once the CLI generator
+  (893) no longer references it.
 
 ---
 

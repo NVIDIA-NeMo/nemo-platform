@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import pytest
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.secrets.client import SecretsClient
+from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest
 from nmp.common.secrets.encryption import (
     SecretKeyEncryptor,
     SecretKeyEncryptorConfig,
@@ -9,6 +12,7 @@ from nmp.common.secrets.encryption import (
     envelope_encrypt,
 )
 from nmp.core.secrets.entities import PlatformSecret
+from pydantic import SecretStr
 
 
 async def test_list_secrets_entities_empty(client_context):
@@ -46,28 +50,32 @@ async def test_access_old_secret_with_old_provider_can_be_accessed(
     assert created_secret.name == secret_name
     assert created_secret.id is not None
 
+    secrets = client_from_platform(client_context.sdk, SecretsClient)
+
     # Retrieve the secret through the API and validate that it can be decrypted correctly
-    retrieved_secret = client_context.sdk.secrets.retrieve(secret_name, workspace="default")
+    retrieved_secret = secrets.get_secret(name=secret_name, workspace="default").data()
     assert retrieved_secret.name == secret_name
 
     # Access the secret value and verify decryption
-    accessed_secret = client_context.sdk.secrets.access(secret_name, workspace="default")
+    accessed_secret = secrets.access_secret(name=secret_name, workspace="default").data()
     assert accessed_secret.name == secret_name
     assert accessed_secret.value == secret_value
 
     # Now create a new secret with the current provider to ensure both can coexist
     new_secret_name = "entity-client-new-secret"
     new_secret_value = "newsupersecret"
-    new_created_secret = client_context.sdk.secrets.create(
-        name=new_secret_name,
-        value=new_secret_value,
+    new_created_secret = secrets.create_secret(
+        body=PlatformSecretCreateRequest(
+            name=new_secret_name,
+            value=SecretStr(new_secret_value),
+            description="New secret with current provider",
+        ),
         workspace="default",
-        description="New secret with current provider",
-    )
+    ).data()
     assert new_created_secret.name == new_secret_name
 
     # Access the new secret and verify decryption
-    new_accessed_secret = client_context.sdk.secrets.access(new_secret_name, workspace="default")
+    new_accessed_secret = secrets.access_secret(name=new_secret_name, workspace="default").data()
     assert new_accessed_secret.name == new_secret_name
     assert new_accessed_secret.value == new_secret_value
 

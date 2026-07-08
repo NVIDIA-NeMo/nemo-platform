@@ -236,9 +236,4 @@ def mock_nmp_sdk():
     This mocks AsyncNeMoPlatform for use with the inference gateway.
     """
     m = AsyncMock()
-    m.secrets = AsyncMock()
-    # Create a mock response object with a data attribute
-    mock_response = AsyncMock()
-    mock_response.data = "test-api-key-12345"
-    m.secrets.access = AsyncMock(return_value=mock_response)
     return m

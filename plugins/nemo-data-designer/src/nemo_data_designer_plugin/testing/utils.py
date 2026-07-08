@@ -29,11 +29,14 @@ from nemo_data_designer_plugin.jobs.spec import DataDesignerJobConfig
 from nemo_data_designer_plugin.sdk.resources import DataDesignerResource
 from nemo_data_designer_plugin.service import DataDesignerService
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.commands import add_function_commands, add_job_commands
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import PlatformJobResults
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
 from nemo_platform_plugin.jobs.result_manager import ResultManager
+from nemo_platform_plugin.secrets.client import SecretsClient
+from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest
 from nmp.core.files.service import FilesService
 from nmp.core.inference_gateway.service import InferenceGatewayService
 from nmp.core.jobs.service import JobsService
@@ -41,6 +44,7 @@ from nmp.core.models.service import ModelsService
 from nmp.core.secrets.service import SecretsService
 from nmp.platform_runner.plugin_adapter import NemoServiceAdapter
 from nmp.testing import ClientContext, TaskResult, add_mock_provider, create_test_client, subprocess_job_executor_patch
+from pydantic import SecretStr
 
 WORKSPACE_NAME = "my-workspace"
 
@@ -166,9 +170,9 @@ def setup_mock_providers(client_context: ClientContext) -> Generator[None]:
 
 @contextmanager
 def setup_mock_secret(client_context: ClientContext) -> Generator[None]:
-    client_context.sdk.secrets.create(
-        value=SECRET_RAW_VALUE,
-        name=SECRET_NAME,
+    secrets = client_from_platform(client_context.sdk, SecretsClient)
+    secrets.create_secret(
+        body=PlatformSecretCreateRequest(name=SECRET_NAME, value=SecretStr(SECRET_RAW_VALUE)),
         workspace=client_context.sdk.workspace or WORKSPACE_NAME,
     )
     yield

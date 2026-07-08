@@ -17,7 +17,12 @@ from data_designer_nemo.nemotron_personas import (
     get_resource_name_for_locale,
     sync_nemotron_personas_fileset,
 )
-from nemo_platform import ConflictError, NeMoPlatform
+from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import ConflictError
+from nemo_platform_plugin.secrets.client import SecretsClient
+from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest
+from pydantic import SecretStr
 
 _SUPPORTED_LOCALE_NAMES = sorted(SUPPORTED_LOCALES)
 
@@ -134,7 +139,11 @@ def make_fileset_command(
 
     if api_key is not None:
         try:
-            sdk.secrets.create(workspace=secret_workspace, name=secret_name, value=api_key)
+            secrets = client_from_platform(sdk, SecretsClient)
+            secrets.create_secret(
+                workspace=secret_workspace,
+                body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr(api_key)),
+            )
         except ConflictError as exc:
             print_error(
                 f"Secret {api_key_secret!r} already exists. Omit --api-key-env-var to reuse an existing secret."
