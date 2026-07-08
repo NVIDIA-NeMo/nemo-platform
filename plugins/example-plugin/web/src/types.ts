@@ -5,14 +5,12 @@
 // web/packages/studio/src/plugins/types.ts in the Studio monorepo.
 // They are intentionally duplicated here so the example plugin has no
 // build-time dependency on Studio's internal packages.
-export interface PluginMountProps {
+export interface PluginRootProps {
   workspaceId: string;
   auth: {
     accessToken: string;
     getAccessToken: () => string;
   };
-  /** The URL base path where Studio is mounted, e.g. `"/studio/"`. Pass to BrowserRouter as `basename`. */
-  basename: string;
 }
 
 export interface PluginNavItem {

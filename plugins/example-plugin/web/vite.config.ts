@@ -15,6 +15,9 @@ const STUDIO_SHARED_DEPS = [
   'react-dom/client',
   'react-router',
   'react-router-dom',
+  // Studio's design system, shared via the import map so the plugin's KUI
+  // components use Studio's single foundations instance and theme.
+  '@nvidia/foundations-react-core',
 ];
 
 export default defineConfig({

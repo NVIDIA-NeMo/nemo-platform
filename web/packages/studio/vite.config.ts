@@ -44,6 +44,10 @@ const VENDOR_EXTERNALS = [
   'react-dom/client',
   'react-router',
   'react-router-dom',
+  // The design system is shared so plugins render KUI components against the
+  // same theme context Studio's KaizenThemeProvider populates (native look +
+  // dark mode) instead of bundling their own foundations copy.
+  '@nvidia/foundations-react-core',
 ] as const;
 
 // Each import specifier in the map resolves to a single vendor bundle.
@@ -56,6 +60,7 @@ const VENDOR_IMPORT_MAP: Record<string, string> = {
   'react-dom/client': 'react-dom.js',
   'react-router': 'react-router.js',
   'react-router-dom': 'react-router-dom.js',
+  '@nvidia/foundations-react-core': 'foundations.js',
 };
 
 // Virtual modules have no filesystem location. Rolldown's resolver falls
@@ -151,6 +156,9 @@ async function buildVendorBundles(
     ].join('\n'),
     'virtual:react-router': "export * from 'react-router';",
     'virtual:react-router-dom': "export * from 'react-router-dom';",
+    // Foundations is ESM with static named exports, so a plain re-export works
+    // (no CJS named-reexport introspection needed as with react/react-dom).
+    'virtual:foundations': "export * from '@nvidia/foundations-react-core';",
   };
 
   const entries: Array<{
@@ -172,6 +180,14 @@ async function buildVendorBundles(
       outfile: 'react-router-dom.js',
       external: ['react', 'react-dom', 'react-router'],
     },
+    {
+      entry: 'virtual:foundations',
+      outfile: 'foundations.js',
+      external: ['react', 'react-dom'],
+      // Bundled CJS deps inside foundations may `require('react')` /
+      // `require('react-dom')`; the shim routes those to the shared copies.
+      banner: buildRequireShim(['react', 'react-dom']),
+    },
   ];
 
   fs.rmSync(outdir, { recursive: true, force: true });
@@ -192,6 +208,10 @@ async function buildVendorBundles(
         output: {
           file: path.resolve(outdir, outfile),
           format: 'esm',
+          // Single-file output per vendor bundle so each maps to one import-map
+          // entry. Required for foundations, whose internal dynamic imports
+          // would otherwise split into multiple chunks (rejected by output.file).
+          codeSplitting: false,
           minify: !dev,
           sourcemap: true,
           banner,

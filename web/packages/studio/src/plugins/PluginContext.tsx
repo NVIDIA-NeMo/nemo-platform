@@ -3,18 +3,17 @@
 
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { isTrustedBundleUrl } from '@studio/plugins/security';
-import type { LoadedPlugin, PluginManifest } from '@studio/plugins/types';
+import type {
+  LoadedPlugin,
+  PluginContextValue,
+  PluginManifest,
+  PluginModule,
+  PluginProviderProps,
+  PluginQueryData,
+} from '@studio/plugins/types';
 import { logger } from '@studio/util/logger';
 import { useQuery } from '@tanstack/react-query';
-import { createContext, type ReactNode, useContext } from 'react';
-
-interface PluginContextValue {
-  plugins: LoadedPlugin[];
-  /** All plugin names returned by /apis/plugins, including headless ones. */
-  installedNames: ReadonlySet<string>;
-  isLoaded: boolean;
-  isError: boolean;
-}
+import { createContext, useContext } from 'react';
 
 const PluginContext = createContext<PluginContextValue>({
   plugins: [],
@@ -41,15 +40,10 @@ function isValidPluginManifest(obj: unknown): obj is PluginManifest {
   return typeof o.name === 'string' && (typeof o.bundleUrl === 'string' || o.bundleUrl === null);
 }
 
-interface PluginModule {
-  mount: LoadedPlugin['mount'];
-  navItems: LoadedPlugin['navItems'];
-}
-
 function isPluginModule(mod: unknown): mod is PluginModule {
   if (typeof mod !== 'object' || mod === null) return false;
   const m = mod as Record<string, unknown>;
-  return typeof m.mount === 'function' && typeof m.navItems === 'function';
+  return typeof m.Root === 'function' && typeof m.navItems === 'function';
 }
 
 async function loadPlugin(manifest: PluginManifest, baseUrl: string): Promise<LoadedPlugin | null> {
@@ -67,19 +61,14 @@ async function loadPlugin(manifest: PluginManifest, baseUrl: string): Promise<Lo
   try {
     const module: unknown = await import(/* @vite-ignore */ absoluteUrl);
     if (!isPluginModule(module)) {
-      logger.warn(`[plugins] Plugin "${manifest.name}" missing required exports (mount, navItems)`);
+      logger.warn(`[plugins] Plugin "${manifest.name}" missing required exports (Root, navItems)`);
       return null;
     }
-    return { name: manifest.name, mount: module.mount, navItems: module.navItems };
+    return { name: manifest.name, Root: module.Root, navItems: module.navItems };
   } catch (err) {
     logger.warn(`[plugins] Failed to load plugin "${manifest.name}":`, err);
     return null;
   }
-}
-
-interface PluginQueryData {
-  plugins: LoadedPlugin[];
-  installedNames: ReadonlySet<string>;
 }
 
 async function fetchPlugins(): Promise<PluginQueryData> {
@@ -110,10 +99,6 @@ async function fetchPlugins(): Promise<PluginQueryData> {
 
 const NO_PLUGINS: LoadedPlugin[] = [];
 const NO_NAMES: ReadonlySet<string> = new Set();
-
-interface PluginProviderProps {
-  children: ReactNode;
-}
 
 export const PluginProvider = ({ children }: PluginProviderProps) => {
   const { data, isSuccess, isError } = useQuery({

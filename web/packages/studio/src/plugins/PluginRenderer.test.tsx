@@ -3,18 +3,31 @@
 
 import { usePlugins, usePluginsLoaded } from '@studio/plugins/PluginContext';
 import { PluginRenderer } from '@studio/plugins/PluginRenderer';
-import type { LoadedPlugin } from '@studio/plugins/types';
+import type { LoadedPlugin, PluginRootProps } from '@studio/plugins/types';
 import { render, screen } from '@testing-library/react';
+import { useEffect } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 const authState = vi.hoisted(() => ({ accessToken: 'test-token' }));
 
-const mockCleanup = vi.fn();
-const mockMount = vi.fn<LoadedPlugin['mount']>(() => mockCleanup);
+let capturedProps: PluginRootProps | undefined;
+const mountSpy = vi.fn();
 const mockNavItems = vi.fn(() => []);
 
+function MockRoot(props: PluginRootProps) {
+  capturedProps = props;
+  useEffect(() => {
+    mountSpy();
+  }, []);
+  return (
+    <div data-testid="plugin-root">
+      ws:{props.workspaceId} token:{props.auth.accessToken}
+    </div>
+  );
+}
+
 function makePlugin(name: string): LoadedPlugin {
-  return { name, mount: mockMount, navItems: mockNavItems };
+  return { name, Root: MockRoot, navItems: mockNavItems };
 }
 
 vi.mock('@studio/plugins/PluginContext', () => ({
@@ -41,8 +54,8 @@ function renderPlugin(pluginName = 'test-plugin') {
 
 beforeEach(() => {
   authState.accessToken = 'test-token';
-  mockCleanup.mockReset();
-  mockMount.mockReset().mockReturnValue(mockCleanup);
+  capturedProps = undefined;
+  mountSpy.mockReset();
   vi.mocked(usePluginsLoaded).mockReturnValue(true);
 });
 
@@ -62,23 +75,22 @@ describe('PluginRenderer', () => {
     expect(screen.getByText(/loading/i)).toBeInTheDocument();
   });
 
-  it('calls mount with workspaceId and accessToken when plugin is loaded', () => {
+  it('renders the plugin Root with workspaceId and accessToken when loaded', () => {
     vi.mocked(usePlugins).mockReturnValue([makePlugin('test-plugin')]);
 
     renderPlugin();
 
-    expect(mockMount).toHaveBeenCalledWith(expect.any(HTMLElement), {
-      workspaceId: 'my-workspace',
-      auth: { accessToken: 'test-token', getAccessToken: expect.any(Function) },
-      basename: '/',
-    });
+    expect(screen.getByTestId('plugin-root')).toBeInTheDocument();
+    expect(capturedProps?.workspaceId).toBe('my-workspace');
+    expect(capturedProps?.auth.accessToken).toBe('test-token');
+    expect(capturedProps?.auth.getAccessToken()).toBe('test-token');
   });
 
   it('does not remount on token renewal and getAccessToken returns the new token', () => {
     vi.mocked(usePlugins).mockReturnValue([makePlugin('test-plugin')]);
 
     const { rerender } = renderPlugin();
-    expect(mockMount).toHaveBeenCalledTimes(1);
+    expect(mountSpy).toHaveBeenCalledTimes(1);
 
     authState.accessToken = 'renewed-token';
     rerender(
@@ -89,19 +101,8 @@ describe('PluginRenderer', () => {
       </MemoryRouter>
     );
 
-    expect(mockMount).toHaveBeenCalledTimes(1);
-    expect(mockCleanup).not.toHaveBeenCalled();
-    const props = mockMount.mock.calls[0][1];
-    expect(props.auth.getAccessToken()).toBe('renewed-token');
-  });
-
-  it('calls cleanup on unmount', () => {
-    vi.mocked(usePlugins).mockReturnValue([makePlugin('test-plugin')]);
-
-    const { unmount } = renderPlugin();
-
-    unmount();
-    expect(mockCleanup).toHaveBeenCalled();
+    expect(mountSpy).toHaveBeenCalledTimes(1);
+    expect(capturedProps?.auth.getAccessToken()).toBe('renewed-token');
   });
 
   it('shows not found when plugin name does not match any loaded plugin', () => {
