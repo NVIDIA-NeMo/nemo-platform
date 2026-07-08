@@ -39,9 +39,11 @@ from nemo_evaluator_sdk.values import (
     SecretRef,
 )
 from nemo_evaluator_sdk.values.results import EvaluationResult
-from nemo_platform import APIError, AsyncNeMoPlatform, ConflictError, NeMoPlatform, NotFoundError
+from nemo_platform import APIError, AsyncNeMoPlatform, ConflictError, NeMoPlatform
 from nemo_platform.types.files import HuggingfaceStorageConfigParam
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import ConflictError as ClientConflictError
+from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
 from nemo_platform_plugin.secrets.client import AsyncSecretsClient
 from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest
 from pydantic import SecretStr
@@ -246,7 +248,7 @@ async def ensure_submit_evaluator_api_key_secret(workspace: str, client: AsyncNe
     secrets = client_from_platform(client, AsyncSecretsClient)
     try:
         await secrets.get_secret(name=secret_name, workspace=workspace)
-    except NotFoundError:
+    except ClientNotFoundError:
         api_key = os.getenv(DEFAULT_API_KEY_SECRET) or os.getenv("NVIDIA_API_KEY") or os.getenv("NVIDIA_BUILD_API_KEY")
         if api_key is None:
             raise RuntimeError(
@@ -261,7 +263,7 @@ async def ensure_submit_evaluator_api_key_secret(workspace: str, client: AsyncNe
                 workspace=workspace,
             )
             print("API key secret created for workspace")
-        except ConflictError:
+        except ClientConflictError:
             pass
     return secret_name
 
