@@ -13,9 +13,16 @@ import {
   type QueryObserverResult,
   type RefetchOptions,
 } from '@tanstack/react-query';
+import { useEffect } from 'react';
 
 import { LOGS_MAX_FETCH_ITERATIONS, LOGS_MAX_PAGES, LOGS_PAGE_SIZE } from '../../constants';
+import { CJobTerminalStatuses } from '../../constants/query';
 import { getJobRefetchInterval } from '../../utils/query';
+
+// After a job goes terminal, refetchInterval stops polling — but OTLP log
+// shipping can still be in flight, so the final lines would be lost. Refetch a
+// few times post-terminal to capture the tail. Bounded and self-clearing.
+const LOG_SETTLE_DELAYS_MS = [2_000, 6_000, 12_000];
 
 export interface UseJobLogsOptions {
   workspace: string;
@@ -102,6 +109,14 @@ export const useJobLogs = ({
     enabled: enabled ?? !!(workspace && name),
     refetchInterval: () => getJobRefetchInterval(jobStatus),
   });
+
+  const isTerminal = !!jobStatus && CJobTerminalStatuses.includes(jobStatus);
+  const { refetch } = query;
+  useEffect(() => {
+    if (!isTerminal) return;
+    const timers = LOG_SETTLE_DELAYS_MS.map((ms) => setTimeout(() => void refetch(), ms));
+    return () => timers.forEach(clearTimeout);
+  }, [isTerminal, refetch]);
 
   return {
     data: query.data?.logs ?? [],
