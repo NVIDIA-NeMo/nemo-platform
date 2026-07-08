@@ -3,10 +3,10 @@
 
 import type { FormModalProps } from '@nemo/common/src/components/FormModal';
 import type { Agent } from '@nemo/sdk/generated/agents/schema/Agent';
-import type { exampleAgentFormSchema } from '@studio/routes/agents/AgentsListRoute/CreateExampleAgentModal/const';
+import type { sampleAgentFormSchema } from '@studio/constants/sampleAgents';
 import type { z } from 'zod';
 
-export type ExampleAgentFormData = z.infer<typeof exampleAgentFormSchema>;
+export type ExampleAgentFormData = z.infer<typeof sampleAgentFormSchema>;
 
 export interface CreateExampleAgentModalProps extends Pick<FormModalProps, 'open' | 'onClose'> {
   workspace: string;

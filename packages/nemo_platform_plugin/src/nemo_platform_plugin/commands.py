@@ -440,7 +440,7 @@ def _add_run_command(
         if renderer is not None and rctx is not None:
             renderer.on_complete(ctx=rctx)
 
-    help_text = f"Run {job_cls.name} locally, in-process."
+    help_text = "Run locally, in-process."
     _run.__signature__ = _build_job_run_signature(leaves)  # type: ignore[attr-defined]
     group.command(name="run", help=help_text)(_run)
 
@@ -617,7 +617,7 @@ def _add_submit_command(
         if renderer is not None and rctx is not None:
             renderer.on_complete(ctx=rctx)
 
-    help_text = f"Submit {job_cls.name} to a cluster."
+    help_text = "Submit to a cluster."
     _submit.__signature__ = _build_job_submit_signature(leaves)  # type: ignore[attr-defined]
     group.command(name="submit", help=help_text)(_submit)
 
@@ -771,7 +771,7 @@ def _add_explain_command(
         bundle = scheduler.explain(job_cls, profile=profile)
         typer.echo(json.dumps(bundle, indent=2))
 
-    _explain.__doc__ = f"Show the schemas for {job_cls.name}."
+    _explain.__doc__ = "Show input/output schemas."
     group.command(name="explain", help=_explain.__doc__)(_explain)
 
 

@@ -35,8 +35,6 @@ from nemo_platform_plugin.entities import (
 
 
 class _FakeAsyncFilesClient:
-    """In-memory async files client that mimics AsyncFilesClient for tests."""
-
     def __init__(self) -> None:
         self._store: dict[tuple[str, str], dict[str, bytes]] = {}
 

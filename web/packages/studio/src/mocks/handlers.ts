@@ -16,6 +16,7 @@ import { deploymentsHandlers } from '@studio/mocks/handlers/deployments';
 import { filesetsHandlers } from '@studio/mocks/handlers/filesets';
 import { guardrailsHandlers } from '@studio/mocks/handlers/guardrails';
 import { modelsHandlers } from '@studio/mocks/handlers/models';
+import { sampleAgentsHandlers } from '@studio/mocks/handlers/sampleAgents';
 import { sampleDatasetsHandlers } from '@studio/mocks/handlers/sampleDatasets';
 import { secretsHandlers } from '@studio/mocks/handlers/secrets';
 import { workspacesHandlers } from '@studio/mocks/handlers/workspaces';
@@ -65,6 +66,7 @@ export interface HypermodelParams {
  * but tests can override these with `server.use`.
  */
 export const handlers = [
+  ...sampleAgentsHandlers,
   ...sampleDatasetsHandlers,
 
   // Evaluator V2 — fixtures loaded on first use to keep initial handler graph smaller

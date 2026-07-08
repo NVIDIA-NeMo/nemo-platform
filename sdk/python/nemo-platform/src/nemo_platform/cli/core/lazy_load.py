@@ -3,16 +3,20 @@
 
 from __future__ import annotations
 
+import logging
 from pkgutil import resolve_name
-from typing import Any, Callable, Sequence
+from typing import Annotated, Any, Callable, Sequence
 
 import click
 from click import Command
-from typer import Typer
+from typer import Argument, Context, Exit, Typer
 from typer.main import get_command as typer_get_command
 
 from nemo_platform.cli.core.help_formatter import NmpGroup
 from nemo_platform.cli.manifest import TopLevelEntry
+
+logger = logging.getLogger(__name__)
+_UNAVAILABLE_COMMAND_CONTEXT_SETTINGS = {"allow_extra_args": True, "ignore_unknown_options": True}
 
 
 def attach_lazy_entries(
@@ -41,7 +45,7 @@ class ManifestBackedNmpGroup(NmpGroup):
         for entry in lazy_entries:
             self._lazy_entries[entry.name] = entry
 
-    def list_commands(self, ctx: click.Context) -> list[str]:
+    def list_commands(self, _ctx: click.Context) -> list[str]:
         names = list(self.commands)
         for name in self._lazy_entries:
             if name not in self.commands:
@@ -74,6 +78,70 @@ def build_lazy_loader(entry: TopLevelEntry) -> Callable[[], click.Command]:
     if entry.kind == "group":
         return lazy_group_loader(entry.import_path)
     return lazy_command_loader(entry.import_path)
+
+
+def _plugin_entry_leaf_name(plugin_name: str, entry_point_name: str) -> str:
+    prefix = f"{plugin_name}."
+    if entry_point_name.startswith(prefix):
+        return entry_point_name.removeprefix(prefix)
+    return entry_point_name
+
+
+def _add_unavailable_plugin_primitive(
+    plugin_app: Typer,
+    *,
+    plugin_name: str,
+    entry_point_name: str,
+    entry_point_value: object,
+    primitive_kind: str,
+    verbs: Sequence[str],
+    rich_help_panel: str,
+    exc: Exception,
+) -> None:
+    command_name = _plugin_entry_leaf_name(plugin_name, entry_point_name)
+    message = f"Plugin {primitive_kind} command {command_name!r} is unavailable due to import error: {exc}"
+    logger.warning(
+        "Failed to load plugin %s %r from %r (%s); registering unavailable command",
+        primitive_kind,
+        entry_point_name,
+        "nemo.jobs" if primitive_kind == "job" else "nemo.functions",
+        entry_point_value,
+        exc_info=True,
+    )
+
+    unavailable_app = Typer(
+        name=command_name,
+        help=f"Plugin {primitive_kind} command {command_name!r} is unavailable due to import error.",
+        context_settings=_UNAVAILABLE_COMMAND_CONTEXT_SETTINGS,
+        no_args_is_help=False,
+    )
+
+    def _raise_unavailable() -> None:
+        click.echo(f"Error: {message}", err=True)
+        raise Exit(code=1)
+
+    @unavailable_app.callback(invoke_without_command=True)
+    def _root(
+        ctx: Context,
+        _args: Annotated[list[str] | None, Argument(hidden=True)] = None,
+    ) -> None:
+        if ctx.invoked_subcommand is None or _args:
+            _raise_unavailable()
+
+    def _unavailable_command(
+        _ctx: Context,
+        _args: Annotated[list[str] | None, Argument(hidden=True)] = None,
+    ) -> None:
+        _raise_unavailable()
+
+    for verb in verbs:
+        unavailable_app.command(
+            name=verb,
+            help="Unavailable due to import error.",
+            context_settings=_UNAVAILABLE_COMMAND_CONTEXT_SETTINGS,
+        )(_unavailable_command)
+
+    plugin_app.add_typer(unavailable_app, name=command_name, rich_help_panel=rich_help_panel)
 
 
 def lazy_plugin_loader(plugin_name: str, import_path: str) -> Callable[[], click.Command]:
@@ -109,7 +177,17 @@ def lazy_plugin_loader(plugin_name: str, import_path: str) -> Callable[[], click
                     continue
                 try:
                     plugin_jobs[job_name] = job_entry_point.load()
-                except Exception:
+                except Exception as exc:
+                    _add_unavailable_plugin_primitive(
+                        plugin_app,
+                        plugin_name=plugin_name,
+                        entry_point_name=job_name,
+                        entry_point_value=getattr(job_entry_point, "value", "<unknown>"),
+                        primitive_kind="job",
+                        verbs=("run", "submit", "explain"),
+                        rich_help_panel="Jobs",
+                        exc=exc,
+                    )
                     continue
             if plugin_jobs:
                 _add_plugin_job_commands(plugin_app, plugin_jobs, cli=cli_obj)
@@ -125,7 +203,17 @@ def lazy_plugin_loader(plugin_name: str, import_path: str) -> Callable[[], click
                     continue
                 try:
                     plugin_functions[fn_name] = fn_entry_point.load()
-                except Exception:
+                except Exception as exc:
+                    _add_unavailable_plugin_primitive(
+                        plugin_app,
+                        plugin_name=plugin_name,
+                        entry_point_name=fn_name,
+                        entry_point_value=getattr(fn_entry_point, "value", "<unknown>"),
+                        primitive_kind="function",
+                        verbs=("run", "submit"),
+                        rich_help_panel="Functions",
+                        exc=exc,
+                    )
                     continue
             if plugin_functions:
                 _add_plugin_function_commands(plugin_app, plugin_functions, cli=cli_obj)

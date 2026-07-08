@@ -78,7 +78,8 @@ class TestListAgentsOutput:
             result = runner.invoke(app, ["list", flag, "json"])
 
         assert result.exit_code == 0, result.output
-        assert json.loads(result.output) == response
+        # The resolved-target banner goes to stderr; stdout stays clean JSON.
+        assert json.loads(result.stdout) == response
 
 
 class TestDeploymentsListOutput:
@@ -103,4 +104,5 @@ class TestDeploymentsListOutput:
             result = runner.invoke(app, ["deployments", "list", flag, "json"])
 
         assert result.exit_code == 0, result.output
-        assert json.loads(result.output) == response
+        # The resolved-target banner goes to stderr; stdout stays clean JSON.
+        assert json.loads(result.stdout) == response

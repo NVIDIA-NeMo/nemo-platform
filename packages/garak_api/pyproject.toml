@@ -29,7 +29,7 @@ dependencies = [
   "xdg-base-dirs>=6.0.1",
   "requests>=2.32.3,<3.0.0",
   "httpx>=0.28.1,<1.0.0",
-  "aiohttp>=3.13.4",
+  "aiohttp>=3.14.1",
 ]
 
 [project.optional-dependencies]

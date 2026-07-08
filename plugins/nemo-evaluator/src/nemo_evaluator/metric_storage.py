@@ -90,8 +90,8 @@ async def store_bundle(sdk: AsyncNeMoPlatform, workspace: str, name: str, bundle
         await files.upload_file(
             path=BUNDLE_FILENAME,
             content=body,
-            workspace=workspace,
             name=fileset,
+            workspace=workspace,
         )
     except Exception as exc:
         # Roll back the just-created (now-empty) fileset so a failed upload
@@ -118,8 +118,11 @@ async def load_bundle(sdk: AsyncNeMoPlatform, bundle_ref: str, *, expected_diges
     """
     workspace, fileset, path = parse_bundle_ref(bundle_ref)
     files = client_from_platform(sdk, AsyncFilesClient)
-    response = await files.download_file(path=path, workspace=workspace, name=fileset)
-    data = await response.read()
+    try:
+        response = await files.download_file(path=path, workspace=workspace, name=fileset)
+        data = await response.read()
+    except Exception as exc:
+        raise MetricBundleStorageError(f"failed to download metric bundle from {bundle_ref!r}") from exc
     try:
         bundle = MetricBundle.model_validate_json(data)
     except (ValidationError, ValueError) as exc:

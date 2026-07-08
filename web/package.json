@@ -38,7 +38,7 @@
     "@vitest/eslint-plugin": "catalog:",
     "concurrently": "^10.0.3",
     "eslint": "10.2.1",
-    "eslint-plugin-import-x": "^4.16.2",
+    "eslint-plugin-import-x": "^4.17.1",
     "eslint-plugin-jsx-a11y": "catalog:",
     "eslint-plugin-no-only-tests": "^3.3.0",
     "eslint-plugin-react-hooks": "^5.2.0",
@@ -58,7 +58,8 @@
   },
   "pnpm": {
     "overrides": {
-      "@codemirror/view": "6.43.1"
+      "@codemirror/view": "6.43.1",
+      "shell-quote@1.8.4": "1.9.0"
     }
   },
   "packageManager": "pnpm@10.32.1"

@@ -9,6 +9,13 @@ NeMo Fabric Python SDK and adapts each normalized Fabric ``RunResult`` into an
 ``harness.adapter_id`` (never inferred from a model); an optional ``model`` slug
 is applied as a final profile overlay, mirroring Fabric's own Harbor integration.
 
+Every task runs in its own fresh workspace: the runtime seeds it from
+``inputs['files']`` (a no-op when there are none), runs the harness in it (via
+``environment.workspace``), and exposes its final file tree as ``workspace``
+filesystem evidence, so workspace-reading metrics score a Fabric trial alongside
+the ATIF trajectory. Any ``environment.workspace`` set in the supplied config is
+overridden per task.
+
 ``nemo_fabric`` is an optional native dependency: its types are imported for
 annotations under ``TYPE_CHECKING`` and the package is loaded lazily at runtime,
 so this module stays importable without it.
@@ -24,6 +31,7 @@ from typing import TYPE_CHECKING, Any
 
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
+from nemo_evaluator_sdk.agent_eval.workspace_seeds import SEED_FILES_INPUT_KEY, seed_workspace
 from nemo_evaluator_sdk.values.evidence import (
     EVIDENCE_FORMAT_ATIF,
     EVIDENCE_TRACE,
@@ -55,6 +63,14 @@ _MISSING_RELAY_MSG = (
 # them and hand them to Fabric/Relay, so they are not derived from either library.
 _RELAY_SUBDIR = "relay"
 _ARTIFACTS_SUBDIR = "artifacts"
+# Per-task workspace: where seed files are staged and where the harness reads/writes. We
+# create it, point Fabric's ``environment.workspace`` at it, and expose it as ``workspace`` evidence.
+_WORKSPACE_SUBDIR = "workspace"
+_WORKSPACE_PROFILE_NAME = "eval_workspace"
+# Evidence key + descriptor kind for the staged workspace, consumed by the
+# workspace-reading metrics.
+_WORKSPACE_EVIDENCE_KEY = "workspace"
+_WORKSPACE_EVIDENCE_KIND = "filesystem"
 # Trajectory profile identity + the file-exporter output names we choose (Relay accepts these as inputs).
 _TRAJECTORY_PROFILE_NAME = "eval_trajectory"
 _ATIF_FILENAME_TEMPLATE = "trajectory-{session_id}.atif.json"
@@ -148,12 +164,24 @@ class FabricAgentRuntime:
             artifacts_dir.mkdir(parents=True, exist_ok=True)
             profiles.append(self._trajectory_profile(profile_cls, relay_dir=relay_dir, artifacts_dir=artifacts_dir))
 
+        # Every task runs in its own fresh workspace: seed any ``inputs['files']`` into it (a no-op when
+        # there are none), point the harness at it via ``environment.workspace``, and expose it as
+        # ``workspace`` filesystem evidence — a uniform per-task dir that maps cleanly onto a per-task
+        # container volume later. Seeding runs inside the guarded block so a bad seed (a path escaping
+        # the workspace, an unresolvable fileset) fails just this task, not the whole run; it is
+        # synchronous and may block (a fileset handler downloads), so it is offloaded off the shared
+        # event loop.
+        workspace_dir = evidence_dir / _WORKSPACE_SUBDIR
+        workspace_dir.mkdir(parents=True, exist_ok=True)
         try:
+            seeded_files = await asyncio.to_thread(seed_workspace, workspace_dir, task.inputs.get(SEED_FILES_INPUT_KEY))
+            profiles.append(self._workspace_profile(profile_cls, workspace_dir=workspace_dir))
+
             result = await asyncio.wait_for(
                 client.run(
                     agent_config,
                     profiles=profiles,
-                    input=_fabric_input(task),
+                    input=_fabric_input(task, seeded_files),
                     request_id=task.id,
                     base_dir=self._base_dir,
                 ),
@@ -164,9 +192,11 @@ class FabricAgentRuntime:
         except Exception as exc:  # noqa: BLE001 - a task failure must not abort the whole run
             return self._failed_trial(task, evidence_dir, exc)
 
-        return self._to_trial(task, result, evidence_dir)
+        return self._to_trial(task, result, evidence_dir, workspace_dir)
 
-    def _to_trial(self, task: AgentEvalTask, result: RunResult, evidence_dir: Path) -> AgentEvalTrial:
+    def _to_trial(
+        self, task: AgentEvalTask, result: RunResult, evidence_dir: Path, workspace_dir: Path
+    ) -> AgentEvalTrial:
         # Persist the full normalized Fabric result so graders (and debugging) can see the raw
         # envelope, and expose it as an evidence descriptor.
         result_path = evidence_dir / "fabric_result.json"
@@ -193,13 +223,18 @@ class FabricAgentRuntime:
                 response=result.output,
                 metadata={**base_metadata, "evidence_dir": str(evidence_dir)},
             ),
-            evidence=self._evidence(result, result_path),
-            metadata={**base_metadata, "generated": True},
+            evidence=self._evidence(result, result_path, workspace_dir),
+            # AgentPhaseSuccessMetric reads agent_ok to score whether the agent phase finished cleanly
+            # (an explicit bool, not just trial status).
+            metadata={**base_metadata, "generated": True, "agent_ok": True},
         )
 
-    def _evidence(self, result: RunResult, result_path: Path) -> CandidateEvidence:
+    def _evidence(self, result: RunResult, result_path: Path, workspace_dir: Path) -> CandidateEvidence:
+        # The workspace is a host directory the harness ran in, so its final file tree is available on
+        # disk — expose it as filesystem evidence so workspace-reading metrics can score a Fabric trial.
         descriptors: dict[str, EvidenceDescriptor] = {
             "result": EvidenceDescriptor(kind="json", format="json", ref=str(result_path)),
+            _WORKSPACE_EVIDENCE_KEY: EvidenceDescriptor(kind=_WORKSPACE_EVIDENCE_KIND, ref=str(workspace_dir)),
         }
         for artifact in result.artifacts.artifacts:
             descriptors[artifact.name] = EvidenceDescriptor(
@@ -256,6 +291,7 @@ class FabricAgentRuntime:
             metadata={
                 **(dict(extra_metadata) if extra_metadata else {}),
                 "runtime": self._runtime_name,
+                "agent_ok": False,
                 "error_type": error_type,
                 "error": error_message,
             },
@@ -331,6 +367,18 @@ class FabricAgentRuntime:
             }
         )
 
+    def _workspace_profile(self, profile_cls: type[FabricProfileConfig], *, workspace_dir: Path) -> FabricProfileConfig:
+        # Point the harness at this task's staged workspace via ``environment.workspace`` (the codex-cli
+        # adapter resolves its cwd from it). Set as a final profile overlay, the same mechanism the
+        # trajectory profile uses for ``environment.artifacts``.
+        return profile_cls.from_mapping(
+            {
+                "name": _WORKSPACE_PROFILE_NAME,
+                "description": "Run the harness in the per-task evaluation workspace seeded with the task inputs.",
+                "environment": {"workspace": str(workspace_dir)},
+            }
+        )
+
     def _evidence_dir(self, index: int, task: AgentEvalTask, config: AgentEvalRunConfig) -> Path:
         root = self._work_root
         if root is None:
@@ -340,8 +388,22 @@ class FabricAgentRuntime:
         return Path(root) / task_dir
 
 
-def _fabric_input(task: AgentEvalTask) -> str:
-    return f"Task id: {task.id}\nIntent: {task.intent}\nInputs: {task.inputs}\n"
+def _fabric_input(task: AgentEvalTask, seeded_files: Sequence[str] = ()) -> str:
+    """Frame the task as the harness's input text.
+
+    When files were staged into the workspace, list them by name and invite the agent to work in its
+    current directory rather than dumping their contents inline; the seed-files key is dropped from
+    the echoed inputs since those files are already on disk.
+    """
+    body_inputs = {key: value for key, value in task.inputs.items() if key != SEED_FILES_INPUT_KEY}
+    lines = [f"Task id: {task.id}", f"Intent: {task.intent}"]
+    if body_inputs:
+        lines += ["", f"Inputs: {body_inputs}"]
+    if seeded_files:
+        lines += ["", "These files are already in your working directory:"]
+        lines += [f"  - {path}" for path in seeded_files]
+        lines += ["", "Complete the task by reading, creating, and editing files in your current directory."]
+    return "\n".join(lines) + "\n"
 
 
 def _extract_output_text(output: object) -> str | None:

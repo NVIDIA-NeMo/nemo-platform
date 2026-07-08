@@ -29,8 +29,6 @@ class _FakeResponse:
 
 
 class _FakeAsyncFilesClient:
-    """In-memory async files client that mimics AsyncFilesClient for tests."""
-
     def __init__(self) -> None:
         self._store: dict[tuple[str, str], dict[str, bytes]] = {}
 
@@ -145,6 +143,16 @@ async def test_load_rejects_corrupt_bundle() -> None:
         pytest.raises(MetricBundleStorageError, match="corrupt or unreadable"),
     ):
         await load_bundle(object(), "default/metric-bundle.deadbeef#bundle.json")
+
+
+async def test_load_wraps_download_failure() -> None:
+    fake_client = _FakeAsyncFilesClient()
+
+    with (
+        patch("nemo_evaluator.metric_storage.client_from_platform", return_value=fake_client),
+        pytest.raises(MetricBundleStorageError, match="failed to download metric bundle"),
+    ):
+        await load_bundle(object(), "default/metric-bundle.missing#bundle.json")
 
 
 async def test_delete_by_ref_removes_only_that_fileset() -> None:

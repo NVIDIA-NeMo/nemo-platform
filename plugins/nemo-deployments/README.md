@@ -104,3 +104,50 @@ omit the per-container `restart_policy` on init containers and run that
 container as a regular main container instead — the compiler does not
 fall back to legacy sidecar emulation (emptyDir readiness files, etc.)
 automatically.
+
+## Cluster validation
+
+`tests/integration/backends/k8s/` and `tests/integration/test_reconcile_k8s.py`
+exercise the k8s backend and reconciler against a real cluster. Like the Docker
+integration tests above, they skip automatically (CI stays green) when no
+cluster is reachable.
+
+**Prerequisites:**
+
+- `kind` and `kubectl` on your `PATH` (for the local run) or an existing
+  cluster context (for the dev-blue run).
+- `uv` for running the test suite.
+- A kubeconfig pointing at a reachable cluster — either the one `kind create
+  cluster` sets automatically, or your own context via `kubectl config
+  use-context`.
+
+**Local run against kind** (no dev-blue access needed):
+
+```bash
+kind create cluster  # or reuse an existing one; sets your kubeconfig context
+uv run pytest plugins/nemo-deployments/tests/integration/backends/k8s -v
+uv run pytest plugins/nemo-deployments/tests/integration/test_reconcile_k8s.py -v
+```
+
+**Run against dev-blue** (uses your namespace and your own RBAC there):
+
+```bash
+kubectl config use-context <dev-blue>
+export NMP_K8S_ITEST_NAMESPACE=<your-namespace>  # defaults to "default"
+uv run pytest plugins/nemo-deployments/tests/integration/backends/k8s -v
+```
+
+Tests authenticate with whatever kubeconfig identity is currently active in
+your shell, not the restricted `nmp-core` controller ServiceAccount, so they
+validate backend behavior against a real API server but do **not** exercise
+the RBAC scope granted by the deploy chart's `controller-role.yaml`. That
+still needs a manual smoke test of the deployed platform pod.
+
+`test_reconcile_k8s.py` covers prerequisite gating (one deployment blocking on
+another) but not PVC-mount gating: kind's default `local-path` StorageClass uses
+`WaitForFirstConsumer` binding, so an unconsumed PVC never reaches `BOUND`, and
+`DeploymentReconciler` requires a mounted volume to already be `BOUND` before it
+creates the pod that would consume it — a chicken-and-egg specific to
+`WaitForFirstConsumer` storage classes that doesn't arise on `Immediate`-binding
+classes (the common case outside kind). The standalone PVC lifecycle scenario in
+`test_k8s_backend.py` accepts `PENDING` as a valid terminal state for this reason.

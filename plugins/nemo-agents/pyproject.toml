@@ -6,6 +6,7 @@ dependencies = [
     "nemo-platform",
     "nemo-platform-plugin",
     "nemo-agents-example-calculator",
+    "nemo-agents-example-email-phishing",
     "nvidia-nat-core>=1.8.0,<1.9",
     "nvidia-nat-langchain>=1.8.0,<1.9",
     "nvidia-nat-config-optimizer>=1.8.0,<1.9",
@@ -88,6 +89,7 @@ packages = [
 nemo-platform = { workspace = true }
 nemo-platform-plugin = { workspace = true }
 nemo-agents-example-calculator = { workspace = true }
+nemo-agents-example-email-phishing = { workspace = true }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
