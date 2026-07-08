@@ -174,33 +174,8 @@ async def test_fabric_runner_eval_exposes_trajectory_to_metric(tmp_path: Path, m
     module.EnvironmentConfig = _FakeEnvironment  # type: ignore[attr-defined]
     module.RunRequest = _FakeRunRequest  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "nemo_fabric", module)
-
-    # Trajectory capture builds the profile from nemo_relay's typed config objects (lazy import); stub
-    # the optional package so the hermetic chain resolves without the native dependency.
-    class _FakeRelayObj:
-        def __init__(self, **kwargs: Any) -> None:
-            self.kwargs = kwargs
-
-        def to_dict(self) -> dict[str, Any]:
-            return {k: (v.to_dict() if hasattr(v, "to_dict") else v) for k, v in self.kwargs.items()}
-
-    class _FakeComponentSpec:
-        def __init__(self, *, config: Any, enabled: bool = True) -> None:
-            self.config = config
-            self.enabled = enabled
-
-        def to_dict(self) -> dict[str, Any]:
-            return {"kind": "observability", "enabled": self.enabled, "config": self.config.to_dict()}
-
-    relay_mod = types.ModuleType("nemo_relay")
-    observability_mod = types.ModuleType("nemo_relay.observability")
-    observability_mod.AtifConfig = _FakeRelayObj  # type: ignore[attr-defined]
-    observability_mod.AtofConfig = _FakeRelayObj  # type: ignore[attr-defined]
-    observability_mod.ObservabilityConfig = _FakeRelayObj  # type: ignore[attr-defined]
-    observability_mod.ComponentSpec = _FakeComponentSpec  # type: ignore[attr-defined]
-    relay_mod.observability = observability_mod  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "nemo_relay", relay_mod)
-    monkeypatch.setitem(sys.modules, "nemo_relay.observability", observability_mod)
+    # nemo_relay is a hard dependency (the trajectory profile is built from its real typed config), so
+    # it is not stubbed — only the optional native nemo_fabric SDK is faked.
 
     runtime = fabric_runtime.FabricAgentRuntime(
         config={"metadata": {"name": "a"}, "harness": {"adapter_id": "nvidia.fabric.codex.cli"}},
