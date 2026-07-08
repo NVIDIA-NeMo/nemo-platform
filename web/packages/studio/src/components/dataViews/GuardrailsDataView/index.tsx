@@ -141,7 +141,7 @@ export const GuardrailsDataView: FC<GuardrailsDataViewProps> = ({
         },
         DataViewTableContent: {
           renderEmptyState: () => {
-            if (data?.data.length === 0 && !isFetching && !hasSearchOrFilters) {
+            if (data?.data?.length === 0 && !isFetching && !hasSearchOrFilters) {
               return (
                 <TableEmptyState
                   icon={<ShieldCheck className="h-[64px] w-[64px]" />}

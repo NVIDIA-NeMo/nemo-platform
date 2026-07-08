@@ -18,16 +18,16 @@ import { GuardrailsDataView } from '@studio/components/dataViews/GuardrailsDataV
 import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
-import { GuardrailsDetailPanel } from '@studio/routes/guardrails/GuardrailsDetailPanel';
-import { getGuardrailsRoute } from '@studio/routes/utils';
+import { getGuardrailDetailRoute, getGuardrailsRoute } from '@studio/routes/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import { type FC, useCallback, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 export const GuardrailsRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
-  const [selectedConfig, setSelectedConfig] = useState<GuardrailConfig | null>(null);
   const [configToDelete, setConfigToDelete] = useState<GuardrailConfig | null>(null);
 
   const { mutateAsync: deleteConfig } = useGuardrailsDeleteConfig();
@@ -44,14 +44,11 @@ export const GuardrailsRoute: FC = () => {
       await queryClient.invalidateQueries({
         queryKey: [`/apis/guardrails/v2/workspaces/${workspace}/configs`],
       });
-      if (selectedConfig?.name === configToDelete.name) {
-        setSelectedConfig(null);
-      }
       return true;
     } catch {
       return false;
     }
-  }, [configToDelete, deleteConfig, queryClient, selectedConfig, workspace]);
+  }, [configToDelete, deleteConfig, queryClient, workspace]);
 
   return (
     <AccessibleTitle title="Guardrails">
@@ -63,21 +60,12 @@ export const GuardrailsRoute: FC = () => {
         />
         <GuardrailsDataView
           workspace={workspace}
-          onRowClick={setSelectedConfig}
+          onRowClick={(config) => {
+            if (config.name) navigate(getGuardrailDetailRoute(workspace, config.name));
+          }}
           onRequestDelete={setConfigToDelete}
         />
       </Stack>
-
-      {selectedConfig ? (
-        <GuardrailsDetailPanel
-          open
-          config={selectedConfig}
-          onClose={() => setSelectedConfig(null)}
-          onRequestDelete={(config) => {
-            setConfigToDelete(config);
-          }}
-        />
-      ) : null}
 
       {configToDelete ? (
         <DeleteConfirmationModal
