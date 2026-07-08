@@ -10,7 +10,10 @@
  * its affiliates is strictly prohibited.
  */
 
-import { useGuardrailsDeleteConfig } from '@nemo/sdk/generated/platform/api';
+import {
+  getGuardrailsGetGuardrailConfigQueryKey,
+  useGuardrailsDeleteConfig,
+} from '@nemo/sdk/generated/platform/api';
 import type { GuardrailConfig } from '@nemo/sdk/generated/platform/schema';
 import { PageHeader, Stack } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
@@ -61,7 +64,12 @@ export const GuardrailsRoute: FC = () => {
         <GuardrailsDataView
           workspace={workspace}
           onRowClick={(config) => {
-            if (config.name) navigate(getGuardrailDetailRoute(workspace, config.name));
+            if (!config.name) return;
+            queryClient.setQueryData(
+              getGuardrailsGetGuardrailConfigQueryKey(workspace, config.name),
+              config
+            );
+            navigate(getGuardrailDetailRoute(workspace, config.name));
           }}
           onRequestDelete={setConfigToDelete}
         />
