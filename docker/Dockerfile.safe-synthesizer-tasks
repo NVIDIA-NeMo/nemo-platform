@@ -11,10 +11,10 @@
 ARG PYTHON_VERSION=3.13
 ARG PYTHON_IMAGE=python:${PYTHON_VERSION}-slim-trixie
 ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.9.30
-ARG SAFE_SYNTHESIZER_RUNTIME_PACKAGE="nemo-safe-synthesizer[engine,cu129]==0.1.2"
+ARG SAFE_SYNTHESIZER_RUNTIME_PACKAGE="nemo-safe-synthesizer[engine,cu129]==0.1.7"
 ARG FLASHINFER_CU129_INDEX_URL="https://flashinfer.ai/whl/cu129"
 ARG PYTORCH_CU129_INDEX_URL="https://download.pytorch.org/whl/cu129"
-ARG VLLM_CU129_WHEEL="vllm @ https://github.com/vllm-project/vllm/releases/download/v0.20.0/vllm-0.20.0%2Bcu129-cp38-abi3-manylinux_2_31_x86_64.whl"
+ARG VLLM_CU129_INDEX_URL="https://wheels.vllm.ai/ee0da84ab9e04ac7610e28580af62c365e898389/cu129"
 
 # =============================================================================
 # uv binary
@@ -29,7 +29,7 @@ ARG PYTHON_IMAGE
 ARG SAFE_SYNTHESIZER_RUNTIME_PACKAGE
 ARG FLASHINFER_CU129_INDEX_URL
 ARG PYTORCH_CU129_INDEX_URL
-ARG VLLM_CU129_WHEEL
+ARG VLLM_CU129_INDEX_URL
 ARG CONTAINER_VARIANT=cu129
 ARG USERNAME=nemo
 ARG USER_UID=1000
@@ -111,10 +111,9 @@ RUN printf '%s\n' \
         "${SAFE_SYNTHESIZER_RUNTIME_PACKAGE}" \
         > /tmp/safe-synthesizer-runtime.txt && \
     printf '%s\n' \
-        "${VLLM_CU129_WHEEL}" \
-        > /tmp/vllm-cu129.txt && \
-    printf '%s\n' \
         wandb==0.27.2 \
+        'cryptography>=48.0.1,<49' \
+        'pyarrow>=23.0.1,<24' \
         > /tmp/safe-synthesizer-overrides.txt
 
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -157,12 +156,12 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     UV_CACHE_DIR=/root/.cache/uv uv pip install --python /opt/venv/bin/python \
         --extra-index-url "${FLASHINFER_CU129_INDEX_URL}" \
         --extra-index-url "${PYTORCH_CU129_INDEX_URL}" \
+        --extra-index-url "${VLLM_CU129_INDEX_URL}" \
         --index-strategy unsafe-best-match \
         --torch-backend cu129 \
         --overrides /tmp/safe-synthesizer-overrides.txt \
         --constraints /tmp/safe-synthesizer-constraints.txt \
-        --requirements /tmp/safe-synthesizer-runtime.txt \
-        --requirements /tmp/vllm-cu129.txt
+        --requirements /tmp/safe-synthesizer-runtime.txt
 
 COPY pyproject.toml uv.lock ./
 COPY packages/ packages/
@@ -179,9 +178,13 @@ RUN mkdir -p docs && \
 # Skip the `nemo-platform` wrapper wheel: it bundles every first-party plugin and
 # service, which drags unrelated source trees into this task image. The runtime
 # imports come from nemo-platform-sdk, nemo-platform-plugin, and nmp-common.
+# The runtime layer above installs CVE-patched cryptography/pyarrow; do not let
+# the workspace lock downgrade them during plugin sync.
 RUN --mount=type=cache,target=/root/.cache/uv \
     UV_CACHE_DIR=/root/.cache/uv uv sync --package nemo-safe-synthesizer-plugin --no-dev --no-editable --inexact \
-        --no-install-package nemo-platform
+        --no-install-package nemo-platform \
+        --no-install-package cryptography \
+        --no-install-package pyarrow
 
 COPY docker/scripts/cve-cleanup.sh /bin/
 RUN bash /bin/cve-cleanup.sh

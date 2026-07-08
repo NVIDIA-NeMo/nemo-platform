@@ -1,17 +1,17 @@
-# Vendored from https://github.com/NVIDIA-NeMo/Safe-Synthesizer/blob/v0.1.2/constraints.txt
-# on 2026-06-30. Local additions keep the AWS SDK packages aligned with
-# NeMo Platform's aiobotocore-compatible range.
+# Security floor constraints -- generated from [tool.uv] constraint-dependencies in pyproject.toml
+# Vendored from https://github.com/NVIDIA-NeMo/Safe-Synthesizer/blob/v0.1.7/constraints.txt
+# on 2026-07-10. Local additions keep pyarrow/cryptography on CVE-fixed
+# versions and the AWS SDK packages aligned with NeMo Platform's
+# aiobotocore-compatible range.
 #
 # Pass to pip/uv with:  pip install <pkg> -c constraints.txt
 #                        uv pip install <pkg> -c constraints.txt
-
-# Security floor constraints -- generated from [tool.uv] constraint-dependencies in pyproject.toml
 GitPython>=3.1.50
-PyJWT>=2.12.0
+PyJWT>=2.13.0
 Pygments>=2.20.0
-aiohttp>=3.13.4
+aiohttp>=3.14.0
 cbor2>=5.9.0
-cryptography>=46.0.7
+cryptography>=48.0.1,<49
 grpcio>=1.80.0
 idna>=3.15
 jsonpath-ng>=1.8.0
@@ -21,11 +21,14 @@ mistune>=3.2.1
 nbconvert>=7.17.1
 pandas<3
 pillow>=12.2.0
+pyarrow>=23.0.1,<24
 pymdown-extensions>=10.21.3
 python-dotenv>=1.2.2
 python-multipart>=0.0.27
 requests>=2.33.0
+starlette>=1.0.1
 tornado>=6.5.5
+urllib3>=2.7.0
 
 # Runtime compatibility constraints.
 boto3>=1.40.46,<1.40.62
