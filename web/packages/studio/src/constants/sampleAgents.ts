@@ -23,14 +23,12 @@ export interface SampleAgent {
   namePrefix: string;
   /** Public path to the NAT workflow config (parsed + model-injected at create). */
   agentConfigPath: string;
-  /** Public path to the NAT eval config (seeded verbatim into the eval fileset). */
+  /** Public path to the NAT eval config (seeded verbatim into the eval fileset
+   *  under its basename). */
   evalConfigPath: string;
-  /** Flat filename the eval config is seeded as inside the fileset. */
-  evalConfigFileName: string;
-  /** Public path to the eval dataset (seeded verbatim alongside the eval config). */
+  /** Public path to the eval dataset, seeded alongside the eval config under its
+   *  basename. That basename MUST equal the eval config's dataset file_path. */
   evalDataPath: string;
-  /** Flat dataset filename; MUST equal the eval config's dataset file_path. */
-  evalDataFileName: string;
 }
 
 export const SAMPLE_AGENTS: SampleAgent[] = [
@@ -41,9 +39,7 @@ export const SAMPLE_AGENTS: SampleAgent[] = [
     namePrefix: 'calculator-demo-agent',
     agentConfigPath: 'sample-agents/calculator/agent.yml',
     evalConfigPath: 'sample-agents/calculator/eval.yml',
-    evalConfigFileName: 'eval.yml',
     evalDataPath: 'sample-agents/calculator/calculator-eval-data.json',
-    evalDataFileName: 'calculator-eval-data.json',
   },
   {
     key: 'email_phishing_analyzer',
@@ -52,9 +48,7 @@ export const SAMPLE_AGENTS: SampleAgent[] = [
     namePrefix: 'email-phishing-demo-agent',
     agentConfigPath: 'sample-agents/email-phishing-analyzer/agent.yml',
     evalConfigPath: 'sample-agents/email-phishing-analyzer/eval.yml',
-    evalConfigFileName: 'eval.yml',
     evalDataPath: 'sample-agents/email-phishing-analyzer/smaller_test.csv',
-    evalDataFileName: 'smaller_test.csv',
   },
 ];
 

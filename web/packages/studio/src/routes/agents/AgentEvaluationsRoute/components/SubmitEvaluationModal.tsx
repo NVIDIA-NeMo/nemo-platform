@@ -45,6 +45,9 @@ const contentTypeForFile = (name: string): string => {
   return 'application/yaml';
 };
 
+/** Basename of a public asset path — the flat name it's seeded as in the fileset. */
+const fileNameOf = (path: string): string => path.slice(path.lastIndexOf('/') + 1);
+
 const submitEvaluationSchema = z
   .object({
     agent: z.string().min(1, 'Agent is required'),
@@ -253,18 +256,18 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
       const example = getSampleAgent(formData.exampleKey);
       spec = {
         agent: formData.agent,
-        evalConfig: example.evalConfigFileName,
+        evalConfig: fileNameOf(example.evalConfigPath),
         evalConfigFileset: evalFilesetForAgent(formData.agent),
         seedSources: [
           {
-            path: example.evalConfigFileName,
+            path: fileNameOf(example.evalConfigPath),
             assetPath: example.evalConfigPath,
-            type: contentTypeForFile(example.evalConfigFileName),
+            type: contentTypeForFile(example.evalConfigPath),
           },
           {
-            path: example.evalDataFileName,
+            path: fileNameOf(example.evalDataPath),
             assetPath: example.evalDataPath,
-            type: contentTypeForFile(example.evalDataFileName),
+            type: contentTypeForFile(example.evalDataPath),
           },
         ],
       };
