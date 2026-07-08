@@ -34,10 +34,9 @@ from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSumm
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
 from nemo_evaluator_sdk.metrics.protocol import MetricOutput
-from nemo_intake_plugin.api.v2.experiments.schemas import ExperimentGroupRequest, ExperimentRequest
-from nemo_intake_plugin.client.client import AsyncIntakeClient
+from nemo_intake_client.client import AsyncIntakeClient
+from nemo_intake_client.models import ExperimentGroupRequest, ExperimentRequest, TraceFilter
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform_plugin.client.adapter import client_from_platform
 
 pytestmark = pytest.mark.integration
 
@@ -188,7 +187,7 @@ def _result() -> AgentEvalResult:
 
 async def test_publish_to_intake_round_trip(platform_base_url: str) -> None:
     async with AsyncNeMoPlatform(base_url=platform_base_url, max_retries=2) as client:
-        intake = client_from_platform(client, AsyncIntakeClient)
+        intake: AsyncIntakeClient = client.intake
         # Precondition: the Experiment must exist before ingest.
         group = (
             await intake.create_experiment_group(
@@ -225,7 +224,7 @@ async def test_publish_to_intake_round_trip(platform_base_url: str) -> None:
         t1 = published["trial-1"]
         trace_response = await intake.list_traces(
             workspace=WORKSPACE,
-            query_params={"filter": {"session_id": t1.session_id}},
+            query_params={"filter": TraceFilter(session_id=t1.session_id)},
         )
         traces = [trace async for trace in trace_response.items()]
         assert len(traces) == 1
@@ -298,7 +297,7 @@ async def test_publish_skips_nan_and_failed_scores(platform_base_url: str) -> No
     # A NaN value is not representable in JSON and a FAILED score is not a real measurement; neither
     # should reach Intake. Only the finite, completed output should be stored.
     async with AsyncNeMoPlatform(base_url=platform_base_url, max_retries=2) as client:
-        intake = client_from_platform(client, AsyncIntakeClient)
+        intake: AsyncIntakeClient = client.intake
         group = (
             await intake.create_experiment_group(
                 workspace=WORKSPACE,

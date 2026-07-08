@@ -1,33 +1,36 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Typed HTTP contract used by Intake's Python client."""
+"""Typed endpoint definitions for the supported Intake client operations."""
 
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import Any, NotRequired, TypedDict
+from typing import NotRequired, TypedDict
 
-from nemo_intake_plugin.api.v2.experiments.schemas import (
+from nemo_intake_client.models import (
+    AtifIngestRequest,
+    EvaluatorResult,
+    EvaluatorResultInput,
     ExperimentGroupRequest,
     ExperimentGroupResponse,
     ExperimentRequest,
     ExperimentResponse,
+    Trace,
+    TraceFilter,
+    TraceMode,
+    TraceSortField,
 )
-from nemo_intake_plugin.spans.api.evaluator_results_schemas import EvaluatorResult, EvaluatorResultInput
-from nemo_intake_plugin.spans.api.traces_schemas import Trace
-from nemo_intake_plugin.spans.ingest.atif import AtifIngestRequest
 from nemo_platform_plugin.client.endpoint import get, post
 from nemo_platform_plugin.client.types import Paginated, PreparedRequest
 from pydantic import RootModel
 
 
 class TraceListQueryParams(TypedDict, total=False):
-    filter: NotRequired[dict[str, Any]]
-    page: NotRequired[int]
+    filter: NotRequired[TraceFilter]
     page_size: NotRequired[int]
-    sort: NotRequired[str]
-    mode: NotRequired[str]
+    sort: NotRequired[TraceSortField]
+    mode: NotRequired[TraceMode]
 
 
 class EvaluatorResultList(RootModel[list[EvaluatorResult]]):

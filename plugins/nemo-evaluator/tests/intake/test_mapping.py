@@ -30,8 +30,7 @@ from nemo_evaluator_sdk.metrics.protocol import (
     Label,
     MetricOutput,
 )
-from nemo_intake_plugin.spans.api.evaluator_results_schemas import EvaluatorResultInput
-from nemo_intake_plugin.spans.ingest.atif_domain import AtifFinalMetrics
+from nemo_intake_client.models import AtifFinalMetrics, EvaluatorResultInput
 
 
 def _trial(*, trial_id: str = "trial-1", task_id: str = "task-1", output_text: str | None = "hello") -> AgentEvalTrial:
@@ -108,6 +107,7 @@ def test_trial_to_atif_ingest_shape() -> None:
 def test_trial_to_atif_ingest_defaults_version_and_omits_model_name() -> None:
     body = trial_to_atif_ingest(_trial(), run_id="run-1", experiment_id="exp-1", agent_name="a")
     assert body.agent.model_dump(exclude_none=True) == {"name": "a", "version": "unknown"}
+    assert "model_name" not in body.agent.model_fields_set
 
 
 def test_trial_to_atif_ingest_handles_missing_output() -> None:
@@ -197,6 +197,8 @@ def test_comment_taken_from_first_diagnostic() -> None:
 def test_comment_absent_without_diagnostics() -> None:
     row = _rows(_score(outputs=[MetricOutput(name="score", value=1.0)]))[0]
     assert row.comment is None
+    assert "comment" not in row.model_fields_set
+    assert "string_value" not in row.model_fields_set
 
 
 # --- score_to_evaluator_results: skipped outputs ----------------------------

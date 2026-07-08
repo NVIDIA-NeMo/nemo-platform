@@ -176,6 +176,7 @@ inference-gateway-service = [
 
 # Generated from [tool.bundle-package]; do not edit by hand.
 intake-service = [
+  "nemo-intake-client",
   "nemo-platform-plugin",
   "fastapi>=0.115.5, <1.0.0",
   "uvicorn>=0.22.0, <1.0.0",
@@ -275,7 +276,7 @@ nemo-data-designer-plugin = [
 nemo-evaluator-plugin = [
   "cloudpickle>=3.1.1",
   "nemo-evaluator-sdk",
-  "nemo-intake-plugin",
+  "nemo-intake-client",
   "nemo-platform-plugin",
   "nemo-platform-sdk",
   "pydantic>=2.10.6",
@@ -306,6 +307,12 @@ nemo-guardrails-plugin = [
   "langchain-community>=0.3.31,<0.4",
   "langchain-core>=1.4.8",
   "langchain-openai>=1.3.3",
+]
+
+# Generated from [tool.bundle-package]; do not edit by hand.
+nemo-intake-client = [
+  "nemo-platform-plugin",
+  "pydantic>=2.10.6,<3.0.0",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
@@ -568,6 +575,7 @@ safe-synthesizer = "nemo_safe_synthesizer_plugin.skills:get_skills_path"
 nemo-platform-sdk = { workspace = true }
 nemo-platform-ext = { workspace = true }
 nemo-evaluator-sdk = { workspace = true }
+nemo-intake-client = { workspace = true }
 nmp-build-tools = { workspace = true }
 
 [tool.hatch.version]
@@ -605,6 +613,7 @@ only-include = ["_empty"]
 nmp-common = { source = "../../packages/nmp_common/src/nmp/common", module = "nmp/common", inherit = { "entry-points" = ["nemo.*"] } }
 nemo-platform-plugin = { source = "../../packages/nemo_platform_plugin/src/nemo_platform_plugin", module = "nemo_platform_plugin" }
 nemo-evaluator-sdk = { source = "../../packages/nemo_evaluator_sdk/src/nemo_evaluator_sdk", module = "nemo_evaluator_sdk" }
+nemo-intake-client = { source = "../../packages/nemo_intake_client/src/nemo_intake_client", module = "nemo_intake_client" }
 data-designer-nemo = { source = "../../packages/data_designer_nemo/src/data_designer_nemo", module = "data_designer_nemo" }
 nmp-platform-runner = { source = "../../packages/nmp_platform_runner/src/nmp/platform_runner", module = "nmp/platform_runner", deps_group = "services" }
 garak-api = { source = "../../packages/garak_api/garakapi", module = "garakapi", deps_group = "auditor-service" }

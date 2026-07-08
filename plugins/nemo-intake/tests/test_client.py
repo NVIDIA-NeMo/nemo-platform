@@ -10,11 +10,16 @@ from importlib.metadata import entry_points
 from unittest.mock import AsyncMock
 
 import httpx
-from nemo_intake_plugin.client.client import AsyncIntakeClient
-from nemo_intake_plugin.spans.api.evaluator_results_schemas import EvaluatorResultInput
-from nemo_intake_plugin.spans.domain import EvaluatorResultDataType
-from nemo_intake_plugin.spans.ingest.atif import AtifIngestRequest
-from nemo_intake_plugin.spans.ingest.atif_domain import AtifAgent, AtifStepAgent
+from nemo_intake_client.client import AsyncIntakeClient
+from nemo_intake_client.models import (
+    AtifAgent,
+    AtifIngestRequest,
+    AtifStepAgent,
+    EvaluatorResultDataType,
+    EvaluatorResultInput,
+    ExperimentGroupRequest,
+    TraceFilter,
+)
 from nemo_platform_plugin.sdk import NemoPluginSDKResources
 
 BASE_URL = "http://testserver"
@@ -85,6 +90,36 @@ async def test_create_evaluator_result_parses_response() -> None:
     )
 
     assert response.data().evaluator_result_id == "eval-1"
+    payload = json.loads(http_client.request.call_args.kwargs["content"])
+    assert "string_value" not in payload
+    assert "comment" not in payload
+
+
+async def test_create_experiment_group_exist_ok_encodes_conflict_lookup_name() -> None:
+    client, http_client = _client()
+    name = "group with ?#/"
+    http_client.request.side_effect = [
+        _response(409, {"detail": "already exists"}),
+        _response(
+            200,
+            {
+                "id": "group-1",
+                "name": name,
+                "workspace": WORKSPACE,
+                "default_sort": "-created_at",
+            },
+        ),
+    ]
+
+    response = await client.create_experiment_group(
+        body=ExperimentGroupRequest(name=name),
+        exist_ok=True,
+    )
+
+    assert response.data().name == name
+    assert http_client.request.call_args_list[1].args[1] == (
+        f"{BASE_URL}/apis/intake/v2/workspaces/{WORKSPACE}/experiment-groups/group%20with%20%3F%23%2F"
+    )
 
 
 async def test_list_traces_serializes_filter_and_parses_page() -> None:
@@ -106,7 +141,7 @@ async def test_list_traces_serializes_filter_and_parses_page() -> None:
         },
     )
 
-    response = await client.list_traces(query_params={"filter": {"session_id": "session-1"}})
+    response = await client.list_traces(query_params={"filter": TraceFilter(session_id="session-1")})
     traces = [trace async for trace in response.items()]
 
     assert traces[0].root_span_id == "span-1"

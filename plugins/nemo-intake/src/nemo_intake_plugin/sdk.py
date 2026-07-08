@@ -3,11 +3,10 @@
 
 """Plugin-owned Intake SDK resources."""
 
+from nemo_intake_client.client import AsyncIntakeClient, IntakeClient
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.sdk import NemoPluginSDKResources
-
-from nemo_intake_plugin.client.client import AsyncIntakeClient, IntakeClient
 
 
 def _sync_resource(platform: NeMoPlatform) -> IntakeClient:

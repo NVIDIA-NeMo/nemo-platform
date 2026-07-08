@@ -25,9 +25,9 @@ from nemo_evaluator.sdk import http_utils
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial
-from nemo_intake_plugin.client.client import AsyncIntakeClient
+from nemo_intake_client.client import AsyncIntakeClient
+from nemo_intake_client.models import TraceFilter
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform_plugin.client.adapter import client_from_platform
 from pydantic import BaseModel, ConfigDict, Field
 
 #: Default ceiling on concurrent per-trial publishes.
@@ -127,7 +127,7 @@ async def publish_to_intake(
     not carry (design §3.9 #6).
     """
     resolved_workspace = http_utils.resolve_workspace(platform, workspace, strict=True)
-    intake = client_from_platform(platform, AsyncIntakeClient)
+    intake: AsyncIntakeClient = platform.intake
 
     scores_by_trial: dict[str, list[AgentEvalTaskScore]] = defaultdict(list)
     for score in result.scores:
@@ -206,7 +206,10 @@ def _publish_failure_message(
 
 async def _resolve_root_span_id(intake: AsyncIntakeClient, *, workspace: str, session_id: str) -> str:
     """Return the root AGENT span id for a freshly-ingested trajectory (design §3.5, option 1)."""
-    response = await intake.list_traces(workspace=workspace, query_params={"filter": {"session_id": session_id}})
+    response = await intake.list_traces(
+        workspace=workspace,
+        query_params={"filter": TraceFilter(session_id=session_id)},
+    )
     async for trace in response.items():
         if trace.root_span_id:
             return trace.root_span_id

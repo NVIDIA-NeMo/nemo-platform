@@ -21,6 +21,19 @@ Active v2 workspace endpoints:
 - `POST /apis/intake/v2/workspaces/{workspace}/ingest/chat-completions`
 - `POST /apis/intake/v2/workspaces/{workspace}/ingest/atif`
 
+## Python Client
+
+Installing `nemo-intake-client` provides typed sync and async clients without
+installing the Intake service, FastAPI, ClickHouse, or OTLP dependencies. The
+Intake plugin mounts these clients as `platform.intake` through its `nemo.sdk`
+entry point.
+
+The typed client intentionally covers the Evaluator publish workflow: ATIF
+ingest, evaluator-result creation, trace lookup, span evaluator-result lookup,
+and create/get for experiments and experiment groups. The plugin OpenAPI spec
+remains the canonical description of the complete REST surface, including
+annotations, spans, OTLP, chat-completions, and experiment management.
+
 ## Local Development
 
 Run these commands from the repository root unless a command says otherwise.
@@ -114,5 +127,6 @@ make test-service SERVICE=intake
 
 ## Generated API Artifacts
 
-Run `make refresh-openapi` after Intake route or schema changes. The Stainless
-resource config lives in `sdk/stainless.yaml`.
+Run `make refresh-openapi` after Intake route or schema changes. Intake's spec
+is generated at `plugins/nemo-intake/openapi/openapi.yaml`; it is not part of
+the aggregate Stainless-generated Python SDK.

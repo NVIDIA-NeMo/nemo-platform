@@ -1,0 +1,20 @@
+[project]
+name = "nemo-intake-client"
+description = "Typed Python client contracts for the NeMo Platform Intake plugin."
+readme = "README.md"
+requires-python = ">=3.11,<3.15"
+dependencies = [
+  "nemo-platform-plugin",
+  "pydantic>=2.10.6,<3.0.0",
+]
+version = "0.0.0"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nemo_intake_client"]
+
+[tool.uv.sources]
+nemo-platform-plugin = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

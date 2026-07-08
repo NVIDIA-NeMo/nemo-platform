@@ -13,6 +13,7 @@ classifiers = [
 ]
 
 dependencies = [
+    "nemo-intake-client",
     "nemo-platform-plugin",
     "fastapi>=0.115.5, <1.0.0",
     "uvicorn>=0.22.0, <1.0.0",
@@ -48,6 +49,7 @@ packages = ["src/nemo_intake_plugin"]
 
 
 [tool.uv.sources]
+nemo-intake-client = { workspace = true }
 nemo-platform-plugin = { workspace = true }
 nmp-testing = { workspace = true }
 

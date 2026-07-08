@@ -13,9 +13,9 @@ Design constraints (see AALGO-289):
 
 * **Pure.** Every function reads domain values and returns Intake request models.
   No HTTP or platform client is used here.
-* **Typed at the boundary.** The returned Pydantic models are shared by Intake's
-  server routes and plugin-owned typed client, so API changes surface here as type
-  or validation errors without routing through the generated platform SDK.
+* **Typed at the boundary.** The returned Pydantic models come from Intake's slim
+  client contract package, so API changes surface here as type or validation errors
+  without importing the service implementation.
 * The well-known evidence-key constants (``initial_state``/``trace``/``logs``/
   ``final_state``/``verifier_logs``) belong with the SDK evidence work (D1,
   AALGO-281). Until D1 lands, this module references them as string literals so
@@ -30,11 +30,16 @@ from typing import Literal
 
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial
-from nemo_intake_plugin.spans.api.evaluator_results_schemas import EvaluatorResultInput
-from nemo_intake_plugin.spans.domain import EvaluatorResultDataType
-from nemo_intake_plugin.spans.ingest.atif import AtifIngestRequest
-from nemo_intake_plugin.spans.ingest.atif_domain import AtifAgent, AtifFinalMetrics, AtifStepAgent
-from nemo_intake_plugin.spans.ingest.evaluation_context import ExperimentContext
+from nemo_intake_client.models import (
+    AtifAgent,
+    AtifFinalMetrics,
+    AtifIngestRequest,
+    AtifStep,
+    AtifStepAgent,
+    EvaluatorResultDataType,
+    EvaluatorResultInput,
+    ExperimentContext,
+)
 
 # --- Shared conventions -----------------------------------------------------
 
@@ -90,12 +95,28 @@ def trial_to_atif_ingest(
     ``trial.evidence`` arrive with D2.
     """
     output_text = trial.output.output_text if trial.output is not None else None
+    agent = (
+        AtifAgent(name=agent_name, version=agent_version)
+        if model_name is None
+        else AtifAgent(name=agent_name, version=agent_version, model_name=model_name)
+    )
+    steps: list[AtifStep] = [AtifStepAgent(source="agent", step_id=1, message=output_text or "")]
+    session_id = session_id_for(run_id, trial.id)
+    experiment_context = run_task_to_experiment_context(trial, experiment_id=experiment_id)
+    if final_metrics is None:
+        return AtifIngestRequest(
+            schema_version=ATIF_SCHEMA_VERSION,
+            session_id=session_id,
+            agent=agent,
+            steps=steps,
+            experiment_context=experiment_context,
+        )
     return AtifIngestRequest(
         schema_version=ATIF_SCHEMA_VERSION,
-        session_id=session_id_for(run_id, trial.id),
-        agent=AtifAgent(name=agent_name, version=agent_version, model_name=model_name),
-        steps=[AtifStepAgent(source="agent", step_id=1, message=output_text or "")],
-        experiment_context=run_task_to_experiment_context(trial, experiment_id=experiment_id),
+        session_id=session_id,
+        agent=agent,
+        steps=steps,
+        experiment_context=experiment_context,
         final_metrics=final_metrics,
     )
 
@@ -148,7 +169,7 @@ def score_to_evaluator_results(
             skipped.append(SkippedOutput(name=name, reason="non-finite value"))
             continue
         rows.append(
-            EvaluatorResultInput(
+            _evaluator_result_input(
                 session_id=session_id,
                 span_id=span_id,
                 name=name,
@@ -159,6 +180,53 @@ def score_to_evaluator_results(
             )
         )
     return rows, skipped
+
+
+def _evaluator_result_input(
+    *,
+    session_id: str,
+    span_id: str,
+    name: str,
+    data_type: EvaluatorResultDataType,
+    value: float | None,
+    string_value: str | None,
+    comment: str | None,
+) -> EvaluatorResultInput:
+    if value is not None:
+        if comment is None:
+            return EvaluatorResultInput(
+                session_id=session_id,
+                span_id=span_id,
+                name=name,
+                data_type=data_type,
+                value=value,
+            )
+        return EvaluatorResultInput(
+            session_id=session_id,
+            span_id=span_id,
+            name=name,
+            data_type=data_type,
+            value=value,
+            comment=comment,
+        )
+    if string_value is None:
+        raise ValueError("Evaluator result must carry a numeric or string value")
+    if comment is None:
+        return EvaluatorResultInput(
+            session_id=session_id,
+            span_id=span_id,
+            name=name,
+            data_type=data_type,
+            string_value=string_value,
+        )
+    return EvaluatorResultInput(
+        session_id=session_id,
+        span_id=span_id,
+        name=name,
+        data_type=data_type,
+        string_value=string_value,
+        comment=comment,
+    )
 
 
 def _coerce_metric_value(value: object) -> tuple[EvaluatorResultDataType, float | None, str | None]:

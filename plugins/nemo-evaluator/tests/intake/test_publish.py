@@ -16,8 +16,7 @@ from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSumm
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
 from nemo_evaluator_sdk.metrics.protocol import MetricOutput
-from nemo_intake_plugin.spans.api.evaluator_results_schemas import EvaluatorResultInput
-from nemo_intake_plugin.spans.ingest.atif import AtifIngestRequest
+from nemo_intake_client.models import AtifIngestRequest, EvaluatorResultInput, TraceFilter
 from nemo_platform import AsyncNeMoPlatform
 
 # --- fakes ------------------------------------------------------------------
@@ -63,7 +62,8 @@ class _FakeIntakeClient:
 
     async def list_traces(self, *, workspace: str, query_params: dict[str, Any]) -> _FakePaginatedTraces:
         del workspace
-        session_id = str(query_params["filter"]["session_id"])
+        trace_filter = cast(TraceFilter, query_params["filter"])
+        session_id = str(trace_filter.session_id)
         return _FakePaginatedTraces(root_span_id=self.root_span_id, session_id=session_id)
 
 
@@ -77,25 +77,17 @@ class _FakeClient:
         fail_eval_session: str | None = None,
     ) -> None:
         self.workspace = workspace
-        self.intake_client = _FakeIntakeClient(
+        self.intake = _FakeIntakeClient(
             root_span_id=root_span_id,
             atif_fail=atif_fail,
             fail_eval_session=fail_eval_session,
         )
-        self.atif_calls = self.intake_client.atif_calls
-        self.eval_calls = self.intake_client.eval_calls
+        self.atif_calls = self.intake.atif_calls
+        self.eval_calls = self.intake.eval_calls
 
 
 def _client(**kwargs: Any) -> AsyncNeMoPlatform:
     return cast(AsyncNeMoPlatform, _FakeClient(**kwargs))
-
-
-@pytest.fixture(autouse=True)
-def _adapt_intake_client(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        "nemo_evaluator.intake.publish.client_from_platform",
-        lambda platform, _client_type: platform.intake_client,
-    )
 
 
 # --- fixtures ---------------------------------------------------------------

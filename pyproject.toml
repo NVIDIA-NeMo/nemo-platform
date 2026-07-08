@@ -340,6 +340,7 @@ nemo-anonymizer-plugin = { workspace = true }
 nemo-data-designer-plugin = { workspace = true }
 data-designer-nemo = { workspace = true }
 nemo-evaluator-sdk = { workspace = true }
+nemo-intake-client = { workspace = true }
 nmp-guardrails = { workspace = true }
 nemo-intake-plugin = { workspace = true }
 nmp-jobs = { workspace = true }
@@ -422,6 +423,7 @@ members = [
   "sdk/python/nemo-platform",
   "packages/nemo_platform_ext",
   "packages/nemo_evaluator_sdk",
+  "packages/nemo_intake_client",
   "packages/filesets",
   "packages/models",
   "plugins/nemo-guardrails",
