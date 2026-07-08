@@ -13,7 +13,7 @@ import {
   type QueryObserverResult,
   type RefetchOptions,
 } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 import { LOGS_MAX_FETCH_ITERATIONS, LOGS_MAX_PAGES, LOGS_PAGE_SIZE } from '../../constants';
 import { CJobTerminalStatuses } from '../../constants/query';
@@ -112,11 +112,18 @@ export const useJobLogs = ({
 
   const isTerminal = !!jobStatus && CJobTerminalStatuses.includes(jobStatus);
   const { refetch } = query;
+  // Only settle-burst when the job COMPLETES while mounted (a non-terminal ->
+  // terminal transition we actually observed) — not when mounting into an
+  // already-terminal job, whose initial fetch already has the full log. This
+  // also stops the burst re-firing on remount, e.g. re-expanding a collapsed
+  // log panel on a finished job.
+  const sawActiveRef = useRef(false);
   useEffect(() => {
-    if (!isTerminal) return;
+    if (jobStatus && !isTerminal) sawActiveRef.current = true;
+    if (!isTerminal || !sawActiveRef.current) return;
     const timers = LOG_SETTLE_DELAYS_MS.map((ms) => setTimeout(() => void refetch(), ms));
     return () => timers.forEach(clearTimeout);
-  }, [isTerminal, refetch]);
+  }, [jobStatus, isTerminal, refetch]);
 
   return {
     data: query.data?.logs ?? [],
