@@ -21,7 +21,7 @@ dependencies = [
     "pyyaml>=6.0.2",
     "nmp-common",
     "nemo-platform-plugin",
-    "aiohttp[speedups]>=3.13.4",
+    "aiohttp[speedups]>=3.14.1",
 ]
 version = "0.0.0"
 

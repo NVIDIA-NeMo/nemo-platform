@@ -3,13 +3,13 @@
 
 """Integration tests for Model Entity service with in-memory EntityClient."""
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform.filesets import ListFilesResponse
-from nemo_platform.types.files import Fileset, FilesetFile, LocalStorageConfig
-from nemo_platform.types.shared import FilesetMetadata
+from nemo_platform_plugin.files.metadata import FilesetMetadata
+from nemo_platform_plugin.files.storage_config import LocalStorageConfig
+from nemo_platform_plugin.files.types import FilesetFileOutput, FilesetOutput, ListFilesetFilesResponse
 from nmp.common.api.filter import ComparisonOperation, FilterOperator, LogicalOperation
 from nmp.common.api.parsed_filter import ParsedFilter
 from nmp.common.entities.client import EntityClient
@@ -40,14 +40,37 @@ def entity_client() -> EntityClient:
 
 
 @pytest.fixture
-def model_entity_service(entity_client):
+def _mock_files_client():
+    """Mock the FilesClient returned by client_from_platform in the permissions module."""
+    fileset_output = FilesetOutput(
+        id="fileset-id-123",
+        name="test-fileset",
+        workspace="default",
+        description="Test fileset",
+        storage=LocalStorageConfig(path="test-path"),
+        purpose="generic",
+        project="test-project",
+        created_at="2026-01-01T00:00:00Z",
+        updated_at="2026-01-01T00:00:00Z",
+        custom_fields={"key": "value"},
+        metadata=FilesetMetadata(),
+    )
+    mock_fc = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.data.return_value = fileset_output
+    mock_fc.get_fileset.return_value = mock_response
+    with patch("nmp.core.models.api.permissions.client_from_platform", return_value=mock_fc):
+        yield mock_fc
+
+
+@pytest.fixture
+def model_entity_service(entity_client, _mock_files_client):
     """Create a ModelEntityService with MockEntityClient for integration testing."""
     async_sdk = AsyncMock(spec=AsyncNeMoPlatform)
     async_sdk.files.list = AsyncMock(
-        return_value=ListFilesResponse(
+        return_value=ListFilesetFilesResponse(
             data=[
-                FilesetFile(
-                    id="file-id-123",
+                FilesetFileOutput(
                     file_ref="file-ref-123",
                     file_url="file-url-123",
                     path="path-123",
@@ -55,21 +78,6 @@ def model_entity_service(entity_client):
                     cache_status="cached",
                 )
             ]
-        )
-    )
-    async_sdk.files.filesets.retrieve = AsyncMock(
-        return_value=Fileset(
-            id="fileset-id-123",
-            name="test-fileset",
-            workspace="default",
-            description="Test fileset",
-            storage=LocalStorageConfig(path="test-path"),
-            purpose="generic",
-            project="test-project",
-            created_at="2026-01-01T00:00:00Z",
-            updated_at="2026-01-01T00:00:00Z",
-            custom_fields={"key": "value"},
-            metadata=FilesetMetadata(),
         )
     )
     return ModelEntityService(entity_client, sdk=async_sdk)

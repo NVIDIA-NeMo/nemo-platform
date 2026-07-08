@@ -40,7 +40,11 @@ from nemo_evaluator_sdk.values import (
 )
 from nemo_evaluator_sdk.values.results import EvaluationResult
 from nemo_platform import APIError, AsyncNeMoPlatform, ConflictError, NeMoPlatform, NotFoundError
-from nemo_platform.types.files import HuggingfaceStorageConfigParam
+from nemo_platform_plugin.client import errors as files_errors
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
+from nemo_platform_plugin.files.storage_config import HuggingfaceStorageConfig
+from nemo_platform_plugin.files.types import CreateFilesetRequest
 
 if TYPE_CHECKING:
     import numpy as np
@@ -177,28 +181,33 @@ def write_local_helpsteer2_dataset(dataset_path: Path, *, row_count: int) -> Non
 async def ensure_example_fileset(client: AsyncNeMoPlatform) -> FilesetRef:
     """Create or reuse the HelpSteer2 fileset, then verify the selected split downloads."""
     workspace = client.workspace or DEFAULT_WORKSPACE
+    files = client_from_platform(client, AsyncFilesClient)
 
     try:
-        fileset = await client.files.filesets.create(
-            workspace=workspace,
-            name=DATASET_NAME,
-            description="NVIDIA HelpSteer2 dataset for quality evaluation",
-            storage=HuggingfaceStorageConfigParam(
-                type="huggingface",
-                repo_id="nvidia/HelpSteer2",
-                repo_type="dataset",
-            ),
-        )
+        fileset = (
+            await files.create_fileset(
+                workspace=workspace,
+                body=CreateFilesetRequest(
+                    name=DATASET_NAME,
+                    description="NVIDIA HelpSteer2 dataset for quality evaluation",
+                    storage=HuggingfaceStorageConfig(
+                        repo_id="nvidia/HelpSteer2",
+                        repo_type="dataset",
+                    ),
+                ),
+            )
+        ).data()
         print(f"Registered HelpSteer2 fileset: {fileset}")
-    except ConflictError:
-        fileset = await client.files.filesets.retrieve(name=DATASET_NAME, workspace=workspace)
+    except files_errors.ConflictError:
+        fileset = (await files.get_fileset(name=DATASET_NAME, workspace=workspace)).data()
         print(f"{fileset.workspace}/{fileset.name} dataset already registered")
 
-    downloaded = await client.files.download_content(
-        remote_path=HELPSTEER2_REMOTE_PATH,
-        fileset=fileset.name,
+    response = await files.download_file(
+        path=HELPSTEER2_REMOTE_PATH,
+        name=fileset.name,
         workspace=fileset.workspace,
     )
+    downloaded = await response.read()
     rows = _load_helpsteer2_rows(downloaded, limit=2)
     _validate_helpsteer2_rows(rows)
     print(f"Verified HelpSteer2 split: {fileset.workspace}/{fileset.name}#{HELPSTEER2_REMOTE_PATH}")
@@ -208,28 +217,30 @@ async def ensure_example_fileset(client: AsyncNeMoPlatform) -> FilesetRef:
 def ensure_example_fileset_sync(client: NeMoPlatform) -> FilesetRef:
     """Create or reuse the HelpSteer2 fileset with a sync client, then verify the selected split downloads."""
     workspace = client.workspace or DEFAULT_WORKSPACE
+    files = client_from_platform(client, FilesClient)
 
     try:
-        fileset = client.files.filesets.create(
+        fileset = files.create_fileset(
             workspace=workspace,
-            name=DATASET_NAME,
-            description="NVIDIA HelpSteer2 dataset for quality evaluation",
-            storage=HuggingfaceStorageConfigParam(
-                type="huggingface",
-                repo_id="nvidia/HelpSteer2",
-                repo_type="dataset",
+            body=CreateFilesetRequest(
+                name=DATASET_NAME,
+                description="NVIDIA HelpSteer2 dataset for quality evaluation",
+                storage=HuggingfaceStorageConfig(
+                    repo_id="nvidia/HelpSteer2",
+                    repo_type="dataset",
+                ),
             ),
-        )
+        ).data()
         print(f"Registered HelpSteer2 fileset: {fileset}")
-    except ConflictError:
-        fileset = client.files.filesets.retrieve(name=DATASET_NAME, workspace=workspace)
+    except files_errors.ConflictError:
+        fileset = files.get_fileset(name=DATASET_NAME, workspace=workspace).data()
         print(f"{fileset.workspace}/{fileset.name} dataset already registered")
 
-    downloaded = client.files.download_content(
-        remote_path=HELPSTEER2_REMOTE_PATH,
-        fileset=fileset.name,
+    downloaded = files.download_file(
+        path=HELPSTEER2_REMOTE_PATH,
+        name=fileset.name,
         workspace=fileset.workspace,
-    )
+    ).read()
     rows = _load_helpsteer2_rows(downloaded, limit=2)
     _validate_helpsteer2_rows(rows)
     print(f"Verified HelpSteer2 split: {fileset.workspace}/{fileset.name}#{HELPSTEER2_REMOTE_PATH}")

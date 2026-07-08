@@ -45,8 +45,6 @@ def mock_sdk():
         side_effect=lambda name, workspace, verbose=True: _make_mock_model_entity(workspace=workspace, name=name),
     )
     sdk.files = Mock()
-    sdk.files.filesets = Mock()
-    sdk.files.filesets.retrieve = AsyncMock(return_value=Mock())
     return sdk
 
 

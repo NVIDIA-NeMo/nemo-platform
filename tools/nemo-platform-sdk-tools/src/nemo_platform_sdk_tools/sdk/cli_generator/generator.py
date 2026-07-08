@@ -42,6 +42,8 @@ AUTO_GENERATED_FILE_HEADER = [
     "",
 ]
 
+_SUB_RESOURCE_IMPORT_ALIAS_TEMPLATE = "_cli_child_{resource_name}"
+
 
 logger = logging.getLogger(__name__)
 
@@ -368,15 +370,17 @@ class SimpleGenerator:
         # Build the file content
         import_base = "nemo_platform_ext.cli.commands.api"
         parent_import = f"{import_base}.{'.'.join(resource_path)}"
+        sorted_sub_resources = sorted(sub_resources)
 
         lines = [*AUTO_GENERATED_FILE_HEADER]
 
-        # Add sub-resource imports (will be generated later)
-        for sub in sorted(sub_resources):
-            lines.append(f"from {parent_import} import {sub}")
-
         if sub_resources:
-            lines.append("")
+            lines.extend(
+                [
+                    "from importlib import import_module as _importlib_import_module",
+                    "",
+                ]
+            )
 
         # Add imports extracted from templates
         lines.extend(imports)
@@ -389,15 +393,25 @@ class SimpleGenerator:
             ]
         )
 
+        # Import child modules after regular imports. import_module forces the
+        # submodule load instead of reading same-named package globals.
+        for sub in sorted_sub_resources:
+            import_alias = _SUB_RESOURCE_IMPORT_ALIAS_TEMPLATE.format(resource_name=sub)
+            lines.append(f'{import_alias} = _importlib_import_module("{parent_import}.{sub}")')
+
+        if sub_resources:
+            lines.append("")
+
         # App creation
         app_help = self._get_resource_help(resource_path, f"Manage {resource_name}")
         lines.append(f'app = create_typer_app(name="{resource_name}", help="{escape_for_python_string(app_help)}")')
         lines.append("")
 
         # Register sub-apps
-        for sub in sorted(sub_resources):
+        for sub in sorted_sub_resources:
             cli_name = sub.replace("_", "-")
-            lines.append(f'app.add_typer({sub}.app, name="{cli_name}")')
+            import_alias = _SUB_RESOURCE_IMPORT_ALIAS_TEMPLATE.format(resource_name=sub)
+            lines.append(f'app.add_typer({import_alias}.app, name="{cli_name}")')
 
         if sub_resources:
             lines.append("")
@@ -588,14 +602,22 @@ class SimpleGenerator:
         resource_name = parent_path[-1]
         lines = [*AUTO_GENERATED_FILE_HEADER]
 
-        for child in all_children:
-            lines.append(f"from {parent_import} import {child}")
-
         app_help = self._get_resource_help(parent_path, f"{resource_name.replace('_', ' ').title()} operations")
         lines.extend(
             [
+                "from importlib import import_module as _importlib_import_module",
                 "",
                 "from nemo_platform_ext.cli.core.help_formatter import create_typer_app",
+                "",
+            ]
+        )
+
+        for child in all_children:
+            import_alias = _SUB_RESOURCE_IMPORT_ALIAS_TEMPLATE.format(resource_name=child)
+            lines.append(f'{import_alias} = _importlib_import_module("{parent_import}.{child}")')
+
+        lines.extend(
+            [
                 "",
                 f'app = create_typer_app(name="{resource_name}", help="{escape_for_python_string(app_help)}")',
                 "",
@@ -604,7 +626,8 @@ class SimpleGenerator:
 
         for child in all_children:
             cli_name = child.replace("_", "-")
-            lines.append(f'app.add_typer({child}.app, name="{cli_name}")')
+            import_alias = _SUB_RESOURCE_IMPORT_ALIAS_TEMPLATE.format(resource_name=child)
+            lines.append(f'app.add_typer({import_alias}.app, name="{cli_name}")')
 
         lines.append("")
         init_file.write_text("\n".join(lines))
@@ -712,8 +735,9 @@ class SimpleGenerator:
                     sys.modules.pop(name, None)
             for name in generated_package_names:
                 sys.modules.pop(name, None)
-                if saved_modules[name] is not None:
-                    sys.modules[name] = saved_modules[name]
+                saved_module = saved_modules[name]
+                if saved_module is not None:
+                    sys.modules[name] = saved_module
 
         help_text = getattr(module.app, "info", None)
         if help_text is not None:

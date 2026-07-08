@@ -35,6 +35,7 @@ const pathParams = {
   [RP.benchmarkName]: 'test-benchmark',
   [RP.experimentGroupName]: 'test-experiment-group',
   [RP.experimentName]: 'test-experiment',
+  [RP.guardrailConfigName]: 'test-guardrail-config',
 };
 
 describe('AccessibleTitleE2E', () => {

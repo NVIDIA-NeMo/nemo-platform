@@ -37,7 +37,7 @@ def create_annotations(
         Literal["feedback", "note", "metadata", "label"] | None, typer.Option("--kind", help="(required)")
     ] = None,
     session_id: Annotated[str | None, typer.Option("--session-id", help="(required)")] = None,
-    value: Annotated[Literal["positive", "negative"] | str | float | None, typer.Option("--value")] = None,
+    value: Annotated[str | None, typer.Option("--value")] = None,
     span_id: Annotated[str | None, typer.Option("--span-id")] = None,
     text: Annotated[str | None, typer.Option("--text")] = None,
     metadata: Annotated[str | None, typer.Option("--metadata", help="JSON string")] = None,

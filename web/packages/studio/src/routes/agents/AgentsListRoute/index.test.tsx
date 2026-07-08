@@ -50,7 +50,7 @@ const renderList = () =>
 const openModal = async (user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> => {
   await user.click(await screen.findByRole('button', { name: 'Create Example Agent' }));
   const dialog = await screen.findByRole('dialog');
-  await within(dialog).findByRole('combobox');
+  await within(dialog).findByRole('combobox', { name: 'Model' });
   return dialog;
 };
 
@@ -72,7 +72,9 @@ describe('AgentsListRoute', () => {
 
     const dialog = await openModal(user);
     await waitFor(() =>
-      expect(within(dialog).getByRole('combobox')).toHaveTextContent('nvidia-nemotron-nano-9b-v2')
+      expect(within(dialog).getByRole('combobox', { name: 'Model' })).toHaveTextContent(
+        'nvidia-nemotron-nano-9b-v2'
+      )
     );
   });
 
@@ -91,7 +93,9 @@ describe('AgentsListRoute', () => {
     renderList();
     const dialog = await openModal(user);
     await waitFor(() =>
-      expect(within(dialog).getByRole('combobox')).toHaveTextContent('nvidia-nemotron-super-49b')
+      expect(within(dialog).getByRole('combobox', { name: 'Model' })).toHaveTextContent(
+        'nvidia-nemotron-super-49b'
+      )
     );
     await user.click(within(dialog).getByRole('button', { name: 'Create' }));
 
@@ -134,14 +138,51 @@ describe('AgentsListRoute', () => {
     renderList();
     const dialog = await openModal(user);
     await waitFor(() =>
-      expect(within(dialog).getByRole('combobox')).toHaveTextContent('nvidia-nemotron-super-49b')
+      expect(within(dialog).getByRole('combobox', { name: 'Model' })).toHaveTextContent(
+        'nvidia-nemotron-super-49b'
+      )
     );
 
-    await user.click(within(dialog).getByRole('combobox'));
+    await user.click(within(dialog).getByRole('combobox', { name: 'Model' }));
     await user.click(await screen.findByRole('option', { name: 'meta-llama-3-1-70b-instruct' }));
     await user.click(within(dialog).getByRole('button', { name: 'Create' }));
 
     await waitFor(() => expect(modelName).toBe('meta-llama-3-1-70b-instruct'));
+  });
+
+  it('creates the email phishing example when that example is selected', async () => {
+    const user = userEvent.setup();
+    mockModels(['nvidia-nemotron-super-49b']);
+
+    let captured: { name?: string; description?: string; config?: Record<string, unknown> } = {};
+    server.use(
+      http.post(CREATE_AGENT_URL, async ({ request, params }) => {
+        captured = (await request.json()) as typeof captured;
+        return HttpResponse.json({ ...captured, workspace: params['workspace'] });
+      })
+    );
+
+    renderList();
+    const dialog = await openModal(user);
+    await waitFor(() =>
+      expect(within(dialog).getByRole('combobox', { name: 'Model' })).toHaveTextContent(
+        'nvidia-nemotron-super-49b'
+      )
+    );
+
+    await user.click(within(dialog).getByRole('combobox', { name: 'Example' }));
+    await user.click(await screen.findByRole('option', { name: 'email_phishing_analyzer' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Create' }));
+
+    await waitFor(() => expect(captured.name).toMatch(/^email-phishing-demo-agent-[a-z0-9]{6}$/));
+    const config = captured.config as {
+      workflow: { tool_names: string[] };
+      functions: Record<string, { _type: string }>;
+      llms: { llm: { model_name: string } };
+    };
+    expect(config.workflow.tool_names).toEqual(['email_phishing_analyzer']);
+    expect(config.functions.email_phishing_analyzer._type).toBe('email_phishing_analyzer');
+    expect(config.llms.llm.model_name).toBe('nvidia-nemotron-super-49b');
   });
 
   it('excludes non-chat models from the picker', async () => {
@@ -151,9 +192,11 @@ describe('AgentsListRoute', () => {
 
     const dialog = await openModal(user);
     await waitFor(() =>
-      expect(within(dialog).getByRole('combobox')).toHaveTextContent('nvidia-nemotron-nano-9b-v2')
+      expect(within(dialog).getByRole('combobox', { name: 'Model' })).toHaveTextContent(
+        'nvidia-nemotron-nano-9b-v2'
+      )
     );
-    await user.click(within(dialog).getByRole('combobox'));
+    await user.click(within(dialog).getByRole('combobox', { name: 'Model' }));
 
     expect(
       await screen.findByRole('option', { name: 'nvidia-nemotron-nano-9b-v2' })
@@ -198,7 +241,9 @@ describe('AgentsListRoute', () => {
 
     const dialog = await openModal(user);
     await waitFor(() =>
-      expect(within(dialog).getByRole('combobox')).toHaveTextContent('nvidia-nemotron-nano-9b-v2')
+      expect(within(dialog).getByRole('combobox', { name: 'Model' })).toHaveTextContent(
+        'nvidia-nemotron-nano-9b-v2'
+      )
     );
     await user.click(within(dialog).getByRole('button', { name: 'Create' }));
 
@@ -223,7 +268,9 @@ describe('AgentsListRoute', () => {
     renderList();
     const dialog = await openModal(user);
     await waitFor(() =>
-      expect(within(dialog).getByRole('combobox')).toHaveTextContent('nvidia-nemotron-nano-9b-v2')
+      expect(within(dialog).getByRole('combobox', { name: 'Model' })).toHaveTextContent(
+        'nvidia-nemotron-nano-9b-v2'
+      )
     );
     await user.click(within(dialog).getByRole('button', { name: 'Create' }));
 
@@ -265,7 +312,9 @@ describe('AgentsListRoute', () => {
     await screen.findByText('calculator-demo-agent-abc123');
     const dialog = await openModal(user);
     await waitFor(() =>
-      expect(within(dialog).getByRole('combobox')).toHaveTextContent('nvidia-nemotron-nano-9b-v2')
+      expect(within(dialog).getByRole('combobox', { name: 'Model' })).toHaveTextContent(
+        'nvidia-nemotron-nano-9b-v2'
+      )
     );
     await user.click(within(dialog).getByRole('button', { name: 'Create' }));
 
@@ -290,7 +339,9 @@ describe('AgentsListRoute', () => {
     const dialog = await openModal(user);
     await user.click(within(dialog).getByRole('button', { name: 'Create' }));
 
-    await waitFor(() => expect(within(dialog).getByRole('combobox')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(within(dialog).getByRole('combobox', { name: 'Model' })).toBeInTheDocument()
+    );
     expect(createCalled).toBe(false);
   });
 });

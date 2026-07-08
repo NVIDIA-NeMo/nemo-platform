@@ -183,6 +183,28 @@ def _simplify_list_type(tp: Type) -> str | None:
     return "list[str]"
 
 
+def _collapse_typer_union_types(type_names: list[str]) -> list[str]:
+    """Collapse multi-type unions into annotations Typer can build.
+
+    Example: Literal["positive", "negative"] | str | float | None
+    becomes str | None because Typer cannot build one option from multiple
+    concrete runtime types.
+    """
+    concrete_types = [type_name for type_name in type_names if type_name != "None"]
+    if len(concrete_types) <= 1:
+        return type_names
+
+    has_none = len(concrete_types) != len(type_names)
+    if set(concrete_types) <= {"int", "float"}:
+        collapsed = ["float"]
+    else:
+        collapsed = ["str"]
+
+    if has_none:
+        collapsed.append("None")
+    return collapsed
+
+
 def clean_type_annotation(tp: Type) -> str:
     """Clean up a type annotation string for CLI use.
 
@@ -276,6 +298,7 @@ def clean_type_annotation(tp: Type) -> str:
                 seen.add(t)
                 deduped.append(t)
 
+        deduped = _collapse_typer_union_types(deduped)
         return " | ".join(deduped)
 
     return format_type(tp)

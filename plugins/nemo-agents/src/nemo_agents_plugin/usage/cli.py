@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Optional
 
 import typer
+from nemo_agents_plugin.cli_context import BaseUrlOption, resolve_base_url, resolve_context_headers
 from nemo_agents_plugin.usage import compute, render
 from nemo_agents_plugin.usage import parser as parser_module
 from nemo_agents_plugin.usage.models import (
@@ -33,7 +34,6 @@ from nemo_platform_plugin.refs import FilesetRef, LocalDir, classify_output_targ
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_BASE_URL = "http://localhost:8080"
 _DEFAULT_WORKSPACE = "default"
 
 
@@ -73,11 +73,7 @@ def register_usage_commands(app: typer.Typer) -> None:
             "public number — leave unset and compute_units stays null.",
         ),
         workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
-        base_url: str = typer.Option(
-            _DEFAULT_BASE_URL,
-            "--base-url",
-            envvar="NEMO_BASE_URL",
-        ),
+        base_url: BaseUrlOption = None,
     ) -> None:
         """Show a usage report for *ref*."""
         _show(
@@ -98,7 +94,7 @@ def _show(
     *,
     total_params: float | None,
     workspace: str,
-    base_url: str,
+    base_url: str | None,
 ) -> None:
     try:
         report = _resolve_and_score(
@@ -118,7 +114,7 @@ def _resolve_and_score(
     *,
     total_params: float | None,
     workspace: str,
-    base_url: str,
+    base_url: str | None,
 ) -> UsageReport | BatchUsageReport:
     """End-to-end pipeline: source → parse → (rewrite if fileset) → score.
 
@@ -146,7 +142,9 @@ def _resolve_and_score(
         # Path-shaped but missing — clearer error than a fileset 404.
         raise UsageSourceError(f"local path does not exist: {candidate}")
 
-    sdk = _build_sdk(base_url=base_url)
+    # Only fileset refs contact the platform, so resolve/announce the target
+    # (and attach auth) here rather than for purely-local reads above.
+    sdk = _build_sdk(base_url=resolve_base_url(base_url))
     with fileset_path(FilesetRef(ref), sdk=sdk, workspace=workspace) as path:
         report = parser_module.parse_path(path)
         report = _rewrite_source_dirs(report, original_ref=ref, staged_root=path)
@@ -193,13 +191,20 @@ def _rewrite_task_source(
 
 
 def _build_sdk(*, base_url: str) -> NeMoPlatform:
-    """Construct a NeMoPlatform SDK client.
+    """Construct a NeMoPlatform SDK client for fileset downloads.
 
-    *base_url* is the already-resolved value from the Typer option, which
-    handles env-var fallback via ``envvar="NEMO_BASE_URL"``.  Don't re-read
-    the env here — that would invert precedence and let a stale env
-    variable beat an explicit ``--base-url`` flag.
+    *base_url* is the value already resolved by ``resolve_base_url`` (flag /
+    ``NEMO_BASE_URL`` > shared CLI config / ``NMP_BASE_URL`` > localhost), so
+    don't re-read the env here — that would invert precedence.
+
+    Attaches the CLI auth token from the shared context (the same
+    ``Authorization: Bearer`` header the rest of the CLI sends) so fileset
+    downloads succeed against a secured cluster.  Falls back to an
+    unauthenticated client when no token is configured.
     """
+    headers = resolve_context_headers()
+    if headers:
+        return NeMoPlatform(base_url=base_url, default_headers=headers)
     return NeMoPlatform(base_url=base_url)
 
 

@@ -37,31 +37,42 @@ class _AsyncIterator:
             raise StopAsyncIteration
 
 
-class _MockPaginatedResponse:
-    """Mock for paginated responses that expose .items() for async iteration."""
+class _MockAsyncPaginatedResponse:
+    """Mock for AsyncNemoPaginatedResponse that exposes .items() as an async generator."""
 
     def __init__(self, items):
         self._items = items
 
-    def items(self):
-        return _AsyncIterator(self._items)
+    async def items(self):
+        for item in self._items:
+            yield item
+
+
+def _make_mock_files_client(filesets: list | None = None) -> AsyncMock:
+    """Build a mock AsyncFilesClient with list_filesets/delete_fileset."""
+    mock_files = AsyncMock()
+    mock_files.list_filesets = AsyncMock(return_value=_MockAsyncPaginatedResponse(filesets or []))
+    mock_files.delete_fileset = AsyncMock()
+    return mock_files
 
 
 def _make_sdk(
     jobs: list | None = None,
     deployments: list | None = None,
     filesets: list | None = None,
-) -> MagicMock:
-    """Build a MagicMock SDK with async mocks wired to the correct paths."""
+) -> tuple[MagicMock, AsyncMock]:
+    """Build a MagicMock SDK with async mocks wired to the correct paths.
+
+    Returns (sdk, mock_files_client) so tests can assert on files client calls.
+    """
     sdk = MagicMock()
     sdk.jobs.list = AsyncMock(return_value=_AsyncIterator(jobs or []))
     sdk.jobs.cancel = AsyncMock()
     sdk.jobs.delete = AsyncMock()
     sdk.inference.deployments.list = AsyncMock(return_value=_AsyncIterator(deployments or []))
     sdk.inference.deployments.delete = AsyncMock()
-    sdk.files.filesets.list = AsyncMock(return_value=_MockPaginatedResponse(filesets or []))
-    sdk.files.filesets.delete = AsyncMock()
-    return sdk
+    mock_files = _make_mock_files_client(filesets)
+    return sdk, mock_files
 
 
 def _make_job(name: str, status: str = "completed") -> MagicMock:
@@ -84,6 +95,9 @@ def _make_controller(
         nmp_sdk=nmp_sdk,
         workspace_repository=workspace_repo,
     )
+
+
+_FILES_CLIENT_PATCH = "nmp.core.entities.controllers.workspace_cleanup.client_from_platform"
 
 
 class TestWorkspaceCleanupStep:
@@ -158,11 +172,12 @@ class TestWorkspaceCleanupAsyncStep:
         sdk = MagicMock()
         sdk.jobs.list = AsyncMock(return_value=_AsyncIterator([]))
         sdk.inference.deployments.list = AsyncMock(return_value=_AsyncIterator([]))
-        sdk.files.filesets.list = AsyncMock(return_value=_MockPaginatedResponse([]))
 
+        mock_files = _make_mock_files_client([])
         controller = _make_controller(workspace_repo=repo, nmp_sdk=sdk)
 
-        await controller._async_step()
+        with patch(_FILES_CLIENT_PATCH, return_value=mock_files):
+            await controller._async_step()
 
         repo.mark_workspace_for_deletion.assert_any_call(
             name="test-workspace",
@@ -338,14 +353,13 @@ class TestWorkspaceCleanupFilesets:
         fileset = MagicMock()
         fileset.name = "test-fileset"
 
-        sdk = MagicMock()
-        sdk.files.filesets.list = AsyncMock(return_value=_MockPaginatedResponse([fileset]))
-        sdk.files.filesets.delete = AsyncMock()
+        mock_files = _make_mock_files_client([fileset])
+        controller = _make_controller()
 
-        controller = _make_controller(nmp_sdk=sdk)
-        await controller._cleanup_filesets(workspace)
+        with patch(_FILES_CLIENT_PATCH, return_value=mock_files):
+            await controller._cleanup_filesets(workspace)
 
-        sdk.files.filesets.delete.assert_awaited_once_with(
+        mock_files.delete_fileset.assert_awaited_once_with(
             name="test-fileset",
             workspace="test-workspace",
         )
@@ -358,14 +372,14 @@ class TestWorkspaceCleanupFilesets:
         fs2 = MagicMock()
         fs2.name = "fs2"
 
-        sdk = MagicMock()
-        sdk.files.filesets.list = AsyncMock(return_value=_MockPaginatedResponse([fs1, fs2]))
-        sdk.files.filesets.delete = AsyncMock(side_effect=[Exception("fail"), None])
+        mock_files = _make_mock_files_client([fs1, fs2])
+        mock_files.delete_fileset = AsyncMock(side_effect=[Exception("fail"), None])
+        controller = _make_controller()
 
-        controller = _make_controller(nmp_sdk=sdk)
-        await controller._cleanup_filesets(workspace)
+        with patch(_FILES_CLIENT_PATCH, return_value=mock_files):
+            await controller._cleanup_filesets(workspace)
 
-        assert sdk.files.filesets.delete.await_count == 2
+        assert mock_files.delete_fileset.await_count == 2
 
 
 class TestJobCancellationBranches:
@@ -374,7 +388,7 @@ class TestJobCancellationBranches:
     @pytest.mark.asyncio
     async def test_cancels_pending_jobs(self):
         workspace = _make_workspace()
-        sdk = _make_sdk(jobs=[_make_job("pending-job", status="pending")])
+        sdk, _ = _make_sdk(jobs=[_make_job("pending-job", status="pending")])
 
         controller = _make_controller(nmp_sdk=sdk)
         await controller._cleanup_jobs(workspace)
@@ -385,7 +399,7 @@ class TestJobCancellationBranches:
     @pytest.mark.asyncio
     async def test_cancels_created_jobs(self):
         workspace = _make_workspace()
-        sdk = _make_sdk(jobs=[_make_job("created-job", status="created")])
+        sdk, _ = _make_sdk(jobs=[_make_job("created-job", status="created")])
 
         controller = _make_controller(nmp_sdk=sdk)
         await controller._cleanup_jobs(workspace)
@@ -401,7 +415,7 @@ class TestJobCancellationBranches:
             _make_job("failed", status="error"),
             _make_job("stopped", status="cancelled"),
         ]
-        sdk = _make_sdk(jobs=jobs)
+        sdk, _ = _make_sdk(jobs=jobs)
 
         controller = _make_controller(nmp_sdk=sdk)
         await controller._cleanup_jobs(workspace)
@@ -413,7 +427,7 @@ class TestJobCancellationBranches:
     async def test_cancel_failure_still_deletes(self):
         """Regression: cancel() throwing must not prevent delete()."""
         workspace = _make_workspace()
-        sdk = _make_sdk(jobs=[_make_job("flaky-job", status="active")])
+        sdk, _ = _make_sdk(jobs=[_make_job("flaky-job", status="active")])
         sdk.jobs.cancel = AsyncMock(side_effect=Exception("cancel failed"))
 
         controller = _make_controller(nmp_sdk=sdk)
@@ -430,7 +444,7 @@ class TestJobCancellationBranches:
             _make_job("done-job", status="completed"),
             _make_job("pending-job", status="pending"),
         ]
-        sdk = _make_sdk(jobs=jobs)
+        sdk, _ = _make_sdk(jobs=jobs)
 
         controller = _make_controller(nmp_sdk=sdk)
         await controller._cleanup_jobs(workspace)

@@ -9,10 +9,19 @@ import { FormModal, type FormModalProps } from '@nemo/common/src/components/Form
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { customFetch } from '@nemo/sdk/generated/fetchers/platform';
 import { Block, RadioGroup, Stack, Text } from '@nvidia/foundations-react-core';
+import { fetchSampleText } from '@studio/api/agents/fetchSampleText';
 import { type Agent } from '@studio/components/dataViews/AgentsDataView';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
-import { ensureEvalConfigFileset } from '@studio/routes/agents/AgentSuggestionsRoute/api';
-import { SAMPLE_EVAL_CONFIG_PATH } from '@studio/routes/agents/AgentSuggestionsRoute/constants';
+import {
+  DEFAULT_SAMPLE_AGENT_KEY,
+  getSampleAgent,
+  SAMPLE_AGENTS,
+  sampleAgentKeyForAgentName,
+} from '@studio/constants/sampleAgents';
+import {
+  ensureEvalConfigFileset,
+  type EvalSeedFile,
+} from '@studio/routes/agents/AgentSuggestionsRoute/api';
 import {
   evalFilesetForAgent,
   evalOutputFilesetFor,
@@ -30,10 +39,20 @@ const EVAL_CONFIG_MODE_ITEMS = [
   { value: MODE_FILESET, children: 'Select or upload a config file from a fileset' },
 ];
 
+const contentTypeForFile = (name: string): string => {
+  if (name.endsWith('.json')) return 'application/json';
+  if (name.endsWith('.csv')) return 'text/csv';
+  return 'application/yaml';
+};
+
+/** Basename of a public asset path — the flat name it's seeded as in the fileset. */
+const fileNameOf = (path: string): string => path.slice(path.lastIndexOf('/') + 1);
+
 const submitEvaluationSchema = z
   .object({
     agent: z.string().min(1, 'Agent is required'),
     mode: z.enum([MODE_DEFAULT, MODE_FILESET]),
+    exampleKey: z.string(),
     datasetFile: z.string().nullable(),
   })
   .refine(
@@ -65,6 +84,9 @@ const randomSuffix = (): string => {
 const makeDefaultValues = (agent?: string): SubmitEvaluationFormData => ({
   agent: agent ?? '',
   mode: MODE_DEFAULT,
+  // Auto-match the example to the agent it was created from (by name prefix),
+  // falling back to the first example for non-example agents.
+  exampleKey: sampleAgentKeyForAgentName(agent) ?? DEFAULT_SAMPLE_AGENT_KEY,
   datasetFile: null,
 });
 
@@ -79,14 +101,22 @@ interface SubmitEvaluationModalProps extends Pick<FormModalProps, 'open' | 'onCl
   onSubmitted?: (jobName: string) => void;
 }
 
+interface EvalSeedSource {
+  /** Flat filename seeded into the fileset. */
+  path: string;
+  /** Public asset path fetched on demand for the file's content. */
+  assetPath: string;
+  type: string;
+}
+
 interface SubmitSpec {
   agent: string;
   evalConfig: string;
   evalConfigFileset: string;
-  /** When true, seed the bundled sample into ``evalConfigFileset`` before
-   *  POSTing to ``/jobs/evaluate``. Skipped when the user picks an existing
+  /** When set, fetch each source and seed it into ``evalConfigFileset`` before
+   *  POSTing to ``/jobs/evaluate``. Omitted when the user picks an existing
    *  fileset since we shouldn't overwrite their files. */
-  seedSample: boolean;
+  seedSources?: EvalSeedSource[];
 }
 
 export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
@@ -119,13 +149,22 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
     reset: resetMutation,
   } = useMutation({
     mutationFn: async (spec: SubmitSpec) => {
-      if (spec.seedSample) {
-        // Default mode: seed the per-agent eval-config fileset with the
-        // bundled sample so the user doesn't have to pre-upload anything.
+      if (spec.seedSources) {
+        // Default mode: fetch the selected example's eval assets on demand and
+        // seed them into the per-agent eval-config fileset so the user doesn't
+        // have to pre-upload anything.
+        const files: EvalSeedFile[] = await Promise.all(
+          spec.seedSources.map(async (source) => ({
+            path: source.path,
+            content: await fetchSampleText(source.assetPath),
+            type: source.type,
+          }))
+        );
         await ensureEvalConfigFileset(
           workspace,
           spec.evalConfigFileset,
-          new AbortController().signal
+          new AbortController().signal,
+          files
         );
       }
       const body = {
@@ -174,6 +213,13 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
   });
 
   const mode = useWatch({ control, name: 'mode' });
+  const selectedAgent = useWatch({ control, name: 'agent' });
+
+  // When the chosen agent maps to a known example, auto-select its eval config.
+  useEffect(() => {
+    const matchedKey = sampleAgentKeyForAgentName(selectedAgent);
+    if (matchedKey) setValue('exampleKey', matchedKey);
+  }, [selectedAgent, setValue]);
 
   useEffect(() => {
     resetForm(makeDefaultValues(agentProp));
@@ -205,14 +251,31 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
         agent: formData.agent,
         evalConfig: parsed.objectPath,
         evalConfigFileset: parsed.name,
-        seedSample: false,
       };
     } else {
+      const example = getSampleAgent(formData.exampleKey);
+      // Namespace the seeded config per example. The {agent}-eval fileset is
+      // shared and ensureEvalConfigFileset skips existing files, so seeding every
+      // example as a bare "eval.yml" would make the first-seeded config stick when
+      // switching examples on the same agent. (Datasets already have distinct
+      // basenames.)
+      const evalConfigName = `${example.key}-${fileNameOf(example.evalConfigPath)}`;
       spec = {
         agent: formData.agent,
-        evalConfig: SAMPLE_EVAL_CONFIG_PATH,
+        evalConfig: evalConfigName,
         evalConfigFileset: evalFilesetForAgent(formData.agent),
-        seedSample: true,
+        seedSources: [
+          {
+            path: evalConfigName,
+            assetPath: example.evalConfigPath,
+            type: contentTypeForFile(example.evalConfigPath),
+          },
+          {
+            path: fileNameOf(example.evalDataPath),
+            assetPath: example.evalDataPath,
+            type: contentTypeForFile(example.evalDataPath),
+          },
+        ],
       };
     }
     try {
@@ -274,6 +337,19 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
             items={EVAL_CONFIG_MODE_ITEMS}
           />
         </Block>
+        {mode === MODE_DEFAULT ? (
+          <ControlledSelect
+            useControllerProps={{ control, name: 'exampleKey' }}
+            items={SAMPLE_AGENTS.map((example) => ({
+              value: example.key,
+              children: example.label,
+            }))}
+            formFieldProps={{
+              slotLabel: 'Example',
+              slotError: errors.exampleKey?.message,
+            }}
+          />
+        ) : null}
         {mode === MODE_FILESET ? (
           <ControlledDatasetFileSelect
             useControllerProps={{

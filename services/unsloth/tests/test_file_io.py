@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import types
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -44,7 +44,7 @@ def _make_runner(sdk, workspace: str = "default", storage_path: Path | None = No
     return FileIORunner(sdk=sdk, progress_reporter=NoOpProgressReporter(), job_ctx=job_ctx)
 
 
-def _make_sdk(*, conflict_on_create: bool = False) -> MagicMock:
+def _make_sdk() -> MagicMock:
     """Build a MagicMock SDK with sensible defaults for fluent chaining.
 
     ``with_options`` returns the same SDK so chained timeouts don't break
@@ -52,15 +52,6 @@ def _make_sdk(*, conflict_on_create: bool = False) -> MagicMock:
     """
     sdk = MagicMock()
     sdk.with_options.return_value = sdk
-
-    if conflict_on_create:
-        # Trigger ConflictError on filesets.create by raising the class the
-        # runner is bound against (see comment in _raise_runner_conflict).
-        def _raise_conflict(**_kwargs):
-            _raise_runner_conflict()
-
-        sdk.files.filesets.create.side_effect = _raise_conflict
-
     return sdk
 
 
@@ -93,62 +84,90 @@ def _make_dir(tmp_path: Path) -> Path:
 
 
 class TestCreateFileset:
-    def test_creates_fileset_with_service_source_and_metadata(self) -> None:
+    @patch("nmp.unsloth.tasks.file_io.run.client_from_platform")
+    def test_creates_fileset_with_service_source_and_metadata(self, mock_cfp) -> None:
+        from nemo_platform_plugin.files.types import CreateFilesetRequest
         from nmp.customization_common.schemas.file_io import FileSetRef
 
+        mock_fc = MagicMock()
+        mock_cfp.return_value = mock_fc
         sdk = _make_sdk()
         runner = _make_runner(sdk)
-        metadata = {"model": "Qwen/Qwen3-0.6B", "save_method": "lora"}
+        metadata = {"model": {"tool_calling": {"tool_call_parser": "llama3_json"}}}
         dest = FileSetRef(workspace="default", name="qwen-test")
 
         runner.create_fileset(dest, metadata=metadata)
 
-        sdk.files.filesets.create.assert_called_once()
-        call = sdk.files.filesets.create.call_args
+        mock_fc.create_fileset.assert_called_once()
+        call = mock_fc.create_fileset.call_args
         assert call.kwargs["workspace"] == "default"
-        assert call.kwargs["name"] == "qwen-test"
-        assert call.kwargs["custom_fields"] == {"service_source": "unsloth"}
-        assert call.kwargs["metadata"] == metadata
+        body = call.kwargs["body"]
+        assert isinstance(body, CreateFilesetRequest)
+        assert body.name == "qwen-test"
+        assert body.custom_fields == {"service_source": "unsloth"}
+        assert body.metadata is not None
+        assert body.metadata.model is not None
+        assert body.metadata.model.tool_calling.tool_call_parser == "llama3_json"
 
-    def test_conflict_patches_metadata_on_existing(self) -> None:
+    @patch("nmp.unsloth.tasks.file_io.run.client_from_platform")
+    def test_conflict_patches_metadata_on_existing(self, mock_cfp) -> None:
+        from nemo_platform_plugin.files.types import UpdateFilesetRequest
         from nmp.customization_common.schemas.file_io import FileSetRef
 
-        sdk = _make_sdk(conflict_on_create=True)
+        mock_fc = MagicMock()
+        mock_fc.create_fileset.side_effect = lambda **_: _raise_runner_conflict()
+        mock_cfp.return_value = mock_fc
+        sdk = _make_sdk()
         runner = _make_runner(sdk)
         dest = FileSetRef(workspace="default", name="exists")
+        metadata = {"model": {"tool_calling": {"tool_call_parser": "hermes"}}}
 
-        runner.create_fileset(dest, metadata={"model": "x"})
+        runner.create_fileset(dest, metadata=metadata)
 
-        sdk.files.filesets.update.assert_called_once()
-        update_call = sdk.files.filesets.update.call_args
+        mock_fc.update_fileset.assert_called_once()
+        update_call = mock_fc.update_fileset.call_args
         assert update_call.kwargs["workspace"] == "default"
         assert update_call.kwargs["name"] == "exists"
-        assert update_call.kwargs["metadata"] == {"model": "x"}
+        body = update_call.kwargs["body"]
+        assert isinstance(body, UpdateFilesetRequest)
+        assert body.metadata is not None
+        assert body.metadata.model is not None
+        assert body.metadata.model.tool_calling.tool_call_parser == "hermes"
 
-    def test_conflict_no_metadata_skips_update(self) -> None:
+    @patch("nmp.unsloth.tasks.file_io.run.client_from_platform")
+    def test_conflict_no_metadata_skips_update(self, mock_cfp) -> None:
         from nmp.customization_common.schemas.file_io import FileSetRef
 
-        sdk = _make_sdk(conflict_on_create=True)
+        mock_fc = MagicMock()
+        mock_fc.create_fileset.side_effect = lambda **_: _raise_runner_conflict()
+        mock_cfp.return_value = mock_fc
+        sdk = _make_sdk()
         runner = _make_runner(sdk)
         dest = FileSetRef(workspace="default", name="exists")
 
         runner.create_fileset(dest, metadata=None)
 
-        sdk.files.filesets.update.assert_not_called()
+        mock_fc.update_fileset.assert_not_called()
 
+    @patch("nmp.unsloth.tasks.file_io.run.client_from_platform")
     def test_update_failure_is_warning_not_fatal(
         self,
+        mock_cfp,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         from nmp.customization_common.schemas.file_io import FileSetRef
 
-        sdk = _make_sdk(conflict_on_create=True)
-        sdk.files.filesets.update.side_effect = RuntimeError("backend down")
+        mock_fc = MagicMock()
+        mock_fc.create_fileset.side_effect = lambda **_: _raise_runner_conflict()
+        mock_fc.update_fileset.side_effect = RuntimeError("backend down")
+        mock_cfp.return_value = mock_fc
+        sdk = _make_sdk()
         runner = _make_runner(sdk)
         dest = FileSetRef(workspace="default", name="exists")
+        metadata = {"model": {"tool_calling": {"tool_call_parser": "hermes"}}}
 
         with caplog.at_level("WARNING"):
-            runner.create_fileset(dest, metadata={"model": "x"})
+            runner.create_fileset(dest, metadata=metadata)
 
         assert any("Could not patch metadata" in r.getMessage() for r in caplog.records)
 

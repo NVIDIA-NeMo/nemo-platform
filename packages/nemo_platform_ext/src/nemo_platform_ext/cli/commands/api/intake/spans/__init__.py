@@ -4,11 +4,11 @@
 # NOTE: This file is auto-generated
 from __future__ import annotations
 
+from importlib import import_module as _importlib_import_module
 from typing import Annotated, Literal
 
 import typer
 
-from nemo_platform_ext.cli.commands.api.intake.spans import evaluator_results, groups
 from nemo_platform_ext.cli.core.api import build_kwargs, merge_filter_dict
 from nemo_platform_ext.cli.core.code_generator import handle_code_generation
 from nemo_platform_ext.cli.core.context import CLIContext
@@ -23,10 +23,15 @@ from nemo_platform_ext.cli.core.types import (
     OutputColumnsOption,
 )
 
+_cli_child_evaluator_results = _importlib_import_module(
+    "nemo_platform_ext.cli.commands.api.intake.spans.evaluator_results"
+)
+_cli_child_groups = _importlib_import_module("nemo_platform_ext.cli.commands.api.intake.spans.groups")
+
 app = create_typer_app(name="spans", help="Manage spans")
 
-app.add_typer(evaluator_results.app, name="evaluator-results")
-app.add_typer(groups.app, name="groups")
+app.add_typer(_cli_child_evaluator_results.app, name="evaluator-results")
+app.add_typer(_cli_child_groups.app, name="groups")
 
 
 @app.command("list")

@@ -14,6 +14,8 @@ from typing import Any
 
 import pytest
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import FilesClient
 
 WORKSPACE = "lora-training-workspace"
 FILESET = "sft-training-data"
@@ -42,6 +44,11 @@ def client() -> NeMoPlatform:
     )
 
 
+@pytest.fixture
+def files_client(client: NeMoPlatform) -> FilesClient:
+    return client_from_platform(client, FilesClient)
+
+
 def _list_automodel_jobs(client: NeMoPlatform) -> list[dict[str, Any]]:
     """List automodel customization jobs in the eval workspace."""
     url = f"{str(client.base_url).rstrip('/')}/apis/customization/v2/workspaces/{WORKSPACE}/automodel/jobs"
@@ -59,10 +66,9 @@ def test_workspace_exists(client: NeMoPlatform):
     assert WORKSPACE in workspace_names, f"Workspace '{WORKSPACE}' not found. Found: {workspace_names}"
 
 
-def test_fileset_exists(client: NeMoPlatform):
+def test_fileset_exists(files_client: FilesClient):
     """Verify the sft-training-data fileset was created."""
-    response = client.files.filesets.list(workspace=WORKSPACE)
-    fileset_names = [fs.name for fs in response.data]
+    fileset_names = [fs.name for fs in files_client.list_filesets(workspace=WORKSPACE).page().items]
     assert FILESET in fileset_names, f"Fileset '{FILESET}' not found. Found: {fileset_names}"
 
 

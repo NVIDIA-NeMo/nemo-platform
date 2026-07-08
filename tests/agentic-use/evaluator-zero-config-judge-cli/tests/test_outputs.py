@@ -29,6 +29,8 @@ import sys
 
 import pytest
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import FilesClient
 
 sys.path.insert(0, "/tests/shared")
 from trace_reader import get_session
@@ -58,14 +60,17 @@ def _get_nmp_client() -> NeMoPlatform:
     return NeMoPlatform(base_url=nmp_base_url, workspace=WORKSPACE, access_token=_make_unsigned_jwt())
 
 
+def _get_files_client() -> FilesClient:
+    return client_from_platform(_get_nmp_client(), FilesClient)
+
+
 # --- Dataset checks ---
 
 
 def test_fileset_exists() -> None:
     """Verify the zeroconfig-dataset fileset was created."""
-    client = _get_nmp_client()
-    response = client.files.filesets.list()
-    fileset_names = [fs.name for fs in response.data]
+    files_client = _get_files_client()
+    fileset_names = [fs.name for fs in files_client.list_filesets().page().items]
     assert FILESET in fileset_names, f"Fileset '{FILESET}' not found. Found: {fileset_names}"
 
 

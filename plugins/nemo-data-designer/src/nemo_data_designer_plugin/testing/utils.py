@@ -29,7 +29,10 @@ from nemo_data_designer_plugin.jobs.spec import DataDesignerJobConfig
 from nemo_data_designer_plugin.sdk.resources import DataDesignerResource
 from nemo_data_designer_plugin.service import DataDesignerService
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.commands import add_function_commands, add_job_commands
+from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.files.types import CreateFilesetRequest
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import PlatformJobResults
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
@@ -176,8 +179,9 @@ def setup_mock_secret(client_context: ClientContext) -> Generator[None]:
 
 @contextmanager
 def setup_mock_file(client_context: ClientContext) -> Generator[None]:
-    client_context.sdk.files.filesets.create(
-        name=FILESET_NAME,
+    files = client_from_platform(client_context.sdk, FilesClient)
+    files.create_fileset(
+        body=CreateFilesetRequest(name=FILESET_NAME),
         workspace=client_context.sdk.workspace or WORKSPACE_NAME,
     )
     with tempfile.NamedTemporaryFile(suffix=".parquet") as tmpfile:
@@ -213,7 +217,8 @@ def setup_mock_nemotron_personas_data(
 
 def _create_nemotron_personas_fileset(sdk: NeMoPlatform, persona_data: pd.DataFrame) -> None:
     fileset_name = get_resource_name_for_locale("en_US")
-    sdk.files.filesets.create(name=fileset_name, workspace="system")
+    files = client_from_platform(sdk, FilesClient)
+    files.create_fileset(body=CreateFilesetRequest(name=fileset_name), workspace="system")
     with tempfile.NamedTemporaryFile(suffix=".parquet") as tmpfile:
         persona_data.to_parquet(tmpfile.name, index=False)
         sdk.files.upload(

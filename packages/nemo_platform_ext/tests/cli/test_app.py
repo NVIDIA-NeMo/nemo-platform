@@ -9,6 +9,7 @@ import click
 import nemo_platform
 import pytest
 import typer
+from click.testing import CliRunner as ClickCliRunner
 from nemo_platform_ext.cli.app import app
 from nemo_platform_ext.cli.commands.manifest_registry import TOP_LEVEL_ENTRIES
 from nemo_platform_ext.cli.core.lazy_load import (
@@ -468,7 +469,7 @@ def test_manifest_help_matches_loaded_manual_entry(entry):
     assert loaded.help == entry.help
 
 
-def test_plugin_loader_skips_broken_jobs():
+def test_plugin_loader_registers_unavailable_command_for_broken_jobs():
     plugin_app = typer.Typer(help="Plugin help")
 
     class _PluginCLI(NemoCLI):
@@ -481,6 +482,7 @@ def test_plugin_loader_skips_broken_jobs():
     good_job.load.return_value = object()
     bad_job = MagicMock()
     bad_job.load.side_effect = RuntimeError("boom")
+    bad_job.value = "fake.module:BadJob"
     entry_point = MagicMock()
     entry_point.load.return_value = _PluginCLI
 
@@ -497,6 +499,13 @@ def test_plugin_loader_skips_broken_jobs():
     assert isinstance(loaded, click.Command)
     mock_add_jobs.assert_called_once()
     assert mock_add_jobs.call_args[0][1] == {"example.good": good_job.load.return_value}
+    result = ClickCliRunner().invoke(loaded, ["bad"])
+    assert result.exit_code != 0
+    assert "Plugin job command 'bad' is unavailable due to import error: boom" in result.output
+    result = ClickCliRunner().invoke(loaded, ["bad", "run", "--spec", "{}"])
+    assert result.exit_code != 0
+    assert "Plugin job command 'bad' is unavailable due to import error: boom" in result.output
+    assert "No such option: --spec" not in result.output
 
 
 def test_plugin_loader_returns_placeholder_help_for_broken_cli():
