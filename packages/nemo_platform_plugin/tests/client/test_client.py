@@ -25,11 +25,6 @@ class ItemResponse(BaseModel):
     name: str
 
 
-class ItemFilter(BaseModel):
-    name: str
-    optional: str | None = None
-
-
 @post("/apis/test/v2/items")
 def CREATE_ITEM(body: ItemRequest) -> ItemResponse:
     raise NotImplementedError
@@ -132,20 +127,6 @@ def test_send_url_encodes_default_workspace() -> None:
     client.send(GET_WS_ITEM())
 
     assert mock_http.request.call_args.args[1] == f"{BASE}/apis/test/v2/workspaces/team%20one%2Fwest/items"
-
-
-def test_send_serializes_model_query_params_without_none() -> None:
-    mock_http = MagicMock(spec=httpx.Client)
-    mock_http.request.return_value = httpx.Response(
-        200,
-        request=httpx.Request("GET", f"{BASE}/apis/test/v2/items"),
-        json={"id": 1, "name": "filtered"},
-    )
-
-    client = NemoClient(base_url=BASE, http_client=mock_http)
-    client.send(GET_ITEMS_WITH_PARAMS(query_params={"filter": ItemFilter(name="alice")}))
-
-    assert mock_http.request.call_args.kwargs["params"] == {"filter": '{"name": "alice"}'}
 
 
 def test_send_delete() -> None:

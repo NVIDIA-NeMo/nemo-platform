@@ -237,7 +237,7 @@ class BaseNemoClient:
         """Shorthand for ``with_options(retry=...)``."""
         return self.with_options(retry=retry)
 
-    def _resolve_query_params(self, request: PreparedRequest) -> dict[str, str | int | float | bool] | None:
+    def _resolve_query_params(self, request: PreparedRequest) -> dict[str, str | int | bool] | None:
         """Filter out None values and JSON-serialize dicts/lists in query params."""
         if request.query_params is None:
             return None
@@ -245,9 +245,7 @@ class BaseNemoClient:
         for k, v in request.query_params.items():
             if v is None:
                 continue
-            if isinstance(v, BaseModel):
-                filtered[k] = json.dumps(v.model_dump(mode="json", exclude_none=True))
-            elif isinstance(v, (dict, list)):
+            if isinstance(v, (dict, list)):
                 filtered[k] = json.dumps(v)
             else:
                 filtered[k] = v
