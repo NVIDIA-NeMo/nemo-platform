@@ -16,7 +16,12 @@ Uses the create_test_client pattern for fast in-memory testing.
 from typing import Generator
 
 import pytest
-from nemo_platform import NeMoPlatform, PermissionDeniedError, UnprocessableEntityError
+from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import PermissionDeniedError as ClientPermissionDeniedError
+from nemo_platform_plugin.client.errors import UnprocessableEntityError as ClientUnprocessableEntityError
+from nemo_platform_plugin.secrets.client import SecretsClient
+from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest, PlatformSecretUpdateRequest
 from nmp.common.auth.models import Principal
 from nmp.common.sdk_factory import get_sdk_on_behalf_of
 from nmp.core.secrets.config import SecretsServiceConfig
@@ -29,6 +34,7 @@ from nmp.testing import (
     short_unique_name,
     unique_email,
 )
+from pydantic import SecretStr
 
 # Service principals have elevated access (like platform admin)
 SERVICE_PRINCIPAL = "service:integration-test"
@@ -80,11 +86,11 @@ class TestViewerSecretsAccess:
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         platform_admin_sdk.workspaces.create(name=workspace_name)
-        platform_admin_sdk.secrets.create(
+        platform_admin_secrets = client_from_platform(platform_admin_sdk, SecretsClient)
+        platform_admin_secrets.create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("secret-value")),
             workspace=workspace_name,
-            name=secret_name,
-            value="secret-value",
-        )
+        ).data()
         grant_workspace_role(
             platform_admin_sdk,
             workspace=workspace_name,
@@ -94,8 +100,9 @@ class TestViewerSecretsAccess:
 
         # Test: viewer can list secrets
         viewer_sdk = as_user(sdk, viewer_email)
-        result = viewer_sdk.secrets.list(workspace=workspace_name)
-        secret_names = [s.name for s in result.data]
+        viewer_secrets = client_from_platform(viewer_sdk, SecretsClient)
+        resp = viewer_secrets.list_secrets(workspace=workspace_name)
+        secret_names = [s.name for s in resp.items()]
 
         assert secret_name in secret_names
 
@@ -107,11 +114,11 @@ class TestViewerSecretsAccess:
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         platform_admin_sdk.workspaces.create(name=workspace_name)
-        platform_admin_sdk.secrets.create(
+        platform_admin_secrets = client_from_platform(platform_admin_sdk, SecretsClient)
+        platform_admin_secrets.create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("secret-value")),
             workspace=workspace_name,
-            name=secret_name,
-            value="secret-value",
-        )
+        ).data()
         grant_workspace_role(
             platform_admin_sdk,
             workspace=workspace_name,
@@ -120,7 +127,8 @@ class TestViewerSecretsAccess:
         )
 
         viewer_sdk = as_user(sdk, viewer_email)
-        secret = viewer_sdk.secrets.retrieve(workspace=workspace_name, name=secret_name)
+        viewer_secrets = client_from_platform(viewer_sdk, SecretsClient)
+        secret = viewer_secrets.get_secret(name=secret_name, workspace=workspace_name).data()
 
         assert secret.name == secret_name
         assert secret.workspace == workspace_name
@@ -133,11 +141,11 @@ class TestViewerSecretsAccess:
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         platform_admin_sdk.workspaces.create(name=workspace_name)
-        platform_admin_sdk.secrets.create(
+        platform_admin_secrets = client_from_platform(platform_admin_sdk, SecretsClient)
+        platform_admin_secrets.create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("secret-value")),
             workspace=workspace_name,
-            name=secret_name,
-            value="secret-value",
-        )
+        ).data()
         grant_workspace_role(
             platform_admin_sdk,
             workspace=workspace_name,
@@ -146,8 +154,9 @@ class TestViewerSecretsAccess:
         )
 
         viewer_sdk = as_user(sdk, viewer_email)
-        with pytest.raises(PermissionDeniedError):
-            viewer_sdk.secrets.access(workspace=workspace_name, name=secret_name)
+        viewer_secrets = client_from_platform(viewer_sdk, SecretsClient)
+        with pytest.raises(ClientPermissionDeniedError):
+            viewer_secrets.access_secret(name=secret_name, workspace=workspace_name)
 
     def test_viewer_cannot_create_secret(self, sdk: NeMoPlatform):
         """Test that a Viewer cannot create secrets."""
@@ -164,11 +173,11 @@ class TestViewerSecretsAccess:
         )
 
         viewer_sdk = as_user(sdk, viewer_email)
-        with pytest.raises(PermissionDeniedError):
-            viewer_sdk.secrets.create(
+        viewer_secrets = client_from_platform(viewer_sdk, SecretsClient)
+        with pytest.raises(ClientPermissionDeniedError):
+            viewer_secrets.create_secret(
+                body=PlatformSecretCreateRequest(name=short_unique_name("new-sec"), value=SecretStr("should-fail")),
                 workspace=workspace_name,
-                name=short_unique_name("new-sec"),
-                value="should-fail",
             )
 
     def test_viewer_cannot_update_secret(self, sdk: NeMoPlatform):
@@ -179,11 +188,11 @@ class TestViewerSecretsAccess:
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         platform_admin_sdk.workspaces.create(name=workspace_name)
-        platform_admin_sdk.secrets.create(
+        platform_admin_secrets = client_from_platform(platform_admin_sdk, SecretsClient)
+        platform_admin_secrets.create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("original-value")),
             workspace=workspace_name,
-            name=secret_name,
-            value="original-value",
-        )
+        ).data()
         grant_workspace_role(
             platform_admin_sdk,
             workspace=workspace_name,
@@ -192,11 +201,12 @@ class TestViewerSecretsAccess:
         )
 
         viewer_sdk = as_user(sdk, viewer_email)
-        with pytest.raises(PermissionDeniedError):
-            viewer_sdk.secrets.update(
-                workspace=workspace_name,
+        viewer_secrets = client_from_platform(viewer_sdk, SecretsClient)
+        with pytest.raises(ClientPermissionDeniedError):
+            viewer_secrets.update_secret(
                 name=secret_name,
-                value="should-fail",
+                body=PlatformSecretUpdateRequest(value=SecretStr("should-fail")),
+                workspace=workspace_name,
             )
 
     def test_viewer_cannot_delete_secret(self, sdk: NeMoPlatform):
@@ -207,11 +217,11 @@ class TestViewerSecretsAccess:
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         platform_admin_sdk.workspaces.create(name=workspace_name)
-        platform_admin_sdk.secrets.create(
+        platform_admin_secrets = client_from_platform(platform_admin_sdk, SecretsClient)
+        platform_admin_secrets.create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("secret-value")),
             workspace=workspace_name,
-            name=secret_name,
-            value="secret-value",
-        )
+        ).data()
         grant_workspace_role(
             platform_admin_sdk,
             workspace=workspace_name,
@@ -220,8 +230,9 @@ class TestViewerSecretsAccess:
         )
 
         viewer_sdk = as_user(sdk, viewer_email)
-        with pytest.raises(PermissionDeniedError):
-            viewer_sdk.secrets.delete(workspace=workspace_name, name=secret_name)
+        viewer_secrets = client_from_platform(viewer_sdk, SecretsClient)
+        with pytest.raises(ClientPermissionDeniedError):
+            viewer_secrets.delete_secret(name=secret_name, workspace=workspace_name)
 
 
 @pytest.mark.integration
@@ -243,12 +254,12 @@ class TestEditorSecretsAccess:
         )
 
         editor_sdk = as_user(sdk, editor_email)
+        editor_secrets = client_from_platform(editor_sdk, SecretsClient)
         secret_name = short_unique_name("ed-sec")
-        secret = editor_sdk.secrets.create(
+        secret = editor_secrets.create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("editor-created-secret")),
             workspace=workspace_name,
-            name=secret_name,
-            value="editor-created-secret",
-        )
+        ).data()
 
         assert secret.name == secret_name
         assert secret.workspace == workspace_name
@@ -268,15 +279,15 @@ class TestEditorSecretsAccess:
         )
 
         editor_sdk = as_user(sdk, editor_email)
+        editor_secrets = client_from_platform(editor_sdk, SecretsClient)
         secret_name = short_unique_name("list-sec")
-        editor_sdk.secrets.create(
+        editor_secrets.create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("test-data")),
             workspace=workspace_name,
-            name=secret_name,
-            value="test-data",
-        )
+        ).data()
 
-        result = editor_sdk.secrets.list(workspace=workspace_name)
-        secret_names = [s.name for s in result.data]
+        resp = editor_secrets.list_secrets(workspace=workspace_name)
+        secret_names = [s.name for s in resp.items()]
 
         assert secret_name in secret_names
 
@@ -295,14 +306,14 @@ class TestEditorSecretsAccess:
         )
 
         editor_sdk = as_user(sdk, editor_email)
+        editor_secrets = client_from_platform(editor_sdk, SecretsClient)
         secret_name = short_unique_name("get-sec")
-        editor_sdk.secrets.create(
+        editor_secrets.create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("test-data")),
             workspace=workspace_name,
-            name=secret_name,
-            value="test-data",
-        )
+        ).data()
 
-        secret = editor_sdk.secrets.retrieve(workspace=workspace_name, name=secret_name)
+        secret = editor_secrets.get_secret(name=secret_name, workspace=workspace_name).data()
         assert secret.name == secret_name
 
     def test_editor_can_update_secret(self, sdk: NeMoPlatform):
@@ -320,18 +331,18 @@ class TestEditorSecretsAccess:
         )
 
         editor_sdk = as_user(sdk, editor_email)
+        editor_secrets = client_from_platform(editor_sdk, SecretsClient)
         secret_name = short_unique_name("upd-sec")
-        editor_sdk.secrets.create(
+        editor_secrets.create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("original-data")),
             workspace=workspace_name,
-            name=secret_name,
-            value="original-data",
-        )
+        ).data()
 
-        updated = editor_sdk.secrets.update(
-            workspace=workspace_name,
+        updated = editor_secrets.update_secret(
             name=secret_name,
-            value="updated-data",
-        )
+            body=PlatformSecretUpdateRequest(value=SecretStr("updated-data")),
+            workspace=workspace_name,
+        ).data()
         assert updated.name == secret_name
 
     def test_editor_can_delete_secret(self, sdk: NeMoPlatform):
@@ -349,18 +360,18 @@ class TestEditorSecretsAccess:
         )
 
         editor_sdk = as_user(sdk, editor_email)
+        editor_secrets = client_from_platform(editor_sdk, SecretsClient)
         secret_name = short_unique_name("del-sec")
-        editor_sdk.secrets.create(
+        editor_secrets.create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("to-be-deleted")),
             workspace=workspace_name,
-            name=secret_name,
-            value="to-be-deleted",
-        )
+        ).data()
 
-        editor_sdk.secrets.delete(workspace=workspace_name, name=secret_name)
+        editor_secrets.delete_secret(name=secret_name, workspace=workspace_name)
 
         # Verify it's gone
-        result = editor_sdk.secrets.list(workspace=workspace_name)
-        secret_names = [s.name for s in result.data]
+        resp = editor_secrets.list_secrets(workspace=workspace_name)
+        secret_names = [s.name for s in resp.items()]
         assert secret_name not in secret_names
 
     def test_editor_cannot_access_secret_value(self, sdk: NeMoPlatform):
@@ -378,15 +389,15 @@ class TestEditorSecretsAccess:
         )
 
         editor_sdk = as_user(sdk, editor_email)
+        editor_secrets = client_from_platform(editor_sdk, SecretsClient)
         secret_name = short_unique_name("no-acc")
-        editor_sdk.secrets.create(
+        editor_secrets.create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("secret-data")),
             workspace=workspace_name,
-            name=secret_name,
-            value="secret-data",
-        )
+        ).data()
 
-        with pytest.raises(PermissionDeniedError):
-            editor_sdk.secrets.access(workspace=workspace_name, name=secret_name)
+        with pytest.raises(ClientPermissionDeniedError):
+            editor_secrets.access_secret(name=secret_name, workspace=workspace_name)
 
     @pytest.mark.skip("Need to add the ability to authenticate as admin for non-workspaced route")
     def test_editor_cannot_rotate_encryption_keys(self, sdk: NeMoPlatform):
@@ -404,9 +415,10 @@ class TestEditorSecretsAccess:
         )
 
         editor_sdk = as_user(sdk, editor_email)
+        editor_secrets = client_from_platform(editor_sdk, SecretsClient)
 
-        with pytest.raises(PermissionDeniedError):
-            editor_sdk.secrets.admin.rotate_encryption_keys()
+        with pytest.raises(ClientPermissionDeniedError):
+            editor_secrets.rotate_encryption_keys().data()
 
 
 @pytest.mark.integration
@@ -429,12 +441,12 @@ class TestAdminSecretsAccess:
         )
 
         admin_sdk = as_user(sdk, admin_email)
+        admin_secrets = client_from_platform(admin_sdk, SecretsClient)
         secret_name = short_unique_name("adm-sec")
-        secret = admin_sdk.secrets.create(
+        secret = admin_secrets.create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("admin-created-secret")),
             workspace=workspace_name,
-            name=secret_name,
-            value="admin-created-secret",
-        )
+        ).data()
 
         assert secret.name == secret_name
 
@@ -453,18 +465,18 @@ class TestAdminSecretsAccess:
         )
 
         admin_sdk = as_user(sdk, admin_email)
+        admin_secrets = client_from_platform(admin_sdk, SecretsClient)
         secret_name = short_unique_name("upd-sec")
-        admin_sdk.secrets.create(
+        admin_secrets.create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("original-data")),
             workspace=workspace_name,
-            name=secret_name,
-            value="original-data",
-        )
+        ).data()
 
-        admin_sdk.secrets.update(
-            workspace=workspace_name,
+        admin_secrets.update_secret(
             name=secret_name,
-            value="updated-by-admin",
-        )
+            body=PlatformSecretUpdateRequest(value=SecretStr("updated-by-admin")),
+            workspace=workspace_name,
+        ).data()
 
     def test_admin_can_delete_secret(self, sdk: NeMoPlatform):
         """Test that an Admin can delete secrets."""
@@ -481,14 +493,14 @@ class TestAdminSecretsAccess:
         )
 
         admin_sdk = as_user(sdk, admin_email)
+        admin_secrets = client_from_platform(admin_sdk, SecretsClient)
         secret_name = short_unique_name("del-sec")
-        admin_sdk.secrets.create(
+        admin_secrets.create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("to-be-deleted")),
             workspace=workspace_name,
-            name=secret_name,
-            value="to-be-deleted",
-        )
+        ).data()
 
-        admin_sdk.secrets.delete(workspace=workspace_name, name=secret_name)
+        admin_secrets.delete_secret(name=secret_name, workspace=workspace_name)
 
     def test_admin_cannot_access_secret_value(self, sdk: NeMoPlatform):
         """Test that an Admin cannot access the secret value via /access endpoint."""
@@ -505,15 +517,15 @@ class TestAdminSecretsAccess:
         )
 
         admin_sdk = as_user(sdk, admin_email)
+        admin_secrets = client_from_platform(admin_sdk, SecretsClient)
         secret_name = short_unique_name("no-acc")
-        admin_sdk.secrets.create(
+        admin_secrets.create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("admin-secret")),
             workspace=workspace_name,
-            name=secret_name,
-            value="admin-secret",
-        )
+        ).data()
 
-        with pytest.raises(PermissionDeniedError):
-            admin_sdk.secrets.access(workspace=workspace_name, name=secret_name)
+        with pytest.raises(ClientPermissionDeniedError):
+            admin_secrets.access_secret(name=secret_name, workspace=workspace_name)
 
 
 @pytest.mark.integration
@@ -527,17 +539,17 @@ class TestPlatformAdminSecretsAccess:
     def test_platform_admin_cannot_access_secret_value(self, sdk: NeMoPlatform):
         """Test that a Platform Admin cannot directly access the secret value."""
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
+        admin_secrets = client_from_platform(admin_sdk, SecretsClient)
         secret_name = short_unique_name("pa-sec")
         secret_value = "platform-admin-secret-value"
 
-        admin_sdk.secrets.create(
+        admin_secrets.create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr(secret_value)),
             workspace="default",
-            name=secret_name,
-            value=secret_value,
-        )
+        ).data()
 
-        with pytest.raises(PermissionDeniedError):
-            admin_sdk.secrets.access(workspace="default", name=secret_name)
+        with pytest.raises(ClientPermissionDeniedError):
+            admin_secrets.access_secret(name=secret_name, workspace="default")
 
     def test_platform_admin_can_create_secret_in_any_workspace(self, sdk: NeMoPlatform):
         """Test that a Platform Admin can create secrets in any workspace."""
@@ -546,12 +558,12 @@ class TestPlatformAdminSecretsAccess:
 
         admin_sdk.workspaces.create(name=workspace_name)
 
+        admin_secrets = client_from_platform(admin_sdk, SecretsClient)
         secret_name = short_unique_name("pa-sec")
-        secret = admin_sdk.secrets.create(
+        secret = admin_secrets.create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("secret-in-new-workspace")),
             workspace=workspace_name,
-            name=secret_name,
-            value="secret-in-new-workspace",
-        )
+        ).data()
 
         assert secret.name == secret_name
         assert secret.workspace == workspace_name
@@ -564,23 +576,23 @@ class TestPlatformAdminSecretsAccess:
         encryption provider. This is an admin-only operation for key rotation scenarios.
         """
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
+        admin_secrets = client_from_platform(admin_sdk, SecretsClient)
 
         # Create some secrets to ensure there's data to potentially rotate
         secret_name = short_unique_name("rot-sec")
-        admin_sdk.secrets.create(
+        admin_secrets.create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("secret-for-rotation-test")),
             workspace="default",
-            name=secret_name,
-            value="secret-for-rotation-test",
-        )
+        ).data()
 
         # Call the rotate encryption keys endpoint
-        response = sdk.secrets.admin.rotate_encryption_keys()
+        response = client_from_platform(sdk, SecretsClient).rotate_encryption_keys().data()
 
         assert response.success is True
         assert response.rotated_secrets >= 1
 
         # Verify the secret is still accessible after rotation
-        result = admin_sdk.secrets.access(workspace="default", name=secret_name)
+        result = admin_secrets.access_secret(name=secret_name, workspace="default").data()
         assert result.value == "secret-for-rotation-test"
 
 
@@ -591,17 +603,18 @@ class TestServiceCredentialsSecretsAccess:
     def test_service_credentials_can_access_secret_value(self, sdk: NeMoPlatform):
         """Test that service credentials can access the secret value via /access endpoint."""
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
+        admin_secrets = client_from_platform(admin_sdk, SecretsClient)
         secret_name = short_unique_name("svc-sec")
         secret_value = "service-accessible-secret"
 
-        admin_sdk.secrets.create(
+        admin_secrets.create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr(secret_value)),
             workspace="default",
-            name=secret_name,
-            value=secret_value,
-        )
+        ).data()
 
         service_sdk = as_user(sdk, SERVICE_PRINCIPAL)
-        result = service_sdk.secrets.access(workspace="default", name=secret_name)
+        service_secrets = client_from_platform(service_sdk, SecretsClient)
+        result = service_secrets.access_secret(name=secret_name, workspace="default").data()
 
         assert result.name == secret_name
         assert result.value == secret_value
@@ -609,20 +622,21 @@ class TestServiceCredentialsSecretsAccess:
     def test_service_credentials_can_list_secrets(self, sdk: NeMoPlatform):
         """Test that service credentials can list secrets."""
         service_sdk = as_user(sdk, SERVICE_PRINCIPAL)
+        service_secrets = client_from_platform(service_sdk, SecretsClient)
 
-        result = service_sdk.secrets.list(workspace="default")
-        assert result.data is not None
+        result = list(service_secrets.list_secrets(workspace="default").items())
+        assert result is not None
 
     def test_service_credentials_can_create_secrets(self, sdk: NeMoPlatform):
         """Test that service credentials can create secrets."""
         service_sdk = as_user(sdk, SERVICE_PRINCIPAL)
+        service_secrets = client_from_platform(service_sdk, SecretsClient)
         secret_name = short_unique_name("svc-crt")
 
-        secret = service_sdk.secrets.create(
+        secret = service_secrets.create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("service-created-secret")),
             workspace="default",
-            name=secret_name,
-            value="service-created-secret",
-        )
+        ).data()
 
         assert secret.name == secret_name
 
@@ -634,13 +648,13 @@ class TestSecretDataNotExposed:
     def test_secret_data_not_in_create_response(self, sdk: NeMoPlatform):
         """Test that secret data is not returned in create response."""
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
+        admin_secrets = client_from_platform(admin_sdk, SecretsClient)
         secret_name = short_unique_name("no-data")
 
-        secret = admin_sdk.secrets.create(
+        secret = admin_secrets.create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("should-not-be-visible")),
             workspace="default",
-            name=secret_name,
-            value="should-not-be-visible",
-        )
+        ).data()
 
         assert secret.name == secret_name
 
@@ -657,13 +671,13 @@ class TestSecretDataNotExposed:
     def test_secret_data_not_in_list_response(self, sdk: NeMoPlatform):
         """Test that secret data is not returned when listing secrets."""
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
+        admin_secrets = client_from_platform(admin_sdk, SecretsClient)
         secret_name = short_unique_name("list-no")
 
-        admin_sdk.secrets.create(
+        admin_secrets.create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("hidden-in-list")),
             workspace="default",
-            name=secret_name,
-            value="hidden-in-list",
-        )
+        ).data()
 
         response = sdk._client.get(
             "/apis/secrets/v2/workspaces/default/secrets",
@@ -678,13 +692,13 @@ class TestSecretDataNotExposed:
     def test_secret_data_not_in_get_response(self, sdk: NeMoPlatform):
         """Test that secret data is not returned when getting a single secret."""
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
+        admin_secrets = client_from_platform(admin_sdk, SecretsClient)
         secret_name = short_unique_name("get-no")
 
-        admin_sdk.secrets.create(
+        admin_secrets.create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("hidden-in-get")),
             workspace="default",
-            name=secret_name,
-            value="hidden-in-get",
-        )
+        ).data()
 
         response = sdk._client.get(
             f"/apis/secrets/v2/workspaces/default/secrets/{secret_name}",
@@ -726,16 +740,19 @@ class TestDelegatedSecretAccess:
             principal=viewer_email,
             roles=["Viewer"],
         )
-        platform_admin_sdk.secrets.create(
+        client_from_platform(platform_admin_sdk, SecretsClient).create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr(secret_value)),
             workspace=workspace_name,
-            name=secret_name,
-            value=secret_value,
-        )
+        ).data()
 
         # Service principal accesses secret on behalf of viewer
         # Viewer has secrets.read permission, so this should succeed
         delegated_sdk = get_sdk_on_behalf_of(as_user(sdk, SERVICE_PRINCIPAL), viewer_email)
-        result = delegated_sdk.secrets.access(workspace=workspace_name, name=secret_name)
+        result = (
+            client_from_platform(delegated_sdk, SecretsClient)
+            .access_secret(name=secret_name, workspace=workspace_name)
+            .data()
+        )
 
         assert result.name == secret_name
         assert result.value == secret_value
@@ -756,11 +773,10 @@ class TestDelegatedSecretAccess:
             principal=delegated_group,
             roles=["Viewer"],
         )
-        platform_admin_sdk.secrets.create(
+        client_from_platform(platform_admin_sdk, SecretsClient).create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr(secret_value)),
             workspace=workspace_name,
-            name=secret_name,
-            value=secret_value,
-        )
+        ).data()
 
         delegated_sdk = get_sdk_on_behalf_of(
             as_user(sdk, SERVICE_PRINCIPAL),
@@ -771,7 +787,11 @@ class TestDelegatedSecretAccess:
             ),
         )
 
-        result = delegated_sdk.secrets.access(workspace=workspace_name, name=secret_name)
+        result = (
+            client_from_platform(delegated_sdk, SecretsClient)
+            .access_secret(name=secret_name, workspace=workspace_name)
+            .data()
+        )
 
         assert result.name == secret_name
         assert result.value == secret_value
@@ -786,17 +806,16 @@ class TestDelegatedSecretAccess:
         # Setup: create workspace and secret, but don't add the user as a member
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         platform_admin_sdk.workspaces.create(name=workspace_name)
-        platform_admin_sdk.secrets.create(
+        client_from_platform(platform_admin_sdk, SecretsClient).create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr(secret_value)),
             workspace=workspace_name,
-            name=secret_name,
-            value=secret_value,
-        )
+        ).data()
 
         # Platform admin accesses secret on behalf of non-member
         # Non-member doesn't have any role in workspace, so this should fail
         delegated_sdk = get_sdk_on_behalf_of(as_user(sdk, TEST_ADMIN_EMAIL), non_member_email)
-        with pytest.raises(PermissionDeniedError):
-            delegated_sdk.secrets.access(workspace=workspace_name, name=secret_name)
+        with pytest.raises(ClientPermissionDeniedError):
+            client_from_platform(delegated_sdk, SecretsClient).access_secret(name=secret_name, workspace=workspace_name)
 
     def test_service_principal_denies_on_behalf_of_user_missing_group_bound_role(self, sdk: NeMoPlatform):
         """Test delegated access fails when the delegated user lacks the bound group."""
@@ -814,11 +833,10 @@ class TestDelegatedSecretAccess:
             principal=bound_group,
             roles=["Viewer"],
         )
-        platform_admin_sdk.secrets.create(
+        client_from_platform(platform_admin_sdk, SecretsClient).create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("delegated-group-secret")),
             workspace=workspace_name,
-            name=secret_name,
-            value="delegated-group-secret",
-        )
+        ).data()
 
         delegated_sdk = get_sdk_on_behalf_of(
             as_user(sdk, SERVICE_PRINCIPAL),
@@ -829,8 +847,8 @@ class TestDelegatedSecretAccess:
             ),
         )
 
-        with pytest.raises(PermissionDeniedError):
-            delegated_sdk.secrets.access(workspace=workspace_name, name=secret_name)
+        with pytest.raises(ClientPermissionDeniedError):
+            client_from_platform(delegated_sdk, SecretsClient).access_secret(name=secret_name, workspace=workspace_name)
 
     def test_service_principal_can_access_on_behalf_of_editor(self, sdk: NeMoPlatform):
         """Test service principal accessing secret on behalf of an Editor."""
@@ -848,16 +866,19 @@ class TestDelegatedSecretAccess:
             principal=editor_email,
             roles=["Editor"],
         )
-        platform_admin_sdk.secrets.create(
+        client_from_platform(platform_admin_sdk, SecretsClient).create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr(secret_value)),
             workspace=workspace_name,
-            name=secret_name,
-            value=secret_value,
-        )
+        ).data()
 
         # Service principal accesses secret on behalf of editor
         # Editor has secrets.read permission (inherits from Viewer), so this should succeed
         delegated_sdk = get_sdk_on_behalf_of(as_user(sdk, SERVICE_PRINCIPAL), editor_email)
-        result = delegated_sdk.secrets.access(workspace=workspace_name, name=secret_name)
+        result = (
+            client_from_platform(delegated_sdk, SecretsClient)
+            .access_secret(name=secret_name, workspace=workspace_name)
+            .data()
+        )
 
         assert result.name == secret_name
         assert result.value == secret_value
@@ -875,19 +896,23 @@ class TestDelegatedSecretAccess:
         # Setup: create workspace and secret
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         platform_admin_sdk.workspaces.create(name=workspace_name)
-        platform_admin_sdk.secrets.create(
+        platform_admin_secrets = client_from_platform(platform_admin_sdk, SecretsClient)
+        platform_admin_secrets.create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr(secret_value)),
             workspace=workspace_name,
-            name=secret_name,
-            value=secret_value,
-        )
+        ).data()
 
         # Platform admin cannot access secret directly (denied by OPA deny rule)
-        with pytest.raises(PermissionDeniedError):
-            platform_admin_sdk.secrets.access(workspace=workspace_name, name=secret_name)
+        with pytest.raises(ClientPermissionDeniedError):
+            platform_admin_secrets.access_secret(name=secret_name, workspace=workspace_name)
 
         # Service principal can access directly without delegation
         service_sdk = as_user(sdk, SERVICE_PRINCIPAL)
-        result = service_sdk.secrets.access(workspace=workspace_name, name=secret_name)
+        result = (
+            client_from_platform(service_sdk, SecretsClient)
+            .access_secret(name=secret_name, workspace=workspace_name)
+            .data()
+        )
         assert result.name == secret_name
         assert result.value == secret_value
 
@@ -901,16 +926,19 @@ class TestDelegatedSecretAccess:
         # Setup: create workspace and secret
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         platform_admin_sdk.workspaces.create(name=workspace_name)
-        platform_admin_sdk.secrets.create(
+        client_from_platform(platform_admin_sdk, SecretsClient).create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr(secret_value)),
             workspace=workspace_name,
-            name=secret_name,
-            value=secret_value,
-        )
+        ).data()
 
         # Service accesses secret on behalf of another service
         # Both services have elevated permissions, so this should succeed
         delegated_sdk = get_sdk_on_behalf_of(as_user(sdk, SERVICE_PRINCIPAL), other_service)
-        result = delegated_sdk.secrets.access(workspace=workspace_name, name=secret_name)
+        result = (
+            client_from_platform(delegated_sdk, SecretsClient)
+            .access_secret(name=secret_name, workspace=workspace_name)
+            .data()
+        )
 
         assert result.name == secret_name
         assert result.value == secret_value
@@ -932,16 +960,15 @@ class TestDelegatedSecretAccess:
             principal=editor_email,
             roles=["Editor"],
         )
-        platform_admin_sdk.secrets.create(
+        client_from_platform(platform_admin_sdk, SecretsClient).create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr(secret_value)),
             workspace=workspace_name,
-            name=secret_name,
-            value=secret_value,
-        )
+        ).data()
 
         # Editor tries to access secret on behalf of non-member
         delegated_sdk = get_sdk_on_behalf_of(as_user(sdk, editor_email), non_member_email)
-        with pytest.raises(PermissionDeniedError):
-            delegated_sdk.secrets.access(workspace=workspace_name, name=secret_name)
+        with pytest.raises(ClientPermissionDeniedError):
+            client_from_platform(delegated_sdk, SecretsClient).access_secret(name=secret_name, workspace=workspace_name)
 
 
 @pytest.mark.integration
@@ -965,15 +992,15 @@ class TestSecretNameValidation:
         """
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
+        admin_secrets = client_from_platform(admin_sdk, SecretsClient)
 
         # Name with uppercase letter - violates DNS-compliant naming rules
         invalid_name = "test-secret-123-Test"
 
-        with pytest.raises(UnprocessableEntityError) as exc_info:
-            admin_sdk.secrets.create(
+        with pytest.raises(ClientUnprocessableEntityError) as exc_info:
+            admin_secrets.create_secret(
+                body=PlatformSecretCreateRequest(name=invalid_name, value=SecretStr("test-value")),
                 workspace="default",
-                name=invalid_name,
-                value="test-value",
             )
 
         # Verify the error message mentions the name validation issue
@@ -986,13 +1013,13 @@ class TestSecretNameValidation:
         """Test that creating a secret with all uppercase letters returns 422."""
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
+        admin_secrets = client_from_platform(admin_sdk, SecretsClient)
         invalid_name = "TEST-SECRET"
 
-        with pytest.raises(UnprocessableEntityError) as exc_info:
-            admin_sdk.secrets.create(
+        with pytest.raises(ClientUnprocessableEntityError) as exc_info:
+            admin_secrets.create_secret(
+                body=PlatformSecretCreateRequest(name=invalid_name, value=SecretStr("test-value")),
                 workspace="default",
-                name=invalid_name,
-                value="test-value",
             )
 
         error_message = str(exc_info.value)
@@ -1001,14 +1028,14 @@ class TestSecretNameValidation:
     def test_create_secret_with_valid_name_succeeds(self, sdk: NeMoPlatform):
         """Test that creating a secret with a valid DNS-compliant name works."""
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
+        admin_secrets = client_from_platform(admin_sdk, SecretsClient)
 
         # Valid DNS-compliant name (lowercase, digits, hyphens only)
         valid_name = short_unique_name("valid-secret")
 
-        secret = admin_sdk.secrets.create(
+        secret = admin_secrets.create_secret(
+            body=PlatformSecretCreateRequest(name=valid_name, value=SecretStr("test-value")),
             workspace="default",
-            name=valid_name,
-            value="test-value",
-        )
+        ).data()
 
         assert secret.name == valid_name

@@ -6,7 +6,11 @@ import json
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
-from nemo_platform import AsyncNeMoPlatform, NotFoundError, PermissionDeniedError
+from nemo_platform import AsyncNeMoPlatform, NotFoundError
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
+from nemo_platform_plugin.client.errors import PermissionDeniedError as ClientPermissionDeniedError
+from nemo_platform_plugin.secrets.client import AsyncSecretsClient
 from nmp.common.api.filter import ComparisonOperation, FilterOperation, FilterOperator, LogicalOperation
 from nmp.common.api.in_memory_filter import InMemoryFilterRepository
 from nmp.common.api.parsed_filter import ParsedFilter
@@ -213,11 +217,12 @@ class JobDispatcher:
             for env_var in step.environment:
                 if env_var.from_secret:
                     workspace, secret_name = get_entity_parts(env_var.from_secret.name, default_workspace=job_workspace)
+                    secrets = client_from_platform(sdk_to_use, AsyncSecretsClient)
                     try:
-                        await sdk_to_use.secrets.retrieve(secret_name, workspace=workspace)
-                    except NotFoundError:
+                        await secrets.get_secret(name=secret_name, workspace=workspace)
+                    except ClientNotFoundError:
                         raise ValueError(f"Secret '{workspace}/{secret_name}' not found.")
-                    except PermissionDeniedError:
+                    except ClientPermissionDeniedError:
                         raise ValueError(f"User does not have access to secret '{workspace}/{secret_name}'.")
                     except Exception:
                         logger.exception(
