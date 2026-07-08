@@ -106,11 +106,10 @@ class SpanAttributeBags:
             parsed_atif_raw = json.loads(atif_raw)
             if not isinstance(parsed_atif_raw, dict):
                 raise TypeError("Expected atif.raw to contain a JSON object")
-            parsed_atif_raw.pop("nemo.experiment.metadata", None)
             raw.update(parsed_atif_raw)
 
         for key, value in self.string.items():
-            if key not in {"atif.raw", "nemo.experiment.metadata"} and key not in KNOWN_BAG_KEYS:
+            if key != "atif.raw" and key not in KNOWN_BAG_KEYS:
                 raw[key] = value
         for key, value in self.number.items():
             if key not in KNOWN_BAG_KEYS:
@@ -121,15 +120,6 @@ class SpanAttributeBags:
         if not raw:
             return None
         return json.dumps(raw, separators=(",", ":"), ensure_ascii=False)
-
-    def evaluation_metadata(self) -> dict[str, Any] | None:
-        value = self.string.get("nemo.experiment.metadata")
-        if value is None:
-            return None
-        parsed = json.loads(value)
-        if not isinstance(parsed, dict):
-            raise TypeError("Expected experiment metadata to contain a JSON object")
-        return parsed
 
     def _bag_for_spec(self, spec: AttributeSpec) -> dict[str, str] | dict[str, float] | dict[str, bool]:
         if spec.bag == AttributeBag.STRING:

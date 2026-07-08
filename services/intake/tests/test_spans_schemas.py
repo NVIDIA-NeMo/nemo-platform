@@ -41,11 +41,8 @@ def test_span_response_raw_attributes_merges_atif_raw_with_unknown_attributes():
         start_time=now,
         event_ts=now,
         attributes_string={
-            "atif.raw": json_dumps_preserve(
-                {"source_session_id": "session-a", "nemo.experiment.metadata": {"source": "atif.raw"}}
-            ),
+            "atif.raw": json_dumps_preserve({"source_session_id": "session-a"}),
             "custom.string": "value-a",
-            "nemo.experiment.metadata": json.dumps({"source": "attribute.bag"}),
             "gen_ai.request.model": "model-a",
         },
         attributes_number={"custom.number": 1.25, "llm.token_count.prompt": 42},

@@ -379,12 +379,11 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
     assert "cached_tokens" not in trajectory
     assert "total_tokens" not in trajectory
     assert "cost_total_usd" not in trajectory
+    # The retired keys (evaluation_sha, evaluation_run_id, metadata) are accepted but ignored, so only
+    # evaluation_id and test_case_id survive onto the root trajectory span.
     assert trajectory["evaluation_context"] == {
         "evaluation_id": evaluation_context["evaluation_id"],
-        "evaluation_sha": evaluation_context["evaluation_sha"],
-        "evaluation_run_id": evaluation_context["evaluation_run_id"],
         "test_case_id": evaluation_context["test_case_id"],
-        "metadata": evaluation_context["metadata"],
     }
     assert "attributes_string" not in trajectory
     trajectory_raw = json.loads(trajectory["raw_attributes"])
@@ -545,31 +544,17 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
         "441e9149-e4e6-41c0-82b0-a36802f83d3a",
     }
 
-    other_evaluation_run_id = f"{evaluation_run_id}-other"
+    # Re-ingesting into the same session keeps span ids stable; evaluation_run_id is ignored on ingest.
     same_session_body = {
         "schema_version": "ATIF-v1.7",
         "session_id": body["session_id"],
-        "evaluation_context": {**evaluation_context, "evaluation_run_id": other_evaluation_run_id},
+        "evaluation_context": evaluation_context,
         "agent": body["agent"],
         "steps": [body["steps"][0]],
     }
     same_session_response = client.post("/apis/intake/v2/workspaces/default/ingest/atif", json=same_session_body)
     assert same_session_response.status_code == 201, same_session_response.text
     assert same_session_response.content == b""
-
-    other_evaluation_response = client.get(
-        "/apis/intake/v2/workspaces/default/spans",
-        params={
-            "filter[evaluation_run_id]": other_evaluation_run_id,
-            "filter[started_at][gte]": _HISTORICAL_GTE,
-            "page_size": 10,
-        },
-    )
-    assert other_evaluation_response.status_code == 200, other_evaluation_response.text
-    other_evaluation_spans = other_evaluation_response.json()["data"]
-    assert len(other_evaluation_spans) == 1
-    assert other_evaluation_spans[0]["name"] == "sample-agent"
-    assert other_evaluation_spans[0]["evaluation_context"]["evaluation_run_id"] == other_evaluation_run_id
 
     same_session_response = client.get(
         "/apis/intake/v2/workspaces/default/spans",

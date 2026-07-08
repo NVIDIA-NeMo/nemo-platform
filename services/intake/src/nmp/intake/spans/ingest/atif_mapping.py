@@ -469,8 +469,6 @@ def _span_attributes(
         agent_name=agent_name,
         agent_version=agent_version,
         evaluation_id=evaluation_context.evaluation_id if evaluation_context is not None else None,
-        evaluation_sha=evaluation_context.evaluation_sha if evaluation_context is not None else None,
-        evaluation_run_id=evaluation_context.evaluation_run_id if evaluation_context is not None else None,
         test_case_id=evaluation_context.test_case_id if evaluation_context is not None else None,
         tool_name=tool_name,
         error_message=error_message,
@@ -481,8 +479,6 @@ def _span_attributes(
         cost_total_usd=cost_total_usd,
     )
     attribute_bags = semantic_attributes.to_bags()
-    if evaluation_context is not None and evaluation_context.metadata:
-        attribute_bags.put_json("nemo.experiment.metadata", evaluation_context.metadata)
     if raw_attributes is not None:
         attribute_bags.put_json("atif.raw", raw_attributes)
     return attribute_bags

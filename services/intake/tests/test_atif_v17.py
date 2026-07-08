@@ -169,14 +169,24 @@ def test_experiment_context_maps_to_storage_context() -> None:
     storage_context = context.to_evaluation_context()
 
     assert storage_context.evaluation_id == "exp-1"
-    assert storage_context.evaluation_run_id is None
     assert storage_context.test_case_id == "case-1"
 
 
-def test_deprecated_evaluation_context_accepts_missing_run_id() -> None:
-    assert EvaluationContext() == EvaluationContext(metadata={})
-    assert EvaluationContext(evaluation_run_id="evalrun-1").evaluation_run_id == "evalrun-1"
-    assert EvaluationContext(evaluation_id="eval-1").evaluation_id == "eval-1"
+def test_evaluation_context_ignores_retired_fields() -> None:
+    # Retired keys (evaluation_sha, evaluation_run_id, metadata) are accepted and dropped rather
+    # than rejected, so stale producers keep ingesting without ingest erroring on unknown fields.
+    context = EvaluationContext.model_validate(
+        {
+            "evaluation_id": "eval-1",
+            "test_case_id": "case-1",
+            "evaluation_sha": "abc132901",
+            "evaluation_run_id": "evalrun-1",
+            "metadata": {"attempt": 1},
+        }
+    )
+    assert context.evaluation_id == "eval-1"
+    assert context.test_case_id == "case-1"
+    assert context.model_dump() == {"evaluation_id": "eval-1", "test_case_id": "case-1"}
 
 
 def test_atif_ingest_request_rejects_legacy_top_level_project() -> None:
@@ -217,19 +227,18 @@ def test_atif_mapping_writes_evaluation_context_only_on_root_span() -> None:
     root = next(span for span in spans if span.name == "sample-agent")
     child = next(span for span in spans if span.name == "user-1")
     assert root.attributes_string["nemo.experiment.id"] == EVALUATION_CONTEXT["evaluation_id"]
-    assert root.attributes_string["nemo.experiment.sha"] == EVALUATION_CONTEXT["evaluation_sha"]
-    assert root.attributes_string["nemo.experiment.run_id"] == EVALUATION_CONTEXT["evaluation_run_id"]
+    # sha/run_id/metadata are dropped by the trimmed ingest EvaluationContext, so they never
+    # reach the span from the JSON evaluation_context path.
+    assert "nemo.experiment.sha" not in root.attributes_string
+    assert "nemo.experiment.run_id" not in root.attributes_string
     assert "evaluation.id" not in root.attributes_string
     assert root.attributes_string["nemo.test_case.id"] == EVALUATION_CONTEXT["test_case_id"]
-    assert json.loads(root.attributes_string["nemo.experiment.metadata"]) == EVALUATION_CONTEXT["metadata"]
+    assert "nemo.experiment.metadata" not in root.attributes_string
 
     root_response = Span.from_domain(root)
     assert root_response.evaluation_context is not None
     assert root_response.evaluation_context.evaluation_id == EVALUATION_CONTEXT["evaluation_id"]
-    assert root_response.evaluation_context.evaluation_sha == EVALUATION_CONTEXT["evaluation_sha"]
-    assert root_response.evaluation_context.evaluation_run_id == EVALUATION_CONTEXT["evaluation_run_id"]
     assert root_response.evaluation_context.test_case_id == EVALUATION_CONTEXT["test_case_id"]
-    assert root_response.evaluation_context.metadata == EVALUATION_CONTEXT["metadata"]
     assert root_response.raw_attributes is not None
     root_raw = json.loads(root_response.raw_attributes)
     assert "evaluation_context" not in root_raw

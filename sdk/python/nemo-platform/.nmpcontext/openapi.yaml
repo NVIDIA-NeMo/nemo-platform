@@ -7914,12 +7914,12 @@ components:
       title: AtifImageSource
     AtifIngestRequest:
       properties:
-        experiment_context:
-          $ref: '#/components/schemas/ExperimentContext'
         evaluation_context:
+          $ref: '#/components/schemas/EvaluationContext'
+        experiment_context:
           allOf:
-          - $ref: '#/components/schemas/EvaluationContext'
-          description: Deprecated. Use experiment_context; when both are sent, experiment_context
+          - $ref: '#/components/schemas/ExperimentContext'
+          description: Deprecated. Use evaluation_context; when both are sent, evaluation_context
             takes precedence.
           deprecated: true
         schema_version:
@@ -7967,7 +7967,7 @@ components:
 
         ATIF project scoping is intentionally not accepted here; use the workspace
 
-        route and ``experiment_context`` for experiment identity.'
+        route and ``evaluation_context`` for evaluation identity.'
     AtifMetrics:
       properties:
         prompt_tokens:
@@ -8667,12 +8667,12 @@ components:
       description: User message parameter for chat completion.
     ChatCompletionsIngestRequest:
       properties:
-        experiment_context:
-          $ref: '#/components/schemas/ExperimentContext'
         evaluation_context:
+          $ref: '#/components/schemas/EvaluationContext'
+        experiment_context:
           allOf:
-          - $ref: '#/components/schemas/EvaluationContext'
-          description: Deprecated. Use experiment_context; when both are sent, experiment_context
+          - $ref: '#/components/schemas/ExperimentContext'
+          description: Deprecated. Use evaluation_context; when both are sent, evaluation_context
             takes precedence.
           deprecated: true
         request:
@@ -10100,23 +10100,22 @@ components:
       properties:
         evaluation_id:
           title: Evaluation Id
-          type: string
-        evaluation_sha:
-          title: Evaluation Sha
-          type: string
-        evaluation_run_id:
-          title: Evaluation Run Id
+          description: Name of an existing Experiment entity.
           type: string
         test_case_id:
           title: Test Case Id
+          description: Optional producer-supplied test case id.
           type: string
-        metadata:
-          additionalProperties: true
-          type: object
-          title: Metadata
-      additionalProperties: false
       type: object
       title: EvaluationContext
+      description: 'Evaluation context accepted by ingest endpoints (the canonical
+        shape).
+
+
+        ``extra="ignore"`` so a producer still sending retired keys (evaluation_sha,
+        evaluation_run_id,
+
+        metadata) keeps ingesting without error rather than being rejected.'
     EvaluatorAggregate:
       properties:
         sum:
@@ -10366,7 +10365,8 @@ components:
       required:
       - experiment_id
       title: ExperimentContext
-      description: Experiment context accepted by ingest endpoints.
+      description: Deprecated alias for :class:`EvaluationContext`. Producers should
+        send ``evaluation_context``.
     ExperimentFilter:
       additionalProperties: false
       description: Filter for listing Experiments.
@@ -17240,19 +17240,9 @@ components:
         evaluation_id:
           title: Evaluation Id
           type: string
-        evaluation_sha:
-          title: Evaluation Sha
-          type: string
-        evaluation_run_id:
-          title: Evaluation Run Id
-          type: string
         test_case_id:
           title: Test Case Id
           type: string
-        metadata:
-          additionalProperties: true
-          type: object
-          title: Metadata
       additionalProperties: false
       type: object
       title: SpanEvaluationContext
@@ -17273,16 +17263,6 @@ components:
         evaluation_id:
           description: Filter by evaluation id.
           title: Evaluation Id
-          type: string
-        evaluation_sha:
-          description: Filter by evaluation sha.
-          title: Evaluation Sha
-          type: string
-        evaluation_run_id:
-          description: Filter by evaluation run id. ATIF evaluation context is stored
-            on root trajectory spans; use session_id from a matched root to fetch
-            the full trace tree.
-          title: Evaluation Run Id
           type: string
         dataset_id:
           description: Filter by dataset id.
