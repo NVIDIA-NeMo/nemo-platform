@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { DraggableAttributes } from '@dnd-kit/core';
+import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core';
 import { useInnerDataViewContext } from '@nemo/common/src/components/DataView/internal/context';
 import { useHandleResize } from '@nemo/common/src/components/DataView/internal/hooks/useResizableColumns';
 import type { IntentionalAny } from '@nemo/common/src/components/DataView/internal/types';
@@ -17,7 +17,7 @@ interface DragProps {
   setNodeRef?: (node: HTMLElement | null) => void;
   setActivatorNodeRef?: (node: HTMLElement | null) => void;
   attributes: DraggableAttributes;
-  listeners: Record<string, unknown> | undefined;
+  listeners: DraggableSyntheticListeners;
   isDragging: boolean;
 }
 
@@ -55,7 +55,6 @@ export function TableColumnHeader({
       data-pinned={header.column.getIsPinned() || undefined}
       id={getHeaderId(header.id)}
       title={automaticTitles ? childrenToText(children as ReactNode) || undefined : undefined}
-      {...(dragProps?.attributes ?? {})}
       {...props}
     >
       <TableHeaderControlCell
