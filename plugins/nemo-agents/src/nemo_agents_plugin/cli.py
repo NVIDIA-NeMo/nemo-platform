@@ -14,10 +14,13 @@ instance.
 - ``invoke``   — single invocation
 - ``run``      — start a persistent local FastAPI server
 
-The ``evaluate`` and ``optimize`` commands are auto-generated from the
-``EvaluateAgentJob`` and ``OptimizeAgentJob`` registered under the
-``nemo.jobs`` entry-point group — the platform injects them into this CLI
-group at startup.
+The ``evaluate`` command is auto-generated from the
+``EvaluateAgentJob`` registered under the
+``nemo.jobs`` entry-point group — the platform injects it into this CLI
+group at startup. Numeric optimize is also available as
+``nemo agents optimize``; that CLI subgroup delegates to the Customizer
+Tune job (``customization.optimize.jobs``) and does not register an
+agents optimize job/API route.
 
 **Agent Resources commands (require a running cluster):**
 
@@ -42,6 +45,7 @@ import sys
 import time
 from dataclasses import asdict
 from datetime import datetime
+from importlib import import_module
 from pathlib import Path
 from typing import Any, ClassVar, Literal, Optional, cast
 
@@ -117,6 +121,7 @@ class AgentsCLI(NemoCLI):
                 raise typer.Exit(0)
 
         _register_local_commands(app)
+        _register_optimize_alias(app)
         _register_package_command(app)
         _register_platform_commands(app)
         register_leaderboard_commands(app)
@@ -266,10 +271,31 @@ def _register_local_commands(app: typer.Typer) -> None:
             raise typer.Exit(code=1)
 
 
-# Note: ``evaluate`` and ``optimize`` commands are auto-generated from the
-# ``EvaluateAgentJob`` and ``OptimizeAgentJob`` registered under the
-# ``nemo.jobs`` entry-point group.  The platform's CLI loader injects them
-# into this group at startup (see ``nemo_platform_ext.cli.app``).
+# Note: ``evaluate`` is auto-generated from ``EvaluateAgentJob`` under
+# ``nemo.jobs``. Numeric optimize is a CLI alias to the Customizer Tune job,
+# not a separate agents job/API collection.
+
+
+def _register_optimize_alias(app: typer.Typer) -> None:
+    """Expose ``nemo agents optimize`` as an alias for Customizer Tune optimize."""
+    from nemo_platform_plugin.commands import (
+        _add_explain_command,
+        _add_run_command,
+        _add_submit_command,
+    )
+    from nemo_platform_plugin.scheduler import NemoJobScheduler
+
+    OptimizeJob = import_module("nemo_optimization.jobs.optimize").OptimizeJob
+    optimize_app = typer.Typer(
+        name="optimize",
+        help="Optimize an agent via Customizer Tune (alias for `nemo customization optimize`).",
+        no_args_is_help=True,
+    )
+    scheduler = NemoJobScheduler()
+    _add_run_command(optimize_app, OptimizeJob, scheduler)
+    _add_submit_command(optimize_app, OptimizeJob, scheduler)
+    _add_explain_command(optimize_app, OptimizeJob, scheduler)
+    app.add_typer(optimize_app, name="optimize", rich_help_panel="Jobs")
 
 
 # ---------------------------------------------------------------------------

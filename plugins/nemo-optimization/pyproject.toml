@@ -1,0 +1,55 @@
+[project]
+name = "nemo-optimization-plugin"
+description = "NeMo Customizer Tune lane — Optuna numeric optimizer and optimize routing."
+readme = "README.md"
+requires-python = ">=3.11,<3.15"
+dependencies = [
+    "nemo-platform-plugin",
+    "nemo-platform",
+    "nemo-evaluator-sdk",
+    "nmp-customization-common",
+    "matplotlib>=3.8.0",
+    "numpy>=1.26.0",
+    "optuna>=4.0.0",
+    "pydantic>=2.10.6",
+    "pydantic-settings>=2.6.1",
+    "pyyaml>=6.0",
+    "typer>=0.12.5",
+]
+version = "0.0.0"
+
+[project.entry-points."nemo.customization.contributors"]
+optimize = "nemo_optimization.contributor:OptimizationContributor"
+
+[project.entry-points."nemo.jobs"]
+"customization.optimize.jobs" = "nemo_optimization.jobs.optimize:OptimizeJob"
+
+[project.entry-points."nemo.optimization.backends"]
+optuna = "nemo_optimization.backends.optuna.backend:OptunaBackend"
+ga = "nemo_optimization.backends.ga.backend:GaBackend"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nemo_optimization"]
+
+[tool.uv.sources]
+nemo-platform-plugin = { workspace = true }
+nemo-platform = { workspace = true }
+nemo-evaluator-sdk = { workspace = true }
+nmp-customization-common = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.4",
+    "pytest-asyncio>=0.24.0",
+    "fastapi>=0.115.0",
+    "nemo-customizer-plugin",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["src"]
+testpaths = ["tests"]

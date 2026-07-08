@@ -1,10 +1,7 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Task entrypoint for ``agents.optimize`` (``python -m nemo_agents_plugin.tasks.optimize``).
-
-See :mod:`nemo_agents_plugin.tasks.evaluate` for the shared pattern.
-"""
+"""Task entrypoint for the Tune optimize job (``python -m nemo_optimization.tasks.optimize``)."""
 
 from __future__ import annotations
 
@@ -13,7 +10,7 @@ import signal
 import sys
 from types import FrameType
 
-from nemo_agents_plugin.jobs.optimize_agent import OptimizeAgentJob
+from nemo_optimization.jobs.optimize import OptimizeJob
 from nemo_platform_plugin.sdk_provider import get_task_sdk
 from nemo_platform_plugin.tasks.dispatcher import run_task
 
@@ -21,18 +18,18 @@ logger = logging.getLogger(__name__)
 
 
 def _shutdown_handler(signum: int, frame: FrameType | None) -> None:
-    logger.warning("Received shutdown signal (%d).  Exiting.", signum)
+    logger.warning("Received shutdown signal (%d). Exiting.", signum)
     raise SystemExit(128 + signum)
 
 
 def main() -> int:
     signal.signal(signal.SIGTERM, _shutdown_handler)
     try:
-        sdk = get_task_sdk("agents")
+        sdk = get_task_sdk("customization")
     except Exception:
-        logger.exception("Failed to build task SDK for agents")
+        logger.exception("Failed to build task SDK for customization")
         return 2
-    return run_task(OptimizeAgentJob, sdk=sdk)
+    return run_task(OptimizeJob, sdk=sdk)
 
 
 if __name__ == "__main__":

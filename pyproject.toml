@@ -186,6 +186,7 @@ enabled-plugins = [
   "nemo-deployments-plugin[docker,k8s]",
   "nemo-customizer-plugin",
   "nemo-automodel-plugin",
+  "nemo-optimization-plugin",
   "nemo-unsloth-plugin",
   "nemo-rl-plugin",
 ]
@@ -393,6 +394,7 @@ nemo-agents-example-email-phishing = { workspace = true }
 nemo-agents-example-email-security = { workspace = true }
 nemo-customizer-plugin = { workspace = true }
 nemo-automodel-plugin = { workspace = true }
+nemo-optimization-plugin = { workspace = true }
 nemo-unsloth-plugin = { workspace = true }
 nemo-rl-plugin = { workspace = true }
 nmp-automodel = { workspace = true }
@@ -455,6 +457,7 @@ members = [
   "plugins/nemo-agents/examples/nemo-agent-config/calculator-agent",
   "plugins/nemo-customizer",
   "plugins/nemo-automodel",
+  "plugins/nemo-optimization",
   "plugins/nemo-unsloth",
   "plugins/nemo-rl",
   "services/automodel",

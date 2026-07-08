@@ -509,7 +509,6 @@ nemo-switchyard = "nemo_switchyard.middleware:SwitchyardMiddleware"
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.jobs"]
 "agents.evaluate" = "nemo_agents_plugin.jobs.evaluate_agent:EvaluateAgentJob"
-"agents.optimize" = "nemo_agents_plugin.jobs.optimize_agent:OptimizeAgentJob"
 "agents.evaluate-suite" = "nemo_agents_plugin.jobs.evaluate_suite:EvaluateSuiteJob"
 "agents.analyze" = "nemo_agents_plugin.jobs.analyze_batch:AnalyzeBatchJob"
 "agents.optimize-skills" = "nemo_agents_plugin.jobs.optimize_skills:OptimizeSkillsJob"

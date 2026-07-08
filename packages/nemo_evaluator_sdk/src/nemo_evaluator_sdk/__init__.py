@@ -35,6 +35,7 @@ from nemo_evaluator_sdk.metrics.remote import NemoAgentToolkitRemoteMetric, Remo
 from nemo_evaluator_sdk.metrics.rouge import ROUGEMetric
 from nemo_evaluator_sdk.metrics.string_check import StringCheckMetric
 from nemo_evaluator_sdk.metrics.tool_calling import ToolCallingMetric
+from nemo_evaluator_sdk.metrics.tunable_rag_evaluator import TunableRagEvaluatorMetric
 from nemo_evaluator_sdk.resolver_protocols import ModelResolver, SecretResolver
 from nemo_evaluator_sdk.resolvers import LocalModelResolver, LocalSecretResolver
 from nemo_evaluator_sdk.structured_output import (
@@ -147,6 +148,7 @@ __all__ = [
     "StructuredOutput",
     "StructuredOutputMode",
     "ToolCallingMetric",
+    "TunableRagEvaluatorMetric",
     "default_structured_output_mode",
     "detect_structured_output_mode",
     "load_dataset",

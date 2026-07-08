@@ -6,6 +6,7 @@ from __future__ import annotations
 import sys
 from collections.abc import Callable
 from contextlib import AbstractContextManager
+from importlib import import_module
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -137,6 +138,47 @@ def test_list_404_prints_request_context_and_hint() -> None:
     assert "Request: GET http://test/apis/agents/v2/workspaces/default/agents" in result.stderr
     assert "Target: agents API route /apis/agents/v2/workspaces/default/agents" in result.stderr
     assert "route may not be deployed" in result.stderr
+
+
+def test_optimize_submit_alias_targets_customization_route() -> None:
+    captured: dict[str, Any] = {}
+
+    from nemo_platform_plugin.scheduler import submit_path_for
+
+    OptimizeJob = import_module("nemo_optimization.jobs.optimize").OptimizeJob
+    assert (
+        submit_path_for(OptimizeJob, workspace="default") == "/apis/customization/v2/workspaces/default/optimize/jobs"
+    )
+
+    def _submit_remote(_self, job_cls, spec, **kwargs):
+        captured["job_cls"] = job_cls
+        captured["spec"] = spec
+        captured["base_url"] = kwargs["base_url"]
+        captured["workspace"] = kwargs["workspace"]
+        return {"name": "optimize-123"}
+
+    app = AgentsCLI().get_cli()
+    with patch("nemo_platform_plugin.scheduler.NemoJobScheduler.submit_remote", _submit_remote):
+        result = CliRunner().invoke(
+            app,
+            [
+                "optimize",
+                "submit",
+                "--optimize-config",
+                "/tmp/optimize.yml",
+                "--agent",
+                "react-agent",
+                "--base-url",
+                "http://test",
+            ],
+        )
+
+    assert result.exit_code == 0, result.stderr
+    assert captured["job_cls"] is OptimizeJob
+    assert captured["base_url"] == "http://test"
+    assert captured["workspace"] == "default"
+    assert captured["spec"]["agent"] == "react-agent"
+    assert captured["spec"]["optimize_config"] == "/tmp/optimize.yml"
 
 
 @pytest.mark.parametrize("placeholder", ["${NEMO_DEFAULT_MODEL}", "$NEMO_DEFAULT_MODEL"])

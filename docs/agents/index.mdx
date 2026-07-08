@@ -2,6 +2,7 @@
 title: "About Agents"
 description: ""
 ---
+
 <a id="agents"></a>
 
 An agent on NeMo Platform calls tools, accesses models through shared Platform
@@ -43,21 +44,21 @@ undeploying the candidate.
 
 Agents are managed end-to-end through the `nemo agents` command group:
 
-| Stage | Command | What it does |
-|-------|---------|--------------|
-| Register | `nemo agents create --name <name> --agent-config <path>` | Store the agent configuration as an `agent` entity in a workspace. |
-| Deploy | `nemo agents deploy --agent <name>` | Start a running service from the stored config. |
-| Wait | `nemo agents deployments wait --agent <name>` | Block until the deployment is `running` or `failed`. |
-| Invoke | `nemo agents invoke --agent <name> --input "..."` or `nemo agents invoke --agent-config <path> --input "..."` | Send a single request through the Agents gateway or run a local config directly. |
-| Tear down | `nemo agents undeploy --agent <name>` then `nemo agents delete <name>` | Stop the running service and remove the agent entity. |
+| Stage     | Command                                                                                                       | What it does                                                                     |
+| --------- | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Register  | `nemo agents create --name <name> --agent-config <path>`                                                      | Store the agent configuration as an `agent` entity in a workspace.               |
+| Deploy    | `nemo agents deploy --agent <name>`                                                                           | Start a running service from the stored config.                                  |
+| Wait      | `nemo agents deployments wait --agent <name>`                                                                 | Block until the deployment is `running` or `failed`.                             |
+| Invoke    | `nemo agents invoke --agent <name> --input "..."` or `nemo agents invoke --agent-config <path> --input "..."` | Send a single request through the Agents gateway or run a local config directly. |
+| Tear down | `nemo agents undeploy --agent <name>` then `nemo agents delete <name>`                                        | Stop the running service and remove the agent entity.                            |
 
 To run an `agent.yaml` directly without registering it on the platform, pass `--agent-config <path>` to `nemo agents invoke` or `nemo agents run`.
 
 Legacy NAT-only commands:
 
-| Stage | Command | What it does |
-|-------|---------|--------------|
-| Evaluate | `nemo agents evaluate run --eval-config <path> --agent <name>` | Run a NAT evaluation against the deployed agent. |
+| Stage    | Command                                                            | What it does                                                                 |
+| -------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| Evaluate | `nemo agents evaluate run --eval-config <path> --agent <name>`     | Run a NAT evaluation against the deployed agent.                             |
 | Optimize | `nemo agents optimize run --optimize-config <path> --agent <name>` | Run NAT parameter or prompt tuning trials against the agent's stored config. |
 
 ## Agent Definition
@@ -65,7 +66,8 @@ Legacy NAT-only commands:
 ### Platform-managed agents
 
 #### About NeMo Fabric
-NeMo Fabric gives users one configurable, observable way to run applications across multiple agent harnesses. 
+
+NeMo Fabric gives users one configurable, observable way to run applications across multiple agent harnesses.
 It standardizes configuration, lifecycle management, and results without requiring a separate integration for every harness.
 To learn more about Fabric, see
 [NeMo Fabric](https://docs.nvidia.com/nemo/fabric/about-nemo-fabric/overview/).
@@ -73,7 +75,6 @@ To learn more about Fabric, see
 NeMo Platform uses Fabric as the runtime wrapper around your agent so the
 platform can deploy it and route its model traffic
 through shared infrastructure.
-
 
 An agent's behavior is described by the platform-managed `agent.yaml`:
 
@@ -165,14 +166,13 @@ platform can deploy it, evaluate it, optimize it, and route its model traffic
 through shared infrastructure. For the toolkit itself, see the
 [NeMo Agent Toolkit documentation](https://docs.nvidia.com/nemo/agent-toolkit/latest/).
 
-
 An agent's behavior is described by a NAT workflow YAML with three top-level sections:
 
-| Section | Purpose | Example |
-|---------|---------|---------|
-| `functions` | Tools the agent can call | `wiki_search`, `current_datetime`, custom MCP tools |
-| `llms` | Model bindings the workflow can reference | OpenAI-compatible endpoints, NIM endpoints |
-| `workflow` | The agent type and its wiring | `react_agent`, `tool_calling_agent`, custom NAT workflows |
+| Section     | Purpose                                   | Example                                                   |
+| ----------- | ----------------------------------------- | --------------------------------------------------------- |
+| `functions` | Tools the agent can call                  | `wiki_search`, `current_datetime`, custom MCP tools       |
+| `llms`      | Model bindings the workflow can reference | OpenAI-compatible endpoints, NIM endpoints                |
+| `workflow`  | The agent type and its wiring             | `react_agent`, `tool_calling_agent`, custom NAT workflows |
 
 ReAct is a common agent pattern where the model alternates between a
 reasoning step and a tool call until it has enough information to answer. It

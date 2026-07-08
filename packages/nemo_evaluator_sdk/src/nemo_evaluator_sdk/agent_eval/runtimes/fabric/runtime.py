@@ -127,6 +127,7 @@ class FabricAgentRuntime:
         work_root: str | Path | None = None,
         timeout_s: int = DEFAULT_FABRIC_TIMEOUT_S,
         capture_trajectory: bool = True,
+        trajectory_extra: Mapping[str, Any] | None = None,
         runtime_name: str = _RUNTIME_NAME,
         skills: Sequence[AgentSkill] | None = None,
     ) -> None:
@@ -136,6 +137,7 @@ class FabricAgentRuntime:
         self._work_root = Path(work_root).expanduser() if work_root is not None else None
         self._timeout_s = timeout_s
         self._capture_trajectory = capture_trajectory
+        self._trajectory_extra = dict(trajectory_extra) if trajectory_extra else None
         self._runtime_name = runtime_name
         self._skill_set = SkillSet(tuple(skills or ()))
 
@@ -314,7 +316,7 @@ class FabricAgentRuntime:
             # Everything the run needs lives in one typed config: Fabric no longer layers profile
             # overlays, so the per-task workspace/model/trajectory settings are composed on last and are
             # authoritative by construction. ``add_skill_path`` appends, so config-declared skills survive.
-            task_config = self._compose_config(agent_config, evidence_dir, workspace_dir)
+            task_config = self._compose_config(agent_config, evidence_dir, workspace_dir, task=task)
             for skill_path in skill_paths:
                 task_config.add_skill_path(skill_path)
 
@@ -474,6 +476,7 @@ class FabricAgentRuntime:
         agent_config: FabricConfig,
         evidence_dir: Path,
         workspace_dir: Path,
+        task: AgentEvalTask,
     ) -> FabricConfig:
         # nemo_fabric is already imported+validated in ``run_tasks``; this is a cached sys.modules
         # lookup, not a re-load, so the type is used where it's constructed instead of threaded down.
@@ -499,18 +502,27 @@ class FabricAgentRuntime:
         if self._capture_trajectory:
             # Enable Relay's ATIF/ATOF file exporter under this task's durable evidence dir, and pin the
             # Fabric artifact root so the promoted ``trajectory-*.atif.json`` persists. Requires the
-            # ``nemo-relay`` gateway on PATH in the runtime.
+            # ``nemo-relay`` gateway on PATH in the runtime. Stamp the task id (and any caller
+            # ``trajectory_extra``) onto ATIF ``extra`` so optimizer trials can join traces to rows.
             relay_dir = evidence_dir / _RELAY_SUBDIR
             artifacts_dir = evidence_dir / _ARTIFACTS_SUBDIR
             relay_dir.mkdir(parents=True, exist_ok=True)
             artifacts_dir.mkdir(parents=True, exist_ok=True)
-            cfg.enable_relay(output_dir=str(relay_dir), observability=self._relay_config(relay_dir))
+            row_extra = {"nemo.optimizer.row_id": task.id} if task.id else None
+            cfg.enable_relay(
+                output_dir=str(relay_dir),
+                observability=self._relay_config(relay_dir, extra=row_extra),
+            )
             cfg.runtime.artifacts = str(artifacts_dir)
             cfg.environment.artifacts = str(artifacts_dir)
 
         return cfg
 
-    def _relay_config(self, relay_dir: Path) -> RelayObservabilityConfig:
+    def _relay_config(
+        self,
+        relay_dir: Path,
+        extra: Mapping[str, Any] | None = None,
+    ) -> RelayObservabilityConfig:
         # The ATIF/ATOF observability config is built from Fabric's own typed relay-config objects so
         # Fabric owns the schema (no hand-maintained dict that silently drifts when Fabric changes it),
         # mirroring nemo_fabric's own Harbor integration. It is handed straight to ``enable_relay`` via
@@ -525,6 +537,9 @@ class FabricAgentRuntime:
         )
 
         relay_dir_str = str(relay_dir)
+        atif_extra: dict[str, Any] | None = None
+        if self._trajectory_extra or extra:
+            atif_extra = {**(self._trajectory_extra or {}), **(dict(extra) if extra else {})}
         return RelayObservabilityConfig(
             atif=RelayAtifConfig(
                 enabled=True,
@@ -532,6 +547,7 @@ class FabricAgentRuntime:
                 filename_template=_ATIF_FILENAME_TEMPLATE,
                 agent_name=self._runtime_name,
                 agent_version=_common.FABRIC_AGENT_VERSION,
+                extra=atif_extra,
             ),
             atof=RelayAtofConfig(
                 enabled=True,

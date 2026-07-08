@@ -483,6 +483,30 @@ async def test_fabric_runtime_bad_seed_fails_only_that_task(tmp_path: Path, monk
 
 
 @pytest.mark.asyncio
+async def test_fabric_runtime_passes_trajectory_extra_to_atif_relay(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        return _FakeResult(status="succeeded", output={"response": "ok"})
+
+    client_cls = _install_fake_fabric(monkeypatch, handler)
+    runtime = fabric_runtime.FabricAgentRuntime(
+        config=_CONFIG,
+        work_root=tmp_path / "fabric",
+        trajectory_extra={"nemo.optimizer.experiment_id": "exp-1", "nemo.optimizer.trial_number": 2},
+    )
+
+    await runtime.run_tasks([_TASK])
+
+    # Trajectory capture is composed onto the per-task config via enable_relay (no profile overlays).
+    observability = client_cls.recorded[0]["agent"].relay["observability"]
+    atif_extra = observability.kwargs["atif"].kwargs["extra"]
+    assert atif_extra["nemo.optimizer.experiment_id"] == "exp-1"
+    assert atif_extra["nemo.optimizer.trial_number"] == 2
+    assert atif_extra["nemo.optimizer.row_id"] == "task/1"
+
+
+@pytest.mark.asyncio
 async def test_fabric_runtime_capture_trajectory_false_skips_relay(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

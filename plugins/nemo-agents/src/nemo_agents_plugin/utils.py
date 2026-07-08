@@ -431,7 +431,7 @@ def preflight_validate_llm_models(
     side effects.
 
     Used as a pre-flight in ``EvaluateAgentJob.run`` and
-    ``OptimizeAgentJob.run`` to surface a missing-VirtualModel error
+    ``OptimizeJob.run`` (via ``nemo-optimization``) to surface a missing-VirtualModel error
     before the subprocess starts.
 
     No-op when *sdk* is ``None`` (local-only paths that don't have a
@@ -513,10 +513,9 @@ def merge_agent_config(
 ) -> dict[str, Any]:
     """Merge an agent's stored NAT config with an optimize-config dict.
 
-    Used by :class:`~nemo_agents_plugin.jobs.optimize_agent.OptimizeAgentJob`
-    to compose ``react-agent.yml``-style agent definitions with
-    ``react-optimize.yml``-style tuning configs.  The agent supplies the
-    workflow shape (``workflow``, ``functions``, telemetry, the LLMs
+    Used when composing platform agent definitions with optimize-config YAML
+    before dispatch (e.g. ``nemo customization optimize --agent ...``).
+    The agent supplies the workflow shape (``workflow``, ``functions``, telemetry, the LLMs
     actually invoked at runtime); the optimize config supplies eval, the
     optimizer block, judge LLMs, and any tuning overrides on shared LLM
     keys.

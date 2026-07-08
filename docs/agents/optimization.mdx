@@ -20,7 +20,7 @@ evaluation result before promotion.
 |-----------------|--------|--------|
 | Model optimization | An agent uses a single frontier model where a smaller model or route split may preserve quality at lower cost | Suggests a model swap or Switchyard random-routing virtual model |
 | Skill optimization | The agent uses skills and has an evaluation suite | Suggests running `nemo agents optimize-skills` to improve skill files and keep changes that pass evaluation |
-| Prompt optimization | The agent has an optimization config and baseline dataset | Suggests `nemo agents optimize run` for NAT prompt or parameter tuning |
+| Prompt optimization | The agent has an optimization config and baseline dataset | Suggests `nemo agents optimize run` for Fabric-backed tuning |
 | New model scan | Difference between the current model list and the previous optimizer snapshot | Suggests evaluating or auditing newly available models |
 
 Optimizer state is stored in the `nemo-agent-optimizer` fileset:
@@ -268,9 +268,11 @@ nemo files list nemo-agent-telemetry
 
 ## Run Prompt and Parameter Tuning
 
-The `nemo agents optimize run` command runs the NAT optimizer path for
-parameter or prompt tuning. Use it when you already have a NAT optimization
-YAML and want to run `nat optimize` through the Agents plugin.
+The `nemo agents optimize run` command is an Agents CLI alias for the
+Customizer Tune job. It runs Fabric-backed numeric optimization through
+`customization.optimize.jobs`; use `nemo customization optimize` for the
+canonical Customizer surface, or `nemo agents optimize` when working from an
+agent lifecycle flow.
 
 For the ReAct example:
 
@@ -301,7 +303,7 @@ nemo skills show agents-optimize
 
 What it does under the hood:
 
-- Confirms the agent has a NAT optimization YAML.
+- Confirms the agent has a Fabric-native optimization YAML.
 - Runs `nemo agents optimize run` (or `submit` for platform jobs).
 - Compares results against the evaluation baseline and surfaces deltas
   for review.
@@ -313,7 +315,7 @@ What it does under the hood:
 import os
 from pathlib import Path
 
-from nemo_agents_plugin.jobs.optimize_agent import OptimizeAgentJob
+from nemo_optimization.jobs.optimize import OptimizeJob
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.scheduler import NemoJobScheduler
 
@@ -326,7 +328,7 @@ client = NeMoPlatform(
 )
 
 result = NemoJobScheduler().run_local(
-    OptimizeAgentJob,
+    OptimizeJob,
     {
         "optimize_config": str(optimize_config),
         "agent": "react-agent",
@@ -342,10 +344,9 @@ print(result)
 
 </Tabs>
 When `--agent` is a platform-managed agent name, the job fetches the stored
-agent config, merges it with the optimization config, injects the Inference
-Gateway URL, and runs trials locally. When `--agent` is a raw HTTP endpoint,
-the endpoint is treated as an opaque remote service, so local parameter sweeps
-do not change the remote agent behavior.
+Fabric agent config, overlays the optimization settings, runs Inference Gateway
+model preflight, and dispatches to the Tune backend. Raw HTTP endpoint mode is
+removed; use a platform-managed agent reference or inline Fabric agent package.
 
 ## Troubleshooting
 
