@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { isTrustedBundleUrl } from '@studio/plugins/security';
 import type { LoadedPlugin, PluginManifest } from '@studio/plugins/types';

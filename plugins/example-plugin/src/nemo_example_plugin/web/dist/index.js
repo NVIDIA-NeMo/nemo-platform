@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 import e from "react";
 import { createRoot as t } from "react-dom/client";
 import { BrowserRouter as n, NavLink as r, Navigate as i, Outlet as a, Route as o, Routes as s } from "react-router-dom";
