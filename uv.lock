@@ -25,6 +25,7 @@ members = [
     "garak-api",
     "models",
     "nemo-agents-example-calculator",
+    "nemo-agents-example-email-phishing",
     "nemo-agents-plugin",
     "nemo-anonymizer-plugin",
     "nemo-auditor-plugin",
@@ -4006,6 +4007,17 @@ dependencies = [
 requires-dist = [{ name = "nvidia-nat-core", specifier = ">=1.8.0,<1.9" }]
 
 [[package]]
+name = "nemo-agents-example-email-phishing"
+version = "0.1.0"
+source = { editable = "plugins/nemo-agents/examples/email-phishing-analyzer" }
+dependencies = [
+    { name = "nvidia-nat-core", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "nvidia-nat-core", specifier = ">=1.8.0,<1.9" }]
+
+[[package]]
 name = "nemo-agents-plugin"
 version = "0.1.0"
 source = { editable = "plugins/nemo-agents" }
@@ -4016,6 +4028,7 @@ dependencies = [
     { name = "httpx", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "langchain-aws", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-agents-example-calculator", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nemo-agents-example-email-phishing", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nvidia-nat-config-optimizer", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -4050,6 +4063,7 @@ requires-dist = [
     { name = "jinja2", marker = "extra == 'test'", specifier = ">=3.1" },
     { name = "langchain-aws", specifier = "==1.1.0" },
     { name = "nemo-agents-example-calculator", editable = "plugins/nemo-agents/examples/calculator-agent" },
+    { name = "nemo-agents-example-email-phishing", editable = "plugins/nemo-agents/examples/email-phishing-analyzer" },
     { name = "nemo-platform", editable = "packages/nemo_platform" },
     { name = "nemo-platform-plugin", editable = "packages/nemo_platform_plugin" },
     { name = "nvidia-nat-config-optimizer", specifier = ">=1.8.0,<1.9" },

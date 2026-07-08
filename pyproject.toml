@@ -372,6 +372,7 @@ nemo-switchyard = { workspace = true }
 nemo-agents-plugin = { workspace = true }
 nemo-deployments-plugin = { workspace = true }
 nemo-agents-example-calculator = { workspace = true }
+nemo-agents-example-email-phishing = { workspace = true }
 nemo-customizer-plugin = { workspace = true }
 nemo-automodel-plugin = { workspace = true }
 nemo-unsloth-plugin = { workspace = true }
@@ -426,6 +427,7 @@ members = [
   "plugins/nemo-agents",
   "plugins/nemo-deployments",
   "plugins/nemo-agents/examples/calculator-agent",
+  "plugins/nemo-agents/examples/email-phishing-analyzer",
   "plugins/nemo-customizer",
   "plugins/nemo-automodel",
   "plugins/nemo-unsloth",
