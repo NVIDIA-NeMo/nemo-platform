@@ -61,7 +61,7 @@ def _make_typed_stream(backend_format: BackendFormat):
 
     async def _gen():
         return
-        yield  # noqa: unreachable
+        yield  # type: ignore[unreachable]
 
     return TypedResponseStream(backend_format, _gen())
 
@@ -182,7 +182,7 @@ async def test_write_back_response_anthropic_streaming():
 
     async def _src():
         return
-        yield  # noqa: unreachable
+        yield  # type: ignore[unreachable]
 
     ars = AnthropicResponseStream(_src())
     response = InferenceResponse(result={}, headers={})
@@ -196,7 +196,7 @@ def test_write_back_response_responses_api_streaming():
 
     async def _src():
         return
-        yield  # noqa: unreachable
+        yield  # type: ignore[unreachable]
 
     rs = ResponsesApiStream(_src())
     response = InferenceResponse(result={}, headers={})
@@ -212,7 +212,7 @@ def test_write_back_response_streaming_clears_typed_body_sets_result_to_stream()
 
     async def _src():
         return
-        yield  # noqa: unreachable
+        yield  # type: ignore[unreachable]
 
     rs = ResponseStream(_src())
     response = InferenceResponse(result={"id": "raw"}, headers={}, typed_body=_make_chat_completion())
