@@ -61,7 +61,7 @@ export const buildSampleAgentName = (namePrefix: string): string =>
   `${namePrefix}-${Math.random().toString(36).slice(2, 8)}`;
 
 export const isSampleAgentName = (name: string): boolean =>
-  SAMPLE_AGENTS.some((agent) => name.startsWith(agent.namePrefix));
+  SAMPLE_AGENTS.some((agent) => name.startsWith(`${agent.namePrefix}-`));
 
 /**
  * Infer which sample-agent example a deployed agent came from by matching its

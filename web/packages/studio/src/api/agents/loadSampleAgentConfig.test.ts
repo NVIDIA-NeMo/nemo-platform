@@ -47,6 +47,15 @@ describe('loadSampleAgentConfig', () => {
     );
   });
 
+  it('throws when llms.llm is not an object', async () => {
+    // A non-object llm (here a string) would otherwise crash the model_name
+    // assignment with a TypeError instead of the clean guard error.
+    mockFetchText('llms:\n  llm: some-string\n');
+    await expect(loadSampleAgentConfig('sample-agents/x/agent.yml', 'm')).rejects.toThrow(
+      /missing llms\.llm/
+    );
+  });
+
   it('throws when the fetch fails', async () => {
     mockFetchText('', false);
     await expect(loadSampleAgentConfig('sample-agents/x/agent.yml', 'm')).rejects.toThrow(

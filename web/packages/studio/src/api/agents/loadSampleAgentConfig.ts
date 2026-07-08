@@ -16,10 +16,10 @@ export const loadSampleAgentConfig = async (
 ): Promise<Record<string, unknown>> => {
   const text = await fetchSampleText(agentConfigPath);
   const config = YAML.parse(text) as Record<string, unknown>;
-  const llms = config?.llms as { llm?: Record<string, unknown> } | undefined;
-  if (!llms?.llm) {
+  const llm = (config?.llms as { llm?: unknown } | undefined)?.llm;
+  if (!llm || typeof llm !== 'object' || Array.isArray(llm)) {
     throw new Error(`Sample agent config ${agentConfigPath} is missing llms.llm`);
   }
-  llms.llm.model_name = modelName;
+  (llm as Record<string, unknown>).model_name = modelName;
   return config;
 };

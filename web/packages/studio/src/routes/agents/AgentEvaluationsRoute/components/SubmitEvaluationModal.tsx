@@ -254,13 +254,19 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
       };
     } else {
       const example = getSampleAgent(formData.exampleKey);
+      // Namespace the seeded config per example. The {agent}-eval fileset is
+      // shared and ensureEvalConfigFileset skips existing files, so seeding every
+      // example as a bare "eval.yml" would make the first-seeded config stick when
+      // switching examples on the same agent. (Datasets already have distinct
+      // basenames.)
+      const evalConfigName = `${example.key}-${fileNameOf(example.evalConfigPath)}`;
       spec = {
         agent: formData.agent,
-        evalConfig: fileNameOf(example.evalConfigPath),
+        evalConfig: evalConfigName,
         evalConfigFileset: evalFilesetForAgent(formData.agent),
         seedSources: [
           {
-            path: fileNameOf(example.evalConfigPath),
+            path: evalConfigName,
             assetPath: example.evalConfigPath,
             type: contentTypeForFile(example.evalConfigPath),
           },
