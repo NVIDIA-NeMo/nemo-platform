@@ -10,7 +10,7 @@
  * its affiliates is strictly prohibited.
  */
 
-import { CreateExperimentGroupBody } from '@nemo/sdk/generated/platform/zod/experiment-groups/createExperimentGroup';
+import { CreateExperimentGroupBody } from '@nemo/sdk/generated/intake/zod/experiment-groups/createExperimentGroup';
 import { workspaceInputSchema } from '@studio/constants/zod';
 
 // Override the SDK-generated `name` validation — the generated zod uses the DTO's loose

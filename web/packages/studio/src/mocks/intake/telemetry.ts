@@ -13,7 +13,7 @@ import {
   type SpansPage,
   type Trace,
   type TracesPage,
-} from '@nemo/sdk/generated/platform/schema';
+} from '@nemo/sdk/generated/intake/schema';
 
 const trace1: Trace = {
   id: 'trace-agent-run-001',

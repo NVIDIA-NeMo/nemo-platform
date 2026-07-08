@@ -10,11 +10,11 @@ import * as DataView from '@nemo/common/src/components/DataView/internal';
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
 import { DEFAULT_PAGE_SIZE_OPTIONS } from '@nemo/common/src/constants/pagination';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
-import { useListExperimentGroups } from '@nemo/sdk/generated/platform/api';
+import { useListExperimentGroups } from '@nemo/sdk/generated/intake/api';
 import type {
   ExperimentGroupFilter,
   ExperimentGroupResponse,
-} from '@nemo/sdk/generated/platform/schema';
+} from '@nemo/sdk/generated/intake/schema';
 import {
   Block,
   Button,

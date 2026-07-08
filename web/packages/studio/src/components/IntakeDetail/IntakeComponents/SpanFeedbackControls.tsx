@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import { FeedbackAnnotationInputValue } from '@nemo/sdk/generated/platform/schema';
+import { FeedbackAnnotationInputValue } from '@nemo/sdk/generated/intake/schema';
 import { Button, Divider, Flex, Tooltip } from '@nvidia/foundations-react-core';
 import { useSpanAnnotationActions } from '@studio/components/IntakeDetail/IntakeComponents/useSpanAnnotationActions';
 import { NotebookPen, ThumbsDown, ThumbsUp } from 'lucide-react';

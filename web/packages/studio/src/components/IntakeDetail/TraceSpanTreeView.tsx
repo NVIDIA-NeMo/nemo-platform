@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { FeedbackAnnotationInputValue } from '@nemo/sdk/generated/platform/schema';
+import type { FeedbackAnnotationInputValue } from '@nemo/sdk/generated/intake/schema';
 import { Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import { SpanFeedbackControls } from '@studio/components/IntakeDetail/IntakeComponents/SpanFeedbackControls';
 import { SpanTriggerLabel } from '@studio/components/IntakeDetail/IntakeComponents/SpanTriggerLabel';

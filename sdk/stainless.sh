@@ -11,7 +11,7 @@ NC='\033[0m' # No Color
 SDK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SDK_DIR}/.." && pwd)"
 
-OPENAPI_SPEC="${REPO_ROOT}/openapi/openapi.yaml"
+OPENAPI_SPEC="${REPO_ROOT}/openapi/sdk/openapi.yaml"
 STAINLESS_CONFIG_PATH="${SDK_DIR}/stainless.yaml"
 STAINLESS_PROJECT_NAME="nemo-platform"
 SDK_PATH="sdk/python/nemo-platform"

@@ -8,13 +8,13 @@ import {
   useGetSpan,
   useListAnnotations,
   useListSpans,
-} from '@nemo/sdk/generated/platform/api';
+} from '@nemo/sdk/generated/intake/api';
 import {
   AnnotationSortField,
   type FeedbackAnnotationInputValue,
   SpanStatus,
   type Trace,
-} from '@nemo/sdk/generated/platform/schema';
+} from '@nemo/sdk/generated/intake/schema';
 import {
   Button,
   Flex,

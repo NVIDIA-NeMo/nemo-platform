@@ -19,7 +19,7 @@ const fernDir = resolve(scriptDir, "..");
 const inputPath = resolve(fernDir, "openapi/openapi.yaml");
 const outputPath = resolve(fernDir, "openapi/openapi.public.yaml");
 
-const gatedPathPrefixes = ["/apis/intake/v2/"];
+const gatedPathPrefixes = [];
 const httpMethods = new Set(["get", "put", "post", "delete", "options", "head", "patch", "trace"]);
 const schemaRefPattern = /#\/components\/schemas\/([^'"\s\]}),]+)/g;
 

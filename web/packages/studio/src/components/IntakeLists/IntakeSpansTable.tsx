@@ -8,13 +8,13 @@ import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { getSortParamWithWhitelist } from '@nemo/common/src/utils/query';
-import { useListSpans } from '@nemo/sdk/generated/platform/api';
+import { useListSpans } from '@nemo/sdk/generated/intake/api';
 import {
   SpanKind,
   type ListSpansMode,
   type SpanFilter,
   type SpanSortField,
-} from '@nemo/sdk/generated/platform/schema';
+} from '@nemo/sdk/generated/intake/schema';
 import { Anchor, Button, Text } from '@nvidia/foundations-react-core';
 import { getErrorMessage } from '@studio/api/common/utils';
 import { IntakeTelemetryStatusBadge } from '@studio/components/IntakeDetail/IntakeComponents/IntakeTelemetryStatusBadge';

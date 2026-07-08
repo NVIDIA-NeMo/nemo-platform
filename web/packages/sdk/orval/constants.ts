@@ -49,6 +49,12 @@ export const serviceConfigs: Record<string, ServiceConfig> = {
     apiEnvKeys: ['VITE_PLATFORM_BASE_URL'],
     zod: true,
   },
+  intake: {
+    path: 'intake',
+    url: `../../../../plugins/nemo-intake/openapi/openapi.yaml`,
+    apiEnvKeys: ['VITE_PLATFORM_BASE_URL'],
+    zod: true,
+  },
 };
 
 export const serviceToConfig = {

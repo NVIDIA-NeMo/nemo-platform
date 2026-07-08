@@ -21,6 +21,8 @@
     "gen:entity-store": "tsx ./orval/generate.ts entity-store",
     "gen:guardrails": "tsx ./orval/generate.ts guardrails",
     "gen:inference-gateway": "tsx ./orval/generate.ts inference-gateway",
+    "gen:intake": "tsx ./orval/generate.ts intake",
+    "gen:intake-zod": "ORVAL_CLIENT=zod tsx ./orval/generate.ts intake",
     "gen:jobs": "tsx ./orval/generate.ts jobs",
     "gen:models": "tsx ./orval/generate.ts models",
     "gen:platform": "tsx ./orval/generate.ts platform",

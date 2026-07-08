@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { formatAbsoluteTimestamp } from '@nemo/common/src/components/RelativeTime/util';
-import type { Trace } from '@nemo/sdk/generated/platform/schema';
+import type { Trace } from '@nemo/sdk/generated/intake/schema';
 import { Flex, Stack, Text, Tooltip } from '@nvidia/foundations-react-core';
 import { IntakeTelemetryStatusBadge } from '@studio/components/IntakeDetail/IntakeComponents/IntakeTelemetryStatusBadge';
 import type { HighlightMetricDetail } from '@studio/components/IntakeDetail/IntakeComponents/keyValueTypes';

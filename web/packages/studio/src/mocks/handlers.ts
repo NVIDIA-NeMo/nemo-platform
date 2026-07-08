@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { EvaluateJob } from '@nemo/sdk/generated/evaluator/schema';
+import type { AnnotationInput } from '@nemo/sdk/generated/intake/schema';
 import {
-  type AnnotationInput,
   HTTPValidationError,
   ModelEntitySortField,
   PlatformJobLogPage,

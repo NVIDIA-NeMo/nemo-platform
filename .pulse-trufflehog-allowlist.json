@@ -896,7 +896,7 @@
       "pas************ord\""
     ]
   },
-  "/app/services/intake/tests/conftest.py": {
+  "/app/plugins/nemo-intake/tests/test_config.py": {
     "Password": [
       "pas*****************ord\""
     ]

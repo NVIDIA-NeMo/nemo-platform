@@ -6,13 +6,13 @@ import {
   listAnnotations,
   useCreateAnnotation,
   useDeleteAnnotation,
-} from '@nemo/sdk/generated/platform/api';
+} from '@nemo/sdk/generated/intake/api';
 import {
   AnnotationKind,
   FeedbackAnnotationInputKind,
   type FeedbackAnnotationInputValue,
   NoteAnnotationInputKind,
-} from '@nemo/sdk/generated/platform/schema';
+} from '@nemo/sdk/generated/intake/schema';
 import { getErrorMessage } from '@studio/api/common/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';

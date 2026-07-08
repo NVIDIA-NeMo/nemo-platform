@@ -46,7 +46,7 @@ EXPERIMENT_NAME = "intake-it-exp"
 RUN_ID = "intake-it-run"
 NAN_EXPERIMENT_NAME = "intake-it-nan-exp"
 NAN_RUN_ID = "intake-it-nan-run"
-CLICKHOUSE_CONTAINER = "nmp-intake-clickhouse"
+CLICKHOUSE_CONTAINER = "nemo-intake-plugin-clickhouse"
 
 
 def _docker_available() -> bool:
@@ -96,7 +96,7 @@ def _clickhouse() -> Iterator[None]:
     if not _docker_available():
         pytest.skip("Docker not available; required for ClickHouse-backed Intake")
     subprocess.run(
-        ["bash", str(REPO_ROOT / "services/intake/scripts/spans/run_clickhouse.sh")],
+        ["bash", str(REPO_ROOT / "plugins/nemo-intake/scripts/spans/run_clickhouse.sh")],
         check=True,
         cwd=REPO_ROOT,
     )

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { SpanKind } from '@nemo/sdk/generated/platform/schema';
+import { SpanKind } from '@nemo/sdk/generated/intake/schema';
 import { Badge } from '@nvidia/foundations-react-core';
 import { getSpanKindConfig } from '@studio/components/SpanKindBadge/spanKindConfig';
 import type { FC } from 'react';

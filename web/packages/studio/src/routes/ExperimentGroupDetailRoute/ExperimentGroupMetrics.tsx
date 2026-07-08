@@ -3,7 +3,7 @@
 
 import { KVPair } from '@nemo/common/src/components/KVPair';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
-import { useGetExperimentGroup } from '@nemo/sdk/generated/platform/api';
+import { useGetExperimentGroup } from '@nemo/sdk/generated/intake/api';
 import { Divider } from '@nvidia/foundations-react-core';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { type FC } from 'react';

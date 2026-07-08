@@ -1,0 +1,3742 @@
+openapi: 3.1.0
+info:
+  title: intake (plugin)
+  version: 0.0.0
+paths:
+  /apis/intake/v2/workspaces/{workspace}/annotations:
+    post:
+      tags:
+      - Annotations
+      summary: Create Annotation
+      operationId: create_annotation_apis_intake_v2_workspaces__workspace__annotations_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnnotationInput'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Annotation'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Annotations
+      summary: List Annotations
+      operationId: list_annotations_apis_intake_v2_workspaces__workspace__annotations_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          description: Page size.
+          default: 10
+          title: Page Size
+        description: Page size.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/AnnotationSortField'
+          default: -created_at
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/AnnotationFilter'
+        description: Filter annotations by span_id, session_id, kind, name, created_by,
+          and created_at range.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnnotationsPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/annotations/{annotation_id}:
+    get:
+      tags:
+      - Annotations
+      summary: Get Annotation
+      operationId: get_annotation_apis_intake_v2_workspaces__workspace__annotations__annotation_id__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: annotation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Annotation Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Annotation'
+        '404':
+          description: Annotation not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Annotations
+      summary: Delete Annotation
+      operationId: delete_annotation_apis_intake_v2_workspaces__workspace__annotations__annotation_id__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: annotation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Annotation Id
+      responses:
+        '204':
+          description: Successful Response
+        '404':
+          description: Annotation not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/evaluator-results:
+    post:
+      tags:
+      - Evaluator Results
+      summary: Create Evaluator Result
+      operationId: create_evaluator_result_apis_intake_v2_workspaces__workspace__evaluator_results_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluatorResultInput'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluatorResult'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Evaluator Results
+      summary: List Evaluator Results
+      operationId: list_evaluator_results_apis_intake_v2_workspaces__workspace__evaluator_results_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          description: Page size.
+          default: 10
+          title: Page Size
+        description: Page size.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/EvaluatorResultSortField'
+          default: -created_at
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/EvaluatorResultFilter'
+        description: Filter evaluator results by span_id, session_id, name, data_type,
+          created_by, value range, and created_at range.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluatorResultsPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/evaluator-results/{evaluator_result_id}:
+    get:
+      tags:
+      - Evaluator Results
+      summary: Get Evaluator Result
+      operationId: get_evaluator_result_apis_intake_v2_workspaces__workspace__evaluator_results__evaluator_result_id__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: evaluator_result_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Evaluator Result Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluatorResult'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/experiment-groups:
+    post:
+      tags:
+      - Experiment Groups
+      summary: Create Experiment Group
+      operationId: create_experiment_group_apis_intake_v2_workspaces__workspace__experiment_groups_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExperimentGroupRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExperimentGroupResponse'
+        '409':
+          description: Experiment group already exists
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Experiment Groups
+      summary: List Experiment Groups
+      operationId: list_experiment_groups_apis_intake_v2_workspaces__workspace__experiment_groups_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          description: Page size.
+          default: 100
+          title: Page Size
+        description: Page size.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          enum:
+          - -created_at
+          - created_at
+          - -updated_at
+          - updated_at
+          - -name
+          - name
+          type: string
+          description: Sort field; prefix with '-' for descending.
+          default: -created_at
+          title: Sort
+        description: Sort field; prefix with '-' for descending.
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/ExperimentGroupFilter'
+        description: Filter experiment groups by name.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExperimentGroupResponsesPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/experiment-groups/{name}:
+    get:
+      tags:
+      - Experiment Groups
+      summary: Get Experiment Group
+      operationId: get_experiment_group_apis_intake_v2_workspaces__workspace__experiment_groups__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExperimentGroupResponse'
+        '404':
+          description: Experiment group not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    put:
+      tags:
+      - Experiment Groups
+      summary: Update Experiment Group
+      operationId: update_experiment_group_apis_intake_v2_workspaces__workspace__experiment_groups__name__put
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExperimentGroupRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExperimentGroupResponse'
+        '404':
+          description: Experiment group not found
+        '409':
+          description: Attempt to rename the group
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Experiment Groups
+      summary: Delete Experiment Group
+      operationId: delete_experiment_group_apis_intake_v2_workspaces__workspace__experiment_groups__name__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '204':
+          description: Successful Response
+        '404':
+          description: Experiment group not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/experiments:
+    post:
+      tags:
+      - Experiments
+      summary: Create Experiment
+      operationId: create_experiment_apis_intake_v2_workspaces__workspace__experiments_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExperimentRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExperimentResponse'
+        '409':
+          description: Experiment already exists
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Experiments
+      summary: List Experiments
+      operationId: list_experiments_apis_intake_v2_workspaces__workspace__experiments_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          description: Page size.
+          default: 100
+          title: Page Size
+        description: Page size.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          description: 'Field to sort by; prefix with ''-'' for descending. Sort by
+            an experiment attribute (name, created_at, updated_at, pinned_at) or by
+            an aggregate metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or
+            evaluators.<name>.<stat>, where <stat> is one of mean, median, p90, p95,
+            p99, sum, count. When omitted, defaults to -created_at with pinned experiments
+            first.'
+          title: Sort
+          type: string
+        description: 'Field to sort by; prefix with ''-'' for descending. Sort by
+          an experiment attribute (name, created_at, updated_at, pinned_at) or by
+          an aggregate metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>,
+          where <stat> is one of mean, median, p90, p95, p99, sum, count. When omitted,
+          defaults to -created_at with pinned experiments first.'
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/ExperimentFilter'
+        description: 'Filter experiments by name, experiment_group_id, dataset_name,
+          dataset_version, created_by, created_at, or updated_at. Pass is_deleted=true
+          to return only soft-deleted experiments; omit to see only live ones. Pass
+          is_pinned=true (or false) to filter by pinned state; omit to return both.
+          Filter by a rollup metric with numeric range operators ($gte/$lte/$gt/$lt/$eq):
+          filter[run_count][$gte]=5, filter[cost_usd.mean][$lte]=0.5, filter[latency_ms.p95][$lte]=1000,
+          or filter[evaluators.<name>.mean][$gte]=0.8.'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExperimentResponsesPage'
+        '400':
+          description: Unsupported sort or filter field
+        '413':
+          description: Too many experiments selected to sort in one request
+        '503':
+          description: Telemetry store unavailable for a metric-based sort or filter
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/experiments/{name}:
+    get:
+      tags:
+      - Experiments
+      summary: Get Experiment
+      operationId: get_experiment_apis_intake_v2_workspaces__workspace__experiments__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExperimentResponse'
+        '404':
+          description: Experiment not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    put:
+      tags:
+      - Experiments
+      summary: Update Experiment
+      operationId: update_experiment_apis_intake_v2_workspaces__workspace__experiments__name__put
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExperimentRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExperimentResponse'
+        '404':
+          description: Experiment not found
+        '409':
+          description: Attempt to change an immutable field
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Experiments
+      summary: Delete Experiment
+      operationId: delete_experiment_apis_intake_v2_workspaces__workspace__experiments__name__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '204':
+          description: Successful Response
+        '404':
+          description: Experiment not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/experiments/{name}/pin:
+    post:
+      tags:
+      - Experiments
+      summary: Pin Experiment
+      description: 'Pin an experiment to the top of the list (workspace-shared).
+
+
+        Re-pinning an already-pinned experiment refreshes ``pinned_at`` to the current
+        timestamp,
+
+        which is intentional (most-recently-pinned sorts first).'
+      operationId: pin_experiment_apis_intake_v2_workspaces__workspace__experiments__name__pin_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExperimentResponse'
+        '404':
+          description: Experiment not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Experiments
+      summary: Unpin Experiment
+      description: 'Unpin an experiment. Idempotent: unpinning an already-unpinned
+        experiment is a no-op.'
+      operationId: unpin_experiment_apis_intake_v2_workspaces__workspace__experiments__name__pin_delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExperimentResponse'
+        '404':
+          description: Experiment not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/experiments/{name}/sessions:
+    get:
+      tags:
+      - Experiments
+      summary: List Experiment Sessions
+      operationId: list_experiment_sessions_apis_intake_v2_workspaces__workspace__experiments__name__sessions_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          description: Page size.
+          default: 100
+          title: Page Size
+        description: Page size.
+      - name: mode
+        in: query
+        required: false
+        schema:
+          enum:
+          - summary
+          - detailed
+          type: string
+          description: Response payload mode. summary keeps the same session row fields
+            but truncates root-span input to 1000 characters; detailed returns the
+            full root-span input.
+          default: detailed
+          title: Mode
+        description: Response payload mode. summary keeps the same session row fields
+          but truncates root-span input to 1000 characters; detailed returns the full
+          root-span input.
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/ExperimentSessionFilter'
+        description: Filter sessions by test_case_id and status.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExperimentSessionResponsesPage'
+        '404':
+          description: Experiment not found
+        '503':
+          description: ClickHouse unavailable
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/ingest/atif:
+    post:
+      tags:
+      - Ingest
+      summary: Ingest Atif
+      operationId: ingest_atif_apis_intake_v2_workspaces__workspace__ingest_atif_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AtifIngestRequest'
+      responses:
+        '201':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/ingest/chat-completions:
+    post:
+      tags:
+      - Ingest
+      summary: Ingest Chat Completion
+      operationId: ingest_chat_completion_apis_intake_v2_workspaces__workspace__ingest_chat_completions_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatCompletionsIngestRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatCompletionsIngestResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/ingest/otlp/v1/traces:
+    post:
+      tags:
+      - Ingest
+      summary: Ingest Otlp Traces
+      operationId: ingest_otlp_traces_apis_intake_v2_workspaces__workspace__ingest_otlp_v1_traces_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: content-type
+        in: header
+        required: false
+        schema:
+          type: string
+          default: application/octet-stream
+          title: Content-Type
+      - name: content-length
+        in: header
+        required: false
+        schema:
+          title: Content-Length
+          type: integer
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/spans:
+    get:
+      tags:
+      - Spans
+      summary: List Spans
+      operationId: list_spans_apis_intake_v2_workspaces__workspace__spans_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          description: Page size.
+          default: 10
+          title: Page Size
+        description: Page size.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/SpanSortField'
+          default: -started_at
+      - name: mode
+        in: query
+        required: false
+        schema:
+          enum:
+          - summary
+          - detailed
+          type: string
+          default: detailed
+          title: Mode
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/SpanFilter'
+        description: Filter spans by session_id, trace_id, parent_span_id, project,
+          evaluation context fields, source, kind, status, model, tool_name, provider,
+          agent_id, agent_name, prompt_name, prompt_version, and started_at.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpansPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/spans/groups:
+    get:
+      tags:
+      - Spans
+      summary: List Span Groups
+      operationId: list_span_groups_apis_intake_v2_workspaces__workspace__spans_groups_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: by
+        in: query
+        required: true
+        schema:
+          type: string
+          description: Comma-separated span fields to group by, e.g. trace_id or session_id,trace_id.
+          title: By
+        description: Comma-separated span fields to group by, e.g. trace_id or session_id,trace_id.
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          description: Page size.
+          default: 10
+          title: Page Size
+        description: Page size.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/SpanGroupSortField'
+          default: -span_count
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/SpanFilter'
+        description: Filter spans by the same fields as the span list endpoint, then
+          group matching spans by the comma-separated fields in the by query parameter.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpanGroupsPage'
+        '400':
+          description: Invalid group-by parameter
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+                required:
+                - detail
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/spans/{span_id}:
+    get:
+      tags:
+      - Spans
+      summary: Get Span
+      operationId: get_span_apis_intake_v2_workspaces__workspace__spans__span_id__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: span_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Span Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Span'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/spans/{span_id}/evaluator-results:
+    get:
+      tags:
+      - Evaluator Results
+      summary: List Evaluator Results For Span
+      operationId: list_evaluator_results_for_span_apis_intake_v2_workspaces__workspace__spans__span_id__evaluator_results_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: span_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Span Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EvaluatorResult'
+                title: Response List Evaluator Results For Span Apis Intake V2 Workspaces  Workspace  Spans  Span
+                  Id  Evaluator Results Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/traces:
+    get:
+      tags:
+      - Traces
+      summary: List Traces
+      operationId: list_traces_apis_intake_v2_workspaces__workspace__traces_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          description: Page size.
+          default: 10
+          title: Page Size
+        description: Page size.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/TraceSortField'
+          default: -started_at
+      - name: mode
+        in: query
+        required: false
+        schema:
+          enum:
+          - summary
+          - detailed
+          type: string
+          description: Use summary for root-span trace fields only, or detailed to
+            include token, cost, and span-count rollups.
+          default: detailed
+          title: Mode
+        description: Use summary for root-span trace fields only, or detailed to include
+          token, cost, and span-count rollups.
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/TraceFilter'
+        description: Filter root-span-backed traces by id, session_id, root status,
+          root span started_at, experiment_id, and test_case_id.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TracesPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/traces/{id}:
+    get:
+      tags:
+      - Traces
+      summary: Get Trace
+      operationId: get_trace_apis_intake_v2_workspaces__workspace__traces__id__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Id
+      - name: mode
+        in: query
+        required: false
+        schema:
+          enum:
+          - summary
+          - detailed
+          type: string
+          description: Use summary for root-span trace fields only, or detailed to
+            include token, cost, and span-count rollups.
+          default: detailed
+          title: Mode
+        description: Use summary for root-span trace fields only, or detailed to include
+          token, cost, and span-count rollups.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Trace'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    Annotation:
+      oneOf:
+      - $ref: '#/components/schemas/FeedbackAnnotation'
+      - $ref: '#/components/schemas/NoteAnnotation'
+      - $ref: '#/components/schemas/MetadataAnnotation'
+      - $ref: '#/components/schemas/LabelAnnotation'
+      title: Annotation
+      description: Discriminated annotation read response. The shape varies by `kind`.
+      discriminator:
+        propertyName: kind
+        mapping:
+          feedback: '#/components/schemas/FeedbackAnnotation'
+          label: '#/components/schemas/LabelAnnotation'
+          metadata: '#/components/schemas/MetadataAnnotation'
+          note: '#/components/schemas/NoteAnnotation'
+    AnnotationFilter:
+      additionalProperties: false
+      properties:
+        span_id:
+          description: Return only annotations attached to this span.
+          title: Span Id
+          type: string
+        session_id:
+          description: Return only annotations attached to this session.
+          title: Session Id
+          type: string
+        kind:
+          allOf:
+          - $ref: '#/components/schemas/AnnotationKind'
+          description: Return only annotations of this kind (`feedback`, `note`, `label`,
+            or `metadata`).
+        name:
+          description: Return only `label` annotations with this `name` (e.g., `severity`,
+            `helpfulness`).
+          title: Name
+          type: string
+        value_text:
+          description: Return only annotations with this text value. For `feedback`
+            annotations this is `positive` or `negative`; for `label` annotations
+            with `value_type=text` this is the label's value.
+          title: Value Text
+          type: string
+        value_numeric:
+          allOf:
+          - $ref: '#/components/schemas/NumericFilter'
+          description: Return only `label` annotations whose numeric value falls within
+            the given range. Applies to labels with `value_type=numeric`.
+        created_by:
+          description: Return only annotations created by this user.
+          title: Created By
+          type: string
+        created_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Return only annotations created within the given time range.
+      title: AnnotationFilter
+      type: object
+    AnnotationInput:
+      oneOf:
+      - $ref: '#/components/schemas/FeedbackAnnotationInput'
+      - $ref: '#/components/schemas/NoteAnnotationInput'
+      - $ref: '#/components/schemas/MetadataAnnotationInput'
+      - $ref: '#/components/schemas/LabelAnnotationInput'
+      title: AnnotationInput
+      description: Discriminated annotation create body. The shape varies by `kind`.
+      discriminator:
+        propertyName: kind
+        mapping:
+          feedback: '#/components/schemas/FeedbackAnnotationInput'
+          label: '#/components/schemas/LabelAnnotationInput'
+          metadata: '#/components/schemas/MetadataAnnotationInput'
+          note: '#/components/schemas/NoteAnnotationInput'
+    AnnotationKind:
+      enum:
+      - feedback
+      - label
+      - note
+      - metadata
+      title: AnnotationKind
+      type: string
+    AnnotationSortField:
+      type: string
+      enum:
+      - created_at
+      - -created_at
+      title: AnnotationSortField
+    AnnotationsPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/Annotation'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: AnnotationsPage
+    AtifAgent:
+      properties:
+        name:
+          type: string
+          title: Name
+        version:
+          type: string
+          title: Version
+        model_name:
+          title: Model Name
+          type: string
+        tool_definitions:
+          title: Tool Definitions
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+        extra:
+          title: Extra
+          additionalProperties: true
+          type: object
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      - version
+      title: AtifAgent
+    AtifContentPart:
+      oneOf:
+      - $ref: '#/components/schemas/AtifContentPartText'
+      - $ref: '#/components/schemas/AtifContentPartImage'
+      discriminator:
+        propertyName: type
+        mapping:
+          image: '#/components/schemas/AtifContentPartImage'
+          text: '#/components/schemas/AtifContentPartText'
+      title: AtifContentPart
+    AtifContentPartImage:
+      properties:
+        type:
+          type: string
+          const: image
+          title: Type
+        source:
+          $ref: '#/components/schemas/AtifImageSource'
+      additionalProperties: false
+      type: object
+      required:
+      - type
+      - source
+      title: AtifContentPartImage
+    AtifContentPartText:
+      properties:
+        type:
+          type: string
+          const: text
+          title: Type
+        text:
+          type: string
+          title: Text
+      additionalProperties: false
+      type: object
+      required:
+      - type
+      - text
+      title: AtifContentPartText
+    AtifFinalMetrics:
+      properties:
+        total_prompt_tokens:
+          title: Total Prompt Tokens
+          type: integer
+        total_completion_tokens:
+          title: Total Completion Tokens
+          type: integer
+        total_cached_tokens:
+          title: Total Cached Tokens
+          type: integer
+        total_cost_usd:
+          title: Total Cost Usd
+          type: number
+        total_steps:
+          title: Total Steps
+          type: integer
+          minimum: 0.0
+        extra:
+          title: Extra
+          additionalProperties: true
+          type: object
+      additionalProperties: false
+      type: object
+      title: AtifFinalMetrics
+    AtifImageSource:
+      properties:
+        media_type:
+          type: string
+          enum:
+          - image/jpeg
+          - image/png
+          - image/gif
+          - image/webp
+          title: Media Type
+        path:
+          type: string
+          title: Path
+      additionalProperties: false
+      type: object
+      required:
+      - media_type
+      - path
+      title: AtifImageSource
+    AtifIngestRequest:
+      properties:
+        experiment_context:
+          $ref: '#/components/schemas/ExperimentContext'
+        evaluation_context:
+          allOf:
+          - $ref: '#/components/schemas/EvaluationContext'
+          description: Deprecated. Use experiment_context; when both are sent, experiment_context
+            takes precedence.
+          deprecated: true
+        schema_version:
+          type: string
+          enum:
+          - ATIF-v1.0
+          - ATIF-v1.1
+          - ATIF-v1.2
+          - ATIF-v1.3
+          - ATIF-v1.4
+          - ATIF-v1.5
+          - ATIF-v1.6
+          - ATIF-v1.7
+          title: Schema Version
+        session_id:
+          title: Session Id
+          type: string
+        agent:
+          $ref: '#/components/schemas/AtifAgent'
+        final_metrics:
+          $ref: '#/components/schemas/AtifFinalMetrics'
+        continued_trajectory_ref:
+          title: Continued Trajectory Ref
+          type: string
+        notes:
+          title: Notes
+          type: string
+        extra:
+          title: Extra
+          additionalProperties: true
+          type: object
+        steps:
+          items:
+            $ref: '#/components/schemas/AtifStep'
+          type: array
+          title: Steps
+      additionalProperties: false
+      type: object
+      required:
+      - schema_version
+      - agent
+      title: AtifIngestRequest
+      description: 'Span-based ATIF ingest request.
+
+
+        ATIF project scoping is intentionally not accepted here; use the workspace
+
+        route and ``experiment_context`` for experiment identity.'
+    AtifMetrics:
+      properties:
+        prompt_tokens:
+          title: Prompt Tokens
+          type: integer
+        completion_tokens:
+          title: Completion Tokens
+          type: integer
+        cached_tokens:
+          title: Cached Tokens
+          type: integer
+        cost_usd:
+          title: Cost Usd
+          type: number
+        prompt_token_ids:
+          title: Prompt Token Ids
+          items:
+            type: integer
+          type: array
+        completion_token_ids:
+          title: Completion Token Ids
+          items:
+            type: integer
+          type: array
+        logprobs:
+          title: Logprobs
+          items:
+            type: number
+          type: array
+        extra:
+          title: Extra
+          additionalProperties: true
+          type: object
+      additionalProperties: false
+      type: object
+      title: AtifMetrics
+    AtifObservation:
+      properties:
+        results:
+          items:
+            $ref: '#/components/schemas/AtifObservationResult'
+          type: array
+          title: Results
+      additionalProperties: false
+      type: object
+      title: AtifObservation
+    AtifObservationResult:
+      properties:
+        source_call_id:
+          title: Source Call Id
+          type: string
+        content:
+          anyOf:
+          - type: string
+          - items:
+              $ref: '#/components/schemas/AtifContentPart'
+            type: array
+          title: Content
+        subagent_trajectory_ref:
+          title: Subagent Trajectory Ref
+          items:
+            $ref: '#/components/schemas/AtifSubagentTrajectoryRef'
+          type: array
+        extra:
+          title: Extra
+          additionalProperties: true
+          type: object
+      additionalProperties: false
+      type: object
+      title: AtifObservationResult
+    AtifStep:
+      oneOf:
+      - $ref: '#/components/schemas/AtifStepSystem'
+      - $ref: '#/components/schemas/AtifStepUser'
+      - $ref: '#/components/schemas/AtifStepAgent'
+      discriminator:
+        propertyName: source
+        mapping:
+          agent: '#/components/schemas/AtifStepAgent'
+          system: '#/components/schemas/AtifStepSystem'
+          user: '#/components/schemas/AtifStepUser'
+      title: AtifStep
+    AtifStepAgent:
+      properties:
+        step_id:
+          type: integer
+          minimum: 1.0
+          title: Step Id
+        timestamp:
+          format: date-time
+          title: Timestamp
+          type: string
+        message:
+          anyOf:
+          - type: string
+          - items:
+              $ref: '#/components/schemas/AtifContentPart'
+            type: array
+          title: Message
+          default: ''
+        is_copied_context:
+          title: Is Copied Context
+          type: boolean
+        extra:
+          title: Extra
+          additionalProperties: true
+          type: object
+        llm_call_count:
+          title: Llm Call Count
+          type: integer
+          minimum: 0.0
+        source:
+          type: string
+          const: agent
+          title: Source
+        model_name:
+          title: Model Name
+          type: string
+        reasoning_effort:
+          anyOf:
+          - type: string
+          - type: number
+          title: Reasoning Effort
+        reasoning_content:
+          title: Reasoning Content
+          type: string
+        tool_calls:
+          title: Tool Calls
+          items:
+            $ref: '#/components/schemas/AtifToolCall'
+          type: array
+        observation:
+          $ref: '#/components/schemas/AtifObservation'
+        metrics:
+          $ref: '#/components/schemas/AtifMetrics'
+      additionalProperties: false
+      type: object
+      required:
+      - step_id
+      - source
+      title: AtifStepAgent
+    AtifStepSystem:
+      properties:
+        step_id:
+          type: integer
+          minimum: 1.0
+          title: Step Id
+        timestamp:
+          format: date-time
+          title: Timestamp
+          type: string
+        message:
+          anyOf:
+          - type: string
+          - items:
+              $ref: '#/components/schemas/AtifContentPart'
+            type: array
+          title: Message
+          default: ''
+        is_copied_context:
+          title: Is Copied Context
+          type: boolean
+        extra:
+          title: Extra
+          additionalProperties: true
+          type: object
+        llm_call_count:
+          title: Llm Call Count
+          type: integer
+          minimum: 0.0
+        source:
+          type: string
+          const: system
+          title: Source
+      additionalProperties: false
+      type: object
+      required:
+      - step_id
+      - source
+      title: AtifStepSystem
+    AtifStepUser:
+      properties:
+        step_id:
+          type: integer
+          minimum: 1.0
+          title: Step Id
+        timestamp:
+          format: date-time
+          title: Timestamp
+          type: string
+        message:
+          anyOf:
+          - type: string
+          - items:
+              $ref: '#/components/schemas/AtifContentPart'
+            type: array
+          title: Message
+          default: ''
+        is_copied_context:
+          title: Is Copied Context
+          type: boolean
+        extra:
+          title: Extra
+          additionalProperties: true
+          type: object
+        llm_call_count:
+          title: Llm Call Count
+          type: integer
+          minimum: 0.0
+        source:
+          type: string
+          const: user
+          title: Source
+      additionalProperties: false
+      type: object
+      required:
+      - step_id
+      - source
+      title: AtifStepUser
+    AtifSubagentTrajectoryRef:
+      anyOf:
+      - required:
+        - trajectory_id
+      - required:
+        - trajectory_path
+      - required:
+        - session_id
+      properties:
+        trajectory_id:
+          title: Trajectory Id
+          type: string
+        trajectory_path:
+          title: Trajectory Path
+          type: string
+        session_id:
+          title: Session Id
+          type: string
+        extra:
+          title: Extra
+          additionalProperties: true
+          type: object
+      additionalProperties: false
+      type: object
+      title: AtifSubagentTrajectoryRef
+    AtifToolCall:
+      properties:
+        tool_call_id:
+          type: string
+          title: Tool Call Id
+        function_name:
+          type: string
+          title: Function Name
+        arguments:
+          additionalProperties: true
+          type: object
+          title: Arguments
+      additionalProperties: false
+      type: object
+      required:
+      - tool_call_id
+      - function_name
+      title: AtifToolCall
+    CapturedChatCompletionsRequest:
+      properties:
+        messages:
+          items:
+            $ref: '#/components/schemas/CapturedChatMessage'
+          type: array
+          title: Messages
+          description: Messages comprising the conversation.
+        model:
+          type: string
+          title: Model
+          description: The model identifier used for this request.
+      additionalProperties: true
+      type: object
+      required:
+      - messages
+      - model
+      title: CapturedChatCompletionsRequest
+      description: Flexible captured chat-completions request.
+    CapturedChatCompletionsResponse:
+      oneOf:
+      - required:
+        - choices
+      - required:
+        - error
+      properties:
+        choices:
+          title: Choices
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+        error:
+          title: Error
+          additionalProperties: true
+          type: object
+      additionalProperties: true
+      type: object
+      title: CapturedChatCompletionsResponse
+      description: Flexible captured chat-completions response.
+    CapturedChatMessage:
+      properties:
+        role:
+          allOf:
+          - $ref: '#/components/schemas/ChatMessageRole'
+          description: The role of the message sender.
+      additionalProperties: true
+      type: object
+      required:
+      - role
+      title: CapturedChatMessage
+      description: A flexible message model that requires a valid role field but allows
+        provider-specific fields.
+    ChatCompletionsIngestRequest:
+      properties:
+        experiment_context:
+          $ref: '#/components/schemas/ExperimentContext'
+        evaluation_context:
+          allOf:
+          - $ref: '#/components/schemas/EvaluationContext'
+          description: Deprecated. Use experiment_context; when both are sent, experiment_context
+            takes precedence.
+          deprecated: true
+        request:
+          $ref: '#/components/schemas/CapturedChatCompletionsRequest'
+        response:
+          $ref: '#/components/schemas/CapturedChatCompletionsResponse'
+        session_id:
+          title: Session Id
+          description: Groups related chat-completions calls without forcing them
+            into the same trace.
+          type: string
+        trace_id:
+          title: Trace Id
+          description: Opt into joining an existing trace built via OTel or ATIF.
+            This is not a grouping mechanism for chat-completions calls; use session_id
+            to group related calls.
+          type: string
+        provider:
+          title: Provider
+          type: string
+        cost_usd:
+          title: Cost Usd
+          description: Total estimated cost of this model call in USD. This matches
+            ATIF step metrics; Intake stores it as semantic cost_total_usd on spans.
+          type: number
+          minimum: 0.0
+        cost_input_usd:
+          title: Cost Input Usd
+          description: Estimated input-token cost of this model call in USD.
+          type: number
+          minimum: 0.0
+        cost_output_usd:
+          title: Cost Output Usd
+          description: Estimated output-token cost of this model call in USD.
+          type: number
+          minimum: 0.0
+        cost_details:
+          additionalProperties:
+            type: number
+            minimum: 0.0
+          type: object
+          title: Cost Details
+          description: Additional estimated cost breakdown fields in USD.
+      additionalProperties: false
+      type: object
+      required:
+      - request
+      - response
+      title: ChatCompletionsIngestRequest
+    ChatCompletionsIngestResponse:
+      properties:
+        session_id:
+          type: string
+          title: Session Id
+        span_id:
+          type: string
+          title: Span Id
+      type: object
+      required:
+      - session_id
+      - span_id
+      title: ChatCompletionsIngestResponse
+    ChatMessageRole:
+      type: string
+      enum:
+      - user
+      - system
+      - assistant
+      - developer
+      - tool
+      - function
+      title: ChatMessageRole
+      description: Valid role values for captured chat-completions messages.
+    DatetimeFilter:
+      additionalProperties: false
+      properties:
+        $gte:
+          description: Filter for results greater than or equal to this datetime.
+          title: $Gte
+          format: date-time
+          type: string
+        $lte:
+          description: Filter for results less than or equal to this datetime.
+          title: $Lte
+          format: date-time
+          type: string
+      title: DatetimeFilter
+      type: object
+    EvaluationContext:
+      properties:
+        evaluation_id:
+          title: Evaluation Id
+          type: string
+        evaluation_sha:
+          title: Evaluation Sha
+          type: string
+        evaluation_run_id:
+          title: Evaluation Run Id
+          type: string
+        test_case_id:
+          title: Test Case Id
+          type: string
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      additionalProperties: false
+      type: object
+      title: EvaluationContext
+    EvaluatorAggregate:
+      properties:
+        sum:
+          title: Sum
+          type: number
+        mean:
+          title: Mean
+          type: number
+        median:
+          title: Median
+          type: number
+        p90:
+          title: P90
+          type: number
+        p95:
+          title: P95
+          type: number
+        p99:
+          title: P99
+          type: number
+        count:
+          type: integer
+          title: Count
+          default: 0
+      type: object
+      title: EvaluatorAggregate
+      description: Aggregate statistics over evaluator scores or session-level metric
+        values.
+    EvaluatorResult:
+      properties:
+        evaluator_result_id:
+          type: string
+          title: Evaluator Result Id
+        span_id:
+          type: string
+          title: Span Id
+        session_id:
+          type: string
+          title: Session Id
+        workspace:
+          type: string
+          title: Workspace
+        name:
+          type: string
+          title: Name
+        value:
+          title: Value
+          type: number
+        string_value:
+          title: String Value
+          type: string
+        data_type:
+          $ref: '#/components/schemas/EvaluatorResultDataType'
+        comment:
+          title: Comment
+          type: string
+        created_by:
+          title: Created By
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        ingested_at:
+          type: string
+          format: date-time
+          title: Ingested At
+      type: object
+      required:
+      - evaluator_result_id
+      - span_id
+      - session_id
+      - workspace
+      - name
+      - data_type
+      - created_at
+      - ingested_at
+      title: EvaluatorResult
+      description: Response model for evaluator_results read endpoints.
+    EvaluatorResultDataType:
+      type: string
+      enum:
+      - NUMERIC
+      - CATEGORICAL
+      - BOOLEAN
+      - TEXT
+      title: EvaluatorResultDataType
+    EvaluatorResultFilter:
+      properties:
+        span_id:
+          description: Filter by target span id.
+          title: Span Id
+          type: string
+        session_id:
+          description: Filter by target session id.
+          title: Session Id
+          type: string
+        name:
+          description: Filter by evaluator/metric name.
+          title: Name
+          type: string
+        data_type:
+          allOf:
+          - $ref: '#/components/schemas/EvaluatorResultDataType'
+          description: Filter by data_type.
+        created_by:
+          description: Filter by principal/system that wrote the row.
+          title: Created By
+          type: string
+        value:
+          allOf:
+          - $ref: '#/components/schemas/FloatFilter'
+          description: Filter by numeric value (range supported).
+        created_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Filter by row creation time (range supported).
+      title: EvaluatorResultFilter
+      type: object
+    EvaluatorResultInput:
+      properties:
+        span_id:
+          type: string
+          title: Span Id
+          description: Target span id. Not validated against existing spans (loose
+            target policy).
+        session_id:
+          type: string
+          title: Session Id
+          description: Session id the target span belongs to. Denormalized so session-scoped
+            reads stay fast.
+        name:
+          type: string
+          title: Name
+          description: Evaluator / metric identity (e.g. 'faithfulness/v1').
+        value:
+          title: Value
+          description: Numeric value. Required when data_type is NUMERIC or BOOLEAN
+            (0|1).
+          type: number
+        string_value:
+          title: String Value
+          description: String value. Required when data_type is CATEGORICAL or TEXT.
+          type: string
+        data_type:
+          allOf:
+          - $ref: '#/components/schemas/EvaluatorResultDataType'
+          description: Discriminator for which of value / string_value carries the
+            payload.
+        comment:
+          title: Comment
+          description: Free-text rationale or explanation.
+          type: string
+      additionalProperties: false
+      type: object
+      required:
+      - span_id
+      - session_id
+      - name
+      - data_type
+      title: EvaluatorResultInput
+      description: "Request body for POST /evaluator-results.\n\nServer fills in `evaluator_result_id`,\
+        \ `created_at`, `ingested_at`, and\n`created_by`. Producer supplies the target\
+        \ span (loose target \u2014 not\nvalidated against the spans table), the score,\
+        \ and provenance."
+    EvaluatorResultSortField:
+      type: string
+      enum:
+      - created_at
+      - -created_at
+      - value
+      - -value
+      title: EvaluatorResultSortField
+    EvaluatorResultsPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/EvaluatorResult'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: EvaluatorResultsPage
+    ExperimentContext:
+      properties:
+        experiment_id:
+          type: string
+          title: Experiment Id
+          description: Name of an existing Experiment entity.
+        test_case_id:
+          title: Test Case Id
+          description: Optional producer-supplied test case id.
+          type: string
+      additionalProperties: false
+      type: object
+      required:
+      - experiment_id
+      title: ExperimentContext
+      description: Experiment context accepted by ingest endpoints.
+    ExperimentFilter:
+      additionalProperties: false
+      description: Filter for listing Experiments.
+      properties:
+        name:
+          description: Filter experiments by name.
+          title: Name
+          type: string
+        experiment_group_id:
+          description: Filter experiments by owning group id.
+          title: Experiment Group Id
+          type: string
+        dataset_name:
+          description: Filter experiments by dataset name.
+          title: Dataset Name
+          type: string
+        dataset_version:
+          description: Filter experiments by dataset version.
+          title: Dataset Version
+          type: string
+        created_by:
+          description: Filter experiments by the principal that created them.
+          title: Created By
+          type: string
+        created_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Filter experiments by creation timestamp; supports `$gte` and
+            `$lte` for ranges.
+        updated_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Filter experiments by last-updated timestamp; supports `$gte`
+            and `$lte` for ranges.
+        is_deleted:
+          description: When true, returns only soft-deleted experiments. Omit (or
+            false) to see only live experiments.
+          title: Is Deleted
+          type: boolean
+        is_pinned:
+          description: When true, returns only pinned experiments. When false, returns
+            only unpinned experiments. Omit to return both.
+          title: Is Pinned
+          type: boolean
+        run_count:
+          allOf:
+          - $ref: '#/components/schemas/NumberFilter'
+          description: Filter by run count, e.g. filter[run_count][$gte]=5.
+        cost_usd:
+          allOf:
+          - $ref: '#/components/schemas/MetricStatFilters'
+          description: Filter by a cost_usd rollup stat, e.g. filter[cost_usd.mean][$lte]=0.5.
+        latency_ms:
+          allOf:
+          - $ref: '#/components/schemas/MetricStatFilters'
+          description: Filter by a latency_ms rollup stat, e.g. filter[latency_ms.p95][$lte]=1000.
+        evaluators:
+          description: Filter by an evaluator rollup stat, e.g. filter[evaluators.<name>.mean][$gte]=0.8.
+          title: Evaluators
+          additionalProperties:
+            $ref: '#/components/schemas/MetricStatFilters'
+          type: object
+      title: ExperimentFilter
+      type: object
+    ExperimentGroupFilter:
+      additionalProperties: false
+      description: Filter for listing ExperimentGroups.
+      properties:
+        name:
+          description: Filter groups by name.
+          title: Name
+          type: string
+        is_deleted:
+          description: When true, returns only soft-deleted groups. Omit (or false)
+            to see only live groups.
+          title: Is Deleted
+          type: boolean
+      title: ExperimentGroupFilter
+      type: object
+    ExperimentGroupRequest:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: Workspace-unique group name.
+        description:
+          title: Description
+          description: Human-readable purpose of the group.
+          type: string
+        insight_id:
+          title: Insight Id
+          description: Reference to an external insight that seeded this group, if
+            any.
+          type: string
+        summary:
+          title: Summary
+          description: Human- or agent-authored summary of the group's findings.
+          type: string
+        metadata:
+          title: Metadata
+          description: Free-form producer metadata for the group.
+          additionalProperties: true
+          type: object
+        default_sort:
+          type: string
+          title: Default Sort
+          description: Default sort for this group's experiments list, as a `sort`-param
+            string (leading '-' = descending); defaults to '-created_at'. Accepts
+            any field the experiments list `sort` param does; clients apply it as
+            the list `sort` param.
+          default: -created_at
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      title: ExperimentGroupRequest
+      description: Request body for creating an ExperimentGroup.
+    ExperimentGroupResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+        name:
+          type: string
+          title: Name
+        workspace:
+          type: string
+          title: Workspace
+        description:
+          title: Description
+          type: string
+        insight_id:
+          title: Insight Id
+          type: string
+        summary:
+          title: Summary
+          type: string
+        metadata:
+          title: Metadata
+          additionalProperties: true
+          type: object
+        default_sort:
+          type: string
+          title: Default Sort
+        created_at:
+          title: Created At
+          type: string
+          format: date-time
+        updated_at:
+          title: Updated At
+          type: string
+          format: date-time
+        experiment_count:
+          type: integer
+          title: Experiment Count
+          description: Number of live (non-soft-deleted) experiments in this group.
+          default: 0
+      type: object
+      required:
+      - id
+      - name
+      - workspace
+      - default_sort
+      title: ExperimentGroupResponse
+      description: ExperimentGroup as served by the API.
+    ExperimentGroupResponsesPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/ExperimentGroupResponse'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: ExperimentGroupResponsesPage
+    ExperimentRequest:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: Producer-supplied, workspace-unique experiment id.
+        experiment_group_id:
+          type: string
+          title: Experiment Group Id
+          description: "Entity id of the owning ExperimentGroup. Required \u2014 the\
+            \ group must already exist."
+        dataset_name:
+          type: string
+          title: Dataset Name
+          description: Producer-supplied dataset name.
+        dataset_version:
+          title: Dataset Version
+          description: Producer-supplied dataset version.
+          type: string
+        source_link:
+          title: Source Link
+          description: Optional URL for the source experiment.
+          type: string
+          minLength: 1
+          format: uri
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+          description: Free-form producer metadata.
+        description:
+          title: Description
+          description: Human-readable description.
+          type: string
+        parent_experiment_id:
+          title: Parent Experiment Id
+          description: Entity id of the experiment this one was derived from (e.g.
+            a variant of a baseline), if any.
+          type: string
+        status:
+          title: Status
+          description: Producer-defined lifecycle status of the experiment.
+          type: string
+        root_cause:
+          title: Root Cause
+          description: Human- or agent-authored explanation of the experiment's outcome
+            (e.g. why it was killed).
+          type: string
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      - experiment_group_id
+      - dataset_name
+      title: ExperimentRequest
+      description: Request body for creating an Experiment.
+    ExperimentResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+        name:
+          type: string
+          title: Name
+        workspace:
+          type: string
+          title: Workspace
+        experiment_group_id:
+          type: string
+          title: Experiment Group Id
+          description: Entity id of the owning ExperimentGroup. Required for every
+            Experiment.
+        dataset_name:
+          type: string
+          title: Dataset Name
+        dataset_version:
+          title: Dataset Version
+          type: string
+        source_link:
+          title: Source Link
+          type: string
+          minLength: 1
+          format: uri
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+        description:
+          title: Description
+          type: string
+        parent_experiment_id:
+          title: Parent Experiment Id
+          type: string
+        status:
+          title: Status
+          type: string
+        root_cause:
+          title: Root Cause
+          type: string
+        created_at:
+          title: Created At
+          type: string
+          format: date-time
+        updated_at:
+          title: Updated At
+          type: string
+          format: date-time
+        pinned_at:
+          title: Pinned At
+          description: Timestamp at which the experiment was pinned, or null if unpinned.
+            Managed via POST/DELETE /experiments/{name}/pin.
+          nullable: true
+          type: string
+          format: date-time
+        evaluator_names:
+          items:
+            type: string
+          type: array
+          title: Evaluator Names
+        model_names:
+          items:
+            type: string
+          type: array
+          uniqueItems: true
+          title: Model Names
+          description: Distinct model names observed across ingested sessions for
+            this experiment.
+        agent_names:
+          items:
+            type: string
+          type: array
+          uniqueItems: true
+          title: Agent Names
+          description: Distinct agent names observed across ingested sessions for
+            this experiment.
+        agent_versions:
+          items:
+            type: string
+          type: array
+          uniqueItems: true
+          title: Agent Versions
+          description: Distinct agent versions observed across ingested sessions for
+            this experiment.
+        aggregate_scores:
+          title: Aggregate Scores
+          additionalProperties:
+            $ref: '#/components/schemas/EvaluatorAggregate'
+          type: object
+        run_count:
+          type: integer
+          title: Run Count
+          description: Number of distinct ingested experiment sessions; one session
+            is treated as one run.
+          default: 0
+        cost_usd:
+          $ref: '#/components/schemas/EvaluatorAggregate'
+        latency_ms:
+          $ref: '#/components/schemas/EvaluatorAggregate'
+      type: object
+      required:
+      - id
+      - name
+      - workspace
+      - experiment_group_id
+      - dataset_name
+      title: ExperimentResponse
+      description: Experiment as served by the API, including ClickHouse-hydrated
+        rollups.
+    ExperimentResponsesPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/ExperimentResponse'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: ExperimentResponsesPage
+    ExperimentSessionFilter:
+      additionalProperties: false
+      description: Filter for listing ExperimentSessions.
+      properties:
+        test_case_id:
+          description: Filter by producer-supplied test case id.
+          title: Test Case Id
+          type: string
+        status:
+          description: Filter by root-span status (success, error, cancelled, unknown).
+          title: Status
+          type: string
+      title: ExperimentSessionFilter
+      type: object
+    ExperimentSessionResponse:
+      properties:
+        workspace:
+          type: string
+          title: Workspace
+        experiment_name:
+          type: string
+          title: Experiment Name
+        session_id:
+          type: string
+          title: Session Id
+        test_case_id:
+          title: Test Case Id
+          description: Producer-supplied test case identifier; null when the producer
+            did not set one.
+          type: string
+        trace_id:
+          type: string
+          title: Trace Id
+        root_span_id:
+          type: string
+          title: Root Span Id
+        started_at:
+          type: string
+          format: date-time
+          title: Started At
+        ended_at:
+          title: Ended At
+          type: string
+          format: date-time
+        latency_ms:
+          title: Latency Ms
+          type: number
+        status:
+          allOf:
+          - $ref: '#/components/schemas/SpanStatus'
+          description: 'Root-span status: success, error, cancelled, or unknown.'
+        input:
+          title: Input
+          description: Root-span input text. In summary mode this is truncated to
+            1000 characters.
+          type: string
+        input_tokens:
+          title: Input Tokens
+          description: Sum of input tokens across this session's spans.
+          type: integer
+        output_tokens:
+          title: Output Tokens
+          description: Sum of output tokens across this session's spans.
+          type: integer
+        cached_tokens:
+          title: Cached Tokens
+          description: Sum of cached tokens across this session's spans.
+          type: integer
+        cost_total_usd:
+          title: Cost Total Usd
+          description: Sum of cost across this session's spans.
+          type: number
+        evaluator_scores:
+          additionalProperties:
+            type: number
+          type: object
+          title: Evaluator Scores
+          description: Per-evaluator session-mean score. Includes NUMERIC and BOOLEAN
+            evaluator results only; text/categorical results are omitted.
+      type: object
+      required:
+      - workspace
+      - experiment_name
+      - session_id
+      - trace_id
+      - root_span_id
+      - started_at
+      - status
+      title: ExperimentSessionResponse
+      description: "One ingested session of an Experiment \u2014 a single test case\
+        \ execution.\n\nHydrated from ClickHouse at read time by reading root/session\
+        \ membership from\n``trace_index`` and joining page-bounded span/evaluator\
+        \ rollups."
+    ExperimentSessionResponsesPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/ExperimentSessionResponse'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: ExperimentSessionResponsesPage
+    FeedbackAnnotation:
+      properties:
+        annotation_id:
+          type: string
+          title: Annotation Id
+        workspace:
+          type: string
+          title: Workspace
+        span_id:
+          title: Span Id
+          description: Id of the span this annotation applies to, or omitted for session-level
+            annotations.
+          type: string
+        session_id:
+          type: string
+          title: Session Id
+        created_by:
+          title: Created By
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        ingested_at:
+          type: string
+          format: date-time
+          title: Ingested At
+        kind:
+          type: string
+          const: feedback
+          title: Kind
+          description: Discriminator. Always `feedback` for this variant.
+        value:
+          type: string
+          enum:
+          - positive
+          - negative
+          title: Value
+          description: Sentiment of the feedback.
+      type: object
+      required:
+      - annotation_id
+      - workspace
+      - session_id
+      - created_at
+      - ingested_at
+      - kind
+      - value
+      title: FeedbackAnnotation
+      description: Thumbs-up / thumbs-down feedback on a span or session.
+    FeedbackAnnotationInput:
+      properties:
+        span_id:
+          title: Span Id
+          description: Id of the span this annotation applies to. Omit to annotate
+            the whole session instead of a specific span.
+          type: string
+        session_id:
+          type: string
+          title: Session Id
+          description: Id of the session this annotation belongs to. Always required.
+        kind:
+          type: string
+          const: feedback
+          title: Kind
+          description: Discriminator. Always `feedback` for this variant.
+        value:
+          type: string
+          enum:
+          - positive
+          - negative
+          title: Value
+          description: Sentiment of the feedback.
+      additionalProperties: false
+      type: object
+      required:
+      - session_id
+      - kind
+      - value
+      title: FeedbackAnnotationInput
+      description: Thumbs-up / thumbs-down feedback on a span or session.
+    FloatFilter:
+      additionalProperties: false
+      properties:
+        $gte:
+          description: Filter for results greater than or equal to this value.
+          title: $Gte
+          type: number
+        $lte:
+          description: Filter for results less than or equal to this value.
+          title: $Lte
+          type: number
+      title: FloatFilter
+      type: object
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    IngestResponse:
+      properties:
+        errors:
+          items:
+            type: string
+          type: array
+          title: Errors
+      type: object
+      title: IngestResponse
+    LabelAnnotation:
+      properties:
+        annotation_id:
+          type: string
+          title: Annotation Id
+        workspace:
+          type: string
+          title: Workspace
+        span_id:
+          title: Span Id
+          description: Id of the span this annotation applies to, or omitted for session-level
+            annotations.
+          type: string
+        session_id:
+          type: string
+          title: Session Id
+        created_by:
+          title: Created By
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        ingested_at:
+          type: string
+          format: date-time
+          title: Ingested At
+        kind:
+          type: string
+          const: label
+          title: Kind
+          description: Discriminator. Always `label` for this variant.
+        value_type:
+          type: string
+          enum:
+          - text
+          - numeric
+          title: Value Type
+          description: Whether `value` is a text label (`text`) or a number (`numeric`).
+        value:
+          anyOf:
+          - type: string
+          - type: number
+          title: Value
+          description: The label's value. A string when `value_type=text`, a number
+            when `value_type=numeric`.
+        name:
+          title: Name
+          description: Name identifying what the label measures, when set.
+          type: string
+      type: object
+      required:
+      - annotation_id
+      - workspace
+      - session_id
+      - created_at
+      - ingested_at
+      - kind
+      - value_type
+      - value
+      title: LabelAnnotation
+      description: Categorical or numeric label attached to a span or session.
+    LabelAnnotationInput:
+      properties:
+        span_id:
+          title: Span Id
+          description: Id of the span this annotation applies to. Omit to annotate
+            the whole session instead of a specific span.
+          type: string
+        session_id:
+          type: string
+          title: Session Id
+          description: Id of the session this annotation belongs to. Always required.
+        kind:
+          type: string
+          const: label
+          title: Kind
+          description: Discriminator. Always `label` for this variant.
+        value_type:
+          type: string
+          enum:
+          - text
+          - numeric
+          title: Value Type
+          description: Whether `value` should be interpreted as text (`text`) or a
+            number (`numeric`).
+        value:
+          anyOf:
+          - type: string
+          - type: number
+          title: Value
+          description: The label's value. Must be a string when `value_type=text`
+            and a number when `value_type=numeric`.
+        name:
+          title: Name
+          description: Name identifying what the label measures (e.g., `severity`,
+            `helpfulness`). Optional for text labels; required for numeric labels.
+          type: string
+          maxLength: 256
+      additionalProperties: false
+      type: object
+      required:
+      - session_id
+      - kind
+      - value_type
+      - value
+      title: LabelAnnotationInput
+      description: 'Categorical or numeric label attached to a span or session.
+
+
+        Use `value_type=text` for tag-style labels (e.g., `regression`, `needs-review`)
+        and
+
+        `value_type=numeric` for scored labels (e.g., a 1-5 helpfulness rating). Numeric
+        labels
+
+        must include a `name` to identify what the score measures.'
+    MetadataAnnotation:
+      properties:
+        annotation_id:
+          type: string
+          title: Annotation Id
+        workspace:
+          type: string
+          title: Workspace
+        span_id:
+          title: Span Id
+          description: Id of the span this annotation applies to, or omitted for session-level
+            annotations.
+          type: string
+        session_id:
+          type: string
+          title: Session Id
+        created_by:
+          title: Created By
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        ingested_at:
+          type: string
+          format: date-time
+          title: Ingested At
+        kind:
+          type: string
+          const: metadata
+          title: Kind
+          description: Discriminator. Always `metadata` for this variant.
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+          description: The metadata key/value pairs.
+      type: object
+      required:
+      - annotation_id
+      - workspace
+      - session_id
+      - created_at
+      - ingested_at
+      - kind
+      - metadata
+      title: MetadataAnnotation
+      description: Structured key/value metadata attached to a span or session.
+    MetadataAnnotationInput:
+      properties:
+        span_id:
+          title: Span Id
+          description: Id of the span this annotation applies to. Omit to annotate
+            the whole session instead of a specific span.
+          type: string
+        session_id:
+          type: string
+          title: Session Id
+          description: Id of the session this annotation belongs to. Always required.
+        kind:
+          type: string
+          const: metadata
+          title: Kind
+          description: Discriminator. Always `metadata` for this variant.
+        metadata:
+          additionalProperties: true
+          type: object
+          minProperties: 1
+          title: Metadata
+          description: Arbitrary key/value pairs. Must contain at least one entry.
+      additionalProperties: false
+      type: object
+      required:
+      - session_id
+      - kind
+      - metadata
+      title: MetadataAnnotationInput
+      description: Structured key/value metadata attached to a span or session.
+    MetricStatFilters:
+      additionalProperties: false
+      description: 'Numeric range filters keyed by rollup aggregate stat.
+
+
+        Declaring each stat explicitly (rather than an open ``dict[str, NumberFilter]``)
+        makes the valid
+
+        stats visible in the OpenAPI schema, e.g. ``filter[cost_usd.mean][$lte]=0.5``.
+        These stats must
+
+        stay in sync with the runtime sort/filter grammar (``_METRIC_STATS`` in the
+        experiments
+
+        endpoints); a unit test guards the parity.'
+      properties:
+        sum:
+          $ref: '#/components/schemas/NumberFilter'
+        mean:
+          $ref: '#/components/schemas/NumberFilter'
+        median:
+          $ref: '#/components/schemas/NumberFilter'
+        p90:
+          $ref: '#/components/schemas/NumberFilter'
+        p95:
+          $ref: '#/components/schemas/NumberFilter'
+        p99:
+          $ref: '#/components/schemas/NumberFilter'
+        count:
+          $ref: '#/components/schemas/NumberFilter'
+      title: MetricStatFilters
+      type: object
+    NoteAnnotation:
+      properties:
+        annotation_id:
+          type: string
+          title: Annotation Id
+        workspace:
+          type: string
+          title: Workspace
+        span_id:
+          title: Span Id
+          description: Id of the span this annotation applies to, or omitted for session-level
+            annotations.
+          type: string
+        session_id:
+          type: string
+          title: Session Id
+        created_by:
+          title: Created By
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        ingested_at:
+          type: string
+          format: date-time
+          title: Ingested At
+        kind:
+          type: string
+          const: note
+          title: Kind
+          description: Discriminator. Always `note` for this variant.
+        text:
+          type: string
+          title: Text
+          description: The note content.
+      type: object
+      required:
+      - annotation_id
+      - workspace
+      - session_id
+      - created_at
+      - ingested_at
+      - kind
+      - text
+      title: NoteAnnotation
+      description: Free-text note attached to a span or session.
+    NoteAnnotationInput:
+      properties:
+        span_id:
+          title: Span Id
+          description: Id of the span this annotation applies to. Omit to annotate
+            the whole session instead of a specific span.
+          type: string
+        session_id:
+          type: string
+          title: Session Id
+          description: Id of the session this annotation belongs to. Always required.
+        kind:
+          type: string
+          const: note
+          title: Kind
+          description: Discriminator. Always `note` for this variant.
+        text:
+          type: string
+          maxLength: 10000
+          minLength: 1
+          title: Text
+          description: The note content. 1 to 10,000 characters.
+      additionalProperties: false
+      type: object
+      required:
+      - session_id
+      - kind
+      - text
+      title: NoteAnnotationInput
+      description: Free-text note attached to a span or session.
+    NumberFilter:
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        $gte:
+          description: Filter for results greater than or equal to this value.
+          title: $Gte
+          type: number
+        $lte:
+          description: Filter for results less than or equal to this value.
+          title: $Lte
+          type: number
+        $gt:
+          description: Filter for results greater than this value.
+          title: $Gt
+          type: number
+        $lt:
+          description: Filter for results less than this value.
+          title: $Lt
+          type: number
+        $eq:
+          description: Filter for results equal to this value.
+          title: $Eq
+          type: number
+      title: NumberFilter
+      type: object
+    NumericFilter:
+      additionalProperties: false
+      description: "Range filter for numeric annotation values.\n\nAt least one of\
+        \ `$gte` or `$lte` must be supplied \u2014 an empty `{}` is not a\nmeaningful\
+        \ filter and is rejected."
+      minProperties: 1
+      properties:
+        $gte:
+          description: Include only values greater than or equal to this number.
+          title: $Gte
+          type: number
+        $lte:
+          description: Include only values less than or equal to this number.
+          title: $Lte
+          type: number
+      title: NumericFilter
+      type: object
+    PaginationData:
+      properties:
+        page:
+          type: integer
+          title: Page
+          description: The current page number.
+        page_size:
+          type: integer
+          title: Page Size
+          description: The page size used for the query.
+        current_page_size:
+          type: integer
+          title: Current Page Size
+          description: The size for the current page.
+        total_pages:
+          type: integer
+          title: Total Pages
+          description: The total number of pages.
+        total_results:
+          type: integer
+          title: Total Results
+          description: The total number of results.
+      type: object
+      required:
+      - page
+      - page_size
+      - current_page_size
+      - total_pages
+      - total_results
+      title: PaginationData
+    Span:
+      properties:
+        span_id:
+          type: string
+          title: Span Id
+        session_id:
+          type: string
+          title: Session Id
+        workspace:
+          type: string
+          title: Workspace
+        project:
+          title: Project
+          type: string
+        evaluation_context:
+          $ref: '#/components/schemas/SpanEvaluationContext'
+        parent_span_id:
+          title: Parent Span Id
+          type: string
+        kind:
+          $ref: '#/components/schemas/SpanKind'
+        name:
+          title: Name
+          type: string
+        source:
+          type: string
+          title: Source
+        trace_id:
+          title: Trace Id
+          type: string
+        started_at:
+          type: string
+          format: date-time
+          title: Started At
+        ended_at:
+          title: Ended At
+          type: string
+          format: date-time
+        status:
+          $ref: '#/components/schemas/SpanStatus'
+        error_type:
+          title: Error Type
+          type: string
+        error_message:
+          title: Error Message
+          description: Normalized error message. In summary mode this is truncated
+            to 1000 characters.
+          type: string
+        provider:
+          title: Provider
+          type: string
+        model:
+          title: Model
+          type: string
+        prompt_id:
+          title: Prompt Id
+          type: string
+        agent_id:
+          title: Agent Id
+          type: string
+        agent_name:
+          title: Agent Name
+          type: string
+        tool_name:
+          title: Tool Name
+          type: string
+        input_tokens:
+          title: Input Tokens
+          type: integer
+          minimum: 0.0
+        output_tokens:
+          title: Output Tokens
+          type: integer
+          minimum: 0.0
+        cached_tokens:
+          title: Cached Tokens
+          type: integer
+          minimum: 0.0
+        total_tokens:
+          title: Total Tokens
+          type: integer
+          minimum: 0.0
+        usage_details:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Usage Details
+        cost_total_usd:
+          title: Cost Total Usd
+          type: number
+        cost_input_usd:
+          title: Cost Input Usd
+          type: number
+        cost_output_usd:
+          title: Cost Output Usd
+          type: number
+        cost_details:
+          additionalProperties:
+            type: number
+          type: object
+          title: Cost Details
+        input:
+          title: Input
+          type: string
+        output:
+          title: Output
+          type: string
+        raw_attributes:
+          title: Raw Attributes
+          type: string
+        ingested_at:
+          type: string
+          format: date-time
+          title: Ingested At
+      type: object
+      required:
+      - span_id
+      - session_id
+      - workspace
+      - kind
+      - source
+      - started_at
+      - status
+      - ingested_at
+      title: Span
+    SpanEvaluationContext:
+      properties:
+        evaluation_id:
+          title: Evaluation Id
+          type: string
+        evaluation_sha:
+          title: Evaluation Sha
+          type: string
+        evaluation_run_id:
+          title: Evaluation Run Id
+          type: string
+        test_case_id:
+          title: Test Case Id
+          type: string
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      additionalProperties: false
+      type: object
+      title: SpanEvaluationContext
+    SpanFilter:
+      properties:
+        session_id:
+          description: Filter by span session id.
+          title: Session Id
+          type: string
+        trace_id:
+          description: Filter by canonical trace id.
+          title: Trace Id
+          type: string
+        project:
+          description: Filter by project name.
+          title: Project
+          type: string
+        evaluation_id:
+          description: Filter by evaluation id.
+          title: Evaluation Id
+          type: string
+        evaluation_sha:
+          description: Filter by evaluation sha.
+          title: Evaluation Sha
+          type: string
+        evaluation_run_id:
+          description: Filter by evaluation run id. ATIF evaluation context is stored
+            on root trajectory spans; use session_id from a matched root to fetch
+            the full trace tree.
+          title: Evaluation Run Id
+          type: string
+        dataset_id:
+          description: Filter by dataset id.
+          title: Dataset Id
+          type: string
+        dataset_name:
+          description: Filter by dataset name.
+          title: Dataset Name
+          type: string
+        dataset_version:
+          description: Filter by dataset version.
+          title: Dataset Version
+          type: string
+        test_case_id:
+          description: Filter by dataset test case id.
+          title: Test Case Id
+          type: string
+        source:
+          description: Filter by ingest source (e.g. 'otel', 'atif', 'chat_completions').
+          title: Source
+          type: string
+        kind:
+          allOf:
+          - $ref: '#/components/schemas/SpanKind'
+          description: Filter by normalized span kind.
+        status:
+          allOf:
+          - $ref: '#/components/schemas/SpanStatus'
+          description: Filter by normalized span status.
+        model:
+          description: Filter by model name.
+          title: Model
+          type: string
+        tool_name:
+          description: Filter by tool name.
+          title: Tool Name
+          type: string
+        provider:
+          description: Filter by provider (e.g. 'openai', 'nim', 'anthropic').
+          title: Provider
+          type: string
+        agent_id:
+          description: Filter by agent identifier.
+          title: Agent Id
+          type: string
+        agent_name:
+          description: Filter by agent application name (e.g. 'claude-code', 'codex').
+          title: Agent Name
+          type: string
+        prompt_name:
+          description: Filter by prompt template name.
+          title: Prompt Name
+          type: string
+        prompt_version:
+          description: Filter by prompt template version.
+          title: Prompt Version
+          type: string
+        parent_span_id:
+          description: Filter by parent span id. Use to fetch direct children of a
+            span.
+          title: Parent Span Id
+          type: string
+        started_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Filter by span start timestamp.
+      title: SpanFilter
+      type: object
+    SpanGroup:
+      properties:
+        group:
+          additionalProperties:
+            type: string
+          type: object
+          title: Group
+          description: Group key values, keyed by the requested group-by fields.
+        span_count:
+          type: integer
+          minimum: 0.0
+          title: Span Count
+          description: Number of matching spans in this group.
+      type: object
+      required:
+      - group
+      - span_count
+      title: SpanGroup
+    SpanGroupBy:
+      type: string
+      enum:
+      - trace_id
+      - session_id
+      title: SpanGroupBy
+    SpanGroupSortField:
+      type: string
+      enum:
+      - span_count
+      - -span_count
+      title: SpanGroupSortField
+    SpanGroupsPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/SpanGroup'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+        grouped_by:
+          items:
+            $ref: '#/components/schemas/SpanGroupBy'
+          type: array
+          title: Grouped By
+          description: Span fields used to group the matching spans.
+      type: object
+      required:
+      - data
+      - grouped_by
+      title: SpanGroupsPage
+    SpanKind:
+      type: string
+      enum:
+      - LLM
+      - CHAIN
+      - TOOL
+      - RETRIEVER
+      - EMBEDDING
+      - AGENT
+      - RERANKER
+      - EVALUATOR
+      - GUARDRAIL
+      - UNKNOWN
+      title: SpanKind
+    SpanSortField:
+      type: string
+      enum:
+      - started_at
+      - -started_at
+      title: SpanSortField
+    SpanStatus:
+      type: string
+      enum:
+      - success
+      - error
+      - cancelled
+      - unknown
+      title: SpanStatus
+    SpansPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/Span'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: SpansPage
+    Trace:
+      properties:
+        id:
+          type: string
+          title: Id
+        root_span_id:
+          title: Root Span Id
+          type: string
+        session_id:
+          type: string
+          title: Session Id
+        workspace:
+          type: string
+          title: Workspace
+        name:
+          title: Name
+          type: string
+        experiment_context:
+          $ref: '#/components/schemas/ExperimentContext'
+        started_at:
+          type: string
+          format: date-time
+          title: Started At
+        ended_at:
+          title: Ended At
+          type: string
+          format: date-time
+        duration_ms:
+          title: Duration Ms
+          type: number
+        status:
+          $ref: '#/components/schemas/SpanStatus'
+        input_tokens:
+          title: Input Tokens
+          type: integer
+          minimum: 0.0
+        output_tokens:
+          title: Output Tokens
+          type: integer
+          minimum: 0.0
+        cached_tokens:
+          title: Cached Tokens
+          type: integer
+          minimum: 0.0
+        total_tokens:
+          title: Total Tokens
+          type: integer
+          minimum: 0.0
+        cost_usd:
+          title: Cost Usd
+          type: number
+        cost_input_usd:
+          title: Cost Input Usd
+          type: number
+        cost_output_usd:
+          title: Cost Output Usd
+          type: number
+        span_count:
+          title: Span Count
+          type: integer
+          minimum: 0.0
+        error_count:
+          title: Error Count
+          type: integer
+          minimum: 0.0
+      type: object
+      required:
+      - id
+      - session_id
+      - workspace
+      - started_at
+      - status
+      title: Trace
+    TraceFilter:
+      properties:
+        id:
+          description: Filter by canonical Intake trace id.
+          title: Id
+          type: string
+        session_id:
+          description: Filter by session id.
+          title: Session Id
+          type: string
+        status:
+          allOf:
+          - $ref: '#/components/schemas/SpanStatus'
+          description: Filter by root span status.
+        started_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Filter by root span start timestamp.
+        experiment_id:
+          description: Filter by root-span experiment id.
+          title: Experiment Id
+          type: string
+        test_case_id:
+          description: Filter by root-span experiment test case id.
+          title: Test Case Id
+          type: string
+      title: TraceFilter
+      type: object
+    TraceSortField:
+      type: string
+      enum:
+      - started_at
+      - -started_at
+      title: TraceSortField
+    TracesPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/Trace'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: TracesPage
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+          additionalProperties: true
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError

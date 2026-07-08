@@ -1,0 +1,76 @@
+# Exclude .git directory (the main bloat culprit - 1.1GB!)
+.git/
+.gitignore
+
+# Exclude other large directories not needed for intake
+documentation/
+logs/
+helm/
+earthly/
+deploy/
+brev/
+architecture/
+openapi/
+release/
+script/
+tools/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.cache
+.venv/
+venv/
+env/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Documentation
+docs/
+
+# Build artifacts
+Dockerfile*
+.dockerignore
+docker-compose*.yml
+docker-compose*.yaml
+
+# Development files
+pytest.ini

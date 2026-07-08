@@ -6,7 +6,7 @@ import {
   formatAbsoluteTimestamp,
   parseISOWithUTCFallback,
 } from '@nemo/common/src/components/RelativeTime/util';
-import type { Span } from '@nemo/sdk/generated/platform/schema';
+import type { Span } from '@nemo/sdk/generated/intake/schema';
 import { Stack, Text } from '@nvidia/foundations-react-core';
 import { IntakeTelemetryStatusBadge } from '@studio/components/IntakeDetail/IntakeComponents/IntakeTelemetryStatusBadge';
 import type { RankedDocument } from '@studio/components/IntakeDetail/SpanTemplates/rawAttributes';

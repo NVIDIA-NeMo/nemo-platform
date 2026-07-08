@@ -12,7 +12,7 @@ one-file change.
 Design constraints (see AALGO-289):
 
 * **Pure.** Every function reads SDK types and returns request params. No HTTP,
-  no platform client, no imports from the Intake *service* (``nmp.intake.*``).
+  no platform client, no imports from the Intake *service* (``nemo_intake_plugin.*``).
 * **Typed at the boundary.** The returned values are the generated platform
   SDK's ``TypedDict`` params (``AtifCreateParams`` / ``EvaluatorResultCreateParams``).
   At runtime they are plain dicts the adapter splats into the client

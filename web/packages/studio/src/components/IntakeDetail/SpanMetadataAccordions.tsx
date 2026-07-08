@@ -6,7 +6,7 @@ import {
   type IntakeAccordionItem,
 } from '@nemo/common/src/components/IntakeAccordion';
 import { KeyValueGrid } from '@nemo/common/src/components/KeyValueGrid';
-import { SpanStatus, type Span } from '@nemo/sdk/generated/platform/schema';
+import { SpanStatus, type Span } from '@nemo/sdk/generated/intake/schema';
 import { Badge, Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import { AnnotationsPanel } from '@studio/components/IntakeDetail/IntakeComponents/AnnotationsPanel';
 import { IntakeErrorBanner } from '@studio/components/IntakeDetail/IntakeComponents/IntakeErrorBanner';

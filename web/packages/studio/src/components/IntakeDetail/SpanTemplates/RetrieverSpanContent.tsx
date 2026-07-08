@@ -6,7 +6,7 @@
 /* eslint-disable react-refresh/only-export-components */
 
 import type { IntakeAccordionItem } from '@nemo/common/src/components/IntakeAccordion';
-import type { Span } from '@nemo/sdk/generated/platform/schema';
+import type { Span } from '@nemo/sdk/generated/intake/schema';
 import { Text } from '@nvidia/foundations-react-core';
 import { SpanPayloadBlock } from '@studio/components/IntakeDetail/IntakeComponents/SpanPayloadBlock';
 import {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { IntakeAccordion } from '@nemo/common/src/components/IntakeAccordion';
-import type { FeedbackAnnotationInputValue } from '@nemo/sdk/generated/platform/schema';
+import type { FeedbackAnnotationInputValue } from '@nemo/sdk/generated/intake/schema';
 import { Stack } from '@nvidia/foundations-react-core';
 import { SpanFeedbackControls } from '@studio/components/IntakeDetail/IntakeComponents/SpanFeedbackControls';
 import { SpanTriggerLabel } from '@studio/components/IntakeDetail/IntakeComponents/SpanTriggerLabel';

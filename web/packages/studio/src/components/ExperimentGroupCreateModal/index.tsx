@@ -16,7 +16,7 @@ import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import {
   getListExperimentGroupsQueryKey,
   useCreateExperimentGroup,
-} from '@nemo/sdk/generated/platform/api';
+} from '@nemo/sdk/generated/intake/api';
 import {
   CodeSnippet,
   FormField,

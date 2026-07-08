@@ -22,7 +22,6 @@ AVAILABLE_SERVICES: dict[str, str] = {
     "jobs": "nmp.core.jobs.main:service",
     "files": "nmp.core.files.main:service",
     "guardrails": "nmp.guardrails.main:service",
-    "intake": "nmp.intake.main:service",
     "entities": "nmp.core.entities.main:service",
     "secrets": "nmp.core.secrets.main:service",
     "models": "nmp.core.models.main:service",
@@ -52,7 +51,6 @@ CORE_SERVICES = [
 API_SERVICES = [
     "studio",
     "guardrails",
-    "intake",
     # Safe Synthesizer is intentionally excluded from default runtime groups
     # while remaining available for OpenAPI generation.
     # "safe-synthesizer",
@@ -65,7 +63,6 @@ OPENAPI_SERVICES = [
     "entities",
     "files",
     "guardrails",
-    "intake",
     "inference-gateway",
     "jobs",
     "models",

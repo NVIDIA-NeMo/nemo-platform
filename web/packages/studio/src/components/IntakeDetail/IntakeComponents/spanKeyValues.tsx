@@ -6,7 +6,7 @@
 /* eslint-disable react-refresh/only-export-components */
 
 import { formatAbsoluteTimestamp } from '@nemo/common/src/components/RelativeTime/util';
-import type { Span } from '@nemo/sdk/generated/platform/schema';
+import type { Span } from '@nemo/sdk/generated/intake/schema';
 import { IntakeTelemetryStatusBadge } from '@studio/components/IntakeDetail/IntakeComponents/IntakeTelemetryStatusBadge';
 import {
   formatUnknownKeyValue,

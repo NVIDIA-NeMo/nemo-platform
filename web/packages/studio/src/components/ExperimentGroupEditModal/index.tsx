@@ -8,8 +8,8 @@ import {
   getListExperimentGroupsQueryKey,
   useListExperiments,
   useUpdateExperimentGroup,
-} from '@nemo/sdk/generated/platform/api';
-import type { ExperimentGroupResponse } from '@nemo/sdk/generated/platform/schema';
+} from '@nemo/sdk/generated/intake/api';
+import type { ExperimentGroupResponse } from '@nemo/sdk/generated/intake/schema';
 import { FormField, Stack, TextArea, TextInput } from '@nvidia/foundations-react-core';
 import { queryClient } from '@studio/api/queryClient';
 import { DefaultSortControl } from '@studio/components/DefaultSortControl';

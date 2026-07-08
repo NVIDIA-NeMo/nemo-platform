@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { ListExperimentsQueryError } from '@nemo/sdk/generated/platform/api';
+import type { ListExperimentsQueryError } from '@nemo/sdk/generated/intake/api';
 import {
   SORT_ERROR_MESSAGES,
   type SortingState,

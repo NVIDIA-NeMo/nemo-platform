@@ -8,7 +8,7 @@ SPDX-License-Identifier: Apache-2.0
 Trace and span detail UI: trajectory explorer, per-span bodies, kind templates, and shared atoms. List views (traces/spans tables) live in `IntakeLists/`.
 
 Span templates provide specialized view for each known KIND template, with a fallback for unknown kinds. To review the output of these templates, run the seed script at:
-services/intake/scripts/spans/seed_span_type_showcase.py.
+plugins/nemo-intake/scripts/spans/seed_span_type_showcase.py.
 
 ## Architecture
 

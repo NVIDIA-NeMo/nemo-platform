@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { StatusBadge, type StatusConfigEntry } from '@nemo/common/src/components/StatusBadge';
-import type { SpanStatus } from '@nemo/sdk/generated/platform/schema';
+import type { SpanStatus } from '@nemo/sdk/generated/intake/schema';
 import { Ban, CircleCheck, CircleHelp, CircleX } from 'lucide-react';
 
 const STATUS_CONFIG: Record<SpanStatus, StatusConfigEntry> = {

@@ -5,7 +5,7 @@
 // produce JSX such as status badges and links. Not a component module.
 /* eslint-disable react-refresh/only-export-components */
 
-import type { ExperimentContext, Trace } from '@nemo/sdk/generated/platform/schema';
+import type { ExperimentContext, Trace } from '@nemo/sdk/generated/intake/schema';
 import {
   formatUnknownKeyValue,
   isMeaningfulValue,

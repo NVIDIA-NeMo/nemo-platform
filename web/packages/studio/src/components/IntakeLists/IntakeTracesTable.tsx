@@ -8,8 +8,8 @@ import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { getSortParamWithWhitelist } from '@nemo/common/src/utils/query';
-import { useListTraces } from '@nemo/sdk/generated/platform/api';
-import type { Trace, TraceFilter, TraceSortField } from '@nemo/sdk/generated/platform/schema';
+import { useListTraces } from '@nemo/sdk/generated/intake/api';
+import type { Trace, TraceFilter, TraceSortField } from '@nemo/sdk/generated/intake/schema';
 import { Badge, Button } from '@nvidia/foundations-react-core';
 import { getErrorMessage } from '@studio/api/common/utils';
 import {

@@ -15,13 +15,13 @@ import {
   listExperimentSessions,
   useGetExperiment,
   useListExperimentSessions,
-} from '@nemo/sdk/generated/platform/api';
+} from '@nemo/sdk/generated/intake/api';
 import type {
   ExperimentSessionResponsesPage,
   ExperimentSessionFilter,
   ExperimentSessionResponse,
   ListExperimentSessionsParams,
-} from '@nemo/sdk/generated/platform/schema';
+} from '@nemo/sdk/generated/intake/schema';
 import { Text, Tooltip } from '@nvidia/foundations-react-core';
 import { Empty } from '@studio/components/dataViews/ExperimentSessionsDataView/Empty';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';

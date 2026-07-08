@@ -8,12 +8,12 @@ import {
   useListExperiments,
   usePinExperiment,
   useUnpinExperiment,
-} from '@nemo/sdk/generated/platform/api';
+} from '@nemo/sdk/generated/intake/api';
 import type {
   ExperimentFilter,
   ExperimentResponse,
   ListExperimentsParams,
-} from '@nemo/sdk/generated/platform/schema';
+} from '@nemo/sdk/generated/intake/schema';
 import { keepPreviousData, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useRef } from 'react';
 

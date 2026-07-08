@@ -141,12 +141,22 @@ def test_customization_in_openapi_when_plugin_service_available(monkeypatch):
     assert "customization" in registry.get_openapi_service_names(available)
 
 
-def test_intake_is_registered_as_api_and_openapi_service():
+def test_intake_is_registered_as_discovered_api_plugin(monkeypatch):
     clear_registry_caches()
+
+    class IntakeService(NemoService):
+        name = "intake"
+
+        def get_routers(self) -> list[RouterSpec]:
+            return [RouterSpec(router=APIRouter())]
+
+    monkeypatch.setattr(registry, "discover_services", lambda: {"intake": IntakeService})
+
     available = registry.get_available_services()
     groups = registry.get_service_groups(available)
 
-    assert available["intake"] == "nmp.intake.main:service"
+    assert "intake" not in registry.AVAILABLE_SERVICES
+    assert "intake" not in registry.CORE_SERVICES
+    assert "intake" not in registry.get_openapi_service_names(available)
     assert "intake" not in groups["core"]
     assert "intake" in groups["api"]
-    assert "intake" in registry.get_openapi_service_names(available)

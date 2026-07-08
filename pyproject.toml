@@ -41,7 +41,6 @@ dependencies = [
   "tomlkit>=0.13.3",
   "nmp-guardrails",
   "nmp-hello-world",
-  "nmp-intake",
   "nmp-core-mcp",
   "nemo-platform",
   "nemo-platform-ext",
@@ -125,7 +124,6 @@ dev = [
   "nmp-guardrails",
   "nemo-safe-synthesizer-plugin",
   "nmp-hello-world",
-  "nmp-intake",
   "nmp-core-mcp",
   "nemo-platform",
   "nemo-platform-ext",
@@ -167,6 +165,7 @@ nmp-services-runtime = ["nemo-platform[services]"]
 enabled-plugins = [
   "nemo-anonymizer-plugin",
   "nemo-data-designer-plugin",
+  "nemo-intake-plugin",
   "nemo-evaluator-plugin",
   "nemo-guardrails-plugin",
   "nemo-auditor-plugin",
@@ -207,7 +206,6 @@ functional-services = [
   "nmp-guardrails",
   "nemo-data-designer-plugin",
   "nemo-anonymizer-plugin",
-  "nmp-intake",
   "nmp-hello-world",
   "nmp-platform-seed",
 ]
@@ -339,7 +337,7 @@ nemo-data-designer-plugin = { workspace = true }
 data-designer-nemo = { workspace = true }
 nemo-evaluator-sdk = { workspace = true }
 nmp-guardrails = { workspace = true }
-nmp-intake = { workspace = true }
+nemo-intake-plugin = { workspace = true }
 nmp-jobs = { workspace = true }
 nmp-models = { workspace = true }
 nmp-inference-gateway = { workspace = true }
@@ -400,7 +398,7 @@ members = [
   "services/hello-world",
   "services/studio",
   "services/guardrails",
-  "services/intake",
+  "plugins/nemo-intake",
   "plugins/nemo-anonymizer",
   "plugins/nemo-data-designer",
   "services/core/auth",
@@ -587,7 +585,7 @@ exclude = [
 
   "./services/guardrails/",
 
-  "./services/intake/",
+  "./plugins/nemo-intake/",
 
   "./services/core/",
 

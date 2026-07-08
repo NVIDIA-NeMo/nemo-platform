@@ -176,11 +176,12 @@ inference-gateway-service = [
 
 # Generated from [tool.bundle-package]; do not edit by hand.
 intake-service = [
+  "nemo-platform-plugin",
+  "nmp-common",
   "fastapi>=0.115.5, <1.0.0",
   "uvicorn>=0.22.0, <1.0.0",
   "pydantic>=2.9.2, <3.0.0",
   "pydantic-settings>=2.6.1, <3.0.0",
-  "nmp-common",
   "clickhouse-connect>=0.7,<1.0",
   "opentelemetry-proto>=1.27.0",
 ]
@@ -308,6 +309,11 @@ nemo-guardrails-plugin = [
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
+nemo-intake-plugin = [
+  "nemo-platform[intake-service]",
+]
+
+# Generated from [tool.bundle-package]; do not edit by hand.
 nemo-platform-plugin = [
   "anthropic>=0.88.0",
   "fastapi>=0.115.4",
@@ -414,6 +420,7 @@ plugins = [
     "nemo-platform[nemo-data-designer-plugin]",
     "nemo-platform[nemo-evaluator-plugin]",
     "nemo-platform[nemo-guardrails-plugin]",
+    "nemo-platform[nemo-intake-plugin]",
     "nemo-platform[nemo-safe-synthesizer-plugin]",
     "nemo-platform[nemo-switchyard]",
 ]
@@ -543,6 +550,7 @@ anonymizer = "nemo_anonymizer_plugin.service:AnonymizerService"
 auditor = "nemo_auditor.service:AuditorPluginService"
 data-designer = "nemo_data_designer_plugin.service:DataDesignerService"
 evaluator = "nemo_evaluator.service:EvaluatorPluginService"
+intake = "nemo_intake_plugin.service:IntakeService"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.skills"]
@@ -623,7 +631,7 @@ nmp-inference-gateway = { source = "../../services/core/inference-gateway/src/nm
 nmp-guardrails = { source = "../../services/guardrails/src/nmp/guardrails", module = "nmp/guardrails", deps_group = "guardrails-service" }
 nmp-platform-seed = { source = "../../services/platform-seed/src/nmp/platform_seed", module = "nmp/platform_seed", deps_group = "platform-seed-service" }
 nmp-hello-world = { source = "../../services/hello-world/src/nmp/hello_world", module = "nmp/hello_world", deps_group = "hello-world-service" }
-nmp-intake = { source = "../../services/intake/src/nmp/intake", module = "nmp/intake", deps_group = "intake-service" }
+nemo-intake-plugin = { source = "../../plugins/nemo-intake/src/nemo_intake_plugin", module = "nemo_intake_plugin", inherit = { "entry-points" = ["nemo.*"] }, deps_group = "intake-service" }
 
 [tool.bundle-package.nemo-platform-sdk]
 source = "../../sdk/python/nemo-platform/src/nemo_platform"

@@ -4,12 +4,12 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { formatAbsoluteTimestamp } from '@nemo/common/src/components/RelativeTime/util';
 import { DEFAULT_PAGE_SIZE } from '@nemo/common/src/constants/api';
-import { useListAnnotations } from '@nemo/sdk/generated/platform/api';
+import { useListAnnotations } from '@nemo/sdk/generated/intake/api';
 import {
   AnnotationSortField,
   FeedbackAnnotationInputValue,
   type Annotation,
-} from '@nemo/sdk/generated/platform/schema';
+} from '@nemo/sdk/generated/intake/schema';
 import {
   Button,
   CodeSnippet,

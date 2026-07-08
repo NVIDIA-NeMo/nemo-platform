@@ -1129,7 +1129,10 @@ def _annotate_generated_bundle_groups() -> None:
             inherited_entrypoint_patterns = _bundle_inherit_patterns(pkg_config, "entry-points")
             inherited_optional_patterns = _bundle_inherit_patterns(pkg_config, "optional-dependencies")
             pkg_project = _load_bundle_project(pkg_name, pkg_config, member_dir)
-            bundle_owned_names.add(_bundle_deps_group(pkg_name, pkg_config))
+            deps_group = _bundle_deps_group(pkg_name, pkg_config)
+            bundle_owned_names.add(deps_group)
+            if member_dir == WRAPPER_PATH and _is_bundled_plugin_entry(pkg_config) and deps_group != pkg_name:
+                bundle_owned_names.add(pkg_name)
             if inherited_optional_patterns:
                 bundle_owned_names.update(
                     extra_name
@@ -1289,12 +1292,13 @@ def _create_core_local_extra(configs: list[dict]) -> None:
             and "services/core/" not in pkg_config.get("source", "")
         )
     )
-    plugin_extras = sorted(
-        set(
-            _bundle_deps_group(pkg_name, pkg_config)
+    plugin_entries = sorted(
+        (
+            (pkg_name, _bundle_deps_group(pkg_name, pkg_config))
             for pkg_name, pkg_config in bundle_config.items()
             if isinstance(pkg_config, dict) and _is_bundled_plugin_entry(pkg_config)
-        )
+        ),
+        key=lambda item: item[0],
     )
 
     pyproject_path = WRAPPER_PATH / "pyproject.toml"
@@ -1315,7 +1319,9 @@ def _create_core_local_extra(configs: list[dict]) -> None:
     optional["core-service"] = core_local
     plugins = tomlkit.array()
     plugins.multiline(True)
-    for extra_name in plugin_extras:
+    for extra_name, deps_group in plugin_entries:
+        if deps_group != extra_name:
+            optional[extra_name] = _build_dependency_array([f"{pkg_name}[{deps_group}]"])
         plugins.append(f"{pkg_name}[{extra_name}]")
 
     optional["plugins"] = plugins
@@ -1324,7 +1330,7 @@ def _create_core_local_extra(configs: list[dict]) -> None:
     pyproject_path.write_text(tomlkit.dumps(pyproject), encoding="utf-8")
 
     rich.print(f"✅ Created `core-service` extra with {len(core_local_extras)} service extras")
-    rich.print(f"✅ Created `plugins` extra with {len(plugin_extras)} plugin extras")
+    rich.print(f"✅ Created `plugins` extra with {len(plugin_entries)} plugin extras")
     rich.print(f"✅ Added {len(non_core_local_extras)} non-core service extras to `services`")
 
 

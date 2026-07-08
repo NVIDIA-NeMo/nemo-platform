@@ -7,7 +7,7 @@ import {
   useListExperiments,
   usePinExperiment,
   useUnpinExperiment,
-} from '@nemo/sdk/generated/platform/api';
+} from '@nemo/sdk/generated/intake/api';
 import {
   useExperimentGroupExperiments,
   type UseExperimentGroupExperimentsParams,
@@ -15,7 +15,7 @@ import {
 import { renderHook } from '@testing-library/react';
 
 vi.mock('@nemo/common/src/providers/toast/useToast');
-vi.mock('@nemo/sdk/generated/platform/api');
+vi.mock('@nemo/sdk/generated/intake/api');
 // useQueryClient needs a provider; the queries themselves are mocked, so a stub client is enough.
 const { invalidateQueries } = vi.hoisted(() => ({ invalidateQueries: vi.fn() }));
 vi.mock('@tanstack/react-query', async (importOriginal) => ({

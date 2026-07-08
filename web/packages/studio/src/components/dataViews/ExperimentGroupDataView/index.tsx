@@ -13,10 +13,7 @@ import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
-import type {
-  ExperimentFilter,
-  ExperimentGroupResponse,
-} from '@nemo/sdk/generated/platform/schema';
+import type { ExperimentFilter, ExperimentGroupResponse } from '@nemo/sdk/generated/intake/schema';
 import { Button, Text, Tooltip } from '@nvidia/foundations-react-core';
 import { Empty } from '@studio/components/dataViews/ExperimentGroupDataView/Empty';
 import { MeanValueTooltipCell } from '@studio/components/dataViews/ExperimentGroupDataView/MeanValueTooltipCell';
