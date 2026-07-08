@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated, Any, Literal, Self
+from typing import Annotated, Any, Literal, Self, TypedDict
 
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field, model_validator
 from typing_extensions import TypeAliasType
@@ -206,12 +206,12 @@ class TraceSortField(StrEnum):
 TraceMode = Literal["summary", "detailed"]
 
 
-class TraceFilter(BaseModel):
-    id: str | None = None
-    session_id: str | None = None
-    status: SpanStatus | None = None
-    experiment_id: str | None = None
-    test_case_id: str | None = None
+class TraceFilter(TypedDict, total=False):
+    id: str
+    session_id: str
+    status: SpanStatus
+    experiment_id: str
+    test_case_id: str
 
 
 class Trace(BaseModel):

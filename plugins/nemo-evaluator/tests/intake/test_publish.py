@@ -63,7 +63,7 @@ class _FakeIntakeClient:
     async def list_traces(self, *, workspace: str, query_params: dict[str, Any]) -> _FakePaginatedTraces:
         del workspace
         trace_filter = cast(TraceFilter, query_params["filter"])
-        session_id = str(trace_filter.session_id)
+        session_id = trace_filter["session_id"]
         return _FakePaginatedTraces(root_span_id=self.root_span_id, session_id=session_id)
 
 
