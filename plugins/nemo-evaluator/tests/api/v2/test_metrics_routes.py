@@ -33,11 +33,6 @@ from nemo_platform_plugin.entities import (
 # ---- in-memory fakes -------------------------------------------------------
 
 
-class _FakeFile:
-    def __init__(self, file_ref: str) -> None:
-        self.file_ref = file_ref
-
-
 class _FakeFilesets:
     def __init__(self, store: dict[tuple[str, str], dict[str, bytes]]) -> None:
         self._store = store
@@ -56,9 +51,9 @@ class _FakeFiles:
         self._store = store
         self.filesets = _FakeFilesets(store)
 
-    async def _upload_file(self, *, path, body, workspace, name):
-        self._store.setdefault((workspace, name), {})[path] = bytes(body)
-        return _FakeFile(f"{workspace}/{name}#{path}")
+    async def upload_content(self, *, content, remote_path, fileset, workspace, fileset_auto_create=False):
+        self._store.setdefault((workspace, fileset), {})[remote_path] = bytes(content)
+        return object()
 
 
 class _FakeSDK:

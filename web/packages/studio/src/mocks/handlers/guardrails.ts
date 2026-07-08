@@ -62,6 +62,14 @@ export const guardrailsHandlers = [
       },
     })
   ),
+  http.get(
+    `${PLATFORM_BASE_URL}/apis/guardrails/v2/workspaces/:workspace/configs/:name`,
+    ({ params }) => {
+      const config = mockGuardrailConfigs.find((c) => c.name === params.name);
+      if (!config) return new HttpResponse(null, { status: 404 });
+      return HttpResponse.json(config);
+    }
+  ),
   http.delete(
     `${PLATFORM_BASE_URL}/apis/guardrails/v2/workspaces/:workspace/configs/:name`,
     () => new HttpResponse(null, { status: 200 })

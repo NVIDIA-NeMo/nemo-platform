@@ -80,11 +80,11 @@ async def store_bundle(sdk: AsyncNeMoPlatform, workspace: str, name: str, bundle
     except Exception as exc:
         raise MetricBundleStorageError(f"failed to create fileset for metric bundle {workspace}/{name}") from exc
     try:
-        await sdk.files._upload_file(
-            path=BUNDLE_FILENAME,
-            body=body,
+        await sdk.files.upload_content(
+            content=body,
+            remote_path=BUNDLE_FILENAME,
+            fileset=fileset,
             workspace=workspace,
-            name=fileset,
         )
     except Exception as exc:
         # Roll back the just-created (now-empty) fileset so a failed upload
@@ -110,8 +110,10 @@ async def load_bundle(sdk: AsyncNeMoPlatform, bundle_ref: str, *, expected_diges
     verified against it to detect drift or corruption.
     """
     workspace, fileset, path = parse_bundle_ref(bundle_ref)
-    response = await sdk.files._download_file(path, workspace=workspace, name=fileset)
-    data = await response.read()
+    try:
+        data = await sdk.files.download_content(remote_path=path, fileset=fileset, workspace=workspace)
+    except Exception as exc:
+        raise MetricBundleStorageError(f"failed to download metric bundle from {bundle_ref!r}") from exc
     try:
         bundle = MetricBundle.model_validate_json(data)
     except (ValidationError, ValueError) as exc:

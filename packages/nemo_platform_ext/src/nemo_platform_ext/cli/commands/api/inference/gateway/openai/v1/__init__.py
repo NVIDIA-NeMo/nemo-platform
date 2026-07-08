@@ -4,9 +4,12 @@
 # NOTE: This file is auto-generated
 from __future__ import annotations
 
-from nemo_platform_ext.cli.commands.api.inference.gateway.openai.v1 import models
+from importlib import import_module as _importlib_import_module
+
 from nemo_platform_ext.cli.core.help_formatter import create_typer_app
+
+_cli_child_models = _importlib_import_module("nemo_platform_ext.cli.commands.api.inference.gateway.openai.v1.models")
 
 app = create_typer_app(name="v1", help="V1 operations")
 
-app.add_typer(models.app, name="models")
+app.add_typer(_cli_child_models.app, name="models")

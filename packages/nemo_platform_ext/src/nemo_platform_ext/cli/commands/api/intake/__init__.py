@@ -4,13 +4,20 @@
 # NOTE: This file is auto-generated
 from __future__ import annotations
 
-from nemo_platform_ext.cli.commands.api.intake import annotations, evaluator_results, ingest, spans, traces
+from importlib import import_module as _importlib_import_module
+
 from nemo_platform_ext.cli.core.help_formatter import create_typer_app
+
+_cli_child_annotations = _importlib_import_module("nemo_platform_ext.cli.commands.api.intake.annotations")
+_cli_child_evaluator_results = _importlib_import_module("nemo_platform_ext.cli.commands.api.intake.evaluator_results")
+_cli_child_ingest = _importlib_import_module("nemo_platform_ext.cli.commands.api.intake.ingest")
+_cli_child_spans = _importlib_import_module("nemo_platform_ext.cli.commands.api.intake.spans")
+_cli_child_traces = _importlib_import_module("nemo_platform_ext.cli.commands.api.intake.traces")
 
 app = create_typer_app(name="intake", help="Intake operations")
 
-app.add_typer(annotations.app, name="annotations")
-app.add_typer(evaluator_results.app, name="evaluator-results")
-app.add_typer(ingest.app, name="ingest")
-app.add_typer(spans.app, name="spans")
-app.add_typer(traces.app, name="traces")
+app.add_typer(_cli_child_annotations.app, name="annotations")
+app.add_typer(_cli_child_evaluator_results.app, name="evaluator-results")
+app.add_typer(_cli_child_ingest.app, name="ingest")
+app.add_typer(_cli_child_spans.app, name="spans")
+app.add_typer(_cli_child_traces.app, name="traces")

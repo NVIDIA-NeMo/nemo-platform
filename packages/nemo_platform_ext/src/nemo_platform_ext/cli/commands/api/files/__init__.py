@@ -4,22 +4,25 @@
 # NOTE: This file is auto-generated
 from __future__ import annotations
 
+from importlib import import_module as _importlib_import_module
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
-from nemo_platform_ext.cli.commands.api.files import filesets, otlp
 from nemo_platform_ext.cli.core.context import CLIContext
 from nemo_platform_ext.cli.core.errors import handle_errors
 from nemo_platform_ext.cli.core.formatters import Column, check_output_columns_with_format, format_output
 from nemo_platform_ext.cli.core.help_formatter import collect_warnings, create_typer_app
 from nemo_platform_ext.cli.core.types import ListOutputFormatOption, NoTruncateOption, OutputColumnsOption
 
+_cli_child_filesets = _importlib_import_module("nemo_platform_ext.cli.commands.api.files.filesets")
+_cli_child_otlp = _importlib_import_module("nemo_platform_ext.cli.commands.api.files.otlp")
+
 app = create_typer_app(name="files", help="Manage files")
 
-app.add_typer(filesets.app, name="filesets")
-app.add_typer(otlp.app, name="otlp")
+app.add_typer(_cli_child_filesets.app, name="filesets")
+app.add_typer(_cli_child_otlp.app, name="otlp")
 
 
 @app.command("upload")

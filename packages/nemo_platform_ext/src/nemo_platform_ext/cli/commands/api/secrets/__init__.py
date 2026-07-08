@@ -4,11 +4,11 @@
 # NOTE: This file is auto-generated
 from __future__ import annotations
 
+from importlib import import_module as _importlib_import_module
 from typing import Annotated
 
 import typer
 
-from nemo_platform_ext.cli.commands.api.secrets import admin
 from nemo_platform_ext.cli.core.api import build_kwargs
 from nemo_platform_ext.cli.core.api import merge_filter_dict as merge_filter_dict
 from nemo_platform_ext.cli.core.code_generator import handle_code_generation
@@ -28,9 +28,11 @@ from nemo_platform_ext.cli.core.types import (
     OutputColumnsOption,
 )
 
+_cli_child_admin = _importlib_import_module("nemo_platform_ext.cli.commands.api.secrets.admin")
+
 app = create_typer_app(name="secrets", help="Manage secrets")
 
-app.add_typer(admin.app, name="admin")
+app.add_typer(_cli_child_admin.app, name="admin")
 
 
 @app.command("access")
